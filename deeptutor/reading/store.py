@@ -730,6 +730,11 @@ class ReadingStore:
             row = _read_json(legacy_path) if legacy_path is not None else None
         return ReadingPosition.from_dict(row) if isinstance(row, dict) else ReadingPosition()
 
+    def has_position(self, material_id: str) -> bool:
+        """Whether this material already has a persisted Reading viewport."""
+        self.manifest(material_id)
+        return self._state_path(material_id, POSITIONS_DIR).exists()
+
     def save_position(self, material_id: str, position: ReadingPosition) -> ReadingPosition:
         """Validate and atomically persist a material viewport."""
         manifest = self.manifest(material_id)

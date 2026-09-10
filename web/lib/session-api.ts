@@ -66,7 +66,7 @@ export interface SessionPreferences {
   timed_media_id?: string;
   /** Stable learning surface, independent of the action used for a turn. */
   workspace_mode?:
-    "immersive_reading" | "mastery_path" | "immersive_watching" | "";
+    "immersive_reading" | "mastery_path" | "";
   tools?: string[];
   knowledge_bases?: string[];
   language?: string;

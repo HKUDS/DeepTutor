@@ -15,7 +15,6 @@ import {
   PenLine,
   Signpost,
   Sparkles,
-  Youtube,
   type LucideIcon,
 } from "lucide-react";
 
@@ -137,15 +136,6 @@ export const CHAT_CAPABILITIES: ChatCapabilityDef[] = [
     defaultTools: [],
   },
   {
-    value: "immersive_watching",
-    label: "Immersive Watching",
-    description: "Learn from YouTube with timestamp-grounded tutoring",
-    icon: Youtube,
-    allowedTools: ["web_search", "exec", "reason"],
-    defaultTools: [],
-    secondary: true,
-  },
-  {
     value: "course_study",
     label: "Course Study",
     description: "See where a course stands and what to do next",
@@ -192,8 +182,7 @@ export const VISIBLE_CHAT_CAPABILITIES = CHAT_CAPABILITIES.filter(
 export const WORKSPACE_CHAT_CAPABILITIES = CHAT_CAPABILITIES.filter(
   (capability) =>
     capability.value !== "course_study" &&
-    capability.value !== "mastery_path" &&
-    capability.value !== "immersive_watching",
+    capability.value !== "mastery_path",
 );
 
 export function getChatCapability(value: string | null): ChatCapabilityDef {

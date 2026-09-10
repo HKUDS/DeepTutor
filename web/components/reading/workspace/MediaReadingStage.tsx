@@ -9,7 +9,11 @@ import {
   FileAudio,
   Maximize2,
   Minimize2,
+  Pencil,
   Search,
+  StickyNote,
+  Trash2,
+  X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -30,6 +34,8 @@ import {
   type ReaderActionPayload,
 } from "@/lib/reading-reader-action";
 import { setReadingViewport } from "@/lib/reading-turn-state";
+import { useReading } from "@/context/ReadingContext";
+import type { AnnotationItem } from "@/lib/reading-api";
 import {
   bilibiliOfficialUrl,
   parseBilibiliSource,
@@ -67,6 +73,7 @@ export function MediaReadingStage({
   onLocatorChange: (locator: number) => void;
 }) {
   const { t } = useTranslation();
+  const { annotations, saveMark, removeMark } = useReading();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const controllerRef = useRef<ReadingMediaController | null>(null);
@@ -94,6 +101,9 @@ export function MediaReadingStage({
   const [transcriptQuery, setTranscriptQuery] = useState("");
   const [selectedTranscriptMatch, setSelectedTranscriptMatch] = useState(-1);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [noteDraft, setNoteDraft] = useState("");
+  const [editingNoteId, setEditingNoteId] = useState("");
+  const [noteEditorOpen, setNoteEditorOpen] = useState(false);
   const activeRef = refs.find((row) => row.locator === activeLocator);
   const normalizedTranscriptQuery = transcriptQuery.trim();
   const transcriptMatches = useMemo(
@@ -104,6 +114,9 @@ export function MediaReadingStage({
     (row) => row.locator === activeLocator,
   );
   const activeCue = activeTranscriptIndex >= 0 ? transcript[activeTranscriptIndex] : null;
+  const activeNotes = annotations.filter(
+    (row) => row.locator === activeLocator && row.kind === "note",
+  );
   const nextCue =
     activeTranscriptIndex >= 0 ? transcript[activeTranscriptIndex + 1] : null;
   const timedRefs = useMemo(
@@ -149,6 +162,61 @@ export function MediaReadingStage({
       );
     }
   }, [t]);
+
+  const startNote = useCallback(() => {
+    setEditingNoteId("");
+    setNoteDraft("");
+    setNoteEditorOpen(true);
+  }, []);
+
+  const editNote = useCallback((annotation: AnnotationItem) => {
+    setEditingNoteId(annotation.annotation_id);
+    setNoteDraft(annotation.note);
+    setNoteEditorOpen(true);
+  }, []);
+
+  const saveNote = useCallback(() => {
+    if (!activeCue) return;
+    const body = noteDraft.trim();
+    if (!body) return;
+    const editing = activeNotes.find(
+      (row) => row.annotation_id === editingNoteId,
+    );
+    const seconds = Math.floor(
+      timeFromSourceHref(activeCue.sourceHref) ?? time,
+    );
+    const now = Date.now() / 1000;
+    const optimistic: AnnotationItem = {
+      annotation_id: editing?.annotation_id || `pending-${Date.now()}`,
+      locator: activeCue.locator,
+      material_revision: editing?.material_revision ?? 1,
+      kind: "note",
+      color: editing?.color || "yellow",
+      quote: activeCue.text,
+      note: body,
+      rects: [],
+      source_anchor: `#t=${seconds}`,
+      selectors: [],
+      author: editing?.author || "user",
+      created_at: editing?.created_at || now,
+      updated_at: now,
+    };
+    void saveMark(
+      {
+        annotation_id: editing?.annotation_id,
+        locator: activeCue.locator,
+        kind: "note",
+        quote: activeCue.text,
+        note: body,
+        source_anchor: `#t=${seconds}`,
+      },
+      optimistic,
+    ).then(() => {
+      setNoteDraft("");
+      setEditingNoteId("");
+      setNoteEditorOpen(false);
+    });
+  }, [activeCue, activeNotes, editingNoteId, noteDraft, saveMark, time]);
 
   const selectCue = useCallback(
     (row: TranscriptRow) => {
@@ -682,6 +750,16 @@ export function MediaReadingStage({
             <div className="flex items-center gap-1">
               <button
                 type="button"
+                onClick={startNote}
+                disabled={!activeCue}
+                aria-label={t("Add segment note")}
+                title={t("Add segment note")}
+                className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--primary)] disabled:opacity-40"
+              >
+                <StickyNote size={12} />
+              </button>
+              <button
+                type="button"
                 onClick={() => onLocatorChange(Math.max(1, activeLocator - 1))}
                 disabled={activeLocator <= 1}
                 className="rounded-lg px-2 py-1 text-[10.5px] text-[var(--muted-foreground)] hover:bg-[var(--muted)] disabled:opacity-30"
@@ -699,6 +777,112 @@ export function MediaReadingStage({
                 {t("Next")}
               </button>
             </div>
+          </div>
+
+          <div className="mt-3 rounded-xl border border-[var(--border)] bg-[var(--card)] dark:border-[var(--border)] dark:bg-[var(--card)]">
+            {noteEditorOpen && (
+              <div className="border-b border-[var(--border)] p-3 dark:border-[var(--border)]">
+                <label className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--muted-foreground)]">
+                  {editingNoteId ? t("Edit note") : t("New note")}
+                </label>
+                <textarea
+                  value={noteDraft}
+                  data-testid="media-note-input"
+                  onChange={(event) => setNoteDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      setNoteDraft("");
+                      setEditingNoteId("");
+                      setNoteEditorOpen(false);
+                    }
+                  }}
+                  rows={3}
+                  className="mt-2 w-full resize-y rounded-lg border border-[var(--border)] bg-[var(--background)] p-2 text-[11.5px] leading-relaxed outline-none focus:border-[var(--primary)]"
+                />
+                <div className="mt-2 flex justify-end gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNoteDraft("");
+                      setEditingNoteId("");
+                    }}
+                    className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10.5px] text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+                  >
+                    <X size={11} />
+                    {t("Cancel")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={saveNote}
+                    disabled={!noteDraft.trim()}
+                    data-testid="media-note-save"
+                    className="inline-flex items-center gap-1 rounded-lg bg-[var(--primary)] px-2 py-1 text-[10.5px] font-medium text-[var(--primary-foreground)] disabled:opacity-40"
+                  >
+                    <StickyNote size={11} />
+                    {t("Save note")}
+                  </button>
+                </div>
+              </div>
+            )}
+            {activeNotes.length ? (
+              <ul className="divide-y divide-[var(--border)] dark:divide-[var(--border)]">
+                {activeNotes.map((annotation) => (
+                  <li
+                    key={annotation.annotation_id}
+                    className="flex items-start gap-3 px-3 py-2"
+                  >
+                    <StickyNote
+                      size={12}
+                      className="mt-0.5 shrink-0 text-[var(--primary)]"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p
+                        data-testid="media-note-body"
+                        className="text-[11.5px] leading-relaxed"
+                      >
+                        {annotation.note}
+                      </p>
+                      <p className="mt-1 line-clamp-2 text-[10px] text-[var(--muted-foreground)]">
+                        {annotation.quote}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => editNote(annotation)}
+                        aria-label={t("Edit note")}
+                        title={t("Edit note")}
+                        className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--primary)]"
+                      >
+                        <Pencil size={11} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void removeMark(annotation)}
+                        aria-label={t("Delete note")}
+                        title={t("Delete note")}
+                        className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--destructive)]"
+                      >
+                        <Trash2 size={11} />
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+                !noteEditorOpen && (
+                <button
+                  type="button"
+                  onClick={startNote}
+                  disabled={!activeCue}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] text-[var(--muted-foreground)] hover:text-[var(--foreground)] disabled:opacity-40"
+                >
+                  <StickyNote size={12} />
+                  {t("Add a note for this segment")}
+                </button>
+              )
+            )}
           </div>
 
           <div className="mt-4 rounded-xl border border-[var(--border)] bg-[var(--card)] dark:border-[var(--border)] dark:bg-[var(--card)]">

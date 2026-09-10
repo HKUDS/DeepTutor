@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import {
   Search,
@@ -28,16 +27,13 @@ type BrowserView = "feed" | "playlists" | "search" | "playlist";
 export function WatchingBrowser({
   onDismiss,
   canDismiss,
-  selectionMode = false,
   onSelectUrl,
 }: {
   onDismiss(): void;
   canDismiss: boolean;
-  selectionMode?: boolean;
-  onSelectUrl?(url: string): void;
+  onSelectUrl(url: string): void;
 }) {
   const { t } = useTranslation();
-  const router = useRouter();
   const auth = useAuthStatus();
   const [account, setAccount] = useState<InvidiousAccountStatus | null>(null);
   const [view, setView] = useState<BrowserView>("search");
@@ -183,8 +179,7 @@ export function WatchingBrowser({
   }
   function select(url: string) {
     remember(scroll.current?.scrollTop || 0);
-    if (onSelectUrl) onSelectUrl(url);
-    else router.push(`/watching?video=${encodeURIComponent(url)}`);
+    onSelectUrl(url);
     onDismiss();
   }
   return (
@@ -192,19 +187,17 @@ export function WatchingBrowser({
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] p-5">
         <div>
           <h1 className="text-xl font-semibold">
-            {selectionMode ? t("Browse Invidious") : t("Immersive Watching")}
+            {t("Browse Invidious")}
           </h1>
-          <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-            {selectionMode
-              ? t("Choose a video to add to this collection.")
-              : t("Your videos, with room to learn.")}
-          </p>
+            <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+              {t("Choose a video to add to this collection.")}
+            </p>
         </div>
         <div className="flex items-center gap-2 text-sm">
           {canDismiss && (
             <button className="watching-browser-button" onClick={onDismiss}>
               <ArrowLeft size={16} />
-              {selectionMode ? t("Close") : t("Back to video")}
+              {t("Close")}
             </button>
           )}
           <button

@@ -11,6 +11,9 @@ const mock = vi.hoisted(() => ({
   getPosition: vi.fn(),
   savePosition: vi.fn(),
   select: vi.fn(),
+  annotations: [] as unknown[],
+  saveMark: vi.fn(),
+  removeMark: vi.fn(),
 }));
 
 vi.mock("react-i18next", () => ({
@@ -21,6 +24,14 @@ vi.mock("@/lib/reading-api", () => ({
   getReadingPosition: mock.getPosition,
   saveReadingPosition: mock.savePosition,
   rawMaterialUrl: (id: string) => `/materials/${id}/raw`,
+}));
+
+vi.mock("@/context/ReadingContext", () => ({
+  useReading: () => ({
+    annotations: mock.annotations,
+    saveMark: mock.saveMark,
+    removeMark: mock.removeMark,
+  }),
 }));
 
 vi.mock("@/components/reading/workspace/YouTubeReadingPlayer", () => ({
@@ -106,6 +117,9 @@ beforeEach(() => {
   mock.seeks = [];
   mock.getPosition.mockResolvedValue({ locator: 1, source_anchor: "#t=0" });
   mock.savePosition.mockResolvedValue(undefined);
+  mock.annotations = [];
+  mock.saveMark.mockResolvedValue(undefined);
+  mock.removeMark.mockResolvedValue(undefined);
 });
 
 describe("MediaReadingStage", () => {
@@ -188,5 +202,73 @@ describe("MediaReadingStage", () => {
 
     fireEvent.click(screen.getByLabelText("Enter fullscreen"));
     expect(requestFullscreen).toHaveBeenCalled();
+  });
+
+  it("saves a note anchored to the active transcript segment", async () => {
+    renderStage();
+
+    fireEvent.click(screen.getByLabelText("Add segment note"));
+    fireEvent.change(screen.getByTestId("media-note-input"), {
+      target: { value: "Check this citation later." },
+    });
+    fireEvent.click(screen.getByTestId("media-note-save"));
+
+    await waitFor(() =>
+      expect(mock.saveMark).toHaveBeenCalledWith(
+        expect.objectContaining({
+          locator: 1,
+          kind: "note",
+          quote: "Opening sentence",
+          note: "Check this citation later.",
+          source_anchor: "#t=0",
+        }),
+        expect.objectContaining({
+          locator: 1,
+          note: "Check this citation later.",
+        }),
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.queryByTestId("media-note-input")).toBeNull(),
+    );
+  });
+
+  it("edits and deletes segment notes", async () => {
+    const annotation = {
+      annotation_id: "note-1",
+      locator: 1,
+      kind: "note",
+      color: "yellow",
+      quote: "Opening sentence",
+      note: "Original note",
+      rects: [],
+      source_anchor: "#t=0",
+      author: "user",
+      created_at: 1,
+      updated_at: 1,
+    };
+    mock.annotations = [annotation];
+    renderStage();
+    expect(screen.getByTestId("media-note-body")).toHaveTextContent(
+      "Original note",
+    );
+
+    fireEvent.click(screen.getByLabelText("Edit note"));
+    fireEvent.change(screen.getByTestId("media-note-input"), {
+      target: { value: "Updated note" },
+    });
+    fireEvent.click(screen.getByTestId("media-note-save"));
+    await waitFor(() =>
+      expect(mock.saveMark).toHaveBeenCalledWith(
+        expect.objectContaining({
+          annotation_id: "note-1",
+          note: "Updated note",
+        }),
+        expect.objectContaining({ annotation_id: "note-1" }),
+      ),
+    );
+
+    fireEvent.click(screen.getByLabelText("Delete note"));
+    expect(mock.removeMark).toHaveBeenCalledWith(annotation);
   });
 });

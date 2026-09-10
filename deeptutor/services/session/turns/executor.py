@@ -48,8 +48,6 @@ from .._turn_runtime_shared import (
     _resolve_turn_outcome,
     _should_capture_assistant_content,
     _stamp_ask_user_content_offset,
-    _timed_media_id,
-    _timed_media_viewport,
     _topic_material_manifest,
     _TurnExecution,
     _workspace_mode,
@@ -809,10 +807,6 @@ class TurnExecutor:
                     ),
                     "immersive_reading_mode": workspace_mode == WORKSPACE_MODE_READING,
                     "reading_viewport": _reading_viewport(payload.get("reading_viewport")),
-                    "timed_media_id": _timed_media_id(payload.get("timed_media_id")),
-                    "timed_media_viewport": _timed_media_viewport(
-                        payload.get("timed_media_viewport")
-                    ),
                     "book_context": book_context,
                     "book_context_warnings": book_context_result.warnings,
                     "memory_references": memory_references,
