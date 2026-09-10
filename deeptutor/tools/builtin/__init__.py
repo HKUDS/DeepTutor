@@ -1290,6 +1290,7 @@ class ReadSkillTool(_PromptHintsMixin, BaseTool):
         from deeptutor.services.skill.service import (
             InvalidSkillNameError,
             InvalidSkillPathError,
+            SkillFileNotFoundError,
             SkillNotFoundError,
             SkillService,
         )
@@ -1316,6 +1317,15 @@ class ReadSkillTool(_PromptHintsMixin, BaseTool):
         for service in services:
             try:
                 content = service.read_skill_file(name, rel_path)
+            except SkillFileNotFoundError:
+                files = ", ".join(service.list_skill_files(name)) or "none"
+                return ToolResult(
+                    content=(
+                        f"(file not found: {rel_path!r} does not exist in skill "
+                        f"{name!r}. Files: {files}. Do NOT try other skill names.)"
+                    ),
+                    success=False,
+                )
             except SkillNotFoundError:
                 continue
             except (InvalidSkillNameError, InvalidSkillPathError) as exc:
@@ -1324,9 +1334,15 @@ class ReadSkillTool(_PromptHintsMixin, BaseTool):
                 content=content,
                 metadata={"skill": name, "file": rel_path, "char_count": len(content)},
             )
+        available_names: set[str] = set()
+        for service in services:
+            available_names.update(skill.name for skill in service.list_skills())
+        available_skills = ", ".join(sorted(available_names))
+        available_hint = f". Available skills: {available_skills}" if available_skills else ""
         return ToolResult(
             content=(
-                f"(skill not found: {name!r} — use a name exactly as listed in the Skills section)"
+                f"(skill not found: {name!r} — use a name exactly as listed in the "
+                f"Skills section{available_hint})"
             ),
             success=False,
         )
