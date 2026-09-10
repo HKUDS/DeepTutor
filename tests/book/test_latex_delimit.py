@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
 from deeptutor.book.latex_delimit import (
+    FRAGMENT_RE,
+    _segments,
     delimit_bare_latex,
     fix_book,
 )
@@ -165,3 +170,150 @@ def test_fix_book_missing_book_raises(monkeypatch) -> None:
     monkeypatch.setattr("deeptutor.book.storage.get_book_storage", lambda: storage)
     with pytest.raises(ValueError):
         fix_book("bk_missing")
+
+
+# ── P5fix：payload 才是 GET /pages 服务端读取的真相源 ─────────────────────────
+
+
+@pytest.fixture()
+def book_with_rendered_body(monkeypatch):
+    """存量书的实际形态：reading 块 params 与 payload 各持一份正文。"""
+    from deeptutor.book.models import Block, BlockStatus, BlockType, Book, Page
+
+    body = "如图，已知 \\overrightarrow{OA}，当 \\lambda>0 时同向。"
+    page = Page(
+        id="pg_9",
+        book_id="bk_x",
+        title="页8",
+        blocks=[
+            Block(
+                type=BlockType.READING,
+                status=BlockStatus.READY,
+                params={"body": body, "variant": "prose", "source_label": "textbook"},
+                payload={"body": body, "format": "markdown", "author": "textbook"},
+            )
+        ],
+    )
+    book = Book(id="bk_x", title="书", language="zh", revision=7)
+    storage = _FakeStorage(book, [page])
+    monkeypatch.setattr("deeptutor.book.storage.get_book_storage", lambda: storage)
+    return storage, page
+
+
+def test_fix_book_writes_payload_layer_not_just_params(book_with_rendered_body) -> None:
+    """09-09 实锤回归：只改 params，API 永远返回 0 处定界。两层都要落。"""
+    storage, page = book_with_rendered_body
+    summary = fix_book("bk_x")
+
+    assert summary["blocks_fixed"] == 1
+    block = page.blocks[0]
+    assert "$\\overrightarrow{OA}$" in block.payload["body"]
+    assert "$\\lambda$" in block.payload["body"]
+    assert "$\\overrightarrow{OA}$" in block.params["body"]
+    assert block.payload["format"] == "markdown"
+    assert block.payload["author"] == "textbook"
+    assert block.params["variant"] == "prose"
+
+
+def test_fix_book_dry_run_leaves_payload_untouched(book_with_rendered_body) -> None:
+    storage, page = book_with_rendered_body
+    summary = fix_book("bk_x", dry_run=True)
+
+    assert summary["blocks_fixed"] == 1
+    assert storage.saved_pages == []
+    block = page.blocks[0]
+    assert "$" not in block.payload["body"]
+    assert "$" not in block.params["body"]
+
+
+# ── P5fix 召回补丁：整行/整段数学主体 ────────────────────────────────────────
+
+
+def _bare_commands(text: str) -> list[str]:
+    """Whitelisted ``\\command`` occurrences outside any math delimiter."""
+    bare: list[str] = []
+    for chunk, protected in _segments(text):
+        if protected:
+            continue
+        bare.extend(m.group(0) for m in FRAGMENT_RE.finditer(chunk))
+    return bare
+
+
+def _load_leak_fixture() -> dict:
+    path = Path(__file__).parent / "fixtures" / "latex_delimit_page8_leaks.json"
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def test_connective_equation_line_wrapped_whole() -> None:
+    """老板原样样本：连等式整行包一个 $...$，题号与句末分号随行进数学模式。"""
+    body = "(1) a+b=\\overrightarrow{OA}+\\overrightarrow{AB}=\\overrightarrow{OB};"
+    fixed = delimit_bare_latex(body)
+    assert fixed == "$(1) a+b=\\overrightarrow{OA}+\\overrightarrow{AB}=\\overrightarrow{OB};$"
+    assert _bare_commands(fixed) == []
+
+
+def test_command_variable_chain_wrapped_whole() -> None:
+    """老板原样样本：\\mu a 这类命令+变量连写逐片段必然漏，整行包才召回。"""
+    body = "\\lambda(\\mu a)=(\\lambda\\mu)a"
+    fixed = delimit_bare_latex(body)
+    assert fixed == "$\\lambda(\\mu a)=(\\lambda\\mu)a$"
+    assert _bare_commands(fixed) == []
+
+
+def test_math_run_between_chinese_wrapped_whole() -> None:
+    """数学串夹在中文里（含尾部全角标点）同样整体包，散文留在模式外。"""
+    body = "\\lambda(\\mu a)=(\\lambda\\mu)a，即数乘结合律。"
+    fixed = delimit_bare_latex(body)
+    assert fixed == "$\\lambda(\\mu a)=(\\lambda\\mu)a$，即数乘结合律。"
+    assert _bare_commands(fixed) == []
+
+
+def test_adjacent_chain_without_equation_keeps_fragment_path() -> None:
+    """无等号的命令链维持既有逐片段行为，不整段包。"""
+    fixed = delimit_bare_latex("如图，\\lambda\\overrightarrow{OA} 共线。")
+    assert fixed == "如图，$\\lambda$$\\overrightarrow{OA}$ 共线。"
+
+
+def test_english_sentence_with_two_commands_untouched() -> None:
+    """误判防线：散文词（and/here）让英文句子在构造上出局。"""
+    body = "Use \\frac{a}{b} and \\lambda here."
+    assert delimit_bare_latex(body) == body
+
+
+def test_equation_run_wrapped_but_separate_prose_fragments_still_wrapped() -> None:
+    """整段包装后，同行剩余裸片段仍走逐片段路径（$...$ 自动受保护）。"""
+    body = "因为 a=\\overrightarrow{OA}+\\overrightarrow{AB}，所以 \\lambda 与之共线。"
+    fixed = delimit_bare_latex(body)
+    assert fixed == "因为 $a=\\overrightarrow{OA}+\\overrightarrow{AB}$，所以 $\\lambda$ 与之共线。"
+    assert _bare_commands(fixed) == []
+
+
+def test_page8_leak_fixture_full_recall_idempotent_no_new_marks() -> None:
+    """36 处裸样本修复率 100%、41 处已定界逐字保留、幂等、无误判新增。"""
+    fixture = _load_leak_fixture()
+    bare_samples = fixture["bare_samples"]
+    delimited = fixture["delimited_fragments"]
+    lines: list[str] = ["（人教A版选择性必修第一册）页8 本节常用记号："]
+    prose_lines: list[str] = []
+    for i, sample in enumerate(bare_samples):
+        lines.append(sample)
+        # 已定界片段按原样嵌进散文行，两两覆盖全部 41 个片段。
+        prose = (
+            f"记号回顾{i}：{delimited[i % len(delimited)]} 与 "
+            f"{delimited[(i + 18) % len(delimited)]} 的含义见上。"
+        )
+        lines.append(prose)
+        prose_lines.append(prose)
+    prose_lines.extend(fixture["protections"])
+    lines.extend(fixture["protections"])
+    body = "\n".join(lines)
+
+    assert len(bare_samples) == 36
+    assert _bare_commands(body), "fixture 自身必须带裸命令（否则回归无效）"
+
+    fixed = delimit_bare_latex(body)
+
+    assert _bare_commands(fixed) == []  # 36 处裸全部召回，无一漏网
+    assert delimit_bare_latex(fixed) == fixed  # 幂等
+    for prose in prose_lines:  # 41 处已定界所在散文行 + 误判防线行逐字不动
+        assert prose in fixed, prose

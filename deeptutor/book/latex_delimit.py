@@ -22,11 +22,30 @@ False-positive defenses (误判防线):
 * already-delimited math ($$..$$, $..$, ``\\(..\\)``, ``\\[..\\]``), fenced and
   inline code, and markdown links/images are protected verbatim
 
+P5fix 召回补丁 adds the 整行数学主体 form the 09-09 production sweep found
+leaking (36 bare spots on 人教A版选必一 页8): lines whose content *is* the
+math — connective equalities like ``(1) a+b=\\overrightarrow{OA}+
+\\overrightarrow{AB}=\\overrightarrow{OB};`` and single-line derivations like
+``\\lambda(\\mu a)=(\\lambda\\mu)a``. Per-fragment wrapping is wrong there (a
+command followed by a variable — ``\\mu a`` — is deliberately not a fragment),
+so a line that is *math-dominant* (≥2 whitelisted commands, no prose words, no
+CJK outside the numbering/punctuation frame) is wrapped as one whole
+``$...$`` span, with any leading 题号 and trailing punctuation kept outside.
+
 The same function runs at two points: the canonicalize/pages-import hook
 (new books are correct from day one) and this module's CLI, which walks an
 existing book's reading blocks in place::
 
     python -m deeptutor.book.latex_delimit <book_id> [--dry-run]
+
+The CLI (and every caller) writes through the engine's official block-write
+path — the one ``figure_backfill`` proved API-visible: ``params["body"]`` is
+the generator *input*, but ``payload["body"]`` is what ``GET /pages/{id}``
+serves, so a fix that only touches ``params`` shows 41 delimitations in the
+file and 0 in the API (09-09 生产实锤). Both layers are updated and persisted
+with the same ``storage.save_page`` call ``engine.insert_block`` /
+``engine.update_block`` use; fixing ``params`` too keeps a future regenerate
+(reading generator copies params → payload) from silently undoing the fix.
 """
 
 from __future__ import annotations
@@ -34,6 +53,7 @@ from __future__ import annotations
 import argparse
 import logging
 import re
+from time import time
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -255,6 +275,83 @@ SUBSUP_RE = re.compile(
 # breaking the fragment (math operators, halfwidth brackets).
 _MATH_ADJACENT = "=+-*/<>:([{'\""
 
+# ── 数学主体行（P5fix 召回补丁）─────────────────────────────────────────────
+
+# 散文信号：命令剥掉后残留的小写英文词（"and"、"is"、"here"）——出现即不是
+# 纯数学串。全大写 2-4 字母（OA、AB、CB）与单字母变量不算词。
+_LOWERCASE_WORD_RE = re.compile(r"(?<![A-Za-z\\])[a-z]{2,}")
+
+# Maximal runs of non-CJK characters — the unit 整行/整段数学 wraps as one.
+_RUN_RE = re.compile(f"[^{_CJK}]+")
+
+
+def _is_math_dominant(run: str) -> bool:
+    """A non-CJK run that *is* the math: ≥2 whitelisted commands, an equation
+    operator, no prose words, no URL.
+
+    ``\\mu a`` 这类"命令+变量"连写不是 FRAGMENT_RE 片段（右邻字母被
+    ``_right_ok`` 刻意挡下），所以逐片段包装在连等式串上必然漏——这种串
+    只能整体包。判定收得极紧：``=`` 把无关的命令并列表（``\\lambda 与
+    \\mu``）挡在外面，剥掉命令后残留任何小写英文词（散文）即不算，
+    英文句子在构造上就被排除。
+    """
+    if "=" not in run or "://" in run:
+        return False
+    if len(FRAGMENT_RE.findall(run)) < 2:
+        return False
+    # 命令连同其花括号参数一起剥掉，\text{...} 里的词、向量记号 OA 不触发散文判定。
+    return _LOWERCASE_WORD_RE.search(FRAGMENT_RE.sub(" ", run)) is None
+
+
+def _wrap_math_runs(line: str) -> str | None:
+    """Wrap every math-dominant non-CJK run of *line* in one ``$...$`` span.
+
+    Returns the rewritten line, or ``None`` when nothing qualified (caller
+    falls back to the per-fragment path). Runs may sit 整行 or between 中文 —
+    ``(1) a+b=\\overrightarrow{OA}+\\overrightarrow{AB}=\\overrightarrow{OB};``
+    and ``\\lambda(\\mu a)=(\\lambda\\mu)a，即数乘结合律。`` both qualify.
+    """
+    out: list[str] = []
+    pos = 0
+    changed = False
+    for m in _RUN_RE.finditer(line):
+        run = m.group(0)
+        core = run.strip()
+        if not core or not _is_math_dominant(core):
+            continue
+        changed = True
+        left = run[: len(run) - len(run.lstrip())]
+        right = run[len(run.rstrip()) :]
+        out.append(line[pos : m.start()])
+        out.append(f"{left}${core}${right}")
+        pos = m.end()
+    if not changed:
+        return None
+    out.append(line[pos:])
+    return "".join(out)
+
+
+def _process_plain_line(line: str, chunk_has_cjk: bool) -> str:
+    """One plain (unprotected) line: 整段数学主体优先，否则逐片段包装."""
+    wrapped = _wrap_math_runs(line)
+    if wrapped is not None:
+        # 数学串已整体入 $...$；剩余片段继续逐片段包装（$...$ 自动受保护）。
+        parts = []
+        for chunk, protected in _segments(wrapped):
+            parts.append(chunk if protected else _wrap_subsup(_wrap_commands(chunk)))
+        return "".join(parts)
+    if not chunk_has_cjk:
+        # 老防线保持：无中文的行不做逐片段包装（英文句子/代码在构造上不碰）。
+        return line
+    return _wrap_subsup(_wrap_commands(line))
+
+
+def _process_plain_chunk(chunk: str) -> str:
+    chunk_has_cjk = _has_cjk(chunk)
+    if "\n" not in chunk:
+        return _process_plain_line(chunk, chunk_has_cjk)
+    return "\n".join(_process_plain_line(line, chunk_has_cjk) for line in chunk.split("\n"))
+
 
 def _has_cjk(text: str) -> bool:
     return CJK_RE.search(text) is not None
@@ -402,54 +499,93 @@ def delimit_bare_latex(text: str) -> str:
     """Wrap bare LaTeX math fragments in ``$...$`` for KaTeX rendering.
 
     Idempotent: text that is already fully delimited round-trips unchanged.
-    Only fragments inside Chinese-prose chunks are touched (中文紧邻判定), so
-    English sentences, URLs and currency amounts pass through untouched.
+    Plain chunks go line by line: an 整行数学主体 line wraps whole, everything
+    else keeps the 中文紧邻 per-fragment path (English sentences, URLs and
+    currency amounts pass through untouched).
     """
     if not text or ("\\" not in text and "^" not in text and "_" not in text):
         return text
     parts: list[str] = []
     for chunk, protected in _segments(text):
-        if protected or not _has_cjk(chunk):
+        if protected:
             parts.append(chunk)
             continue
-        wrapped = _wrap_commands(chunk)
-        wrapped = _wrap_subsup(wrapped)
-        parts.append(wrapped)
+        parts.append(_process_plain_chunk(chunk))
     return "".join(parts)
 
 
 # ── 存量修复 CLI ─────────────────────────────────────────────────────────────
 
 
-def fix_book(book_id: str, *, dry_run: bool = False) -> dict[str, Any]:
+def _block_change_layers(block: Any) -> list[str]:
+    """Which body layers of this reading block ``delimit_bare_latex`` would
+    change — pure probe, no mutation (dry-run stays read-only)."""
+    changed: list[str] = []
+    body = block.params.get("body")
+    if isinstance(body, str) and body and delimit_bare_latex(body) != body:
+        changed.append("params")
+    rendered = (block.payload or {}).get("body")
+    if isinstance(rendered, str) and rendered and delimit_bare_latex(rendered) != rendered:
+        changed.append("payload")
+    return changed
+
+
+def _apply_block_layers(block: Any, layers: list[str]) -> None:
+    """Write the changed layers the way ``engine.update_block`` writes a body.
+
+    The rendered ``payload["body"]`` is what ``GET /pages/{id}`` serves (the
+    truth the 09-09 sweep proved a params-only edit never reaches), and
+    ``params["body"]`` is what the reading generator copies back on any
+    regenerate — fixing only one layer either shows nothing in the API or gets
+    silently undone by the next regenerate.
+    """
+    if "params" in layers:
+        block.params["body"] = delimit_bare_latex(block.params["body"])
+    if "payload" in layers:
+        # engine.update_block 的 body 写法：payload + format 一起落。
+        block.payload = {
+            **(block.payload or {}),
+            "body": delimit_bare_latex(block.payload["body"]),
+            "format": "markdown",
+        }
+    block.updated_at = time()
+
+
+def fix_book(book_id: str, *, dry_run: bool = False, storage: Any = None) -> dict[str, Any]:
     """Walk an existing book's reading blocks, delimiting bare LaTeX in place.
 
-    Returns a summary; with ``dry_run`` nothing is persisted. Mutating runs
-    bump the book ``revision`` so optimistic editors notice the rewrite.
+    Loads pages through the engine (same read path the API serves from) and
+    persists with ``storage.save_page`` — the write every official engine
+    mutation (``insert_block``, ``update_block``) lands through, which is what
+    makes the fix API-visible. Returns a summary; with ``dry_run`` nothing is
+    persisted. Mutating runs bump the book ``revision`` so optimistic editors
+    notice the rewrite.
     """
-    from .storage import get_book_storage
+    from .engine import BookEngine
 
-    storage = get_book_storage()
-    book = storage.load_book(book_id)
+    if storage is None:
+        from .storage import get_book_storage
+
+        storage = get_book_storage()
+    engine = BookEngine(storage=storage)
+    book = engine.load_book(book_id)
     if book is None:
         raise ValueError(f"book not found: {book_id}")
 
     changed_blocks = 0
     touched_page_ids: list[str] = []
-    for page in storage.list_pages(book_id):
+    for page in engine.list_pages(book_id):
         page_changed = False
         for block in page.blocks:
             if block.type.value != "reading":
                 continue
-            body = block.params.get("body")
-            if not isinstance(body, str) or not body:
+            layers = _block_change_layers(block)
+            if not layers:
                 continue
-            fixed = delimit_bare_latex(body)
-            if fixed != body:
-                changed_blocks += 1
-                page_changed = True
-                if not dry_run:
-                    block.params["body"] = fixed
+            changed_blocks += 1
+            page_changed = True
+            if not dry_run:
+                _apply_block_layers(block, layers)
         if page_changed and not dry_run:
             storage.save_page(page)
             touched_page_ids.append(page.id)
@@ -461,8 +597,6 @@ def fix_book(book_id: str, *, dry_run: bool = False) -> dict[str, Any]:
         "pages_touched": touched_page_ids if dry_run else len(touched_page_ids),
     }
     if not dry_run and changed_blocks:
-        from time import time
-
         book.revision += 1
         book.updated_at = time()
         storage.save_book(book)
