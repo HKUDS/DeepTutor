@@ -49,6 +49,11 @@ from deeptutor.services.config.settings_draft import (
     merge_draft_secrets,
     redact_draft,
 )
+from deeptutor.services.config.settings_presets import (
+    SETTINGS_PRESETS_SCHEMA_VERSION,
+    get_settings_preset,
+    list_settings_presets,
+)
 from deeptutor.services.llm.config import clear_llm_config_cache
 from deeptutor.services.model_selection import list_llm_options
 from deeptutor.services.path_service import get_path_service
@@ -222,6 +227,10 @@ class SettingsDraftPayload(BaseModel):
     catalog: dict[str, Any] | None = None
     # Opaque per-page state, keyed by the string the page registers with.
     extensions: dict[str, Any] = Field(default_factory=dict)
+
+
+class SettingsPresetDraftRequest(SettingsDraftPayload):
+    """The current draft envelope submitted alongside a named preset."""
 
 
 class CodexReasoningEffortUpdate(BaseModel):
@@ -1133,6 +1142,64 @@ async def get_settings_readiness():
     from deeptutor.services.config.readiness import build_settings_readiness
 
     return await build_settings_readiness()
+
+
+@router.get("/presets")
+async def get_settings_presets():
+    """List value-free starting points for a reviewable draft."""
+
+    _require_settings_admin()
+    return {
+        "schema_version": SETTINGS_PRESETS_SCHEMA_VERSION,
+        "presets": list_settings_presets(),
+    }
+
+
+async def _stage_settings_preset(
+    preset_id: str,
+    payload: SettingsPresetDraftRequest,
+) -> dict[str, Any]:
+    """Merge one preset into the unapplied draft; never touch live settings."""
+
+    preset = get_settings_preset(preset_id)
+    if preset is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Unknown preset '{preset_id}'.")
+
+    draft_service = get_settings_draft_service()
+    stored = draft_service.load()
+    incoming = payload.model_dump()
+
+    # The browser sends its whole envelope, so unrelated unsaved edits survive.
+    # When a caller omits extensions, existing extension drafts must survive too.
+    extensions = deepcopy(stored.get("extensions") or {})
+    extensions.update(deepcopy(incoming.get("extensions") or {}))
+    incoming["extensions"] = extensions
+
+    merged = merge_draft_secrets(
+        incoming,
+        stored,
+        get_model_catalog_service().load(),
+    )
+    preset_draft = preset.draft_extensions()
+    tools = preset_draft.get("enabled_tools", {}).get("enabled_tools", [])
+    preset_draft["enabled_tools"]["enabled_tools"] = sanitize_enabled_tools(tools)
+    merged["extensions"].update(preset_draft)
+
+    return {
+        "preset": preset.public_dict(),
+        "draft": redact_draft(draft_service.save(merged)),
+    }
+
+
+@router.post("/presets/{preset_id}/draft")
+async def stage_settings_preset(
+    preset_id: str,
+    payload: SettingsPresetDraftRequest,
+) -> dict[str, Any]:
+    """Load a named preset into the existing draft for review."""
+
+    _require_settings_admin()
+    return await _stage_settings_preset(preset_id, payload)
 
 
 @router.put("/document-parsing")

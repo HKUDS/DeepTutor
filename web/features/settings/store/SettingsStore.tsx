@@ -661,6 +661,8 @@ export type SettingsContextValue = {
   /** Promote one model service without applying unrelated Settings drafts. */
   applyService: (service: ServiceName) => Promise<boolean>;
   discardDraft: () => Promise<void>;
+  /** Stage a named Settings preset as a reviewable draft. */
+  stagePreset: (presetId: string) => Promise<boolean>;
   /** A draft parked on the server, waiting to be applied. */
   storedDraft: StoredDraft | null;
   draftState: DraftState;
@@ -1695,6 +1697,60 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     }
   }, [catalogEditable, clearPending, draftEnvelope, t]);
 
+  /** Stage a named preset over the current draft without applying anything. */
+  const stagePreset = useCallback(
+    async (presetId: string): Promise<boolean> => {
+      setSaving(true);
+      try {
+        const response = await apiFetch(
+          apiUrl(`/api/settings/presets/${presetId}/draft`),
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(draftEnvelope()),
+          },
+        );
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = (await response.json()) as {
+          draft: StoredDraft | null;
+        };
+        const stored = payload.draft;
+        const pending = new Map(
+          Object.entries(stored?.extensions ?? {}),
+        );
+
+        pendingRef.current.clear();
+        for (const [key, value] of pending.entries()) {
+          pendingRef.current.set(key, value);
+        }
+        syncPendingKeys();
+        if (stored?.catalog) setDraft(cloneCatalog(stored.catalog));
+        setStoredDraft(stored);
+        // The server has the exact staged envelope; avoid the toolbar calling
+        // it unsaved while the new draft signature is still propagating.
+        setSavedSignature(
+          JSON.stringify({
+            catalog: catalogEditable ? (stored?.catalog ?? draft) : null,
+            extensions: JSON.stringify(Object.fromEntries(pending.entries())),
+          }),
+        );
+        setDraftRevision((value) => value + 1);
+        setToast(t("Preset loaded as a draft — review before applying"));
+        return true;
+      } catch (err) {
+        setToast(
+          t("Could not load the preset: {{message}}", {
+            message: err instanceof Error ? err.message : String(err),
+          }),
+        );
+        return false;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [catalogEditable, draft, draftEnvelope, syncPendingKeys, t],
+  );
+
   /** Throw the draft away and go back to what is actually live. */
   const discardDraft = useCallback(async () => {
     setApplying(true);
@@ -2022,6 +2078,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       applyCatalog,
       applyService,
       discardDraft,
+      stagePreset,
       storedDraft,
       draftState,
       draftRevision,
@@ -2049,6 +2106,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       applyCatalog,
       applyService,
       applying,
+      stagePreset,
       draftState,
       storedDraft,
       draftRevision,

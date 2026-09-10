@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 
 import { apiFetch, apiUrl } from "@/lib/api";
 import SettingsReadinessPanel from "@/components/settings/SettingsReadinessPanel";
+import SettingsPresetsPanel from "@/components/settings/SettingsPresetsPanel";
 import SettingsStatusPanel from "@/components/settings/SettingsStatusPanel";
 import { SettingRow, SettingSection } from "@/components/settings/shared";
 import { setPendingPrompt } from "@/lib/pending-prompt";
@@ -152,6 +153,8 @@ export default function SettingsOverview() {
       </div>
 
       <SettingsReadinessPanel enabled={catalogEditable === true} />
+
+      {catalogEditable === true && <SettingsPresetsPanel enabled={true} />}
 
       {apiBase && (
         <p className="mt-5 text-[11.5px] text-[var(--muted-foreground)]">
