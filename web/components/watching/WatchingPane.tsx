@@ -70,6 +70,7 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
   const [notesLoading, setNotesLoading] = useState(false)
   const [notesError, setNotesError] = useState<string | null>(null)
   const [noteDraft, setNoteDraft] = useState('')
+  const [noteAnchorTime, setNoteAnchorTime] = useState<number | null>(null)
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
   const [editingDraft, setEditingDraft] = useState('')
   const [noteBusy, setNoteBusy] = useState(false)
@@ -255,13 +256,15 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
   const addNote = async () => {
     if (!material || !noteDraft.trim() || noteBusy) return
     const requestedMaterialId = material.material_id
+    const anchorTime = noteAnchorTime ?? time
     setNoteBusy(true)
     setNotesError(null)
     try {
-      const saved = await createVideoNote(requestedMaterialId, noteDraft.trim(), time)
+      const saved = await createVideoNote(requestedMaterialId, noteDraft.trim(), anchorTime)
       if (activeMaterialIdRef.current !== requestedMaterialId) return
       setNotes(current => sortNotes([...current, saved]))
       setNoteDraft('')
+      setNoteAnchorTime(null)
       setNotesCopied(false)
     } catch (caught) {
       if (activeMaterialIdRef.current !== requestedMaterialId) return
@@ -771,9 +774,15 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
                 >
                   <textarea
                     value={noteDraft}
-                    onChange={event => setNoteDraft(event.target.value)}
+                    onChange={event => {
+                      const next = event.target.value
+                      if (!noteDraft.trim() && next.trim()) {
+                        setNoteAnchorTime(time)
+                      }
+                      setNoteDraft(next)
+                    }}
                     placeholder={t('Note at {{time}}', {
-                      time: formatTime(time),
+                      time: formatTime(noteAnchorTime ?? time),
                     })}
                     className="min-h-20 w-full resize-y rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm"
                   />
