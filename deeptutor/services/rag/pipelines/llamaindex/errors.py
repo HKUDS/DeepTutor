@@ -10,6 +10,32 @@ def search_error_result(query: str, exc: Exception) -> Dict[str, Any]:
     message = str(exc)
     lower = message.lower()
 
+    connection_failed = any(
+        marker in lower
+        for marker in (
+            "cannot connect to",
+            "connection refused",
+            "all connection attempts failed",
+            "cannot reach embedding api",
+        )
+    )
+    timed_out = "timed out" in lower and any(marker in lower for marker in ("embedding", "ollama"))
+    if connection_failed or timed_out:
+        return {
+            "query": query,
+            "answer": (
+                "Knowledge retrieval failed because the configured embedding "
+                "service is unavailable. Check the embedding endpoint and "
+                "provider, start the service if it is local, then retry. "
+                f"Details: {message}"
+            ),
+            "content": "",
+            "provider": "llamaindex",
+            "error": message,
+            "error_type": "embedding_connectivity",
+            "log_message": "Embedding service unavailable during RAG query.",
+        }
+
     if "embedding provider returned invalid" in lower:
         return {
             "query": query,

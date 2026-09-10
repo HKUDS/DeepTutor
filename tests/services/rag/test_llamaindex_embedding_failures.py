@@ -7,6 +7,22 @@ from types import SimpleNamespace
 import pytest
 
 
+def test_search_error_result_classifies_embedding_connectivity_failure() -> None:
+    from deeptutor.services.rag.pipelines.llamaindex.errors import search_error_result
+
+    result = search_error_result(
+        "what is this?",
+        RuntimeError(
+            "Cannot connect to Ollama at http://localhost:11434/api/embed. "
+            "Make sure Ollama is running."
+        ),
+    )
+
+    assert result["error_type"] == "embedding_connectivity"
+    assert "embedding service is unavailable" in result["answer"]
+    assert "localhost:11434" in result["answer"]
+
+
 def test_custom_embedding_rejects_null_coordinates(monkeypatch: pytest.MonkeyPatch) -> None:
     from deeptutor.services.rag.pipelines.llamaindex import (
         embedding_adapter as embedding_module,

@@ -124,10 +124,13 @@ class RAGTool(_PromptHintsMixin, BaseTool):
             **extra_kwargs,
         )
         content = result.get("answer") or result.get("content", "")
+        failed = bool(result.get("error"))
         return ToolResult(
             content=content,
-            sources=_rag_sources(result, query=query, kb_name=kb_name),
+            sources=[] if failed else _rag_sources(result, query=query, kb_name=kb_name),
             metadata=result,
+            success=not failed,
+            terminate_turn=result.get("error_type") == "embedding_connectivity",
         )
 
 

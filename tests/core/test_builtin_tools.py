@@ -294,6 +294,28 @@ async def test_rag_tool_forwards_query_and_extra_kwargs(monkeypatch: pytest.Monk
 
 
 @pytest.mark.asyncio
+async def test_rag_tool_marks_embedding_connectivity_failure_terminal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_rag_search(**_kwargs: Any) -> dict[str, Any]:
+        return {
+            "answer": "embedding service is unavailable",
+            "content": "",
+            "error": "Cannot connect to Ollama at http://localhost:11434/api/embed",
+            "error_type": "embedding_connectivity",
+        }
+
+    _install_module(monkeypatch, "deeptutor.tools.rag_tool", rag_search=fake_rag_search)
+
+    result = await RAGTool().execute(query="what is a tensor", kb_name="demo-kb")
+
+    assert result.success is False
+    assert result.terminate_turn is True
+    assert result.sources == []
+    assert result.metadata["error_type"] == "embedding_connectivity"
+
+
+@pytest.mark.asyncio
 async def test_rag_tool_cites_retrieved_sources(monkeypatch: pytest.MonkeyPatch) -> None:
     """The retrieval's own provenance must reach the citation stream — echoing
     the query back was all a grounded answer used to carry (issue #694)."""
