@@ -12,6 +12,12 @@ import {
 } from "lucide-react";
 
 import type { MasteryTopic } from "@/lib/learning-api";
+import {
+  MASTERY_OPENING_SCOPE,
+  masteryOpeningMessage,
+  masterySessionRoute,
+} from "@/lib/mastery-mode";
+import { setPendingPrompt } from "@/lib/pending-prompt";
 
 import { topicDisplayName, type Translate } from "./format";
 import { TopicMapCard } from "./TopicMapCard";
@@ -97,7 +103,22 @@ export function TopicAtlas({
             </div>
             {firstDueTopic && (
               <Link
-                href={`/mastery/${encodeURIComponent(firstDueTopic.path_id)}`}
+                // Straight into a review session: "start review" that lands on
+                // a dashboard makes the learner find the door twice, and a
+                // review sitting is a different kind of conversation from the
+                // study one the dashboard's own button opens.
+                onClick={() =>
+                  setPendingPrompt(
+                    masteryOpeningMessage("review", t, {
+                      dueTitles: firstDueTopic.reviews
+                        .filter((review) => review.due)
+                        .slice(0, 5)
+                        .map((review) => review.knowledge_point_name),
+                    }),
+                    MASTERY_OPENING_SCOPE,
+                  )
+                }
+                href={masterySessionRoute(firstDueTopic.path_id, "review")}
                 className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-[var(--primary)] px-3.5 text-xs font-semibold text-white transition hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2 "
               >
                 {t("Start review")}: {topicDisplayName(firstDueTopic, t)}

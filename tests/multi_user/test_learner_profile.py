@@ -7,7 +7,7 @@ from deeptutor.multi_user.learner_profile import normalize_profile, prompt_block
 
 
 def test_chat_prompt_assembler_emits_profile_as_its_own_block() -> None:
-    from deeptutor.agents.chat.prompt_blocks import ChatPromptAssembler
+    from deeptutor.agents.loop.prompt_blocks import ChatPromptAssembler
     from deeptutor.core.context import UnifiedContext
 
     context = UnifiedContext(

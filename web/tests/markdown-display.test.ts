@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  appendWithEmphasisRepair,
   decodeEscapedUnicodeForDisplay,
   escapeUnknownHtmlTagsForDisplay,
   hasVisibleMarkdownContent,
@@ -142,6 +143,72 @@ test("repairMalformedStrongEmphasis repairs multiple occurrences idempotently", 
 test("normalizeMarkdownForDisplay removes empty details blocks", () => {
   const input = "Before\n\n<details><summary></summary></details>\n\nAfter";
   assert.equal(normalizeMarkdownForDisplay(input), "Before\n\nAfter");
+});
+
+test("normalizeMarkdownForDisplay repairs missing ATX heading separators", () => {
+  const input = ["##Title", "###第一部分", "# Already spaced", "#######"].join(
+    "\n",
+  );
+  const expected = [
+    "## Title",
+    "### 第一部分",
+    "# Already spaced",
+    "#######",
+  ].join("\n");
+
+  assert.equal(normalizeMarkdownForDisplay(input), expected);
+  assert.equal(normalizeMarkdownForDisplay(expected), expected);
+});
+
+test("normalizeMarkdownForDisplay leaves heading-like fenced code verbatim", () => {
+  const input = [
+    "```c",
+    "##define FEATURE",
+    "```",
+    "",
+    "~~~text",
+    "###literal",
+    "~~~",
+    "",
+    "```python",
+    "##unfinished",
+  ].join("\n");
+
+  assert.equal(normalizeMarkdownForDisplay(input), input);
+});
+
+test("normalizeMarkdownForDisplay leaves raw HTML code blocks verbatim", () => {
+  const input = [
+    "<pre",
+    '  class="example">',
+    "###literal",
+    "</pre>",
+    "",
+    "<code>",
+    "##define FEATURE",
+    "</code>",
+    "",
+    "###Heading",
+  ].join("\n");
+  const expected = input.replace("###Heading", "### Heading");
+
+  assert.equal(normalizeMarkdownForDisplay(input), expected);
+});
+
+test("normalizeMarkdownForDisplay does not mistake code-like prose for HTML blocks", () => {
+  const inputs = [
+    "`<pre>`\n###Heading",
+    String.raw`\<pre>` + "\n###Heading",
+    "<!-- example: <pre> -->\n###Heading",
+    "<code@example.com>\n###Heading",
+  ];
+
+  for (const input of inputs) {
+    assert.equal(
+      normalizeMarkdownForDisplay(input),
+      input.replace("###Heading", "### Heading"),
+    );
+  }
 });
 
 test("normalizeMarkdownForDisplay decodes dense non-ASCII JSON escapes", () => {
@@ -401,5 +468,54 @@ test("hasVisibleMarkdownContent keeps meaningful markdown", () => {
   assert.equal(
     hasVisibleMarkdownContent("这是一个正常回复。\n\n- 第一条"),
     true,
+  );
+});
+
+/** Replay a reply arriving in chunks the way the chat reducer does. */
+function streamThrough(chunks: string[], language: string): string {
+  let raw = "";
+  let display = "";
+  for (const chunk of chunks) {
+    raw += chunk;
+    display = appendWithEmphasisRepair(display, chunk, raw, language);
+  }
+  // What STREAM_END does: settle the trailing line, which had no newline.
+  return repairChineseEmphasis(raw, language);
+}
+
+test("appendWithEmphasisRepair lands on the same text as repairing every chunk", () => {
+  const chunks = [
+    "第一行",
+    "**，重点**",
+    "\n",
+    "第二行也有",
+    "**，重点**",
+    "\n\n",
+    "```\n",
+    "code**，not touched**\n",
+    "```\n",
+    "结尾",
+    "**，重点**",
+  ];
+  const whole = chunks.join("");
+
+  assert.equal(streamThrough(chunks, "zh-CN"), repairChineseEmphasis(whole, "zh-CN"));
+});
+
+test("appendWithEmphasisRepair repairs a line as soon as its newline arrives", () => {
+  const raw = "中文**，重点**\n";
+  // Mid-line the partial tail shows through unrepaired...
+  assert.equal(
+    appendWithEmphasisRepair("中文", "**，重点**", "中文**，重点**", "zh"),
+    "中文**，重点**",
+  );
+  // ...and the newline that completes the line settles it.
+  assert.equal(appendWithEmphasisRepair("中文**，重点**", "\n", raw, "zh"), "中文 **，重点**\n");
+});
+
+test("appendWithEmphasisRepair leaves non-Chinese replies untouched", () => {
+  assert.equal(
+    appendWithEmphasisRepair("ignored", "**bold**", "text**bold**", "en"),
+    "text**bold**",
   );
 });

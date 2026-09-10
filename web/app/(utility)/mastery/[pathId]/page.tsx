@@ -20,6 +20,12 @@ import {
   Trash2,
 } from "lucide-react";
 
+import {
+  MASTERY_OPENING_SCOPE,
+  masteryOpeningMessage,
+  masterySessionRoute,
+} from "@/lib/mastery-mode";
+import { LearnerProfileCard } from "@/components/space/learning/LearnerProfileCard";
 import { ModuleOutline } from "@/components/space/learning/ModuleOutline";
 import { ConfirmDialog } from "@/components/space/learning/ConfirmDialog";
 import { EditTopicRouteDialog } from "@/components/space/learning/EditTopicRouteDialog";
@@ -302,8 +308,18 @@ export default function MasteryTopicPage() {
       : sessions[0]?.session_id;
 
   return (
-    <main className="mastery-shell h-full overflow-y-auto [scrollbar-gutter:stable]">
-      <div className="mx-auto max-w-[1180px] px-4 pb-40 pt-6 sm:px-7 sm:pb-10 lg:px-8 lg:py-8">
+    // One screen, not a scroll. A goal's dashboard answers "where am I and
+    // what is next", and that answer stops being an answer the moment it is
+    // below the fold — the review plan used to sit under a full outline, and a
+    // goal with many sessions pushed everything else off balance as its list
+    // grew. So the page itself never scrolls: identity and next step are
+    // pinned, and each panel below scrolls inside its own frame.
+    //
+    // Under `lg` the columns stack and the page scrolls normally — a phone has
+    // no second column to balance, and a fixed-height stack there would just
+    // be three tiny scrollers.
+    <main className="mastery-shell flex h-full flex-col overflow-y-auto lg:overflow-hidden [scrollbar-gutter:stable]">
+      <div className="mx-auto flex w-full min-h-0 max-w-[1180px] flex-1 flex-col px-4 pb-40 pt-6 sm:px-7 sm:pb-10 lg:px-8 lg:py-8">
         <div className="flex items-center justify-between gap-3">
           <Link
             href="/mastery"
@@ -405,14 +421,14 @@ export default function MasteryTopicPage() {
             <div className="min-w-0">
               <div className="truncate text-[14px] font-medium text-[var(--foreground)]">
                 {needsRouteRepair
-                  ? t("Outline is empty")
+                  ? t("Design the outline")
                   : topic.next.knowledge_point_name ||
                     t("Celebrate completion")}
               </div>
               <p className="mt-0.5 truncate text-[12px] text-[var(--muted-foreground)]">
                 {needsRouteRepair
                   ? t(
-                      "This migrated topic has no modules yet. Add at least one module and knowledge point to begin.",
+                      "This goal has no outline yet. Open a session and the tutor will design one with you.",
                     )
                   : zh
                     ? nextCopy.zh
@@ -451,30 +467,54 @@ export default function MasteryTopicPage() {
           )}
         </section>
 
-        <div className="mt-6 grid items-start gap-7 lg:grid-cols-[minmax(0,1fr)_312px]">
+        <div className="mt-6 grid min-h-0 flex-1 items-start gap-7 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-stretch">
           {needsRouteRepair ? (
+            // A goal starts without an outline: the first session is where the
+            // tutor asks about the learner and designs one with them. Writing
+            // modules by hand is still possible, but it is the fallback now,
+            // not the instruction.
             <section className="mastery-map-paper flex min-h-72 flex-col items-center justify-center rounded-xl border border-dashed border-[var(--border)] p-8 text-center">
               <PencilRuler className="h-9 w-9 text-[var(--mastery-route)]" />
               <h2 className="mt-4 text-lg font-semibold">
-                {t("Add the missing modules")}
+                {t("No outline yet")}
               </h2>
               <p className="mt-2 max-w-md text-sm leading-6 text-[var(--muted-foreground)]">
                 {t(
-                  "The topic migrated safely but has no modules yet. Define the abilities you want to master before tutoring begins.",
+                  "Open a session and the tutor will read your materials, ask what you already know and how much time you have, then design the outline with you.",
                 )}
               </p>
+              <Link
+                onClick={() =>
+                  setPendingPrompt(
+                    masteryOpeningMessage("outline", t),
+                    MASTERY_OPENING_SCOPE,
+                  )
+                }
+                href={masterySessionRoute(pathId, "outline")}
+                className="mt-5 inline-flex h-10 items-center gap-2 rounded-xl bg-[var(--primary)] px-4 text-sm font-medium text-[var(--primary-foreground)] transition hover:opacity-90"
+              >
+                {t("Design the outline with the tutor")}
+                <ArrowRight className="h-4 w-4" />
+              </Link>
               <button
                 type="button"
                 onClick={(event) => openEditor(event.currentTarget)}
-                className="mt-5 inline-flex h-10 items-center gap-2 rounded-xl bg-[var(--mastery-ink)] px-4 text-sm font-medium text-[var(--mastery-paper-raised)]"
+                className="mt-3 inline-flex h-9 items-center gap-2 rounded-xl px-3 text-[13px] text-[var(--muted-foreground)] transition hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
               >
-                <PencilRuler className="h-4 w-4" />
-                {t("Add modules and knowledge points")}
+                <PencilRuler className="h-3.5 w-3.5" />
+                {t("Write the modules myself")}
               </button>
             </section>
           ) : (
-            <div className="space-y-5">
+            <div className="flex min-h-0 flex-col gap-5 lg:h-full">
+              {/* The three things a mastery goal owns — outline, review plan,
+                  sessions — are named the same way and sit at the same level,
+                  so the page reads as one goal's assets rather than a map with
+                  two widgets hanging off it. */}
               <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-[12px] font-semibold text-[var(--foreground)]">
+                  {t("Mastery outline")}
+                </h2>
                 <div className="flex items-center gap-0.5 rounded-lg bg-[var(--muted)] p-0.5">
                   {(
                     [
@@ -508,7 +548,10 @@ export default function MasteryTopicPage() {
                   </button>
                 )}
               </div>
-              {topicView === "outline" ? (
+              {/* The outline is the tall thing on this page, so it is the one
+                  that scrolls. Everything else keeps its place. */}
+              <div className="min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
+                {topicView === "outline" ? (
                 <ModuleOutline
                   topic={topic}
                   revision={Math.max(topic.path_revision, activity.revision)}
@@ -534,6 +577,7 @@ export default function MasteryTopicPage() {
                   <Loader2 className="h-5 w-5 animate-spin text-[var(--muted-foreground)]" />
                 </div>
               )}
+              </div>
               <ReviewTrail
                 reviews={topic.reviews}
                 zh={zh}
@@ -552,7 +596,8 @@ export default function MasteryTopicPage() {
               />
             </div>
           )}
-          <div className="space-y-5 lg:sticky lg:top-6">
+          <div className="flex min-h-0 flex-col gap-5 lg:h-full">
+            <LearnerProfileCard profile={topic.learner_profile} />
             <SessionCamp
               pathId={pathId}
               sessions={sessions}

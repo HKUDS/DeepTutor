@@ -6,6 +6,7 @@ import {
   MAX_LEGACY_PAYLOAD_CHARS,
   TraceCache,
   compactTracePreview,
+  settleMessageTrace,
 } from "../features/chat/trace/memory";
 
 function event(
@@ -71,4 +72,104 @@ test("trace previews preserve early critical state before the event cap", () => 
     preview.events.map((item) => item.type),
     ["content", "done"],
   );
+});
+
+test("a posed mastery question outranks trace rows the same way a card does", () => {
+  // The card has its own metadata key now; the compactor had to learn it, or
+  // a long course turn dropped the question and kept the chatter.
+  const preview = compactTracePreview(
+    [
+      event("tool_result", "", {
+        tool_metadata: { mastery_question: { question_id: "q-1" } },
+      }),
+      event("tool_result"),
+      event("tool_result"),
+      event("done"),
+    ],
+    2,
+  );
+
+  assert.equal(
+    preview.events.some(
+      (item) =>
+        (
+          (item.metadata as { tool_metadata?: { mastery_question?: unknown } })
+            ?.tool_metadata ?? {}
+        ).mastery_question !== undefined,
+    ),
+    true,
+  );
+});
+
+test("settling a message keeps its card and stamps where the answer was cut", () => {
+  const card = event("tool_result", "", {
+    call_id: "tool-1",
+    tool_metadata: {
+      ask_user: { questions: [{ id: "q1", prompt: "Pick one" }] },
+    },
+  });
+  const settled = settleMessageTrace(
+    [
+      {
+        ...event("content", "preamble ", {
+          call_id: "round-1",
+          call_kind: "agent_loop_round",
+        }),
+        seq: 1,
+      },
+      {
+        ...event("progress", "", {
+          call_id: "round-1",
+          trace_kind: "call_status",
+          call_state: "complete",
+          call_role: "narration",
+        }),
+        seq: 2,
+      },
+      {
+        ...event("content", "Two ways.\n\n", {
+          call_id: "round-2",
+          call_kind: "agent_loop_round",
+        }),
+        seq: 3,
+      },
+      { ...card, seq: 4 },
+      {
+        ...event("progress", "", {
+          ask_user_resolved: true,
+          ask_user_tool_call_id: "tool-1",
+        }),
+        seq: 5,
+      },
+      {
+        ...event("content", "Because B.", {
+          call_id: "round-3",
+          call_kind: "agent_loop_round",
+        }),
+        seq: 6,
+      },
+      { ...event("done", "", { status: "completed" }), seq: 7 },
+    ],
+    "turn-1",
+  );
+
+  assert.deepEqual(
+    settled.events.map((item) => item.type),
+    ["tool_result", "progress", "done"],
+  );
+  // The narration preamble never reached the answer, so it is not counted.
+  assert.equal(
+    settled.events[1].metadata?.assistant_content_offset,
+    "Two ways.\n\n".length,
+  );
+  assert.deepEqual(settled.trace, {
+    turn_id: "turn-1",
+    total: 7,
+    last_seq: 7,
+    truncated: true,
+    // Measured over the full stream, before the preview drops the events that
+    // mark where the turn began — this fixture stamps every event at 1.
+    started_at: 1,
+    ended_at: 1,
+  });
 });

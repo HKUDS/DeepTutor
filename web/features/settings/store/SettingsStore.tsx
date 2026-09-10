@@ -19,6 +19,7 @@ import {
   writeStoredCodeBlockShowLineNumbers,
   writeStoredCodeBlockTheme,
   writeStoredCodeBlockWrapLongLines,
+  hasStoredResponseLanguage,
   writeStoredLanguage,
   writeStoredResponseLanguage,
 } from "@/context/app-shell-storage";
@@ -657,6 +658,8 @@ export type SettingsContextValue = {
   applying: boolean;
   saveDraft: () => Promise<void>;
   applyCatalog: () => Promise<void>;
+  /** Promote one model service without applying unrelated Settings drafts. */
+  applyService: (service: ServiceName) => Promise<boolean>;
   discardDraft: () => Promise<void>;
   /** A draft parked on the server, waiting to be applied. */
   storedDraft: StoredDraft | null;
@@ -846,7 +849,18 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       }
       setTheme(payload.ui.theme);
       setLanguage(payload.ui.language);
-      setResponseLanguage(payload.ui.response_language ?? payload.ui.language);
+      const loadedResponseLanguage =
+        payload.ui.response_language ?? payload.ui.language;
+      setResponseLanguage(loadedResponseLanguage);
+      // Reconcile the browser's copy with the server's. Without this the two
+      // inherit differently and drift permanently: the server derives
+      // `response_language` from `language` on every read, while the browser
+      // inherits only when its own key is absent. Flipping the interface
+      // language alone therefore left the server (and this page) showing 中文
+      // while every turn still shipped the "en" the bootstrap had stamped —
+      // the "I set Chinese and it answers in English" report.
+      writeStoredLanguage(payload.ui.language);
+      writeStoredResponseLanguage(loadedResponseLanguage);
       // Writes the backend-loaded values into app-shell storage and dispatches
       // the code-block settings event; AppShellContext (the single source) picks
       // them up, so no separate copy needs seeding here.
@@ -961,11 +975,22 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     await persistUiSettingsPatch({ theme: next });
   }, []);
 
-  const updateLanguage = useCallback(async (next: UiSettings["language"]) => {
-    setLanguage(next);
-    writeStoredLanguage(next);
-    await persistUiSettingsPatch({ language: next });
-  }, []);
+  const updateLanguage = useCallback(
+    async (next: UiSettings["language"]) => {
+      setLanguage(next);
+      writeStoredLanguage(next);
+      // `PUT /ui` merges, so an account that never chose a model output
+      // language still has no stored `response_language` — and the server
+      // derives it from `language` on the next read. Mirror that here, or the
+      // page shows a value the browser will not send.
+      if (!hasStoredResponseLanguage()) {
+        setResponseLanguage(next);
+        writeStoredResponseLanguage(next);
+      }
+      await persistUiSettingsPatch({ language: next });
+    },
+    [],
+  );
 
   const updateResponseLanguage = useCallback(
     async (next: UiSettings["response_language"]) => {
@@ -1562,6 +1587,62 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     }
   }, [draftEnvelope, t]);
 
+  /** Apply one model-service editor without promoting unrelated settings. */
+  const applyService = useCallback(
+    async (service: ServiceName): Promise<boolean> => {
+      setApplying(true);
+      try {
+        const response = await apiFetch(apiUrl("/api/settings/apply/service"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            service,
+            config: draft.services[service],
+          }),
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = (await response.json()) as {
+          catalog: Catalog;
+          draft: StoredDraft | null;
+        };
+        const appliedService = cloneCatalog(payload.catalog).services[service];
+        setCatalog(payload.catalog);
+        setDraft((current) => {
+          const next = cloneCatalog(current);
+          next.services[service] = appliedService;
+          return next;
+        });
+        setStoredDraft(payload.draft ?? null);
+        // The remaining in-memory edits may or may not match an older stored
+        // draft. Mark them unsaved rather than claiming more durability than
+        // this service-scoped action provided.
+        setSavedSignature(null);
+        invalidateLLMOptionsCache();
+        try {
+          const statusResponse = await apiFetch(apiUrl("/api/system/status"));
+          if (statusResponse.ok) {
+            setStatus((await statusResponse.json()) as SystemStatus);
+          }
+        } catch {
+          // The catalog is already live. A status refresh failure should not
+          // turn a successful apply into a failure or keep the dialog open.
+        }
+        setToast(t("Applied"));
+        return true;
+      } catch (err) {
+        setToast(
+          t("Could not apply: {{message}}", {
+            message: err instanceof Error ? err.message : String(err),
+          }),
+        );
+        return false;
+      } finally {
+        setApplying(false);
+      }
+    },
+    [draft.services, t],
+  );
+
   /** Apply — move everything into the live files and clear the draft. */
   const applyCatalog = useCallback(async () => {
     setApplying(true);
@@ -1939,6 +2020,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       applying,
       saveDraft,
       applyCatalog,
+      applyService,
       discardDraft,
       storedDraft,
       draftState,
@@ -1965,6 +2047,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       addProfile,
       applyDetectedContextWindow,
       applyCatalog,
+      applyService,
       applying,
       draftState,
       storedDraft,

@@ -28,27 +28,37 @@ def _metadata(event: dict[str, Any]) -> dict[str, Any]:
     return metadata if isinstance(metadata, dict) else {}
 
 
+#: Tool-metadata keys an interactive card travels under: the generic
+#: ``ask_user`` one and the mastery course's own question card. A card is the
+#: one trace row a settled message cannot be rendered without, so both have to
+#: be named here — a preview that drops one leaves the learner looking at a
+#: question they can no longer answer.
+_CARD_METADATA_KEYS = ("ask_user", "mastery_question")
+
+
+def _carries_card(event: dict[str, Any]) -> bool:
+    metadata = _metadata(event)
+    if metadata.get("ask_user_resolved"):
+        return True
+    tool_metadata = metadata.get("tool_metadata")
+    return any(
+        metadata.get(key)
+        or (isinstance(tool_metadata, dict) and isinstance(tool_metadata.get(key), dict))
+        for key in _CARD_METADATA_KEYS
+    )
+
+
 def _is_semantic(event: dict[str, Any]) -> bool:
     event_type = str(event.get("type") or "")
     if event_type in _SEMANTIC_EVENT_TYPES:
         return True
-    return _has_ask_user(event)
-
-
-def _has_ask_user(event: dict[str, Any]) -> bool:
-    metadata = _metadata(event)
-    return bool(
-        metadata.get("ask_user")
-        or metadata.get("ask_user_resolved")
-        or isinstance(metadata.get("tool_metadata"), dict)
-        and isinstance(metadata["tool_metadata"].get("ask_user"), dict)
-    )
+    return _carries_card(event)
 
 
 def _is_critical(event: dict[str, Any]) -> bool:
     if str(event.get("type") or "") in _TERMINAL_EVENT_TYPES | {"result"}:
         return True
-    return _has_ask_user(event)
+    return _carries_card(event)
 
 
 def _truncate_legacy_payloads(event: dict[str, Any]) -> dict[str, Any]:
@@ -85,7 +95,7 @@ def compact_trace_preview(
         for index, event in enumerate(events)
         if isinstance(event, dict) and _is_semantic(event)
     ]
-    # Ask_user, results, errors, and terminal state outrank ordinary trace rows.
+    # Cards, results, errors, and terminal state outrank ordinary trace rows.
     # Keep the most recent critical rows, then fill toward the turn's tail.
     critical = {index for index, event in semantic if _is_critical(event)}
     if len(critical) > max_events:

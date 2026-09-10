@@ -16,6 +16,8 @@ import { useTranslation } from "react-i18next";
 import { SessionAvatar } from "@/components/sidebar/SessionAvatar";
 import { type NotebookSummary, listNotebooks } from "@/lib/notebook-api";
 import { formatRelativeTime } from "@/lib/relative-time";
+import { copyText } from "@/lib/clipboard";
+import { notify } from "@/lib/notifications";
 import {
   type OrganizedReadingNotes,
   type ReadingConversation,
@@ -389,7 +391,13 @@ export function OrganizedNotesDialog({
         </span>
         <button
           type="button"
-          onClick={() => void navigator.clipboard.writeText(notes.markdown)}
+          onClick={() =>
+            void copyText(notes.markdown).catch(() =>
+              notify(t("The clipboard is not available in this browser."), {
+                tone: "error",
+              }),
+            )
+          }
           className="flex items-center gap-1.5 rounded-lg px-2 py-1 hover:bg-[var(--muted)]"
         >
           <Copy size={11} /> {t("Copy Markdown")}

@@ -1,4 +1,5 @@
 import type { StreamEvent } from "@/features/chat/model/protocol";
+import { toolResultPayload } from "@/lib/tool-event";
 
 /**
  * Reading the `course_study` capability's hand-off signals off a turn's stream.
@@ -119,13 +120,7 @@ export function courseHandoffFrom(event: {
   const metadata = event.metadata;
   if (!metadata || typeof metadata !== "object") return null;
 
-  const outer = metadata as Record<string, unknown>;
-  const nested = outer.tool_metadata;
-  const source = (
-    nested && typeof nested === "object" ? nested : outer
-  ) as Record<string, unknown>;
-
-  const raw = source.course_handoff;
+  const raw = toolResultPayload(metadata, "course_handoff");
   if (!raw || typeof raw !== "object") return null;
   const payload = raw as Record<string, unknown>;
   if (!isTarget(payload.target)) return null;

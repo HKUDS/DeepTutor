@@ -671,11 +671,34 @@ class PocketBaseSessionStore:
         preview, omitted = compact_trace_preview(events)
         total = self._page_total(page)
         last_seq = int(getattr(rows[-1], "seq", 0) or 0) if rows else 0
+        # The preview is the *tail* of the stream, so its first row is not
+        # where the turn began. One extra single-row read gets the real start,
+        # without which a turn that thought for a while and then answered in
+        # one burst reports a span of zero. See ``_trace_bounds`` in the
+        # SQLite store for the same reasoning.
+        started_at = ended_at = None
+        if rows:
+            ended_at = _to_float(getattr(rows[-1], "event_timestamp", None))
+            head = self._page_items(
+                pb.collection("turn_events").get_list(
+                    1,
+                    1,
+                    query_params={"filter": f'turn_id="{turn_id}"', "sort": "seq"},
+                )
+            )
+            if head:
+                started_at = _to_float(getattr(head[0], "event_timestamp", None))
+        bounds = (
+            {"started_at": started_at, "ended_at": max(started_at, ended_at or started_at)}
+            if started_at is not None and ended_at is not None
+            else {}
+        )
         return preview, {
             "turn_id": turn_id,
             "total": total,
             "last_seq": last_seq,
             "truncated": omitted or total != len(preview),
+            **bounds,
         }
 
     async def get_messages(self, session_id: str) -> list[dict[str, Any]]:

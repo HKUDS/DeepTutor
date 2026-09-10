@@ -72,8 +72,13 @@ _MAIN_YAML_RUNTIME_DEFAULTS: dict[str, dict[str, Any]] = {
     "research": {
         "researching": {
             "note_agent_mode": "auto",
-            "tool_timeout": 60,
-            "tool_max_retries": 3,
+            # Must match ``ResearchPipeline``'s own defaults. This table is the
+            # fallback used when a settings payload is written, so a user who
+            # merely opens research settings and saves would otherwise persist
+            # 60/3 and permanently shadow the pipeline's 240/0 — the same shape
+            # of bug as #1316, where a layer below the config silently won.
+            "tool_timeout": 240,
+            "tool_max_retries": 0,
             "paper_search_years_limit": 5,
         },
     },

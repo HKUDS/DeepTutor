@@ -99,22 +99,44 @@ export function ModuleOutline({
   const topicName = topicDisplayName(topic, t);
 
   return (
-    <section id="mastery-outline-start" aria-label={t("Topic outline")}>
-      <div className="divide-y divide-[var(--border)] overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--card)]">
-        {topic.map.modules.map((module, moduleIndex) => (
-          <div key={module.id}>
-            <header className="flex items-baseline gap-2.5 bg-[var(--secondary)] px-4 py-2.5">
-              <span className="text-[11px] font-semibold tabular-nums text-[var(--muted-foreground)]">
-                {t("Module {{n}}", { n: moduleIndex + 1 })}
-              </span>
-              {module.name.trim() !== topicName.trim() && (
-                <h2 className="min-w-0 flex-1 truncate text-[13px] font-semibold">
-                  {module.name}
-                </h2>
+    // One card per module rather than one card divided into modules. A module
+    // is the unit the learner reasons about — it has its own objective, its own
+    // progress, and it is what `mastery_revise` operates on — and a single
+    // ruled list made a ten-module outline read as one undifferentiated wall.
+    <section
+      id="mastery-outline-start"
+      aria-label={t("Topic outline")}
+      className="space-y-3"
+    >
+      {topic.map.modules.map((module, moduleIndex) => (
+        <div
+          key={module.id}
+          className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--card)]"
+        >
+          <div>
+            <header className="bg-[var(--secondary)] px-4 py-2.5">
+              <div className="flex items-baseline gap-2.5">
+                <span className="text-[11px] font-semibold tabular-nums text-[var(--muted-foreground)]">
+                  {t("Module {{n}}", { n: moduleIndex + 1 })}
+                </span>
+                {module.name.trim() !== topicName.trim() && (
+                  <h2 className="min-w-0 flex-1 truncate text-[13px] font-semibold">
+                    {module.name}
+                  </h2>
+                )}
+                <span className="ml-auto shrink-0 text-[11px] tabular-nums text-[var(--muted-foreground)]">
+                  {module.mastered}/{module.total}
+                </span>
+              </div>
+              {/* The ability this module delivers. A bare noun tells a learner
+                  nothing about why these waypoints belong together, and this
+                  sentence is also the contract the tutor may revise them
+                  against — so it is worth the second line. */}
+              {module.objective.trim() && (
+                <p className="mt-1 text-[12px] leading-5 text-[var(--muted-foreground)]">
+                  {module.objective}
+                </p>
               )}
-              <span className="ml-auto shrink-0 text-[11px] tabular-nums text-[var(--muted-foreground)]">
-                {module.mastered}/{module.total}
-              </span>
             </header>
             <ul>
               {module.knowledge_points.map((point) => {
@@ -172,8 +194,8 @@ export function ModuleOutline({
               })}
             </ul>
           </div>
-        ))}
-      </div>
+        </div>
+      ))}
     </section>
   );
 }

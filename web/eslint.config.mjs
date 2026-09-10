@@ -43,6 +43,7 @@ const config = [
       "playwright-report/**",
       "test-results/**",
       "contracts/generated/.tmp/**",
+      "public/pdfjs/**",
     ],
   },
 ];

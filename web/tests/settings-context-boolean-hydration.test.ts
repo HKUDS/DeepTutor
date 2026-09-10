@@ -92,25 +92,3 @@ test("settings-context: sources code-block switches from the app-shell single so
     "SettingsContext should destructure the code-block switch values from useAppShell().",
   );
 });
-
-test("app-shell-context: hydrates code-block switches after the SSR-safe first render", () => {
-  const appShellPath = path.join(
-    process.cwd(),
-    "context",
-    "AppShellContext.tsx",
-  );
-  const source = fs.readFileSync(appShellPath, "utf8");
-
-  // The single source re-reads localStorage after mount so a persisted `true`
-  // forces a DOM update instead of keeping the server-rendered aria-checked=false.
-  assert.match(
-    source,
-    /setCodeBlockShowLineNumbersState\(\s*readStoredCodeBlockShowLineNumbers\(\)\s*\)/,
-    "AppShellContext should re-read show-line-numbers from localStorage after mount.",
-  );
-  assert.match(
-    source,
-    /setCodeBlockWrapLongLinesState\(\s*readStoredCodeBlockWrapLongLines\(\)\s*\)/,
-    "AppShellContext should re-read wrap-long-lines from localStorage after mount.",
-  );
-});

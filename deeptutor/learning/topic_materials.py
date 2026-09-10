@@ -250,6 +250,166 @@ def _load_notebook_material(source_id: str, label: str, budget: int) -> TopicMat
     )
 
 
+def _run_sync(coro: Any) -> Any:
+    """Await *coro* from this synchronous loader.
+
+    ``build_topic_materials`` is documented as storage-bound and is called off
+    the event loop, so a private loop here is safe. If some future caller runs
+    it *on* a loop, close the coroutine and report nothing rather than
+    deadlocking the turn — a missing material degrades the lesson, a wedged
+    turn ends it.
+    """
+    import asyncio
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    coro.close()
+    logger.warning("Topic material loader called on a running event loop; skipping")
+    return None
+
+
+def _session_store() -> Any:
+    from deeptutor.services.session import get_sqlite_session_store
+
+    return get_sqlite_session_store()
+
+
+def _load_chat_material(source_id: str, label: str, budget: int) -> TopicMaterial:
+    """One conversation the learner pointed this goal at.
+
+    Reuses chat's own reader, so a transcript attached to a mastery goal reads
+    exactly like one attached to a chat turn — including the ``partner:``
+    reference form, which resolves through the partner store.
+    """
+    from deeptutor.services.session.source_inventory import _load_history_session
+
+    loaded = _run_sync(_load_history_session(_session_store(), source_id))
+    transcript, title = loaded if loaded else ("", "")
+    if not transcript:
+        return TopicMaterial(
+            sid="",
+            kind="chat",
+            name=label,
+            available=False,
+            note="this conversation could not be read",
+        )
+    text = _clip(transcript, min(MAX_NOTEBOOK_CHARS, budget))
+    return TopicMaterial(
+        sid=f"tc-{source_id}",
+        kind="chat",
+        name=_clean_name(title) or label,
+        full_text=text,
+        outline=_clip(text, MAX_OUTLINE_CHARS),
+    )
+
+
+def _load_question_bank_material(source_id: str, label: str, budget: int) -> TopicMaterial:
+    """One question the learner has already answered.
+
+    Their own attempts are the sharpest evidence of where they actually stand,
+    which is why a question bank entry is worth attaching to a goal at all.
+    """
+    from deeptutor.services.session.source_inventory import _load_question_entry
+
+    try:
+        entry_id = int(str(source_id).strip())
+    except (TypeError, ValueError):
+        return TopicMaterial(
+            sid="",
+            kind="question_bank",
+            name=label,
+            available=False,
+            note="this question-bank reference is not a valid entry id",
+        )
+    loaded = _run_sync(_load_question_entry(_session_store(), entry_id))
+    block, stem = loaded if loaded else ("", "")
+    if not block:
+        return TopicMaterial(
+            sid="",
+            kind="question_bank",
+            name=label,
+            available=False,
+            note="this question-bank entry no longer exists",
+        )
+    text = _clip(block, min(MAX_CHAPTER_CHARS, budget))
+    return TopicMaterial(
+        sid=f"tq-{entry_id}",
+        kind="question_bank",
+        name=_clean_name(stem) or label,
+        full_text=text,
+        outline=_clip(text, MAX_OUTLINE_CHARS),
+    )
+
+
+def _load_cowriter_material(source_id: str, label: str, budget: int) -> TopicMaterial:
+    """One Co-Writer draft, read as the learner's own writing on the subject."""
+    from deeptutor.co_writer.storage import get_co_writer_storage
+
+    document = get_co_writer_storage().load_document(source_id)
+    if document is None:
+        return TopicMaterial(
+            sid="",
+            kind="cowriter",
+            name=label,
+            available=False,
+            note="this draft no longer exists",
+        )
+    content = str(getattr(document, "content", "") or "")
+    if not content.strip():
+        return TopicMaterial(
+            sid="",
+            kind="cowriter",
+            name=_clean_name(str(getattr(document, "title", "") or "")) or label,
+            available=False,
+            note="this draft is empty",
+        )
+    text = _clip(content, min(MAX_NOTEBOOK_CHARS, budget))
+    return TopicMaterial(
+        sid=f"tw-{source_id}",
+        kind="cowriter",
+        name=_clean_name(str(getattr(document, "title", "") or "")) or label,
+        full_text=text,
+        outline=_clip(text, MAX_OUTLINE_CHARS),
+    )
+
+
+def _load_partner_group_material(source_id: str, label: str, budget: int) -> TopicMaterial:
+    """One partner-group conversation, addressed as ``{group_id}:{session_key}``."""
+    from deeptutor.services.session.source_inventory import _load_partner_group_reference
+
+    group_id, _, session_key = str(source_id).partition(":")
+    if not group_id.strip() or not session_key.strip():
+        return TopicMaterial(
+            sid="",
+            kind="partner_group",
+            name=label,
+            available=False,
+            note="this partner-group reference is malformed",
+        )
+    transcript, title = _load_partner_group_reference(
+        {"group_id": group_id.strip(), "session_key": session_key.strip()},
+        language="en",
+    )
+    if not transcript:
+        return TopicMaterial(
+            sid="",
+            kind="partner_group",
+            name=label,
+            available=False,
+            note="this partner-group conversation could not be read",
+        )
+    text = _clip(transcript, min(MAX_NOTEBOOK_CHARS, budget))
+    return TopicMaterial(
+        sid=f"tg-{group_id.strip()}-{session_key.strip()}",
+        kind="partner_group",
+        name=_clean_name(title) or label,
+        full_text=text,
+        outline=_clip(text, MAX_OUTLINE_CHARS),
+    )
+
+
 def _clean_name(value: str) -> str:
     return " ".join(str(value or "").split())
 
@@ -292,11 +452,37 @@ def build_topic_materials(sources: Iterable[Any]) -> TopicMaterials:
                 )
             )
             continue
+        if kind == "file":
+            # One document the learner picked out of a knowledge base. Its text
+            # lives only inside that base's index — parsing the original here
+            # would mean re-running the ingest pipeline mid-turn — so it is
+            # searched, not read. Saying which base and which document is the
+            # point: before this row existed, hand-picking a file produced a
+            # material the tutor was told it could never read.
+            kb_name = str((getattr(source, "metadata", None) or {}).get("kb_name") or "").strip()
+            where = f"kb_name={kb_name!r}" if kb_name else "the attached knowledge base"
+            result.materials.append(
+                TopicMaterial(
+                    sid="",
+                    kind=kind,
+                    name=label,
+                    note=f"search with rag ({where}); this goal uses only this document",
+                )
+            )
+            continue
         try:
             if kind == "book":
                 loaded = _load_book_materials(source_id, label, budget)
             elif kind == "notebook":
                 loaded = [_load_notebook_material(source_id, label, budget)]
+            elif kind == "chat":
+                loaded = [_load_chat_material(source_id, label, budget)]
+            elif kind == "question_bank":
+                loaded = [_load_question_bank_material(source_id, label, budget)]
+            elif kind == "cowriter":
+                loaded = [_load_cowriter_material(source_id, label, budget)]
+            elif kind == "partner_group":
+                loaded = [_load_partner_group_material(source_id, label, budget)]
             else:
                 loaded = [
                     TopicMaterial(

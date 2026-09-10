@@ -54,6 +54,9 @@ import logging
 import time
 from typing import Any
 
+from deeptutor.services.file_io import atomic_write_json
+from deeptutor.services.prompt.language import is_chinese as _is_zh
+
 logger = logging.getLogger(__name__)
 
 # How many starting points the home screen offers. One per line, so fewer than
@@ -195,13 +198,7 @@ def _load() -> SuggestionSet | None:
 
 def _save(value: SuggestionSet) -> None:
     try:
-        path = _cache_path()
-        tmp = path.with_suffix(".json.tmp")
-        tmp.write_text(
-            json.dumps(value.to_dict(), ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-        tmp.replace(path)
+        atomic_write_json(_cache_path(), value.to_dict())
     except Exception:
         logger.debug("suggestions cache unwritable", exc_info=True)
 
@@ -212,7 +209,7 @@ def _save(value: SuggestionSet) -> None:
 def _output_language() -> str:
     """The language these lines are written in.
 
-    The learner's model-output setting (Settings → Appearance), the same one
+    The learner's model-output setting (Settings → Overview), the same one
     that decides what the chat agent answers in — not the UI locale. A chip
     proposing something to ask should read like the answer it will get.
     """
@@ -455,10 +452,6 @@ _SYSTEM_ZH = """你要提出三个"接下来值得探索什么"。每一个都�
 - 素材是原始活动记录，其中有噪音：随手建的文件、一个词的检索、没聊起来的对话。跳过它们，只在真正有内容的痕迹上做文章。宁可三个都从两条好素材里长出来，也不要有一个是关于 "hello" 的。
 - 三个之间要有区别：取素材里不同的内容，也问不同类型的问题（一个区别、一个机制、一个为什么、一个边界情况）。
 - 不要问候语、不要 emoji、字段文本里不要加引号。"""
-
-
-def _is_zh(language: str) -> bool:
-    return str(language or "en").lower().startswith("zh")
 
 
 def _render_topics(topics: list[_Topic], zh: bool) -> str:

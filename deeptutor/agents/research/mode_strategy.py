@@ -32,7 +32,6 @@ class ModeStrategy:
     enable_citation_list: bool = True
     enable_inline_citations: bool = True
     deduplicate_enabled: bool = False
-    allow_code_execution_on_deep: bool = False
     _rephrase_iterations_by_depth: dict[str, int] = field(
         default_factory=lambda: {
             "quick": 1,
@@ -119,7 +118,6 @@ STRATEGIES: dict[ResearchMode, ModeStrategy] = {
         decompose_mode="manual",
         single_pass_threshold=2,
         min_section_length=520,
-        allow_code_execution_on_deep=True,
         _rephrase_iterations_by_depth={
             "quick": 1,
             "standard": 1,

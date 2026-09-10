@@ -154,6 +154,15 @@ const MALFORMED_STRONG_EMPHASIS_REGEX =
   /(?<!\S)\*\*(?=\S)([^*\n]*?[:：])[ \t]+\*\*(?=\S)/g;
 const ESCAPED_UNICODE_RUN_REGEX = /(?:\\u[0-9a-fA-F]{4}){3,}/g;
 const INDENTED_CODE_LINE_REGEX = /^(?: {4}|\t)/;
+const FENCE_LINE_REGEX = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+const MALFORMED_ATX_HEADING_REGEX = /^(#{1,6})([^#\s])/;
+const RAW_HTML_CODE_BLOCK_OPEN_REGEX = /^ {0,3}<(pre|code)(?=[\s/>]|$)/i;
+const RAW_HTML_CODE_SELF_CLOSING_REGEX =
+  /^ {0,3}<(?:pre|code)(?=[\s/>]|$)[^>]*\/\s*>/i;
+const RAW_HTML_CODE_BLOCK_CLOSE_REGEX = {
+  pre: /<\/pre\s*>/i,
+  code: /<\/code\s*>/i,
+} as const;
 const PROTECTED_SPAN_REGEX = /```[\s\S]*?```|`[^`\n]*`/g;
 const PROTECTED_PLACEHOLDER_REGEX = /\u0000PROTECTED_(\d+)\u0000/g;
 const HTML_ATTR_VALUE = /(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+)/.source;
@@ -777,6 +786,34 @@ export function repairChineseEmphasis(
 }
 
 /**
+ * Extend an already-repaired string with a streamed delta.
+ *
+ * ``repairChineseEmphasis`` works a line at a time, so a line that is still
+ * arriving cannot be repaired meaningfully yet — and re-running the whole
+ * repair on every streamed chunk is quadratic in the reply's length. A long
+ * Chinese answer arriving in several hundred chunks meant several hundred
+ * full-text passes (three masking regexes, a per-line rewrite, three restores)
+ * over an ever-growing string, which is felt as the stream stuttering and
+ * falling behind the model late in a long answer.
+ *
+ * So the repair runs when a newline completes a line, which is the earliest
+ * point its result can differ from the raw text, and the partial trailing line
+ * is shown as it came. The final line has no newline to trigger it: callers
+ * run ``repairChineseEmphasis`` once when the turn ends. The end state is
+ * identical to repairing on every chunk.
+ */
+export function appendWithEmphasisRepair(
+  repairedSoFar: string,
+  delta: string,
+  rawContent: string,
+  language?: string,
+): string {
+  if (!language?.toLowerCase().startsWith("zh")) return rawContent;
+  if (delta.includes("\n")) return repairChineseEmphasis(rawContent, language);
+  return repairedSoFar + delta;
+}
+
+/**
  * Repair one line, or leave it exactly as it was.
  *
  * The regex pairs an opening ``**`` with the next one on the line, which is
@@ -863,11 +900,67 @@ function decodeEscapedUnicodeRun(escaped: string): string {
   }
 }
 
+/** Insert a separator after column-zero ATX hashes outside code blocks. */
+export function normalizeAtxHeadings(content: string): string {
+  let fenceMarker = "";
+  let fenceLength = 0;
+  let htmlCodeTag: keyof typeof RAW_HTML_CODE_BLOCK_CLOSE_REGEX | "" = "";
+
+  return content
+    .split("\n")
+    .map((line) => {
+      const fence = FENCE_LINE_REGEX.exec(line);
+
+      if (fenceMarker) {
+        if (
+          fence &&
+          fence[1][0] === fenceMarker &&
+          fence[1].length >= fenceLength &&
+          fence[2].trim() === ""
+        ) {
+          fenceMarker = "";
+          fenceLength = 0;
+        }
+        return line;
+      }
+
+      if (htmlCodeTag) {
+        if (RAW_HTML_CODE_BLOCK_CLOSE_REGEX[htmlCodeTag].test(line)) {
+          htmlCodeTag = "";
+        }
+        return line;
+      }
+
+      if (fence) {
+        fenceMarker = fence[1][0];
+        fenceLength = fence[1].length;
+        return line;
+      }
+
+      const htmlCodeBlock = RAW_HTML_CODE_BLOCK_OPEN_REGEX.exec(line);
+      if (htmlCodeBlock) {
+        const tag = htmlCodeBlock[1].toLowerCase() as "pre" | "code";
+        if (
+          !RAW_HTML_CODE_SELF_CLOSING_REGEX.test(line) &&
+          !RAW_HTML_CODE_BLOCK_CLOSE_REGEX[tag].test(line)
+        ) {
+          htmlCodeTag = tag;
+        }
+        return line;
+      }
+
+      return line.replace(MALFORMED_ATX_HEADING_REGEX, "$1 $2");
+    })
+    .join("\n");
+}
+
 export function normalizeMarkdownForDisplay(content: string): string {
   if (!content) return "";
 
   const normalized = stripInvisibleCharacters(
-    decodeEscapedUnicodeRuns(String(content).replace(/\r\n/g, "\n")),
+    normalizeAtxHeadings(
+      decodeEscapedUnicodeRuns(String(content).replace(/\r\n/g, "\n")),
+    ),
   )
     .replace(EMPTY_DETAILS_REGEX, "")
     .replace(EMPTY_SUMMARY_REGEX, "")

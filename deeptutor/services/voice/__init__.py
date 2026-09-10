@@ -11,7 +11,11 @@ from __future__ import annotations
 from typing import Any
 
 from deeptutor.services.voice.adapters import get_stt_adapter, get_tts_adapter
-from deeptutor.services.voice.base import VoiceProviderError, strip_markdown_for_speech
+from deeptutor.services.voice.base import (
+    TranscriptCue,
+    VoiceProviderError,
+    strip_markdown_for_speech,
+)
 from deeptutor.services.voice.config import STTConfig, TTSConfig
 
 
@@ -64,11 +68,37 @@ async def transcribe_audio(
     return await adapter.transcribe(audio, config, filename=filename, content_type=content_type)
 
 
+async def transcribe_audio_cues(
+    audio: bytes,
+    *,
+    catalog: dict[str, Any] | None = None,
+    filename: str = "audio.webm",
+    content_type: str = "application/octet-stream",
+    language: str | None = None,
+) -> list[TranscriptCue]:
+    """Transcribe ``audio`` into timed cues using the active STT selection.
+
+    Providers that cannot report timings answer with a single untimed cue, so
+    the caller decides how to place it rather than losing the transcript.
+    """
+    from deeptutor.services.config.provider_runtime import resolve_stt_runtime_config
+
+    config = resolve_stt_runtime_config(catalog=catalog)
+    if language:
+        config.language = language
+    adapter = get_stt_adapter(config.adapter)
+    return await adapter.transcribe_cues(
+        audio, config, filename=filename, content_type=content_type
+    )
+
+
 __all__ = [
+    "TranscriptCue",
     "VoiceProviderError",
     "TTSConfig",
     "STTConfig",
     "synthesize_speech",
     "transcribe_audio",
+    "transcribe_audio_cues",
     "strip_markdown_for_speech",
 ]

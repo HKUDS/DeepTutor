@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 import sys
 import types
 from types import SimpleNamespace
@@ -15,7 +16,6 @@ from deeptutor.services.path_service import PathService
 from deeptutor.services.sandbox.spec import ExecResult
 from deeptutor.tools.builtin import (
     BrainstormTool,
-    CodeExecutionTool,
     ExecTool,
     GeoGebraAnalysisTool,
     PaperSearchToolWrapper,
@@ -82,7 +82,8 @@ async def test_exec_tool_reports_generated_public_artifacts(
     monkeypatch.setattr(sandbox_artifacts, "get_path_service", lambda: path_service)
 
     result = await ExecTool().execute(
-        command="python build_pdf.py",
+        code="python build_pdf.py",
+        language="shell",
         _sandbox_user_id="user-1",
         _sandbox_workdir=str(workdir),
     )
@@ -93,7 +94,7 @@ async def test_exec_tool_reports_generated_public_artifacts(
     # The model is told to mention the exact filename (the UI linkifies it); the
     # raw download URL is delivered out-of-band (sources/metadata), never in the
     # model-facing text, so the model can't paste it.
-    assert "clickable link" in result.content
+    assert "already presented" in result.content
     assert "/files/outputs/" not in result.content
     assert "build_pdf.py" not in result.content
     assert result.metadata["artifacts"][0]["filename"] == "report.pdf"
@@ -123,14 +124,127 @@ async def test_exec_tool_reports_missing_artifacts_after_success(
     monkeypatch.setattr(sandbox_artifacts, "get_path_service", lambda: path_service)
 
     result = await ExecTool().execute(
-        command="python build_pdf.py",
+        code="python build_pdf.py",
+        language="shell",
         _sandbox_user_id="user-1",
         _sandbox_workdir=str(workdir),
     )
 
     assert result.success is True
-    assert "No generated artifacts were found in the workspace." in result.content
+    assert "No new or changed artifacts were produced by this call." in result.content
     assert result.metadata["artifacts"] == []
+
+
+@pytest.mark.asyncio
+async def test_exec_tool_runs_python_source_by_default(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path_service = PathService(workspace_root=tmp_path / "data")
+    code_workdir = path_service.get_task_workspace("chat", "turn_1") / "code_runs"
+    captured: dict[str, Any] = {}
+
+    class FakeSandboxService:
+        async def run(self, request, *, user_id: str):
+            captured["request"] = request
+            run_dir = Path(request.workdir)
+            assert run_dir == code_workdir
+            source = next(run_dir.glob(".deeptutor/exec_calls/python_*/main.py"))
+            assert source.read_text(encoding="utf-8") == "print(2 + 2)"
+            return ExecResult(stdout="4\n", exit_code=0)
+
+    import deeptutor.services.sandbox as sandbox_pkg
+    import deeptutor.services.sandbox.artifacts as sandbox_artifacts
+
+    monkeypatch.setattr(sandbox_pkg, "get_sandbox_service", lambda: FakeSandboxService())
+    monkeypatch.setattr(sandbox_artifacts, "get_path_service", lambda: path_service)
+
+    result = await ExecTool().execute(
+        code="print(2 + 2)",
+        _sandbox_user_id="user-1",
+        _sandbox_code_workdir=str(code_workdir),
+        _sandbox_env={"PIP_TARGET": "/shared/python-packages"},
+    )
+
+    assert result.success is True
+    assert result.metadata["language"] == "python"
+    assert captured["request"].command.startswith("python3 .deeptutor/exec_calls/python_")
+    assert captured["request"].command.endswith("/main.py")
+    assert captured["request"].env["PIP_TARGET"] == "/shared/python-packages"
+
+
+@pytest.mark.asyncio
+async def test_exec_tool_creates_a_pdf_with_the_real_python_runtime(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from deeptutor.services.sandbox.backends import RestrictedSubprocessBackend
+    from deeptutor.services.workspace.execution import prepare_workspace_execution_env
+
+    path_service = PathService(workspace_root=tmp_path / "data")
+    turn_dir = path_service.get_task_workspace("chat", "turn_pdf")
+    code_workdir = turn_dir / "code_runs"
+    backend = RestrictedSubprocessBackend()
+
+    class DirectSandboxService:
+        async def run(self, request, *, user_id: str):
+            return await backend.exec(request)
+
+    import deeptutor.services.sandbox as sandbox_pkg
+    import deeptutor.services.sandbox.artifacts as sandbox_artifacts
+
+    monkeypatch.setattr(sandbox_pkg, "get_sandbox_service", lambda: DirectSandboxService())
+    monkeypatch.setattr(sandbox_artifacts, "get_path_service", lambda: path_service)
+
+    result = await ExecTool().execute(
+        code=(
+            "from reportlab.pdfgen import canvas\n"
+            "pdf = canvas.Canvas('deeptutor_intro.pdf')\n"
+            "pdf.drawString(72, 760, 'DeepTutor')\n"
+            "pdf.save()\n"
+            "print('created deeptutor_intro.pdf')\n"
+        ),
+        _sandbox_code_workdir=str(code_workdir),
+        _sandbox_env=prepare_workspace_execution_env(turn_dir),
+    )
+
+    pdf_path = code_workdir / "deeptutor_intro.pdf"
+    assert result.success is True
+    assert pdf_path.read_bytes().startswith(b"%PDF")
+    assert [row["filename"] for row in result.metadata["artifacts"]] == ["deeptutor_intro.pdf"]
+
+
+@pytest.mark.asyncio
+async def test_exec_tool_hides_physical_workspace_paths(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path_service = PathService(workspace_root=tmp_path / "data")
+    workspace_root = path_service.workspace_root.resolve()
+    workdir = workspace_root / "outputs" / "chat" / "session" / "turn" / "exec"
+    workdir.mkdir(parents=True)
+
+    class FakeSandboxService:
+        async def run(self, request, *, user_id: str):
+            return ExecResult(
+                stderr=f'Traceback: File "{workspace_root}/outputs/chat/job.py"\n',
+                exit_code=1,
+                error=f"failed below {workspace_root}/outputs/chat/job.py",
+            )
+
+    import deeptutor.services.sandbox as sandbox_pkg
+    import deeptutor.services.sandbox.artifacts as sandbox_artifacts
+
+    monkeypatch.setattr(sandbox_pkg, "get_sandbox_service", lambda: FakeSandboxService())
+    monkeypatch.setattr(sandbox_artifacts, "get_path_service", lambda: path_service)
+
+    result = await ExecTool().execute(
+        code="exit 1",
+        language="shell",
+        _sandbox_workdir=str(workdir),
+        _workspace_root=str(workspace_root),
+    )
+
+    assert str(workspace_root) not in result.content
+    assert "outputs/chat/job.py" in result.content
+    assert str(workspace_root) not in result.metadata["sandbox_error"]
 
 
 @pytest.mark.asyncio
@@ -255,9 +369,7 @@ async def test_web_search_tool_wraps_sync_function(monkeypatch: pytest.MonkeyPat
 
 
 @pytest.mark.asyncio
-async def test_code_execution_tool_runs_python_via_sandbox(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_exec_tool_runs_python_via_sandbox(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     from pathlib import Path
 
     path_service = PathService(workspace_root=tmp_path / "data")
@@ -266,12 +378,11 @@ async def test_code_execution_tool_runs_python_via_sandbox(
     class FakeSandboxService:
         async def run(self, request, *, user_id: str):
             assert user_id == "user-1"
-            assert request.command == "python3 main.py"
+            assert request.command.startswith("python3 .deeptutor/exec_calls/python_")
             run_dir = Path(request.workdir)
-            assert run_dir.parent == workdir
-            assert run_dir.name.startswith("python_")
-            # The tool wrote the source file into the run dir before invoking us.
-            assert (run_dir / "main.py").read_text(encoding="utf-8") == "print(2 + 2)"
+            assert run_dir == workdir
+            source = next(run_dir.glob(".deeptutor/exec_calls/python_*/main.py"))
+            assert source.read_text(encoding="utf-8") == "print(2 + 2)"
             (run_dir / "result.txt").write_text("ok", encoding="utf-8")
             return ExecResult(stdout="4\n", exit_code=0)
 
@@ -281,17 +392,17 @@ async def test_code_execution_tool_runs_python_via_sandbox(
     monkeypatch.setattr(sandbox_pkg, "get_sandbox_service", lambda: FakeSandboxService())
     monkeypatch.setattr(sandbox_artifacts, "get_path_service", lambda: path_service)
 
-    result = await CodeExecutionTool().execute(
+    result = await ExecTool().execute(
         language="python",
         code="print(2 + 2)",
         _sandbox_user_id="user-1",
-        _sandbox_workdir=str(workdir),
+        _sandbox_code_workdir=str(workdir),
     )
 
     assert result.success is True
     assert "4" in result.content
     assert result.metadata["language"] == "python"
-    assert result.metadata["command"] == "python3 main.py"
+    assert result.metadata["command"].startswith("python3 .deeptutor/exec_calls/python_")
     # The program-generated file surfaces; the source file we wrote is filtered.
     artifact_names = [row["filename"] for row in result.metadata["artifacts"]]
     assert "result.txt" in artifact_names
@@ -299,7 +410,7 @@ async def test_code_execution_tool_runs_python_via_sandbox(
 
 
 @pytest.mark.asyncio
-async def test_code_execution_tool_warns_when_no_artifacts_are_generated(
+async def test_exec_tool_warns_when_no_artifacts_are_generated(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     path_service = PathService(workspace_root=tmp_path / "data")
@@ -315,21 +426,21 @@ async def test_code_execution_tool_warns_when_no_artifacts_are_generated(
     monkeypatch.setattr(sandbox_pkg, "get_sandbox_service", lambda: FakeSandboxService())
     monkeypatch.setattr(sandbox_artifacts, "get_path_service", lambda: path_service)
 
-    result = await CodeExecutionTool().execute(
+    result = await ExecTool().execute(
         language="python",
         code="print('PDF created')",
         _sandbox_user_id="user-1",
-        _sandbox_workdir=str(workdir),
+        _sandbox_code_workdir=str(workdir),
     )
 
     assert result.success is True
-    assert "No generated artifacts were found in the workspace." in result.content
+    assert "No new or changed artifacts were produced by this call." in result.content
     assert result.metadata["artifacts"] == []
     assert result.sources == []
 
 
 @pytest.mark.asyncio
-async def test_code_execution_tool_compiles_cpp(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_exec_tool_compiles_cpp(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     from pathlib import Path
 
     path_service = PathService(workspace_root=tmp_path / "data")
@@ -340,8 +451,8 @@ async def test_code_execution_tool_compiles_cpp(tmp_path, monkeypatch: pytest.Mo
         async def run(self, request, *, user_id: str):
             captured["command"] = request.command
             run_dir = Path(request.workdir)
-            assert run_dir.name.startswith("cpp_")
-            assert (run_dir / "main.cpp").exists()
+            assert run_dir == workdir
+            assert next(run_dir.glob(".deeptutor/exec_calls/cpp_*/main.cpp")).exists()
             return ExecResult(stdout="hi\n", exit_code=0)
 
     import deeptutor.services.sandbox as sandbox_pkg
@@ -350,32 +461,42 @@ async def test_code_execution_tool_compiles_cpp(tmp_path, monkeypatch: pytest.Mo
     monkeypatch.setattr(sandbox_pkg, "get_sandbox_service", lambda: FakeSandboxService())
     monkeypatch.setattr(sandbox_artifacts, "get_path_service", lambda: path_service)
 
-    result = await CodeExecutionTool().execute(
+    result = await ExecTool().execute(
         language="cpp",
         code="int main(){}",
-        _sandbox_workdir=str(workdir),
+        _sandbox_code_workdir=str(workdir),
     )
 
     assert result.success is True
-    assert captured["command"] == "c++ -std=c++17 -O2 main.cpp -o prog && ./prog"
+    assert captured["command"].startswith("c++ -std=c++17 .deeptutor/exec_calls/cpp_")
+    assert " -O2 -o .deeptutor/exec_calls/cpp_" in captured["command"]
 
 
-def test_code_execution_tool_uses_windows_shell_syntax(monkeypatch: pytest.MonkeyPatch) -> None:
-    import deeptutor.tools.builtin as builtin
+def test_exec_tool_uses_windows_shell_syntax(monkeypatch: pytest.MonkeyPatch) -> None:
+    import deeptutor.tools.exec_tool as exec_module
 
-    monkeypatch.setattr(builtin.sys, "platform", "win32")
+    monkeypatch.setattr(exec_module.sys, "platform", "win32")
 
-    assert CodeExecutionTool._command_for_platform("python", has_stdin=False) == "python main.py"
+    assert ExecTool._command_for_platform("python", has_stdin=False) == "python main.py"
     assert (
-        CodeExecutionTool._command_for_platform("cpp", has_stdin=True)
-        == "$stdinText = Get-Content -Raw stdin.txt; g++ -std=c++17 -O2 main.cpp -o prog.exe; if ($LASTEXITCODE -eq 0) { $stdinText | .\\prog.exe }"
+        ExecTool._command_for_platform("cpp", has_stdin=True)
+        == "$stdinText = Get-Content -Raw stdin.txt; g++ -std=c++17 -O2 main.cpp -o prog.exe; if ($LASTEXITCODE -eq 0) { $stdinText | & .\\prog.exe }"
+    )
+    command = ExecTool._command_for_platform(
+        "python",
+        has_stdin=True,
+        call_dir="C:/Deep Tutor/runtime/exec_calls/python_1",
+    )
+    assert command == (
+        "Get-Content 'C:\\Deep Tutor\\runtime\\exec_calls\\python_1\\stdin.txt' | "
+        "python 'C:\\Deep Tutor\\runtime\\exec_calls\\python_1\\main.py'"
     )
 
 
 @pytest.mark.asyncio
-async def test_code_execution_tool_rejects_bad_input() -> None:
-    tool = CodeExecutionTool()
-    with pytest.raises(ValueError, match="Unsupported language"):
+async def test_exec_tool_rejects_bad_input() -> None:
+    tool = ExecTool()
+    with pytest.raises(ValueError, match="Unsupported exec language"):
         await tool.execute(language="ruby", code="puts 1")
     with pytest.raises(ValueError, match="non-empty 'code'"):
         await tool.execute(language="python", code="   ")
@@ -476,7 +597,7 @@ async def test_geogebra_analysis_tool_handles_success(monkeypatch: pytest.Monkey
 
 
 @pytest.mark.asyncio
-async def test_tool_registry_resolves_aliases_and_argument_mapping() -> None:
+async def test_tool_registry_exposes_no_legacy_execution_aliases() -> None:
     class DummyTool(BaseTool):
         def __init__(self, tool_name: str) -> None:
             self._tool_name = tool_name
@@ -485,7 +606,7 @@ async def test_tool_registry_resolves_aliases_and_argument_mapping() -> None:
         def get_definition(self) -> ToolDefinition:
             param_name = {
                 "rag": "query",
-                "code_execution": "code",
+                "exec": "code",
             }[self._tool_name]
             return ToolDefinition(
                 name=self._tool_name,
@@ -498,20 +619,22 @@ async def test_tool_registry_resolves_aliases_and_argument_mapping() -> None:
             return ToolResult(content=self._tool_name)
 
     rag = DummyTool("rag")
-    code = DummyTool("code_execution")
+    code = DummyTool("exec")
 
     registry = ToolRegistry()
     registry.register(rag)
     registry.register(code)
 
     rag_result = await registry.execute("rag_hybrid", query="find this")
-    code_result = await registry.execute("run_code", language="python", code="print(1)")
+    code_result = await registry.execute("exec", language="python", code="print(1)")
 
     assert rag_result.content == "rag"
     assert rag.calls[0]["mode"] == "hybrid"
     assert rag.calls[0]["query"] == "find this"
-    # The `run_code` alias resolves to code_execution and forwards kwargs
-    # verbatim — no natural-language `query`→`intent` remapping any more.
-    assert code_result.content == "code_execution"
+    assert code_result.content == "exec"
     assert code.calls[0]["code"] == "print(1)"
     assert code.calls[0]["language"] == "python"
+    for removed_name in ("code_execution", "run_code", "code_execute"):
+        assert registry.get(removed_name) is None
+        with pytest.raises(KeyError, match="Unknown tool"):
+            await registry.execute(removed_name, code="print(2)")

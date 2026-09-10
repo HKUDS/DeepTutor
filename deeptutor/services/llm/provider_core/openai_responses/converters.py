@@ -134,6 +134,32 @@ def convert_tools(
     return converted
 
 
+def convert_tool_choice(tool_choice: Any) -> Any:
+    """Convert an OpenAI function-calling ``tool_choice`` for the Responses API.
+
+    The two endpoints name a forced tool differently. Chat Completions nests
+    it — ``{"type": "function", "function": {"name": "ask_user"}}`` — while the
+    Responses API puts the name at the top level. Sending the nested shape to a
+    Responses endpoint is rejected outright ("tool_choice: missing field
+    `name`"), which killed every Ask Questions turn on a Responses-wire
+    provider: that mode forces ``ask_user`` on its first round, so the whole
+    capability failed before the model was ever called.
+
+    Mode strings (``"auto"``, ``"none"``, ``"required"``) and shapes that
+    already name the tool at the top level pass through unchanged, as does
+    anything else — a hosted-tool choice is the provider's to validate, not
+    ours to guess at.
+    """
+    if not isinstance(tool_choice, dict):
+        return tool_choice
+    if tool_choice.get("type") != "function":
+        return tool_choice
+    if tool_choice.get("name"):
+        return tool_choice
+    name = (tool_choice.get("function") or {}).get("name")
+    return {"type": "function", "name": name} if name else tool_choice
+
+
 def split_tool_call_id(tool_call_id: Any) -> tuple[str, str | None]:
     """Split a compound call_id|item_id tool id."""
     if isinstance(tool_call_id, str) and tool_call_id:

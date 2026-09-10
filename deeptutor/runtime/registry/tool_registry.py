@@ -85,6 +85,14 @@ class ToolRegistry:
 
         return resolved_name, merged_kwargs
 
+    def resolve_request(
+        self,
+        name: str,
+        kwargs: dict[str, Any] | None = None,
+    ) -> tuple[str, dict[str, Any]]:
+        """Return the canonical tool name and alias-defaulted arguments."""
+        return self._resolve_request(name, kwargs)
+
     def get(self, name: str) -> BaseTool | None:
         resolved_name, _ = self._resolve_request(name)
         return self._tools.get(resolved_name) or self._load_builtin(resolved_name)

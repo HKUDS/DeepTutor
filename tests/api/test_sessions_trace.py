@@ -51,9 +51,20 @@ def test_message_trace_is_paginated_and_session_scoped(tmp_path, monkeypatch) ->
     message = detail["messages"][0]
     assert message["events"][0]["type"] == "tool_call"
     assert message["events"][-1]["type"] == "done"
-    assert message["trace"] == {
+    trace = message["trace"]
+    assert {
+        "turn_id": trace["turn_id"],
+        "total": trace["total"],
+        "last_seq": trace["last_seq"],
+        "truncated": trace["truncated"],
+    } == {
         "turn_id": turn["id"],
         "total": 2,
         "last_seq": 2,
         "truncated": False,
     }
+    # The turn's real span travels with the preview, because the preview keeps
+    # only tool and terminal events and so cannot say when the turn began.
+    first, last = message["events"][0], message["events"][-1]
+    assert trace["started_at"] <= first["timestamp"]
+    assert trace["ended_at"] >= last["timestamp"]

@@ -11,6 +11,9 @@ deliberately scoped to image/video generation rather than refactoring voice.
 
 from __future__ import annotations
 
+import base64
+import binascii
+
 import httpx
 
 # Auth header styles understood by the generation adapters.
@@ -20,6 +23,22 @@ AUTH_API_KEY_HEADER = "api_key_header"  # api-key: <key>  (Azure OpenAI)
 
 class GenerationProviderError(RuntimeError):
     """Raised when an image/video provider request fails or is misconfigured."""
+
+
+def decode_base64_media(payload: str, action: str) -> bytes:
+    """Decode an inline provider result and reject malformed/empty media.
+
+    Provider protocol failures should reach the model as an actionable tool
+    failure, not bubble out as an unrelated ``binascii.Error`` or get published
+    as a zero-byte image.
+    """
+    try:
+        data = base64.b64decode(payload, validate=True)
+    except (ValueError, binascii.Error) as exc:
+        raise GenerationProviderError(f"{action} returned invalid base64 data.") from exc
+    if not data:
+        raise GenerationProviderError(f"{action} returned empty base64 data.")
+    return data
 
 
 def build_auth_headers(auth_style: str, api_key: str) -> dict[str, str]:
@@ -69,6 +88,7 @@ __all__ = [
     "AUTH_API_KEY_HEADER",
     "GenerationProviderError",
     "build_auth_headers",
+    "decode_base64_media",
     "join_api_path",
     "raise_for_provider",
 ]

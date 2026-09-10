@@ -13,7 +13,6 @@ import time
 from typing import TYPE_CHECKING, Any
 
 from deeptutor.core.stream import StreamEvent, StreamEventType
-from deeptutor.services.path_service import get_path_service
 from deeptutor.services.session.protocol import SessionStoreProtocol
 from deeptutor.services.session.scope import store_scope
 
@@ -198,15 +197,31 @@ class TurnLifecycle:
         failure_code: str = "",
         retryable: bool = False,
     ) -> bool:
-        return await self.store.transition_turn(
-            execution.turn_id,
-            status,
-            expected_status="running",
-            fencing_token=(execution.lease.fencing_token if execution.lease is not None else None),
-            error=error,
-            failure_code=failure_code,
-            retryable=retryable,
-        )
+        # A turn parked on ``ask_user`` sits at ``waiting_input``, and the
+        # waiter's ``finally`` fires its restore to ``running`` through
+        # ``asyncio.shield`` — fire-and-forget, so on a cancellation it races
+        # this write and loses about as often as it wins. A terminal write
+        # that accepts only ``running`` therefore no-ops on exactly the turns
+        # a learner stopped mid-question: no terminal row, no ``done`` event,
+        # and a durable ``waiting_input`` row that ``_begin_turn_sync`` counts
+        # as active — every later message in that session is refused with
+        # "Session already has an active turn" (#1297, #1359). Both are live
+        # states owned by this execution, so both are valid predecessors of
+        # its terminal state; the fencing token is what proves ownership, and
+        # it is unchanged.
+        fencing_token = execution.lease.fencing_token if execution.lease is not None else None
+        for expected in ("running", "waiting_input"):
+            if await self.store.transition_turn(
+                execution.turn_id,
+                status,
+                expected_status=expected,
+                fencing_token=fencing_token,
+                error=error,
+                failure_code=failure_code,
+                retryable=retryable,
+            ):
+                return True
+        return False
 
     async def _coordinate_execution(self, execution: _TurnExecution) -> None:
         """Renew ownership and consume commands addressed to this worker."""
@@ -230,11 +245,22 @@ class TurnLifecycle:
                             execution.task.cancel()
                         return
                     if command.kind == "submit_user_reply":
-                        await self.submit_user_reply(
+                        delivered = await self.submit_user_reply(
                             execution.turn_id,
                             text=command.payload.get("text"),
                             answers=command.payload.get("answers"),
                         )
+                        if not delivered:
+                            turn = await self.store.get_turn(execution.turn_id)
+                            logger.warning(
+                                "submit_user_reply command %s for turn %s was "
+                                "accepted (lease owner=%s) but not delivered: no "
+                                "waiter is registered (persisted status=%s)",
+                                command.command_id,
+                                execution.turn_id,
+                                lease.owner_id,
+                                turn.get("status") if turn else "unknown",
+                            )
                     elif command.kind == "user_input":
                         from deeptutor.runtime.stream_bus import get_bus
 
@@ -534,6 +560,33 @@ class TurnLifecycle:
             ),
         )
 
+    async def _publish_mastery_mode_change(
+        self,
+        execution: _TurnExecution,
+        *,
+        started_in: str,
+        ended_in: str,
+    ) -> None:
+        """Announce a mode the tutor switched into, so the client stops lying.
+
+        The three mode buttons above the transcript are the learner's only sign
+        of which tools the tutor may reach for. A switch the tutor made itself
+        already reached the conversation's stored preference, but an open
+        client would keep the old one highlighted until a reload — so the tutor
+        would say "I have switched to outline mode" over a header still reading
+        "Study", which is the product contradicting itself out loud.
+        """
+        if not ended_in or ended_in == started_in:
+            return
+        await self._publish_live_event(
+            execution,
+            StreamEvent(
+                type=StreamEventType.SESSION_META,
+                source="turn_runtime",
+                metadata={"mastery_session_mode": ended_in},
+            ),
+        )
+
     async def _publish_live_event(
         self,
         execution: _TurnExecution,
@@ -614,12 +667,10 @@ class TurnLifecycle:
                 return
             execution.persisted_events = persisted_events + list(persisted_batch)
             execution.events_persisted = len(execution.persisted_events) == len(events)
-            await self._mirror_events_to_workspace(execution, persisted_batch)
             execution.events_flushed = True
             return
 
         try:
-            mirrored: list[dict[str, Any]] = []
             for index, payload in enumerate(pending):
                 try:
                     persisted = await self.store.append_turn_event(execution.turn_id, payload)
@@ -639,7 +690,6 @@ class TurnLifecycle:
                     )
                     break
                 persisted_events.append(persisted)
-                mirrored.append(persisted)
         except Exception:
             # Cache a committed prefix so retries continue after it instead of
             # duplicating already persisted events on non-batching backends.
@@ -647,37 +697,4 @@ class TurnLifecycle:
             raise
         execution.persisted_events = persisted_events
         execution.events_persisted = len(persisted_events) == len(events)
-        await self._mirror_events_to_workspace(execution, mirrored)
         execution.events_flushed = True
-
-    async def _mirror_events_to_workspace(
-        self, execution: _TurnExecution, payloads: list[dict[str, Any]]
-    ) -> None:
-        """Mirror turn events to the task-local ``events.jsonl`` under ``data/user/workspace``.
-
-        One open/write for the whole batch, off the event loop: the previous
-        per-event ``open()+append`` ran synchronously on the loop thread and
-        stretched turn finalisation (and every other connection) on slow
-        storage. ``to_thread`` copies contextvars, so the per-user path scope
-        resolves the same as on the loop.
-        """
-        if not payloads:
-            return
-        await asyncio.to_thread(self._mirror_events_to_workspace_sync, execution, payloads)
-
-    @staticmethod
-    def _mirror_events_to_workspace_sync(
-        execution: _TurnExecution, payloads: list[dict[str, Any]]
-    ) -> None:
-        try:
-            path_service = get_path_service()
-            task_dir = path_service.get_task_workspace(execution.capability, execution.turn_id)
-            task_dir.mkdir(parents=True, exist_ok=True)
-            event_file = task_dir / "events.jsonl"
-            lines = "".join(
-                json.dumps(payload, ensure_ascii=False, default=str) + "\n" for payload in payloads
-            )
-            with open(event_file, "a", encoding="utf-8") as f:
-                f.write(lines)
-        except Exception:
-            logger.debug("Failed to mirror turn events to workspace", exc_info=True)

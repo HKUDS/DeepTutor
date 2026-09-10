@@ -117,7 +117,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     DEEPTUTOR_IGNORE_PROCESS_ENV_OVERRIDES=1
 
 # Code-execution sandbox: the restricted-subprocess backend (which the office
-# skills — docx/pdf/pptx/xlsx — rely on for `exec` / `code_execution`) is
+# skills — docx/pdf/pptx/xlsx — rely on for `exec`) is
 # enabled by default via the `sandbox_allow_subprocess` runtime setting
 # (system.json, default on), exported to DEEPTUTOR_SANDBOX_ALLOW_SUBPROCESS at
 # startup. No hardcoded ENV here — that would override the setting and block
@@ -184,7 +184,7 @@ RUN mkdir -p \
     data/user/workspace/chat/deep_question \
     data/user/workspace/chat/deep_research/reports \
     data/user/workspace/chat/math_animator \
-    data/user/workspace/chat/_detached_code_execution \
+    data/user/workspace/chat/_detached_exec \
     data/user/logs \
     data/knowledge_bases
 

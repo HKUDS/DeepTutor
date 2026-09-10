@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, Database } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useLingerExpand } from "@/hooks/use-linger-expand";
+import { useOutsideClick } from "@/hooks/use-outside-click";
 
 /**
  * Knowledge-base scope selector (composer toolbar).
@@ -43,18 +44,7 @@ export default function KnowledgeSelector({
   const rootRef = useRef<HTMLDivElement>(null);
 
   // Close on outside click.
-  useEffect(() => {
-    if (!open) return;
-    const handler = (event: MouseEvent) => {
-      const target = event.target as Node;
-      if (rootRef.current && !rootRef.current.contains(target)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  useOutsideClick(rootRef, open, () => setOpen(false));
 
   const count = selected.length;
   const label =

@@ -232,7 +232,7 @@ def _request_openai_moderation(texts: list[str], *, api_key: str) -> list[bool]:
         },
         method="POST",
     )
-    with urllib.request.urlopen(request, timeout=_MODERATION_TIMEOUT_S) as response:
+    with urllib.request.urlopen(request, timeout=_MODERATION_TIMEOUT_S) as response:  # nosec B310 - hardcoded https constant URL
         raw = json.loads(response.read().decode("utf-8"))
     results = raw.get("results") if isinstance(raw, dict) else None
     if not isinstance(results, list) or len(results) != len(texts):

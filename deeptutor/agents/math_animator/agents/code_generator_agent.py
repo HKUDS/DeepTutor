@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+from typing import Any
 
 from deeptutor.agents.base_agent import BaseAgent
 from deeptutor.core.trace import build_trace_metadata, new_call_id
 
 from ..models import ConceptAnalysis, GeneratedCode, SceneDesign
 from ..utils import build_repair_error_message, extract_json_object
+
+
+class GeneratedCodeOutputError(ValueError):
+    """The model exhausted its retries without returning runnable code."""
 
 
 class CodeGeneratorAgent(BaseAgent):
@@ -71,24 +77,19 @@ class CodeGeneratorAgent(BaseAgent):
             analysis_json=json.dumps(analysis.model_dump(), ensure_ascii=False, indent=2),
             design_json=json.dumps(design.model_dump(), ensure_ascii=False, indent=2),
         )
-        _chunks: list[str] = []
-        async for _c in self.stream_llm(
+        return await self._request_generated_code(
             user_prompt=user_prompt,
             system_prompt=system_prompt,
-            response_format={"type": "json_object"},
             stage="code_generation",
-            trace_meta=build_trace_metadata(
-                call_id=new_call_id("math-codegen"),
-                phase="code_generation",
-                label="Code generation",
-                call_kind="math_code_generation",
-                trace_role="generate",
-                trace_kind="llm_output",
-            ),
-        ):
-            _chunks.append(_c)
-        response = "".join(_chunks)
-        return GeneratedCode.model_validate(extract_json_object(response))
+            call_id_prefix="math-codegen",
+            trace_meta={
+                "phase": "code_generation",
+                "label": "Code generation",
+                "call_kind": "math_code_generation",
+                "trace_role": "generate",
+                "trace_kind": "llm_output",
+            },
+        )
 
     async def repair(
         self,
@@ -117,22 +118,82 @@ class CodeGeneratorAgent(BaseAgent):
             error_message=build_repair_error_message(error_message),
             current_code=current_code,
         )
-        _chunks: list[str] = []
-        async for _c in self.stream_llm(
+        return await self._request_generated_code(
             user_prompt=user_prompt,
             system_prompt=system_prompt,
-            response_format={"type": "json_object"},
             stage="code_retry",
-            trace_meta=build_trace_metadata(
-                call_id=new_call_id("math-retry"),
-                phase="code_retry",
-                label=f"Code retry #{attempt}",
-                call_kind="math_code_retry",
-                trace_role="repair",
-                trace_kind="llm_output",
-                attempt=attempt,
-            ),
-        ):
-            _chunks.append(_c)
-        response = "".join(_chunks)
-        return GeneratedCode.model_validate(extract_json_object(response))
+            call_id_prefix="math-retry",
+            trace_meta={
+                "phase": "code_retry",
+                "label": f"Code retry #{attempt}",
+                "call_kind": "math_code_retry",
+                "trace_role": "repair",
+                "trace_kind": "llm_output",
+                "attempt": attempt,
+            },
+        )
+
+    async def _request_generated_code(
+        self,
+        *,
+        user_prompt: str,
+        system_prompt: str,
+        stage: str,
+        call_id_prefix: str,
+        trace_meta: dict[str, Any],
+    ) -> GeneratedCode:
+        """Retry model-success responses that contain no usable code.
+
+        Provider retries already cover transport failures.  This second,
+        deliberately narrow boundary covers a successful response whose
+        content is blank, reasoning-only, or malformed JSON (#1202).  Parsing
+        stays strict and callers never proceed to the renderer with ``code=''``.
+        """
+
+        max_retries = max(0, int(self.get_max_retries()))
+        last_error: Exception | None = None
+        for structured_attempt in range(max_retries + 1):
+            retry_instruction = ""
+            if structured_attempt:
+                retry_instruction = (
+                    "\n\nYour previous response contained no usable structured code. "
+                    "Return exactly one JSON object with a non-empty `code` field."
+                )
+            chunks: list[str] = []
+            async for chunk in self.stream_llm(
+                user_prompt=user_prompt + retry_instruction,
+                system_prompt=system_prompt,
+                response_format={"type": "json_object"},
+                stage=stage,
+                trace_meta=build_trace_metadata(
+                    call_id=new_call_id(call_id_prefix),
+                    **trace_meta,
+                    structured_attempt=structured_attempt + 1,
+                ),
+            ):
+                chunks.append(chunk)
+
+            try:
+                generated = GeneratedCode.model_validate(extract_json_object("".join(chunks)))
+                if not generated.code.strip():
+                    raise ValueError("structured response has an empty code field")
+                return generated
+            except (json.JSONDecodeError, ValueError) as exc:
+                last_error = exc
+                if structured_attempt >= max_retries:
+                    break
+                self.logger.warning(
+                    "Math animator %s returned unusable structured output; retrying (%d/%d)",
+                    stage,
+                    structured_attempt + 1,
+                    max_retries,
+                )
+                await asyncio.sleep(min(0.25 * (2**structured_attempt), 2.0))
+
+        attempts = max_retries + 1
+        raise GeneratedCodeOutputError(
+            f"Math animator {stage} returned no usable code after {attempts} attempts."
+        ) from last_error
+
+
+__all__ = ["CodeGeneratorAgent", "GeneratedCodeOutputError"]

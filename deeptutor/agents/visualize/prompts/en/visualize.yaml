@@ -9,3 +9,6 @@ status:
   manim_artifacts_one: "Prepared {count} artifact."
   manim_artifacts_many: "Prepared {count} artifacts."
   llm_call_failed: "LLM call failed."
+  tool_calling_disabled: "Tool calling is disabled for {target}, but a visualization only reaches the canvas through the submit_visualization tool call. Enable it in Settings → Models → LLM → Capabilities → Tool calling → Supported."
+  no_payload: "The visualization agent finished without a valid canvas payload."
+  no_payload_tool_calling_disabled: "No visualization was committed: tool calling is disabled for {target}, so the model could not call submit_visualization — the only way to hand a payload to the canvas. Local servers (LM Studio, Ollama, vLLM, llama.cpp) are opted out by default; declare the model as tool-capable in Settings → Models → LLM → Capabilities → Tool calling → Supported, then run the visualization again."

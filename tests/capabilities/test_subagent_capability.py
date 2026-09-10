@@ -121,11 +121,20 @@ def test_exclusive_compose_drops_builtins_but_keeps_coexisting_rag() -> None:
         registry=get_tool_registry(),
         requested_tools=["web_search", "rag"],
         optional_whitelist=["web_search", "rag"],
-        mount_flags=ToolMountFlags(has_kb=True, has_code=True, has_memory=True),
+        mount_flags=ToolMountFlags(has_kb=True, has_exec=True, has_memory=True),
         capability_owned=["consult_subagent"],
         exclusive=True,
     )
-    assert set(composed) == {"consult_subagent", "rag", "kb_files", "ask_user"}
+    assert set(composed) == {
+        "workspace_list",
+        "workspace_read",
+        "workspace_search",
+        "workspace_present",
+        "consult_subagent",
+        "rag",
+        "kb_files",
+        "ask_user",
+    }
 
 
 def test_exclusive_compose_pure_subagent_mounts_no_rag() -> None:
@@ -137,7 +146,14 @@ def test_exclusive_compose_pure_subagent_mounts_no_rag() -> None:
         capability_owned=["consult_subagent"],
         exclusive=True,
     )
-    assert set(composed) == {"consult_subagent", "ask_user"}
+    assert set(composed) == {
+        "workspace_list",
+        "workspace_read",
+        "workspace_search",
+        "workspace_present",
+        "consult_subagent",
+        "ask_user",
+    }
 
 
 def test_registry_flags_subagent_turn_as_exclusive(monkeypatch) -> None:

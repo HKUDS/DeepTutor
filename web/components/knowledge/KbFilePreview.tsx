@@ -45,6 +45,10 @@ const ImagePreview = dynamic(
   () => import("@/components/chat/preview/previewers/ImagePreview"),
   { loading: PreviewLoading, ssr: false },
 );
+const VideoPreview = dynamic(
+  () => import("@/components/chat/preview/previewers/VideoPreview"),
+  { loading: PreviewLoading, ssr: false },
+);
 const SvgPreview = dynamic(
   () => import("@/components/chat/preview/previewers/SvgPreview"),
   { loading: PreviewLoading, ssr: false },
@@ -310,6 +314,8 @@ export default function KbFilePreview({
           <XlsxPreview url={previewUrl} />
         ) : kind === "image" ? (
           <ImagePreview url={previewUrl} filename={source.filename} />
+        ) : kind === "video" ? (
+          <VideoPreview url={previewUrl} filename={source.filename} />
         ) : kind === "svg" ? (
           <SvgPreview url={previewUrl} filename={source.filename} />
         ) : kind === "markdown" ? (

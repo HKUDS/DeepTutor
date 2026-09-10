@@ -18,6 +18,11 @@ from .registry import get_visualizer_registry
 class VisualizationLoopCapability:
     name = "visualization_generation"
     owned_tools = ("submit_visualization",)
+    # Every round here is protocol work: the deliverable is the committed
+    # payload, and ``tool_round_output_policy`` discards the prose around it
+    # unconditionally. Streaming that prose would show the reader scaffolding
+    # that is about to be thrown away.
+    buffers_visible_output = True
 
     def is_active(self, context: UnifiedContext) -> bool:
         return bool(context.metadata.get(VISUALIZE_MODE_KEY))

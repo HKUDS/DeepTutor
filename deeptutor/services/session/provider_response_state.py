@@ -8,6 +8,8 @@ from typing import Any
 MAX_REASONING_CONTENT_CHARS = 64_000
 MAX_RESPONSE_OUTPUT_ITEMS = 64
 MAX_RESPONSE_OUTPUT_BYTES = 256 * 1024
+MAX_THINKING_BLOCKS = 64
+MAX_THINKING_BLOCK_BYTES = 256 * 1024
 
 # These are the output item kinds emitted by the Responses API that the
 # agentic loop can legitimately need on the next request.  In particular,
@@ -45,6 +47,42 @@ def _normalized_output_items(value: Any) -> list[dict[str, Any]]:
     return normalized
 
 
+def _normalized_thinking_blocks(value: Any) -> list[dict[str, Any]]:
+    """Bound Anthropic's signed thinking blocks for persistence and replay.
+
+    Only ``thinking`` blocks are accepted, and only with the two fields the
+    provider replays. A block is useless without its signature, so one that
+    lost it is dropped rather than sent back: Anthropic rejects an unsigned
+    replay, which would turn a missing signature into a failed turn.
+    """
+    if not isinstance(value, list) or len(value) > MAX_THINKING_BLOCKS:
+        return []
+    normalized: list[dict[str, Any]] = []
+    total_bytes = 0
+    for item in value:
+        if not isinstance(item, dict) or item.get("type") != "thinking":
+            return []
+        thinking = item.get("thinking")
+        signature = item.get("signature")
+        if not isinstance(thinking, str) or not isinstance(signature, str) or not signature:
+            return []
+        block = {"type": "thinking", "thinking": thinking, "signature": signature}
+        try:
+            encoded = json.dumps(
+                block,
+                ensure_ascii=False,
+                allow_nan=False,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        except (TypeError, ValueError):
+            return []
+        total_bytes += len(encoded)
+        if total_bytes > MAX_THINKING_BLOCK_BYTES:
+            return []
+        normalized.append(block)
+    return normalized
+
+
 def normalize_provider_response_state(value: Any) -> dict[str, Any] | None:
     """Return bounded, JSON-safe provider state suitable for persistence/replay."""
     if not isinstance(value, dict):
@@ -62,6 +100,10 @@ def normalize_provider_response_state(value: Any) -> dict[str, Any] | None:
     output_items = _normalized_output_items(value.get("responses_output_items"))
     if output_items:
         normalized["responses_output_items"] = output_items
+
+    thinking_blocks = _normalized_thinking_blocks(value.get("thinking_blocks"))
+    if thinking_blocks:
+        normalized["thinking_blocks"] = thinking_blocks
 
     return normalized or None
 

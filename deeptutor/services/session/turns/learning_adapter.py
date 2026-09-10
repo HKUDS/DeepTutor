@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING
+import logging
+from typing import TYPE_CHECKING, Any
+
+from deeptutor.core.stream import StreamEvent, StreamEventType
+from deeptutor.core.trace import build_trace_metadata
 
 if TYPE_CHECKING:
     from deeptutor.learning.storage import MasteryPathLease
@@ -12,11 +16,20 @@ if TYPE_CHECKING:
     from .._turn_runtime_shared import _TurnExecution
 
 
+logger = logging.getLogger(__name__)
+
+
 class LearningTurnAdapter:
     if TYPE_CHECKING:
         store: SessionStoreProtocol
         _lock: asyncio.Lock
         _executions: dict[str, _TurnExecution]
+
+        async def _publish_live_event(
+            self,
+            execution: _TurnExecution,
+            event: StreamEvent,
+        ) -> dict[str, Any]: ...
 
         async def cancel_turn(self, turn_id: str) -> bool: ...
 
@@ -57,6 +70,239 @@ class LearningTurnAdapter:
             path_id,
             turn_id=lease.turn_id,
         )
+
+    async def _commit_mastery_card_answer(
+        self,
+        *,
+        path_id: str,
+        session_id: str,
+        turn_id: str,
+        question_id: str,
+        answer: str,
+    ) -> None:
+        """Record an answer submitted from a card that outlived its turn.
+
+        Posing a question ends the turn, so the answer comes back as the next
+        turn's message rather than through a parked turn's reply queue.
+        Committing it here — before the tutor's first token — is what lets
+        ``mastery_status`` report the interaction as ``answered`` carrying the
+        learner's own words, so the model grades what they actually picked
+        instead of having to pair a bare "C" with a question from scrollback.
+
+        Best-effort by design: the answer is also in the message the learner
+        sent and the tutor can still grade it from there, so a stale card or a
+        storage hiccup must not sink the turn.
+        """
+        from deeptutor.learning.service import LearningService
+
+        def _commit() -> None:
+            LearningService().record_question_answer(
+                path_id,
+                answer,
+                interaction_id=question_id,
+                session_id=session_id,
+                turn_id=turn_id,
+            )
+
+        try:
+            await asyncio.to_thread(_commit)
+        except Exception:
+            logger.warning(
+                "Failed to commit mastery card answer for path %s question %s",
+                path_id,
+                question_id,
+                exc_info=True,
+            )
+
+    async def _grade_submitted_card_answer(
+        self,
+        execution: _TurnExecution,
+        *,
+        path_id: str,
+        answer: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Rule on a card answer now, before the tutor writes a word.
+
+        Everything the card needs to show a verdict is already server-side:
+        the expected label and the explanation were registered when the
+        question was posed. Waiting for the tutor to call ``mastery_grade``
+        left the learner looking at their own pick for as long as a full LLM
+        round took — half a minute, for a ruling that takes milliseconds and
+        was never the model's to make.
+
+        The verdict is published as the ``mastery_grade`` tool result the card
+        already reads, so it renders with no client change and persists with
+        the turn (a reload still shows it). The tutor's own grade call later in
+        the turn replays the same committed attempt rather than scoring twice.
+
+        Best-effort: an answer that cannot be graded — a stale card, an
+        unreadable pick — leaves the interaction as it was for the tutor to
+        sort out, and never sinks the turn.
+        """
+        question_id = str((answer or {}).get("question_id") or "").strip()
+        text = str((answer or {}).get("text") or "")
+        if not path_id or not question_id or not text:
+            return None
+        # Grading is one deterministic engine operation and this tool is its
+        # only entry point; calling it here keeps that logic in one place
+        # rather than growing a second copy on the runtime side.
+        from deeptutor.capabilities.mastery.tools import MasteryGradeTool
+
+        try:
+            result = await MasteryGradeTool().execute(
+                _mastery_path_id=path_id,
+                _session_id=execution.session_id,
+                _turn_id=execution.turn_id,
+                question_id=question_id,
+                answer=text,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to grade mastery card answer for path %s question %s",
+                path_id,
+                question_id,
+                exc_info=True,
+            )
+            return None
+        payload = (result.metadata or {}).get("mastery_grade")
+        if not result.success or not isinstance(payload, dict):
+            return None
+        # One complete trace group, the same shape the dispatcher emits for a
+        # tool the model called: a lone result with no terminal status renders
+        # as a row that never stops running.
+        call_id = f"mastery-grade-{execution.turn_id}-{question_id}"
+        trace_meta = build_trace_metadata(
+            call_id=call_id,
+            phase="grading",
+            label="Mastery Grade",
+            call_kind="tool_call",
+            trace_id=call_id,
+            tool="mastery_grade",
+        )
+        await self._publish_live_event(
+            execution,
+            StreamEvent(
+                type=StreamEventType.TOOL_RESULT,
+                source="mastery",
+                stage="grading",
+                content=result.content,
+                metadata={
+                    **trace_meta,
+                    "trace_kind": "tool_result",
+                    "tool_metadata": {"mastery_grade": payload},
+                },
+            ),
+        )
+        await self._publish_live_event(
+            execution,
+            StreamEvent(
+                type=StreamEventType.PROGRESS,
+                source="mastery",
+                stage="grading",
+                content="",
+                metadata={
+                    **trace_meta,
+                    "trace_kind": "call_status",
+                    "call_state": "complete",
+                },
+            ),
+        )
+        return payload
+
+    async def _skip_card_question(
+        self,
+        execution: _TurnExecution,
+        *,
+        path_id: str,
+        skip: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Drop the question the learner declined, before the tutor starts.
+
+        A posed question ends its turn and stays open on the path, so a learner
+        who does not want to answer it had no way past it: the engine holds one
+        open question, and the tutor's next ``mastery_quiz`` simply re-presents
+        the same card. Abandoning it here — the same place a card answer is
+        graded — means the tutor's first ``mastery_status`` already sees a path
+        with nothing pending, and can move on without being told to.
+
+        Scoped to the question the card named: by the time this runs, an open
+        question that is *not* the one on the learner's card is one they never
+        declined.
+
+        Best-effort, like grading: a stale card must not sink the turn.
+        """
+        question_id = str((skip or {}).get("question_id") or "").strip()
+        if not path_id or not question_id:
+            return None
+        from deeptutor.capabilities.mastery.tools import MasterySkipQuestionTool
+        from deeptutor.learning.service import LearningService
+
+        try:
+            service = await asyncio.to_thread(LearningService)
+            active = await asyncio.to_thread(service.store.get_active_interaction, path_id)
+            if active is None or active.interaction_id != question_id:
+                # Already answered, already skipped, or superseded. Nothing to
+                # drop, and nothing the card can be told that it does not
+                # already show.
+                return None
+            result = await MasterySkipQuestionTool().execute(
+                _mastery_path_id=path_id,
+                _session_id=execution.session_id,
+                _turn_id=execution.turn_id,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to skip mastery card question for path %s question %s",
+                path_id,
+                question_id,
+                exc_info=True,
+            )
+            return None
+        payload = (result.metadata or {}).get("mastery_skip_question")
+        if not result.success or not isinstance(payload, dict):
+            return None
+        # The tool reports the interaction it dropped; the card matches on the
+        # id it was posed with, which is the same value. Stated explicitly so
+        # the card can find its own verdict without trusting that.
+        payload = {**payload, "question_id": question_id}
+        call_id = f"mastery-skip-{execution.turn_id}-{question_id}"
+        trace_meta = build_trace_metadata(
+            call_id=call_id,
+            phase="grading",
+            label="Mastery Skip",
+            call_kind="tool_call",
+            trace_id=call_id,
+            tool="mastery_skip_question",
+        )
+        await self._publish_live_event(
+            execution,
+            StreamEvent(
+                type=StreamEventType.TOOL_RESULT,
+                source="mastery",
+                stage="grading",
+                content=result.content,
+                metadata={
+                    **trace_meta,
+                    "trace_kind": "tool_result",
+                    "tool_metadata": {"mastery_skip_question": payload},
+                },
+            ),
+        )
+        await self._publish_live_event(
+            execution,
+            StreamEvent(
+                type=StreamEventType.PROGRESS,
+                source="mastery",
+                stage="grading",
+                content="",
+                metadata={
+                    **trace_meta,
+                    "trace_kind": "call_status",
+                    "call_state": "complete",
+                },
+            ),
+        )
+        return payload
 
     async def _acquire_mastery_path_lease(
         self,
@@ -99,29 +345,27 @@ class LearningTurnAdapter:
         requested_path_id: str,
         remembered_path_id: str,
     ) -> None:
-        """Reject a topic URL paired with an unrelated existing chat session.
+        """Reject a topic URL paired with a conversation held on another path.
 
-        A new session has no associations and may start any topic. Historical
-        sessions may resume any path they were durably bound to (including a
-        legitimate in-chat path switch), while the remembered preference
-        covers sessions created before explicit bindings were introduced.
+        A conversation is on exactly one path, so this is a comparison against
+        one value: the membership the store holds, or — for a conversation
+        that predates memberships — the path remembered on the session. A
+        conversation with neither is new and may start anywhere.
+
+        An in-chat ``mastery_switch`` moves the membership itself, so a
+        legitimate move is never seen here as a mismatch.
         """
 
         from deeptutor.learning.storage import LearningStore
 
         learning_store = LearningStore()
-        associations = await asyncio.to_thread(
-            learning_store.list_paths_for_session,
+        current = await asyncio.to_thread(
+            learning_store.path_id_for_session,
             session_id,
         )
-        known_path_ids = {str(item.get("path_id") or "") for item in associations}
-        remembered = str(remembered_path_id or "").strip()
-        if (
-            (known_path_ids or remembered)
-            and requested_path_id not in known_path_ids
-            and (not remembered or requested_path_id != remembered)
-        ):
+        expected = current or str(remembered_path_id or "").strip()
+        if expected and requested_path_id != expected:
             raise RuntimeError(
                 "mastery_session_topic_mismatch: "
-                f"session {session_id!r} does not belong to path {requested_path_id!r}"
+                f"session {session_id!r} is on path {expected!r}, not {requested_path_id!r}"
             )

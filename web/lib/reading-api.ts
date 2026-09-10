@@ -277,6 +277,35 @@ export async function getUnitText(
   );
 }
 
+export interface ReadingTranscript {
+  material_id: string;
+  revision: number;
+  unit_count: number;
+  truncated: boolean;
+  segments: {
+    locator: number;
+    text: string;
+    title: string;
+    source_href: string;
+  }[];
+}
+
+/**
+ * Every transcript segment of a timed material in one round trip.
+ *
+ * Segments follow the speaker's sentences, so a lecture has hundreds of them —
+ * one request each would be hundreds of requests to draw a single panel.
+ */
+export async function getReadingTranscript(
+  materialId: string,
+): Promise<ReadingTranscript> {
+  return unwrap(
+    await apiFetch(apiUrl(`${BASE}/materials/${materialId}/transcript`), {
+      cache: "no-store",
+    }),
+  );
+}
+
 export async function listReadingExtensions(): Promise<
   ReadingExtensionManifest[]
 > {

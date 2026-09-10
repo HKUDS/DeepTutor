@@ -136,12 +136,8 @@ def test_build_settings_bridges_models() -> None:
                 "extra_body": {"thinking": {"type": "enabled"}},
             },
         ),
-        (
-            "deepseek",
-            "deepseek-v4-flash",
-            None,
-            {"extra_body": {"thinking": {"type": "disabled"}}},
-        ),
+        # Flash sends nothing about thinking; the provider's own default applies.
+        ("deepseek", "deepseek-v4-flash", None, {}),
         (
             "dashscope",
             "qwen3-235b-a22b",

@@ -48,7 +48,11 @@ from deeptutor.reading import (
     export_material,
     render_outline,
 )
-from deeptutor.reading.ingestion import ReadingIngestionService, url_material_id
+from deeptutor.reading.ingestion import (
+    MAX_TRANSCRIPT_BYTES,
+    ReadingIngestionService,
+    url_material_id,
+)
 from deeptutor.reading.knowledge_capture import (
     organize_workspace_notes,
     send_workspace_to_notebook,
@@ -908,6 +912,7 @@ async def list_materials() -> list[MaterialInfo]:
 
 @router.post("/materials", response_model=MaterialDetail)
 async def upload_material(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),  # noqa: B008
     reuse: bool = Query(default=True),
 ) -> MaterialDetail:
@@ -915,6 +920,12 @@ async def upload_material(
 
     The upload is streamed to a temp file with a running size check, so an
     oversized file is rejected before it is fully buffered rather than after.
+
+    Audio and video answer as soon as the file is stored and transcription is
+    queued, the same shape as a URL import. Holding the request open for the
+    length of a lecture meant no progress could reach the client, the browser
+    or a proxy could time the upload out after the transcription had already
+    been paid for, and nothing was left on disk to retry from.
     """
     try:
         assert_learning_material("", upload=True)
@@ -945,10 +956,10 @@ async def upload_material(
 
         store = _store()
         if Path(filename).suffix.lower() in _MEDIA_EXTENSIONS:
-            record = await ReadingIngestionService(store, _catalog()).import_media(
-                tmp_path, filename=filename
-            )
-            manifest = store.manifest(record.material_id)
+            service = ReadingIngestionService(store, _catalog())
+            record = await service.queue_media(tmp_path, filename=filename)
+            background_tasks.add_task(service.process_media, record.material_id)
+            return _detail(store, store.manifest(record.material_id))
         else:
             manifest = store.ingest(tmp_path, filename=filename)
             catalog = _catalog()
@@ -1066,6 +1077,47 @@ async def delete_material(material_id: str) -> dict[str, Any]:
     }
 
 
+@router.get("/materials/{material_id}/transcript")
+async def get_transcript(material_id: str) -> dict[str, Any]:
+    """Every transcript segment of a timed material, in one response.
+
+    The reader's transcript panel needs all of them at once. Fetching them one
+    locator at a time meant a request per segment — fine when a segment was ten
+    minutes long, wasteful now that they follow the speaker's own sentences.
+    """
+    store = _store()
+    try:
+        assert_learning_material(material_id)
+        manifest = store.manifest(material_id)
+        if manifest.render_mode not in {"video", "audio"}:
+            raise ReadingError("this material has no timed transcript")
+        refs = {row.locator: row for row in store.unit_references(material_id)}
+        segments: list[dict[str, Any]] = []
+        budget = MAX_TRANSCRIPT_BYTES
+        for locator, text in store.iter_units(material_id):
+            budget -= len(text.encode("utf-8"))
+            if budget < 0:
+                break
+            ref = refs.get(locator)
+            segments.append(
+                {
+                    "locator": locator,
+                    "text": text,
+                    "title": ref.title if ref else "",
+                    "source_href": ref.source_href if ref else "",
+                }
+            )
+        return {
+            "material_id": material_id,
+            "revision": manifest.revision,
+            "unit_count": manifest.unit_count,
+            "truncated": len(segments) < manifest.unit_count,
+            "segments": segments,
+        }
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
 @router.get("/materials/{material_id}/units/{locator}", response_model=UnitText)
 async def get_unit(material_id: str, locator: int) -> UnitText:
     """One unit's text — the reader's text view, and the only view for non-PDFs."""
@@ -1144,6 +1196,7 @@ async def get_snapshot_asset(material_id: str, asset_name: str) -> FileResponse:
 
     store = _store()
     try:
+        assert_learning_material(material_id)
         path = store.asset_path(material_id, asset_name)
     except Exception as exc:
         raise _http_error(exc) from exc

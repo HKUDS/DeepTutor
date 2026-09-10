@@ -98,7 +98,16 @@ class TestMountGate:
             capability_owned=["obsidian_read"],
             exclusive=True,
         )
-        assert tools == ["obsidian_read", "rag", "kb_files", "ask_user"]
+        assert tools == [
+            "workspace_list",
+            "workspace_read",
+            "workspace_search",
+            "workspace_present",
+            "obsidian_read",
+            "rag",
+            "kb_files",
+            "ask_user",
+        ]
 
     def test_a_partner_can_deny_it(self) -> None:
         tools = compose_enabled_tools(

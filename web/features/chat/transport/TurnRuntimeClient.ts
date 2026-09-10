@@ -3,7 +3,11 @@ import type {
   ServerEvent,
   StreamEvent,
 } from "@/contracts/generated/turn-protocol";
-import { buildPing, buildResumeTurn } from "@/contracts/parse/turn-command";
+import {
+  buildPing,
+  buildResumeTurn,
+  newCommandId,
+} from "@/contracts/parse/turn-command";
 import { parseTurnEvent } from "@/contracts/parse/turn-event";
 
 import {
@@ -46,6 +50,8 @@ interface PendingCommand {
   requiresAck: boolean;
   acknowledgedAfter: number;
   sentGeneration: number;
+  /** Settled with the server's verdict, for callers that await one. */
+  settle?: (accepted: boolean) => void;
 }
 
 const ACKNOWLEDGED_COMMAND_TYPES = new Set([
@@ -66,7 +72,7 @@ function prepareCommand(command: ClientCommand): {
   const record = command as unknown as Record<string, unknown>;
   const existing =
     typeof record.command_id === "string" ? record.command_id.trim() : "";
-  const commandId = existing || globalThis.crypto.randomUUID();
+  const commandId = existing || newCommandId();
   return {
     command: { ...command, command_id: commandId } as ClientCommand,
     commandId,
@@ -187,6 +193,31 @@ export class TurnRuntimeClient {
       this.sendNow(command);
       return;
     }
+    this.enqueue(command);
+  }
+
+  /**
+   * Send a command and resolve with the server's verdict on it.
+   *
+   * A command the server declines — a reply for a turn that is no longer
+   * waiting, most often because the backend restarted since the question was
+   * asked — is otherwise only a console diagnostic, which leaves whatever UI
+   * is waiting on it pending forever. Resolves ``false`` for a rejection and
+   * for a client that stops before the acknowledgement arrives; a command
+   * type the protocol never acknowledges resolves ``true`` on dispatch.
+   */
+  sendAwaitingAck(command: ClientCommand): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      const pending = this.enqueue(command);
+      if (!pending.requiresAck) {
+        resolve(true);
+        return;
+      }
+      pending.settle = resolve;
+    });
+  }
+
+  private enqueue(command: ClientCommand): PendingCommand {
     const prepared = prepareCommand(command);
     const pending: PendingCommand = {
       ...prepared,
@@ -195,6 +226,7 @@ export class TurnRuntimeClient {
     };
     this.pending.push(pending);
     this.flushPending();
+    return pending;
   }
 
   cancel(command: ClientCommand): void {
@@ -221,6 +253,9 @@ export class TurnRuntimeClient {
     const socket = this.socket;
     this.socket = null;
     socket?.close(1000, "client stopped");
+    // Nobody is left to acknowledge these, so release their waiters rather
+    // than leaving the UI that sent them pending forever.
+    for (const pending of this.pending) pending.settle?.(false);
     this.pending = [];
     this.buffered.clear();
     this.setState("stopped");
@@ -249,9 +284,12 @@ export class TurnRuntimeClient {
     }
     const event = parsed.value;
     if (event.type === "command_ack") {
-      this.pending = this.pending.filter(
-        (item) => item.commandId !== event.command_id,
-      );
+      const remaining: PendingCommand[] = [];
+      for (const item of this.pending) {
+        if (item.commandId === event.command_id) item.settle?.(event.accepted);
+        else remaining.push(item);
+      }
+      this.pending = remaining;
       if (!event.accepted) {
         this.options.onDiagnostic?.(
           `turn command rejected; type=${event.command_type}; code=${event.error_code || "rejected"}`,

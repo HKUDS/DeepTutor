@@ -69,6 +69,20 @@ class _Unset:
 _PARENT_AUTO = _Unset()
 
 
+def _trace_bounds(started_at: Any, ended_at: Any) -> dict[str, float]:
+    """The turn's real wall-clock span, for a preview that cannot carry it.
+
+    Omitted entirely when either bound is missing, so a consumer can tell
+    "this turn has no recorded span" from "this turn took zero seconds".
+    """
+    try:
+        start = float(started_at)
+        end = float(ended_at)
+    except (TypeError, ValueError):
+        return {}
+    return {"started_at": start, "ended_at": max(start, end)}
+
+
 def _json_loads(value: str | None, default: Any) -> Any:
     if not value:
         return default
@@ -1234,7 +1248,9 @@ class SQLiteSessionStore:
             conn.commit()
         return cur.rowcount > 0
 
-    async def link_turn_message(self, turn_id: str, assistant_message_id: int) -> bool:
+    async def link_turn_message(self, turn_id: str, assistant_message_id: int | str) -> bool:
+        # Widened to match SessionStoreProtocol: PocketBase hands out string
+        # ids, and the coercion below already accepts either spelling.
         return await self._run(self._link_turn_message_sync, turn_id, int(assistant_message_id))
 
     def _get_message_trace_sync(
@@ -1797,23 +1813,28 @@ class SQLiteSessionStore:
     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         stats = conn.execute(
             """
-            SELECT COUNT(*) AS total, COALESCE(MAX(seq), 0) AS last_seq
+            SELECT COUNT(*) AS total, COALESCE(MAX(seq), 0) AS last_seq,
+                   MIN(timestamp) AS started_at, MAX(timestamp) AS ended_at
             FROM turn_events WHERE turn_id = ?
             """,
             (turn_id,),
         ).fetchone()
         # Preview queries stay bounded even for a very long agentic turn. The
-        # critical query reserves older terminal/result/ask-user state; the
-        # semantic query fills the remaining tail with tool activity.
+        # critical query reserves older terminal/result/card state; the
+        # semantic query fills the remaining tail with tool activity. Both card
+        # channels are named: the generic ask_user one and the mastery course's
+        # own question card, which a settled message cannot render without.
         columns = "turn_id, seq, type, source, stage, content, metadata_json, timestamp"
-        ask_user = """
+        cards = """
             json_extract(metadata_json, '$.ask_user') IS NOT NULL
             OR json_extract(metadata_json, '$.ask_user_resolved') IS NOT NULL
             OR json_extract(metadata_json, '$.tool_metadata.ask_user') IS NOT NULL
+            OR json_extract(metadata_json, '$.mastery_question') IS NOT NULL
+            OR json_extract(metadata_json, '$.tool_metadata.mastery_question') IS NOT NULL
         """
         conditions = (
-            f"type IN ('done', 'error', 'cancelled', 'result') OR {ask_user}",
-            f"type IN ('done', 'error', 'cancelled', 'result', 'tool_call', 'tool_result') OR {ask_user}",
+            f"type IN ('done', 'error', 'cancelled', 'result') OR {cards}",
+            f"type IN ('done', 'error', 'cancelled', 'result', 'tool_call', 'tool_result') OR {cards}",
         )
         rows_by_seq: dict[int, sqlite3.Row] = {}
         for condition in conditions:
@@ -1824,7 +1845,7 @@ class SQLiteSessionStore:
                 WHERE turn_id = ? AND ({condition})
                 ORDER BY seq DESC
                 LIMIT ?
-                """,
+                """,  # nosec B608 - columns/condition are literals; every value binds via ?
                 (turn_id, MAX_TRACE_PREVIEW_EVENTS),
             ).fetchall()
             rows_by_seq.update({int(row["seq"]): row for row in rows})
@@ -1838,6 +1859,15 @@ class SQLiteSessionStore:
             "total": total,
             "last_seq": int(stats["last_seq"]),
             "truncated": compacted or total != len(preview),
+            # How long the turn actually took, measured over *every* event
+            # rather than the preview. The preview deliberately keeps only
+            # tool and terminal events, so the moment the turn began — the
+            # ``session`` / ``stage_start`` pair — is never in it. Timing the
+            # preview therefore starts the clock at the first tool call and
+            # silently drops however long the model spent thinking before it,
+            # which for a round that thinks and then answers in one burst is
+            # the whole turn (it renders as "0s").
+            **_trace_bounds(stats["started_at"], stats["ended_at"]),
         }
         return preview, metadata
 
@@ -1845,11 +1875,15 @@ class SQLiteSessionStore:
         self, events: list[dict[str, Any]]
     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         preview, omitted = compact_trace_preview(events)
+        stamps = [
+            value for event in events if isinstance(value := event.get("timestamp"), (int, float))
+        ]
         return preview, {
             "turn_id": None,
             "total": len(events),
             "last_seq": max([int(event.get("seq") or 0) for event in events] or [0]),
             "truncated": omitted,
+            **_trace_bounds(min(stamps, default=None), max(stamps, default=None)),
         }
 
     def _ask_user_events_sync(
@@ -2320,7 +2354,7 @@ class SQLiteSessionStore:
                             material_title, section_id, section_title, score_trend,
                             is_correct, resolved, bookmarked, followup_session_id,
                             created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '', ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '', ?, ?)
                         ON CONFLICT(session_id, turn_id, question_id) DO UPDATE SET
                             question = excluded.question,
                             question_type = excluded.question_type,

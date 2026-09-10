@@ -36,6 +36,7 @@ from collections.abc import Awaitable
 from dataclasses import dataclass
 import html
 import logging
+from pathlib import Path
 import re
 from typing import Any
 
@@ -46,6 +47,10 @@ from deeptutor.agents._shared.tool_composition import (
     default_optional_tools,
     user_has_memory,
     user_has_notebooks,
+)
+from deeptutor.agents._shared.tool_runtime import (
+    bind_workspace_tool_runtime,
+    fallback_task_dir_from_metadata,
 )
 from deeptutor.agents.research.data_structures import (
     DynamicTopicQueue,
@@ -75,14 +80,15 @@ from deeptutor.runtime.agentic import (
     run_agentic_loop,
     run_labeled_step,
 )
+from deeptutor.runtime.agentic.messages import assistant_message
 from deeptutor.runtime.agentic.tool_dispatch import (
     MAX_PARALLEL_TOOL_CALLS,
+    tool_error_message_factory,
 )
 from deeptutor.runtime.registry.tool_registry import get_tool_registry
 from deeptutor.runtime.stream_bus import StreamBus
 from deeptutor.services.config import parse_language
 from deeptutor.services.llm import get_llm_config, prepare_multimodal_messages
-from deeptutor.services.path_service import get_path_service
 from deeptutor.services.prompt import get_prompt_manager
 from deeptutor.services.prompt.language import append_language_directive
 from deeptutor.services.sandbox import exec_capability_available
@@ -108,7 +114,17 @@ RESEARCH_OBSIDIAN_READ_TOOLS: tuple[str, ...] = (
     "obsidian_list",
 )
 RESEARCH_BLOCK_TOOL_ALLOWLIST: frozenset[str] = frozenset(
-    {"rag", "web_search", "paper_search", "code_execution", *RESEARCH_OBSIDIAN_READ_TOOLS}
+    {
+        "rag",
+        "web_search",
+        "paper_search",
+        "exec",
+        "workspace_list",
+        "workspace_read",
+        "workspace_search",
+        "workspace_present",
+        *RESEARCH_OBSIDIAN_READ_TOOLS,
+    }
 )
 
 # ---------------------------------------------------------------------------
@@ -210,7 +226,7 @@ CITABLE_TOOLS: frozenset[str] = frozenset(
         "rag",
         "web_search",
         "paper_search",
-        "code_execution",
+        "exec",
         *RESEARCH_OBSIDIAN_READ_TOOLS,
     }
 )
@@ -380,6 +396,31 @@ class ResearchPipeline:
             researching,
             key="max_iterations",
             default=DEFAULT_BLOCK_MAX_ITERATIONS,
+        )
+        # A ceiling on a stalled provider, not a service-level objective. A
+        # research tool is not quick by nature: one ``rag`` call against a
+        # LightRAG or GraphRAG index makes its own LLM calls before it returns
+        # anything, and a search-then-fetch chain waits on someone else's site.
+        # 60s would have cancelled work that was going to succeed, and each
+        # retry then pays the full timeout again. 240s matches the ceiling
+        # ``geogebra_analysis`` uses for the same reason, and retries are off by
+        # default: only a caller who knows its tools are flaky (rather than
+        # slow) should pay for a second attempt.
+        self.tool_timeout = max(
+            1,
+            _read_int(
+                researching,
+                key="tool_timeout",
+                default=240,
+            ),
+        )
+        self.tool_max_retries = max(
+            0,
+            _read_int(
+                researching,
+                key="tool_max_retries",
+                default=0,
+            ),
         )
         self.max_parallel_topics = max(
             1,
@@ -560,7 +601,12 @@ class ResearchPipeline:
             f"research_{context.session_id or 'adhoc'}",
             max_length=self.queue_max_length,
         )
-        citations = CitationManager(queue.research_id, cache_dir=None)
+        research_cache = (
+            Path(context.runtime.workspace.output_dir) / "research"
+            if context.runtime.workspace is not None
+            else None
+        )
+        citations = CitationManager(queue.research_id, cache_dir=research_cache)
         for sub in confirmed_outline:
             queue.add_block(sub.title, sub.overview)
 
@@ -881,6 +927,11 @@ class ResearchPipeline:
             kb_note=kb_note,
             tool_list=tool_list,
         )
+        from deeptutor.agents._shared.workspace_prompt import workspace_system_note
+
+        workspace_note = workspace_system_note(context, language=self.language)
+        if workspace_note:
+            system_prompt = f"{system_prompt}\n\n{workspace_note}"
         system_prompt = append_language_directive(system_prompt, self.language)
 
         sibling_topics = self._render_sibling_topics(queue, block)
@@ -980,7 +1031,13 @@ class ResearchPipeline:
             calls += 1
             if result.label == LABEL_FINISH and result.text.strip():
                 return result.text, True, calls
-            messages.append({"role": "assistant", "content": result.text[:500]})
+            messages.append(
+                assistant_message(
+                    result.text[:500],
+                    reasoning_content=result.reasoning_content or None,
+                    thinking_blocks=list(result.thinking_blocks) or None,
+                )
+            )
             messages.append({"role": "user", "content": self._t("protocol.force_finish_repair")})
         return self._t("protocol.fallback_final"), False, calls
 
@@ -1941,7 +1998,7 @@ class ResearchPipeline:
                 has_sources=False,
                 has_memory=user_has_memory(),
                 has_notebooks=user_has_notebooks(),
-                has_code=exec_capability_available(),
+                has_exec=exec_capability_available(),
             ),
         )
         names = [
@@ -1988,11 +2045,18 @@ class ResearchPipeline:
         args: dict[str, Any],
         context: UnifiedContext,
     ) -> dict[str, Any]:
-        kwargs = dict(args)
-        turn_id = str(context.metadata.get("turn_id", "") or "").strip()
-        task_dir = None
-        if turn_id:
-            task_dir = get_path_service().get_task_workspace("deep_research", turn_id)
+        workspace = context.runtime.workspace
+        task_dir = (
+            Path(workspace.output_dir)
+            if workspace is not None
+            else fallback_task_dir_from_metadata(context, feature="deep_research")
+        )
+        kwargs = bind_workspace_tool_runtime(
+            tool_name,
+            args,
+            context,
+            fallback_task_dir=task_dir,
+        )
         if tool_name == "rag":
             kwargs.setdefault("mode", "hybrid")
             if self.kb_name:
@@ -2002,16 +2066,6 @@ class ResearchPipeline:
                 # Server-owned: overwrite any model-supplied value so the path
                 # can't be forged to read outside the connected vault.
                 kwargs["_vault_path"] = self._vault_path
-        elif tool_name == "code_execution":
-            from deeptutor.services.sandbox import Mount
-
-            if task_dir is not None:
-                code_dir = task_dir / "code_runs"
-                code_dir.mkdir(parents=True, exist_ok=True)
-                kwargs["_sandbox_workdir"] = str(code_dir)
-                kwargs["_sandbox_mounts"] = (
-                    Mount(host_path=str(code_dir), sandbox_path=str(code_dir), read_only=False),
-                )
         elif tool_name == "web_search":
             kwargs.setdefault("query", context.user_message)
             if task_dir is not None:
@@ -2548,12 +2602,10 @@ class _BlockLoopHost:
                 "notices.start_retrieval", default="Starting retrieval"
             ),
             too_many_tool_calls_message=too_many,
-            unknown_error_message_factory=lambda tn: self._pipeline._t(
-                "notices.tool_unknown_error",
-                tool=tn,
-                default=f"Error executing {tn}.",
-            ),
+            tool_error_message_factory=tool_error_message_factory(self._pipeline._t),
             trace_id_prefix=f"research-{self._block.block_id}-iter",
+            tool_timeout=self._pipeline.tool_timeout,
+            tool_max_retries=self._pipeline.tool_max_retries,
         )
         pageindex_sources = [
             source for source in outcome.sources if source.get("type") == "pageindex"
@@ -2936,11 +2988,7 @@ class _RephraseLoopHost:
                 "notices.start_retrieval", default="Starting retrieval"
             ),
             too_many_tool_calls_message=too_many,
-            unknown_error_message_factory=lambda tn: self._pipeline._t(
-                "notices.tool_unknown_error",
-                tool=tn,
-                default=f"Error executing {tn}.",
-            ),
+            tool_error_message_factory=tool_error_message_factory(self._pipeline._t),
             trace_id_prefix="research-rephrase-iter",
         )
         if rejected:

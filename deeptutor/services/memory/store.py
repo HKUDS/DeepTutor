@@ -16,6 +16,7 @@ from pathlib import Path
 import shutil
 from typing import Literal
 
+from deeptutor.services.file_io import atomic_write_text
 from deeptutor.services.memory import consolidator, paths, trace
 from deeptutor.services.memory.consolidator import ConsolidateResult, OnEvent
 from deeptutor.services.memory.document import Document, parse, serialize
@@ -107,7 +108,7 @@ class MemoryStore:
         """Direct user-driven save from the workbench editor."""
         path = self._path(layer, key)
         async with self._lock_for(path):
-            await asyncio.to_thread(_atomic_write, path, md)
+            await asyncio.to_thread(atomic_write_text, path, md)
 
     async def delete_entry(self, layer: Layer, key: str, entry_id: str) -> bool:
         path = self._path(layer, key)
@@ -117,7 +118,7 @@ class MemoryStore:
             doc = parse(path.read_text(encoding="utf-8"))
             if not doc.remove(entry_id):
                 return False
-            await asyncio.to_thread(_atomic_write, path, serialize(doc))
+            await asyncio.to_thread(atomic_write_text, path, serialize(doc))
             return True
 
     # ── L2 / L3 write (consolidator paths) ────────────────────────────────
@@ -188,7 +189,7 @@ class MemoryStore:
             report = ops_apply(doc, ops)
             if report.accepted and ops:
                 path.parent.mkdir(parents=True, exist_ok=True)
-                await asyncio.to_thread(_atomic_write, path, serialize(doc))
+                await asyncio.to_thread(atomic_write_text, path, serialize(doc))
             return report
 
     async def write_preference(
@@ -250,7 +251,7 @@ class MemoryStore:
                     ],
                 )
             if report.accepted:
-                await asyncio.to_thread(_atomic_write, path, serialize(doc))
+                await asyncio.to_thread(atomic_write_text, path, serialize(doc))
             if reason:
                 # Surface the reason in logs for workbench observability.
                 logger.info("write_memory %s id=%s reason=%s", op, target_id or "new", reason)
@@ -450,10 +451,3 @@ def _default_title(layer: Layer, key: str) -> str:
         "scope": "Knowledge scope",
         "preferences": "Preferences",
     }.get(key, key)
-
-
-def _atomic_write(path: Path, content: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(content, encoding="utf-8")
-    tmp.replace(path)

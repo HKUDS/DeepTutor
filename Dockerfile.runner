@@ -47,7 +47,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # reportlab cannot embed CFF/OpenType outlines, so fonts-noto-cjk (CFF .otf)
 # would fail to register. python:3.11-slim ships no CJK fonts on its own.
 
-# build-essential ships gcc / g++ / make + libc headers so the `code_execution`
+# build-essential ships gcc / g++ / make + libc headers so the unified `exec`
 # tool can compile and run C (`cc`) and C++ (`c++ -std=c++17`) snippets, not
 # just Python. Drop it if your deployment only needs Python execution.
 
@@ -97,9 +97,8 @@ WORKDIR /app
 # not resolve. Direct-file execution is the simple, dependency-free choice.
 COPY deeptutor/services/sandbox/runner/server.py /app/server.py
 
-# The workspace shared with the main app is mounted here at runtime by
-# docker-compose (./data/user:/app/data/user), at the *same* path in both
-# containers so the mount contract (host_path == sandbox_path) holds.
+# The selected content workspace is mounted at /workspace at runtime. Compose
+# overlays /workspace/outputs writable while keeping the rest read-only.
 
 ENV RUNNER_PORT=8900 \
     PYTHONUNBUFFERED=1

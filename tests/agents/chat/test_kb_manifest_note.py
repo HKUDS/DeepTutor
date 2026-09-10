@@ -37,7 +37,7 @@ def _manifest(name: str, *documents: str, total: int | None = None) -> KbManifes
 
 def _pipeline(monkeypatch: pytest.MonkeyPatch, *, language: str = "en") -> AgenticChatPipeline:
     monkeypatch.setattr(
-        "deeptutor.agents.chat.agentic_pipeline.get_llm_config",
+        "deeptutor.agents.loop.pipeline.get_llm_config",
         lambda: SimpleNamespace(
             binding="openai", model="gpt-test", api_key="k", base_url="u", api_version=None
         ),

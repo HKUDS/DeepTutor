@@ -1,0 +1,5 @@
+short_description: "使用已配置的视频生成服务创作视频，并保存到当前 workspace 的 outputs/。"
+when_to_use: "适用于生成视频、运动场景、电影感短片或文生视频请求。这是耗时较长的媒体服务。程序化渲染或后处理使用 exec。"
+input_format: "完整、具体且可独立理解的场景与运动 prompt；可选 aspect_ratio 与 duration。"
+guideline: "生成式视频直接调用 videogen，并等待渲染和下载完成；只有工具返回精确的 workspace 相对路径时才可宣称生成成功。随后必须先用该路径调用 workspace_present，再在 Markdown 中链接。不得粘贴供应商 URL 或宿主机路径。"
+phase: "synthesis"

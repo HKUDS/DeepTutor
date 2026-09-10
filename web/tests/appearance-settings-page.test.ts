@@ -13,11 +13,33 @@ const appearancePagePath = path.join(
   "AppearanceSettingsSection.tsx",
 );
 
+const overviewPagePath = path.join(
+  process.cwd(),
+  "components",
+  "settings",
+  "SettingsOverview.tsx",
+);
+
 function readAppearancePage() {
   return fs.readFileSync(appearancePagePath, "utf8");
 }
 
-test("appearance settings page: adds the code blocks section after the theme section", () => {
+function readOverviewPage() {
+  return fs.readFileSync(overviewPagePath, "utf8");
+}
+
+test("settings source contract: language settings live on Overview instead of Appearance", () => {
+  const appearance = readAppearancePage();
+  const overview = readOverviewPage();
+
+  assert.doesNotMatch(appearance, /title=\{t\("Language"\)\}/);
+  assert.doesNotMatch(appearance, /updateLanguage|updateResponseLanguage/);
+  assert.match(overview, /title=\{t\("Language"\)\}/);
+  assert.match(overview, /updateLanguage/);
+  assert.match(overview, /updateResponseLanguage/);
+});
+
+test("appearance source contract: code blocks section follows the theme section", () => {
   const source = readAppearancePage();
 
   const themeIndex = source.indexOf('title={t("Theme")}');
@@ -31,7 +53,7 @@ test("appearance settings page: adds the code blocks section after the theme sec
   );
 });
 
-test("appearance settings page: wires syntax theme select and toggle controls to settings context", () => {
+test("appearance source contract: code-block controls use the settings context", () => {
   const source = readAppearancePage();
 
   assert.match(source, /codeBlockTheme/);
@@ -44,7 +66,7 @@ test("appearance settings page: wires syntax theme select and toggle controls to
   assert.match(source, /<Toggle/);
 });
 
-test("appearance settings page: renders code-block switch checked state from the settings context", () => {
+test("appearance source contract: switch checked state has no page-local mirror", () => {
   const source = readAppearancePage();
 
   // Values come straight from the settings context (backed by AppShellContext,
@@ -66,14 +88,14 @@ test("appearance settings page: renders code-block switch checked state from the
   );
 });
 
-test("appearance settings page: exposes every registered code block theme option in the select", () => {
+test("appearance source contract: select maps the shared theme registry", () => {
   const source = readAppearancePage();
 
   assert.ok(CODE_BLOCK_THEME_OPTIONS.length > 0);
   assert.match(source, /CODE_BLOCK_THEME_OPTIONS\.map/);
 });
 
-test("appearance settings page: preview includes a line long enough to demonstrate wrapping", () => {
+test("appearance source contract: preview contains a line that demonstrates wrapping", () => {
   const source = readAppearancePage();
   const previewSource =
     source.match(/const CODE_BLOCK_PREVIEW_SNIPPET = `([\s\S]*?)`;/)?.[1] ?? "";

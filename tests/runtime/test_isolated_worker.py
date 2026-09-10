@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-import gc
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -58,22 +59,35 @@ async def test_document_wrapper_restores_public_error_type(tmp_path: Path) -> No
 
 
 def test_child_allocation_does_not_raise_parent_rss_plateau() -> None:
-    psutil = pytest.importorskip("psutil")
-    process = psutil.Process()
-    before = process.memory_info().rss
-    for _ in range(3):
-        assert (
-            run_in_isolated_process_sync(
-                "deeptutor.runtime.worker_tasks:test_allocate_bytes",
-                64 * 1024 * 1024,
-                timeout=10,
-            )
-            == 64 * 1024 * 1024
-        )
-    gc.collect()
-    # Allocations happen only in children. Allow normal allocator/test noise in
-    # the parent, but reject retaining anything close to one 64 MB payload.
-    assert process.memory_info().rss - before < 20 * 1024 * 1024
+    pytest.importorskip("psutil")
+    probe = """
+import gc
+import psutil
+from deeptutor.runtime.isolated_worker import run_in_isolated_process_sync
+
+process = psutil.Process()
+before = process.memory_info().rss
+for _ in range(3):
+    result = run_in_isolated_process_sync(
+        "deeptutor.runtime.worker_tasks:test_allocate_bytes",
+        64 * 1024 * 1024,
+        timeout=10,
+    )
+    assert result == 64 * 1024 * 1024
+gc.collect()
+print(process.memory_info().rss - before)
+"""
+    completed = subprocess.run(  # noqa: S603 - fixed interpreter, no shell
+        [sys.executable, "-c", probe],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=45,
+    )
+    retained_bytes = int(completed.stdout.strip())
+    # Measure in a dedicated process so allocations from earlier pytest tests
+    # cannot be mistaken for memory retained by the isolated worker protocol.
+    assert retained_bytes < 20 * 1024 * 1024
 
 
 def test_text_only_parser_writes_result_from_worker(tmp_path: Path) -> None:

@@ -36,7 +36,19 @@ class GenerationFailure(Exception):
 
 
 def _classify_failure(message: str) -> str:
+    """Bucket a generator failure so the UI can say whether a retry is worth it.
+
+    Substring matching on an error string is crude, and the ordering is what
+    keeps it honest: a provider's own rejection must be recognised as one
+    before the heuristics that look for the *model's* misbehaviour get a turn.
+    """
     lower = (message or "").lower()
+    # First, because a provider's rejection quotes the field it objected to.
+    # DeepSeek's "the reasoning_content in the thinking mode must be passed
+    # back to the API" was landing in `prompt_leak` — permanently un-retryable,
+    # and blaming the model for what was a bug in how we replayed its history.
+    if "invalid_request_error" in lower or "must be passed back" in lower:
+        return "provider_error"
     if "json" in lower or "object found" in lower or "parse" in lower:
         return "json_parse"
     if "empty" in lower or "did not return" in lower or "returned no" in lower:
@@ -45,7 +57,9 @@ def _classify_failure(message: str) -> str:
         return "timeout"
     if "rate limit" in lower or "429" in lower:
         return "rate_limit"
-    if "<think" in lower or "reasoning_content" in lower or "prompt" in lower:
+    # `"prompt" in lower` deliberately dropped: it also matches "prompt_tokens",
+    # which appears in ordinary usage payloads.
+    if "<think" in lower or "reasoning_content" in lower or "system prompt" in lower:
         return "prompt_leak"
     if "api" in lower or "llm" in lower or "provider" in lower:
         return "provider_error"
