@@ -13,6 +13,7 @@ from uuid import uuid4
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, ValidationError
 
+from deeptutor.learning.storage import LearningStore
 from deeptutor.multi_user.learning_access import (
     allowed_reading_extensions,
     assert_learning_material,
@@ -49,6 +50,23 @@ def _normal(value: str) -> str:
 def _verified_selection(candidate: str, unit_text: str) -> str:
     value = _normal(candidate)
     return value if value and value in _normal(unit_text) else ""
+
+
+def _record_reading_activity(
+    material_id: str,
+    *,
+    extension_id: str,
+    action: str,
+    locator: int,
+    result_type: str,
+) -> None:
+    LearningStore().record_reading_activity(
+        material_id,
+        extension_id=extension_id,
+        action=action,
+        locator=locator,
+        result_type=result_type,
+    )
 
 
 @router.get("/extensions")
