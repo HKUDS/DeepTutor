@@ -14,6 +14,7 @@ import {
   CodexOAuthApiError,
   codexErrorMessageKey,
   codexStatusMessageKey,
+  completeCodexLogin,
   getCodexStatus,
   isLoopbackHostname,
   logoutCodex,
@@ -37,6 +38,9 @@ export function CodexOAuthCard() {
   const [errorKey, setErrorKey] = useState<string | null>(null);
   const [pollTick, setPollTick] = useState(0);
   const [loginStart, setLoginStart] = useState<CodexLoginStart | null>(null);
+  // Cleared on submit and when the waiting operation ends, so a callback
+  // address never outlives the login it belongs to.
+  const [callbackUrl, setCallbackUrl] = useState("");
   const reloadedOperation = useRef<string | null>(null);
   const statusRequestSequence = useRef(0);
   const remoteAccess =
@@ -51,6 +55,7 @@ export function CodexOAuthCard() {
       nextStatus.operation_state === "expired" ||
       nextStatus.operation_state === "failed";
     if (!terminalOperation) return;
+    setCallbackUrl("");
     setLoginStart((loginStart) =>
       loginStart && nextStatus.operation_id === loginStart.operation_id
         ? null
@@ -307,6 +312,27 @@ export function CodexOAuthCard() {
     }
   };
 
+  const submitCallbackUrl = async () => {
+    const pasted = callbackUrl.trim();
+    if (!pasted) return;
+    invalidateStatusRequests();
+    setPending(true);
+    setErrorKey(null);
+    try {
+      const nextStatus = await completeCodexLogin(pasted);
+      recordStatus(nextStatus);
+      setCallbackUrl("");
+    } catch (error) {
+      setErrorKey(
+        codexErrorMessageKey(
+          error instanceof CodexOAuthApiError ? error.code : null,
+        ),
+      );
+    } finally {
+      setPending(false);
+    }
+  };
+
   const polling = Boolean(status && shouldPollCodexStatus(status));
   const connected = status?.connection === "connected";
   const messageKey =
@@ -443,6 +469,44 @@ export function CodexOAuthCard() {
                   onClick={() => void cancel()}
                 >
                   {t("codex.oauth.cancel")}
+                </Button>
+              </div>
+            </div>
+          )}
+          {remoteGuidance && (
+            <div className="mt-4 rounded-lg border border-[var(--border)] bg-[var(--background)] p-3">
+              <p className="text-sm font-medium">
+                {t("codex.oauth.callbackRecoveryTitle")}
+              </p>
+              <p className="mt-2 text-xs text-[var(--muted-foreground)]">
+                {t("codex.oauth.callbackRecoveryHint")}
+              </p>
+              <label
+                className="mt-3 block text-xs font-medium"
+                htmlFor="codex-callback-url"
+              >
+                {t("codex.oauth.callbackUrlLabel")}
+              </label>
+              <input
+                id="codex-callback-url"
+                type="url"
+                inputMode="url"
+                autoComplete="off"
+                spellCheck={false}
+                value={callbackUrl}
+                onChange={(event) => setCallbackUrl(event.target.value)}
+                placeholder={remoteGuidance.redirect_uri}
+                className="mt-1 w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-xs"
+              />
+              <div className="mt-3">
+                <Button
+                  type="button"
+                  size="sm"
+                  loading={pending}
+                  disabled={!callbackUrl.trim()}
+                  onClick={() => void submitCallbackUrl()}
+                >
+                  {t("codex.oauth.completeSignIn")}
                 </Button>
               </div>
             </div>

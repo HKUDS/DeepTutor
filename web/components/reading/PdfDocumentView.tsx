@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { loadPdfjs, type PdfDocument } from "@/lib/pdfjs-loader";
+import { loadPdfjs, pdfjsWasmUrl, type PdfDocument } from "@/lib/pdfjs-loader";
 import type {
   AnnotationItem,
   NormalisedRect,
@@ -112,6 +112,9 @@ export function PdfDocumentView({
         const pdfjs = await loadPdfjs();
         const loadingTask = pdfjs.getDocument({
           url: rawMaterialUrl(materialId),
+          // PDF.js loads OpenJPEG/JBIG2/QCMS from these assets when a PDF uses
+          // JPEG2000 or other formats that are not decoded in pure JS.
+          wasmUrl: pdfjsWasmUrl(),
           // The raw route sits behind the session cookie like every other API
           // route; pdf.js does its own fetching, so it needs telling.
           withCredentials: true,

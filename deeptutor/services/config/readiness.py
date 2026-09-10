@@ -776,17 +776,21 @@ async def _selected_remote_parser_reachable(
 ) -> bool | None:
     try:
         if engine_id == "tika":
-            from deeptutor.services.parsing.engines.tika.remote import verify_remote
+            from deeptutor.services.parsing.engines.tika.remote import (
+                verify_remote as verify_tika_remote,
+            )
 
             ok, _ = await asyncio.wait_for(
-                asyncio.to_thread(verify_remote, config, 2.0), timeout=3.0
+                asyncio.to_thread(verify_tika_remote, config, 2.0), timeout=3.0
             )
             return bool(ok)
         if engine_id == "docling" and bool(getattr(config, "is_remote", False)):
-            from deeptutor.services.parsing.engines.docling.remote import verify_remote
+            from deeptutor.services.parsing.engines.docling.remote import (
+                verify_remote as verify_docling_remote,
+            )
 
             ok, _ = await asyncio.wait_for(
-                asyncio.to_thread(verify_remote, config, 2.0), timeout=3.0
+                asyncio.to_thread(verify_docling_remote, config, 2.0), timeout=3.0
             )
             return bool(ok)
         if engine_id == "mineru" and bool(getattr(config, "is_cloud", False)):

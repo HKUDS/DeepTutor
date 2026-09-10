@@ -85,6 +85,10 @@ export interface PartnerSessionInfo {
   updated_at: string;
   last_message: string;
   archived?: boolean;
+  /** The platform conversation this session belongs to, when the channel said. */
+  chat_id?: string;
+  /** "group" or "direct"; absent when the channel does not distinguish them. */
+  scope?: string;
 }
 
 export interface PartnerCommandInfo {

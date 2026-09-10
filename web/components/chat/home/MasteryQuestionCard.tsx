@@ -21,9 +21,9 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import InlineMarkdown from "@/components/common/InlineMarkdown";
 import { useCardSubmission } from "@/hooks/use-card-submission";
 import { REPLY_NOT_DELIVERED } from "@/lib/ask-user-state";
-import { decodeEscapedUnicodeForDisplay } from "@/lib/markdown-display";
 import type {
   MasteryGradeResult,
   MasteryQuestion,
@@ -86,7 +86,7 @@ function OptionRow({
       </span>
       {/* The body is the option. It is never printed beside its own letter. */}
       <span className={"min-w-0 flex-1 text-[13.5px] leading-relaxed " + body}>
-        {decodeEscapedUnicodeForDisplay(option.body)}
+        <InlineMarkdown content={option.body} />
       </span>
     </button>
   );
@@ -131,7 +131,8 @@ export const MasteryQuestionCard = memo(function MasteryQuestionCard({
   }, [freeSelected]);
 
   const hasChoices = question.options.length > 0;
-  const answer = freeSelected ? freeText.trim() : picked;
+  const usesFreeText = freeSelected || !hasChoices;
+  const answer = usesFreeText ? freeText.trim() : picked;
   // Skipping settles the card exactly as answering does: the engine closed the
   // question, so there is nothing left on it to send.
   const settled = answered || skipped === true;
@@ -197,7 +198,7 @@ export const MasteryQuestionCard = memo(function MasteryQuestionCard({
       ) : null}
 
       <div className="mt-0.5 font-serif text-[15.5px] font-semibold leading-relaxed tracking-[-0.01em] text-[var(--foreground)]">
-        {decodeEscapedUnicodeForDisplay(question.prompt)}
+        <InlineMarkdown content={question.prompt} />
       </div>
 
       {hasChoices ? (
@@ -269,7 +270,7 @@ export const MasteryQuestionCard = memo(function MasteryQuestionCard({
           </div>
           {grade.explanation ? (
             <div className="mt-1 text-[12.5px] leading-relaxed text-[var(--muted-foreground)]">
-              {decodeEscapedUnicodeForDisplay(grade.explanation)}
+              <InlineMarkdown content={grade.explanation} />
             </div>
           ) : null}
         </div>

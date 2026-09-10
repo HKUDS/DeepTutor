@@ -4,6 +4,7 @@ import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import InlineMarkdown from "@/components/common/InlineMarkdown";
 import { useCardSubmission } from "@/hooks/use-card-submission";
 import { REPLY_NOT_DELIVERED } from "@/lib/ask-user-state";
 import { decodeEscapedUnicodeForDisplay } from "@/lib/markdown-display";
@@ -997,7 +998,11 @@ const InteractiveAskUserCard = memo(function InteractiveAskUserCard({
         </div>
         <div className="flex-1">
           <div className="text-[13px] font-medium leading-snug text-[var(--foreground)]">
-            {payload.intro || t("Please answer to continue.")}
+            {payload.intro ? (
+              <InlineMarkdown content={payload.intro} />
+            ) : (
+              t("Please answer to continue.")
+            )}
           </div>
           <div
             className={
@@ -1166,7 +1171,7 @@ const QuestionBody = memo(function QuestionBody({
   return (
     <>
       <div className="mt-3 text-[14px] font-medium leading-snug text-[var(--foreground)]">
-        {question.prompt}
+        <InlineMarkdown content={question.prompt} />
         {question.multi_select ? (
           <span className="ml-1.5 text-[11px] font-normal text-[var(--muted-foreground)]">
             {t("Select all that apply.")}
@@ -1207,11 +1212,11 @@ const QuestionBody = memo(function QuestionBody({
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block text-[13.5px] leading-snug">
-                    {option.label}
+                    <InlineMarkdown content={option.label} />
                   </span>
                   {option.description ? (
                     <span className="mt-0.5 block text-[11.5px] leading-snug text-[var(--muted-foreground)]">
-                      {option.description}
+                      <InlineMarkdown content={option.description} />
                     </span>
                   ) : null}
                 </span>

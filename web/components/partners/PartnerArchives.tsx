@@ -5,6 +5,8 @@ import {
   Archive,
   Clock3,
   MessageSquareText,
+  User,
+  Users,
   RefreshCw,
   RotateCcw,
   Trash2,
@@ -220,9 +222,29 @@ export default function PartnerArchives({
                   {session.last_message}
                 </p>
               ) : null}
-              <div className="mt-1 flex items-center gap-1 text-[10.5px] text-[var(--muted-foreground)]">
-                <Clock3 className="h-3 w-3" />
-                {formatTime(session.updated_at)}
+              <div className="mt-1 flex items-center gap-2 text-[10.5px] text-[var(--muted-foreground)]">
+                <span className="flex items-center gap-1">
+                  <Clock3 className="h-3 w-3" />
+                  {formatTime(session.updated_at)}
+                </span>
+                {/* Which conversation on the platform this came from. One
+                    partner commonly serves several study groups plus DMs, and
+                    without this every one of them reads as a private chat
+                    (#1229). Sessions recorded before the origin was stored
+                    carry none, and simply show nothing extra. */}
+                {session.chat_id ? (
+                  <span
+                    className="flex min-w-0 items-center gap-1"
+                    title={session.chat_id}
+                  >
+                    {session.scope === "group" ? (
+                      <Users className="h-3 w-3 shrink-0" />
+                    ) : session.scope === "direct" ? (
+                      <User className="h-3 w-3 shrink-0" />
+                    ) : null}
+                    <span className="truncate">{session.chat_id}</span>
+                  </span>
+                ) : null}
               </div>
             </button>
           ))}

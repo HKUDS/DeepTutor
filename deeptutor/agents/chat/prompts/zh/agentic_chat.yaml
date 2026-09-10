@@ -91,7 +91,7 @@ notices:
   tool_result_snipped: "[较早的工具结果已裁剪以保持在上下文窗口内；如果仍需要该内容，请再次调用同一工具]"
   ask_user_resolved_directive: "[ask_user 已解决。请使用这些回答继续处理用户的原始请求。不要只回复确认。]"
   too_many_tool_calls: "模型请求了 {requested} 个工具，单轮最多并行执行 {limit} 个，已截断。"
-  tool_unknown_error: "执行工具 {tool} 时发生未知错误。"
+  tool_error: "{tool} 执行失败：{error}"
   tool_not_available: "该工具在本次对话中不可用，只能调用提示中列出的工具。"
   start_retrieval: "开始检索"
   empty_tool_result: "工具执行完成，但没有返回文本内容。"

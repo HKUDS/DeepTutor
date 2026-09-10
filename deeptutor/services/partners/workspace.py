@@ -341,10 +341,10 @@ def list_assets(partner_id: str) -> dict[str, list[dict[str, Any]]]:
     # cannot see one. Left out, an assigned WeKnora or linked KB was invisible
     # in the partner's library AND never excluded from the picker, so the user
     # kept assigning it and kept seeing nothing happen.
-    for name, entry in sorted(_partner_kb_config(root).items()):
+    for name, config_entry in sorted(_partner_kb_config(root).items()):
         if any(row["name"] == name for row in kbs):
             continue
-        kbs.append({"name": name, "documents": 0, "type": entry.get("type", "")})
+        kbs.append({"name": name, "documents": 0, "type": config_entry.get("type", "")})
 
     skills: list[dict[str, Any]] = []
     skills_root = service.get_workspace_dir() / "skills"

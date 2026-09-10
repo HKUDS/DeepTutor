@@ -390,6 +390,8 @@ DeepTutor 會將已安裝的程式碼、私有執行環境目錄與選用的內�
 <img src="../../assets/figs/web-1.6.5/OVERVIEW.png" alt="DeepTutor 首頁 — 側邊欄包含所有功能入口的 Chat 工作區" width="900">
 </div>
 
+> **截圖狀態：** 總覽圖已更新到 v1.6.5。下方功能截圖仍是 v1.4.6 參考圖，正在分批替換；請查看[截圖清單](../../UI_SCREENSHOT_REFRESH.md)。它們適合說明工作流，不代表目前精確導覽。
+
 <details>
 <summary><b>🏗️ 系統架構</b></summary>
 

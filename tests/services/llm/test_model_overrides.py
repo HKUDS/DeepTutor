@@ -85,13 +85,22 @@ def test_vendor_prefixed_routing_still_finds_the_model() -> None:
     }
 
 
-def test_bare_k3_is_exact_and_does_not_capture_unrelated_short_ids() -> None:
+def test_the_k3_family_covers_its_variants_without_capturing_short_ids() -> None:
+    """One family name, not one rule per released id.
+
+    ``k3-256k`` was added to the Kimi coding endpoint after ``k3`` and got
+    HTTP 400 on every call (#1227), because the rule named the one id that
+    existed when it was written. A sibling that ships tomorrow is covered
+    here; an unrelated short id still is not.
+    """
     moonshot = find_by_name("moonshot")
     assert model_overrides_for("k3", moonshot) == {"temperature": None}
     assert model_overrides_for("k3-256k", moonshot) == {"temperature": None}
+    assert model_overrides_for("k3-1m", moonshot) == {"temperature": None}
     assert model_overrides_for("sk3", moonshot) == {}
     assert model_overrides_for("k30", moonshot) == {}
-    assert model_overrides_for("k3-256kx", moonshot) == {}
+    assert model_overrides_for("k3x", moonshot) == {}
     assert find_by_model("k3") is moonshot
     assert find_by_model("k3-256k") is moonshot
+    assert find_by_model("k3-1m") is moonshot
     assert find_by_model("sk3") is None

@@ -134,7 +134,14 @@ def _is_local_host(host: str) -> bool:
         address = ipaddress.ip_address(host)
     except ValueError:
         return False
-    return address.is_loopback or address.is_private or address.is_link_local
+    # RFC 6598 shared address space is used by private overlays such as Tailscale.
+    # ipaddress intentionally classifies it as neither private nor global.
+    return (
+        address.is_loopback
+        or address.is_private
+        or address.is_link_local
+        or address in ipaddress.ip_network("100.64.0.0/10")
+    )
 
 
 def normalize_video_learning_settings(payload: Any) -> dict[str, Any]:
