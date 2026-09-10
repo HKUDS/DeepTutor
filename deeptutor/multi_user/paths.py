@@ -208,7 +208,7 @@ def get_owner_path_service() -> PathService:
     return _resolve_owner()[1]
 
 
-def owner_secrets_dir(owner_id: str) -> Path:
+def owner_secrets_dir(owner_id: str, *, system_root: Path | None = None) -> Path:
     """Secrets directory of a *named* owner, independent of the request scope.
 
     Needed because not every reader runs inside a request: an MCP connection
@@ -217,7 +217,7 @@ def owner_secrets_dir(owner_id: str) -> Path:
     whoever happens to be current.
     """
     # SYSTEM_ROOT is read per call so a monkey-patched root (tests) is honored.
-    secrets_root = SYSTEM_ROOT / USER_SECRETS_DIRNAME
+    secrets_root = (system_root if system_root is not None else SYSTEM_ROOT) / USER_SECRETS_DIRNAME
     owner_dir = secrets_root / (owner_id or LOCAL_ADMIN_ID)
     owner_dir.mkdir(parents=True, exist_ok=True)
     # Re-asserted rather than assumed from ``ensure_system_dirs``: this is the
@@ -229,7 +229,7 @@ def owner_secrets_dir(owner_id: str) -> Path:
     return owner_dir.resolve()
 
 
-def get_owner_secrets_dir() -> Path:
+def get_owner_secrets_dir(*, runtime_home: Path | None = None) -> Path:
     """Owner-private directory for secrets the sandbox must never see.
 
     ``data/system`` is the one branch of the tree the sandbox runner does not
@@ -241,8 +241,13 @@ def get_owner_secrets_dir() -> Path:
 
     Laid out like a user root (``private/<asset>/``) so a store written against
     one can be pointed here without changing what it knows about its own files.
+    An explicit ``runtime_home`` supports callers such as ``init --home`` that
+    switch homes after this module's deployment paths have been initialized.
     """
-    return owner_secrets_dir(current_owner_id())
+    return owner_secrets_dir(
+        current_owner_id(),
+        system_root=runtime_home / "data" / "system" if runtime_home is not None else None,
+    )
 
 
 def current_owner_id() -> str:

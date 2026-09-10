@@ -1,20 +1,23 @@
-"""GitHub Copilot provider with graceful fallback to existing local auth."""
+"""GitHub Copilot provider backed by a persisted GitHub device login."""
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 import time
 from typing import Any
 
-import httpx
-from openai import AuthenticationError
-
+from deeptutor.services.github_copilot_auth import (
+    CopilotModel,
+    exchange_copilot_token,
+    fetch_github_copilot_models,
+    get_github_copilot_storage,
+)
 from deeptutor.services.llm.provider_core.base import LLMResponse
 from deeptutor.services.llm.provider_core.openai_compat_provider import OpenAICompatProvider
 from deeptutor.services.provider_registry import find_by_name
 
 DEFAULT_COPILOT_BASE_URL = "https://api.githubcopilot.com"
-DEFAULT_COPILOT_TOKEN_URL = "https://api.github.com/copilot_internal/v2/token"
 USER_AGENT = "DeepTutor/1"
 EDITOR_VERSION = "vscode/1.99.0"
 EDITOR_PLUGIN_VERSION = "copilot-chat/0.26.0"
@@ -22,7 +25,7 @@ _EXPIRY_SKEW_SECONDS = 60
 
 
 class GitHubCopilotProvider(OpenAICompatProvider):
-    """Provider that first tries existing Copilot auth, then oauth-cli-kit tokens."""
+    """Provider that exchanges a stored GitHub token for Copilot access."""
 
     def __init__(
         self,
@@ -32,8 +35,14 @@ class GitHubCopilotProvider(OpenAICompatProvider):
     ):
         self._copilot_access_token: str | None = None
         self._copilot_expires_at: float = 0.0
+        self._storage = get_github_copilot_storage()
+        self._models: dict[str, CopilotModel] = {}
+        self._refresh_lock = asyncio.Lock()
         super().__init__(
-            api_key="copilot",
+            # The real short-lived token is installed by _ensure_api_key().
+            # Passing a placeholder here would create a KeyPool that later
+            # overwrites the client's Authorization header with that placeholder.
+            api_key=None,
             api_base=DEFAULT_COPILOT_BASE_URL,
             default_model=default_model,
             extra_headers={
@@ -46,69 +55,97 @@ class GitHubCopilotProvider(OpenAICompatProvider):
             configure_env=configure_env,
         )
 
-    async def _try_existing_local_auth(self) -> None:
-        self.api_key = "copilot"
-        self._client.api_key = "copilot"
-
-    async def _load_stored_github_token(self) -> str | None:
-        try:
-            from oauth_cli_kit.storage import FileTokenStorage
-        except ImportError:
-            return None
-        storage = FileTokenStorage(  # nosec B106 - token_filename is a file name, not a password.
-            token_filename="github-copilot.json",
-            app_name="nanobot",
-            import_codex_cli=False,
-        )
-        token = storage.load()
-        if not token or not getattr(token, "access", None):
-            return None
-        return str(token.access)
-
     async def _exchange_token(self) -> str:
-        github_token = await self._load_stored_github_token()
-        if not github_token:
+        stored = self._storage.load()
+        if stored is None:
             raise RuntimeError(
-                "GitHub Copilot auth is unavailable. Validate local Copilot auth or log in first."
+                "GitHub Copilot is not logged in for this owner. "
+                "Run: deeptutor provider login github-copilot"
             )
-
-        timeout = httpx.Timeout(20.0, connect=20.0)
-        async with httpx.AsyncClient(
-            timeout=timeout, follow_redirects=True, trust_env=True
-        ) as client:
-            response = await client.get(
-                DEFAULT_COPILOT_TOKEN_URL,
-                headers={
-                    "Authorization": f"token {github_token}",
-                    "Accept": "application/json",
-                    "User-Agent": USER_AGENT,
-                    "Editor-Version": EDITOR_VERSION,
-                    "Editor-Plugin-Version": EDITOR_PLUGIN_VERSION,
-                },
-            )
-            response.raise_for_status()
-            payload = response.json()
-
-        token = payload.get("token")
-        if not token:
-            raise RuntimeError("GitHub Copilot token exchange returned no token.")
-        expires_at = payload.get("expires_at")
-        if isinstance(expires_at, (int, float)):
-            self._copilot_expires_at = float(expires_at)
-        else:
-            refresh_in = payload.get("refresh_in") or 1500
-            self._copilot_expires_at = time.time() + int(refresh_in)
-        self._copilot_access_token = str(token)
+        access = await exchange_copilot_token(stored.access)
+        models = await fetch_github_copilot_models(access)
+        self.api_base = access.api_base.rstrip("/")
+        self._effective_base = self.api_base
+        self._client.base_url = self.api_base + "/"
+        self._models = {model.id: model for model in models}
+        self._copilot_expires_at = access.expires_at
+        self._copilot_access_token = access.token
         return self._copilot_access_token
 
     async def _ensure_api_key(self) -> None:
+        async with self._refresh_lock:
+            await self._refresh_api_key()
+
+    async def _refresh_api_key(self) -> None:
         now = time.time()
         if self._copilot_access_token and now < self._copilot_expires_at - _EXPIRY_SKEW_SECONDS:
             self.api_key = self._copilot_access_token
             self._client.api_key = self._copilot_access_token
             return
 
-        await self._try_existing_local_auth()
+        token = await self._exchange_token()
+        self.api_key = token
+        self._client.api_key = token
+
+    @staticmethod
+    def _supports_temperature(
+        model_name: str,
+        reasoning_effort: str | None = None,
+    ) -> bool:
+        if model_name.lower().split("/")[-1] == "gpt-6-astra":
+            return False
+        return OpenAICompatProvider._supports_temperature(model_name, reasoning_effort)
+
+    def _should_use_responses_api(
+        self,
+        model: str | None,
+        reasoning_effort: str | None,
+        tools: list[dict[str, Any]] | None = None,
+    ) -> bool:
+        model_id = (model or self.default_model).split("/")[-1]
+        discovered = self._models.get(model_id)
+        if discovered is None:
+            raise ValueError(f"GitHub Copilot model is not currently available: {model_id}")
+        endpoints = discovered.supported_endpoints
+        if endpoints is not None:
+            if "/chat/completions" not in endpoints:
+                return True
+            if "/responses" not in endpoints:
+                return False
+        return super()._should_use_responses_api(model, reasoning_effort, tools)
+
+    @staticmethod
+    def _normalize_responses_input(value: Any) -> Any:
+        if not isinstance(value, list):
+            return value
+        normalized = []
+        for item in value:
+            if not isinstance(item, dict):
+                normalized.append(item)
+                continue
+            # Copilot rejects message/reasoning status, including the null
+            # added by SDK model_dump for reasoning. Function-call status is
+            # accepted; keep tool lifecycle fields and reasoning IDs intact.
+            excluded = set()
+            if item.get("type") == "reasoning":
+                excluded.add("status")
+            elif item.get("type") == "message" or ("type" not in item and "role" in item):
+                excluded.update(("status", "id"))
+            normalized.append({key: val for key, val in item.items() if key not in excluded})
+        return normalized
+
+    async def _create_with_key_rotation(self, create, kwargs: dict[str, Any]) -> Any:
+        if create == self._client.responses.create:
+            # Run after extra kwargs are merged in both streaming and ordinary
+            # requests. extra_body can override input again inside the SDK.
+            kwargs = {**kwargs, "input": self._normalize_responses_input(kwargs.get("input"))}
+            extra_body = kwargs.get("extra_body")
+            if isinstance(extra_body, dict) and "input" in extra_body:
+                kwargs["extra_body"] = {
+                    **extra_body,
+                    "input": self._normalize_responses_input(extra_body["input"]),
+                }
+        return await super()._create_with_key_rotation(create, kwargs)
 
     async def _chat_impl(
         self,
@@ -125,21 +162,8 @@ class GitHubCopilotProvider(OpenAICompatProvider):
         **kwargs: Any,
     ) -> LLMResponse:
         await self._ensure_api_key()
-        try:
-            if stream:
-                return await super().chat_stream(
-                    messages=messages,
-                    tools=tools,
-                    model=model,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                    reasoning_effort=reasoning_effort,
-                    tool_choice=tool_choice,
-                    on_content_delta=on_content_delta,
-                    on_reasoning_delta=on_reasoning_delta,
-                    **kwargs,
-                )
-            return await super().chat(
+        if stream:
+            return await super().chat_stream(
                 messages=messages,
                 tools=tools,
                 model=model,
@@ -147,35 +171,20 @@ class GitHubCopilotProvider(OpenAICompatProvider):
                 temperature=temperature,
                 reasoning_effort=reasoning_effort,
                 tool_choice=tool_choice,
+                on_content_delta=on_content_delta,
+                on_reasoning_delta=on_reasoning_delta,
                 **kwargs,
             )
-        except AuthenticationError:
-            token = await self._exchange_token()
-            self.api_key = token
-            self._client.api_key = token
-            if stream:
-                return await super().chat_stream(
-                    messages=messages,
-                    tools=tools,
-                    model=model,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                    reasoning_effort=reasoning_effort,
-                    tool_choice=tool_choice,
-                    on_content_delta=on_content_delta,
-                    on_reasoning_delta=on_reasoning_delta,
-                    **kwargs,
-                )
-            return await super().chat(
-                messages=messages,
-                tools=tools,
-                model=model,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                reasoning_effort=reasoning_effort,
-                tool_choice=tool_choice,
-                **kwargs,
-            )
+        return await super().chat(
+            messages=messages,
+            tools=tools,
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            reasoning_effort=reasoning_effort,
+            tool_choice=tool_choice,
+            **kwargs,
+        )
 
     async def chat(
         self,
@@ -232,3 +241,20 @@ class GitHubCopilotProvider(OpenAICompatProvider):
             on_reasoning_delta,
             **kwargs,
         )
+
+
+async def validate_github_copilot_model(model: str) -> None:
+    """Probe inference through the same authenticated, protocol-aware runtime."""
+    provider = GitHubCopilotProvider(default_model=model)
+    try:
+        response = await provider.chat(
+            messages=[{"role": "user", "content": "Reply with OK."}],
+            max_tokens=16,
+        )
+        if response.finish_reason == "error":
+            raise RuntimeError(
+                f"Copilot model validation failed for {model}: "
+                f"{response.content or 'provider returned an error'}"
+            )
+    finally:
+        await provider.aclose()

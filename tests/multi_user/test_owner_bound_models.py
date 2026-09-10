@@ -131,3 +131,34 @@ def test_a_codebuddy_profile_is_owner_bound_by_its_binding() -> None:
     assert model_access.is_owner_bound({"binding": "openai"}) is False
     # The explicit flag still wins for anything else that sets it.
     assert model_access.is_owner_bound({"binding": "openai", "owner_bound": True}) is True
+
+
+def test_copilot_binding_blocks_existing_grants_and_assignment(tmp_path, monkeypatch):
+    from deeptutor.api.routers import multi_user as router
+
+    catalog = _catalog(owner_bound=False)
+    catalog["services"]["llm"]["profiles"][0]["binding"] = "github_copilot"
+    assert model_access.is_owner_bound({"binding": "GitHub_Copilot"})
+    assert model_access.is_owner_bound({"binding": "github-copilot"})
+    monkeypatch.setattr(model_access, "admin_catalog", lambda: catalog)
+    monkeypatch.setattr(model_access, "load_grant", _grant)
+    monkeypatch.setattr(
+        router, "ModelCatalogService", lambda path=None: SimpleNamespace(load=lambda: catalog)
+    )
+    monkeypatch.setattr(
+        router,
+        "get_admin_path_service",
+        lambda: SimpleNamespace(get_settings_file=lambda _: tmp_path / "catalog.json"),
+    )
+    token = set_current_user(make_user(tmp_path))
+    try:
+        assert model_access.redacted_model_access()["llm"] == []
+        assert model_access.allowed_llm_options()["options"] == []
+        assert not model_access.has_capability_access("llm")
+        with pytest.raises(PermissionError):
+            model_access.apply_allowed_llm_selection(
+                {"profile_id": CODEX_PROFILE, "model_id": "m-sol"}
+            )
+        assert router._admin_catalog_summary() == {"llm": []}
+    finally:
+        reset_current_user(token)

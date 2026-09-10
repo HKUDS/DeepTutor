@@ -916,7 +916,45 @@ The repo ships a root [`SKILL.md`](SKILL.md) — a ~200-line handover doc that t
 | `deeptutor book list/health/refresh-fingerprints` | Inspect books and refresh source fingerprints |
 | `deeptutor plugin list/info` | Inspect registered tools and capabilities |
 | `deeptutor config show` | Print configuration summary |
-| `deeptutor provider login <provider>` | Provider auth (`openai-codex` OAuth login; `github-copilot` validates an existing Copilot auth session; `codebuddy` validates CodeBuddy SDK auth and starts login when needed) |
+| `deeptutor provider login <provider>` | Provider auth (`openai-codex` OAuth login; `github-copilot` GitHub device login; `codebuddy` validates CodeBuddy SDK auth and starts login when needed) |
+
+GitHub Copilot credentials belong to the signed-in DeepTutor owner and live only at
+`<runtime-home>/data/system/user-secrets/<owner-id>/private/github-copilot/credentials.v1.json`,
+outside sandbox workspaces. CLI/admin partners use the administrator's credentials;
+other users sign in separately, and Copilot profiles cannot be shared through model grants.
+External nanobot/Copilot token files are never imported: after upgrading, run
+`deeptutor provider login github-copilot` again.
+
+Login validates inference with a currently discovered model; `init` validates the selected
+model and aborts on failure without saving the draft configuration. Successful GitHub
+authentication alone does not establish Copilot model access (the saved login is retained
+if validation fails). Runtime requests follow the API endpoint returned by token exchange,
+including refreshes, and respect each model's Responses/Chat Completions endpoint metadata.
+
+**Copilot Responses history compatibility:** Copilot rejects message and reasoning
+input `status` fields, even `null`. A live `gpt-5.6-sol-fast` replay reproduced
+`Unknown parameter: 'input[3].status'` on the third turn: the second reply contained
+encrypted reasoning without a wire `status`, but the OpenAI SDK's `model_dump()`
+added `status: null`. That state survives the response parser, agent loop,
+assistant metadata persistence, and context-history rebuild. A message-only
+cleanup therefore fixes ordinary greetings but not subsequent reasoning replies;
+missing message `type` is not the cause of this reproduced error.
+
+DeepTutor normalizes these fields only for Copilot, immediately before SDK dispatch
+(after request kwargs, including `extra_body.input` overrides). Message IDs are
+also omitted; reasoning IDs, encrypted content, summaries, message content/phase,
+and tool-call/result pairing remain intact. Function-call `status: completed`
+was accepted in a live isolated probe and is deliberately preserved, as are other
+tool lifecycle fields. Stored history and OpenAI/Codex requests are not rewritten.
+Regression coverage includes four-turn SQLite history and tool-state replay in
+both streaming and non-streaming modes; live four-turn checks also passed in
+both modes.
+
+An English-only answer is separate from this transport error: chat appends a strict
+language directive based on the turn's response-language setting. Select Chinese
+as the response language in Settings to use Chinese replies. Live checks with
+English and Chinese directives confirmed this distinction; no language defaults
+were changed.
 
 </details>
 

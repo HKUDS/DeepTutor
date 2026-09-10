@@ -1581,18 +1581,20 @@ async def apply_catalog(payload: CatalogPayload | None = None):
 
 @router.post("/fetch-models")
 async def fetch_models_from_provider(payload: FetchModelsPayload):
-    """List the model IDs an OpenAI-compatible provider exposes.
+    """List selectable model IDs using the provider's own authentication.
 
     Thin HTTP surface over ``factory.fetch_models`` so the settings UI can
-    populate a model picker from ``base_url`` + ``api_key`` instead of making
-    the user type model IDs by hand.
+    populate a model picker. Copilot uses the caller's owner-private CLI login,
+    not the profile's API key or base URL.
     """
     _require_settings_admin()
     from deeptutor.services.llm.factory import fetch_models as fetch_llm_models
+    from deeptutor.services.provider_registry import canonical_provider_name
 
     base_url = (payload.base_url or "").strip()
     binding = (payload.binding or "").strip().lower() or "openai"
-    if not base_url and binding != "codebuddy":
+    is_copilot = canonical_provider_name(binding) == "github_copilot"
+    if not base_url and binding != "codebuddy" and not is_copilot:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="base_url is required for this provider.",
@@ -1600,7 +1602,9 @@ async def fetch_models_from_provider(payload: FetchModelsPayload):
 
     api_key = payload.api_key
     api_format = (payload.api_format or "").strip().lower()
-    if payload.profile_id and (api_key == CATALOG_SECRET_MASK or not api_format):
+    if is_copilot:
+        base_url, api_key, api_format = "", None, "auto"
+    elif payload.profile_id and (api_key == CATALOG_SECRET_MASK or not api_format):
         service = get_model_catalog_service().load().get("services", {}).get(payload.service, {})
         profile = next(
             (item for item in service.get("profiles", []) if item.get("id") == payload.profile_id),
@@ -1614,6 +1618,18 @@ async def fetch_models_from_provider(payload: FetchModelsPayload):
     try:
         model_ids = await fetch_llm_models(binding, base_url, api_key, api_format or "auto")
     except Exception as exc:  # noqa: BLE001 — surface any provider error as 502
+        if is_copilot:
+            # OAuth exceptions can contain credential-bearing URLs or responses.
+            # Never echo or log their raw text at this public HTTP boundary.
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=(
+                    "Could not list GitHub Copilot models. "
+                    "Run: deeptutor provider login github-copilot "
+                    "for this account in the server's DeepTutor home, "
+                    "then retry. If already logged in, check Copilot access and connectivity."
+                ),
+            ) from None
         logger.exception("Failed to fetch models from %s", base_url)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
