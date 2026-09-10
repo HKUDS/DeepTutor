@@ -21,6 +21,7 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import MarkdownRenderer from "@/components/common/MarkdownRenderer";
 import { useCardSubmission } from "@/hooks/use-card-submission";
 import { REPLY_NOT_DELIVERED } from "@/lib/ask-user-state";
 import { decodeEscapedUnicodeForDisplay } from "@/lib/markdown-display";
@@ -85,9 +86,14 @@ function OptionRow({
         {letter}
       </span>
       {/* The body is the option. It is never printed beside its own letter. */}
-      <span className={"min-w-0 flex-1 text-[13.5px] leading-relaxed " + body}>
-        {decodeEscapedUnicodeForDisplay(option.body)}
-      </span>
+      <div className={"min-w-0 flex-1 text-[13.5px] leading-relaxed " + body}>
+        <MarkdownRenderer
+          content={decodeEscapedUnicodeForDisplay(option.body)}
+          variant="compact"
+          enableMath
+          className="![font:inherit] [&>p]:my-0"
+        />
+      </div>
     </button>
   );
 }
@@ -197,7 +203,12 @@ export const MasteryQuestionCard = memo(function MasteryQuestionCard({
       ) : null}
 
       <div className="mt-0.5 font-serif text-[15.5px] font-semibold leading-relaxed tracking-[-0.01em] text-[var(--foreground)]">
-        {decodeEscapedUnicodeForDisplay(question.prompt)}
+        <MarkdownRenderer
+          content={decodeEscapedUnicodeForDisplay(question.prompt)}
+          variant="compact"
+          enableMath
+          className="![font:inherit] [&>p]:my-0"
+        />
       </div>
 
       {hasChoices ? (
@@ -269,7 +280,12 @@ export const MasteryQuestionCard = memo(function MasteryQuestionCard({
           </div>
           {grade.explanation ? (
             <div className="mt-1 text-[12.5px] leading-relaxed text-[var(--muted-foreground)]">
-              {decodeEscapedUnicodeForDisplay(grade.explanation)}
+              <MarkdownRenderer
+                content={decodeEscapedUnicodeForDisplay(grade.explanation)}
+                variant="compact"
+                enableMath
+                className="![font:inherit] [&>p]:my-0"
+              />
             </div>
           ) : null}
         </div>
