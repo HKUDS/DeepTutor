@@ -1220,9 +1220,13 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
   );
 }
 
-function defaultModelLabel(language: "en" | "zh", index: number): string {
+function defaultModelLabel(language: "en" | "zh" | "fr", index: number): string {
   const safeIndex = index > 0 ? index : 1;
-  return language === "zh" ? `模型${safeIndex}` : `Model ${safeIndex}`;
+  return language === "zh"
+    ? `模型${safeIndex}`
+    : language === "fr"
+      ? `Modèle ${safeIndex}`
+      : `Model ${safeIndex}`;
 }
 
 function formatCompactTokens(value: string | number | undefined): string {
