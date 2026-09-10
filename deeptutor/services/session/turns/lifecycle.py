@@ -197,15 +197,31 @@ class TurnLifecycle:
         failure_code: str = "",
         retryable: bool = False,
     ) -> bool:
-        return await self.store.transition_turn(
-            execution.turn_id,
-            status,
-            expected_status="running",
-            fencing_token=(execution.lease.fencing_token if execution.lease is not None else None),
-            error=error,
-            failure_code=failure_code,
-            retryable=retryable,
-        )
+        # A turn parked on ``ask_user`` sits at ``waiting_input``, and the
+        # waiter's ``finally`` fires its restore to ``running`` through
+        # ``asyncio.shield`` — fire-and-forget, so on a cancellation it races
+        # this write and loses about as often as it wins. A terminal write
+        # that accepts only ``running`` therefore no-ops on exactly the turns
+        # a learner stopped mid-question: no terminal row, no ``done`` event,
+        # and a durable ``waiting_input`` row that ``_begin_turn_sync`` counts
+        # as active — every later message in that session is refused with
+        # "Session already has an active turn" (#1297, #1359). Both are live
+        # states owned by this execution, so both are valid predecessors of
+        # its terminal state; the fencing token is what proves ownership, and
+        # it is unchanged.
+        fencing_token = execution.lease.fencing_token if execution.lease is not None else None
+        for expected in ("running", "waiting_input"):
+            if await self.store.transition_turn(
+                execution.turn_id,
+                status,
+                expected_status=expected,
+                fencing_token=fencing_token,
+                error=error,
+                failure_code=failure_code,
+                retryable=retryable,
+            ):
+                return True
+        return False
 
     async def _coordinate_execution(self, execution: _TurnExecution) -> None:
         """Renew ownership and consume commands addressed to this worker."""

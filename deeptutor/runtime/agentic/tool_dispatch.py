@@ -10,7 +10,7 @@ Lifted from chat's pipeline. Capability-agnostic: the caller supplies:
   its running/terminal state and its intermediate progress into its own
   sub-trace regardless of flavor.
 * labels for the trace UI rows (``tool_call``, ``retrieve``) plus the
-  capability-specific copy for empty results / over-quota / unknown errors.
+  capability-specific copy for empty results / over-quota / tool failures.
 
 The dispatcher executes all tool calls in parallel, emits one sub-trace per
 tool call, and returns a :class:`DispatchOutcome` carrying the role=tool
@@ -60,7 +60,38 @@ KwargAugmenter = Callable[[str, dict[str, Any], UnifiedContext], dict[str, Any]]
 # which tools rebind is a capability's knowledge, not the dispatcher's.
 RebindingTools = frozenset[str]
 RetrieveMetaFactory = Callable[[dict[str, Any], str, dict[str, Any]], dict[str, Any] | None]
-UnknownErrorMessageFactory = Callable[[str], str]
+# What a raising tool reports back to the model: the tool that failed *and*
+# why. The cause is a parameter rather than something the caller may look up,
+# because it is the half that kept going missing — the dispatcher holds the
+# exception, every capability wrote its own message from the tool name alone,
+# and three of the four called the result "unknown". A stopped Ollama says
+# where it was listening and how to start it (#1356); the model was told "an
+# unknown error occurred while executing rag" and went looking for one.
+ToolErrorMessageFactory = Callable[[str, str], str]
+#: Prompt-bundle key for that message. One key, one wording, five call sites.
+TOOL_ERROR_NOTICE_KEY = "notices.tool_error"
+
+
+def tool_error_message_factory(
+    translate: Callable[..., str],
+) -> ToolErrorMessageFactory:
+    """A capability's localized failed-tool notice, from its own bundle.
+
+    ``translate`` is the capability's ``_t``. The key and the English wording
+    live here so the capabilities cannot drift apart again, and the fallback
+    still names the cause — a bundle that predates this key degrades to
+    English, never to silence about what went wrong.
+    """
+
+    def _message(tool_name: str, error: str) -> str:
+        return translate(
+            TOOL_ERROR_NOTICE_KEY,
+            tool=tool_name,
+            error=error,
+            default=f"{tool_name} failed: {error}",
+        )
+
+    return _message
 
 
 @dataclass(frozen=True)
@@ -103,7 +134,7 @@ async def dispatch_tool_calls(
     empty_tool_result_message: str = "",
     start_retrieval_message: str = "Starting retrieval",
     too_many_tool_calls_message: str | None = None,
-    unknown_error_message_factory: UnknownErrorMessageFactory | None = None,
+    tool_error_message_factory: ToolErrorMessageFactory | None = None,
     trace_id_prefix: str = "iter",
     tool_timeout: float | None = None,
     tool_max_retries: int = 0,
@@ -217,7 +248,7 @@ async def dispatch_tool_calls(
             ),
             empty_tool_result_message=empty_tool_result_message,
             start_retrieval_message=start_retrieval_message,
-            unknown_error_message_factory=unknown_error_message_factory,
+            tool_error_message_factory=tool_error_message_factory,
             retrieve_label=retrieve_label,
             tool_timeout=None if policy_exempt else tool_timeout,
             tool_max_retries=0 if policy_exempt else tool_max_retries,
@@ -601,7 +632,7 @@ async def execute_tool_call(
     empty_tool_result_message: str = "",
     start_retrieval_message: str = "Starting retrieval",
     retrieve_label: str = "Retrieve",
-    unknown_error_message_factory: UnknownErrorMessageFactory | None = None,
+    tool_error_message_factory: ToolErrorMessageFactory | None = None,
     tool_timeout: float | None = None,
     tool_max_retries: int = 0,
 ) -> dict[str, Any]:
@@ -753,13 +784,14 @@ async def execute_tool_call(
                     error=str(exc),
                 ),
             )
-        unknown_msg = (
-            unknown_error_message_factory(tool_name)
-            if unknown_error_message_factory is not None
-            else f"Error executing {tool_name}: {exc}"
+        cause = str(exc) or exc.__class__.__name__
+        failure_msg = (
+            tool_error_message_factory(tool_name, cause)
+            if tool_error_message_factory is not None
+            else f"Error executing {tool_name}: {cause}"
         )
         return {
-            "result_text": unknown_msg,
+            "result_text": failure_msg,
             "success": False,
             "sources": [],
             "metadata": {"error": str(exc)},

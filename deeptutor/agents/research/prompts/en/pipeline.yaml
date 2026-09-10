@@ -44,7 +44,7 @@ notices:
   protocol_retry: "The model violated the action-label protocol; retrying."
   empty_tool_result: "Tool returned no result."
   start_retrieval: "Starting retrieval"
-  tool_unknown_error: "Error executing {tool}."
+  tool_error: "{tool} failed: {error}"
   too_many_tool_calls: "Requested {requested} tool calls; capped at {limit}."
   max_iterations_reached: "Reached the iteration ceiling for this block; forcing FINISH."
   partial_results: "{failed} of {total} research subtopics could not be completed; the report is based on the remaining evidence."

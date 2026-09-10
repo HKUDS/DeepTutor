@@ -36,7 +36,7 @@ notices:
   protocol_retry: "模型未遵循标签协议，正在重试。"
   empty_tool_result: "工具未返回任何结果。"
   start_retrieval: "开始检索"
-  tool_unknown_error: "执行 {tool} 时出错。"
+  tool_error: "{tool} 执行失败：{error}"
   too_many_tool_calls: "本轮请求 {requested} 次工具调用，已截断到上限 {limit}。"
   max_iterations_reached: "当前研究块已达到迭代上限，强制 FINISH。"
   partial_results: "{total} 个研究子主题中有 {failed} 个未能完成；报告基于其余已收集的证据生成。"

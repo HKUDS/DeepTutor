@@ -78,3 +78,45 @@ async def test_block_host_passes_tool_policy_to_dispatcher(
 
     assert captured["tool_timeout"] == 7
     assert captured["tool_max_retries"] == 2
+
+
+def test_tool_policy_defaults_bound_a_stall_without_multiplying_a_slow_tool(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The shipped pair is deliberate, so pin it.
+
+    A research tool is slow by nature — one ``rag`` call against a LightRAG or
+    GraphRAG index makes its own LLM calls first, and search-then-fetch waits
+    on someone else's site — so the ceiling has to be one only a stalled
+    provider reaches, and a retry must not re-pay it for a tool that was going
+    to succeed. Neither number is pinned anywhere else: the policy tests above
+    pass whatever they configure.
+    """
+    monkeypatch.setattr("deeptutor.agents.research.pipeline.get_llm_config", lambda: _FakeLLM())
+    monkeypatch.setattr(
+        "deeptutor.agents.research.pipeline.get_tool_registry", lambda: _FakeRegistry()
+    )
+
+    pipeline = ResearchPipeline(language="en", runtime_config={})
+
+    assert pipeline.tool_timeout == 240
+    assert pipeline.tool_max_retries == 0
+
+
+def test_settings_layer_defaults_match_the_pipeline_defaults() -> None:
+    """The two layers that can decide the tool policy must not disagree.
+
+    ``_MAIN_YAML_RUNTIME_DEFAULTS`` is the fallback applied when a research
+    settings payload is written to main.yaml. If it holds different numbers
+    than ``ResearchPipeline`` reads as its own defaults, then saving settings
+    once — without touching either field — persists the table's values and the
+    pipeline default becomes unreachable, which is how #1316 hid a 4096 token
+    budget no user could raise.
+    """
+    from deeptutor.services.config.capabilities_settings import (
+        _MAIN_YAML_RUNTIME_DEFAULTS,
+    )
+
+    researching = _MAIN_YAML_RUNTIME_DEFAULTS["research"]["researching"]
+    assert researching["tool_timeout"] == 240
+    assert researching["tool_max_retries"] == 0

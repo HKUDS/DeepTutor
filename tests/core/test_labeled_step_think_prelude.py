@@ -632,3 +632,63 @@ async def test_post_label_think_split_across_chunks_is_not_leaked() -> None:
     assert "hidden" not in content
     assert "hidden" in thinking
     assert content.strip() == "ok  done".strip()
+
+
+# ------------------- "all thinking, no answer" -------------------
+#
+# A reasoning model pays for its hidden tokens out of the same ``max_tokens``
+# as its answer, so a long enough deliberation ends the stream before the
+# protocol label. What comes back is ``label=UNKNOWN, text=""`` — byte-for-byte
+# what a model that genuinely said nothing returns, because the scratchpad is
+# stripped on the way out. Only the first is worth asking again with thinking
+# turned down, so the step has to say which it was (#1318).
+
+
+@pytest.mark.asyncio
+async def test_stream_ending_inside_the_prelude_reports_reasoning_only() -> None:
+    """Budget gone mid-``<think>``: no label, no text, but the model did think."""
+    _events, result = await _run([_chunk("<think>Let me work through the "), _chunk("topics")])
+
+    assert result.text == ""
+    assert result.reasoning_only is True
+
+
+@pytest.mark.asyncio
+async def test_reasoning_channel_without_an_answer_reports_reasoning_only() -> None:
+    """Same starvation on providers that stream reasoning out of band."""
+    _events, result = await _run([_reasoning_chunk("planning"), _reasoning_chunk(" more")])
+
+    assert result.text == ""
+    assert result.reasoning_only is True
+
+
+@pytest.mark.asyncio
+async def test_a_genuinely_empty_round_is_not_reasoning_only() -> None:
+    """Nothing to retry at lower effort: the model never spent budget thinking."""
+    _events, result = await _run([_chunk("")])
+
+    assert result.text == ""
+    assert result.reasoning_only is False
+
+
+@pytest.mark.asyncio
+async def test_a_round_that_reached_its_label_is_not_reasoning_only() -> None:
+    """Thinking that finished and answered is the normal path, not a failure."""
+    _events, result = await _run([_chunk("<think>weighing it</think>"), _chunk("FINISH: done")])
+
+    assert result.text.strip() == "done"
+    assert result.reasoning_only is False
+
+
+@pytest.mark.asyncio
+async def test_thinking_that_ends_in_a_tool_call_is_not_reasoning_only() -> None:
+    """The round acted; it just never narrated. Re-asking would repeat the call."""
+    _events, result = await _run(
+        [
+            _reasoning_chunk("which tool?"),
+            _tc_chunk(index=0, tc_id="c1", name="rag", arguments='{"query":"x"}'),
+        ]
+    )
+
+    assert result.tool_calls
+    assert result.reasoning_only is False

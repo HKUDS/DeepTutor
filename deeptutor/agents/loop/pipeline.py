@@ -68,7 +68,10 @@ from deeptutor.runtime.agentic import (
     can_use_native_tool_calling,
     dispatch_tool_calls,
 )
-from deeptutor.runtime.agentic.tool_dispatch import MAX_PARALLEL_TOOL_CALLS
+from deeptutor.runtime.agentic.tool_dispatch import (
+    MAX_PARALLEL_TOOL_CALLS,
+    tool_error_message_factory,
+)
 from deeptutor.runtime.providers import ToolScope
 from deeptutor.runtime.providers.view import ProviderToolView, build_tool_view
 from deeptutor.runtime.registry.deferred_tools import DeferredToolLoader
@@ -1054,11 +1057,7 @@ class AgenticLoopPipeline:
                 "notices.start_retrieval", default="Starting retrieval"
             ),
             retrieve_label=self._t("labels.retrieve", default="Retrieve"),
-            unknown_error_message_factory=lambda tn: self._t(
-                "notices.tool_unknown_error",
-                tool=tn,
-                default=f"An unknown error occurred while executing {tn}.",
-            ),
+            tool_error_message_factory=tool_error_message_factory(self._t),
         )
 
     async def _dispatch_tool_calls(
@@ -1097,11 +1096,7 @@ class AgenticLoopPipeline:
                 "notices.start_retrieval", default="Starting retrieval"
             ),
             too_many_tool_calls_message=too_many,
-            unknown_error_message_factory=lambda tn: self._t(
-                "notices.tool_unknown_error",
-                tool=tn,
-                default=f"An unknown error occurred while executing {tn}.",
-            ),
+            tool_error_message_factory=tool_error_message_factory(self._t),
             trace_id_prefix=f"{self.event_source}-loop",
         )
 

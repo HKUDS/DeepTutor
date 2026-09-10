@@ -49,13 +49,18 @@ export default function MarkdownRenderer({
   // append-only nature of streaming content this gives us a stable
   // Simple→Rich one-way transition (the Rich subtree mounts once and
   // stays). No additional lock state is needed.
+  //
+  // `trace` is not excluded. It used to be, which pinned every trace bubble to
+  // the Simple renderer and left `RichMarkdownRenderer`'s whole `trace` branch
+  // unreachable — so a tutoring round that reasoned in formulas printed raw
+  // `$y'' + 2y' + 5y = 0$` at the reader. The trigger is the content, not the
+  // surface: a trace bubble with no math still takes the cheap path.
   const shouldUseRich =
-    variant !== "trace" &&
-    (trackSourceLines ||
-      resolvedEnableMath ||
-      resolvedEnableCode ||
-      resolvedEnableMermaid ||
-      resolvedAllowHtml);
+    trackSourceLines ||
+    resolvedEnableMath ||
+    resolvedEnableCode ||
+    resolvedEnableMermaid ||
+    resolvedAllowHtml;
 
   if (!shouldUseRich) {
     return (

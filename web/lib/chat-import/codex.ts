@@ -2,9 +2,11 @@
  * Codex adapter. Sessions live at
  * `~/.codex/sessions/YYYY/MM/DD/rollout-<ts>-<uuid>.jsonl`, partitioned by date
  * rather than project, so we read each file's `session_meta.cwd` and group by
- * it ourselves. We use the clean `event_msg` layer (user_message / agent_message)
- * for the transcript and skip the lower-level response items, reasoning, and
- * sub-agent (`thread_source: "subagent"`) sessions.
+ * it ourselves. Older files carry the transcript on the clean `event_msg`
+ * layer (user_message / agent_message) and are read from there; current ones
+ * put it in `response_item` messages, whose user side also carries the
+ * harness's own injected context (see `isHarnessInjectedTurn`). Reasoning and
+ * sub-agent (`thread_source: "subagent"`) sessions are skipped either way.
  */
 
 import { iterLines, parseJsonl, readHead } from "./streaming";
@@ -56,6 +58,48 @@ function eventMessage(line: CodexLine): NormalizedMessage | null {
   return { role, content, created_at: created || undefined };
 }
 
+/** Opening tag of a top-level element, capturing its name. */
+const OPEN_TAG_RE = /^<([a-z][a-z0-9_-]*)(\s[^>]*)?>/;
+
+/**
+ * Whether a user turn was written by the harness rather than the person.
+ *
+ * Codex delivers its own context to the model as `role: "user"` items —
+ * `<environment_context>`, `<recommended_plugins>`, `<skill>`, `<task>`,
+ * `<heartbeat>`, `<turn_aborted>`, `<codex_internal_context>` and more; ten
+ * distinct tags across 631 local rollouts, about a third of every user turn
+ * on disk. Imported as-is they become the learner's own words, and the first
+ * one becomes the session title.
+ *
+ * The tag name is not the test — that list only grows, and a new one would
+ * walk straight through. What every injected turn shares is that it is
+ * *nothing but* markup: one or more balanced top-level elements with no prose
+ * of the person's own around them. So: consume top-level elements, and if a
+ * single character of anything else remains, this is a person's message.
+ *
+ * That is the safe direction, and it is doing real work. Codex prefixes an
+ * attachment turn with `<image name=[Image #1]></image>` and then the actual
+ * question — 76 such turns here, every one kept, because the question sits
+ * outside the element. Anything ambiguous (a same-named nested tag, an
+ * unclosed one, an attribute holding a `>`) falls out of the loop unmatched
+ * and is likewise kept. Losing a title to a block we failed to recognise is
+ * a blemish; eating the sentence someone actually typed is not.
+ */
+function isHarnessInjectedTurn(text: string): boolean {
+  let rest = text.trim();
+  let sawElement = false;
+  while (rest) {
+    const open = OPEN_TAG_RE.exec(rest);
+    if (!open) return false;
+    const closing = `</${open[1]}>`;
+    const end = rest.indexOf(closing, open[0].length);
+    if (end === -1) return false;
+    rest = rest.slice(end + closing.length).trim();
+    sawElement = true;
+  }
+  return sawElement;
+}
+
 function responseItemMessage(line: CodexLine): NormalizedMessage | null {
   if (line.type !== "response_item") return null;
   const p = line.payload ?? {};
@@ -72,6 +116,9 @@ function responseItemMessage(line: CodexLine): NormalizedMessage | null {
   });
   const content = cleanText(parts.join("\n\n"));
   if (!content) return null;
+  // Only the user side: an assistant turn is the model's answer either way,
+  // and it does not carry these blocks.
+  if (p.role === "user" && isHarnessInjectedTurn(content)) return null;
   const created = isoToEpochSeconds(line.timestamp, 0);
   return { role: p.role, content, created_at: created || undefined };
 }

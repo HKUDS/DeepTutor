@@ -235,10 +235,19 @@ def test_services_deepseek_replays_persisted_reasoning_content() -> None:
     assert "_provider_response_state" not in assistant_message
 
 
-def test_non_deepseek_drops_persisted_reasoning_content() -> None:
+def test_replay_is_not_gated_on_the_model_being_named_deepseek() -> None:
+    """Volcengine Ark takes an endpoint id as the model name.
+
+    The replay used to require ``"deepseek" in model``, so an ``ep-…`` model
+    (and every Doubao / GLM / Qwen / Kimi thinking model) lost its reasoning
+    the moment a turn replayed history — and the provider answered "the
+    reasoning_content in the thinking mode must be passed back to the API".
+    Only a provider that sent the field can have put it in this state, so
+    replaying it is symmetric rather than additive.
+    """
     provider = ServicesOpenAICompatProvider.__new__(ServicesOpenAICompatProvider)
-    provider.default_model = "gpt-test"
-    provider._spec = find_service_provider("openai")
+    provider.default_model = "ep-20260101120000-abcde"
+    provider._spec = find_service_provider("volcengine")
 
     kwargs = provider._build_kwargs(
         messages=[
@@ -248,6 +257,26 @@ def test_non_deepseek_drops_persisted_reasoning_content() -> None:
                 "_provider_response_state": {"reasoning_content": "private reasoning"},
             }
         ],
+        tools=None,
+        model=None,
+        max_tokens=32,
+        temperature=0.7,
+        reasoning_effort=None,
+        tool_choice=None,
+    )
+
+    assert kwargs["messages"][0]["reasoning_content"] == "private reasoning"
+    assert "_provider_response_state" not in kwargs["messages"][0]
+
+
+def test_a_model_that_never_reasoned_carries_no_reasoning_content() -> None:
+    """No state, no field — the replay adds nothing to an ordinary history."""
+    provider = ServicesOpenAICompatProvider.__new__(ServicesOpenAICompatProvider)
+    provider.default_model = "gpt-test"
+    provider._spec = find_service_provider("openai")
+
+    kwargs = provider._build_kwargs(
+        messages=[{"role": "assistant", "content": "previous answer"}],
         tools=None,
         model="gpt-test",
         max_tokens=32,

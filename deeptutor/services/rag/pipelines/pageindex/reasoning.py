@@ -100,7 +100,6 @@ class _ReadingHost:
             empty_tool_result_message="PageIndex returned no content.",
             start_retrieval_message="Reading PageIndex documents",
             too_many_tool_calls_message="Too many tool calls in one round.",
-            unknown_error_message_factory=lambda name: f"Error executing {name}.",
             trace_id_prefix=f"{self.source}-pageindex",
         )
 

@@ -4,6 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
+#: Reasoning level to ask for on a second attempt, after a first one spent its
+#: whole ``max_tokens`` budget thinking and returned no answer. ``"low"``
+#: rather than ``"minimal"``: local/Qwen models served via vLLM reject
+#: ``"minimal"``, and it disables thinking outright rather than trimming it.
+RETRY_REASONING_EFFORT = "low"
+
 _THINKING_STYLE_MAP = {
     "thinking_type": lambda enabled: {"thinking": {"type": "enabled" if enabled else "disabled"}},
     "enable_thinking": lambda enabled: {"enable_thinking": enabled},
@@ -111,6 +117,24 @@ def default_reasoning_effort_for(provider: str | None, model: str | None) -> str
     return None
 
 
+def thinking_off_effort_for(provider: str | None, model: str | None) -> str:
+    """The lowest effort *model* actually accepts as "thinking off".
+
+    ``"none"`` for almost everything, ``"minimal"`` for the families that
+    answer HTTP 400 to it (#734). The rule already existed inside
+    :func:`default_reasoning_effort_for`, but that function is consulted only
+    when the caller says nothing — so a caller that asks for ``"none"``
+    itself, as the reader-facing book blocks do, skipped the narrowing and got
+    the 400 the table exists to prevent. Naming it here keeps it beside
+    :data:`_MINIMAL_NOT_OFF_PATTERNS`, so adding a family to that table is
+    still an obvious prompt to check this one.
+    """
+    provider_name = (provider or "").strip().lower()
+    if _matches(model or "", _MINIMAL_NOT_OFF_PATTERNS.get(provider_name, ())):
+        return "minimal"
+    return "none"
+
+
 def build_openai_compatible_reasoning_kwargs(
     *,
     spec: Any,
@@ -150,6 +174,10 @@ def build_openai_compatible_reasoning_kwargs(
             resolved_effort = "high"
         else:
             resolved_effort = default_reasoning_effort_for(provider_name, model_name)
+    elif str(resolved_effort).strip().lower() == "none":
+        # An explicit "off" is subject to the same vendor limit as an inferred
+        # one — see ``thinking_off_effort_for``.
+        resolved_effort = thinking_off_effort_for(provider_name, model_name)
 
     semantic_effort: str | None = None
     if isinstance(resolved_effort, str):
@@ -194,6 +222,7 @@ def build_openai_compatible_reasoning_kwargs(
 
 
 __all__ = [
+    "RETRY_REASONING_EFFORT",
     "build_openai_compatible_reasoning_kwargs",
     "default_reasoning_effort_for",
 ]

@@ -26,10 +26,10 @@ def _types(blocks) -> list[BlockType]:
 
 
 def _install_llm(monkeypatch: pytest.MonkeyPatch, blocks: list[dict[str, object]]) -> None:
-    async def fake_llm_text(**_kwargs) -> str:
-        return json.dumps({"blocks": blocks})
+    async def fake_llm_json(**_kwargs) -> dict[str, object]:
+        return json.loads(json.dumps({"blocks": blocks}))
 
-    monkeypatch.setattr(page_planner, "llm_text", fake_llm_text)
+    monkeypatch.setattr(page_planner, "llm_json", fake_llm_json)
 
 
 def test_allowed_none_leaves_static_plan_unchanged() -> None:

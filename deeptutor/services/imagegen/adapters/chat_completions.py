@@ -54,19 +54,17 @@ class ChatCompletionsImagegenAdapter(BaseImagegenAdapter):
         logger.debug("imagegen(chat) url=%s model=%s", url, config.model)
         try:
             async with httpx.AsyncClient(timeout=config.request_timeout) as client:
-                modalities_attempts: list[list[str]] = [["image", "text"], ["image"]]
-                resp: httpx.Response | None = None
-                last_404: httpx.Response | None = None
-                for modalities in modalities_attempts:
-                    attempt_payload = {**payload, "modalities": modalities}
-                    resp = await client.post(url, headers=headers, json=attempt_payload)
-                    if resp.status_code == 404 and "modalit" in resp.text.lower():
-                        last_404 = resp
-                        continue
-                    break
-                if resp is None:
-                    resp = last_404
-                assert resp is not None
+                # A router that has no endpoint for the pair answers 404 naming
+                # the modalities; the image-only request is the same ask without
+                # the text half. The last response is the one to report, so a
+                # second refusal reaches ``raise_for_provider`` as the error.
+                resp = await client.post(
+                    url, headers=headers, json={**payload, "modalities": ["image", "text"]}
+                )
+                if resp.status_code == 404 and "modalit" in resp.text.lower():
+                    resp = await client.post(
+                        url, headers=headers, json={**payload, "modalities": ["image"]}
+                    )
                 raise_for_provider(resp, "Image generation")
                 images = [
                     await self._materialize(client, src) for src in self._extract_sources(resp)
