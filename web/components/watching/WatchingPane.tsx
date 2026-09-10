@@ -79,6 +79,7 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
   const [noteSaveSuccess, setNoteSaveSuccess] = useState(false)
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const notesExportRequestRef = useRef(0)
+  const notesLoadRequestRef = useRef(0)
   const noteSubmitGuardRef = useRef(false)
   const [followTranscript, setFollowTranscript] = useState(true)
   const [transcriptQuery, setTranscriptQuery] = useState('')
@@ -223,6 +224,7 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
     notesExportRequestRef.current += 1
     setNotesExportBusy(false)
     setNotesCopied(false)
+    const requestId = ++notesLoadRequestRef.current
     if (!materialId) {
       setNotesLoading(false)
       return () => {
@@ -233,7 +235,7 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
     void (async () => {
       try {
         const loaded = await listVideoNotes(materialId)
-        if (!cancelled) setNotes(loaded)
+        if (!cancelled && notesLoadRequestRef.current === requestId) setNotes(loaded)
       } catch (caught) {
         if (!cancelled) {
           setNotesError(caught instanceof Error ? caught.message : t('Notes could not be loaded.'))
@@ -267,6 +269,7 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
     try {
       const saved = await createVideoNote(requestedMaterialId, noteDraft.trim(), anchorTime)
       if (activeMaterialIdRef.current !== requestedMaterialId) return
+      notesLoadRequestRef.current += 1
       setNotes(current => sortNotes([...current, saved]))
       setNoteDraft('')
       setNoteAnchorTime(null)
