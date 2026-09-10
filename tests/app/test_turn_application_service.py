@@ -212,3 +212,56 @@ async def test_second_worker_cancel_is_consumed_by_owner_worker(tmp_path) -> Non
         fencing_token=lease.fencing_token,
     )
     await coordinator.release_turn(lease)
+
+
+@pytest.mark.asyncio
+async def test_orphaned_waiting_input_is_closed_so_the_next_turn_can_start(
+    tmp_path,
+) -> None:
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    coordinator = MemoryCoordinator(lease_ttl_seconds=30)
+    service, _registry = _service(store, coordinator, "worker-a")
+    session = await store.ensure_session("orphaned-pause")
+    turn = await store.begin_turn(session["id"], capability="chat")
+    assert (
+        await store.transition_turn(
+            turn["id"],
+            "waiting_input",
+            expected_status="running",
+        )
+        is True
+    )
+
+    assert await service.submit_user_reply(turn["id"], "yes", command_id="reply-1") is False
+    persisted = await store.get_turn(turn["id"])
+    assert persisted is not None
+    assert persisted["status"] == "failed"
+    assert persisted["failure_code"] == "worker_lost"
+
+    next_turn = await store.begin_turn(session["id"], capability="chat")
+    assert next_turn["id"] != turn["id"]
+
+
+@pytest.mark.asyncio
+async def test_local_reply_queue_is_used_before_coordinator(tmp_path) -> None:
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    coordinator = MemoryCoordinator(lease_ttl_seconds=30)
+    service, registry = _service(store, coordinator, "worker-a")
+    runtime = registry.get(store)
+    session = await store.ensure_session("local-queue")
+    turn = await store.begin_turn(session["id"], capability="chat")
+    queue: asyncio.Queue = asyncio.Queue()
+    runtime._reply_queues[turn["id"]] = queue
+    lease = await coordinator.acquire_turn(
+        turn["id"],
+        f"{runtime._coordination_scope}:{session['id']}",
+        "worker-a",
+    )
+    assert lease is not None
+
+    assert await service.submit_user_reply(turn["id"], "picked", command_id="reply-local") is True
+    payload = queue.get_nowait()
+    assert payload["text"] == "picked"
+    assert await service.submit_user_reply(turn["id"], "again", command_id="reply-local") is True
+    assert queue.empty()
+    await coordinator.release_turn(lease)

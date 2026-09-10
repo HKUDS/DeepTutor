@@ -70,9 +70,9 @@ export function MasteryComposer({
   // question about the material. Routing it as a same-turn reply sent it into
   // a turn that was already over, and every message after a question came back
   // "this question is no longer active" until they reloaded.
-  const awaitingUserReply = hasPendingAskUser(
-    state.messages[state.messages.length - 1]?.events,
-  );
+  const awaitingUserReply =
+    !state.askUserPauseExpired &&
+    hasPendingAskUser(state.messages[state.messages.length - 1]?.events);
 
   const handleSubmit = useCallback(
     (submission: StandaloneComposerSubmission) => {

@@ -18,9 +18,9 @@ describe("chat workspace composition", () => {
     expect(route.split("\n").length).toBeLessThan(20);
   });
 
-  it("moves session resolution behind its route controller", () => {
+  it("falls through a refused ask_user reply even while streaming", () => {
     const workspace = source("features/chat/components/ChatWorkspace.tsx");
-    expect(workspace).toMatch(/useChatRouteSession/);
-    expect(workspace).not.toMatch(/useParams|useRouter/);
+    expect(workspace).toMatch(/refusedPause/);
+    expect(workspace).toMatch(/isStreaming && !refusedPause/);
   });
 });

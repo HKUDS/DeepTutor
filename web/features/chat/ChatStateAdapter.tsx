@@ -60,7 +60,7 @@ import {
   recomputeAnswerContent,
   shouldAppendEventContent,
 } from "@/lib/stream";
-import { hasPendingAskUserInMessages } from "@/lib/ask-user-state";
+import { hasPendingAskUser, hasPendingAskUserInMessages } from "@/lib/ask-user-state";
 import { notify } from "@/lib/notifications";
 import { forwardReaderAction } from "@/lib/reading-reader-action";
 import {
@@ -166,6 +166,12 @@ export interface ChatState {
   /** Edit-branching: keyed by stringified parent_message_id (or "null"
    *  for the root). Empty means "default to latest sibling everywhere". */
   selectedBranches: Record<string, number>;
+  /**
+   * The last ``submit_user_reply`` was refused. Composer routing must not
+   * keep sending every keystroke as a reply, or a dead pause locks the
+   * window. The card can still show the refusal.
+   */
+  askUserPauseExpired?: boolean;
 }
 
 export interface SessionConfiguration {
@@ -264,6 +270,7 @@ interface SessionEntry extends ChatState {
   /** Edit-branching: maps a parent_message_id (stringified, or "null" for
    *  the session root) to the chosen child id at that branch point. */
   selectedBranches: Record<string, number>;
+  askUserPauseExpired: boolean;
 }
 
 interface ProviderState {
@@ -322,6 +329,7 @@ type Action =
   | { type: "STREAM_START"; key: string }
   | { type: "STREAM_TOUCH"; key: string }
   | { type: "STREAM_EVENT"; key: string; event: StreamEvent }
+  | { type: "EXPIRE_ASK_USER_PAUSE"; key: string }
   | {
       type: "STREAM_END";
       key: string;
@@ -410,6 +418,7 @@ function createSessionEntry(
     lastSeq: 0,
     updatedAt: Date.now(),
     selectedBranches: {},
+    askUserPauseExpired: false,
   };
 }
 
@@ -681,6 +690,7 @@ function reducer(state: ProviderState, action: Action): ProviderState {
             ...session,
             isStreaming: true,
             status: "running",
+            askUserPauseExpired: false,
             messages: [
               ...existing,
               {
@@ -706,6 +716,17 @@ function reducer(state: ProviderState, action: Action): ProviderState {
         sessions: {
           ...state.sessions,
           [action.key]: { ...session, updatedAt: Date.now() },
+        },
+      };
+    }
+    case "EXPIRE_ASK_USER_PAUSE": {
+      const session = state.sessions[action.key];
+      if (!session) return state;
+      return {
+        ...state,
+        sessions: {
+          ...state.sessions,
+          [action.key]: { ...session, askUserPauseExpired: true },
         },
       };
     }
@@ -922,6 +943,7 @@ function reducer(state: ProviderState, action: Action): ProviderState {
             language: action.language ?? existing.language,
             selectedBranches:
               action.selectedBranches ?? existing.selectedBranches,
+            askUserPauseExpired: false,
             updatedAt: Date.now(),
           },
         },
@@ -1434,6 +1456,10 @@ export function ChatStateAdapterProvider({
   const pendingRegenerateRef = useRef<Map<string, MessageItem>>(new Map());
   const traceCacheRef = useRef<TraceCache>(new TraceCache());
   const traceRequestsRef = useRef<Map<string, AbortController>>(new Map());
+  // STREAM_EVENT has not committed to ``stateRef`` yet when ``done`` arrives
+  // in the same tick, so pause detection for keeping the runner must not
+  // read the reducer snapshot.
+  const pendingAskUserKeysRef = useRef(new Set<string>());
   // Forward-declared so ``handleRunnerEvent`` (created above
   // ``loadSession`` in source order) can trigger a server refresh after
   // a turn finishes without taking a stale closure of ``loadSession``.
@@ -1537,12 +1563,25 @@ export function ChatStateAdapterProvider({
     runnersRef.current.delete(oldKey);
     runner.key = newKey;
     runnersRef.current.set(newKey, runner);
+    if (pendingAskUserKeysRef.current.delete(oldKey)) {
+      pendingAskUserKeysRef.current.add(newKey);
+    }
   }, []);
 
   const handleRunnerEvent = useCallback(
     (runnerKey: string, event: StreamEvent) => {
       const runner = runnersRef.current.get(runnerKey);
       const effectiveKey = runner?.key || runnerKey;
+      if (hasPendingAskUser([event])) {
+        pendingAskUserKeysRef.current.add(effectiveKey);
+      }
+      if (
+        event.type === "progress" &&
+        (event.metadata as { ask_user_resolved?: boolean } | undefined)
+          ?.ask_user_resolved === true
+      ) {
+        pendingAskUserKeysRef.current.delete(effectiveKey);
+      }
       // Reading tools ask the reader to act (scroll to a locator, show a mark
       // they just made) by tagging their result metadata. Re-broadcast it as a
       // DOM event so the reader pane can listen without the chat knowing it
@@ -1625,6 +1664,7 @@ export function ChatStateAdapterProvider({
           turnId: event.turn_id || null,
         });
         pendingRegenerateRef.current.delete(effectiveKey);
+        const pendingAskUser = pendingAskUserKeysRef.current.has(effectiveKey);
         const runner = runnersRef.current.get(effectiveKey);
         // Hold the WS open briefly so post-turn ``session_meta`` events
         // (e.g. the LLM-generated title for the first user/assistant
@@ -1632,7 +1672,12 @@ export function ChatStateAdapterProvider({
         // before its finally block sends the subscriber sentinel, but
         // the title model can take a couple of seconds — disconnecting
         // synchronously on ``done`` would race that publish.
-        if (runner) {
+        //
+        // A completed envelope can still own an unanswered ``ask_user``
+        // card. Dropping the runner here forced the next submit onto a
+        // new socket whose later ``stop()`` settled in-flight replies
+        // as false — the card then claimed the answer never landed.
+        if (runner && !pendingAskUser) {
           runnersRef.current.delete(effectiveKey);
           window.setTimeout(() => {
             runner.client.disconnect();
@@ -2315,6 +2360,7 @@ export function ChatStateAdapterProvider({
         });
       }
       dispatch({ type: "STREAM_START", key });
+      pendingAskUserKeysRef.current.delete(key);
       const {
         _persist_user_message: legacyPersistUserMessage,
         _course_id: _legacyCourseId,
@@ -2414,7 +2460,12 @@ export function ChatStateAdapterProvider({
       runner.client.disconnect();
       runnersRef.current.delete(key);
     }
-    if (session.isStreaming) {
+    const pendingAskUser = hasPendingAskUserInMessages(
+      session.messages,
+      turnId,
+    );
+    pendingAskUserKeysRef.current.delete(key);
+    if (session.isStreaming || pendingAskUser) {
       dispatch({ type: "STREAM_END", key, status: "cancelled" });
     }
   }, []);
@@ -2440,6 +2491,10 @@ export function ChatStateAdapterProvider({
       // silent long enough for the socket to reconnect, so allow submission
       // whenever the unresolved card and active turn id are still present.
       if (!session || !turnId || (!session.isStreaming && !pendingAskUser)) {
+        if (key && pendingAskUser) {
+          dispatch({ type: "EXPIRE_ASK_USER_PAUSE", key });
+          cancelStreamingTurn();
+        }
         return false;
       }
       const message: import("@/features/chat/model/protocol").SubmitUserReplyMessage =
@@ -2453,9 +2508,16 @@ export function ChatStateAdapterProvider({
         if (typeof reply.text === "string") message.text = reply.text;
         if (Array.isArray(reply.answers)) message.answers = reply.answers;
       }
-      return sendThroughRunner(key, message, { awaitAck: true });
+      const accepted = await sendThroughRunner(key, message, {
+        awaitAck: true,
+      });
+      if (!accepted) {
+        dispatch({ type: "EXPIRE_ASK_USER_PAUSE", key });
+        cancelStreamingTurn();
+      }
+      return accepted;
     },
-    [sendThroughRunner],
+    [cancelStreamingTurn, sendThroughRunner],
   );
 
   const regenerateLastMessage = useCallback(() => {
@@ -2480,6 +2542,7 @@ export function ChatStateAdapterProvider({
     }
     dispatch({ type: "POP_LAST_ASSISTANT", key });
     dispatch({ type: "STREAM_START", key });
+    pendingAskUserKeysRef.current.delete(key);
     sendThroughRunner(key, {
       type: "regenerate",
       session_id: session.sessionId,
@@ -2508,6 +2571,7 @@ export function ChatStateAdapterProvider({
       currentStage: current.currentStage,
       language: current.language,
       selectedBranches: current.selectedBranches,
+      askUserPauseExpired: current.askUserPauseExpired,
     };
   }, [state]);
 

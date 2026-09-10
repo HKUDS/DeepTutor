@@ -59,9 +59,9 @@ export function ReadingComposer({
     useWorkspaceChatActions();
   const { t } = useTranslation();
 
-  const awaitingUserReply = hasPendingAskUser(
-    state.messages[state.messages.length - 1]?.events,
-  );
+  const awaitingUserReply =
+    !state.askUserPauseExpired &&
+    hasPendingAskUser(state.messages[state.messages.length - 1]?.events);
 
   const handleSubmit = useCallback(
     (submission: StandaloneComposerSubmission) => {

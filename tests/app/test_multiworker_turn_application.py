@@ -159,3 +159,53 @@ async def test_remote_worker_reply_reaches_owner_waiter(monkeypatch, tmp_path) -
     assert [event["seq"] for event in events] == list(range(1, len(events) + 1))
     await runtime_a.close()
     await runtime_b.close()
+
+
+@pytest.mark.asyncio
+async def test_owner_worker_reply_uses_local_queue(monkeypatch, tmp_path) -> None:
+    waiting = asyncio.Event()
+
+    class Engine:
+        async def execute(self, context):
+            yield StreamEvent(
+                type=StreamEventType.WAIT_FOR_INPUT,
+                source="chat",
+                content="Continue?",
+            )
+            waiting.set()
+            reply = await context.runtime.wait_for_user_reply()
+            yield StreamEvent(
+                type=StreamEventType.CONTENT,
+                source="chat",
+                content=f"reply:{reply['text']}",
+            )
+
+    monkeypatch.setattr("deeptutor.services.llm.config.get_llm_config", lambda: SimpleNamespace())
+    monkeypatch.setattr(
+        "deeptutor.services.session.context_builder.ContextBuilder", _ContextBuilder
+    )
+    coordinator = MemoryCoordinator(lease_ttl_seconds=5)
+    path = tmp_path / "owner.sqlite3"
+    store = SQLiteSessionStore(path)
+    runtime = TurnRuntimeManager(
+        store, coordinator=coordinator, owner_id="worker-a", turn_engine=Engine()
+    )
+    app = _application(store, runtime, coordinator)
+
+    _session, turn = await app.start_turn(_payload())
+    await asyncio.wait_for(waiting.wait(), timeout=2)
+    active = None
+    for _ in range(100):
+        active = await app.check_active_turn(turn["session_id"])
+        if active and active["status"] == "waiting_input":
+            break
+        await asyncio.sleep(0.01)
+    assert active is not None
+    assert active["status"] == "waiting_input"
+    assert await app.submit_user_reply(turn["id"], "yes", command_id="reply-from-owner") is True
+    events = [event async for event in app.subscribe_turn(turn["id"])]
+
+    assert any(event.get("content") == "reply:yes" for event in events)
+    done_index = next(i for i, event in enumerate(events) if event["type"] == "done")
+    assert all(event["type"] == "session_meta" for event in events[done_index + 1 :])
+    await runtime.close()

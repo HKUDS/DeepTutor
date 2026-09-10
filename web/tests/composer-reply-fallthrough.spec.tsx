@@ -129,4 +129,15 @@ describe("composer routing while a question is open", () => {
     await waitFor(() => expect(chat.sendMessage).toHaveBeenCalled());
     expect(chat.sendMessage.mock.calls[0][0]).toBe("C");
   });
+
+  it("re-sends as a new message even while the refused pause still looks streaming", async () => {
+    chat.state.isStreaming = true;
+    chat.submitUserReply.mockImplementation(async () => false);
+    const user = userEvent.setup();
+    render(<MasteryComposer placeholder="Ask" />);
+    await user.click(screen.getByRole("button", { name: "send" }));
+    await waitFor(() => expect(chat.sendMessage).toHaveBeenCalled());
+    expect(chat.sendMessage.mock.calls[0][0]).toBe("C");
+    chat.state.isStreaming = false;
+  });
 });

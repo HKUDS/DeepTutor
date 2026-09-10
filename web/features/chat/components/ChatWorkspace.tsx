@@ -985,7 +985,8 @@ export default function ChatWorkspace() {
      their next message is a new turn, not a reply into a finished one. Hence
      the wider predicate for the pin and the pause-only one for routing. */
   const awaitingUserCard = hasPendingUserCard(lastMessage?.events);
-  const awaitingUserReply = hasPendingAskUser(lastMessage?.events);
+  const awaitingUserReply =
+    !state.askUserPauseExpired && hasPendingAskUser(lastMessage?.events);
   // Read inside ``handleSend`` without adding a dependency that would rebuild
   // the callback (and so the composer) on every streamed event.
   const awaitingUserReplyRef = useRef(awaitingUserReply);
@@ -1771,6 +1772,7 @@ export default function ChatWorkspace() {
       // a new message. Routing it here means the card is one way to answer,
       // not the only one — and a card that never rendered no longer strands
       // the learner with a turn they can only cancel.
+      let refusedPause = false;
       if (awaitingUserReplyRef.current) {
         if (!content.trim()) return;
         if (await submitUserReply({ text: content })) return;
@@ -1778,8 +1780,10 @@ export default function ChatWorkspace() {
         // composer has already cleared the box, so returning discarded what
         // they typed — while the error told them to "send a new message",
         // which is exactly what this branch was preventing them from doing.
-        // Fall through and send it as one.
+        // Fall through even when ``isStreaming`` is still true: that flag
+        // used to eat the new message and lock the window.
         notify(t(REPLY_SENT_AS_NEW_MESSAGE));
+        refusedPause = true;
       }
       if (
         (!content &&
@@ -1790,7 +1794,7 @@ export default function ChatWorkspace() {
           !selectedHistorySessions.length &&
           !selectedQuestionEntries.length &&
           !selectedMemoryFiles.length) ||
-        state.isStreaming
+        (state.isStreaming && !refusedPause)
       )
         return;
 

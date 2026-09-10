@@ -65,6 +65,9 @@ class TurnLifecycle:
         # ``answers`` carries the structured per-question replies when the
         # frontend sends the v2 ``ask_user`` shape.
         self._reply_queues: dict[str, asyncio.Queue[dict[str, Any] | None]] = {}
+        # Idempotent delivery of ``submit_user_reply`` command ids so a
+        # retried ACK does not enqueue a second payload on the waiter.
+        self._delivered_reply_command_ids: set[str] = set()
 
     async def close(self, *, drain_timeout_seconds: float = 0.0) -> None:
         """Stop accepting work and deterministically release runtime resources."""
@@ -197,11 +200,28 @@ class TurnLifecycle:
         failure_code: str = "",
         retryable: bool = False,
     ) -> bool:
-        return await self.store.transition_turn(
+        fencing_token = (
+            execution.lease.fencing_token if execution.lease is not None else None
+        )
+        # A turn parked on ``ask_user`` is ``waiting_input``. Terminal CAS
+        # used to require ``running`` only, so a waiter that never restored
+        # that status left the row active forever and blocked the next turn.
+        transitioned = await self.store.transition_turn(
             execution.turn_id,
             status,
             expected_status="running",
-            fencing_token=(execution.lease.fencing_token if execution.lease is not None else None),
+            fencing_token=fencing_token,
+            error=error,
+            failure_code=failure_code,
+            retryable=retryable,
+        )
+        if transitioned:
+            return True
+        return await self.store.transition_turn(
+            execution.turn_id,
+            status,
+            expected_status="waiting_input",
+            fencing_token=fencing_token,
             error=error,
             failure_code=failure_code,
             retryable=retryable,
@@ -233,6 +253,7 @@ class TurnLifecycle:
                             execution.turn_id,
                             text=command.payload.get("text"),
                             answers=command.payload.get("answers"),
+                            command_id=command.command_id,
                         )
                     elif command.kind == "user_input":
                         from deeptutor.runtime.stream_bus import get_bus
@@ -268,7 +289,7 @@ class TurnLifecycle:
             if self.coordinator is not None:
                 return False
             turn = await self.store.get_turn(turn_id)
-            if turn is None or turn.get("status") != "running":
+            if turn is None or turn.get("status") not in {"running", "waiting_input"}:
                 return False
             await self.store.update_turn_status(turn_id, "cancelled", "Turn cancelled")
             return True
@@ -287,6 +308,7 @@ class TurnLifecycle:
         text: str | None = None,
         *,
         answers: list[dict[str, Any]] | None = None,
+        command_id: str | None = None,
     ) -> bool:
         """Deliver a user reply to a turn that's paused on ``ask_user``.
 
@@ -303,11 +325,16 @@ class TurnLifecycle:
         event-loop tick and substitutes the reply into the matching
         ``role=tool`` message.
         """
+        delivered_id = str(command_id or "").strip()
+        if delivered_id and delivered_id in self._delivered_reply_command_ids:
+            return True
         queue = self._reply_queues.get(turn_id)
         if queue is None:
             return False
         payload: dict[str, Any] = {"text": text or "", "answers": answers}
         await queue.put(payload)
+        if delivered_id:
+            self._delivered_reply_command_ids.add(delivered_id)
         return True
 
     async def subscribe_turn(
@@ -365,10 +392,14 @@ class TurnLifecycle:
 
         turn = await self.store.get_turn(turn_id)
         if execution is None:
-            if turn is None or turn.get("status") != "running":
+            live_status = str((turn or {}).get("status") or "")
+            if turn is None or live_status not in {"queued", "running", "waiting_input"}:
                 # Turn already finished and we didn't see a DONE in any of the
                 # persisted history above — synthesise one so the caller can
                 # still close out its streaming state cleanly.
+                # ``waiting_input`` is still live: the agent is parked on
+                # ``ask_user``. Synthesising DONE here made the UI submit
+                # against a waiter the client thought had ended.
                 if not done_yielded:
                     if turn is not None and str(turn.get("status") or "") == "failed":
                         error_event = self._synthesize_error_event(

@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator
 import time
 from typing import Any
 
-from deeptutor.runtime.coordination import RuntimeCoordinator
+from deeptutor.runtime.coordination import RuntimeCoordinator, TurnFailureCode
 from deeptutor.services.session.protocol import SessionStoreProtocol
 from deeptutor.services.session.turn_runtime import TurnRuntimeManager
 
@@ -203,6 +203,29 @@ class TurnApplicationService:
             "owner_id": lease.owner_id if lease else str(turn.get("owner_id") or ""),
         }
 
+    async def _fail_orphaned_waiting_input(self, turn_id: str) -> bool:
+        """Close a ``waiting_input`` row whose owner lease is gone.
+
+        Without this, SQLite still treats the turn as active and every later
+        ``start_turn`` is rejected — the chat window looks dead until reload,
+        and reload cannot age ``waiting_input`` the way it ages ``running``.
+        """
+        if await self.coordinator.get_lease(turn_id) is not None:
+            return False
+        store, _runtime = self._resolve()
+        turn = await store.get_turn(turn_id)
+        if turn is None or str(turn.get("status") or "") != "waiting_input":
+            return False
+        return await store.transition_turn(
+            turn_id,
+            "failed",
+            expected_status="waiting_input",
+            fencing_token=int(turn.get("fencing_token") or 0),
+            error="This question is no longer waiting for a reply",
+            failure_code=TurnFailureCode.WORKER_LOST.value,
+            retryable=True,
+        )
+
     async def cancel_turn(self, turn_id: str, *, command_id: str | None = None) -> bool:
         store, _runtime = self._resolve()
         turn = await store.get_turn(turn_id)
@@ -213,7 +236,7 @@ class TurnApplicationService:
         }:
             return False
         if await self.coordinator.get_lease(turn_id) is None:
-            return False
+            return await self._fail_orphaned_waiting_input(turn_id)
         await self.coordinator.submit_command(turn_id, "cancel", {}, command_id=command_id)
         # A duplicate command ID means the mutation was already accepted. The
         # WebSocket adapter must acknowledge that retry as success so a client
@@ -228,7 +251,16 @@ class TurnApplicationService:
         answers: list[dict[str, Any]] | None = None,
         command_id: str | None = None,
     ) -> bool:
+        _store, runtime = self._resolve()
+        if await runtime.submit_user_reply(
+            turn_id,
+            text=text,
+            answers=answers,
+            command_id=command_id,
+        ):
+            return True
         if await self.coordinator.get_lease(turn_id) is None:
+            await self._fail_orphaned_waiting_input(turn_id)
             return False
         await self.coordinator.submit_command(
             turn_id,

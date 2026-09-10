@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   ChatStateAdapterProvider,
@@ -75,8 +75,10 @@ const transport = vi.hoisted(() => {
 
     sendAwaitingAck(message: Record<string, unknown>): Promise<boolean> {
       this.submitted.push(message);
-      return Promise.resolve(true);
+      return Promise.resolve(this.acceptReplies);
     }
+
+    acceptReplies = true;
   }
 
   return { MockUnifiedTurnClient, instances };
@@ -98,6 +100,9 @@ function Harness() {
   return (
     <div>
       <span data-testid="streaming">{String(chat.state.isStreaming)}</span>
+      <span data-testid="expired">
+        {String(Boolean(chat.state.askUserPauseExpired))}
+      </span>
       <button type="button" onClick={() => chat.sendMessage("hello")}>
         Start turn
       </button>
@@ -117,6 +122,10 @@ function Harness() {
 }
 
 describe("ask_user terminal turn state", () => {
+  beforeEach(() => {
+    transport.instances.length = 0;
+  });
+
   it("keeps the pending card addressable after a completed turn", async () => {
     const user = userEvent.setup();
     render(
@@ -139,5 +148,27 @@ describe("ask_user terminal turn state", () => {
         text: "Knowledge center",
       });
     });
+    expect(transport.instances).toHaveLength(1);
+  });
+
+  it("expires the pause when the reply is refused", async () => {
+    const user = userEvent.setup();
+    render(
+      <ChatStateAdapterProvider>
+        <Harness />
+      </ChatStateAdapterProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Start turn" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("streaming")).toHaveTextContent("false"),
+    );
+    const client = transport.instances.at(-1);
+    if (client) client.acceptReplies = false;
+
+    await user.click(screen.getByRole("button", { name: "Submit answer" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("expired")).toHaveTextContent("true"),
+    );
   });
 });

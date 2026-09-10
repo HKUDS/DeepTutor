@@ -213,6 +213,58 @@ async def test_subscribe_turn_does_not_mutate_remote_running_turn(tmp_path) -> N
 
 
 @pytest.mark.asyncio
+async def test_subscribe_turn_does_not_synthesize_done_for_waiting_input(tmp_path) -> None:
+    """A parked ask_user turn is still live even with no local execution."""
+
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    runtime = TurnRuntimeManager(store)
+    session = await store.ensure_session(None)
+    turn = await store.create_turn(session["id"], capability="chat")
+    assert (
+        await store.transition_turn(
+            turn["id"],
+            "waiting_input",
+            expected_status="running",
+        )
+        is True
+    )
+
+    events = [event async for event in runtime.subscribe_turn(turn["id"], after_seq=0)]
+
+    persisted = await store.get_turn(turn["id"])
+    assert persisted is not None
+    assert persisted["status"] == "waiting_input"
+    assert events == []
+
+
+@pytest.mark.asyncio
+async def test_transition_execution_closes_waiting_input_turn(tmp_path) -> None:
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    runtime = TurnRuntimeManager(store)
+    session = await store.ensure_session(None)
+    turn = await store.begin_turn(session["id"], capability="chat")
+    assert (
+        await store.transition_turn(
+            turn["id"],
+            "waiting_input",
+            expected_status="running",
+        )
+        is True
+    )
+    execution = _TurnExecution(
+        turn_id=turn["id"],
+        session_id=session["id"],
+        capability="chat",
+        payload={},
+    )
+
+    assert await runtime._transition_execution(execution, "cancelled", "Turn cancelled") is True
+    persisted = await store.get_turn(turn["id"])
+    assert persisted is not None
+    assert persisted["status"] == "cancelled"
+
+
+@pytest.mark.asyncio
 async def test_subscribe_terminal_turn_synthesizes_protocol_valid_done(tmp_path) -> None:
     """A recovered terminal turn must emit a consumable monotonic DONE."""
 
