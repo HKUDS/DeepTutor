@@ -7165,6 +7165,26 @@
         "title": "SettingsDraftPayload",
         "type": "object"
       },
+      "SettingsProfileImportPayload": {
+        "description": "An exported value-free settings profile submitted for review only.",
+        "properties": {
+          "profile": {
+            "additionalProperties": true,
+            "title": "Profile",
+            "type": "object"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "profile"
+        ],
+        "title": "SettingsProfileImportPayload",
+        "type": "object"
+      },
       "SidebarDescriptionUpdate": {
         "properties": {
           "description": {
@@ -43361,6 +43381,144 @@
         ]
       }
     },
+    "/api/settings/profile": {
+      "get": {
+        "description": "Export effective settings with credentials and deployment values removed.",
+        "operationId": "get_settings_profile_api_settings_profile_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Settings Profile",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/profile/diff": {
+      "post": {
+        "description": "Review an imported profile without changing effective settings.",
+        "operationId": "diff_settings_profile_api_settings_profile_diff_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsProfileImportPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Diff Settings Profile",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
     "/api/settings/providers/codebuddy/auth/cancel": {
       "post": {
         "operationId": "cancel_codebuddy_auth_api_settings_providers_codebuddy_auth_cancel_post",
@@ -49642,7 +49800,9 @@
           }
         },
         "summary": "Browse Invidious",
-        "tags": ["video-learning"]
+        "tags": [
+          "video-learning"
+        ]
       }
     },
     "/api/video-learning/materials/resolve": {
