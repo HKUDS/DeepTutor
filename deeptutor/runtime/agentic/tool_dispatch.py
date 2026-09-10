@@ -105,6 +105,8 @@ async def dispatch_tool_calls(
     too_many_tool_calls_message: str | None = None,
     unknown_error_message_factory: UnknownErrorMessageFactory | None = None,
     trace_id_prefix: str = "iter",
+    tool_timeout: float | None = None,
+    tool_max_retries: int = 0,
 ) -> DispatchOutcome:
     """Execute tool calls in parallel and assemble a :class:`DispatchOutcome`."""
     registry = registry or get_tool_registry()
@@ -188,6 +190,9 @@ async def dispatch_tool_calls(
         )
         if rejection is not None:
             return rejection
+        # Pause tools intentionally wait for user interaction. A wall-clock
+        # tool timeout must not cancel that wait.
+        policy_exempt = tool_name in PAUSE_LAST_TOOLS
         return await execute_tool_call(
             registry=registry,
             tool_name=tool_name,
@@ -209,6 +214,8 @@ async def dispatch_tool_calls(
             start_retrieval_message=start_retrieval_message,
             unknown_error_message_factory=unknown_error_message_factory,
             retrieve_label=retrieve_label,
+            tool_timeout=None if policy_exempt else tool_timeout,
+            tool_max_retries=0 if policy_exempt else tool_max_retries,
         )
 
     def _rebind(indices: list[int]) -> None:
@@ -552,6 +559,8 @@ async def execute_tool_call(
     start_retrieval_message: str = "Starting retrieval",
     retrieve_label: str = "Retrieve",
     unknown_error_message_factory: UnknownErrorMessageFactory | None = None,
+    tool_timeout: float | None = None,
+    tool_max_retries: int = 0,
 ) -> dict[str, Any]:
     """Run one tool, streaming its state (and any intermediate progress) into
     the tool's own sub-trace.
@@ -609,17 +618,40 @@ async def execute_tool_call(
                 call_state="running",
             ),
         )
+
+    async def _execute_with_policy() -> Any:
+        attempts = max(1, int(tool_max_retries) + 1)
+        for attempt in range(1, attempts + 1):
+            try:
+                return await asyncio.wait_for(
+                    registry.execute(
+                        tool_name,
+                        # Withheld when there is nowhere to publish (a bare call with
+                        # neither meta): tools branch on the sink being present to decide
+                        # whether to do the work at all — ``rag`` installs a log-capture
+                        # handler for it — so handing over one that discards everything is
+                        # strictly worse than handing over none.
+                        event_sink=_event_sink if status_meta is not None else None,
+                        **tool_args,
+                    ),
+                    timeout=tool_timeout,
+                )
+            except (asyncio.TimeoutError, ConnectionError) as exc:
+                if attempt >= attempts:
+                    if isinstance(exc, asyncio.TimeoutError) and tool_timeout is not None:
+                        raise TimeoutError(
+                            f"{tool_name} timed out after {tool_timeout:g} seconds"
+                        ) from exc
+                    raise
+                retry_reason = "timed out" if isinstance(exc, asyncio.TimeoutError) else str(exc)
+                await _event_sink(
+                    "tool_log",
+                    f"{tool_name} {retry_reason}; retrying attempt {attempt + 1}/{attempts}",
+                    {"retry_attempt": attempt + 1, "max_attempts": attempts},
+                )
+
     try:
-        result = await registry.execute(
-            tool_name,
-            # Withheld when there is nowhere to publish (a bare call with
-            # neither meta): tools branch on the sink being present to decide
-            # whether to do the work at all — ``rag`` installs a log-capture
-            # handler for it — so handing over one that discards everything is
-            # strictly worse than handing over none.
-            event_sink=_event_sink if status_meta is not None else None,
-            **tool_args,
-        )
+        result = await _execute_with_policy()
         if status_meta is not None:
             await stream.progress(
                 (
