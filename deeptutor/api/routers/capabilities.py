@@ -46,9 +46,7 @@ async def set_resource_provider_state(name: str, body: dict[str, object]) -> dic
     if not isinstance(enabled, bool):
         raise HTTPException(status_code=422, detail="Body must contain boolean 'enabled'")
     set_provider_enabled(name, enabled)
-    row = next(
-        item for item in registry.descriptions() if str(item.get("name")) == name
-    )
+    row = next(item for item in registry.descriptions() if str(item.get("name")) == name)
     return row
 
 

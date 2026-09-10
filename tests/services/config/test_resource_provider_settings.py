@@ -9,9 +9,7 @@ from deeptutor.services.config.runtime_settings import RuntimeSettingsService
 
 def test_resource_provider_roundtrip(tmp_path: Path) -> None:
     svc = RuntimeSettingsService(tmp_path, process_env={})
-    svc.save_resource_providers(
-        {"version": 1, "providers": {"example": {"enabled": False}}}
-    )
+    svc.save_resource_providers({"version": 1, "providers": {"example": {"enabled": False}}})
     loaded = svc.load_resource_providers()
     assert loaded["providers"]["example"] == {"enabled": False}
     assert (tmp_path / "resource_providers.json").exists()
