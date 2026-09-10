@@ -46,6 +46,27 @@ describe("Watching account browser", () => {
     );
     expect(mock.browse.mock.calls[0][0]).toBe("feed");
   });
+
+  it("returns a selection to Reading instead of opening the Watching route", async () => {
+    const onSelectUrl = vi.fn();
+    render(
+      <WatchingBrowser
+        canDismiss
+        selectionMode
+        onSelectUrl={onSelectUrl}
+        onDismiss={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Neural networks/ }),
+    );
+
+    expect(onSelectUrl).toHaveBeenCalledWith(
+      "https://www.youtube.com/watch?v=aircAruvnKk",
+    );
+    expect(mock.push).not.toHaveBeenCalled();
+  });
   it("allows anonymous search and guides account-only browsing", async () => {
     mock.account.mockResolvedValue({ connected: false });
     render(<WatchingBrowser canDismiss={false} onDismiss={vi.fn()} />);
