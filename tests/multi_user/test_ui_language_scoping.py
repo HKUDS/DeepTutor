@@ -8,6 +8,7 @@ from deeptutor.services.settings.interface_settings import (
     get_response_language,
     get_ui_language,
     get_ui_settings,
+    resolve_languages,
 )
 
 
@@ -57,3 +58,25 @@ def test_response_language_is_scoped_independently_per_user(mu_isolated_root, as
     with as_user("u_alice", role="user"):
         assert get_ui_language() == "zh"
         assert get_response_language() == "en"
+
+
+def test_response_language_normalizes_supported_labels_and_variants():
+    assert (
+        resolve_languages({"language": "en", "response_language": "japanese"})["response_language"]
+        == "ja"
+    )
+    assert (
+        resolve_languages({"language": "en", "response_language": "zh-cn"})["response_language"]
+        == "zh"
+    )
+    assert (
+        resolve_languages({"language": "en", "response_language": "pt-BR"})["response_language"]
+        == "pt"
+    )
+
+
+def test_response_language_falls_back_when_unsupported():
+    assert resolve_languages({"language": "zh", "response_language": "klingon"}) == {
+        "language": "zh",
+        "response_language": "zh",
+    }

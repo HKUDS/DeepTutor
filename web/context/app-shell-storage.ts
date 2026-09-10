@@ -4,6 +4,55 @@ import { browserStorage } from "@/shared/storage";
 
 export type AppLanguage = "en" | "zh";
 
+/** Model output can use more languages than the app UI locale supports. */
+export type ResponseLanguage =
+  | "en"
+  | "zh"
+  | "zh-tw"
+  | "ja"
+  | "ko"
+  | "es"
+  | "fr"
+  | "de"
+  | "ru"
+  | "pt"
+  | "it"
+  | "ar"
+  | "pl";
+
+const SUPPORTED_RESPONSE_LANGUAGE_CODES: readonly ResponseLanguage[] = [
+  "en",
+  "zh",
+  "zh-tw",
+  "ja",
+  "ko",
+  "es",
+  "fr",
+  "de",
+  "ru",
+  "pt",
+  "it",
+  "ar",
+  "pl",
+];
+
+const RESPONSE_LANGUAGE_ALIASES: Record<string, ResponseLanguage> = {
+  "simplified chinese": "zh",
+  "traditional chinese": "zh-tw",
+  chinese: "zh",
+  japanese: "ja",
+  korean: "ko",
+  spanish: "es",
+  french: "fr",
+  german: "de",
+  russian: "ru",
+  portuguese: "pt",
+  italian: "it",
+  arabic: "ar",
+  polish: "pl",
+  "zh-cn": "zh",
+};
+
 export const ACTIVE_SESSION_STORAGE_KEY = "deeptutor.activeSessionId.tab";
 export const LANGUAGE_STORAGE_KEY = "deeptutor-language";
 export const RESPONSE_LANGUAGE_STORAGE_KEY = "deeptutor-response-language";
@@ -76,10 +125,16 @@ export function normalizeLanguage(
 export function resolveResponseLanguage(
   value: string | null | undefined,
   legacyLanguage: string | null | undefined = "en",
-): AppLanguage {
-  return value === "zh" || value === "en"
-    ? value
-    : normalizeLanguage(legacyLanguage);
+): ResponseLanguage {
+  const code = value?.trim().toLowerCase();
+  if ((SUPPORTED_RESPONSE_LANGUAGE_CODES as readonly string[]).includes(code ?? "")) {
+    return code as ResponseLanguage;
+  }
+  const base = code?.split("-", 1)[0];
+  if ((SUPPORTED_RESPONSE_LANGUAGE_CODES as readonly string[]).includes(base ?? "")) {
+    return base as ResponseLanguage;
+  }
+  return RESPONSE_LANGUAGE_ALIASES[code ?? ""] ?? normalizeLanguage(legacyLanguage);
 }
 
 export function readStoredLanguage(): AppLanguage {
@@ -142,7 +197,7 @@ export function hasStoredResponseLanguage(): boolean {
   }
 }
 
-export function readStoredResponseLanguage(): AppLanguage {
+export function readStoredResponseLanguage(): ResponseLanguage {
   if (typeof window === "undefined") return "en";
   try {
     return resolveResponseLanguage(
@@ -154,7 +209,7 @@ export function readStoredResponseLanguage(): AppLanguage {
   }
 }
 
-export function writeStoredResponseLanguage(language: AppLanguage): void {
+export function writeStoredResponseLanguage(language: ResponseLanguage): void {
   if (typeof window === "undefined") return;
   try {
     browserStorage.writeRaw("local", RESPONSE_LANGUAGE_STORAGE_KEY, language);

@@ -130,6 +130,22 @@ _LANGUAGE_CHOICES: tuple[tuple[str, str, str], ...] = (
     ("zh", "简体中文", "Interface and replies in Simplified Chinese."),
 )
 
+_RESPONSE_LANGUAGE_CHOICES: tuple[tuple[str, str, str], ...] = (
+    ("en", "English", "Replies in English."),
+    ("zh", "简体中文", "Replies in Simplified Chinese."),
+    ("zh-tw", "繁體中文", "Replies in Traditional Chinese."),
+    ("ja", "日本語", "Replies in Japanese."),
+    ("ko", "한국어", "Replies in Korean."),
+    ("es", "Español", "Replies in Spanish."),
+    ("fr", "Français", "Replies in French."),
+    ("de", "Deutsch", "Replies in German."),
+    ("ru", "Русский", "Replies in Russian."),
+    ("pt", "Português", "Replies in Portuguese."),
+    ("it", "Italiano", "Replies in Italian."),
+    ("ar", "العربية", "Replies in Arabic."),
+    ("pl", "Polski", "Replies in Polish."),
+)
+
 _THEME_CHOICES: tuple[tuple[str, str, str], ...] = (
     ("snow", "Default", "Pure-white neutral theme."),
     ("light", "Light", "Warm light theme."),
@@ -195,7 +211,7 @@ def _interface_specs() -> list[SettingSpec]:
             label="Reply language",
             summary="Language the assistant writes its answers in.",
             read=response_read,
-            choices=_static_choices(_LANGUAGE_CHOICES, response_read),
+            choices=_static_choices(_RESPONSE_LANGUAGE_CHOICES, response_read),
             write=_write_ui("response_language"),
             effect_detail="Applies from the next turn onwards.",
         ),
