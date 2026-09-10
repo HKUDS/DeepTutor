@@ -132,6 +132,7 @@ describe("reading toolbar with a live selection", () => {
       }),
     );
 
+    await user.click(await screen.findByRole("button", { name: "More" }));
     const button = await screen.findByRole("button", {
       name: "Translate to Chinese",
     });
