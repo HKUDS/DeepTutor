@@ -106,7 +106,7 @@ export default function NotebookRecordActions({
             <div className="p-1">
               <MenuItem
                 icon={Pencil}
-                label={t("Edit")}
+                label={t("Edit record")}
                 onClick={() => {
                   close();
                   onEdit();
