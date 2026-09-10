@@ -47,11 +47,20 @@ def _payload() -> dict:
     }
 
 
+@pytest.fixture(autouse=True)
+def _workspace_root(tmp_path, monkeypatch: pytest.MonkeyPatch):
+    """Keep the runtime workspace binding local to the test process."""
+    root = tmp_path / "workspace"
+    root.mkdir()
+    monkeypatch.setenv("DEEPTUTOR_WORKSPACE_ROOT", str(root))
+    monkeypatch.delenv("DEEPTUTOR_WORKSPACE_ALLOWED_ROOTS", raising=False)
+
+
 @pytest.mark.asyncio
 async def test_reply_accepted_after_local_queue_dropped_is_never_delivered(
     monkeypatch, tmp_path, caplog
 ) -> None:
-    """A reply that outlives its turn's local waiter is ACKed but never delivered."""
+    """A reply that outlives its waiter terminalizes instead of locking the turn."""
     waiting = asyncio.Event()
 
     class Engine:
@@ -104,15 +113,25 @@ async def test_reply_accepted_after_local_queue_dropped_is_never_delivered(
 
     with caplog.at_level(logging.WARNING):
         accepted = await app_b.submit_user_reply(turn["id"], "yes", command_id="late-reply-from-b")
-        assert accepted is True  # the false-positive ACK
+        assert accepted is True  # ownership was proven before the waiter vanished.
 
-        # Give worker A's coordination loop a few polls to consume the command.
-        for _ in range(20):
-            await asyncio.sleep(0.05)
-
-    persisted = await store_b.get_turn(turn["id"])
+    # Worker A's coordination loop cancels the execution. Its cancellation
+    # path publishes the terminal pair and allows the session to start again.
+    for _ in range(100):
+        persisted = await store_b.get_turn(turn["id"])
+        if persisted["status"] in {"completed", "failed", "cancelled"}:
+            break
+        await asyncio.sleep(0.02)
     assert persisted is not None
-    assert persisted["status"] == "waiting_input"  # stuck forever, exactly as reported
+    assert persisted["status"] == "cancelled"
+
+    events = await store_b.get_turn_events(turn["id"])
+    event_types = [event["type"] for event in events]
+    assert "error" in event_types
+    assert event_types[-1] == "done"
+
+    _fresh_session, following = await app_b.start_turn(_payload())
+    assert following["id"] != turn["id"]
 
     warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
     assert any("late-reply-from-b" in r.getMessage() for r in warnings), (
