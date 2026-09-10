@@ -94,33 +94,37 @@ export const PRIMARY_NAV: NavEntry[] = [
     icon: LayoutGrid,
     tooltipKey: "Space tooltip",
   },
-];
-
-/** Consoles that sit under the chat history. Not arrangeable: Settings has to
- *  stay findable, and a console nobody folds away is one less thing to explain. */
-export const SECONDARY_NAV: NavEntry[] = [
   {
-    // Memory is its own top-level console (pulled out of the Learning Space):
-    // a place to inspect and curate the tutor's long-term memory, not a daily
-    // workspace. Never gated — memory has no per-user model requirement.
+    // Memory and Knowledge Center are consoles rather than daily workspaces.
+    // They ship visible, but a multi-user deployment can fold them into More
+    // immediately to leave more room for the conversation list.
     href: "/memory",
     label: "Memory",
     icon: Brain,
     tooltipKey: "Memory tooltip",
   },
   {
-    // Knowledge Center sits just above Settings: it's a console for managing
-    // KBs and retrieval engines, not a daily workspace. Never gated — embedding
-    // / search are shared admin infrastructure, no per-user model grant needed.
     href: "/knowledge-bases",
     label: "Knowledge Center",
     icon: BookOpen,
     tooltipKey: "Knowledge tooltip",
   },
+];
+
+/** Consoles that sit under the chat history. Not arrangeable: Settings has to
+ *  stay findable, and a console nobody folds away is one less thing to explain. */
+export const SECONDARY_NAV: NavEntry[] = [
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 export const PRIMARY_NAV_HREFS = PRIMARY_NAV.map((entry) => entry.href);
+
+/** Fixed consoles that may default into More when auth creates the crowded
+ *  multi-user shell, while Settings stays discoverable below the history. */
+export const MULTI_USER_DEFAULT_COLLAPSED_NAV_HREFS = [
+  "/memory",
+  "/knowledge-bases",
+] as const;
 
 export const NAV_BY_HREF = new Map(
   [...PRIMARY_NAV, ...SECONDARY_NAV].map((entry) => [entry.href, entry]),
