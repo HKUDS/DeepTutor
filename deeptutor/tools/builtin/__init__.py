@@ -1290,6 +1290,7 @@ class ReadSkillTool(_PromptHintsMixin, BaseTool):
         from deeptutor.services.skill.service import (
             InvalidSkillNameError,
             InvalidSkillPathError,
+            SkillFileNotFoundError,
             SkillNotFoundError,
             SkillService,
         )
@@ -1316,6 +1317,14 @@ class ReadSkillTool(_PromptHintsMixin, BaseTool):
         for service in services:
             try:
                 content = service.read_skill_file(name, rel_path)
+            except SkillFileNotFoundError:
+                return ToolResult(
+                    content=(
+                        f"(file not found in skill {name!r}: {rel_path!r} — "
+                        "check the skill's SKILL.md or references/ for the correct path)"
+                    ),
+                    success=False,
+                )
             except SkillNotFoundError:
                 continue
             except (InvalidSkillNameError, InvalidSkillPathError) as exc:
