@@ -251,12 +251,14 @@ export function ReaderPane({
   // -- viewport reporting --------------------------------------------------
 
   const handleVisibleLocator = useCallback(
-    (locator: number) => {
+    (locator: number, navigation?: { navigationChanged: boolean }) => {
       setCurrentLocator(locator);
       if (material?.render_mode === "epub") {
         // Reflowed EPUB pages can move within the same chapter locator.
-        clearSelection();
-        setNavigationVersion((version) => version + 1);
+        if (navigation?.navigationChanged !== false) {
+          clearSelection();
+          setNavigationVersion((version) => version + 1);
+        }
       }
       reportViewport({ locator });
       // Remember where the reader got to, so opening this material again

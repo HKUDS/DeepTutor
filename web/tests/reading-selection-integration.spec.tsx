@@ -71,7 +71,10 @@ vi.mock("@/components/reading/EpubDocumentView", () => ({
     onVisibleLocatorChange,
   }: {
     onSelection: (v: unknown) => void;
-    onVisibleLocatorChange: (v: number) => void;
+    onVisibleLocatorChange: (
+      v: number,
+      navigation?: { navigationChanged: boolean },
+    ) => void;
   }) => (
     <>
       <button
@@ -88,6 +91,13 @@ vi.mock("@/components/reading/EpubDocumentView", () => ({
       </button>
       <button onClick={() => onVisibleLocatorChange(1)}>
         Turn document page
+      </button>
+      <button
+        onClick={() =>
+          onVisibleLocatorChange(1, { navigationChanged: false })
+        }
+      >
+        Repeat current EPUB page
       </button>
     </>
   ),
@@ -131,4 +141,13 @@ test("ReaderPane preserves selection through annotation pointerdown and clears i
     "Select a word or passage first.",
   );
   expect(runReadingExtension).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Select English word' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Repeat current EPUB page' }));
+  fireEvent.click(lookup);
+  expect(runReadingExtension).toHaveBeenCalledWith(
+    'material',
+    'vocabulary',
+    'explain',
+    expect.objectContaining({ selection: 'algorithm' }),
+  );
 });
