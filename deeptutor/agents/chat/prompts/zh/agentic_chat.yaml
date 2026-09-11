@@ -79,6 +79,9 @@ loop:
   finish_empty_nudge: |-
     你上一轮只输出了内部推理——既没有调用工具，也没有写出面向用户的回答。
     现在继续：要么调用工具执行你计划好的步骤，要么直接写出最终回答。
+  repeat_reasoning_only_nudge: |-
+    前几轮都只有内部推理，没有工具调用，也没有面向用户的回答。不要再继续推演；
+    请选择最可能的下一步行动，并立即产出它。
 
 knowledge_base_seed:
   header: |-
@@ -107,6 +110,7 @@ notices:
   ask_questions_fallback_prompt: "我最需要了解的目标或限制条件是什么？"
   image_fallback: "当前模型不支持图片输入；将去除图片后重试。"
   empty_final_response: "未能从模型输出中得到有效回答。请重试或缩小问题范围。"
+  reasoning_only_final_response: "模型产生了内部推理，但没有可用回答。请重试或缩小问题范围。"
   empty_finish_nudged: "模型这一轮只有内部推理，已提示其继续执行。"
 
 empty:
