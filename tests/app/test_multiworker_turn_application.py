@@ -133,6 +133,11 @@ async def test_remote_worker_reply_reaches_owner_waiter(monkeypatch, tmp_path) -
     runtime_b = TurnRuntimeManager(
         store_b, coordinator=coordinator, owner_id="worker-b", turn_engine=Engine()
     )
+
+    async def _noop_title(**_kwargs):
+        return None
+
+    monkeypatch.setattr(runtime_a, "_maybe_generate_session_title", _noop_title)
     app_a = _application(store_a, runtime_a, coordinator)
     app_b = _application(store_b, runtime_b, coordinator)
 
@@ -145,17 +150,30 @@ async def test_remote_worker_reply_reaches_owner_waiter(monkeypatch, tmp_path) -
         await asyncio.sleep(0.01)
     assert active is not None
     assert active["status"] == "waiting_input"
-    assert await app_b.submit_user_reply(turn["id"], "yes", command_id="reply-from-b") is True
-    events = [event async for event in app_b.subscribe_turn(turn["id"])]
 
-    assert any(event.get("content") == "reply:yes" for event in events)
+    received: list[dict] = []
+
+    async def collect() -> None:
+        async for event in app_b.subscribe_turn(turn["id"]):
+            received.append(event)
+
+    subscriber = asyncio.create_task(collect())
+    for _ in range(100):
+        if any(event["type"] == "wait_for_input" for event in received):
+            break
+        await asyncio.sleep(0.01)
+    assert any(event["type"] == "wait_for_input" for event in received)
+    assert await app_b.submit_user_reply(turn["id"], "yes", command_id="reply-from-b") is True
+    await asyncio.wait_for(subscriber, timeout=3)
+
+    assert any(event.get("content") == "reply:yes" for event in received)
     # DONE is not the last frame of a completed turn: the runtime publishes
     # post-turn metadata (the LLM-written session title) after it, and a
     # subscriber has to receive that too — dropping it is what left finished
     # conversations sitting on "New conversation". Assert the shape instead of
     # asserting DONE is last: everything after DONE must be post-turn metadata.
-    done_index = next(i for i, event in enumerate(events) if event["type"] == "done")
-    assert all(event["type"] == "session_meta" for event in events[done_index + 1 :])
-    assert [event["seq"] for event in events] == list(range(1, len(events) + 1))
+    done_index = next(i for i, event in enumerate(received) if event["type"] == "done")
+    assert all(event["type"] == "session_meta" for event in received[done_index + 1 :])
+    assert [event["seq"] for event in received] == list(range(1, len(received) + 1))
     await runtime_a.close()
     await runtime_b.close()
