@@ -88,6 +88,7 @@ from deeptutor.services.rag.pipelines.ima.config import (
     ImaCredentials,
     get_account_credentials,
 )
+from deeptutor.services.web_source.scheduler import get_web_source_sync_scheduler
 from deeptutor.utils.document_extractor import (
     MAX_EXTRACTED_CHARS_PER_DOC,
     DocumentExtractionError,
@@ -4042,12 +4043,31 @@ class WebSourceInfo(BaseModel):
     max_depth: int = 3
     max_pages: int = 200
     enabled: bool = True
+    auto_sync_enabled: bool = True
+    sync_interval_hours: int = Field(default=24, ge=1, le=168)
     page_count: int = 0
     last_synced_at: str = ""
     last_sync_status: str = "pending"
     last_sync_error: str | None = None
     added_at: str = ""
     navigation: dict | None = None
+
+
+class WebSourceScheduleUpdate(BaseModel):
+    auto_sync_enabled: bool
+    sync_interval_hours: int = Field(default=24, ge=1, le=168)
+
+
+class WebSourceSyncJobInfo(BaseModel):
+    owner_id: str
+    kb_name: str
+    source_id: str
+    state: str
+    next_run_at: int
+    last_run_at: int | None = None
+    attempt: int = 0
+    error: str | None = None
+    cancel_requested: bool = False
 
 
 @contextmanager
@@ -4132,6 +4152,8 @@ async def add_web_source(kb_name: str, request: AddWebSourceRequest):
         info = manager.add_web_source(
             resolved_name, request.url, request.max_depth, request.max_pages
         )
+        scheduler = get_web_source_sync_scheduler()
+        scheduler.repo.ensure_source((get_current_user().id, resolved_name, str(info["id"])))
         return WebSourceInfo(**info)
 
 
@@ -4148,7 +4170,97 @@ async def remove_web_source(kb_name: str, source_id: str):
         manager, resolved_name, _ = _writable_kb(kb_name)
         if not manager.remove_web_source(resolved_name, source_id):
             raise HTTPException(status_code=404, detail=f"Source '{source_id}' not found")
+        await get_web_source_sync_scheduler().request_cancel(
+            get_current_user().id, resolved_name, source_id
+        )
+        get_web_source_sync_scheduler().repo.delete(
+            (get_current_user().id, resolved_name, source_id)
+        )
         return {"message": "Removed", "source_id": source_id}
+
+
+@router.get(
+    "/knowledge-bases/{kb_name}/web-source-sync",
+    response_model=list[WebSourceSyncJobInfo],
+)
+async def get_web_source_sync_jobs(kb_name: str):
+    with _knowledge_source_errors(kb_name):
+        manager, resolved_name, _ = _writable_kb(kb_name)
+        scheduler = get_web_source_sync_scheduler()
+        jobs = scheduler.repo.list_jobs(get_current_user().id, resolved_name)
+        return [WebSourceSyncJobInfo(**job.public_dict()) for job in jobs]
+
+
+@router.put(
+    "/knowledge-bases/{kb_name}/web-source/{source_id}/schedule",
+    response_model=WebSourceInfo,
+)
+async def update_web_source_schedule(
+    kb_name: str,
+    source_id: str,
+    request: WebSourceScheduleUpdate,
+):
+    with _knowledge_source_errors(kb_name, validation_status=400):
+        manager, resolved_name, _ = _writable_kb(kb_name)
+        info = manager.update_web_source_schedule(
+            resolved_name,
+            source_id,
+            auto_sync_enabled=request.auto_sync_enabled,
+            sync_interval_hours=request.sync_interval_hours,
+        )
+        scheduler = get_web_source_sync_scheduler()
+        job_key = (get_current_user().id, resolved_name, source_id)
+        if request.auto_sync_enabled:
+            scheduler.repo.ensure_source(job_key)
+        else:
+            await scheduler.request_cancel(*job_key)
+            scheduler.repo.delete(job_key)
+        return WebSourceInfo(**info)
+
+
+@router.post(
+    "/knowledge-bases/{kb_name}/web-source/{source_id}/cancel",
+)
+async def cancel_web_source_sync(kb_name: str, source_id: str):
+    with _knowledge_source_errors(kb_name):
+        manager, resolved_name, _ = _writable_kb(kb_name)
+        if not any(item.get("id") == source_id for item in manager.get_web_sources(resolved_name)):
+            raise HTTPException(status_code=404, detail=f"Source '{source_id}' not found")
+        cancelled = await get_web_source_sync_scheduler().request_cancel(
+            get_current_user().id, resolved_name, source_id
+        )
+        if not cancelled:
+            raise HTTPException(status_code=409, detail="Synchronization job cannot be cancelled")
+        return {"message": "Cancellation requested", "source_id": source_id}
+
+
+@router.post(
+    "/knowledge-bases/{kb_name}/web-source/{source_id}/retry",
+)
+async def retry_web_source_sync(kb_name: str, source_id: str):
+    with _knowledge_source_errors(kb_name):
+        manager, resolved_name, _ = _writable_kb(kb_name)
+        source = next(
+            (
+                item
+                for item in manager.get_web_sources(resolved_name)
+                if item.get("id") == source_id
+            ),
+            None,
+        )
+        if source is None:
+            raise HTTPException(status_code=404, detail=f"Source '{source_id}' not found")
+        if not source.get("enabled", True) or not source.get("auto_sync_enabled", True):
+            raise HTTPException(
+                status_code=409,
+                detail="Enable the source and automatic synchronization before retrying",
+            )
+        retried = await get_web_source_sync_scheduler().retry(
+            get_current_user().id, resolved_name, source_id
+        )
+        if not retried:
+            raise HTTPException(status_code=404, detail="Synchronization job not found")
+        return {"message": "Retry scheduled", "source_id": source_id}
 
 
 @router.post("/knowledge-bases/{kb_name}/sync-web")

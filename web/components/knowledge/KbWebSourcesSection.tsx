@@ -2,13 +2,26 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Globe, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
 import {
+  Ban,
+  Globe,
+  Loader2,
+  Plus,
+  RefreshCw,
+  RotateCcw,
+  Trash2,
+} from "lucide-react";
+import {
+  cancelWebSourceSync,
   addWebSource,
   listWebSources,
   removeWebSource,
+  retryWebSourceSync,
   syncWebSources,
+  updateWebSourceSchedule,
+  listWebSourceSyncJobs,
   type WebSource,
+  type WebSourceSyncJob,
 } from "@/features/knowledge/api/sources";
 import { formatKnowledgeTimestamp } from "@/lib/knowledge-helpers";
 
@@ -21,6 +34,7 @@ export default function KbWebSourcesSection({
 }: KbWebSourcesSectionProps) {
   const { t } = useTranslation();
   const [sources, setSources] = useState<WebSource[]>([]);
+  const [jobs, setJobs] = useState<WebSourceSyncJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -29,12 +43,21 @@ export default function KbWebSourcesSection({
   const [urlInput, setUrlInput] = useState("");
   const [maxDepth, setMaxDepth] = useState(3);
   const [submitting, setSubmitting] = useState(false);
+  const [busySource, setBusySource] = useState<string | null>(null);
+  const [intervalInputs, setIntervalInputs] = useState<Record<string, number>>(
+    {},
+  );
 
   const refresh = useCallback(async () => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15_000);
     try {
-      setSources(await listWebSources(kbName, { signal: controller.signal }));
+      const [nextSources, nextJobs] = await Promise.all([
+        listWebSources(kbName, { signal: controller.signal }),
+        listWebSourceSyncJobs(kbName, { signal: controller.signal }),
+      ]);
+      setSources(nextSources);
+      setJobs(nextJobs);
       setError(null);
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
@@ -51,6 +74,15 @@ export default function KbWebSourcesSection({
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    const hasActiveJob = jobs.some(
+      (job) => job.state === "running" || job.state === "pending",
+    );
+    if (!hasActiveJob) return;
+    const timer = setInterval(() => void refresh(), 5_000);
+    return () => clearInterval(timer);
+  }, [jobs, refresh]);
 
   const handleAdd = async () => {
     const url = urlInput.trim();
@@ -91,6 +123,34 @@ export default function KbWebSourcesSection({
     } finally {
       setSyncing(false);
     }
+  };
+
+  const withSourceAction = async (id: string, action: () => Promise<void>) => {
+    setBusySource(id);
+    setError(null);
+    try {
+      await action();
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusySource(null);
+    }
+  };
+
+  const handleScheduleChange = (
+    source: WebSource,
+    autoSyncEnabled: boolean,
+    syncIntervalHours: number,
+  ) => {
+    const interval = Math.min(168, Math.max(1, syncIntervalHours || 24));
+    setIntervalInputs((current) => ({ ...current, [source.id]: interval }));
+    return withSourceAction(source.id, async () => {
+      await updateWebSourceSchedule(kbName, source.id, {
+        auto_sync_enabled: autoSyncEnabled,
+        sync_interval_hours: interval,
+      });
+    });
   };
 
   if (loading) {
@@ -226,6 +286,28 @@ export default function KbWebSourcesSection({
             <WebSourceCard
               key={src.id}
               source={src}
+              job={jobs.find((job) => job.source_id === src.id)}
+              busy={busySource === src.id}
+              intervalValue={intervalInputs[src.id] ?? src.sync_interval_hours}
+              onIntervalInput={(hours) =>
+                setIntervalInputs((current) => ({
+                  ...current,
+                  [src.id]: hours,
+                }))
+              }
+              onScheduleChange={(autoSync, hours) =>
+                void handleScheduleChange(src, autoSync, hours)
+              }
+              onCancel={() =>
+                void withSourceAction(src.id, () =>
+                  cancelWebSourceSync(kbName, src.id),
+                )
+              }
+              onRetry={() =>
+                void withSourceAction(src.id, () =>
+                  retryWebSourceSync(kbName, src.id),
+                )
+              }
               onRemove={() => void handleRemove(src.id)}
             />
           ))}
@@ -237,9 +319,23 @@ export default function KbWebSourcesSection({
 
 function WebSourceCard({
   source,
+  job,
+  busy,
+  intervalValue,
+  onIntervalInput,
+  onScheduleChange,
+  onCancel,
+  onRetry,
   onRemove,
 }: {
   source: WebSource;
+  job?: WebSourceSyncJob;
+  busy: boolean;
+  intervalValue: number;
+  onIntervalInput: (hours: number) => void;
+  onScheduleChange: (enabled: boolean, interval: number) => void;
+  onCancel: () => void;
+  onRetry: () => void;
   onRemove: () => void;
 }) {
   const { t } = useTranslation();
@@ -250,6 +346,18 @@ function WebSourceCard({
         ? "text-red-600 dark:text-red-400"
         : "text-[var(--muted-foreground)]";
   const lastSync = formatKnowledgeTimestamp(source.last_synced_at);
+  const jobColor =
+    job?.state === "running"
+      ? "text-blue-600 dark:text-blue-400"
+      : job?.state === "error" || job?.state === "interrupted"
+        ? "text-red-600 dark:text-red-400"
+        : job?.state === "cancelled"
+          ? "text-amber-600 dark:text-amber-400"
+          : "text-[var(--muted-foreground)]";
+  const nextRun =
+    job?.state === "pending" && job.next_run_at
+      ? new Date(job.next_run_at).toLocaleString()
+      : "";
 
   return (
     <div className="flex items-start justify-between gap-3 rounded-lg border border-[var(--border)] bg-[var(--background)] p-3">
@@ -277,21 +385,92 @@ function WebSourceCard({
               {t("Synced")}: {lastSync}
             </span>
           )}
+          {job && (
+            <span className={jobColor}>
+              {t("Schedule")}: {t(job.state === "interrupted" ? "Interrupted" : job.state)}
+            </span>
+          )}
+          {nextRun && <span>{t("Next run")}: {nextRun}</span>}
+          {job?.cancel_requested && <span>{t("Cancelling…")}</span>}
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <label className="inline-flex items-center gap-1.5 text-[11px]">
+            <input
+              type="checkbox"
+              checked={source.auto_sync_enabled}
+              disabled={busy}
+              onChange={(event) =>
+                onScheduleChange(event.target.checked, intervalValue)
+              }
+              aria-label={t("Automatic sync")}
+            />
+            {t("Automatic sync")}
+          </label>
+          <label className="inline-flex items-center gap-1.5 text-[11px]">
+            <span>{t("Interval hours")}</span>
+            <input
+              type="number"
+              min={1}
+              max={168}
+              value={intervalValue}
+              disabled={busy || !source.auto_sync_enabled}
+              onChange={(event) => onIntervalInput(Number(event.target.value) || 24)}
+              onBlur={(event) =>
+                onScheduleChange(
+                  source.auto_sync_enabled,
+                  Number(event.target.value) || 24,
+                )
+              }
+              className="w-16 rounded-md border border-[var(--border)] bg-[var(--card)] px-1.5 py-1 text-[11px] text-[var(--foreground)] outline-none focus:border-[var(--primary)] disabled:opacity-50"
+              aria-label={t("Interval hours")}
+            />
+          </label>
         </div>
         {source.last_sync_error && (
           <p className="mt-1 text-[11px] text-red-600 dark:text-red-400">
             {source.last_sync_error}
           </p>
         )}
+        {job?.error && (
+          <p className="mt-1 text-[11px] text-red-600 dark:text-red-400">
+            {job.error}
+          </p>
+        )}
       </div>
-      <button
-        type="button"
-        onClick={onRemove}
-        title={t("Remove source")}
-        className="shrink-0 rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-red-600"
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-      </button>
+      <div className="flex shrink-0 items-center gap-1">
+        {job?.state === "running" || job?.state === "pending" ? (
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            title={t("Cancel sync")}
+            aria-label={t("Cancel sync")}
+            className="rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-red-600 disabled:opacity-50"
+          >
+            <Ban className="h-3.5 w-3.5" />
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onRetry}
+            disabled={busy || !source.enabled || !source.auto_sync_enabled}
+            title={t("Retry sync")}
+            aria-label={t("Retry sync")}
+            className="rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-50"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onRemove}
+          title={t("Remove source")}
+          aria-label={t("Remove source")}
+          className="shrink-0 rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-red-600"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      </div>
     </div>
   );
 }
