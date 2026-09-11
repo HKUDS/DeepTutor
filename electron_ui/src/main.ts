@@ -250,11 +250,16 @@ interface LauncherState {
   backendPort: number;
   frontendPort: number;
   runtimeHome: string;
+  /** True when Electron intentionally stopped this launcher (Quit / Stop / Restart). */
+  stopping: boolean;
 }
 
 let launcher: LauncherState | null = null;
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
+/** When true, window close destroys the app; otherwise close hides to tray. */
+let isQuitting = false;
+let isShuttingDown = false;
 
 // Poll a URL until it responds, so we can wait for the backend/frontend to be
 // ready instead of relying only on stdout parsing (mirrors a retry + health
@@ -317,6 +322,7 @@ async function startLauncher(): Promise<LauncherState> {
   const state: LauncherState = {
     process: proc as unknown as childProcess.ChildProcess,
     frontendUrl: null, error: null, backendPort, frontendPort, runtimeHome,
+    stopping: false,
   };
   launcher = state;
 
@@ -358,7 +364,9 @@ async function startLauncher(): Promise<LauncherState> {
   proc.on('close', (code) => {
     console.log('[Electron] Launcher exited code=' + code);
     if (launcher === state) launcher = null;
-    if (code !== 0 && code !== null && mainWindow) {
+    // Force-kill / intentional Stop always yields a non-zero code; do not surface that as an error.
+    if (state.stopping || isQuitting || isShuttingDown) return;
+    if (code !== 0 && code !== null && mainWindow && !mainWindow.isDestroyed()) {
       const msg = 'Launcher exited with code ' + code;
       notifyError(msg);
       console.error('[Electron]', msg);
@@ -389,6 +397,8 @@ async function startLauncher(): Promise<LauncherState> {
 
 function stopLauncher(): void {
   if (!launcher?.process) return;
+  isShuttingDown = true;
+  launcher.stopping = true;
   const proc = launcher.process;
   const pid = proc.pid;
   launcher = null;
@@ -412,9 +422,17 @@ function createWindow(frontendUrl: string, iconPath?: string): BrowserWindow {
   win.loadFile(INDEX_HTML, { query: { url: frontendUrl } });
   // Explicitly show window -- BrowserWindow may be created hidden depending on prefs
   win.show();
+  // Clicking the window X minimizes to tray; Quit (menu/tray) actually exits.
+  // Check launcher.stopping here because 'close' fires before 'before-quit',
+  // so isQuitting may not yet be true when the launcher exits due to Stop/Quit.
+  win.on('close', (event) => {
+    if (!isQuitting && !(launcher?.stopping)) {
+      event.preventDefault();
+      win.hide();
+    }
+  });
   win.on('closed', () => {
     mainWindow = null;
-    // Keep tray alive — single icon regardless of window count
   });
   return win;
 }
@@ -439,7 +457,7 @@ function buildApplicationMenu(): Menu {
           label: isRunning ? 'Stop DeepTutor' : 'Start DeepTutor',
           accelerator: 'CmdOrCtrl+Shift+S',
           click: () => {
-            if (isRunning) { stopLauncher(); mainWindow?.close(); }
+            if (isRunning) { stopLauncher(); mainWindow?.hide(); }
             else { void startAndShow(); }
           },
         },
@@ -449,7 +467,11 @@ function buildApplicationMenu(): Menu {
           click: () => { void restartApp(); },
         },
         { type: 'separator' },
-        { label: 'Quit', accelerator: 'CmdOrCtrl+Q', click: () => { app.quit(); } },
+        {
+          label: 'Quit',
+          accelerator: 'CmdOrCtrl+Q',
+          click: () => { isQuitting = true; stopLauncher(); app.quit(); },
+        },
       ],
     },
     {
@@ -508,7 +530,7 @@ function buildContextMenu(): Menu {
     {
       label: isRunning ? 'Stop' : 'Start',
       click: () => {
-        if (isRunning) { stopLauncher(); mainWindow?.close(); }
+        if (isRunning) { stopLauncher(); mainWindow?.hide(); }
         else { void startAndShow(); }
       },
     },
@@ -519,7 +541,7 @@ function buildContextMenu(): Menu {
       click: () => { if (launcher?.frontendUrl) shell.openExternal(launcher.frontendUrl); },
     },
     { type: 'separator' },
-    { label: 'Quit', click: () => { app.quit(); } },
+    { label: 'Quit', click: () => { isQuitting = true; stopLauncher(); app.quit(); } },
   ];
   return Menu.buildFromTemplate(items);
 }
@@ -555,14 +577,10 @@ async function startAndShow(): Promise<void> {
       notifyError(state.error || 'Frontend did not start');
       return;
     }
-    // Close existing window gracefully before creating a new one.
-    if (mainWindow) {
-      mainWindow.close();
-      await new Promise<void>((resolve) => {
-        if (!mainWindow || mainWindow.isDestroyed()) { resolve(); return; }
-        mainWindow.once('closed', () => resolve());
-        setTimeout(resolve, 1000);
-      });
+    // Tear down an existing window before creating a new one (bypass hide-to-tray).
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.destroy();
+      mainWindow = null;
     }
     console.log('[Electron] About to createWindow...');
     const iconPath = resolveIconPath('logo.png');
@@ -584,7 +602,7 @@ async function restartApp(): Promise<void> {
 
 function setupIpc(): void {
   ipcMain.handle('app:start', async () => { await startAndShow(); return { ok: true }; });
-  ipcMain.handle('app:stop', () => { stopLauncher(); mainWindow?.close(); return { ok: true }; });
+  ipcMain.handle('app:stop', () => { stopLauncher(); mainWindow?.hide(); return { ok: true }; });
   ipcMain.handle('app:restart', async () => { await restartApp(); return { ok: true }; });
   ipcMain.handle('app:get-status', () => {
     if (!launcher) return { running: false, frontendUrl: null as string | null, error: null as string | null };
@@ -603,8 +621,9 @@ if (!gotLock) {
   app.exit();
 } else {
   app.on('second-instance', (_event, _argv) => {
-    if (mainWindow) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
       if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
       mainWindow.focus();
     } else { void startAndShow(); }
   });
@@ -624,19 +643,25 @@ app.whenReady().then(async () => {
 // Terminate the launcher process tree before quitting so no orphaned
 // uvicorn/node children remain.
 app.on('before-quit', () => {
+  isQuitting = true;
   stopLauncher();
 });
 
+// Keep the process alive in the system tray when the window is hidden.
+// Quit (tray / File menu / CmdOrCtrl+Q) is the only exit path.
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+  // no-op — tray stays
 });
 
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    if (launcher?.frontendUrl) {
-      mainWindow = createWindow(launcher.frontendUrl);
-      createTray();
-    }
-    else { void startAndShow(); }
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show();
+    return;
+  }
+  if (launcher?.frontendUrl) {
+    mainWindow = createWindow(launcher.frontendUrl);
+    createTray();
+  } else {
+    void startAndShow();
   }
 });
