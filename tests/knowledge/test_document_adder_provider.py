@@ -78,7 +78,34 @@ def test_document_adder_preserves_explicit_bound_provider(tmp_path: Path) -> Non
     assert adder.rag_provider == "graphrag"
 
 
-def test_document_adder_allows_empty_lightrag_kb_to_bootstrap(tmp_path: Path) -> None:
+def test_document_adder_allows_empty_lightrag_kb_to_bootstrap(monkeypatch, tmp_path: Path) -> None:
+    from deeptutor.services import config
+    from deeptutor.services.llm.config import LLMConfig
+    from deeptutor.services.rag.pipelines.lightrag import roles
+
+    monkeypatch.setattr(
+        config,
+        "load_lightrag_settings",
+        lambda: {
+            "version": 2,
+            "role_models": {"base": {"profile_id": "fixture", "model_id": "fixture"}},
+        },
+    )
+    monkeypatch.setattr(
+        roles,
+        "resolve_selection",
+        lambda *_args, **_kwargs: LLMConfig(
+            model="fixture", binding="openai", api_key="offline-fixture"
+        ),
+    )
+    from deeptutor.services.embedding.config import EmbeddingConfig
+
+    monkeypatch.setattr(
+        "deeptutor.services.embedding.get_embedding_config",
+        lambda: EmbeddingConfig(
+            model="embed-fixture", api_key="fake", dim=3, base_url="https://embed.test"
+        ),
+    )
     (tmp_path / "empty-kb").mkdir()
 
     adder = DocumentAdder(
@@ -89,6 +116,8 @@ def test_document_adder_allows_empty_lightrag_kb_to_bootstrap(tmp_path: Path) ->
 
     assert adder.rag_provider == "lightrag"
     assert adder.raw_dir.is_dir()
+    assert adder.accepted_indexing_snapshot.extract.config.model == "fixture"
+    assert adder.accepted_indexing_snapshot.vlm is None
 
 
 def test_process_new_documents_returns_failures_without_marking_processed(
@@ -140,7 +169,12 @@ def test_lightrag_hash_bookkeeping_failure_does_not_deny_published_success(
             return True
 
     monkeypatch.setattr("deeptutor.knowledge.add_documents.RAGService", _SuccessfulRagService)
-    adder = DocumentAdder(kb_name="kb", base_dir=str(tmp_path), rag_provider="lightrag")
+    adder = DocumentAdder(
+        kb_name="kb",
+        base_dir=str(tmp_path),
+        rag_provider="lightrag",
+        accepted_indexing_snapshot=object(),
+    )
     monkeypatch.setattr(
         adder,
         "_record_successful_hash",

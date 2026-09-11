@@ -232,7 +232,12 @@ def latest_published_root(kb_dir: Path) -> Path | None:
     return None
 
 
-def write_meta(root_dir: Path, *, indexing_policy: dict[str, Any] | None = None) -> None:
+def write_meta(
+    root_dir: Path,
+    *,
+    indexing_policy: dict[str, Any] | None = None,
+    embedding_config: Any | None = None,
+) -> None:
     """Write a flat-layout ``meta.json`` so the version lists as ready.
 
     Mirrors ``index_versioning.write_version_meta`` but carries a synthetic
@@ -241,13 +246,25 @@ def write_meta(root_dir: Path, *, indexing_policy: dict[str, Any] | None = None)
     embedding compatibility at connect time (LightRAG otherwise fails retrieval
     silently on a dimension mismatch).
     """
-    from deeptutor.services.rag.embedding_signature import embedding_meta_fields
+    from deeptutor.services.rag.embedding_signature import (
+        embedding_meta_fields,
+        signature_from_config,
+    )
 
     from .engine import installed_version, workspace_for
 
     target = Path(root_dir)
     previous = _read_meta(target) or {}
     now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat() + "Z"
+    if embedding_config is not None:
+        signature = signature_from_config(embedding_config)
+        embedding_fields = {
+            "embedding_signature": signature.hash(),
+            "embedding_model": signature.model,
+            "embedding_dim": signature.dimension,
+        }
+    else:
+        embedding_fields = embedding_meta_fields()
     payload = {
         "version": target.name,
         "signature": PROVIDER,
@@ -264,7 +281,7 @@ def write_meta(root_dir: Path, *, indexing_policy: dict[str, Any] | None = None)
         "indexing_policy": indexing_policy
         or previous.get("indexing_policy")
         or {"policy": "legacy_unpinned"},
-        **embedding_meta_fields(),
+        **embedding_fields,
     }
     atomic_write_json(target / META_FILENAME, payload)
 

@@ -15,6 +15,7 @@ export interface LLMOption extends LLMSelection {
   context_window?: number;
   reasoning_effort?: string;
   supported_reasoning_efforts?: string[];
+  supports_vision?: boolean;
   is_active_default: boolean;
 }
 

@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from deeptutor.multi_user.models import CurrentUser
-    from deeptutor.services.rag.pipelines.lightrag.indexing_policy import IndexingLLMSnapshot
+    from deeptutor.services.rag.pipelines.lightrag.indexing_policy import IndexingPolicySnapshot
 
 from deeptutor.knowledge.naming import validate_knowledge_base_name
 from deeptutor.knowledge.progress_tracker import ProgressStage, ProgressTracker
@@ -38,7 +38,7 @@ class KnowledgeBaseInitializer:
         base_url: str | None = None,
         progress_tracker: ProgressTracker | None = None,
         rag_provider: str | None = None,
-        indexing_snapshot: IndexingLLMSnapshot | None = None,
+        indexing_snapshot: IndexingPolicySnapshot | None = None,
         owner: CurrentUser | None = None,
     ):
         self.kb_name = validate_knowledge_base_name(kb_name)
@@ -208,6 +208,26 @@ class KnowledgeBaseInitializer:
                 total=total,
             )
 
+        def _prepare_publication(candidate_root: Path) -> None:
+            self._update_metadata_with_provider(provider)
+            self.progress_tracker.update(
+                ProgressStage.COMPLETED,
+                message_key="Knowledge base initialization complete!",
+                current=1,
+                total=1,
+                indexed_count=len(doc_files),
+                index_changed=True,
+                index_action="create",
+                publication_version=candidate_root.name,
+            )
+            self.progress_tracker.verify_terminal(
+                current=1,
+                total=1,
+                indexed_count=len(doc_files),
+                index_action="create",
+                publication_version=candidate_root.name,
+            )
+
         try:
             success = await rag_service.initialize(
                 kb_name=self.kb_name,
@@ -215,6 +235,7 @@ class KnowledgeBaseInitializer:
                 progress_callback=_on_progress,
                 image_progress_callback=_on_image_progress,
                 indexing_snapshot=self.indexing_snapshot,
+                before_publish=_prepare_publication if provider == "lightrag" else None,
             )
             if not success:
                 self.progress_tracker.update(
@@ -226,13 +247,14 @@ class KnowledgeBaseInitializer:
 
             self.index_published = provider == "lightrag"
             try:
-                self._update_metadata_with_provider(provider)
-                self.progress_tracker.update(
-                    ProgressStage.PROCESSING_DOCUMENTS,
-                    message_key="Documents processed successfully",
-                    current=len(doc_files),
-                    total=len(doc_files),
-                )
+                if provider != "lightrag":
+                    self._update_metadata_with_provider(provider)
+                    self.progress_tracker.update(
+                        ProgressStage.PROCESSING_DOCUMENTS,
+                        message_key="Documents processed successfully",
+                        current=len(doc_files),
+                        total=len(doc_files),
+                    )
             except Exception:
                 if not self.index_published:
                     raise

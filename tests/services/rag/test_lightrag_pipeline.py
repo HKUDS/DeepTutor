@@ -16,8 +16,10 @@ from deeptutor.multi_user.context import (
     set_current_user,
 )
 from deeptutor.multi_user.models import CurrentUser, UserScope
+from deeptutor.services.embedding.config import EmbeddingConfig
 from deeptutor.services.llm.exceptions import LLMAPIError, LLMAuthenticationError
 from deeptutor.services.parsing.types import ParsedDocument
+from deeptutor.services.rag.embedding_signature import signature_from_config
 from deeptutor.services.rag.factory import get_pipeline, list_pipelines, normalize_provider_name
 from deeptutor.services.rag.index_versioning import list_kb_versions
 from deeptutor.services.rag.pipelines.lightrag import config, engine, indexing_policy, storage
@@ -58,9 +60,21 @@ class _Bridge:
         return await value if inspect.isawaitable(value) else value
 
 
+@pytest.fixture(autouse=True)
+def _isolate_role_revalidation(monkeypatch):
+    # Lifecycle tests use synthetic policies; real catalog/access revalidation
+    # is covered by test_lightrag_roles and test_lightrag_indexing_policy.
+    monkeypatch.setattr(indexing_policy, "revalidate_snapshot", lambda snapshot: snapshot)
+
+
 def _indexing_snapshot():
     return types.SimpleNamespace(
+        embedding_config=EmbeddingConfig(
+            model="embed-one", api_key="fake", dim=3, base_url="https://embed.test/v1"
+        ),
         vision_available=True,
+        image_analysis=None,
+        target_bound=False,
         persisted_policy=lambda: {"policy": "pinned", "fingerprint": "a" * 64},
     )
 
@@ -132,6 +146,8 @@ def test_query_model_resolver_falls_back_only_when_selected_entry_is_missing(
     fallback = object()
     calls: list[object] = []
     monkeypatch.setattr(config, "lightrag_llm_selection_from_settings", lambda: selection)
+    active = {"profile_id": "active-profile", "model_id": "active-model"}
+    monkeypatch.setattr(indexing_policy, "_active_catalog_selection", lambda: active)
 
     def resolve(value):
         calls.append(value)
@@ -145,15 +161,18 @@ def test_query_model_resolver_falls_back_only_when_selected_entry_is_missing(
     )
 
     assert config.resolve_lightrag_query_llm_config() is fallback
-    assert calls == [selection, None]
+    assert calls == [selection, active]
 
 
 def test_lightrag_llm_adapter_uses_explicit_snapshot_config(monkeypatch) -> None:
+    captured = {}
+
     def build_model(config, *, allow_multimodal):
         assert config is selected_config
         assert allow_multimodal is False
 
         async def model_func(_prompt, **kwargs):
+            captured.update(kwargs)
             assert kwargs["max_retries"] == 0
             return "ok"
 
@@ -163,15 +182,35 @@ def test_lightrag_llm_adapter_uses_explicit_snapshot_config(monkeypatch) -> None
     monkeypatch.setattr("deeptutor.services.llm.client.build_model_func_for_config", build_model)
 
     adapter = config.build_llm_model_func(llm_config=selected_config)
-    assert asyncio.run(adapter("prompt")) == "ok"
+    assert (
+        asyncio.run(
+            adapter(
+                "prompt",
+                response_format={"type": "json_object"},
+                enable_cot=True,
+                stream=False,
+                _priority=3,
+                hashing_kv=object(),
+            )
+        )
+        == "ok"
+    )
+    assert captured["response_format"] == {"type": "json_object"}
+    assert "enable_cot" not in captured
+    assert "stream" not in captured
+    assert "_priority" not in captured
+    assert "hashing_kv" not in captured
 
 
 def test_lightrag_vision_adapter_uses_explicit_snapshot_config(monkeypatch) -> None:
+    captured = {}
+
     def build_model(config, *, allow_multimodal):
         assert config is selected_config
         assert allow_multimodal is True
 
         async def model_func(_prompt, **kwargs):
+            captured.update(kwargs)
             assert kwargs["allow_image_fallback"] is False
             assert kwargs["image_data"] == "sentinel"
             return "ok"
@@ -182,7 +221,23 @@ def test_lightrag_vision_adapter_uses_explicit_snapshot_config(monkeypatch) -> N
     monkeypatch.setattr("deeptutor.services.llm.client.build_model_func_for_config", build_model)
 
     adapter = config.build_vision_model_func(llm_config=selected_config)
-    assert asyncio.run(adapter("prompt", image_inputs=[{"base64": "sentinel"}])) == "ok"
+    assert (
+        asyncio.run(
+            adapter(
+                "prompt",
+                image_inputs=[{"base64": "sentinel"}],
+                response_format={"type": "json_object"},
+                stream=False,
+                _priority=3,
+                hashing_kv=object(),
+            )
+        )
+        == "ok"
+    )
+    assert captured["response_format"] == {"type": "json_object"}
+    assert "stream" not in captured
+    assert "_priority" not in captured
+    assert "hashing_kv" not in captured
 
 
 @pytest.mark.parametrize("role", ["user", "admin"])
@@ -254,7 +309,13 @@ def test_build_rag_keeps_indexing_snapshot_out_of_embedding_kwargs(
     monkeypatch.setattr(engine, "indexing_kwargs_from_settings", dict)
     monkeypatch.setattr(engine, "constructor_kwargs_from_settings", dict)
     query_config = types.SimpleNamespace(binding="openai")
-    monkeypatch.setattr(engine, "resolve_lightrag_query_llm_config", lambda: query_config)
+    from deeptutor.services.rag.pipelines.lightrag import roles
+
+    monkeypatch.setattr(
+        roles,
+        "resolve_query_roles",
+        lambda: {role: roles.RoleCall(query_config, None, 4, 240) for role in ("keyword", "query")},
+    )
     monkeypatch.setattr(indexing_policy, "cache_identity_for_config", lambda _config: "query-id")
     llm_calls: list[dict[str, object]] = []
     embedding_calls: list[object] = []
@@ -272,7 +333,7 @@ def test_build_rag_keeps_indexing_snapshot_out_of_embedding_kwargs(
 
     rag = engine.build_rag(tmp_path)
 
-    assert llm_calls == [{"llm_config": query_config}]
+    assert llm_calls == [{"llm_config": query_config, "owner": None}] * 3
     assert embedding_calls == [None]
     assert rag.kwargs["embedding_func"] == "embedding"
 
@@ -640,6 +701,9 @@ def _write_published_version(root: Path, *, indexing_policy_value: dict | None =
                 "parser_bridge_schema": 1,
                 "state": "published",
                 "indexing_policy": indexing_policy_value or {"policy": "legacy_unpinned"},
+                "embedding_signature": signature_from_config(
+                    _indexing_snapshot().embedding_config
+                ).hash(),
             }
         ),
         encoding="utf-8",
@@ -792,7 +856,7 @@ def test_append_rejects_explicit_indexing_snapshot_before_mutation(
         )
 
 
-def test_pending_policy_drift_fails_before_creating_a_version(tmp_path: Path, monkeypatch) -> None:
+def test_first_index_uses_defaults_instead_of_creation_time_pending_policy(tmp_path, monkeypatch):
     kb_dir = tmp_path / "kb"
     kb_dir.mkdir()
     (tmp_path / "kb_config.json").write_text(
@@ -800,29 +864,35 @@ def test_pending_policy_drift_fails_before_creating_a_version(tmp_path: Path, mo
             {
                 "knowledge_bases": {
                     "kb": {
-                        "path": "kb",
                         "pending_indexing_policy": {
                             "policy": "pending_pinned",
-                            "selection": {"profile_id": "profile", "model_id": "model"},
-                            "fingerprint": "a" * 64,
+                            "fingerprint": "stale",
                         },
                     }
                 }
             }
-        ),
-        encoding="utf-8",
+        )
     )
     pipeline = LightRagPipeline(kb_base_dir=str(tmp_path))
     monkeypatch.setattr(pipeline, "_ensure_available", lambda: None)
+    snapshot = _indexing_snapshot()
+    monkeypatch.setattr(
+        "deeptutor.services.rag.pipelines.lightrag.pipeline.freeze_default_snapshot",
+        lambda: snapshot,
+    )
+    monkeypatch.setattr(
+        indexing_policy,
+        "snapshot_from_persisted",
+        lambda _: pytest.fail("restored old empty policy"),
+    )
 
-    def changed(_policy):
-        raise indexing_policy.IndexingModelChangedError("reindex required")
+    async def check_defaults(_root, _files, _progress, accepted):
+        assert accepted is snapshot
+        raise RuntimeError("checked defaults before provider call")
 
-    monkeypatch.setattr(indexing_policy, "snapshot_from_persisted", changed)
-
-    with pytest.raises(indexing_policy.IndexingModelChangedError):
+    monkeypatch.setattr(pipeline, "_run_indexing", check_defaults)
+    with pytest.raises(RuntimeError, match="checked defaults"):
         asyncio.run(pipeline.initialize("kb", [str(tmp_path / "doc.md")]))
-
     assert not any(kb_dir.glob("version-*"))
 
 
@@ -1217,7 +1287,10 @@ def test_public_initial_ingestion_retains_uncertain_ingress(
                 "kb",
                 [str(source)],
                 indexing_snapshot=types.SimpleNamespace(
+                    embedding_config=_indexing_snapshot().embedding_config,
                     vision_available=True,
+                    image_analysis=None,
+                    target_bound=False,
                     persisted_policy=lambda: {"policy": "legacy_unpinned"},
                 ),
             )

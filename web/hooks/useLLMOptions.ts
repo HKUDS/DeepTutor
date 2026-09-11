@@ -16,13 +16,13 @@ interface RefreshOptions {
 }
 
 /** Owns model-catalog loading independently from the chat page lifecycle. */
-export function useLLMOptions() {
+export function useLLMOptions(loader = listLLMOptions) {
   const [state, dispatch] = useReducer(
     reduceLLMOptionsState,
     INITIAL_LLM_OPTIONS_STATE,
   );
   const latestRequestRef = useRef(0);
-  const [loadOptions] = useState(() => createSingleFlight(listLLMOptions));
+  const [loadOptions] = useState(() => createSingleFlight(loader));
   const mountedRef = useRef(true);
 
   useEffect(() => {

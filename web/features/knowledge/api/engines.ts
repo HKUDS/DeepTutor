@@ -5,6 +5,7 @@ export {
   getGraphRagConfig,
   getImaConfig,
   getLightRagConfig,
+  getLightRagModelOptions,
   getLightRagServerConfig,
   getLlamaIndexConfig,
   getPageIndexConfig,
