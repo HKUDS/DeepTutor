@@ -210,6 +210,57 @@ class KbFilesTool(_PromptHintsMixin, BaseTool):
         )
 
 
+class KnowledgeFrontierTool(_PromptHintsMixin, BaseTool):
+    """Discover the research frontier of a knowledge base by running several
+    targeted RAG probes and aggregating their evidence-backed answers and
+    source references into a structured report."""
+
+    def get_definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name="knowledge_frontier",
+            description=(
+                "Analyse one knowledge base for its research frontier: "
+                "emerging themes, coverage gaps, open questions, and the "
+                "sources behind them. Use when the learner asks what is at "
+                "the edge of a topic, what is missing, or where to go next."
+            ),
+            parameters=[
+                ToolParameter(
+                    name="kb_name",
+                    type="string",
+                    description="Knowledge base to analyse. Must be one of the attached knowledge bases.",
+                ),
+            ],
+        )
+
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        from deeptutor.tools.knowledge_frontier_tool import discover_frontier
+
+        kb_name = str(kwargs.get("kb_name") or "").strip()
+        if not kb_name:
+            raise ValueError("knowledge_frontier requires an explicit kb_name.")
+        event_sink = kwargs.get("event_sink")
+        payload = await discover_frontier(kb_name, event_sink=event_sink)
+        if not payload["summary"]:
+            return ToolResult(
+                content="This knowledge base returned no analysable content.",
+                sources=[],
+                metadata={"provider": "knowledge_frontier", "kb_name": kb_name},
+            )
+        source_lines = [
+            f"- {src.get('title') or src.get('file_name') or src.get('source_id', 'source')}"
+            for src in payload["sources"]
+        ]
+        content = payload["summary"]
+        if source_lines:
+            content += "\n\n## Sources Referenced\n" + "\n".join(source_lines)
+        return ToolResult(
+            content=content,
+            sources=payload["sources"],
+            metadata={"provider": "knowledge_frontier", "kb_name": kb_name},
+        )
+
+
 def _kb_files_limit(raw: Any) -> int:
     """Clamp a model-supplied ``limit`` into range; fall back on anything unusable."""
     try:
@@ -1572,6 +1623,7 @@ USER_TOGGLEABLE_TOOL_NAMES: tuple[str, ...] = (
 CONFIGURABLE_BUILTIN_TOOL_NAMES: tuple[str, ...] = (
     "rag",
     "kb_files",
+    "knowledge_frontier",
     "read_source",
     "read_memory",
     "write_memory",
