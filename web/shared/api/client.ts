@@ -85,11 +85,13 @@ function normalizedHttpError(
       `http_${response.status}`,
     message: messageFromBody(body, response.statusText || "Request failed"),
     retryable:
-      (typeof value.retryable === "boolean" && value.retryable) ||
-      (typeof detail.retryable === "boolean" && detail.retryable) ||
-      response.status === 408 ||
-      response.status === 429 ||
-      response.status >= 500,
+      typeof value.retryable === "boolean"
+        ? value.retryable
+        : typeof detail.retryable === "boolean"
+          ? detail.retryable
+          : response.status === 408 ||
+            response.status === 429 ||
+            response.status >= 500,
     scope,
     correlationId:
       (typeof value.correlation_id === "string" && value.correlation_id) ||
