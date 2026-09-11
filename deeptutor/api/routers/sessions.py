@@ -276,14 +276,6 @@ async def delete_session(session_id: str):
     deleted = await store.delete_session(session_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Session not found")
-    try:
-        await asyncio.to_thread(LearningStore().detach_session, session_id)
-    except Exception:
-        logger.exception("failed to detach mastery paths for session %s", session_id)
-    try:
-        await get_attachment_store().delete_session(session_id)
-    except Exception:
-        logger.exception("failed to clean up attachments for session %s", session_id)
     return {"deleted": True, "session_id": session_id, "recycled": True}
 
 

@@ -2498,6 +2498,14 @@ class SQLiteSessionStore:
         conditions: list[str] = []
         params: list[Any] = []
 
+        conditions.append(
+            """
+            NOT EXISTS (
+                SELECT 1 FROM sessions s
+                WHERE s.id = n.session_id AND s.deleted_at IS NOT NULL
+            )
+            """
+        )
         if query.category_id is not None:
             joins.append(" INNER JOIN notebook_entry_categories ec ON ec.entry_id = n.id")
             conditions.append("ec.category_id = ?")
