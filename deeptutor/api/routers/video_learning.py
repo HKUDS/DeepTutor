@@ -19,6 +19,7 @@ from deeptutor.video_learning import (
     TimedMediaNotFound,
     get_timed_media_store,
     invidious_account,
+    invidious_hub,
     load_video_learning_settings,
     material_with_playback,
     refresh_invidious_transcript,
@@ -172,6 +173,16 @@ async def get_invidious_account_status() -> dict[str, Any]:
 async def disconnect_invidious_account() -> dict[str, Any]:
     try:
         return await invidious_account.disconnect_invidious_account(owner_id=current_owner_id())
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.get("/invidious/home")
+async def get_invidious_home(
+    tab: str = Query(default="", max_length=32),
+) -> dict[str, Any]:
+    try:
+        return await invidious_hub.get_public_feed(tab)
     except Exception as exc:
         raise _http_error(exc) from exc
 

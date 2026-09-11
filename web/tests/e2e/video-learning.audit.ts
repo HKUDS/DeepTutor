@@ -17,6 +17,7 @@ for (const mobile of [false, true]) {
     let nativeResolveCount = 0
     let exportRequestCount = 0
     let exportShouldFail = false
+    let resolveCount = 0
     let nextNoteId = 1
     const notes: Array<{
       notebook_id: string
@@ -253,7 +254,30 @@ for (const mobile of [false, true]) {
         })
       }
       if (path === '/api/dashboard/suggestions') return json({ suggestions: [], stale: false })
+      if (path === '/api/video-learning/invidious/home') {
+        const tab = new URL(request.url()).searchParams.get('tab') || 'Popular'
+        return json({
+          current_tab: tab,
+          tabs: ['Popular', 'Trending'],
+          items: [
+            {
+              video_id: 'dQw4w9WgXcQ',
+              title: 'Public hub lecture',
+              author: 'Teacher',
+              author_id: 'UC123',
+              duration_seconds: 120,
+              thumbnail_url: 'https://example.test/lecture.jpg',
+              view_count: 12,
+              published_text: 'today',
+              url: 'https://youtu.be/dQw4w9WgXcQ?t=7',
+            },
+          ],
+          reason: '',
+          invidious_public_base_url: 'https://invidious.example.test',
+        })
+      }
       if (path === '/api/video-learning/materials/resolve') {
+        resolveCount += 1
         const body = request.postDataJSON() as {
           provider_override?: 'youtube'
           url?: string
@@ -361,6 +385,12 @@ for (const mobile of [false, true]) {
       path: test.info().outputPath(`watching-${mobile ? 'mobile' : 'desktop'}.png`),
     })
     await page.getByRole('button', { name: /Browse lesson/ }).click()
+    await expect.poll(() => resolveCount).toBe(1)
+    const resolveCountAfterAccount = resolveCount
+    await page.getByRole('button', { name: 'Browse Invidious', exact: true }).click()
+    await expect(page.getByText('Public hub lecture')).toBeVisible()
+    await page.getByRole('button', { name: /Public hub lecture/ }).click()
+    expect(resolveCount).toBe(resolveCountAfterAccount + 1)
 
     await expect(page.getByText('Timestamped lesson')).toBeVisible()
     await expect(page.locator('iframe[title="Fake YouTube player"]')).toHaveAttribute(
