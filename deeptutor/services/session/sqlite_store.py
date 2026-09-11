@@ -1397,9 +1397,7 @@ class SQLiteSessionStore:
         limit: int = 50,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
-        return self._list_session_summaries_sync(
-            "WHERE s.deleted_at IS NOT NULL", limit, offset
-        )
+        return self._list_session_summaries_sync("WHERE s.deleted_at IS NOT NULL", limit, offset)
 
     async def list_deleted_sessions(
         self,
