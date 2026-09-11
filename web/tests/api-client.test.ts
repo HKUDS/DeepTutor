@@ -116,6 +116,74 @@ test("abort and network failures are distinguishable", async () => {
   }
 });
 
+test("explicit retryable false wins over HTTP status fallback", async () => {
+  const restore = withFetch(async () =>
+    Response.json(
+      { error_code: "permanent", message: "Not retryable", retryable: false },
+      { status: 503 },
+    ),
+  );
+  try {
+    const error = await expectApiError(() => requestJson("/turn"));
+    assert.equal(error.appError.retryable, false);
+  } finally {
+    restore();
+  }
+});
+
+test("nested detail.retryable false wins over HTTP status fallback", async () => {
+  const restore = withFetch(async () =>
+    Response.json(
+      {
+        error_code: "permanent_detail",
+        message: "Not retryable (detail)",
+        detail: { retryable: false },
+      },
+      { status: 500 },
+    ),
+  );
+  try {
+    const error = await expectApiError(() => requestJson("/turn"));
+    assert.equal(error.appError.retryable, false);
+  } finally {
+    restore();
+  }
+});
+
+test("missing retryable values fall back to HTTP status", async () => {
+  for (const status of [408, 429, 500]) {
+    const restore = withFetch(async () =>
+      Response.json({ error_code: "opaque" }, { status }),
+    );
+    try {
+      const error = await expectApiError(() => requestJson("/turn"));
+      assert.equal(error.appError.retryable, true);
+    } finally {
+      restore();
+    }
+  }
+});
+
+test("top-level retryable takes precedence over detail and status", async () => {
+  const restore = withFetch(async () =>
+    Response.json(
+      {
+        error_code: "conflict",
+        message: "Explicit false wins",
+        retryable: false,
+        detail: { retryable: true },
+      },
+      { status: 503 },
+    ),
+  );
+  try {
+    const error = await expectApiError(() => requestJson("/turn"));
+    assert.equal(error.appError.retryable, false);
+  } finally {
+    restore();
+  }
+});
+
 test("the shared boundary keeps the single apiFetch auth redirect gate", async () => {
   setRuntimeAuthEnabled(false);
   const restore = withFetch(async () =>
