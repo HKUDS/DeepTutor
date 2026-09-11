@@ -3,12 +3,23 @@
 from __future__ import annotations
 
 import base64
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 import json
 from typing import Any, Literal
 
 CatalogSource = Literal["live", "fresh-cache", "revalidated-cache", "stale-cache"]
+
+
+def normalize_codex_reasoning_levels(
+    model_slug: str,
+    levels: Iterable[str],
+) -> tuple[str, ...]:
+    """Apply the provider compatibility contract to live and stored catalogs."""
+    normalized = tuple(dict.fromkeys(level for level in levels if level))
+    if model_slug == "gpt-5.6-luna" and "none" not in normalized:
+        return ("none", *normalized)
+    return normalized
 
 
 class CodexAuthError(RuntimeError):
@@ -149,8 +160,9 @@ class CodexModel:
             reasoning_levels = payload["supported_reasoning_levels"]
             if not isinstance(reasoning_levels, list):
                 raise TypeError
+            slug = str(payload["slug"])
             return cls(
-                slug=str(payload["slug"]),
+                slug=slug,
                 display_name=str(payload["display_name"]),
                 priority=int(payload["priority"]),
                 visibility=str(payload["visibility"]),
@@ -159,7 +171,10 @@ class CodexModel:
                     if payload.get("default_reasoning_level") is not None
                     else None
                 ),
-                supported_reasoning_levels=tuple(str(item) for item in reasoning_levels),
+                supported_reasoning_levels=normalize_codex_reasoning_levels(
+                    slug,
+                    (str(item) for item in reasoning_levels),
+                ),
                 supports_reasoning_summary=bool(payload["supports_reasoning_summary"]),
                 supports_parallel_tool_calls=bool(payload["supports_parallel_tool_calls"]),
                 use_responses_lite=bool(payload["use_responses_lite"]),

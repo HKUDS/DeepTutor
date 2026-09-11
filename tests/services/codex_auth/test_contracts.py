@@ -192,3 +192,14 @@ def test_codex_model_accepts_cache_without_context_windows() -> None:
 
     assert restored.context_window is None
     assert restored.max_context_window is None
+
+
+def test_codex_model_normalizes_legacy_luna_reasoning_cache() -> None:
+    payload = _model().to_dict()
+    payload["slug"] = "gpt-5.6-luna"
+    payload["display_name"] = "GPT-5.6-Luna"
+    payload["supported_reasoning_levels"] = ["low", "medium"]
+
+    restored = CodexModel.from_dict(payload)
+
+    assert restored.supported_reasoning_levels == ("none", "low", "medium")

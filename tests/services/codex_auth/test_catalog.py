@@ -77,6 +77,34 @@ def test_parse_catalog_keeps_only_picker_visible_raw_models() -> None:
     assert models[0].supports_reasoning_summary is True
 
 
+def test_parse_catalog_adds_none_only_for_gpt_5_6_luna() -> None:
+    payload = {
+        "models": [
+            {
+                "slug": "gpt-5.6-luna",
+                "display_name": "GPT-5.6-Luna",
+                "visibility": "list",
+                "supported_reasoning_levels": ["low", "medium"],
+            },
+            {
+                "slug": "gpt-5.6-terra",
+                "display_name": "GPT-5.6-Terra",
+                "visibility": "list",
+                "supported_reasoning_levels": ["low", "medium"],
+            },
+        ]
+    }
+
+    models = {model.slug: model for model in parse_models_response(payload)}
+
+    assert models["gpt-5.6-luna"].supported_reasoning_levels == (
+        "none",
+        "low",
+        "medium",
+    )
+    assert models["gpt-5.6-terra"].supported_reasoning_levels == ("low", "medium")
+
+
 def test_parse_catalog_supports_legacy_summary_field_and_sorts() -> None:
     payload = {
         "models": [
