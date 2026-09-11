@@ -47,7 +47,7 @@ class ConsultSubagentTool(BaseTool):
             name="consult_subagent",
             description=(
                 "Ask the connected external agent (a local agent CLI on the user's "
-                "machine — Claude Code, Codex, Antigravity CLI, Kimi CLI, opencode, "
+                "machine — Claude Code, Codex, Grok CLI, Antigravity CLI, Kimi CLI, opencode, "
                 "MiMo Code, Hermes Agent, OpenClaw, or DeepSeek Harness — or one of "
                 "their partners) a focused question and get its "
                 "answer. A local agent runs on the user's machine with access to their "

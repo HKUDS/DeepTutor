@@ -63,7 +63,7 @@ const DEFAULTS: Required<
 /**
  * Which knobs each backend kind actually honors — the editor renders from this
  * table instead of per-kind branches. Mirrors what the Python backend reads:
- * e.g. only Claude Code / Antigravity use `permission_mode`, only Codex has its
+ * e.g. Claude Code / Antigravity / Grok use `permission_mode`, only Codex has its
  * sandbox family, kimi/hermes/opencode/mimo take the `auto_approve` switch.
  */
 type KindFeatures = {
@@ -94,6 +94,15 @@ const KIND_FEATURES: Record<string, KindFeatures> = {
     autoApprove: false,
     thinking: false,
     forwardImages: true,
+  },
+  grok: {
+    effort: true,
+    systemPrompt: true,
+    permissionMode: true,
+    codexSandbox: false,
+    autoApprove: false,
+    thinking: false,
+    forwardImages: false,
   },
   antigravity: {
     effort: true, // --effort low|medium|high
@@ -176,6 +185,7 @@ const FALLBACK_FEATURES: KindFeatures = KIND_FEATURES.claude_code;
 const DISPLAY_NAMES: Record<string, string> = {
   claude_code: "Claude Code",
   codex: "Codex",
+  grok: "Grok CLI",
   kimi: "Kimi CLI",
   opencode: "opencode",
   mimo: "MiMo Code",
@@ -188,6 +198,10 @@ const DISPLAY_NAMES: Record<string, string> = {
 // Per-kind flavor for the system-prompt section: how the instruction reaches
 // the agent (a real flag, a native prompt field, or a first-message prefix).
 const SYSTEM_PROMPT_HINT: Record<string, Lang> = {
+  grok: {
+    zh: "通过 Grok CLI 的 rules 参数传入额外教学或委派指令。",
+    en: "Additional teaching or delegation instructions are passed through Grok CLI's rules option.",
+  },
   claude_code: {
     zh: "追加到该智能体的系统提示（--append-system-prompt）。",
     en: "Appended to the agent's system prompt (--append-system-prompt).",
@@ -244,6 +258,42 @@ const PERMISSION_MODES: { value: string; label: Lang }[] = [
   },
 ];
 
+const GROK_PERMISSION_MODES: { value: string; label: Lang }[] = [
+  {
+    value: "dontAsk",
+    label: {
+      zh: "不询问 · 拒绝需审批操作（默认）",
+      en: "Don't ask · deny approval requests (default)",
+    },
+  },
+  {
+    value: "plan",
+    label: { zh: "Plan（兼容模式）", en: "Plan (compatibility mode)" },
+  },
+  {
+    value: "default",
+    label: { zh: "默认权限", en: "Default permissions" },
+  },
+  {
+    value: "acceptEdits",
+    label: { zh: "自动接受编辑", en: "Accept edits automatically" },
+  },
+  {
+    value: "auto",
+    label: { zh: "自动评估权限", en: "Automatically evaluate permissions" },
+  },
+  {
+    value: "bypassPermissions",
+    label: { zh: "绕过权限", en: "Bypass permissions" },
+  },
+];
+
+function defaultsForKind(kind: string): typeof DEFAULTS {
+  return kind === "grok"
+    ? { ...DEFAULTS, permission_mode: "dontAsk" }
+    : DEFAULTS;
+}
+
 const SANDBOXES: { value: string; label: Lang }[] = [
   { value: "read-only", label: { zh: "只读", en: "Read-only" } },
   {
@@ -276,7 +326,9 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
   const tr = useCallback((l: Lang) => (zh ? l.zh : l.en), [zh]);
 
   const [options, setOptions] = useState<SubagentBackendOptions | null>(null);
-  const [config, setConfig] = useState<SubagentBackendConfig>({ ...DEFAULTS });
+  const [config, setConfig] = useState<SubagentBackendConfig>({
+    ...defaultsForKind(kind),
+  });
   const [customModel, setCustomModel] = useState(false);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -300,7 +352,7 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
       ]);
       setOptions(opts);
       const stored = settings.backends?.[kind] ?? {};
-      setConfig({ ...DEFAULTS, ...stored });
+      setConfig({ ...defaultsForKind(kind), ...stored });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -345,6 +397,8 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
 
   const features = KIND_FEATURES[kind] ?? FALLBACK_FEATURES;
   const isRemote = kind === "hermes_remote";
+  const isGrok = kind === "grok";
+  const permissionModes = isGrok ? GROK_PERMISSION_MODES : PERMISSION_MODES;
   const knownSlugs = useMemo(
     () => new Set((options?.models ?? []).map((m) => m.slug)),
     [options],
@@ -429,10 +483,15 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
                     zh: "检查已配置网关的连通性与认证状态。",
                     en: "Check connectivity and authentication for the configured gateway.",
                   })
-                : tr({
-                    zh: "供应商会不定期增删模型与推理档位——随时点同步即可重新拉取最新列表。",
-                    en: "Vendors add and retire models and effort levels over time — sync any time to re-pull the latest lists.",
-                  })
+                : isGrok
+                  ? tr({
+                      zh: "检测后端环境中的 Grok CLI。模型和推理强度可留空使用 CLI 默认值，或手动填写。",
+                      en: "Detect Grok CLI in the backend environment. Leave model and reasoning effort blank for CLI defaults, or enter them manually.",
+                    })
+                  : tr({
+                      zh: "供应商会不定期增删模型与推理档位——随时点同步即可重新拉取最新列表。",
+                      en: "Vendors add and retire models and effort levels over time — sync any time to re-pull the latest lists.",
+                    })
             }
           >
             <SettingRow
@@ -477,20 +536,25 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
             <SettingRow
               title={tr({ zh: "模型列表", en: "Model list" })}
               description={
-                options.synced_at
+                isGrok
                   ? tr({
-                      zh: `上次同步：${formatTs(options.synced_at, zh)}`,
-                      en: `Last synced: ${formatTs(options.synced_at, zh)}`,
+                      zh: "不预设模型列表；请填写当前 Grok CLI 支持的模型名。同步仅重新检测 CLI。",
+                      en: "No model catalog is assumed. Enter a model supported by your Grok CLI; sync only detects the CLI again.",
                     })
-                  : isRemote
+                  : options.synced_at
                     ? tr({
-                        zh: "远程网关当前不提供模型枚举；可以留空使用网关默认值，或手动填写模型名。",
-                        en: "The remote gateway does not currently enumerate models here; use its default or enter a model name manually.",
+                        zh: `上次同步：${formatTs(options.synced_at, zh)}`,
+                        en: `Last synced: ${formatTs(options.synced_at, zh)}`,
                       })
-                    : tr({
-                        zh: "该 CLI 无可枚举的模型接口，下方为常用别名，可自定义任意模型名。",
-                        en: "This CLI has no model-list API; below are the common aliases, and any model name is accepted.",
-                      })
+                    : isRemote
+                      ? tr({
+                          zh: "远程网关当前不提供模型枚举；可以留空使用网关默认值，或手动填写模型名。",
+                          en: "The remote gateway does not currently enumerate models here; use its default or enter a model name manually.",
+                        })
+                      : tr({
+                          zh: "该 CLI 无可枚举的模型接口，下方为常用别名，可自定义任意模型名。",
+                          en: "This CLI has no model-list API; below are the common aliases, and any model name is accepted.",
+                        })
               }
               control={
                 isRemote ? (
@@ -617,6 +681,7 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
               control={
                 <div className="flex w-[260px] flex-col items-end gap-2">
                   <select
+                    aria-label={tr({ zh: "模型", en: "Model" })}
                     className={selectClass}
                     disabled={busy}
                     value={showCustomModel ? CUSTOM : (config.model ?? "")}
@@ -640,6 +705,7 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
                   </select>
                   {showCustomModel && (
                     <input
+                      aria-label={tr({ zh: "自定义模型", en: "Custom model" })}
                       className={inputClass}
                       disabled={busy}
                       placeholder={tr({
@@ -662,23 +728,45 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
               <SettingRow
                 title={tr({ zh: "推理强度", en: "Reasoning effort" })}
                 control={
-                  <select
-                    className={`${selectClass} w-[260px]`}
-                    disabled={busy || effortChoices.length === 0}
-                    value={config.effort ?? ""}
-                    onChange={(e) => void save({ effort: e.target.value })}
-                  >
-                    <option value="">
-                      {isRemote
-                        ? tr({ zh: "网关默认", en: "Gateway default" })
-                        : tr({ zh: "CLI 默认", en: "CLI default" })}
-                    </option>
-                    {effortChoices.map((eff) => (
-                      <option key={eff} value={eff}>
-                        {eff}
+                  isGrok ? (
+                    <input
+                      aria-label={tr({
+                        zh: "推理强度",
+                        en: "Reasoning effort",
+                      })}
+                      className={`${inputClass} w-[260px]`}
+                      disabled={busy}
+                      placeholder={tr({
+                        zh: "留空使用 CLI 默认值",
+                        en: "Blank uses CLI default",
+                      })}
+                      value={config.effort ?? ""}
+                      onChange={(e) =>
+                        setConfig((p) => ({ ...p, effort: e.target.value }))
+                      }
+                      onBlur={(e) =>
+                        void save({ effort: e.target.value.trim() })
+                      }
+                    />
+                  ) : (
+                    <select
+                      className={`${selectClass} w-[260px]`}
+                      disabled={busy || effortChoices.length === 0}
+                      value={config.effort ?? ""}
+                      onChange={(e) => void save({ effort: e.target.value })}
+                    >
+                      <option value="">
+                        {isRemote
+                          ? tr({ zh: "网关默认", en: "Gateway default" })
+                          : tr({ zh: "CLI 默认", en: "CLI default" })}
                       </option>
-                    ))}
-                  </select>
+                      {effortChoices.map((eff) => (
+                        <option key={eff} value={eff}>
+                          {eff}
+                        </option>
+                      ))}
+                    </select>
+                  )
                 }
               />
             )}
@@ -696,6 +784,7 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
             >
               <div className="py-4">
                 <textarea
+                  aria-label={tr({ zh: "系统提示", en: "System prompt" })}
                   className={`${inputClass} min-h-[96px] resize-y leading-relaxed`}
                   disabled={busy}
                   placeholder={tr({
@@ -722,20 +811,31 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
             {features.permissionMode && (
               <SettingRow
                 title={tr({ zh: "权限模式", en: "Permission mode" })}
-                description={tr({
-                  zh: "非「绕过权限」的模式可能让无人值守的运行卡住等待确认。",
-                  en: "Modes other than bypass may stall an unattended run waiting for a prompt.",
-                })}
+                description={
+                  isGrok
+                    ? tr({
+                        zh: "默认 dontAsk 会拒绝需审批的操作。其它模式遵循 Grok CLI 权限规则；无人值守运行无法回答交互审批。",
+                        en: "The default dontAsk mode denies operations that need approval. Other modes follow Grok CLI permissions; unattended runs cannot answer interactive prompts.",
+                      })
+                    : tr({
+                        zh: "非「绕过权限」的模式可能让无人值守的运行卡住等待确认。",
+                        en: "Modes other than bypass may stall an unattended run waiting for a prompt.",
+                      })
+                }
                 control={
                   <select
+                    aria-label={tr({ zh: "权限模式", en: "Permission mode" })}
                     className={`${selectClass} w-[260px]`}
                     disabled={busy}
-                    value={config.permission_mode ?? DEFAULTS.permission_mode}
+                    value={
+                      config.permission_mode ??
+                      defaultsForKind(kind).permission_mode
+                    }
                     onChange={(e) =>
                       void save({ permission_mode: e.target.value })
                     }
                   >
-                    {PERMISSION_MODES.map((o) => (
+                    {permissionModes.map((o) => (
                       <option key={o.value} value={o.value}>
                         {tr(o.label)}
                       </option>
