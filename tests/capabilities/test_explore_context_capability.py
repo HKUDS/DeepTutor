@@ -178,22 +178,28 @@ class _FakeDelta:
         self,
         content: str | None = None,
         tool_calls: list[_FakeToolCall] | None = None,
+        reasoning_content: str | None = None,
     ) -> None:
         self.content = content
         self.tool_calls = tool_calls
-        self.reasoning_content = None
+        self.reasoning_content = reasoning_content
         self.reasoning = None
 
 
 class _FakeChoice:
-    def __init__(self, delta: _FakeDelta) -> None:
+    def __init__(self, delta: _FakeDelta, provider_specific_fields: dict | None = None) -> None:
         self.delta = delta
         self.finish_reason = None
+        self.provider_specific_fields = provider_specific_fields
 
 
 class _FakeChunk:
-    def __init__(self, delta: _FakeDelta) -> None:
-        self.choices = [_FakeChoice(delta)]
+    def __init__(
+        self,
+        delta: _FakeDelta,
+        provider_specific_fields: dict | None = None,
+    ) -> None:
+        self.choices = [_FakeChoice(delta, provider_specific_fields)]
         self.usage = None
 
 
@@ -291,6 +297,174 @@ async def test_loop_falls_back_to_single_pass_on_client_error(
 
     block = await cap.pre_loop(ctx, StreamBus(), usage=None)
 
+    assert isinstance(block, PromptBlock)
+    assert "fallback briefing text" in block.content
+
+
+# ---------------------------------------------------------------------------
+# Reasoning replay state (#1400: DeepSeek thinking mode rejects a tool-round
+# history whose reasoning was dropped — Responses-wire converters only replay
+# it from ``_provider_response_state``).
+# ---------------------------------------------------------------------------
+
+
+def _reasoning_tool_round(native_items: list[dict[str, Any]] | None) -> list[_FakeChunk]:
+    """One streamed round: reasoning delta, then a read_source tool call."""
+    chunks = [
+        _FakeChunk(_FakeDelta(reasoning_content="I should read the transcript first.")),
+        _FakeChunk(
+            _FakeDelta(
+                tool_calls=[_FakeToolCall(0, "call_1", "read_source", '{"source_id": "hs-x"}')]
+            )
+        ),
+    ]
+    if native_items is not None:
+        chunks.append(
+            _FakeChunk(
+                _FakeDelta(),
+                provider_specific_fields={"native_output_items": native_items},
+            )
+        )
+    return chunks
+
+
+@pytest.mark.asyncio
+async def test_loop_replays_provider_reasoning_state_on_tool_rounds(
+    monkeypatch: pytest.MonkeyPatch, _force_loop: None
+) -> None:
+    """The tool-round assistant message carries the provider's native output
+    items so a Responses-wire provider still sees the round's reasoning."""
+    native_items = [
+        {
+            "type": "reasoning",
+            "id": "rs_1",
+            "content": [{"type": "reasoning_text", "text": "I should read the transcript first."}],
+        },
+        {
+            "type": "function_call",
+            "id": "fc_1",
+            "call_id": "call_1",
+            "name": "read_source",
+            "arguments": '{"source_id": "hs-x"}',
+        },
+    ]
+    fake_client = _FakeClient(
+        [
+            _reasoning_tool_round(native_items),
+            [_FakeChunk(_FakeDelta(content="The transcript shows the nav was rewritten."))],
+        ]
+    )
+    monkeypatch.setattr(explorer_mod, "build_openai_client", lambda _cfg: fake_client)
+
+    cap = ExploreContextCapability()
+    ctx = _ctx(
+        source_index={"hs-x": "## Claude Code\nI rewrote the nav and shipped it."},
+        history_references=["x"],
+    )
+
+    block = await cap.pre_loop(ctx, StreamBus(), usage=None)
+
+    assert isinstance(block, PromptBlock)
+    assert "nav was rewritten" in block.content
+    completions = fake_client.chat.completions
+    assert len(completions.calls) == 2
+    assistant = next(m for m in completions.calls[1]["messages"] if m.get("role") == "assistant")
+    state = assistant.get("_provider_response_state")
+    assert state is not None
+    assert state.get("responses_output_items") == native_items
+    # The chat-dialect echo stays on the message for Chat Completions providers.
+    assert assistant.get("reasoning_content") == "I should read the transcript first."
+
+
+@pytest.mark.asyncio
+async def test_loop_plain_provider_keeps_chat_echo_without_native_items(
+    monkeypatch: pytest.MonkeyPatch, _force_loop: None
+) -> None:
+    """A provider that never reported native output items gets the plain
+    chat-completions echo — and never a fabricated reasoning item."""
+    fake_client = _FakeClient(
+        [
+            _reasoning_tool_round(None),
+            [_FakeChunk(_FakeDelta(content="The transcript shows the nav was rewritten."))],
+        ]
+    )
+    monkeypatch.setattr(explorer_mod, "build_openai_client", lambda _cfg: fake_client)
+
+    cap = ExploreContextCapability()
+    ctx = _ctx(
+        source_index={"hs-x": "## Claude Code\nI rewrote the nav."}, history_references=["x"]
+    )
+
+    await cap.pre_loop(ctx, StreamBus(), usage=None)
+
+    completions = fake_client.chat.completions
+    assistant = next(m for m in completions.calls[1]["messages"] if m.get("role") == "assistant")
+    assert assistant.get("reasoning_content") == "I should read the transcript first."
+    state = assistant.get("_provider_response_state")
+    assert not (state or {}).get("responses_output_items")
+
+
+@pytest.mark.asyncio
+async def test_loop_nudges_reasoning_only_round_into_writing(
+    monkeypatch: pytest.MonkeyPatch, _force_loop: None
+) -> None:
+    """A round that produced only reasoning (budget burned, nothing visible)
+    is nudged once with the forced-finish instruction instead of silently
+    collapsing into the single-pass fallback."""
+    monkeypatch.setattr(
+        explorer_mod, "llm_stream", _fake_stream(["fallback briefing that must not be used"])
+    )
+    fake_client = _FakeClient(
+        [
+            [_FakeChunk(_FakeDelta(reasoning_content="Planning the whole investigation..."))],
+            [_FakeChunk(_FakeDelta(content="The transcript shows the nav was rewritten."))],
+        ]
+    )
+    monkeypatch.setattr(explorer_mod, "build_openai_client", lambda _cfg: fake_client)
+
+    cap = ExploreContextCapability()
+    ctx = _ctx(
+        source_index={"hs-x": "## Claude Code\nI rewrote the nav."}, history_references=["x"]
+    )
+
+    block = await cap.pre_loop(ctx, StreamBus(), usage=None)
+
+    completions = fake_client.chat.completions
+    assert len(completions.calls) == 2
+    second_messages = completions.calls[1]["messages"]
+    nudged_assistant = next(m for m in second_messages if m.get("role") == "assistant")
+    assert nudged_assistant.get("reasoning_content") == "Planning the whole investigation..."
+    assert second_messages[-1]["role"] == "user"
+    assert "Investigation budget reached" in str(second_messages[-1]["content"])
+    # The loop's own investigation won — not the single-pass fallback.
+    assert isinstance(block, PromptBlock)
+    assert "nav was rewritten" in block.content
+
+
+@pytest.mark.asyncio
+async def test_reasoning_only_exhaustion_falls_back_to_single_pass(
+    monkeypatch: pytest.MonkeyPatch, _force_loop: None
+) -> None:
+    """The nudge fires once; a second reasoning-only round ends the loop and
+    degrades to the single-pass briefing (bounded, never an infinite nudge)."""
+    monkeypatch.setattr(explorer_mod, "llm_stream", _fake_stream(["fallback briefing text"]))
+    fake_client = _FakeClient(
+        [
+            [_FakeChunk(_FakeDelta(reasoning_content="Thinking pass one..."))],
+            [_FakeChunk(_FakeDelta(reasoning_content="Thinking pass two..."))],
+        ]
+    )
+    monkeypatch.setattr(explorer_mod, "build_openai_client", lambda _cfg: fake_client)
+
+    cap = ExploreContextCapability()
+    ctx = _ctx(
+        source_index={"hs-x": "## Claude Code\nI rewrote the nav."}, history_references=["x"]
+    )
+
+    block = await cap.pre_loop(ctx, StreamBus(), usage=None)
+
+    # Round 0 nudged, round 1 reasoning-only again → loop ends, single pass runs.
+    assert len(fake_client.chat.completions.calls) == 2
     assert isinstance(block, PromptBlock)
     assert "fallback briefing text" in block.content
 

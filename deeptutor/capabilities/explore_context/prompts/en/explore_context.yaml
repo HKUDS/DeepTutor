@@ -113,3 +113,4 @@ briefing_header: |
 
 status:
   exploring: "Context exploration"
+  reasoning_only_nudged: "The exploration round produced only internal reasoning; asked the model to write its investigation now."
