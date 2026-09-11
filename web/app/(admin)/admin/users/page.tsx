@@ -193,11 +193,11 @@ export default function AdminUsersPage() {
         {/* Header */}
         <div className="mb-8">
           <Link
-            href="/"
+            href="/admin"
             className="mb-4 inline-flex items-center gap-1.5 text-sm text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors"
           >
             <ArrowLeft size={16} />
-            {t("Back")}
+            {t("Back to Admin")}
           </Link>
           <div className="flex items-start justify-between gap-4">
             <div>

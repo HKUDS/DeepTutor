@@ -75,6 +75,8 @@ export interface BookLibraryProps {
   onNewBook: () => void;
   onSelectBook: (id: string) => void;
   onDeleteBook: (id: string) => void;
+  /** Optional header slot for learner-facing actions (e.g. purchase entry). */
+  utilitySlot?: React.ReactNode;
 }
 
 export default function BookLibrary({
@@ -84,6 +86,7 @@ export default function BookLibrary({
   onNewBook,
   onSelectBook,
   onDeleteBook,
+  utilitySlot,
 }: BookLibraryProps) {
   const { t, i18n } = useTranslation();
   const [query, setQuery] = useState("");
@@ -141,6 +144,7 @@ export default function BookLibrary({
               className="h-8 w-56 rounded-md border border-[var(--border)] bg-[var(--secondary)]/30 pl-7 pr-2.5 text-xs text-[var(--foreground)] placeholder:text-[var(--muted-foreground)]/60 focus:border-[var(--primary)]/40 focus:outline-none"
             />
           </div>
+          {utilitySlot}
           {canCreate && (
             <button
               type="button"
