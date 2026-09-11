@@ -203,6 +203,18 @@ class MasteryLoopCapability:
             updated = dict(kwargs)
             updated["source_index"] = context.metadata.get("mastery_topic_source_index") or {}
             return updated
+        if tool_name == "mastery_new_session":
+            # The nav tools are mounted chat-wide, so nothing tells them where
+            # this turn is tutoring. The new-session hand-off needs that one
+            # fact: a "start a conversation on this topic" card offered from
+            # inside a session already tutoring the same topic is the
+            # duplicate-session generator — the review entry opens a session,
+            # the model answers it with a card for the same thing, and every
+            # click of the card creates another session. The tool refuses
+            # that shape; different topics still hand off.
+            updated = dict(kwargs)
+            updated["_mastery_path_id"] = path_id
+            return updated
         if tool_name in MASTERY_TOOL_NAMES:
             updated = dict(kwargs)
             if tool_name == "mastery_quiz":

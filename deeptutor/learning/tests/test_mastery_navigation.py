@@ -26,6 +26,7 @@ from deeptutor.learning.service import LearningService
 from deeptutor.learning.storage import LearningStore
 from deeptutor.services.session.sqlite_store import SQLiteSessionStore
 from deeptutor.tools.mastery_nav import (
+    HANDOFF_META_KEY,
     MasteryNewSessionTool,
     MasteryOpenSessionTool,
     MasterySessionsTool,
@@ -327,3 +328,48 @@ async def test_an_invented_lesson_is_refused_with_the_real_outline(store):
     assert result.success is False
     assert "Descriptive statistics" in result.content
     assert "Sampling distributions" in result.content
+
+
+@pytest.mark.asyncio
+async def test_new_session_refuses_the_topic_the_turn_is_already_tutoring(store):
+    """A mastery turn bound to a topic must not hand the learner a card that
+    starts yet another conversation on that same topic.
+
+    The review entry already opens a session on the topic; a model that
+    answers it with a "start a session on this topic" card sends the learner
+    through the same click again — a new session every time, none of them the
+    one the tutor is speaking in (#1412's session bloat).
+    """
+    _create_topic()
+
+    result = await MasteryNewSessionTool().execute(
+        path_id="stats_101",
+        opening_message="Review the mean with me",
+        _mastery_path_id="stats_101",
+    )
+
+    assert result.success is False
+    assert not (result.metadata or {}).get(HANDOFF_META_KEY)
+    # The refusal tells the model what to do instead: this window IS the
+    # topic's session, so the tutoring happens here.
+    assert "already" in result.content
+    assert "stats_101" in result.content
+
+
+@pytest.mark.asyncio
+async def test_new_session_still_hands_off_other_topics_from_a_mastery_turn(store, session_store):
+    _create_topic()
+    _create_topic("algebra_101", "Algebra Basics")
+
+    payload = _payload(
+        await MasteryNewSessionTool().execute(
+            path_id="algebra_101",
+            opening_message="Start factoring with me",
+            _mastery_path_id="stats_101",
+        )
+    )
+
+    # A different topic is exactly what the hand-off is for: the learner is
+    # being pointed somewhere this conversation cannot tutor.
+    assert payload["kind"] == "new"
+    assert payload["path_id"] == "algebra_101"

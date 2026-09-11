@@ -271,6 +271,18 @@ def test_read_source_is_owned_and_reads_the_topic_index_on_demand():
     assert kwargs["source_index"] == {"bk-path-1-ch1": "chapter one text"}
 
 
+def test_new_session_handoff_learns_which_topic_the_turn_is_tutoring():
+    """The hand-off tool is mounted chat-wide and normally never learns where
+    the turn is tutoring. It needs exactly that one fact on a mastery turn: a
+    "start a new conversation on this topic" card offered from inside a
+    session already tutoring the same topic is the duplicate-session generator
+    behind #1412's review loop.
+    """
+    updated = MasteryLoopCapability().augment_kwargs("mastery_new_session", {}, _context())
+
+    assert updated["_mastery_path_id"] == "path-1"
+
+
 @pytest.mark.asyncio
 async def test_mastery_sync_carries_provenance_to_question_bank(tmp_path, monkeypatch) -> None:
     from deeptutor.capabilities.mastery.tools import (
