@@ -10,7 +10,7 @@ Lifted from chat's pipeline. Capability-agnostic: the caller supplies:
   its running/terminal state and its intermediate progress into its own
   sub-trace regardless of flavor.
 * labels for the trace UI rows (``tool_call``, ``retrieve``) plus the
-  capability-specific copy for empty results / over-quota / unknown errors.
+  capability-specific copy for empty results / over-quota / tool failures.
 
 The dispatcher executes all tool calls in parallel, emits one sub-trace per
 tool call, and returns a :class:`DispatchOutcome` carrying the role=tool
@@ -60,7 +60,38 @@ KwargAugmenter = Callable[[str, dict[str, Any], UnifiedContext], dict[str, Any]]
 # which tools rebind is a capability's knowledge, not the dispatcher's.
 RebindingTools = frozenset[str]
 RetrieveMetaFactory = Callable[[dict[str, Any], str, dict[str, Any]], dict[str, Any] | None]
-UnknownErrorMessageFactory = Callable[[str], str]
+# What a raising tool reports back to the model: the tool that failed *and*
+# why. The cause is a parameter rather than something the caller may look up,
+# because it is the half that kept going missing — the dispatcher holds the
+# exception, every capability wrote its own message from the tool name alone,
+# and three of the four called the result "unknown". A stopped Ollama says
+# where it was listening and how to start it (#1356); the model was told "an
+# unknown error occurred while executing rag" and went looking for one.
+ToolErrorMessageFactory = Callable[[str, str], str]
+#: Prompt-bundle key for that message. One key, one wording, five call sites.
+TOOL_ERROR_NOTICE_KEY = "notices.tool_error"
+
+
+def tool_error_message_factory(
+    translate: Callable[..., str],
+) -> ToolErrorMessageFactory:
+    """A capability's localized failed-tool notice, from its own bundle.
+
+    ``translate`` is the capability's ``_t``. The key and the English wording
+    live here so the capabilities cannot drift apart again, and the fallback
+    still names the cause — a bundle that predates this key degrades to
+    English, never to silence about what went wrong.
+    """
+
+    def _message(tool_name: str, error: str) -> str:
+        return translate(
+            TOOL_ERROR_NOTICE_KEY,
+            tool=tool_name,
+            error=error,
+            default=f"{tool_name} failed: {error}",
+        )
+
+    return _message
 
 
 @dataclass(frozen=True)
@@ -103,8 +134,10 @@ async def dispatch_tool_calls(
     empty_tool_result_message: str = "",
     start_retrieval_message: str = "Starting retrieval",
     too_many_tool_calls_message: str | None = None,
-    unknown_error_message_factory: UnknownErrorMessageFactory | None = None,
+    tool_error_message_factory: ToolErrorMessageFactory | None = None,
     trace_id_prefix: str = "iter",
+    tool_timeout: float | None = None,
+    tool_max_retries: int = 0,
 ) -> DispatchOutcome:
     """Execute tool calls in parallel and assemble a :class:`DispatchOutcome`."""
     registry = registry or get_tool_registry()
@@ -119,7 +152,12 @@ async def dispatch_tool_calls(
             )
         tool_calls = tool_calls[:MAX_PARALLEL_TOOL_CALLS]
 
-    prepared, raw_args = _prepare_tool_args(tool_calls, context, kwarg_augmenter)
+    prepared, raw_args = _prepare_tool_args(
+        tool_calls,
+        context,
+        kwarg_augmenter,
+        registry=registry,
+    )
     # Collapse duplicates within this parallel batch. Models occasionally
     # emit repeated tool_calls in one assistant message. For most tools,
     # "duplicate" means same tool + same JSON-normalised args. For
@@ -188,6 +226,9 @@ async def dispatch_tool_calls(
         )
         if rejection is not None:
             return rejection
+        # Pause tools intentionally wait for user interaction. A wall-clock
+        # tool timeout must not cancel that wait.
+        policy_exempt = tool_name in PAUSE_LAST_TOOLS
         return await execute_tool_call(
             registry=registry,
             tool_name=tool_name,
@@ -207,8 +248,10 @@ async def dispatch_tool_calls(
             ),
             empty_tool_result_message=empty_tool_result_message,
             start_retrieval_message=start_retrieval_message,
-            unknown_error_message_factory=unknown_error_message_factory,
+            tool_error_message_factory=tool_error_message_factory,
             retrieve_label=retrieve_label,
+            tool_timeout=None if policy_exempt else tool_timeout,
+            tool_max_retries=0 if policy_exempt else tool_max_retries,
         )
 
     def _rebind(indices: list[int]) -> None:
@@ -224,7 +267,16 @@ async def dispatch_tool_calls(
             if duplicate_of.get(index) is not None:
                 continue
             call_id, name, _stale = prepared[index]
-            prepared[index] = (call_id, name, kwarg_augmenter(name, raw_args[index], context))
+            canonical_name, resolved_args = _resolve_tool_request(
+                registry,
+                name,
+                raw_args[index],
+            )
+            prepared[index] = (
+                call_id,
+                name,
+                kwarg_augmenter(canonical_name, resolved_args, context),
+            )
 
     # Three ordered stages around one concurrent middle. Every call in a round
     # has its args bound before any of them runs, so a tool that *changes what
@@ -431,6 +483,8 @@ def _prepare_tool_args(
     tool_calls: list[dict[str, Any]],
     context: UnifiedContext,
     kwarg_augmenter: KwargAugmenter | None,
+    *,
+    registry: ToolLookup | None = None,
 ) -> tuple[list[tuple[str, str, dict[str, Any]]], list[dict[str, Any]]]:
     """Bind each call's execution args, keeping the model's originals.
 
@@ -449,14 +503,41 @@ def _prepare_tool_args(
         )
         if not isinstance(tool_args, dict):
             tool_args = {}
+        canonical_name, resolved_args = _resolve_tool_request(registry, tool_name, tool_args)
         exec_args = (
-            kwarg_augmenter(tool_name, tool_args, context)
+            kwarg_augmenter(canonical_name, resolved_args, context)
             if kwarg_augmenter is not None
-            else dict(tool_args)
+            else resolved_args
         )
         prepared.append((tool_call_id, tool_name, exec_args))
         raw_args.append(dict(tool_args))
     return prepared, raw_args
+
+
+def _resolve_tool_request(
+    registry: ToolLookup | None,
+    tool_name: str,
+    tool_args: dict[str, Any],
+) -> tuple[str, dict[str, Any]]:
+    """Resolve aliases and their defaults before server-owned augmentation.
+
+    Execution retains the model-provided name so trace rows remain faithful.
+    Registries without alias support keep the original name and arguments.
+    """
+    if registry is None:
+        return tool_name, dict(tool_args)
+    resolver = getattr(registry, "resolve_request", None)
+    if callable(resolver):
+        try:
+            resolved_name, resolved_args = resolver(tool_name, tool_args)
+            return str(resolved_name or tool_name), dict(resolved_args)
+        except Exception:
+            return tool_name, dict(tool_args)
+    try:
+        tool = registry.get(tool_name)
+    except Exception:
+        return tool_name, dict(tool_args)
+    return str(getattr(tool, "name", "") or tool_name), dict(tool_args)
 
 
 def _build_per_tool_trace_meta(
@@ -551,7 +632,9 @@ async def execute_tool_call(
     empty_tool_result_message: str = "",
     start_retrieval_message: str = "Starting retrieval",
     retrieve_label: str = "Retrieve",
-    unknown_error_message_factory: UnknownErrorMessageFactory | None = None,
+    tool_error_message_factory: ToolErrorMessageFactory | None = None,
+    tool_timeout: float | None = None,
+    tool_max_retries: int = 0,
 ) -> dict[str, Any]:
     """Run one tool, streaming its state (and any intermediate progress) into
     the tool's own sub-trace.
@@ -609,17 +692,40 @@ async def execute_tool_call(
                 call_state="running",
             ),
         )
+
+    async def _execute_with_policy() -> Any:
+        attempts = max(1, int(tool_max_retries) + 1)
+        for attempt in range(1, attempts + 1):
+            try:
+                return await asyncio.wait_for(
+                    registry.execute(
+                        tool_name,
+                        # Withheld when there is nowhere to publish (a bare call with
+                        # neither meta): tools branch on the sink being present to decide
+                        # whether to do the work at all — ``rag`` installs a log-capture
+                        # handler for it — so handing over one that discards everything is
+                        # strictly worse than handing over none.
+                        event_sink=_event_sink if status_meta is not None else None,
+                        **tool_args,
+                    ),
+                    timeout=tool_timeout,
+                )
+            except (asyncio.TimeoutError, ConnectionError) as exc:
+                if attempt >= attempts:
+                    if isinstance(exc, asyncio.TimeoutError) and tool_timeout is not None:
+                        raise TimeoutError(
+                            f"{tool_name} timed out after {tool_timeout:g} seconds"
+                        ) from exc
+                    raise
+                retry_reason = "timed out" if isinstance(exc, asyncio.TimeoutError) else str(exc)
+                await _event_sink(
+                    "tool_log",
+                    f"{tool_name} {retry_reason}; retrying attempt {attempt + 1}/{attempts}",
+                    {"retry_attempt": attempt + 1, "max_attempts": attempts},
+                )
+
     try:
-        result = await registry.execute(
-            tool_name,
-            # Withheld when there is nowhere to publish (a bare call with
-            # neither meta): tools branch on the sink being present to decide
-            # whether to do the work at all — ``rag`` installs a log-capture
-            # handler for it — so handing over one that discards everything is
-            # strictly worse than handing over none.
-            event_sink=_event_sink if status_meta is not None else None,
-            **tool_args,
-        )
+        result = await _execute_with_policy()
         if status_meta is not None:
             await stream.progress(
                 (
@@ -678,13 +784,14 @@ async def execute_tool_call(
                     error=str(exc),
                 ),
             )
-        unknown_msg = (
-            unknown_error_message_factory(tool_name)
-            if unknown_error_message_factory is not None
-            else f"Error executing {tool_name}: {exc}"
+        cause = str(exc) or exc.__class__.__name__
+        failure_msg = (
+            tool_error_message_factory(tool_name, cause)
+            if tool_error_message_factory is not None
+            else f"Error executing {tool_name}: {cause}"
         )
         return {
-            "result_text": unknown_msg,
+            "result_text": failure_msg,
             "success": False,
             "sources": [],
             "metadata": {"error": str(exc)},

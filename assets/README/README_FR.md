@@ -400,6 +400,8 @@ Si une réponse perd une contrainte antérieure, cite des preuves faibles ou con
 <img src="../../assets/figs/web-1.6.5/OVERVIEW.png" alt="Accueil DeepTutor — l'espace de travail Chat avec chaque surface dans la barre latérale" width="900">
 </div>
 
+> **État des captures d'écran :** la vue d'ensemble est à jour pour v1.6.5. Les captures de surface ci-dessous restent des références v1.4.6 pendant la mise à jour ; voir l'[inventaire des captures](../../UI_SCREENSHOT_REFRESH.md). Utilisez-les pour comprendre les parcours, pas comme navigation exacte actuelle.
+
 <details>
 <summary><b>🏗️ Architecture du système</b></summary>
 

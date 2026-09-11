@@ -42,7 +42,7 @@ export function isBackendPath(pathname: string): boolean {
 // (issue #599 — broken logo/banner after login). Public assets are
 // non-sensitive by design, so allowing them through is safe.
 const STATIC_ASSET =
-  /\.(?:png|jpe?g|gif|svg|ico|webp|avif|woff2?|ttf|otf|txt|json|map|css|js)$/i;
+  /\.(?:png|jpe?g|gif|svg|ico|webp|avif|woff2?|ttf|otf|txt|json|map|css|js|wasm)$/i;
 
 // Paths the auth gate must never block: the auth pages themselves, Next.js
 // internals, and public static assets (see STATIC_ASSET above).
