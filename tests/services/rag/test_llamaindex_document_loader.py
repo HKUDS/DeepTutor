@@ -35,6 +35,27 @@ def _install_stub_parse_service(monkeypatch, results: dict[str, "object"]) -> No
     monkeypatch.setattr(parsing, "get_parse_service", lambda: _StubService())
 
 
+def _install_sequential_parse_service(
+    monkeypatch: pytest.MonkeyPatch,
+    outcomes: list["object"],
+) -> list[tuple[str, str | None]]:
+    """Record ``(file_name, engine)`` calls and return one outcome per call."""
+    import deeptutor.services.parsing as parsing
+
+    calls: list[tuple[str, str | None]] = []
+
+    class _SequentialStubService:
+        def parse(self, source_path, engine=None, **_kwargs):  # noqa: ANN001
+            calls.append((Path(source_path).name, engine))
+            outcome = outcomes[len(calls) - 1]
+            if isinstance(outcome, Exception):
+                raise outcome
+            return outcome
+
+    monkeypatch.setattr(parsing, "get_parse_service", lambda: _SequentialStubService())
+    return calls
+
+
 def test_loader_routes_parser_files_through_active_parse_engine(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -209,6 +230,126 @@ def test_loader_explains_scanned_pdf_when_parser_yields_images_only(
     assert "scanned PDF" in caplog.text
     assert "OCR-capable" in caplog.text
     assert "Settings, Document Parsing" in caplog.text
+
+
+def _text_only_embedding_client():
+    class _TextOnlyClient:
+        config = type("Config", (), {"binding": "openai", "model": "text-embedding"})()
+
+        def supports_multimodal_contents(self) -> bool:
+            return False
+
+    return _TextOnlyClient()
+
+
+def test_loader_falls_back_to_installed_liteparse_for_scanned_pdf(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pytest.importorskip("llama_index.core")
+    from deeptutor.services.parsing.types import ParsedDocument
+    from deeptutor.services.rag.pipelines.llamaindex import document_loader as loader_module
+    from deeptutor.services.rag.pipelines.llamaindex.document_loader import (
+        LlamaIndexDocumentLoader,
+    )
+
+    pdf_path = tmp_path / "scan.pdf"
+    pdf_path.write_bytes(b"stub")
+    asset_dir = tmp_path / "assets"
+    asset_dir.mkdir()
+    (asset_dir / "page-1.png").write_bytes(b"\x89PNG\r\n")
+
+    calls = _install_sequential_parse_service(
+        monkeypatch,
+        [
+            ParsedDocument(markdown="", engine="pymupdf4llm", asset_dir=asset_dir),
+            ParsedDocument(markdown="Recovered scanned text", engine="liteparse"),
+        ],
+    )
+    monkeypatch.setattr(
+        loader_module,
+        "get_embedding_client",
+        lambda: _text_only_embedding_client(),
+    )
+
+    documents = asyncio.run(LlamaIndexDocumentLoader().load([str(pdf_path)]))
+
+    assert calls == [("scan.pdf", None), ("scan.pdf", "liteparse")]
+    assert [document.text for document in documents] == ["Recovered scanned text"]
+
+
+def test_loader_reports_scanned_pdf_when_ocr_fallback_is_unavailable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    pytest.importorskip("llama_index.core")
+    from deeptutor.services.parsing.types import ParsedDocument, ParserError
+    from deeptutor.services.rag.pipelines.llamaindex import document_loader as loader_module
+    from deeptutor.services.rag.pipelines.llamaindex.document_loader import (
+        LlamaIndexDocumentLoader,
+    )
+
+    pdf_path = tmp_path / "scan.pdf"
+    pdf_path.write_bytes(b"stub")
+    asset_dir = tmp_path / "assets"
+    asset_dir.mkdir()
+    (asset_dir / "page-1.png").write_bytes(b"\x89PNG\r\n")
+
+    calls = _install_sequential_parse_service(
+        monkeypatch,
+        [
+            ParsedDocument(markdown="", engine="pymupdf4llm", asset_dir=asset_dir),
+            ParserError("liteparse isn't installed"),
+        ],
+    )
+    monkeypatch.setattr(
+        loader_module,
+        "get_embedding_client",
+        lambda: _text_only_embedding_client(),
+    )
+
+    with caplog.at_level("WARNING"):
+        documents = asyncio.run(LlamaIndexDocumentLoader().load([str(pdf_path)]))
+
+    assert calls == [("scan.pdf", None), ("scan.pdf", "liteparse")]
+    assert documents == []
+    assert "Automatic OCR fallback failed for scan.pdf" in caplog.text
+    assert "Skipped scanned PDF: scan.pdf" in caplog.text
+    assert "Install LiteParse" in caplog.text
+
+
+def test_loader_does_not_fallback_when_liteparse_already_ran(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pytest.importorskip("llama_index.core")
+    from deeptutor.services.parsing.types import ParsedDocument
+    from deeptutor.services.rag.pipelines.llamaindex import document_loader as loader_module
+    from deeptutor.services.rag.pipelines.llamaindex.document_loader import (
+        LlamaIndexDocumentLoader,
+    )
+
+    pdf_path = tmp_path / "scan.pdf"
+    pdf_path.write_bytes(b"stub")
+    asset_dir = tmp_path / "assets"
+    asset_dir.mkdir()
+    (asset_dir / "page-1.png").write_bytes(b"\x89PNG\r\n")
+
+    calls = _install_sequential_parse_service(
+        monkeypatch,
+        [ParsedDocument(markdown="", engine="liteparse", asset_dir=asset_dir)],
+    )
+    monkeypatch.setattr(
+        loader_module,
+        "get_embedding_client",
+        lambda: _text_only_embedding_client(),
+    )
+
+    documents = asyncio.run(LlamaIndexDocumentLoader().load([str(pdf_path)]))
+
+    assert calls == [("scan.pdf", None)]
+    assert documents == []
 
 
 def test_loader_keeps_generic_empty_warning_for_non_pdf(
