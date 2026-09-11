@@ -238,7 +238,7 @@ class ConfigTestRunner:
         from .loader import get_agent_params
 
         probe_params = get_agent_params("llm_probe")
-        max_tokens = _coerce_int(probe_params.get("max_tokens"), 1024)
+        max_tokens = _coerce_int(probe_params.get("max_tokens"), 4096)
         temperature = _coerce_float(probe_params.get("temperature"), 0.1)
         token_kwargs: dict[str, Any] = get_token_limit_kwargs(
             llm_config.model, max_tokens=max_tokens
