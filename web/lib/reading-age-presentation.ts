@@ -46,9 +46,9 @@ export function readingToolbarClass(mode: ReadingAgeMode) {
 
 export function readingMoreClass(mode: ReadingAgeMode) {
   if (mode === "early")
-    return "min-h-14 rounded-full border-2 px-4 text-base font-bold shadow-sm";
+    return "min-h-14 rounded-[22px] border-[3px] px-4 text-base font-extrabold shadow-[0_5px_0_rgb(0_0_0_/_0.07)] transition-transform duration-150 motion-safe:hover:-translate-y-0.5";
   if (mode === "young")
-    return "min-h-12 rounded-2xl border px-3 text-sm font-semibold shadow-sm";
+    return "min-h-12 rounded-[18px] border-2 px-3 text-sm font-bold shadow-sm transition-transform duration-150 motion-safe:hover:-translate-y-px";
   if (mode === "older")
     return "min-h-11 rounded-xl border px-3 text-sm font-semibold";
   return "rounded-lg border px-2 text-xs";
@@ -60,9 +60,9 @@ export function readingActionClass(
 ) {
   const size =
     mode === "early"
-      ? "min-h-14 rounded-full border-2 px-3 py-2 text-base font-bold shadow-sm"
+      ? "min-h-14 rounded-[22px] border-[3px] px-3 py-2 text-base font-extrabold shadow-[0_5px_0_rgb(0_0_0_/_0.07)] transition-transform duration-150 motion-safe:hover:-translate-y-0.5"
       : mode === "young"
-        ? "min-h-12 rounded-2xl border px-3 py-2 text-sm font-semibold shadow-sm"
+        ? "min-h-12 rounded-[18px] border-2 px-3 py-2 text-sm font-bold shadow-sm transition-transform duration-150 motion-safe:hover:-translate-y-px"
         : mode === "older"
           ? "min-h-11 rounded-xl border px-3 py-1.5 text-sm font-semibold"
           : "min-h-8 rounded-lg border px-2 py-1 text-xs font-medium";
@@ -75,12 +75,13 @@ export function readingActionClass(
     mode === "early"
       ? {
           speech:
-            "border-emerald-300 bg-emerald-100 text-emerald-950 hover:bg-emerald-200",
+            "border-emerald-300 bg-emerald-100 text-emerald-950 hover:border-emerald-400 hover:bg-emerald-200",
           vocabulary:
-            "border-amber-300 bg-amber-100 text-amber-950 hover:bg-amber-200",
-          quiz: "border-sky-300 bg-sky-100 text-sky-950 hover:bg-sky-200",
+            "border-amber-300 bg-amber-100 text-amber-950 hover:border-amber-400 hover:bg-amber-200",
+          quiz:
+            "border-sky-300 bg-sky-100 text-sky-950 hover:border-sky-400 hover:bg-sky-200",
           general:
-            "border-violet-300 bg-violet-100 text-violet-950 hover:bg-violet-200",
+            "border-violet-300 bg-violet-100 text-violet-950 hover:border-violet-400 hover:bg-violet-200",
         }
       : mode === "young"
         ? {

@@ -238,9 +238,9 @@ export function ReadingExtensionBar({
     const ActionIcon = actionIcon(extension.id, action.id);
     const iconSize =
       ageMode === "early"
-        ? 24
+        ? 26
         : ageMode === "young"
-          ? 20
+          ? 22
           : ageMode === "older"
             ? 18
             : 14;

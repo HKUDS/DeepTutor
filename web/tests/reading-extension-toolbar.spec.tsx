@@ -71,7 +71,10 @@ test("young learner actions use a cute age-specific presentation", async () => {
     ),
   );
   expect(screen.getByRole("button", { name: "Look up word" })).toHaveClass(
-    "rounded-full",
+    "rounded-[22px]",
+  );
+  expect(screen.getByRole("button", { name: "Look up word" })).toHaveClass(
+    "motion-safe:hover:-translate-y-0.5",
   );
   expect(screen.getByRole("button", { name: "Quiz me" })).toBeEnabled();
 });
@@ -101,6 +104,9 @@ test("eight-year-old learners receive the young presentation", async () => {
   );
   expect(screen.getByRole("button", { name: "Read aloud" })).toHaveClass(
     "min-h-12",
+  );
+  expect(screen.getByRole("button", { name: "Read aloud" })).toHaveClass(
+    "motion-safe:hover:-translate-y-px",
   );
 });
 
