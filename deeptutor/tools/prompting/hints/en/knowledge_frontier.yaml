@@ -1,0 +1,6 @@
+short_description: "Analyse a knowledge base for its research frontier: emerging themes, gaps, and open questions."
+when_to_use: "Use when the learner asks what is at the edge of a topic, what the material does not cover well, or where to go next."
+input_format: "{\"kb_name\": \"one of the attached knowledge base names\"}."
+guideline: "Runs several targeted RAG probes against the knowledge base and aggregates evidence-backed results with source references. The report is for the active turn only; nothing is written back."
+note: "Requires the knowledge base to be attached to the current turn. Empty or inaccessible knowledge bases return a clear no-content message."
+phase: "exploration"
