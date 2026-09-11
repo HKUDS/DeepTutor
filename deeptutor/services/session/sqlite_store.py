@@ -369,6 +369,8 @@ class SQLiteSessionStore:
             columns = {row[1] for row in conn.execute("PRAGMA table_info(sessions)").fetchall()}
             if "preferences_json" not in columns:
                 conn.execute("ALTER TABLE sessions ADD COLUMN preferences_json TEXT DEFAULT '{}'")
+            if "deleted_at" not in columns:
+                conn.execute("ALTER TABLE sessions ADD COLUMN deleted_at REAL DEFAULT NULL")
             self._migrate_workspace_preferences(conn)
             if "kind" in columns:
                 try:
@@ -1356,12 +1358,55 @@ class SQLiteSessionStore:
 
     def _delete_session_sync(self, session_id: str) -> bool:
         with self._connect() as conn:
-            cur = conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+            cur = conn.execute(
+                "UPDATE sessions SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL",
+                (time.time(), session_id),
+            )
             conn.commit()
         return cur.rowcount > 0
 
     async def delete_session(self, session_id: str) -> bool:
         return await self._run(self._delete_session_sync, session_id)
+
+    def _restore_session_sync(self, session_id: str) -> bool:
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE sessions SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL",
+                (session_id,),
+            )
+            conn.commit()
+        return cur.rowcount > 0
+
+    async def restore_session(self, session_id: str) -> bool:
+        return await self._run(self._restore_session_sync, session_id)
+
+    def _purge_session_sync(self, session_id: str) -> bool:
+        with self._connect() as conn:
+            cur = conn.execute(
+                "DELETE FROM sessions WHERE id = ? AND deleted_at IS NOT NULL",
+                (session_id,),
+            )
+            conn.commit()
+        return cur.rowcount > 0
+
+    async def purge_session(self, session_id: str) -> bool:
+        return await self._run(self._purge_session_sync, session_id)
+
+    def _list_deleted_sessions_sync(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        return self._list_session_summaries_sync(
+            "WHERE s.deleted_at IS NOT NULL", limit, offset
+        )
+
+    async def list_deleted_sessions(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        return await self._run(self._list_deleted_sessions_sync, limit, offset)
 
     def _add_message_sync(
         self,
@@ -2112,9 +2157,9 @@ class SQLiteSessionStore:
     # their collection and ``sessionRoute`` sends a click back to the reader,
     # so they belong in the list like everything else.
     _WHERE_NATIVE = r"""
-        WHERE s.id NOT LIKE 'imported\_%' ESCAPE '\'
+        WHERE s.id NOT LIKE 'imported\_%' ESCAPE '\' AND s.deleted_at IS NULL
     """
-    _WHERE_IMPORTED = r"WHERE s.id LIKE 'imported\_%' ESCAPE '\'"
+    _WHERE_IMPORTED = r"WHERE s.id LIKE 'imported\_%' ESCAPE '\' AND s.deleted_at IS NULL"
 
     def _list_session_summaries_sync(
         self, where_sql: str, limit: int, offset: int
