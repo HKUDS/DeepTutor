@@ -269,6 +269,7 @@ export default function ChatWorkspace({
     cancelStreamingTurn,
     submitUserReply,
     regenerateLastMessage,
+    resendLastMessage,
     deleteTurn,
     editMessage,
     switchBranch,
@@ -2087,6 +2088,10 @@ export default function ChatWorkspace({
     regenerateLastMessage();
   }, [regenerateLastMessage]);
 
+  const handleResendMessage = useCallback(() => {
+    resendLastMessage();
+  }, [resendLastMessage]);
+
   const handleToggleKB = useCallback(
     (name: string) => {
       const current = state.knowledgeBases;
@@ -2479,6 +2484,8 @@ export default function ChatWorkspace({
                         language={state.language}
                         onCopyAssistantMessage={copyAssistantMessage}
                         onRegenerateMessage={handleRegenerateMessage}
+                        canResendLastTurn={state.lastTurnFailed}
+                        onResendLastTurn={handleResendMessage}
                         onConfirmOutline={handleConfirmOutline}
                         onPreviewAttachment={handlePreviewMessageAttachment}
                         onDeleteTurn={deleteTurn}

@@ -1451,6 +1451,8 @@ export const ChatMessageList = memo(function ChatMessageList({
   language,
   onCopyAssistantMessage,
   onRegenerateMessage,
+  canResendLastTurn = false,
+  onResendLastTurn,
   onConfirmOutline,
   onPreviewAttachment,
   onDeleteTurn,
@@ -1471,6 +1473,10 @@ export const ChatMessageList = memo(function ChatMessageList({
   language?: string;
   onCopyAssistantMessage: CopyHandler;
   onRegenerateMessage: () => void;
+  /** True when the last turn failed (not cancelled) and streaming has
+   *  stopped. Drives the Resend affordance on the trailing assistant. */
+  canResendLastTurn?: boolean;
+  onResendLastTurn?: () => void;
   onConfirmOutline?: (
     outline: Array<{ title: string; overview: string }>,
     topic: string,
@@ -1738,6 +1744,12 @@ export const ChatMessageList = memo(function ChatMessageList({
           Boolean(pairedUserMessage) &&
           (!pairedUserMessage?.capability ||
             pairedUserMessage?.capability === "chat");
+        const showResend =
+          !isStreaming &&
+          isLastAssistant &&
+          canResendLastTurn &&
+          Boolean(pairedUserMessage?.requestSnapshot) &&
+          Boolean(onResendLastTurn);
         const deletableTurnUserId =
           msgDone && pairedUserMessage?.id != null && onDeleteTurn
             ? pairedUserMessage.id
@@ -1832,6 +1844,15 @@ export const ChatMessageList = memo(function ChatMessageList({
                       {t("Retry")}
                     </button>
                   ) : null}
+                  {showResend && !showRegenerate ? (
+                    <button
+                      type="button"
+                      onClick={() => onResendLastTurn?.()}
+                      className="shrink-0 rounded-md px-2 py-1 text-[11.5px] font-medium text-[var(--foreground)] hover:bg-[var(--muted)]"
+                    >
+                      {t("Resend")}
+                    </button>
+                  ) : null}
                 </div>
               );
             })()}
@@ -1859,6 +1880,13 @@ export const ChatMessageList = memo(function ChatMessageList({
                         icon={RefreshCcw}
                         label={t("Regenerate")}
                         onClick={() => onRegenerateMessage()}
+                      />
+                    )}
+                    {showResend && (
+                      <RoughActionButton
+                        icon={RefreshCcw}
+                        label={t("Resend")}
+                        onClick={() => onResendLastTurn?.()}
                       />
                     )}
                     {showDelete && (
