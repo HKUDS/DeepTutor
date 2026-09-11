@@ -2504,15 +2504,16 @@ async def test_length_finish_reason_continues_within_bounded_settlement(
 
 
 @pytest.mark.asyncio
-async def test_repeated_empty_finish_stops_after_one_nudge(
+async def test_repeated_reasoning_only_finishes_are_bounded(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An empty provider response gets one recovery chance, never a loop."""
+    """A second reasoning-only miss gets a stronger directive and a hard finish."""
     registry = _Registry()
     client = _ScriptedChatClient(
         [
             [_llm_chunk(content="<think>first empty</think>")],
             [_llm_chunk(content="<think>still empty</think>")],
+            [_llm_chunk(content="Recovered after the hard finish.")],
         ]
     )
     pipeline = AgenticChatPipeline(language="en")
@@ -2523,10 +2524,42 @@ async def test_repeated_empty_finish_stops_after_one_nudge(
 
     events = await _run(pipeline, UnifiedContext(session_id="s1", user_message="Answer"))
 
-    assert client.call_count == 2
+    assert client.call_count == 3
+    forced_request = client.calls[2]["messages"]
+    forced_instruction = str(forced_request[-1]["content"])
+    assert "Do not reason further" in forced_instruction
+    assert "Stop calling tools" in forced_instruction
+    result = _result(events)
+    assert result.metadata["response"] == "Recovered after the hard finish."
+    assert result.metadata["completed"] is True
+    assert result.metadata["settlement_rounds"] == 1
+
+
+@pytest.mark.asyncio
+async def test_reasoning_only_hard_finish_has_distinct_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Reasoning without an answer is not reported as an opaque model failure."""
+    registry = _Registry()
+    client = _ScriptedChatClient(
+        [
+            [_llm_chunk(content="<think>first empty</think>")],
+            [_llm_chunk(content="<think>still empty</think>")],
+            [_llm_chunk(content="<think>reasoned away the hard finish</think>")],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = registry
+    pipeline._max_rounds = 1
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: [])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    events = await _run(pipeline, UnifiedContext(session_id="s1", user_message="Answer"))
+
+    assert client.call_count == 3
     result = _result(events)
     assert result.metadata["response"] == (
-        "I could not produce a useful response from the model output. "
+        "The model produced internal reasoning but no usable answer. "
         "Please try again or narrow the request."
     )
     assert result.metadata["completed"] is True

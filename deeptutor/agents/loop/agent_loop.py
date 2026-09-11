@@ -79,6 +79,11 @@ LOOP_STAGE = "responding"
 # A single additional tool-less hard finish follows if all of these rounds
 # still request tools, making the total upper bound ``exploration + 4``.
 MAX_SETTLEMENT_ROUNDS = 3
+# Reasoning-only completions can recur when a model rewrites its plan instead
+# of acting. Give it a stronger directive on the second miss, then use the
+# forced tool-less finish instead of spending the full exploration budget on
+# the same failure.
+MAX_REASONING_ONLY_RECOVERIES = 2
 _TRUNCATED_FINISH_REASONS = frozenset({"length", "max_tokens", "max_output_tokens"})
 # The SDK already retries failures that happen before response headers. These
 # short outer retries also cover SSE connections that fail before yielding any
@@ -291,7 +296,7 @@ class AgentLoop:
         settlement_label = self.pipeline._t("labels.final_response", default="Final response")
         exploration_budget = max(1, self.pipeline.effective_max_rounds(self.context))
         settlement_started = False
-        nudged_empty_finish = False
+        reasoning_only_recoveries = 0
         finish_redirect_used = False
         continued_answer_parts: list[str] = []
         while True:
@@ -407,13 +412,20 @@ class AgentLoop:
                         )
                     self._append_loop_instruction(messages, instruction)
                     continue
-                if not final_text and not nudged_empty_finish:
+                if not final_text:
                     # The round produced only internal reasoning (e.g. the
                     # whole reply inside <think>) — the model planned but
                     # never acted. Keep its raw text in-conversation (the
-                    # plan/script lives there) and nudge it once to act
-                    # instead of falling back to an empty answer.
-                    nudged_empty_finish = True
+                    # plan/script lives there) and ask it to act instead of
+                    # accepting an empty answer.
+                    reasoning_only_recoveries += 1
+                    logger.warning(
+                        "agent loop finish produced reasoning only "
+                        "(round=%d, finish_reason=%s, reasoning_chars=%d)",
+                        state.rounds,
+                        result.finish_reason or "none",
+                        len(result.reasoning_content) + len(result.text),
+                    )
                     await self.stream.progress(
                         self.pipeline._t(
                             "notices.empty_finish_nudged",
@@ -428,6 +440,24 @@ class AgentLoop:
                     )
                     if result.text:
                         messages.append(_assistant_round_message(result))
+                    if reasoning_only_recoveries >= MAX_REASONING_ONLY_RECOVERIES:
+                        self._append_loop_instruction(
+                            messages,
+                            self.pipeline._t(
+                                "loop.repeat_reasoning_only_nudge",
+                                default=(
+                                    "Your previous rounds produced only internal "
+                                    "reasoning — no tool call and no user-facing "
+                                    "answer. Do not reason further. Select the most "
+                                    "likely next action and produce it now."
+                                ),
+                            ),
+                        )
+                        return await self._forced_finish(
+                            messages,
+                            state,
+                            continued_answer_parts=continued_answer_parts,
+                        )
                     self._append_loop_instruction(
                         messages,
                         self.pipeline._t(
@@ -670,10 +700,14 @@ class AgentLoop:
                 continued_answer_parts=continued_answer_parts,
             )
         state.rounds += 1
+        reasoning_without_answer = bool(result.reasoning_content) or bool(
+            result.text.strip() and not self._clean(result.text)
+        )
         return await self._finalize_finish(
             result.text,
             visible_text=result.visible_text,
             continued_answer_parts=continued_answer_parts,
+            empty_response_kind=("reasoning_only" if reasoning_without_answer else None),
             provider_response_state=_provider_response_state(
                 result.response_output_items,
                 result.reasoning_content,
@@ -688,6 +722,7 @@ class AgentLoop:
         visible_text: str | None = None,
         continued_answer_parts: list[str] | None = None,
         allow_empty: bool = False,
+        empty_response_kind: str | None = None,
         provider_response_state: dict[str, Any] | None = None,
     ) -> LoopOutcome:
         cleaned_text = self._clean(raw_text)
@@ -701,13 +736,22 @@ class AgentLoop:
         if not final_text and not allow_empty:
             # The finish round produced no usable text; nothing streamed to
             # the user, so emit a fallback answer here.
-            final_text = self.pipeline._t(
-                "notices.empty_final_response",
-                default=(
-                    "I could not produce a useful response from the model "
-                    "output. Please try again or narrow the request."
-                ),
-            )
+            if empty_response_kind == "reasoning_only":
+                final_text = self.pipeline._t(
+                    "notices.reasoning_only_final_response",
+                    default=(
+                        "The model produced internal reasoning but no usable "
+                        "answer. Please try again or narrow the request."
+                    ),
+                )
+            else:
+                final_text = self.pipeline._t(
+                    "notices.empty_final_response",
+                    default=(
+                        "I could not produce a useful response from the model "
+                        "output. Please try again or narrow the request."
+                    ),
+                )
             await self.pipeline._emit_protocol_fallback_final_response(self.stream, final_text)
         return LoopOutcome(
             final_text=final_text,
