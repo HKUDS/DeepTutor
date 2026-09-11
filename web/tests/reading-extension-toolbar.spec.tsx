@@ -3,17 +3,25 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, expect, test, vi } from "vitest";
 import { AnnotationPopover } from "@/components/reading/AnnotationPopover";
 import { ReadingExtensionBar } from "@/components/reading/ReadingExtensionBar";
+import { fetchAuthStatus } from "@/lib/auth";
 import {
   listReadingExtensions,
   runReadingExtension,
   type ReadingExtensionManifest,
   type ReadingExtensionResult,
 } from "@/lib/reading-api";
+import { getOwnLearnerProfile } from "@/lib/profile-api";
 
 vi.mock("@/lib/reading-api", async () => ({
   ...(await vi.importActual("@/lib/reading-api")),
   listReadingExtensions: vi.fn(),
   runReadingExtension: vi.fn(),
+}));
+vi.mock("@/lib/auth", () => ({
+  fetchAuthStatus: vi.fn(),
+}));
+vi.mock("@/lib/profile-api", () => ({
+  getOwnLearnerProfile: vi.fn(),
 }));
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -38,12 +46,62 @@ const catalog: ReadingExtensionManifest[] = [
 const props = { materialId: "material", locator: 1, onError: vi.fn() };
 beforeEach(() => {
   vi.mocked(listReadingExtensions).mockResolvedValue(catalog);
+  vi.mocked(getOwnLearnerProfile).mockResolvedValue({ age: 7 });
+  vi.mocked(fetchAuthStatus).mockResolvedValue({
+    learning_policy: { age_band: "6-8" },
+  } as never);
   vi.mocked(runReadingExtension).mockResolvedValue({
     type: "card",
     title: "Word meaning",
     message: "",
     payload: {},
   });
+});
+
+test("young learner actions use a cute age-specific presentation", async () => {
+  vi.mocked(getOwnLearnerProfile).mockResolvedValue({ age: 5 });
+  render(<ReadingExtensionBar {...props} />);
+  const toolbar = await screen.findByRole("toolbar", {
+    name: "Reading actions",
+  });
+  expect(toolbar).toHaveAttribute("data-reading-presentation", "early");
+  await vi.waitFor(() =>
+    expect(screen.getByRole("button", { name: "Read aloud" })).toHaveClass(
+      "min-h-14",
+    ),
+  );
+  expect(screen.getByRole("button", { name: "Look up word" })).toHaveClass(
+    "rounded-full",
+  );
+  expect(screen.getByRole("button", { name: "Quiz me" })).toBeEnabled();
+});
+
+test("older learners keep the compact default presentation", async () => {
+  vi.mocked(getOwnLearnerProfile).mockResolvedValue({ age: 13 });
+  render(<ReadingExtensionBar {...props} />);
+  const toolbar = await screen.findByRole("toolbar", {
+    name: "Reading actions",
+  });
+  await vi.waitFor(() =>
+    expect(toolbar).toHaveAttribute("data-reading-presentation", "default"),
+  );
+  expect(screen.getByRole("button", { name: "Read aloud" })).toHaveClass(
+    "min-h-8",
+  );
+});
+
+test("eight-year-old learners receive the young presentation", async () => {
+  vi.mocked(getOwnLearnerProfile).mockResolvedValue({ age: 8 });
+  render(<ReadingExtensionBar {...props} />);
+  const toolbar = await screen.findByRole("toolbar", {
+    name: "Reading actions",
+  });
+  await vi.waitFor(() =>
+    expect(toolbar).toHaveAttribute("data-reading-presentation", "young"),
+  );
+  expect(screen.getByRole("button", { name: "Read aloud" })).toHaveClass(
+    "min-h-12",
+  );
 });
 
 test("fixed primary order and secondary disclosure", async () => {

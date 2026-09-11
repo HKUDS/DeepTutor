@@ -3,8 +3,27 @@
 import type { LLMSelection } from "@/features/chat/model/protocol";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Square, Volume2, X } from "lucide-react";
+import {
+  BookOpenText,
+  Compass,
+  Languages,
+  Loader2,
+  PencilLine,
+  Sparkles,
+  Square,
+  Volume2,
+  X,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { fetchAuthStatus } from "@/lib/auth";
+import {
+  readingActionClass,
+  readingMoreClass,
+  readingToolbarClass,
+  resolveReadingAgeMode,
+  type ReadingAgeMode,
+} from "@/lib/reading-age-presentation";
+import { getOwnLearnerProfile } from "@/lib/profile-api";
 import {
   listReadingExtensions,
   runReadingExtension,
@@ -60,6 +79,7 @@ export function ReadingExtensionBar({
   const [busy, setBusy] = useState("");
   const [result, setResult] = useState<ReadingExtensionResult | null>(null);
   const [speaking, setSpeaking] = useState(false);
+  const [ageMode, setAgeMode] = useState<ReadingAgeMode>("default");
 
   function stopSpeaking() {
     window.speechSynthesis?.cancel();
@@ -84,6 +104,27 @@ export function ReadingExtensionBar({
       active = false;
     };
   }, [reload]);
+
+  useEffect(() => {
+    let active = true;
+    void Promise.allSettled([
+      getOwnLearnerProfile(),
+      fetchAuthStatus(),
+    ]).then(([profile, status]) => {
+      if (!active) return;
+      setAgeMode(
+        resolveReadingAgeMode(
+          profile.status === "fulfilled" ? profile.value?.age : null,
+          status.status === "fulfilled"
+            ? status.value?.learning_policy?.age_band
+            : null,
+        ),
+      );
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     setResult(null);
@@ -186,18 +227,39 @@ export function ReadingExtensionBar({
   function actionButton({ extension, action }: (typeof actions)[number]) {
     const key = `${extension.id}:${action.id}`;
     const builtInLabel = builtInActionLabel(extension.id, action.id);
+    const tone =
+      extension.id === "read_aloud"
+        ? "speech"
+        : extension.id === "vocabulary"
+          ? "vocabulary"
+          : extension.id === "quiz"
+            ? "quiz"
+            : "general";
+    const ActionIcon = actionIcon(extension.id, action.id);
+    const iconSize =
+      ageMode === "early"
+        ? 24
+        : ageMode === "young"
+          ? 20
+          : ageMode === "older"
+            ? 18
+            : 14;
     return (
       <button
         key={key}
         type="button"
         disabled={Boolean(busy)}
         onClick={() => void run(extension, action)}
-        className="inline-flex min-h-8 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 py-1 text-xs font-medium text-[var(--foreground)] transition hover:bg-[var(--muted)] disabled:opacity-50"
+        className={`inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 motion-safe:active:scale-[.98] ${readingActionClass(ageMode, tone)}`}
       >
         {busy === key ? (
-          <Loader2 size={14} className="shrink-0 animate-spin" />
-        ) : null}
-        <span>{builtInLabel ? t(builtInLabel) : action.label}</span>
+          <Loader2 size={iconSize} className="shrink-0 animate-spin" />
+        ) : (
+          <ActionIcon size={iconSize} className="shrink-0" />
+        )}
+        <span className="truncate leading-tight">
+          {builtInLabel ? t(builtInLabel) : action.label}
+        </span>
       </button>
     );
   }
@@ -237,9 +299,10 @@ export function ReadingExtensionBar({
       ) : null}
       <div
         data-reading-actions
+        data-reading-presentation={ageMode}
         role="toolbar"
         aria-label={t("Reading actions")}
-        className="relative flex shrink-0 gap-1.5 border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--muted)_25%,transparent)] px-2.5 py-2"
+        className={`relative flex shrink-0 overflow-x-auto border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--muted)_25%,transparent)] ${readingToolbarClass(ageMode)}`}
       >
         {primary.map(actionButton)}
         {secondary.length > 0 ? (
@@ -248,7 +311,7 @@ export function ReadingExtensionBar({
               type="button"
               aria-expanded={moreOpen}
               onClick={() => setMoreOpen((open) => !open)}
-              className="shrink-0 rounded-lg border border-[var(--border)] px-2 text-xs"
+              className={`inline-flex shrink-0 items-center motion-safe:active:scale-[.98] ${readingMoreClass(ageMode)}`}
             >
               {t("More")}
             </button>
@@ -320,6 +383,16 @@ function builtInActionLabel(extensionId: string, actionId: string) {
     return "Translate to Chinese";
   }
   return "";
+}
+
+function actionIcon(extensionId: string, actionId: string) {
+  if (extensionId === "read_aloud" && actionId === "read") return Volume2;
+  if (extensionId === "vocabulary" && actionId === "explain")
+    return BookOpenText;
+  if (extensionId === "quiz" && actionId === "start") return PencilLine;
+  if (extensionId === "guided_learning" && actionId === "guide") return Compass;
+  if (extensionId === "translation") return Languages;
+  return Sparkles;
 }
 
 function ExtensionResult({
