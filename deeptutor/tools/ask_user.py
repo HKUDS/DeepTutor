@@ -38,8 +38,7 @@ MAX_PLACEHOLDER_CHARS = 120
 
 # Labels the model sometimes adds as its own catch-all option. The card
 # already renders a free-form "Other" row whenever ``allow_free_text``
-# is on, so a model-supplied duplicate is dropped (exact match only —
-# being clever here risks eating legitimate options).
+# is on, so a model-supplied duplicate is dropped.
 _REDUNDANT_OTHER_LABELS = frozenset({"other", "其他", "其它"})
 
 
@@ -236,6 +235,11 @@ def _drop_half_written_options(raw: Any) -> Any:
     return {**raw, "options": kept}
 
 
+def _option_match_key(label: str) -> str:
+    """Compare labels like ``mastery_quiz`` compares option bodies."""
+    return "".join(label.split()).casefold()
+
+
 def _build_question(raw: Any, idx: int, used_ids: set[str]) -> AskUserQuestion | str:
     if not isinstance(raw, dict):
         return f"Question #{idx + 1} must be an object."
@@ -267,11 +271,15 @@ def _build_question(raw: Any, idx: int, used_ids: set[str]) -> AskUserQuestion |
                 continue
             # The card auto-renders an "Other" free-text row; drop a
             # model-supplied duplicate so the user never sees two.
-            if allow_free_text and normalised.label.lower() in _REDUNDANT_OTHER_LABELS:
+            match_key = _option_match_key(normalised.label)
+            if allow_free_text and match_key in _REDUNDANT_OTHER_LABELS:
                 continue
-            if normalised.label in seen_labels:
+            # Two labels that differ only by whitespace or case render as the
+            # same choice, so keep the first rather than shipping an
+            # unanswerable card (#1409).
+            if match_key in seen_labels:
                 continue
-            seen_labels.add(normalised.label)
+            seen_labels.add(match_key)
             cleaned.append(normalised)
             if len(cleaned) >= MAX_OPTIONS:
                 break
