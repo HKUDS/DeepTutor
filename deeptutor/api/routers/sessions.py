@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query
@@ -25,6 +26,7 @@ from deeptutor.services.storage.attachment_store import get_attachment_store
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+_LEGACY_TIMED_MEDIA_ID = re.compile(r"^[0-9a-f]{16,64}$")
 
 
 class SessionRenameRequest(BaseModel):
@@ -96,6 +98,60 @@ def _format_quiz_results_message(answers: list[QuizResultItem]) -> str:
     return "\n".join(lines)
 
 
+def _legacy_watching_media_id(preferences: dict[str, Any]) -> str:
+    watching = (
+        preferences.get("workspace_mode") == "immersive_watching"
+        or preferences.get("capability") == "immersive_watching"
+        or preferences.get("session_kind") == "immersive_watching"
+    )
+    if not watching:
+        return ""
+    candidate = str(preferences.get("timed_media_id") or "").strip().lower()
+    return candidate if _LEGACY_TIMED_MEDIA_ID.fullmatch(candidate) else ""
+
+
+async def _normalize_legacy_watching_session(
+    store: Any,
+    session: dict[str, Any],
+    *,
+    persist: bool,
+) -> bool:
+    preferences = session.get("preferences") if isinstance(session.get("preferences"), dict) else {}
+    timed_media_id = _legacy_watching_media_id(preferences)
+    if not timed_media_id:
+        return False
+    try:
+        from deeptutor.video_learning.reading_migration import WatchingToReadingMigration
+
+        migrated = await WatchingToReadingMigration().migrate(
+            timed_media_id,
+            session_id=str(session.get("id") or ""),
+            session_title=str(session.get("title") or "Imported video conversation"),
+        )
+    except Exception:
+        logger.warning(
+            "Could not migrate legacy Watching session %s to Reading",
+            session.get("id"),
+            exc_info=True,
+        )
+        return False
+    normalized = {
+        **preferences,
+        "capability": "chat",
+        "workspace_mode": "immersive_reading",
+        "session_kind": "immersive_reading",
+        "reading_workspace_id": migrated.reading_workspace_id,
+        "reading_material_id": migrated.reading_material_id,
+        # Kept as provenance and a provider-cache pointer; it is no longer routing state.
+        "timed_media_id": timed_media_id,
+    }
+    normalized.pop("timed_media_viewport", None)
+    session["preferences"] = normalized
+    if persist:
+        await store.update_session_preferences(str(session.get("id")), normalized)
+    return True
+
+
 @router.get("")
 async def list_sessions(
     limit: int = Query(default=50, ge=1, le=200),
@@ -103,6 +159,8 @@ async def list_sessions(
 ):
     store = get_session_store()
     sessions = await store.list_sessions(limit=limit, offset=offset)
+    for session in sessions:
+        await _normalize_legacy_watching_session(store, session, persist=True)
     return {"sessions": sessions}
 
 
@@ -160,6 +218,7 @@ async def get_session(session_id: str):
     session = await store.get_session_with_messages(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
+    await _normalize_legacy_watching_session(store, session, persist=True)
     _redact_private_message_metadata(session.get("messages", []))
     _truncate_oversized_events(session.get("messages", []))
     return session

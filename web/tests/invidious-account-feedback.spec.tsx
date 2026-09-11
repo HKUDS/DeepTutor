@@ -1,30 +1,31 @@
 import React from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { WatchingSurface } from "@/components/watching/WatchingWorkspace";
+import { ReadingLibraryPage } from "@/components/reading/library/ReadingLibrary";
 
 const route = vi.hoisted(() => ({ result: "authorization_expired" }));
 vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: vi.fn() }),
   useSearchParams: () => new URLSearchParams({ account: route.result }),
-  useParams: () => ({}),
 }));
 const t = (key: string) => key;
-vi.mock("react-i18next", () => ({ useTranslation: () => ({ t }) }));
-vi.mock("@/context/WatchingContext", () => ({
-  useWatching: () => ({ material: null }),
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({ t, i18n: { language: "en" } }),
 }));
 vi.mock("@/components/watching/WatchingBrowser", () => ({
   WatchingBrowser: () => <div>Browser</div>,
 }));
-vi.mock("@/components/watching/WatchingPane", () => ({
-  WatchingPane: () => null,
-  WATCHING_ASK_EVENT: "dt:watching-ask",
+vi.mock("@/lib/reading-workspace-api", () => ({
+  deleteReadingWorkspace: vi.fn(),
+  listReadingLibraryMaterials: vi.fn().mockResolvedValue({ materials: [] }),
+  listReadingWorkspaces: vi.fn().mockResolvedValue([]),
+  retryReadingMaterial: vi.fn(),
 }));
 
 describe("Invidious callback feedback", () => {
   it("shows actionable failure and lets the learner dismiss it", () => {
     route.result = "authorization_expired";
-    render(<WatchingSurface />);
+    render(<ReadingLibraryPage />);
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Click Connect Invidious to start again",
     );
@@ -34,11 +35,11 @@ describe("Invidious callback feedback", () => {
   it("announces success and removes callback parameters", () => {
     route.result = "connected";
     const history = vi.spyOn(window.history, "replaceState");
-    render(<WatchingSurface />);
+    render(<ReadingLibraryPage />);
     expect(screen.getByRole("status")).toHaveTextContent(
       "Invidious account connected",
     );
-    expect(history).toHaveBeenCalledWith(null, "", "/watching");
+    expect(history).toHaveBeenCalledWith(null, "", "/reading");
     history.mockRestore();
   });
 });

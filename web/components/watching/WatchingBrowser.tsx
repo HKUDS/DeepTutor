@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import {
   Search,
@@ -28,12 +27,13 @@ type BrowserView = "feed" | "playlists" | "search" | "playlist";
 export function WatchingBrowser({
   onDismiss,
   canDismiss,
+  onSelectUrl,
 }: {
   onDismiss(): void;
   canDismiss: boolean;
+  onSelectUrl(url: string): void;
 }) {
   const { t } = useTranslation();
-  const router = useRouter();
   const auth = useAuthStatus();
   const [account, setAccount] = useState<InvidiousAccountStatus | null>(null);
   const [view, setView] = useState<BrowserView>("search");
@@ -179,23 +179,25 @@ export function WatchingBrowser({
   }
   function select(url: string) {
     remember(scroll.current?.scrollTop || 0);
-    router.push(`/watching?video=${encodeURIComponent(url)}`);
+    onSelectUrl(url);
     onDismiss();
   }
   return (
     <section className="watching-browser" aria-label={t("Browse videos")}>
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] p-5">
         <div>
-          <h1 className="text-xl font-semibold">{t("Immersive Watching")}</h1>
-          <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-            {t("Your videos, with room to learn.")}
-          </p>
+          <h1 className="text-xl font-semibold">
+            {t("Browse Invidious")}
+          </h1>
+            <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+              {t("Choose a video to add to this collection.")}
+            </p>
         </div>
         <div className="flex items-center gap-2 text-sm">
           {canDismiss && (
             <button className="watching-browser-button" onClick={onDismiss}>
               <ArrowLeft size={16} />
-              {t("Back to video")}
+              {t("Close")}
             </button>
           )}
           <button

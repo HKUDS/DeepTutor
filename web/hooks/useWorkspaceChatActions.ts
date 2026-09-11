@@ -30,9 +30,7 @@ export function useWorkspaceChatActions(
             (capability) => capability.value === pinnedCapability,
           )
         : catalogCapabilities.filter(
-            (capability) =>
-              capability.value !== "course_study" &&
-              capability.value !== "immersive_watching",
+            (capability) => capability.value !== "course_study",
           ),
     [catalogCapabilities, pinnedCapability],
   );
