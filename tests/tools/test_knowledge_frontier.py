@@ -16,9 +16,7 @@ async def test_empty_kb_returns_no_content(monkeypatch):
     async def _empty_rag(**kwargs):
         return {"answer": "", "content": "", "sources": []}
 
-    monkeypatch.setattr(
-        "deeptutor.tools.knowledge_frontier_tool.rag_search", _empty_rag
-    )
+    monkeypatch.setattr("deeptutor.tools.knowledge_frontier_tool.rag_search", _empty_rag)
     tool = KnowledgeFrontierTool()
     result = await tool.execute(kb_name="test-kb")
     assert "no analysable content" in result.content.lower()
@@ -59,9 +57,7 @@ async def test_successful_discovery_aggregates_probes(monkeypatch):
             ],
         }
 
-    monkeypatch.setattr(
-        "deeptutor.tools.knowledge_frontier_tool.rag_search", _mock_rag
-    )
+    monkeypatch.setattr("deeptutor.tools.knowledge_frontier_tool.rag_search", _mock_rag)
     payload = await discover_frontier("test-kb")
     assert call_count == 5
     assert "Core Topics" in payload["summary"]
@@ -75,9 +71,7 @@ async def test_rag_failure_is_swallowed(monkeypatch):
     async def _failing_rag(**kwargs):
         raise RuntimeError("RAG unavailable")
 
-    monkeypatch.setattr(
-        "deeptutor.tools.knowledge_frontier_tool.rag_search", _failing_rag
-    )
+    monkeypatch.setattr("deeptutor.tools.knowledge_frontier_tool.rag_search", _failing_rag)
     payload = await discover_frontier("test-kb")
     assert payload["summary"] == ""
     assert payload["sources"] == []

@@ -16,10 +16,19 @@ _MAX_SOURCES = 12
 
 _PROBE_QUERIES: tuple[tuple[str, str], ...] = (
     ("Core Topics", "What are the main topics and key concepts in this knowledge base?"),
-    ("Emerging Trends", "What recent developments, emerging trends, or new directions are discussed?"),
+    (
+        "Emerging Trends",
+        "What recent developments, emerging trends, or new directions are discussed?",
+    ),
     ("Coverage Gaps", "What topics are mentioned but lack detailed coverage, evidence, or depth?"),
-    ("Open Debates", "What contradictions, open debates, or unresolved claims appear in the material?"),
-    ("Future Directions", "What future directions, open problems, or follow-up research are suggested?"),
+    (
+        "Open Debates",
+        "What contradictions, open debates, or unresolved claims appear in the material?",
+    ),
+    (
+        "Future Directions",
+        "What future directions, open problems, or follow-up research are suggested?",
+    ),
 )
 
 
