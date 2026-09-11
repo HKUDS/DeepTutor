@@ -23,6 +23,10 @@ export interface NavEntry {
   tooltipKey?: string;
   /** Model capability this feature needs; locked when the user lacks it. */
   requires?: Capability;
+  /** Server surface required by a learner-policy account. */
+  learningSurface?: "chat" | "reading";
+  /** Remains available when a learning policy redacts the workspace. */
+  alwaysAvailableToLearningAccounts?: boolean;
 }
 
 /**
@@ -41,6 +45,7 @@ export const PRIMARY_NAV: NavEntry[] = [
     icon: House,
     tooltipKey: "Home tooltip",
     requires: "llm",
+    learningSurface: "chat",
   },
   {
     href: "/partners",
@@ -88,6 +93,7 @@ export const PRIMARY_NAV: NavEntry[] = [
     icon: BookText,
     tooltipKey: "Immersive Reading tooltip",
     requires: "llm",
+    learningSurface: "reading",
   },
   {
     href: "/watching",
@@ -125,7 +131,12 @@ export const SECONDARY_NAV: NavEntry[] = [
     icon: BookOpen,
     tooltipKey: "Knowledge tooltip",
   },
-  { href: "/settings", label: "Settings", icon: Settings },
+  {
+    href: "/settings",
+    label: "Settings",
+    icon: Settings,
+    alwaysAvailableToLearningAccounts: true,
+  },
 ];
 
 export const PRIMARY_NAV_HREFS = PRIMARY_NAV.map((entry) => entry.href);
@@ -142,4 +153,18 @@ export function isNavActive(pathname: string, href: string) {
     );
   }
   return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+export function isNavEntryAllowedForLearningPolicy(
+  entry: NavEntry,
+  learningPolicy: { allowed_surfaces?: string[] } | null,
+): boolean {
+  if (!learningPolicy) return true;
+  const allowedSurfaces = Array.isArray(learningPolicy.allowed_surfaces)
+    ? learningPolicy.allowed_surfaces
+    : ["chat", "reading"];
+  if (entry.learningSurface) {
+    return allowedSurfaces.includes(entry.learningSurface);
+  }
+  return Boolean(entry.alwaysAvailableToLearningAccounts);
 }
