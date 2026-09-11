@@ -34,6 +34,7 @@ from .errors import (
     classify_embedding_error,
     classify_model_error,
 )
+from .pandas_compat import prepare_pandas_arrow_extensions
 from .provider import (
     COMPLETION_TYPE,
     resolve_completion_call_args,
@@ -102,6 +103,7 @@ async def _run_isolated(work: Callable[[], Awaitable[_T]]) -> _T:
     """
 
     def _runner() -> _T:
+        prepare_pandas_arrow_extensions()
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:

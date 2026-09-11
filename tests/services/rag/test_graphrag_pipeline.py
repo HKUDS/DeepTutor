@@ -382,6 +382,23 @@ def test_engine_entry_points_run_on_a_private_loop() -> None:
     assert seen["current"] is seen["running"]
 
 
+def test_engine_isolated_runtime_prepares_pandas_arrow_extensions(monkeypatch) -> None:
+    calls: list[str] = []
+
+    monkeypatch.setattr(
+        engine,
+        "prepare_pandas_arrow_extensions",
+        lambda: calls.append("prepared"),
+    )
+
+    async def work() -> str:
+        calls.append("work")
+        return "done"
+
+    assert asyncio.run(engine._run_isolated(work)) == "done"
+    assert calls == ["prepared", "work"]
+
+
 def test_compatibility_probe_resolves_candidate_without_mutating_active_model(
     monkeypatch, tmp_path: Path
 ) -> None:
