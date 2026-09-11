@@ -69,6 +69,7 @@ async def _collect_events(run_coro) -> list[StreamEvent]:
 
 def test_builtin_capability_registry_covers_documented_capabilities() -> None:
     assert set(BUILTIN_CAPABILITY_CLASSES) == {
+        "audio_overview",
         "chat",
         "ask_questions",
         "deep_solve",
