@@ -1,7 +1,13 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -53,6 +59,25 @@ function prepareBuildTsconfig(snapshots, distDir) {
   return buildTsconfigPath;
 }
 
+function completeStandaloneBundle(distDir) {
+  const distRoot = path.resolve(webRoot, distDir);
+  const standaloneRoot = path.join(distRoot, "standalone");
+
+  mkdirSync(path.join(standaloneRoot, distDir), { recursive: true });
+  cpSync(
+    path.join(distRoot, "static"),
+    path.join(standaloneRoot, distDir, "static"),
+    {
+      recursive: true,
+      force: true,
+    },
+  );
+  cpSync(path.join(webRoot, "public"), path.join(standaloneRoot, "public"), {
+    recursive: true,
+    force: true,
+  });
+}
+
 const snapshots = generatedPaths
   .filter((path) => process.env.DEEPTUTOR_BUILD_SKIP_MISSING !== "1")
   .map((path) => [path, snapshot(path)]);
@@ -93,5 +118,7 @@ if (isEntry) {
     console.error(result.error);
     process.exit(1);
   }
-  process.exit(result.status ?? 1);
+  const status = result.status ?? 1;
+  if (status === 0) completeStandaloneBundle(distDir);
+  process.exit(status);
 }
