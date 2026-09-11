@@ -693,7 +693,7 @@ My Agents turns other agents into context for DeepTutor, and does two distinct t
 <img src="assets/figs/web-1.4.6+/home/08-subagent%20demo%20with%20claude%20code.png" alt="Consulting a Claude Code subagent live" width="900">
 </div>
 
-**Import past conversations** — bring in your existing Claude Code and Codex history as named, searchable, resumable agents. Choose Claude history by project / working directory and Codex history by calendar date; refresh re-syncs that scope and pulls in new conversations. Reference one from a Chat turn via `+` → My Agents, and DeepTutor reads it as a third-party transcript — it stays *their* conversation, not DeepTutor's own voice.
+**Import past conversations** — bring in your existing ChatGPT, Claude Code, and Codex history as searchable, resumable conversations. Select `conversations.json` from an official ChatGPT data export for a safe, idempotent snapshot import, choose Claude history by project / working directory, or choose Codex history by calendar date. Folder-based agents remain refreshable so their selected scope can pull in new conversations. Reference one from a Chat turn via `+` → My Agents, and DeepTutor reads it as a third-party transcript — it stays *their* conversation, not DeepTutor's own voice.
 
 </details>
 
