@@ -132,6 +132,8 @@ export interface SendMessageOptions {
 }
 
 export interface ChatState {
+  /** Local identity, available before the backend assigns a session ID. */
+  sessionKey: string;
   sessionId: string | null;
   sessionTitle: string;
   enabledTools: string[];
@@ -252,7 +254,7 @@ export interface MessageItem {
   parentMessageId?: number | null;
 }
 
-interface SessionEntry extends ChatState {
+interface SessionEntry extends Omit<ChatState, "sessionKey"> {
   key: string;
   status: SessionRuntimeStatus;
   activeTurnId: string | null;
@@ -913,6 +915,10 @@ function reducer(state: ProviderState, action: Action): ProviderState {
               action.masteryPathId !== undefined
                 ? action.masteryPathId
                 : existing.masteryPathId,
+            masterySessionMode:
+              action.masterySessionMode !== undefined
+                ? action.masterySessionMode
+                : existing.masterySessionMode,
             courseId:
               action.courseId !== undefined
                 ? action.courseId
@@ -1215,7 +1221,7 @@ interface ChatContextValue {
   /** Switch which sibling is currently visible at a branch point. */
   switchBranch: (parentMessageId: number | null, childId: number) => void;
   renameSessionTitle: (title: string) => Promise<void>;
-  newSession: (configuration?: SessionConfiguration) => void;
+  newSession: (configuration?: SessionConfiguration) => string;
   /** Apply route-owned preferences to an explicit loaded session (or the
    * selected draft). Dispatching by key keeps this safe immediately after
    * LOAD_SESSION, before React has committed a new context render. */
@@ -1948,6 +1954,7 @@ export function ChatStateAdapterProvider({
       options?: { signal?: AbortSignal; revalidate?: boolean },
     ) => {
       const session = await getSession(sessionId, options?.signal);
+      if (options?.signal?.aborted) return;
       const key = session.session_id || session.id;
       const activeTurn = Array.isArray(session.active_turns)
         ? session.active_turns[0]
@@ -2376,6 +2383,7 @@ export function ChatStateAdapterProvider({
         bookReferences: effectiveBookReferences,
         readingReferences: effectiveReadingReferences,
         masteryPathId: effectiveMasteryPathId || null,
+        masterySessionMode: effectiveMasterySessionMode || null,
         masteryAnswer: options?.masteryAnswer ?? null,
         masterySkip: options?.masterySkip ?? null,
         // Immersive reading. Gated on the stable workspace mode as well as on
@@ -2507,6 +2515,7 @@ export function ChatStateAdapterProvider({
   const derivedState = useMemo<ChatState>(() => {
     const current = ensureSelectedSession(state);
     return {
+      sessionKey: current.key,
       sessionId: current.sessionId,
       sessionTitle: current.sessionTitle,
       enabledTools: current.enabledTools,
@@ -2600,7 +2609,9 @@ export function ChatStateAdapterProvider({
 
   const newSession = useCallback(
     (configuration?: SessionConfiguration) => {
-      dispatch({ type: "NEW_SESSION", key: makeDraftKey(), configuration });
+      const key = makeDraftKey();
+      dispatch({ type: "NEW_SESSION", key, configuration });
+      return key;
     },
     [makeDraftKey],
   );
