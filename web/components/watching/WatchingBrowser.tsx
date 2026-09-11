@@ -9,6 +9,7 @@ import {
   Play,
   ListVideo,
   Rss,
+  History,
   Loader2,
   ArrowLeft,
 } from "lucide-react";
@@ -20,6 +21,8 @@ import {
   type InvidiousAccountStatus,
   type InvidiousVideo,
   type InvidiousPlaylist,
+  listRecentVideoMaterials,
+  type RecentVideoMaterial,
 } from "@/lib/video-learning-api";
 
 /* eslint-disable @next/next/no-img-element -- Invidious thumbnails come from arbitrary user instances. */
@@ -48,6 +51,12 @@ export function WatchingBrowser({
   const [accountBusy, setAccountBusy] = useState(false);
   const [error, setError] = useState("");
   const [reload, setReload] = useState(0);
+  const [recentVideos, setRecentVideos] = useState<
+    RecentVideoMaterial[]
+  >([]);
+  const [recentLoading, setRecentLoading] = useState(false);
+  const [recentError, setRecentError] = useState(false);
+  const [recentReload, setRecentReload] = useState(0);
   const scroll = useRef<HTMLDivElement>(null);
   const restored = useRef(false);
   const key = `watching-browser:${auth.userId ?? "local"}`;
@@ -126,6 +135,28 @@ export function WatchingBrowser({
       });
     return () => controller.abort();
   }, [account, view, query, page, playlist, reload, key]);
+
+  useEffect(() => {
+    let alive = true;
+    setRecentLoading(true);
+    setRecentError(false);
+    listRecentVideoMaterials()
+      .then((videos) => {
+        if (alive) setRecentVideos(videos);
+      })
+      .catch(() => {
+        if (alive) {
+          setRecentVideos([]);
+          setRecentError(true);
+        }
+      })
+      .finally(() => {
+        if (alive) setRecentLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [recentReload]);
 
   function remember(position = 0) {
     try {
@@ -283,6 +314,94 @@ export function WatchingBrowser({
         className="min-h-0 flex-1 overflow-y-auto p-5"
         onScroll={() => remember(scroll.current?.scrollTop || 0)}
       >
+        <section className="mb-8" aria-label={t("Continue watching")}>
+          <div className="mb-3 flex items-center gap-2 text-sm font-medium text-[var(--muted-foreground)]">
+            <History size={16} />
+            <h2>{t("Continue watching")}</h2>
+          </div>
+          {recentLoading ? (
+            <p role="status" className="text-sm text-[var(--muted-foreground)]">
+              {t("Loading recent videos.")}
+            </p>
+          ) : recentError ? (
+            <div
+              role="alert"
+              className="flex flex-wrap items-center gap-3 rounded-xl border border-[var(--border)] p-4 text-sm"
+            >
+              <span>{t("Recent videos could not be loaded.")}</span>
+              <button
+                type="button"
+                className="watching-browser-button"
+                onClick={() => setRecentReload((count) => count + 1)}
+              >
+                {t("Retry")}
+              </button>
+            </div>
+          ) : recentVideos.length === 0 ? (
+            <p className="text-sm text-[var(--muted-foreground)]">
+              {t("No recent videos yet.")}
+            </p>
+          ) : (
+            <div className="watching-recent-grid">
+              {recentVideos.map((video) => {
+                const progress =
+                  video.duration_seconds > 0
+                    ? Math.min(
+                        100,
+                        Math.max(
+                          0,
+                          (video.last_position / video.duration_seconds) * 100,
+                        ),
+                      )
+                    : 0;
+                return (
+                  <button
+                    key={video.material_id}
+                    type="button"
+                    className="watching-video-card"
+                    onClick={() => select(video.source_url)}
+                    aria-label={t("Continue watching {{title}}", {
+                      title: video.title || video.video_id,
+                    })}
+                  >
+                    <div className="relative flex aspect-video items-center justify-center overflow-hidden rounded-xl bg-[var(--muted)]">
+                      {video.thumbnail_url ? (
+                        <img
+                          src={video.thumbnail_url}
+                          alt=""
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <Play size={28} />
+                      )}
+                      <span className="absolute bottom-2 right-2 rounded bg-black/75 px-1.5 py-0.5 text-xs text-white">
+                        {formatVideoTime(video.last_position)} /{" "}
+                        {formatVideoTime(video.duration_seconds)}
+                      </span>
+                    </div>
+                    <h3 className="mt-3 line-clamp-2 text-sm font-medium">
+                      {video.title || video.video_id}
+                    </h3>
+                    <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                      {video.author || video.provider}
+                    </p>
+                    <span
+                      aria-hidden="true"
+                      className="mt-3 block h-1 overflow-hidden rounded-full bg-[var(--muted)]"
+                    >
+                      <span
+                        className="block h-full bg-red-600"
+                        style={{ width: `${progress}%` }}
+                      />
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </section>
         {error && (
           <div
             role="alert"
@@ -428,4 +547,14 @@ export function WatchingBrowser({
       </div>
     </section>
   );
+}
+
+function formatVideoTime(value: number): string {
+  const total = Math.max(0, Math.floor(Number(value) || 0));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  return hours
+    ? `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
+    : `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
