@@ -238,14 +238,7 @@ class ConfigTestRunner:
         from .loader import get_agent_params
 
         probe_params = get_agent_params("llm_probe")
-        max_tokens = _coerce_int(probe_params.get("max_tokens"), 1024)
-        # Reasoning models (o1/o3, gpt-5.x) require max_completion_tokens;
-        # the API rejects requests whose completion budget cannot cover the
-        # internal reasoning pass, so bump the default for those models.
-        from deeptutor.services.llm.config import uses_max_completion_tokens
-
-        if uses_max_completion_tokens(llm_config.model) and max_tokens < 4096:
-            max_tokens = 4096
+        max_tokens = _coerce_int(probe_params.get("max_tokens"), 4096)
         temperature = _coerce_float(probe_params.get("temperature"), 0.1)
         token_kwargs: dict[str, Any] = get_token_limit_kwargs(
             llm_config.model, max_tokens=max_tokens

@@ -1,5 +1,3 @@
-import pytest
-
 from deeptutor.services.llm.config import uses_max_completion_tokens
 
 
