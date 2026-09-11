@@ -11,6 +11,7 @@ user's sessions.
 from __future__ import annotations
 
 from contextlib import contextmanager
+import json
 from pathlib import Path
 import re
 
@@ -57,6 +58,17 @@ class _Collection:
 
     def _matches(self, record: _Record, query_params: dict | None) -> bool:
         flt = (query_params or {}).get("filter") or ""
+        role_pair = '(role="user" || role="assistant")'
+        if role_pair in flt:
+            if str(getattr(record, "role", "")) not in {"user", "assistant"}:
+                return False
+            flt = flt.replace(role_pair, "")
+        contains = re.search(r"content~(\"(?:\\.|[^\"])*\")", flt)
+        if contains is not None:
+            needle = json.loads(contains.group(1))
+            if needle.casefold() not in str(getattr(record, "content", "")).casefold():
+                return False
+            flt = flt.replace(contains.group(0), "")
         for field, expected in _CLAUSE.findall(flt):
             if str(getattr(record, field, "")) != expected:
                 return False
@@ -75,11 +87,14 @@ class _Collection:
         matched = self.get_full_list(query_params)
         sort = str((query_params or {}).get("sort") or "")
         if sort:
-            field = sort.lstrip("-")
-            matched.sort(
-                key=lambda record: getattr(record, field, 0),
-                reverse=sort.startswith("-"),
-            )
+            for part in reversed(sort.split(",")):
+                field = part.lstrip("-")
+                matched.sort(
+                    key=lambda record: getattr(
+                        record, field, record.id if field == "created" else 0
+                    ),
+                    reverse=part.startswith("-"),
+                )
         start = (page - 1) * per_page
         return _Result(matched[start : start + per_page], len(matched))
 
@@ -133,6 +148,29 @@ async def test_list_sessions_only_returns_own(fake_pb) -> None:
     with as_user("alice"):
         alice_sessions = await store.list_sessions()
     assert {s["session_id"] for s in alice_sessions} == {"s_a1", "s_a2"}
+
+
+async def test_search_sessions_is_owner_scoped_and_preserves_native_visibility(fake_pb) -> None:
+    store = PocketBaseSessionStore()
+    with as_user("alice"):
+        own = await store.create_session(title="Own", session_id="s_own")
+        archived = await store.create_session(title="Archive", session_id="s_archived")
+        imported = await store.create_session(title="Import", session_id="imported_codex_hidden")
+        await store.add_message(own["id"], "user", "private Bayes theorem")
+        await store.add_message(archived["id"], "assistant", "archived Bayes theorem")
+        await store.update_session_preferences(archived["id"], {"archived": True})
+        await store.add_message(imported["id"], "user", "imported Bayes theorem")
+    with as_user("bob"):
+        other = await store.create_session(title="Other", session_id="s_other")
+        await store.add_message(other["id"], "user", "other Bayes theorem")
+        bob = await store.search_sessions("bayes")
+    with as_user("alice"):
+        alice = await store.search_sessions("bayes")
+
+    assert [row["session_id"] for row in bob["sessions"]] == ["s_other"]
+    assert {row["session_id"] for row in alice["sessions"]} == {"s_own", "s_archived"}
+    archived_row = next(row for row in alice["sessions"] if row["session_id"] == "s_archived")
+    assert archived_row["preferences"]["archived"] is True
 
 
 async def test_legacy_workspace_preferences_are_normalized_at_repository_boundary(

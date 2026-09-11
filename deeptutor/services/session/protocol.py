@@ -36,6 +36,10 @@ class SessionRepository(Protocol):
 
     async def list_sessions(self, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]: ...
 
+    async def search_sessions(
+        self, query: str, limit: int = 50, offset: int = 0
+    ) -> dict[str, Any]: ...
+
     async def update_session_title(self, session_id: str, title: str) -> bool: ...
 
     async def delete_session(self, session_id: str) -> bool: ...
@@ -175,6 +179,13 @@ class SessionStoreProtocol(SessionRepository, TurnRepository, MessageRepository,
         limit: int = 50,
         offset: int = 0,
     ) -> list[dict[str, Any]]: ...
+
+    async def search_sessions(
+        self,
+        query: str,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]: ...
 
     async def get_session_summaries(
         self,

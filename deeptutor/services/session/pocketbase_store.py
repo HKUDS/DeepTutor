@@ -29,6 +29,7 @@ from .ask_user_trace import filter_ask_user_events
 from .event_preview import MAX_TRACE_PREVIEW_EVENTS, compact_trace_preview
 from .provider_response_state import redact_private_message_metadata
 from .scope import StoreScope
+from .search import bounded_search_excerpt, normalize_search_query
 from .workspace_preferences import upgrade_workspace_preferences
 
 logger = logging.getLogger(__name__)
@@ -410,6 +411,97 @@ class PocketBaseSessionStore:
             logger.warning(f"list_sessions failed: {exc}")
             return []
 
+    async def search_sessions(
+        self,
+        query: str,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """Search the current user's native sessions without loading transcripts."""
+        normalized = normalize_search_query(query)
+        if not normalized:
+            return {"sessions": [], "total": 0}
+        uid = _current_user_id()
+        bounded_limit = max(1, min(int(limit), 100))
+        bounded_offset = max(0, int(offset))
+
+        def _search() -> dict[str, Any]:
+            pb = _pb()
+            records = pb.collection("sessions").get_full_list(
+                query_params={"filter": f"user_id={json.dumps(uid)}"}
+            )
+            records = [
+                record
+                for record in records
+                if not str(getattr(record, "session_id", "") or "").startswith("imported_")
+            ]
+            records.sort(
+                key=lambda record: (
+                    _to_float(getattr(record, "session_updated_at", None))
+                    or _to_float(getattr(record, "updated", None))
+                ),
+                reverse=True,
+            )
+
+            matched: list[tuple[Any, Any | None]] = []
+            query_literal = json.dumps(normalized, ensure_ascii=False)
+            for record in records:
+                sid = _validate_id(str(getattr(record, "session_id", "")), "session_id")
+                message_page = pb.collection("messages").get_list(
+                    1,
+                    1,
+                    query_params={
+                        "filter": (
+                            f"session_id={json.dumps(sid)} && "
+                            '(role="user" || role="assistant") && '
+                            f"content~{query_literal}"
+                        ),
+                        "sort": "-msg_created_at,-created",
+                    },
+                )
+                matching_messages = self._page_items(message_page)
+                title = str(getattr(record, "title", "") or "")
+                if normalized.casefold() in title.casefold() or matching_messages:
+                    matched.append((record, matching_messages[0] if matching_messages else None))
+
+            page = matched[bounded_offset : bounded_offset + bounded_limit]
+            sessions: list[dict[str, Any]] = []
+            for record, match in page:
+                session = self._session_record_to_dict(record)
+                sid = session["session_id"]
+                summary_page = pb.collection("messages").get_list(
+                    1,
+                    1,
+                    query_params={
+                        "filter": f'session_id={json.dumps(sid)} && role!="system"',
+                        "sort": "-msg_created_at,-created",
+                    },
+                )
+                summary_items = self._page_items(summary_page)
+                session["message_count"] = self._page_total(summary_page)
+                session["last_message"] = str(
+                    getattr(summary_items[0], "content", "") if summary_items else ""
+                )
+                session["match_message_id"] = getattr(match, "id", None)
+                session["match_role"] = getattr(match, "role", None)
+                session["match_created_at"] = (
+                    _to_float(getattr(match, "msg_created_at", None)) if match is not None else None
+                )
+                match_content = (
+                    str(getattr(match, "content", "") or "")
+                    if match is not None
+                    else session["title"]
+                )
+                session["match_excerpt"] = bounded_search_excerpt(match_content, normalized)
+                sessions.append(session)
+            return {"sessions": sessions, "total": len(matched)}
+
+        try:
+            return await asyncio.to_thread(_search)
+        except Exception as exc:
+            logger.warning(f"search_sessions failed: {exc}")
+            return {"sessions": [], "total": 0}
+
     async def get_session_summaries(
         self,
         session_ids: list[str],
@@ -449,7 +541,7 @@ class PocketBaseSessionStore:
                     1,
                     query_params={
                         "filter": f'session_id="{sid}" && role!="system"',
-                        "sort": "-msg_created_at",
+                        "sort": "-msg_created_at,-created",
                     },
                 )
             )

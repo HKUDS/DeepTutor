@@ -20,6 +20,7 @@ from deeptutor.services.session.organization import (
 from deeptutor.services.session.provider_response_state import (
     redact_private_message_metadata as _redact_provider_state_metadata,
 )
+from deeptutor.services.session.search import MAX_SEARCH_QUERY_CHARS
 from deeptutor.services.storage.attachment_store import get_attachment_store
 
 logger = logging.getLogger(__name__)
@@ -104,6 +105,24 @@ async def list_sessions(
     store = get_session_store()
     sessions = await store.list_sessions(limit=limit, offset=offset)
     return {"sessions": sessions}
+
+
+@router.get("/search")
+async def search_sessions(
+    q: str = Query(..., min_length=1, max_length=MAX_SEARCH_QUERY_CHARS),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+):
+    """Search titles and persisted user/assistant messages for a literal term."""
+    if not q.strip():
+        raise HTTPException(status_code=400, detail="Search query cannot be empty")
+    result = await get_session_store().search_sessions(q, limit=limit, offset=offset)
+    return {
+        "sessions": result["sessions"],
+        "total": result["total"],
+        "limit": limit,
+        "offset": offset,
+    }
 
 
 # Cap (in characters) for a single event payload returned to the UI. RAG
