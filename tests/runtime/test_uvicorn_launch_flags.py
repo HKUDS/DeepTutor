@@ -23,8 +23,8 @@ import pytest
 _REPO = Path(__file__).resolve().parents[2]
 
 # (path, marker anchoring the uvicorn invocation, flag spellings for this style)
-_PYTHON_FLAGS = ("ws_max_size", "timeout_keep_alive")
-_CLI_FLAGS = ("--ws-max-size", "--timeout-keep-alive")
+_PYTHON_FLAGS = ("proxy_headers", "ws_max_size", "timeout_keep_alive")
+_CLI_FLAGS = ("--no-proxy-headers", "--ws-max-size", "--timeout-keep-alive")
 _LAUNCH_POINTS = [
     ("deeptutor/runtime/launcher.py", '"uvicorn",', _CLI_FLAGS),
     ("deeptutor/api/run_server.py", "uvicorn.run(", _PYTHON_FLAGS),
