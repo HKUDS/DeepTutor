@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 
+from deeptutor.reading.references import ResolvedReadingSource
 from deeptutor.services.session.source_inventory import (
     SourceEntry,
     SourceInventory,
@@ -160,6 +161,24 @@ def test_render_manifest_distinguishes_fresh_vs_historical() -> None:
     assert idx["at-old"] == "x" * 5000
 
 
+def test_render_manifest_does_not_advertise_answer_loop_source_tools() -> None:
+    inv = SourceInventory()
+    inv.add(
+        SourceEntry(
+            sid="at-old",
+            kind="attachment",
+            name="homework.pdf",
+            full_text="PDF body",
+            fresh=False,
+            first_seen_turn=1,
+        )
+    )
+    text, _ = render_manifest(inv)
+    assert "Context Investigator" in text
+    assert "call a file/PDF tool" in text
+    assert "loaded on demand" not in text
+
+
 # ---------------------------------------------------------------------------
 # build_inventory
 # ---------------------------------------------------------------------------
@@ -185,6 +204,84 @@ async def test_build_inventory_fresh_attachments_only() -> None:
     )
     assert [e.sid for e in inv.entries] == ["at-a1"]
     assert inv.entries[0].fresh is True
+
+
+@pytest.mark.asyncio
+async def test_partner_group_reference_is_a_structured_bounded_source(monkeypatch) -> None:
+    from deeptutor.services import partner_groups as partner_groups_service
+
+    calls: list[tuple[str, str, str]] = []
+
+    class FakeGroups:
+        def referenced_transcript(self, group_id, session_key, *, language):
+            calls.append((group_id, session_key, language))
+            return (
+                "[Partner Group]\nAda: public answer\nBob: another public answer",
+                "Study panel: First question",
+            )
+
+    monkeypatch.setattr(
+        partner_groups_service,
+        "get_partner_group_manager",
+        lambda: FakeGroups(),
+    )
+    inv = await build_inventory(
+        FakeStore(),
+        session_id="home-session",
+        leaf_message_id=None,
+        current_turn_ordinal=1,
+        fresh_attachment_records=[],
+        fresh_notebook_records=[],
+        fresh_book_context_text="",
+        fresh_book_references=[],
+        fresh_history_session_ids=[],
+        fresh_question_entry_ids=[],
+        fresh_partner_group_references=[
+            {"group_id": "study-panel", "session_key": "pg-thread"},
+            {"group_id": "", "session_key": "ignored"},
+        ],
+        language="zh",
+    )
+
+    assert calls == [("study-panel", "pg-thread", "zh")]
+    assert len(inv.entries) == 1
+    assert inv.entries[0].sid.startswith("pg-")
+    assert inv.entries[0].kind == "partner_group"
+    assert inv.entries[0].name == "Study panel: First question"
+    assert "Ada: public answer" in inv.entries[0].full_text
+
+
+def test_partner_group_reference_request_contract_is_normalized_and_snapshotted() -> None:
+    from deeptutor.services.session.turn_runtime import (
+        _partner_group_references,
+        _request_snapshot_metadata,
+    )
+
+    references = _partner_group_references(
+        [
+            {"group_id": " study-panel ", "session_key": " thread-a "},
+            {"group_id": "study-panel", "session_key": "thread-a"},
+            {"group_id": "", "session_key": "ignored"},
+        ]
+    )
+    assert references == [{"group_id": "study-panel", "session_key": "thread-a"}]
+
+    metadata = _request_snapshot_metadata(
+        payload={},
+        content="Use the attached panel",
+        capability="chat",
+        config={},
+        attachments=[],
+        notebook_references=[],
+        history_references=[],
+        partner_group_references=references,
+        question_notebook_references=[],
+        book_references=[],
+        persona="",
+        memory_references=[],
+        llm_selection=None,
+    )
+    assert metadata["request_snapshot"]["partnerGroupReferences"] == references
 
 
 @pytest.mark.asyncio
@@ -348,6 +445,107 @@ async def test_build_inventory_fresh_shadows_historical_on_same_sid() -> None:
     )
     assert inv.entries[0].fresh is True
     assert inv.entries[0].full_text == "fresh body"
+
+
+@pytest.mark.asyncio
+async def test_build_inventory_adds_server_resolved_reading_units(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from deeptutor.services.session import source_inventory
+
+    seen: list[dict[str, Any]] = []
+
+    def resolve(refs: list[dict[str, Any]]) -> list[ResolvedReadingSource]:
+        seen.extend(refs)
+        return [
+            ResolvedReadingSource(
+                source_id="rd-abcdef0123456789-r3-2",
+                name="Source book — Chapter 2",
+                full_text="trusted chapter text",
+            )
+        ]
+
+    monkeypatch.setattr(source_inventory, "resolve_reading_sources", resolve)
+    inv = await build_inventory(
+        FakeStore(),
+        session_id="s1",
+        leaf_message_id=None,
+        current_turn_ordinal=1,
+        fresh_attachment_records=[],
+        fresh_notebook_records=[],
+        fresh_book_context_text="",
+        fresh_book_references=[],
+        fresh_history_session_ids=[],
+        fresh_question_entry_ids=[],
+        fresh_reading_references=[
+            {"material_id": "abcdef0123456789", "revision": 3, "locators": [2]}
+        ],
+    )
+
+    assert seen == [{"material_id": "abcdef0123456789", "revision": 3, "locators": [2]}]
+    assert inv.entries[0].sid == "rd-abcdef0123456789-r3-2"
+    assert inv.entries[0].kind == "reading"
+    assert inv.entries[0].fresh is True
+
+
+@pytest.mark.asyncio
+async def test_historical_reading_units_are_re_resolved_from_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from deeptutor.services.session import source_inventory
+
+    monkeypatch.setattr(
+        source_inventory,
+        "resolve_reading_sources",
+        lambda refs: (
+            [
+                ResolvedReadingSource(
+                    source_id="rd-abcdef0123456789-r2-1",
+                    name="Source book — Chapter 1",
+                    full_text="current stored chapter text",
+                )
+            ]
+            if refs
+            else []
+        ),
+    )
+    store = FakeStore(
+        messages=[
+            {
+                "id": 1,
+                "role": "user",
+                "parent_message_id": None,
+                "attachments": [],
+                "metadata": {
+                    "request_snapshot": {
+                        "readingReferences": [
+                            {
+                                "material_id": "abcdef0123456789",
+                                "revision": 2,
+                                "locators": [1],
+                            }
+                        ]
+                    }
+                },
+            }
+        ]
+    )
+
+    inv = await build_inventory(
+        store,
+        session_id="s1",
+        leaf_message_id=None,
+        current_turn_ordinal=2,
+        fresh_attachment_records=[],
+        fresh_notebook_records=[],
+        fresh_book_context_text="",
+        fresh_book_references=[],
+        fresh_history_session_ids=[],
+        fresh_question_entry_ids=[],
+    )
+
+    assert inv.entries[0].fresh is False
+    assert inv.entries[0].full_text == "current stored chapter text"
 
 
 # ---------------------------------------------------------------------------

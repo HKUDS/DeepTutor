@@ -10,6 +10,7 @@ import {
   NotebookPen,
   Pencil,
   Search,
+  Video,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -67,6 +68,11 @@ const BADGES: Record<
     className:
       "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
     icon: Pencil,
+  },
+  video_learning: {
+    labelKey: "Video Learning",
+    className: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
+    icon: Video,
   },
 };
 

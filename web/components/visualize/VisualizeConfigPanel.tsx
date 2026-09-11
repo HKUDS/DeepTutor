@@ -1,11 +1,19 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   summarizeVisualizeConfig,
   type VisualizeFormConfig,
 } from "@/lib/visualize-types";
+import {
+  importVisualizer,
+  installBundledVisualizer,
+  listVisualizers,
+  setVisualizerEnabled,
+  uninstallVisualizer,
+  type VisualizerCatalogItem,
+} from "@/lib/visualizers-api";
 import {
   CollapsibleConfigSection,
   Field,
@@ -30,6 +38,10 @@ export default memo(function VisualizeConfigPanel({
   onToggleCollapsed,
 }: VisualizeConfigPanelProps) {
   const { t } = useTranslation();
+  const [catalog, setCatalog] = useState<VisualizerCatalogItem[]>([]);
+  const [catalogError, setCatalogError] = useState("");
+  const [busy, setBusy] = useState("");
+  const importRef = useRef<HTMLInputElement>(null);
   const update = <K extends keyof VisualizeFormConfig>(
     key: K,
     val: VisualizeFormConfig[K],
@@ -40,6 +52,47 @@ export default memo(function VisualizeConfigPanel({
   // they pick "Animation" / "Storyboard" here.
   const isManim =
     value.render_mode === "manim_video" || value.render_mode === "manim_image";
+
+  const refreshCatalog = useCallback(async () => {
+    try {
+      setCatalog(await listVisualizers());
+      setCatalogError("");
+    } catch (error) {
+      setCatalogError(error instanceof Error ? error.message : String(error));
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshCatalog();
+  }, [refreshCatalog]);
+
+  const enabledTypes = useMemo(
+    () => catalog.filter((item) => item.installed && item.enabled),
+    [catalog],
+  );
+  const installableTypes = useMemo(
+    () =>
+      catalog.filter((item) => item.origin === "bundled" && !item.installed),
+    [catalog],
+  );
+  const disabledTypes = useMemo(
+    () => catalog.filter((item) => item.installed && !item.enabled),
+    [catalog],
+  );
+  const selected = catalog.find((item) => item.id === value.render_mode);
+
+  const mutate = async (key: string, action: () => Promise<void>) => {
+    setBusy(key);
+    setCatalogError("");
+    try {
+      await action();
+      await refreshCatalog();
+    } catch (error) {
+      setCatalogError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy("");
+    }
+  };
 
   const body = (
     <>
@@ -55,12 +108,28 @@ export default memo(function VisualizeConfigPanel({
           className={`${INPUT_CLS} w-full`}
         >
           <option value="auto">{t("Auto")}</option>
-          <option value="chartjs">{t("Chart.js")}</option>
-          <option value="svg">{t("SVG")}</option>
-          <option value="mermaid">{t("Mermaid")}</option>
-          <option value="html">{t("HTML")}</option>
-          <option value="manim_video">{t("Animation")}</option>
-          <option value="manim_image">{t("Storyboard")}</option>
+          {enabledTypes.length > 0 ? (
+            enabledTypes.map((item) => (
+              <option key={item.id} value={item.id}>
+                {t(item.display_name)}
+              </option>
+            ))
+          ) : (
+            <>
+              <option value="chartjs">{t("Chart.js")}</option>
+              <option value="svg">{t("SVG")}</option>
+              <option value="mermaid">{t("Mermaid")}</option>
+              <option value="html">{t("HTML")}</option>
+              <option value="manim_video">{t("Animation")}</option>
+              <option value="manim_image">{t("Storyboard")}</option>
+            </>
+          )}
+          {value.render_mode !== "auto" &&
+          !enabledTypes.some((item) => item.id === value.render_mode) ? (
+            <option value={value.render_mode} disabled>
+              {value.render_mode} ({t("Unavailable")})
+            </option>
+          ) : null}
         </select>
       </Field>
 
@@ -94,6 +163,101 @@ export default memo(function VisualizeConfigPanel({
           </Field>
         </>
       ) : null}
+
+      <Field label={t("Visualizer Types")} width="min-w-[210px] flex-1">
+        <div className="flex min-h-8 flex-wrap items-center gap-1.5">
+          {installableTypes.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              disabled={Boolean(busy)}
+              onClick={() =>
+                void mutate(`install:${item.id}`, () =>
+                  installBundledVisualizer(item.id),
+                )
+              }
+              className="rounded-md border border-[var(--border)] px-2 py-1 text-[10px] text-[var(--muted-foreground)] hover:text-[var(--foreground)] disabled:opacity-50"
+              title={item.description}
+            >
+              + {t(item.display_name)}
+            </button>
+          ))}
+          {disabledTypes.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              disabled={Boolean(busy)}
+              onClick={() =>
+                void mutate(`enable:${item.id}`, () =>
+                  setVisualizerEnabled(item.id, true),
+                )
+              }
+              className="rounded-md border border-[var(--border)] px-2 py-1 text-[10px] text-[var(--muted-foreground)] hover:text-[var(--foreground)] disabled:opacity-50"
+            >
+              {t("Enable")} {t(item.display_name)}
+            </button>
+          ))}
+          <button
+            type="button"
+            disabled={Boolean(busy)}
+            onClick={() => importRef.current?.click()}
+            className="rounded-md border border-dashed border-[var(--border)] px-2 py-1 text-[10px] text-[var(--muted-foreground)] hover:text-[var(--foreground)] disabled:opacity-50"
+          >
+            {t("Import .zip")}
+          </button>
+          <input
+            ref={importRef}
+            type="file"
+            accept=".zip,application/zip"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (file) {
+                void mutate("import", () => importVisualizer(file));
+              }
+            }}
+          />
+          {selected?.installed ? (
+            <button
+              type="button"
+              disabled={Boolean(busy)}
+              onClick={() => {
+                update("render_mode", "auto");
+                void mutate(`disable:${selected.id}`, () =>
+                  setVisualizerEnabled(selected.id, false),
+                );
+              }}
+              className="rounded-md border border-[var(--border)] px-2 py-1 text-[10px] text-[var(--muted-foreground)] hover:text-[var(--foreground)] disabled:opacity-50"
+            >
+              {t("Disable selected")}
+            </button>
+          ) : null}
+          {selected?.installed && selected.uninstallable ? (
+            <button
+              type="button"
+              disabled={Boolean(busy)}
+              onClick={() => {
+                update("render_mode", "auto");
+                void mutate(`remove:${selected.id}`, () =>
+                  uninstallVisualizer(selected.id),
+                );
+              }}
+              className="rounded-md border border-red-300/60 px-2 py-1 text-[10px] text-red-500 disabled:opacity-50"
+            >
+              {t("Uninstall selected")}
+            </button>
+          ) : null}
+          {busy ? (
+            <span className="text-[10px] text-[var(--muted-foreground)]">
+              {t("Updating...")}
+            </span>
+          ) : null}
+        </div>
+        {catalogError ? (
+          <p className="mt-1 text-[10px] text-red-500">{catalogError}</p>
+        ) : null}
+      </Field>
     </>
   );
 

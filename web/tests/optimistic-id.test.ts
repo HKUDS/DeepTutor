@@ -5,8 +5,13 @@ import {
   resolvePersistedMessage,
 } from "../lib/optimistic-id";
 import { reconcileTurnIds } from "../lib/turn-reconcile";
-import { buildVisiblePath, tipMessageId } from "../lib/message-branches";
-import type { MessageItem } from "../context/UnifiedChatContext";
+import {
+  buildVisiblePath,
+  persistedBranchSelections,
+  selectChildBranch,
+  tipMessageId,
+} from "../lib/message-branches";
+import type { MessageItem } from "../features/chat/ChatStateAdapter";
 
 test("optimistic ids are negative and strictly decreasing", () => {
   const ids = Array.from({ length: 50 }, () => nextOptimisticId());
@@ -40,6 +45,29 @@ test("an optimistic message resolves from the returned refresh snapshot", async 
 
   assert.equal(resolved?.id, 11);
   assert.equal(optimistic[0].id, -100, "the state ref can still be stale");
+});
+
+// deleteTurn used to re-read stateRef after loadSession (same race as #739's
+// edit path). Both mutations must trust the refresh snapshot's id.
+test("deleteTurn-style resolution keeps working when the state ref is stale", async () => {
+  const staleRef = [
+    { id: -42, role: "user", content: "to delete", parentMessageId: 1 },
+    { id: -43, role: "assistant", content: "reply", parentMessageId: -42 },
+  ];
+  const serverSnapshot = [
+    { id: 201, role: "user", content: "to delete", parentMessageId: 1 },
+    { id: 202, role: "assistant", content: "reply", parentMessageId: 201 },
+  ];
+
+  const target = await resolvePersistedMessage(
+    staleRef,
+    -42,
+    "user",
+    async () => serverSnapshot,
+  );
+
+  assert.equal(target?.id, 201);
+  assert.equal(staleRef[0].id, -42);
 });
 
 // Issue #698: the user row and the assistant placeholder are minted
@@ -101,5 +129,96 @@ test("the previous reply stays visible once the next turn is queued", () => {
   assert.deepEqual(
     visible.messages.map((m) => m.content),
     ["q1", "a1", "q2"],
+  );
+});
+
+test("a freshly edited sibling overrides the previously selected branch", () => {
+  const messages = [
+    { id: 10, role: "user" as const, content: "q1", parentMessageId: null },
+    {
+      id: 11,
+      role: "assistant" as const,
+      content: "a1",
+      parentMessageId: 10,
+    },
+    {
+      id: 12,
+      role: "user" as const,
+      content: "original q2",
+      parentMessageId: 11,
+    },
+    {
+      id: -20,
+      role: "user" as const,
+      content: "edited q2",
+      parentMessageId: 11,
+    },
+  ];
+
+  const selectedBranches = selectChildBranch({ "11": 12 }, 11, -20);
+  const visible = buildVisiblePath(
+    messages as unknown as MessageItem[],
+    selectedBranches,
+  );
+
+  assert.deepEqual(
+    visible.messages.map((message) => message.content),
+    ["q1", "a1", "edited q2"],
+  );
+});
+
+test("the edited branch and its reply survive optimistic id reconciliation", () => {
+  const editedId = nextOptimisticId();
+  const replyId = nextOptimisticId();
+  const messages = [
+    { id: 10, role: "user" as const, content: "q1", parentMessageId: null },
+    {
+      id: 11,
+      role: "assistant" as const,
+      content: "a1",
+      parentMessageId: 10,
+    },
+    {
+      id: 12,
+      role: "user" as const,
+      content: "original q2",
+      parentMessageId: 11,
+    },
+    {
+      id: editedId,
+      role: "user" as const,
+      content: "edited q2",
+      parentMessageId: 11,
+    },
+    {
+      id: replyId,
+      role: "assistant" as const,
+      content: "edited a2",
+      parentMessageId: editedId,
+      events: [{ turn_id: "turn_2" }],
+    },
+  ];
+
+  const reconciled = reconcileTurnIds(
+    messages as unknown as MessageItem[],
+    selectChildBranch({}, 11, editedId),
+    { turnId: "turn_2", userMessageId: 30, assistantMessageId: 31 },
+  );
+  const visible = buildVisiblePath(
+    reconciled.messages,
+    reconciled.selectedBranches,
+  );
+
+  assert.equal(reconciled.selectedBranches["11"], 30);
+  assert.deepEqual(
+    visible.messages.map((message) => message.content),
+    ["q1", "a1", "edited q2", "edited a2"],
+  );
+});
+
+test("persisted branch selections drop optimistic ids", () => {
+  assert.deepEqual(
+    persistedBranchSelections({ null: -42, "10": 11, "11": -99, "12": 13 }),
+    { "10": 11, "12": 13 },
   );
 });

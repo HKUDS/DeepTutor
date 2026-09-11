@@ -225,6 +225,7 @@ class ConfigTestRunner:
             provider_mode=resolved.provider_mode,
             api_version=resolved.api_version,
             extra_headers=resolved.extra_headers,
+            wire_api=resolved.wire_api,
             reasoning_effort=resolved.reasoning_effort,
         )
         run.emit(

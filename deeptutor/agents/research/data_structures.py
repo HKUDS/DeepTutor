@@ -55,7 +55,7 @@ class ToolType(Enum):
 
     RAG = "rag"
     PAPER_SEARCH = "paper_search"
-    RUN_CODE = "run_code"
+    EXEC = "exec"
     WEB_SEARCH = "web_search"
 
 

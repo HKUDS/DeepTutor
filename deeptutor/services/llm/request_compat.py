@@ -75,6 +75,63 @@ def is_stream_options_unsupported(exc: Exception) -> bool:
     )
 
 
+def is_response_format_unsupported(exc: Exception) -> bool:
+    """Whether a provider rejected OpenAI's ``response_format`` parameter.
+
+    Seen from LM Studio + Gemma (``'response_format.type' must be 'json_schema'
+    or 'text'``) and DashScope (``'json_object' is not supported by this
+    model``). One predicate for every execution path, so the graceful
+    drop-and-retry behaves the same wherever the request was made.
+    """
+    text = error_text(exc)
+    if "response_format" not in text and "response format" not in text:
+        return False
+    return any(
+        marker in text
+        for marker in (
+            "not supported",
+            "unsupported",
+            "json_object",
+            "json_schema",
+            "not valid",
+            "must be 'json_schema' or 'text'",
+            "specified for 'response_format.type' is not valid",
+        )
+    )
+
+
+def is_forced_tool_choice_unsupported(exc: Exception) -> bool:
+    """Whether a provider rejected *naming* the tool it must call.
+
+    Distinct from :func:`is_tool_schema_unsupported`: the provider is happy to
+    receive tools, it just will not be told which one to use. DeepSeek V4 with
+    thinking enabled answers ``"Thinking mode does not support this
+    tool_choice"`` — so Ask Questions, whose whole first round is a forced
+    ``ask_user``, failed the turn outright. Downgrading to ``"required"``
+    keeps "you must call a tool" and lets the loop's own fallback wrap the
+    model's question into a local card if it still writes prose.
+
+    A malformed choice is deliberately not matched: a shape the endpoint
+    cannot deserialize is a bug on our side to fix, not a capability to
+    degrade around.
+    """
+    text = error_text(exc)
+    if "tool_choice" not in text and "tool choice" not in text:
+        return False
+    if "missing field" in text or "failed to deserialize" in text:
+        return False
+    return any(
+        marker in text
+        for marker in (
+            "does not support",
+            "not supported",
+            "unsupported",
+            "not allowed",
+            "cannot be used",
+        )
+    )
+
+
 def is_tool_schema_unsupported(exc: Exception) -> bool:
     """Whether a provider rejected native tool/function-calling schemas.
 
@@ -186,7 +243,9 @@ def is_transient_transport_error(exc: Exception) -> bool:
 __all__ = [
     "error_text",
     "is_image_input_unsupported",
+    "is_response_format_unsupported",
     "is_stream_options_unsupported",
     "is_transient_transport_error",
+    "is_forced_tool_choice_unsupported",
     "is_tool_schema_unsupported",
 ]

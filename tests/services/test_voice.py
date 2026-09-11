@@ -8,9 +8,11 @@ config resolution.
 from __future__ import annotations
 
 import base64
+from dataclasses import dataclass
 import json
 from typing import Any
 
+import aiohttp
 import httpx
 import pytest
 
@@ -19,6 +21,10 @@ from deeptutor.services.config.provider_runtime import (
     resolve_tts_runtime_config,
 )
 from deeptutor.services.voice import synthesize_speech, transcribe_audio
+from deeptutor.services.voice.adapters.dashscope import (
+    DashScopeSTTAdapter,
+    DashScopeTTSAdapter,
+)
 from deeptutor.services.voice.adapters.openai_compat import (
     OpenAICompatSTTAdapter,
     OpenAICompatTTSAdapter,
@@ -48,6 +54,56 @@ def _capture_post(monkeypatch: pytest.MonkeyPatch, response: httpx.Response) -> 
 
     monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
     return captured
+
+
+def _capture_http(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    post: Any,
+    get: Any,
+) -> dict[str, Any]:
+    captured: dict[str, Any] = {"posts": [], "gets": []}
+
+    async def fake_post(self: httpx.AsyncClient, url: str, **kwargs: Any) -> httpx.Response:
+        captured["posts"].append({"url": url, **kwargs})
+        response = post(url, kwargs) if callable(post) else post
+        response.request = httpx.Request("POST", url)
+        return response
+
+    async def fake_get(self: httpx.AsyncClient, url: str, **kwargs: Any) -> httpx.Response:
+        captured["gets"].append({"url": url, **kwargs})
+        response = get(url, kwargs) if callable(get) else get
+        response.request = httpx.Request("GET", url)
+        return response
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+    return captured
+
+
+@dataclass
+class _FakeWSMessage:
+    data: dict[str, Any]
+    type: aiohttp.WSMsgType = aiohttp.WSMsgType.TEXT
+
+    def json(self) -> dict[str, Any]:
+        return self.data
+
+
+class _FakeWebSocket:
+    def __init__(self, messages: list[dict[str, Any]]) -> None:
+        self.messages = list(messages)
+        self.strings: list[str] = []
+        self.chunks: list[bytes] = []
+
+    async def send_str(self, value: str) -> None:
+        self.strings.append(value)
+
+    async def send_bytes(self, value: bytes) -> None:
+        self.chunks.append(value)
+
+    async def receive(self) -> _FakeWSMessage:
+        return _FakeWSMessage(self.messages.pop(0))
 
 
 # ── text cleaning ─────────────────────────────────────────────────────────
@@ -141,6 +197,39 @@ async def test_tts_adapter_raises_on_http_error(monkeypatch: pytest.MonkeyPatch)
     config = TTSConfig(model="m", base_url="https://x/v1", api_key="k", voice="alloy")
     with pytest.raises(VoiceProviderError, match="401"):
         await OpenAICompatTTSAdapter().synthesize("hi", config)
+
+
+@pytest.mark.asyncio
+async def test_dashscope_tts_posts_native_shape_and_downloads_audio(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    post = httpx.Response(
+        200, json={"output": {"audio": {"url": "https://cdn.example.com/audio.wav"}}}
+    )
+    download = httpx.Response(200, content=b"WAVDATA", headers={"content-type": "audio/wav"})
+    captured = _capture_http(monkeypatch, post=post, get=download)
+    config = TTSConfig(
+        model="qwen3-tts-flash",
+        provider_name="dashscope",
+        adapter="dashscope",
+        base_url="https://dashscope.aliyuncs.com/api/v1",
+        api_key="dash-key",
+        voice="Cherry",
+    )
+
+    audio, content_type = await DashScopeTTSAdapter().synthesize("hello", config)
+
+    assert audio == b"WAVDATA"
+    assert content_type == "audio/wav"
+    assert captured["posts"][0]["url"] == (
+        "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
+    )
+    assert captured["posts"][0]["json"] == {
+        "model": "qwen3-tts-flash",
+        "input": {"text": "hello", "voice": "Cherry"},
+    }
+    assert captured["posts"][0]["headers"]["Authorization"] == "Bearer dash-key"
+    assert captured["gets"][0]["url"] == "https://cdn.example.com/audio.wav"
 
 
 @pytest.mark.asyncio
@@ -261,6 +350,58 @@ async def test_stt_adapter_strips_codec_parameters(monkeypatch: pytest.MonkeyPat
 
 
 @pytest.mark.asyncio
+async def test_dashscope_stt_recognition_websocket_shape() -> None:
+    task_id: str | None = None
+    websocket = _FakeWebSocket(
+        [
+            {"header": {"event": "task-started"}},
+            {
+                "header": {"event": "result-generated"},
+                "payload": {"output": {"sentence": [{"text": "hello "}, {"text": "world"}]}},
+            },
+            {"header": {"event": "task-finished"}},
+        ]
+    )
+
+    # The fake pops start before the adapter knows its generated id. Patch the
+    # id check with a dynamic side-effect-like object by deriving it from send.
+    original_send = websocket.send_str
+
+    async def record_start(value: str) -> None:
+        nonlocal task_id
+        await original_send(value)
+        if task_id is None:
+            task_id = json.loads(value)["header"]["task_id"]
+            websocket.messages[0] = {"header": {"task_id": task_id, "event": "task-started"}}
+
+    websocket.send_str = record_start  # type: ignore[method-assign]
+    config = STTConfig(
+        model="paraformer-v2",
+        provider_name="dashscope",
+        adapter="dashscope",
+        base_url="https://dashscope.aliyuncs.com/api/v1",
+        api_key="dash-key",
+    )
+
+    text = await DashScopeSTTAdapter()._run_recognition(websocket, b"RIFFxxxx", config)
+
+    assert text == "hello world"
+    start = json.loads(websocket.strings[0])
+    assert start["payload"]["model"] == "paraformer-v2"
+    assert start["payload"]["parameters"] == {"format": "wav", "sample_rate": 16000}
+    assert websocket.chunks == [b"RIFFxxxx"]
+    assert json.loads(websocket.strings[-1])["header"]["action"] == "finish-task"
+
+
+def test_dashscope_stt_url_and_errors() -> None:
+    adapter = DashScopeSTTAdapter()
+    assert adapter._websocket_url("https://dashscope.aliyuncs.com/api/v1") == (
+        "wss://dashscope.aliyuncs.com/api-ws/v1/inference"
+    )
+    assert adapter._sentence_texts({"sentence": {"text": "single"}}) == ["single"]
+
+
+@pytest.mark.asyncio
 async def test_stt_adapter_openrouter_base64(monkeypatch: pytest.MonkeyPatch) -> None:
     resp = httpx.Response(200, json={"text": "from base64"})
     captured = _capture_post(monkeypatch, resp)
@@ -339,6 +480,31 @@ def test_resolve_stt_config_picks_openrouter_base64_style() -> None:
     assert cfg.provider_name == "openrouter"
     assert cfg.request_style == "base64_json"
     assert cfg.base_url == "https://openrouter.ai/api/v1"
+
+
+def test_resolve_dashscope_voice_configs() -> None:
+    catalog = _voice_catalog()
+    catalog["services"]["tts"]["profiles"][0]["binding"] = "aliyun"
+    catalog["services"]["tts"]["profiles"][0]["models"][0] = {
+        "id": "m1",
+        "model": "qwen3-tts-flash",
+        "voice": "",
+    }
+    catalog["services"]["stt"]["profiles"][0]["binding"] = "bailian"
+    catalog["services"]["stt"]["profiles"][0]["models"][0]["model"] = "paraformer-v2"
+
+    tts = resolve_tts_runtime_config(catalog=catalog)
+    stt = resolve_stt_runtime_config(catalog=catalog)
+
+    assert tts.provider_name == "dashscope"
+    assert tts.adapter == "dashscope"
+    assert tts.model == "qwen3-tts-flash"
+    assert tts.voice == "Cherry"
+    assert tts.base_url == "https://dashscope.aliyuncs.com/api/v1"
+    assert stt.provider_name == "dashscope"
+    assert stt.adapter == "dashscope"
+    assert stt.model == "paraformer-v2"
+    assert stt.base_url == tts.base_url
 
 
 def test_resolve_tts_config_picks_openrouter_adapter() -> None:

@@ -115,7 +115,8 @@ def _load_question_router_module(monkeypatch: pytest.MonkeyPatch):
 
 def _build_app(router_module) -> FastAPI:
     app = FastAPI()
-    app.include_router(router_module.router, prefix="/api/v1/question")
+    app.include_router(router_module.router, prefix="/api/question")
+    app.include_router(router_module.ws_router, prefix="/ws/questions")
     return app
 
 
@@ -136,7 +137,7 @@ def test_mimic_websocket_accepts_config_and_returns_messages(
     )
 
     with TestClient(_build_app(question_router_module)) as client:
-        with client.websocket_connect("/api/v1/question/mimic") as websocket:
+        with client.websocket_connect("/ws/questions/mimic") as websocket:
             websocket.send_json(
                 {
                     "mode": "parsed",

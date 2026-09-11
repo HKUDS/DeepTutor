@@ -148,4 +148,31 @@ async def _remember_on_session(session_id: str, path_id: str) -> None:
         )
 
 
-__all__ = ["PathBindingError", "leave_active_path", "rebind_active_path"]
+async def remember_mode_on_session(session_id: str, mode: str) -> None:
+    """Persist the conversation's mode so the next turn resumes in it.
+
+    The same shape as :func:`_remember_on_session` above, and best-effort for
+    the same reason: the switch has already taken effect for the rest of this
+    turn, and a conversation that forgets it merely resumes where it began —
+    visibly, because the mode is shown above the transcript.
+    """
+    if not session_id or not mode:
+        return
+    try:
+        from deeptutor.services.session import get_session_store
+
+        await get_session_store().update_session_preferences(
+            session_id, {"mastery_session_mode": mode}
+        )
+    except Exception:
+        logger.warning(
+            "Failed to persist mastery mode %r on session %s", mode, session_id, exc_info=True
+        )
+
+
+__all__ = [
+    "PathBindingError",
+    "leave_active_path",
+    "rebind_active_path",
+    "remember_mode_on_session",
+]

@@ -65,6 +65,25 @@ def test_render_docker_env_uses_defaults_for_missing_or_invalid_json(tmp_path: P
     assert values["DEEPTUTOR_DOCKER_POCKETBASE_PORT"] == "8090"
 
 
+def test_workspace_host_prepares_nested_outputs(tmp_path: Path) -> None:
+    module = _load_module()
+    root = module.ensure_workspace_host(str(tmp_path / "chosen"))
+
+    assert root == (tmp_path / "chosen").resolve()
+    assert (root / "outputs").is_dir()
+
+
+def test_compose_maps_one_stable_content_workspace() -> None:
+    root = Path(__file__).resolve().parents[2]
+    source = (root / "docker-compose.yml").read_text(encoding="utf-8")
+
+    assert "DEEPTUTOR_WORKSPACE_HOST:-./data/user/workspace" in source
+    assert "DEEPTUTOR_WORKSPACE_ROOT=/workspace" in source
+    assert ':/workspace:ro"' in source
+    assert '/outputs:/workspace/outputs"' in source
+    assert "DEEPTUTOR_RUNNER_ALLOWED_WORKDIRS=/workspace/outputs" in source
+
+
 def test_compose_files_do_not_consume_legacy_env_names() -> None:
     root = Path(__file__).resolve().parents[2]
     for name in ("docker-compose.yml", "docker-compose.ghcr.yml"):

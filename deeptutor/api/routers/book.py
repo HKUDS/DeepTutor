@@ -18,19 +18,19 @@ from fastapi import APIRouter, HTTPException, Query, Response, WebSocket, WebSoc
 from pydantic import BaseModel, Field
 
 from deeptutor.api.utils.http_headers import content_disposition
-from deeptutor.book import (
+from deeptutor.book import progress as progress_ops
+from deeptutor.book.errors import BookPausedError
+from deeptutor.book.export import export_filename, render_book_markdown
+from deeptutor.book.models import (
     BlockType,
     BookProposal,
+    ContentType,
+    LearningCapture,
+    LearningCaptureStatus,
     Spine,
-    get_book_engine,
 )
-from deeptutor.book import progress as progress_ops
-from deeptutor.book.estimate import chapter_basis
-from deeptutor.book.export import export_filename, render_book_markdown
-from deeptutor.book.models import ContentType, LearningCapture, LearningCaptureStatus
 from deeptutor.book.storage import get_book_storage
 from deeptutor.book.streaming import SOURCE as BOOK_SOURCE
-from deeptutor.core.stream_bus import StreamBus
 from deeptutor.multi_user.audit import log_admin_action, log_usage
 from deeptutor.multi_user.book_access import (
     ResolvedBook,
@@ -40,9 +40,26 @@ from deeptutor.multi_user.book_access import (
 )
 from deeptutor.multi_user.context import get_current_user
 from deeptutor.multi_user.identity import remove_book_permission_overrides
+from deeptutor.runtime.stream_bus import StreamBus
 
 router = APIRouter()
+ws_router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def get_book_engine():
+    """Resolve the large compilation engine only when a book route uses it."""
+
+    from deeptutor.book.engine import get_book_engine as resolve
+
+    return resolve()
+
+
+def _book_paused_http(exc: BookPausedError) -> HTTPException:
+    return HTTPException(
+        status_code=409,
+        detail={"code": "book_paused", "message": str(exc)},
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -59,6 +76,7 @@ class CreateBookRequest(BaseModel):
     question_categories: list[int] = Field(default_factory=list)
     question_entries: list[int] = Field(default_factory=list)
     language: str = Field(default="en")
+    fallback_language: str = Field(default="en")
     depth: str = Field(default="standard")
 
 
@@ -72,6 +90,7 @@ class ConfirmSpineRequest(BaseModel):
     book_id: str
     spine: dict[str, Any] | None = None
     auto_compile: bool = True
+    block_types: list[str] | None = None
     expected_revision: int | None = Field(default=None, ge=1)
 
 
@@ -144,6 +163,23 @@ class QuizAttemptRequest(BaseModel):
     is_correct: bool | None = None
 
 
+def _focus_check_question(
+    questions: list[dict[str, Any]], requested_id: str, block_id: str
+) -> tuple[str, dict[str, Any]] | None:
+    """Resolve the durable question behind a Focus-Check submission."""
+    for index, question in enumerate(questions):
+        if not isinstance(question, dict):
+            continue
+        question_id = str(question.get("question_id") or "").strip()
+        if requested_id and question_id == requested_id:
+            return question_id, question
+        if not requested_id and not question_id:
+            return f"{block_id}:{index + 1}", question
+    if requested_id:
+        return requested_id, {}
+    return None
+
+
 class UpdateBlockRequest(BaseModel):
     book_id: str
     page_id: str
@@ -174,10 +210,16 @@ class PageChatSessionRequest(BaseModel):
 class RebuildBookRequest(BaseModel):
     book_id: str
     auto_compile: bool = True
+    block_types: list[str] | None = None
     expected_revision: int | None = Field(default=None, ge=1)
 
 
 class ResumeBookRequest(BaseModel):
+    book_id: str
+    expected_revision: int | None = Field(default=None, ge=1)
+
+
+class PauseBookRequest(BaseModel):
     book_id: str
     expected_revision: int | None = Field(default=None, ge=1)
 
@@ -237,19 +279,30 @@ def _claim_content_mutation(
     action: str,
     *,
     extra: dict[str, Any] | None = None,
+    strict: bool = True,
 ) -> int:
     """Reserve the next canonical revision before a content mutation.
 
     Shared editors must prove which snapshot they edited. Personal books and
     admin operations stay backward compatible, but still advance the token so
     a later shared editor detects the intervening change.
+
+    ``strict=False`` is for *generation commands* — compile this chapter,
+    pause, resume. Those overwrite nobody's writing: a chapter shell fills
+    itself in, and two readers both asking for it is not a conflict (the
+    engine coalesces them onto one run). Guarding them was actively harmful,
+    because generation advances the revision itself: ``confirm_spine`` claims
+    a token and then queues the compile that the very next request has to
+    match, so the first chapter of every book failed with a conflict against
+    its own predecessor. They still claim a revision — a later shared edit
+    should know the book moved — they just do not refuse a stale one.
     """
 
     book = resolved.engine.load_book(book_id)
     if book is None:
         raise HTTPException(status_code=404, detail="Book not found")
     current = max(1, int(book.revision or 1))
-    if resolved.is_shared and expected_revision is None:
+    if strict and resolved.is_shared and expected_revision is None:
         raise HTTPException(
             status_code=409,
             detail={
@@ -258,12 +311,19 @@ def _claim_content_mutation(
                 "current_revision": current,
             },
         )
-    if expected_revision is not None and expected_revision != current:
+    if strict and expected_revision is not None and expected_revision != current:
         raise HTTPException(
             status_code=409,
             detail={
                 "code": "book_revision_conflict",
-                "message": "The book was updated by another collaborator.",
+                # A personal book has no collaborators, so blaming one was a
+                # lie the reader could not act on. Same guard, honest cause:
+                # their view is simply behind the book.
+                "message": (
+                    "The book was updated by another collaborator."
+                    if resolved.is_shared
+                    else "This book changed since your last action — reloading the latest version."
+                ),
                 "expected_revision": expected_revision,
                 "current_revision": current,
             },
@@ -289,6 +349,43 @@ def _claim_content_mutation(
     elif get_current_user().is_admin:
         log_admin_action("book_edit", summary=summary)
     return book.revision
+
+
+def _normalize_block_types(values: list[str]) -> list[str]:
+    normalized = [BlockType.SECTION.value]
+    seen = {BlockType.SECTION}
+    for value in values:
+        try:
+            block_type = BlockType(value.strip().lower())
+        except ValueError:
+            continue
+        if block_type in seen:
+            continue
+        seen.add(block_type)
+        normalized.append(block_type.value)
+    return normalized
+
+
+def _persist_requested_block_types(
+    resolved: ResolvedBook,
+    book_id: str,
+    requested: list[str] | None,
+) -> None:
+    if requested is None:
+        return
+
+    book = resolved.engine.load_book(book_id)
+    if book is None:
+        raise HTTPException(status_code=404, detail="Book not found")
+    metadata = dict(book.metadata or {})
+    if requested:
+        metadata["block_types"] = _normalize_block_types(requested)
+    else:
+        metadata.pop("block_types", None)
+    book.metadata = metadata
+    book.updated_at = time.time()
+    storage = getattr(resolved.engine, "storage", None) or get_book_storage()
+    storage.save_book(book)
 
 
 def _normalize_capture_text(value: str) -> str:
@@ -381,7 +478,7 @@ def _derive_capture_title_values(
                 chapter_title = chapter.title
                 break
 
-    base_locator = f"/book/{book_id}/pages/{page_id}"
+    base_locator = f"/books/{book_id}/pages/{page_id}"
     source_locator = f"{base_locator}/block/{block_id}" if block_id else base_locator
     return book.title, chapter_title, source_locator
 
@@ -431,12 +528,12 @@ def _capture_payload(capture: LearningCapture) -> dict[str, object]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@router.get("/health")
+@router.get("/books/health")
 async def health_check() -> dict[str, str]:
     return {"status": "healthy", "service": "book"}
 
 
-@router.get("/estimate-basis")
+@router.get("/books/estimate-basis")
 async def estimate_basis(depth: str = "standard") -> dict[str, Any]:
     """Per-chapter generation cost, keyed by content type.
 
@@ -445,7 +542,27 @@ async def estimate_basis(depth: str = "standard") -> dict[str, Any]:
     and stays honest, because the numbers come from the same templates the
     architect plans from.
     """
+    from deeptutor.book.estimate import chapter_basis
+
     return {"depth": depth, "basis": chapter_basis(depth)}
+
+
+@router.get("/books/block-types")
+async def block_types() -> dict[str, list[dict[str, str | bool]]]:
+    from deeptutor.book.agents.page_planner import (
+        PLANNABLE_BLOCK_TYPES,
+        PLANNER_DEFAULT_BLOCK_TYPES,
+    )
+
+    return {
+        "block_types": [
+            {
+                "value": block_type.value,
+                "planner_default": block_type in PLANNER_DEFAULT_BLOCK_TYPES,
+            }
+            for block_type in sorted(PLANNABLE_BLOCK_TYPES, key=lambda item: item.value)
+        ]
+    }
 
 
 @router.get("/books")
@@ -682,6 +799,7 @@ async def create_book(req: CreateBookRequest) -> dict[str, Any]:
             question_categories=req.question_categories,
             question_entries=req.question_entries,
             language=req.language,
+            fallback_language=req.fallback_language,
             depth=req.depth,
         )
     except Exception as exc:  # noqa: BLE001
@@ -741,6 +859,7 @@ async def confirm_spine(req: ConfirmSpineRequest) -> dict[str, Any]:
             edited = Spine.model_validate(req.spine)
         except Exception as exc:
             raise HTTPException(status_code=400, detail=f"Invalid spine: {exc}")
+    _persist_requested_block_types(resolved, req.book_id, req.block_types)
     try:
         pages = await engine.confirm_spine(
             book_id=req.book_id,
@@ -766,9 +885,13 @@ async def compile_page(req: CompilePageRequest) -> dict[str, Any]:
         req.expected_revision,
         "compile_page",
         extra={"page_id": req.page_id, "force": req.force},
+        # Generation command, not an edit — see `_claim_content_mutation`.
+        strict=False,
     )
     try:
         page = await engine.compile_page(book_id=req.book_id, page_id=req.page_id, force=req.force)
+    except BookPausedError as exc:
+        raise _book_paused_http(exc)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except Exception as exc:  # noqa: BLE001
@@ -795,6 +918,8 @@ async def regenerate_block(req: RegenerateBlockRequest) -> dict[str, Any]:
             block_id=req.block_id,
             params_override=req.params_override,
         )
+    except BookPausedError as exc:
+        raise _book_paused_http(exc)
     except Exception as exc:  # noqa: BLE001
         logger.error(f"regenerate_block failed: {exc}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(exc))
@@ -838,6 +963,8 @@ async def insert_block(req: InsertBlockRequest) -> dict[str, Any]:
             position=req.position,
             compile_now=req.compile_now,
         )
+    except BookPausedError as exc:
+        raise _book_paused_http(exc)
     except Exception as exc:  # noqa: BLE001
         logger.error(f"insert_block failed: {exc}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(exc))
@@ -905,6 +1032,8 @@ async def change_block_type(req: ChangeBlockTypeRequest) -> dict[str, Any]:
             new_type=new_type,
             params_override=req.params_override,
         )
+    except BookPausedError as exc:
+        raise _book_paused_http(exc)
     except Exception as exc:  # noqa: BLE001
         logger.error(f"change_block_type failed: {exc}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(exc))
@@ -933,6 +1062,8 @@ async def deep_dive(req: DeepDiveRequest) -> dict[str, Any]:
             block_id=req.block_id,
             content_type=content_type,
         )
+    except BookPausedError as exc:
+        raise _book_paused_http(exc)
     except Exception as exc:  # noqa: BLE001
         logger.error(f"deep_dive failed: {exc}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(exc))
@@ -944,6 +1075,17 @@ async def deep_dive(req: DeepDiveRequest) -> dict[str, Any]:
 @router.post("/books/quiz-attempt")
 async def quiz_attempt(req: QuizAttemptRequest) -> dict[str, Any]:
     resolved = _resolve_book_or_404(req.book_id)
+    book = resolved.engine.load_book(req.book_id)
+    page = next(
+        (item for item in resolved.engine.list_pages(req.book_id) if item.id == req.page_id), None
+    )
+    block = page.block_by_id(req.block_id) if page is not None else None
+    questions = (
+        [item for item in block.payload.get("questions", []) if isinstance(item, dict)]
+        if block is not None
+        else []
+    )
+    resolved_question = _focus_check_question(questions, req.question_id, req.block_id)
     progress = progress_ops.record_attempt(
         resolved.load_progress(req.book_id),
         page_id=req.page_id,
@@ -958,6 +1100,56 @@ async def quiz_attempt(req: QuizAttemptRequest) -> dict[str, Any]:
         },
     )
     resolved.learning.save_progress(progress)
+    if req.is_correct is not None and resolved_question is not None and book is not None:
+        question_id, question = resolved_question
+        try:
+            from deeptutor.services.session import get_sqlite_session_store
+
+            store = get_sqlite_session_store()
+            metadata = book.metadata if isinstance(book.metadata, dict) else {}
+            page_sessions = metadata.get("page_chat_sessions")
+            session_id = str(
+                (page_sessions.get(req.page_id) if isinstance(page_sessions, dict) else "")
+                or book.chat_session_id
+                or ""
+            ).strip()
+            # Notebook entries belong to real conversations. Creating a hidden
+            # ``book_<id>`` chat solely to satisfy the FK polluted history and
+            # made a Book Focus Check look like Immersive Reading. If the page
+            # has no conversation yet, progress still persists and the optional
+            # review sync waits for a later attempt after chat exists.
+            if session_id and await store.get_session(session_id) is not None:
+                await store.upsert_notebook_entries(
+                    session_id,
+                    [
+                        {
+                            "turn_id": req.block_id,
+                            "question_id": question_id,
+                            "question": str(
+                                question.get("question") or block.title or "Focus check"
+                            ),
+                            "question_type": str(question.get("question_type") or ""),
+                            "options": question.get("options") or {},
+                            "correct_answer": str(question.get("correct_answer") or ""),
+                            "explanation": str(question.get("explanation") or ""),
+                            "difficulty": str(question.get("difficulty") or ""),
+                            "user_answer": req.user_answer,
+                            "is_correct": bool(req.is_correct),
+                            "source": "book",
+                            "material_id": req.book_id,
+                            "material_title": book.title,
+                            "section_id": req.page_id,
+                            "section_title": page.title if page is not None else "",
+                        }
+                    ],
+                )
+        except Exception:
+            logger.warning(
+                "Failed to sync Focus-Check %s to question bank for book %s",
+                req.question_id,
+                req.book_id,
+                exc_info=True,
+            )
     return {"progress": progress.model_dump(mode="json")}
 
 
@@ -1103,6 +1295,8 @@ async def supplement(req: SupplementRequest) -> dict[str, Any]:
             page_id=req.page_id,
             topic=req.topic,
         )
+    except BookPausedError as exc:
+        raise _book_paused_http(exc)
     except Exception as exc:  # noqa: BLE001
         logger.error(f"supplement failed: {exc}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(exc))
@@ -1145,6 +1339,7 @@ async def resume_book(req: ResumeBookRequest) -> dict[str, Any]:
         req.book_id,
         req.expected_revision,
         "resume",
+        strict=False,
     )
     try:
         pages = await engine.resume_book(book_id=req.book_id)
@@ -1152,6 +1347,28 @@ async def resume_book(req: ResumeBookRequest) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail=str(exc))
     except Exception as exc:  # noqa: BLE001
         logger.error(f"resume_book failed: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc))
+    return {"pages": [p.model_dump(mode="json") for p in pages], "book_revision": revision}
+
+
+@router.post("/books/pause")
+async def pause_book(req: PauseBookRequest) -> dict[str, Any]:
+    """Persist a manual pause, cancel in-flight work, and keep completed output."""
+    resolved = _resolve_book_or_404(req.book_id, edit=True)
+    engine = resolved.engine
+    revision = _claim_content_mutation(
+        resolved,
+        req.book_id,
+        req.expected_revision,
+        "pause",
+        strict=False,
+    )
+    try:
+        pages = await engine.pause_book(book_id=req.book_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"pause_book failed: {exc}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(exc))
     return {"pages": [p.model_dump(mode="json") for p in pages], "book_revision": revision}
 
@@ -1166,6 +1383,7 @@ async def rebuild_book(req: RebuildBookRequest) -> dict[str, Any]:
         req.expected_revision,
         "rebuild",
     )
+    _persist_requested_block_types(resolved, req.book_id, req.block_types)
     try:
         pages = await engine.rebuild_book(book_id=req.book_id, auto_compile=req.auto_compile)
     except ValueError as exc:
@@ -1188,6 +1406,8 @@ def _serialize_event(event) -> dict[str, Any]:
         "stage": event.stage,
         "content": event.content,
         "metadata": event.metadata or {},
+        "seq": event.seq,
+        "timestamp": event.timestamp,
     }
 
 
@@ -1207,15 +1427,15 @@ class _SocketFanout:
         self._send = send
         self._tasks: dict[int, asyncio.Task[None]] = {}
 
-    def attach(self, bus: StreamBus) -> None:
+    def attach(self, bus: StreamBus, *, after_seq: int = 0) -> None:
         key = id(bus)
         existing = self._tasks.get(key)
         if existing is not None and not existing.done():
             return
-        self._tasks[key] = asyncio.create_task(self._forward(bus))
+        self._tasks[key] = asyncio.create_task(self._forward(bus, after_seq=after_seq))
 
-    async def _forward(self, bus: StreamBus) -> None:
-        async for event in bus.subscribe():
+    async def _forward(self, bus: StreamBus, *, after_seq: int) -> None:
+        async for event in bus.subscribe(after_seq=after_seq):
             if event.source != BOOK_SOURCE:
                 continue
             await self._send(_serialize_event(event))
@@ -1231,7 +1451,7 @@ class _SocketFanout:
         self._tasks.clear()
 
 
-@router.websocket("/ws")
+@ws_router.websocket("/books")
 async def book_websocket(ws: WebSocket) -> None:
     """Streaming endpoint.
 
@@ -1305,14 +1525,30 @@ async def book_websocket(ws: WebSocket) -> None:
                 except HTTPException:
                     await send({"type": "error", "content": f"Book not found: {book_id}"})
                     continue
-                fanout.attach(get_book_bus(book_id))
 
             try:
                 if msg_type == "subscribe":
                     if not book_id:
                         await send({"type": "error", "content": "subscribe requires book_id"})
                     else:
-                        await send({"type": "subscribed", "book_id": book_id})
+                        bus = get_book_bus(book_id)
+                        try:
+                            requested_cursor = max(0, int(data.get("after_seq") or 0))
+                        except (TypeError, ValueError):
+                            requested_cursor = 0
+                        reset_cursor = requested_cursor > bus.latest_seq
+                        effective_cursor = 0 if reset_cursor else requested_cursor
+                        # Acknowledge the effective cursor before replay starts,
+                        # so the client can reset stale local state first.
+                        await send(
+                            {
+                                "type": "subscribed",
+                                "book_id": book_id,
+                                "latest_seq": bus.latest_seq,
+                                "reset": reset_cursor,
+                            }
+                        )
+                        fanout.attach(bus, after_seq=effective_cursor)
 
                 elif msg_type == "create":
                     if not can_create_book():
@@ -1330,11 +1566,13 @@ async def book_websocket(ws: WebSocket) -> None:
                         ],
                         question_entries=[int(e) for e in (data.get("question_entries") or [])],
                         language=str(data.get("language") or "en"),
+                        fallback_language=str(data.get("fallback_language") or "en"),
                         depth=str(data.get("depth") or "standard"),
                         stream=creation_bus,
                     )
                     # From here on this book has a stream of its own.
-                    fanout.attach(get_book_bus(book.id))
+                    created_bus = get_book_bus(book.id)
+                    fanout.attach(created_bus, after_seq=created_bus.latest_seq)
                     await send(
                         {
                             "type": "create_result",
@@ -1347,6 +1585,8 @@ async def book_websocket(ws: WebSocket) -> None:
                     if resolved is None or not resolved.can_edit:
                         raise ValueError("Book not found")
                     engine = resolved.engine
+                    action_bus = get_book_bus(book_id)
+                    fanout.attach(action_bus, after_seq=action_bus.latest_seq)
                     revision = _claim_content_mutation(
                         resolved,
                         book_id,
@@ -1373,6 +1613,8 @@ async def book_websocket(ws: WebSocket) -> None:
                     if resolved is None or not resolved.can_edit:
                         raise ValueError("Book not found")
                     engine = resolved.engine
+                    action_bus = get_book_bus(book_id)
+                    fanout.attach(action_bus, after_seq=action_bus.latest_seq)
                     revision = _claim_content_mutation(
                         resolved,
                         book_id,
@@ -1399,12 +1641,15 @@ async def book_websocket(ws: WebSocket) -> None:
                     if resolved is None or not resolved.can_edit:
                         raise ValueError("Book not found")
                     engine = resolved.engine
+                    action_bus = get_book_bus(book_id)
+                    fanout.attach(action_bus, after_seq=action_bus.latest_seq)
                     revision = _claim_content_mutation(
                         resolved,
                         book_id,
                         data.get("expected_revision"),
                         "compile_page",
                         extra={"page_id": str(data.get("page_id") or "")},
+                        strict=False,
                     )
                     page = await engine.compile_page(
                         book_id=book_id,
@@ -1423,6 +1668,8 @@ async def book_websocket(ws: WebSocket) -> None:
                     if resolved is None or not resolved.can_edit:
                         raise ValueError("Book not found")
                     engine = resolved.engine
+                    action_bus = get_book_bus(book_id)
+                    fanout.attach(action_bus, after_seq=action_bus.latest_seq)
                     revision = _claim_content_mutation(
                         resolved,
                         book_id,
@@ -1450,6 +1697,15 @@ async def book_websocket(ws: WebSocket) -> None:
                 else:
                     await send({"type": "error", "content": f"Unknown message type: {msg_type}"})
 
+            except BookPausedError as exc:
+                await send(
+                    {
+                        "type": "error",
+                        "content": str(exc),
+                        "status": 409,
+                        "code": "book_paused",
+                    }
+                )
             except HTTPException as exc:
                 detail = exc.detail
                 payload: dict[str, Any] = {

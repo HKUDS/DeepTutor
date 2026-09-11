@@ -10,9 +10,12 @@ import {
   setUserRole,
   createUser,
   type UserRecord,
+  type AccountPreset,
 } from "@/lib/admin-api";
 import { GrantEditor } from "@/features/multi-user/components/GrantEditor";
 import { BookPermissionEditor } from "@/features/multi-user/components/BookPermissionEditor";
+import { LearnerProfileEditor } from "@/features/multi-user/components/LearnerProfileEditor";
+import { GuardianRelationshipsEditor } from "@/features/multi-user/components/GuardianRelationshipsEditor";
 import { UserAvatar } from "@/components/UserAvatar";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { filterUsersByQuery } from "@/lib/admin-users";
@@ -63,6 +66,7 @@ export default function AdminUsersPage() {
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [createUsername, setCreateUsername] = useState("");
   const [createPassword, setCreatePassword] = useState("");
+  const [createPreset, setCreatePreset] = useState<AccountPreset>("standard");
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [createError, setCreateError] = useState("");
 
@@ -97,6 +101,7 @@ export default function AdminUsersPage() {
   function openCreateDialog() {
     setCreateUsername("");
     setCreatePassword("");
+    setCreatePreset("standard");
     setCreateError("");
     setShowCreateDialog(true);
   }
@@ -121,7 +126,7 @@ export default function AdminUsersPage() {
     }
     setCreateSubmitting(true);
     try {
-      await createUser(username, createPassword);
+      await createUser(username, createPassword, createPreset);
       setShowCreateDialog(false);
       await load();
     } catch (e) {
@@ -384,6 +389,19 @@ export default function AdminUsersPage() {
                             )}
                             {isAdmin ? t("Admin") : t("User")}
                           </span>
+                          {!isAdmin && user.preset && (
+                            <span className="mt-1 block text-[11px] text-[var(--muted-foreground)]">
+                              {t("Preset: {{preset}}", {
+                                preset: t(
+                                  user.preset === "learner"
+                                    ? "Learner"
+                                    : user.preset === "custom"
+                                      ? "Custom"
+                                      : "Standard",
+                                ),
+                              })}
+                            </span>
+                          )}
                         </td>
                         <td className="px-5 py-3.5 text-[var(--muted-foreground)]">
                           {formatDate(user.created_at, lang)}
@@ -454,8 +472,24 @@ export default function AdminUsersPage() {
                       {canManageAssignments && expandedUserId === user.id && (
                         <tr>
                           <td colSpan={4} className="p-0">
-                            <GrantEditor key={user.id} userId={user.id} />
+                            <GrantEditor
+                              key={user.id}
+                              userId={user.id}
+                              lockLearningPolicy={user.preset === "learner"}
+                            />
                             <BookPermissionEditor userId={user.id} />
+                            {user.preset === "learner" && (
+                              <>
+                                <GuardianRelationshipsEditor
+                                  learnerId={user.id}
+                                  learnerUsername={user.username}
+                                  users={users}
+                                />
+                                <LearnerProfileEditor
+                                  username={user.username}
+                                />
+                              </>
+                            )}
                           </td>
                         </tr>
                       )}
@@ -593,6 +627,53 @@ export default function AdminUsersPage() {
                 className="mt-1 w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
               />
             </label>
+
+            <fieldset className="mb-4">
+              <legend className="mb-1.5 block text-xs text-[var(--muted-foreground)]">
+                {t("Account preset")}
+              </legend>
+              <div
+                className="grid grid-cols-3 gap-1 rounded-lg bg-[var(--muted)]/50 p-1"
+                role="group"
+                aria-label={t("Account preset")}
+              >
+                {(["standard", "learner", "custom"] as const).map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    disabled={createSubmitting}
+                    aria-pressed={createPreset === preset}
+                    onClick={() => setCreatePreset(preset)}
+                    className={`rounded-md px-2 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
+                      createPreset === preset
+                        ? "bg-[var(--card)] text-[var(--foreground)] shadow-sm"
+                        : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                    }`}
+                  >
+                    {t(
+                      preset === "learner"
+                        ? "Learner"
+                        : preset === "custom"
+                          ? "Custom"
+                          : "Standard",
+                    )}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1.5 text-[11px] leading-relaxed text-[var(--muted-foreground)]">
+                {createPreset === "learner"
+                  ? t(
+                      "Chat and Immersive Reading only, with uploads and tools disabled until assigned.",
+                    )
+                  : createPreset === "custom"
+                    ? t(
+                        "Create an ordinary account, then customize its assignments.",
+                      )
+                    : t(
+                        "Create an ordinary account with the default workspace behavior.",
+                      )}
+              </p>
+            </fieldset>
 
             {createError && (
               <p className="mb-3 text-xs text-red-500">{createError}</p>

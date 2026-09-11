@@ -3,7 +3,7 @@ Per-user MCP API
 ================
 
 The servers an individual configures for themselves, mounted at
-``/api/v1/space/mcp``. Auth-gated, **not** admin-gated: this is the whole point
+``/api/space/mcp``. Auth-gated, **not** admin-gated: this is the whole point
 of the surface — a learner adds the hosted services they use without an
 administrator in the loop.
 
@@ -11,7 +11,7 @@ What keeps that safe is narrow rather than trusting:
 
 * **remote transports only** — a ``stdio`` server is a command run on the host
   as the app user, so it stays in the admin registry
-  (``/api/v1/settings/mcp``) permanently;
+  (``/api/settings/mcp``) permanently;
 * **credentials are stored apart from the config** and never returned; a field
   reports only whether it is configured;
 * **every write is scoped to the caller's own file** — the owner is resolved
@@ -31,8 +31,8 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field, ValidationError
 
-from deeptutor.core.i18n import t
 from deeptutor.multi_user.paths import current_owner_id
+from deeptutor.services.i18n import t
 from deeptutor.services.mcp import MCPServerConfig, get_mcp_manager, load_mcp_config, oauth
 from deeptutor.services.mcp.catalog import (
     build_server_config,

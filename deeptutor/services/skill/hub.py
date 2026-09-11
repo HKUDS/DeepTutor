@@ -20,6 +20,8 @@ not a format translation:
 
 Providers are addressed as ``<hub>:<slug>[@version]`` (e.g.
 ``eduhub:socratic-tutor@1.2.0``; the hub prefix defaults to ``eduhub``).
+ClawHub skills can also be publisher-scoped as
+``<hub>:<ownerHandle>/<slug>[@version]``.
 Two provider shapes ship in v1:
 
 * :class:`ClawHubProvider` — speaks the ClawHub HTTP API directly (search /
@@ -79,6 +81,7 @@ _BUILTIN_HUBS: dict[str, dict[str, str]] = {
 
 _REF_RE = re.compile(
     r"^(?:(?P<hub>[a-z0-9][a-z0-9-]{0,31}):)?"
+    r"(?:(?P<owner>[A-Za-z0-9][A-Za-z0-9._-]{0,63})/)?"
     r"(?P<slug>[a-z0-9][a-z0-9._-]{0,127})"
     r"(?:@(?P<version>[A-Za-z0-9][A-Za-z0-9._-]{0,63}))?$"
 )
@@ -104,6 +107,7 @@ class HubSkillRef:
 
     hub: str
     slug: str
+    owner_handle: str = ""
     display_name: str = ""
     summary: str = ""
     version: str = ""
@@ -158,15 +162,41 @@ class SkillHubProvider(Protocol):
 
 
 def parse_hub_ref(ref: str) -> tuple[str, str, str | None]:
-    """Split ``<hub>:<slug>[@version]`` into its parts; hub defaults."""
+    """Split ``<hub>:[<owner>/]<slug>[@version]`` into its parts; hub defaults.
+
+    The returned slug remains publisher-scoped when an owner was supplied. Use
+    :func:`split_owner_slug` at an API boundary that needs the two fields.
+    """
     match = _REF_RE.match((ref or "").strip())
     if match is None:
-        raise HubError(f"Invalid skill reference `{ref}`. Expected <hub>:<slug>[@version].")
+        raise HubError(
+            f"Invalid skill reference `{ref}`. Expected <hub>:[<owner>/]<slug>[@version]."
+        )
     return (
         match.group("hub") or default_hub(),
-        match.group("slug"),
+        f"{match.group('owner')}/{match.group('slug')}"
+        if match.group("owner")
+        else match.group("slug"),
         match.group("version"),
     )
+
+
+def split_owner_slug(slug: str) -> tuple[str, str]:
+    """Split a publisher-scoped slug into ``(ownerHandle, slug)``."""
+    owner, separator, skill_slug = (slug or "").strip().partition("/")
+    if not separator:
+        return "", owner
+    return owner, skill_slug
+
+
+def _owner_handle_from_row(row: dict[str, Any]) -> str:
+    """Read ClawHub's publisher handle from its current and nested shapes."""
+    handle = str(row.get("ownerHandle") or "").strip()
+    for key in ("owner", "publisher"):
+        owner = row.get(key)
+        if isinstance(owner, dict):
+            handle = handle or str(owner.get("handle") or "").strip()
+    return handle
 
 
 # ── safe archive extraction (directory-preserving) ──────────────────────
@@ -310,6 +340,7 @@ class ClawHubProvider:
                 HubSkillRef(
                     hub=self.name,
                     slug=slug,
+                    owner_handle=_owner_handle_from_row(row),
                     display_name=str(row.get("displayName") or row.get("name") or slug),
                     summary=str(row.get("summary") or row.get("description") or ""),
                     version=str(row.get("version") or ""),
@@ -318,9 +349,13 @@ class ClawHubProvider:
         return refs
 
     def verify(self, slug: str, *, version: str | None = None) -> HubVerdict:
+        owner_handle, skill_slug = split_owner_slug(slug)
         try:
             response = self._get(
-                f"/skills/{slug}/verify", version=version, tag=None if version else "latest"
+                f"/skills/{skill_slug}/verify",
+                version=version,
+                tag=None if version else "latest",
+                ownerHandle=owner_handle or None,
             )
             payload = response.json()
         except (HubError, ValueError) as exc:
@@ -333,8 +368,13 @@ class ClawHubProvider:
         return HubVerdict(status="suspicious", detail=decision or "hub flagged this package")
 
     def fetch(self, slug: str, *, version: str | None = None) -> FetchedSkill:
+        owner_handle, skill_slug = split_owner_slug(slug)
         response = self._get(
-            "/download", slug=slug, version=version, tag=None if version else "latest"
+            "/download",
+            slug=skill_slug,
+            version=version,
+            tag=None if version else "latest",
+            ownerHandle=owner_handle or None,
         )
         tmp = Path(tempfile.mkdtemp(prefix="deeptutor-skill-"))
         try:
@@ -348,15 +388,21 @@ class ClawHubProvider:
             raise
         resolved_version = version or self._latest_version(slug)
         return FetchedSkill(
-            ref=HubSkillRef(hub=self.name, slug=slug, version=resolved_version),
+            ref=HubSkillRef(
+                hub=self.name,
+                slug=skill_slug,
+                owner_handle=owner_handle,
+                version=resolved_version,
+            ),
             root=root,
             cleanup_dir=tmp,
         )
 
     def _latest_version(self, slug: str) -> str:
         """Resolve the version actually served by an untagged download."""
+        owner_handle, skill_slug = split_owner_slug(slug)
         try:
-            payload = self._get(f"/skills/{slug}").json()
+            payload = self._get(f"/skills/{skill_slug}", ownerHandle=owner_handle or None).json()
         except (HubError, ValueError):
             return ""
         if not isinstance(payload, dict):
@@ -376,8 +422,10 @@ class ClawHubProvider:
             return None
         stats = row.get("stats") if isinstance(row.get("stats"), dict) else {}
         owner = row.get("owner") if isinstance(row.get("owner"), dict) else {}
+        owner_handle = _owner_handle_from_row(row)
         return {
             "slug": slug,
+            "owner_handle": owner_handle,
             "name": str(row.get("displayName") or row.get("name") or slug),
             "summary": str(row.get("summary") or row.get("description") or ""),
             "version": str(row.get("version") or ""),
@@ -424,14 +472,19 @@ class ClawHubProvider:
 
     def detail(self, slug: str) -> dict[str, Any]:
         """Full metadata + SKILL.md body for one hub skill (browser detail view)."""
+        owner_handle, skill_slug = split_owner_slug(slug)
         try:
-            payload = self._get(f"/skills/{slug}").json()
+            payload = self._get(f"/skills/{skill_slug}", ownerHandle=owner_handle or None).json()
         except ValueError as exc:
             raise HubError(f"{self.name}: skill detail returned invalid JSON") from exc
         if not isinstance(payload, dict):
             raise HubError(f"{self.name}: unrecognised skill detail shape")
         skill = payload.get("skill") if isinstance(payload.get("skill"), dict) else payload
-        listing = self._listing_from_row(skill) or {"slug": slug, "name": slug}
+        listing = self._listing_from_row(skill) or {
+            "slug": skill_slug,
+            "name": skill_slug,
+        }
+        listing.setdefault("owner_handle", owner_handle)
         # Owner sometimes lives at the envelope top level, not inside ``skill``.
         if not listing.get("owner") and isinstance(payload.get("owner"), dict):
             owner = payload["owner"]
@@ -687,6 +740,7 @@ def install_from_hub(
     """
     hub, slug, version = parse_hub_ref(ref)
     resolved = provider or get_hub_provider(hub)
+    owner_handle, skill_slug = split_owner_slug(slug)
 
     verdict = resolved.verify(slug, version=version)
     if verdict.status == "suspicious" and not allow_unverified:
@@ -697,6 +751,15 @@ def install_from_hub(
         )
 
     fetched = resolved.fetch(slug, version=version)
+    origin = {
+        "hub": hub,
+        "slug": skill_slug,
+        "version": fetched.ref.version or version or "",
+        "verdict": verdict.status,
+        "installed_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+    if owner_handle:
+        origin["owner_handle"] = owner_handle
     try:
         result = service.install_tree(
             fetched.root,
@@ -706,13 +769,7 @@ def install_from_hub(
             # Stamp the source hub as a tag so imported skills are visibly
             # grouped (e.g. an ``eduhub`` tag) in the user's Skills list.
             extra_tags=[hub],
-            origin={
-                "hub": hub,
-                "slug": slug,
-                "version": fetched.ref.version or version or "",
-                "verdict": verdict.status,
-                "installed_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            },
+            origin=origin,
         )
     finally:
         fetched.cleanup()

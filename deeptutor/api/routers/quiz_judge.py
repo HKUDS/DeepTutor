@@ -8,6 +8,7 @@ used by ``unified_ws``.
 
 from __future__ import annotations
 
+import asyncio
 import base64 as _b64
 import logging
 from typing import Any
@@ -138,7 +139,7 @@ async def _build_multimodal_user_content(
 
     For ``url``-only records we resolve local AttachmentStore paths to
     base64 here (most providers can fetch external URLs themselves, but
-    locally-hosted ``/api/attachments/...`` is only reachable from the
+    locally-hosted ``/files/attachments/...`` is only reachable from the
     browser). Falls back to passing the URL through when resolution is
     not possible.
     """
@@ -193,7 +194,7 @@ def _guess_image_mime(filename: str | None) -> str:
     }.get(ext, "image/png")
 
 
-@router.websocket("/question/judge")
+@router.websocket("/questions/judge")
 async def websocket_quiz_judge(websocket: WebSocket):
     """Stream an AI judgment for a single quiz answer.
 
@@ -400,16 +401,19 @@ async def websocket_quiz_judge(websocket: WebSocket):
             )
 
     try:
-        async for chunk in llm_stream(
-            prompt=user_prompt,
-            system_prompt=system_prompt,
-            **stream_kwargs,
-        ):
-            if not chunk:
-                continue
-            if not await safe_send({"type": "text", "content": chunk}):
-                break
+        async with asyncio.timeout(2 * 60):
+            async for chunk in llm_stream(
+                prompt=user_prompt,
+                system_prompt=system_prompt,
+                **stream_kwargs,
+            ):
+                if not chunk:
+                    continue
+                if not await safe_send({"type": "text", "content": chunk}):
+                    break
         await safe_send({"type": "done"})
+    except TimeoutError:
+        await safe_send({"type": "error", "content": "AI judge timed out. Please try again."})
     except WebSocketDisconnect:
         logger.debug("AI judge client disconnected mid-stream")
     except Exception as exc:

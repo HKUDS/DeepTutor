@@ -34,6 +34,8 @@ class ImagegenConfig:
     response_format: str = ""  # "" | "url" | "b64_json"
     # Image generation is slow; allow generous wall-clock per request.
     request_timeout: int = 120
+    poll_interval: float = 2.0
+    poll_timeout: int = 300
 
 
 __all__ = ["ImagegenConfig"]

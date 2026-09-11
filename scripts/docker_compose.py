@@ -24,6 +24,7 @@ DOCKER_ENV_PATH = SETTINGS_DIR / "docker.env"
 DEFAULT_BACKEND_PORT = 8001
 DEFAULT_FRONTEND_PORT = 3782
 DEFAULT_POCKETBASE_PORT = 8090
+DEFAULT_WORKSPACE_HOST = Path("data/user/workspace")
 
 
 def _read_json_object(path: Path) -> dict[str, Any]:
@@ -77,17 +78,36 @@ def _compose_command(args: list[str]) -> list[str]:
     return [docker, "compose", "--env-file", str(DOCKER_ENV_PATH), *args]
 
 
+def ensure_workspace_host(raw_path: str | None = None) -> Path:
+    """Create the host workspace and nested writable outputs bind.
+
+    Compose can create a missing bind source as root, which leaves the
+    unprivileged app/runner unable to write it. Preparing both directories as
+    the invoking user also makes the effective path explicit before startup.
+    """
+    raw = str(raw_path or os.environ.get("DEEPTUTOR_WORKSPACE_HOST") or "").strip()
+    candidate = Path(raw).expanduser() if raw else DEFAULT_WORKSPACE_HOST
+    if not candidate.is_absolute():
+        candidate = PROJECT_ROOT / candidate
+    candidate = candidate.resolve()
+    candidate.mkdir(parents=True, exist_ok=True)
+    (candidate / "outputs").mkdir(parents=True, exist_ok=True)
+    return candidate
+
+
 def main(argv: list[str] | None = None) -> int:
     args = list(argv if argv is not None else sys.argv[1:])
     if not args:
         args = ["up", "-d"]
 
     values = render_docker_env()
+    workspace_host = ensure_workspace_host()
     print(
         "Docker settings: "
         f"backend={values['DEEPTUTOR_DOCKER_BACKEND_PORT']} "
         f"frontend={values['DEEPTUTOR_DOCKER_FRONTEND_PORT']} "
-        f"pocketbase={values['DEEPTUTOR_DOCKER_POCKETBASE_PORT']}",
+        f"pocketbase={values['DEEPTUTOR_DOCKER_POCKETBASE_PORT']} "
+        f"workspace={workspace_host}",
         file=sys.stderr,
     )
 

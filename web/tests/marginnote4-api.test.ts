@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { connectMarginNote4Library } from "../lib/knowledge-api";
+import { connectMarginNote4Library } from "../features/knowledge/api/catalog";
 import {
   getMarginNote4Status,
   listMarginNote4Devices,
@@ -60,10 +60,10 @@ test("every device-bridge call names its library through X-MN4-KB", async () => 
     assert.deepEqual(
       calls.map((c) => [c.method, c.input, c.kb]),
       [
-        ["POST", "/api/v1/marginnote4/pair", "My Lib"],
-        ["GET", "/api/v1/marginnote4/devices", "My Lib"],
-        ["DELETE", "/api/v1/marginnote4/devices/d1", "My Lib"],
-        ["GET", "/api/v1/marginnote4/status", "My Lib"],
+        ["POST", "/api/marginnote4/pair", "My Lib"],
+        ["GET", "/api/marginnote4/devices", "My Lib"],
+        ["DELETE", "/api/marginnote4/devices/d1", "My Lib"],
+        ["GET", "/api/marginnote4/status", "My Lib"],
       ],
     );
   } finally {
@@ -102,7 +102,7 @@ test("a device id is escaped into the revoke path", async () => {
   });
   try {
     await revokeMarginNote4Device({ kbName: "Lib", deviceId: "a/b?c" });
-    assert.equal(url, "/api/v1/marginnote4/devices/a%2Fb%3Fc");
+    assert.equal(url, "/api/marginnote4/devices/a%2Fb%3Fc");
   } finally {
     restore();
   }

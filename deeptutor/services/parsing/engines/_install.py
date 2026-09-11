@@ -37,12 +37,19 @@ logger = logging.getLogger(__name__)
 # pyproject.toml. Engines absent here (text_only built-in, mineru external
 # CLI/API) have no one-click install.
 ENGINE_PIP_SPECS: dict[str, list[str]] = {
-    # Pin <1.0: the 1.x line pulls onnxruntime + downloads a layout model and
-    # drops image extraction — keep the lightweight, image-capable pre-1.0 line.
-    "pymupdf4llm": ["pymupdf4llm>=0.0.17,<1.0"],
-    "markitdown": ["markitdown[pdf,docx,pptx,xlsx]>=0.0.1a2"],
-    "docling": ["docling>=2.0.0"],
-    "liteparse": ["liteparse>=2.11.1,<3.0"],
+    "pymupdf4llm": ["pymupdf4llm>=1.28.2"],
+    # ``all`` is upstream's supported way to install every built-in converter
+    # dependency (PDF, Office, Outlook, audio, and future additions).
+    "markitdown": ["markitdown[all]>=0.1.7"],
+    # Keep the base converter and every format-specific dependency aligned
+    # with the Docling compatibility floor.  ``format-video`` also brings the
+    # ASR dependencies used by audio; legacy Office still needs LibreOffice
+    # and video conversion still needs ffmpeg on the host, per Docling.
+    "docling": [
+        "docling[xbrl]>=2.123.1",
+        "docling-slim[format-iwork,format-opendocument,format-video]>=2.123.1",
+    ],
+    "liteparse": ["liteparse>=2.14.2"],
 }
 
 # Engine id -> console-script argv that downloads its model weights. The script
@@ -78,9 +85,12 @@ def resolve_model_downloader(engine: str) -> Optional[list[str]]:
     if not parts:
         return None
     name = parts[0]
-    sibling = Path(sys.executable).parent / name
-    if sibling.is_file() and os.access(sibling, os.X_OK):
-        return [str(sibling), *parts[1:]]
+    # Let the platform resolver search the active Python environment too.  On
+    # Windows pip installs console scripts as ``<name>.exe`` and ``which``
+    # applies PATHEXT; probing the extensionless Path directly misses it.
+    sibling = shutil.which(name, path=str(Path(sys.executable).parent))
+    if sibling:
+        return [sibling, *parts[1:]]
     found = shutil.which(name)
     if found:
         return [found, *parts[1:]]
@@ -93,6 +103,12 @@ def _invalidate_import_caches() -> None:
     try:
         importlib.invalidate_caches()
         package_version.cache_clear()
+        from .markitdown.formats import markitdown_supported_formats
+
+        # Docling format discovery is intentionally static and has no cache to
+        # invalidate: importing its runtime would pull PyTorch's OpenMP runtime
+        # into the FAISS backend process on macOS.
+        markitdown_supported_formats.cache_clear()
     except Exception:  # noqa: BLE001 - best effort
         logger.exception("Post-install cache invalidation failed")
 
@@ -119,7 +135,9 @@ class BackgroundJobManager:
         self._cancel_requested = False
 
     def start_install(self, *, engine: str, specs: list[str]) -> dict[str, Any]:
-        cmd = [sys.executable, "-m", "pip", "install", "--no-input", *specs]
+        # Always refresh an installed engine so one-click setup follows the
+        # newest release and picks up newly supported formats.
+        cmd = [sys.executable, "-m", "pip", "install", "--upgrade", "--no-input", *specs]
         return self._launch(
             kind="install",
             engine=engine,

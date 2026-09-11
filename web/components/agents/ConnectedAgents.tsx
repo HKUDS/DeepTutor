@@ -20,26 +20,31 @@ import {
 
 /**
  * Connected agents — live agents the chat composer can select and consult in
- * real time: Claude Code / Codex on the user's machine, or one of their
- * partners. Distinct from the imported-history agents below it: those replay
- * past transcripts, these drive the live agent now. CLI detection is
- * machine-global (is the CLI installed here); partners come from the user's
- * partner list. Consulting a partner opens a fresh session on it — every
- * consult within one DeepTutor chat is archived as one partner session.
+ * real time: a supported local harness, remote gateway, or one of the user's
+ * partners.
+ * Distinct from the imported-history agents below it: those replay
+ * past transcripts, these drive the live agent now. Runtime detection is
+ * machine-global; partners come from the user's partner list. Consulting a
+ * partner opens a fresh session on it — every consult within one DeepTutor
+ * chat is archived as one partner session.
  */
 
 const PARTNER_KIND = "partner";
+const REMOTE_HERMES_KIND = "hermes_remote";
 
 type Lang = { zh: string; en: string };
 
 function backendLabel(kind: string, tr: (l: Lang) => string): string {
   if (kind === "claude_code") return "Claude Code";
   if (kind === "codex") return "Codex";
-  if (kind === "gemini") return "Gemini CLI";
   if (kind === "antigravity") return "Antigravity CLI";
   if (kind === "kimi") return "Kimi CLI";
   if (kind === "opencode") return "opencode";
   if (kind === "mimo") return "MiMo Code";
+  if (kind === "hermes") return "Hermes Agent";
+  if (kind === REMOTE_HERMES_KIND) return "Hermes Agent (remote)";
+  if (kind === "openclaw") return "OpenClaw";
+  if (kind === "deepseek_harness") return "DeepSeek Harness";
   if (kind === PARTNER_KIND) return tr({ zh: "伙伴", en: "Partner" });
   return kind;
 }
@@ -80,7 +85,7 @@ export default function ConnectedAgents() {
     () => backends.filter((b) => b.available),
     [backends],
   );
-  // Something is connectable when a CLI is installed here or a partner exists.
+  // Something is connectable when a local/remote backend is available or a partner exists.
   const canConnect = available.length > 0 || partners.length > 0;
   const partnerName = useCallback(
     (id: string) => partners.find((p) => p.partner_id === id)?.name || id,
@@ -115,8 +120,8 @@ export default function ConnectedAgents() {
         icon={Plug}
         title={tr({ zh: "连接的智能体", en: "Connected agents" })}
         description={tr({
-          zh: "把本机的 Claude Code、Codex、Gemini CLI、Kimi CLI、opencode、MiMo Code 或你的伙伴接进来，在对话中选中后直接向它提问 —— 它的完整运行过程会实时展示。",
-          en: "Bring in the Claude Code, Codex, Gemini CLI, Kimi CLI, opencode, or MiMo Code on this machine, or one of your partners — select one in chat to consult it directly, with its full run shown live.",
+          zh: "把本机智能体、已配置的远程 Hermes 网关或你的伙伴接进来，在对话中选中后直接向它提问——运行过程会实时展示。",
+          en: "Bring in a supported local agent, a configured remote Hermes gateway, or one of your partners. Select it in chat to consult it directly and see its run live.",
         })}
         action={
           canConnect ? (
@@ -135,20 +140,20 @@ export default function ConnectedAgents() {
       {loading ? (
         <div className="flex items-center gap-2 px-1 text-[12px] text-[var(--muted-foreground)]">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          {tr({ zh: "检测本机智能体…", en: "Detecting local agents…" })}
+          {tr({ zh: "检测可用智能体…", en: "Detecting available agents…" })}
         </div>
       ) : !canConnect ? (
         <div className="rounded-xl border border-dashed border-[var(--border)] bg-[var(--card)]/40 px-4 py-5 text-[12.5px] leading-relaxed text-[var(--muted-foreground)]">
           {tr({
-            zh: "未在本机检测到可用的智能体 CLI（Claude Code、Codex、Gemini CLI、Kimi CLI、opencode、MiMo Code），也还没有任何伙伴。安装并登录其中任一 CLI，或在「伙伴」里新建一个，即可连接。",
-            en: "No agent CLI detected on this machine (Claude Code, Codex, Gemini CLI, Kimi CLI, opencode, MiMo Code), and no partners yet. Install and log in to any of them, or create a partner, to connect one.",
+            zh: "未检测到可用的本机智能体或已配置的远程 Hermes 网关，也还没有任何伙伴。安装并登录受支持的 CLI、配置远程网关，或在「伙伴」里新建一个，即可连接。",
+            en: "No supported local agent or configured remote Hermes gateway is available, and there are no partners yet. Set up a local CLI, configure the gateway, or create a partner to connect one.",
           })}
         </div>
       ) : connections.length === 0 ? (
         <div className="rounded-xl border border-dashed border-[var(--border)] bg-[var(--card)]/40 px-4 py-5 text-[12.5px] leading-relaxed text-[var(--muted-foreground)]">
           {tr({
-            zh: "尚未连接任何智能体。点击「连接智能体」把本机检测到的智能体 CLI 或你的伙伴接进来。",
-            en: "No agents connected yet. Click “Connect agent” to bring in a detected local agent CLI, or a partner.",
+            zh: "尚未连接任何智能体。点击「连接智能体」接入本机智能体、远程 Hermes 网关或你的伙伴。",
+            en: "No agents connected yet. Click “Connect agent” to add a local agent, remote Hermes gateway, or partner.",
           })}
         </div>
       ) : (
@@ -251,7 +256,7 @@ function ConnectModal({
   onClose: () => void;
   onConnected: () => void;
 }) {
-  // The agent-type choices: each detected CLI, plus "Partner" when any exist.
+  // The choices include every available runtime plus Partner when one exists.
   const options = useMemo(
     () => [
       ...backends.map((b) => ({ kind: b.kind, label: b.display_name })),
@@ -271,6 +276,7 @@ function ConnectModal({
   const [submitting, setSubmitting] = useState(false);
 
   const isPartner = kind === PARTNER_KIND;
+  const isRemote = kind === REMOTE_HERMES_KIND;
 
   // While the user hasn't renamed the connection, mirror the chosen partner's
   // name so the connection reads as that partner by default.
@@ -305,7 +311,9 @@ function ConnectModal({
       await connectSubagent(
         isPartner
           ? { name: trimmed, agent_kind: PARTNER_KIND, partner_id: partnerId }
-          : { name: trimmed, agent_kind: kind, cwd: cwd.trim() },
+          : isRemote
+            ? { name: trimmed, agent_kind: kind }
+            : { name: trimmed, agent_kind: kind, cwd: cwd.trim() },
       );
       onConnected();
     } catch (e) {
@@ -313,7 +321,7 @@ function ConnectModal({
     } finally {
       setSubmitting(false);
     }
-  }, [name, kind, cwd, isPartner, partnerId, existingNames, onConnected, tr]);
+  }, [name, kind, cwd, isPartner, isRemote, partnerId, existingNames, onConnected, tr]);
 
   return (
     <div
@@ -343,7 +351,7 @@ function ConnectModal({
             <label className="mb-1.5 block text-[12px] font-medium text-[var(--foreground)]">
               {tr({ zh: "智能体", en: "Agent" })}
             </label>
-            {/* Two per row — up to six CLIs plus Partner can be on offer. */}
+            {/* Two per row; the detected backend list is registry-driven. */}
             <div className="grid grid-cols-2 gap-2">
               {options.map((opt) => {
                 const Glyph = agentGlyph(opt.kind);
@@ -406,7 +414,7 @@ function ConnectModal({
             />
           </div>
 
-          {!isPartner && (
+          {!isPartner && !isRemote && (
             <div>
               <label className="mb-1.5 block text-[12px] font-medium text-[var(--foreground)]">
                 {tr({

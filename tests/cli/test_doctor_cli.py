@@ -8,10 +8,38 @@ from types import SimpleNamespace
 import pytest
 from typer.testing import CliRunner
 
-from deeptutor.services.doctor import DoctorCheck, DoctorReport, run_diagnostics
+from deeptutor.services.doctor import (
+    DoctorCheck,
+    DoctorReport,
+    _rag_check,
+    run_diagnostics,
+)
 from deeptutor_cli.main import app
 
 runner = CliRunner()
+
+
+def test_weknora_rag_check_skips_local_provider_preflight() -> None:
+    def preflight(provider: str):
+        raise AssertionError(f"WeKnora must not run local preflight: {provider}")
+
+    check = _rag_check(
+        {
+            "knowledge_bases": {
+                "remote": {
+                    "rag_provider": "weknora",
+                    "server_url": "http://localhost:8080",
+                    "api_key": "secret",
+                    "knowledge_base_id": "kb-1",
+                }
+            }
+        },
+        preflight,
+    )
+
+    assert check.status == "pass"
+    assert check.detail == "Ready for configured provider(s): weknora."
+    assert "secret" not in check.detail
 
 
 def _llm_config(**overrides):

@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
+  archivePartnerSession,
   destroyPartner,
   getPartner,
   startPartner,
@@ -35,6 +36,7 @@ import {
   type ExportableMessage,
 } from "@/lib/chat-export";
 import {
+  freshPartnerSessionKey,
   loadPartnerSessionKey,
   persistPartnerSessionKey,
 } from "@/lib/partner-session";
@@ -83,6 +85,7 @@ function PartnerDetail() {
     [],
   );
   const [showSaveModal, setShowSaveModal] = useState(false);
+  const [archiveBusy, setArchiveBusy] = useState(false);
   // The active web session key lives here so the Archive tab's Resume can
   // point the (always-mounted) Chat tab at a different conversation.
   const [sessionKey, setSessionKey] = useState("");
@@ -156,6 +159,28 @@ function PartnerDetail() {
     downloadChatMarkdown(exportMessages, { title: exportTitle });
   }, [exportMessages, exportTitle]);
 
+  const handleArchiveConversation = useCallback(async () => {
+    if (!sessionKey || chatMessages.length === 0 || archiveBusy) return;
+    setArchiveBusy(true);
+    try {
+      await archivePartnerSession(partnerId, sessionKey);
+      setChatMessages([]);
+      changeSessionKey(freshPartnerSessionKey());
+      setToast(t("Archived conversation"));
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : t("Action failed"));
+    } finally {
+      setArchiveBusy(false);
+    }
+  }, [
+    archiveBusy,
+    changeSessionKey,
+    chatMessages.length,
+    partnerId,
+    sessionKey,
+    t,
+  ]);
+
   const load = useCallback(async () => {
     try {
       setPartner(await getPartner(partnerId));
@@ -165,6 +190,9 @@ function PartnerDetail() {
       setLoading(false);
     }
   }, [partnerId]);
+  const handleRuntimeReady = useCallback(() => {
+    void load();
+  }, [load]);
 
   useEffect(() => {
     void load();
@@ -244,41 +272,43 @@ function PartnerDetail() {
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex items-center gap-3 border-b border-[var(--border)] px-5 py-3">
-        <Link
-          href="/partners"
-          aria-label={t("Back to Partners")}
-          className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
-        <PartnerAvatar
-          name={partner.name}
-          emoji={partner.emoji}
-          color={partner.color}
-          image={partner.avatar}
-          size={32}
-        />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="truncate text-[14px] font-medium text-[var(--foreground)]">
-              {partner.name}
-            </span>
-            <span
-              title={partner.running ? t("Running") : t("Stopped")}
-              className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                partner.running ? "bg-emerald-500" : "bg-[var(--border)]"
-              }`}
-            />
+      <div className="grid min-h-[64px] grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-b border-[var(--border)] px-5 py-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <Link
+            href="/partners"
+            aria-label={t("Back to Partners")}
+            className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+          <PartnerAvatar
+            name={partner.name}
+            emoji={partner.emoji}
+            color={partner.color}
+            image={partner.avatar}
+            size={32}
+          />
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="truncate text-[14px] font-medium text-[var(--foreground)]">
+                {partner.name}
+              </span>
+              <span
+                title={partner.running ? t("Running") : t("Stopped")}
+                className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                  partner.running ? "bg-emerald-500" : "bg-[var(--border)]"
+                }`}
+              />
+            </div>
+            {partner.description ? (
+              <p className="truncate text-[11.5px] text-[var(--muted-foreground)]">
+                {partner.description}
+              </p>
+            ) : null}
           </div>
-          {partner.description ? (
-            <p className="truncate text-[11.5px] text-[var(--muted-foreground)]">
-              {partner.description}
-            </p>
-          ) : null}
         </div>
 
-        <nav className="flex gap-0.5 rounded-lg bg-[var(--muted)] p-0.5">
+        <nav className="flex justify-self-center gap-0.5 rounded-lg bg-[var(--muted)] p-0.5">
           {tabs.map(({ key, label, icon: Icon }) => (
             <button
               key={key}
@@ -296,66 +326,84 @@ function PartnerDetail() {
           ))}
         </nav>
 
-        {(activeTab === "chat" || activeTab === "archive") && (
-          <>
-            <button
-              type="button"
-              onClick={() => setShowSaveModal(true)}
-              disabled={!canExport}
-              title={t("Save to Notebook")}
-              aria-label={t("Save to Notebook")}
-              className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <BookmarkPlus className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={handleDownload}
-              disabled={!canExport}
-              title={t("Download chat history as Markdown")}
-              aria-label={t("Download Markdown")}
-              className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <Download className="h-4 w-4" />
-            </button>
-          </>
-        )}
-        <button
-          type="button"
-          onClick={() => setShowLinkModal(true)}
-          title={t("Link a chat account")}
-          aria-label={t("Link a chat account")}
-          className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-        >
-          <Link2 className="h-4 w-4" />
-        </button>
-        {canManage ? (
-          <>
-            <button
-              type="button"
-              onClick={() => void toggleRunning()}
-              disabled={lifecycleBusy}
-              title={partner.running ? t("Stop") : t("Start")}
-              className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-40"
-            >
-              {lifecycleBusy ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : partner.running ? (
-                <Square className="h-4 w-4" />
-              ) : (
-                <Play className="h-4 w-4" />
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleDestroy()}
-              title={t("Delete partner")}
-              className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-red-500"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
-          </>
-        ) : null}
+        <div className="flex min-w-0 items-center justify-end gap-0.5">
+          {(activeTab === "chat" || activeTab === "archive") && (
+            <>
+              {activeTab === "chat" ? (
+                <button
+                  type="button"
+                  onClick={() => void handleArchiveConversation()}
+                  disabled={!chatMessages.length || archiveBusy}
+                  title={t("Archive")}
+                  aria-label={t("Archive")}
+                  className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {archiveBusy ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Archive className="h-4 w-4" />
+                  )}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => setShowSaveModal(true)}
+                disabled={!canExport}
+                title={t("Save to Notebook")}
+                aria-label={t("Save to Notebook")}
+                className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <BookmarkPlus className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={handleDownload}
+                disabled={!canExport}
+                title={t("Download chat history as Markdown")}
+                aria-label={t("Download Markdown")}
+                className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Download className="h-4 w-4" />
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            onClick={() => setShowLinkModal(true)}
+            title={t("Link a chat account")}
+            aria-label={t("Link a chat account")}
+            className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+          >
+            <Link2 className="h-4 w-4" />
+          </button>
+          {canManage ? (
+            <>
+              <button
+                type="button"
+                onClick={() => void toggleRunning()}
+                disabled={lifecycleBusy}
+                title={partner.running ? t("Stop") : t("Start")}
+                className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-40"
+              >
+                {lifecycleBusy ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : partner.running ? (
+                  <Square className="h-4 w-4" />
+                ) : (
+                  <Play className="h-4 w-4" />
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDestroy()}
+                title={t("Delete partner")}
+                className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-red-500"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </>
+          ) : null}
+        </div>
       </div>
 
       {showLinkModal ? (
@@ -377,11 +425,11 @@ function PartnerDetail() {
               emoji={partner.emoji}
               color={partner.color}
               avatar={partner.avatar}
-              running={partner.running}
               sessionKey={sessionKey}
               onSessionKeyChange={changeSessionKey}
               onToast={setToast}
               onMessagesChange={setChatMessages}
+              onRuntimeReady={handleRuntimeReady}
             />
           </div>
         </div>

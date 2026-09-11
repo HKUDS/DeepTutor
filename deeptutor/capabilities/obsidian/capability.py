@@ -19,6 +19,7 @@ from deeptutor.capabilities.obsidian.binding import obsidian_vault_refs, vault_f
 from deeptutor.capabilities.obsidian.tools import OBSIDIAN_TOOL_NAMES
 from deeptutor.capabilities.protocol import KnowledgeCapability, PromptBlock
 from deeptutor.core.context import UnifiedContext
+from deeptutor.services.prompt.lookup import prompt_text as _prompt_text
 
 
 class ObsidianCapability(KnowledgeCapability):
@@ -70,15 +71,6 @@ class ObsidianCapability(KnowledgeCapability):
     def pre_loop_seed(self, context: UnifiedContext) -> str:
         _ = context
         return ""
-
-
-def _prompt_text(prompts: dict[str, Any], path: tuple[str, ...]) -> str:
-    value: Any = prompts
-    for key in path:
-        if not isinstance(value, dict):
-            return ""
-        value = value.get(key)
-    return value if isinstance(value, str) and value else ""
 
 
 def _load_system_prompt(language: str) -> str:

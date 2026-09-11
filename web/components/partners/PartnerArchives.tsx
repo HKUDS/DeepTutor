@@ -5,6 +5,8 @@ import {
   Archive,
   Clock3,
   MessageSquareText,
+  User,
+  Users,
   RefreshCw,
   RotateCcw,
   Trash2,
@@ -18,6 +20,7 @@ import {
   type PartnerSessionInfo,
 } from "@/lib/partners-api";
 import type { ExportableMessage } from "@/lib/chat-export";
+import { displaySessionTitle } from "@/lib/session-title";
 
 interface HistoryMessage {
   role: string;
@@ -68,7 +71,9 @@ export default function PartnerArchives({
   const loadSessions = useCallback(async () => {
     setLoadingSessions(true);
     try {
-      const next = await getPartnerSessions(partnerId);
+      const next = (await getPartnerSessions(partnerId)).filter(
+        (session) => session.archived,
+      );
       setSessions(next);
       setSelectedKey((current) => {
         if (
@@ -163,7 +168,7 @@ export default function PartnerArchives({
         <div className="mb-3 flex items-center justify-between gap-2">
           <div>
             <h2 className="text-[13px] font-medium text-[var(--foreground)]">
-              {t("Conversations")}
+              {t("Archived conversations")}
             </h2>
             <p className="text-[11.5px] text-[var(--muted-foreground)]">
               {sessions.length
@@ -203,8 +208,10 @@ export default function PartnerArchives({
                   <MessageSquareText className="h-3.5 w-3.5 shrink-0 text-[var(--muted-foreground)]" />
                 )}
                 <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-[var(--foreground)]">
-                  {session.title ||
-                    (session.archived ? t("Archived") : t("New conversation"))}
+                  {displaySessionTitle(
+                    session.title,
+                    session.archived ? t("Archived") : t("New conversation"),
+                  )}
                 </span>
                 <span className="text-[11px] text-[var(--muted-foreground)]">
                   {session.message_count}
@@ -215,9 +222,29 @@ export default function PartnerArchives({
                   {session.last_message}
                 </p>
               ) : null}
-              <div className="mt-1 flex items-center gap-1 text-[10.5px] text-[var(--muted-foreground)]">
-                <Clock3 className="h-3 w-3" />
-                {formatTime(session.updated_at)}
+              <div className="mt-1 flex items-center gap-2 text-[10.5px] text-[var(--muted-foreground)]">
+                <span className="flex items-center gap-1">
+                  <Clock3 className="h-3 w-3" />
+                  {formatTime(session.updated_at)}
+                </span>
+                {/* Which conversation on the platform this came from. One
+                    partner commonly serves several study groups plus DMs, and
+                    without this every one of them reads as a private chat
+                    (#1229). Sessions recorded before the origin was stored
+                    carry none, and simply show nothing extra. */}
+                {session.chat_id ? (
+                  <span
+                    className="flex min-w-0 items-center gap-1"
+                    title={session.chat_id}
+                  >
+                    {session.scope === "group" ? (
+                      <Users className="h-3 w-3 shrink-0" />
+                    ) : session.scope === "direct" ? (
+                      <User className="h-3 w-3 shrink-0" />
+                    ) : null}
+                    <span className="truncate">{session.chat_id}</span>
+                  </span>
+                ) : null}
               </div>
             </button>
           ))}
@@ -236,10 +263,12 @@ export default function PartnerArchives({
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <h3 className="truncate text-[13px] font-medium text-[var(--foreground)]">
-                    {selected.title ||
-                      (selected.archived
+                    {displaySessionTitle(
+                      selected.title,
+                      selected.archived
                         ? t("Archived conversation")
-                        : t("New conversation"))}
+                        : t("New conversation"),
+                    )}
                   </h3>
                   <p className="text-[11.5px] text-[var(--muted-foreground)]">
                     {(selected.archived ? `${t("Archived")} · ` : "") +

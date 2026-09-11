@@ -1,33 +1,37 @@
+from __future__ import annotations
+
 import asyncio
 from datetime import datetime
 import json
 import logging
+from pathlib import Path
 import re
 import traceback
-from typing import AsyncGenerator, Literal
+from typing import TYPE_CHECKING, AsyncGenerator, Literal
+import urllib.parse
 import uuid
 
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
-from deeptutor.co_writer.edit_agent import (
-    EditAgent,
-    append_history,
-    load_history,
-    print_stats,
-    tool_calls_dir,
+# ``docx_converter`` imports python-docx lazily, so this stays import-cheap.
+from deeptutor.co_writer.docx_converter import (
+    DocxConversionError,
+    docx_to_markdown,
+    markdown_to_docx,
 )
 from deeptutor.co_writer.storage import (
     CoWriterDocument,
     CoWriterDocumentSummary,
     get_co_writer_storage,
 )
-from deeptutor.core.stream_bus import StreamBus
+from deeptutor.runtime.stream_bus import StreamBus
 from deeptutor.services.config import PROJECT_ROOT, load_config_with_main
-from deeptutor.services.llm import clean_thinking_tags
-from deeptutor.services.rag.pipelines.pageindex import is_pageindex_kb
 from deeptutor.services.settings.interface_settings import get_response_language
+
+if TYPE_CHECKING:
+    from deeptutor.co_writer.edit_agent import EditAgent
 
 router = APIRouter()
 
@@ -36,7 +40,7 @@ config = load_config_with_main("main.yaml", PROJECT_ROOT)
 log_dir = config.get("paths", {}).get("user_log_dir") or config.get("logging", {}).get("log_dir")
 logger = logging.getLogger(__name__)
 
-_edit_agent: EditAgent | None = None
+_edit_agent: "EditAgent | None" = None
 
 
 def _current_language() -> str:
@@ -53,6 +57,8 @@ def get_edit_agent() -> EditAgent:
     2. Latest LLM configuration from Settings is always used
     """
     global _edit_agent
+    from deeptutor.co_writer.edit_agent import EditAgent
+
     lang = _current_language()
     if _edit_agent is None or getattr(_edit_agent, "language", None) != lang:
         _edit_agent = EditAgent(language=lang)
@@ -66,6 +72,8 @@ def get_edit_agent() -> EditAgent:
 _MAX_DOC_CHARS = 600_000
 _MAX_SELECTION_CHARS = 120_000
 _MAX_INSTRUCTION_CHARS = 10_000
+_MAX_DOCX_UPLOAD_BYTES = 20 * 1024 * 1024
+_DOCX_UPLOAD_CHUNK = 1024 * 1024
 
 
 class EditRequest(BaseModel):
@@ -182,6 +190,8 @@ def _strip_markdown_fence(text: str) -> str:
 
 
 def _clean_react_edit_output(text: str, *, binding: str | None, model: str | None) -> str:
+    from deeptutor.services.llm import clean_thinking_tags
+
     return _strip_markdown_fence(clean_thinking_tags(text, binding, model))
 
 
@@ -236,6 +246,8 @@ async def _run_react_edit(
     language: str,
     stream: StreamBus | None = None,
 ) -> dict[str, object]:
+    from deeptutor.co_writer.edit_agent import append_history, print_stats
+
     selected_text, instruction, tools = _prepare_react_edit_request(request, language)
     operation_id = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid.uuid4().hex[:6]
 
@@ -246,6 +258,8 @@ async def _run_react_edit(
     query = instruction or selected_text[:400]
     context_blocks: list[str] = []
     tools_used: list[str] = []
+    from deeptutor.services.rag.pipelines.pageindex import is_pageindex_kb
+
     pageindex_source = "rag" in tools and is_pageindex_kb(request.kb_name)
     for tool in tools:
         kb_name = request.kb_name if tool == "rag" else None
@@ -407,8 +421,10 @@ async def _stream_react_edit(request: ReactEditRequest) -> AsyncGenerator[str, N
             task.cancel()
 
 
-@router.post("/edit", response_model=EditResponse)
+@router.post("/documents/actions/edit", response_model=EditResponse)
 async def edit_text(request: EditRequest):
+    from deeptutor.co_writer.edit_agent import print_stats
+
     try:
         # Get agent with refreshed LLM configuration from Settings
         agent = get_edit_agent()
@@ -431,7 +447,7 @@ async def edit_text(request: EditRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/edit_react", response_model=ReactEditResponse)
+@router.post("/documents/actions/edit-react", response_model=ReactEditResponse)
 async def edit_text_react(request: ReactEditRequest):
     try:
         return await _run_react_edit(request, language=_current_language())
@@ -442,7 +458,7 @@ async def edit_text_react(request: ReactEditRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/edit_react/stream")
+@router.post("/documents/actions/edit-react/stream")
 async def edit_text_react_stream(request: ReactEditRequest):
     try:
         _prepare_react_edit_request(request, _current_language())
@@ -455,9 +471,11 @@ async def edit_text_react_stream(request: ReactEditRequest):
     )
 
 
-@router.post("/automark", response_model=AutoMarkResponse)
+@router.post("/documents/actions/automark", response_model=AutoMarkResponse)
 async def auto_mark_text(request: AutoMarkRequest):
     """AI auto-mark text"""
+    from deeptutor.co_writer.edit_agent import print_stats
+
     try:
         # Get agent with refreshed LLM configuration from Settings
         agent = get_edit_agent()
@@ -473,9 +491,11 @@ async def auto_mark_text(request: AutoMarkRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/history")
+@router.get("/documents/history")
 async def get_history():
     """Get all operation history"""
+    from deeptutor.co_writer.edit_agent import load_history
+
     try:
         history = load_history()
         return {"history": history, "total": len(history)}
@@ -483,9 +503,11 @@ async def get_history():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/history/{operation_id}")
+@router.get("/documents/history/{operation_id}")
 async def get_operation(operation_id: str):
     """Get single operation details"""
+    from deeptutor.co_writer.edit_agent import load_history
+
     try:
         history = load_history()
         for op in history:
@@ -498,9 +520,11 @@ async def get_operation(operation_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/tool_calls/{operation_id}")
+@router.get("/documents/tool-calls/{operation_id}")
 async def get_tool_call(operation_id: str):
     """Get tool call details"""
+    from deeptutor.co_writer.edit_agent import tool_calls_dir
+
     try:
         # Find matching file
         for filepath in tool_calls_dir().glob(f"{operation_id}_*.json"):
@@ -596,6 +620,101 @@ async def create_document(request: CreateDocumentRequest) -> DocumentResponse:
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class ExportDocxRequest(BaseModel):
+    title: str = ""
+    content: str = Field(default="", max_length=_MAX_DOC_CHARS)
+
+
+def _docx_download_filename(title: str) -> str:
+    raw = (title or "co-writer").strip() or "co-writer"
+    safe = re.sub(r'[\\/:*?"<>|\x00-\x1f\x7f]', "-", raw).strip(" .")[:80]
+    safe = safe or "co-writer"
+    if not safe.lower().endswith(".docx"):
+        safe = f"{safe}.docx"
+    return safe
+
+
+def _content_disposition(filename: str) -> str:
+    """Build a header that survives non-ASCII titles (RFC 6266 / RFC 5987).
+
+    Header values are latin-1 encoded on the wire, so a CJK or accented title
+    must go in the ``filename*`` parameter with an ASCII ``filename`` fallback.
+    """
+    ascii_name = filename.encode("ascii", "ignore").decode("ascii").strip(" .")
+    if not ascii_name.lower().endswith(".docx"):
+        ascii_name = f"{ascii_name}.docx" if ascii_name else "co-writer.docx"
+    quoted = urllib.parse.quote(filename, safe="")
+    return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quoted}"
+
+
+@router.post("/documents/import/docx", response_model=DocumentResponse)
+async def import_docx(file: UploadFile = File(...)) -> DocumentResponse:
+    filename = (file.filename or "").strip()
+    if not filename:
+        raise HTTPException(status_code=400, detail="The upload has no filename.")
+    ext = Path(filename).suffix.lower()
+    if ext == ".doc":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Legacy .doc files are not supported yet. "
+                "Please save the document as .docx and try again."
+            ),
+        )
+    if ext != ".docx":
+        raise HTTPException(status_code=400, detail="Only .docx files can be imported.")
+
+    chunks: list[bytes] = []
+    written = 0
+    while chunk := await file.read(_DOCX_UPLOAD_CHUNK):
+        written += len(chunk)
+        if written > _MAX_DOCX_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"{filename} exceeds the {_MAX_DOCX_UPLOAD_BYTES // (1024 * 1024)} MB limit."
+                ),
+            )
+        chunks.append(chunk)
+    if written == 0:
+        raise HTTPException(status_code=400, detail=f"{filename} is empty.")
+
+    data = b"".join(chunks)
+    try:
+        markdown = await asyncio.to_thread(docx_to_markdown, data, filename)
+    except DocxConversionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    title = Path(filename).stem.strip()[:120] or None
+    try:
+        storage = get_co_writer_storage()
+        document = storage.create_document(title=title, content=markdown)
+        return DocumentResponse.from_model(document)
+    except Exception as exc:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/documents/export/docx")
+async def export_docx(request: ExportDocxRequest) -> Response:
+    try:
+        data = await asyncio.to_thread(markdown_to_docx, request.content, request.title)
+    except DocxConversionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    filename = _docx_download_filename(request.title)
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": _content_disposition(filename)},
+    )
 
 
 @router.get("/documents/{doc_id}", response_model=DocumentResponse)

@@ -6,28 +6,60 @@ import {
   Archive,
   ArchiveRestore,
   Check,
+  ChevronDown,
   ChevronRight,
   GraduationCap,
   MoreHorizontal,
   Pencil,
   Pin,
   PinOff,
+  RotateCcw,
   Trash2,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { SessionAvatar } from "@/components/sidebar/SessionAvatar";
+import {
+  deriveSessionMark,
+  SessionAvatar,
+} from "@/components/sidebar/SessionAvatar";
+import { useUnreadSessions } from "@/lib/session-unread";
 import type { StudyCourse } from "@/lib/courses-api";
+import type { MasteryTopicLabel } from "@/lib/learning-api";
+import type { ReadingCollectionLabel } from "@/lib/reading-workspace-api";
 import type {
   SessionOrganizationPatch,
   SessionSummary,
 } from "@/lib/session-api";
 import { organizeSessionTree } from "@/lib/session-organization";
-import { isPlaceholderSessionTitle } from "@/lib/session-title";
+import {
+  displaySessionTitle,
+  isPlaceholderSessionTitle,
+} from "@/lib/session-title";
+import { useDragSort } from "@/hooks/useDragSort";
+import { placeMenu, type FloatingMenuPosition } from "@/lib/floating-menu";
+import {
+  buildSidebarEntries,
+  type SidebarGroupEntry,
+} from "@/lib/sidebar-entries";
+import {
+  readCollapsedGroups,
+  writeCollapsedGroups,
+} from "@/lib/sidebar-layout";
 
 interface OrganizedSessionListProps {
   sessions: SessionSummary[];
   courses: StudyCourse[];
+  /** Topics whose study conversations get their own group. Omit for none. */
+  masteryTopics?: MasteryTopicLabel[];
+  /** Collections whose reading conversations get their own group. */
+  readingCollections?: ReadingCollectionLabel[];
   activeSessionId: string | null;
+  /**
+   * Conversations the caller is streaming right now. They sort above the rest
+   * (see ``organizeSessionTree``) — this list is only refetched when a turn
+   * ends, so without it the conversation you are waiting on can sit halfway
+   * down under a timestamp from last week.
+   */
+  liveSessionIds?: ReadonlySet<string>;
   emptyLabel?: string;
   nested?: boolean;
   onSelect: (sessionId: string) => void | Promise<void>;
@@ -37,58 +69,47 @@ interface OrganizedSessionListProps {
     sessionId: string,
     patch: SessionOrganizationPatch,
   ) => void | Promise<void>;
-}
-
-interface FloatingMenuPosition {
-  left: number;
-  top: number;
-  maxHeight: number;
-  openUpward: boolean;
+  /**
+   * Hand-arranged order of the top-level entries — conversation ids and group
+   * ids in one list. Needed here as well as at the caller because
+   * ``organizeSessionTree`` sorts roots by pin, activity and recency; without
+   * it a dragged entry would snap back on the next render.
+   */
+  manualOrder?: readonly string[];
+  /** Enables dragging the top-level entries; receives their new order. */
+  onReorder?: (entryIds: string[]) => void;
+  /** Drops the hand-arranged order and returns the list to recency. */
+  onResetOrder?: () => void;
+  /** The scrolling ancestor, so a drag can reach rows past the fold. */
+  scrollRef?: React.RefObject<HTMLElement | null>;
 }
 
 const MENU_WIDTH = 240;
-const MENU_GAP = 8;
-const VIEWPORT_MARGIN = 12;
-
-function placeMenu(anchor: DOMRect): FloatingMenuPosition {
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
-  const preferredHeight = Math.min(380, viewportHeight - VIEWPORT_MARGIN * 2);
-  const roomBelow = viewportHeight - anchor.bottom - MENU_GAP - VIEWPORT_MARGIN;
-  const roomAbove = anchor.top - MENU_GAP - VIEWPORT_MARGIN;
-  const openUpward = roomBelow < preferredHeight && roomAbove > roomBelow;
-  const maxHeight = Math.max(
-    140,
-    Math.min(preferredHeight, openUpward ? roomAbove : roomBelow),
-  );
-
-  const roomRight = viewportWidth - anchor.right - MENU_GAP - VIEWPORT_MARGIN;
-  const roomLeft = anchor.left - MENU_GAP - VIEWPORT_MARGIN;
-  const preferredLeft =
-    roomRight >= MENU_WIDTH || roomRight >= roomLeft
-      ? anchor.right + MENU_GAP
-      : anchor.left - MENU_WIDTH - MENU_GAP;
-  const left = Math.max(
-    VIEWPORT_MARGIN,
-    Math.min(preferredLeft, viewportWidth - MENU_WIDTH - VIEWPORT_MARGIN),
-  );
-  const top = openUpward ? anchor.top - MENU_GAP : anchor.bottom + MENU_GAP;
-
-  return { left, top, maxHeight, openUpward };
-}
 
 export default function OrganizedSessionList({
   sessions,
   courses,
+  masteryTopics = [],
+  readingCollections = [],
   activeSessionId,
+  liveSessionIds,
   emptyLabel,
   nested = true,
   onSelect,
   onRename,
   onDelete,
   onOrganize,
+  manualOrder,
+  onReorder,
+  onResetOrder,
+  scrollRef,
 }: OrganizedSessionListProps) {
+  // Reads the set; `SessionList` owns keeping it current.
+  const unread = useUnreadSessions();
   const { t } = useTranslation();
+  // Backend writes the English sentinel "New conversation" until the LLM
+  // title lands; mirror SessionList by showing a localized, breathing label.
+  const placeholderLabel = t("New chat");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -102,9 +123,77 @@ export default function OrganizedSessionList({
   const menuAnchorRef = useRef<HTMLButtonElement | null>(null);
 
   const { roots, childrenByParent } = useMemo(
-    () => organizeSessionTree(sessions, nested),
-    [nested, sessions],
+    () => organizeSessionTree(sessions, nested, liveSessionIds),
+    [liveSessionIds, nested, sessions],
   );
+
+  // Whether to reserve the disclosure column at all.
+  //
+  // Every row used to hold 18px open for a caret that only a conversation with
+  // tutor threads under it ever draws — and the sidebar is handed its list with
+  // those threads already filtered out, so there the column could never be
+  // filled: every dot and every title sat a fifth of the panel's width in for
+  // nothing. It is reserved when this particular list has something expandable
+  // in it, which keeps titles aligned on the surfaces that do (a course page,
+  // the history console) and hands the sidebar its left edge back.
+  const hasThreads = childrenByParent.size > 0;
+
+  /* One list, conversations and groups at the same level.
+   *
+   * A mastery topic and a reading collection are each a single unit here, sat
+   * in the slot of the newest conversation inside them, so the region reads by
+   * recency all the way down whatever surface the work happened on. Courses
+   * group the same way — assigning a conversation to one used to be write-only,
+   * and filing you cannot read back is not filing.
+   *
+   * The whole list is arrangeable by hand, groups included: what sits at the
+   * top of a sidebar is the learner's call, and the two kinds are peers. */
+  const entries = useMemo(
+    () =>
+      buildSidebarEntries({
+        roots,
+        courses,
+        masteryTopics,
+        readingCollections,
+        manualOrder,
+      }),
+    [courses, manualOrder, masteryTopics, readingCollections, roots],
+  );
+
+  const entryIds = useMemo(() => entries.map((entry) => entry.id), [entries]);
+  const drag = useDragSort({
+    ids: entryIds,
+    disabled: !onReorder,
+    onReorder: (next) => onReorder?.(next),
+    scrollRef,
+  });
+  // One collapse set for every kind of group — topic, collection, course.
+  // Their ids never collide, and a learner folding a group shut does not care
+  // which table it came from. Persisted, so a sidebar arranged once stays
+  // arranged across reloads.
+  const [collapsedCourses, setCollapsedCourses] = useState<Set<string>>(
+    new Set(),
+  );
+  // The ref carries the live set: two headings toggled inside one render pass
+  // would otherwise both start from the same stale state and the first would
+  // be lost.
+  const collapsedRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    const stored = new Set(readCollapsedGroups());
+    collapsedRef.current = stored;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCollapsedCourses(stored);
+  }, []);
+
+  const toggleCourse = (courseId: string) => {
+    const next = new Set(collapsedRef.current);
+    if (next.has(courseId)) next.delete(courseId);
+    else next.add(courseId);
+    collapsedRef.current = next;
+    setCollapsedCourses(next);
+    writeCollapsedGroups([...next]);
+  };
 
   useEffect(() => {
     if (!openMenuId) return;
@@ -200,6 +289,7 @@ export default function OrganizedSessionList({
           {children.length > 0 ? (
             <button
               type="button"
+              data-no-drag
               onClick={(event) => {
                 event.stopPropagation();
                 toggleChildren(session.session_id);
@@ -215,13 +305,14 @@ export default function OrganizedSessionList({
                 className={`transition-transform ${expanded ? "rotate-90" : ""}`}
               />
             </button>
-          ) : (
+          ) : hasThreads ? (
             <span className="w-3" />
-          )}
+          ) : null}
           <SessionAvatar
             sessionId={session.session_id}
-            running={session.status === "running"}
-            className={child ? "h-3.5 w-3.5 opacity-55" : "opacity-70"}
+            mark={deriveSessionMark(session, liveSessionIds, unread)}
+            size={child ? 11 : 12}
+            className={child ? "opacity-65" : "opacity-80"}
           />
           {child ? (
             <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[var(--muted)]/70 px-1.5 py-0.5 text-[9px] font-medium text-[var(--muted-foreground)]">
@@ -233,6 +324,7 @@ export default function OrganizedSessionList({
             <input
               value={draftTitle}
               autoFocus
+              data-no-drag
               onChange={(event) => setDraftTitle(event.target.value)}
               onBlur={() => void commitEdit()}
               onClick={(event) => event.stopPropagation()}
@@ -243,16 +335,19 @@ export default function OrganizedSessionList({
               }}
               className="min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--background)] px-1.5 py-0.5 text-[12px] outline-none focus:border-[var(--ring)]"
             />
+          ) : isPlaceholderSessionTitle(session.title) ? (
+            <span
+              className="dt-breathing-text min-w-0 flex-1 truncate text-[12.5px] italic text-[var(--muted-foreground)]"
+              title={placeholderLabel}
+            >
+              {displaySessionTitle(session.title, placeholderLabel)}
+            </span>
           ) : (
             <span
-              className={`min-w-0 flex-1 truncate text-[12.5px] ${
-                isPlaceholderSessionTitle(session.title)
-                  ? "italic opacity-70"
-                  : ""
-              }`}
+              className="min-w-0 flex-1 truncate text-[12.5px]"
               title={session.title}
             >
-              {session.title || t("New chat")}
+              {displaySessionTitle(session.title, placeholderLabel)}
             </span>
           )}
           {pinned ? <Pin size={10} className="shrink-0 opacity-55" /> : null}
@@ -263,6 +358,7 @@ export default function OrganizedSessionList({
           ) : null}
           <button
             type="button"
+            data-no-drag
             onClick={(event) => {
               event.stopPropagation();
               if (menuOpen) {
@@ -272,7 +368,10 @@ export default function OrganizedSessionList({
               }
               menuAnchorRef.current = event.currentTarget;
               setMenuPosition(
-                placeMenu(event.currentTarget.getBoundingClientRect()),
+                placeMenu(
+                  event.currentTarget.getBoundingClientRect(),
+                  MENU_WIDTH,
+                ),
               );
               setOpenMenuId(session.session_id);
             }}
@@ -335,37 +434,55 @@ export default function OrganizedSessionList({
                     setMenuPosition(null);
                   }}
                 />
-                <div className="my-1 border-t border-[var(--border)]/70" />
-                <div className="px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]/65">
-                  {t("Move to course")}
-                </div>
-                <MenuButton
-                  icon={GraduationCap}
-                  label={t("Unclassified")}
-                  checked={!session.preferences?.course_id}
-                  onClick={() => {
-                    void onOrganize(session.session_id, { course_id: "" });
-                    setOpenMenuId(null);
-                    setMenuPosition(null);
-                  }}
-                />
-                <div>
-                  {courses.map((course) => (
+                {courses.length > 0 ? (
+                  <>
+                    <div className="my-1 border-t border-[var(--border)]/70" />
+                    <div className="px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]/65">
+                      {t("Move to course")}
+                    </div>
                     <MenuButton
-                      key={course.id}
-                      color={course.color}
-                      label={course.name}
-                      checked={session.preferences?.course_id === course.id}
+                      icon={GraduationCap}
+                      label={t("Unclassified")}
+                      checked={!session.preferences?.course_id}
                       onClick={() => {
-                        void onOrganize(session.session_id, {
-                          course_id: course.id,
-                        });
+                        void onOrganize(session.session_id, { course_id: "" });
                         setOpenMenuId(null);
                         setMenuPosition(null);
                       }}
                     />
-                  ))}
-                </div>
+                    <div>
+                      {courses.map((course) => (
+                        <MenuButton
+                          key={course.id}
+                          color={course.color}
+                          label={course.name}
+                          checked={session.preferences?.course_id === course.id}
+                          onClick={() => {
+                            void onOrganize(session.session_id, {
+                              course_id: course.id,
+                            });
+                            setOpenMenuId(null);
+                            setMenuPosition(null);
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </>
+                ) : null}
+                {onResetOrder && (manualOrder?.length ?? 0) > 0 ? (
+                  <>
+                    <div className="my-1 border-t border-[var(--border)]/70" />
+                    <MenuButton
+                      icon={RotateCcw}
+                      label={t("Reset chat order")}
+                      onClick={() => {
+                        setOpenMenuId(null);
+                        setMenuPosition(null);
+                        onResetOrder();
+                      }}
+                    />
+                  </>
+                ) : null}
                 <div className="my-1 border-t border-[var(--border)]/70" />
                 <MenuButton
                   icon={Trash2}
@@ -387,8 +504,152 @@ export default function OrganizedSessionList({
     );
   };
 
+  /** A conversation row wrapped in the drag layer. */
+  const renderSortableRow = (session: SessionSummary) => {
+    if (!onReorder) return renderRow(session);
+    const { style, ...handlers } = drag.getItemProps(session.session_id);
+    const dragging = drag.draggingId === session.session_id;
+    return (
+      <div
+        key={session.session_id}
+        data-session-id={session.session_id}
+        {...handlers}
+        style={style}
+        className={`rounded-lg ${
+          dragging
+            ? "bg-[var(--background)]/85 shadow-lg ring-1 ring-[var(--border)]/70"
+            : ""
+        }`}
+      >
+        {renderRow(session)}
+      </div>
+    );
+  };
+
+  /**
+   * A collapsible group — a mastery topic, a reading collection, a course —
+   * standing at the same level as a single conversation, and dragged like one.
+   *
+   * Only the heading takes the press that starts a drag: grabbing a group by
+   * one of its rows and watching the whole block move is not what that press
+   * meant. The wrapper is still what the drag measures and shifts, so the gap a
+   * dragged group leaves behind is its real height — which is also why its
+   * spacing is padding rather than margin, since a margin sits outside the box
+   * the drag measures.
+   */
+  const renderGroup = (entry: SidebarGroupEntry) => {
+    const collapsed = collapsedCourses.has(entry.id);
+    const sortable = Boolean(onReorder);
+    const { style, ...handlers } = drag.getItemProps(entry.id);
+    const dragging = drag.draggingId === entry.id;
+    return (
+      <div
+        key={entry.id}
+        data-group-id={entry.id}
+        ref={sortable ? handlers.ref : undefined}
+        style={sortable ? style : undefined}
+        className={`pt-1.5 first:pt-0 ${
+          dragging
+            ? "rounded-lg bg-[var(--background)]/85 shadow-lg ring-1 ring-[var(--border)]/70"
+            : ""
+        }`}
+      >
+        <button
+          type="button"
+          onPointerDown={sortable ? handlers.onPointerDown : undefined}
+          onClickCapture={sortable ? handlers.onClickCapture : undefined}
+          onKeyDown={sortable ? handlers.onKeyDown : undefined}
+          onDragStartCapture={
+            sortable ? handlers.onDragStartCapture : undefined
+          }
+          onClick={() => toggleCourse(entry.id)}
+          aria-expanded={!collapsed}
+          // A quiet title, not a section banner: the same size and the same ink
+          // as the conversation titles it sits among, one weight heavier, with
+          // its mark column holding the two in one left edge. Earlier passes
+          // had it a hair smaller than a caption and uppercase, which shouted
+          // in a list of 12.5px rows and did nothing whatsoever to the CJK
+          // titles most of these groups actually carry.
+          className="group/heading flex w-full min-w-0 items-center gap-1.5 rounded-lg px-1.5 py-1 text-left text-[12.5px] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--background)]/40 hover:text-[var(--foreground)]"
+        >
+          <GroupMark entry={entry} />
+          <span className="min-w-0 truncate">{entry.label}</span>
+          {/* The caret follows the words rather than introducing them — a
+              title that can be folded, instead of a row of controls with a
+              label attached. */}
+          <ChevronDown
+            size={11}
+            strokeWidth={2}
+            className={`shrink-0 opacity-50 transition-[transform,opacity] duration-150 group-hover/heading:opacity-80 ${
+              collapsed ? "-rotate-90" : ""
+            }`}
+          />
+          <span className="flex-1" />
+          {/* Only while folded. An open group has its conversations on screen;
+              counting them for the reader is a number that says nothing. */}
+          {collapsed ? (
+            <span className="shrink-0 text-[10.5px] tabular-nums opacity-50">
+              {entry.rows.length}
+            </span>
+          ) : null}
+        </button>
+        {collapsed ? null : (
+          <div className="ml-1.5 border-l border-[var(--border)]/40 pl-1">
+            {entry.rows.map((session) => renderRow(session))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  /* One list, no heading over the conversations.
+   *
+   * The home conversations used to sit under a "Chat" heading of their own, on
+   * the reasoning that chat is one surface among several and all three should
+   * carry equal weight. In use it read as the opposite: the conversation you
+   * were in the middle of was two clicks and a fold away, and the heading it
+   * hid behind never told you anything its rows did not. Conversations are the
+   * thing this region is for, so they are the region. */
   return (
-    <div className="py-0.5">{roots.map((session) => renderRow(session))}</div>
+    <div className="py-0.5">
+      {entries.map((entry) =>
+        entry.kind === "group"
+          ? renderGroup(entry)
+          : renderSortableRow(entry.session),
+      )}
+    </div>
+  );
+}
+
+/**
+ * What a group wears in the column where its conversations carry their status
+ * mark.
+ *
+ * Mastery paths and reading collections used to show a lucide glyph here
+ * (`Route` / `BookText`). At 12px those sat in the same column as a session's
+ * status mark, at the same size, in an entirely different visual language —
+ * which is what made a mixed list read as two lists spliced together. A
+ * group's own title already says what kind of group it is, so the column is
+ * simply left empty for them.
+ *
+ * Courses keep their dot: the colour is a real identity (the same one the
+ * course wears everywhere else), and at 1.5px it cannot be mistaken for the
+ * 7px status mark a conversation carries.
+ *
+ * The fixed-width box is what holds the alignment — group titles and
+ * conversation titles start at the same x whether or not anything is drawn.
+ */
+function GroupMark({ entry }: { entry: SidebarGroupEntry }) {
+  return (
+    <span className="flex w-3 shrink-0 items-center justify-center">
+      {entry.group === "course" ? (
+        <span
+          aria-hidden
+          className="h-1.5 w-1.5 rounded-full"
+          style={{ backgroundColor: entry.color }}
+        />
+      ) : null}
+    </span>
   );
 }
 

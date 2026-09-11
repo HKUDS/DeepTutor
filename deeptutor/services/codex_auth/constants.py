@@ -1,7 +1,10 @@
 """Audited OpenAI Codex compatibility constants."""
 
 CODEX_UPSTREAM_COMMIT = "81da9deb065d7adb283816b19b40f89bcc484276"
-CODEX_CLIENT_VERSION = "0.145.0"
+# Catalog compatibility: rust-v0.153.4, commit
+# 3d2ee51ca2d5db578f328aa75e20aa22c0197c9a. Older versions omit eligible models.
+# This request version is independent of the installed CLI and OAuth audit above.
+CODEX_CLIENT_VERSION = "0.153.4"
 CODEX_OAUTH_ISSUER = "https://auth.openai.com"
 CODEX_OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 CODEX_OAUTH_SCOPE = "openid profile email offline_access api.connectors.read api.connectors.invoke"

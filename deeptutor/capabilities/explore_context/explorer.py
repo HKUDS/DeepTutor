@@ -29,19 +29,19 @@ from dataclasses import dataclass, field
 import logging
 from typing import Any, Callable
 
-from deeptutor.core.agentic import (
+from deeptutor.core.context import UnifiedContext
+from deeptutor.core.trace import build_trace_metadata, merge_trace_metadata, new_call_id
+from deeptutor.runtime.agentic import (
     LLMClientConfig,
     build_completion_kwargs,
     build_openai_client,
     can_use_native_tool_calling,
     dispatch_tool_calls,
 )
-from deeptutor.core.agentic.messages import assistant_message_with_tool_calls
-from deeptutor.core.agentic.tool_call_stream import ToolCallAccumulator
-from deeptutor.core.context import UnifiedContext
-from deeptutor.core.stream_bus import StreamBus
-from deeptutor.core.trace import build_trace_metadata, merge_trace_metadata, new_call_id
+from deeptutor.runtime.agentic.messages import assistant_message_with_tool_calls
+from deeptutor.runtime.agentic.tool_call_stream import ToolCallAccumulator
 from deeptutor.runtime.registry.tool_registry import get_tool_registry
+from deeptutor.runtime.stream_bus import StreamBus
 from deeptutor.services.llm import clean_thinking_tags, get_llm_config, get_token_limit_kwargs
 from deeptutor.services.llm import stream as llm_stream
 from deeptutor.services.llm.capabilities import threads_session_id
@@ -74,6 +74,7 @@ _KIND_BY_PREFIX: dict[str, tuple[str, str]] = {
     "hs-": ("Conversation transcript", "对话记录"),
     "nb-": ("Notebook record", "笔记本记录"),
     "bk-": ("Book excerpt", "书籍节选"),
+    "rd-": ("Reading excerpt", "阅读材料节选"),
     "qb-": ("Question-bank entry", "题库条目"),
     "at-": ("Document", "文档"),
 }
@@ -84,6 +85,9 @@ class _CallResult:
     text: str = ""
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
     output_chars: int = 0
+    # Streamed to the trace and also kept: a thinking model's provider needs
+    # it echoed on the assistant turn that issued the tool calls.
+    reasoning_content: str = ""
 
 
 class ContextExplorer:
@@ -109,6 +113,8 @@ class ContextExplorer:
             api_version=self.api_version,
             extra_headers=self.extra_headers or None,
             reasoning_effort=self.reasoning_effort,
+            wire_api=getattr(cfg, "wire_api", None) or "auto",
+            api_format=getattr(cfg, "api_format", None) or "auto",
         )
 
     async def investigate(
@@ -221,7 +227,13 @@ class ContextExplorer:
                 if not result.tool_calls:
                     investigation = result.text
                     break
-                messages.append(assistant_message_with_tool_calls(result.text, result.tool_calls))
+                messages.append(
+                    assistant_message_with_tool_calls(
+                        result.text,
+                        result.tool_calls,
+                        reasoning_content=result.reasoning_content or None,
+                    )
+                )
                 dispatch = await dispatch_tool_calls(
                     tool_calls=result.tool_calls,
                     context=context,
@@ -278,6 +290,7 @@ class ContextExplorer:
             kwargs["tool_choice"] = "auto"
 
         text_parts: list[str] = []
+        reasoning_parts: list[str] = []
         tool_acc = ToolCallAccumulator()
         output_chars = 0
         response_stream = await client.chat.completions.create(**kwargs)
@@ -293,6 +306,7 @@ class ContextExplorer:
                     delta, "reasoning", None
                 )
                 if reasoning:
+                    reasoning_parts.append(str(reasoning))
                     output_chars += len(reasoning)
                     await stream.thinking(
                         reasoning, source=EXPLORE_SOURCE, stage=EXPLORE_STAGE, metadata=chunk_meta
@@ -314,7 +328,10 @@ class ContextExplorer:
 
         tool_calls = tool_acc.collected()
         return _CallResult(
-            text="".join(text_parts), tool_calls=tool_calls, output_chars=output_chars
+            text="".join(text_parts),
+            tool_calls=tool_calls,
+            output_chars=output_chars,
+            reasoning_content="".join(reasoning_parts),
         )
 
     def _read_source_schemas(self, source_index: dict[str, str]) -> list[dict[str, Any]]:

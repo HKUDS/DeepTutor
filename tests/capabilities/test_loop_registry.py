@@ -101,7 +101,7 @@ def test_all_loop_capabilities_equals_builtins_without_plugins(monkeypatch) -> N
     monkeypatch.setattr(ep_module, "entry_points", _no_plugins)
 
     merged = registry.all_loop_capabilities()
-    assert merged == LOOP_CAPABILITIES
+    assert [cap.name for cap in merged] == [cap.name for cap in LOOP_CAPABILITIES]
 
 
 def test_external_class_is_appended(monkeypatch) -> None:
@@ -114,7 +114,9 @@ def test_external_class_is_appended(monkeypatch) -> None:
     monkeypatch.setattr(ep_module, "entry_points", fake_entry_points)
 
     merged = registry.all_loop_capabilities()
-    assert merged[: len(LOOP_CAPABILITIES)] == LOOP_CAPABILITIES
+    assert [cap.name for cap in merged[: len(LOOP_CAPABILITIES)]] == [
+        cap.name for cap in LOOP_CAPABILITIES
+    ]
     assert merged[-1].name == "demo_loop"
     assert merged[-1].owned_tools == ("demo_tool",)
 
@@ -144,7 +146,8 @@ def test_builtin_name_wins_and_warns(monkeypatch) -> None:
     merged = registry.all_loop_capabilities()
     names = [cap.name for cap in merged]
     assert names.count("mastery") == 1
-    assert LOOP_CAPABILITIES[0] is merged[0]
+    assert LOOP_CAPABILITIES[0] is not merged[0]
+    assert LOOP_CAPABILITIES[0].name == merged[0].name
     assert "shadow_tool" not in {t for cap in merged for t in cap.owned_tools}
     assert any("mastery" in w for w in warnings)
 
@@ -177,7 +180,7 @@ def test_invalid_object_is_skipped(monkeypatch) -> None:
     warnings = _capture_warnings(monkeypatch, registry)
 
     merged = registry.all_loop_capabilities()
-    assert merged == LOOP_CAPABILITIES
+    assert [cap.name for cap in merged] == [cap.name for cap in LOOP_CAPABILITIES]
     assert warnings
 
 

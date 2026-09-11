@@ -1,11 +1,22 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertCircle, CheckCircle2, Loader2, Save } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  GraduationCap,
+  Loader2,
+  Save,
+} from "lucide-react";
+import { useTranslation } from "react-i18next";
 import McpToolGroups from "@/components/common/McpToolGroups";
 import { toggleToolName as toggleName } from "@/lib/mcp-tool-groups";
 import { fetchAdminResources, fetchUserGrant, saveUserGrant } from "../api";
-import type { GrantPayload, MultiUserResources } from "../types";
+import type {
+  GrantPayload,
+  LearningPolicy,
+  MultiUserResources,
+} from "../types";
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
@@ -20,6 +31,24 @@ function emptyGrant(userId: string): GrantPayload {
     enabled_tools: null,
     mcp_tools: null,
     exec_enabled: null,
+    learning_policy: null,
+  };
+}
+
+const LEARNING_AGE_BANDS = ["6-8", "9-12", "13-15"] as const;
+
+function conservativeLearningPolicy(): LearningPolicy {
+  return {
+    age_band: "9-12",
+    locked_persona: "teacher",
+    allowed_capabilities: ["chat", "immersive_reading"],
+    default_capability: "immersive_reading",
+    allowed_surfaces: ["chat", "reading"],
+    reading: {
+      allow_upload: false,
+      material_ids: [],
+      extensions: [],
+    },
   };
 }
 
@@ -128,7 +157,14 @@ function ModeSwitch({
   );
 }
 
-export function GrantEditor({ userId }: { userId: string }) {
+export function GrantEditor({
+  userId,
+  lockLearningPolicy = false,
+}: {
+  userId: string;
+  lockLearningPolicy?: boolean;
+}) {
+  const { t } = useTranslation();
   const [resources, setResources] = useState<MultiUserResources | null>(null);
   const [grant, setGrant] = useState<GrantPayload>(() => emptyGrant(userId));
   const [loading, setLoading] = useState(true);
@@ -274,6 +310,66 @@ export function GrantEditor({ userId }: { userId: string }) {
     setGrant((current) => ({ ...current, [key]: value }));
   }
 
+  function enableLearningPolicy() {
+    setGrant((current) => ({
+      ...current,
+      learning_policy: conservativeLearningPolicy(),
+    }));
+  }
+
+  function disableLearningPolicy() {
+    setGrant((current) => ({ ...current, learning_policy: null }));
+  }
+
+  function setLearningAgeBand(ageBand: LearningPolicy["age_band"]) {
+    setGrant((current) =>
+      current.learning_policy
+        ? {
+            ...current,
+            learning_policy: { ...current.learning_policy, age_band: ageBand },
+          }
+        : current,
+    );
+  }
+
+  function updateReadingPolicy(
+    update: (reading: LearningPolicy["reading"]) => LearningPolicy["reading"],
+  ) {
+    setGrant((current) => {
+      if (!current.learning_policy) return current;
+      const reading = current.learning_policy.reading;
+      return {
+        ...current,
+        learning_policy: {
+          ...current.learning_policy,
+          allowed_surfaces: current.learning_policy.allowed_surfaces ?? [
+            "chat",
+            "reading",
+          ],
+          reading: update(reading),
+        },
+      };
+    });
+  }
+
+  function toggleReadingMaterial(materialId: string) {
+    updateReadingPolicy((reading) => ({
+      ...reading,
+      material_ids: reading.material_ids.includes(materialId)
+        ? reading.material_ids.filter((id) => id !== materialId)
+        : [...reading.material_ids, materialId],
+    }));
+  }
+
+  function toggleReadingExtension(extensionId: string) {
+    updateReadingPolicy((reading) => ({
+      ...reading,
+      extensions: reading.extensions.includes(extensionId)
+        ? reading.extensions.filter((id) => id !== extensionId)
+        : [...reading.extensions, extensionId],
+    }));
+  }
+
   // Named apart from the imported `toggleName` helper it wraps, and narrowed to
   // the one key that still uses it: MCP rows go through McpToolGroups now.
   function toggleGrantTool(key: "enabled_tools", name: string) {
@@ -377,6 +473,146 @@ export function GrantEditor({ userId }: { userId: string }) {
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 [scrollbar-gutter:stable]">
           <div className="grid gap-5 md:grid-cols-3">
+            <section className="min-w-0 md:col-span-3">
+              <SectionTitle>{t("Learning policy")}</SectionTitle>
+              <div className="rounded-lg border border-[var(--border)]/60 p-3">
+                <CheckRow
+                  label={t("Enable learning policy")}
+                  description={t(
+                    "Teacher persona; Chat and Immersive Reading only",
+                  )}
+                  checked={Boolean(grant.learning_policy)}
+                  disabled={controlsDisabled || lockLearningPolicy}
+                  onToggle={() =>
+                    grant.learning_policy
+                      ? disableLearningPolicy()
+                      : enableLearningPolicy()
+                  }
+                />
+                {grant.learning_policy && (
+                  <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                    <label className="text-xs text-[var(--foreground)]">
+                      <span className="mb-1 block text-[11px] text-[var(--muted-foreground)]">
+                        {t("Age band")}
+                      </span>
+                      <select
+                        value={grant.learning_policy.age_band}
+                        disabled={controlsDisabled}
+                        onChange={(event) =>
+                          setLearningAgeBand(
+                            event.target.value as LearningPolicy["age_band"],
+                          )
+                        }
+                        className="h-8 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2"
+                      >
+                        {LEARNING_AGE_BANDS.map((band) => (
+                          <option key={band} value={band}>
+                            {band}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="text-xs text-[var(--foreground)]">
+                      <span className="mb-1 block text-[11px] text-[var(--muted-foreground)]">
+                        {t("Persona")}
+                      </span>
+                      <select
+                        value={grant.learning_policy.locked_persona}
+                        disabled
+                        className="h-8 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2"
+                      >
+                        <option value="teacher">{t("Teacher")}</option>
+                      </select>
+                    </label>
+                    <div className="text-xs">
+                      <span className="mb-1 block text-[11px] text-[var(--muted-foreground)]">
+                        {t("Modes")}
+                      </span>
+                      <div className="flex h-8 items-center gap-1.5">
+                        <GraduationCap
+                          size={14}
+                          className="text-[var(--muted-foreground)]"
+                        />
+                        <span>{t("Chat · Immersive Reading")}</span>
+                      </div>
+                    </div>
+                    <div className="grid gap-3 sm:col-span-3 lg:grid-cols-2">
+                      <div>
+                        <div className="mb-1 text-[11px] text-[var(--muted-foreground)]">
+                          {t("Assigned reading materials")}
+                        </div>
+                        <div className="grid gap-1 sm:grid-cols-2">
+                          {(resources?.reading_materials ?? []).map(
+                            (material) => (
+                              <CheckRow
+                                key={material.material_id}
+                                label={material.title || material.filename}
+                                description={material.filename}
+                                checked={Boolean(
+                                  grant.learning_policy?.reading.material_ids.includes(
+                                    material.material_id,
+                                  ),
+                                )}
+                                disabled={controlsDisabled}
+                                onToggle={() =>
+                                  toggleReadingMaterial(material.material_id)
+                                }
+                              />
+                            ),
+                          )}
+                          {(resources?.reading_materials ?? []).length === 0 ? (
+                            <p className="text-[11px] leading-relaxed text-[var(--muted-foreground)]">
+                              {t(
+                                "Upload books in Reading before assigning them.",
+                              )}
+                            </p>
+                          ) : null}
+                        </div>
+                        <label className="mt-2 flex items-center gap-2 text-xs">
+                          <input
+                            type="checkbox"
+                            checked={grant.learning_policy.reading.allow_upload}
+                            disabled={controlsDisabled}
+                            onChange={(event) =>
+                              updateReadingPolicy((reading) => ({
+                                ...reading,
+                                allow_upload: event.target.checked,
+                              }))
+                            }
+                          />
+                          {t("Allow learner uploads")}
+                        </label>
+                      </div>
+                      <div>
+                        <div className="mb-1 text-[11px] text-[var(--muted-foreground)]">
+                          {t("Reading extensions")}
+                        </div>
+                        <div className="grid gap-1 sm:grid-cols-2">
+                          {(resources?.reading_extensions ?? []).map(
+                            (extension) => (
+                              <CheckRow
+                                key={extension.id}
+                                label={extension.name}
+                                description={`${extension.id} · ${extension.version}`}
+                                checked={Boolean(
+                                  grant.learning_policy?.reading.extensions.includes(
+                                    extension.id,
+                                  ),
+                                )}
+                                disabled={controlsDisabled}
+                                onToggle={() =>
+                                  toggleReadingExtension(extension.id)
+                                }
+                              />
+                            ),
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </section>
             <section className="min-w-0">
               <SectionTitle>Models</SectionTitle>
               <div className="space-y-1.5 text-xs">

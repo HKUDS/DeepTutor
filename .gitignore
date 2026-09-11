@@ -26,6 +26,8 @@ deeptutor/services/rag/eg_only_for_analysis/
 *.synctex.gz
 *.pdf
 !demo/*.pdf
+!tests/fixtures/lightrag_bridge/original.pdf
+!tests/fixtures/lightrag_bridge/mineru-v2-current/*_origin.pdf
 
 # ============================================
 # Python Related
@@ -82,6 +84,15 @@ node_modules/
 .next/
 web/.next/
 web/.next-deeptutor/
+# Custom distDir builds (DEEPTUTOR_NEXT_DIST_DIR / parallel dev servers)
+web/.next-*/
+# PDF.js decoder files are copied from node_modules for local/dev and release
+# builds; they are dependency-generated assets, not source files.
+web/public/pdfjs/
+# Per-process TypeScript configs used by isolated build/typecheck wrappers
+web/tsconfig.deeptutor-*.json
+# Temporary Next.js dist roots created by isolated build/test runs
+web/tmp/
 out/
 web/out/
 .vercel/

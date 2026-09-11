@@ -54,13 +54,27 @@ _CONDITIONAL_MOUNT_FLAGS: dict[str, str] = {
     "question_bank": "has_question_bank",
     "read_skill": "has_skills",
     "load_tools": "has_deferred_tools",
+    # The single execution surface for source code and shell scripts.
     "exec": "has_exec",
-    "code_execution": "has_code",
+    "mastery_topics": "has_mastery_topics",
+    "mastery_sessions": "has_mastery_nav",
+    "mastery_open_session": "has_mastery_nav",
+    "mastery_new_session": "has_mastery_nav",
 }
 
 # Built-ins that survive an exclusive knowledge capability when other KBs are
 # co-selected: retrieval over them, and enumeration of what they hold.
 _KB_COEXISTING_TOOLS: tuple[str, ...] = ("rag", "kb_files")
+
+# The workspace is the user's shared content surface, not a capability or an
+# optional enhancement.  These tools therefore survive exclusive capability
+# surfaces and per-partner built-in filters.
+WORKSPACE_BASELINE_TOOLS: tuple[str, ...] = (
+    "workspace_list",
+    "workspace_read",
+    "workspace_search",
+    "workspace_present",
+)
 
 
 def default_optional_tools(excluded: Iterable[str] = ()) -> list[str]:
@@ -141,7 +155,15 @@ class ToolMountFlags:
     has_skills: bool = False
     has_deferred_tools: bool = False
     has_exec: bool = False
-    has_code: bool = False
+    #: The learner has at least one mastery topic to be sent back to.
+    has_mastery_nav: bool = False
+    #: …and this turn is not itself a mastery turn. The tutoring surface has
+    #: ``mastery_paths`` for reading the atlas, so listing topics twice with
+    #: two differently-named tools only invites the model to pick the wrong
+    #: one. The hand-off tools stay mounted there: sending the learner to
+    #: another topic's own screen is safer mid-course than re-pointing the
+    #: conversation under them.
+    has_mastery_topics: bool = False
 
 
 def compose_enabled_tools(
@@ -220,7 +242,9 @@ def compose_enabled_tools(
             if mount_flags.has_kb
             else []
         )
-        return _finalize([*owned, *extra, "ask_user"], forced, suppressed)
+        return _finalize(
+            [*WORKSPACE_BASELINE_TOOLS, *owned, *extra, "ask_user"], forced, suppressed
+        )
 
     def _builtin_allowed(name: str) -> bool:
         return builtin_whitelist is None or name in builtin_whitelist
@@ -237,7 +261,7 @@ def compose_enabled_tools(
     for always_on in ("write_memory", "web_fetch", "github", "ask_user", "cron"):
         if _builtin_allowed(always_on):
             composed.append(always_on)
-    return _finalize(composed, forced, suppressed)
+    return _finalize([*WORKSPACE_BASELINE_TOOLS, *composed], forced, suppressed)
 
 
 def _finalize(names: Iterable[str], forced: Iterable[str], suppressed: Iterable[str]) -> list[str]:
@@ -296,6 +320,22 @@ def user_has_notebooks() -> bool:
         return False
 
 
+def user_has_mastery_topics() -> bool:
+    """Whether the learner has any mastery topic worth navigating to.
+
+    Auto-mount gate for the four ``mastery_*`` navigation tools. Same
+    fail-closed posture as :func:`user_has_memory`; the probe itself avoids
+    creating a store for a learner who has never opened one (see
+    ``LearningStore.default_db_path``).
+    """
+    try:
+        from deeptutor.learning.navigation import learner_has_topics
+
+        return learner_has_topics()
+    except Exception:
+        return False
+
+
 def user_has_question_bank() -> bool:
     """Whether the learner has any saved quiz questions.
 
@@ -315,9 +355,11 @@ def user_has_question_bank() -> bool:
 __all__ = [
     "AUTO_MOUNTED_TOOLS",
     "ToolMountFlags",
+    "WORKSPACE_BASELINE_TOOLS",
     "admin_enabled_optional_tools",
     "compose_enabled_tools",
     "default_optional_tools",
+    "user_has_mastery_topics",
     "user_has_memory",
     "user_has_notebooks",
     "user_has_question_bank",

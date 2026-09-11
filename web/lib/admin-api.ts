@@ -1,5 +1,7 @@
 import { apiFetch, apiUrl } from "@/lib/api";
 
+export type AccountPreset = "standard" | "learner" | "custom";
+
 export interface UserRecord {
   id: string;
   username: string;
@@ -8,6 +10,7 @@ export interface UserRecord {
   disabled?: boolean;
   /** Avatar marker: "", "icon:<name>:<color>", or "img:<version>". */
   avatar?: string;
+  preset?: AccountPreset;
   book_permission?: {
     create: boolean;
     default: "none" | "read";
@@ -15,15 +18,59 @@ export interface UserRecord {
   };
 }
 
+export interface LearnerProfile {
+  age?: number;
+  grade_level?: string;
+  curriculum?: string;
+  language?: string;
+  reading_level?: string;
+  explanation_style?: string;
+}
+
+export async function getLearnerProfile(
+  username: string,
+): Promise<LearnerProfile | null> {
+  const res = await apiFetch(
+    apiUrl(`/api/auth/users/${encodeURIComponent(username)}/learner-profile`),
+  );
+  if (!res.ok) throw new Error("Failed to fetch learner profile");
+  const data = (await res.json()) as {
+    learner_profile?: LearnerProfile | null;
+  };
+  return data.learner_profile ?? null;
+}
+
+export async function setLearnerProfile(
+  username: string,
+  profile: LearnerProfile,
+): Promise<LearnerProfile | null> {
+  const res = await apiFetch(
+    apiUrl(`/api/auth/users/${encodeURIComponent(username)}/learner-profile`),
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(profile),
+    },
+  );
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail ?? "Failed to save learner profile");
+  }
+  const data = (await res.json()) as {
+    learner_profile?: LearnerProfile | null;
+  };
+  return data.learner_profile ?? null;
+}
+
 export async function listUsers(): Promise<UserRecord[]> {
-  const res = await apiFetch(apiUrl("/api/v1/auth/users"));
+  const res = await apiFetch(apiUrl("/api/auth/users"));
   if (!res.ok) throw new Error("Failed to fetch users");
   return res.json();
 }
 
 export async function deleteUser(username: string): Promise<void> {
   const res = await apiFetch(
-    apiUrl(`/api/v1/auth/users/${encodeURIComponent(username)}`),
+    apiUrl(`/api/auth/users/${encodeURIComponent(username)}`),
     {
       method: "DELETE",
     },
@@ -39,7 +86,7 @@ export async function setUserRole(
   role: "admin" | "user",
 ): Promise<void> {
   const res = await apiFetch(
-    apiUrl(`/api/v1/auth/users/${encodeURIComponent(username)}/role`),
+    apiUrl(`/api/auth/users/${encodeURIComponent(username)}/role`),
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -57,16 +104,18 @@ export interface CreatedUser {
   username: string;
   role: "admin" | "user";
   is_admin: boolean;
+  preset: AccountPreset;
 }
 
 export async function createUser(
   username: string,
   password: string,
+  preset: AccountPreset = "standard",
 ): Promise<CreatedUser> {
-  const res = await apiFetch(apiUrl("/api/v1/auth/users"), {
+  const res = await apiFetch(apiUrl("/api/auth/users"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ username, password, preset }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));

@@ -35,7 +35,11 @@ def main() -> None:
     # Get port from configuration
     from deeptutor.logging import configure_logging
     from deeptutor.runtime.mode import RunMode, set_mode
-    from deeptutor.services.config import HTTP_KEEP_ALIVE_TIMEOUT, get_ws_max_size
+    from deeptutor.services.config import (
+        HTTP_KEEP_ALIVE_TIMEOUT,
+        get_ws_max_size,
+        load_system_settings,
+    )
     from deeptutor.services.setup import get_backend_port
 
     set_mode(RunMode.SERVER)
@@ -67,11 +71,18 @@ def main() -> None:
         "yes",
         "on",
     }
+    backend_workers = max(1, int(load_system_settings().get("backend_workers") or 1))
+    if dev_reload and backend_workers > 1:
+        raise SystemExit(
+            "Development reload and backend_workers > 1 are mutually exclusive. "
+            "Set backend_workers=1 or disable DEEPTUTOR_DEV_RELOAD."
+        )
     uvicorn.run(
         "deeptutor.api.main:app",
         host="0.0.0.0",
         port=backend_port,
         reload=dev_reload,
+        workers=backend_workers,
         reload_excludes=reload_excludes if dev_reload else None,
         log_level="info",
         access_log=False,

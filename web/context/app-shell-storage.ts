@@ -1,5 +1,7 @@
 "use client";
 
+import { browserStorage } from "@/shared/storage";
+
 export type AppLanguage = "en" | "zh";
 
 export const ACTIVE_SESSION_STORAGE_KEY = "deeptutor.activeSessionId.tab";
@@ -33,7 +35,10 @@ export function readStoredChatResponseTimeout(): number {
   if (typeof window === "undefined")
     return DEFAULT_CHAT_RESPONSE_TIMEOUT_SECONDS;
   try {
-    const raw = window.localStorage.getItem(CHAT_RESPONSE_TIMEOUT_STORAGE_KEY);
+    const raw = browserStorage.readRaw(
+      "local",
+      CHAT_RESPONSE_TIMEOUT_STORAGE_KEY,
+    );
     const parsed = raw ? Number.parseInt(raw, 10) : NaN;
     return Number.isFinite(parsed) && parsed > 0
       ? clampChatResponseTimeout(parsed)
@@ -46,7 +51,8 @@ export function readStoredChatResponseTimeout(): number {
 export function writeStoredChatResponseTimeout(seconds: number): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(
+    browserStorage.writeRaw(
+      "local",
       CHAT_RESPONSE_TIMEOUT_STORAGE_KEY,
       String(clampChatResponseTimeout(seconds)),
     );
@@ -79,7 +85,9 @@ export function resolveResponseLanguage(
 export function readStoredLanguage(): AppLanguage {
   if (typeof window === "undefined") return "en";
   try {
-    return normalizeLanguage(window.localStorage.getItem(LANGUAGE_STORAGE_KEY));
+    return normalizeLanguage(
+      browserStorage.readRaw("local", LANGUAGE_STORAGE_KEY),
+    );
   } catch {
     return "en";
   }
@@ -95,7 +103,7 @@ export function readStoredLanguage(): AppLanguage {
 export function hasStoredLanguage(): boolean {
   if (typeof window === "undefined") return false;
   try {
-    return window.localStorage.getItem(LANGUAGE_STORAGE_KEY) !== null;
+    return browserStorage.readRaw("local", LANGUAGE_STORAGE_KEY) !== null;
   } catch {
     return false;
   }
@@ -104,7 +112,7 @@ export function hasStoredLanguage(): boolean {
 export function writeStoredLanguage(language: AppLanguage): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
+    browserStorage.writeRaw("local", LANGUAGE_STORAGE_KEY, language);
     window.dispatchEvent(
       new CustomEvent(LANGUAGE_EVENT, {
         detail: { language },
@@ -115,12 +123,31 @@ export function writeStoredLanguage(language: AppLanguage): void {
   }
 }
 
+/** Whether this browser has ever recorded a model-output-language choice.
+ *
+ * The mirror of {@link hasStoredLanguage}, and needed for the same reason but
+ * on the other key. The two languages were split later than the interface one,
+ * so a browser that predates the split has `deeptutor-language` and no
+ * `deeptutor-response-language` — and gating adoption of the server's value on
+ * `hasStoredLanguage` alone locks such a browser out of ever picking one up.
+ */
+export function hasStoredResponseLanguage(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return (
+      browserStorage.readRaw("local", RESPONSE_LANGUAGE_STORAGE_KEY) !== null
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function readStoredResponseLanguage(): AppLanguage {
   if (typeof window === "undefined") return "en";
   try {
     return resolveResponseLanguage(
-      window.localStorage.getItem(RESPONSE_LANGUAGE_STORAGE_KEY),
-      window.localStorage.getItem(LANGUAGE_STORAGE_KEY),
+      browserStorage.readRaw("local", RESPONSE_LANGUAGE_STORAGE_KEY),
+      browserStorage.readRaw("local", LANGUAGE_STORAGE_KEY),
     );
   } catch {
     return "en";
@@ -130,7 +157,7 @@ export function readStoredResponseLanguage(): AppLanguage {
 export function writeStoredResponseLanguage(language: AppLanguage): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(RESPONSE_LANGUAGE_STORAGE_KEY, language);
+    browserStorage.writeRaw("local", RESPONSE_LANGUAGE_STORAGE_KEY, language);
     window.dispatchEvent(
       new CustomEvent(RESPONSE_LANGUAGE_EVENT, {
         detail: { language },
@@ -144,7 +171,7 @@ export function writeStoredResponseLanguage(language: AppLanguage): void {
 export function readStoredActiveSessionId(): string | null {
   if (typeof window === "undefined") return null;
   try {
-    return window.sessionStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);
+    return browserStorage.readRaw("session", ACTIVE_SESSION_STORAGE_KEY);
   } catch {
     return null;
   }
@@ -154,9 +181,9 @@ export function writeStoredActiveSessionId(sessionId: string | null): void {
   if (typeof window === "undefined") return;
   try {
     if (sessionId) {
-      window.sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, sessionId);
+      browserStorage.writeRaw("session", ACTIVE_SESSION_STORAGE_KEY, sessionId);
     } else {
-      window.sessionStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
+      browserStorage.removeRaw("session", ACTIVE_SESSION_STORAGE_KEY);
     }
     window.dispatchEvent(
       new CustomEvent(ACTIVE_SESSION_EVENT, {
@@ -171,7 +198,9 @@ export function writeStoredActiveSessionId(sessionId: string | null): void {
 export function readStoredSidebarCollapsed(): boolean {
   if (typeof window === "undefined") return false;
   try {
-    return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "1";
+    return (
+      browserStorage.readRaw("local", SIDEBAR_COLLAPSED_STORAGE_KEY) === "1"
+    );
   } catch {
     return false;
   }
@@ -180,7 +209,8 @@ export function readStoredSidebarCollapsed(): boolean {
 export function writeStoredSidebarCollapsed(collapsed: boolean): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(
+    browserStorage.writeRaw(
+      "local",
       SIDEBAR_COLLAPSED_STORAGE_KEY,
       collapsed ? "1" : "0",
     );
@@ -209,7 +239,7 @@ export function normalizeCodeBlockTheme(
 export function readStoredCodeBlockTheme(): string {
   if (typeof window === "undefined") return DEFAULT_CODE_BLOCK_THEME;
   try {
-    const raw = window.localStorage.getItem(CODE_BLOCK_THEME_STORAGE_KEY);
+    const raw = browserStorage.readRaw("local", CODE_BLOCK_THEME_STORAGE_KEY);
     return normalizeCodeBlockTheme(raw);
   } catch {
     return DEFAULT_CODE_BLOCK_THEME;
@@ -219,7 +249,8 @@ export function readStoredCodeBlockTheme(): string {
 export function writeStoredCodeBlockTheme(theme: string): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(
+    browserStorage.writeRaw(
+      "local",
       CODE_BLOCK_THEME_STORAGE_KEY,
       normalizeCodeBlockTheme(theme),
     );
@@ -245,7 +276,8 @@ export function readStoredCodeBlockShowLineNumbers(): boolean {
   if (typeof window === "undefined")
     return DEFAULT_CODE_BLOCK_SHOW_LINE_NUMBERS;
   try {
-    const raw = window.localStorage.getItem(
+    const raw = browserStorage.readRaw(
+      "local",
       CODE_BLOCK_SHOW_LINE_NUMBERS_STORAGE_KEY,
     );
     return normalizeCodeBlockShowLineNumbers(raw);
@@ -257,7 +289,8 @@ export function readStoredCodeBlockShowLineNumbers(): boolean {
 export function writeStoredCodeBlockShowLineNumbers(show: boolean): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(
+    browserStorage.writeRaw(
+      "local",
       CODE_BLOCK_SHOW_LINE_NUMBERS_STORAGE_KEY,
       String(show),
     );
@@ -282,7 +315,8 @@ export function normalizeCodeBlockWrapLongLines(
 export function readStoredCodeBlockWrapLongLines(): boolean {
   if (typeof window === "undefined") return DEFAULT_CODE_BLOCK_WRAP_LONG_LINES;
   try {
-    const raw = window.localStorage.getItem(
+    const raw = browserStorage.readRaw(
+      "local",
       CODE_BLOCK_WRAP_LONG_LINES_STORAGE_KEY,
     );
     return normalizeCodeBlockWrapLongLines(raw);
@@ -294,7 +328,8 @@ export function readStoredCodeBlockWrapLongLines(): boolean {
 export function writeStoredCodeBlockWrapLongLines(wrap: boolean): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(
+    browserStorage.writeRaw(
+      "local",
       CODE_BLOCK_WRAP_LONG_LINES_STORAGE_KEY,
       String(wrap),
     );

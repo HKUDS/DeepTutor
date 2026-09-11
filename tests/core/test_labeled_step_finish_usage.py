@@ -6,10 +6,10 @@ from typing import Any
 
 import pytest
 
-import deeptutor.core.agentic.labeled_step as labeled_step_module
-from deeptutor.core.agentic.labeled_step import run_labeled_step
-from deeptutor.core.agentic.usage import UsageTracker
-from deeptutor.core.stream_bus import StreamBus
+import deeptutor.runtime.agentic.labeled_step as labeled_step_module
+from deeptutor.runtime.agentic.labeled_step import run_labeled_step
+from deeptutor.runtime.agentic.usage import UsageTracker
+from deeptutor.runtime.stream_bus import StreamBus
 
 
 def _chunk(

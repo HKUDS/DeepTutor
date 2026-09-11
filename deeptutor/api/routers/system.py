@@ -5,21 +5,76 @@ Manages system status checks and model connection tests
 
 import asyncio
 from datetime import datetime
+import json
 import time
+from typing import Any, Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 
+from deeptutor.api.contracts.turn_protocol import (
+    MINIMUM_WEB_PROTOCOL_VERSION,
+    PROTOCOL_VERSION,
+    RuntimeStatus,
+)
+from deeptutor.api.routers.auth import require_admin
 from deeptutor.multi_user.context import get_current_user
 from deeptutor.runtime import memory_probe
+from deeptutor.services.app_update import (
+    Installation,
+    UpdateInProgressError,
+    UpdateJob,
+    UpdateJobStore,
+    UpdateRequestError,
+    VersionCheckError,
+    VersionCheckResult,
+    detect_installation,
+    get_version_check_service,
+    launcher_available,
+    update_store_root,
+)
 from deeptutor.services.config import (
+    get_runtime_settings_service,
     resolve_search_runtime_config,
     supported_search_providers_hint,
 )
-from deeptutor.services.embedding import get_embedding_client, get_embedding_config
-from deeptutor.services.llm import complete as llm_complete
-from deeptutor.services.llm import get_llm_config, get_token_limit_kwargs
-from deeptutor.services.search import web_search
+
+
+def get_embedding_client(*args, **kwargs):
+    from deeptutor.services.embedding.client import get_embedding_client as resolve
+
+    return resolve(*args, **kwargs)
+
+
+def get_embedding_config(*args, **kwargs):
+    from deeptutor.services.embedding.config import get_embedding_config as resolve
+
+    return resolve(*args, **kwargs)
+
+
+def get_llm_config(*args, **kwargs):
+    from deeptutor.services.llm.config import get_llm_config as resolve
+
+    return resolve(*args, **kwargs)
+
+
+def get_token_limit_kwargs(*args, **kwargs):
+    from deeptutor.services.llm.config import get_token_limit_kwargs as resolve
+
+    return resolve(*args, **kwargs)
+
+
+async def llm_complete(*args, **kwargs):
+    from deeptutor.services.llm import complete
+
+    return await complete(*args, **kwargs)
+
+
+def web_search(*args, **kwargs):
+    from deeptutor.services.search import web_search as search
+
+    return search(*args, **kwargs)
+
 
 router = APIRouter()
 
@@ -32,35 +87,228 @@ class TestResponse(BaseModel):
     error: str | None = None
 
 
-@router.get("/runtime-topology")
-async def get_runtime_topology():
-    """
-    Describe the current execution topology.
+class UpdateSettingsRequest(BaseModel):
+    enabled: bool
 
-    This makes the unified runtime explicit for operators and frontend code:
-    interactive chat turns should prefer `/api/v1/ws`, while a few routers still
-    exist as compatibility or isolated subsystem endpoints.
-    """
+
+class ManagedUpdateRequest(BaseModel):
+    confirmation: Literal["update-and-restart"]
+
+
+def get_update_job_store() -> UpdateJobStore:
+    return UpdateJobStore(update_store_root())
+
+
+def get_update_installation() -> Installation:
+    return detect_installation()
+
+
+def get_turn_activity():
+    from deeptutor.app.container import get_application_container
+
+    return get_application_container().runtime_registry.get(
+        get_application_container().store_provider.get()
+    )
+
+
+@router.get(
+    "/runtime",
+    dependencies=[Depends(require_admin)],
+    response_model=RuntimeStatus,
+)
+async def get_runtime_status(request: Request) -> RuntimeStatus:
+    """Return credential-free coordination and worker diagnostics."""
+
+    from deeptutor.app.container import get_application_container
+
+    container = getattr(request.app.state, "application_container", None)
+    if container is None:
+        container = get_application_container()
+        await container.start()
+    report = await container.runtime_report()
+    return RuntimeStatus.model_validate(
+        {
+            **report,
+            "leader_healthy": bool(report.get("leader_id")),
+            "protocol_version": PROTOCOL_VERSION,
+            "minimum_web_protocol_version": MINIMUM_WEB_PROTOCOL_VERSION,
+        }
+    )
+
+
+def _job_payload(job: UpdateJob | None) -> dict[str, Any] | None:
+    if job is None:
+        return None
     return {
-        "primary_runtime": {
-            "transport": "/api/v1/ws",
-            "manager": "TurnRuntimeManager",
-            "orchestrator": "ChatOrchestrator",
-            "session_store": "SQLiteSessionStore",
-            "capability_entry": "CapabilityRegistry",
-            "tool_entry": "ToolRegistry",
-        },
-        "compatibility_routes": [
-            {"router": "chat", "mode": "legacy_adapter_target"},
-            {"router": "solve", "mode": "legacy_adapter_target"},
-            {"router": "question", "mode": "legacy_specialized"},
-            {"router": "research", "mode": "legacy_specialized"},
-        ],
-        "isolated_subsystems": [
-            {"router": "co_writer", "mode": "independent_subsystem"},
-            {"router": "plugins_api", "mode": "playground_transport"},
-        ],
+        "id": job.id,
+        "status": job.status,
+        "current_version": job.current_version,
+        "target_version": job.target_version,
+        "created_at": job.created_at,
+        "started_at": job.started_at,
+        "finished_at": job.finished_at,
+        "error": job.error,
+        "restart_count": job.restart_count,
     }
+
+
+def _stored_job(store: UpdateJobStore | None = None) -> UpdateJob | None:
+    try:
+        return (store or get_update_job_store()).load()
+    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+        return None
+
+
+def _update_payload(
+    *,
+    result: VersionCheckResult | None,
+    installation: Installation,
+    check_enabled: bool,
+    check_error: str = "",
+    store: UpdateJobStore | None = None,
+) -> dict[str, Any]:
+    release = result.release if result is not None else None
+    return {
+        "current_version": result.current_version if result else installation.current_version,
+        "check_enabled": check_enabled,
+        "checked_at": result.checked_at if result else "",
+        "cached": result.cached if result else False,
+        "check_error": check_error,
+        "update_available": result.update_available if result else False,
+        "release": (
+            {
+                "version": release.version,
+                "name": release.name,
+                "published_at": release.published_at,
+                "url": release.url,
+                "excerpt": release.excerpt,
+                "migration_warning": release.migration_warning,
+            }
+            if release
+            else None
+        ),
+        "installation": {
+            "mode": installation.mode,
+            "automatic_update": installation.automatic_update,
+            "command": installation.command,
+            "reason": installation.reason,
+        },
+        "launcher_managed": launcher_available(),
+        "is_admin": get_current_user().is_admin,
+        "job": _job_payload(_stored_job(store)),
+    }
+
+
+async def _checked_update_payload(*, force: bool = False) -> dict[str, Any]:
+    settings = get_runtime_settings_service().load_system()
+    enabled = bool(settings["version_check_enabled"])
+    installation = get_update_installation()
+    service = get_version_check_service()
+    if not enabled:
+        return _update_payload(
+            result=service.cached(),
+            installation=installation,
+            check_enabled=False,
+        )
+    try:
+        result = await service.check(force=force)
+    except VersionCheckError as exc:
+        if force:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=str(exc),
+            ) from None
+        return _update_payload(
+            result=service.cached(),
+            installation=installation,
+            check_enabled=True,
+            check_error=str(exc),
+        )
+    return _update_payload(
+        result=result,
+        installation=installation,
+        check_enabled=True,
+    )
+
+
+@router.get("/update")
+async def get_update_status() -> dict[str, Any]:
+    """Return About-page version state, checking at most once per 24 hours."""
+
+    return await _checked_update_payload()
+
+
+@router.post("/update/check", dependencies=[Depends(require_admin)])
+async def check_for_update() -> dict[str, Any]:
+    """Perform an explicit administrator-requested release check."""
+
+    return await _checked_update_payload(force=True)
+
+
+@router.put("/update/settings", dependencies=[Depends(require_admin)])
+async def update_check_settings(payload: UpdateSettingsRequest) -> dict[str, Any]:
+    service = get_runtime_settings_service()
+    current = service.load_system(include_process_overrides=False)
+    service.save_system({**current, "version_check_enabled": payload.enabled})
+    return await _checked_update_payload()
+
+
+@router.get("/update/job")
+async def get_update_job() -> dict[str, Any] | None:
+    return _job_payload(_stored_job())
+
+
+@router.post(
+    "/update",
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(require_admin)],
+)
+async def request_managed_update(_request: ManagedUpdateRequest) -> dict[str, Any]:
+    """Reserve one safe update for the supervising launcher to apply."""
+
+    settings = get_runtime_settings_service().load_system()
+    if not settings["version_check_enabled"]:
+        raise HTTPException(status_code=409, detail="Version checks are disabled")
+    if not launcher_available():
+        raise HTTPException(
+            status_code=409,
+            detail="Web updates require DeepTutor to be running under `deeptutor start`.",
+        )
+    installation = get_update_installation()
+    if installation.mode != "pypi" or not installation.automatic_update:
+        raise HTTPException(
+            status_code=409,
+            detail=installation.reason or "This installation cannot update itself safely.",
+        )
+    try:
+        result = await get_version_check_service().check()
+    except VersionCheckError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from None
+    if not result.update_available:
+        raise HTTPException(status_code=409, detail="No newer DeepTutor release is available")
+    # Re-check installation evidence immediately before reserving the job. A
+    # deployment changing underneath this request fails closed.
+    confirmed = get_update_installation()
+    if confirmed.mode != "pypi" or not confirmed.automatic_update:
+        raise HTTPException(
+            status_code=409, detail="The installation changed during the update check"
+        )
+    store = get_update_job_store()
+    try:
+        job = await get_turn_activity().reserve_managed_update(
+            lambda: store.create(
+                current_version=result.current_version,
+                target_version=result.release.version,
+            )
+        )
+    except (UpdateInProgressError, UpdateRequestError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    if job is None:
+        raise HTTPException(
+            status_code=409,
+            detail="Finish the active conversation before updating DeepTutor.",
+        )
+    return _job_payload(job) or {}
 
 
 @router.get("/status")

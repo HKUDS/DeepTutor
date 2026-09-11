@@ -8,7 +8,7 @@ import {
   getPageIndexConfig,
   updatePageIndexConfig,
   type PageIndexConfig,
-} from "@/lib/knowledge-api";
+} from "@/features/knowledge/api/engines";
 
 interface PageIndexSettingsModalProps {
   isOpen: boolean;

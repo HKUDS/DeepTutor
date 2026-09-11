@@ -1,7 +1,8 @@
 """Subagent driver layer — drive a user's local agent CLI as a subagent.
 
 DeepTutor runs on the same machine as the user's configured agent CLIs — Claude
-Code, Codex, Gemini CLI, Kimi CLI, opencode, MiMo Code — so the backend can
+Code, Codex, Antigravity CLI, Kimi CLI, opencode, MiMo Code, Hermes Agent,
+OpenClaw, DeepSeek Harness — so the backend can
 drive them directly (spawned in print mode, or via a managed local server for
 the opencode family) and stream back every native event. This package is the
 decoupled core of that: backends that know one CLI each, a shared
@@ -24,6 +25,7 @@ from deeptutor.services.subagent.config import (
     save_subagent_settings,
     settings_from_dict,
 )
+from deeptutor.services.subagent.hermes_remote import HermesRemoteBackend
 from deeptutor.services.subagent.partner import PARTNER_BACKEND_KIND
 from deeptutor.services.subagent.registry import detect_all, get_backend, list_backend_kinds
 from deeptutor.services.subagent.types import (
@@ -51,4 +53,5 @@ __all__ = [
     "ConsultResult",
     "DetectResult",
     "SubagentEvent",
+    "HermesRemoteBackend",
 ]

@@ -1,5 +1,6 @@
 import { apiFetch, apiUrl } from "@/lib/api";
 import { invalidateClientCache, withClientCache } from "@/lib/client-cache";
+import { asJsonOrThrow as asJson } from "@/lib/api";
 
 const PERSONAS_CACHE_PREFIX = "personas:";
 
@@ -32,20 +33,6 @@ function normalizeSource(raw: unknown): PersonaSource {
   return raw === "admin" ? "admin" : "user";
 }
 
-async function asJson(response: Response) {
-  if (!response.ok) {
-    let detail = `${response.status} ${response.statusText}`;
-    try {
-      const body = await response.json();
-      if (body?.detail) detail = String(body.detail);
-    } catch {
-      /* ignore */
-    }
-    throw new Error(detail);
-  }
-  return response.json();
-}
-
 function normalizeInfo(item: {
   name?: unknown;
   description?: unknown;
@@ -66,7 +53,7 @@ export async function listPersonas(options?: {
   return withClientCache<PersonaInfo[]>(
     `${PERSONAS_CACHE_PREFIX}list`,
     async () => {
-      const response = await apiFetch(apiUrl("/api/v1/personas/list"), {
+      const response = await apiFetch(apiUrl("/api/personas"), {
         cache: "no-store",
       });
       const data = await asJson(response);
@@ -79,7 +66,7 @@ export async function listPersonas(options?: {
 
 export async function getPersona(name: string): Promise<PersonaDetail> {
   const response = await apiFetch(
-    apiUrl(`/api/v1/personas/${encodeURIComponent(name)}`),
+    apiUrl(`/api/personas/${encodeURIComponent(name)}`),
     {
       cache: "no-store",
     },
@@ -94,7 +81,7 @@ export async function getPersona(name: string): Promise<PersonaDetail> {
 export async function createPersona(
   payload: CreatePersonaPayload,
 ): Promise<PersonaInfo> {
-  const response = await apiFetch(apiUrl("/api/v1/personas/create"), {
+  const response = await apiFetch(apiUrl("/api/personas"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -113,7 +100,7 @@ export async function updatePersona(
   payload: UpdatePersonaPayload,
 ): Promise<PersonaInfo> {
   const response = await apiFetch(
-    apiUrl(`/api/v1/personas/${encodeURIComponent(name)}`),
+    apiUrl(`/api/personas/${encodeURIComponent(name)}`),
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -127,7 +114,7 @@ export async function updatePersona(
 
 export async function deletePersona(name: string): Promise<void> {
   const response = await apiFetch(
-    apiUrl(`/api/v1/personas/${encodeURIComponent(name)}`),
+    apiUrl(`/api/personas/${encodeURIComponent(name)}`),
     {
       method: "DELETE",
     },

@@ -31,7 +31,7 @@ export interface NotebookLibrary {
   detailLoading: boolean;
   error: string | null;
   detailError: string | null;
-  select: (notebookId: string) => void;
+  select: (notebookId: string | null) => void;
   reload: () => Promise<void>;
   create: (name: string, description: string) => Promise<string | null>;
   rename: (
@@ -60,7 +60,29 @@ function messageOf(error: unknown): string {
   return String(error);
 }
 
-export function useNotebookLibrary(initialId?: string | null): NotebookLibrary {
+export function useNotebookLibrary(
+  initialId?: string | null,
+  /**
+   * Ids this visit is allowed to open, or null for the whole library.
+   *
+   * The scope has to live here rather than being corrected by the caller after
+   * the fact: `reload` picks a default whenever the current selection is gone,
+   * and a caller-side correction loses that race every time the list refreshes
+   * — after creating a notebook, after deleting one — putting an out-of-scope
+   * notebook back in the pane each time.
+   */
+  scopeIds?: readonly string[] | null,
+): NotebookLibrary {
+  // Read through a ref so `reload` stays stable across renders: callers build
+  // this list with `useMemo` at best, and a fresh array identity would restart
+  // the load effect on every render.
+  const scopeRef = useRef<readonly string[] | null>(scopeIds ?? null);
+  scopeRef.current = scopeIds ?? null;
+  const inScope = useCallback(
+    (id: string) => !scopeRef.current || scopeRef.current.includes(id),
+    [],
+  );
+
   const [notebooks, setNotebooks] = useState<NotebookSummary[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(
     initialId ?? null,
@@ -70,6 +92,7 @@ export function useNotebookLibrary(initialId?: string | null): NotebookLibrary {
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const previousRouteIdRef = useRef(initialId ?? null);
 
   // Detail fetches are racy — clicking through the list fires several. Only
   // the newest one is allowed to write state, otherwise a slow earlier
@@ -99,29 +122,54 @@ export function useNotebookLibrary(initialId?: string | null): NotebookLibrary {
       const next = await listNotebooks();
       setNotebooks(next);
       setSelectedId((current) => {
-        if (current && next.some((n) => n.id === current)) return current;
-        return next.length ? next[0].id : null;
+        const allowed = next.filter((notebook) => inScope(notebook.id));
+        if (current && allowed.some((n) => n.id === current)) return current;
+        return allowed.length ? allowed[0].id : null;
       });
     } catch (err) {
       setError(messageOf(err));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [inScope]);
 
   useEffect(() => {
     void reload();
   }, [reload]);
 
+  // App Router can reuse this client component while only the dynamic segment
+  // changes. Treat that segment as authoritative so browser back/forward and
+  // direct notebook links update the open record without a remount.
+  useEffect(() => {
+    const routeId = initialId ?? null;
+    if (previousRouteIdRef.current === routeId) return;
+    previousRouteIdRef.current = routeId;
+    if (routeId) {
+      setSelectedId(routeId);
+      return;
+    }
+    const allowed = notebooks.filter((notebook) => inScope(notebook.id));
+    setSelectedId(allowed[0]?.id ?? null);
+  }, [initialId, inScope, notebooks]);
+
   useEffect(() => {
     if (!selectedId) {
+      // Bump the request counter as well as clearing. `loadDetail` stamps each
+      // fetch and drops its own result if a *newer* one started — but clearing
+      // starts no fetch, so without this an in-flight response lands after the
+      // clear and puts the notebook straight back on screen. That is what made
+      // a course with no notebooks show some other course's notes beside a list
+      // saying it had none.
+      detailRequestRef.current += 1;
       setSelected(null);
+      setDetailError(null);
+      setDetailLoading(false);
       return;
     }
     void loadDetail(selectedId);
   }, [selectedId, loadDetail]);
 
-  const select = useCallback((notebookId: string) => {
+  const select = useCallback((notebookId: string | null) => {
     setSelectedId(notebookId);
   }, []);
 

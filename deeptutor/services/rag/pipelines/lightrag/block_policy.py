@@ -1,9 +1,9 @@
 """Versioned MinerU block policy for LightRAG indexing.
 
 MinerU's legacy ``content_list.json`` mixes semantic document content with
-page-layout helpers.  DeepTutor retains the raw parser cache for audit and
-derives an independent, deep-copied list for indexing so RAG-Anything never
-needs to decide which parser blocks are semantic.
+page-layout helpers. DeepTutor retains the raw parser cache for audit and
+derives an independent, deep-copied list before the native LightRAG Sidecar
+bridge decides which parser blocks are semantic.
 """
 
 from __future__ import annotations

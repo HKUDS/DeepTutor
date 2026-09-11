@@ -1,5 +1,38 @@
 import { apiFetch, apiUrl } from "@/lib/api";
 
+export interface LearnerProfile {
+  age?: number;
+  grade_level?: string;
+  curriculum?: string;
+  language?: string;
+  reading_level?: string;
+  explanation_style?: string;
+}
+
+export async function getOwnLearnerProfile(): Promise<LearnerProfile | null> {
+  const res = await apiFetch(apiUrl("/api/auth/profile/learner-profile"));
+  if (!res.ok) throw new Error("Failed to fetch learner profile");
+  const data = (await res.json()) as {
+    learner_profile?: LearnerProfile | null;
+  };
+  return data.learner_profile ?? null;
+}
+
+export async function setOwnLearnerProfile(
+  profile: LearnerProfile,
+): Promise<LearnerProfile | null> {
+  const res = await apiFetch(apiUrl("/api/auth/profile/learner-profile"), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(profile),
+  });
+  if (!res.ok) throw new Error("Failed to save learner profile");
+  const data = (await res.json()) as {
+    learner_profile?: LearnerProfile | null;
+  };
+  return data.learner_profile ?? null;
+}
+
 export interface ProfileInfo {
   id: string;
   username: string;
@@ -20,7 +53,7 @@ function extractDetail(data: unknown, fallback: string): string {
 
 /** Fetch the signed-in user's own profile. */
 export async function getProfile(): Promise<ProfileInfo> {
-  const res = await apiFetch(apiUrl("/api/v1/auth/profile"));
+  const res = await apiFetch(apiUrl("/api/auth/profile"));
   if (!res.ok) throw new Error("Failed to fetch profile");
   return res.json();
 }
@@ -31,7 +64,7 @@ export async function getProfile(): Promise<ProfileInfo> {
  * `uploadAvatarImage`.
  */
 export async function setAvatarMarker(avatar: string): Promise<string> {
-  const res = await apiFetch(apiUrl("/api/v1/auth/profile"), {
+  const res = await apiFetch(apiUrl("/api/auth/profile"), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ avatar }),
@@ -48,7 +81,7 @@ export async function setAvatarMarker(avatar: string): Promise<string> {
 export async function uploadAvatarImage(blob: Blob): Promise<string> {
   const form = new FormData();
   form.append("file", blob, "avatar");
-  const res = await apiFetch(apiUrl("/api/v1/auth/profile/avatar"), {
+  const res = await apiFetch(apiUrl("/api/auth/profile/avatar"), {
     method: "PUT",
     body: form,
   });
@@ -62,7 +95,7 @@ export async function uploadAvatarImage(blob: Blob): Promise<string> {
 
 /** Remove the uploaded avatar image and reset the marker. */
 export async function removeAvatarImage(): Promise<void> {
-  const res = await apiFetch(apiUrl("/api/v1/auth/profile/avatar"), {
+  const res = await apiFetch(apiUrl("/api/auth/profile/avatar"), {
     method: "DELETE",
   });
   if (!res.ok) {
@@ -75,6 +108,6 @@ export async function removeAvatarImage(): Promise<void> {
 export function avatarImageUrl(userId: string, marker: string): string {
   const version = marker.startsWith("img:") ? marker.slice(4) : "0";
   return apiUrl(
-    `/api/v1/auth/avatar/${encodeURIComponent(userId)}?v=${encodeURIComponent(version)}`,
+    `/api/auth/avatar/${encodeURIComponent(userId)}?v=${encodeURIComponent(version)}`,
   );
 }

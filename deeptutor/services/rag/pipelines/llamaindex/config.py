@@ -9,6 +9,9 @@ import sys
 VECTOR_PROFILE = "vector"
 HYBRID_PROFILE = "hybrid"
 SUPPORTED_RETRIEVAL_PROFILES = {VECTOR_PROFILE, HYBRID_PROFILE}
+FLAT_VECTOR_INDEX = "flat"
+HNSW_VECTOR_INDEX = "hnsw"
+SUPPORTED_VECTOR_INDEX_TYPES = {FLAT_VECTOR_INDEX, HNSW_VECTOR_INDEX}
 
 
 def should_show_progress() -> bool:
@@ -32,11 +35,30 @@ class RetrievalConfig:
     vector_top_k_multiplier: int = 2
     bm25_top_k_multiplier: int = 2
     fusion_num_queries: int = 1
+    reranker_model: str = ""
+    rerank_top_k: int = 50
 
     def candidate_top_k(self, top_k: int, multiplier: int) -> int:
         """Return the number of candidates to ask a child retriever for."""
         requested = max(1, int(top_k))
         return max(requested, requested * max(1, int(multiplier)))
+
+    def rerank_candidate_top_k(self, top_k: int) -> int:
+        """Return the first-stage candidate count before optional reranking."""
+        requested = max(1, int(top_k))
+        if not self.reranker_model:
+            return requested
+        return max(requested, min(100, max(1, int(self.rerank_top_k))))
+
+
+@dataclass(frozen=True)
+class VectorIndexConfig:
+    """FAISS construction knobs for the next full index build."""
+
+    type: str = FLAT_VECTOR_INDEX
+    hnsw_m: int = 32
+    hnsw_ef_construction: int = 200
+    hnsw_ef_search: int = 64
 
 
 def normalize_retrieval_profile(value: str | None) -> str:
@@ -45,6 +67,19 @@ def normalize_retrieval_profile(value: str | None) -> str:
     if profile in SUPPORTED_RETRIEVAL_PROFILES:
         return profile
     return HYBRID_PROFILE
+
+
+def normalize_reranker_model(value: str | None) -> str:
+    """Return a bounded Hugging Face model identifier (empty disables rerank)."""
+    return (value or "").strip()[:200]
+
+
+def normalize_vector_index_type(value: str | None) -> str:
+    """Return a supported vector index type, defaulting to exact flat search."""
+    index_type = (value or "").strip().lower()
+    if index_type in SUPPORTED_VECTOR_INDEX_TYPES:
+        return index_type
+    return FLAT_VECTOR_INDEX
 
 
 def retrieval_config_from_env() -> RetrievalConfig:
@@ -85,6 +120,22 @@ def retrieval_config_from_settings() -> RetrievalConfig:
         profile=normalize_retrieval_profile(settings.get("retrieval_profile")),
         vector_top_k_multiplier=int(settings.get("vector_top_k_multiplier", 2) or 2),
         bm25_top_k_multiplier=int(settings.get("bm25_top_k_multiplier", 2) or 2),
+        reranker_model=normalize_reranker_model(settings.get("reranker_model")),
+        rerank_top_k=int(settings.get("rerank_top_k", 50) or 50),
+    )
+
+
+def vector_index_config_from_settings() -> VectorIndexConfig:
+    """Build FAISS construction settings, retaining the exact flat default."""
+    try:
+        settings = _load_runtime_settings()
+    except Exception:
+        return VectorIndexConfig()
+    return VectorIndexConfig(
+        type=normalize_vector_index_type(settings.get("vector_index_type")),
+        hnsw_m=int(settings.get("hnsw_m", 32) or 32),
+        hnsw_ef_construction=int(settings.get("hnsw_ef_construction", 200) or 200),
+        hnsw_ef_search=int(settings.get("hnsw_ef_search", 64) or 64),
     )
 
 
@@ -124,11 +175,16 @@ __all__ = [
     "HYBRID_PROFILE",
     "RetrievalConfig",
     "SUPPORTED_RETRIEVAL_PROFILES",
+    "SUPPORTED_VECTOR_INDEX_TYPES",
     "VECTOR_PROFILE",
+    "FLAT_VECTOR_INDEX",
+    "HNSW_VECTOR_INDEX",
     "chunk_geometry",
     "default_top_k",
     "image_description_limits",
     "normalize_retrieval_profile",
+    "normalize_reranker_model",
     "retrieval_config_from_env",
     "retrieval_config_from_settings",
+    "vector_index_config_from_settings",
 ]

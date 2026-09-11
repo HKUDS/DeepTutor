@@ -79,8 +79,16 @@ class LlamaIndexDocumentLoader:
             # archive download) on a synchronous httpx.Client — running it on
             # the event loop stalls every other request for the whole PDF
             # (same class of bug as upstream #761/#777). Hand it to a thread.
-            text, extracted_images = await asyncio.to_thread(self._parse_document, file_path)
-            self._append_if_nonempty(documents, file_path, text)
+            text, extracted_images, parse_engine = await asyncio.to_thread(
+                self._parse_document, file_path
+            )
+            self._append_if_nonempty(
+                documents,
+                file_path,
+                text,
+                parse_engine=parse_engine,
+                extracted_image_count=len(extracted_images),
+            )
             image_sources.extend(extracted_images)
 
         for file_path_str in classification.text_files:
@@ -91,7 +99,30 @@ class LlamaIndexDocumentLoader:
 
         for file_path_str in classification.image_files:
             path = Path(file_path_str)
-            image_sources.append(_ImageSource(path=path, origin=path))
+            from deeptutor.services.parsing import get_parse_service
+
+            parse_service = get_parse_service()
+            supports = getattr(parse_service, "supports", lambda _path: False)
+            if supports(path):
+                self.logger.info(f"Parsing image with active document parser: {path.name}")
+                text, extracted_images, parse_engine = await asyncio.to_thread(
+                    self._parse_document, path, parse_service
+                )
+                if text.strip() or extracted_images:
+                    self._append_if_nonempty(
+                        documents,
+                        path,
+                        text,
+                        parse_engine=parse_engine,
+                        extracted_image_count=len(extracted_images),
+                    )
+                    image_sources.extend(extracted_images)
+                else:
+                    # Preserve the pre-parser behavior when an image-capable
+                    # engine fails or yields no usable IR.
+                    image_sources.append(_ImageSource(path=path, origin=path))
+            else:
+                image_sources.append(_ImageSource(path=path, origin=path))
 
         if image_sources:
             documents.extend(
@@ -105,10 +136,14 @@ class LlamaIndexDocumentLoader:
 
         return documents
 
-    def _parse_document(self, file_path: Path) -> tuple[str, list[_ImageSource]]:
+    def _parse_document(
+        self,
+        file_path: Path,
+        parse_service=None,  # noqa: ANN001
+    ) -> tuple[str, list[_ImageSource], str]:
         """Parse a document through the shared, engine-pluggable parse layer.
 
-        Returns ``(text, extracted_images)``. A parse failure (engine
+        Returns ``(text, extracted_images, engine)``. A parse failure (engine
         unavailable, unsupported format for the active engine, or models not
         ready) is logged and the file is skipped — matching the sibling
         LightRAG/GraphRAG pipelines — rather than aborting the whole batch.
@@ -116,17 +151,17 @@ class LlamaIndexDocumentLoader:
         from deeptutor.services.parsing import ParserError, get_parse_service
 
         try:
-            parsed = get_parse_service().parse(file_path)
+            parsed = (parse_service or get_parse_service()).parse(file_path)
         except ParserError as exc:
             self.logger.warning(
                 f"Skipped {file_path.name}: the active document-parsing engine could "
                 f"not handle it ({exc}). Change the engine in Settings → Document Parsing."
             )
-            return "", []
+            return "", [], ""
 
         text = parsed.markdown.strip() or self._text_from_blocks(parsed.blocks)
         images = self._collect_asset_images(parsed.asset_dir, origin=file_path)
-        return text, images
+        return text, images, str(parsed.engine or "")
 
     @staticmethod
     def _text_from_blocks(blocks: list[dict] | None) -> str:
@@ -338,7 +373,15 @@ class LlamaIndexDocumentLoader:
             "mimetype": mimetype,
         }
 
-    def _append_if_nonempty(self, documents: list[Any], file_path: Path, text: str) -> None:
+    def _append_if_nonempty(
+        self,
+        documents: list[Any],
+        file_path: Path,
+        text: str,
+        *,
+        parse_engine: str = "",
+        extracted_image_count: int = 0,
+    ) -> None:
         if text.strip():
             documents.append(
                 Document(
@@ -351,4 +394,16 @@ class LlamaIndexDocumentLoader:
             )
             self.logger.info(f"Loaded: {file_path.name} ({len(text)} chars)")
         else:
-            self.logger.warning(f"Skipped empty document: {file_path.name}")
+            if file_path.suffix.lower() == ".pdf" and extracted_image_count:
+                engine_label = parse_engine or "the active parser"
+                self.logger.warning(
+                    "Skipped empty document: %s. The %s engine extracted %d image(s) "
+                    "but no text. This is usually a scanned PDF; use an OCR-capable "
+                    "parsing engine such as MinerU or Docling with OCR enabled. "
+                    "Change the engine in Settings, Document Parsing.",
+                    file_path.name,
+                    engine_label,
+                    extracted_image_count,
+                )
+            else:
+                self.logger.warning(f"Skipped empty document: {file_path.name}")

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import mimetypes
 
+import pytest
+
 from deeptutor.services.rag.file_routing import FileTypeRouter
 from deeptutor.utils.document_validator import DocumentValidator
 
@@ -66,6 +68,16 @@ def test_validate_upload_safety_kb_policy_allows_epub() -> None:
     assert safe_name == "Textbook.epub"
 
 
+def test_validate_upload_safety_preserves_compound_docling_extension() -> None:
+    safe_name = DocumentValidator.validate_upload_safety(
+        "METS Export.TAR.GZ",
+        1024,
+        allowed_extensions=FileTypeRouter.get_supported_extensions(),
+    )
+
+    assert safe_name == "METS Export.tar.gz"
+
+
 def test_validate_upload_safety_default_policy_allows_epub() -> None:
     safe_name = DocumentValidator.validate_upload_safety("novel.epub", 1024)
 
@@ -74,3 +86,18 @@ def test_validate_upload_safety_default_policy_allows_epub() -> None:
     assert "application/epub+zip" in DocumentValidator.ALLOWED_MIME_TYPES
     guessed, _ = mimetypes.guess_type("novel.epub")
     assert guessed is None or guessed in DocumentValidator.ALLOWED_MIME_TYPES
+
+
+def test_validate_upload_safety_empty_policy_delegates_extension_detection() -> None:
+    assert (
+        DocumentValidator.validate_upload_safety(
+            "vendor/Document.CUSTOM-BINARY", 1024, allowed_extensions=set()
+        )
+        == "Document.custom-binary"
+    )
+    assert (
+        DocumentValidator.validate_upload_safety("extensionless", 1024, allowed_extensions=set())
+        == "extensionless"
+    )
+    with pytest.raises(ValueError, match="Invalid filename"):
+        DocumentValidator.validate_upload_safety(".hidden", 1024, allowed_extensions=set())

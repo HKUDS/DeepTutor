@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_SUBPATH = ("workspace", "chat", "attachments")
 # Public route prefix served by deeptutor.api.routers.attachments
-_PUBLIC_URL_PREFIX = "/api/attachments"
+_PUBLIC_URL_PREFIX = "/files/attachments"
 
 
 def _coerce_filename(filename: str) -> str:
@@ -81,7 +81,7 @@ class AttachmentStore(Protocol):
         """Persist *data* and return a public URL the frontend can fetch.
 
         The returned URL is relative to the API origin (e.g.
-        ``"/api/attachments/<sid>/<aid>/<name>"``). Raising on failure is
+        ``"/files/attachments/<sid>/<aid>/<name>"``). Raising on failure is
         fine — callers log the error and proceed without ``url``.
         """
 

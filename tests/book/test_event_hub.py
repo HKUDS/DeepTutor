@@ -56,6 +56,26 @@ async def test_a_late_subscriber_catches_up_on_what_it_missed() -> None:
     events = await _drain(get_book_bus("bk_1"), 2)
 
     assert [e.metadata["kind"] for e in events] == ["page_planned", "block_ready"]
+    assert [e.seq for e in events] == [1, 2]
+
+
+@pytest.mark.asyncio
+async def test_reconnect_cursor_replays_only_unseen_events() -> None:
+    stream = get_book_stream("bk_1")
+    await stream.book_event("page_planned", {"page_id": "pg_1"})
+    await stream.book_event("block_ready", {"block_id": "blk_1"})
+    await stream.book_event("page_compiled", {"page_id": "pg_1"})
+
+    received = []
+
+    async def _read():
+        async for event in get_book_bus("bk_1").subscribe(after_seq=2):
+            received.append(event)
+            return
+
+    await asyncio.wait_for(_read(), timeout=1.0)
+    assert [event.seq for event in received] == [3]
+    assert received[0].metadata["kind"] == "page_compiled"
 
 
 @pytest.mark.asyncio

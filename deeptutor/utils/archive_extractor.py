@@ -117,6 +117,9 @@ def safe_extract_zip(
             if member.startswith("__MACOSX/") or basename.startswith("."):
                 result.skipped.append((member, "system file or dotfile"))
                 continue
+            if basename.lower().endswith(".zip"):
+                result.skipped.append((member, "nested archive"))
+                continue
 
             # Zip-bomb guards evaluated against the archive's own metadata
             # *before* writing a single byte.

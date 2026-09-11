@@ -5,8 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from deeptutor.agents.chat.agentic_pipeline import AgenticChatPipeline
-from deeptutor.agents.chat.chat_agent import ChatAgent
-from deeptutor.agents.chat.prompt_blocks import ChatPromptAssembler
+from deeptutor.agents.loop.prompt_blocks import ChatPromptAssembler
 
 
 @pytest.fixture(autouse=True)
@@ -19,7 +18,7 @@ def _fake_llm_config(monkeypatch: pytest.MonkeyPatch) -> None:
         api_version=None,
     )
     monkeypatch.setattr(
-        "deeptutor.agents.chat.agentic_pipeline.get_llm_config",
+        "deeptutor.agents.loop.pipeline.get_llm_config",
         lambda: cfg,
     )
     monkeypatch.setattr("deeptutor.agents.base_agent.get_llm_config", lambda: cfg)
@@ -33,7 +32,7 @@ def test_agentic_chat_final_prompt_uses_selected_language(
             return "- tool"
 
     monkeypatch.setattr(
-        "deeptutor.agents.chat.agentic_pipeline.get_tool_registry",
+        "deeptutor.agents.loop.pipeline.get_tool_registry",
         lambda: FakeRegistry(),
     )
 
@@ -61,7 +60,7 @@ def test_mastery_plugin_system_prompt_uses_localized_fallback(
             return "- tool"
 
     monkeypatch.setattr(
-        "deeptutor.agents.chat.agentic_pipeline.get_tool_registry",
+        "deeptutor.agents.loop.pipeline.get_tool_registry",
         lambda: FakeRegistry(),
     )
 
@@ -72,9 +71,9 @@ def test_mastery_plugin_system_prompt_uses_localized_fallback(
     en_prompt = AgenticChatPipeline(language="en")._build_system_prompt([], ctx)
 
     assert "## mastery_tutor" in zh_prompt
-    assert "精通导师模式" in zh_prompt
+    assert "掌握式导师" in zh_prompt
     assert "## mastery_tutor" in en_prompt
-    assert "Mastery Tutor mode" in en_prompt
+    assert "mastery tutor" in en_prompt
 
 
 def test_ask_questions_plugin_system_prompt_uses_localized_fallback(
@@ -85,7 +84,7 @@ def test_ask_questions_plugin_system_prompt_uses_localized_fallback(
             return "- tool"
 
     monkeypatch.setattr(
-        "deeptutor.agents.chat.agentic_pipeline.get_tool_registry",
+        "deeptutor.agents.loop.pipeline.get_tool_registry",
         lambda: FakeRegistry(),
     )
 
@@ -104,22 +103,6 @@ def test_ask_questions_plugin_system_prompt_uses_localized_fallback(
     assert "Ask Questions mode" in en_prompt
     assert "second, third, tenth" in en_prompt
     assert "calling `ask_user` exactly once" in en_prompt
-
-
-def test_legacy_chat_agent_system_prompt_uses_selected_language() -> None:
-    zh_messages = ChatAgent(language="zh", config={}).build_messages(
-        message="解释梯度下降",
-        history=[],
-    )
-    en_messages = ChatAgent(language="en", config={}).build_messages(
-        message="Explain gradient descent",
-        history=[],
-    )
-
-    assert "你是 DeepTutor" in zh_messages[0]["content"]
-    assert "请严格使用中文" in zh_messages[0]["content"]
-    assert "You are DeepTutor" in en_messages[0]["content"]
-    assert "Write ALL reader-facing text" in en_messages[0]["content"]
 
 
 def test_prompt_blocks_include_localized_optional_context() -> None:

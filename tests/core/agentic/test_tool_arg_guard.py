@@ -20,21 +20,22 @@ from typing import Any
 
 import pytest
 
-from deeptutor.core.agentic.tool_arg_guard import (
-    missing_args_message,
-    missing_required_args,
-    required_args,
-)
-from deeptutor.core.agentic.tool_dispatch import dispatch_tool_calls
 from deeptutor.core.context import UnifiedContext
 from deeptutor.core.stream import StreamEvent, StreamEventType
-from deeptutor.core.stream_bus import StreamBus
 from deeptutor.core.tool_protocol import (
     BaseTool,
     ToolDefinition,
     ToolParameter,
     ToolResult,
 )
+from deeptutor.runtime.agentic.tool_arg_guard import (
+    missing_args_message,
+    missing_required_args,
+    required_args,
+    unsatisfied_required_args,
+)
+from deeptutor.runtime.agentic.tool_dispatch import dispatch_tool_calls
+from deeptutor.runtime.stream_bus import StreamBus
 
 
 def _write_note_definition() -> ToolDefinition:
@@ -84,6 +85,49 @@ def test_blank_string_counts_as_missing() -> None:
     assert [arg.name for arg in missing_required_args(definition, {"command": "   "})] == [
         "command"
     ]
+
+
+def test_present_blank_string_is_classified_separately_from_absent() -> None:
+    """Thinking models sometimes pass ``""`` on purpose (#1101). The guard
+    still rejects the call, but the corrective message must say the key was
+    empty — not that it was omitted — or the model retries verbatim."""
+    definition = ToolDefinition(
+        name="obsidian_create_note",
+        description="",
+        parameters=[
+            ToolParameter(name="path", type="string"),
+            ToolParameter(name="content", type="string"),
+        ],
+    )
+    absent, blank = unsatisfied_required_args(
+        definition,
+        {"path": "Hub.md", "content": ""},
+    )
+    assert [arg.name for arg in absent] == []
+    assert [arg.name for arg in blank] == ["content"]
+
+    message = missing_args_message("obsidian_create_note", absent, empty=blank)
+    assert "received empty value(s)" in message
+    assert "`content`" in message
+    assert "present but blank" in message
+    assert "without its required argument(s)" not in message
+
+
+def test_mixed_absent_and_blank_args_are_both_named() -> None:
+    definition = ToolDefinition(
+        name="obsidian_create_note",
+        description="",
+        parameters=[
+            ToolParameter(name="path", type="string"),
+            ToolParameter(name="content", type="string"),
+        ],
+    )
+    absent, blank = unsatisfied_required_args(definition, {"content": "   "})
+    assert [arg.name for arg in absent] == ["path"]
+    assert [arg.name for arg in blank] == ["content"]
+    message = missing_args_message("obsidian_create_note", absent, empty=blank)
+    assert "without its required argument(s): `path`" in message
+    assert "received empty value(s) for required argument(s): `content`" in message
 
 
 def test_empty_collections_are_left_alone() -> None:
@@ -228,6 +272,29 @@ async def test_call_with_empty_arguments_never_reaches_the_tool() -> None:
     # …on a PROGRESS event: a rejected call is recoverable, and a stream ERROR
     # makes a partner turn re-run the whole turn on its backup model.
     assert [e for e in events if e.type == StreamEventType.ERROR] == []
+
+
+@pytest.mark.asyncio
+async def test_call_with_empty_string_arg_names_blank_not_missing() -> None:
+    """#1101: a deliberate ``""`` must not be framed as an omitted key."""
+    tool = _WriteNote()
+    events = await _run_dispatch(
+        [
+            {
+                "id": "c1",
+                "name": "write_note",
+                "arguments": json.dumps({"mode": "", "notebook_id": "nb1"}),
+            }
+        ],
+        _Registry(tool),
+    )
+
+    assert tool.calls == []
+    result = next(e for e in events if e.type == StreamEventType.TOOL_RESULT)
+    assert "received empty value(s)" in result.content
+    assert "`mode`" in result.content
+    assert "without its required argument(s)" not in result.content
+    assert _call_states(events) == ["error"]
 
 
 @pytest.mark.asyncio

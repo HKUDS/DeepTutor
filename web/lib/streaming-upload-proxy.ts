@@ -1,9 +1,19 @@
-const DEFAULT_API_BASE_URL = "http://127.0.0.1:8001";
+import { resolveBackendApiBase } from "./backend-runtime-config";
 
 // HTTP/1.1 hop-by-hop headers describe one transport connection and must not
 // be replayed on the independent frontend -> backend connection.
+//
+// ``expect`` belongs here too: Node's server already answered the client's
+// ``100-continue`` before this handler ever ran, so the negotiation is over.
+// Replaying it is not merely redundant — undici rejects any request carrying
+// the header ("expect header not supported"), which fails the forward *mid
+// upload*. The browser, still writing the body, never reads that 500 and
+// reports a bare "Failed to fetch". Only clients that add the header for
+// large bodies are affected (curl past 1KB, and TUN/HTTP proxies in front of
+// the browser), which is why the breakage looks size-dependent.
 const HOP_BY_HOP_HEADERS = new Set([
   "connection",
+  "expect",
   "keep-alive",
   "proxy-authenticate",
   "proxy-authorization",
@@ -13,7 +23,7 @@ const HOP_BY_HOP_HEADERS = new Set([
   "upgrade",
 ]);
 
-type StreamingRequestInit = RequestInit & { duplex: "half" };
+type StreamingRequestInit = RequestInit & { duplex?: "half" };
 
 export interface UploadProxyDependencies {
   apiBaseUrl?: string;
@@ -43,10 +53,7 @@ export async function forwardBackendUpload(
   request: Request,
   dependencies: UploadProxyDependencies = {},
 ): Promise<Response> {
-  const apiBaseUrl =
-    dependencies.apiBaseUrl ||
-    process.env.DEEPTUTOR_API_BASE_URL ||
-    DEFAULT_API_BASE_URL;
+  const apiBaseUrl = dependencies.apiBaseUrl || resolveBackendApiBase();
   const fetchImpl = dependencies.fetchImpl || globalThis.fetch;
   const incomingUrl = new URL(request.url);
   const upstreamUrl = new URL(
@@ -57,11 +64,17 @@ export async function forwardBackendUpload(
   const init: StreamingRequestInit = {
     method: request.method,
     headers: forwardedHeaders(request.headers, { request: true }),
-    body: request.body,
     signal: request.signal,
     redirect: "manual",
-    duplex: "half",
   };
+  if (
+    request.body !== null &&
+    request.method !== "GET" &&
+    request.method !== "HEAD"
+  ) {
+    init.body = request.body;
+    init.duplex = "half";
+  }
   const upstream = await fetchImpl(upstreamUrl, init);
 
   return new Response(upstream.body, {

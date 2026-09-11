@@ -11,7 +11,7 @@ mechanism — a persona carries no privileged workflow, only style guidance).
 Users create and manage their own personas in their own workspace; a user
 persona shadows an admin persona of the same name.
 
-Mounted at ``/api/v1/personas``.
+Mounted at ``/api/personas``.
 """
 
 from __future__ import annotations
@@ -19,9 +19,9 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from deeptutor.core.i18n import t
 from deeptutor.multi_user.context import get_current_user
 from deeptutor.multi_user.paths import get_admin_path_service
+from deeptutor.services.i18n import t
 from deeptutor.services.persona import (
     InvalidPersonaNameError,
     PersonaExistsError,
@@ -49,7 +49,7 @@ def _admin_persona_service() -> PersonaService:
     return PersonaService(root=get_admin_path_service().get_workspace_dir() / "personas")
 
 
-@router.get("/list")
+@router.get("/personas")
 async def list_personas() -> dict[str, list[dict[str, object]]]:
     service = get_persona_service()
     own = [info.to_dict() for info in service.list_personas()]
@@ -67,7 +67,7 @@ async def list_personas() -> dict[str, list[dict[str, object]]]:
     return {"personas": merged}
 
 
-@router.get("/{name}")
+@router.get("/personas/{name}")
 async def get_persona(name: str) -> dict[str, object]:
     service = get_persona_service()
     try:
@@ -88,7 +88,7 @@ async def get_persona(name: str) -> dict[str, object]:
     raise HTTPException(status_code=404, detail=t("api.persona_not_found", name=name))
 
 
-@router.post("/create")
+@router.post("/personas")
 async def create_persona(payload: CreatePersonaRequest) -> dict[str, object]:
     service = get_persona_service()
     try:
@@ -107,7 +107,7 @@ async def create_persona(payload: CreatePersonaRequest) -> dict[str, object]:
         raise HTTPException(status_code=400, detail=str(exc))
 
 
-@router.put("/{name}")
+@router.put("/personas/{name}")
 async def update_persona(name: str, payload: UpdatePersonaRequest) -> dict[str, object]:
     service = get_persona_service()
     try:
@@ -126,7 +126,7 @@ async def update_persona(name: str, payload: UpdatePersonaRequest) -> dict[str, 
         raise HTTPException(status_code=400, detail=str(exc))
 
 
-@router.delete("/{name}")
+@router.delete("/personas/{name}")
 async def delete_persona(name: str) -> dict[str, str]:
     service = get_persona_service()
     try:

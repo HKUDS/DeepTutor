@@ -26,6 +26,7 @@ function feed(pathId: string, revisions: number[]): ActivityFeed {
     pathId,
     events: revisions.map((r) => event(r)),
     revision: Math.max(0, ...revisions),
+    signal: 0,
   };
 }
 
@@ -71,4 +72,22 @@ test("a batch for another path never mixes into the previous path's history", ()
 test("the cursor never moves backwards past what was already requested", () => {
   assert.equal(latestRevision(7, []), 7);
   assert.equal(latestRevision(7, [event(9), event(8)]), 9);
+});
+
+test("overlapping replay batches deduplicate events by durable id", () => {
+  const merged = mergeEventBatch(feed("p1", [1, 2]), "p1", 2, [
+    event(2),
+    event(3),
+  ]);
+  assert.deepEqual(
+    merged.events.map((e) => e.revision),
+    [1, 2, 3],
+  );
+});
+
+test("a socket head advances even when it carries no durable events", () => {
+  const merged = mergeEventBatch(EMPTY_FEED, "p1", 0, [], 7);
+  assert.equal(merged.pathId, "p1");
+  assert.equal(merged.revision, 7);
+  assert.deepEqual(merged.events, []);
 });

@@ -8,7 +8,7 @@ import pytest
 from deeptutor.agents.math_animator.capability import MathAnimatorCapability
 from deeptutor.core.context import UnifiedContext
 from deeptutor.core.stream import StreamEvent, StreamEventType
-from deeptutor.core.stream_bus import StreamBus
+from deeptutor.runtime.stream_bus import StreamBus
 
 
 async def _collect_events(run_coro) -> list[StreamEvent]:
@@ -61,7 +61,7 @@ async def test_math_animator_capability_emits_summary_and_result(
                         SimpleNamespace(
                             model_dump=lambda: {
                                 "type": "video",
-                                "url": "/api/outputs/agent/math_animator/turn_1/artifacts/video.mp4",
+                                "url": "/files/outputs/agent/math_animator/turn_1/artifacts/video.mp4",
                                 "filename": "video.mp4",
                                 "content_type": "video/mp4",
                                 "label": "Animation video",

@@ -16,9 +16,9 @@ import recordedEvents from "./fixtures/provider-trace-events.json";
 import {
   getLatestToolProgress,
   getToolProvider,
-} from "../components/chat/home/TracePanels";
+} from "../features/chat/trace/TracePresentation";
 import { describeProviderTool } from "../lib/trace-tools";
-import type { StreamEvent } from "../lib/unified-ws";
+import type { StreamEvent } from "../features/chat/model/protocol";
 
 const recorded = recordedEvents as unknown as Record<string, StreamEvent[]>;
 

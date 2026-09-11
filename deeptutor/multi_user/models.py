@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 Role = Literal["admin", "user"]
+AccountPreset = Literal["standard", "learner", "custom"]
 ScopeKind = Literal["admin", "user"]
 
 
@@ -22,6 +23,11 @@ class UserRecord:
     # version is bumped on every upload so clients can cache-bust).
     avatar: str = ""
 
+    # Account presets describe how a normal ``user`` is configured. They are
+    # deliberately not a third identity role: admins remain admins and every
+    # preset remains an ordinary account.
+    preset: AccountPreset = "standard"
+
     def public_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
@@ -30,6 +36,7 @@ class UserRecord:
             "created_at": self.created_at,
             "disabled": self.disabled,
             "avatar": self.avatar,
+            "preset": self.preset,
         }
 
 

@@ -1,0 +1,230 @@
+/*
+ * Learning-space surface.
+ *
+ * These names are kept because several components already speak them, but
+ * every one now resolves to a product design token. The previous version
+ * hardcoded a parchment palette (cream #f3ead7 paper, brown route, gold
+ * highlights) plus paper-grain noise and graph-paper ruling. It read as a
+ * cartoon treasure map rather than part of the product, and it could not
+ * follow a theme switch because the values were literals.
+ *
+ * The map's identity comes from its structure — a route, waypoints, and a
+ * visible progression — not from a skin. State is encoded by form (filled →
+ * ringed → outline) so it survives any palette, and there is no invented
+ * "success green": the product has no success token, only --primary.
+ */
+.mastery-shell {
+  --mastery-ink: var(--foreground);
+  --mastery-paper: var(--secondary);
+  --mastery-paper-raised: var(--card);
+  --mastery-route: var(--primary);
+  --mastery-moss: var(--primary);
+  --mastery-complete: var(--primary);
+  --mastery-water: var(--muted-foreground);
+  --mastery-gold: var(--primary);
+  background: var(--background);
+}
+
+.mastery-map-paper {
+  background-color: var(--mastery-paper);
+  color: var(--mastery-ink);
+}
+
+.mastery-route-line {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 1 7;
+}
+
+.mastery-route-travelled {
+  fill: none;
+  stroke: var(--mastery-route);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+
+.mastery-map-card {
+  transform: translateZ(0);
+  transition:
+    transform 220ms ease,
+    box-shadow 220ms ease,
+    border-color 220ms ease;
+}
+
+.mastery-map-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.08);
+}
+
+.mastery-waypoint-icon {
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    border-color 160ms ease;
+}
+
+.mastery-waypoint:hover .mastery-waypoint-icon,
+.mastery-waypoint:focus-visible .mastery-waypoint-icon {
+  transform: scale(1.06);
+  box-shadow:
+    0 0 0 3px var(--background),
+    0 0 0 5px var(--mastery-route);
+}
+
+.mastery-waypoint[data-current="true"] .mastery-waypoint-icon {
+  animation: mastery-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes mastery-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 18%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 9px color-mix(in srgb, var(--primary) 4%, transparent);
+  }
+}
+
+.dark .mastery-map-card:hover,
+.theme-glass .mastery-map-card:hover {
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.3);
+}
+
+/* ─── "Just cleared this gate" ─────────────────────────────────────────
+   The moment a knowledge point flips to mastered, its row in the study
+   outline replays that transition instead of silently already being in the
+   new state. Three layers, deliberately short: the dot lands, a ring
+   leaves it, and the row it belongs to warms and cools. Together they say
+   "this one, just now" — which the confetti alone cannot, because confetti
+   has no idea which line it is about. */
+
+/* The dot lands: overshoots, settles, and flashes a glow on the way. */
+.mastery-just-mastered-dot {
+  animation: mastery-dot-land 620ms cubic-bezier(0.22, 1.4, 0.36, 1) both;
+}
+
+@keyframes mastery-dot-land {
+  0% {
+    transform: scale(0.3);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 55%, transparent);
+  }
+  55% {
+    transform: scale(1.5);
+    box-shadow: 0 0 10px 2px color-mix(in srgb, var(--primary) 45%, transparent);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+/* Two rings leaving the dot, the second a beat behind the first — one ring
+   reads as a blip, two read as an impact. Drawn on pseudo-elements so they
+   can outgrow the 7px dot without moving it or resizing its box.
+
+   The timing curve is deliberately NOT a hard ease-out: at
+   cubic-bezier(0.16, 1, 0.3, 1) the ring was at 90% of its travel within
+   300ms and invisible for the rest of its duration, which is a blink rather
+   than a ripple. */
+.mastery-just-mastered-halo::after,
+.mastery-just-mastered-halo::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin: -3.5px 0 0 -3.5px;
+  border-radius: 9999px;
+  border: 1.5px solid var(--primary);
+  pointer-events: none;
+}
+
+.mastery-just-mastered-halo::after {
+  animation: mastery-halo-out 820ms cubic-bezier(0.25, 0.6, 0.35, 1) both;
+}
+
+.mastery-just-mastered-halo::before {
+  animation: mastery-halo-out 820ms cubic-bezier(0.25, 0.6, 0.35, 1) 130ms both;
+}
+
+@keyframes mastery-halo-out {
+  0% {
+    transform: scale(1);
+    opacity: 0.85;
+  }
+  70% {
+    opacity: 0.28;
+  }
+  100% {
+    transform: scale(5);
+    opacity: 0;
+  }
+}
+
+/* The row warms and cools. It has to out-read the *current* waypoint's own
+   tint sitting directly under it, so it does not merely start darker — it
+   also carries a primary bar down its leading edge that the resting states
+   never have. Colour alone was ambiguous; the bar is unambiguous. */
+.mastery-just-mastered-row {
+  animation: mastery-row-glow 1600ms cubic-bezier(0.33, 0, 0.2, 1) both;
+}
+
+@keyframes mastery-row-glow {
+  0% {
+    background-color: color-mix(in srgb, var(--primary) 30%, transparent);
+    box-shadow: inset 3px 0 0 0 var(--primary);
+  }
+  35% {
+    background-color: color-mix(in srgb, var(--primary) 22%, transparent);
+    box-shadow: inset 3px 0 0 0 var(--primary);
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: inset 3px 0 0 0 transparent;
+  }
+}
+
+/* Collapsed rail: the outline is a 36px strip, so the row animation has
+   nowhere to play. The strip itself acknowledges the gate instead. */
+.mastery-just-mastered-strip {
+  animation: mastery-strip-glow 1500ms ease-out both;
+}
+
+@keyframes mastery-strip-glow {
+  0%,
+  20% {
+    background-color: color-mix(in srgb, var(--primary) 18%, transparent);
+    color: var(--primary);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mastery-map-card,
+  .mastery-waypoint-icon {
+    animation: none !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .mastery-map-card:hover,
+  .mastery-waypoint:hover .mastery-waypoint-icon,
+  .mastery-waypoint:focus-visible .mastery-waypoint-icon {
+    transform: none;
+  }
+
+  /* The state change still needs to be noticed, so the row keeps a brief
+     static tint — it simply does not move or scale. */
+  .mastery-just-mastered-dot {
+    animation: none !important;
+  }
+
+  .mastery-just-mastered-halo::after,
+  .mastery-just-mastered-halo::before {
+    display: none;
+  }
+}

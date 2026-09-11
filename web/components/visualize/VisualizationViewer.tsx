@@ -7,13 +7,21 @@ import { Code2, Copy, Check, ExternalLink, Maximize2, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Mermaid } from "@/components/Mermaid";
 import { prepareIframeHtml } from "@/lib/iframe-html";
-import { isManimResult, type VisualizeResult } from "@/lib/visualize-types";
+import {
+  isManimResult,
+  type VisualizeCanvasResult,
+  type VisualizeResult,
+} from "@/lib/visualize-types";
 import "./svg-theme.css";
 
 const MathAnimatorViewer = dynamic(
   () => import("@/components/math-animator/MathAnimatorViewer"),
   { ssr: false },
 );
+
+const Geogebra = dynamic(() => import("@/components/Geogebra"), {
+  ssr: false,
+});
 
 function stripCodeFence(source: string): string {
   const trimmed = source.trim();
@@ -182,6 +190,77 @@ function HtmlRenderer({ html }: { html: string }) {
         style={{ minHeight: 320, height }}
       />
     </div>
+  );
+}
+
+function PluginIframeRenderer({ result }: { result: VisualizeCanvasResult }) {
+  const { t } = useTranslation();
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [height, setHeight] = useState(560);
+  const entryUrl = result.renderer.entry_url;
+
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      const iframe = iframeRef.current;
+      if (!iframe || event.source !== iframe.contentWindow) return;
+      const data = event.data as {
+        type?: string;
+        text?: string;
+        height?: number;
+      };
+      if (!data || typeof data !== "object") return;
+      if (
+        (data.type === "deeptutor:visualization:prompt" ||
+          data.type === "dt:visualize-prompt") &&
+        data.text
+      ) {
+        window.dispatchEvent(
+          new CustomEvent("dt:visualize-prompt", { detail: data.text }),
+        );
+      }
+      if (
+        (data.type === "deeptutor:visualization:resize" ||
+          data.type === "dt:visualize-height") &&
+        typeof data.height === "number" &&
+        Number.isFinite(data.height)
+      ) {
+        setHeight(Math.min(2400, Math.max(240, Math.ceil(data.height) + 8)));
+      }
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
+
+  if (!entryUrl) {
+    return (
+      <div className="p-4 text-sm text-red-600">
+        {t("Visualizer renderer is unavailable")}
+      </div>
+    );
+  }
+
+  return (
+    <iframe
+      ref={iframeRef}
+      src={entryUrl}
+      title={result.presentation.title || result.renderer.id}
+      sandbox="allow-scripts"
+      className="w-full rounded-lg border-0 bg-[var(--card)]"
+      style={{ minHeight: 320, height }}
+      onLoad={() => {
+        iframeRef.current?.contentWindow?.postMessage(
+          {
+            type: "deeptutor:visualization:render",
+            schema_version: result.schema_version,
+            renderer: result.renderer,
+            payload: result.payload,
+            presentation: result.presentation,
+            interaction: result.interaction,
+          },
+          "*",
+        );
+      }}
+    />
   );
 }
 
@@ -361,22 +440,70 @@ function SvgRenderer({ svg }: { svg: string }) {
   );
 }
 
-type TextResult = Extract<
-  VisualizeResult,
-  { render_type: "svg" | "chartjs" | "mermaid" | "html" }
->;
+function CanvasVisualization({ result }: { result: VisualizeCanvasResult }) {
+  const { t } = useTranslation();
+  if (result.renderer.target === "iframe") {
+    return <PluginIframeRenderer result={result} />;
+  }
 
-function renderTextVisualization(result: TextResult) {
-  if (result.render_type === "svg") {
+  const renderer = result.renderer.native_renderer || result.render_type;
+  if (renderer === "svg") {
     return <SvgRenderer svg={result.code.content} />;
   }
-  if (result.render_type === "mermaid") {
+  if (renderer === "mermaid") {
     return <Mermaid chart={result.code.content} />;
   }
-  if (result.render_type === "html") {
+  if (renderer === "html") {
     return <HtmlRenderer html={result.code.content} />;
   }
-  return <ChartJsRenderer config={result.code.content} />;
+  if (renderer === "chartjs") {
+    return <ChartJsRenderer config={result.code.content} />;
+  }
+  if (renderer === "geogebra") {
+    const raw = result.payload.data;
+    const payload =
+      raw &&
+      typeof raw === "object" &&
+      Array.isArray((raw as { commands?: unknown }).commands)
+        ? (raw as {
+            app_name?: string;
+            commands: string[];
+            view?: {
+              x_min: number;
+              x_max: number;
+              y_min: number;
+              y_max: number;
+            };
+          })
+        : undefined;
+    return (
+      <Geogebra
+        payload={payload}
+        script={payload ? "" : result.code.content}
+        title={result.presentation.title}
+      />
+    );
+  }
+  return (
+    <div className="p-4 text-sm text-red-600">
+      {t("No native renderer is registered for {{renderer}}.", {
+        renderer: renderer || result.render_type,
+      })}
+    </div>
+  );
+}
+
+function visualizationLabel(result: VisualizeCanvasResult): string {
+  const renderer = result.renderer.native_renderer || result.render_type;
+  if (renderer === "chartjs") {
+    return `Chart.js · ${result.analysis.chart_type || "chart"}`;
+  }
+  if (renderer === "mermaid") {
+    return `Mermaid · ${result.analysis.chart_type || "diagram"}`;
+  }
+  return result.presentation.title
+    ? `${result.renderer.id} · ${result.presentation.title}`
+    : result.renderer.id;
 }
 
 export default function VisualizationViewer({
@@ -415,7 +542,9 @@ export default function VisualizationViewer({
   // TypeScript narrows ``result`` to the text-only variant from here on.
   // HTML iframe already provides its own "Open in new tab" affordance; the
   // sandboxed iframe also doesn't behave well inside a re-rendered modal.
-  const supportsFullscreen = result.render_type !== "html";
+  const supportsFullscreen =
+    result.renderer.target !== "iframe" &&
+    result.renderer.native_renderer !== "html";
 
   const handleCopy = async () => {
     try {
@@ -432,7 +561,8 @@ export default function VisualizationViewer({
       {/* Visualization area */}
       <div
         className={`relative ${
-          result.render_type === "html"
+          result.renderer.target === "iframe" ||
+          result.renderer.native_renderer === "html"
             ? "overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--background)]"
             : "overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--background)] p-4"
         }`}
@@ -448,7 +578,7 @@ export default function VisualizationViewer({
             {t("Fullscreen")}
           </button>
         )}
-        {renderTextVisualization(result)}
+        <CanvasVisualization result={result} />
       </div>
 
       {/* Toolbar */}
@@ -476,13 +606,7 @@ export default function VisualizationViewer({
         </button>
 
         <span className="ml-auto text-[10px] uppercase tracking-wider text-[var(--muted-foreground)]/50">
-          {result.render_type === "svg"
-            ? "SVG"
-            : result.render_type === "mermaid"
-              ? `Mermaid · ${result.analysis.chart_type || "diagram"}`
-              : result.render_type === "html"
-                ? `HTML · ${result.analysis.chart_type || "interactive"}`
-                : `Chart.js · ${result.analysis.chart_type || "chart"}`}
+          {visualizationLabel(result)}
         </span>
       </div>
 
@@ -520,11 +644,7 @@ export default function VisualizationViewer({
           >
             <div className="mb-2 flex shrink-0 items-center justify-between text-white">
               <div className="text-xs uppercase tracking-wider opacity-80">
-                {result.render_type === "svg"
-                  ? "SVG"
-                  : result.render_type === "mermaid"
-                    ? `Mermaid · ${result.analysis.chart_type || "diagram"}`
-                    : `Chart.js · ${result.analysis.chart_type || "chart"}`}
+                {visualizationLabel(result)}
               </div>
               <button
                 type="button"
@@ -546,7 +666,7 @@ export default function VisualizationViewer({
               onClick={(e) => e.stopPropagation()}
             >
               <div className="dt-viz-fullscreen m-auto w-full max-w-[1600px]">
-                {renderTextVisualization(result)}
+                <CanvasVisualization result={result} />
               </div>
             </div>
           </div>,

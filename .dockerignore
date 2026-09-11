@@ -66,6 +66,8 @@ htmlcov/
 
 # mypy
 .mypy_cache/
+.ruff_cache/
+.import_linter_cache/
 .dmypy.json
 dmypy.json
 
@@ -82,8 +84,10 @@ yarn-error.log*
 # Next.js
 .next/
 web/.next/
+web/.next-*/
 out/
 web/out/
+*.tsbuildinfo
 
 # ============================================
 # IDE and Editor
@@ -114,7 +118,16 @@ run_code_workspace/
 # Development and Testing
 # ============================================
 develop/
+.claude/
+.agents/
+.playwright-cli/
+site/
 scripts/extract_numbered_items.sh
+output/
+outputs/
+web/tmp/
+web/test-results/
+web/playwright-report/
 *.log
 logs/
 *.bak

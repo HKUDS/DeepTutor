@@ -53,6 +53,7 @@ interface ComposerInputProps {
   onSelectKnowledge?: () => void;
   onSelectNotebookPicker: () => void;
   onSelectBookPicker: () => void;
+  onSelectReadingPicker?: () => void;
   onSelectHistoryPicker: () => void;
   onSelectAgentsPicker?: () => void;
   /** Hide the My Agents entry (e.g. the quiz follow-up surface). */
@@ -73,6 +74,16 @@ interface ComposerInputProps {
    * main chat ("How can I help you today?") / visualize defaults.
    */
   placeholder?: string;
+  /**
+   * A line Tab accepts into the empty composer.
+   *
+   * The mastery study screen offers a question the learner could ask; reading
+   * it and then retyping it is exactly the work the offer was meant to save,
+   * so Tab takes it. Only while the composer is empty — past the first
+   * character the learner is writing their own question, and stealing Tab
+   * there would break moving focus out of the box.
+   */
+  placeholderCompletion?: string;
   /**
    * Minimum textarea height in pixels. The auto-sized hook grows the
    * textarea past this as the user types. Bumped on the empty-state
@@ -144,6 +155,7 @@ export const ComposerInput = memo(
       onSelectKnowledge,
       onSelectNotebookPicker,
       onSelectBookPicker,
+      onSelectReadingPicker,
       onSelectHistoryPicker,
       onSelectAgentsPicker,
       agentsAvailable = true,
@@ -152,6 +164,7 @@ export const ComposerInput = memo(
       onSelectMemoryPicker,
       onOpenPersonaSelector,
       placeholder,
+      placeholderCompletion,
       minHeight = 28,
     },
     ref,
@@ -309,6 +322,19 @@ export const ComposerInput = memo(
           handleSelectAgentMention(filteredAgents[0].name);
           return;
         }
+        // Tab takes the offered question — but only into an empty composer, so
+        // Tab keeps meaning "leave this box" the moment there is a draft in it.
+        if (
+          e.key === "Tab" &&
+          !e.shiftKey &&
+          placeholderCompletion &&
+          !inputRef.current.trim()
+        ) {
+          e.preventDefault();
+          setInputBoth(placeholderCompletion);
+          onInputChange(placeholderCompletion);
+          return;
+        }
         if (shouldSubmitOnEnter(e, isComposingRef.current)) {
           e.preventDefault();
           if (!isStreaming) doSend();
@@ -327,6 +353,9 @@ export const ComposerInput = memo(
         filteredAgents,
         handleSelectAgentMention,
         isComposingRef,
+        onInputChange,
+        placeholderCompletion,
+        setInputBoth,
       ],
     );
 
@@ -338,6 +367,7 @@ export const ComposerInput = memo(
           | "chat_history"
           | "my_agents"
           | "books"
+          | "reading"
           | "notebooks"
           | "question_bank"
           | "persona"
@@ -350,6 +380,7 @@ export const ComposerInput = memo(
         else if (key === "chat_history") onSelectHistoryPicker();
         else if (key === "my_agents") onSelectAgentsPicker?.();
         else if (key === "books") onSelectBookPicker();
+        else if (key === "reading") onSelectReadingPicker?.();
         else if (key === "notebooks") onSelectNotebookPicker();
         else if (key === "question_bank") onSelectQuestionBankPicker();
         else if (key === "persona") onSelectPersonaPicker();
@@ -362,6 +393,7 @@ export const ComposerInput = memo(
         onSelectHistoryPicker,
         onSelectAgentsPicker,
         onSelectBookPicker,
+        onSelectReadingPicker,
         onSelectNotebookPicker,
         onSelectQuestionBankPicker,
         onSelectPersonaPicker,
@@ -390,6 +422,24 @@ export const ComposerInput = memo(
       document.addEventListener("mousedown", handler);
       return () => document.removeEventListener("mousedown", handler);
     }, [showAtPopup, showSlashPopup, textareaRef]);
+
+    const basePlaceholder =
+      placeholder ??
+      (isVisualizeMode
+        ? t(
+            "Describe the chart, diagram, or animation you want to visualize...",
+          )
+        : t("How can I help you today?"));
+    // The Tab hint used to be a separate pill under the textarea — its own
+    // block that appeared and disappeared as the offer came and went,
+    // nudging the composer's height around it. Rendered as an overlay over
+    // the (now empty) native placeholder instead: same muted tone, same
+    // line, no layout of its own. Two spans rather than one concatenated
+    // string — a hint long enough to fill the line would otherwise wrap the
+    // textarea onto a second line and silently clip the very text that
+    // explains how to accept it; the hint span truncates with an ellipsis
+    // instead, while "→ Tab to complete" stays pinned and fully visible.
+    const showHintOverlay = Boolean(placeholderCompletion) && !input.trim();
 
     return (
       <div className="px-4 pt-3.5 pb-2">
@@ -460,6 +510,7 @@ export const ComposerInput = memo(
               knowledgeAvailable={knowledgeAvailable}
               personaAvailable={personaAvailable}
               agentsAvailable={agentsAvailable}
+              readingAvailable={Boolean(onSelectReadingPicker)}
               onSelectItem={handleSelectSpaceItem}
             />
           </div>
@@ -498,34 +549,52 @@ export const ComposerInput = memo(
             </div>
           </div>
         )}
-        <textarea
-          ref={textareaRef}
-          value={input}
-          onChange={handleInputChange}
-          onKeyDown={handleKeyDown}
-          onCompositionStart={onCompositionStart}
-          onCompositionEnd={onCompositionEnd}
-          onClick={handleTextareaClick}
-          onPaste={onPaste}
-          rows={1}
-          // Cap input at 32k chars. A bigger paste (e.g. an entire textbook
-          // dumped via Cmd+V) would force a layout reflow on every keystroke
-          // and lock the page; the cap is a defensive guard, not a real
-          // product limit. Users hit by this cap should be using the
-          // attachment path, not the composer body.
-          maxLength={32000}
-          suppressHydrationWarning
-          placeholder={
-            placeholder ??
-            (isVisualizeMode
-              ? t(
-                  "Describe the chart, diagram, or animation you want to visualize...",
-                )
-              : t("How can I help you today?"))
-          }
-          className="w-full resize-none overflow-hidden bg-transparent text-[16px] leading-relaxed text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]"
-          style={{ transition: "height 0.15s ease-out" }}
-        />
+        <div className="relative">
+          <textarea
+            ref={textareaRef}
+            value={input}
+            onChange={handleInputChange}
+            onKeyDown={handleKeyDown}
+            onCompositionStart={onCompositionStart}
+            onCompositionEnd={onCompositionEnd}
+            onClick={handleTextareaClick}
+            onPaste={onPaste}
+            rows={1}
+            // Cap input at 32k chars. A bigger paste (e.g. an entire textbook
+            // dumped via Cmd+V) would force a layout reflow on every keystroke
+            // and lock the page; the cap is a defensive guard, not a real
+            // product limit. Users hit by this cap should be using the
+            // attachment path, not the composer body.
+            maxLength={32000}
+            suppressHydrationWarning
+            placeholder={placeholderCompletion ? "" : basePlaceholder}
+            // The overlay below replaces the native placeholder visually
+            // (so a long hint can truncate instead of wrapping), but an
+            // empty placeholder would otherwise leave the field with no
+            // accessible name — this restores one that reads the same as
+            // what's on screen.
+            aria-label={
+              placeholderCompletion
+                ? `${placeholderCompletion} — ${t("Tab to complete")}`
+                : undefined
+            }
+            className="w-full resize-none overflow-hidden bg-transparent text-[16px] leading-relaxed text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]"
+            style={{ transition: "height 0.15s ease-out" }}
+          />
+          {showHintOverlay ? (
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 flex items-start gap-1 overflow-hidden text-[16px] leading-relaxed text-[var(--muted-foreground)]"
+            >
+              <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
+                {placeholderCompletion}
+              </span>
+              <span className="shrink-0 whitespace-nowrap">
+                → {t("Tab to complete")}
+              </span>
+            </div>
+          ) : null}
+        </div>
       </div>
     );
   }),

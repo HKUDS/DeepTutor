@@ -46,7 +46,12 @@ class Parser(Protocol):
         ...
 
     def supported_formats(self) -> frozenset[str]:
-        """Lower-case file suffixes (including the dot) this engine can parse."""
+        """Lower-case file suffixes (including the dot) this engine can parse.
+
+        Compound suffixes such as ``.dclg.xml`` and ``.tar.gz`` are allowed.
+        An empty set means the engine performs its own content-based/runtime
+        detection (for example a remote Tika server with custom parsers).
+        """
         ...
 
     def signature(self, config: Any) -> ParserSignature:

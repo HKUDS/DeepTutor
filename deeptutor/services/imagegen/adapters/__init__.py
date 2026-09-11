@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from deeptutor.services.generation_http import GenerationProviderError
 from deeptutor.services.imagegen.adapters.chat_completions import ChatCompletionsImagegenAdapter
+from deeptutor.services.imagegen.adapters.dashscope import DashScopeImagegenAdapter
 from deeptutor.services.imagegen.adapters.openai_compat import OpenAICompatImagegenAdapter
 from deeptutor.services.imagegen.base import BaseImagegenAdapter
 
@@ -17,6 +18,7 @@ IMAGEGEN_ADAPTERS: dict[str, BaseImagegenAdapter] = {
     "openai_compat": OpenAICompatImagegenAdapter(),
     # Chat-completions image output (OpenRouter Flux / Gemini image, …).
     "chat_completions": ChatCompletionsImagegenAdapter(),
+    "dashscope": DashScopeImagegenAdapter(),
 }
 
 
@@ -27,4 +29,8 @@ def get_imagegen_adapter(name: str) -> BaseImagegenAdapter:
     return adapter
 
 
-__all__ = ["IMAGEGEN_ADAPTERS", "get_imagegen_adapter"]
+__all__ = [
+    "IMAGEGEN_ADAPTERS",
+    "get_imagegen_adapter",
+    "DashScopeImagegenAdapter",
+]

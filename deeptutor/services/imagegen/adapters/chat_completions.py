@@ -14,7 +14,6 @@ base64 data URIs; an http URL is downloaded as a fallback.
 
 from __future__ import annotations
 
-import base64
 import logging
 from typing import Any
 
@@ -23,6 +22,7 @@ import httpx
 from deeptutor.services.generation_http import (
     GenerationProviderError,
     build_auth_headers,
+    decode_base64_media,
     join_api_path,
     raise_for_provider,
 )
@@ -49,13 +49,22 @@ class ChatCompletionsImagegenAdapter(BaseImagegenAdapter):
         payload: dict[str, Any] = {
             "model": config.model,
             "messages": [{"role": "user", "content": prompt}],
-            "modalities": ["image", "text"],
         }
 
         logger.debug("imagegen(chat) url=%s model=%s", url, config.model)
         try:
             async with httpx.AsyncClient(timeout=config.request_timeout) as client:
-                resp = await client.post(url, headers=headers, json=payload)
+                # A router that has no endpoint for the pair answers 404 naming
+                # the modalities; the image-only request is the same ask without
+                # the text half. The last response is the one to report, so a
+                # second refusal reaches ``raise_for_provider`` as the error.
+                resp = await client.post(
+                    url, headers=headers, json={**payload, "modalities": ["image", "text"]}
+                )
+                if resp.status_code == 404 and "modalit" in resp.text.lower():
+                    resp = await client.post(
+                        url, headers=headers, json={**payload, "modalities": ["image"]}
+                    )
                 raise_for_provider(resp, "Image generation")
                 images = [
                     await self._materialize(client, src) for src in self._extract_sources(resp)
@@ -102,12 +111,16 @@ class ChatCompletionsImagegenAdapter(BaseImagegenAdapter):
             if not encoded:
                 raise GenerationProviderError("Malformed image data URI.")
             content_type = header[5:].split(";", 1)[0].strip() or "image/png"
-            return base64.b64decode(encoded), content_type
+            if not content_type.startswith("image/"):
+                raise GenerationProviderError("Image data URI had a non-image content type.")
+            return decode_base64_media(encoded, "Image generation"), content_type
         resp = await client.get(src)
         raise_for_provider(resp, "Image download")
         content_type = resp.headers.get("content-type") or "image/png"
         if not content_type.startswith("image/"):
             content_type = "image/png"
+        if not resp.content:
+            raise GenerationProviderError("Image download returned empty data.")
         return resp.content, content_type
 
 

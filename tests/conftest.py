@@ -9,9 +9,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from deeptutor.core.capability_protocol import BaseCapability, CapabilityManifest
+from deeptutor.core.capability_protocol import CapabilityManifest, TurnCapability
 from deeptutor.core.context import Attachment, UnifiedContext
-from deeptutor.core.stream_bus import StreamBus
+from deeptutor.runtime.stream_bus import StreamBus
 
 # ---------------------------------------------------------------------------
 # Multi-user legacy migration guard
@@ -185,7 +185,7 @@ def sqlite_store(tmp_db_path: Path):
 # ---------------------------------------------------------------------------
 
 
-class _StubCapability(BaseCapability):
+class _StubCapability(TurnCapability):
     """Capability that emits one content event and returns."""
 
     manifest = CapabilityManifest(

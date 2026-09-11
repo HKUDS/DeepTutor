@@ -20,6 +20,7 @@ import {
   type SessionSummary,
 } from "@/lib/session-api";
 import { normalizeMessageContent, truncateText } from "@/lib/message-content";
+import { displaySessionTitle } from "@/lib/session-title";
 
 export interface SelectedHistorySession {
   sessionId: string;
@@ -53,6 +54,9 @@ export default function HistorySessionPicker({
   onApply,
 }: HistorySessionPickerProps) {
   const { t } = useTranslation();
+  // Backend writes the English sentinel "New conversation" until the LLM
+  // title lands; mirror SessionList with a localized "New chat" label.
+  const placeholderLabel = t("New chat");
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [query, setQuery] = useState("");
@@ -146,7 +150,7 @@ export default function HistorySessionPicker({
       .filter((session) => selectedIds.includes(sessionKey(session)))
       .map((session) => ({
         sessionId: sessionKey(session),
-        title: session.title || t("Untitled session"),
+        title: displaySessionTitle(session.title, placeholderLabel),
       }));
     onApply(selected);
     onClose();
@@ -246,7 +250,10 @@ export default function HistorySessionPicker({
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-[13px] font-medium text-[var(--foreground)]">
-                            {session.title || t("Untitled session")}
+                            {displaySessionTitle(
+                              session.title,
+                              placeholderLabel,
+                            )}
                           </span>
                           <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-[var(--muted-foreground)]/85">
                             <MessageSquare size={11} strokeWidth={1.8} />
@@ -272,7 +279,10 @@ export default function HistorySessionPicker({
                 <div className="flex items-start justify-between gap-3 border-b border-[var(--border)]/70 px-5 py-3.5">
                   <div className="min-w-0">
                     <div className="truncate text-[14px] font-semibold text-[var(--foreground)]">
-                      {activeSession.title || t("Untitled session")}
+                      {displaySessionTitle(
+                        activeSession.title,
+                        placeholderLabel,
+                      )}
                     </div>
                     <div className="mt-0.5 flex items-center gap-2.5 text-[11px] text-[var(--muted-foreground)]">
                       <span>

@@ -215,7 +215,7 @@ export default function MemoryWorkbench({
   }, [initialFocus]);
 
   const loadOverview = useCallback(async () => {
-    const res = await apiFetch(apiUrl("/api/v1/memory/overview"));
+    const res = await apiFetch(apiUrl("/api/memory/overview"));
     const data = await res.json();
     const map: Record<string, DocOverview> = {};
     for (const d of data.docs || []) {
@@ -225,7 +225,7 @@ export default function MemoryWorkbench({
   }, [layer]);
 
   const loadDoc = useCallback(async () => {
-    const res = await apiFetch(apiUrl(`/api/v1/memory/doc/${layer}/${docKey}`));
+    const res = await apiFetch(apiUrl(`/api/memory/doc/${layer}/${docKey}`));
     const data = (await res.json()) as DocResponse;
     setContent(data?.content || "");
     setEditorValue(data?.content || "");
@@ -233,7 +233,7 @@ export default function MemoryWorkbench({
 
   const loadLines = useCallback(async () => {
     const res = await apiFetch(
-      apiUrl(`/api/v1/memory/doc/${layer}/${docKey}/lines`),
+      apiUrl(`/api/memory/doc/${layer}/${docKey}/lines`),
     );
     const data = (await res.json()) as { lines: LineRowDTO[] };
     setLines(data?.lines || []);
@@ -311,7 +311,7 @@ export default function MemoryWorkbench({
   const saveDoc = useCallback(async () => {
     setSaving(true);
     try {
-      await apiFetch(apiUrl(`/api/v1/memory/doc/${layer}/${docKey}`), {
+      await apiFetch(apiUrl(`/api/memory/doc/${layer}/${docKey}`), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: editorValue }),

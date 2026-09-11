@@ -13,7 +13,11 @@ export interface BookSocketOperationOptions {
   message: BookWsEvent;
   resultType: string;
   onEvent?: (event: BookWsEvent) => void;
+  /** Maximum silence before a one-shot operation is considered stalled. */
+  idleTimeoutMs?: number;
 }
+
+const DEFAULT_IDLE_TIMEOUT_MS = 5 * 60_000;
 
 export class BookSocketOperationError extends Error {
   constructor(
@@ -41,10 +45,29 @@ export function runBookSocketOperation<T extends BookWsEvent = BookWsEvent>(
   return new Promise<T>((resolve, reject) => {
     const socket = createSocket();
     let settled = false;
+    let idleTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const armIdleTimeout = (): void => {
+      if (idleTimer) clearTimeout(idleTimer);
+      const timeoutMs = options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
+      if (timeoutMs <= 0) return;
+      idleTimer = setTimeout(() => {
+        finish(
+          () =>
+            reject(
+              new Error(
+                `Book WebSocket operation timed out waiting for ${options.resultType}`,
+              ),
+            ),
+          true,
+        );
+      }, timeoutMs);
+    };
 
     const finish = (callback: () => void, closeSocket: boolean): void => {
       if (settled) return;
       settled = true;
+      if (idleTimer) clearTimeout(idleTimer);
       if (closeSocket) {
         try {
           socket.close();
@@ -56,6 +79,7 @@ export function runBookSocketOperation<T extends BookWsEvent = BookWsEvent>(
     };
 
     socket.onopen = () => {
+      armIdleTimeout();
       try {
         socket.send(JSON.stringify(options.message));
       } catch (error) {
@@ -78,6 +102,8 @@ export function runBookSocketOperation<T extends BookWsEvent = BookWsEvent>(
       } catch {
         return;
       }
+
+      armIdleTimeout();
 
       options.onEvent?.(event);
 
@@ -119,5 +145,7 @@ export function runBookSocketOperation<T extends BookWsEvent = BookWsEvent>(
         false,
       );
     };
+
+    armIdleTimeout();
   });
 }

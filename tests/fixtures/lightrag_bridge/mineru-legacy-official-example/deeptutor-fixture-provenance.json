@@ -1,0 +1,10 @@
+{
+  "commit": "61cc6886fe3edda8aa1c5b8bd2b6eaedddb8af99",
+  "content_sha256": "e3a09b50a8a902a584452ca7085533fa6fe294bffe400c0dcabfdbe0339b92b7",
+  "fixture_schema": 1,
+  "kind": "official-legacy-schema-example",
+  "note": "Exact official documentation example; not a live parser capture.",
+  "repository": "https://github.com/opendatalab/MinerU.git",
+  "source_path": "docs/en/reference/output_files.md",
+  "source_section": "#### Content List (content_list.json)"
+}

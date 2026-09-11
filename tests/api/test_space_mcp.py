@@ -71,7 +71,7 @@ def client(owner: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> TestClient
     manager = _Manager()
     monkeypatch.setattr(space_mcp, "get_mcp_manager", lambda: manager)
     app = FastAPI()
-    app.include_router(space_mcp.router, prefix="/api/v1/space/mcp")
+    app.include_router(space_mcp.router, prefix="/api/space/mcp")
     return TestClient(app)
 
 
@@ -80,31 +80,31 @@ def _remote(url: str = "https://mcp.example.com/mcp") -> dict[str, Any]:
 
 
 def test_a_server_is_visible_only_to_its_owner(client: TestClient, owner) -> None:
-    assert client.put("/api/v1/space/mcp/servers/mine", json=_remote()).status_code == 200
-    assert list(client.get("/api/v1/space/mcp/servers").json()["servers"]) == ["mine"]
+    assert client.put("/api/space/mcp/servers/mine", json=_remote()).status_code == 200
+    assert list(client.get("/api/space/mcp/servers").json()["servers"]) == ["mine"]
 
     owner["id"] = "u_bob"
-    assert client.get("/api/v1/space/mcp/servers").json()["servers"] == {}
+    assert client.get("/api/space/mcp/servers").json()["servers"] == {}
 
 
 def test_one_account_cannot_write_into_anothers_config(client: TestClient, owner) -> None:
     """The owner is resolved server-side and never taken from the request."""
-    client.put("/api/v1/space/mcp/servers/shared-name", json=_remote("https://a.example/mcp"))
+    client.put("/api/space/mcp/servers/shared-name", json=_remote("https://a.example/mcp"))
     owner["id"] = "u_bob"
-    client.put("/api/v1/space/mcp/servers/shared-name", json=_remote("https://b.example/mcp"))
+    client.put("/api/space/mcp/servers/shared-name", json=_remote("https://b.example/mcp"))
 
-    assert client.get("/api/v1/space/mcp/servers").json()["servers"]["shared-name"]["url"] == (
+    assert client.get("/api/space/mcp/servers").json()["servers"]["shared-name"]["url"] == (
         "https://b.example/mcp"
     )
     owner["id"] = "u_ada"
-    assert client.get("/api/v1/space/mcp/servers").json()["servers"]["shared-name"]["url"] == (
+    assert client.get("/api/space/mcp/servers").json()["servers"]["shared-name"]["url"] == (
         "https://a.example/mcp"
     )
 
 
 def test_a_stdio_server_is_refused(client: TestClient) -> None:
     response = client.put(
-        "/api/v1/space/mcp/servers/local",
+        "/api/space/mcp/servers/local",
         json={"config": {"command": "/bin/sh"}, "secrets": {}},
     )
     assert response.status_code == 400
@@ -113,7 +113,7 @@ def test_a_stdio_server_is_refused(client: TestClient) -> None:
 
 def test_a_url_aimed_at_the_deployment_is_refused(client: TestClient) -> None:
     response = client.put(
-        "/api/v1/space/mcp/servers/inward",
+        "/api/space/mcp/servers/inward",
         json=_remote("http://127.0.0.1:8090/mcp"),
     )
     assert response.status_code == 400
@@ -122,7 +122,7 @@ def test_a_url_aimed_at_the_deployment_is_refused(client: TestClient) -> None:
 
 def test_a_credential_is_stored_apart_and_never_echoed(client: TestClient, tmp_path: Path) -> None:
     response = client.put(
-        "/api/v1/space/mcp/servers/svc",
+        "/api/space/mcp/servers/svc",
         json={
             "config": {"url": "https://svc.example/mcp", "headers": {"X-Key": "sk-live-1"}},
             "secrets": {"api_key": "sk-live-1"},
@@ -146,10 +146,10 @@ def test_a_credential_is_stored_apart_and_never_echoed(client: TestClient, tmp_p
 
 def test_deleting_a_server_also_drops_its_credentials(client: TestClient, tmp_path: Path) -> None:
     client.put(
-        "/api/v1/space/mcp/servers/svc",
+        "/api/space/mcp/servers/svc",
         json={"config": {"url": "https://svc.example/mcp"}, "secrets": {"api_key": "sk-1"}},
     )
-    client.delete("/api/v1/space/mcp/servers/svc")
+    client.delete("/api/space/mcp/servers/svc")
 
     from deeptutor.services.mcp.secrets import configured_fields
 
@@ -158,18 +158,18 @@ def test_deleting_a_server_also_drops_its_credentials(client: TestClient, tmp_pa
 
 def test_the_catalog_hides_admin_only_entries(client: TestClient) -> None:
     """stdio entries are catalogued for the deployment, not for an account."""
-    body = client.get("/api/v1/space/mcp/catalog?limit=100").json()
+    body = client.get("/api/space/mcp/catalog?limit=100").json()
     assert body["entries"], "the curated catalog must not be empty here"
     assert all(entry["self_service"] for entry in body["entries"])
     assert all(entry["transport"] != "stdio" for entry in body["entries"])
 
 
 def test_every_category_chip_opens_to_something(client: TestClient) -> None:
-    body = client.get("/api/v1/space/mcp/catalog?limit=100").json()
+    body = client.get("/api/space/mcp/catalog?limit=100").json()
     for category, count in body["categories"].items():
         if count == 0:
             continue
-        page = client.get(f"/api/v1/space/mcp/catalog?category={category}&limit=100").json()
+        page = client.get(f"/api/space/mcp/catalog?category={category}&limit=100").json()
         assert page["total"] == count
 
 
@@ -177,13 +177,13 @@ def test_installing_an_admin_only_entry_is_refused(client: TestClient) -> None:
     from deeptutor.services.mcp.catalog import load_catalog
 
     stdio = next(entry for entry in load_catalog() if not entry.self_service)
-    response = client.post(f"/api/v1/space/mcp/catalog/{stdio.id}/install", json={"secrets": {}})
+    response = client.post(f"/api/space/mcp/catalog/{stdio.id}/install", json={"secrets": {}})
     assert response.status_code == 403
     assert response.json()["detail"]["code"] == "mcp.entry_admin_only"
 
 
 def test_installing_an_unknown_entry_is_a_404(client: TestClient) -> None:
-    response = client.post("/api/v1/space/mcp/catalog/no-such-thing/install", json={"secrets": {}})
+    response = client.post("/api/space/mcp/catalog/no-such-thing/install", json={"secrets": {}})
     assert response.status_code == 404
 
 
@@ -195,9 +195,7 @@ def test_installing_without_a_required_credential_is_refused(client: TestClient)
         for entry in load_catalog()
         if entry.self_service and any(field.required for field in entry.fields)
     )
-    response = client.post(
-        f"/api/v1/space/mcp/catalog/{needs_key.id}/install", json={"secrets": {}}
-    )
+    response = client.post(f"/api/space/mcp/catalog/{needs_key.id}/install", json={"secrets": {}})
     assert response.status_code == 400
     assert response.json()["detail"]["code"] == "mcp.missing_credential"
 
@@ -214,9 +212,7 @@ def test_installing_a_catalog_entry_stores_its_credential_out_of_the_config(
     )
     secrets = {field.key: "tok-1" for field in entry.fields if field.required}
 
-    response = client.post(
-        f"/api/v1/space/mcp/catalog/{entry.id}/install", json={"secrets": secrets}
-    )
+    response = client.post(f"/api/space/mcp/catalog/{entry.id}/install", json={"secrets": secrets})
 
     assert response.status_code == 200, response.text
     assert "tok-1" not in response.text
@@ -247,7 +243,7 @@ def test_an_entry_installed_under_a_custom_name_still_reads_as_installed(
     """
     entry = _first_free_entry()
     installed = client.post(
-        f"/api/v1/space/mcp/catalog/{entry.id}/install", json={"name": "my-own-name"}
+        f"/api/space/mcp/catalog/{entry.id}/install", json={"name": "my-own-name"}
     )
     assert installed.status_code == 200, installed.text
 
@@ -260,7 +256,7 @@ def test_a_hand_written_server_is_not_credited_to_a_catalog_entry(
     client: TestClient,
 ) -> None:
     entry = _first_free_entry()
-    client.put("/api/v1/space/mcp/servers/unrelated", json=_remote())
+    client.put("/api/space/mcp/servers/unrelated", json=_remote())
 
     row = _catalog_entry(client, entry.id)
     assert row["installed"] is False
@@ -285,7 +281,7 @@ def test_an_entry_installed_before_provenance_existed_still_reads_as_installed(
 
 
 def _catalog_entry(client: TestClient, entry_id: str) -> dict[str, Any]:
-    page = client.get(f"/api/v1/space/mcp/catalog?q={entry_id}&limit=100").json()
+    page = client.get(f"/api/space/mcp/catalog?q={entry_id}&limit=100").json()
     return next(row for row in page["entries"] if row["id"] == entry_id)
 
 
@@ -293,7 +289,7 @@ def test_a_name_taken_by_a_deployment_server_is_refused(client: TestClient, tmp_
     (tmp_path / "admin-mcp.json").write_text(
         '{"servers": {"github": {"url": "https://admin.example/mcp"}}}', encoding="utf-8"
     )
-    response = client.put("/api/v1/space/mcp/servers/github", json=_remote())
+    response = client.put("/api/space/mcp/servers/github", json=_remote())
     assert response.status_code == 400
     assert response.json()["detail"]["code"] == "mcp.name_reserved"
 
@@ -309,7 +305,7 @@ def test_a_header_typed_into_the_form_is_not_stored_or_echoed_in_plaintext(
     rather than driven by what the client labelled.
     """
     response = client.put(
-        "/api/v1/space/mcp/servers/svc",
+        "/api/space/mcp/servers/svc",
         json={
             "config": {
                 "url": "https://svc.example/mcp",
@@ -336,14 +332,14 @@ def test_resaving_a_server_keeps_a_credential_it_did_not_re_enter(
     alone rather than stored as the literal placeholder the user was shown.
     """
     client.put(
-        "/api/v1/space/mcp/servers/svc",
+        "/api/space/mcp/servers/svc",
         json={
             "config": {"url": "https://svc.example/mcp", "headers": {"X-Key": "sk-1"}},
             "secrets": {},
         },
     )
     client.put(
-        "/api/v1/space/mcp/servers/svc",
+        "/api/space/mcp/servers/svc",
         json={
             "config": {
                 "url": "https://svc.example/mcp",
@@ -368,7 +364,7 @@ def test_the_servers_list_warms_connections_so_status_is_real(client: TestClient
     "connecting / 0 tools" until the user happened to send a message.
     """
     manager = space_mcp.get_mcp_manager()
-    client.get("/api/v1/space/mcp/servers")
+    client.get("/api/space/mcp/servers")
     assert manager.warmed == ["_shared", "u_ada"]
 
 
@@ -387,7 +383,7 @@ def test_testing_a_draft_writes_nothing(client: TestClient, tmp_path: Path) -> N
     space_mcp.probe_server = _probe  # type: ignore[assignment]
     try:
         response = client.post(
-            "/api/v1/space/mcp/servers/_draft/test",
+            "/api/space/mcp/servers/_draft/test",
             json={
                 "config": {"url": "https://svc.example/mcp"},
                 "secrets": {"api_key": "sk-1"},

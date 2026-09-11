@@ -31,12 +31,7 @@ from pydantic import Field
 from deeptutor.partners.bus.events import OutboundMessage
 from deeptutor.partners.bus.queue import MessageBus
 from deeptutor.partners.channels.base import BaseChannel
-from deeptutor.partners.channels.weixin_qr import (
-    ILINK_APP_ID,
-    fetch_qr_code,
-    interpret_status,
-    is_retryable_poll_error,
-)
+from deeptutor.partners.channels.weixin_qr import ILINK_APP_ID
 from deeptutor.partners.config.schema import DeliveryOverrides
 from deeptutor.partners.helpers import safe_filename, split_message
 
@@ -94,7 +89,6 @@ CONTEXT_TOKEN_MAX_AGE_S = 60
 MAX_CONSECUTIVE_FAILURES = 3
 BACKOFF_DELAY_S = 30
 RETRY_DELAY_S = 2
-MAX_QR_REFRESH_COUNT = 3
 TYPING_STATUS_TYPING = 1
 TYPING_STATUS_CANCEL = 2
 TYPING_TICKET_TTL_S = 24 * 60 * 60
@@ -305,25 +299,6 @@ class WeixinChannel(BaseChannel):
         resp.raise_for_status()
         return resp.json()
 
-    async def _api_get_with_base(
-        self,
-        *,
-        base_url: str,
-        endpoint: str,
-        params: dict | None = None,
-        auth: bool = True,
-        extra_headers: dict[str, str] | None = None,
-    ) -> dict:
-        """GET helper that allows overriding base_url for QR redirect polling."""
-        assert self._client is not None
-        url = f"{base_url.rstrip('/')}/{endpoint}"
-        hdrs = self._make_headers(auth=auth)
-        if extra_headers:
-            hdrs.update(extra_headers)
-        resp = await self._client.get(url, params=params, headers=hdrs)
-        resp.raise_for_status()
-        return resp.json()
-
     async def _api_post(
         self,
         endpoint: str,
@@ -341,143 +316,49 @@ class WeixinChannel(BaseChannel):
         return resp.json()
 
     # ------------------------------------------------------------------
-    # QR Code Login  (matches login-qr.ts)
-    # ------------------------------------------------------------------
-
-    async def _fetch_qr_code(self) -> tuple[str, str]:
-        """Fetch a fresh QR code. Returns (qrcode_id, scan_url)."""
-        assert self._client is not None
-        code = await fetch_qr_code(
-            self._client,
-            self.config.base_url,
-            client_version=ILINK_APP_CLIENT_VERSION,
-            route_tag=str(self.config.route_tag or ""),
-        )
-        return code.qrcode_id, code.scan_payload
-
-    async def _qr_login(self) -> bool:
-        """Perform QR code login flow. Returns True on success."""
-        try:
-            refresh_count = 0
-            qrcode_id, scan_url = await self._fetch_qr_code()
-            self._print_qr_code(scan_url)
-            current_poll_base_url = self.config.base_url
-
-            while self._running:
-                try:
-                    status_data = await self._api_get_with_base(
-                        base_url=current_poll_base_url,
-                        endpoint="ilink/bot/get_qrcode_status",
-                        params={"qrcode": qrcode_id},
-                        auth=False,
-                    )
-                except Exception as e:
-                    if self._is_retryable_qr_poll_error(e):
-                        await asyncio.sleep(1)
-                        continue
-                    raise
-
-                outcome = interpret_status(status_data)
-                if outcome.status == "confirmed":
-                    self._token = outcome.token
-                    if outcome.base_url:
-                        self.config.base_url = outcome.base_url
-                    self._save_state()
-                    self.logger.info(
-                        "login successful! bot_id={} user_id={}",
-                        outcome.bot_id,
-                        outcome.user_id,
-                    )
-                    return True
-                elif outcome.status == "error":
-                    self.logger.error("Login confirmed but no bot_token in response")
-                    return False
-                elif outcome.status == "scanned":
-                    if outcome.poll_base_url and outcome.poll_base_url != current_poll_base_url:
-                        current_poll_base_url = outcome.poll_base_url
-                elif outcome.status == "expired":
-                    refresh_count += 1
-                    if refresh_count > MAX_QR_REFRESH_COUNT:
-                        self.logger.warning(
-                            "QR code expired too many times ({}/{}), giving up.",
-                            refresh_count - 1,
-                            MAX_QR_REFRESH_COUNT,
-                        )
-                        return False
-                    qrcode_id, scan_url = await self._fetch_qr_code()
-                    current_poll_base_url = self.config.base_url
-                    self._print_qr_code(scan_url)
-                    continue
-                # status == "wait" — keep polling
-
-                await asyncio.sleep(1)
-
-        except Exception:
-            self.logger.exception("QR login failed")
-
-        return False
-
-    _is_retryable_qr_poll_error = staticmethod(is_retryable_poll_error)
-
-    @staticmethod
-    def _print_qr_code(url: str) -> None:
-        try:
-            import qrcode as qr_lib
-
-            qr = qr_lib.QRCode(border=1)
-            qr.add_data(url)
-            qr.make(fit=True)
-            qr.print_ascii(invert=True)
-        except ImportError:
-            print(f"\nLogin URL: {url}\n")
-
-    # ------------------------------------------------------------------
     # Channel lifecycle
     # ------------------------------------------------------------------
 
     async def login(self, force: bool = False) -> bool:
-        """Perform QR code login and save token. Returns True on success."""
+        """Compatibility probe for callers that previously triggered terminal login.
+
+        QR authentication is now exclusively driven by the WebUI onboarding
+        session. Returning ``False`` means user action is required; it never
+        opens a client or writes interactive output to stdout.
+        """
         if force:
             self._token = ""
             self._get_updates_buf = ""
             state_file = self._get_state_dir() / "account.json"
             if state_file.exists():
                 state_file.unlink()
-        if self._token or self._load_state():
+        elif self.config.token:
+            self._token = self.config.token
+        loaded_state = self._load_state()
+        if self._token or loaded_state:
             return True
-
-        # Initialize HTTP client for the login flow
-        self._client = httpx.AsyncClient(
-            timeout=httpx.Timeout(60, connect=30),
-            follow_redirects=True,
-        )
-        self._running = True  # Enable polling loop in _qr_login()
-        try:
-            return await self._qr_login()
-        finally:
-            self._running = False
-            if self._client:
-                await self._client.aclose()
-                self._client = None
+        self.set_setup_state("action_required")
+        return False
 
     async def start(self) -> None:
-        self._running = True
         self._next_poll_timeout_s = self.config.poll_timeout
-        self._client = httpx.AsyncClient(
-            timeout=httpx.Timeout(self._next_poll_timeout_s + 10, connect=30),
-            follow_redirects=True,
-        )
-
         if self.config.token:
             self._token = self.config.token
         self._load_state()
         if not self._token:
-            if not await self._qr_login():
-                self.logger.error(
-                    "login failed. open the Weixin channel and scan the QR code to authenticate."
-                )
-                self._running = False
-                return
+            # Authentication is an explicit WebUI onboarding action. Starting
+            # DeepTutor (or auto-starting a Partner) must never take over the
+            # terminal with an interactive QR code.
+            self.set_setup_state("action_required")
+            self._running = False
+            return
+
+        self._running = True
+        self.set_setup_state("connecting")
+        self._client = httpx.AsyncClient(
+            timeout=httpx.Timeout(self._next_poll_timeout_s + 10, connect=30),
+            follow_redirects=True,
+        )
 
         self.logger.info("channel starting with long-poll...")
 
@@ -485,6 +366,8 @@ class WeixinChannel(BaseChannel):
         while self._running:
             try:
                 await self._poll_once()
+                if self._session_pause_remaining_s() == 0:
+                    self.set_setup_state("connected")
                 consecutive_failures = 0
             except httpx.TimeoutException:
                 # Normal for long-poll, just retry
@@ -493,6 +376,10 @@ class WeixinChannel(BaseChannel):
                 if not self._running:
                     break
                 self.logger.exception("WeChat poll loop error")
+                self.set_setup_state(
+                    "error",
+                    message="Channel connection failed; the listener will retry.",
+                )
                 consecutive_failures += 1
                 if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
                     consecutive_failures = 0
@@ -502,6 +389,7 @@ class WeixinChannel(BaseChannel):
 
     async def stop(self) -> None:
         self._running = False
+        self.set_setup_state("disconnected")
         self._pending_tool_hints.clear()
         if self._poll_task and not self._poll_task.done():
             self._poll_task.cancel()
@@ -518,6 +406,10 @@ class WeixinChannel(BaseChannel):
 
     def _pause_session(self, duration_s: int = SESSION_PAUSE_DURATION_S) -> None:
         self._session_pause_until = time.time() + duration_s
+        self.set_setup_state(
+            "error",
+            message="WeChat session expired. Scan a new QR code to reconnect.",
+        )
 
     def _session_pause_remaining_s(self) -> int:
         remaining = int(self._session_pause_until - time.time())

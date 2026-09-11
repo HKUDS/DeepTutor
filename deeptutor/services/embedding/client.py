@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -58,11 +59,18 @@ class EmbeddingClient:
         return cls._spacing_lock
 
     @staticmethod
-    def _hold_spacing_lock():
-        """Blocking acquire — cross-thread, loop-agnostic."""
+    @asynccontextmanager
+    async def _hold_spacing_lock():
+        """Acquire the cross-thread lock without blocking the current loop."""
+        import asyncio
+
         lock = EmbeddingClient._global_spacing_lock()
-        lock.acquire()
-        return lock
+        while not lock.acquire(blocking=False):
+            await asyncio.sleep(0.05)
+        try:
+            yield
+        finally:
+            lock.release()
 
     def __init__(self, config: Optional[EmbeddingConfig] = None):
         self.config = config or get_embedding_config()
@@ -140,22 +148,16 @@ class EmbeddingClient:
             try:
                 # 全局发帖节流：线程级锁串行化"等待间隔+发帖"，跨线程/跨
                 # event loop 互斥（asyncio 锁在新 loop 模型下失效的教训）。
-                # asyncio.sleep 换成阻塞等待发帖侧可接受：DT 的 embedding
-                # 并发都在后台线程里，阻塞不伤 API 主线程。
-                import time as _time
+                # 非阻塞轮询避免同一 loop 内的并发调用在 acquire() 上互锁。
                 from time import monotonic as _mono
 
-                _lock = EmbeddingClient._hold_spacing_lock()
-                try:
-                    delay = self.config.batch_delay
-                    if delay > 0:
+                async with EmbeddingClient._hold_spacing_lock():
+                    if batch_delay > 0:
                         elapsed = _mono() - EmbeddingClient._last_request_monotonic
-                        if elapsed < delay:
-                            _time.sleep(delay - elapsed)
+                        if elapsed < batch_delay:
+                            await asyncio.sleep(batch_delay - elapsed)
                     EmbeddingClient._last_request_monotonic = _mono()
                     response = await self.adapter.embed(request)
-                finally:
-                    _lock.release()
             except Exception as exc:
                 # Capture batch context so the task log stream / KB diagnostics
                 # show actionable info instead of a bare exception string.

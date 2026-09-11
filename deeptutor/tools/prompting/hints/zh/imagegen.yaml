@@ -1,0 +1,5 @@
+short_description: "使用已配置的图片生成服务创作图片，并保存到当前 workspace 的 outputs/。"
+when_to_use: "适用于插画、艺术图、概念图、海报、写实场景等生成式视觉请求。程序化图表、示意图或图片后处理使用 exec。"
+input_format: "完整、具体且可独立理解的 prompt；可选 size 与 n（1-4）。"
+guideline: "原创视觉媒体直接调用 imagegen。它会保存文件并返回精确的 workspace 相对路径，但不会自动呈现。先用每个返回路径调用 workspace_present，再在 Markdown 中原样使用。不得暴露供应商 URL 或宿主机路径。"
+phase: "synthesis"

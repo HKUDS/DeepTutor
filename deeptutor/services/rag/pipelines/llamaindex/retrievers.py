@@ -17,6 +17,7 @@ from .config import (
     RetrievalConfig,
     retrieval_config_from_settings,
 )
+from .rerank import rerank_nodes
 
 logger = logging.getLogger(__name__)
 
@@ -151,9 +152,38 @@ def build_retriever(
     return index.as_retriever(similarity_top_k=top_k)
 
 
+def retrieve_nodes(
+    index: Any,
+    storage_dir: Path,
+    query: str,
+    *,
+    top_k: int = 5,
+) -> list[Any]:
+    """Run first-stage retrieval and the optional cross-encoder reranker."""
+    config = retrieval_config_from_settings()
+    candidate_top_k = config.rerank_candidate_top_k(top_k)
+    retriever = build_retriever(
+        index,
+        storage_dir,
+        top_k=candidate_top_k,
+        config=config,
+    )
+    candidates = retriever.retrieve(query)
+    if not config.reranker_model:
+        return candidates[: max(1, int(top_k))]
+
+    return rerank_nodes(
+        query,
+        candidates,
+        top_k=top_k,
+        model_name=config.reranker_model,
+    )
+
+
 __all__ = [
     "BM25_PERSIST_DIRNAME",
     "build_bm25_retriever",
     "build_retriever",
     "persist_bm25_retriever",
+    "retrieve_nodes",
 ]

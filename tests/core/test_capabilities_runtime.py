@@ -10,17 +10,17 @@ from typing import Any
 
 import pytest
 
+import deeptutor.agents.chat.agentic_pipeline as chat_pipeline
 from deeptutor.agents.chat.capability import ChatCapability
 from deeptutor.agents.question.capability import DeepQuestionCapability
 from deeptutor.agents.research.capability import DeepResearchCapability
 from deeptutor.agents.visualize.capability import VisualizeCapability
-import deeptutor.agents.visualize.pipeline as visualize_pipeline
 from deeptutor.capabilities.ask_questions.capability import AskQuestionsCapability
 from deeptutor.capabilities.solve.capability import DeepSolveCapability
 from deeptutor.core.context import Attachment, UnifiedContext
 from deeptutor.core.stream import StreamEvent, StreamEventType
-from deeptutor.core.stream_bus import StreamBus
 from deeptutor.runtime.bootstrap.builtin_capabilities import BUILTIN_CAPABILITY_CLASSES
+from deeptutor.runtime.stream_bus import StreamBus
 
 
 def _install_module(
@@ -78,6 +78,10 @@ def test_builtin_capability_registry_covers_documented_capabilities() -> None:
         "visualize",
         "mastery_path",
         "immersive_reading",
+        # Course Study orchestrates across the surfaces above rather than
+        # teaching itself, so it registers here like any other mode.
+        "course_study",
+        "immersive_watching",
     }
 
 
@@ -408,46 +412,48 @@ async def test_deep_research_capability_delegates_to_pipeline(
 
 
 @pytest.mark.asyncio
-async def test_visualize_capability_passes_attachments_to_analysis_agent(
+async def test_visualize_capability_reuses_chat_loop_and_preserves_attachments(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     captured: dict[str, Any] = {}
 
-    class FakeAnalysis:
-        render_type = "svg"
-        description = "A diagram"
-        data_description = "diagram data"
-
-        def model_dump(self) -> dict[str, Any]:
-            return {
-                "render_type": self.render_type,
-                "description": self.description,
-                "data_description": self.data_description,
-            }
-
-    class FakeVisualizePipeline:
+    class FakeAgenticChatPipeline:
         def __init__(self, **kwargs: Any) -> None:
             captured["init"] = kwargs
+            self.usage = None
 
-        async def run_analysis(self, **kwargs: Any) -> FakeAnalysis:
-            captured["analysis"] = kwargs
-            return FakeAnalysis()
-
-        async def run_code_generation(self, **kwargs: Any) -> str:
-            captured["code_generation"] = kwargs
-            # Valid per validate_visualization (well-formed XML + camelCase
-            # viewBox), so the capability takes the no-repair path.
-            return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>'
+        async def run(self, context: UnifiedContext, stream: StreamBus) -> dict[str, Any]:
+            _ = stream
+            captured["attachments"] = context.attachments
+            context.metadata["_visualizer_result"] = {
+                "schema_version": "deeptutor.visualization/v1",
+                "render_type": "svg",
+                "renderer": {
+                    "id": "svg",
+                    "version": "1.0.0",
+                    "target": "native",
+                    "native_renderer": "svg",
+                    "entry_url": "",
+                },
+                "payload": {
+                    "format": "image/svg+xml",
+                    "data": '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>',
+                },
+                "presentation": {
+                    "title": "A diagram",
+                    "description": "diagram data",
+                    "alt_text": "A diagram",
+                    "aspect_ratio": "",
+                },
+                "interaction": {"events": []},
+                "fallback": {},
+            }
+            return {"completed": True, "rounds": 2}
 
     monkeypatch.setattr(
-        visualize_pipeline,
-        "VisualizePipeline",
-        FakeVisualizePipeline,
-    )
-    _install_module(
-        monkeypatch,
-        "deeptutor.services.llm.config",
-        get_llm_config=lambda: SimpleNamespace(api_key="k", base_url="u", api_version="v1"),
+        chat_pipeline,
+        "AgenticChatPipeline",
+        FakeAgenticChatPipeline,
     )
 
     context = UnifiedContext(
@@ -461,6 +467,52 @@ async def test_visualize_capability_passes_attachments_to_analysis_agent(
     capability = VisualizeCapability()
     events = await _collect_events(lambda bus: capability.run(context, bus))
 
-    assert captured["analysis"]["attachments"][0].filename == "figure.png"
+    assert captured["attachments"][0].filename == "figure.png"
+    assert "web_fetch" in context.allowed_builtin_tools
+    assert "exec" not in context.allowed_builtin_tools
+    assert "write_memory" not in context.allowed_builtin_tools
+    assert captured["init"] == {
+        "language": "en",
+        "max_rounds": 5,
+        "temperature": 0.15,
+        "max_tokens": 16000,
+        "event_source": "visualize",
+        "event_stage": "generating",
+        "emit_result": False,
+    }
     result_event = next(event for event in events if event.type == StreamEventType.RESULT)
     assert result_event.metadata["render_type"] == "svg"
+    assert result_event.metadata["engine"] == "chat_agent_loop"
+
+
+@pytest.mark.asyncio
+async def test_deep_question_rejects_empty_custom_topic_before_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Invalid input returns a clear error before workspace allocation."""
+
+    monkeypatch.setattr(
+        "deeptutor.services.llm.config.get_llm_config",
+        lambda: SimpleNamespace(api_key="", base_url="", api_version=""),
+    )
+
+    class FailingPathService:
+        def get_task_workspace(self, *_args: Any, **_kwargs: Any) -> str:
+            raise AssertionError("workspace must not be allocated for invalid input")
+
+    monkeypatch.setattr(
+        "deeptutor.services.path_service.get_path_service",
+        lambda: FailingPathService(),
+    )
+
+    context = UnifiedContext(
+        user_message="",
+        config_overrides={"mode": "custom", "topic": ""},
+        language="en",
+    )
+    events = await _collect_events(lambda bus: DeepQuestionCapability().run(context, bus))
+
+    errors = [event for event in events if event.type == StreamEventType.ERROR]
+    assert errors
+    assert "topic" in errors[-1].content.lower()
+    assert errors[-1].metadata["code"] == "topic_required"

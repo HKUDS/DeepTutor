@@ -166,6 +166,10 @@ class SkillNotFoundError(Exception):
     pass
 
 
+class SkillFileNotFoundError(Exception):
+    """The skill exists but the requested file inside it does not."""
+
+
 class SkillExistsError(Exception):
     pass
 
@@ -465,7 +469,7 @@ class SkillService:
         if not target.is_relative_to(skill_dir.resolve()):
             raise InvalidSkillPathError(f"Illegal skill file path: {rel_path}")
         if not target.is_file():
-            raise SkillNotFoundError(f"{name}/{candidate}")
+            raise SkillFileNotFoundError(f"File not found in skill: {name}/{candidate}")
         text = target.read_text(encoding="utf-8", errors="replace")
         if len(text) > _MAX_READ_CHARS:
             text = text[:_MAX_READ_CHARS] + "\n\n[... truncated ...]"

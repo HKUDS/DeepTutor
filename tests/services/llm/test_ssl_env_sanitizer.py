@@ -80,7 +80,7 @@ def test_build_openai_client_survives_stale_ssl_cert_file(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The chat client factory must not crash when SSL_CERT_FILE is stale."""
-    from deeptutor.core.agentic.client import LLMClientConfig, build_openai_client
+    from deeptutor.runtime.agentic.client import LLMClientConfig, build_openai_client
 
     monkeypatch.setenv("SSL_CERT_FILE", "/definitely/not/here/cacert.pem")
     config = LLMClientConfig(

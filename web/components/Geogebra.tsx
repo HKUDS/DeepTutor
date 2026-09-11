@@ -4,11 +4,23 @@ import React, { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 interface GeogebraProps {
-  script: string;
+  script?: string;
+  payload?: GeogebraPayload;
   title?: string;
   className?: string;
   width?: number;
   height?: number;
+}
+
+export interface GeogebraPayload {
+  app_name?: "geometry" | "graphing" | "3d" | "classic" | string;
+  commands: string[];
+  view?: {
+    x_min: number;
+    x_max: number;
+    y_min: number;
+    y_max: number;
+  };
 }
 
 declare global {
@@ -79,7 +91,8 @@ function parseGgbCommands(raw: string): string[] {
 let containerCounter = 0;
 
 const Geogebra: React.FC<GeogebraProps> = ({
-  script,
+  script = "",
+  payload,
   title,
   className = "",
   width = 760,
@@ -92,6 +105,7 @@ const Geogebra: React.FC<GeogebraProps> = ({
   );
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [commandErrors, setCommandErrors] = useState<string[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -109,7 +123,9 @@ const Geogebra: React.FC<GeogebraProps> = ({
           throw new Error("GGBApplet global missing after script load");
         }
 
-        const commands = parseGgbCommands(script);
+        const commands = payload?.commands?.length
+          ? payload.commands.map(String).filter((command) => command.trim())
+          : parseGgbCommands(script);
         const container = containerRef.current;
         if (!container) return;
         container.id = containerIdRef.current;
@@ -117,7 +133,7 @@ const Geogebra: React.FC<GeogebraProps> = ({
 
         const applet = new window.GGBApplet(
           {
-            appName: "geometry",
+            appName: payload?.app_name || "geometry",
             width,
             height,
             showToolBar: false,
@@ -130,16 +146,41 @@ const Geogebra: React.FC<GeogebraProps> = ({
             // The api passed in here lets us drive the applet
             // imperatively without going through a global. We feed each
             // command separately so one bad line doesn't abort the rest.
-            appletOnLoad: (api: { evalCommand: (cmd: string) => boolean }) => {
+            appletOnLoad: (api: {
+              evalCommand: (cmd: string) => boolean;
+              setCoordSystem?: (
+                xMin: number,
+                xMax: number,
+                yMin: number,
+                yMax: number,
+              ) => void;
+            }) => {
               if (cancelled) return;
+              const view = payload?.view;
+              if (view && api.setCoordSystem) {
+                api.setCoordSystem(
+                  view.x_min,
+                  view.x_max,
+                  view.y_min,
+                  view.y_max,
+                );
+              }
+              const failures: string[] = [];
               for (const cmd of commands) {
                 try {
-                  api.evalCommand(cmd);
+                  if (!api.evalCommand(cmd)) {
+                    failures.push(cmd);
+                    console.warn("[ggb] evalCommand returned false", { cmd });
+                  }
                 } catch (err) {
+                  failures.push(cmd);
                   console.warn("[ggb] evalCommand failed", { cmd, err });
                 }
               }
               setLoading(false);
+              if (!cancelled && failures.length > 0) {
+                setCommandErrors(failures);
+              }
             },
           },
           true,
@@ -162,7 +203,7 @@ const Geogebra: React.FC<GeogebraProps> = ({
         containerAtMount.innerHTML = "";
       }
     };
-  }, [script, width, height]);
+  }, [script, payload, width, height]);
 
   return (
     <div
@@ -178,14 +219,36 @@ const Geogebra: React.FC<GeogebraProps> = ({
           {t("Failed to load GeoGebra")}: {error}
         </div>
       ) : (
-        <div className="relative" style={{ minHeight: height }}>
-          {loading ? (
-            <div className="absolute inset-0 flex items-center justify-center text-sm text-[var(--muted-foreground)]">
-              {t("Loading GeoGebra...")}
+        <>
+          {commandErrors.length > 0 ? (
+            <div
+              role="alert"
+              className="border-b border-[var(--border)] bg-[var(--destructive,#dc2626)]/5 px-3 py-2 text-[12px] leading-relaxed text-[var(--destructive,#dc2626)]"
+            >
+              <span className="font-medium">
+                {t("GeoGebra rejected {{count}} command(s)", {
+                  count: commandErrors.length,
+                })}
+                :
+              </span>
+              <ul className="mt-1 list-inside list-disc">
+                {commandErrors.map((cmd) => (
+                  <li key={cmd} className="truncate font-mono text-[11px]">
+                    {cmd}
+                  </li>
+                ))}
+              </ul>
             </div>
           ) : null}
-          <div ref={containerRef} className="ggb-applet-container" />
-        </div>
+          <div className="relative" style={{ minHeight: height }}>
+            {loading ? (
+              <div className="absolute inset-0 flex items-center justify-center text-sm text-[var(--muted-foreground)]">
+                {t("Loading GeoGebra...")}
+              </div>
+            ) : null}
+            <div ref={containerRef} className="ggb-applet-container" />
+          </div>
+        </>
       )}
     </div>
   );

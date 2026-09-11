@@ -1,6 +1,6 @@
 """One-click MinerU model download.
 
-Wraps the ``mineru-models-download`` CLI (MinerU 2.x) in a background job the
+Wraps the ``mineru-models-download`` CLI (current MinerU) in a background job the
 settings UI can start, poll, and cancel. The same source/endpoint settings
 also feed the parse subprocess via :func:`model_env_overrides`, so a lazy
 first-parse download honors the configured mirror even when the user never

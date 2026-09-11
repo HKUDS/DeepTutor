@@ -12,11 +12,11 @@ import type {
   MessageAttachment,
   MessageItem,
   MessageRequestSnapshot,
-} from "@/context/UnifiedChatContext";
-import type { StreamEvent } from "@/lib/unified-ws";
+} from "@/features/chat/ChatStateAdapter";
+import type { StreamEvent } from "@/features/chat/model/protocol";
 
-/** Artifact URLs are `/api/outputs/<path under the data root>`. */
-const OUTPUTS_URL_PREFIX = "/api/outputs/";
+/** Artifact URLs are `/files/outputs/<path under the data root>`. */
+const OUTPUTS_URL_PREFIX = "/files/outputs/";
 
 /**
  * Where a generated file sits under the data root, for the row's hover title.
@@ -63,7 +63,7 @@ export interface SessionActivity {
   space: SpaceReferenceSummary;
   /** Files the user uploaded. */
   attachments: AttachmentWithOrigin[];
-  /** Files the assistant produced (exec/code_execution/media artifacts).
+  /** Files the assistant produced (exec/media artifacts).
    *  Split out from uploads so a session's output is one collected list
    *  instead of something you scroll the transcript to find again. */
   artifacts: AttachmentWithOrigin[];

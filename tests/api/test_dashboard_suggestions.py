@@ -19,7 +19,7 @@ from deeptutor.api.routers import dashboard
 @pytest.fixture
 def client() -> TestClient:
     app = FastAPI()
-    app.include_router(dashboard.router, prefix="/api/v1/dashboard")
+    app.include_router(dashboard.router, prefix="/api/dashboard")
     return TestClient(app)
 
 
@@ -41,7 +41,7 @@ def test_suggestions_is_not_swallowed_by_the_entry_route(
 
     monkeypatch.setattr(service, "get_suggestions", _get)
 
-    response = client.get("/api/v1/dashboard/suggestions")
+    response = client.get("/api/dashboard/suggestions")
 
     assert response.status_code == 200
     body = response.json()
@@ -63,7 +63,7 @@ def test_refresh_returns_a_fresh_set(client: TestClient, monkeypatch: pytest.Mon
 
     monkeypatch.setattr(service, "refresh_suggestions", _refresh)
 
-    response = client.post("/api/v1/dashboard/suggestions/refresh")
+    response = client.post("/api/dashboard/suggestions/refresh")
 
     assert response.status_code == 200
     body = response.json()
@@ -80,7 +80,7 @@ def test_an_actual_entry_id_still_reaches_the_entry_route(
 
     monkeypatch.setattr(dashboard, "get_session_store", lambda: _Store())
 
-    response = client.get("/api/v1/dashboard/sess-123")
+    response = client.get("/api/dashboard/sess-123")
 
     assert response.status_code == 200
     assert response.json()["id"] == "sess-123"

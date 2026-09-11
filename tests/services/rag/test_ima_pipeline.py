@@ -314,6 +314,7 @@ class TestClientWire:
             "http://bucket.cos.ap-guangzhou.myqcloud.com/file.pdf",
             "https://example.com/file.pdf",
             "https://myqcloud.com.evil.test/file.pdf",
+            "https://other.ima.qq.com/file.pdf",
         ],
     )
     def test_file_media_rejects_urls_outside_official_cos(self, url: str) -> None:
@@ -322,6 +323,25 @@ class TestClientWire:
 
         with pytest.raises(ImaAPIError):
             asyncio.run(_client(handler).get_media_content("m-file"))
+
+    def test_file_media_accepts_ima_qq_com_resource_url(self) -> None:
+        media_url = "https://res-pkb.ima.qq.com/pkb-1/notes.txt"
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.method == "POST":
+                return _ok({"media_type": 1, "url_info": {"url": media_url}})
+            return httpx.Response(
+                200,
+                content=b"full file text",
+                headers={"content-type": "text/plain"},
+            )
+
+        media = asyncio.run(_client(handler).get_media_content("m-file"))
+
+        assert media == ImaMediaContent(
+            data=b"full file text",
+            filename="notes.txt",
+        )
 
     def test_file_media_rejects_content_length_over_budget(self) -> None:
         media_url = "https://bucket.cos.ap-guangzhou.myqcloud.com/file.pdf"

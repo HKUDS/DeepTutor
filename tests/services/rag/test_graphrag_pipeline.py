@@ -136,12 +136,8 @@ def test_build_settings_bridges_models() -> None:
                 "extra_body": {"thinking": {"type": "enabled"}},
             },
         ),
-        (
-            "deepseek",
-            "deepseek-v4-flash",
-            None,
-            {"extra_body": {"thinking": {"type": "disabled"}}},
-        ),
+        # Flash sends nothing about thinking; the provider's own default applies.
+        ("deepseek", "deepseek-v4-flash", None, {}),
         (
             "dashscope",
             "qwen3-235b-a22b",
@@ -895,6 +891,37 @@ def test_ingestion_uses_active_parse_service_for_parser_files(tmp_path, monkeypa
     assert calls == [pdf]
     assert (storage.input_dir(root) / "paper.txt").read_text(encoding="utf-8") == (
         "parsed by configured engine"
+    )
+
+
+def test_ingestion_parses_images_when_active_engine_supports_them(tmp_path, monkeypatch) -> None:
+    from deeptutor.services import parsing
+
+    root = tmp_path / "root"
+    image = tmp_path / "diagram.png"
+    image.write_bytes(b"\x89PNG\r\n")
+    calls: list[Path] = []
+
+    class _Parsed:
+        markdown = "OCR text from diagram"
+        blocks: list[dict] = []
+
+    class _ParseService:
+        def supports(self, path: Path) -> bool:
+            return path.suffix == ".png"
+
+        def parse(self, path: Path):
+            calls.append(path)
+            return _Parsed()
+
+    monkeypatch.setattr(parsing, "get_parse_service", lambda: _ParseService())
+
+    count = asyncio.run(ingestion.prepare_input([str(image)], root))
+
+    assert count == 1
+    assert calls == [image]
+    assert (storage.input_dir(root) / "diagram.txt").read_text(encoding="utf-8") == (
+        "OCR text from diagram"
     )
 
 

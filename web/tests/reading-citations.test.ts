@@ -2,11 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   LOCATOR_HREF_PREFIX,
+  citationTargetFromHref,
   codeRanges,
   findLocatorCitations,
   linkifyLocatorCitations,
   locatorFromHref,
   locatorLabel,
+  verifiedReadingLocators,
 } from "../lib/reading-citations";
 
 test("parses a single locator citation", () => {
@@ -115,6 +117,33 @@ test("linkify rewrites to an anchor the reader can intercept", () => {
   );
 });
 
+test("linkify binds a citation to its turn material", () => {
+  assert.equal(
+    linkifyLocatorCitations("Grounded [p.12] claim.", {
+      materialId: "0123456789abcdef",
+      allowedLocators: [12],
+    }),
+    "Grounded [p.12](#dt-material-0123456789abcdef-locator-12) claim.",
+  );
+});
+
+test("unsupported citations remain plain text instead of blind links", () => {
+  assert.equal(
+    linkifyLocatorCitations("Grounded [p.12], guessed [p.13].", {
+      materialId: "0123456789abcdef",
+      allowedLocators: [12],
+    }),
+    "Grounded [p.12](#dt-material-0123456789abcdef-locator-12), guessed [p.13].",
+  );
+  assert.equal(
+    linkifyLocatorCitations("Mixed [p.12,13].", {
+      materialId: "0123456789abcdef",
+      allowedLocators: [12],
+    }),
+    "Mixed [p.12,13].",
+  );
+});
+
 test("linkify keeps a multi-locator label but targets the first", () => {
   assert.equal(
     linkifyLocatorCitations("Both [p.12,17] agree."),
@@ -159,6 +188,109 @@ test("locatorFromHref only accepts the reader's own anchors", () => {
   assert.equal(locatorFromHref(`${LOCATOR_HREF_PREFIX}abc`), null);
   assert.equal(locatorFromHref(null), null);
   assert.equal(locatorFromHref(undefined), null);
+});
+
+test("citationTargetFromHref restores material-aware and legacy targets", () => {
+  assert.deepEqual(
+    citationTargetFromHref(
+      "#dt-material-0123456789ABCDEF-revision-4-locator-12",
+    ),
+    {
+      materialId: "0123456789abcdef",
+      materialRevision: 4,
+      locator: 12,
+    },
+  );
+  assert.deepEqual(
+    citationTargetFromHref("#dt-material-0123456789ABCDEF-locator-12"),
+    { materialId: "0123456789abcdef", locator: 12 },
+  );
+  assert.deepEqual(citationTargetFromHref(`${LOCATOR_HREF_PREFIX}3`), {
+    locator: 3,
+  });
+  assert.equal(
+    citationTargetFromHref("#dt-material-not-an-id-locator-3"),
+    null,
+  );
+  assert.equal(
+    citationTargetFromHref(
+      "#dt-material-0123456789abcdef-revision-0-locator-3",
+    ),
+    null,
+  );
+});
+
+test("linkify binds material-aware citations to an immutable revision", () => {
+  assert.equal(
+    linkifyLocatorCitations("Grounded [p.12].", {
+      materialId: "0123456789abcdef",
+      materialRevision: 4,
+      allowedLocators: [12],
+    }),
+    "Grounded [p.12](#dt-material-0123456789abcdef-revision-4-locator-12).",
+  );
+});
+
+test("verifiedReadingLocators uses only matching reading-tool evidence", () => {
+  const materialId = "0123456789abcdef";
+  const events = [
+    {
+      type: "tool_result",
+      metadata: {
+        tool: "search_material",
+        tool_metadata: {
+          material_id: materialId,
+          material_revision: 4,
+          hits: [{ locator: 12 }, { locator: 17 }],
+        },
+      },
+    },
+    {
+      type: "tool_result",
+      metadata: {
+        tool: "read_material",
+        tool_metadata: {
+          material_id: materialId,
+          material_revision: 4,
+          locators: [12, 13],
+        },
+      },
+    },
+    {
+      type: "tool_result",
+      metadata: {
+        tool: "reader_goto",
+        tool_metadata: {
+          material_id: materialId,
+          material_revision: 4,
+          locator: 14,
+        },
+      },
+    },
+    {
+      type: "tool_result",
+      metadata: {
+        tool: "read_material",
+        tool_metadata: {
+          material_id: "fedcba9876543210",
+          locators: [99],
+        },
+      },
+    },
+    {
+      type: "tool_result",
+      metadata: {
+        tool: "web_search",
+        tool_metadata: { material_id: materialId, locators: [88] },
+      },
+    },
+  ];
+  assert.deepEqual(
+    [...verifiedReadingLocators(events, materialId, 4)].sort((a, b) => a - b),
+    [12, 13, 14, 17],
+  );
+  assert.deepEqual([...verifiedReadingLocators(events, materialId, 3)], []);
+  assert.deepEqual([...verifiedReadingLocators([], materialId)], []);
 });
 
 test("locatorLabel uses the material's own unit word", () => {

@@ -1,0 +1,6 @@
+short_description: "List the study conversations held on one Mastery Path topic."
+when_to_use: "After mastery_topics, when the learner wants to go back to a topic and you have to choose between resuming a conversation and starting a fresh one."
+input_format: "{\"path_id\": \"id from mastery_topics\"}"
+guideline: "Resume when they are continuing that thread — the tutor's memory of it lives in that conversation — and start fresh when they are coming at the topic from a new angle. A conversation flagged `awaiting_answer` has an unanswered question in it and is the one to reopen. Archived conversations are not listed."
+note: "Read-only. Titles and last messages are the learner's own; quote them when it helps them recognise which thread you mean."
+phase: "exploration"

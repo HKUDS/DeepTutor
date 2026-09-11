@@ -174,6 +174,17 @@ def verify_quote(store: ReadingStore, material_id: str, locator: int, quote: str
     return QuoteCheck(verified=False, locator=locator, quote=text)
 
 
+def unit_timestamps(store: ReadingStore, manifest: MaterialManifest) -> dict[int, str]:
+    """Locator → clock time, for timed media only. Empty for documents."""
+    if manifest.render_mode not in {"video", "audio"}:
+        return {}
+    return {
+        ref.locator: ref.title
+        for ref in store.unit_references(manifest.material_id)
+        if ref.title and ref.source_href.startswith("#t=")
+    }
+
+
 def render_outline(store: ReadingStore, material_id: str) -> str:
     """A compact outline for the model: one line per row, locator first."""
     manifest = store.manifest(material_id)
@@ -236,5 +247,6 @@ __all__ = [
     "render_outline",
     "render_units",
     "search_material",
+    "unit_timestamps",
     "verify_quote",
 ]

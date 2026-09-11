@@ -10,10 +10,12 @@ from __future__ import annotations
 
 from deeptutor.services.generation_http import GenerationProviderError
 from deeptutor.services.videogen.adapters.async_task import AsyncTaskVideogenAdapter
+from deeptutor.services.videogen.adapters.dashscope import DashScopeVideogenAdapter
 from deeptutor.services.videogen.base import BaseVideogenAdapter
 
 VIDEOGEN_ADAPTERS: dict[str, BaseVideogenAdapter] = {
     "async_task": AsyncTaskVideogenAdapter(),
+    "dashscope": DashScopeVideogenAdapter(),
 }
 
 
@@ -24,4 +26,8 @@ def get_videogen_adapter(name: str) -> BaseVideogenAdapter:
     return adapter
 
 
-__all__ = ["VIDEOGEN_ADAPTERS", "get_videogen_adapter"]
+__all__ = [
+    "VIDEOGEN_ADAPTERS",
+    "get_videogen_adapter",
+    "DashScopeVideogenAdapter",
+]

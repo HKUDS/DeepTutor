@@ -87,6 +87,75 @@ const fileFilter =
   fileFilterIdx >= 0 ? String(process.argv[fileFilterIdx + 1] || "").trim() : "";
 const showAll = process.argv.includes("--show-all");
 
+/**
+ * Keys the code asks `t()` for that no locale file answers.
+ *
+ * The parity check compares en against zh, so a key missing from *both* is
+ * invisible to it — and because i18next falls back to the key itself, an
+ * English string renders happily in a Chinese UI and nothing fails. That is
+ * how the whole book capture-and-pause surface shipped untranslated: 27 keys
+ * that no gate could see. Reported, not enforced: there is a standing backlog
+ * of these, and turning it red would fail CI on other people's strings.
+ */
+function reportUntranslatedKeys() {
+  const localeDir = path.join(webRoot, "locales");
+  if (!fs.existsSync(localeDir)) return;
+  const locales = fs
+    .readdirSync(localeDir, { withFileTypes: true })
+    .filter((ent) => ent.isDirectory())
+    .map((ent) => ent.name);
+  if (!locales.length) return;
+
+  const known = new Map();
+  for (const locale of locales) {
+    const file = path.join(localeDir, locale, "app.json");
+    if (!fs.existsSync(file)) continue;
+    known.set(locale, new Set(Object.keys(JSON.parse(fs.readFileSync(file, "utf8")))));
+  }
+
+  // `t("literal")` — the only form a static pass can resolve. `t(variable)`
+  // is left alone; those keys live wherever the variable came from.
+  const callRe = /\bt\(\s*(["'])((?:\\.|(?!\1).)*)\1/g;
+  const missing = new Map();
+  const roots = ["app", "components", "features", "hooks", "lib", "shared"]
+    .map((dir) => path.join(webRoot, dir))
+    .filter((dir) => fs.existsSync(dir));
+  for (const dir of roots) {
+    for (const file of listCodeFiles(dir)) {
+      const content = fs.readFileSync(file, "utf8");
+      for (const match of content.matchAll(callRe)) {
+        const key = match[2];
+        if (!key || key.includes("\\n")) continue;
+        for (const [locale, keys] of known) {
+          if (keys.has(key)) continue;
+          if (!missing.has(locale)) missing.set(locale, new Set());
+          missing.get(locale).add(key);
+        }
+      }
+    }
+  }
+
+  const summary = [...missing.entries()]
+    .filter(([, keys]) => keys.size)
+    .map(([locale, keys]) => `${locale}: ${keys.size}`);
+  if (!summary.length) {
+    console.log("[i18n:audit] every t() literal has an entry in each locale");
+    return;
+  }
+  console.log(
+    `[i18n:audit] t() literals with no locale entry — ${summary.join(", ")} ` +
+      `(they render as their English key). Run with --show-missing to list them.`,
+  );
+  if (!process.argv.includes("--show-missing")) return;
+  for (const [locale, keys] of missing) {
+    if (!keys.size) continue;
+    console.log(`\n- ${locale}`);
+    for (const key of [...keys].sort()) console.log(`  - ${JSON.stringify(key)}`);
+  }
+}
+
+reportUntranslatedKeys();
+
 const allFindings = [];
 for (const dir of targets) {
   const files = listCodeFiles(dir);

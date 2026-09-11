@@ -18,6 +18,7 @@ from deeptutor.services.embedding import client as embedding_client_module
 from deeptutor.services.embedding import config as embedding_config_module
 from deeptutor.services.llm import client as llm_client_module
 from deeptutor.services.llm import config as llm_config_module
+from deeptutor.services.settings import interface_settings
 
 
 def test_load_ui_settings_migrates_legacy_language_to_response_language(
@@ -469,12 +470,20 @@ async def test_mineru_test_connection_local_mode(monkeypatch: pytest.MonkeyPatch
         "local_cli_probe",
         lambda *a: {"found": True, "command": "mineru", "path": "/env/bin/mineru"},
     )
-    monkeypatch.setattr(mineru_backend, "local_cli_version", lambda cmd: "mineru, version 2.5.0")
+    monkeypatch.setattr(mineru_backend, "local_cli_version", lambda cmd: "mineru, version 3.4.5")
     result = await settings_router.test_mineru_connection(
         settings_router.MinerUSettingsUpdate(mode="local")
     )
     assert result["ok"] is True
-    assert "2.5.0" in result["message"]
+    assert "3.4.5" in result["message"]
+
+    # An old CLI is present but cannot provide the current format/API surface.
+    monkeypatch.setattr(mineru_backend, "local_cli_version", lambda cmd: "mineru, version 2.5.0")
+    result = await settings_router.test_mineru_connection(
+        settings_router.MinerUSettingsUpdate(mode="local")
+    )
+    assert result["ok"] is False
+    assert "3.4.5" in result["message"]
 
     # CLI absent → actionable failure message.
     monkeypatch.setattr(
@@ -576,6 +585,26 @@ def test_embedding_provider_choices_use_full_endpoint_urls() -> None:
     assert embedding["ollama"]["base_url"] == "http://localhost:11434/api/embed"
     assert embedding["openai"]["base_url"] == "https://api.openai.com/v1/embeddings"
     assert "custom_openai_sdk" not in embedding
+
+
+def test_media_and_voice_provider_choices_include_dashscope() -> None:
+    choices = settings_router._provider_choices()
+    services = ("tts", "stt", "imagegen", "videogen")
+    dashscope = {
+        service: {item["value"]: item for item in choices[service]}["dashscope"]
+        for service in services
+    }
+
+    assert set(dashscope) == set(services)
+    assert all(item["label"] == "Aliyun DashScope" for item in dashscope.values())
+    assert all(
+        item["base_url"] == "https://dashscope.aliyuncs.com/api/v1" for item in dashscope.values()
+    )
+    assert dashscope["tts"]["default_model"] == "qwen3-tts-flash"
+    assert dashscope["tts"]["default_voice"] == "Cherry"
+    assert dashscope["stt"]["default_model"] == "paraformer-v2"
+    assert dashscope["imagegen"]["default_model"] == "wanx2.1-t2i-turbo"
+    assert dashscope["videogen"]["default_model"] == "wanx2.1-t2v-turbo"
 
 
 def test_llm_provider_choices_include_atlascloud() -> None:
@@ -746,6 +775,69 @@ async def test_apply_catalog_invalidates_runtime_caches(monkeypatch: pytest.Monk
     assert new_llm_client.config.base_url == "https://after-apply-llm.example/v1"
     assert new_embedding_client is not old_embedding_client
     assert new_embedding_client.config.model == "text-embedding-after-apply"
+
+
+@pytest.mark.asyncio
+async def test_apply_catalog_service_only_promotes_the_selected_service_and_updates_saved_draft(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    from deeptutor.services.config.settings_draft import SettingsDraftService
+
+    live = _build_catalog(
+        llm_model="gpt-live",
+        llm_base_url="https://llm.example/v1",
+        llm_api_key="llm-key",
+        embedding_model="text-embedding-live",
+        embedding_base_url="https://embedding.example/v1/embeddings",
+        embedding_api_key="embedding-key",
+    )
+    live["services"]["stt"] = {
+        "active_profile_id": "stt-profile",
+        "active_model_id": "stt-model",
+        "profiles": [
+            {
+                "id": "stt-profile",
+                "name": "Live STT",
+                "binding": "openai",
+                "base_url": "https://old-stt.example/v1",
+                "api_key": "old-stt-key",
+                "api_version": "",
+                "extra_headers": {},
+                "models": [{"id": "stt-model", "name": "Whisper", "model": "whisper-1"}],
+            }
+        ],
+    }
+    draft = deepcopy(live)
+    draft["services"]["stt"]["profiles"][0]["base_url"] = "https://new-stt.example/v1"
+    draft["services"]["stt"]["profiles"][0]["api_key"] = "new-stt-key"
+    draft["services"]["llm"]["profiles"][0]["name"] = "Unapplied LLM edit"
+
+    catalog_service = _FakeCatalogService(live)
+    draft_service = SettingsDraftService(tmp_path / "settings_draft.json")
+    draft_service.save({"catalog": draft, "extensions": {"network": {"backend_port": 9000}}})
+    monkeypatch.setattr(settings_router, "get_model_catalog_service", lambda: catalog_service)
+    monkeypatch.setattr(settings_router, "get_settings_draft_service", lambda: draft_service)
+    monkeypatch.setattr(settings_router, "_invalidate_runtime_caches", lambda: None)
+
+    response = await settings_router.apply_catalog_service(
+        settings_router.CatalogServicePayload(service="stt", config=draft["services"]["stt"])
+    )
+
+    applied = catalog_service.load()
+    assert applied["services"]["stt"]["profiles"][0]["base_url"] == ("https://new-stt.example/v1")
+    assert applied["services"]["stt"]["profiles"][0]["api_key"] == "new-stt-key"
+    assert applied["services"]["llm"]["profiles"][0]["name"] == ("Default LLM Endpoint")
+
+    remaining_draft = draft_service.load()
+    assert remaining_draft["catalog"]["services"]["stt"] == applied["services"]["stt"]
+    assert remaining_draft["catalog"]["services"]["llm"]["profiles"][0]["name"] == (
+        "Unapplied LLM edit"
+    )
+    assert remaining_draft["extensions"] == {"network": {"backend_port": 9000}}
+    assert response["draft"] is not None
+    assert response["catalog"]["services"]["stt"]["profiles"][0]["api_key"] == (
+        settings_router.CATALOG_SECRET_MASK
+    )
 
 
 @pytest.mark.asyncio
@@ -960,6 +1052,7 @@ async def test_incomplete_catalog_write_preserves_the_current_managed_codex_prof
 async def test_enabled_tools_roundtrip(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     settings_file = tmp_path / "interface.json"
     monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
+    monkeypatch.setattr(interface_settings, "_interface_settings_file", lambda: settings_file)
 
     # Default state — no file yet, so the loader emits the full toggleable set.
     assert set(settings_router.get_enabled_optional_tools()) == set(
@@ -1034,7 +1127,9 @@ async def test_complete_tour_invalidates_runtime_caches(
 async def test_fetch_models_returns_picker_options(monkeypatch: pytest.MonkeyPatch) -> None:
     import deeptutor.services.llm.factory as factory_module
 
-    async def _fake_fetch(binding: str, base_url: str, api_key: str | None = None):
+    async def _fake_fetch(
+        binding: str, base_url: str, api_key: str | None = None, api_format: str = "auto"
+    ):
         assert binding == "openai"  # "OpenAI" is normalized to lowercase
         assert base_url == "https://api.example.com/v1"
         assert api_key == "sk-x"
@@ -1073,7 +1168,9 @@ async def test_fetch_models_resolves_masked_key_server_side(
     service = _FakeCatalogService(catalog)
     monkeypatch.setattr(settings_router, "get_model_catalog_service", lambda: service)
 
-    async def _fake_fetch(binding: str, base_url: str, api_key: str | None = None):
+    async def _fake_fetch(
+        binding: str, base_url: str, api_key: str | None = None, api_format: str = "auto"
+    ):
         assert (binding, base_url, api_key) == (
             "openai",
             "https://llm.example/v1",
@@ -1112,7 +1209,9 @@ async def test_fetch_models_allows_codebuddy_without_base_url(
 ) -> None:
     import deeptutor.services.llm.factory as factory_module
 
-    async def _fake_fetch(binding: str, base_url: str, api_key: str | None = None):
+    async def _fake_fetch(
+        binding: str, base_url: str, api_key: str | None = None, api_format: str = "auto"
+    ):
         assert (binding, base_url, api_key) == ("codebuddy", "", None)
         return ["hy3", "glm-5.2"]
 
@@ -1230,10 +1329,25 @@ def test_codex_provider_choice_is_advertised_as_oauth() -> None:
         "label": "OpenAI Codex",
         "base_url": "https://chatgpt.com/backend-api",
         "auth_mode": "oauth",
+        "supports_wire_api_selection": False,
+        # OAuth fixes the protocol: nothing for a profile to choose.
+        "api_formats": [],
+        "default_api_format": "auto",
+        "base_urls": {},
+        "status": "supported",
     }
     # API-key providers keep the same shape, so the frontend never special-cases
     # a missing field.
     assert llm["openai"]["auth_mode"] == "api_key"
+
+
+def test_provider_choices_advertise_wire_api_support_from_backend_metadata() -> None:
+    llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
+
+    assert llm["custom"]["supports_wire_api_selection"] is True
+    assert llm["openai"]["supports_wire_api_selection"] is True
+    assert llm["azure_openai"]["supports_wire_api_selection"] is False
+    assert llm["custom_anthropic"]["supports_wire_api_selection"] is False
 
 
 @pytest.mark.asyncio
@@ -1371,7 +1485,7 @@ async def test_update_ui_settings_persists_explicit_theme_and_language_defaults(
 def test_get_ui_settings_is_public_without_auth(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     """Auth pages bootstrap the interface language *before* a session exists.
 
-    Regression for #760: the app shell fetches GET /api/v1/settings/ui on the
+    Regression for #760: the app shell fetches GET /api/settings/ui on the
     /register and /login pages, which have no session. When the endpoint sat
     behind the ``_auth`` dependency it returned 401, the bootstrap silently
     bailed out, and the auth pages stayed English even with the persisted
@@ -1392,10 +1506,10 @@ def test_get_ui_settings_is_public_without_auth(monkeypatch: pytest.MonkeyPatch,
     )
 
     app = FastAPI()
-    app.include_router(settings_router.public_router, prefix="/api/v1/settings")
+    app.include_router(settings_router.public_router, prefix="/api/settings")
 
     client = TestClient(app)
-    response = client.get("/api/v1/settings/ui")
+    response = client.get("/api/settings/ui")
 
     assert response.status_code == 200
     payload = response.json()
@@ -1430,11 +1544,11 @@ def test_auth_disabled_settings_endpoint_does_not_expose_provider_secrets(
     app = FastAPI()
     app.include_router(
         settings_router.router,
-        prefix="/api/v1/settings",
+        prefix="/api/settings",
         dependencies=[Depends(auth_router.require_auth)],
     )
 
-    response = TestClient(app).get("/api/v1/settings")
+    response = TestClient(app).get("/api/settings")
 
     assert response.status_code == 200
     serialized = response.text
@@ -1468,9 +1582,9 @@ def test_public_ui_read_omits_deployment_configuration(
     )
 
     app = FastAPI()
-    app.include_router(settings_router.public_router, prefix="/api/v1/settings")
+    app.include_router(settings_router.public_router, prefix="/api/settings")
 
-    payload = TestClient(app).get("/api/v1/settings/ui").json()
+    payload = TestClient(app).get("/api/settings/ui").json()
 
     assert set(payload) == set(settings_router.PRESESSION_UI_FIELDS)
     assert "enabled_optional_tools" not in payload

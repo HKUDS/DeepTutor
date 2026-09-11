@@ -225,6 +225,9 @@ def _export_markdown(
                 current = annotation.locator
                 lines.append(f"## {unit_word} {current}")
                 lines.append("")
+            if annotation.kind == "citation":
+                lines.append("**Citation**")
+                lines.append("")
             quote = " ".join((annotation.quote or "").split())
             if quote:
                 lines.append(f"> {quote}")

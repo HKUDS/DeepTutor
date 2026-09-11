@@ -1,9 +1,8 @@
 """Core contracts shared across runtime, tools, and capabilities."""
 
-from .capability_protocol import BaseCapability, CapabilityManifest
+from .capability_protocol import CapabilityManifest, StreamBusProtocol, TurnCapability
 from .context import Attachment, UnifiedContext
 from .stream import StreamEvent, StreamEventType
-from .stream_bus import StreamBus
 from .tool_protocol import (
     BaseTool,
     ToolAlias,
@@ -17,7 +16,7 @@ from .trace import build_trace_metadata, merge_trace_metadata, new_call_id
 __all__ = [
     "StreamEvent",
     "StreamEventType",
-    "StreamBus",
+    "StreamBusProtocol",
     "new_call_id",
     "build_trace_metadata",
     "merge_trace_metadata",
@@ -27,8 +26,16 @@ __all__ = [
     "ToolParameter",
     "ToolPromptHints",
     "ToolResult",
-    "BaseCapability",
+    "TurnCapability",
     "CapabilityManifest",
     "UnifiedContext",
     "Attachment",
 ]
+
+
+def __getattr__(name: str):
+    if name == "BaseCapability":
+        from . import capability_protocol
+
+        return capability_protocol.__getattr__(name)
+    raise AttributeError(name)

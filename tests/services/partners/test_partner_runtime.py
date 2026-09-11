@@ -12,7 +12,7 @@ from deeptutor.partners.bus.events import InboundMessage
 from deeptutor.partners.bus.queue import MessageBus
 from deeptutor.services.partners.interaction import session_store_for
 from deeptutor.services.partners.manager import PartnerConfig
-from deeptutor.services.partners.runtime import PartnerRunner
+from deeptutor.services.partners.runtime import PartnerRunner, PartnerTurnOptions
 from deeptutor.services.partners.sessions import PartnerSessionStore
 from tests.services.partners.scripts import (
     answer_visible_narration,
@@ -38,6 +38,51 @@ def _msg(content: str = "hello", channel: str = "telegram") -> InboundMessage:
 
 class TestTurnExecution:
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("channel", ["weixin", "telegram"])
+    async def test_all_im_channels_mirror_user_trace_and_answer_to_web_activity(
+        self, partners_root, fake_orchestrator, channel
+    ):
+        fake_orchestrator.script = [
+            event(
+                StreamEventType.TOOL_CALL,
+                content="partner_read",
+                metadata={"args": {"topic": "profile"}},
+            ),
+            *finish("I remember."),
+        ]
+        frames: list[dict[str, Any]] = []
+
+        async def capture(_msg: InboundMessage, frame: dict[str, Any]) -> None:
+            frames.append(frame)
+
+        runner = PartnerRunner(
+            "ada",
+            PartnerConfig(name="Ada"),
+            MessageBus(),
+            on_channel_activity=capture,
+        )
+
+        await runner._handle_inbound(_msg("What do you know about me?", channel=channel))
+
+        assert frames[0]["type"] == "user_echo"
+        assert frames[0]["content"] == "What do you know about me?"
+        assert frames[0]["channel"] == channel
+        assert frames[0]["external"] is True
+        assert any(
+            frame["type"] == "stream_event" and frame["event"]["type"] == "tool_call"
+            for frame in frames
+        )
+        assert [frame["type"] for frame in frames[-2:]] == ["content", "done"]
+        assert frames[-2]["content"] == "I remember."
+        assert len({frame["activity_id"] for frame in frames}) == 1
+
+        records = _shared_store().messages(f"{channel}:42")
+        assert [record["role"] for record in records] == ["user", "assistant"]
+        assert records[0]["metadata"]["activity_id"] == frames[0]["activity_id"]
+        assert records[1]["metadata"]["activity_id"] == frames[0]["activity_id"]
+        assert any(event["type"] == "tool_call" for event in records[1]["events"])
+
+    @pytest.mark.asyncio
     async def test_returns_finish_text_and_persists_session(self, partners_root, fake_orchestrator):
         fake_orchestrator.script = narration_round("c1", "let me check") + finish(
             "The answer is 4."
@@ -52,6 +97,73 @@ class TestTurnExecution:
             {"role": "user", "content": "what is 2+2?"},
             {"role": "assistant", "content": "The answer is 4."},
         ]
+
+    @pytest.mark.asyncio
+    async def test_a_group_conversation_records_where_it_happened(
+        self, partners_root, fake_orchestrator
+    ):
+        """#1229: one partner serving three subject groups looked like three DMs.
+
+        Feishu states the kind of chat on the inbound event, so the turn that
+        is being written is the only moment the origin is known for certain.
+        The conversation list reads it back from there.
+        """
+        fake_orchestrator.script = finish("noted")
+        runner = _runner(partners_root)
+        group = InboundMessage(
+            channel="feishu",
+            sender_id="ou_student",
+            chat_id="oc_math_group",
+            content="老师这题怎么做",
+            metadata={"chat_type": "group"},
+        )
+
+        await runner.process_message(group)
+
+        summary = next(
+            row
+            for row in _shared_store().list_sessions()
+            if row["session_key"] == "feishu_oc_math_group"
+        )
+        assert summary["chat_id"] == "oc_math_group"
+        assert summary["scope"] == "group"
+
+    @pytest.mark.asyncio
+    async def test_a_direct_message_is_marked_as_one(self, partners_root, fake_orchestrator):
+        fake_orchestrator.script = finish("noted")
+        runner = _runner(partners_root)
+        direct = InboundMessage(
+            channel="feishu",
+            sender_id="ou_parent",
+            chat_id="ou_parent",
+            content="他最近怎么样",
+            metadata={"chat_type": "p2p"},
+        )
+
+        await runner.process_message(direct)
+
+        summary = next(
+            row
+            for row in _shared_store().list_sessions()
+            if row["session_key"] == "feishu_ou_parent"
+        )
+        assert summary["scope"] == "direct"
+
+    @pytest.mark.asyncio
+    async def test_a_channel_that_says_nothing_is_left_unlabelled(
+        self, partners_root, fake_orchestrator
+    ):
+        """A conversation list that guesses is worse than one that stays quiet."""
+        fake_orchestrator.script = finish("noted")
+        runner = _runner(partners_root)
+
+        await runner.process_message(_msg("hello"))
+
+        summary = next(
+            row for row in _shared_store().list_sessions() if row["session_key"] == "telegram_42"
+        )
+        assert summary["chat_id"] == "42"
+        assert "scope" not in summary
 
     @pytest.mark.asyncio
     async def test_narration_streams_as_progress_outbound(self, partners_root, fake_orchestrator):
@@ -142,6 +254,85 @@ class TestTurnExecution:
 
         await runner.process_message(_msg(channel="web"))
         assert runner.bus.outbound.empty()
+
+    @pytest.mark.asyncio
+    async def test_group_turn_injects_public_context_without_persisting_private_trace(
+        self, partners_root, fake_orchestrator
+    ):
+        fake_orchestrator.script = narration_round("private", "private scratch") + finish(
+            "public answer"
+        )
+        runner = _runner(partners_root)
+        message = _msg("current question", channel="web_group")
+        message.session_key_override = "group-session"
+
+        final = await runner.process_message(
+            message,
+            options=PartnerTurnOptions(
+                conversation_history=[],
+                shared_context="Socrates: earlier public answer",
+                group_name="Study panel",
+                persist=False,
+                allow_commands=False,
+                capture_events=False,
+            ),
+        )
+
+        assert final == "public answer"
+        context = fake_orchestrator.seen_contexts[0]
+        assert context.conversation_history == []
+        assert "Socrates: earlier public answer" in context.user_message
+        assert "current question" in context.user_message
+        assert "respond only as yourself" in context.persona_context.lower()
+        assert _shared_store().messages("group-session") == []
+        assert runner.bus.outbound.empty()
+
+    @pytest.mark.asyncio
+    async def test_group_collaboration_publishes_saved_formal_answer_not_decision_ack(
+        self, partners_root, fake_orchestrator, monkeypatch
+    ):
+        import deeptutor.runtime.orchestrator as orchestrator_module
+
+        seen_contexts = []
+
+        class SavedAnswerOrchestrator:
+            async def handle(self, context):
+                seen_contexts.append(context)
+                context.extension("partner_group")["formal_answer"] = "The formal answer"
+                for item in finish("NO_INVOKE"):
+                    yield item
+
+        monkeypatch.setattr(orchestrator_module, "ChatOrchestrator", SavedAnswerOrchestrator)
+        runner = _runner(partners_root)
+        message = _msg("question", channel="web_group")
+        message.session_key_override = "group-session"
+
+        final = await runner.process_message(
+            message,
+            options=PartnerTurnOptions(
+                conversation_history=[],
+                shared_context="public transcript",
+                group_id="panel",
+                group_name="Panel",
+                group_members=(
+                    {"partner_id": "ada", "name": "Ada", "description": "proof specialist"},
+                    {
+                        "partner_id": "bob",
+                        "name": "Bob",
+                        "description": "experimental physicist",
+                    },
+                ),
+                allow_invoke_other=True,
+                persist=False,
+                allow_commands=False,
+            ),
+        )
+
+        assert final == "The formal answer"
+        persona = seen_contexts[0].persona_context
+        assert "independent voice in the parallel panel" in persona
+        assert "Bob (@bob): experimental physicist" in persona
+        assert "instead of restating generic consensus" in persona
 
     @pytest.mark.asyncio
     async def test_unresolved_ask_user_question_becomes_reply(
@@ -595,6 +786,144 @@ class TestSessionStoreOps:
 
 
 class TestLiveTurn:
+    def test_channel_activity_feed_broadcasts_replays_and_isolates_accounts(self):
+        from deeptutor.services.partners.manager import PartnerActivityFeed
+
+        feed = PartnerActivityFeed(max_recent=2)
+        first = feed.subscribe("alice")
+        second = feed.subscribe("alice")
+        owner = feed.subscribe_many(("alice", None))
+        outsider = feed.subscribe("bob")
+        frame = {
+            "type": "user_echo",
+            "activity_id": "turn-1",
+            "external": True,
+        }
+
+        feed.publish("alice", frame)
+
+        assert first.get_nowait() == frame
+        assert second.get_nowait() == frame
+        assert owner.get_nowait() == frame
+        assert outsider.empty()
+        late = feed.subscribe("alice")
+        assert late.get_nowait() == frame
+
+        feed.unsubscribe("alice", first)
+        feed.publish("alice", {**frame, "type": "done"})
+        assert first.empty()
+        assert second.get_nowait()["type"] == "done"
+        assert owner.get_nowait()["type"] == "done"
+
+        shared = {**frame, "activity_id": "turn-2"}
+        feed.publish(None, shared)
+        assert owner.get_nowait() == shared
+        assert second.empty()
+
+    def test_owner_activity_history_can_merge_private_and_unlinked_channel_sessions(
+        self, partners_root
+    ):
+        from deeptutor.multi_user.models import CurrentUser
+        from deeptutor.multi_user.paths import scope_for_user, user_context
+        from deeptutor.services.partners.manager import PartnerManager
+
+        actor = CurrentUser("owner", "owner", "user", scope_for_user("owner", is_admin=False))
+        private = session_store_for("ada", actor)
+        shared = session_store_for("ada", None)
+        private.append("web-1", "user", "from web")
+        shared.append("weixin:42", "user", "from weixin")
+
+        with user_context(actor):
+            manager = PartnerManager()
+            assert [
+                item["content"] for item in manager.get_history("ada", include_shared=False)
+            ] == ["from web"]
+            assert {
+                item["content"] for item in manager.get_history("ada", include_shared=True)
+            } == {"from web", "from weixin"}
+
+    @pytest.mark.asyncio
+    async def test_group_boundary_returns_trace_and_invocation_metadata(
+        self, partners_root, fake_orchestrator, monkeypatch
+    ):
+        from deeptutor.capabilities.partner_group import PartnerGroupCapability
+        from deeptutor.capabilities.partner_group.tools import InvokeOtherTool
+        import deeptutor.runtime.orchestrator as orchestrator_module
+        from deeptutor.services.partners.manager import PartnerManager
+
+        proposal = {
+            "target_partner_id": "bob",
+            "target_partner_name": "Bob",
+            "question": "Which premise should we test?",
+        }
+        seen_contexts = []
+
+        class CollaborationProtocolOrchestrator:
+            async def handle(self, context):
+                seen_contexts.append(context)
+                capability = PartnerGroupCapability()
+                instruction = capability.finish_instruction(context, "Formal answer")
+                assert "invoke_other" in instruction
+                kwargs = capability.augment_kwargs(
+                    "invoke_other",
+                    {
+                        "target_partner_id": "bob",
+                        "question": proposal["question"],
+                    },
+                    context,
+                )
+                result = await InvokeOtherTool().execute(**kwargs)
+                yield event(
+                    StreamEventType.TOOL_RESULT,
+                    content=result.content,
+                    metadata={"tool_metadata": result.metadata},
+                )
+                for item in finish("proposal recorded"):
+                    yield item
+
+        monkeypatch.setattr(
+            orchestrator_module,
+            "ChatOrchestrator",
+            CollaborationProtocolOrchestrator,
+        )
+        manager = PartnerManager()
+        manager.save_config("ada", PartnerConfig(name="Ada"), auto_start=True)
+        await manager.start_partner("ada")
+        observed: list[StreamEvent] = []
+
+        async def on_event(item: StreamEvent) -> None:
+            observed.append(item)
+
+        try:
+            result = await manager.send_group_message(
+                "ada",
+                "Question",
+                session_key="group-panel-session",
+                group_id="panel",
+                group_name="Panel",
+                group_members=[
+                    {"partner_id": "ada", "name": "Ada"},
+                    {"partner_id": "bob", "name": "Bob"},
+                ],
+                public_context="Bob: earlier answer",
+                actor=None,
+                on_event=on_event,
+            )
+        finally:
+            await manager.stop_partner("ada")
+
+        assert result.content == "Formal answer"
+        assert result.invocation == proposal
+        assert [item["type"] for item in result.events] == [
+            "tool_result",
+            "content",
+            "result",
+        ]
+        assert any(item.type == StreamEventType.TOOL_RESULT for item in observed)
+        context = seen_contexts[0]
+        assert context.metadata["partner_group"]["allow_invoke_other"] is True
+        assert context.metadata["partner_group"]["members"][1]["partner_id"] == "bob"
+
     def test_buffer_replays_for_late_subscriber(self):
         from deeptutor.services.partners.manager import LiveTurn
 

@@ -2,21 +2,18 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
+  BookmarkPlus,
   Highlighter,
   MessageSquareQuote,
   StickyNote,
   Underline,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { ANNOTATION_COLORS, type AnnotationColor } from "@/lib/reading-api";
-
-const SWATCH: Record<AnnotationColor, string> = {
-  yellow: "#facd5a",
-  green: "#8cdb94",
-  blue: "#7ac0fa",
-  pink: "#faa1c7",
-  purple: "#c7aefa",
-};
+import {
+  ANNOTATION_COLORS,
+  ANNOTATION_SWATCH,
+  type AnnotationColor,
+} from "@/lib/reading-api";
 
 export interface AnnotationPopoverProps {
   /** Viewport coordinates of the selection's end. */
@@ -25,6 +22,7 @@ export interface AnnotationPopoverProps {
   onHighlight: (color: AnnotationColor) => void;
   onUnderline: (color: AnnotationColor) => void;
   onNote: (note: string, color: AnnotationColor) => void;
+  onCitation: (color: AnnotationColor) => void;
   onAsk: () => void;
   onDismiss: () => void;
 }
@@ -47,6 +45,7 @@ export function AnnotationPopover({
   onHighlight,
   onUnderline,
   onNote,
+  onCitation,
   onAsk,
   onDismiss,
 }: AnnotationPopoverProps) {
@@ -118,7 +117,7 @@ export function AnnotationPopover({
                   ? "border-[var(--foreground)] scale-110"
                   : "border-black/10 hover:scale-105"
               }`}
-              style={{ background: SWATCH[swatch] }}
+              style={{ background: ANNOTATION_SWATCH[swatch] }}
             />
           ))}
         </div>
@@ -138,6 +137,11 @@ export function AnnotationPopover({
           label={t("Add note")}
           active={noteOpen}
           onClick={() => setNoteOpen((open) => !open)}
+        />
+        <IconButton
+          icon={BookmarkPlus}
+          label={t("Save citation")}
+          onClick={() => onCitation(color)}
         />
         <IconButton
           icon={MessageSquareQuote}
@@ -163,7 +167,7 @@ export function AnnotationPopover({
             }}
             rows={3}
             placeholder={t("Your note…")}
-            className="w-full resize-none rounded-lg border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-[12px] leading-relaxed text-[var(--foreground)] outline-none transition focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20"
+            className="w-full resize-none rounded-lg border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-[12px] leading-relaxed text-[var(--foreground)] outline-none transition focus:border-[var(--ring)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--ring)_20%,transparent)]"
           />
           <div className="mt-1 flex items-center justify-end gap-1.5">
             <button

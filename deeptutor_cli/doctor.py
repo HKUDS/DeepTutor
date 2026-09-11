@@ -8,7 +8,11 @@ import json
 from rich.table import Table
 import typer
 
-from deeptutor.services.doctor import DoctorReport, run_diagnostics
+from deeptutor.services.doctor import (
+    DoctorReport,
+    run_diagnostics,
+    run_runtime_diagnostics,
+)
 
 from .common import console
 
@@ -38,6 +42,10 @@ def _render_rich(report: DoctorReport) -> None:
 def register(app: typer.Typer) -> None:
     @app.command("doctor")
     def doctor(
+        target: str | None = typer.Argument(
+            None,
+            help="Optional diagnostic target; use 'runtime' for v2 coordination/storage.",
+        ),
         online: bool = typer.Option(
             False,
             "--online",
@@ -54,7 +62,11 @@ def register(app: typer.Typer) -> None:
         if fmt not in {"rich", "json"}:
             raise typer.BadParameter("must be 'rich' or 'json'", param_hint="--format")
 
-        report = asyncio.run(run_diagnostics(online=online))
+        if target not in {None, "runtime"}:
+            raise typer.BadParameter("must be 'runtime'", param_hint="target")
+        report = asyncio.run(
+            run_runtime_diagnostics() if target == "runtime" else run_diagnostics(online=online)
+        )
         if fmt == "json":
             console.print_json(json.dumps(report.to_dict()))
         else:

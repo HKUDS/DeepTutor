@@ -197,9 +197,9 @@ class TestRegenerateLastTurn:
         assert payload["knowledge_bases"] == ["kb1"]
         assert payload["language"] == "en"
         assert payload["attachments"] == [{"type": "file", "filename": "a.pdf"}]
-        assert payload["config"]["_persist_user_message"] is False
-        assert payload["config"]["_regenerate"] is True
-        assert payload["config"]["_regenerated_from_message_id"] == user_id
+        assert payload["persist_user_message"] is False
+        assert payload["regenerate"] is True
+        assert payload["regenerated_from_message_id"] == user_id
 
         remaining = asyncio.run(store.get_messages(sid))
         assert [m["id"] for m in remaining] == [user_id]
@@ -403,5 +403,5 @@ class TestRegenerateLastTurn:
         assert payload["language"] == "zh"
         assert payload["config"]["temperature"] == 0.2
         # Runtime flags must still be set even when overrides supply config.
-        assert payload["config"]["_persist_user_message"] is False
-        assert payload["config"]["_regenerate"] is True
+        assert payload["persist_user_message"] is False
+        assert payload["regenerate"] is True

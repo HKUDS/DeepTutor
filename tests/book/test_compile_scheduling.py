@@ -32,6 +32,11 @@ def _engine() -> BookEngine:
     engine = BookEngine.__new__(BookEngine)
     engine._global_lock = asyncio.Lock()
     engine._runtimes = {}
+    engine.storage = type(
+        "_CompilingStorage",
+        (),
+        {"load_book": lambda _self, book_id: Book(id=book_id, status=BookStatus.COMPILING)},
+    )()
     return engine
 
 
@@ -209,6 +214,76 @@ async def test_a_page_that_produced_something_resets_the_breaker() -> None:
 
     assert tripped is False
     assert runtime.consecutive_page_failures == 0
+
+
+@pytest.mark.asyncio
+async def test_compile_is_rejected_while_book_is_paused() -> None:
+    engine = _engine()
+    engine.storage = type(
+        "_PausedStorage",
+        (),
+        {"load_book": lambda _self, book_id: Book(id=book_id, status=BookStatus.PAUSED)},
+    )()
+
+    from deeptutor.book.engine import BookPausedError
+
+    with pytest.raises(BookPausedError):
+        await engine.compile_page(book_id="bk", page_id="pg_1")
+
+
+@pytest.mark.asyncio
+async def test_manual_pause_persists_before_cancelling_and_resets_transient_pages() -> None:
+    engine = _engine()
+    book = Book(id="bk", status=BookStatus.COMPILING)
+    pages = [
+        Page(id="working", book_id="bk", status=PageStatus.GENERATING),
+        Page(id="ready", book_id="bk", status=PageStatus.READY),
+    ]
+    log_ops: list[str] = []
+
+    class _Storage:
+        def load_book(self, book_id):
+            return book
+
+        def load_spine(self, book_id):
+            return object()
+
+        def save_book(self, saved):
+            assert saved.status == BookStatus.PAUSED
+
+        def list_pages(self, book_id):
+            return pages
+
+        def save_page(self, page):
+            return None
+
+        def append_log(self, book_id, message, op="info"):
+            log_ops.append(op)
+
+    engine.storage = _Storage()
+    runtime = _BookRuntime()
+    engine._runtimes["bk"] = runtime
+    started = asyncio.Event()
+
+    async def in_flight():
+        started.set()
+        await asyncio.sleep(60)
+        return pages[0]
+
+    task = asyncio.create_task(in_flight())
+    runtime.in_flight["working"] = task
+    await started.wait()
+
+    result = await engine.pause_book(book_id="bk")
+
+    assert task.cancelled()
+    assert book.status == BookStatus.PAUSED
+    assert book.metadata["pause_kind"] == "user"
+    assert pages[0].status == PageStatus.PENDING
+    assert pages[1].status == PageStatus.READY
+    assert result == pages
+    assert "bk" not in engine._runtimes
+    assert "paused" in log_ops
 
 
 # ─────────────────────────────────────────────────────────────────────────────

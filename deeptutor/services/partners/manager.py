@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 import hashlib
 import logging
+import os
 from pathlib import Path
 import re
 import shutil
@@ -20,6 +21,7 @@ from typing import Any, Awaitable, Callable
 
 import yaml
 
+from deeptutor.core.stream import StreamEventType
 from deeptutor.multi_user.models import CurrentUser
 from deeptutor.partners.config.paths import (
     get_data_dir,
@@ -29,6 +31,9 @@ from deeptutor.partners.config.paths import (
 from deeptutor.services.partners.interaction import forget_partner_stores
 from deeptutor.services.partners.links import forget_partner_links
 from deeptutor.services.partners.runtime import PartnerRunner
+from deeptutor.services.partners.runtime_status import (
+    get_partner_runtime_status_repository,
+)
 from deeptutor.services.partners.sessions import PartnerSessionStore
 from deeptutor.services.partners.workspace import (
     DEFAULT_SOUL,
@@ -267,6 +272,71 @@ class LiveTurn:
 
 
 @dataclass
+class PartnerActivityFeed:
+    """Per-account broadcast feed for turns arriving from external channels.
+
+    Recent complete turns are retained in memory so a WebUI that finishes its
+    history request while an IM turn is completing can still replay the gap.
+    Persisted ``activity_id`` metadata lets the client discard any overlap with
+    the history snapshot.
+    """
+
+    max_recent: int = 32
+    _recent: dict[str, dict[str, list[dict[str, Any]]]] = field(default_factory=dict, repr=False)
+    _subscribers: dict[str, set[asyncio.Queue]] = field(default_factory=dict, repr=False)
+
+    @staticmethod
+    def _key(actor_id: str | None) -> str:
+        return actor_id or ""
+
+    def publish(self, actor_id: str | None, frame: dict[str, Any]) -> None:
+        key = self._key(actor_id)
+        activity_id = str(frame.get("activity_id") or "").strip()
+        if activity_id:
+            recent = self._recent.setdefault(key, {})
+            if activity_id not in recent:
+                recent[activity_id] = []
+                while len(recent) > self.max_recent:
+                    recent.pop(next(iter(recent)))
+            recent[activity_id].append(dict(frame))
+        for queue in tuple(self._subscribers.get(key, ())):
+            queue.put_nowait(dict(frame))
+
+    def subscribe(self, actor_id: str | None) -> asyncio.Queue:
+        return self.subscribe_many((actor_id,))
+
+    def subscribe_many(self, actor_ids: tuple[str | None, ...]) -> asyncio.Queue:
+        queue: asyncio.Queue = asyncio.Queue()
+        for key in dict.fromkeys(self._key(actor_id) for actor_id in actor_ids):
+            for frames in self._recent.get(key, {}).values():
+                for frame in frames:
+                    queue.put_nowait(dict(frame))
+            self._subscribers.setdefault(key, set()).add(queue)
+        return queue
+
+    def unsubscribe(self, actor_id: str | None, queue: asyncio.Queue) -> None:
+        self.unsubscribe_many((actor_id,), queue)
+
+    def unsubscribe_many(self, actor_ids: tuple[str | None, ...], queue: asyncio.Queue) -> None:
+        for key in dict.fromkeys(self._key(actor_id) for actor_id in actor_ids):
+            subscribers = self._subscribers.get(key)
+            if subscribers is None:
+                continue
+            subscribers.discard(queue)
+            if not subscribers:
+                self._subscribers.pop(key, None)
+
+
+@dataclass(slots=True)
+class PartnerGroupTurnResponse:
+    """Private execution result returned only to the Group orchestrator."""
+
+    content: str
+    events: list[dict[str, Any]] = field(default_factory=list)
+    invocation: dict[str, Any] | None = None
+
+
+@dataclass
 class PartnerInstance:
     """A running partner and its runtime objects."""
 
@@ -276,7 +346,7 @@ class PartnerInstance:
     tasks: list[asyncio.Task] = field(default_factory=list, repr=False)
     runner: PartnerRunner | None = None
     channel_manager: Any = None
-    notify_queue: asyncio.Queue = field(default_factory=asyncio.Queue)
+    activity_feed: PartnerActivityFeed = field(default_factory=PartnerActivityFeed)
     channel_bindings: dict[str, str] = field(default_factory=dict)
     reload_lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
     last_reload_error: str | None = None
@@ -335,6 +405,30 @@ class PartnerManager:
         self._partners: dict[str, PartnerInstance] = {}
         self._migrated_legacy = False
         self._rehomed_channel_state = False
+        self.runtime_owner_id = f"process:{os.getpid()}"
+
+    def configure_runtime_owner(self, owner_id: str) -> None:
+        self.runtime_owner_id = str(owner_id or self.runtime_owner_id)
+
+    def _publish_runtime_status(
+        self,
+        partner_id: str,
+        *,
+        running: bool,
+        state: str,
+        instance: PartnerInstance | None = None,
+        last_reload_error: str | None = None,
+    ) -> None:
+        payload = instance.to_dict(mask_secrets=True) if instance is not None else {}
+        get_partner_runtime_status_repository().set(
+            partner_id,
+            owner_id=self.runtime_owner_id,
+            running=running,
+            state=state,
+            payload=payload,
+            started_at=(instance.started_at.isoformat() if instance is not None else None),
+            last_reload_error=last_reload_error,
+        )
 
     # ── Path helpers ──────────────────────────────────────────────
 
@@ -525,7 +619,20 @@ class PartnerManager:
         from deeptutor.partners.bus.queue import MessageBus
 
         bus = MessageBus()
-        runner = PartnerRunner(partner_id, config, bus, save_config=self.save_config)
+        activity_feed = PartnerActivityFeed()
+
+        async def on_channel_activity(msg: Any, frame: dict[str, Any]) -> None:
+            from deeptutor.services.partners.interaction import personal_actor_id
+
+            activity_feed.publish(personal_actor_id(msg.actor), frame)
+
+        runner = PartnerRunner(
+            partner_id,
+            config,
+            bus,
+            save_config=self.save_config,
+            on_channel_activity=on_channel_activity,
+        )
 
         try:
             channel_manager = self._build_channel_manager(config, bus, partner_id=partner_id)
@@ -538,6 +645,7 @@ class PartnerManager:
             config=config,
             runner=runner,
             channel_manager=channel_manager,
+            activity_feed=activity_feed,
         )
 
         runner_task = asyncio.create_task(runner.run(), name=f"partner:{partner_id}:runner")
@@ -550,7 +658,10 @@ class PartnerManager:
         if channel_manager:
             for ch_name, ch in channel_manager.channels.items():
                 instance.tasks.append(
-                    asyncio.create_task(ch.start(), name=f"partner:{partner_id}:ch:{ch_name}")
+                    asyncio.create_task(
+                        channel_manager._start_channel(ch_name, ch),
+                        name=f"partner:{partner_id}:ch:{ch_name}",
+                    )
                 )
 
         self._partners[partner_id] = instance
@@ -558,11 +669,12 @@ class PartnerManager:
         # lazy start (web chat) of an auto_start:false partner must not
         # silently re-enable auto-start.
         self.save_config(partner_id, config)
+        self._publish_runtime_status(partner_id, running=True, state="running", instance=instance)
         logger.info("Partner '%s' started", partner_id)
         return instance
 
     async def _outbound_router(self, partner_id: str, bus: Any, instance: PartnerInstance) -> None:
-        """Route outbound messages to channels, web notify_queue, and EventBus."""
+        """Route outbound messages to channels, the WebUI feed, and EventBus."""
         try:
             from deeptutor.events.event_bus import Event, EventType, get_event_bus
             from deeptutor.partners.bus.events import OutboundMessage as _OMsg
@@ -587,7 +699,15 @@ class PartnerManager:
                             instance.channel_bindings[msg.channel] = msg.chat_id
 
                 if not is_progress:
-                    await instance.notify_queue.put(msg.content or "")
+                    # Normal channel turns are already mirrored with their user
+                    # bubble and full StreamEvent trace by PartnerRunner. Keep a
+                    # final-only proactive frame only for direct producers such
+                    # as cron jobs that bypass the inbound channel loop.
+                    if not (msg.metadata or {}).get("_web_activity_mirrored"):
+                        instance.activity_feed.publish(
+                            None,
+                            {"type": "proactive", "content": msg.content or ""},
+                        )
                     await event_bus.publish(
                         Event(
                             type=EventType.CAPABILITY_COMPLETE,
@@ -614,6 +734,8 @@ class PartnerManager:
         the persisted intent so host restarts bring the same partners back."""
         instance = self._partners.get(partner_id)
         if not instance:
+            if self.partner_exists(partner_id):
+                self._publish_runtime_status(partner_id, running=False, state="stopped")
             return False
         auto_start = (
             self._load_auto_start(partner_id, default=True) if preserve_auto_start else False
@@ -636,6 +758,7 @@ class PartnerManager:
 
         self.save_config(partner_id, instance.config, auto_start=auto_start)
         del self._partners[partner_id]
+        self._publish_runtime_status(partner_id, running=False, state="stopped")
         logger.info("Partner '%s' stopped (auto_start=%s)", partner_id, auto_start)
         return True
 
@@ -655,7 +778,7 @@ class PartnerManager:
         self._rehome_shared_channel_state()
         channels_config = ChannelsConfig(**config.channels)
         manager = ChannelManager(channels_config, bus, partner_id=partner_id)
-        if not manager.channels:
+        if not manager.get_status():
             logger.info("No channels matched config for partner '%s'", partner_id)
             return None
         logger.info(
@@ -689,6 +812,13 @@ class PartnerManager:
                 logger.exception("Failed to reload channels for partner '%s'", partner_id)
                 instance.channel_manager = None
                 instance.last_reload_error = f"{type(exc).__name__}: {exc}"
+                self._publish_runtime_status(
+                    partner_id,
+                    running=True,
+                    state="reload_failed",
+                    instance=instance,
+                    last_reload_error=instance.last_reload_error,
+                )
                 raise
 
             instance.channel_manager = channel_manager
@@ -696,13 +826,19 @@ class PartnerManager:
             if channel_manager:
                 for ch_name, ch in channel_manager.channels.items():
                     instance.tasks.append(
-                        asyncio.create_task(ch.start(), name=f"partner:{partner_id}:ch:{ch_name}")
+                        asyncio.create_task(
+                            channel_manager._start_channel(ch_name, ch),
+                            name=f"partner:{partner_id}:ch:{ch_name}",
+                        )
                     )
                 logger.info(
                     "Reloaded channels for partner '%s': %s",
                     partner_id,
                     list(channel_manager.channels.keys()),
                 )
+            self._publish_runtime_status(
+                partner_id, running=True, state="running", instance=instance
+            )
 
     async def _teardown_channel_listeners(
         self,
@@ -778,6 +914,24 @@ class PartnerManager:
                 "started_at": None,
             }
 
+        statuses = get_partner_runtime_status_repository().list()
+        for partner_id, status in statuses.items():
+            if partner_id not in result:
+                continue
+            result[partner_id].update(
+                {
+                    key: status[key]
+                    for key in (
+                        "running",
+                        "started_at",
+                        "last_reload_error",
+                        "runtime_owner_id",
+                        "runtime_state",
+                        "runtime_updated_at",
+                    )
+                    if key in status
+                }
+            )
         return list(result.values())
 
     def get_partner(self, partner_id: str) -> PartnerInstance | None:
@@ -799,12 +953,23 @@ class PartnerManager:
         return f"partner:{partner_id}"
 
     def get_history(
-        self, partner_id: str, *, session_key: str | None = None, limit: int = 100
+        self,
+        partner_id: str,
+        *,
+        session_key: str | None = None,
+        limit: int = 100,
+        include_shared: bool = False,
     ) -> list[dict[str, Any]]:
         store = self.session_store(partner_id)
         if session_key:
             return store.messages(session_key, limit=limit)
-        return store.merged_messages(limit=limit)
+        messages = store.merged_messages(limit=limit)
+        if include_shared:
+            shared = self.session_store(partner_id, actor=None)
+            if shared is not store:
+                messages.extend(shared.merged_messages(limit=limit))
+                messages.sort(key=lambda item: str(item.get("timestamp") or ""))
+        return messages[-limit:]
 
     def get_recent_active_partners(self, limit: int = 3) -> list[dict[str, Any]]:
         activity: list[tuple[str, dict[str, Any]]] = []
@@ -870,6 +1035,80 @@ class PartnerManager:
             actor=get_current_user_or_none(),
         )
         return await instance.runner.process_message(msg, on_event=on_event)
+
+    async def send_group_message(
+        self,
+        partner_id: str,
+        content: str,
+        *,
+        session_key: str,
+        group_id: str,
+        group_name: str,
+        group_members: list[dict[str, str]],
+        public_context: str,
+        actor: "CurrentUser | None",
+        allow_invoke_other: bool = True,
+        on_event: Callable[[Any], Awaitable[None]] | None = None,
+    ) -> PartnerGroupTurnResponse:
+        """Run a private Partner turn over a Group's public snapshot.
+
+        The Group owner may observe the same StreamEvents as single-Partner
+        chat, but they remain attached to this speaker and are never inserted
+        into public Group context. Ordinary Partner session messages are not
+        persisted. ``invoke_other`` metadata is only a proposal; the Group
+        orchestrator owns approval and any later turn.
+        """
+        instance = self._partners.get(partner_id)
+        if not instance or not instance.running or not instance.runner:
+            raise RuntimeError(f"Partner '{partner_id}' is not running")
+
+        from deeptutor.partners.bus.events import InboundMessage
+        from deeptutor.services.partners.runtime import PartnerTurnOptions
+
+        msg = InboundMessage(
+            channel="web_group",
+            sender_id="web",
+            chat_id=session_key,
+            content=content,
+            session_key_override=session_key,
+            actor=actor,
+            metadata={"partner_group": group_name},
+        )
+        events: list[dict[str, Any]] = []
+        invocation: dict[str, Any] | None = None
+
+        async def capture(event: Any) -> None:
+            nonlocal invocation
+            if event.type not in {StreamEventType.DONE, StreamEventType.SESSION}:
+                payload = event.to_dict()
+                events.append(payload)
+                tool_metadata = (payload.get("metadata") or {}).get("tool_metadata")
+                candidate = (
+                    tool_metadata.get("partner_invocation")
+                    if isinstance(tool_metadata, dict)
+                    else None
+                )
+                if isinstance(candidate, dict):
+                    invocation = dict(candidate)
+            if on_event is not None:
+                await on_event(event)
+
+        content = await instance.runner.process_message(
+            msg,
+            on_event=capture,
+            options=PartnerTurnOptions(
+                conversation_history=[],
+                shared_context=public_context,
+                group_id=group_id,
+                group_name=group_name,
+                group_members=tuple(dict(member) for member in group_members),
+                allow_invoke_other=allow_invoke_other,
+                persist=False,
+                allow_commands=False,
+                capture_events=False,
+            ),
+        )
+        return PartnerGroupTurnResponse(content=content, events=events, invocation=invocation)
 
     # ── Live web turns (refresh-survivable streaming) ─────────────
 
@@ -971,8 +1210,8 @@ class PartnerManager:
     ) -> dict[str, Any] | None:
         return self.session_store(partner_id).branch(source_key, new_key)
 
-    def archive_session(self, partner_id: str, session_key: str) -> None:
-        self.session_store(partner_id).set_archived(session_key, True)
+    def archive_session(self, partner_id: str, session_key: str) -> bool:
+        return self.session_store(partner_id).set_archived(session_key, True)
 
     # ── Boot / shutdown ───────────────────────────────────────────
 
@@ -989,6 +1228,7 @@ class PartnerManager:
                 await self.start_partner(pid, config)
                 logger.info("Auto-started partner '%s'", pid)
             except Exception:
+                self._publish_runtime_status(pid, running=False, state="start_failed")
                 logger.exception("Failed to auto-start partner '%s'", pid)
 
     async def stop_all(self, *, preserve_auto_start: bool = True) -> None:
@@ -999,6 +1239,7 @@ class PartnerManager:
         await self.stop_partner(partner_id, preserve_auto_start=False)
         forget_partner_stores(partner_id)
         forget_partner_links(partner_id)
+        get_partner_runtime_status_repository().delete(partner_id)
         try:
             from deeptutor.services.cron import get_cron_service
 

@@ -17,6 +17,8 @@ from deeptutor.learning.models import (
     KnowledgeType,
     LearningModule,
     LearningProgress,
+    MasteryInteraction,
+    PendingQuestion,
     RepetitionState,
     ReviewTask,
 )
@@ -44,6 +46,78 @@ def _make_module(mod_id: str, kp_ids: list[str]) -> LearningModule:
 
 
 class TestReplaceModules:
+    @staticmethod
+    def _pending(question_id: str = "q1", kp_id: str = "kp2") -> PendingQuestion:
+        return PendingQuestion(
+            question_id=question_id,
+            knowledge_point_id=kp_id,
+            module_id="m1",
+            prompt="Explain it",
+            expected_answer="Clearly",
+        )
+
+    def test_route_reorder_keeps_current_objective_and_pending_interaction(self, tmp_path: Path):
+        store = LearningStore(root=tmp_path)
+        service = LearningService(store)
+        service.replace_modules_for_path(
+            "test", [_make_module("m1", ["kp1", "kp2"])], event_type="seed"
+        )
+
+        def prepare(tx):
+            tx.progress.current_module_id = "m1"
+            tx.progress.current_kp_index = 1
+            tx.progress.pending_question = self._pending()
+            tx.put_interaction(
+                MasteryInteraction(
+                    interaction_id="q1",
+                    path_id="test",
+                    question=self._pending(),
+                    session_id="session-1",
+                )
+            )
+            tx.touch()
+
+        store.mutate("test", prepare)
+
+        progress = service.replace_modules_for_path(
+            "test", [_make_module("m1", ["kp2", "kp1"])], event_type="topic.map_edited"
+        )
+
+        assert progress.current_module_id == "m1"
+        assert progress.current_kp_index == 0
+        assert progress.pending_question is not None
+        assert progress.pending_question.knowledge_point_id == "kp2"
+        assert store.get_active_interaction("test") is not None
+
+    def test_route_deletion_abandons_only_removed_pending_objective(self, tmp_path: Path):
+        store = LearningStore(root=tmp_path)
+        service = LearningService(store)
+        service.replace_modules_for_path("test", [_make_module("m1", ["kp1", "kp2"])])
+
+        def prepare(tx):
+            tx.progress.current_module_id = "m1"
+            tx.progress.current_kp_index = 1
+            tx.progress.pending_question = self._pending()
+            tx.put_interaction(
+                MasteryInteraction(
+                    interaction_id="q1",
+                    path_id="test",
+                    question=self._pending(),
+                    session_id="session-1",
+                )
+            )
+            tx.touch()
+
+        store.mutate("test", prepare)
+
+        progress = service.replace_modules_for_path(
+            "test", [_make_module("m1", ["kp1"])], event_type="topic.map_edited"
+        )
+
+        assert progress.current_kp_index == 0
+        assert progress.pending_question is None
+        assert store.get_active_interaction("test") is None
+
     def test_append_to_empty_path_selects_first_module(self, tmp_path: Path):
         store = LearningStore(root=tmp_path)
         progress = LearningService(store).replace_modules_for_path(

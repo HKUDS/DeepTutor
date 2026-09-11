@@ -17,6 +17,7 @@ from .factory import (
     GRAPHRAG_PROVIDER,
     IMA_PROVIDER,
     LIGHTRAG_PROVIDER,
+    LIGHTRAG_SERVER_PROVIDER,
     PAGEINDEX_OSS_PROVIDER,
     PAGEINDEX_PROVIDER,
     normalize_provider_name,
@@ -147,10 +148,19 @@ def _graphrag_preflight() -> dict:
 
 
 def _lightrag_preflight() -> dict:
+    package_detail = "pip install 'deeptutor[rag-lightrag]'"
     try:
         from .pipelines.lightrag.config import is_lightrag_available
+        from .pipelines.lightrag.engine import LIGHTRAG_VERSION, installed_version
 
-        installed = is_lightrag_available()
+        current_version = installed_version() if is_lightrag_available() else ""
+        installed = current_version == LIGHTRAG_VERSION
+        if current_version:
+            package_detail = (
+                f"Installed {current_version}."
+                if installed
+                else f"Found {current_version}; required {LIGHTRAG_VERSION}."
+            )
     except Exception:
         installed = False
     emb_model, emb_dim = _active_embedding()
@@ -167,9 +177,9 @@ def _lightrag_preflight() -> dict:
         [
             _check(
                 "package",
-                "RAG-Anything package installed",
+                "LightRAG package installed",
                 installed,
-                "Installed." if installed else "pip install 'deeptutor[rag-lightrag]'",
+                package_detail,
             ),
             _check(
                 "chat",
@@ -189,9 +199,29 @@ def _lightrag_preflight() -> dict:
                 vision_ok,
                 "Active chat model supports vision."
                 if vision_ok
-                else "Active chat model has no vision — multimodal documents fall back to text.",
+                else "Active chat model has no vision — image analysis is disabled.",
                 optional=True,
             ),
+        ]
+    )
+
+
+def _lightrag_server_preflight() -> dict:
+    try:
+        from deeptutor.services.config import load_lightrag_server_settings
+
+        settings = load_lightrag_server_settings()
+        server_url = str(settings.get("server_url") or "").strip()
+    except Exception:
+        server_url = ""
+    return _finalize(
+        [
+            _check(
+                "server_url",
+                "Default server configured",
+                bool(server_url),
+                server_url or "Add a server URL under Connection defaults.",
+            )
         ]
     )
 
@@ -231,6 +261,7 @@ _PREFLIGHTS = {
     PAGEINDEX_OSS_PROVIDER: _pageindex_oss_preflight,
     GRAPHRAG_PROVIDER: _graphrag_preflight,
     LIGHTRAG_PROVIDER: _lightrag_preflight,
+    LIGHTRAG_SERVER_PROVIDER: _lightrag_server_preflight,
     IMA_PROVIDER: _ima_preflight,
 }
 

@@ -8,11 +8,12 @@ import {
   Trash2,
   Loader2,
   CheckCircle2,
+  AlertCircle,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { OutlineItem } from "@/lib/research-types";
 
-type OutlineStatus = "editing" | "researching" | "done";
+type OutlineStatus = "editing" | "researching" | "done" | "failed";
 
 interface ResearchOutlineEditorProps {
   outline: OutlineItem[];
@@ -38,9 +39,10 @@ export default function ResearchOutlineEditor({
   const [userToggled, setUserToggled] = useState(false);
 
   const locked =
-    externalStatus === "researching" ||
-    externalStatus === "done" ||
-    localConfirmed;
+    externalStatus !== "failed" &&
+    (externalStatus === "researching" ||
+      externalStatus === "done" ||
+      localConfirmed);
 
   const displayCollapsed = locked && (userToggled ? collapsed : true);
 
@@ -81,13 +83,20 @@ export default function ResearchOutlineEditor({
     : items;
 
   const statusLabel = (() => {
-    if (externalStatus === "done") return "Research Complete";
+    if (externalStatus === "done") return t("Research Complete");
+    if (externalStatus === "failed")
+      return t("Research failed. You can retry.");
     if (externalStatus === "researching" || localConfirmed)
-      return "Researching…";
+      return t("Researching");
     return null;
   })();
 
-  const StatusIcon = externalStatus === "done" ? CheckCircle2 : Loader2;
+  const StatusIcon =
+    externalStatus === "failed"
+      ? AlertCircle
+      : externalStatus === "done"
+        ? CheckCircle2
+        : Loader2;
 
   const headerClickable = locked;
 
@@ -126,7 +135,12 @@ export default function ResearchOutlineEditor({
             <span className="flex items-center gap-1.5 text-[11px] text-[var(--muted-foreground)]/60">
               <StatusIcon
                 size={12}
-                className={externalStatus === "done" ? "" : "animate-spin"}
+                className={
+                  externalStatus === "researching" ||
+                  (!externalStatus && localConfirmed)
+                    ? "animate-spin"
+                    : ""
+                }
               />
               {statusLabel}
             </span>
@@ -134,8 +148,9 @@ export default function ResearchOutlineEditor({
         </div>
         {!locked && !collapsed && (
           <p className="mt-0.5 text-[11px] text-[var(--muted-foreground)]/60">
-            Review and edit the sub-topics below, then start the research. You
-            can also type in the chat to regenerate the outline.
+            {t(
+              "Review and edit the sub-topics below, then start the research. You can also type in the chat to regenerate the outline.",
+            )}
           </p>
         )}
       </button>
@@ -218,7 +233,11 @@ export default function ResearchOutlineEditor({
                 className="flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-[11px] font-medium text-[var(--primary-foreground)] transition-all hover:opacity-90 disabled:opacity-40"
               >
                 <Play size={11} />
-                {t("Start Research")}
+                {t(
+                  externalStatus === "failed"
+                    ? "Retry Research"
+                    : "Start Research",
+                )}
               </button>
             </div>
           )}

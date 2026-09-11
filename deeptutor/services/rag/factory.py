@@ -9,7 +9,7 @@ today:
 * ``graphrag``            — local knowledge-graph retrieval (microsoft/graphrag);
                             optional dependency, ``pip install 'deeptutor[graphrag]'``.
 * ``lightrag``            — graph + vector retrieval (HKUDS/LightRAG, multimodal
-                            via RAG-Anything); optional dependency,
+                            via the LightRAG native pipeline); optional dependency,
                             ``pip install 'deeptutor[rag-lightrag]'``.
 * ``lightrag-server``     — retrieval offloaded to an external, standalone
                             LightRAG server the user runs. No local index: each
@@ -17,6 +17,10 @@ today:
 * ``ima``                 — retrieval offloaded to a Tencent IMA knowledge base
                             the user curates in IMA. No local index: each KB is
                             a connection pointer queried over IMA's OpenAPI.
+* ``weknora``             — retrieval offloaded to a knowledge base in a
+                            self-hosted Tencent WeKnora deployment. No local
+                            index or document copy; each KB is a connection
+                            pointer queried over WeKnora's REST API.
 
 A KB is bound to one provider at creation time; later adds and retrieval always
 go through that same pipeline (enforced upstream in the knowledge router).
@@ -34,6 +38,7 @@ GRAPHRAG_PROVIDER = "graphrag"
 LIGHTRAG_PROVIDER = "lightrag"
 LIGHTRAG_SERVER_PROVIDER = "lightrag-server"
 IMA_PROVIDER = "ima"
+WEKNORA_PROVIDER = "weknora"
 
 # Providers the factory can instantiate. Unknown / legacy strings fall back to
 # the default with a re-index hint upstream.
@@ -46,6 +51,7 @@ KNOWN_PROVIDERS = frozenset(
         LIGHTRAG_PROVIDER,
         LIGHTRAG_SERVER_PROVIDER,
         IMA_PROVIDER,
+        WEKNORA_PROVIDER,
     }
 )
 
@@ -89,6 +95,7 @@ def version_matches_provider(entry: dict[str, Any], provider: Optional[str]) -> 
             LIGHTRAG_PROVIDER,
             LIGHTRAG_SERVER_PROVIDER,
             IMA_PROVIDER,
+            WEKNORA_PROVIDER,
         }
 
     return entry_provider == resolved or signature == resolved
@@ -155,6 +162,13 @@ def _build_pipeline(provider: str, kb_base_dir: Optional[str], **kwargs: Any):
         if kb_base_dir is not None:
             kwargs.setdefault("kb_base_dir", kb_base_dir)
         return ImaPipeline(**kwargs)
+
+    if provider == WEKNORA_PROVIDER:
+        from .pipelines.weknora.pipeline import WeKnoraPipeline
+
+        if kb_base_dir is not None:
+            kwargs.setdefault("kb_base_dir", kb_base_dir)
+        return WeKnoraPipeline(**kwargs)
 
     from .pipelines.llamaindex.pipeline import LlamaIndexPipeline
 
@@ -226,12 +240,16 @@ def list_pipelines() -> List[Dict[str, Any]]:
         lightrag_ready, lightrag_modes, lightrag_default_mode = False, [], ""
 
     try:
+        from deeptutor.services.config import load_lightrag_server_settings
+
         from .pipelines.lightrag_server import config as lightrag_server_config
 
         lightrag_server_modes = list(lightrag_server_config.SUPPORTED_MODES)
         lightrag_server_default_mode = lightrag_server_config.DEFAULT_MODE
+        lightrag_server_defaults_ready = bool(load_lightrag_server_settings().get("server_url"))
     except Exception:
         lightrag_server_modes, lightrag_server_default_mode = [], ""
+        lightrag_server_defaults_ready = False
 
     return [
         {
@@ -282,6 +300,7 @@ def list_pipelines() -> List[Dict[str, Any]]:
             # credential. The endpoint is configured per-KB at connect time.
             "configured": True,
             "requires_api_key": False,
+            "setup_required": not lightrag_server_defaults_ready,
             "modes": lightrag_server_modes,
             "default_mode": lightrag_server_default_mode,
         },
@@ -302,6 +321,17 @@ def list_pipelines() -> List[Dict[str, Any]]:
             "configured": ima_ready,
             "requires_api_key": True,
         },
+        {
+            "id": WEKNORA_PROVIDER,
+            "name": "WeKnora",
+            "description": (
+                "Retrieval offloaded to a knowledge base in your self-hosted "
+                "WeKnora deployment. No local index or document copy; connect "
+                "to its API URL, API key, and knowledge-base ID."
+            ),
+            "configured": True,
+            "requires_api_key": True,
+        },
     ]
 
 
@@ -313,6 +343,7 @@ __all__ = [
     "LIGHTRAG_PROVIDER",
     "LIGHTRAG_SERVER_PROVIDER",
     "IMA_PROVIDER",
+    "WEKNORA_PROVIDER",
     "KNOWN_PROVIDERS",
     "get_pipeline",
     "has_ready_provider_index",

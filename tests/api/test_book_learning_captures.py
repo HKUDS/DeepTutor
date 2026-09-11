@@ -42,7 +42,7 @@ def _new_client(tmp_path, monkeypatch) -> tuple[TestClient, storage_module.BookS
     )
 
     app = FastAPI()
-    app.include_router(book_router.router, prefix="/api/v1/book")
+    app.include_router(book_router.router, prefix="/api")
     return TestClient(app), storage
 
 
@@ -51,7 +51,7 @@ def test_learning_capture_list_returns_empty_for_new_book(tmp_path, monkeypatch)
     book_id = "bk_capture_api_list"
 
     storage.save_book(Book(id=book_id, title="Book"))
-    response = client.get(f"/api/v1/book/books/{book_id}/learning-captures")
+    response = client.get(f"/api/books/{book_id}/learning-captures")
 
     assert response.status_code == 200
     assert response.json() == {"captures": []}
@@ -79,12 +79,12 @@ def test_learning_capture_create_deduplicates_by_content_hash(tmp_path, monkeypa
         "source_text": "  A   repeated   selection ",
     }
 
-    first = client.post(f"/api/v1/book/books/{book_id}/learning-captures", json=payload)
+    first = client.post(f"/api/books/{book_id}/learning-captures", json=payload)
     assert first.status_code == 200
     first_id = first.json()["capture"]["id"]
 
     second = client.post(
-        f"/api/v1/book/books/{book_id}/learning-captures",
+        f"/api/books/{book_id}/learning-captures",
         json=payload,
     )
     assert second.status_code == 200
@@ -109,7 +109,7 @@ def test_learning_capture_create_requires_source_text(tmp_path, monkeypatch) -> 
     )
 
     response = client.post(
-        f"/api/v1/book/books/{book_id}/learning-captures",
+        f"/api/books/{book_id}/learning-captures",
         json={
             "page_id": "pg_1",
             "source_text": "   ",
@@ -145,7 +145,7 @@ def test_learning_capture_patch_allows_legal_transition(tmp_path, monkeypatch) -
     storage.upsert_learning_capture(capture)
 
     response = client.patch(
-        f"/api/v1/book/books/{book_id}/learning-captures/{capture.id}",
+        f"/api/books/{book_id}/learning-captures/{capture.id}",
         json={"status": "approved"},
     )
     assert response.status_code == 200
@@ -177,7 +177,7 @@ def test_learning_capture_patch_blocks_invalid_transition(tmp_path, monkeypatch)
     storage.upsert_learning_capture(capture)
 
     response = client.patch(
-        f"/api/v1/book/books/{book_id}/learning-captures/{capture.id}",
+        f"/api/books/{book_id}/learning-captures/{capture.id}",
         json={"status": "imported"},
     )
     assert response.status_code == 400
@@ -217,7 +217,7 @@ def test_learning_capture_list_supports_status_filter(tmp_path, monkeypatch) -> 
         )
     )
 
-    response = client.get(f"/api/v1/book/books/{book_id}/learning-captures?status=approved")
+    response = client.get(f"/api/books/{book_id}/learning-captures?status=approved")
     assert response.status_code == 200
     payload = response.json()["captures"]
     assert len(payload) == 1

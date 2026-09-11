@@ -20,7 +20,7 @@ from deeptutor.capabilities.subagent import (
     connection_for_turn,
 )
 from deeptutor.capabilities.subagent import binding as subagent_binding
-from deeptutor.core.context import UnifiedContext
+from deeptutor.core.context import TurnRuntimeContext, UnifiedContext
 from deeptutor.runtime.registry.tool_registry import get_tool_registry
 from deeptutor.services.subagent.config import BackendConfig
 from deeptutor.services.subagent.types import ConsultResult, SubagentEvent
@@ -60,7 +60,7 @@ def test_active_injects_spec_and_min_rounds(monkeypatch) -> None:
     assert block is not None and "myagent" in block.content
     # The loop budget floor is lifted so the full consult budget + a finish
     # round always fit.
-    assert ctx.metadata.get("_min_loop_rounds", 0) >= 2
+    assert ctx.runtime.min_loop_rounds >= 2
 
     spec = cap.augment_kwargs("consult_subagent", {"question": "q"}, ctx)["_subagent"]
     assert spec["kind"] == "codex"
@@ -72,14 +72,14 @@ def test_active_injects_spec_and_min_rounds(monkeypatch) -> None:
     assert "_subagent" not in cap.augment_kwargs("rag", {}, ctx)
 
 
-def test_consult_budget_override_from_config(monkeypatch) -> None:
+def test_consult_budget_override_from_runtime_context(monkeypatch) -> None:
     _bind(monkeypatch)
     cap = SubagentCapability()
-    # Per-turn override from the composer (request config) wins over the default.
+    # Typed per-turn override from the composer wins over the default.
     ctx = UnifiedContext(
         user_message="hi",
         knowledge_bases=["myagent"],
-        config_overrides={"subagent_consult_budget": 3},
+        runtime=TurnRuntimeContext(subagent_consult_budget=3),
     )
     assert (
         cap.augment_kwargs("consult_subagent", {"question": "q"}, ctx)["_subagent"]["budget"] == 3
@@ -88,7 +88,7 @@ def test_consult_budget_override_from_config(monkeypatch) -> None:
     ctx_hi = UnifiedContext(
         user_message="hi",
         knowledge_bases=["myagent"],
-        config_overrides={"subagent_consult_budget": 999},
+        runtime=TurnRuntimeContext(subagent_consult_budget=999),
     )
     assert (
         cap.augment_kwargs("consult_subagent", {"question": "q"}, ctx_hi)["_subagent"]["budget"]
@@ -121,11 +121,20 @@ def test_exclusive_compose_drops_builtins_but_keeps_coexisting_rag() -> None:
         registry=get_tool_registry(),
         requested_tools=["web_search", "rag"],
         optional_whitelist=["web_search", "rag"],
-        mount_flags=ToolMountFlags(has_kb=True, has_code=True, has_memory=True),
+        mount_flags=ToolMountFlags(has_kb=True, has_exec=True, has_memory=True),
         capability_owned=["consult_subagent"],
         exclusive=True,
     )
-    assert set(composed) == {"consult_subagent", "rag", "kb_files", "ask_user"}
+    assert set(composed) == {
+        "workspace_list",
+        "workspace_read",
+        "workspace_search",
+        "workspace_present",
+        "consult_subagent",
+        "rag",
+        "kb_files",
+        "ask_user",
+    }
 
 
 def test_exclusive_compose_pure_subagent_mounts_no_rag() -> None:
@@ -137,7 +146,14 @@ def test_exclusive_compose_pure_subagent_mounts_no_rag() -> None:
         capability_owned=["consult_subagent"],
         exclusive=True,
     )
-    assert set(composed) == {"consult_subagent", "ask_user"}
+    assert set(composed) == {
+        "workspace_list",
+        "workspace_read",
+        "workspace_search",
+        "workspace_present",
+        "consult_subagent",
+        "ask_user",
+    }
 
 
 def test_registry_flags_subagent_turn_as_exclusive(monkeypatch) -> None:

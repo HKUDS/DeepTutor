@@ -1,9 +1,10 @@
 # Immersive Reading extensions
 
-Immersive Reading discovers optional server-side packages through the
-`deeptutor.reading_extensions` Python entry-point group. DeepTutor ships no
-extensions in this group by default: when none are installed, the Reader does
-not render an extension toolbar.
+Immersive Reading discovers server-side packages through the
+`deeptutor.reading_extensions` Python entry-point group. DeepTutor ships read
+aloud, study guidance, vocabulary, quiz, and explicit-target translation
+extensions in this group; when no extension is installed, the Reader does not
+render an extension toolbar.
 
 An entry point resolves to an object or class with a validated `manifest` and a
 `run_action(action, context)` method. The current protocol version is `1`.

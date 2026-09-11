@@ -1,12 +1,18 @@
 "use client";
 
+import { browserStorage } from "@/shared/storage";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowLeft,
+  ArrowRight,
+  Bookmark,
+  BookmarkCheck,
   Crosshair,
   Download,
   FileText,
-  List,
   Loader2,
+  History,
   PanelRightClose,
   PanelRightOpen,
   X,
@@ -18,37 +24,93 @@ import {
   READER_TURN_END_EVENT,
   type ReaderActionPayload,
 } from "@/lib/reading-reader-action";
-import { locatorFromHref } from "@/lib/reading-citations";
+import { citationTargetFromHref } from "@/lib/reading-citations";
 import {
   fetchExport,
+  getMaterial,
+  getReadingPosition,
+  saveReadingPosition,
   type AnnotationColor,
   type AnnotationItem,
+  type MaterialDetail,
+  type ReadingBookmark,
 } from "@/lib/reading-api";
 import { AnnotationList } from "./AnnotationList";
 import { AnnotationPopover } from "./AnnotationPopover";
 import { EpubDocumentView } from "./EpubDocumentView";
-import { MaterialPicker } from "./MaterialPicker";
-import { ReaderOutline } from "./ReaderOutline";
 import {
   PdfDocumentView,
   type JumpRequest,
   type SelectionPayload,
 } from "./PdfDocumentView";
-import { ReaderResizeHandle } from "./ReaderResizeHandle";
 import { ReadingExtensionBar } from "./ReadingExtensionBar";
 import { TextUnitView, unitLabel } from "./TextUnitView";
 import type { ReaderHeading } from "@/lib/reading-outline";
+import {
+  EMPTY_READING_HISTORY,
+  loadReadingHistory,
+  moveReadingHistory,
+  pushReadingLocation,
+  replaceCurrentReadingLocation,
+  saveReadingHistory,
+  selectReadingHistoryIndex,
+  type ReadingLocationEntry,
+  type ReadingLocationHistory,
+} from "@/lib/reading-location-history";
 
 /** Event the reader dispatches to prefill the composer from a selection. */
 export const READER_ASK_EVENT = "dt:reader-ask";
 const AUTO_JUMP_KEY = "dt.reader.autoJump";
 
+function locationEntry(
+  material: MaterialDetail,
+  locator: number,
+): ReadingLocationEntry {
+  return {
+    materialId: material.material_id,
+    locator,
+    title: material.title || material.filename,
+    source: {
+      filename: material.filename,
+      unit: material.unit,
+      mime: material.mime,
+      renderMode: material.render_mode,
+    },
+  };
+}
+
 export interface ReaderPaneProps {
   onClose: () => void;
+  sessionId?: string | null;
+  /** User-owned navigation from the workspace's source outline. */
+  externalJump?: JumpRequest | null;
+  /**
+   * Headings the text view discovers in the open unit. Only the rendered
+   * document knows them, but the workspace navigator is where the reader
+   * looks for structure — so they are reported up rather than shown here.
+   */
+  onHeadingsChange?: (headings: ReaderHeading[]) => void;
+  onActiveHeadingChange?: (headingId: string | null) => void;
+  /** Heading the navigator asked to scroll to. */
+  headingJump?: {
+    id: string;
+    nonce: number;
+    locator?: number;
+    sourceHref?: string;
+  } | null;
+  /**
+   * Kept places in this material. Owned by the workspace because the outline
+   * panel lists them and this toolbar only needs to answer "is the page I am
+   * on one of them?" — see `useReadingWorkspace`.
+   */
+  bookmarks?: ReadingBookmark[];
+  onToggleBookmark?: (locator: number, label?: string) => void;
 }
 
 /**
- * The reading pane: document on the left of the chat, with its own annotations.
+ * The document surface of the Reading workspace, with its own annotations.
+ * Source navigation, tabs and the outline are owned by the workspace shell —
+ * this component renders one open document and everything anchored to it.
  *
  * Two behaviours are worth calling out because they were explicit product
  * decisions rather than defaults:
@@ -64,7 +126,16 @@ export interface ReaderPaneProps {
  *   write removes it again and surfaces the error. Waiting for a round trip
  *   before showing ink makes highlighting feel broken.
  */
-export function ReaderPane({ onClose }: ReaderPaneProps) {
+export function ReaderPane({
+  onClose,
+  sessionId,
+  externalJump = null,
+  onHeadingsChange,
+  onActiveHeadingChange,
+  headingJump = null,
+  bookmarks = [],
+  onToggleBookmark,
+}: ReaderPaneProps) {
   const { t } = useTranslation();
   // Document + annotations live in the provider (workspace layout), so they
   // survive the remount that sending the first message causes.
@@ -87,101 +158,81 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
     null,
   );
   const [selection, setSelection] = useState<SelectionPayload | null>(null);
+  // Whether the annotation popover is showing, kept apart from whether there
+  // IS a selection. They used to be the same flag, and the popover dismisses
+  // itself on a document-level, capture-phase `pointerdown` — so pressing a
+  // toolbar button cleared `selection` before the click could land, React
+  // re-rendered the button as `disabled` (all four selection-gated actions
+  // declare `requires: ["selection"]`), and the browser then refused to
+  // dispatch the rest of the activation sequence to a disabled control. No
+  // fetch, no spinner, no error: 引导我 / 翻译成英文 / 翻译成中文 / 解释词汇
+  // have been unreachable by pointer since the toolbar shipped.
+  const [popoverOpen, setPopoverOpen] = useState(false);
+
+  /** One place to open a selection, so the popover cannot drift out of step. */
+  const openSelection = useCallback((payload: SelectionPayload | null) => {
+    setSelection(payload);
+    setPopoverOpen(payload !== null);
+  }, []);
+
+  /** Drop the selection entirely — it is stale, not merely unfocused. */
+  const clearSelection = useCallback(() => {
+    setSelection(null);
+    setPopoverOpen(false);
+  }, []);
   const [jump, setJump] = useState<JumpRequest | null>(null);
   // `null` = follow the document: show the panel once there is something in it.
   // An empty panel is a whole column of nothing next to the page, which reads as
   // a layout bug rather than an affordance. An explicit true/false means the
   // user decided, and that wins from then on.
   const [annotationPanel, setAnnotationPanel] = useState<boolean | null>(null);
-  const [showOutline, setShowOutline] = useState(false);
-  const [outlineUserChoice, setOutlineUserChoice] = useState<boolean | null>(
-    null,
-  );
   const [autoJump, setAutoJump] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [currentLocator, setCurrentLocator] = useState(1);
-  const [pageHeadings, setPageHeadings] = useState<ReaderHeading[]>([]);
-  const [activeHeadingId, setActiveHeadingId] = useState<string | null>(null);
-  const [headingJump, setHeadingJump] = useState<{
-    id: string;
-    nonce: number;
-  } | null>(null);
   const nonceRef = useRef(0);
-  const headingNonceRef = useRef(0);
+  const headingLocatorRef = useRef(1);
+  const jumpMaterialIdRef = useRef<string | null>(null);
+  const [locationHistory, setLocationHistory] =
+    useState<ReadingLocationHistory>(EMPTY_READING_HISTORY);
+  const [historySessionId, setHistorySessionId] = useState<
+    string | null | undefined
+  >(undefined);
+  const [showHistory, setShowHistory] = useState(false);
+  const [unavailableMaterials, setUnavailableMaterials] = useState<Set<string>>(
+    new Set(),
+  );
+  const navigationNonceRef = useRef(0);
+  const pendingNavigationRef = useRef<{
+    mode: "push" | "replay";
+    materialId: string;
+    locator: number;
+  } | null>(null);
+  const historyRestoreAttemptRef = useRef<{
+    sessionId: string | null;
+  } | null>(null);
+  const externalJumpNonceRef = useRef(0);
+  const positionSaveTimerRef = useRef<number | null>(null);
+  /** Materials whose stored position has already been honoured. */
+  const resumedMaterialRef = useRef("");
+  const headingJumpNonceRef = useRef(0);
+  const historyReady = historySessionId === (sessionId ?? null);
 
   // -- persisted auto-jump preference --------------------------------------
 
   useEffect(() => {
     try {
-      const stored = window.localStorage.getItem(AUTO_JUMP_KEY);
+      const stored = browserStorage.readRaw("local", AUTO_JUMP_KEY);
       if (stored !== null) setAutoJump(stored === "1");
     } catch {
       // Private mode / storage disabled — keep the default.
     }
   }, []);
 
-  useEffect(() => {
-    if (!material) {
-      setShowOutline(false);
-      setOutlineUserChoice(null);
-      setPageHeadings([]);
-      setActiveHeadingId(null);
-      setHeadingJump(null);
-      return;
-    }
-    try {
-      const stored = window.localStorage.getItem(
-        `dt.reader.outline.${material.material_id}`,
-      );
-      setOutlineUserChoice(stored === null ? null : stored === "open");
-    } catch {
-      setOutlineUserChoice(null);
-    }
-  }, [material]);
-
-  useEffect(() => {
-    if (!material || outlineUserChoice !== null) return;
-    const desktop = window.matchMedia("(min-width: 768px)").matches;
-    setShowOutline(
-      desktop &&
-        ((material.outline?.length ?? 0) >= 8 || pageHeadings.length >= 3),
-    );
-  }, [material, outlineUserChoice, pageHeadings.length]);
-
-  const toggleOutline = useCallback(() => {
-    setShowOutline((current) => {
-      const next = !current;
-      setOutlineUserChoice(next);
-      if (material) {
-        try {
-          window.localStorage.setItem(
-            `dt.reader.outline.${material.material_id}`,
-            next ? "open" : "closed",
-          );
-        } catch {
-          // Storage can be unavailable in private mode; the choice still works here.
-        }
-      }
-      return next;
-    });
-  }, [material]);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "b") {
-        event.preventDefault();
-        toggleOutline();
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [toggleOutline]);
-
   const toggleAutoJump = useCallback(() => {
     setAutoJump((current) => {
       const next = !current;
       try {
-        window.localStorage.setItem(AUTO_JUMP_KEY, next ? "1" : "0");
+        browserStorage.writeRaw("local", AUTO_JUMP_KEY, next ? "1" : "0");
       } catch {
         // Non-fatal: the toggle still works for this session.
       }
@@ -195,8 +246,45 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
     (locator: number) => {
       setCurrentLocator(locator);
       reportViewport({ locator });
+      // Remember where the reader got to, so opening this material again
+      // starts here instead of at page 1. EPUB writes its own position — a
+      // CFI it needs to land inside a reflowed page — so leaving that alone
+      // is the difference between resuming a paragraph and resuming a
+      // chapter; the media stage does the same with a timestamp.
+      if (material && material.render_mode !== "epub") {
+        const materialId = material.material_id;
+        const total = material.unit_count;
+        if (positionSaveTimerRef.current) {
+          clearTimeout(positionSaveTimerRef.current);
+        }
+        positionSaveTimerRef.current = window.setTimeout(() => {
+          void saveReadingPosition(materialId, {
+            locator,
+            source_anchor: "",
+            percentage: total > 0 ? locator / total : 0,
+          }).catch(() => {
+            // Reading continues when a background progress write fails.
+          });
+        }, 400);
+      }
+      if (material && historyReady) {
+        const pending = pendingNavigationRef.current;
+        if (
+          pending?.materialId === material.material_id &&
+          pending.locator !== locator
+        ) {
+          return;
+        }
+        setLocationHistory((current) => {
+          const entry = locationEntry(material, locator);
+          return current.entries[current.index]?.materialId ===
+            material.material_id
+            ? replaceCurrentReadingLocation(current, entry)
+            : pushReadingLocation(current, entry);
+        });
+      }
     },
-    [reportViewport],
+    [historyReady, material, reportViewport],
   );
 
   useEffect(() => {
@@ -205,10 +293,252 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
 
   // -- reader actions from the assistant -----------------------------------
 
-  const requestJump = useCallback((locator: number, quote?: string) => {
-    nonceRef.current += 1;
-    setJump({ locator, quote, nonce: nonceRef.current });
-  }, []);
+  const requestJump = useCallback(
+    (locator: number, quote?: string, targetMaterialId?: string) => {
+      nonceRef.current += 1;
+      setJump({ locator, quote, nonce: nonceRef.current });
+      jumpMaterialIdRef.current =
+        targetMaterialId ?? material?.material_id ?? null;
+    },
+    [material?.material_id],
+  );
+
+  const rememberExplicitLocation = useCallback(
+    (locator: number) => {
+      if (!material || !historyReady) return;
+      setLocationHistory((current) =>
+        pushReadingLocation(current, locationEntry(material, locator)),
+      );
+    },
+    [historyReady, material],
+  );
+
+  const openHistoryEntry = useCallback(
+    async (
+      entry: ReadingLocationEntry,
+      mode: "push" | "replay",
+      forceOpen = false,
+      candidate?: MaterialDetail,
+    ) => {
+      const navigationNonce = ++navigationNonceRef.current;
+      if (forceOpen || entry.materialId !== material?.material_id) {
+        setJump(null);
+        pendingNavigationRef.current = {
+          mode,
+          materialId: entry.materialId,
+          locator: entry.locator,
+        };
+        const opened = await openMaterial(candidate ?? entry.materialId);
+        if (navigationNonce !== navigationNonceRef.current) return false;
+        if (!opened) {
+          setUnavailableMaterials((current) =>
+            new Set(current).add(entry.materialId),
+          );
+          pendingNavigationRef.current = null;
+          return false;
+        }
+      } else {
+        pendingNavigationRef.current = null;
+      }
+      setUnavailableMaterials((current) => {
+        if (!current.has(entry.materialId)) return current;
+        const next = new Set(current);
+        next.delete(entry.materialId);
+        return next;
+      });
+      requestJump(entry.locator, undefined, entry.materialId);
+      return true;
+    },
+    [material?.material_id, openMaterial, requestJump],
+  );
+
+  const selectHistoryEntry = useCallback(
+    (index: number) => {
+      const next = selectReadingHistoryIndex(locationHistory, index);
+      const entry = next.entries[next.index];
+      if (!entry) return;
+      setLocationHistory(next);
+      setShowHistory(false);
+      void openHistoryEntry(entry, "replay");
+    },
+    [locationHistory, openHistoryEntry],
+  );
+
+  const stepHistory = useCallback(
+    (delta: -1 | 1) => {
+      const next = moveReadingHistory(locationHistory, delta);
+      if (next.index === locationHistory.index) return;
+      const entry = next.entries[next.index];
+      if (!entry) return;
+      setLocationHistory(next);
+      void openHistoryEntry(entry, "replay");
+    },
+    [locationHistory, openHistoryEntry],
+  );
+
+  useEffect(() => {
+    const scopedSessionId = sessionId ?? null;
+    if (loadingMaterial) return;
+    if (!material) return;
+    if (historyRestoreAttemptRef.current?.sessionId === scopedSessionId) {
+      return;
+    }
+    historyRestoreAttemptRef.current = { sessionId: scopedSessionId };
+    const hadPendingNavigation = pendingNavigationRef.current !== null;
+    navigationNonceRef.current += 1;
+    pendingNavigationRef.current = null;
+    const restored = scopedSessionId
+      ? loadReadingHistory(scopedSessionId)
+      : EMPTY_READING_HISTORY;
+    setLocationHistory(restored);
+    setUnavailableMaterials(new Set());
+    setHistorySessionId(sessionId ?? null);
+    const entry = restored.entries[restored.index];
+    if (entry) void openHistoryEntry(entry, "replay", hadPendingNavigation);
+    else if (hadPendingNavigation) closeMaterial();
+    // Restore once per chat id. Material changes caused by the restore must not
+    // restart it with a newly-created callback closure.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, loadingMaterial]);
+
+  useEffect(() => {
+    if (!historyReady || !sessionId || historySessionId !== sessionId) return;
+    saveReadingHistory(sessionId, locationHistory);
+  }, [historyReady, historySessionId, locationHistory, sessionId]);
+
+  useEffect(() => {
+    if (!historyReady || !material) return;
+    const pending = pendingNavigationRef.current;
+    if (pending?.materialId === material.material_id) {
+      pendingNavigationRef.current = null;
+      setCurrentLocator(pending.locator);
+      if (pending.mode === "push") {
+        setLocationHistory((current) =>
+          pushReadingLocation(
+            current,
+            locationEntry(material, pending.locator),
+          ),
+        );
+      }
+      return;
+    }
+    if (pending) return;
+    setJump(null);
+    setCurrentLocator(1);
+    setLocationHistory((current) =>
+      pushReadingLocation(current, locationEntry(material, 1)),
+    );
+  }, [historyReady, material]);
+
+  // -- resume where the reader left off ------------------------------------
+  //
+  // The effect above lands every newly-opened material on page 1. For a
+  // 74-page document that a learner is halfway through, page 1 is the one
+  // place they are certainly not trying to be — so the stored position, if
+  // there is one, decides instead. Only once per material: after that the
+  // reader is in charge, and re-running this would drag them back.
+  //
+  // EPUB and the media stage resume themselves (a CFI, a timestamp), and a
+  // navigation already in flight — a citation, a history entry — is a
+  // destination the learner asked for and outranks where they last stopped.
+  useEffect(() => {
+    const materialId = material?.material_id;
+    if (!materialId || material?.render_mode === "epub") return;
+    if (resumedMaterialRef.current === materialId) return;
+    if (pendingNavigationRef.current) return;
+    // Claimed before awaiting: this render is not the last one before the
+    // request comes back.
+    resumedMaterialRef.current = materialId;
+    let cancelled = false;
+    void getReadingPosition(materialId)
+      .then((position) => {
+        if (cancelled || position.locator <= 1) return;
+        requestJump(position.locator);
+      })
+      .catch(() => {
+        // Never opened before, or the read failed: page 1 is a fine start.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [material?.material_id, material?.render_mode, requestJump]);
+
+  useEffect(
+    () => () => {
+      if (positionSaveTimerRef.current) {
+        clearTimeout(positionSaveTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  const navigateCitation = useCallback(
+    async (href: string | null | undefined) => {
+      const target = citationTargetFromHref(href);
+      if (!target) return false;
+      if (target.materialId && target.materialId !== material?.material_id) {
+        try {
+          const candidate = await getMaterial(target.materialId);
+          if (
+            target.materialRevision &&
+            candidate.revision !== target.materialRevision
+          ) {
+            setError(
+              "This citation points to an older material revision that is not available in the reader.",
+            );
+            return true;
+          }
+          const entry = locationEntry(candidate, target.locator);
+          await openHistoryEntry(entry, "push", false, candidate);
+        } catch (caught) {
+          setError(
+            caught instanceof Error
+              ? caught.message
+              : "This citation's material could not be opened.",
+          );
+          return true;
+        }
+      } else if (
+        target.materialRevision &&
+        material?.revision !== target.materialRevision
+      ) {
+        setError(
+          "This citation points to an older material revision that is not available in the reader.",
+        );
+        return true;
+      }
+      rememberExplicitLocation(target.locator);
+      requestJump(target.locator);
+      return true;
+    },
+    [
+      material?.material_id,
+      material?.revision,
+      openHistoryEntry,
+      rememberExplicitLocation,
+      requestJump,
+      setError,
+    ],
+  );
+
+  useEffect(() => {
+    if (!externalJump) return;
+    if (externalJumpNonceRef.current === externalJump.nonce) return;
+    externalJumpNonceRef.current = externalJump.nonce;
+    rememberExplicitLocation(externalJump.locator);
+    requestJump(externalJump.locator, externalJump.quote);
+  }, [externalJump, rememberExplicitLocation, requestJump]);
+
+  useEffect(() => {
+    headingLocatorRef.current = currentLocator;
+  }, [currentLocator]);
+
+  useEffect(() => {
+    if (!headingJump) return;
+    if (headingJumpNonceRef.current === headingJump.nonce) return;
+    headingJumpNonceRef.current = headingJump.nonce;
+    rememberExplicitLocation(headingJump.locator ?? headingLocatorRef.current);
+  }, [headingJump, rememberExplicitLocation]);
 
   useEffect(() => {
     const onReaderAction = (event: Event) => {
@@ -227,12 +557,15 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
       }
       if (!autoJump) return;
       const locator = Number(detail.locator ?? 0);
-      if (locator >= 1) requestJump(locator, detail.quote || undefined);
+      if (locator >= 1) {
+        rememberExplicitLocation(locator);
+        requestJump(locator, detail.quote || undefined);
+      }
     };
     window.addEventListener(READER_ACTION_EVENT, onReaderAction);
     return () =>
       window.removeEventListener(READER_ACTION_EVENT, onReaderAction);
-  }, [material, autoJump, requestJump, mergeMark]);
+  }, [material, autoJump, requestJump, mergeMark, rememberExplicitLocation]);
 
   /**
    * Follow the answer when the model did not move the reader itself.
@@ -256,16 +589,15 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
         const answers = document.querySelectorAll('[role="article"]');
         const last = answers[answers.length - 1];
         const anchor = last?.querySelector<HTMLAnchorElement>(
-          'a[href^="#dt-locator-"]',
+          'a[href^="#dt-locator-"], a[href^="#dt-material-"]',
         );
-        const locator = locatorFromHref(anchor?.getAttribute("href"));
-        if (locator) requestJump(locator);
+        void navigateCitation(anchor?.getAttribute("href"));
       }, 120);
       return () => window.clearTimeout(timer);
     };
     window.addEventListener(READER_TURN_END_EVENT, onTurnEnd);
     return () => window.removeEventListener(READER_TURN_END_EVENT, onTurnEnd);
-  }, [autoJump, material, requestJump]);
+  }, [autoJump, material, navigateCitation]);
 
   /**
    * Citation clicks in assistant prose, intercepted in the CAPTURE phase.
@@ -285,23 +617,23 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
       if (event.button !== 0) return;
       if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
         return;
-      const target = event.target as HTMLElement | null;
-      const anchor = target?.closest?.("a[href]") as HTMLAnchorElement | null;
-      const locator = locatorFromHref(anchor?.getAttribute("href"));
-      if (!locator) return;
+      const element = event.target as HTMLElement | null;
+      const anchor = element?.closest?.("a[href]") as HTMLAnchorElement | null;
+      const citation = citationTargetFromHref(anchor?.getAttribute("href"));
+      if (!citation) return;
       event.preventDefault();
       event.stopPropagation();
-      requestJump(locator);
+      void navigateCitation(anchor?.getAttribute("href"));
     };
     document.addEventListener("click", onClick, true);
     return () => document.removeEventListener("click", onClick, true);
-  }, [requestJump]);
+  }, [navigateCitation]);
 
   // -- annotations ---------------------------------------------------------
 
   const commitSelection = useCallback(
     (
-      kind: "highlight" | "underline" | "note",
+      kind: "highlight" | "underline" | "note" | "citation",
       color: AnnotationColor,
       note = "",
     ) => {
@@ -322,6 +654,7 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
         {
           annotation_id: temporaryId,
           locator: selection.locator,
+          material_revision: material.revision ?? 1,
           kind: kind === "note" ? "highlight" : kind,
           color,
           quote: selection.quote,
@@ -334,10 +667,10 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
           updated_at: now,
         },
       );
-      setSelection(null);
+      clearSelection();
       window.getSelection()?.removeAllRanges();
     },
-    [selection, material, saveMark],
+    [selection, material, saveMark, clearSelection],
   );
 
   const askAboutSelection = useCallback(() => {
@@ -351,9 +684,9 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
         },
       }),
     );
-    setSelection(null);
+    clearSelection();
     window.getSelection()?.removeAllRanges();
-  }, [selection, material]);
+  }, [selection, material, clearSelection]);
 
   // -- export --------------------------------------------------------------
 
@@ -384,50 +717,88 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
 
   const showAnnotations = annotationPanel ?? annotations.length > 0;
   const unitWord = material ? t(unitLabel(material.unit)) : "";
-  const outlineRows = useMemo(
-    () =>
-      (material?.outline ?? []).filter((row) => row.title.trim().length > 0),
-    [material],
+  const bookmarkedHere = bookmarks.some(
+    (row) => row.locator === currentLocator,
   );
-  const hasContents = outlineRows.length > 0 || pageHeadings.length > 0;
+  const materialJump =
+    material && jumpMaterialIdRef.current === material.material_id
+      ? jump
+      : null;
 
   return (
     <div className="relative flex h-full min-w-0 flex-col border-r border-[var(--border)] bg-[var(--background)]">
-      <ReaderResizeHandle />
       <header className="flex h-11 shrink-0 items-center gap-1 border-b border-[var(--border)] px-2.5">
-        {material && hasContents && (
-          <button
-            type="button"
-            title={t("Contents")}
-            aria-label={t("Contents")}
-            aria-pressed={showOutline}
-            onClick={toggleOutline}
-            className={`mr-1 inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg px-2 text-[11.5px] font-medium transition ${
-              showOutline
-                ? "bg-[var(--primary)]/12 text-[var(--primary)]"
-                : "text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-            }`}
-          >
-            <List size={14} />
-            <span className="hidden sm:inline">{t("Contents")}</span>
-          </button>
-        )}
         <FileText
           size={14}
           className="shrink-0 text-[var(--muted-foreground)]"
         />
+        {/* The title, not the filename. A material saved from the web is
+            stored under its content hash, so this line read
+            "65228f9f372d6e9b.md" for every page the learner opened — the one
+            place in the reader that names what they are reading, spelling it
+            as a checksum. The filename is worth keeping for uploads, where it
+            is what the learner recognises, so it stays as the tooltip. */}
         <span
           className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-[var(--foreground)]"
-          title={material?.filename}
+          title={material?.filename || material?.title}
         >
-          {material?.filename ?? t("Immersive reading")}
+          {material?.title || material?.filename || t("Immersive reading")}
         </span>
+
+        {locationHistory.entries.length > 0 && (
+          <>
+            <HeaderButton
+              icon={ArrowLeft}
+              label={t("Back")}
+              disabled={locationHistory.index <= 0}
+              onClick={() => stepHistory(-1)}
+            />
+            <HeaderButton
+              icon={ArrowRight}
+              label={t("Forward")}
+              disabled={
+                locationHistory.index < 0 ||
+                locationHistory.index >= locationHistory.entries.length - 1
+              }
+              onClick={() => stepHistory(1)}
+            />
+            <HeaderButton
+              icon={History}
+              label={t("History")}
+              active={showHistory}
+              onClick={() => setShowHistory((current) => !current)}
+            />
+          </>
+        )}
 
         {material && (
           <>
-            <span className="shrink-0 font-mono text-[10.5px] tabular-nums text-[var(--muted-foreground)]">
-              {unitWord} {currentLocator}/{material.unit_count}
+            {/* The one place the reader's position is stated. Monospace is for
+                code, not for a line of UI copy; tabular figures alone stop the
+                number from jittering as the learner scrolls. */}
+            <span className="shrink-0 whitespace-nowrap text-[10.5px] tabular-nums text-[var(--muted-foreground)]">
+              {t("{{unit}} {{n}} / {{total}}", {
+                unit: unitWord,
+                n: currentLocator,
+                total: material.unit_count,
+              })}
             </span>
+            {onToggleBookmark && (
+              <HeaderButton
+                icon={bookmarkedHere ? BookmarkCheck : Bookmark}
+                label={
+                  bookmarkedHere
+                    ? t("Remove the bookmark on this {{unit}}", {
+                        unit: unitWord.toLocaleLowerCase(),
+                      })
+                    : t("Bookmark this {{unit}}", {
+                        unit: unitWord.toLocaleLowerCase(),
+                      })
+                }
+                active={bookmarkedHere}
+                onClick={() => onToggleBookmark(currentLocator)}
+              />
+            )}
             <HeaderButton
               icon={Crosshair}
               label={
@@ -456,22 +827,51 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
               // trigger too keeps it from being a button that does nothing.
               className="hidden lg:inline-flex"
             />
-            <HeaderButton
-              icon={X}
-              label={t("Close document")}
-              onClick={closeMaterial}
-            />
           </>
         )}
-        {!material && (
-          <HeaderButton icon={X} label={t("Close reader")} onClick={onClose} />
-        )}
       </header>
+
+      {showHistory && locationHistory.entries.length > 0 && (
+        <div className="absolute top-11 right-2 z-30 max-h-72 w-72 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-1.5 shadow-xl">
+          {[...locationHistory.entries]
+            .map((entry, index) => ({ entry, index }))
+            .reverse()
+            .map(({ entry, index }) => {
+              const unavailable = unavailableMaterials.has(entry.materialId);
+              return (
+                <button
+                  key={`${entry.materialId}:${entry.locator}:${index}`}
+                  type="button"
+                  aria-current={
+                    index === locationHistory.index ? "location" : undefined
+                  }
+                  onClick={() => selectHistoryEntry(index)}
+                  className={`flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left transition hover:bg-[var(--muted)] ${
+                    index === locationHistory.index
+                      ? "bg-[color-mix(in_srgb,var(--primary)_10%,transparent)] text-[var(--primary)]"
+                      : "text-[var(--foreground)]"
+                  }`}
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[11.5px] font-medium">
+                      {entry.title}
+                    </span>
+                    <span className="block truncate font-mono text-[10px] text-[var(--muted-foreground)]">
+                      {t(unitLabel(entry.source?.unit || "section"))}{" "}
+                      {entry.locator}
+                      {unavailable ? ` · ${t("Unavailable")}` : ""}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+        </div>
+      )}
 
       {notice && (
         <div
           role="alert"
-          className="flex items-start gap-2 border-b border-[var(--destructive)]/25 bg-[var(--destructive)]/[0.06] px-3 py-2"
+          className="flex items-start gap-2 border-b border-[color-mix(in_srgb,var(--destructive)_25%,transparent)] bg-[var(--destructive)]/[0.06] px-3 py-2"
         >
           <p className="flex-1 text-[11.5px] leading-relaxed text-[var(--destructive)]">
             {notice}
@@ -479,7 +879,7 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
           <button
             type="button"
             onClick={dismissError}
-            className="text-[var(--destructive)]/70 transition hover:text-[var(--destructive)]"
+            className="text-[color-mix(in_srgb,var(--destructive)_70%,transparent)] transition hover:text-[var(--destructive)]"
             aria-label={t("Dismiss")}
           >
             <X size={12} />
@@ -491,33 +891,13 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
         <ReadingExtensionBar
           materialId={material.material_id}
           locator={currentLocator}
+          selectionLocator={selection?.locator}
           selection={selection?.quote}
           onError={setError}
         />
       )}
 
       <div className="relative flex min-h-0 flex-1">
-        {showOutline && material && hasContents && (
-          <ReaderOutline
-            rows={outlineRows}
-            pageHeadings={pageHeadings}
-            activeHeadingId={activeHeadingId}
-            currentLocator={currentLocator}
-            onNavigate={(locator) => {
-              requestJump(locator);
-              if (!window.matchMedia("(min-width: 768px)").matches)
-                setShowOutline(false);
-            }}
-            onNavigateHeading={(heading) => {
-              headingNonceRef.current += 1;
-              setHeadingJump({
-                id: heading.id,
-                nonce: headingNonceRef.current,
-              });
-            }}
-            onClose={() => setShowOutline(false)}
-          />
-        )}
         <div className="min-w-0 flex-1">
           {loadingMaterial ? (
             <div className="flex h-full items-center justify-center gap-2 text-[12px] text-[var(--muted-foreground)]">
@@ -525,32 +905,45 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
               {t("Opening document…")}
             </div>
           ) : !material ? (
-            <MaterialPicker
-              onOpen={(candidate) => void openMaterial(candidate)}
-            />
+            <div className="flex h-full flex-col items-center justify-center gap-1 px-6 text-center">
+              <p className="text-[12.5px] text-[var(--muted-foreground)]">
+                {t("This document could not be opened.")}
+              </p>
+              <button
+                type="button"
+                onClick={onClose}
+                className="text-[11.5px] font-medium text-[var(--primary)] underline-offset-2 hover:underline"
+              >
+                {t("Back to the library")}
+              </button>
+            </div>
           ) : material.render_mode === "epub" ? (
             <EpubDocumentView
+              key={material.material_id}
               materialId={material.material_id}
               unitCount={material.unit_count}
               unitRefs={material.unit_refs}
               annotations={annotations}
-              jump={jump}
+              jump={materialJump}
               highlightedAnnotationId={activeAnnotationId}
-              onSelection={setSelection}
+              onSelection={openSelection}
               onAnnotationClick={(annotation) =>
                 setActiveAnnotationId(annotation.annotation_id)
               }
               onVisibleLocatorChange={handleVisibleLocator}
+              onHeadingsChange={onHeadingsChange}
+              headingJump={headingJump}
               onError={setError}
             />
           ) : material.has_raw_view ? (
             <PdfDocumentView
+              key={material.material_id}
               materialId={material.material_id}
               unitCount={material.unit_count}
               annotations={annotations}
-              jump={jump}
+              jump={materialJump}
               highlightedAnnotationId={activeAnnotationId}
-              onSelection={setSelection}
+              onSelection={openSelection}
               onAnnotationClick={(annotation) =>
                 setActiveAnnotationId(annotation.annotation_id)
               }
@@ -558,19 +951,21 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
             />
           ) : (
             <TextUnitView
+              key={material.material_id}
               materialId={material.material_id}
               unit={material.unit}
               unitCount={material.unit_count}
+              contentFormat={material.content_format}
               annotations={annotations}
-              jump={jump}
+              jump={materialJump}
               highlightedAnnotationId={activeAnnotationId}
-              onSelection={setSelection}
+              onSelection={openSelection}
               onAnnotationClick={(annotation) =>
                 setActiveAnnotationId(annotation.annotation_id)
               }
               onVisibleLocatorChange={handleVisibleLocator}
-              onHeadingsChange={setPageHeadings}
-              onActiveHeadingChange={setActiveHeadingId}
+              onHeadingsChange={onHeadingsChange}
+              onActiveHeadingChange={onActiveHeadingChange}
               headingJump={headingJump}
             />
           )}
@@ -592,15 +987,21 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
         )}
       </div>
 
-      {selection && material && (
+      {/* `popoverOpen` and not just `selection`: dismissal now leaves the
+          selection in place for the toolbar, so gating the mount on the
+          selection alone would make Escape and outside-click stop working. */}
+      {popoverOpen && selection && material && (
         <AnnotationPopover
           anchor={selection.anchor}
           quote={selection.quote}
           onHighlight={(color) => commitSelection("highlight", color)}
           onUnderline={(color) => commitSelection("underline", color)}
           onNote={(note, color) => commitSelection("note", color, note)}
+          onCitation={(color) => commitSelection("citation", color)}
           onAsk={askAboutSelection}
-          onDismiss={() => setSelection(null)}
+          // Closes the popover WITHOUT dropping the selection, so the
+          // toolbar's selection-gated actions stay reachable.
+          onDismiss={() => setPopoverOpen(false)}
         />
       )}
     </div>
@@ -613,6 +1014,7 @@ function HeaderButton({
   onClick,
   active,
   spinning,
+  disabled,
   className = "",
 }: {
   icon: typeof FileText;
@@ -620,6 +1022,7 @@ function HeaderButton({
   onClick: () => void;
   active?: boolean;
   spinning?: boolean;
+  disabled?: boolean;
   className?: string;
 }) {
   return (
@@ -628,14 +1031,14 @@ function HeaderButton({
       title={label}
       aria-label={label}
       aria-pressed={active}
-      disabled={spinning}
+      disabled={spinning || disabled}
       onClick={onClick}
       className={`h-7 w-7 shrink-0 items-center justify-center rounded-lg transition disabled:cursor-default ${
         className || "inline-flex"
       } ${
         active
-          ? "bg-[var(--primary)]/12 text-[var(--primary)]"
-          : "text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+          ? "bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary)]"
+          : "text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-35 disabled:hover:bg-transparent"
       }`}
     >
       <Icon size={14} className={spinning ? "animate-spin" : undefined} />

@@ -9,7 +9,7 @@ export type RecorderState = "idle" | "recording" | "transcribing";
 
 /**
  * Microphone capture → backend transcription. Records via MediaRecorder, posts
- * the clip to ``/api/v1/voice/stt`` (which uses the admin-configured STT
+ * the clip to ``/api/voice/stt`` (which uses the admin-configured STT
  * provider), and hands the transcript back through ``onTranscript``.
  */
 export function useVoiceRecorder(onTranscript: (text: string) => void) {
@@ -68,7 +68,7 @@ export function useVoiceRecorder(onTranscript: (text: string) => void) {
             : "webm";
         const form = new FormData();
         form.append("file", blob, `recording.${ext}`);
-        const resp = await apiFetch(apiUrl("/api/v1/voice/stt"), {
+        const resp = await apiFetch(apiUrl("/api/voice/stt"), {
           method: "POST",
           body: form,
         });

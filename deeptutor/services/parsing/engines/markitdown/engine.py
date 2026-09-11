@@ -11,30 +11,11 @@ from ...signature import ParserSignature
 from ...types import ParserError
 from .._versions import package_version
 from .config import MarkItDownConfig, resolve_markitdown_config
-
-# Formats markitdown handles. Kept broad but conservative; markitdown skips
-# what it can't read and we surface an empty result rather than crash.
-_SUPPORTED = frozenset(
-    {
-        ".pdf",
-        ".docx",
-        ".pptx",
-        ".xlsx",
-        ".xls",
-        ".html",
-        ".htm",
-        ".csv",
-        ".json",
-        ".xml",
-        ".txt",
-        ".md",
-        ".epub",
-        ".png",
-        ".jpg",
-        ".jpeg",
-        ".gif",
-        ".webp",
-    }
+from .formats import (
+    MIN_MARKITDOWN_VERSION,
+    installed_markitdown_version,
+    markitdown_supported_formats,
+    markitdown_version_is_current,
 )
 
 
@@ -52,7 +33,7 @@ class MarkItDownParser:
         return resolve_markitdown_config()
 
     def supported_formats(self) -> frozenset[str]:
-        return _SUPPORTED
+        return markitdown_supported_formats()
 
     def signature(self, config: MarkItDownConfig) -> ParserSignature:
         return ParserSignature.build(
@@ -67,6 +48,17 @@ class MarkItDownParser:
                 ready=False,
                 reason="not_configured",
                 message="markitdown isn't installed (pip install deeptutor[parse-markitdown]).",
+            )
+        version = installed_markitdown_version()
+        if not markitdown_version_is_current(version):
+            return ReadinessReport(
+                ready=False,
+                reason="update_required",
+                message=(
+                    f"Installed markitdown {version or 'unknown'} is too old. DeepTutor needs "
+                    f"markitdown >= {MIN_MARKITDOWN_VERSION} with all format extras. Update it "
+                    "under Settings → Document Parsing."
+                ),
             )
         return ReadinessReport(ready=True)
 

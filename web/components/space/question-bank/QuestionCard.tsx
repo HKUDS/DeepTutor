@@ -3,14 +3,37 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useTranslation } from "react-i18next";
-import { Bookmark, ExternalLink, MessageSquare, Trash2, X } from "lucide-react";
+import {
+  Bookmark,
+  CheckCheck,
+  ExternalLink,
+  MessageSquare,
+  RotateCcw,
+  Trash2,
+  X,
+} from "lucide-react";
 import type { NotebookCategory, NotebookEntry } from "@/lib/notebook-api";
+import { bookRoute } from "@/lib/resource-routes";
 import CategoryMenu from "./CategoryMenu";
 
 const MarkdownRenderer = dynamic(
   () => import("@/components/common/MarkdownRenderer"),
   { ssr: false },
 );
+
+const SOURCE_LABELS: Record<NotebookEntry["source"], string> = {
+  deep_question: "Deep Question",
+  mastery_path: "Mastery Path",
+  immersive_reading: "Immersive Reading",
+  book: "Book",
+};
+
+const TREND_LABELS: Record<NotebookEntry["score_trend"], string> = {
+  new: "First Attempt",
+  improved: "Improved",
+  declined: "Declined",
+  unchanged: "Unchanged",
+};
 
 interface QuestionCardProps {
   entry: NotebookEntry;
@@ -19,6 +42,7 @@ interface QuestionCardProps {
   disabled: boolean;
   onToggleSelected: () => void;
   onToggleBookmark: () => void;
+  onToggleResolved: () => void;
   onDelete: () => void;
   onFile: (categoryId: number) => Promise<boolean>;
   onUnfile: (categoryId: number) => Promise<boolean>;
@@ -66,6 +90,7 @@ function AnswerBlock({
             }
             variant="prose"
             className="text-[13px] leading-relaxed"
+            enableMath
           />
         ) : (
           <span className="text-[var(--muted-foreground)]">—</span>
@@ -89,6 +114,7 @@ export default function QuestionCard({
   disabled,
   onToggleSelected,
   onToggleBookmark,
+  onToggleResolved,
   onDelete,
   onFile,
   onUnfile,
@@ -148,6 +174,25 @@ export default function QuestionCard({
                 {entry.question_type}
               </span>
             )}
+            <span className="rounded-md bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted-foreground)]">
+              {t(SOURCE_LABELS[entry.source] || "Deep Question")}
+            </span>
+            {entry.score_trend && (
+              <span className="rounded-md bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted-foreground)]">
+                {t(TREND_LABELS[entry.score_trend] || "First Attempt")}
+              </span>
+            )}
+            {!entry.is_correct && (
+              <span
+                className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${
+                  entry.resolved
+                    ? "bg-green-100 text-green-700 dark:bg-green-950/30 dark:text-green-400"
+                    : "bg-amber-100 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400"
+                }`}
+              >
+                {entry.resolved ? t("Resolved") : t("Needs Review")}
+              </span>
+            )}
           </div>
 
           <div className="text-[14px] font-medium text-[var(--foreground)]">
@@ -155,6 +200,7 @@ export default function QuestionCard({
               content={entry.question}
               variant="prose"
               className="text-[14px] leading-relaxed"
+              enableMath
             />
           </div>
         </div>
@@ -184,6 +230,25 @@ export default function QuestionCard({
               fill={entry.bookmarked ? "currentColor" : "none"}
             />
           </button>
+          {!entry.is_correct && (
+            <button
+              type="button"
+              onClick={onToggleResolved}
+              disabled={disabled}
+              title={entry.resolved ? t("Reopen Review") : t("Mark Resolved")}
+              className={`rounded-lg p-1.5 transition-colors disabled:opacity-40 ${
+                entry.resolved
+                  ? "text-green-600 dark:text-green-400"
+                  : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]"
+              }`}
+            >
+              {entry.resolved ? (
+                <RotateCcw className="h-3.5 w-3.5" />
+              ) : (
+                <CheckCheck className="h-3.5 w-3.5" />
+              )}
+            </button>
+          )}
           <button
             type="button"
             onClick={onDelete}
@@ -228,15 +293,20 @@ export default function QuestionCard({
                   >
                     {key}.
                   </span>
-                  <span
+                  <div
                     className={`flex-1 ${
                       isCorrectAnswer || isWrongPick
                         ? "text-[var(--foreground)]"
                         : "text-[var(--muted-foreground)]"
                     }`}
                   >
-                    {text}
-                  </span>
+                    <MarkdownRenderer
+                      content={text}
+                      variant="compact"
+                      className="font-sans text-[13px] [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_p]:my-0"
+                      enableMath
+                    />
+                  </div>
                   {isCorrectAnswer && (
                     <span className="mt-px shrink-0 text-[10px] font-medium text-green-600 dark:text-green-400">
                       ✓ {t("Correct")}
@@ -280,6 +350,7 @@ export default function QuestionCard({
                 content={entry.explanation}
                 variant="prose"
                 className="text-[13px] leading-relaxed"
+                enableMath
               />
             </div>
           </div>
@@ -305,15 +376,30 @@ export default function QuestionCard({
               </span>
             ))}
             <Link
-              href={`/?session=${encodeURIComponent(entry.session_id)}`}
+              href={`/chat/${encodeURIComponent(entry.session_id)}`}
               className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--muted)]/40 px-2 py-0.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
             >
               <ExternalLink size={10} />
               {entry.session_title || t("Original Session")}
             </Link>
+            {entry.source === "book" && entry.material_id && (
+              <Link
+                href={bookRoute(entry.material_id, entry.section_id)}
+                className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--muted)]/40 px-2 py-0.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+              >
+                <ExternalLink size={10} />
+                {entry.section_title || entry.material_title || t("Material")}
+              </Link>
+            )}
+            {entry.source === "mastery_path" && entry.material_title && (
+              <span className="inline-flex items-center rounded-md border border-[var(--border)] bg-[var(--muted)]/40 px-2 py-0.5 text-[var(--muted-foreground)]">
+                {entry.material_title}
+                {entry.section_title ? ` · ${entry.section_title}` : ""}
+              </span>
+            )}
             {entry.followup_session_id && (
               <Link
-                href={`/?session=${encodeURIComponent(entry.followup_session_id)}`}
+                href={`/chat/${encodeURIComponent(entry.followup_session_id)}`}
                 className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--muted)]/40 px-2 py-0.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
               >
                 <MessageSquare size={10} />

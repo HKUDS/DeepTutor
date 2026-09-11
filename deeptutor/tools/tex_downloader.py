@@ -141,7 +141,7 @@ class TexDownloader:
     def _is_tar_file(self, file_path: Path) -> bool:
         """Check if file is a tar file"""
         try:
-            with tarfile.open(file_path, "r:*") as tar:
+            with tarfile.open(file_path, "r:*"):
                 return True
         except Exception:
             return False
@@ -149,7 +149,7 @@ class TexDownloader:
     def _is_zip_file(self, file_path: Path) -> bool:
         """Check if file is a zip file"""
         try:
-            with zipfile.ZipFile(file_path, "r") as zip_file:
+            with zipfile.ZipFile(file_path, "r"):
                 return True
         except Exception:
             return False

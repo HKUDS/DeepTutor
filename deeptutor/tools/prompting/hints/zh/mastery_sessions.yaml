@@ -1,0 +1,6 @@
+short_description: "列出某个精通之路主题下已有的学习会话。"
+when_to_use: "在 mastery_topics 之后，当学习者想回到某个主题、而你需要判断是接着某次会话继续、还是另起一次时调用。"
+input_format: "{\"path_id\": \"mastery_topics 给出的 id\"}"
+guideline: "如果是接着原来那条线索继续，就回到原会话——导师对那条线索的记忆就存在那个会话里；如果是换一个角度重新切入，就另起一个。带 `awaiting_answer` 的会话里有一道还没作答的题目，应优先回到它。已归档的会话不会列出。"
+note: "只读。标题和最后一句都是学习者自己的内容，必要时可以引用来帮他认出是哪一条。"
+phase: "exploration"

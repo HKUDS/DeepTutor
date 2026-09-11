@@ -43,6 +43,17 @@
     --input: #e6decc;
     --ring: #b0501e;
     --overlay: rgba(28, 24, 22, 0.42);
+    --success: #237a4b;
+    --success-foreground: #14532d;
+    --success-surface: #ecf8f0;
+    --warning: #a15c00;
+    --warning-foreground: #713f12;
+    --warning-surface: #fff7df;
+    --info: #2563eb;
+    --info-foreground: #1e3a8a;
+    --info-surface: #eff6ff;
+    --surface-raised: #ffffff;
+    --shadow-raised: 0 16px 40px rgba(69, 49, 31, 0.12);
   }
 
   /* Dark — warm near-black, same terracotta family as Cream. */
@@ -68,6 +79,17 @@
     --input: #3a3634;
     --ring: #d4734b;
     --overlay: rgba(0, 0, 0, 0.6);
+    --success: #5fd08a;
+    --success-foreground: #bbf7d0;
+    --success-surface: #173424;
+    --warning: #f2b84b;
+    --warning-foreground: #fde68a;
+    --warning-surface: #3a2c16;
+    --info: #7ba7ff;
+    --info-foreground: #bfdbfe;
+    --info-surface: #172641;
+    --surface-raised: #2a2826;
+    --shadow-raised: 0 16px 44px rgba(0, 0, 0, 0.32);
   }
 
   /* Default — pure-white neutral canvas (theme id "snow" kept for stored
@@ -96,6 +118,17 @@
     --input: #e5e5e5;
     --ring: #2563eb;
     --overlay: rgba(0, 0, 0, 0.4);
+    --success: #16794b;
+    --success-foreground: #14532d;
+    --success-surface: #ecfdf3;
+    --warning: #a15c00;
+    --warning-foreground: #713f12;
+    --warning-surface: #fffaeb;
+    --info: #2563eb;
+    --info-foreground: #1e3a8a;
+    --info-surface: #eff6ff;
+    --surface-raised: #ffffff;
+    --shadow-raised: 0 16px 40px rgba(13, 13, 13, 0.12);
   }
 
   /* Glass — translucent purple panels on near-black. Slightly brighter
@@ -116,10 +149,23 @@
     --muted-foreground: #b5b5c7;
     --accent: rgba(255, 255, 255, 0.12);
     --accent-foreground: #ffffff;
+    --destructive: #f07178;
+    --destructive-foreground: #ffffff;
     --border: rgba(255, 255, 255, 0.12);
     --input: rgba(255, 255, 255, 0.06);
     --ring: #a855f7;
     --overlay: rgba(0, 0, 0, 0.55);
+    --success: #68dfa0;
+    --success-foreground: #bbf7d0;
+    --success-surface: rgba(34, 197, 94, 0.14);
+    --warning: #f7c65a;
+    --warning-foreground: #fde68a;
+    --warning-surface: rgba(245, 158, 11, 0.16);
+    --info: #9ab7ff;
+    --info-foreground: #dbeafe;
+    --info-surface: rgba(59, 130, 246, 0.16);
+    --surface-raised: rgba(35, 32, 51, 0.96);
+    --shadow-raised: 0 18px 48px rgba(0, 0, 0, 0.42);
   }
 
   .theme-glass body {
@@ -167,6 +213,9 @@
 
   html {
     -webkit-font-smoothing: antialiased;
+    --motion-fast: 120ms;
+    --motion-base: 180ms;
+    --motion-slow: 240ms;
   }
 
   html[data-scroll-behavior="smooth"] {
@@ -189,6 +238,22 @@
   summary::-webkit-details-marker {
     display: none;
   }
+
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      scroll-behavior: auto !important;
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
 }
 
 @layer components {
@@ -198,6 +263,11 @@
 
   .muted-chip {
     @apply rounded-full bg-[var(--muted)] px-3 py-1 text-xs text-[var(--muted-foreground)];
+  }
+
+  .surface-raised {
+    background: var(--surface-raised);
+    box-shadow: var(--shadow-raised);
   }
 }
 
@@ -632,25 +702,48 @@
   animation: dt-breathing 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
-/* Icon-only stretch/contract on top of the opacity breathing. Slightly
-   different period (2.4s vs 1.8s) so the scale and opacity cycles drift
-   in and out of phase, giving the mark a hand-drawn, "alive" feel rather
-   than a single mechanical pulse. */
-@keyframes dt-mark-pulse {
-  0%,
-  100% {
-    transform: scale(0.9);
+/* Trace detail, opening.
+   Entry only, deliberately. A height transition would need the body mounted
+   while collapsed, and a long transcript has dozens of collapsed rows — that
+   is a lot of markdown kept alive to animate something nobody is looking at.
+   Fading the body in on mount costs nothing and reads as an unfold; closing
+   is instant, which is what a reader wants after deciding they are done. */
+@keyframes dt-detail-in {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
   }
-  50% {
-    transform: scale(1.08);
+  to {
+    opacity: 1;
+    transform: none;
   }
 }
 
-.dt-mark-pulse {
-  animation: dt-mark-pulse 2.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-  transform-origin: center;
-  transform-box: fill-box;
-  will-change: transform;
+.dt-detail-in {
+  animation: dt-detail-in 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Trace-row status dot, running state.
+   Wider swing than the status header's own breathing (`dt-breathing-text`
+   fades 0.45→1): a 5px dot has far less area to signal with than a line of
+   text, so it needs the extra contrast to read as "this step is live" from
+   across the column. Scale and opacity share one period here — at this size
+   the out-of-phase drift the header uses just looks unsteady. */
+@keyframes dt-dot-live {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(0.75);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.3);
+  }
+}
+
+.dt-dot-live {
+  animation: dt-dot-live 1.25s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  will-change: opacity, transform;
 }
 
 /* ─── Turn navigator: arrival flash ───
@@ -684,15 +777,16 @@
 }
 
 /* While a fullscreen picker/modal is open, freeze ambient background
-   animations (sidebar "running session" pulse, breathing titles, pulsing
-   marks). They live behind the modal's frosted `backdrop-filter`; their
-   per-frame repaints were being re-sampled by the blur, reading as a constant
-   shimmer behind the scrim. `paused` holds them at their current frame (no
-   jump) and they resume on close. */
-body[data-picker-open] .dt-breathing-text,
-body[data-picker-open] .session-pulse,
-body[data-picker-open] .dt-session-icon-running,
-body[data-picker-open] .dt-mark-pulse {
+   animations (live status dots, breathing labels). They live behind the
+   modal's frosted `backdrop-filter`; their per-frame repaints were being
+   re-sampled by the blur, reading as a constant shimmer behind the scrim.
+   `paused` holds them at their current frame (no jump) and they resume on
+   close.
+
+   Canvas-backed marks cannot be reached this way — `ActivityOrb` reads the
+   same `data-picker-open` flag in JS and passes `paused` to its rAF loop. */
+body[data-picker-open] .dt-dot-live,
+body[data-picker-open] .dt-breathing-text {
   animation-play-state: paused !important;
 }
 
@@ -716,53 +810,16 @@ body[data-picker-open] .dt-mark-pulse {
   will-change: opacity, transform;
 }
 
-/* Session status pulse */
-@keyframes session-pulse {
-  0%,
-  100% {
-    opacity: 0;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(2.2);
-  }
-}
-
-.session-pulse {
-  animation: session-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-/* Session avatar — gentle breathing wiggle when a session is running */
-@keyframes dt-session-icon-running {
-  0%,
-  100% {
-    transform: translateY(0) rotate(0deg) scale(1);
-  }
-  25% {
-    transform: translateY(-0.6px) rotate(-6deg) scale(1.05);
-  }
-  50% {
-    transform: translateY(0) rotate(0deg) scale(1.02);
-  }
-  75% {
-    transform: translateY(0.6px) rotate(6deg) scale(1.05);
-  }
-}
-
-.dt-session-icon-running {
-  animation: dt-session-icon-running 1.6s cubic-bezier(0.45, 0.05, 0.55, 0.95)
-    infinite;
-  transform-origin: center;
-}
-
 /* ----- Chat shell ↔ file preview drawer ---------------------------------
    Squeezes the chat column when the drawer is open. The transition
    timing here MUST match FilePreviewDrawer's transform transition so the
    slide-in and the squeeze animate as one motion. Stays a no-op below
    the lg breakpoint, where the drawer overlays instead. */
 .chat-preview-shell {
-  transition: padding-right 220ms ease-out;
+  transition:
+    padding-right 220ms ease-out,
+    padding-left 240ms cubic-bezier(0.32, 0.72, 0, 1);
+  padding-left: 0;
   padding-right: 0;
 }
 /* While the viewer is being drag-resized, kill the squeeze transition so the
@@ -785,18 +842,9 @@ body[data-picker-open] .dt-mark-pulse {
   }
 }
 
-/* ─── Immersive reading ───────────────────────────────────────────────────
-   The reader occupies the left ~2/3 and the chat column shrinks into the
-   remaining third. Both sides animate the same distance over the same
-   duration, so the pane appears to push the chat aside rather than slide
-   over it.
-
-   Padding rather than a flex sibling: the chat shell is not remounted when
-   the mode toggles, so switching in and out never refetches session state.
-
-   Below `lg` the reader takes the whole width and the chat is reachable by
-   leaving the mode — a 380 px phone cannot usefully show both. */
-.dt-reader-shell {
+/* ----- Immersive watching -----------------------------------------------
+   Watching shares the conversation renderer and owns its responsive video surface. */
+.dt-watching-shell {
   position: absolute;
   inset: 0 auto 0 0;
   z-index: 30;
@@ -808,50 +856,20 @@ body[data-picker-open] .dt-mark-pulse {
     visibility 240ms;
   visibility: hidden;
 }
-.dt-reader-shell[data-reader-open="true"] {
+.dt-watching-shell[data-watching-open="true"] {
   transform: translateX(0);
   visibility: visible;
 }
-.dt-reader-shell > * {
+.dt-watching-shell > * {
   flex: 1;
   min-width: 0;
 }
-.chat-preview-shell {
-  padding-left: 0;
-  transition:
-    padding-right 220ms ease-out,
-    padding-left 240ms cubic-bezier(0.32, 0.72, 0, 1);
-}
 @media (min-width: 1024px) {
-  /* The seam is user-draggable: `ReaderResizeHandle` writes `--reader-width`,
-     and BOTH sides read it through the same `min()` so the pane edge and the
-     chat's padding can never disagree — a mismatch would show as a gap or an
-     overlap while dragging. The ceiling keeps the conversation usable no matter
-     what is stored; the handle enforces a floor in px. */
-  .dt-reader-shell {
-    width: min(var(--reader-width, 64%), 82%);
+  .dt-watching-shell {
+    width: 64%;
   }
-  .chat-preview-shell[data-reader-open="true"] {
-    padding-left: min(var(--reader-width, 64%), 82%);
-  }
-  /* While dragging, both sides must track the cursor frame-for-frame rather
-     than easing along behind it. */
-  :root[data-reader-resizing="true"] .dt-reader-shell,
-  :root[data-reader-resizing="true"] .chat-preview-shell {
-    transition: none;
-  }
-}
-
-/* The drag seam itself: a wide, invisible hit area with a hairline that only
-   appears on hover or focus, so the split does not draw attention to itself
-   while reading. */
-.dt-reader-resize {
-  touch-action: none;
-}
-@media (max-width: 1023px) {
-  /* Below `lg` the reader takes the full width and there is no seam to drag. */
-  .dt-reader-resize {
-    display: none;
+  .chat-preview-shell[data-watching-open="true"] {
+    padding-left: 64%;
   }
 }
 
@@ -1081,10 +1099,144 @@ a[href^="#dt-locator-"]:hover {
     scroll-behavior: auto !important;
   }
 
+  .dt-detail-in,
+  .dt-dot-live,
   .dt-breathing-text,
-  .dt-mark-pulse,
-  .session-pulse,
   .animate-spin {
     animation: none !important;
   }
+}
+
+/* Watching switches panes on small screens without unmounting playback or chat. */
+.watching-mobile-tabs {
+  display: none;
+}
+@media (max-width: 1023px) {
+  .watching-mobile-tabs {
+    display: flex;
+    height: 44px;
+    gap: 8px;
+    padding: 4px 12px;
+    position: absolute;
+    inset: 0 0 auto;
+    z-index: 40;
+    background: var(--background);
+    border-bottom: 1px solid var(--border);
+  }
+  .watching-mobile-tabs button {
+    flex: 1;
+    border-radius: 8px;
+  }
+  .watching-mobile-tabs button[aria-pressed="true"] {
+    background: var(--muted);
+    font-weight: 600;
+  }
+  .watching-surface .dt-watching-shell {
+    top: 44px;
+  }
+  .watching-surface[data-mobile-view="chat"] .dt-watching-shell {
+    visibility: hidden;
+    pointer-events: none;
+  }
+  [data-watching-workspace="true"] > .chat-preview-shell {
+    padding-top: 44px;
+  }
+  .watching-surface[data-mobile-view="video"] ~ .chat-preview-shell {
+    visibility: hidden;
+    pointer-events: none;
+  }
+}
+
+/* Native provider browsing stays above the mounted learning workspace. */
+.watching-browser {
+  position: absolute;
+  inset: 0;
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  background: var(--background);
+}
+.watching-browser-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 13px;
+}
+.watching-browser-button:hover,
+.watching-browser-button[aria-pressed='true'] {
+  background: var(--muted);
+}
+.watching-browser-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.watching-video-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 24px 20px;
+}
+.watching-video-card {
+  text-align: left;
+  min-width: 0;
+  border-radius: 12px;
+}
+.watching-video-card:hover h2 {
+  text-decoration: underline;
+}
+.watching-browser-empty {
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: var(--muted-foreground);
+  text-align: center;
+}
+.watching-browse-toggle {
+  position: absolute;
+  right: 12px;
+  top: 8px;
+  z-index: 44;
+  background: var(--background);
+}
+.watching-account-error {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  right: 12px;
+  z-index: 46;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--background);
+}
+.watching-surface[data-browsing] ~ .chat-preview-shell {
+  visibility: hidden;
+  pointer-events: none;
+}
+@media (max-width: 1023px) {
+  .watching-browse-toggle {
+    top: 48px;
+  }
+}
+@media (max-width: 520px) {
+  .watching-video-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.watching-surface .dt-watching-shell { top: 48px; }
+[data-watching-workspace="true"] > .chat-preview-shell { padding-top: 48px; }
+@media (max-width: 1023px) {
+  .watching-surface .dt-watching-shell { top: 92px; }
+  [data-watching-workspace="true"] > .chat-preview-shell { padding-top: 92px; }
+}
+.watching-surface[data-browsing] .dt-watching-shell,
+.watching-surface[data-browsing] .watching-mobile-tabs {
+  visibility: hidden;
+  pointer-events: none;
 }

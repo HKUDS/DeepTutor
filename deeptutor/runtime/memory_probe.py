@@ -143,6 +143,15 @@ def _scan_psutil(psutil: Any) -> tuple[list[ProcessMemory], bool]:
         candidates = [root, *root.children(recursive=True)]
     except psutil.Error:
         return [], True
+    except (PermissionError, OSError):
+        # HarmonyOS / restricted /proc: ``children()`` walks every
+        # ``/proc/<pid>/stat`` via ``_ppid_map()``. Reading init's entry raises
+        # a raw ``PermissionError``, which is *not* a subclass of
+        # ``psutil.Error``, so it used to escape to the HTTP layer (#1076).
+        # The psutil-free walker already skips unreadable pids.
+        if sys.platform.startswith("linux"):
+            return _scan_proc()
+        return _scan_psutil_self(psutil)
 
     found: list[ProcessMemory] = []
     for proc in candidates:
@@ -152,7 +161,7 @@ def _scan_psutil(psutil: Any) -> tuple[list[ProcessMemory], bool]:
                 name = proc.name() or ""
                 try:
                     cmdline = " ".join(proc.cmdline()[:3])
-                except (psutil.AccessDenied, psutil.Error):
+                except (psutil.AccessDenied, psutil.Error, PermissionError, OSError):
                     cmdline = ""
             found.append(
                 ProcessMemory(
@@ -161,7 +170,7 @@ def _scan_psutil(psutil: Any) -> tuple[list[ProcessMemory], bool]:
                     rss_bytes=rss,
                 )
             )
-        except psutil.Error:
+        except (psutil.Error, PermissionError, OSError):
             # The tree is live; a child exiting mid-walk is expected, not an error.
             continue
     if not any(p.pid == os.getpid() for p in found):
@@ -177,7 +186,7 @@ def _scan_psutil_self(psutil: Any) -> tuple[list[ProcessMemory], bool]:
         return [
             ProcessMemory(pid=proc.pid, label="backend", rss_bytes=int(proc.memory_info().rss))
         ], True
-    except psutil.Error:
+    except (psutil.Error, PermissionError, OSError):
         return [], True
 
 

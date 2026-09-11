@@ -58,9 +58,9 @@ export default function MemoryHub() {
     setLoading(true);
     try {
       const [ovRes, ...l1Counts] = await Promise.all([
-        apiFetch(apiUrl("/api/v1/memory/overview")).then((r) => r.json()),
+        apiFetch(apiUrl("/api/memory/overview")).then((r) => r.json()),
         ...SURFACES.map((s) =>
-          apiFetch(apiUrl(`/api/v1/memory/snapshot/${s}`))
+          apiFetch(apiUrl(`/api/memory/snapshot/${s}`))
             .then((r) => r.json())
             .then((d: SnapshotResponse) => d?.entities?.length ?? 0)
             .catch(() => 0),
@@ -113,7 +113,7 @@ export default function MemoryHub() {
             {t("Refresh")}
           </button>
           <Link
-            href="/settings/memory"
+            href="/settings#memory"
             className="inline-flex items-center gap-1.5 rounded-md border border-transparent px-2.5 py-1 transition hover:bg-[var(--muted)]"
           >
             {t("Memory settings")}

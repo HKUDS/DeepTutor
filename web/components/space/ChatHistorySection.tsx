@@ -11,8 +11,20 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import OrganizedSessionList from "@/components/courses/OrganizedSessionList";
+import ArchivedConversations from "@/components/space/ArchivedConversations";
 import SpaceSectionHeader from "@/components/space/SpaceSectionHeader";
 import { useAppShell } from "@/context/AppShellContext";
+import {
+  fetchMasteryTopicIndex,
+  type MasteryTopicLabel,
+} from "@/lib/learning-api";
+import { sessionRoute } from "@/lib/mastery-session";
+import {
+  fetchReadingCollectionIndex,
+  type ReadingCollectionLabel,
+} from "@/lib/reading-workspace-api";
+import { collectArchivedConversations } from "@/lib/session-archive";
+import { notifySessionsChanged } from "@/lib/session-events";
 import {
   deleteSession,
   listAllSessions,
@@ -21,11 +33,14 @@ import {
   type SessionOrganizationPatch,
   type SessionSummary,
 } from "@/lib/session-api";
-import { listCourses, type StudyCourse } from "@/lib/courses-api";
 
 /**
- * Sessions list for chat history. Reopened sessions always route back to
- * the main chat surface.
+ * The learning space's conversation history: search, filter, and the archive.
+ *
+ * A conversation reopens on the surface it was held in (see ``sessionRoute``),
+ * not always in the main chat. This page used to send everything to `/chat`,
+ * which for a reading conversation meant reopening it with its material closed
+ * and its citations pointing at a document that is not on screen.
  */
 export interface ChatHistorySectionProps {
   icon?: LucideIcon;
@@ -38,29 +53,43 @@ export default function ChatHistorySection({
   title,
   description,
 }: ChatHistorySectionProps = {}) {
-  const basePath = "/home";
+  const basePath = "/chat";
   const { t } = useTranslation();
   const router = useRouter();
   const { activeSessionId, setActiveSessionId } = useAppShell();
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
-  const [courses, setCourses] = useState<StudyCourse[]>([]);
+  const [masteryTopics, setMasteryTopics] = useState<MasteryTopicLabel[]>([]);
+  const [readingCollections, setReadingCollections] = useState<
+    ReadingCollectionLabel[]
+  >([]);
   const [loading, setLoading] = useState(true);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [courseFilter, setCourseFilter] = useState("all");
+  const [courseFilter] = useState("all");
   const [kindFilter, setKindFilter] = useState("all");
   const [archiveFilter, setArchiveFilter] = useState("active");
 
-  const load = useCallback(async (force = false) => {
-    setLoading(true);
+  // ``quiet`` refetches without swapping the panel for its skeleton: a restore
+  // acts on one row and says so on that row, so blanking the whole archive
+  // underneath it would be the only thing the eye followed.
+  const load = useCallback(async (force = false, quiet = false) => {
+    if (!quiet) setLoading(true);
     try {
-      const [nextSessions, nextCourses] = await Promise.all([
+      // Topic and collection labels only name which surface an archived
+      // conversation came from, so losing them costs that line, never the
+      // conversation.
+      const [nextSessions, nextTopics, nextCollections] = await Promise.all([
         listAllSessions({ force }),
-        listCourses({ force }),
+        fetchMasteryTopicIndex().catch(() => [] as MasteryTopicLabel[]),
+        fetchReadingCollectionIndex().catch(
+          () => [] as ReadingCollectionLabel[],
+        ),
       ]);
       setSessions(nextSessions);
-      setCourses(nextCourses);
+      setMasteryTopics(nextTopics);
+      setReadingCollections(nextCollections);
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }, []);
 
@@ -98,9 +127,10 @@ export default function ChatHistorySection({
   const handleSelect = useCallback(
     (sessionId: string) => {
       setActiveSessionId(sessionId);
-      router.push(`${basePath}/${sessionId}`);
+      const session = sessions.find((item) => item.session_id === sessionId);
+      router.push(session ? sessionRoute(session) : `${basePath}/${sessionId}`);
     },
-    [basePath, router, setActiveSessionId],
+    [basePath, router, sessions, setActiveSessionId],
   );
 
   const handleRename = useCallback(
@@ -123,10 +153,41 @@ export default function ChatHistorySection({
     [activeSessionId, setActiveSessionId, t],
   );
 
+  // The archived view is built from the same filtered set as the list, so the
+  // search box and the type filter still narrow it.
+  const archiveBuckets = useMemo(
+    () =>
+      collectArchivedConversations({
+        sessions: filteredSessions,
+        masteryTopics,
+        readingCollections,
+      }),
+    [filteredSessions, masteryTopics, readingCollections],
+  );
+
+  const handleRestore = useCallback(
+    async (sessionId: string) => {
+      setRestoringId(sessionId);
+      try {
+        await updateSessionOrganization(sessionId, { archived: false });
+        // Restoring cascades to the tutor threads under the conversation, so
+        // the server's own list is what says which rows are left.
+        await load(true, true);
+        notifySessionsChanged();
+      } finally {
+        setRestoringId(null);
+      }
+    },
+    [load],
+  );
+
   const handleOrganize = useCallback(
     async (sessionId: string, patch: SessionOrganizationPatch) => {
       await updateSessionOrganization(sessionId, patch);
       await load(true);
+      // Archiving or restoring here changes what the sidebar beside this page
+      // is allowed to show, and that list was fetched when the shell mounted.
+      notifySessionsChanged();
     },
     [load],
   );
@@ -178,24 +239,10 @@ export default function ChatHistorySection({
               className="min-w-0 flex-1 bg-transparent text-[13px] text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]/55"
             />
           </label>
-          <div className="mt-2 grid gap-2 sm:grid-cols-3">
-            <label className="sr-only" htmlFor="history-course-filter">
-              {t("Filter by course")}
-            </label>
-            <select
-              id="history-course-filter"
-              value={courseFilter}
-              onChange={(event) => setCourseFilter(event.target.value)}
-              className="rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-1.5 text-[12px] text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
-            >
-              <option value="all">{t("All courses")}</option>
-              <option value="unclassified">{t("Unclassified")}</option>
-              {courses.map((course) => (
-                <option key={course.id} value={course.id}>
-                  {course.name}
-                </option>
-              ))}
-            </select>
+          {/* Course filter temporarily hidden pending further product work;
+              courseFilter stays at its "all" default so filteredSessions is
+              unaffected. */}
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
             <label className="sr-only" htmlFor="history-kind-filter">
               {t("Filter by conversation type")}
             </label>
@@ -235,10 +282,17 @@ export default function ChatHistorySection({
                 />
               ))}
             </div>
+          ) : archiveFilter === "archived" ? (
+            <ArchivedConversations
+              buckets={archiveBuckets}
+              restoringId={restoringId}
+              onOpen={handleSelect}
+              onRestore={handleRestore}
+            />
           ) : (
             <OrganizedSessionList
               sessions={filteredSessions}
-              courses={courses}
+              courses={[]}
               activeSessionId={activeSessionId}
               onSelect={handleSelect}
               onRename={handleRename}

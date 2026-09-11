@@ -251,11 +251,10 @@ def test_backend_is_registered_as_a_local_cli() -> None:
     assert backend.local_cli is True
 
 
-def test_gemini_cli_is_kept_alongside_it() -> None:
-    """#828 asked to replace Gemini CLI; API-key users still have a working one."""
+def test_gemini_cli_is_retired_from_the_subagent_registry() -> None:
     from deeptutor.services.subagent import get_backend
 
-    assert get_backend("gemini") is not None
+    assert get_backend("gemini") is None
 
 
 @pytest.mark.asyncio
@@ -272,8 +271,8 @@ async def test_options_expose_the_effort_flag_and_free_text_models() -> None:
 def test_missing_cli_detail_says_something_the_status_chip_does_not() -> None:
     """`probe_version` returns a bare "not installed", which told the reader nothing.
 
-    The Gemini CLI page in #828 showed exactly that, leaving the reporter to work
-    out on their own that Google had retired the CLI.
+    A bare status chip leaves the operator to work out installation details on
+    their own, so backend-specific guidance should replace it.
     """
     from deeptutor.services.subagent.process import not_found_detail
 
@@ -281,14 +280,3 @@ def test_missing_cli_detail_says_something_the_status_chip_does_not() -> None:
     assert not_found_detail("", "go install it") == "go install it"
     # Real probe output is more informative and still wins.
     assert not_found_detail("permission denied", "go install it") == "permission denied"
-
-
-@pytest.mark.asyncio
-async def test_retired_gemini_cli_points_at_its_successor() -> None:
-    from deeptutor.services.subagent.models import sync_backend_options
-
-    detail = (await sync_backend_options("gemini")).detail
-
-    # Skipped where a Gemini CLI really is installed — then there is no detail.
-    if detail:
-        assert "Antigravity" in detail

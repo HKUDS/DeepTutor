@@ -35,6 +35,8 @@ class RecordType(str, Enum):
     CHAT = "chat"
     CO_WRITER = "co_writer"
     TUTORBOT = "tutorbot"
+    READING = "reading"
+    VIDEO_LEARNING = "video_learning"
 
 
 class NotebookRecord(BaseModel):
@@ -255,6 +257,20 @@ class NotebookManager:
             self._save_notebook(notebook)
             self._touch_index_entry(notebook_id, notebook)
         return notebook
+
+    def get_or_create_notebook(
+        self, name: str, description: str = "", color: str = "#3B82F6", icon: str = "book"
+    ) -> dict:
+        """Return an existing notebook with this exact name, or create one."""
+        with self._index_lock:
+            for row in self._load_index().get("notebooks", []):
+                if row.get("name") != name:
+                    continue
+                notebook_id = str(row.get("id") or "")
+                notebook = self._load_notebook(notebook_id) if notebook_id else None
+                if notebook:
+                    return notebook
+            return self.create_notebook(name=name, description=description, color=color, icon=icon)
 
     def list_notebooks(self) -> list[dict]:
         """List every notebook on disk, newest first.

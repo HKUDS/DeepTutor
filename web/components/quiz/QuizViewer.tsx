@@ -20,6 +20,7 @@ import {
   MessageSquarePlus,
   RotateCcw,
   Sparkles,
+  Square,
   X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -402,12 +403,19 @@ export default function QuizViewer({
   const isConcept = q ? isConceptQuizQuestion(q.question_type) : false;
   const isFillBlank = q ? isFillInBlankQuizQuestion(q.question_type) : false;
   const isGradable = q ? isAutoGradable(q) : false;
+  // Fill-in-the-blank questions normally use exact text grading, but formulas
+  // can be much easier to submit as a photo. Keep the existing image path for
+  // open-ended questions and extend it to fill-in-the-blank questions only.
+  const canAttachImage = isFillBlank || !isGradable;
   const currentUserAnswer = q ? getUserAnswer(q, ans) : "";
+  const canShowCorrectness = isGradable && currentUserAnswer.length > 0;
 
   const isCorrect = useMemo(() => {
-    if (!q || !ans.submitted) return null;
+    // An image-only fill-in-the-blank answer needs the multimodal AI judge;
+    // exact string matching would otherwise label it incorrectly as wrong.
+    if (!q || !ans.submitted || !canShowCorrectness) return null;
     return isAnswerCorrect(q, ans);
-  }, [ans, q]);
+  }, [ans, canShowCorrectness, q]);
 
   const submittedResults = useMemo(
     () =>
@@ -660,14 +668,16 @@ export default function QuizViewer({
             };
           });
         },
-        onDone: () => {
-          let finalText = "";
+        onDone: (finalText) => {
           setJudgments((prev) => {
             const current = prev[idx] ?? EMPTY_JUDGMENT;
-            finalText = current.text;
             return {
               ...prev,
-              [idx]: { ...current, isStreaming: false },
+              [idx]: {
+                ...current,
+                text: finalText || current.text,
+                isStreaming: false,
+              },
             };
           });
           judgeHandlesRef.current.delete(idx);
@@ -696,6 +706,11 @@ export default function QuizViewer({
     );
     judgeHandlesRef.current.set(idx, handle);
   }, [answers, entryIds, idx, language, q]);
+
+  const handleStopAiJudge = useCallback(() => {
+    judgeHandlesRef.current.get(idx)?.cancel();
+    judgeHandlesRef.current.delete(idx);
+  }, [idx]);
 
   const handleToggleAnswerView = useCallback(
     (view: AnswerView) => {
@@ -797,8 +812,10 @@ export default function QuizViewer({
             // answer red just because it doesn't match the reference
             // string verbatim.
             const autoGradable = isAutoGradable(question);
+            const hasAutoGradableAnswer =
+              !!answer && getUserAnswer(question, answer).length > 0;
             const correctness: "correct" | "incorrect" | null =
-              done && answer && autoGradable
+              done && answer && autoGradable && hasAutoGradableAnswer
                 ? isAnswerCorrect(question, answer)
                   ? "correct"
                   : "incorrect"
@@ -941,6 +958,7 @@ export default function QuizViewer({
             content={q.question}
             variant="prose"
             className="text-[var(--foreground)]"
+            enableMath
           />
         </div>
 
@@ -1095,11 +1113,10 @@ export default function QuizViewer({
           </div>
         )}
 
-        {/* Image-as-answer attachment — only offered for question types
-            without an auto-gradable answer (short_answer / written /
-            coding). These are also the types that benefit most from a
-            multimodal AI judgment over handwritten work. */}
-        {!isGradable && (
+        {/* Image-as-answer attachment — offered for open-ended questions and
+            fill-in-the-blank questions, where formulas may be cumbersome to
+            type. Choice and concept questions keep their direct controls. */}
+        {canAttachImage && (
           <div className="mt-2 space-y-2">
             <input
               ref={fileInputRef}
@@ -1170,10 +1187,10 @@ export default function QuizViewer({
               onClick={handleSubmit}
               disabled={(() => {
                 if (isChoice || isConcept) return !ans.selected;
-                // For free-text / fill-blank, require a typed answer; for
-                // non-auto-gradable types, an image attachment also counts.
+                // For free-text / fill-blank, accept either a typed answer or
+                // an image when this question type supports image answers.
                 if (ans.typed.trim()) return false;
-                if (!isGradable && ans.images.length > 0) return false;
+                if (canAttachImage && ans.images.length > 0) return false;
                 return true;
               })()}
               className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-[12px] font-medium text-white transition-opacity disabled:opacity-30"
@@ -1206,17 +1223,16 @@ export default function QuizViewer({
                 const hasJudgment = j.text.length > 0 || j.error !== null;
                 return (
                   <button
-                    onClick={handleAiJudge}
-                    disabled={j.isStreaming}
+                    onClick={j.isStreaming ? handleStopAiJudge : handleAiJudge}
                     className="inline-flex items-center gap-1 rounded-lg border border-[var(--primary)]/60 bg-[var(--primary)]/10 px-2.5 py-1.5 text-[12px] font-medium text-[var(--primary)] transition-colors hover:bg-[var(--primary)]/15 disabled:opacity-50"
                   >
                     {j.isStreaming ? (
-                      <Loader2 size={11} className="animate-spin" />
+                      <Square size={10} fill="currentColor" />
                     ) : (
                       <Sparkles size={11} />
                     )}
                     {j.isStreaming
-                      ? t("Judging...")
+                      ? t("Stop judging")
                       : hasJudgment
                         ? t("Re-judge")
                         : t("AI Judge")}
@@ -1289,9 +1305,7 @@ export default function QuizViewer({
                     >
                       <ChevronDown
                         size={13}
-                        className={`transition-transform ${
-                          collapsed ? "-rotate-90" : ""
-                        }`}
+                        className={`transition-transform ${collapsed ? "-rotate-90" : ""}`}
                       />
                     </button>
                   </div>
@@ -1334,6 +1348,7 @@ export default function QuizViewer({
                         <MarkdownRenderer
                           content={judgment.text}
                           variant="prose"
+                          enableMath
                         />
                       </div>
                     ) : (
@@ -1358,6 +1373,7 @@ export default function QuizViewer({
                                 : q.correct_answer
                             }
                             variant="prose"
+                            enableMath
                           />
                         </div>
                       </div>
@@ -1371,6 +1387,7 @@ export default function QuizViewer({
                           <MarkdownRenderer
                             content={q.explanation}
                             variant="prose"
+                            enableMath
                           />
                         </div>
                       </div>

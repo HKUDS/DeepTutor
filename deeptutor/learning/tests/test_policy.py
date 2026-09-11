@@ -18,6 +18,7 @@ from deeptutor.learning.models import (
     ErrorType,
     KnowledgePoint,
     KnowledgeType,
+    LearnerMasteryOverride,
     LearningModule,
     LearningProgress,
     PendingQuestion,
@@ -82,6 +83,28 @@ def test_objective_status_new_learning_mastered():
     assert policy.objective_status(progress, kp) == "learning"
     progress.mastery_levels["kp1"] = 0.95
     assert policy.objective_status(progress, kp) == "mastered"
+
+
+def test_learner_override_advances_without_faking_assessed_mastery():
+    kp1, kp2 = _kp("kp1", KnowledgeType.MEMORY), _kp("kp2", KnowledgeType.MEMORY)
+    progress = _progress(kp1, kp2)
+    progress.mastery_levels["kp1"] = 0.2
+    progress.learner_mastery_overrides["kp1"] = LearnerMasteryOverride(
+        knowledge_point_id="kp1",
+        note="Covered this in class",
+    )
+
+    assert policy.is_assessed_mastered(progress, kp1) is False
+    assert policy.is_mastered(progress, kp1) is True
+    assert policy.mastery_source(progress, kp1) == "learner"
+    assert policy.next_objective(progress).knowledge_point_id == "kp2"
+
+    summary = policy.map_summary(progress)
+    first = summary["modules"][0]["knowledge_points"][0]
+    assert first["status"] == "mastered"
+    assert first["mastery_source"] == "learner"
+    assert first["mastery"] == 0.2
+    assert first["override_note"] == "Covered this in class"
 
 
 # ── next_objective: gate is the cursor, mastered objectives are skipped ─────

@@ -50,14 +50,28 @@
 
 ### 📦 Releases
 
+> **[2026.9.11]** [v1.6.7](https://github.com/HKUDS/DeepTutor/releases/tag/v1.6.7) — A fix release: books that arrived as one empty chapter, quizzes that produced nothing, the model's scratchpad in the text, formulas printed raw, and cards you could not submit.
+
+> **[2026.9.8]** [v1.6.6](https://github.com/HKUDS/DeepTutor/releases/tag/v1.6.6) — A fix release: answers that could not submit, a copy button that lied, connected knowledge bases for partners, Codex sign-in inside Docker, and a 100 KB lighter home route.
+
+> **[2026.9.6]** [v1.6.5](https://github.com/HKUDS/DeepTutor/releases/tag/v1.6.5) — A content workspace you point at any folder, one `exec` tool for every language, Mastery Path modes that gate its tools, and Settings that grades readiness.
+
+<details>
+<summary><b>Past releases (more than 1 week ago)</b></summary>
+
+> **[2026.9.3]** [v1.6.4](https://github.com/HKUDS/DeepTutor/releases/tag/v1.6.4) — Faster isolated runtimes, controllable Book generation, source-complete Mastery paths and Chat hand-offs, durable Reading, unified activity UI, recoverable sessions, and explicit per-model API capabilities.
+
+> **[2026.9.2]** [v1.6.3](https://github.com/HKUDS/DeepTutor/releases/tag/v1.6.3) — Breaking front/back-end refactor, strict canonical routes and recoverable streams, plus learner/guardian accounts, grounded Reading, WeKnora, broader parsing, Python 3.14, and DashScope media.
+
+> **[2026.8.31]** [v1.6.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.6.2) — Immersive YouTube learning, a plugin-driven Visualize catalog, three new agent harnesses, safer reading citations, multi-format MinerU, live Partner channel status, and guided updates.
+
+> **[2026.8.30]** [v1.6.1](https://github.com/HKUDS/DeepTutor/releases/tag/v1.6.1) — One vendor key linked to every service it serves, a task model for background work, Settings as a searchable navigator, a sidebar you arrange, and first-party **LightRAG**.
+
 > **[2026.8.27]** [v1.6.0](https://github.com/HKUDS/DeepTutor/releases/tag/v1.6.0) — Faithful EPUB reading and annotations, Courses with Little Tutor and Ask Questions, bounded web-source sync, shared Books with private learning state, and Serply/native search.
 
 > **[2026.8.25]** [v1.5.17](https://github.com/HKUDS/DeepTutor/releases/tag/v1.5.17) — Partners each member owns with private conversations and linkable chat accounts, GitHub repos as a knowledge source, **Antigravity CLI**, browser WeChat QR login, and `deeptutor doctor`.
 
 > **[2026.8.22]** [v1.5.16](https://github.com/HKUDS/DeepTutor/releases/tag/v1.5.16) — **MarginNote 4** libraries you connect and its add-on fills, Book pages that turn again, and tool-call ids, embeddings and temperature limits that stop breaking behind a gateway.
-
-<details>
-<summary><b>Past releases (more than 1 week ago)</b></summary>
 
 > **[2026.8.20]** [v1.5.15](https://github.com/HKUDS/DeepTutor/releases/tag/v1.5.15) — **PageIndex OSS** you host yourself with reasoning retrieval, a question bank you can finally file into, third-party tool/capability plugins, and **Apache Tika** parsing.
 
@@ -195,7 +209,7 @@
 
 </details>
 
-> ✨ **v1.6.0 is live.** `pip install -U deeptutor` picks up the latest stable release.
+> ✨ **v1.6.7 is live.** `pip install -U deeptutor` picks up the latest stable release.
 
 ### 📰 News
 
@@ -210,23 +224,54 @@
 
 DeepTutor is an agent-native learning workspace that connects tutoring, problem solving, quiz generation, research, visualization, and mastery practice in one extensible system.
 
-- **One runtime for every mode** — Chat, Ask Questions, Quiz, Research, Visualize, Solve, Mastery Path, and Immersive Reading share one capability runtime and session context while keeping purpose-built loops and pipelines.
-- **Connected learning context** — Knowledge bases, books, Co-Writer drafts, notebooks, question banks, personas, and Memory stay available across every workflow instead of living in isolated tools.
-- **Subagents and Partners** — consult a live coding CLI (Claude Code, Codex, Gemini, Antigravity, Kimi, opencode, or MiMo) or a Partner from any turn (or import their past conversations), and run persistent IM companions on the same brain.
-- **Multi-engine knowledge** — versioned RAG libraries across LlamaIndex, PageIndex, GraphRAG, LightRAG, a remote LightRAG Server, a Tencent IMA or MarginNote 4 library, or a linked Obsidian vault, with pluggable document parsing.
+- **One runtime for every mode** — Chat, Ask Questions, Quiz, Research, Visualize, Solve, Course Study, Mastery Path, Immersive Reading, and Immersive Watching share one capability runtime and session context while keeping purpose-built loops and pipelines.
+- **Connected learning context** — Knowledge bases, books, Co-Writer drafts, notebooks, question banks, personas, and Memory can be reused across the workflows that support them, subject to account grants and learning policies.
+- **Immersive video learning** — paste a YouTube link for privacy-enhanced native playback, synchronized captions, timestamp-grounded tutoring, and resumable progress; administrators can switch playback to a self-hosted Invidious instance without rebuilding materials.
+- **Subagents and Partners** — from Chat, consult a live agent harness (Claude Code, Codex, Antigravity, Kimi, opencode, MiMo, Hermes, OpenClaw, or DeepSeek) or a Partner, import past conversations, and run persistent IM companions on the same brain.
+- **Multi-engine knowledge** — versioned RAG libraries across LlamaIndex, PageIndex, GraphRAG, LightRAG, a remote LightRAG Server, a self-hosted WeKnora knowledge base, a Tencent IMA or MarginNote 4 library, or a linked Obsidian vault, with pluggable document parsing.
 - **Extensible tools and skills** — built-in tools, MCP servers, CLI apps, image / video / voice generation models, and installable community skills from EduHub.
-- **Inspectable memory** — L1 traces, L2 surface summaries, and L3 synthesis make personalization visible and editable, with a Memory Graph that traces every claim back to its evidence.
+- **Inspectable memory** — L1 traces, L2 surface summaries, and L3 synthesis make personalization visible and editable; the Memory Graph links L2 facts to L1 evidence and L3 synthesis to contributing surfaces.
 
 ---
 
 ## 🚀 Get Started
 
-DeepTutor ships four installation paths. They all share one workspace layout: settings live in `data/user/settings/` under the directory you launch from (or under `DEEPTUTOR_HOME` / `deeptutor start --home` if you set one explicitly). For the full app, the recommended flow is **pick a workspace directory → install → `deeptutor init` → `deeptutor start`**.
+DeepTutor ships four installation paths. They all share one runtime-home layout: private settings live in `data/user/settings/` under the directory you launch from (or under `DEEPTUTOR_HOME` / `deeptutor start --home` if you set one explicitly). For the full app, the recommended flow is **pick a runtime-home directory → install → `deeptutor init` → `deeptutor start`**.
+
+### Content Workspace
+
+The **Content Workspace** is separate from DeepTutor's private runtime home. It
+is the folder agents may read and where every agent-created file, download,
+code run, cache, and rendered asset is placed under a turn-scoped
+`outputs/<capability>/<session>/<turn>/` directory. Settings, API keys,
+databases, Memory, and internal application state remain outside it.
+
+Without configuration, the content workspace is
+`<runtime-home>/data/user/workspace`. Local PyPI, CLI, and source installs can
+select any existing readable/writable folder in **Settings → Workspace** or:
+
+```bash
+deeptutor workspace show
+deeptutor workspace set /absolute/path/to/my-folder
+deeptutor workspace reset
+```
+
+Every capability can inspect the same folder through the built-in workspace
+tools. The model only receives relative paths such as `outputs/...`; when it
+uses `workspace_present`, the UI renders an authenticated, openable snapshot.
+The same exact relative path also works in a normal Markdown link or image.
+Changing the source file later does not change an already presented snapshot.
+
+Execution is read-only outside `outputs/`. Copying a generated file elsewhere
+in the content workspace requires an explicit **Allow once** confirmation for
+that exact source and destination. A system sandbox or the Docker runner
+enforces this boundary when available; local restricted-subprocess fallback is
+shown as **best effort** in Workspace settings.
 
 <details>
 <summary><b>Option 1 — Install From PyPI</b> · full local Web app + CLI, no clone required</summary>
 
-Full local Web app + CLI, no clone required. Needs **Python 3.11–3.13** and a **Node.js 20+** runtime on PATH (the packaged Next.js standalone server is spawned by `deeptutor start`).
+Full local Web app + CLI, no clone required. Needs **Python 3.11–3.14** and a **Node.js 20+** runtime on PATH (the packaged Next.js standalone server is spawned by `deeptutor start`).
 
 ```bash
 mkdir -p my-deeptutor && cd my-deeptutor
@@ -244,7 +289,7 @@ After `deeptutor start`, open the frontend URL printed in the terminal — by de
 <details>
 <summary><b>Option 2 — Install From Source</b> · develop against a checkout</summary>
 
-For development against a checkout. Use **Python 3.11–3.13** and **Node.js 22 LTS** to match CI and Docker.
+For development against a checkout. Use **Python 3.11–3.14** and **Node.js 22 LTS** to match CI and Docker.
 
 ```bash
 git clone https://github.com/HKUDS/DeepTutor.git
@@ -277,11 +322,14 @@ python -m pip install --upgrade pip
 </details>
 
 <details>
-<summary><b>Optional install extras</b> — dev / partners / matrix / math-animator</summary>
+<summary><b>Optional install extras</b> — RAG engines / dev / partners / matrix / math-animator</summary>
 
 ```bash
+pip install -e ".[rag-lightrag]"    # Built-in LightRAG engine (exact supported SDK)
+pip install -e ".[graphrag]"        # Microsoft GraphRAG engine (Python 3.11–3.13)
 pip install -e ".[dev]"             # tests/lint tools
 pip install -e ".[partners]"        # Partner IM channel SDKs
+pip install -e ".[video-learning]"  # compatibility extra; captions ship in the full/CLI installs
 pip install -e ".[matrix]"          # Matrix channel without E2EE/libolm
 pip install -e ".[matrix-e2e]"      # Matrix E2EE; requires libolm
 pip install -e ".[math-animator]"   # Manim addon; requires LaTeX/ffmpeg/system libs
@@ -310,8 +358,8 @@ deeptutor start --dev
 
 One container for the full Web app. Images on GitHub Container Registry:
 
-- `ghcr.io/hkuds/deeptutor:latest` — stable release
-- `ghcr.io/hkuds/deeptutor:pre` — pre-release, when available
+- `ghcr.io/hkuds/deeptutor:latest` — latest stable release
+- `ghcr.io/hkuds/deeptutor:<version>` — exact release without the leading `v` (for example `:1.6.3`); pre-releases receive only their version tag
 
 > See [CONTAINERIZATION.md](./CONTAINERIZATION.md) for podman/rootless/read-only-rootfs deployments and the full per-installation guide.
 
@@ -322,12 +370,31 @@ docker run --rm --name deeptutor \
   ghcr.io/hkuds/deeptutor:latest
 ```
 
+To choose a host content folder at container startup, mount it at the stable
+container path and lock DeepTutor to that path:
+
+```bash
+mkdir -p "$PWD/deeptutor-workspace/outputs"
+docker run --rm --name deeptutor \
+  -p 127.0.0.1:3782:3782 \
+  -v deeptutor-data:/app/data \
+  -v "$PWD/deeptutor-workspace:/workspace" \
+  -e DEEPTUTOR_WORKSPACE_ROOT=/workspace \
+  -e DEEPTUTOR_WORKSPACE_ALLOWED_ROOTS=/workspace \
+  ghcr.io/hkuds/deeptutor:latest
+```
+
+For Compose, set `DEEPTUTOR_WORKSPACE_HOST=/absolute/host/folder` before
+running `python scripts/docker_compose.py up -d`. When omitted it uses
+`./data/user/workspace`. Docker paths are selected at startup and therefore
+appear locked in the Web settings page.
+
 > **Only `3782` needs to be published.** The browser talks exclusively to the frontend origin; the Next.js middleware (`web/proxy.ts`) forwards `/api/*` and `/ws/*` to the FastAPI backend **inside the container**. Publishing `8001` (`-p 127.0.0.1:8001:8001`) is optional — handy only for hitting the API directly with curl or scripts.
 
-Open [http://127.0.0.1:3782](http://127.0.0.1:3782). The container creates `/app/data/user/settings/*.json` on first boot; configure model providers from the Web Settings page. Config, API keys, logs, workspace files, memory, and knowledge bases persist in the `deeptutor-data` volume. Optional extras belong on the deployment, not in a shell: set `DEEPTUTOR_EXTRAS` (and `DEEPTUTOR_APT_PACKAGES` for system libraries) and every container started from it re-applies them, where a `docker exec … pip install` would be lost at the next `compose down`.
+Open [http://127.0.0.1:3782](http://127.0.0.1:3782). The container creates `/app/data/user/settings/*.json` on first boot; configure model providers from the Web Settings page. Config, API keys, logs, the default Content Workspace, memory, and knowledge bases persist in the `deeptutor-data` volume. A separately mounted Content Workspace persists at its host path instead. Optional extras belong on the deployment, not in a shell: set `DEEPTUTOR_EXTRAS` (and `DEEPTUTOR_APT_PACKAGES` for system libraries) and every container started from it re-applies them, where a `docker exec … pip install` would be lost at the next `compose down`.
 
 - **Different host ports:** change the left side of each `-p host:container` mapping (e.g. `-p 127.0.0.1:8088:3782`). If you change container-side ports in `/app/data/user/settings/system.json`, restart and update the right side of each mapping to match.
-- **Detached:** add `-d`, then `docker logs -f deeptutor` to follow, `docker stop deeptutor` to stop, `docker rm deeptutor` before reusing the name. The `deeptutor-data` volume keeps your settings and workspace across restarts.
+- **Detached:** add `-d`, then `docker logs -f deeptutor` to follow, `docker stop deeptutor` to stop, `docker rm deeptutor` before reusing the name. The `deeptutor-data` volume keeps private runtime data and the default Content Workspace across restarts; a separately mounted Content Workspace persists at its host path.
 
 **Remote Docker / reverse proxy:** the browser only talks to the frontend
 origin (`:3782`); the in-container Next.js middleware forwards `/api/*` and
@@ -403,7 +470,7 @@ deeptutor init --cli
 deeptutor chat
 ```
 
-`deeptutor init --cli` shares the same `data/user/settings/` layout as the full app but skips the backend/frontend port prompts and defaults embeddings to **off** (choose `Yes` if you plan to use `deeptutor kb …` or RAG tools). It still writes a complete runtime layout (`system.json`, `auth.json`, `integrations.json`, `model_catalog.json`, `main.yaml`, `agents.yaml`) and still prompts for the active LLM provider and model.
+`deeptutor init --cli` shares the same `data/user/settings/` layout as the full app but skips the backend/frontend port prompts. It still offers the Embedding and Search selectors (choose **Skip** when you do not need them), writes the key runtime files (`system.json`, `auth.json`, `integrations.json`, `interface.json`, `model_catalog.json`, `main.yaml`, `agents.yaml`), and prompts for the active LLM provider and model.
 
 <details>
 <summary><b>Common commands</b></summary>
@@ -429,22 +496,21 @@ The local `deeptutor-cli` install ships no Web assets or server dependencies. Ke
 
 The built-in office skills — **docx / pdf / pptx / xlsx** — work by having the
 model write a short Python script (`python-docx`, `reportlab`, `openpyxl`, …),
-run it through the `exec` / `code_execution` tools, and hand back a download URL.
-Those tools mount whenever a sandbox backend is active, which it is **by default**
-in every deployment shape:
+run it through the single `exec` tool, and present the saved workspace file.
+Those tools mount whenever a sandbox backend is active. DeepTutor selects the
+strongest configured backend in this order:
 
-- **Local (Option 1 / 2) and Docker (Option 3, single container):** a restricted
-  subprocess sandbox runs the model's code (on the host locally, or inside the
-  container under Docker — the container being its own isolation boundary).
-- **docker-compose:** routed instead to a hardened, least-privileged **runner
-  sidecar** (`Dockerfile.runner`) via `DEEPTUTOR_SANDBOX_RUNNER_URL` — the
-  strongest posture, and preferred automatically when present.
+- **Runner sidecar:** `DEEPTUTOR_SANDBOX_RUNNER_URL` routes execution to the
+  hardened, least-privileged service from `Dockerfile.runner`.
+- **Linux bubblewrap:** when available, `bwrap` isolates the process and files.
+- **Restricted subprocess fallback:** local and single-container installs use
+  this only when allowed; under Docker the container remains another boundary.
 
-The subprocess sandbox is controlled by the `sandbox_allow_subprocess` setting in
-`data/user/settings/system.json` (default `true`). Running model-generated code
-on your host is a real trust decision — set it to `false` (or export
-`DEEPTUTOR_SANDBOX_ALLOW_SUBPROCESS=0`) to disable host-side execution, at the
-cost of the office skills no longer being able to produce files.
+The `sandbox_allow_subprocess` setting in `data/user/settings/system.json`
+(default `true`) controls only the last fallback. Set it to `false` (or export
+`DEEPTUTOR_SANDBOX_ALLOW_SUBPROCESS=0`) to refuse subprocess execution when no
+runner or `bwrap` backend is available; it does not disable those stronger
+backends.
 
 </details>
 
@@ -455,15 +521,93 @@ Everything under `data/user/settings/` is plain JSON/YAML. The **Settings** page
 
 | File | Purpose |
 |:---|:---|
-| `model_catalog.json` | LLM, embedding, and search provider profiles; API keys; active models |
+| `model_catalog.json` | Provider connections plus LLM, task, embedding, search, TTS, STT, image, and video profiles, credentials, and active selections |
 | `system.json` | Backend/frontend ports, public API base, CORS, SSL verification, attachment directory and upload/extraction limits |
 | `auth.json` | Optional auth toggle, username, password hash, token/cookie settings |
 | `integrations.json` | Optional PocketBase and sidecar integration settings |
 | `interface.json` | UI and model output language / theme / sidebar preferences |
+| `content_workspace.json` | Content Workspace folder bindings and the active workspace selection |
+| `video_learning.json` | Default YouTube/Invidious playback provider, Invidious origins, and optional transcript adapter |
 | `main.yaml` | Runtime behavior defaults and path injection |
 | `agents.yaml` | Capability/tool temperature and token settings |
 
+Web Search references are filtered by default: only public `http`/`https` URLs
+without embedded credentials or unusual ports are surfaced. Deployments can add
+an education-focused domain policy in `data/user/settings/system.json`:
+
+```json
+{
+  "web_search_source_filtering": {
+    "enabled": true,
+    "blocked_domains": ["spam.example"],
+    "trusted_domains": ["edu.cn", "arxiv.org"]
+  }
+}
+```
+
+When `trusted_domains` is non-empty, references are limited to those domains
+and their subdomains; `blocked_domains` always takes precedence.
+
 Project-root `.env` is **not** read as an application config file. For a minimal model setup, open **Settings → Models**, add an LLM profile (Base URL / API key / model name), and save. Add an embedding profile only if you plan to use Knowledge Base / RAG features.
+
+LLM and task-model profiles expose an **API format** setting when their provider
+supports a choice. Keep `Auto` for normal routing and fallback, or choose
+`OpenAI Chat Completions`, `OpenAI Responses`, or `Anthropic Messages`; forced
+Responses remains fail-closed. The persisted field is `api_format` (`auto`,
+`openai_chat`, `openai_responses`, or `anthropic`); `wire_api` is derived
+compatibility state. Per-model `Auto` / `Supported` / `Not supported` overrides
+cover tool calling, image input, JSON output, and reasoning controls.
+
+</details>
+
+<details>
+<summary><b>Uninstall and cleanup</b></summary>
+
+DeepTutor separates its installed code, private runtime home, and optional
+Content Workspace. By default, the runtime home is the directory where you run
+`deeptutor init` / `deeptutor start`; `--home PATH` or `DEEPTUTOR_HOME`
+overrides it. Private application state is the `data` directory inside that
+home, so the startup banner line beginning with `Workspace:` identifies that
+runtime location. If **Settings → Workspace** points to another folder, back up
+or remove that content folder separately; it is intentionally not erased by
+uninstalling DeepTutor.
+
+1. Stop the app. Press `Ctrl+C` in the terminal running `deeptutor start`, or
+   run `deeptutor stop [--home PATH]` for a launcher started with `--detach`;
+   stop any running Partner and detached Docker containers before deleting data.
+2. Remove runtime data only if you also want to erase all local state. This
+   includes settings and API keys, chat history, sessions, Memory, Notebooks,
+   Books, Reading state, Skills, Partners state, logs, Knowledge Bases, parse
+   caches, generated artifacts, and the packaged frontend runtime cache.
+
+   First copy the exact `Workspace:` path from the startup banner and verify
+   that its `data` child is the intended DeepTutor data directory. Back it up
+   if anything may be needed later, then move that exact directory to your
+   operating system's Trash/Recycle Bin. Do not run a recursive deletion
+   command against a relative path or an unresolved environment variable.
+
+3. Remove the installed package. Use the command that matches the distribution:
+
+   ```bash
+   python -m pip uninstall deeptutor
+   python -m pip uninstall deeptutor-cli
+   ```
+
+   If the virtual environment was created only for DeepTutor, remove it through
+   your environment manager. For a source install, deactivate the environment,
+   leave the source directory, and run `git status --short` inside that exact
+   checkout. Only move the checkout to Trash/Recycle Bin after confirming it
+   contains no unrelated or uncommitted work.
+
+4. For the Docker path, inspect the exact container and named volume before
+   removing them. Volume removal permanently erases the Docker-managed data:
+
+   ```bash
+   docker ps -a --filter name=^/deeptutor$
+   docker volume inspect deeptutor-data
+   docker rm -f deeptutor
+   docker volume rm deeptutor-data
+   ```
 
 </details>
 
@@ -471,9 +615,13 @@ Project-root `.env` is **not** read as an application config file. For a minimal
 
 Start with the main surfaces you will use day to day: Chat, Partners, My Agents, Co-Writer, Book, Knowledge Center, Learning Space, Memory, and Settings. The tour then covers Multi-User deployments for shared, isolated workspaces.
 
+If an answer loses an earlier constraint, cites weak evidence, or disagrees with selected material, collect the diagnostics in [`REASONING_SAFETY_CHECKLIST.md`](./REASONING_SAFETY_CHECKLIST.md) before opening an issue.
+
 <div align="center">
-<img src="assets/figs/web-1.4.6+/OVERVIEW.png" alt="DeepTutor home — the Chat workspace with every surface in the sidebar" width="900">
+<img src="assets/figs/web-1.6.5/OVERVIEW.png" alt="DeepTutor home — the Chat workspace with every surface in the sidebar" width="900">
 </div>
+
+> **Screenshot status:** The overview is current for v1.6.5. The surface screenshots below remain v1.4.6 references while a versioned refresh is in progress; see the [screenshot inventory](./UI_SCREENSHOT_REFRESH.md). Use them to understand workflows, not as exact navigation.
 
 <details>
 <summary><b>🏗️ System architecture</b></summary>
@@ -499,11 +647,11 @@ The loop is deliberately simple: the model thinks in rounds, calls tools when us
 <img src="assets/figs/system/chat-agent-loop.png" alt="DeepTutor chat agent loop" width="900">
 </div>
 
-User-toggleable tools are `brainstorm`, `web_search`, `paper_search`, `reason`, and `geogebra_analysis` — plus `imagegen` and `videogen` once you configure the matching generation model. Contextual tools such as `rag`, `kb_files`, `read_source`, `read_memory`, `write_memory`, `read_skill`, `load_tools`, `exec`, `web_fetch`, `ask_user`, `list_notebook`, `write_note`, `question_bank`, `github`, and `consult_subagent` mount automatically when the turn has the right context.
+User-toggleable tools are `brainstorm`, `web_search`, `paper_search`, `reason`, and `geogebra_analysis` — plus `imagegen` and `videogen` once you configure the matching generation model. Contextual tools such as `rag`, `kb_files`, `read_source`, `read_memory`, `write_memory`, `read_skill`, `load_tools`, `exec`, `web_fetch`, `ask_user`, `list_notebook`, `write_note`, `question_bank`, `github`, `consult_subagent`, `workspace_list`, `workspace_read`, `workspace_search`, `workspace_present`, and `workspace_export` mount automatically when the turn has the right context.
 
-Context comes in two kinds: **sticky session context** (subagent, knowledge bases, persona, model, voice) lives on the composer toolbar and persists across turns; **one-time references** (files, chat history, books, notebooks, question bank, imported agents) come from the `+` menu for a single turn.
+Context comes in two kinds: **sticky session context** (capability, workspace or course, tools, knowledge bases, persona, model, and Reading / Mastery state) persists across turns; **one-time references** (files, chat history, books, reading sections, notebooks, question bank, imported agents) come from the `+` menu for a single turn. The voice button only transcribes the current message.
 
-Chat is also the launch point for deeper capabilities: **Ask Questions** for a context-aware clarification card, **Quiz** for question generation, **Visualize** for charts / diagrams / animations, **Mastery Path** for learning-plan flows, and **Immersive Reading** for PDFs, EPUBs, and other documents beside the thread with page/chapter grounding, persistent position and outlines, annotations, and selected-text actions. **Research** for cited reports and **Solve** for worked reasoning sit under *More Capabilities*.
+Home keeps **Chat**, **Ask Questions**, **Quiz**, and **Visualize** one click away; **Research** for cited reports, **Solve** for worked reasoning, and **Immersive Watching** sit under *More Capabilities*. **Mastery Path** and **Immersive Reading** are dedicated sidebar workspaces; Reading adds verified clickable citations, saved citations and notes, source-grounded read-aloud / study guidance / vocabulary / quiz / translation actions, and notebook capture, while Course Study keeps its own course-bound context.
 
 </details>
 
@@ -520,7 +668,7 @@ Partners are persistent companions with their own soul, model policy, library, m
 <img src="assets/figs/system/partners-architecture.png" alt="DeepTutor partners architecture" width="900">
 </div>
 
-Each partner has a `SOUL.md`, model selection, channels, tool policy, and assigned library. Knowledge bases, skills, and notebooks are copied into `data/partners/<id>/workspace/`, so the same RAG, skill, notebook, and memory tools work without special cases. A partner reads its owner's memory but writes only its own.
+Each partner has a `SOUL.md`, model selection, channels, tool policy, and assigned library. Knowledge bases, skills, and notebooks are copied into `data/partners/<id>/workspace/`, so the same RAG, skill, notebook, and memory tools work without special cases. Authenticated non-admin users keep private partner sessions and relationship memory while the partner reads their personal memory read-only; admin, group, and unbound traffic use the shared partner scope.
 
 <div align="center">
 <img src="assets/figs/web-1.4.6+/partners/02-IM%20config%20for%20each%20partner.png" alt="Per-partner IM channel configuration" width="900">
@@ -539,13 +687,13 @@ For faster setup, the Partner channel page can create a Feishu/Lark app or WeCom
 <img src="assets/figs/web-1.4.6+/myagents/00-overview.png" alt="DeepTutor My Agents workspace" width="900">
 </div>
 
-My Agents turns other agents into context for DeepTutor, and does two distinct things. **Connect a live agent** — a Claude Code, Codex, Gemini, Antigravity, Kimi, opencode, or MiMo Code CLI on your machine, or one of your Partners — and consult it from inside a chat turn: DeepTutor actually *runs* the other agent and streams its work into the Activity panel via the `consult_subagent` tool. Select it with the Agent chip (or type `@`), and set how many rounds the consult may take.
+My Agents turns other agents into context for DeepTutor, and does two distinct things. **Connect a live agent** — Claude Code, Codex, Antigravity, Kimi, opencode, MiMo Code, Hermes Agent, OpenClaw, or DeepSeek Harness on your machine, or one of your Partners — and consult it from inside a chat turn: DeepTutor actually *runs* the other agent and streams its work into the Activity panel via the `consult_subagent` tool. Select it and its round limit with the Agent chip, or filter the same connected-agent list with `@`; the choice stays attached to the session.
 
 <div align="center">
 <img src="assets/figs/web-1.4.6+/home/08-subagent%20demo%20with%20claude%20code.png" alt="Consulting a Claude Code subagent live" width="900">
 </div>
 
-**Import past conversations** — bring in your existing Claude Code and Codex history as named, searchable, resumable agents. Pick which days to import; refreshing re-syncs them. Reference an imported conversation from any chat turn via `+` → My Agents, and DeepTutor reads it as a third-party transcript — it stays *their* conversation, not DeepTutor's own voice.
+**Import past conversations** — bring in your existing Claude Code and Codex history as named, searchable, resumable agents. Choose Claude history by project / working directory and Codex history by calendar date; refresh re-syncs that scope and pulls in new conversations. Reference one from a Chat turn via `+` → My Agents, and DeepTutor reads it as a third-party transcript — it stays *their* conversation, not DeepTutor's own voice.
 
 </details>
 
@@ -556,13 +704,13 @@ My Agents turns other agents into context for DeepTutor, and does two distinct t
 <img src="assets/figs/web-1.4.6+/co-writer/00-overview.png" alt="DeepTutor Co-Writer workspace" width="900">
 </div>
 
-Co-Writer is a split-view Markdown workspace for reports, tutorials, notes, and long-form learning artifacts. Documents autosave and render a live preview (KaTeX math, diagram fences), and can be saved back into notebooks when a draft becomes reusable context.
+Co-Writer is a split-view Markdown workspace for reports, tutorials, notes, and long-form learning artifacts. Documents autosave and render a live preview (KaTeX math, diagram fences), and can be saved back into notebooks when a draft becomes reusable context. Import a `.docx` to start a new draft, and export the current editor as Markdown or Word.
 
 <div align="center">
 <img src="assets/figs/web-1.4.6+/co-writer/01-edit%20panel.png" alt="Co-Writer editor with live preview" width="900">
 </div>
 
-Its defining idea is **surgical editing**: select a span and ask DeepTutor to rewrite, expand, or shorten it. The edit agent can ground the change in a knowledge base or web evidence, keeps a trace of its tool calls, and shows every change as an accept/reject diff — so nothing lands until you approve it.
+Its defining idea is **surgical editing**: select a span and ask DeepTutor to rewrite, expand, or shorten it. The edit agent can ground the change in a knowledge base or web evidence and keeps a trace of its tool calls. If the draft has not changed while it works, the result replaces the selected text directly and remains reversible with **Undo**.
 
 </details>
 
@@ -594,13 +742,17 @@ Each chapter compiles into editable typed blocks — text, callouts, quizzes, fl
 <img src="assets/figs/web-1.4.6+/knowledge/00-overview.png" alt="DeepTutor Knowledge Center" width="900">
 </div>
 
-Knowledge bases are the document collections behind RAG — they ground Chat turns, Co-Writer edits, Book generation, and Partner conversations. What's distinctive is a **choice of retrieval engines**: **LlamaIndex** (the default, local vector + BM25), **PageIndex** (reasoning retrieval with page-level citations, hosted or self-hosted OSS), **GraphRAG** and **LightRAG** (knowledge-graph retrieval), **LightRAG Server** (retrieval offloaded to an external LightRAG instance you connect over HTTP), **Tencent IMA** (a library you curate in IMA — searched, browsed, and written back to over its OpenAPI), **MarginNote 4** (your MN4 study data — documents, excerpts, mind-map cards and the links between them — pushed in by the app's Add-on and navigated with dedicated tools), or a linked **Obsidian** vault the tutor reads and writes in place. Each KB is bound to one engine.
+Knowledge bases are the document collections behind RAG — they ground Chat turns, Co-Writer edits, Book generation, and Partner conversations. What's distinctive is a **choice of retrieval engines**: **LlamaIndex** (the default, hybrid vector + BM25 with optional cross-encoder reranking and exact-flat or HNSW FAISS indexes), **PageIndex** (reasoning retrieval with page-level citations, hosted or self-hosted OSS), **GraphRAG** and **LightRAG** (knowledge-graph retrieval), **LightRAG Server** (retrieval offloaded to an external LightRAG instance you connect over HTTP), **WeKnora** (retrieval from a knowledge base in your self-hosted deployment, without a local index or document copy), **Tencent IMA** (a library you curate in IMA — searched, browsed, and written back to over its OpenAPI), **MarginNote 4** (your MN4 study data — documents, excerpts, mind-map cards and the links between them — pushed in by the app's Add-on and navigated with dedicated tools), or a linked **Obsidian** vault the tutor reads and writes in place. Each KB is bound to one engine.
 
 <div align="center">
 <img src="assets/figs/web-1.4.6+/knowledge/01-create%20knowledge%20base.png" alt="Create a knowledge base" width="900">
 </div>
 
-Creating a KB, you either **create new** (upload documents and build a fresh index) or **link existing** (reuse an index built elsewhere, read in place with no re-index). A KB can also track **GitHub repositories** (repo, branch, glob) or **documentation-site URLs** (bounded crawl depth and page count); on-demand sync hash-diffs added, changed, and removed content so followed documentation stays current without re-uploading. Re-indexing writes a new flat `version-N` directory and keeps prior ones, so a working index is never destroyed mid-rebuild. A single document can be removed even from an **error**-state base — dropping a file that failed to parse without a full delete-and-rebuild. Document parsing — Text-only, MinerU, Docling, Tika, markitdown, PyMuPDF4LLM, or LiteParse — is chosen in **Settings → Knowledge Base**, with local model downloads off by default. Docling can also run in **remote** mode against a Docling Serve server (no local install or models needed), configured via **Settings → Document Parsing** (`mode=remote`, a server base URL, and an optional API key) or the `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` environment variables. Tika is remote-only and points at an Apache Tika server (`TIKA_SERVER_URL`). The CLI mirrors the lifecycle with `list/info/create/add/search/set-default/delete`, source add/remove commands, `list-sources`, and `sync`.
+Migrating an existing Obsidian, Hermes, or Markdown library? See [Knowledge migration guide](KNOWLEDGE_MIGRATION.md) for connected-vault and indexed-copy paths.
+
+Creating a KB, you either **create new** (upload documents and build a fresh index) or **link existing** (reuse an index built elsewhere, read in place with no re-index). A KB can also track **GitHub repositories** (repo, branch, glob) or **documentation-site URLs** (bounded crawl depth and page count); on-demand sync hash-diffs added, changed, and removed content so followed documentation stays current without re-uploading. Re-indexing writes a new flat `version-N` directory and keeps prior ones, so a working index is never destroyed mid-rebuild. A single document can be removed even from an **error**-state base — dropping a file that failed to parse without a full delete-and-rebuild. Document parsing — Text-only, MinerU, Docling, Tika, markitdown, PyMuPDF4LLM, or LiteParse — is chosen in **Settings → Knowledge Base**, with local model downloads off by default. Docling can also run in **remote** mode against a Docling Serve server (no local install or models needed), configured via **Settings → Document Parsing** (`mode=remote`, a server base URL, and an optional API key) or the `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` environment variables. Tika is remote-only and points at the Apache Tika server configured on that page. The CLI mirrors the lifecycle with `list/info/create/add/search/set-default/delete`, source add/remove commands, `list-sources`, and `sync`.
+
+The built-in LightRAG engine is installed with `pip install 'deeptutor[rag-lightrag]'`. That extra contains the supported LightRAG SDK but does not install MinerU. Choose MinerU independently in Document Parsing and either configure its cloud mode or install its current local CLI when structured parsing is wanted. MinerU accepts PDF, common raster images, DOCX, PPTX, and XLSX; the legacy `magic-pdf` command remains PDF-only. Text-only and the other parsing engines do not require MinerU.
 
 </details>
 
@@ -611,7 +763,7 @@ Creating a KB, you either **create new** (upload documents and build a fresh ind
 <img src="assets/figs/web-1.4.6+/learning-space/00-overview.png" alt="DeepTutor Learning Space hub" width="900">
 </div>
 
-Learning Space is the library, organization, and personalization layer. **My courses** groups each subject's conversations and keeps tutor threads nested under their parent; Chat History filters by course or thread type and lets you pin, archive, or move sessions. **Conversations & Materials** also holds notebooks — with records that move or copy between notebooks and a Markdown export — and a question bank that keeps your answer, reference answer, and explanation. **Personalization** holds mastery paths, personas, skills (`SKILL.md` playbooks), one-click **MCP Services**, and **CLI Apps** from the [CLI-Anything](https://github.com/HKUDS/CLI-Anything) catalog, each with an on-demand usage guide. Everything here can be reused from Chat, Partners, Co-Writer, and Book.
+Learning Space is the library, organization, and personalization layer. **Conversations & Materials** holds Chat History, notebooks — with records that move or copy between notebooks and a Markdown export — and a question bank that keeps your answer, reference answer, and explanation. **Personalization** holds personas, skills (`SKILL.md` playbooks), one-click **MCP Services**, and **CLI Apps** from the [CLI-Anything](https://github.com/HKUDS/CLI-Anything) catalog, each with an on-demand usage guide. The separate **My Courses** workspace groups subject conversations and tutor threads; each asset is offered only in the workflows that support it.
 
 <div align="center">
 <img src="assets/figs/web-1.4.6+/learning-space/07-%20download%20skills%20from%20eduhub.png" alt="Import skills from EduHub" width="900">
@@ -628,13 +780,13 @@ You don't have to write every skill yourself — **Import from EduHub** browses 
 <img src="assets/figs/web-1.4.6+/memory/00-overview.png" alt="DeepTutor memory overview" width="900">
 </div>
 
-Memory is a file-backed, three-layer system you can read, curate, and audit — deliberately *not* a hidden vector store. **L1** is the workspace mirror plus an append-only event trace (`trace/<surface>/<date>.jsonl`); **L2** is per-surface curated facts (`L2/<surface>.md`); **L3** is cross-surface synthesis (`L3/<profile|recent|scope|preferences>.md`). Because L2 cites L1 and L3 cites L2, nothing in your profile is unaccountable.
+Memory is a file-backed, three-layer system you can read, curate, and audit — deliberately *not* a hidden vector store. **L1** is the workspace mirror plus an append-only event trace (`trace/<surface>/<date>.jsonl`); **L2** is per-surface curated facts (`L2/<surface>.md`) with references to L1 entities; **L3** is cross-surface synthesis (`L3/<profile|recent|scope|preferences>.md`) that records its contributing L2 surfaces.
 
 <div align="center">
 <img src="assets/figs/web-1.4.6+/memory/01-3%20layer%20memory%20graph.png" alt="DeepTutor memory graph" width="900">
 </div>
 
-The Memory Graph shows the whole pyramid — L3 synthesis at the centre, L2 in the middle ring, L1 traces on the outside — so you can trace any synthesized claim back to the exact raw event behind it. Memory is tracked across `chat`, `notebook`, `quiz`, `kb`, `book`, partner, and `cowriter` surfaces; the consolidator's Update / Audit / Dedup budgets are tuned in **Settings → Memory**.
+The Memory Graph shows the whole pyramid — L3 synthesis at the centre, L2 in the middle ring, L1 traces on the outside — with exact L2 → L1 evidence edges and L3 → contributing-surface links. Memory is tracked across `chat`, `notebook`, `quiz`, `kb`, `book`, partner, and `cowriter` surfaces; the consolidator's Update / Audit / Dedup budgets are tuned in **Settings → Memory**.
 
 </details>
 
@@ -645,7 +797,9 @@ The Memory Graph shows the whole pyramid — L3 synthesis at the centre, L2 in t
 <img src="assets/figs/web-1.4.6+/settings/00-setting%20overview.png" alt="DeepTutor settings hub" width="900">
 </div>
 
-Settings is the operational control plane, with a live status strip (backend health and resident memory across the process tree) and one card per area: **Appearance** (theme, interface and model output language, code-block styling), **Network** (API base, ports, CORS), **Models** (LLM, Embedding, Search, Text-to-Speech, Speech-to-Text, Image Generation, Video Generation), **Knowledge Base** (document parsing engine), **Chat** (tools, per-capability parameters, attachment caps), **Partners & Agents** (the subagents you can consult from a turn), and **Memory** (the consolidator's budgets).
+Settings is the operational control plane, opening on a live status strip (backend health and resident memory), the interface and model output language, and a **Readiness** matrix grading every capability as blocker, warning, or suggestion — then a persistent, searchable navigator that reaches any page in one click: **Appearance** (theme, code-block styling), **Network** (API base, ports, CORS), **Workspace** (the agent-readable folder and its shared `outputs/`), **Models** (Connections, LLM, Task models, Embedding, Search, Text-to-Speech, Speech-to-Text, Image Generation, Video Generation), **Knowledge Base** (document parsing engine), **Chat** (Video Learning, searchable tools, per-capability parameters, starting points, attachment caps), **Partners & Agents** (nine local harnesses), **Learner profile** (age, grade, curriculum, language, reading level, explanation style), **Guardian** (authorized learners, materials, reports, credential resets), **Memory** (the consolidator's budgets), and **About** (version checks and safe updates). A **connection** holds one vendor credential and mirrors it into every service that vendor can serve, so a key is entered once rather than pasted into five pages; **task models** pin a small, fast model for the work nobody asked for — naming a conversation, writing the composer's starting points — and resolve to the active default when left empty.
+
+**Video Learning** under Settings → Chat defaults to the official privacy-enhanced YouTube IFrame Player. To keep playback local, set the administrator-managed Invidious API origin (for example `http://127.0.0.1:3000`), test it, select Invidious, and save. New or reopened videos pick up the provider immediately with the same material ID and progress. Invidious media is streamed through DeepTutor's byte-range proxy; upstream URLs are neither exposed to the browser nor stored on disk. If the instance fails, DeepTutor stays offline from YouTube until the learner explicitly chooses the native YouTube fallback. Public-caption tutoring is optional: install `.[video-learning]`; playback continues without it, while transcript-based **Explain here** is disabled with a reason.
 
 <div align="center">
 <img src="assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="DeepTutor appearance settings and themes" width="900">
@@ -691,7 +845,7 @@ data/
 └── system/                  # auth · grants · audit · user-secrets/<owner> (OAuth tokens)
 ```
 
-The **first registered user becomes admin** and owns model catalogs, provider credentials, shared knowledge bases, skills, canonical shared books, and per-user grants. Everyone else gets an isolated workspace and a redacted Settings page — assigned models, KBs, and skills show up as scoped, read-only options, never as raw API keys. Book creation and default/per-book read or collaborative-edit access are assigned separately under **Book access**; shared deletion remains admin-only. If `auth.json` already carries a `username` + `password_hash`, that account *is* the admin: `/register` stays closed and accounts created from `/admin/users` are always `role=user` until you promote them.
+The **first registered user becomes admin** and owns model catalogs, provider credentials, shared knowledge bases, skills, canonical shared books, and per-user grants. Admin-created local users choose Standard, Learner, or Custom. Learner locks learning capabilities and material policy, adds an adaptive profile, and supports revocable device credentials with expiry and daily limits; authorized guardians can view reports, approve materials, and reset credentials. Other users get isolated workspaces plus scoped models, KBs, skills, partners, and shared-book access without receiving raw API keys. If `auth.json` already carries a `username` + `password_hash`, that account *is* the admin: `/register` stays closed and accounts created from `/admin/users` are always `role=user` until you promote them.
 
 **Enable it:** turn auth on in `data/user/settings/auth.json`, restart `deeptutor start`, register the first admin at `/register`, then add users from `/admin/users` and assign models, KBs, skills, partners, tool/MCP/CLI-app policy, and code-execution access through grants; configure shared books under each user's **Book access** panel.
 
@@ -706,7 +860,7 @@ One `deeptutor` binary, two ways in: an interactive **REPL** for people who live
 <details>
 <summary><b>Drive it yourself</b></summary>
 
-`deeptutor chat` opens an interactive REPL; `deeptutor run <capability> "<message>"` fires a single turn and exits. Both speak the same `--capability`, `--tool`, `--kb`, and `--config` flags.
+`deeptutor chat` opens an interactive REPL and selects a mode with `--capability`; `deeptutor run <capability> "<message>"` takes that capability as its first positional argument and exits after one turn. Both accept `--tool`, `--kb`, and `--config`.
 
 ```bash
 deeptutor chat                                              # interactive REPL
@@ -736,7 +890,7 @@ SID=$(deeptutor run deep_research "Survey 2026 papers on RAG" \
 deeptutor run deep_question "Quiz me on that survey" --session "$SID" --format json
 ```
 
-The repo ships a root [`SKILL.md`](SKILL.md) — a ~150-line handover doc that teaches any tool-using LLM the whole surface in one read. Hand it to Claude Code, Codex, or OpenCode (they pick up `SKILL.md` automatically), or wrap `deeptutor run` as a tool in a LangChain / AutoGen loop. Full recipes: [Agent Handoff](https://deeptutor.info/docs/cli/agent-handoff/).
+The repo ships a root [`SKILL.md`](SKILL.md) — a ~200-line handover doc that teaches any tool-using LLM the whole surface in one read. Hand it to Claude Code, Codex, or OpenCode (they pick up `SKILL.md` automatically), or wrap `deeptutor run` as a tool in a LangChain / AutoGen loop. Full recipes: [Agent Handoff](https://deeptutor.info/docs/cli/agent-handoff/).
 
 </details>
 
@@ -745,11 +899,13 @@ The repo ships a root [`SKILL.md`](SKILL.md) — a ~150-line handover doc that t
 
 | Command | Description |
 |:---|:---|
-| `deeptutor init` | Create or update `data/user/settings` for the current workspace |
-| `deeptutor doctor [--online]` | Check whether the workspace is ready to start a session; `--online` also probes the configured model provider, `--format json` prints the report |
-| `deeptutor start [--home PATH] [--dev]` | Launch backend + frontend together; `--dev` enables frontend HMR |
+| `deeptutor init` | Create or update `data/user/settings` in the current runtime home |
+| `deeptutor doctor [--online]` | Check whether the runtime is ready to start a session; `--online` also probes the configured model provider, `--format json` prints the report |
+| `deeptutor start [--home PATH] [--dev] [--detach] [--no-browser]` | Launch backend + frontend together; optionally detach or suppress browser opening |
+| `deeptutor stop [--home PATH]` | Stop a launcher started with `--detach` |
 | `deeptutor serve [--port PORT]` | Start only the FastAPI backend |
-| `deeptutor run <capability> <message>` | Run a single capability turn (`chat`, `ask_questions`, `deep_solve`, `deep_question`, `deep_research`, `visualize`, `math_animator`, `mastery_path`, `immersive_reading`); add `--format json` for NDJSON output |
+| `deeptutor workspace show/set/reset` | Inspect, select, or restore the per-user Content Workspace |
+| `deeptutor run <capability> <message>` | Run a single capability turn (`chat`, `ask_questions`, `deep_solve`, `deep_question`, `deep_research`, `visualize`, `math_animator`, `mastery_path`, `immersive_reading`, `course_study`, `immersive_watching`); add `--format json` for NDJSON output |
 | `deeptutor chat` | Interactive REPL with capability, tool, KB, notebook, and history controls |
 | `deeptutor partner list/create/start/stop` | Manage IM-connected partners |
 | `deeptutor kb list/info/create/add/search/set-default/delete/list-sources/sync` | Manage knowledge bases and synchronize registered GitHub/web sources (with source add/remove commands) |
@@ -813,11 +969,11 @@ EduHub is also a standalone, ClawHub-compatible registry, so agents that aren't 
 Whatever the source, every import passes the **same safety gate** before anything touches your workspace:
 
 - the registry's **security verdict** is checked first — flagged packages are refused unless you pass `--allow-unverified`;
-- archives are extracted defensively (zip-slip / zip-bomb guards) behind a text/script **suffix whitelist**, so binaries never land in the workspace;
+- archives are extracted defensively with path-traversal, entry-count, size, compression-ratio, suffix, and symlink checks; executable bits are stripped, while extensionless files remain allowed;
 - frontmatter is normalized to DeepTutor's schema and `always:` is **stripped**, so a downloaded skill can never force itself into every system prompt;
 - provenance — hub, version, verdict, and install time — is written to `.hub-lock.json` for audits and updates.
 
-In multi-user deployments, imports land in the caller's own skill library; admin-assigned skills remain grant-scoped and read-only.
+In multi-user deployments, browser imports land in the authenticated caller's skill layer, while CLI and admin-console installs target the owner/admin workspace; admin skills stay hidden and read-only for ordinary users until granted.
 
 </details>
 
@@ -829,9 +985,13 @@ Because DeepTutor speaks the open Agent-Skills format, **[ClawHub](https://clawh
 ```bash
 deeptutor skill search "git release notes" --hub clawhub
 deeptutor skill install clawhub:git-release-notes@1.0.1
+deeptutor skill install clawhub:udiedrichsen/stock-analysis
 ```
 
-Add more registries in `settings/skill_hubs.json`: a `type: "clawhub"` entry points at any compatible HTTP API (EduHub and ClawHub both speak it), `type: "command"` wraps whatever fetch CLI a registry ships, and `"default"` chooses the hub used for bare slugs. All of them feed the same import gate.
+When several publishers share the same slug, search shows each publisher and a
+fully scoped install ref (`clawhub:<ownerHandle>/<slug>`).
+
+Add more registries in `data/user/settings/skill_hubs.json`: a `type: "clawhub"` entry points at any compatible HTTP API (EduHub and ClawHub both speak it), `type: "command"` wraps whatever fetch CLI a registry ships, and `"default"` chooses the hub used for bare slugs. All of them feed the same import gate.
 
 </details>
 
@@ -852,6 +1012,16 @@ Add more registries in `settings/skill_hubs.json`: a `type: "clawhub"` entry poi
 </p>
 
 ## 🌐 Community
+
+### 🔗 Maintainers
+
+<table>
+  <tr>
+    <td align="center"><a href="https://github.com/pancacake"><img src="https://avatars.githubusercontent.com/u/150592536?v=4&s=80" width="80" height="80" alt="Bingxi Zhao"><br><strong>Bingxi Zhao</strong></a></td>
+    <td align="center"><a href="https://github.com/TyrionH-is-coding"><img src="https://avatars.githubusercontent.com/u/275607548?v=4&s=80" width="80" height="80" alt="Xingyu Hou"><br><strong>Xingyu Hou</strong></a></td>
+    <td align="center"><a href="https://github.com/zzhtx258"><img src="https://avatars.githubusercontent.com/u/175302980?v=4&s=80" width="80" height="80" alt="Jiahao Zhang"><br><strong>Jiahao Zhang</strong></a></td>
+  </tr>
+</table>
 
 ### 📮 Contact
 

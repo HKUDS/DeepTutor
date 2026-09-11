@@ -30,7 +30,7 @@ import {
   extractMessageSegments,
   leadingTraceEvents,
 } from "@/components/chat/home/AskUserOptions";
-import { StreamingStatus, TraceFlow } from "@/components/chat/home/TracePanels";
+import { StreamingStatus, TraceFlow } from "@/features/chat/trace";
 import { useSmoothStreamText } from "@/hooks/useSmoothStreamText";
 import {
   type QuizFollowupTabContext,
@@ -326,17 +326,20 @@ function AssistantThreadMessage({
   message: {
     role: "user" | "assistant" | "system";
     content: string;
-    events?: import("@/lib/unified-ws").StreamEvent[];
+    events?: import("@/features/chat/model/protocol").StreamEvent[];
   };
   isStreaming: boolean;
   onSubmitUserReply: (reply: {
     text?: string;
     answers?: Array<{ questionId: string; text: string }>;
-  }) => void;
+  }) => void | boolean | Promise<void | boolean>;
 }) {
   const segments = useMemo(
-    () => extractMessageSegments(message.events),
-    [message.events],
+    () =>
+      extractMessageSegments(message.events, message.content, {
+        streaming: isStreaming,
+      }),
+    [message.events, message.content, isStreaming],
   );
   const hasInlineAskUser = segments.some((s) => s.kind === "ask_user");
   // Same split as the main chat surface: rounds that ran after a card
@@ -371,13 +374,15 @@ function AssistantThreadMessage({
               events={seg.events}
               isStreaming={isStreaming}
             />
-          ) : (
+          ) : seg.kind === "ask_user" ? (
             <AskUserOptions
               key={seg.key}
               data={seg.data}
               onSubmit={onSubmitUserReply}
             />
-          ),
+          ) : // A mastery question cannot be posed on this surface: the quiz
+          // follow-up chat does not mount the course tools.
+          null,
         )
       ) : smoothedContent ? (
         <div className="text-[13px] leading-[1.6] text-[var(--foreground)]">

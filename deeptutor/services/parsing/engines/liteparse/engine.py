@@ -25,11 +25,11 @@ from ...signature import ParserSignature
 from ...types import ParserError
 from .._versions import package_version
 from .config import LiteParseConfig, resolve_liteparse_config
-
-# Document and image types LiteParse decodes natively. Office formats and bare
-# images are converted internally before parsing.
-_SUPPORTED = frozenset(
-    {".pdf", ".docx", ".pptx", ".xlsx", ".png", ".jpg", ".jpeg", ".gif", ".webp"}
+from .formats import (
+    LITEPARSE_2_14_2_FORMATS,
+    MIN_LITEPARSE_VERSION,
+    installed_liteparse_version,
+    liteparse_version_is_current,
 )
 
 # LiteParse references extracted images by bare file name — ``![](img_p1_1.png)``
@@ -51,7 +51,7 @@ class LiteParseParser:
         return resolve_liteparse_config()
 
     def supported_formats(self) -> frozenset[str]:
-        return _SUPPORTED
+        return LITEPARSE_2_14_2_FORMATS
 
     def signature(self, config: LiteParseConfig) -> ParserSignature:
         return ParserSignature.build(
@@ -71,6 +71,17 @@ class LiteParseParser:
                 ready=False,
                 reason="not_configured",
                 message="liteparse isn't installed (pip install deeptutor[parse-liteparse]).",
+            )
+        version = installed_liteparse_version()
+        if not liteparse_version_is_current(version):
+            return ReadinessReport(
+                ready=False,
+                reason="update_required",
+                message=(
+                    f"Installed LiteParse {version or 'unknown'} is too old. DeepTutor needs "
+                    f"LiteParse >= {MIN_LITEPARSE_VERSION} for the current multi-format input "
+                    "set. Update it under Settings → Document Parsing."
+                ),
             )
         return ReadinessReport(ready=True)
 

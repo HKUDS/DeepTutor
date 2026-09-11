@@ -214,7 +214,7 @@ def bootstrap_client(env_admin, monkeypatch):
     monkeypatch.setattr(auth_router, "decode_token", lambda token: tokens.get(token))
 
     app = FastAPI()
-    app.include_router(auth_router.router, prefix="/api/v1/auth")
+    app.include_router(auth_router.router, prefix="/api/auth")
     return TestClient(app), {"Authorization": "Bearer operator-token"}
 
 
@@ -222,7 +222,7 @@ def test_admin_create_user_returns_role_user(bootstrap_client):
     client, headers = bootstrap_client
 
     response = client.post(
-        "/api/v1/auth/users",
+        "/api/auth/users",
         json={"username": "student1", "password": "student-pass-1234"},
         headers=headers,
     )
@@ -237,11 +237,11 @@ def test_bootstrap_admin_remains_listed_after_creating_an_account(bootstrap_clie
     client, headers = bootstrap_client
 
     client.post(
-        "/api/v1/auth/users",
+        "/api/auth/users",
         json={"username": "student1", "password": "student-pass-1234"},
         headers=headers,
     )
-    listed = client.get("/api/v1/auth/users", headers=headers).json()
+    listed = client.get("/api/auth/users", headers=headers).json()
 
     by_name = {item["username"]: item for item in listed}
     assert by_name[env_admin]["role"] == "admin"
@@ -257,7 +257,7 @@ def test_bootstrap_admin_username_cannot_be_taken_by_a_new_account(bootstrap_cli
     client, headers = bootstrap_client
 
     response = client.post(
-        "/api/v1/auth/users",
+        "/api/auth/users",
         json={"username": env_admin, "password": "attacker-pass-1234"},
         headers=headers,
     )

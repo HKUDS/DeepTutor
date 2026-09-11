@@ -6,12 +6,39 @@ from pathlib import Path
 import pytest
 
 from deeptutor.runtime import launcher
+from deeptutor.runtime import process as runtime_process
 from deeptutor.runtime.home import validate_runtime_home
+from deeptutor.services.app_update import UpdateJobStore, update_store_root
 
 
 class _FakeTty:
     def isatty(self) -> bool:
         return True
+
+
+class _AcceptedConnection:
+    def __enter__(self) -> "_AcceptedConnection":
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        return None
+
+
+def test_port_probe_detects_ipv6_only_loopback_listener(monkeypatch) -> None:
+    """Unix launchers may bind only to ::1 (issue #1096)."""
+    attempts: list[tuple[str, int]] = []
+
+    def fake_create_connection(address, timeout):
+        host, port = address
+        attempts.append((host, port))
+        if host == "::1":
+            return _AcceptedConnection()
+        raise ConnectionRefusedError
+
+    monkeypatch.setattr(launcher.socket, "create_connection", fake_create_connection)
+
+    assert launcher._port_accepts_connection(3782)
+    assert attempts == [("127.0.0.1", 3782), ("::1", 3782)]
 
 
 def test_packaged_web_cache_replaces_next_public_placeholders(tmp_path: Path) -> None:
@@ -59,6 +86,40 @@ def test_start_does_not_create_nested_data_tree(monkeypatch, tmp_path: Path) -> 
         launcher.start(bad_home)
 
     assert not bad_home.exists()
+
+
+def test_launcher_hands_pending_update_to_worker(tmp_path: Path) -> None:
+    store = UpdateJobStore(update_store_root(tmp_path))
+    pending = store.create(current_version="1.6.1", target_version="1.7.0")
+    launched: list[Path] = []
+
+    handed_off = launcher._handoff_pending_update(
+        tmp_path,
+        restart_argv=["start", "--home", str(tmp_path.resolve())],
+        worker_launcher=launched.append,
+    )
+
+    assert handed_off is True
+    assert launched == [store.root]
+    job = store.load()
+    assert job.id == pending.id
+    assert job.status == "handoff"
+    assert job.restart_home == str(tmp_path.resolve())
+
+
+def test_launcher_completes_update_only_after_restart(tmp_path: Path) -> None:
+    store = UpdateJobStore(update_store_root(tmp_path))
+    pending = store.create(current_version="1.6.1", target_version="1.7.0")
+    store.prepare_handoff(
+        pending.id,
+        home=tmp_path,
+        restart_argv=["start", "--home", str(tmp_path.resolve())],
+    )
+    store.mark_running(pending.id)
+    store.mark_restarting(pending.id)
+
+    assert launcher._complete_restarted_update(tmp_path) is True
+    assert store.load().status == "succeeded"
 
 
 def test_packaged_web_cache_refreshes_when_public_settings_change(tmp_path: Path) -> None:
@@ -445,7 +506,7 @@ def test_start_uses_ipv4_loopback_for_frontend_proxy(
         interface_json_path=settings_dir / "interface.json",
         system_json_path=settings_dir / "system.json",
     )
-    captured_env: dict[str, str] = {}
+    captured_envs: dict[str, dict[str, str]] = {}
 
     monkeypatch.setattr(launcher, "_relax_console_encoding", lambda: None)
     monkeypatch.setattr(launcher, "_reset_runtime_singletons", lambda: None)
@@ -462,10 +523,13 @@ def test_start_uses_ipv4_loopback_for_frontend_proxy(
     monkeypatch.setattr(launcher, "resolve_language", lambda: "en")
     monkeypatch.setattr(launcher, "print_banner", lambda **_kwargs: None)
     monkeypatch.setattr(launcher, "_log", lambda _message: None)
+    monkeypatch.setenv("DEEPTUTOR_NEXT_DIST_DIR", ".next-inherited")
+    monkeypatch.setenv(launcher.DETACHED_WORKER_ENV, "1")
+    monkeypatch.setenv(launcher.DETACHED_TOKEN_ENV, "secret-token")
     monkeypatch.setattr(
         launcher,
         "_resolve_frontend",
-        lambda *_args, **_kwargs: launcher.FrontendRuntime("source", ["npm"], tmp_path),
+        lambda *_args, **_kwargs: launcher.FrontendRuntime("source-production", ["node"], tmp_path),
     )
     monkeypatch.setattr(launcher, "_detect_existing_source_frontend", lambda _runtime: None)
     monkeypatch.setattr(
@@ -473,17 +537,17 @@ def test_start_uses_ipv4_loopback_for_frontend_proxy(
         "_resolve_port_conflicts",
         lambda **_kwargs: (resolved_backend_port, 3782),
     )
-    monkeypatch.setattr(launcher, "_install_signal_handlers", lambda _callback: None)
+    monkeypatch.setattr(launcher, "_install_signal_handlers", lambda _callback, **_kwargs: None)
     monkeypatch.setattr(launcher.atexit, "register", lambda _callback: None)
     monkeypatch.setattr(launcher, "_wait_for_http", lambda **_kwargs: None)
     monkeypatch.setattr(launcher, "_terminate", lambda _process: None)
 
     def _capture_spawn(_command, *, cwd, env, name):
         assert cwd == tmp_path
+        captured_envs[name] = dict(env)
         if name == "backend":
             return launcher.ManagedProcess("backend", object(), None)
         assert name == "frontend"
-        captured_env.update(env)
         raise RuntimeError("captured launch environment")
 
     monkeypatch.setattr(launcher, "_spawn", _capture_spawn)
@@ -491,4 +555,148 @@ def test_start_uses_ipv4_loopback_for_frontend_proxy(
     with pytest.raises(RuntimeError, match="captured launch environment"):
         launcher.start(tmp_path)
 
-    assert captured_env["DEEPTUTOR_API_BASE_URL"] == (f"http://127.0.0.1:{resolved_backend_port}")
+    assert captured_envs["frontend"]["DEEPTUTOR_API_BASE_URL"] == (
+        f"http://127.0.0.1:{resolved_backend_port}"
+    )
+    assert "DEEPTUTOR_NEXT_DIST_DIR" not in captured_envs["backend"]
+    assert "DEEPTUTOR_NEXT_DIST_DIR" not in captured_envs["frontend"]
+    assert launcher.DETACHED_WORKER_ENV not in captured_envs["backend"]
+    assert launcher.DETACHED_TOKEN_ENV not in captured_envs["backend"]
+
+
+def test_foreground_signal_handlers_keep_windows_ctrl_c(monkeypatch) -> None:
+    recorded: list[tuple[object, object]] = []
+    monkeypatch.setattr(launcher.signal, "SIGINT", 2, raising=False)
+    monkeypatch.setattr(launcher.signal, "SIGTERM", 15, raising=False)
+    monkeypatch.setattr(launcher.signal, "SIGHUP", None, raising=False)
+    monkeypatch.setattr(launcher.signal, "SIGBREAK", 21, raising=False)
+    monkeypatch.setattr(launcher.signal, "SIG_IGN", object())
+    monkeypatch.setattr(
+        launcher.signal,
+        "signal",
+        lambda sig, handler: recorded.append((sig, handler)),
+    )
+
+    launcher._install_signal_handlers(lambda _name: None)
+
+    assert any(
+        sig == launcher.signal.SIGINT and handler is not launcher.signal.SIG_IGN
+        for sig, handler in recorded
+    )
+
+
+def test_detached_windows_signal_handlers_ignore_spurious_sigint(monkeypatch) -> None:
+    recorded: list[tuple[object, object]] = []
+    monkeypatch.setattr(launcher.signal, "SIGINT", 2, raising=False)
+    monkeypatch.setattr(launcher.signal, "SIGTERM", 15, raising=False)
+    monkeypatch.setattr(launcher.signal, "SIGHUP", None, raising=False)
+    monkeypatch.setattr(launcher.signal, "SIGBREAK", 21, raising=False)
+    monkeypatch.setattr(launcher.signal, "SIG_IGN", object())
+    monkeypatch.setattr(
+        launcher.signal,
+        "signal",
+        lambda sig, handler: recorded.append((sig, handler)),
+    )
+
+    launcher._install_signal_handlers(lambda _name: None, ignore_sigint=True)
+
+    assert (launcher.signal.SIGINT, launcher.signal.SIG_IGN) in recorded
+    assert not any(
+        sig == launcher.signal.SIGINT and handler is not launcher.signal.SIG_IGN
+        for sig, handler in recorded
+    )
+
+
+def test_windows_pid_probe_uses_native_query_not_os_kill(monkeypatch) -> None:
+    probed: list[int] = []
+    monkeypatch.setattr(runtime_process.os, "name", "nt")
+    monkeypatch.setattr(
+        runtime_process,
+        "_is_windows_process_alive",
+        lambda pid: probed.append(pid) or True,
+    )
+    monkeypatch.setattr(
+        runtime_process.os,
+        "kill",
+        lambda *_args: pytest.fail("os.kill(pid, 0) is destructive on Windows"),
+    )
+
+    assert runtime_process.is_process_alive(4242) is True
+    assert probed == [4242]
+
+
+def test_open_frontend_in_browser_is_best_effort(monkeypatch) -> None:
+    opened: list[str] = []
+    monkeypatch.setattr("webbrowser.open", lambda url: opened.append(url) or True)
+
+    launcher._open_frontend_in_browser("http://localhost:3782")
+    assert opened == ["http://localhost:3782"]
+
+    def fail_to_open(_url: str) -> bool:
+        raise RuntimeError("no browser")
+
+    monkeypatch.setattr("webbrowser.open", fail_to_open)
+    launcher._open_frontend_in_browser("http://localhost:3782")
+
+
+def test_launch_detached_uses_a_separate_windows_process_group(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class _Process:
+        pid = 4242
+
+    def fake_popen(command, *, stdout, **kwargs):
+        captured["command"] = command
+        captured["kwargs"] = kwargs
+        captured["log_name"] = stdout.name
+        return _Process()
+
+    monkeypatch.setattr(launcher, "_is_pid_alive", lambda _pid: False)
+    monkeypatch.setattr(launcher.sys, "platform", "win32")
+    monkeypatch.setattr(launcher.subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200, raising=False)
+    monkeypatch.setattr(launcher.subprocess, "DETACHED_PROCESS", 0x8, raising=False)
+    monkeypatch.setattr(launcher.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(launcher, "_log", lambda _message: None)
+
+    launcher._launch_detached(tmp_path, dev=True, open_browser=False)
+
+    paths = launcher._detached_launcher_paths(tmp_path)
+    state = launcher._read_detached_state(paths)
+    assert state is not None
+    assert state["pid"] == 4242
+    assert state["status"] == "starting"
+    assert state["token"]
+    assert captured["command"][-2:] == ["--dev", "--no-browser"]
+    kwargs = captured["kwargs"]
+    assert isinstance(kwargs, dict)
+    assert kwargs["creationflags"] == 0x208
+    assert kwargs["env"][launcher.DETACHED_WORKER_ENV] == "1"
+    assert kwargs["env"][launcher.DETACHED_TOKEN_ENV] == state["token"]
+    assert captured["log_name"] == str(paths.log)
+
+
+def test_stop_requests_only_the_registered_detached_launcher(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    paths = launcher._detached_launcher_paths(tmp_path)
+    launcher._write_detached_state(
+        paths,
+        {"version": 1, "token": "launch-token", "pid": 4242, "status": "ready"},
+    )
+    monkeypatch.setattr(launcher, "get_runtime_home", lambda _home=None: tmp_path)
+    monkeypatch.setattr(launcher, "validate_runtime_home", lambda _home: None)
+    monkeypatch.setattr(launcher, "resolve_language", lambda: "en")
+    monkeypatch.setattr(launcher, "_log", lambda _message: None)
+    monkeypatch.setattr(
+        launcher,
+        "_is_pid_alive",
+        lambda _pid: not paths.stop.exists(),
+    )
+
+    assert launcher.stop(tmp_path, timeout=0.5) is True
+    assert not paths.state.exists()
+    assert not paths.stop.exists()

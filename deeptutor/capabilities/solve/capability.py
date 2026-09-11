@@ -6,7 +6,7 @@ the standard agentic chat pipeline. The solve loop capability
 (:class:`deeptutor.capabilities.solve.loop.SolveLoopCapability`) mounts the
 solve tools (``solve_plan`` / ``solve_finish_step`` / ``solve_replan``) plus a
 curated built-in toolset
-(``rag`` / ``code_execution`` / ``geogebra_analysis`` / …) and injects the
+(``rag`` / unified ``exec`` / ``geogebra_analysis`` / …) and injects the
 solver playbook; the in-memory :class:`SolveSession` holds the plan, the
 per-step gate, and the replan budget.
 
@@ -20,14 +20,19 @@ from __future__ import annotations
 
 import logging
 import re
+from typing import cast
 
 from deeptutor.agents.chat.agentic_pipeline import AgenticChatPipeline
 from deeptutor.capabilities.solve.session import DEFAULT_MAX_REPLANS
 from deeptutor.capabilities.solve.tools import SOLVE_TOOL_NAMES
-from deeptutor.core.capability_protocol import BaseCapability, CapabilityManifest
+from deeptutor.core.capability_protocol import (
+    CapabilityManifest,
+    StreamBusProtocol,
+    TurnCapability,
+)
 from deeptutor.core.context import UnifiedContext
-from deeptutor.core.stream_bus import StreamBus
 from deeptutor.runtime.request_contracts import get_capability_request_schema
+from deeptutor.runtime.stream_bus import StreamBus
 from deeptutor.services.config.capabilities_settings import get_solve_params
 
 logger = logging.getLogger(__name__)
@@ -56,17 +61,17 @@ def resolve_solve_session_id(context: UnifiedContext) -> str:
     return _sanitize(raw)
 
 
-class DeepSolveCapability(BaseCapability):
+class DeepSolveCapability(TurnCapability):
     manifest = CapabilityManifest(
         name="deep_solve",
         description="Multi-step problem solving driven by the chat agent loop.",
         stages=["responding"],
-        tools_used=[*SOLVE_TOOL_NAMES, "rag", "code_execution", "geogebra_analysis", "reason"],
+        tools_used=[*SOLVE_TOOL_NAMES, "rag", "exec", "geogebra_analysis", "reason"],
         cli_aliases=["solve"],
         request_schema=get_capability_request_schema("deep_solve"),
     )
 
-    async def run(self, context: UnifiedContext, stream: StreamBus) -> None:
+    async def run(self, context: UnifiedContext, stream: StreamBusProtocol) -> None:
         context.metadata["solve_mode"] = True
         context.metadata["solve_session_id"] = resolve_solve_session_id(context)
         # Read the solve settings and forward them so the page actually drives
@@ -85,7 +90,7 @@ class DeepSolveCapability(BaseCapability):
             temperature=params.get("temperature"),
             max_tokens=params.get("max_tokens"),
         )
-        await pipeline.run(context, stream)
+        await pipeline.run(context, cast(StreamBus, stream))
 
 
 __all__ = ["DeepSolveCapability", "resolve_solve_session_id"]

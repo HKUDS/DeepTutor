@@ -6,7 +6,7 @@ import { Loader2 } from "lucide-react";
 
 /**
  * Image preview. Uses a native <img> instead of next/image because:
- *   1. The /api/attachments URL is dynamic per-session and not in the
+ *   1. The /files/attachments URL is dynamic per-session and not in the
  *      next.config remotePatterns whitelist.
  *   2. We want object-contain centering against a checkered backdrop.
  *

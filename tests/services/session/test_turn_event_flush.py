@@ -1,18 +1,15 @@
-"""Post-stream turn-event flush: batching, workspace mirror, PocketBase upload.
+"""Post-stream turn-event flush: batching and PocketBase upload.
 
 The turn runtime buffers every live event in memory and persists the whole
 batch, including DONE and any post-turn ``session_meta`` title update, once
 the turn has fully finished. Everything on that path must stay O(1) round
-trips w.r.t. the event count — per-event commits/opens/POSTs sat between the
-last streamed token and the client's spinner clearing (the "stuck on
-generating" report).
+trips with respect to the event count.
 """
 
 from __future__ import annotations
 
 import asyncio
 from contextlib import contextmanager
-import json
 from pathlib import Path
 import re
 
@@ -96,15 +93,6 @@ def as_user(uid: str):
         reset_current_user(token)
 
 
-async def _drain_uploads(store: PocketBaseSessionStore) -> None:
-    """Wait for the store's background turn-event uploads to finish."""
-    tasks = list(store._event_upload_tasks)
-    if tasks:
-        await asyncio.gather(*tasks, return_exceptions=True)
-        # Let the done-callbacks (set discard) run before returning.
-        await asyncio.sleep(0)
-
-
 def _buffered(session_id: str, turn_id: str, count: int) -> list[dict]:
     return [
         {
@@ -123,28 +111,11 @@ def _buffered(session_id: str, turn_id: str, count: int) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# SQLite path: batch DB append + single-write workspace mirror
+# SQLite path: one canonical database copy
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture
-def stub_workspace(monkeypatch, tmp_path):
-    """Point the runtime's workspace mirror at an isolated tmp tree."""
-
-    class _StubPathService:
-        def get_task_workspace(self, feature: str, task_id: str) -> Path:
-            return tmp_path / "workspace" / feature / task_id
-
-    monkeypatch.setattr(
-        "deeptutor.services.session.turn_runtime.get_path_service",
-        lambda: _StubPathService(),
-    )
-    return tmp_path / "workspace"
-
-
-async def test_flush_mirrors_whole_batch_in_one_file_write(
-    tmp_path, stub_workspace, monkeypatch
-) -> None:
+async def test_flush_persists_the_whole_batch_once(tmp_path) -> None:
     store = SQLiteSessionStore(tmp_path / "chat_history.db")
     runtime = TurnRuntimeManager(store)
     session = await store.ensure_session(None)
@@ -157,30 +128,13 @@ async def test_flush_mirrors_whole_batch_in_one_file_write(
     )
     execution.events = _buffered(session["id"], turn["id"], 5)
 
-    open_calls = 0
-    real_open = open
+    await runtime._flush_buffered_events(execution)
 
-    def counting_open(*args, **kwargs):
-        nonlocal open_calls
-        open_calls += 1
-        return real_open(*args, **kwargs)
-
-    # Scope the ``open`` patch to the flush itself so the assertions below
-    # (and fixture teardown) run against the real builtin.
-    with pytest.MonkeyPatch.context() as flush_patch:
-        flush_patch.setattr("builtins.open", counting_open)
-        await runtime._flush_buffered_events(execution)
-
-    # All five events reach the DB and the jsonl mirror, via ONE file open.
     persisted = await store.get_turn_events(turn["id"])
     assert [event["content"] for event in persisted] == [f"chunk-{i}" for i in range(5)]
-    mirror = stub_workspace / "chat" / turn["id"] / "events.jsonl"
-    lines = [json.loads(line) for line in mirror.read_text().splitlines()]
-    assert [line["content"] for line in lines] == [f"chunk-{i}" for i in range(5)]
-    assert open_calls == 1
 
 
-async def test_flush_is_idempotent_per_execution(tmp_path, stub_workspace) -> None:
+async def test_flush_is_idempotent_per_execution(tmp_path) -> None:
     store = SQLiteSessionStore(tmp_path / "chat_history.db")
     runtime = TurnRuntimeManager(store)
     session = await store.ensure_session(None)
@@ -198,13 +152,9 @@ async def test_flush_is_idempotent_per_execution(tmp_path, stub_workspace) -> No
 
     persisted = await store.get_turn_events(turn["id"])
     assert len(persisted) == 3
-    mirror = stub_workspace / "chat" / turn["id"] / "events.jsonl"
-    assert len(mirror.read_text().splitlines()) == 3
 
 
-async def test_concurrent_flush_callers_share_one_persistence_attempt(
-    tmp_path, stub_workspace
-) -> None:
+async def test_concurrent_flush_callers_share_one_persistence_attempt(tmp_path) -> None:
     store = SQLiteSessionStore(tmp_path / "chat_history.db")
     runtime = TurnRuntimeManager(store)
     session = await store.ensure_session(None)
@@ -226,7 +176,7 @@ async def test_concurrent_flush_callers_share_one_persistence_attempt(
 
 
 async def test_non_batch_flush_retry_continues_after_committed_prefix(
-    tmp_path, stub_workspace, monkeypatch
+    tmp_path, monkeypatch
 ) -> None:
     store = SQLiteSessionStore(tmp_path / "chat_history.db")
     runtime = TurnRuntimeManager(store)
@@ -239,7 +189,10 @@ async def test_non_batch_flush_retry_continues_after_committed_prefix(
         payload={},
     )
     execution.events = _buffered(session["id"], turn["id"], 3)
-    real_append = store.append_turn_event
+
+    async def real_append(turn_id, payload):
+        return (await store._run(store._append_turn_events_sync, turn_id, [payload], None))[0]
+
     calls = 0
 
     async def flaky_append(turn_id, payload):
@@ -250,6 +203,7 @@ async def test_non_batch_flush_retry_continues_after_committed_prefix(
         return await real_append(turn_id, payload)
 
     monkeypatch.setattr(store, "append_turn_events", None)
+    monkeypatch.setattr(store, "append_events", None)
     monkeypatch.setattr(store, "append_turn_event", flaky_append)
 
     with pytest.raises(RuntimeError, match="transient persistence failure"):
@@ -260,7 +214,7 @@ async def test_non_batch_flush_retry_continues_after_committed_prefix(
     assert [event["content"] for event in persisted] == ["chunk-0", "chunk-1", "chunk-2"]
 
 
-async def test_flush_survives_turn_deleted_mid_drain(tmp_path, stub_workspace) -> None:
+async def test_flush_survives_turn_deleted_mid_drain(tmp_path) -> None:
     """Deleting the session mid-flush must not raise out of the turn task."""
     store = SQLiteSessionStore(tmp_path / "chat_history.db")
     runtime = TurnRuntimeManager(store)
@@ -279,21 +233,20 @@ async def test_flush_survives_turn_deleted_mid_drain(tmp_path, stub_workspace) -
 
 
 # ---------------------------------------------------------------------------
-# PocketBase path: background upload, no rglob, no update_turn_status hook
+# PocketBase path: synchronous durability, no rglob
 # ---------------------------------------------------------------------------
 
 
-async def test_pb_append_turn_events_uploads_in_background(fake_pb) -> None:
+async def test_pb_append_turn_events_is_durable_before_return(fake_pb) -> None:
     store = PocketBaseSessionStore()
     with as_user("alice"):
         events = _buffered("s1", "turn_1", 4)
         persisted = await store.append_turn_events("turn_1", events)
 
         # Annotated payloads come back synchronously with their seqs intact —
-        # the runtime mirrors these to events.jsonl without waiting on HTTP.
+        # the runtime receives the durable sequence numbers without another fetch.
         assert [payload["seq"] for payload in persisted] == [1, 2, 3, 4]
 
-        await _drain_uploads(store)
         rows = fake_pb.collection("turn_events").get_full_list()
         assert sorted(int(row.seq) for row in rows) == [1, 2, 3, 4]
         assert all(row.turn_id == "turn_1" for row in rows)
@@ -306,7 +259,6 @@ async def test_pb_append_turn_event_single_delegates_to_batch(fake_pb) -> None:
         payload = await store.append_turn_event("turn_9", {"type": "content", "content": "x"})
         assert payload["turn_id"] == "turn_9"
         assert payload["seq"]  # fallback seq assigned
-        await _drain_uploads(store)
         rows = fake_pb.collection("turn_events").get_full_list()
         assert len(rows) == 1
 
@@ -319,7 +271,6 @@ async def test_pb_update_turn_status_no_longer_flushes_events(fake_pb) -> None:
         await store.create_session(title="t", session_id="s_flush")
         turn = await store.create_turn("s_flush", capability="chat")
         assert await store.update_turn_status(turn["turn_id"], "completed") is True
-        await _drain_uploads(store)
         assert fake_pb.collection("turn_events").get_full_list() == []
 
 

@@ -3,12 +3,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from deeptutor.services.config.model_catalog import SERVICE_NAMES
 from deeptutor.services.config.runtime_settings import (
     RuntimeSettingsService,
     ensure_runtime_settings_files,
 )
 
 RUNTIME_ENV_KEYS = (
+    "DEEPTUTOR_VERSION_CHECK_ENABLED",
     "BACKEND_PORT",
     "FRONTEND_PORT",
     "NEXT_PUBLIC_API_BASE_EXTERNAL",
@@ -50,6 +52,7 @@ def test_runtime_settings_creates_defaults_without_reading_dotenv(tmp_path: Path
     service = RuntimeSettingsService(tmp_path / "settings")
 
     assert service.load_system(include_process_overrides=False)["backend_port"] == 8001
+    assert service.load_system(include_process_overrides=False)["version_check_enabled"] is True
     assert service.load_auth(include_process_overrides=False)["enabled"] is False
     assert service.load_integrations(include_process_overrides=False)["pocketbase_url"] == ""
 
@@ -57,10 +60,51 @@ def test_runtime_settings_creates_defaults_without_reading_dotenv(tmp_path: Path
     assert _read_json(service.path_for("auth"))["enabled"] is False
 
 
+def test_capability_routing_defaults_to_disabled(tmp_path) -> None:
+    service = RuntimeSettingsService(tmp_path / "settings")
+
+    assert service.load_system()["capability_routing_enabled"] is False
+
+
+def test_web_search_source_filter_defaults_to_safe_runtime_json(tmp_path) -> None:
+    service = RuntimeSettingsService(tmp_path / "settings")
+
+    assert service.load_system()["web_search_source_filtering"] == {
+        "enabled": True,
+        "blocked_domains": [],
+        "trusted_domains": [],
+        "content_filtering": True,
+        "use_educational_trusted_domains": False,
+        "use_moderation": False,
+    }
+
+    service.save_system(
+        {
+            "web_search_source_filtering": {
+                "enabled": True,
+                "blocked_domains": ["unsafe.example"],
+                "trusted_domains": [],
+                "content_filtering": False,
+                "use_educational_trusted_domains": True,
+                "use_moderation": True,
+            }
+        }
+    )
+    assert service.load_system()["web_search_source_filtering"] == {
+        "enabled": True,
+        "blocked_domains": ["unsafe.example"],
+        "trusted_domains": [],
+        "content_filtering": False,
+        "use_educational_trusted_domains": True,
+        "use_moderation": True,
+    }
+
+
 def test_runtime_process_env_is_explicit_override(tmp_path: Path) -> None:
     service = RuntimeSettingsService(
         tmp_path / "settings",
         process_env={
+            "DEEPTUTOR_VERSION_CHECK_ENABLED": "false",
             "BACKEND_PORT": "9100",
             "AUTH_ENABLED": "true",
             "POCKETBASE_PORT": "9090",
@@ -71,6 +115,7 @@ def test_runtime_process_env_is_explicit_override(tmp_path: Path) -> None:
     service.save_integrations({"pocketbase_port": 8090})
 
     assert service.load_system()["backend_port"] == 9100
+    assert service.load_system()["version_check_enabled"] is False
     assert service.load_auth()["enabled"] is True
     assert service.load_integrations()["pocketbase_port"] == 9090
     assert _read_json(service.path_for("system"))["backend_port"] == 8001
@@ -100,6 +145,7 @@ def test_render_environment_uses_json_backed_runtime_names(monkeypatch, tmp_path
     env = service.render_environment()
 
     assert env["BACKEND_PORT"] == "8010"
+    assert env["DEEPTUTOR_VERSION_CHECK_ENABLED"] == "true"
     assert env["FRONTEND_PORT"] == "3790"
     assert env["CORS_ORIGINS"] == "https://app.example"
     assert env["DISABLE_SSL_VERIFY"] == "true"
@@ -235,15 +281,7 @@ def test_startup_ensure_creates_missing_runtime_jsons_with_defaults(
     assert _read_json(settings_dir / "system.json")["backend_port"] == 8001
     assert _read_json(settings_dir / "auth.json")["enabled"] is False
     assert _read_json(settings_dir / "integrations.json")["pocketbase_url"] == ""
-    assert set(_read_json(settings_dir / "model_catalog.json")["services"]) == {
-        "llm",
-        "embedding",
-        "search",
-        "tts",
-        "stt",
-        "imagegen",
-        "videogen",
-    }
+    assert set(_read_json(settings_dir / "model_catalog.json")["services"]) == set(SERVICE_NAMES)
 
 
 def test_mineru_defaults_and_normalization(tmp_path: Path) -> None:

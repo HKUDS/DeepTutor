@@ -1,22 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import {
+  ArrowUpRight,
   CheckCircle2,
   ChevronDown,
   Eye,
   EyeOff,
   Info,
   Loader2,
-  Pencil,
   Plus,
   RefreshCw,
   Terminal,
   Trash2,
+  X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import Modal from "@/components/common/Modal";
 import ProviderIcon from "@/components/common/ProviderIcon";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { apiFetch, apiUrl } from "@/lib/api";
 import {
   reasoningEffortOptions,
@@ -33,13 +37,25 @@ import {
   type CatalogModel,
   type CatalogProfile,
   type LlmContextWindowDetection,
+  type ModelCapabilityKey,
   type ProviderOption,
   type ServiceName,
   getActiveModel,
   getActiveProfile,
   useSettings,
-} from "./SettingsContext";
+} from "@/features/settings/store/SettingsStore";
 import { DimensionField } from "./DimensionField";
+import { ModelCapabilityFields } from "./ModelCapabilityFields";
+import { ModelListPicker } from "./ModelListPicker";
+import {
+  AddCard,
+  CardAction,
+  CardGrid,
+  ModelCard,
+  ProfileCard,
+  SectionHead,
+  UseRow,
+} from "./ModelCards";
 import { nextProfileName } from "./profile-naming";
 import { searchProviderFields } from "./search-providers";
 import {
@@ -51,8 +67,26 @@ import {
   stringifyExtraHeaders,
 } from "./shared";
 
+// The protocol an endpoint speaks. Labels and hints are keyed by the backend
+// value so the select never invents a format the registry does not know.
+const API_FORMAT_LABELS: Record<string, string> = {
+  auto: "Auto (recommended)",
+  openai_chat: "OpenAI Chat Completions",
+  openai_responses: "OpenAI Responses",
+  anthropic: "Anthropic Messages",
+};
+const API_FORMAT_HINTS: Record<string, string> = {
+  auto: "Chat Completions for most endpoints; Responses for OpenAI reasoning models, with fallback.",
+  openai_chat: "Send every request to /v1/chat/completions.",
+  openai_responses:
+    "Send every request to /v1/responses. Endpoint errors are returned without falling back.",
+  anthropic: "Send every request as Anthropic Messages (/v1/messages).",
+};
+const LLM_SHAPED = new Set<ServiceName>(["llm", "task"]);
+
 const SERVICE_LABEL: Record<ServiceName, string> = {
   llm: "LLM",
+  task: "Task model",
   embedding: "Embedding",
   search: "Search",
   tts: "Text-to-Speech",
@@ -64,6 +98,7 @@ const SERVICE_LABEL: Record<ServiceName, string> = {
 export function ServiceConfigEditor({ service }: { service: ServiceName }) {
   const { t } = useTranslation();
   const {
+    catalog,
     draft,
     catalogEditable,
     settingsError,
@@ -73,24 +108,90 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
     embeddingDefaultDim,
     logs,
     testRunning,
+    applying,
     mutateCatalog,
     addProfile,
     removeActiveProfile,
     addModel,
     removeActiveModel,
-    updateProfileField,
-    updateModelField,
-    updateModelBoolField,
-    updateContextWindowField,
-    updateReasoningEffort,
+    updateProfileField: setProfileField,
+    updateModelField: setModelField,
+    updateModelBoolField: setModelBoolField,
+    updateContextWindowField: setContextWindowField,
+    updateReasoningEffort: setReasoningEffort,
+    updateModelCapability: setModelCapability,
     llmContextDetection,
     applyDetectedContextWindow,
     runDetailedTest,
+    applyService,
     setToast,
   } = useSettings();
 
-  const activeProfile = getActiveProfile(draft, service);
-  const activeModel = getActiveModel(draft, service);
+  const profiles = draft.services[service].profiles;
+  const inUseProfileId = draft.services[service].active_profile_id;
+  const inUseModelId = draft.services[service].active_model_id;
+
+  // ── Browsing vs using ───────────────────────────────────────────────────
+  //
+  // The page always shows its providers. Opening one pops a dialog with its
+  // connection fields and its models; nothing in that dialog adopts it — "in
+  // use" is a separate, deliberate act, which is what lets you look at a
+  // provider you are not currently running on without switching to it.
+  const [openProfileId, setOpenProfileId] = useState<string | null>(null);
+  const [expandedModelId, setExpandedModelId] = useState<string | null>(null);
+
+  const openedProfile =
+    profiles.find((item) => item.id === openProfileId) ?? null;
+
+  // Whatever the field editors below are pointed at. Falling back to the
+  // profile in use keeps every reference working before anything is opened.
+  const activeProfile = openedProfile ?? getActiveProfile(draft, service);
+  const activeModel = openedProfile
+    ? ((expandedModelId
+        ? openedProfile.models.find((item) => item.id === expandedModelId)
+        : null) ?? null)
+    : getActiveModel(draft, service);
+
+  // The context's mutators write to whatever is in use unless told otherwise.
+  // Binding them to what is on screen here means the ~300 lines of field
+  // editors below need no knowledge of any of this.
+  const updateProfileField = useCallback(
+    (svc: ServiceName, field: keyof CatalogProfile, value: string) =>
+      setProfileField(svc, field, value, activeProfile?.id),
+    [setProfileField, activeProfile?.id],
+  );
+  const updateModelField = useCallback(
+    (svc: ServiceName, field: keyof CatalogModel, value: string) =>
+      setModelField(svc, field, value, activeProfile?.id, activeModel?.id),
+    [setModelField, activeProfile?.id, activeModel?.id],
+  );
+  const updateModelBoolField = useCallback(
+    (svc: ServiceName, field: keyof CatalogModel, value: boolean) =>
+      setModelBoolField(svc, field, value, activeProfile?.id, activeModel?.id),
+    [setModelBoolField, activeProfile?.id, activeModel?.id],
+  );
+  const updateContextWindowField = useCallback(
+    (value: string) =>
+      setContextWindowField(value, activeProfile?.id, activeModel?.id),
+    [setContextWindowField, activeProfile?.id, activeModel?.id],
+  );
+  const updateReasoningEffort = useCallback(
+    (value: string) =>
+      setReasoningEffort(value, activeProfile?.id, activeModel?.id),
+    [setReasoningEffort, activeProfile?.id, activeModel?.id],
+  );
+  const updateModelCapability = useCallback(
+    (key: ModelCapabilityKey, value: boolean | null) =>
+      setModelCapability(
+        service,
+        key,
+        value,
+        activeProfile?.id,
+        activeModel?.id,
+      ),
+    [setModelCapability, service, activeProfile?.id, activeModel?.id],
+  );
+
   const activeProviderValue =
     service === "search"
       ? activeProfile?.provider || ""
@@ -107,13 +208,62 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
     activeProfile,
   );
 
+  // Arriving from Settings > Connections with ?profile=<id>: open that
+  // provider's dialog directly. It used to have to *adopt* the profile to
+  // show it, because selecting and using were the same act — with the two
+  // separated, following the link costs nothing and needs no warning.
+  //
+  // The query is read from `window.location` rather than `useSearchParams()`
+  // so no settings page needs a Suspense boundary for something that only
+  // exists after hydration.
+  const deepLinkHandled = useRef(false);
+  useEffect(() => {
+    if (deepLinkHandled.current) return;
+    const requested = new URLSearchParams(window.location.search).get(
+      "profile",
+    );
+    if (!requested) {
+      deepLinkHandled.current = true;
+      return;
+    }
+    // The catalog may still be loading; leave the flag down and retry.
+    if (!profiles.some((item) => item.id === requested)) return;
+    deepLinkHandled.current = true;
+    // Drop the query so a refresh does not re-open something already closed.
+    window.history.replaceState(null, "", window.location.pathname);
+    setOpenProfileId(requested);
+  }, [profiles]);
+
   const [showApiKey, setShowApiKey] = useState(false);
+  const [deletingProfile, setDeletingProfile] = useState<CatalogProfile | null>(
+    null,
+  );
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const [editingModelId, setEditingModelId] = useState<string | null>(null);
   const [editingModelName, setEditingModelName] = useState("");
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
   const [editingProfileName, setEditingProfileName] = useState("");
   const [modelsSyncing, setModelsSyncing] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  const closeProviderEditor = useCallback(() => {
+    setOpenProfileId(null);
+    setExpandedModelId(null);
+  }, []);
+
+  const finishProviderEditing = useCallback(async () => {
+    const serviceChanged =
+      JSON.stringify(catalog.services[service]) !==
+      JSON.stringify(draft.services[service]);
+    if (serviceChanged && !(await applyService(service))) return;
+    closeProviderEditor();
+  }, [
+    applyService,
+    catalog.services,
+    closeProviderEditor,
+    draft.services,
+    service,
+  ]);
 
   // Reset API-key visibility whenever we land on a different profile or
   // switch services — same effect the old code had, but using React's
@@ -173,13 +323,14 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
             activeProfile?.binding,
             activeModel.model,
             activeModel.reasoning_effort,
+            activeModel.capabilities?.reasoning,
           )
       : [];
 
   const syncProviderModels = async (
     connection?: Pick<CatalogProfile, "binding" | "base_url" | "api_key">,
   ) => {
-    if (service !== "llm" || !activeProfile || modelsSyncing) return;
+    if (!LLM_SHAPED.has(service) || !activeProfile || modelsSyncing) return;
     const binding = connection?.binding ?? activeProfile.binding ?? "";
     const baseUrl = connection?.base_url ?? activeProfile.base_url ?? "";
     const apiKey = connection?.api_key ?? activeProfile.api_key ?? "";
@@ -188,7 +339,7 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
     const profileId = activeProfile.id;
     setModelsSyncing(true);
     try {
-      const response = await apiFetch(apiUrl("/api/v1/settings/fetch-models"), {
+      const response = await apiFetch(apiUrl("/api/settings/fetch-models"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -196,6 +347,8 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
           base_url: baseUrl,
           api_key: apiKey || null,
           profile_id: profileId,
+          service,
+          api_format: activeProfile.api_format ?? "auto",
         }),
       });
       if (!response.ok) {
@@ -211,7 +364,7 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
       if (fetched.length === 0) throw new Error(t("No models returned"));
 
       mutateCatalog((next) => {
-        const target = next.services.llm;
+        const target = next.services[service];
         const profile = target.profiles.find((item) => item.id === profileId);
         if (!profile || profile.binding !== binding) return;
         const existing = new Map(
@@ -222,7 +375,7 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
           return previous
             ? { ...previous, name: item.name || previous.name, model: item.id }
             : {
-                id: `llm-model-${Date.now()}-${index}`,
+                id: `${service}-model-${Date.now()}-${index}`,
                 name: item.name || item.id,
                 model: item.id,
               };
@@ -322,633 +475,642 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
   return (
     <div data-tour={`tour-${service}`} className="space-y-5">
       {activeProfile ? (
-        <div className="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-5">
-          {/* ── Profile list (sticky so it stays put while the editor scrolls) ── */}
-          <aside className="sticky top-4 self-start rounded-xl border border-[var(--border)]/60 bg-[var(--card)]/40 p-2">
-            <div className="px-2 pb-2 pt-1 text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]/70">
-              {t("Profiles")}
-            </div>
-            <div className="space-y-0.5">
-              {draft.services[service].profiles.map((profile) => {
-                const isActive =
-                  profile.id === draft.services[service].active_profile_id;
-                const profileDetail = activeProfileDetail(profile, service, t);
-                const isManagedProfile = isManagedCodexProfile(profile);
-                const isEditing =
-                  editingProfileId === profile.id && !isManagedProfile;
-                return (
-                  <div
-                    key={profile.id}
-                    role="button"
-                    tabIndex={isEditing ? -1 : 0}
-                    onClick={() => {
-                      if (isEditing) return;
-                      mutateCatalog((next) => {
-                        next.services[service].active_profile_id = profile.id;
-                        if (service !== "search") {
-                          next.services[service].active_model_id =
-                            profile.models[0]?.id ?? null;
-                        }
-                      });
-                    }}
-                    onDoubleClick={() => {
-                      if (!isManagedProfile) startProfileRename(profile);
-                    }}
-                    onKeyDown={(e) => {
-                      if (isEditing) return;
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        mutateCatalog((next) => {
-                          next.services[service].active_profile_id = profile.id;
-                          if (service !== "search") {
-                            next.services[service].active_model_id =
-                              profile.models[0]?.id ?? null;
-                          }
-                        });
-                      }
-                    }}
-                    title={
-                      isEditing || isManagedProfile
-                        ? undefined
-                        : t("Double-click to rename")
-                    }
-                    className={`group relative cursor-pointer rounded-lg px-3 py-2 text-left transition-colors ${
-                      isActive
-                        ? "bg-[var(--muted)]/70 text-[var(--foreground)]"
-                        : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/30"
-                    }`}
-                  >
-                    {isActive && (
-                      <span className="absolute inset-y-2 left-0 w-0.5 rounded-r-full bg-[var(--foreground)]/80" />
-                    )}
-                    {isEditing ? (
-                      <input
-                        autoFocus
-                        className="block w-full rounded border border-[var(--border)] bg-[var(--background)] px-1.5 py-0.5 text-[13px] font-medium text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
-                        value={editingProfileName}
-                        onChange={(e) => setEditingProfileName(e.target.value)}
-                        onBlur={() => commitProfileRename(profile.id)}
-                        onClick={(e) => e.stopPropagation()}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.currentTarget.blur();
-                          }
-                          if (e.key === "Escape") {
-                            e.preventDefault();
-                            cancelProfileRename();
-                          }
-                        }}
-                        aria-label={t("Rename profile")}
-                      />
-                    ) : (
-                      <div className="flex items-center gap-1.5">
-                        <ProviderIcon
-                          provider={
-                            service === "search"
-                              ? profile.provider
-                              : profile.binding
-                          }
-                          size={13}
-                        />
-                        <div
-                          className={`min-w-0 flex-1 truncate text-[13px] leading-tight ${
-                            isActive ? "font-semibold" : "font-medium"
-                          }`}
-                        >
-                          {profile.name}
-                        </div>
-                        {!isManagedProfile && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              startProfileRename(profile);
-                            }}
-                            className="-mr-1 shrink-0 rounded-md p-1 text-[var(--muted-foreground)]/60 transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-                            aria-label={t("Rename profile")}
-                            title={t("Rename profile")}
-                          >
-                            <Pencil className="h-3 w-3" />
-                          </button>
-                        )}
-                      </div>
-                    )}
-                    <div className="mt-0.5 truncate text-[11px] leading-tight text-[var(--muted-foreground)]/70">
-                      {profileDetail}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="mt-2 border-t border-[var(--border)]/40 pt-2">
-              <button
-                onClick={() => removeActiveProfile(service)}
-                disabled={!activeProfile || isManagedCodex}
-                className="flex w-full items-center gap-1.5 rounded-lg px-3 py-1.5 text-left text-[11px] text-[var(--muted-foreground)]/60 transition-colors hover:bg-red-500/5 hover:text-red-500 disabled:opacity-30"
-                title={
-                  activeProfile && !isManagedCodex
-                    ? t("Permanently remove the currently selected profile.")
-                    : undefined
-                }
-              >
-                <Trash2 className="h-3 w-3 shrink-0" />
-                <span className="truncate">
-                  {activeProfile
-                    ? t("Delete “{{name}}”", { name: activeProfile.name })
-                    : t("Delete profile")}
-                </span>
-              </button>
-            </div>
-          </aside>
-
-          {/* ── Editor ── */}
-          <div className="min-w-0 space-y-5">
-            <div className="rounded-xl border border-[var(--border)] p-5">
-              <div className="mb-4 flex items-center justify-between gap-2">
-                <div className="text-[13px] font-medium text-[var(--foreground)]">
-                  {t("Provider connection")}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => addProfile(service)}
-                  className="inline-flex items-center gap-1 rounded-lg border border-[var(--border)]/50 px-2.5 py-1 text-[12px] text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)]"
-                >
-                  <Plus className="h-3 w-3" />
-                  {t("Profile")}
-                </button>
-              </div>
-              <ProfileFields
+        <div>
+          {/* ── The providers configured for this service ──────────────────
+                 A card is a place, not a switch: opening one pops a dialog
+                 with its connection fields and its models, and nothing in
+                 there changes which provider the app is running on. That
+                 is what "In use" is for. */}
+          <SectionHead
+            title={t("Providers")}
+            action={
+              <CardAction onClick={() => addProfile(service)}>
+                <Plus className="h-3 w-3" />
+                {t("Add provider")}
+              </CardAction>
+            }
+          />
+          <CardGrid>
+            {profiles.map((profile) => (
+              <ProfileCard
+                key={profile.id}
+                profile={profile}
                 service={service}
-                profile={activeProfile}
-                showApiKey={showApiKey}
-                setShowApiKey={setShowApiKey}
-                showSearchProviderWarning={showSearchProviderWarning}
-                isSupportedSearchProvider={isSupportedSearchProvider}
-                isDeprecatedSearchProvider={isDeprecatedSearchProvider}
-                searchProviderMissingKey={searchProviderMissingKey}
-                supportedSearchProviderNames={supportedSearchProviderNames}
-                onProviderChanged={(provider, previousProvider) => {
-                  if (service !== "llm" || !activeProfile) return;
-                  const crossesCodeBuddyBoundary =
-                    provider.value === "codebuddy" ||
-                    previousProvider === "codebuddy";
-                  if (crossesCodeBuddyBoundary) {
-                    const profileId = activeProfile.id;
-                    mutateCatalog((next) => {
-                      const target = next.services.llm;
-                      const profile = target.profiles.find(
-                        (item) => item.id === profileId,
-                      );
-                      if (!profile || profile.binding !== provider.value)
-                        return;
-                      if (provider.value === "codebuddy") {
-                        profile.models = [];
-                        target.active_model_id = null;
-                        return;
-                      }
-                      const modelId = `llm-model-${Date.now()}`;
-                      profile.models = [
-                        {
-                          id: modelId,
-                          name: defaultModelLabel(language, 1),
-                          model: "",
-                        },
-                      ];
-                      target.active_model_id = modelId;
-                    });
-                  }
-                  if (provider.value === "codebuddy") {
-                    void syncProviderModels({
-                      binding: provider.value,
-                      base_url: provider.base_url || "",
-                      api_key: "",
-                    });
-                  }
+                inUse={profile.id === inUseProfileId}
+                open={profile.id === openProfileId}
+                renaming={editingProfileId === profile.id}
+                renameValue={editingProfileName}
+                onRenameChange={setEditingProfileName}
+                onRenameCommit={() => commitProfileRename(profile.id)}
+                onRenameCancel={cancelProfileRename}
+                onRenameStart={() => startProfileRename(profile)}
+                onOpen={() => {
+                  setOpenProfileId(profile.id);
+                  setExpandedModelId(
+                    profile.id === inUseProfileId
+                      ? (inUseModelId ?? null)
+                      : (profile.models[0]?.id ?? null),
+                  );
                 }}
+                onUse={() =>
+                  mutateCatalog((next) => {
+                    next.services[service].active_profile_id = profile.id;
+                    if (service !== "search") {
+                      next.services[service].active_model_id =
+                        profile.models[0]?.id ?? null;
+                    }
+                  })
+                }
               />
-            </div>
+            ))}
+            <AddCard
+              label={t("Add provider")}
+              onClick={() => addProfile(service)}
+            />
+          </CardGrid>
 
-            {service !== "search" && (
-              <div className="rounded-xl border border-[var(--border)] p-5">
-                <div className="mb-4 flex items-center justify-between gap-2">
-                  <div className="text-[13px] font-medium text-[var(--foreground)]">
-                    {t("Models")}
-                  </div>
-                  {!isCodexOAuth && (
-                    <div className="flex items-center gap-2">
-                      {service === "llm" &&
-                        activeProfile.binding === "codebuddy" && (
-                          <button
-                            type="button"
-                            onClick={() => void syncProviderModels()}
-                            disabled={modelsSyncing}
-                            className="inline-flex items-center gap-1 rounded-lg border border-[var(--border)]/50 px-2.5 py-1 text-[12px] text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)] disabled:opacity-40"
-                          >
-                            <RefreshCw
-                              className={`h-3 w-3 ${modelsSyncing ? "animate-spin" : ""}`}
-                            />
-                            {t("Sync models")}
-                          </button>
-                        )}
-                      <button
-                        type="button"
-                        onClick={() => addModel(service)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-[var(--border)]/50 px-2.5 py-1 text-[12px] text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)]"
-                      >
-                        <Plus className="h-3 w-3" />
-                        {t("Model")}
-                      </button>
-                      <button
-                        onClick={() => removeActiveModel(service)}
-                        disabled={!activeModel}
-                        className="inline-flex items-center gap-1 text-[11px] text-[var(--muted-foreground)]/40 transition-colors hover:text-red-500 disabled:opacity-30"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                        {t("Delete")}
-                      </button>
-                    </div>
-                  )}
+          {/* ── One provider, in a dialog: its connection, then its models ── */}
+          {openedProfile && (
+            <Modal
+              isOpen
+              onClose={closeProviderEditor}
+              title={openedProfile.name}
+              titleIcon={
+                <ProviderIcon
+                  provider={
+                    service === "search"
+                      ? openedProfile.provider || ""
+                      : openedProfile.binding || ""
+                  }
+                  size={15}
+                />
+              }
+              width="lg"
+              footer={
+                <div className="flex items-center justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setDeletingProfile(openedProfile)}
+                    className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12.5px] text-red-500/80 transition-colors hover:bg-red-500/10 hover:text-red-500"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    {t("Delete provider")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void finishProviderEditing()}
+                    disabled={applying}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 text-[12.5px] font-medium text-[var(--foreground)] transition-colors hover:border-[var(--foreground)]/40 disabled:opacity-40"
+                  >
+                    {applying && <Loader2 className="h-3 w-3 animate-spin" />}
+                    {t("Done")}
+                  </button>
                 </div>
-                {activeProfile.models.length > 0 && (
-                  <div className="mb-4 flex flex-wrap items-center gap-1.5">
-                    {activeProfile.models.map((model, index) => {
-                      const isActive =
-                        model.id === draft.services[service].active_model_id;
-                      const label =
-                        (model.name || "").trim() ||
-                        defaultModelLabel(language, index + 1);
-                      const metric =
-                        service === "llm"
-                          ? formatCompactTokens(model.context_window)
-                          : service === "embedding"
-                            ? formatDimensionBadge(model.dimension)
-                            : service === "tts"
-                              ? formatVoiceBadge(model.voice)
-                              : "";
-                      return (
-                        <div key={model.id} className="min-w-0">
-                          {editingModelId === model.id && !isCodexOAuth ? (
-                            <input
-                              autoFocus
-                              className="h-8 w-60 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 text-[12.5px] text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
-                              value={editingModelName}
-                              onChange={(e) =>
-                                setEditingModelName(e.target.value)
-                              }
-                              onBlur={() => commitModelRename(model.id)}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") {
-                                  e.currentTarget.blur();
-                                }
-                                if (e.key === "Escape") {
-                                  e.preventDefault();
-                                  cancelModelRename();
-                                }
-                              }}
-                              aria-label={t("Rename model")}
-                            />
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                mutateCatalog((next) => {
-                                  next.services[service].active_model_id =
-                                    model.id;
-                                })
-                              }
-                              onDoubleClick={() => {
-                                if (!isCodexOAuth) startModelRename(model);
-                              }}
-                              title={
-                                isCodexOAuth
-                                  ? undefined
-                                  : t("Double-click to rename")
-                              }
-                              className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12.5px] transition-colors ${
-                                isActive
-                                  ? "bg-[var(--muted)] text-[var(--foreground)]"
-                                  : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/40"
-                              }`}
-                            >
-                              {isActive && (
-                                <CheckCircle2 className="h-3 w-3 shrink-0 text-[var(--foreground)]/70" />
-                              )}
-                              <span
-                                className={`max-w-[280px] truncate leading-none ${
-                                  isActive ? "font-medium" : ""
-                                }`}
+              }
+            >
+              <div className="space-y-6 p-5">
+                <UseRow
+                  inUse={openedProfile.id === inUseProfileId}
+                  onUse={() =>
+                    mutateCatalog((next) => {
+                      next.services[service].active_profile_id =
+                        openedProfile.id;
+                      if (service !== "search") {
+                        next.services[service].active_model_id =
+                          openedProfile.models[0]?.id ?? null;
+                      }
+                    })
+                  }
+                />
+
+                <ProfileFields
+                  service={service}
+                  profile={activeProfile}
+                  showApiKey={showApiKey}
+                  setShowApiKey={setShowApiKey}
+                  showSearchProviderWarning={showSearchProviderWarning}
+                  isSupportedSearchProvider={isSupportedSearchProvider}
+                  isDeprecatedSearchProvider={isDeprecatedSearchProvider}
+                  searchProviderMissingKey={searchProviderMissingKey}
+                  supportedSearchProviderNames={supportedSearchProviderNames}
+                  onProviderChanged={(provider, previousProvider) => {
+                    if (service !== "llm" || !activeProfile) return;
+                    const crossesCodeBuddyBoundary =
+                      provider.value === "codebuddy" ||
+                      previousProvider === "codebuddy";
+                    if (crossesCodeBuddyBoundary) {
+                      const profileId = activeProfile.id;
+                      mutateCatalog((next) => {
+                        const target = next.services.llm;
+                        const profile = target.profiles.find(
+                          (item) => item.id === profileId,
+                        );
+                        if (!profile || profile.binding !== provider.value)
+                          return;
+                        if (provider.value === "codebuddy") {
+                          profile.models = [];
+                          target.active_model_id = null;
+                          return;
+                        }
+                        const modelId = `llm-model-${Date.now()}`;
+                        profile.models = [
+                          {
+                            id: modelId,
+                            name: defaultModelLabel(language, 1),
+                            model: "",
+                          },
+                        ];
+                        target.active_model_id = modelId;
+                      });
+                    }
+                    if (provider.value === "codebuddy") {
+                      void syncProviderModels({
+                        binding: provider.value,
+                        base_url: provider.base_url || "",
+                        api_key: "",
+                      });
+                    }
+                  }}
+                />
+
+                {service !== "search" && (
+                  <div>
+                    <SectionHead
+                      title={t("Models")}
+                      action={
+                        <span className="flex items-center gap-2">
+                          {service === "llm" &&
+                            openedProfile.binding === "codebuddy" && (
+                              <CardAction
+                                onClick={() => void syncProviderModels()}
+                                disabled={modelsSyncing}
                               >
-                                {label}
-                              </span>
-                              {metric && (
-                                <span className="shrink-0 text-[10.5px] tabular-nums leading-none text-[var(--muted-foreground)]/80">
-                                  {metric}
-                                </span>
-                              )}
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
+                                <RefreshCw
+                                  className={`h-3 w-3 ${modelsSyncing ? "animate-spin" : ""}`}
+                                />
+                                {t("Sync models")}
+                              </CardAction>
+                            )}
+                          {LLM_SHAPED.has(service) &&
+                            !isCodexOAuth &&
+                            openedProfile.binding !== "codebuddy" &&
+                            Boolean(
+                              String(openedProfile.base_url || "").trim(),
+                            ) && (
+                              <CardAction onClick={() => setPickerOpen(true)}>
+                                <RefreshCw className="h-3 w-3" />
+                                {t("List models")}
+                              </CardAction>
+                            )}
+                          <CardAction
+                            onClick={() => addModel(service, openedProfile.id)}
+                          >
+                            <Plus className="h-3 w-3" />
+                            {t("Add model")}
+                          </CardAction>
+                        </span>
+                      }
+                    />
+                    {/* Capped at 2 columns rather than the page grid's
+                        `xl:grid-cols-3` — that breakpoint reads the browser
+                        viewport, not this dialog's fixed width, and would
+                        force 3 columns into a 600px box on a large screen. */}
+                    <div className="grid gap-2.5 sm:grid-cols-2">
+                      {openedProfile.models.map((model, index) => (
+                        <ModelCard
+                          key={model.id}
+                          model={model}
+                          service={service}
+                          language={language}
+                          index={index}
+                          inUse={
+                            openedProfile.id === inUseProfileId &&
+                            model.id === inUseModelId
+                          }
+                          expanded={model.id === expandedModelId}
+                          renaming={editingModelId === model.id}
+                          renameValue={editingModelName}
+                          onRenameChange={setEditingModelName}
+                          onRenameCommit={() => commitModelRename(model.id)}
+                          onRenameCancel={cancelModelRename}
+                          onRenameStart={() => startModelRename(model)}
+                          onToggleExpand={() =>
+                            setExpandedModelId(
+                              model.id === expandedModelId ? null : model.id,
+                            )
+                          }
+                          onUse={() =>
+                            mutateCatalog((next) => {
+                              next.services[service].active_profile_id =
+                                openedProfile.id;
+                              next.services[service].active_model_id = model.id;
+                            })
+                          }
+                          onDelete={() =>
+                            removeActiveModel(
+                              service,
+                              openedProfile.id,
+                              model.id,
+                            )
+                          }
+                        />
+                      ))}
+                      <AddCard
+                        label={t("Add model")}
+                        onClick={() => addModel(service, openedProfile.id)}
+                      />
+                    </div>
                   </div>
                 )}
-                {activeModel && (!isCodexOAuth || isBoundManagedCodex) && (
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    {!isCodexOAuth && (
-                      <div>
-                        <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
-                          {t("Model ID")}
+
+                {service !== "search" && (
+                  <div>
+                    {activeModel && (!isCodexOAuth || isBoundManagedCodex) && (
+                      <div className="mb-2.5 flex items-center justify-between gap-2 border-b border-[var(--border)]/60 pb-2">
+                        <div className="min-w-0 truncate text-[13px] font-medium text-[var(--foreground)]">
+                          {(activeModel.name || "").trim() || t("Model")}
                         </div>
-                        <input
-                          className={inputClass}
-                          value={activeModel.model}
-                          onChange={(e) =>
-                            updateModelField(service, "model", e.target.value)
-                          }
-                          placeholder="gpt-4o"
-                        />
+                        <button
+                          type="button"
+                          onClick={() => setExpandedModelId(null)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-[var(--border)]/50 px-2.5 py-1 text-[12px] text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)]"
+                        >
+                          <X className="h-3 w-3" />
+                          {t("Close")}
+                        </button>
                       </div>
                     )}
-                    {service === "llm" && (
-                      <>
+                    {activeModel && (!isCodexOAuth || isBoundManagedCodex) && (
+                      <div className="grid gap-4 sm:grid-cols-2">
                         {!isCodexOAuth && (
+                          <div>
+                            <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
+                              {t("Model ID")}
+                            </div>
+                            <input
+                              className={inputClass}
+                              value={activeModel.model}
+                              onChange={(e) =>
+                                updateModelField(
+                                  service,
+                                  "model",
+                                  e.target.value,
+                                )
+                              }
+                              placeholder="gpt-4o"
+                            />
+                          </div>
+                        )}
+                        {service === "llm" && (
+                          <>
+                            {!isCodexOAuth && (
+                              <>
+                                <div>
+                                  <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
+                                    {t("Context Window")}
+                                  </div>
+                                  <input
+                                    className={inputClass}
+                                    inputMode="numeric"
+                                    value={activeModel.context_window || ""}
+                                    onChange={(e) =>
+                                      updateContextWindowField(e.target.value)
+                                    }
+                                    placeholder="65536"
+                                  />
+                                  <ContextWindowMeta model={activeModel} />
+                                </div>
+                                <ContextWindowDetectionBanner
+                                  model={activeModel}
+                                  detection={activeLlmDetection}
+                                  onApply={applyDetectedContextWindow}
+                                />
+                              </>
+                            )}
+                            {reasoningOptions.length > 0 && (
+                              <div>
+                                <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
+                                  {t("Reasoning effort")}
+                                </div>
+                                <div className="relative">
+                                  <select
+                                    className={selectClass}
+                                    value={activeModel.reasoning_effort || ""}
+                                    onChange={(event) =>
+                                      updateReasoningEffort(event.target.value)
+                                    }
+                                  >
+                                    {reasoningOptions.map((option) => (
+                                      <option
+                                        className={selectOptionClass}
+                                        key={option.value || "auto"}
+                                        value={option.value}
+                                      >
+                                        {t(option.label)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
+                                </div>
+                                <p className="mt-1.5 text-[11px] leading-relaxed text-[var(--muted-foreground)]">
+                                  {t(
+                                    "Sets this model's default reasoning depth. Auto leaves the choice to the provider.",
+                                  )}
+                                </p>
+                              </div>
+                            )}
+                          </>
+                        )}
+                        {LLM_SHAPED.has(service) && !isCodexOAuth && (
+                          <ModelCapabilityFields
+                            binding={activeProfile?.binding}
+                            model={activeModel}
+                            reasoningKnown={reasoningOptions.length > 0}
+                            onChange={updateModelCapability}
+                          />
+                        )}
+                        {service === "embedding" && (
+                          <div>
+                            <div className="mb-1.5 flex items-center justify-between gap-2">
+                              <span className="text-[12px] text-[var(--muted-foreground)]">
+                                {t("Dimension")}
+                              </span>
+                              <label className="inline-flex cursor-pointer items-center gap-1.5 text-[11px] text-[var(--muted-foreground)] select-none">
+                                <input
+                                  type="checkbox"
+                                  className="h-3 w-3 cursor-pointer accent-[var(--foreground)]"
+                                  checked={
+                                    activeModel.send_dimensions !== false
+                                  }
+                                  onChange={(e) =>
+                                    updateModelBoolField(
+                                      service,
+                                      "send_dimensions",
+                                      e.target.checked,
+                                    )
+                                  }
+                                />
+                                <span>{t("Send dimensions")}</span>
+                                <span
+                                  tabIndex={0}
+                                  className="group/info relative inline-flex cursor-help focus:outline-none"
+                                >
+                                  <Info className="h-3 w-3 opacity-50 transition-opacity group-hover/info:opacity-100 group-focus/info:opacity-100" />
+                                  <span
+                                    role="tooltip"
+                                    className="pointer-events-none absolute top-full left-1/2 z-20 mt-1.5 w-64 -translate-x-1/2 rounded-lg border border-[var(--border)] bg-[var(--card)] p-2.5 text-[11px] leading-relaxed text-[var(--foreground)] opacity-0 shadow-lg transition-opacity duration-75 group-hover/info:opacity-100 group-focus/info:opacity-100"
+                                  >
+                                    {t(
+                                      "Some embedding models (e.g. Qwen text-embedding-v4) reject the `dimensions` request param. Turn this off if your provider returns HTTP 400.",
+                                    )}
+                                  </span>
+                                </span>
+                              </label>
+                            </div>
+                            <DimensionField
+                              activeModel={activeModel}
+                              activeBinding={activeProfile?.binding}
+                              capabilities={embeddingCapabilities}
+                              embeddingDefaultDim={embeddingDefaultDim}
+                              inputClass={inputClass}
+                              onChangeDimension={(value) =>
+                                updateModelField(service, "dimension", value)
+                              }
+                            />
+                          </div>
+                        )}
+                        {service === "tts" && (
                           <>
                             <div>
                               <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
-                                {t("Context Window")}
+                                {t("Voice")}
                               </div>
                               <input
                                 className={inputClass}
-                                inputMode="numeric"
-                                value={activeModel.context_window || ""}
+                                value={activeModel.voice || ""}
                                 onChange={(e) =>
-                                  updateContextWindowField(e.target.value)
+                                  updateModelField(
+                                    service,
+                                    "voice",
+                                    e.target.value,
+                                  )
                                 }
-                                placeholder="65536"
+                                placeholder="alloy"
                               />
-                              <ContextWindowMeta model={activeModel} />
+                              <p className="mt-1.5 text-[11px] text-[var(--muted-foreground)]">
+                                {t(
+                                  "Provider-specific voice name, e.g. alloy (OpenAI) or model:voice (SiliconFlow).",
+                                )}
+                              </p>
                             </div>
-                            <ContextWindowDetectionBanner
-                              model={activeModel}
-                              detection={activeLlmDetection}
-                              onApply={applyDetectedContextWindow}
-                            />
+                            <div>
+                              <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
+                                {t("Output format")}
+                              </div>
+                              <div className="relative">
+                                <select
+                                  className={selectClass}
+                                  value={activeModel.response_format || "mp3"}
+                                  onChange={(e) =>
+                                    updateModelField(
+                                      service,
+                                      "response_format",
+                                      e.target.value,
+                                    )
+                                  }
+                                >
+                                  {[
+                                    "mp3",
+                                    "wav",
+                                    "opus",
+                                    "aac",
+                                    "flac",
+                                    "pcm",
+                                  ].map((fmt) => (
+                                    <option
+                                      className={selectOptionClass}
+                                      key={fmt}
+                                      value={fmt}
+                                    >
+                                      {fmt}
+                                    </option>
+                                  ))}
+                                </select>
+                                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
+                              </div>
+                            </div>
                           </>
                         )}
-                        {reasoningOptions.length > 0 && (
-                          <div>
-                            <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
-                              {t("Reasoning effort")}
-                            </div>
-                            <div className="relative">
-                              <select
-                                className={selectClass}
-                                value={activeModel.reasoning_effort || ""}
-                                onChange={(event) =>
-                                  updateReasoningEffort(event.target.value)
+                        {service === "imagegen" && (
+                          <>
+                            <div>
+                              <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
+                                {t("Image size")}
+                              </div>
+                              <input
+                                className={inputClass}
+                                value={activeModel.size || ""}
+                                onChange={(e) =>
+                                  updateModelField(
+                                    service,
+                                    "size",
+                                    e.target.value,
+                                  )
                                 }
-                              >
-                                {reasoningOptions.map((option) => (
-                                  <option
-                                    className={selectOptionClass}
-                                    key={option.value || "auto"}
-                                    value={option.value}
-                                  >
-                                    {t(option.label)}
-                                  </option>
-                                ))}
-                              </select>
-                              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
-                            </div>
-                            <p className="mt-1.5 text-[11px] leading-relaxed text-[var(--muted-foreground)]">
-                              {t(
-                                "Sets this model's default reasoning depth. Auto leaves the choice to the provider.",
-                              )}
-                            </p>
-                          </div>
-                        )}
-                      </>
-                    )}
-                    {service === "embedding" && (
-                      <div>
-                        <div className="mb-1.5 flex items-center justify-between gap-2">
-                          <span className="text-[12px] text-[var(--muted-foreground)]">
-                            {t("Dimension")}
-                          </span>
-                          <label className="inline-flex cursor-pointer items-center gap-1.5 text-[11px] text-[var(--muted-foreground)] select-none">
-                            <input
-                              type="checkbox"
-                              className="h-3 w-3 cursor-pointer accent-[var(--foreground)]"
-                              checked={activeModel.send_dimensions !== false}
-                              onChange={(e) =>
-                                updateModelBoolField(
-                                  service,
-                                  "send_dimensions",
-                                  e.target.checked,
-                                )
-                              }
-                            />
-                            <span>{t("Send dimensions")}</span>
-                            <span
-                              tabIndex={0}
-                              className="group/info relative inline-flex cursor-help focus:outline-none"
-                            >
-                              <Info className="h-3 w-3 opacity-50 transition-opacity group-hover/info:opacity-100 group-focus/info:opacity-100" />
-                              <span
-                                role="tooltip"
-                                className="pointer-events-none absolute top-full left-1/2 z-20 mt-1.5 w-64 -translate-x-1/2 rounded-lg border border-[var(--border)] bg-[var(--card)] p-2.5 text-[11px] leading-relaxed text-[var(--foreground)] opacity-0 shadow-lg transition-opacity duration-75 group-hover/info:opacity-100 group-focus/info:opacity-100"
-                              >
+                                placeholder="1024x1024"
+                              />
+                              <p className="mt-1.5 text-[11px] text-[var(--muted-foreground)]">
                                 {t(
-                                  "Some embedding models (e.g. Qwen text-embedding-v4) reject the `dimensions` request param. Turn this off if your provider returns HTTP 400.",
+                                  "Default pixel size sent with each request. Leave empty for the provider default.",
                                 )}
-                              </span>
-                            </span>
-                          </label>
-                        </div>
-                        <DimensionField
-                          activeModel={activeModel}
-                          activeBinding={activeProfile?.binding}
-                          capabilities={embeddingCapabilities}
-                          embeddingDefaultDim={embeddingDefaultDim}
-                          inputClass={inputClass}
-                          onChangeDimension={(value) =>
-                            updateModelField(service, "dimension", value)
-                          }
-                        />
+                              </p>
+                            </div>
+                            <div>
+                              <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
+                                {t("Quality / Style")}
+                              </div>
+                              <div className="grid grid-cols-2 gap-2">
+                                <input
+                                  className={inputClass}
+                                  value={activeModel.quality || ""}
+                                  onChange={(e) =>
+                                    updateModelField(
+                                      service,
+                                      "quality",
+                                      e.target.value,
+                                    )
+                                  }
+                                  placeholder={t("quality (e.g. hd)")}
+                                />
+                                <input
+                                  className={inputClass}
+                                  value={activeModel.style || ""}
+                                  onChange={(e) =>
+                                    updateModelField(
+                                      service,
+                                      "style",
+                                      e.target.value,
+                                    )
+                                  }
+                                  placeholder={t("style (e.g. vivid)")}
+                                />
+                              </div>
+                            </div>
+                          </>
+                        )}
+                        {service === "videogen" && (
+                          <>
+                            <div>
+                              <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
+                                {t("Aspect ratio")}
+                              </div>
+                              <input
+                                className={inputClass}
+                                value={activeModel.aspect_ratio || ""}
+                                onChange={(e) =>
+                                  updateModelField(
+                                    service,
+                                    "aspect_ratio",
+                                    e.target.value,
+                                  )
+                                }
+                                placeholder="16:9"
+                              />
+                              <p className="mt-1.5 text-[11px] text-[var(--muted-foreground)]">
+                                {t(
+                                  "Defaults sent with each request. Leave empty for the provider default.",
+                                )}
+                              </p>
+                            </div>
+                            <div>
+                              <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
+                                {t("Duration / Resolution")}
+                              </div>
+                              <div className="grid grid-cols-2 gap-2">
+                                <input
+                                  className={inputClass}
+                                  inputMode="numeric"
+                                  value={activeModel.duration || ""}
+                                  onChange={(e) =>
+                                    updateModelField(
+                                      service,
+                                      "duration",
+                                      e.target.value,
+                                    )
+                                  }
+                                  placeholder={t("seconds")}
+                                />
+                                <input
+                                  className={inputClass}
+                                  value={activeModel.resolution || ""}
+                                  onChange={(e) =>
+                                    updateModelField(
+                                      service,
+                                      "resolution",
+                                      e.target.value,
+                                    )
+                                  }
+                                  placeholder="720p"
+                                />
+                              </div>
+                            </div>
+                          </>
+                        )}
                       </div>
-                    )}
-                    {service === "tts" && (
-                      <>
-                        <div>
-                          <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
-                            {t("Voice")}
-                          </div>
-                          <input
-                            className={inputClass}
-                            value={activeModel.voice || ""}
-                            onChange={(e) =>
-                              updateModelField(service, "voice", e.target.value)
-                            }
-                            placeholder="alloy"
-                          />
-                          <p className="mt-1.5 text-[11px] text-[var(--muted-foreground)]">
-                            {t(
-                              "Provider-specific voice name, e.g. alloy (OpenAI) or model:voice (SiliconFlow).",
-                            )}
-                          </p>
-                        </div>
-                        <div>
-                          <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
-                            {t("Output format")}
-                          </div>
-                          <div className="relative">
-                            <select
-                              className={selectClass}
-                              value={activeModel.response_format || "mp3"}
-                              onChange={(e) =>
-                                updateModelField(
-                                  service,
-                                  "response_format",
-                                  e.target.value,
-                                )
-                              }
-                            >
-                              {["mp3", "wav", "opus", "aac", "flac", "pcm"].map(
-                                (fmt) => (
-                                  <option
-                                    className={selectOptionClass}
-                                    key={fmt}
-                                    value={fmt}
-                                  >
-                                    {fmt}
-                                  </option>
-                                ),
-                              )}
-                            </select>
-                            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
-                          </div>
-                        </div>
-                      </>
-                    )}
-                    {service === "imagegen" && (
-                      <>
-                        <div>
-                          <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
-                            {t("Image size")}
-                          </div>
-                          <input
-                            className={inputClass}
-                            value={activeModel.size || ""}
-                            onChange={(e) =>
-                              updateModelField(service, "size", e.target.value)
-                            }
-                            placeholder="1024x1024"
-                          />
-                          <p className="mt-1.5 text-[11px] text-[var(--muted-foreground)]">
-                            {t(
-                              "Default pixel size sent with each request. Leave empty for the provider default.",
-                            )}
-                          </p>
-                        </div>
-                        <div>
-                          <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
-                            {t("Quality / Style")}
-                          </div>
-                          <div className="grid grid-cols-2 gap-2">
-                            <input
-                              className={inputClass}
-                              value={activeModel.quality || ""}
-                              onChange={(e) =>
-                                updateModelField(
-                                  service,
-                                  "quality",
-                                  e.target.value,
-                                )
-                              }
-                              placeholder={t("quality (e.g. hd)")}
-                            />
-                            <input
-                              className={inputClass}
-                              value={activeModel.style || ""}
-                              onChange={(e) =>
-                                updateModelField(
-                                  service,
-                                  "style",
-                                  e.target.value,
-                                )
-                              }
-                              placeholder={t("style (e.g. vivid)")}
-                            />
-                          </div>
-                        </div>
-                      </>
-                    )}
-                    {service === "videogen" && (
-                      <>
-                        <div>
-                          <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
-                            {t("Aspect ratio")}
-                          </div>
-                          <input
-                            className={inputClass}
-                            value={activeModel.aspect_ratio || ""}
-                            onChange={(e) =>
-                              updateModelField(
-                                service,
-                                "aspect_ratio",
-                                e.target.value,
-                              )
-                            }
-                            placeholder="16:9"
-                          />
-                          <p className="mt-1.5 text-[11px] text-[var(--muted-foreground)]">
-                            {t(
-                              "Defaults sent with each request. Leave empty for the provider default.",
-                            )}
-                          </p>
-                        </div>
-                        <div>
-                          <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
-                            {t("Duration / Resolution")}
-                          </div>
-                          <div className="grid grid-cols-2 gap-2">
-                            <input
-                              className={inputClass}
-                              inputMode="numeric"
-                              value={activeModel.duration || ""}
-                              onChange={(e) =>
-                                updateModelField(
-                                  service,
-                                  "duration",
-                                  e.target.value,
-                                )
-                              }
-                              placeholder={t("seconds")}
-                            />
-                            <input
-                              className={inputClass}
-                              value={activeModel.resolution || ""}
-                              onChange={(e) =>
-                                updateModelField(
-                                  service,
-                                  "resolution",
-                                  e.target.value,
-                                )
-                              }
-                              placeholder="720p"
-                            />
-                          </div>
-                        </div>
-                      </>
                     )}
                   </div>
                 )}
               </div>
+            </Modal>
+          )}
+
+          {pickerOpen &&
+            openedProfile &&
+            (service === "llm" || service === "task") && (
+              <ModelListPicker
+                service={service}
+                profile={openedProfile}
+                existing={openedProfile.models.map((model) => model.model)}
+                onClose={() => setPickerOpen(false)}
+                onAdd={(ids) => {
+                  const profileId = openedProfile.id;
+                  mutateCatalog((next) => {
+                    const target = next.services[service];
+                    const profile = target.profiles.find(
+                      (item) => item.id === profileId,
+                    );
+                    if (!profile) return;
+                    const present = new Set(
+                      profile.models.map((model) => model.model),
+                    );
+                    ids
+                      .filter((id) => !present.has(id))
+                      .forEach((id, index) => {
+                        profile.models.push({
+                          id: `${service}-model-${Date.now()}-${index}`,
+                          name: id,
+                          model: id,
+                        });
+                      });
+                    if (
+                      profile.id === target.active_profile_id &&
+                      !profile.models.some(
+                        (model) => model.id === target.active_model_id,
+                      )
+                    ) {
+                      target.active_model_id = profile.models[0]?.id ?? null;
+                    }
+                  });
+                  setPickerOpen(false);
+                  setToast(t("Added {{count}} models.", { count: ids.length }));
+                }}
+              />
             )}
 
+          <div className="mt-7 min-w-0">
             {/* ── Diagnostics — per-service, inline ── */}
-            <div className="rounded-xl border border-[var(--border)]">
-              <div className="flex items-center justify-between px-5 py-3.5">
+            <div className="border-t border-[var(--border)]/60">
+              <div className="flex items-center justify-between py-2.5">
                 <button
                   type="button"
                   onClick={() => setDiagnosticsOpen((v) => !v)}
@@ -1011,17 +1173,48 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
           </div>
         </div>
       ) : (
-        <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-[var(--border)] px-5 py-12 text-center text-[13px] text-[var(--muted-foreground)]">
-          <div>{t("No profiles configured. Add a profile to start.")}</div>
-          <button
-            type="button"
-            onClick={() => addProfile(service)}
-            className="inline-flex items-center gap-1 rounded-lg border border-[var(--border)]/50 px-2.5 py-1 text-[12px] text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)]"
-          >
-            <Plus className="h-3 w-3" />
-            {t("Profile")}
-          </button>
+        // Zero state in the same language as the populated one: the grid with
+        // only its add card in it, so starting out looks like what comes next.
+        <div>
+          <SectionHead title={t("Providers")} />
+          <CardGrid>
+            <AddCard
+              label={t("Add provider")}
+              onClick={() => addProfile(service)}
+            />
+          </CardGrid>
         </div>
+      )}
+
+      {deletingProfile && (
+        <ConfirmDialog
+          open
+          title={t("Delete this provider?")}
+          tone="danger"
+          confirmLabel={t("Delete")}
+          onConfirm={() => {
+            removeActiveProfile(service, deletingProfile.id);
+            setDeletingProfile(null);
+            setOpenProfileId(null);
+            setExpandedModelId(null);
+          }}
+          onCancel={() => setDeletingProfile(null)}
+        >
+          {deletingProfile.id === inUseProfileId
+            ? t(
+                "This is your active {{service}} provider — deleting it switches to {{next}}.",
+                {
+                  service: t(SERVICE_LABEL[service]),
+                  next:
+                    profiles.find((item) => item.id !== deletingProfile.id)
+                      ?.name ?? t("nothing configured"),
+                },
+              )
+            : t(
+                "This removes {{count}} model(s) and its saved credentials. This can't be undone.",
+                { count: deletingProfile.models.length },
+              )}
+        </ConfirmDialog>
       )}
     </div>
   );
@@ -1187,8 +1380,36 @@ function ProfileFields({
   ) => void;
 }) {
   const { t } = useTranslation();
-  const { providers, updateProfileField, updateModelField } = useSettings();
+  const {
+    draft,
+    providers,
+    updateProfileField: setProfileField,
+    updateModelField: setModelField,
+    unlinkProfile,
+  } = useSettings();
+  // Bound to the profile on screen. The context mutators fall back to whatever
+  // is *in use* when no id is given, so editing an opened-but-inactive
+  // provider here used to rewrite the active one's fields instead.
+  const updateProfileField = useCallback(
+    (svc: ServiceName, field: keyof CatalogProfile, value: string) =>
+      setProfileField(svc, field, value, profile.id),
+    [setProfileField, profile.id],
+  );
+  const updateModelField = useCallback(
+    (svc: ServiceName, field: keyof CatalogModel, value: string) =>
+      setModelField(svc, field, value, profile.id),
+    [setModelField, profile.id],
+  );
   const [extraOpen, setExtraOpen] = useState(false);
+
+  // A profile fed by a connection shows its credentials but does not let them
+  // be edited here: the next save would mirror the connection's values back
+  // over anything typed, and a field that silently reverts is worse than one
+  // that says where it comes from.
+  const linkedConnection =
+    (draft.connections ?? []).find(
+      (item) => item.id === profile.connection_id,
+    ) ?? null;
 
   const providerValue =
     service === "search" ? profile.provider || "" : profile.binding || "";
@@ -1203,6 +1424,30 @@ function ProfileFields({
     profile,
   );
   const isCodeBuddyAuth = service === "llm" && providerValue === "codebuddy";
+  const apiFormats = LLM_SHAPED.has(service)
+    ? (providerOption?.api_formats ?? [])
+    : [];
+  const supportsApiFormatSelection = apiFormats.length > 1;
+  const apiFormat =
+    profile.api_format || providerOption?.default_api_format || "auto";
+  const changeApiFormat = (next: string) => {
+    updateProfileField(service, "api_format", next);
+    // A vendor may serve the new format at a different endpoint (MiniMax:
+    // /v1 vs /anthropic). Follow it only while the field still holds the old
+    // format's default — a hand-typed URL is the user's and stays.
+    const baseUrls = providerOption?.base_urls ?? {};
+    const previousDefault = baseUrls[apiFormat] ?? providerOption?.base_url ?? "";
+    const nextDefault = baseUrls[next] ?? providerOption?.base_url ?? "";
+    const current = String(profile.base_url || "").trim();
+    if (
+      !linkedConnection &&
+      nextDefault &&
+      nextDefault !== current &&
+      (!current || current === previousDefault)
+    ) {
+      updateProfileField(service, "base_url", nextDefault);
+    }
+  };
 
   const fields =
     isCodexOAuth || isCodeBuddyAuth
@@ -1239,6 +1484,18 @@ function ProfileFields({
                 options.find((p) => p.value === providerValue)?.label ?? "";
               const match = options.find((p) => p.value === val);
               updateProfileField(service, field, val);
+              // The new vendor may not speak the format the old one did.
+              if (
+                match &&
+                LLM_SHAPED.has(service) &&
+                !(match.api_formats ?? []).includes(profile.api_format ?? "auto")
+              ) {
+                updateProfileField(
+                  service,
+                  "api_format",
+                  match.default_api_format ?? "auto",
+                );
+              }
               // Keep an un-customized profile name tracking its provider.
               const renamed = nextProfileName(
                 profile.name,
@@ -1278,14 +1535,20 @@ function ProfileFields({
               {t("Select provider...")}
             </option>
             {(providers[service] || [])
-              .filter((p) => p.status !== "deprecated")
+              .filter(
+                (p) =>
+                  p.status !== "deprecated" &&
+                  (p.status !== "legacy" || p.value === providerValue),
+              )
               .map((p) => (
                 <option
                   className={selectOptionClass}
                   key={p.value}
                   value={p.value}
                 >
-                  {p.label}
+                  {p.status === "legacy"
+                    ? t("{{label}} (legacy)", { label: p.label })
+                    : p.label}
                 </option>
               ))}
           </select>
@@ -1328,14 +1591,40 @@ function ProfileFields({
           <CodeBuddyAuthCard />
         </div>
       )}
+      {linkedConnection && (
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg border border-[var(--border)] bg-[var(--muted)]/25 px-3 py-2.5 sm:col-span-2">
+          <span className="text-[11.5px] text-[var(--muted-foreground)]">
+            {t("Credentials come from the {{name}} connection.", {
+              name: linkedConnection.name,
+            })}
+          </span>
+          <span className="flex items-center gap-3">
+            <Link
+              href="/settings#connections"
+              className="inline-flex items-center gap-1 text-[11.5px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+            >
+              {t("Edit connection")}
+              <ArrowUpRight className="h-3 w-3" />
+            </Link>
+            <button
+              type="button"
+              onClick={() => unlinkProfile(service, profile.id)}
+              className="text-[11.5px] text-[var(--muted-foreground)] underline-offset-2 transition-colors hover:text-[var(--foreground)] hover:underline"
+            >
+              {t("Use its own key")}
+            </button>
+          </span>
+        </div>
+      )}
       {fields.baseUrl && (
         <div className="sm:col-span-2">
           <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
             {service === "embedding" ? t("Endpoint URL") : t("Base URL")}
           </div>
           <input
-            className={inputClass}
+            className={`${inputClass} disabled:opacity-60`}
             value={profile.base_url}
+            disabled={Boolean(linkedConnection)}
             onChange={(e) =>
               updateProfileField(service, "base_url", e.target.value)
             }
@@ -1371,8 +1660,9 @@ function ProfileFields({
               type={showApiKey ? "text" : "password"}
               autoComplete="new-password"
               spellCheck={false}
-              className={`${inputClass} pr-10 font-mono`}
+              className={`${inputClass} pr-10 font-mono disabled:opacity-60`}
               value={profile.api_key}
+              disabled={Boolean(linkedConnection)}
               onChange={(e) =>
                 updateProfileField(service, "api_key", e.target.value)
               }
@@ -1392,6 +1682,36 @@ function ProfileFields({
               )}
             </button>
           </div>
+        </div>
+      )}
+      {supportsApiFormatSelection && (
+        <div className="sm:col-span-2">
+          <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
+            {t("API format")}
+          </div>
+          <div className="relative">
+            <select
+              className={selectClass}
+              value={apiFormats.includes(apiFormat) ? apiFormat : apiFormats[0]}
+              onChange={(event) => changeApiFormat(event.target.value)}
+            >
+              {apiFormats.map((format) => (
+                <option
+                  className={selectOptionClass}
+                  key={format}
+                  value={format}
+                >
+                  {t(API_FORMAT_LABELS[format] ?? format)}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
+          </div>
+          {API_FORMAT_HINTS[apiFormat] && (
+            <p className="mt-1.5 text-[11px] leading-relaxed text-[var(--muted-foreground)]">
+              {t(API_FORMAT_HINTS[apiFormat])}
+            </p>
+          )}
         </div>
       )}
       {!isCodexOAuth && !isCodeBuddyAuth && (

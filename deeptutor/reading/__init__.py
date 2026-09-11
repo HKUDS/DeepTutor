@@ -23,6 +23,15 @@ is testable on its own and the capability that drives it
 
 from __future__ import annotations
 
+from deeptutor.reading.catalog_models import (
+    IngestionStatus,
+    MaterialRecord,
+    ReadingSessionRecord,
+    SourceKind,
+    WorkspaceRecord,
+    WorkspaceTab,
+)
+from deeptutor.reading.catalog_store import ReadingCatalogStore
 from deeptutor.reading.epub_bilingual import (
     create_epub_pairing,
     delete_epub_pairing,
@@ -38,6 +47,7 @@ from deeptutor.reading.models import (
     MaterialManifest,
     MaterialNotFound,
     OutlineEntry,
+    ReadingBookmark,
     ReadingError,
     ReadingPosition,
     ReadingUpgradeConflict,
@@ -59,6 +69,7 @@ from deeptutor.reading.service import (
     render_outline,
     render_units,
     search_material,
+    unit_timestamps,
     verify_quote,
 )
 from deeptutor.reading.store import ReadingStore, content_hash
@@ -70,24 +81,32 @@ __all__ = [
     "ExportFormat",
     "ExportResult",
     "Extraction",
+    "IngestionStatus",
+    "MaterialRecord",
     "MaterialManifest",
     "MaterialNotFound",
     "OutlineEntry",
     "QuoteCheck",
     "ReadingError",
+    "ReadingCatalogStore",
+    "ReadingBookmark",
     "ReadingPosition",
+    "ReadingSessionRecord",
     "ReadingUpgradeConflict",
     "ReadingStore",
     "Rect",
     "RenderedUnits",
     "SearchHit",
     "SearchResult",
+    "SourceKind",
     "RenderMode",
     "TextPositionSelector",
     "TextQuoteSelector",
     "TextSelector",
     "UnitKind",
     "UnitReference",
+    "WorkspaceRecord",
+    "WorkspaceTab",
     "content_hash",
     "create_epub_pairing",
     "delete_epub_pairing",
@@ -99,6 +118,7 @@ __all__ = [
     "render_outline",
     "recommend_epub_candidates",
     "render_units",
+    "unit_timestamps",
     "search_material",
     "search_units",
     "verify_quote",

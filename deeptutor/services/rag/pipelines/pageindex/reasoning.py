@@ -5,7 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from deeptutor.core.agentic import (
+from deeptutor.core.context import UnifiedContext
+from deeptutor.core.trace import build_trace_metadata, new_call_id
+from deeptutor.runtime.agentic import (
     DispatchOutcome,
     LabelProtocol,
     LLMClientConfig,
@@ -16,11 +18,9 @@ from deeptutor.core.agentic import (
     dispatch_tool_calls,
     run_agentic_loop,
 )
-from deeptutor.core.agentic.labeled_step import run_labeled_step
-from deeptutor.core.context import UnifiedContext
-from deeptutor.core.stream_bus import StreamBus
-from deeptutor.core.trace import build_trace_metadata, new_call_id
+from deeptutor.runtime.agentic.labeled_step import run_labeled_step
 from deeptutor.runtime.registry.tool_registry import get_tool_registry
+from deeptutor.runtime.stream_bus import StreamBus
 from deeptutor.services.llm import get_llm_config
 
 from .tools import PageIndexToolContext, build_pageindex_tool_context
@@ -100,7 +100,6 @@ class _ReadingHost:
             empty_tool_result_message="PageIndex returned no content.",
             start_retrieval_message="Reading PageIndex documents",
             too_many_tool_calls_message="Too many tool calls in one round.",
-            unknown_error_message_factory=lambda name: f"Error executing {name}.",
             trace_id_prefix=f"{self.source}-pageindex",
         )
 
@@ -194,6 +193,8 @@ async def read_pageindex_with_agent(
             api_version=getattr(llm, "api_version", None),
             extra_headers=getattr(llm, "extra_headers", None) or None,
             reasoning_effort=getattr(llm, "reasoning_effort", None),
+            wire_api=getattr(llm, "wire_api", None) or "auto",
+            api_format=getattr(llm, "api_format", None) or "auto",
         )
     )
     docs = (

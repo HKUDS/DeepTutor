@@ -5,6 +5,7 @@ PathService - centralized runtime storage layout for ``data/user``.
 Runtime data is constrained to:
 
 data/user/
+├── .runtime/
 ├── chat_history.db
 ├── logs/
 ├── settings/
@@ -19,13 +20,15 @@ data/user/
         ├── deep_question/
         ├── deep_research/
         ├── math_animator/
-        └── _detached_code_execution/
+        └── _detached_exec/
 """
 
 from pathlib import Path
+import shutil
 from typing import Literal, cast
 
 from deeptutor.runtime.home import PACKAGE_ROOT, get_runtime_data_root
+from deeptutor.utils.secret_files import ensure_private_directory, write_secret_text
 
 AgentModule = Literal[
     "solve",
@@ -33,7 +36,7 @@ AgentModule = Literal[
     "question",
     "research",
     "co-writer",
-    "run_code_workspace",
+    "exec_workspace",
     "logs",
     "math_animator",
 ]
@@ -44,7 +47,7 @@ ChatWorkspaceFeature = Literal[
     "deep_question",
     "deep_research",
     "math_animator",
-    "_detached_code_execution",
+    "_detached_exec",
 ]
 
 WorkspaceFeature = Literal[
@@ -54,6 +57,7 @@ WorkspaceFeature = Literal[
     "chat",
     "book",
     "reading",
+    "timed_media",
 ]
 
 
@@ -74,7 +78,7 @@ class PathService:
         "research": ("chat", "deep_research"),
         "math_animator": ("chat", "math_animator"),
         "co-writer": ("co-writer", None),
-        "run_code_workspace": ("chat", "_detached_code_execution"),
+        "exec_workspace": ("chat", "_detached_exec"),
     }
     _PRIVATE_SUFFIXES = {".json", ".sqlite", ".db", ".md", ".yaml", ".yml", ".py", ".log"}
 
@@ -193,7 +197,7 @@ class PathService:
         if len(parts) >= 5 and parts[:3] == ("workspace", "chat", "chat") and parts[4] == "cli":
             return candidate
 
-        if len(parts) >= 4 and parts[:3] == ("workspace", "chat", "_detached_code_execution"):
+        if len(parts) >= 4 and parts[:3] == ("workspace", "chat", "_detached_exec"):
             return candidate
 
         return None
@@ -206,6 +210,11 @@ class PathService:
 
     def get_settings_dir(self) -> Path:
         return self._user_data_dir / "settings"
+
+    def get_runtime_state_dir(self) -> Path:
+        """Private state for active runs, never part of a content workspace."""
+
+        return self._user_data_dir / ".runtime"
 
     def get_settings_file(self, name: str) -> Path:
         if "." not in name:
@@ -241,7 +250,7 @@ class PathService:
             "deep_question",
             "deep_research",
             "math_animator",
-            "_detached_code_execution",
+            "_detached_exec",
         }:
             return self.get_chat_feature_dir(cast(ChatWorkspaceFeature, feature))
         if feature in {"memory", "notebook", "co-writer", "book"}:
@@ -274,18 +283,56 @@ class PathService:
         return self.get_notebook_dir() / "notebooks_index.json"
 
     def get_memory_dir(self) -> Path:
-        new_dir = self.workspace_root / "memory"
-        old_dir = self.get_workspace_feature_dir("memory")
-        if self.workspace_root == (self.project_root / "data").resolve() and old_dir.exists():
-            new_dir.mkdir(parents=True, exist_ok=True)
-            for f in old_dir.iterdir():
-                if f.is_file() and f.suffix == ".md":
-                    target = new_dir / f.name
-                    if not target.exists():
-                        import shutil
+        return self.workspace_root / "memory"
 
-                        shutil.copy2(f, target)
-        return new_dir
+    def migrate_legacy_memory_markdown(self) -> bool:
+        """Move the old workspace memory files into the canonical memory root once.
+
+        Older versions stored loose Markdown files in
+        ``data/user/workspace/memory``.  Keeping this migration out of the path
+        getter is important: a read-only path lookup must never recreate files
+        that the v1-to-v2 migration has already archived.
+        """
+        new_dir = self.get_memory_dir()
+        old_dir = self.get_workspace_feature_dir("memory")
+        default_root = (self.project_root / "data").resolve()
+        marker = old_dir / ".migrated-to-data-memory-v2"
+        if self.workspace_root != default_root or marker.exists() or not old_dir.exists():
+            return False
+
+        legacy_files = sorted(
+            path for path in old_dir.iterdir() if path.is_file() and path.suffix == ".md"
+        )
+        if not legacy_files:
+            return False
+
+        ensure_private_directory(new_dir)
+        conflict_dir = new_dir / "backup" / "legacy-workspace"
+        for source in legacy_files:
+            target = new_dir / source.name
+            if not target.exists():
+                shutil.move(str(source), str(target))
+                continue
+            if source.read_bytes() == target.read_bytes():
+                source.unlink()
+                continue
+
+            ensure_private_directory(conflict_dir)
+            conflict = conflict_dir / source.name
+            counter = 1
+            while conflict.exists() and conflict.read_bytes() != source.read_bytes():
+                conflict = conflict_dir / f"{source.stem}-{counter}{source.suffix}"
+                counter += 1
+            if conflict.exists():
+                source.unlink()
+            else:
+                shutil.move(str(source), str(conflict))
+
+        write_secret_text(
+            marker,
+            "Legacy workspace memory was migrated to data/memory.\n",
+        )
+        return True
 
     def get_solve_dir(self) -> Path:
         return self.get_chat_feature_dir("deep_solve")
@@ -381,8 +428,8 @@ class PathService:
         (root / "assets").mkdir(parents=True, exist_ok=True)
         return root
 
-    def get_run_code_workspace_dir(self) -> Path:
-        return self.get_chat_feature_dir("_detached_code_execution")
+    def get_exec_workspace_dir(self) -> Path:
+        return self.get_chat_feature_dir("_detached_exec")
 
     def get_logs_dir(self) -> Path:
         return self.get_user_root() / "logs"
@@ -399,8 +446,7 @@ class PathService:
 
     def ensure_workspace_dir(self) -> Path:
         path = self.get_workspace_dir()
-        path.mkdir(parents=True, exist_ok=True)
-        return path
+        return ensure_private_directory(path)
 
     def ensure_notebook_dir(self) -> Path:
         path = self.get_notebook_dir()
@@ -408,21 +454,25 @@ class PathService:
         return path
 
     def ensure_memory_dir(self) -> Path:
+        self.migrate_legacy_memory_markdown()
         path = self.get_memory_dir()
-        path.mkdir(parents=True, exist_ok=True)
-        return path
+        return ensure_private_directory(path)
 
     def ensure_settings_dir(self) -> Path:
         path = self.get_settings_dir()
-        path.mkdir(parents=True, exist_ok=True)
-        return path
+        return ensure_private_directory(path)
+
+    def ensure_runtime_state_dir(self) -> Path:
+        return ensure_private_directory(self.get_runtime_state_dir())
 
     def ensure_all_directories(self) -> None:
+        ensure_private_directory(self.get_user_root())
         self.ensure_settings_dir()
+        self.ensure_runtime_state_dir()
         self.ensure_workspace_dir()
         self.ensure_memory_dir()
         self.ensure_notebook_dir()
-        self.get_logs_dir().mkdir(parents=True, exist_ok=True)
+        ensure_private_directory(self.get_logs_dir())
         for workspace_feature in cast(tuple[WorkspaceFeature, ...], ("co-writer", "book")):
             self.get_workspace_feature_dir(workspace_feature).mkdir(parents=True, exist_ok=True)
         for chat_feature in cast(
@@ -433,7 +483,7 @@ class PathService:
                 "deep_question",
                 "deep_research",
                 "math_animator",
-                "_detached_code_execution",
+                "_detached_exec",
             ),
         ):
             self.get_chat_feature_dir(chat_feature).mkdir(parents=True, exist_ok=True)

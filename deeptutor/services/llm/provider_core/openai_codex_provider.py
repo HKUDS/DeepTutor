@@ -19,6 +19,7 @@ from deeptutor.services.llm.provider_core.base import LLMProvider, LLMResponse, 
 from deeptutor.services.llm.provider_core.openai_responses import (
     consume_sse,
     convert_messages,
+    convert_tool_choice,
     convert_tools,
 )
 from deeptutor.services.llm.request_compat import is_transient_transport_error
@@ -64,7 +65,7 @@ class OpenAICodexProvider(LLMProvider):
             "text": {"verbosity": "medium"},
             "include": ["reasoning.encrypted_content"],
             "prompt_cache_key": _prompt_cache_key(messages),
-            "tool_choice": tool_choice or "auto",
+            "tool_choice": convert_tool_choice(tool_choice) or "auto",
             "parallel_tool_calls": True,
         }
         if reasoning_effort:

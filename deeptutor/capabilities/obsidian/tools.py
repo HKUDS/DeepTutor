@@ -290,7 +290,15 @@ class ObsidianCreateNoteTool(_ObsidianTool):
                     type="string",
                     description="Vault-relative path, e.g. 'Summaries/Photosynthesis.md'.",
                 ),
-                ToolParameter(name="content", type="string", description="Markdown body."),
+                ToolParameter(
+                    name="content",
+                    type="string",
+                    description=(
+                        "Markdown body. Must be non-empty — write the complete "
+                        "note text in this call; extend an existing note later "
+                        "with obsidian_append."
+                    ),
+                ),
                 ToolParameter(
                     name="properties",
                     type="object",

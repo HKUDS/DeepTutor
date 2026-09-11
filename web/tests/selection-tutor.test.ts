@@ -2,8 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildSelectionTutorConfig,
+  extractTexAnnotationFromHtml,
   normalizeSelectedText,
   selectionTutorKey,
+  wrapLatexSource,
 } from "../lib/selection-tutor";
 
 test("normalizes selected chat text without flattening paragraphs", () => {
@@ -42,4 +44,26 @@ test("builds selected text context with its containing message", () => {
       },
     },
   );
+});
+
+test("wrapLatexSource matches Markdown math delimiters", () => {
+  assert.equal(wrapLatexSource("a^2", false), "$a^2$");
+  assert.equal(
+    wrapLatexSource("I(\\theta) = a^2", true),
+    "$$I(\\theta) = a^2$$",
+  );
+});
+
+test("KaTeX annotation remaps to math that grounds in Markdown source", () => {
+  const tex = "I(\\theta) = a^2 \\cdot P(\\theta) \\cdot (1 - P(\\theta))";
+  const html = `<span class="katex"><span class="katex-mathml"><math><semantics><annotation encoding="application/x-tex">${tex}</annotation></semantics></math></span><span class="katex-html">I(θ)=a²</span></span>`;
+  assert.equal(extractTexAnnotationFromHtml(html), tex);
+
+  const source = `$$${tex}$$`;
+  const selected = wrapLatexSource(
+    extractTexAnnotationFromHtml(html) ?? "",
+    true,
+  );
+  assert.equal(selected, source);
+  assert.ok(source.includes(selected));
 });

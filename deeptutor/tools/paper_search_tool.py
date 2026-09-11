@@ -2,7 +2,7 @@
 ArXiv search tool for preprint discovery.
 
 This utility searches arXiv and returns lightweight metadata suitable for
-tool usage in chat / playground flows.
+tool usage in chat flows.
 """
 
 import asyncio

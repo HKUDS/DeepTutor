@@ -19,6 +19,7 @@ import pytest
 
 from deeptutor.services.rag.pipelines.llamaindex import storage as storage_module
 from deeptutor.services.rag.pipelines.llamaindex import vector_store
+from deeptutor.services.rag.pipelines.llamaindex.config import VectorIndexConfig
 
 faiss = pytest.importorskip("faiss")
 pytest.importorskip("llama_index.vector_stores.faiss")
@@ -74,8 +75,8 @@ def _nodes() -> list[TextNode]:
     return nodes
 
 
-def _persist_faiss_index(storage_dir: Path) -> None:
-    context = vector_store.new_faiss_storage_context(_DIM)
+def _persist_faiss_index(storage_dir: Path, index_config: VectorIndexConfig | None = None) -> None:
+    context = vector_store.new_faiss_storage_context(_DIM, index_config)
     assert context is not None
     index = VectorStoreIndex(nodes=_nodes(), storage_context=context)
     context.persist(persist_dir=str(storage_dir))
@@ -99,6 +100,26 @@ def test_new_index_persists_faiss_and_ranks_by_cosine(tmp_path: Path) -> None:
     ids = [r.node.node_id for r in results]
     # The probe vector aligns most with gamma then alpha under cosine.
     assert ids == ["gamma", "alpha"]
+
+
+def test_opt_in_hnsw_index_persists_and_ranks_by_cosine(tmp_path: Path) -> None:
+    """HNSW is an opt-in scalable backend with the same cosine semantics."""
+    index_config = VectorIndexConfig(
+        type="hnsw", hnsw_m=8, hnsw_ef_construction=32, hnsw_ef_search=16
+    )
+    _persist_faiss_index(tmp_path, index_config)
+
+    persisted = vector_store.faiss_read_index(
+        str(tmp_path / vector_store.DEFAULT_VECTOR_STORE_FILENAME)
+    )
+    assert type(persisted).__name__ == "IndexHNSWFlat"
+    assert persisted.metric_type == faiss.METRIC_INNER_PRODUCT
+    assert persisted.hnsw.efConstruction == 32
+    assert persisted.hnsw.efSearch == 16
+
+    index = vector_store.load_index(tmp_path)
+    results = index.as_retriever(similarity_top_k=2).retrieve("probe")
+    assert [r.node.node_id for r in results] == ["gamma", "alpha"]
 
 
 def test_legacy_simple_index_stays_readable_without_mutation(tmp_path: Path) -> None:
@@ -263,6 +284,35 @@ def test_storage_create_index_persists_faiss_end_to_end(tmp_path: Path) -> None:
     count = storage_module.create_index([Document(text="node alpha", id_="d")], storage_dir)
     assert count == 1
     assert vector_store.detect_backend(storage_dir) == vector_store.BACKEND_FAISS
+    assert storage_module.retrieve_nodes(storage_dir, "probe", top_k=1)
+
+
+def test_storage_create_index_honors_hnsw_settings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The production ingestion path uses the persisted index-type settings."""
+    from llama_index.core import Document
+
+    from deeptutor.services.rag.pipelines.llamaindex import ingestion
+
+    monkeypatch.setattr(
+        ingestion,
+        "vector_index_config_from_settings",
+        lambda: VectorIndexConfig(
+            type="hnsw", hnsw_m=8, hnsw_ef_construction=32, hnsw_ef_search=16
+        ),
+    )
+    storage_dir = tmp_path / "version-1"
+    storage_dir.mkdir()
+
+    count = storage_module.create_index([Document(text="node gamma", id_="g")], storage_dir)
+
+    assert count == 1
+    assert vector_store.detect_backend(storage_dir) == vector_store.BACKEND_FAISS
+    persisted = vector_store.faiss_read_index(
+        str(storage_dir / vector_store.DEFAULT_VECTOR_STORE_FILENAME)
+    )
+    assert type(persisted).__name__ == "IndexHNSWFlat"
     assert storage_module.retrieve_nodes(storage_dir, "probe", top_k=1)
 
 

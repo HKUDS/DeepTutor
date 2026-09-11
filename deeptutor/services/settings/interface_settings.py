@@ -16,6 +16,7 @@ import threading
 from typing import Any
 
 from deeptutor.services.path_service import get_path_service
+from deeptutor.tools.builtin import USER_TOGGLEABLE_TOOL_NAMES
 
 DEFAULT_UI_SETTINGS: dict[str, Any] = {
     # "snow" is the pure-white neutral theme, shown as "Default" in the UI.
@@ -115,6 +116,33 @@ def get_ui_settings() -> dict[str, Any]:
             return DEFAULT_UI_SETTINGS.copy()
 
     return DEFAULT_UI_SETTINGS.copy()
+
+
+def sanitize_enabled_tools(value: Any) -> list[str]:
+    """Normalize saved optional-tool names against the runtime catalog."""
+
+    if not isinstance(value, list):
+        return list(USER_TOGGLEABLE_TOOL_NAMES)
+    allowed = set(USER_TOGGLEABLE_TOOL_NAMES)
+    seen: set[str] = set()
+    result: list[str] = []
+    for name in value:
+        if isinstance(name, str) and name in allowed and name not in seen:
+            seen.add(name)
+            result.append(name)
+    return result
+
+
+def get_enabled_optional_tools() -> list[str]:
+    """Read the current user's enabled tools and apply the admin grant."""
+
+    from deeptutor.multi_user.tool_access import allowed_optional_tools
+
+    enabled = sanitize_enabled_tools(get_ui_settings().get("enabled_optional_tools"))
+    allowed = allowed_optional_tools()
+    if allowed is not None:
+        enabled = [name for name in enabled if name in allowed]
+    return enabled
 
 
 def atomic_update(

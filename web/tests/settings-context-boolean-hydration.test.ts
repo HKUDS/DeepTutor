@@ -12,9 +12,10 @@ import {
 
 const settingsContextPath = path.join(
   process.cwd(),
-  "components",
+  "features",
   "settings",
-  "SettingsContext.tsx",
+  "store",
+  "SettingsStore.tsx",
 );
 
 function readSettingsContextSource() {
@@ -89,27 +90,5 @@ test("settings-context: sources code-block switches from the app-shell single so
     source,
     /codeBlockShowLineNumbers,[\s\S]*codeBlockWrapLongLines,[\s\S]*=\s*useAppShell\(\)/,
     "SettingsContext should destructure the code-block switch values from useAppShell().",
-  );
-});
-
-test("app-shell-context: hydrates code-block switches after the SSR-safe first render", () => {
-  const appShellPath = path.join(
-    process.cwd(),
-    "context",
-    "AppShellContext.tsx",
-  );
-  const source = fs.readFileSync(appShellPath, "utf8");
-
-  // The single source re-reads localStorage after mount so a persisted `true`
-  // forces a DOM update instead of keeping the server-rendered aria-checked=false.
-  assert.match(
-    source,
-    /setCodeBlockShowLineNumbersState\(\s*readStoredCodeBlockShowLineNumbers\(\)\s*\)/,
-    "AppShellContext should re-read show-line-numbers from localStorage after mount.",
-  );
-  assert.match(
-    source,
-    /setCodeBlockWrapLongLinesState\(\s*readStoredCodeBlockWrapLongLines\(\)\s*\)/,
-    "AppShellContext should re-read wrap-long-lines from localStorage after mount.",
   );
 });

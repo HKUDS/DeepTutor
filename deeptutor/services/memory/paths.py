@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Literal, get_args
 
 from deeptutor.services.path_service import get_path_service
+from deeptutor.utils.secret_files import ensure_private_directory
 
 if TYPE_CHECKING:
     from deeptutor.services.path_service import PathService
@@ -96,7 +97,7 @@ def backup_root() -> Path:
 def ensure_dirs() -> None:
     """Create the directory skeleton. Idempotent."""
     root = memory_root()
-    root.mkdir(parents=True, exist_ok=True)
+    ensure_private_directory(root)
     l2_dir().mkdir(parents=True, exist_ok=True)
     l3_dir().mkdir(parents=True, exist_ok=True)
     for surface in SURFACES:

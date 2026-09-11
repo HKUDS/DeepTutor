@@ -49,7 +49,7 @@ def admin_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setattr(mcp_settings, "get_mcp_manager", lambda: _Manager())
 
     app = FastAPI()
-    app.include_router(mcp_settings.router, prefix="/api/v1/settings/mcp")
+    app.include_router(mcp_settings.router, prefix="/api/settings/mcp")
     app.dependency_overrides[require_admin] = lambda: None
     return TestClient(app)
 
@@ -87,7 +87,7 @@ def test_single_server_put_preserves_the_other_entries(
     )
 
     response = admin_client.put(
-        "/api/v1/settings/mcp/servers/edit",
+        "/api/settings/mcp/servers/edit",
         json={"url": "https://new.example/mcp"},
     )
 
@@ -112,7 +112,7 @@ def test_single_server_delete_removes_only_that_entry(
         ),
     )
 
-    response = admin_client.delete("/api/v1/settings/mcp/servers/a")
+    response = admin_client.delete("/api/settings/mcp/servers/a")
 
     assert response.status_code == 200
     assert set(response.json()["servers"]) == {"b"}
@@ -121,7 +121,7 @@ def test_single_server_delete_removes_only_that_entry(
 def test_an_invalid_server_name_is_refused(admin_client: TestClient, tmp_path: Path) -> None:
     (tmp_path / "mcp.json").write_text('{"servers": {}}', encoding="utf-8")
     response = admin_client.put(
-        "/api/v1/settings/mcp/servers/bad name!",
+        "/api/settings/mcp/servers/bad name!",
         json={"url": "https://x.example/mcp"},
     )
     assert response.status_code == 400

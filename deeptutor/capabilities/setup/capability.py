@@ -1,6 +1,6 @@
 """Setup loop capability — DeepTutor configuring its own install.
 
-A *plain* :class:`~deeptutor.capabilities.protocol.LoopCapability`, not a
+A *plain* :class:`~deeptutor.capabilities.protocol.LoopExtension`, not a
 :class:`~deeptutor.capabilities.protocol.KnowledgeCapability`: configuring the
 app is something the user asks for in the middle of ordinary work ("switch to
 Chinese and use a better PDF parser"), so the turn keeps its normal tool
@@ -33,6 +33,7 @@ from deeptutor.capabilities.setup.binding import (
 )
 from deeptutor.capabilities.setup.tools import SETUP_TOOL_NAMES
 from deeptutor.core.context import UnifiedContext
+from deeptutor.services.prompt.lookup import prompt_text as _prompt_text
 
 
 class SetupCapability:
@@ -96,15 +97,6 @@ class SetupCapability:
     def pre_loop_seed(self, context: UnifiedContext) -> str:
         _ = context
         return ""
-
-
-def _prompt_text(prompts: dict[str, Any], path: tuple[str, ...]) -> str:
-    value: Any = prompts
-    for key in path:
-        if not isinstance(value, dict):
-            return ""
-        value = value.get(key)
-    return value if isinstance(value, str) and value else ""
 
 
 def _load_system_prompt(language: str) -> str:

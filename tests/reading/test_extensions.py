@@ -26,7 +26,7 @@ def _extension(identifier: str = "sample"):
     )
 
 
-def test_core_has_no_builtin_reading_extensions(monkeypatch):
+def test_registry_is_empty_when_no_entry_points_are_installed(monkeypatch):
     monkeypatch.setattr(
         "deeptutor.reading.extensions.load_entry_point_group",
         lambda *_args, **_kwargs: [],

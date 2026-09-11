@@ -41,7 +41,7 @@ export interface ConnectablePartner {
 }
 
 export async function listConnectablePartners(): Promise<ConnectablePartner[]> {
-  const res = await apiFetch(apiUrl("/api/v1/subagents/partners"), {
+  const res = await apiFetch(apiUrl("/api/subagents/partners"), {
     cache: "no-store",
   });
   if (!res.ok) throw new Error(`Request failed: ${res.status}`);
@@ -50,7 +50,7 @@ export async function listConnectablePartners(): Promise<ConnectablePartner[]> {
 }
 
 export async function detectSubagents(): Promise<SubagentBackendInfo[]> {
-  const res = await apiFetch(apiUrl("/api/v1/subagents/detect"), {
+  const res = await apiFetch(apiUrl("/api/subagents/detect"), {
     cache: "no-store",
   });
   if (!res.ok) throw new Error(`Detect failed: ${res.status}`);
@@ -59,7 +59,7 @@ export async function detectSubagents(): Promise<SubagentBackendInfo[]> {
 }
 
 export async function listSubagentConnections(): Promise<SubagentConnection[]> {
-  const res = await apiFetch(apiUrl("/api/v1/subagents/connections"), {
+  const res = await apiFetch(apiUrl("/api/subagents/connections"), {
     cache: "no-store",
   });
   if (!res.ok) throw new Error(`Request failed: ${res.status}`);
@@ -74,7 +74,7 @@ export async function connectSubagent(payload: {
   /** Required when `agent_kind === "partner"`: which partner to consult. */
   partner_id?: string;
 }): Promise<SubagentConnection> {
-  const res = await apiFetch(apiUrl("/api/v1/subagents/connections"), {
+  const res = await apiFetch(apiUrl("/api/subagents/connections"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -91,7 +91,7 @@ export async function connectSubagent(payload: {
 
 export async function disconnectSubagent(name: string): Promise<void> {
   const res = await apiFetch(
-    apiUrl(`/api/v1/subagents/connections/${encodeURIComponent(name)}`),
+    apiUrl(`/api/subagents/connections/${encodeURIComponent(name)}`),
     { method: "DELETE" },
   );
   if (!res.ok) throw new Error(`Disconnect failed: ${res.status}`);
@@ -118,7 +118,7 @@ export interface SubagentBackendOptions {
 }
 
 export async function getBackendOptions(): Promise<SubagentBackendOptions[]> {
-  const res = await apiFetch(apiUrl("/api/v1/subagents/backends/options"), {
+  const res = await apiFetch(apiUrl("/api/subagents/backends/options"), {
     cache: "no-store",
   });
   if (!res.ok) throw new Error(`Request failed: ${res.status}`);
@@ -135,7 +135,7 @@ export async function syncBackendOptions(
   kind: string,
 ): Promise<SubagentBackendOptions> {
   const res = await apiFetch(
-    apiUrl(`/api/v1/subagents/backends/${encodeURIComponent(kind)}/sync`),
+    apiUrl(`/api/subagents/backends/${encodeURIComponent(kind)}/sync`),
     { method: "POST" },
   );
   if (!res.ok) throw new Error(`Sync failed: ${res.status}`);
@@ -158,6 +158,13 @@ export interface SubagentBackendConfig {
   thinking?: boolean;
   forward_images?: boolean;
   extra_args?: string[];
+  /** Remote Hermes gateway URL; the API key itself is never persisted here. */
+  base_url?: string;
+  /** Environment variable name containing the remote gateway bearer. */
+  api_key_env?: string;
+  /** Informational profile name associated with the gateway deployment. */
+  profile?: string;
+  idle_timeout_seconds?: number;
 }
 
 export interface SubagentSettings {
@@ -186,7 +193,7 @@ export async function* streamSubagentMessage(
   signal?: AbortSignal,
 ): AsyncGenerator<SubagentStreamLine> {
   const res = await apiFetch(
-    apiUrl(`/api/v1/subagents/connections/${encodeURIComponent(name)}/message`),
+    apiUrl(`/api/subagents/connections/${encodeURIComponent(name)}/message`),
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -228,7 +235,7 @@ export async function getSubagentSettings(options?: {
   return withClientCache<SubagentSettings>(
     SUBAGENT_SETTINGS_CACHE_KEY,
     async () => {
-      const res = await apiFetch(apiUrl("/api/v1/subagents/settings"), {
+      const res = await apiFetch(apiUrl("/api/subagents/settings"), {
         cache: "no-store",
       });
       if (!res.ok) throw new Error(`Request failed: ${res.status}`);
@@ -241,7 +248,7 @@ export async function getSubagentSettings(options?: {
 export async function updateSubagentSettings(
   payload: Partial<SubagentSettings>,
 ): Promise<SubagentSettings> {
-  const res = await apiFetch(apiUrl("/api/v1/subagents/settings"), {
+  const res = await apiFetch(apiUrl("/api/subagents/settings"), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),

@@ -8,16 +8,24 @@ import {
   Settings2,
   X,
 } from "lucide-react";
-import type { BankSort } from "./useQuestionBank";
+import type {
+  AssessmentSource,
+  QuestionBankMaterial,
+  ScoreTrend,
+} from "@/lib/notebook-api";
+import type { BankSort, ReviewFilters } from "./useQuestionBank";
 
 interface BankToolbarProps {
   search: string;
   sort: BankSort;
   refreshing: boolean;
   managerOpen: boolean;
+  filters: ReviewFilters;
+  materials: QuestionBankMaterial[];
   onSearchChange: (value: string) => void;
   onSortChange: (sort: BankSort) => void;
   onToggleManager: () => void;
+  onFiltersChange: (filters: ReviewFilters) => void;
 }
 
 /**
@@ -31,9 +39,12 @@ export default function BankToolbar({
   sort,
   refreshing,
   managerOpen,
+  filters,
+  materials,
   onSearchChange,
   onSortChange,
   onToggleManager,
+  onFiltersChange,
 }: BankToolbarProps) {
   const { t } = useTranslation();
 
@@ -72,6 +83,65 @@ export default function BankToolbar({
         />
         {sort === "recent" ? t("Newest first") : t("Oldest first")}
       </button>
+
+      <select
+        value={filters.source}
+        onChange={(event) =>
+          onFiltersChange({
+            ...filters,
+            source: event.target.value as AssessmentSource | "",
+            materialId: "",
+          })
+        }
+        aria-label={t("Source")}
+        className="h-[34px] rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 text-[12px] text-[var(--foreground)] outline-none"
+      >
+        <option value="">{t("All Sources")}</option>
+        <option value="deep_question">{t("Deep Question")}</option>
+        <option value="mastery_path">{t("Mastery Path")}</option>
+        <option value="immersive_reading">{t("Immersive Reading")}</option>
+        <option value="book">{t("Book")}</option>
+      </select>
+
+      <select
+        value={filters.materialId}
+        onChange={(event) =>
+          onFiltersChange({ ...filters, materialId: event.target.value })
+        }
+        aria-label={t("Material")}
+        disabled={materials.length === 0}
+        className="h-[34px] max-w-[180px] rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 text-[12px] text-[var(--foreground)] outline-none disabled:opacity-50"
+      >
+        <option value="">{t("All Materials")}</option>
+        {materials
+          .filter((item) => !filters.source || item.source === filters.source)
+          .map((item) => (
+            <option
+              key={`${item.source}:${item.material_id}`}
+              value={item.material_id}
+            >
+              {item.material_title}
+            </option>
+          ))}
+      </select>
+
+      <select
+        value={filters.scoreTrend}
+        onChange={(event) =>
+          onFiltersChange({
+            ...filters,
+            scoreTrend: event.target.value as ScoreTrend | "",
+          })
+        }
+        aria-label={t("Score Trend")}
+        className="h-[34px] rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 text-[12px] text-[var(--foreground)] outline-none"
+      >
+        <option value="">{t("All Trends")}</option>
+        <option value="new">{t("First Attempt")}</option>
+        <option value="improved">{t("Improved")}</option>
+        <option value="declined">{t("Declined")}</option>
+        <option value="unchanged">{t("Unchanged")}</option>
+      </select>
 
       <button
         type="button"

@@ -136,3 +136,17 @@ test("book operation rejects when the socket closes before a result", async () =
   await assert.rejects(operation, /closed before compile_page_result/);
   assert.equal(socket.closeCalls, 0);
 });
+
+test("book operation times out when the socket stays open without progress", async () => {
+  const socket = new FakeBookSocket();
+  const operation = runBookSocketOperation(() => socket, {
+    message: { type: "compile_page", book_id: "book-1", page_id: "page-1" },
+    resultType: "compile_page_result",
+    idleTimeoutMs: 5,
+  });
+
+  socket.open();
+
+  await assert.rejects(operation, /timed out waiting for compile_page_result/);
+  assert.equal(socket.closeCalls, 1);
+});

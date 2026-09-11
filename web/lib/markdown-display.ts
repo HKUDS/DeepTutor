@@ -154,6 +154,15 @@ const MALFORMED_STRONG_EMPHASIS_REGEX =
   /(?<!\S)\*\*(?=\S)([^*\n]*?[:：])[ \t]+\*\*(?=\S)/g;
 const ESCAPED_UNICODE_RUN_REGEX = /(?:\\u[0-9a-fA-F]{4}){3,}/g;
 const INDENTED_CODE_LINE_REGEX = /^(?: {4}|\t)/;
+const FENCE_LINE_REGEX = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+const MALFORMED_ATX_HEADING_REGEX = /^(#{1,6})([^#\s])/;
+const RAW_HTML_CODE_BLOCK_OPEN_REGEX = /^ {0,3}<(pre|code)(?=[\s/>]|$)/i;
+const RAW_HTML_CODE_SELF_CLOSING_REGEX =
+  /^ {0,3}<(?:pre|code)(?=[\s/>]|$)[^>]*\/\s*>/i;
+const RAW_HTML_CODE_BLOCK_CLOSE_REGEX = {
+  pre: /<\/pre\s*>/i,
+  code: /<\/code\s*>/i,
+} as const;
 const PROTECTED_SPAN_REGEX = /```[\s\S]*?```|`[^`\n]*`/g;
 const PROTECTED_PLACEHOLDER_REGEX = /\u0000PROTECTED_(\d+)\u0000/g;
 const HTML_ATTR_VALUE = /(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+)/.source;
@@ -334,7 +343,7 @@ function removeEmptyMarkdownTables(content: string): string {
   const lines = content.split("\n");
   const cleaned: string[] = [];
 
-  for (let index = 0; index < lines.length; ) {
+  for (let index = 0; index < lines.length;) {
     if (!isMarkdownTableStart(lines, index)) {
       cleaned.push(lines[index]);
       index += 1;
@@ -591,6 +600,219 @@ export function repairMalformedStrongEmphasis(content: string): string {
   return fenced.restore(math.restore(inline.restore(repaired)));
 }
 
+// Handle only standalone italic/strong runs. Triple-star runs can represent nested
+// emphasis and require full delimiter-run parsing, so leave them untouched.
+const EMPHASIS_DELIMITER_REGEX = /(?<!\*)\*\*(?!\*)|(?<!\*)\*(?!\*)/g;
+
+function isNormalEmphasisCharacter(value: string | undefined): boolean {
+  return Boolean(value && /[\p{L}\p{N}]/u.test(value));
+}
+
+function isPunctuationOrSymbol(value: string | undefined): boolean {
+  return Boolean(value && /[\p{P}\p{S}]/u.test(value));
+}
+
+function isCjkCharacter(value: string | undefined): boolean {
+  return Boolean(value && value >= "\u4e00" && value <= "\u9fff");
+}
+
+function firstNonWhitespaceAfter(
+  line: string,
+  index: number,
+): string | undefined {
+  return Array.from(line.slice(index)).find((value) => !/\s/u.test(value));
+}
+
+function lastNonWhitespaceBefore(
+  line: string,
+  index: number,
+): string | undefined {
+  return Array.from(line.slice(0, index))
+    .reverse()
+    .find((value) => !/\s/u.test(value));
+}
+
+function canOpenEmphasis(line: string, index: number, marker: string): boolean {
+  const before = Array.from(line.slice(0, index)).pop();
+  const afterIndex = index + marker.length;
+  const after = Array.from(line.slice(afterIndex))[0];
+  if (!after || /\s/u.test(after)) return false;
+  if (isPunctuationOrSymbol(after)) {
+    return (
+      !before ||
+      /\s/u.test(before) ||
+      isPunctuationOrSymbol(before) ||
+      isNormalEmphasisCharacter(before)
+    );
+  }
+  return true;
+}
+
+function canCloseEmphasis(
+  line: string,
+  index: number,
+  marker: string,
+): boolean {
+  const before = Array.from(line.slice(0, index)).pop();
+  const afterIndex = index + marker.length;
+  const after = Array.from(line.slice(afterIndex))[0];
+  if (!before || /\s/u.test(before)) return false;
+  if (isPunctuationOrSymbol(before)) {
+    return (
+      !after ||
+      /\s/u.test(after) ||
+      isPunctuationOrSymbol(after) ||
+      isNormalEmphasisCharacter(after)
+    );
+  }
+  return true;
+}
+
+function pairedEmphasisDelimiters(
+  line: string,
+): Array<{ marker: string; leftOpener: number; rightCloser: number }> {
+  const openers = new Map<string, number[]>([
+    ["*", []],
+    ["**", []],
+  ]);
+  const pairs: Array<{
+    marker: string;
+    leftOpener: number;
+    rightCloser: number;
+  }> = [];
+  let cursor = 0;
+  while (cursor < line.length) {
+    if (line[cursor] !== "*") {
+      cursor += 1;
+      continue;
+    }
+    let slashCount = 0;
+    for (
+      let previous = cursor - 1;
+      previous >= 0 && line[previous] === "\\";
+      previous -= 1
+    ) {
+      slashCount += 1;
+    }
+    if (slashCount % 2 !== 0) {
+      cursor += 1;
+      continue;
+    }
+    let runEnd = cursor;
+    while (line[runEnd] === "*") runEnd += 1;
+    const marker = line.slice(cursor, runEnd);
+    if (openers.has(marker)) {
+      const canOpen = canOpenEmphasis(line, cursor, marker);
+      const canClose = canCloseEmphasis(line, cursor, marker);
+      const candidates = openers.get(marker)!;
+      if (canClose && candidates.length) {
+        pairs.push({
+          marker,
+          leftOpener: candidates.pop()!,
+          rightCloser: cursor,
+        });
+      } else if (canOpen) {
+        candidates.push(cursor);
+      }
+    }
+    cursor = runEnd;
+  }
+  return pairs;
+}
+
+function repairChineseEmphasisLine(line: string): string {
+  const insertions: number[] = [];
+  for (const { marker, leftOpener, rightCloser } of pairedEmphasisDelimiters(
+    line,
+  )) {
+    const leftBefore = Array.from(line.slice(0, leftOpener)).pop();
+    const leftInside = Array.from(line.slice(leftOpener + marker.length))[0];
+    const rightInside = Array.from(line.slice(0, rightCloser)).pop();
+    const rightAfterIndex = rightCloser + marker.length;
+    const rightAfter = Array.from(line.slice(rightAfterIndex))[0];
+    const leftNeedsSpace =
+      isNormalEmphasisCharacter(leftBefore) &&
+      isPunctuationOrSymbol(leftInside);
+    const rightNeedsSpace =
+      isPunctuationOrSymbol(rightInside) &&
+      isNormalEmphasisCharacter(rightAfter);
+    if (leftNeedsSpace) insertions.push(leftOpener);
+    if (rightNeedsSpace) insertions.push(rightAfterIndex);
+    if (leftNeedsSpace !== rightNeedsSpace) {
+      if (
+        isNormalEmphasisCharacter(rightInside) &&
+        isNormalEmphasisCharacter(rightAfter)
+      ) {
+        insertions.push(rightAfterIndex);
+      } else if (
+        isNormalEmphasisCharacter(leftBefore) &&
+        isNormalEmphasisCharacter(leftInside)
+      ) {
+        insertions.push(leftOpener);
+      }
+    }
+  }
+
+  return [...new Set(insertions)]
+    .sort((a, b) => b - a)
+    .reduce(
+      (value, index) => `${value.slice(0, index)} ${value.slice(index)}`,
+      line,
+    );
+}
+
+/** Repair CJK emphasis delimiter boundaries for display without mutating source content. */
+export function repairChineseEmphasis(
+  content: string,
+  language?: string,
+): string {
+  if (!content || !language?.toLowerCase().startsWith("zh")) return content;
+  const fenced = maskProtectedSpans(
+    content,
+    FENCED_CODE_BLOCK_REGEX,
+    "CJK_FENCED",
+  );
+  const math = maskProtectedSpans(fenced.masked, MATH_SPAN_REGEX, "CJK_MATH");
+  const inline = maskProtectedSpans(
+    math.masked,
+    INLINE_CODE_SPAN_REGEX,
+    "CJK_INLINE",
+  );
+  const repaired = inline.masked
+    .split("\n")
+    .map(repairChineseEmphasisLine)
+    .join("\n");
+  return fenced.restore(math.restore(inline.restore(repaired)));
+}
+
+/**
+ * Extend an already-repaired string with a streamed delta.
+ *
+ * ``repairChineseEmphasis`` works a line at a time, so a line that is still
+ * arriving cannot be repaired meaningfully yet — and re-running the whole
+ * repair on every streamed chunk is quadratic in the reply's length. A long
+ * Chinese answer arriving in several hundred chunks meant several hundred
+ * full-text passes (three masking regexes, a per-line rewrite, three restores)
+ * over an ever-growing string, which is felt as the stream stuttering and
+ * falling behind the model late in a long answer.
+ *
+ * So the repair runs when a newline completes a line, which is the earliest
+ * point its result can differ from the raw text, and the partial trailing line
+ * is shown as it came. The final line has no newline to trigger it: callers
+ * run ``repairChineseEmphasis`` once when the turn ends. The end state is
+ * identical to repairing on every chunk.
+ */
+export function appendWithEmphasisRepair(
+  repairedSoFar: string,
+  delta: string,
+  rawContent: string,
+  language?: string,
+): string {
+  if (!language?.toLowerCase().startsWith("zh")) return rawContent;
+  if (delta.includes("\n")) return repairChineseEmphasis(rawContent, language);
+  return repairedSoFar + delta;
+}
+
 /**
  * Repair one line, or leave it exactly as it was.
  *
@@ -654,6 +876,18 @@ function decodeEscapedUnicodeRuns(content: string): string {
   return fenced.restore(math.restore(inline.restore(decoded)));
 }
 
+/**
+ * Decode dense ``\\uXXXX`` runs that represent non-ASCII text.
+ *
+ * Shared by Markdown rendering and plain-text surfaces (``ask_user`` card
+ * prompts) so escaped Chinese that leaked through a JSON round-trip is
+ * repaired before it reaches the learner (#973).
+ */
+export function decodeEscapedUnicodeForDisplay(content: string): string {
+  if (!content) return "";
+  return decodeEscapedUnicodeRuns(String(content));
+}
+
 function decodeEscapedUnicodeRun(escaped: string): string {
   try {
     const value = JSON.parse(`"${escaped}"`) as string;
@@ -666,11 +900,67 @@ function decodeEscapedUnicodeRun(escaped: string): string {
   }
 }
 
+/** Insert a separator after column-zero ATX hashes outside code blocks. */
+export function normalizeAtxHeadings(content: string): string {
+  let fenceMarker = "";
+  let fenceLength = 0;
+  let htmlCodeTag: keyof typeof RAW_HTML_CODE_BLOCK_CLOSE_REGEX | "" = "";
+
+  return content
+    .split("\n")
+    .map((line) => {
+      const fence = FENCE_LINE_REGEX.exec(line);
+
+      if (fenceMarker) {
+        if (
+          fence &&
+          fence[1][0] === fenceMarker &&
+          fence[1].length >= fenceLength &&
+          fence[2].trim() === ""
+        ) {
+          fenceMarker = "";
+          fenceLength = 0;
+        }
+        return line;
+      }
+
+      if (htmlCodeTag) {
+        if (RAW_HTML_CODE_BLOCK_CLOSE_REGEX[htmlCodeTag].test(line)) {
+          htmlCodeTag = "";
+        }
+        return line;
+      }
+
+      if (fence) {
+        fenceMarker = fence[1][0];
+        fenceLength = fence[1].length;
+        return line;
+      }
+
+      const htmlCodeBlock = RAW_HTML_CODE_BLOCK_OPEN_REGEX.exec(line);
+      if (htmlCodeBlock) {
+        const tag = htmlCodeBlock[1].toLowerCase() as "pre" | "code";
+        if (
+          !RAW_HTML_CODE_SELF_CLOSING_REGEX.test(line) &&
+          !RAW_HTML_CODE_BLOCK_CLOSE_REGEX[tag].test(line)
+        ) {
+          htmlCodeTag = tag;
+        }
+        return line;
+      }
+
+      return line.replace(MALFORMED_ATX_HEADING_REGEX, "$1 $2");
+    })
+    .join("\n");
+}
+
 export function normalizeMarkdownForDisplay(content: string): string {
   if (!content) return "";
 
   const normalized = stripInvisibleCharacters(
-    decodeEscapedUnicodeRuns(String(content).replace(/\r\n/g, "\n")),
+    normalizeAtxHeadings(
+      decodeEscapedUnicodeRuns(String(content).replace(/\r\n/g, "\n")),
+    ),
   )
     .replace(EMPTY_DETAILS_REGEX, "")
     .replace(EMPTY_SUMMARY_REGEX, "")

@@ -27,7 +27,7 @@ import pytest
 from deeptutor.agents.chat.agentic_pipeline import AgenticChatPipeline
 from deeptutor.core.context import UnifiedContext
 from deeptutor.core.stream import StreamEvent, StreamEventType
-from deeptutor.core.stream_bus import StreamBus
+from deeptutor.runtime.stream_bus import StreamBus
 
 
 async def _drain(bus: StreamBus, task) -> list[StreamEvent]:

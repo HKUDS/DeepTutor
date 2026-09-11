@@ -89,6 +89,7 @@ def test_documented_deeptutor_subcommands_exist() -> None:
         "session",
         "skill",
         "start",
+        "workspace",
     }
     provider_subcommands = {"login"}
 
@@ -121,4 +122,4 @@ def test_docs_do_not_advertise_removed_cli_forms() -> None:
 
     assert "deeptutor provider logout" not in text
     assert "deeptutor memory show summary" not in text
-    assert "WS /api/v1/turns" not in text
+    assert "WS /api/turns" not in text

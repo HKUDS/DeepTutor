@@ -25,18 +25,22 @@ from deeptutor.knowledge.kb_types import (
     MARGINNOTE4_KB_TYPE,
     OBSIDIAN_KB_TYPE,
     SUBAGENT_KB_TYPE,
+    WEKNORA_KB_TYPE,
     external_root_of,
     is_connected_kb,
 )
 from deeptutor.knowledge.manifest import iter_kb_documents
+from deeptutor.knowledge.naming import validate_knowledge_base_name
 from deeptutor.services.file_io import atomic_write_json
 from deeptutor.services.rag.factory import (
     DEFAULT_PROVIDER,
     IMA_PROVIDER,
     KNOWN_PROVIDERS,
+    LIGHTRAG_PROVIDER,
     LIGHTRAG_SERVER_PROVIDER,
     PAGEINDEX_OSS_PROVIDER,
     PAGEINDEX_PROVIDER,
+    WEKNORA_PROVIDER,
     has_ready_provider_index,
     normalize_provider_name,
     provider_uses_embedding_versions,
@@ -688,6 +692,7 @@ class KnowledgeBaseManager:
 
     def register_knowledge_base(self, name: str, description: str = "", set_default: bool = False):
         """Register a knowledge base"""
+        name = validate_knowledge_base_name(name)
         kb_dir = self.base_dir / name
         if not kb_dir.exists():
             raise ValueError(f"Knowledge base directory does not exist: {kb_dir}")
@@ -703,6 +708,32 @@ class KnowledgeBaseManager:
 
         self._save_config()
 
+    def register_connected_entry(self, name: str, entry: dict) -> bool:
+        """Adopt an already-built connected-KB entry under this manager.
+
+        Every other ``register_*`` method builds a pointer entry from user
+        input. This one takes an entry that already exists elsewhere: a
+        connected KB has no ``<kb>/`` tree under ``base_dir``, so handing one
+        to a partner workspace means copying its ``kb_config.json`` row rather
+        than the folder that provisioning copies for an indexed KB.
+
+        Returns ``False`` when the name is already registered here, leaving
+        the existing entry untouched, so callers can provision idempotently.
+        """
+        name = (name or "").strip()
+        if not name:
+            raise ValueError("Knowledge base name is required.")
+        if not is_connected_kb(entry):
+            raise ValueError(f"Not a connected knowledge base entry: {name}")
+
+        self.config = self._load_config()
+        knowledge_bases = self.config.setdefault("knowledge_bases", {})
+        if name in knowledge_bases:
+            return False
+        knowledge_bases[name] = dict(entry)
+        self._save_config()
+        return True
+
     def register_obsidian_vault(self, name: str, vault_path: str, description: str = "") -> dict:
         """Register a connected Obsidian vault as a pointer-type KB.
 
@@ -711,9 +742,7 @@ class KnowledgeBaseManager:
         user's existing vault directory, which the Obsidian capability reads
         live. Raises ``ValueError`` on a missing/invalid path or a name clash.
         """
-        name = (name or "").strip()
-        if not name:
-            raise ValueError("Knowledge base name is required.")
+        name = validate_knowledge_base_name(name)
         vault = Path(vault_path).expanduser()
         if not vault.is_dir():
             raise ValueError(f"Vault path is not a directory: {vault_path}")
@@ -756,9 +785,7 @@ class KnowledgeBaseManager:
         folder with the probe helper first; this only guards basic invariants.
         Raises ``ValueError`` on a missing/invalid path or a name clash.
         """
-        name = (name or "").strip()
-        if not name:
-            raise ValueError("Knowledge base name is required.")
+        name = validate_knowledge_base_name(name)
         provider = normalize_provider_name(provider)
         folder = Path(external_path).expanduser()
         if not folder.is_dir():
@@ -809,11 +836,9 @@ class KnowledgeBaseManager:
         capability drives the live agent; there is nothing on disk to retrieve or
         reconcile. Raises ``ValueError`` on a missing name/kind or a name clash.
         """
-        name = (name or "").strip()
+        name = validate_knowledge_base_name(name)
         agent_kind = (agent_kind or "").strip()
         partner_id = (partner_id or "").strip()
-        if not name:
-            raise ValueError("Connection name is required.")
         if not agent_kind:
             raise ValueError("agent_kind is required.")
         resolved_cwd = ""
@@ -863,10 +888,8 @@ class KnowledgeBaseManager:
         guards basic invariants. Raises ``ValueError`` on a missing name/URL or a
         name clash.
         """
-        name = (name or "").strip()
+        name = validate_knowledge_base_name(name)
         server_url = (server_url or "").strip().rstrip("/")
-        if not name:
-            raise ValueError("Knowledge base name is required.")
         if not server_url:
             raise ValueError("LightRAG server URL is required.")
 
@@ -912,9 +935,7 @@ class KnowledgeBaseManager:
         ``ValueError`` on a missing name, a name clash, or a store already
         claimed by another library.
         """
-        name = (name or "").strip()
-        if not name:
-            raise ValueError("Knowledge base name is required.")
+        name = validate_knowledge_base_name(name)
 
         self.config = self._load_config()
         knowledge_bases = self.config.setdefault("knowledge_bases", {})
@@ -993,12 +1014,10 @@ class KnowledgeBaseManager:
         Raises ``ValueError`` on a missing field, a half-filled credential pair,
         or a name clash.
         """
-        name = (name or "").strip()
+        name = validate_knowledge_base_name(name)
         client_id = (client_id or "").strip()
         api_key = (api_key or "").strip()
         knowledge_base_id = (knowledge_base_id or "").strip()
-        if not name:
-            raise ValueError("Knowledge base name is required.")
         if bool(client_id) != bool(api_key):
             raise ValueError("IMA Client ID and API Key must be given together.")
         if not knowledge_base_id:
@@ -1019,6 +1038,48 @@ class KnowledgeBaseManager:
             **({"client_id": client_id, "api_key": api_key} if client_id else {}),
             "knowledge_base_id": knowledge_base_id,
             "description": description or f"Tencent IMA: {name}",
+            "status": "ready",
+            "needs_reindex": False,
+            "created_at": now,
+            "updated_at": now,
+        }
+        knowledge_bases[name] = entry
+        self._save_config()
+        return entry
+
+    def register_weknora_kb(
+        self,
+        name: str,
+        server_url: str,
+        api_key: str,
+        knowledge_base_id: str,
+        *,
+        description: str = "",
+    ) -> dict:
+        """Register a self-hosted WeKnora knowledge base as a pointer KB."""
+        name = validate_knowledge_base_name(name)
+        server_url = (server_url or "").strip().rstrip("/")
+        api_key = (api_key or "").strip()
+        knowledge_base_id = (knowledge_base_id or "").strip()
+        if not server_url or not knowledge_base_id:
+            raise ValueError("WeKnora server URL and knowledge base ID are required.")
+        if not api_key:
+            raise ValueError("A WeKnora API key is required.")
+
+        self.config = self._load_config()
+        knowledge_bases = self.config.setdefault("knowledge_bases", {})
+        if name in knowledge_bases:
+            raise ValueError(f"A knowledge base named '{name}' already exists.")
+
+        now = datetime.now().isoformat()
+        entry: dict[str, Any] = {
+            "path": name,
+            "type": WEKNORA_KB_TYPE,
+            "rag_provider": WEKNORA_PROVIDER,
+            "server_url": server_url,
+            "api_key": api_key,
+            "knowledge_base_id": knowledge_base_id,
+            "description": description or f"WeKnora knowledge base: {name}",
             "status": "ready",
             "needs_reindex": False,
             "created_at": now,
@@ -1343,6 +1404,21 @@ class KnowledgeBaseManager:
         # Same split for IMA: the library id is shown, the credentials are not.
         if kb_config.get("knowledge_base_id"):
             metadata["knowledge_base_id"] = kb_config.get("knowledge_base_id")
+
+        if rag_provider == LIGHTRAG_PROVIDER:
+            from deeptutor.services.rag.pipelines.lightrag.storage import (
+                latest_published_root,
+                read_published_policy,
+            )
+
+            published_root = latest_published_root(kb_dir) if dir_exists else None
+            indexing_policy = read_published_policy(published_root)
+            if indexing_policy is None:
+                pending = kb_config.get("pending_indexing_policy")
+                indexing_policy = (
+                    pending if isinstance(pending, dict) else {"policy": "legacy_unpinned"}
+                )
+            metadata["indexing_policy"] = indexing_policy
 
         metadata.update(self._embedding_fields(kb_config))
 
@@ -1799,16 +1875,7 @@ class KnowledgeBaseManager:
             raise ValueError(f"Linked folder not found: {folder_id}")
 
         folder_path = Path(folder_info["path"]).expanduser().resolve()
-        last_sync = folder_info.get("last_sync")
         synced_files = folder_info.get("synced_files", {})
-
-        # Parse last sync timestamp
-        last_sync_time = None
-        if last_sync:
-            try:
-                last_sync_time = datetime.fromisoformat(last_sync)
-            except Exception:
-                pass
 
         new_files = []
         modified_files = []

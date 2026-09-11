@@ -49,7 +49,7 @@ def _client(
         service.receive_callback,
     )
     app = FastAPI()
-    app.include_router(auth_router.router, prefix="/api/v1/auth")
+    app.include_router(auth_router.router, prefix="/api/auth")
     return TestClient(app)
 
 
@@ -60,7 +60,7 @@ def test_codex_callback_endpoint_delivers_without_echoing_secrets(
     client = _client(monkeypatch, service)
 
     response = client.get(
-        "/api/v1/auth/openai-codex/callback",
+        "/api/auth/openai-codex/callback",
         params={
             "code": "private-code",
             "state": "private-state",
@@ -86,7 +86,7 @@ def test_codex_callback_endpoint_rejects_repeated_state_for_active_login(
     client = _client(monkeypatch, service)
 
     response = client.get(
-        "/api/v1/auth/openai-codex/callback",
+        "/api/auth/openai-codex/callback",
         params=[
             ("code", "private-code"),
             ("state", "first-state"),
@@ -127,7 +127,7 @@ def test_codex_callback_endpoint_prioritizes_no_active_login(
     client = _client(monkeypatch, service)
 
     response = client.get(
-        "/api/v1/auth/openai-codex/callback",
+        "/api/auth/openai-codex/callback",
         params=params,
     )
 
@@ -148,7 +148,7 @@ def test_codex_callback_endpoint_returns_safe_html_for_malformed_state(
     client = _client(monkeypatch, service)
 
     response = client.get(
-        "/api/v1/auth/openai-codex/callback",
+        "/api/auth/openai-codex/callback",
         params={"code": "private-code", "state": invalid_state},
     )
 
@@ -189,7 +189,7 @@ def test_codex_callback_endpoint_returns_safe_html_errors(
     client = _client(monkeypatch, service)
 
     response = client.get(
-        "/api/v1/auth/openai-codex/callback",
+        "/api/auth/openai-codex/callback",
         params={
             "code": "private-code",
             "state": "private-state",

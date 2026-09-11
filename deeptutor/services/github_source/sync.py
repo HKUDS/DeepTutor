@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import logging
 from pathlib import Path
+import re
+from urllib.parse import urlsplit, urlunsplit
 
 from deeptutor.knowledge.add_documents import DEFAULT_BASE_DIR
 from deeptutor.services.github_source.client import (
@@ -31,6 +33,46 @@ class SyncResult:
 
 def _utcnow_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def redact_sync_error(exc: Exception) -> str:
+    """Return a bounded sync error without credential-shaped values."""
+    message = str(exc).strip() or type(exc).__name__
+
+    def redact_url(match: re.Match[str]) -> str:
+        try:
+            parsed = urlsplit(match.group(0))
+            host = parsed.hostname or ""
+            if parsed.port is not None:
+                host = f"{host}:{parsed.port}"
+            return urlunsplit((parsed.scheme, host, parsed.path, "", ""))
+        except ValueError:
+            # Error strings are untrusted input too. A malformed bracket or port
+            # must not make credential redaction mask the original sync failure.
+            return "[redacted-url]"
+
+    message = re.sub(r"https?://[^\s,;]+", redact_url, message)
+    message = re.sub(r"\bsk-[A-Za-z0-9_-]{4,}\b", "[redacted]", message)
+    message = re.sub(
+        r"(?i)((?:api[_-]?key|authorization|token|password)\s*[:=]\s*)[^\s,;]+",
+        r"\1[redacted]",
+        message,
+    )
+    return message[:1000]
+
+
+def _record_sync_failure(kb_name: str, source: dict, base_dir: str, error: str) -> None:
+    try:
+        from deeptutor.knowledge.manager import KnowledgeBaseManager
+
+        KnowledgeBaseManager(base_dir=base_dir).update_github_source_state(
+            kb_name=kb_name,
+            source_id=source["id"],
+            last_sync_status="error",
+            last_sync_error=error,
+        )
+    except Exception:
+        logger.warning("Could not persist GitHub sync failure status for '%s'", kb_name)
 
 
 def _is_markdown(path: str) -> bool:
@@ -107,9 +149,13 @@ async def sync_source(kb_name, source, *, base_dir=DEFAULT_BASE_DIR, client=None
     try:
         latest_sha = await client.get_latest_commit_sha(repo, branch)
     except GitHubAPIError as exc:
-        return SyncResult(ok=False, error=str(exc))
+        error = redact_sync_error(exc)
+        _record_sync_failure(kb_name, source, base_dir, error)
+        return SyncResult(ok=False, error=error)
     except Exception as exc:
-        return SyncResult(ok=False, error=f"Failed to fetch latest SHA: {exc}")
+        error = f"Failed to fetch latest SHA: {redact_sync_error(exc)}"
+        _record_sync_failure(kb_name, source, base_dir, error)
+        return SyncResult(ok=False, error=error)
 
     if old_sha and old_sha == latest_sha:
         return SyncResult(ok=True, skipped=True)
@@ -133,11 +179,16 @@ async def sync_source(kb_name, source, *, base_dir=DEFAULT_BASE_DIR, client=None
                 base_dir,
             )
     except GitHubAPIError as exc:
-        return SyncResult(ok=False, error=str(exc))
+        error = redact_sync_error(exc)
+        _record_sync_failure(kb_name, source, base_dir, error)
+        return SyncResult(ok=False, error=error)
     except Exception as exc:
-        return SyncResult(ok=False, error=str(exc))
+        error = redact_sync_error(exc)
+        _record_sync_failure(kb_name, source, base_dir, error)
+        return SyncResult(ok=False, error=error)
 
     if not result.ok:
+        _record_sync_failure(kb_name, source, base_dir, result.error)
         return result
 
     from deeptutor.knowledge.manager import KnowledgeBaseManager
@@ -218,13 +269,9 @@ async def _incremental_sync(
 async def _index_files(kb_name, file_paths, base_dir):
     if not file_paths:
         return 0
-    try:
-        from deeptutor.knowledge.add_documents import add_documents
+    from deeptutor.knowledge.add_documents import add_documents
 
-        count = await add_documents(
-            kb_name=kb_name, source_files=file_paths, base_dir=base_dir, allow_duplicates=False
-        )
-        return count or 0
-    except Exception as exc:
-        logger.warning("Indexing failed: %s", exc)
-        return 0
+    count = await add_documents(
+        kb_name=kb_name, source_files=file_paths, base_dir=base_dir, allow_duplicates=False
+    )
+    return count or 0

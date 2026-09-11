@@ -21,7 +21,14 @@ from typing import Any
 
 from deeptutor.services.subagent.base import OnEvent, SubagentBackend
 from deeptutor.services.subagent.config import BackendConfig
-from deeptutor.services.subagent.process import probe_version, stream_process_lines
+from deeptutor.services.subagent.process import (
+    compact_field as _compact,
+)
+from deeptutor.services.subagent.process import (
+    probe_version,
+    stream_process_lines,
+    truncate_field,
+)
 from deeptutor.services.subagent.types import (
     EVENT_ERROR,
     EVENT_LOG,
@@ -36,7 +43,6 @@ from deeptutor.services.subagent.types import (
 
 logger = logging.getLogger(__name__)
 
-_MAX_FIELD_CHARS = 4000
 # Single-line cap for a tool-call header (e.g. the command inside ``Bash(…)``).
 _TOOL_HEADER_CHARS = 160
 # Telemetry/system events that are noise in the transcript (the CLI doesn't show
@@ -352,22 +358,7 @@ def _render_tool_result(block: dict[str, Any]) -> str:
         text = "\n".join(p for p in parts if p)
     else:
         text = str(content or "")
-    return _truncate(text) or "(empty result)"
-
-
-def _compact(obj: Any) -> str:
-    try:
-        text = json.dumps(obj, ensure_ascii=False)
-    except (TypeError, ValueError):
-        text = str(obj)
-    return _truncate(text)
-
-
-def _truncate(text: str) -> str:
-    text = text.strip()
-    if len(text) > _MAX_FIELD_CHARS:
-        return text[:_MAX_FIELD_CHARS].rstrip() + " …"
-    return text
+    return truncate_field(text) or "(empty result)"
 
 
 __all__ = ["ClaudeCodeBackend"]

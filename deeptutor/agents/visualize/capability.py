@@ -1,33 +1,50 @@
-"""
-Visualize Capability
-====================
-
-Unified visualization capability. AnalysisAgent picks one of six render
-types — svg / chartjs / mermaid / html (text-emitting, three-stage pipeline)
-or manim_video / manim_image (Manim subprocess pipeline). The result
-envelope carries ``render_type`` as the discriminator so the frontend can
-delegate to the right viewer.
-"""
+"""Plugin-driven visualization capability built on the shared chat loop."""
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
 from deeptutor.agents._shared.capability_result import emit_capability_result
-from deeptutor.core.agentic.usage import UsageTracker
-from deeptutor.core.capability_protocol import BaseCapability, CapabilityManifest
+from deeptutor.core.capability_protocol import CapabilityManifest, TurnCapability
 from deeptutor.core.context import UnifiedContext
-from deeptutor.core.stream_bus import StreamBus
 from deeptutor.core.trace import merge_trace_metadata
 from deeptutor.i18n import StatusI18n
+from deeptutor.runtime.agentic.usage import UsageTracker
 from deeptutor.runtime.request_contracts import (
     VisualizeRequestConfig,
     get_capability_request_schema,
     validate_visualize_request_config,
 )
+from deeptutor.runtime.stream_bus import StreamBus
+from deeptutor.visualizers.protocol import (
+    REQUESTED_VISUALIZER_KEY,
+    VISUALIZATION_RESULT_KEY,
+    VISUALIZE_MODE_KEY,
+)
+from deeptutor.visualizers.registry import get_visualizer_registry
+from deeptutor.visualizers.store import VisualizerStoreError
 
 logger = logging.getLogger(__name__)
+
+# Default (English) copy for the tool-calling diagnosis, kept beside the code
+# that emits it. StatusI18n prefers the localized strings in this capability's
+# prompt files and falls back to these.
+_TOOL_CALLING_DISABLED_WARNING = (
+    "Tool calling is disabled for {target}, but a visualization only reaches "
+    "the canvas through the submit_visualization tool call. Enable it in "
+    "Settings → Models → LLM → Capabilities → Tool calling → Supported."
+)
+_NO_PAYLOAD_TOOL_CALLING_DISABLED = (
+    "No visualization was committed: tool calling is disabled for {target}, so "
+    "the model could not call submit_visualization — the only way to hand a "
+    "payload to the canvas. Local servers (LM Studio, Ollama, vLLM, llama.cpp) "
+    "are opted out by default; declare the model as tool-capable in "
+    "Settings → Models → LLM → Capabilities → Tool calling → Supported, "
+    "then run the visualization again."
+)
+_NO_PAYLOAD = "The visualization agent finished without a valid canvas payload."
 
 # Stages exposed in the manifest. The first three cover the text-emitting
 # path (svg/chartjs/mermaid/html); the rest cover the manim subprocess
@@ -46,234 +63,192 @@ _VISUALIZE_STAGES = [
 
 _MANIM_RENDER_TYPES = {"manim_video", "manim_image"}
 
+# Visualizer packages contribute model-facing payload documentation. Keep the
+# reused chat loop's read/grounding surface, but never let package instructions
+# unlock state-changing built-ins such as exec, write_memory, write_note, cron,
+# github or deferred tool loading.
+_VISUALIZE_SAFE_BUILTINS = (
+    "rag",
+    "kb_files",
+    "read_source",
+    "read_memory",
+    "list_notebook",
+    "read_skill",
+    "web_fetch",
+    "ask_user",
+)
 
-class VisualizeCapability(BaseCapability):
+
+class VisualizeCapability(TurnCapability):
     manifest = CapabilityManifest(
         name="visualize",
         description=(
-            "Generate SVG, Chart.js, Mermaid, interactive HTML, or Manim "
-            "animation/storyboard visualizations."
+            "Generate a validated visualization with any installed visualizer "
+            "type, or render a Manim animation/storyboard artifact."
         ),
         stages=_VISUALIZE_STAGES,
-        tools_used=[],
+        tools_used=["submit_visualization"],
         cli_aliases=["visualize", "viz"],
         request_schema=get_capability_request_schema("visualize"),
     )
 
     async def run(self, context: UnifiedContext, stream: StreamBus) -> None:
-        from deeptutor.agents.visualize.models import ReviewResult
-        from deeptutor.agents.visualize.pipeline import VisualizePipeline
-        from deeptutor.agents.visualize.utils import (
-            build_fallback_html,
-            validate_visualization,
-        )
-        from deeptutor.services.llm.config import get_llm_config
-
         request_config = validate_visualize_request_config(context.config_overrides)
         render_mode = request_config.render_mode
         i18n = StatusI18n(self.name, context.language, module="visualize")
+        registry = get_visualizer_registry()
 
-        llm_config_for_usage = get_llm_config()
-        usage = UsageTracker(model=getattr(llm_config_for_usage, "model", None))
-
-        llm_config = get_llm_config()
         history_context = str(context.metadata.get("conversation_context_text", "") or "").strip()
-
-        pipeline = VisualizePipeline(
-            api_key=llm_config.api_key,
-            base_url=llm_config.base_url,
-            api_version=llm_config.api_version,
-            language=context.language,
-            trace_callback=self._build_trace_bridge(stream, i18n=i18n),
-        )
-
-        # Stage 1: Analyze (routing decision)
         async with stream.stage("analyzing", source=self.name):
-            await stream.thinking(
+            await stream.progress(
                 i18n.t("analyzing", "Analyzing visualization requirements..."),
                 source=self.name,
                 stage="analyzing",
             )
-            analysis = await pipeline.run_analysis(
-                user_input=context.user_message,
-                history_context=history_context,
-                render_mode=render_mode,
-                attachments=context.attachments,
-            )
-            await stream.progress(
-                message=i18n.t(
-                    "render_type_detected",
-                    f"Render type: {analysis.render_type} — {analysis.description}",
-                    render_type=analysis.render_type,
-                    description=analysis.description,
-                ),
-                source=self.name,
-                stage="analyzing",
-            )
+            if render_mode != "auto" and registry.get(render_mode) is None:
+                available = ", ".join(plugin.manifest.id for plugin in registry.installed())
+                raise VisualizerStoreError(
+                    f"visualizer '{render_mode}' is not installed or is disabled. "
+                    f"Available: {available or 'none'}"
+                )
 
-        # Branch: manim path takes over completely after the analysis stage,
-        # using its own multi-agent pipeline + Manim subprocess.
-        if analysis.render_type in _MANIM_RENDER_TYPES:
+        # Artifact renderers retain their specialized subprocess pipeline.
+        if render_mode in _MANIM_RENDER_TYPES:
+            from deeptutor.services.llm.config import get_llm_config
+
+            llm_config = get_llm_config()
             await self._run_manim_path(
                 context=context,
                 stream=stream,
-                render_type=analysis.render_type,
+                render_type=render_mode,
                 visualize_config=request_config,
                 history_context=history_context,
-                usage=usage,
+                usage=UsageTracker(model=getattr(llm_config, "model", None)),
                 i18n=i18n,
             )
             return
 
-        # Stage 2: Generate code
-        async with stream.stage("generating", source=self.name):
-            await stream.thinking(
-                i18n.t("generating", "Generating visualization code..."),
-                source=self.name,
-                stage="generating",
-            )
-            code = await pipeline.run_code_generation(
-                user_input=context.user_message,
-                history_context=history_context,
-                analysis=analysis,
-            )
-            await stream.progress(
-                message=i18n.t("code_generated", "Code generated."),
-                source=self.name,
-                stage="generating",
-            )
+        # The generic capability only marks the turn and owns the final
+        # envelope. Generation, retrieval, repair and tool dispatch all run in
+        # the shared Chat Engine through VisualizationLoopCapability.
+        from deeptutor.agents.chat.agentic_pipeline import AgenticChatPipeline
 
-        # Stage 3: Validate locally; repair only on failure.
+        # A visualization only reaches the canvas through the
+        # submit_visualization tool call, so a provider that is never handed
+        # tool schemas has no way to commit one: it answers in prose, and the
+        # loop capability's output policy discards that prose. Local
+        # OpenAI-compatible servers (LM Studio, Ollama, vLLM, llama.cpp) are
+        # opted out of native tools by default, which used to surface only as
+        # a bare "no valid canvas payload" error after a full five-round loop.
+        # Say so up front, and keep the finding for the failure message.
         #
-        # The old generic LLM review is replaced by a deterministic, zero-cost
-        # local check (well-formed XML / strict-JSON / mermaid lint / HTML
-        # sanity). When it passes we ship the draft as-is — saving a whole
-        # serial LLM call. When it fails we spend one *targeted* repair call
-        # driven by the concrete error, not an open-ended re-judgement.
-        async with stream.stage("reviewing", source=self.name):
-            ok, validation_error = validate_visualization(code, analysis.render_type)
-            if ok:
-                final_code = code
-                review = ReviewResult(
-                    optimized_code=final_code,
-                    changed=False,
-                    review_notes="Passed local validation.",
-                )
-                await stream.progress(
-                    message=i18n.t(
-                        "validation_passed",
-                        "Looks good — passed local checks.",
-                    ),
-                    source=self.name,
-                    stage="reviewing",
-                )
-            elif analysis.render_type == "html":
-                # html documents are 8-16k tokens; we don't run them through
-                # the repair loop — fall back to a minimal renderable template.
-                final_code = build_fallback_html(
-                    title=analysis.description or "Visualization",
-                    summary=analysis.data_description,
-                    note="The model did not return a renderable HTML document.",
-                )
-                review = ReviewResult(
-                    optimized_code=final_code,
-                    changed=True,
-                    review_notes=f"Used fallback HTML template ({validation_error}).",
-                )
-                await stream.progress(
-                    message=i18n.t(
-                        "html_invalid_fallback",
-                        "HTML did not validate; using fallback template.",
-                    ),
-                    source=self.name,
-                    stage="reviewing",
-                )
-            else:
-                await stream.thinking(
-                    i18n.t("repairing", "Fixing a validation issue..."),
-                    source=self.name,
-                    stage="reviewing",
-                )
-                try:
-                    review = await pipeline.run_repair(
-                        user_input=context.user_message,
-                        analysis=analysis,
-                        code=code,
-                        error=validation_error,
-                    )
-                except Exception as exc:
-                    # Repair wraps code inside a JSON string field; large/complex
-                    # SVGs can trip JSON-mode escaping. Fall back to the draft so
-                    # the user still gets a rendered result.
-                    logger.warning("Visualize repair failed (%s); using unvalidated draft.", exc)
-                    review = ReviewResult(
-                        optimized_code=code,
-                        changed=False,
-                        review_notes=f"Repair skipped due to error: {exc}",
-                    )
-                    final_code = code
-                    await stream.progress(
-                        message=i18n.t(
-                            "repair_skipped_error",
-                            "Repair skipped — using draft as-is.",
-                        ),
-                        source=self.name,
-                        stage="reviewing",
-                    )
-                else:
-                    final_code = review.optimized_code or code
-                    repaired_ok, repaired_error = validate_visualization(
-                        final_code, analysis.render_type
-                    )
-                    if repaired_ok:
-                        await stream.progress(
-                            message=i18n.t(
-                                "code_repaired",
-                                f"Fixed: {review.review_notes}",
-                                notes=review.review_notes,
-                            ),
-                            source=self.name,
-                            stage="reviewing",
-                        )
-                    else:
-                        await stream.progress(
-                            message=i18n.t(
-                                "repair_incomplete",
-                                f"Repair attempted; residual issue: {repaired_error}",
-                                error=repaired_error,
-                            ),
-                            source=self.name,
-                            stage="reviewing",
-                        )
+        # This deliberately does not abort the turn: the DSML fallback still
+        # recovers text-format tool calls from some local DeepSeek
+        # deployments, so a run without native tools can still succeed.
+        tool_calling_disabled_for = self._tool_calling_disabled_for()
+        if tool_calling_disabled_for:
+            await stream.progress(
+                i18n.t(
+                    "tool_calling_disabled",
+                    _TOOL_CALLING_DISABLED_WARNING,
+                    target=tool_calling_disabled_for,
+                ),
+                source=self.name,
+                stage="generating",
+                metadata={"trace_kind": "warning"},
+            )
 
-        # Emit final content as a fenced code block for the chat area
-        if analysis.render_type == "svg":
-            lang_tag = "svg"
-        elif analysis.render_type == "mermaid":
-            lang_tag = "mermaid"
-        elif analysis.render_type == "html":
-            lang_tag = "html"
+        context.metadata[VISUALIZE_MODE_KEY] = True
+        context.metadata[REQUESTED_VISUALIZER_KEY] = render_mode
+        context.metadata.pop(VISUALIZATION_RESULT_KEY, None)
+        if context.allowed_builtin_tools is None:
+            context.allowed_builtin_tools = list(_VISUALIZE_SAFE_BUILTINS)
         else:
-            lang_tag = "javascript"
-        content_md = f"```{lang_tag}\n{final_code}\n```"
+            allowed = set(context.allowed_builtin_tools)
+            context.allowed_builtin_tools = [
+                name for name in _VISUALIZE_SAFE_BUILTINS if name in allowed
+            ]
+        pipeline = AgenticChatPipeline(
+            language=context.language,
+            max_rounds=5,
+            temperature=0.15,
+            max_tokens=16000,
+            event_source=self.name,
+            event_stage="generating",
+            emit_result=False,
+        )
+        loop_result = await pipeline.run(context, stream)
+        envelope = context.metadata.get(VISUALIZATION_RESULT_KEY)
+        if not isinstance(envelope, dict):
+            if tool_calling_disabled_for:
+                raise RuntimeError(
+                    i18n.t(
+                        "no_payload_tool_calling_disabled",
+                        _NO_PAYLOAD_TOOL_CALLING_DISABLED,
+                        target=tool_calling_disabled_for,
+                    )
+                )
+            raise RuntimeError(i18n.t("no_payload", _NO_PAYLOAD))
+
+        payload = envelope.get("payload") if isinstance(envelope.get("payload"), dict) else {}
+        data = payload.get("data")
+        plugin = registry.get(str(envelope.get("render_type") or ""))
+        language_tag = plugin.manifest.language_tag if plugin is not None else "text"
+        serialized = (
+            data if isinstance(data, str) else json.dumps(data, ensure_ascii=False, indent=2)
+        )
+        content_md = f"```{language_tag}\n{serialized}\n```"
         await stream.content(content_md, source=self.name, stage="reviewing")
 
-        # Structured result for the frontend viewer
+        result = {
+            **envelope,
+            # Legacy compatibility for existing consumers while they migrate
+            # to renderer/payload/presentation.
+            "response": content_md,
+            "code": {"language": language_tag, "content": serialized},
+            "analysis": {
+                "render_type": envelope.get("render_type"),
+                "description": (envelope.get("presentation") or {}).get("description", ""),
+                "engine": "chat_agent_loop",
+                "requested_type": render_mode,
+            },
+            "review": {
+                "changed": False,
+                "review_notes": "Accepted by the installed visualizer validator.",
+            },
+            "engine": "chat_agent_loop",
+            "loop": loop_result,
+        }
         await emit_capability_result(
             stream,
-            {
-                "response": content_md,
-                "render_type": analysis.render_type,
-                "code": {
-                    "language": lang_tag,
-                    "content": final_code,
-                },
-                "analysis": analysis.model_dump(),
-                "review": review.model_dump(),
-            },
+            result,
             source=self.name,
-            usage=usage,
+            usage=pipeline.usage,
         )
+
+    @staticmethod
+    def _tool_calling_disabled_for() -> str:
+        """``"binding/model"`` when this turn gets no tool schemas, else ``""``.
+
+        Mirrors the resolution ``AgenticChatPipeline`` performs for the same
+        LLM config, so the warning and the failure message describe the loop
+        that actually ran. Probing must never be why a visualization fails, so
+        an unreadable config reports "enabled" and leaves the generic
+        diagnosis in place.
+        """
+        try:
+            from deeptutor.runtime.agentic.client import can_use_native_tool_calling
+            from deeptutor.services.llm.config import get_llm_config
+
+            llm_config = get_llm_config()
+            binding = str(getattr(llm_config, "binding", None) or "openai")
+            model = str(getattr(llm_config, "model", None) or "")
+            if can_use_native_tool_calling(binding=binding, model=model or None):
+                return ""
+            return f"{binding}/{model}" if model else binding
+        except Exception:  # pragma: no cover - defensive: never block a turn
+            logger.debug("Tool-calling probe unavailable for visualize", exc_info=True)
+            return ""
 
     async def _run_manim_path(
         self,
@@ -316,12 +291,16 @@ class VisualizeCapability(BaseCapability):
         )
 
         llm_config = get_llm_config()
+        workspace = context.runtime.workspace
         pipeline = MathAnimatorPipeline(
             api_key=llm_config.api_key,
             base_url=llm_config.base_url,
             api_version=llm_config.api_version,
             language=context.language,
             trace_callback=self._build_trace_bridge(stream, i18n=i18n),
+            workspace_output_dir=workspace.output_dir if workspace else None,
+            workspace_root=workspace.root if workspace else None,
+            workspace_id=workspace.workspace_id if workspace else "",
         )
 
         timings: dict[str, float] = {}
@@ -463,6 +442,13 @@ class VisualizeCapability(BaseCapability):
             )
         timings["render_output"] = 0.0
         visual_review = getattr(render_result, "visual_review", None)
+        workspace_items = list(getattr(render_result, "workspace_items", []) or [])
+        if workspace_items:
+            await stream.sources(
+                [{"type": "workspace_item", **item} for item in workspace_items],
+                source=self.name,
+                stage="render_output",
+            )
 
         await emit_capability_result(
             stream,
@@ -476,6 +462,7 @@ class VisualizeCapability(BaseCapability):
                 },
                 "output_mode": request_config.output_mode,
                 "artifacts": [artifact.model_dump() for artifact in render_result.artifacts],
+                "workspace_items": workspace_items,
                 "timings": timings,
                 "render": {
                     "quality": request_config.quality,

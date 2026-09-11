@@ -280,7 +280,7 @@ test("the catalog request carries the filters and the cursor", async () => {
   try {
     let list = appendCatalogPage(
       null,
-      await getMcpCatalog("/api/v1/space/mcp", {
+      await getMcpCatalog("/api/space/mcp", {
         q: "web search",
         category: "search",
         tier: "curated",
@@ -289,7 +289,7 @@ test("the catalog request carries the filters and the cursor", async () => {
     );
     list = appendCatalogPage(
       list,
-      await getMcpCatalog("/api/v1/space/mcp", {
+      await getMcpCatalog("/api/space/mcp", {
         q: "web search",
         category: "search",
         tier: "curated",
@@ -299,7 +299,7 @@ test("the catalog request carries the filters and the cursor", async () => {
     );
 
     assert.equal(calls.length, 2);
-    assert.ok(calls[0].startsWith("/api/v1/space/mcp/catalog?"));
+    assert.ok(calls[0].startsWith("/api/space/mcp/catalog?"));
     const first = new URL(calls[0], "http://x").searchParams;
     assert.equal(first.get("q"), "web search");
     assert.equal(first.get("category"), "search");

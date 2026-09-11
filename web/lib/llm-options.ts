@@ -1,6 +1,6 @@
 import { apiFetch, apiUrl } from "@/lib/api";
 import { invalidateClientCache, withClientCache } from "@/lib/client-cache";
-import type { LLMSelection } from "@/lib/unified-ws";
+import type { LLMSelection } from "@/features/chat/model/protocol";
 
 const LLM_OPTIONS_CACHE_KEY = "llm-options:list";
 const DEFAULT_LLM_OPTIONS_TIMEOUT_MS = 30_000;
@@ -13,6 +13,8 @@ export interface LLMOption extends LLMSelection {
   /** Human-readable provider name from the registry ("OpenRouter"). */
   provider_label?: string;
   context_window?: number;
+  reasoning_effort?: string;
+  supported_reasoning_efforts?: string[];
   is_active_default: boolean;
 }
 
@@ -52,13 +54,10 @@ export async function listLLMOptions(options?: {
         options?.timeoutMs ?? DEFAULT_LLM_OPTIONS_TIMEOUT_MS,
       );
       try {
-        const response = await apiFetch(
-          apiUrl("/api/v1/settings/llm-options"),
-          {
-            cache: "no-store",
-            signal: controller.signal,
-          },
-        );
+        const response = await apiFetch(apiUrl("/api/settings/llm-options"), {
+          cache: "no-store",
+          signal: controller.signal,
+        });
         if (!response.ok) {
           throw new Error(`Failed to load LLM options: ${response.status}`);
         }

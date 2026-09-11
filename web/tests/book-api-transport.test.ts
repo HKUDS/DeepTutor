@@ -16,8 +16,8 @@ test("long-running Book operations use the streaming WebSocket transport", () =>
   assert.doesNotMatch(source, /\/books\/confirm-proposal/);
   assert.doesNotMatch(source, /\/books\/compile-page/);
 
-  assert.match(source, /type:\s*"confirm_proposal"/);
-  assert.match(source, /"confirm_proposal_result"/);
-  assert.match(source, /type:\s*"compile_page"/);
-  assert.match(source, /"compile_page_result"/);
+  assert.match(source, /type:\s*["']confirm_proposal["']/);
+  assert.match(source, /["']confirm_proposal_result["']/);
+  assert.match(source, /type:\s*["']compile_page["']/);
+  assert.match(source, /["']compile_page_result["']/);
 });

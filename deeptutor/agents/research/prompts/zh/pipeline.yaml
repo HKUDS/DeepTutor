@@ -13,6 +13,7 @@ labels:
   report_intro: "撰写引言"
   report_section: "撰写章节"
   report_conclusion: "撰写结论"
+  report_retry: "报告段落不完整，正在重试。"
   queue_append: "新增子主题"
   references_heading: "参考资料"
   addendum_title: "补充发现"
@@ -35,7 +36,7 @@ notices:
   protocol_retry: "模型未遵循标签协议，正在重试。"
   empty_tool_result: "工具未返回任何结果。"
   start_retrieval: "开始检索"
-  tool_unknown_error: "执行 {tool} 时出错。"
+  tool_error: "{tool} 执行失败：{error}"
   too_many_tool_calls: "本轮请求 {requested} 次工具调用，已截断到上限 {limit}。"
   max_iterations_reached: "当前研究块已达到迭代上限，强制 FINISH。"
   partial_results: "{total} 个研究子主题中有 {failed} 个未能完成；报告基于其余已收集的证据生成。"
@@ -198,6 +199,8 @@ note:
 # Phase 4 — Reporting
 # =======================================================================
 report:
+  retry_complete: |
+    上一次报告段落为空或被截断。请从本段的 ## 标题开始重新生成完整内容，严格遵守标签协议，并写完每个句子。不要解释重试过程。
   outline:
     system: |
       根据已完成的研究块规划最终报告的结构。每个块有 id、子主题标题，以及一段简短的知识预览。

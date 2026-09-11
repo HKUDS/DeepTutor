@@ -5,14 +5,25 @@ from __future__ import annotations
 import logging
 import os
 import threading
-from typing import Any
+from typing import TYPE_CHECKING, Any
+import uuid
 
 import httpx
 
 from deeptutor.services.config import load_system_settings
 from deeptutor.services.llm.exceptions import LLMConfigError
 
+if TYPE_CHECKING:
+    from deeptutor.services.provider_registry import ProviderSpec
+
 logger = logging.getLogger(__name__)
+
+# OpenRouter attributes traffic to an app by these headers; sent whenever the
+# endpoint is theirs, whatever binding the profile was typed under.
+OPENROUTER_ATTRIBUTION_HEADERS: dict[str, str] = {
+    "HTTP-Referer": "https://github.com/HKUDS/DeepTutor",
+    "X-OpenRouter-Title": "DeepTutor",
+}
 
 _warning_lock = threading.Lock()
 _warning_logged = False
@@ -97,9 +108,61 @@ def openai_client_kwargs(**httpx_kwargs: Any) -> dict[str, httpx.AsyncClient]:
     return {"http_client": client} if client is not None else {}
 
 
+def _uses_openrouter(spec: "ProviderSpec | None", api_base: str | None) -> bool:
+    if spec is not None and spec.name == "openrouter":
+        return True
+    return bool(api_base and "openrouter" in api_base.lower())
+
+
+def openai_sdk_client_kwargs(
+    *,
+    api_key: str | None,
+    base_url: str | None,
+    extra_headers: dict[str, str] | None = None,
+    spec: "ProviderSpec | None" = None,
+    disable_ssl_verify: bool | None = None,
+    sdk_max_retries: int | None = None,
+    session_affinity: bool = True,
+) -> dict[str, Any]:
+    """Constructor kwargs for ``AsyncOpenAI`` / ``AsyncAzureOpenAI``.
+
+    The one place that decides what every OpenAI-SDK client DeepTutor builds
+    looks like on the wire: default headers (session affinity, OpenRouter
+    attribution, the profile's extra headers), the SDK retry budget, and the
+    TLS-verification bypass. ``disable_ssl_verify=None`` reads the system
+    setting; callers that already hold the flag pass it through.
+    """
+    sanitize_invalid_ssl_env()
+    headers: dict[str, str] = {}
+    if session_affinity:
+        headers["x-session-affinity"] = uuid.uuid4().hex
+    if _uses_openrouter(spec, base_url):
+        headers.update(OPENROUTER_ATTRIBUTION_HEADERS)
+    if extra_headers:
+        headers.update(extra_headers)
+    kwargs: dict[str, Any] = {
+        "api_key": api_key,
+        "base_url": base_url,
+        "default_headers": headers or None,
+    }
+    if sdk_max_retries is not None:
+        kwargs["max_retries"] = sdk_max_retries
+    if disable_ssl_verify is None:
+        http_client = build_openai_http_client()
+    elif disable_ssl_verify:
+        http_client = httpx.AsyncClient(verify=False)  # nosec B501
+    else:
+        http_client = None
+    if http_client is not None:
+        kwargs["http_client"] = http_client
+    return kwargs
+
+
 __all__ = [
+    "OPENROUTER_ATTRIBUTION_HEADERS",
     "build_openai_http_client",
     "disable_ssl_verify_enabled",
     "openai_client_kwargs",
+    "openai_sdk_client_kwargs",
     "sanitize_invalid_ssl_env",
 ]

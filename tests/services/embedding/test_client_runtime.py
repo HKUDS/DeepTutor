@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import threading
 from typing import Any
 
 import pytest
@@ -73,6 +75,66 @@ async def test_embedding_client_batches_requests(monkeypatch) -> None:
     assert len(adapter.calls[0].texts) == 2
     assert len(adapter.calls[1].texts) == 1
     assert adapter.config["dimensions"] == 8
+
+
+@pytest.mark.asyncio
+async def test_embedding_client_serializes_concurrent_calls_without_blocking_loop(
+    monkeypatch,
+) -> None:
+    class _NonBlockingOnlyLock:
+        def __init__(self) -> None:
+            self._lock = threading.Lock()
+
+        def acquire(self, blocking: bool = True) -> bool:
+            if blocking:
+                raise AssertionError("embedding spacing lock must not block the event loop")
+            return self._lock.acquire(blocking=False)
+
+        def release(self) -> None:
+            self._lock.release()
+
+    class _ConcurrentAdapter(_FakeAdapter):
+        in_flight = 0
+        max_in_flight = 0
+
+        async def embed(self, request):
+            type(self).in_flight += 1
+            type(self).max_in_flight = max(type(self).max_in_flight, type(self).in_flight)
+            try:
+                await asyncio.sleep(0.02)
+                return await super().embed(request)
+            finally:
+                type(self).in_flight -= 1
+
+    _FakeAdapter.instances = []
+    monkeypatch.setattr(
+        "deeptutor.services.embedding.client._resolve_adapter_class",
+        lambda _b: _ConcurrentAdapter,
+    )
+    monkeypatch.setattr(EmbeddingClient, "_spacing_lock", _NonBlockingOnlyLock())
+    monkeypatch.setattr(EmbeddingClient, "_last_request_monotonic", 0.0)
+    _ConcurrentAdapter.in_flight = 0
+    _ConcurrentAdapter.max_in_flight = 0
+    client = EmbeddingClient(_build_config("openai"))
+
+    heartbeat = asyncio.Event()
+
+    async def mark_loop_responsive() -> None:
+        await asyncio.sleep(0)
+        heartbeat.set()
+
+    first, second, _ = await asyncio.wait_for(
+        asyncio.gather(
+            client.embed(["first"]),
+            client.embed(["second"]),
+            mark_loop_responsive(),
+        ),
+        timeout=1.0,
+    )
+
+    assert heartbeat.is_set()
+    assert len(first) == len(second) == 1
+    assert _ConcurrentAdapter.max_in_flight == 1
 
 
 @pytest.mark.asyncio

@@ -40,6 +40,14 @@ def _mastery_payload(session_id: str, path_id: str) -> dict:
     }
 
 
+def _mastery_chat_payload(session_id: str, path_id: str) -> dict:
+    return {
+        **_mastery_payload(session_id, path_id),
+        "capability": "chat",
+        "workspace_mode": "mastery_path",
+    }
+
+
 def test_terminal_error_marks_turn_failed() -> None:
     error_message = "provider authentication failed"
     status, error = _resolve_turn_outcome(
@@ -82,6 +90,35 @@ def test_non_terminal_error_keeps_completed_done_status() -> None:
 
 
 @pytest.mark.asyncio
+async def test_has_live_executions_counts_placeholders_and_running_tasks(tmp_path) -> None:
+    runtime = TurnRuntimeManager(SQLiteSessionStore(tmp_path / "chat_history.db"))
+    runtime._executions["placeholder"] = SimpleNamespace(task=None)  # type: ignore[assignment]
+    assert await runtime.has_live_executions() is True
+
+    runtime._executions.clear()
+    task = asyncio.create_task(asyncio.sleep(0))
+    runtime._executions["running"] = SimpleNamespace(task=task)  # type: ignore[assignment]
+    assert await runtime.has_live_executions() is True
+
+    await task
+    assert await runtime.has_live_executions() is False
+
+
+@pytest.mark.asyncio
+async def test_managed_update_reservation_is_atomic_with_turn_ownership(tmp_path) -> None:
+    runtime = TurnRuntimeManager(SQLiteSessionStore(tmp_path / "chat_history.db"))
+    reserved = object()
+
+    assert await runtime.reserve_managed_update(lambda: reserved) is reserved
+    runtime._managed_update_is_active = lambda: True  # type: ignore[method-assign]
+    with pytest.raises(RuntimeError, match="preparing an update"):
+        await runtime._ensure_accepting_turns()
+
+    runtime._managed_update_is_active = lambda: False  # type: ignore[method-assign]
+    await runtime._ensure_accepting_turns()
+
+
+@pytest.mark.asyncio
 async def test_subscribe_turn_does_not_synthesize_done_for_running_turn(tmp_path) -> None:
     """A paused/replaced subscription must not make the UI think the turn ended."""
 
@@ -120,8 +157,44 @@ async def test_subscribe_turn_does_not_synthesize_done_for_running_turn(tmp_path
 
 
 @pytest.mark.asyncio
-async def test_subscribe_turn_marks_orphan_running_turn_failed(tmp_path) -> None:
-    """A DB-running turn with no in-process execution is stale after restart."""
+async def test_replacing_subscription_does_not_synthesize_duplicate_done(tmp_path) -> None:
+    """Cancelling an old replay subscription must leave termination to its replacement."""
+
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    runtime = TurnRuntimeManager(store)
+    session = await store.ensure_session(None)
+    turn = await store.create_turn(session["id"], capability="chat")
+    execution = _TurnExecution(
+        turn_id=turn["id"],
+        session_id=session["id"],
+        capability="chat",
+        payload={},
+    )
+    runtime._executions[turn["id"]] = execution
+    events: list[dict] = []
+
+    async def _collect() -> None:
+        async for event in runtime.subscribe_turn(turn["id"], after_seq=0):
+            events.append(event)
+
+    task = asyncio.create_task(_collect())
+    for _ in range(200):
+        if execution.subscribers:
+            break
+        await asyncio.sleep(0.01)
+
+    assert execution.subscribers
+    assert await store.update_turn_status(turn["id"], "completed") is True
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert events == []
+
+
+@pytest.mark.asyncio
+async def test_subscribe_turn_does_not_mutate_remote_running_turn(tmp_path) -> None:
+    """A subscriber may be on a different worker from the turn owner."""
 
     store = SQLiteSessionStore(tmp_path / "chat_history.db")
     runtime = TurnRuntimeManager(store)
@@ -134,17 +207,89 @@ async def test_subscribe_turn_marks_orphan_running_turn_failed(tmp_path) -> None
 
     persisted = await store.get_turn(turn["id"])
     assert persisted is not None
-    assert persisted["status"] == "failed"
-    assert "restart" in persisted["error"].lower()
-    assert [event["type"] for event in events] == ["error", "done"]
-    assert events[-1]["metadata"]["status"] == "failed"
+    assert persisted["status"] == "running"
+    assert persisted["error"] == ""
+    assert events == []
 
 
 @pytest.mark.asyncio
-async def test_start_turn_clears_orphan_running_turn_before_create(
+async def test_subscribe_terminal_turn_synthesizes_protocol_valid_done(tmp_path) -> None:
+    """A recovered terminal turn must emit a consumable monotonic DONE."""
+
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    runtime = TurnRuntimeManager(store)
+    session = await store.ensure_session(None)
+    turn = await store.create_turn(session["id"], capability="chat")
+    assert await store.update_turn_status(turn["id"], "completed") is True
+
+    events = [event async for event in runtime.subscribe_turn(turn["id"], after_seq=0)]
+
+    assert len(events) == 1
+    done = events[0]
+    assert done["type"] == "done"
+    assert done["turn_id"] == turn["id"]
+    assert done["session_id"] == session["id"]
+    assert done["seq"] == 1
+    assert isinstance(done["timestamp"], float)
+    assert done["metadata"] == {"status": "completed", "synthesized": True}
+
+
+@pytest.mark.asyncio
+async def test_subscribe_failed_turn_synthesizes_ordered_error_and_done(tmp_path) -> None:
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    runtime = TurnRuntimeManager(store)
+    session = await store.ensure_session(None)
+    turn = await store.create_turn(session["id"], capability="chat")
+    assert await store.update_turn_status(turn["id"], "failed", "provider failed") is True
+
+    events = [event async for event in runtime.subscribe_turn(turn["id"], after_seq=0)]
+
+    assert [event["type"] for event in events] == ["error", "done"]
+    assert [event["seq"] for event in events] == [1, 2]
+    assert events[0]["metadata"]["turn_terminal"] is True
+    assert events[1]["metadata"]["status"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_close_cancels_local_turns_and_wakes_subscribers(tmp_path) -> None:
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    runtime = TurnRuntimeManager(store)
+    session = await store.ensure_session(None)
+    turn = await store.create_turn(session["id"], capability="chat")
+    execution = _TurnExecution(
+        turn_id=turn["id"],
+        session_id=session["id"],
+        capability="chat",
+        payload={},
+    )
+    execution.task = asyncio.create_task(asyncio.Event().wait())
+    runtime._executions[turn["id"]] = execution
+
+    collected: list[dict] = []
+
+    async def _collect() -> None:
+        async for event in runtime.subscribe_turn(turn["id"]):
+            collected.append(event)
+
+    subscriber_task = asyncio.create_task(_collect())
+    for _ in range(100):
+        if execution.subscribers:
+            break
+        await asyncio.sleep(0.01)
+
+    await runtime.close()
+    await asyncio.wait_for(subscriber_task, timeout=1)
+
+    assert execution.task.cancelled()
+    assert collected == []
+    assert await runtime.has_live_executions() is False
+
+
+@pytest.mark.asyncio
+async def test_start_turn_does_not_mutate_apparently_orphaned_turn(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
-    """A stale active turn should not block the next user message after restart."""
+    """Only the recovery service may resolve a persisted active turn."""
 
     store = SQLiteSessionStore(tmp_path / "chat_history.db")
     runtime = TurnRuntimeManager(store)
@@ -156,24 +301,24 @@ async def test_start_turn_clears_orphan_running_turn_before_create(
 
     monkeypatch.setattr(runtime, "_run_turn", _noop_run_turn)
 
-    _, new_turn = await runtime.start_turn(
-        {
-            "type": "start_turn",
-            "session_id": session["id"],
-            "capability": "chat",
-            "content": "hello",
-            "tools": [],
-            "knowledge_bases": [],
-            "attachments": [],
-            "language": "en",
-            "config": {},
-        }
-    )
+    with pytest.raises(RuntimeError, match="active turn"):
+        await runtime.start_turn(
+            {
+                "type": "start_turn",
+                "session_id": session["id"],
+                "capability": "chat",
+                "content": "hello",
+                "tools": [],
+                "knowledge_bases": [],
+                "attachments": [],
+                "language": "en",
+                "config": {},
+            }
+        )
 
-    assert new_turn["id"] != stale["id"]
     persisted = await store.get_turn(stale["id"])
     assert persisted is not None
-    assert persisted["status"] == "failed"
+    assert persisted["status"] == "running"
 
 
 @pytest.mark.asyncio
@@ -218,7 +363,7 @@ async def test_start_turn_preserves_selection_tutor_runtime_context(
     )
 
     execution = runtime._executions[turn["id"]]
-    resolved = execution.payload["config"]["selection_tutor_context"]
+    resolved = execution.payload["selection_tutor_context"]
     assert resolved["selected_text"] == selected_context["selected_text"]
     assert resolved["source_message_text"] == source_text
 
@@ -392,6 +537,212 @@ async def test_reconnect_after_turn_completion_still_carries_message_ids(
     assert done_events[0]["metadata"].get("assistant_message_id") == real_assistant_id
 
 
+def _open_mastery_question(path_id: str, *, question_id: str = "q-1"):
+    """A built path with one open choice question, answer key ``C``."""
+    from deeptutor.learning.models import (
+        KnowledgePoint,
+        KnowledgeType,
+        LearningModule,
+        LearningProgress,
+        PendingQuestion,
+    )
+    from deeptutor.learning.service import LearningService
+
+    progress = LearningProgress(
+        book_id=path_id,
+        modules=[
+            LearningModule(
+                id="module-1",
+                name="Routing",
+                order=0,
+                knowledge_points=[
+                    KnowledgePoint(
+                        id="kp-1",
+                        name="Adaptive routing",
+                        type=KnowledgeType.MEMORY,
+                        module_id="module-1",
+                    )
+                ],
+            )
+        ],
+    )
+    service = LearningService()
+    service.store.save(progress)
+    _, interaction, _ = service.register_question(
+        path_id,
+        PendingQuestion(
+            question_id=question_id,
+            knowledge_point_id="kp-1",
+            prompt="What does the router do on a miss?",
+            question_type="choice",
+            options=[
+                "A: give up and report no results",
+                "B: lower the similarity threshold until something matches",
+                "C: rewrite the query and retry",
+                "D: jump back to the router with goto",
+            ],
+            expected_answer="C",
+            explanation="A miss is feedback: rewrite the query and retry.",
+        ),
+    )
+    return interaction
+
+
+@pytest.mark.asyncio
+async def test_card_answer_is_committed_before_the_turn_runs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """An answer from a question card is engine state before the tutor reads it.
+
+    The card outlives the turn that posed it, so the answer arrives as the next
+    turn's message. Committing it at turn start is what lets the tutor's first
+    ``mastery_status`` report ``answered`` with the learner's own words instead
+    of having to pair a bare "C" with a question from scrollback.
+    """
+    _isolate_learning_store(monkeypatch, tmp_path)
+    from deeptutor.learning.models import InteractionStatus
+    from deeptutor.learning.service import LearningService
+
+    interaction = _open_mastery_question("shared")
+
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    runtime = TurnRuntimeManager(store)
+    session = await store.ensure_session("session-1")
+    hold = asyncio.Event()
+
+    async def _hold_turn(_execution):
+        await hold.wait()
+
+    monkeypatch.setattr(runtime, "_run_turn", _hold_turn)
+    payload = {
+        **_mastery_payload(session["id"], "shared"),
+        "content": "C",
+        "mastery_answer": {"question_id": interaction.interaction_id, "text": "C"},
+    }
+    _, turn = await runtime.start_turn(payload)
+
+    committed = LearningService().store.get_active_interaction("shared")
+    assert committed is not None
+    assert committed.status is InteractionStatus.ANSWERED
+    assert committed.user_answer == "C"
+
+    await runtime.cancel_turn(turn["id"])
+    LearningStore().release_path_lease("shared", turn_id=turn["id"])
+
+
+@pytest.mark.asyncio
+async def test_card_answer_is_ruled_on_before_the_tutor_speaks(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """The verdict reaches the card in milliseconds, not after an LLM round.
+
+    Everything it needs was registered when the question was posed, so making
+    the learner watch their own pick until the tutor got around to calling
+    ``mastery_grade`` was a wait for nothing. The ruling is published as the
+    same ``mastery_grade`` tool result the card already reads, so it renders
+    unchanged and survives a reload with the turn.
+    """
+    _isolate_learning_store(monkeypatch, tmp_path)
+    interaction = _open_mastery_question("shared")
+
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    runtime = TurnRuntimeManager(store)
+    session = await store.ensure_session("session-1")
+    hold = asyncio.Event()
+
+    async def _hold_turn(_execution):
+        await hold.wait()
+
+    monkeypatch.setattr(runtime, "_run_turn", _hold_turn)
+    _, turn = await runtime.start_turn(_mastery_payload(session["id"], "shared"))
+    execution = runtime._executions[turn["id"]]
+
+    grade = await runtime._grade_submitted_card_answer(
+        execution,
+        path_id="shared",
+        answer={"question_id": interaction.interaction_id, "text": "C"},
+    )
+
+    assert grade is not None
+    assert grade["is_correct"] is True
+    result = grade["result"]
+    assert result["correct_label"] == "C"
+    assert result["explanation"].startswith("A miss is feedback")
+    # The answer key travels to the card only now that the gate has ruled.
+    published = [
+        event
+        for event in execution.events
+        if event.get("type") == "tool_result"
+        and (event.get("metadata") or {}).get("tool_metadata", {}).get("mastery_grade")
+    ]
+    assert len(published) == 1
+    carried = published[0]["metadata"]["tool_metadata"]["mastery_grade"]["result"]
+    assert carried["question_id"] == interaction.interaction_id
+    assert carried["is_correct"] is True
+
+    await runtime.cancel_turn(turn["id"])
+    LearningStore().release_path_lease("shared", turn_id=turn["id"])
+
+
+@pytest.mark.asyncio
+async def test_declining_a_card_drops_the_question_before_the_tutor_speaks(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """A question the learner declined is gone by the time the tutor reads.
+
+    The engine holds one open question per path, so a question left open is the
+    one the tutor's next ``mastery_quiz`` re-presents: without this the learner
+    could never get past a question they did not want to answer.
+    """
+    _isolate_learning_store(monkeypatch, tmp_path)
+    from deeptutor.learning.service import LearningService
+
+    interaction = _open_mastery_question("shared")
+
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    runtime = TurnRuntimeManager(store)
+    session = await store.ensure_session("session-1")
+    hold = asyncio.Event()
+
+    async def _hold_turn(_execution):
+        await hold.wait()
+
+    monkeypatch.setattr(runtime, "_run_turn", _hold_turn)
+    _, turn = await runtime.start_turn(_mastery_payload(session["id"], "shared"))
+    execution = runtime._executions[turn["id"]]
+
+    # A card that is no longer the open question drops nothing: by then it is
+    # one the learner cannot have been declining.
+    assert (
+        await runtime._skip_card_question(
+            execution, path_id="shared", skip={"question_id": "some-other-question"}
+        )
+        is None
+    )
+    assert LearningService().store.get_active_interaction("shared") is not None
+
+    skip = await runtime._skip_card_question(
+        execution, path_id="shared", skip={"question_id": interaction.interaction_id}
+    )
+
+    assert skip is not None
+    assert skip["skipped"] is True
+    assert skip["question_id"] == interaction.interaction_id
+    assert LearningService().store.get_active_interaction("shared") is None
+    # The card reads the same channel a grade arrives on, so it can show that
+    # this question was set aside rather than staying answerable forever.
+    published = [
+        event
+        for event in execution.events
+        if event.get("type") == "tool_result"
+        and (event.get("metadata") or {}).get("tool_metadata", {}).get("mastery_skip_question")
+    ]
+    assert len(published) == 1
+
+    await runtime.cancel_turn(turn["id"])
+    LearningStore().release_path_lease("shared", turn_id=turn["id"])
+
+
 @pytest.mark.asyncio
 async def test_mastery_path_allows_only_one_live_turn_across_sessions(
     monkeypatch: pytest.MonkeyPatch, tmp_path
@@ -420,6 +771,58 @@ async def test_mastery_path_allows_only_one_live_turn_across_sessions(
 
     await runtime.cancel_turn(first_turn["id"])
     LearningStore().release_path_lease("shared", turn_id=first_turn["id"])
+
+
+@pytest.mark.asyncio
+async def test_chat_action_inside_mastery_keeps_path_binding_and_lease(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    _isolate_learning_store(monkeypatch, tmp_path)
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    runtime = TurnRuntimeManager(store)
+    session = await store.ensure_session("session-1")
+    hold = asyncio.Event()
+
+    async def _hold_turn(_execution):
+        await hold.wait()
+
+    monkeypatch.setattr(runtime, "_run_turn", _hold_turn)
+    _, turn = await runtime.start_turn(_mastery_chat_payload(session["id"], "shared"))
+
+    lease = LearningStore().get_path_lease("shared")
+    assert lease is not None
+    assert lease.turn_id == turn["id"]
+    detail = await store.get_session(session["id"])
+    assert detail is not None
+    assert detail["preferences"]["workspace_mode"] == "mastery_path"
+    assert detail["preferences"]["capability"] == "chat"
+
+    await runtime.cancel_turn(turn["id"])
+    LearningStore().release_path_lease("shared", turn_id=turn["id"])
+
+
+@pytest.mark.asyncio
+async def test_mastery_turn_rejects_session_from_an_unrelated_topic(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    _isolate_learning_store(monkeypatch, tmp_path)
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    runtime = TurnRuntimeManager(store)
+    session = await store.ensure_session("session-1")
+    await store.update_session_preferences(
+        session["id"],
+        {"mastery_path_id": "topic-a"},
+    )
+    LearningStore().bind_session("topic-a", session["id"])
+
+    with pytest.raises(RuntimeError, match="mastery_session_topic_mismatch"):
+        await runtime.start_turn(_mastery_payload(session["id"], "topic-b"))
+
+    detail = await store.get_session(session["id"])
+    assert detail is not None
+    assert detail["preferences"]["mastery_path_id"] == "topic-a"
+    assert await store.get_active_turn(session["id"]) is None
+    assert LearningStore().path_id_for_session(session["id"]) == "topic-a"
 
 
 @pytest.mark.asyncio
@@ -522,7 +925,7 @@ async def test_racing_mastery_start_does_not_steal_pre_task_lease(
 
 
 @pytest.mark.asyncio
-async def test_mastery_path_recovers_restart_orphan_lease(
+async def test_mastery_path_does_not_steal_apparently_orphaned_lease(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
     _isolate_learning_store(monkeypatch, tmp_path)
@@ -543,17 +946,16 @@ async def test_mastery_path_recovers_restart_orphan_lease(
         await hold.wait()
 
     monkeypatch.setattr(runtime, "_run_turn", _hold_turn)
-    _, new_turn = await runtime.start_turn(_mastery_payload(new_session["id"], "shared"))
+    with pytest.raises(RuntimeError, match="mastery_path_busy"):
+        await runtime.start_turn(_mastery_payload(new_session["id"], "shared"))
 
-    recovered = await store.get_turn(stale_turn["id"])
+    persisted = await store.get_turn(stale_turn["id"])
     lease = LearningStore().get_path_lease("shared")
-    assert recovered is not None
-    assert recovered["status"] == "failed"
+    assert persisted is not None
+    assert persisted["status"] == "running"
     assert lease is not None
-    assert lease.turn_id == new_turn["id"]
-
-    await runtime.cancel_turn(new_turn["id"])
-    LearningStore().release_path_lease("shared", turn_id=new_turn["id"])
+    assert lease.turn_id == stale_turn["id"]
+    LearningStore().release_path_lease("shared", turn_id=stale_turn["id"])
 
 
 @pytest.mark.asyncio

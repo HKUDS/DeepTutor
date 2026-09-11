@@ -32,7 +32,7 @@ function ResolveInner() {
     (async () => {
       try {
         const res = await apiFetch(
-          apiUrl(`/api/v1/memory/resolve_entry/${encodeURIComponent(id)}`),
+          apiUrl(`/api/memory/resolve_entry/${encodeURIComponent(id)}`),
         );
         if (!res.ok) {
           if (cancelled) return;

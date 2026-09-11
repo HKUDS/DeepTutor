@@ -14,6 +14,8 @@
 #   1. Configure providers in data/user/settings/model_catalog.json or the UI
 #   2. Use scripts/docker_compose.py so port mappings are rendered from system.json
 #   3. Read the API URL note below before starting
+#   4. Optionally set DEEPTUTOR_WORKSPACE_HOST=/absolute/host/folder before
+#      starting; ./data/user/workspace is used when it is omitted
 #
 # Local LLM (LM Studio / Ollama / vLLM):
 #   Use "host.docker.internal" instead of "localhost" in provider base_url fields.
@@ -37,6 +39,23 @@
 # ============================================
 
 services:
+  # Internal-only Redis for multi-worker turn coordination. It is deliberately
+  # not published to the host; configure redis_url as redis://redis:6379/0.
+  redis:
+    image: redis:7.4-alpine
+    container_name: deeptutor-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    volumes:
+      - ./data/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - deeptutor-network
+
   deeptutor:
     image: ghcr.io/hkuds/deeptutor:latest
     pull_policy: always
@@ -55,6 +74,11 @@ services:
       # layout needs a one-time copy out of the running container first; see
       # CONTAINERIZATION.md → "One-time migration".
       - ./data:/app/data
+      - "${DEEPTUTOR_WORKSPACE_HOST:-./data/user/workspace}:/workspace"
+
+    environment:
+      - DEEPTUTOR_WORKSPACE_ROOT=/workspace
+      - DEEPTUTOR_WORKSPACE_ALLOWED_ROOTS=/workspace
 
     # Optional dependencies, re-applied on every start (#762). This image
     # ships the base install; anything added with `docker exec … pip install`
@@ -67,17 +91,20 @@ services:
     # the data volume above, so a recreate reuses the downloads it already
     # paid for. Preview an extra with
     # `python scripts/install_extras.py --dry-run "<name>"`. Uncomment the
-    # `environment:` key together with the entries under it.
-    # environment:
+    # Optional entries can be added to the environment list above.
     #   - DEEPTUTOR_EXTRAS=math-animator,partners
     #   - DEEPTUTOR_APT_PACKAGES=ffmpeg
 
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${DEEPTUTOR_DOCKER_BACKEND_PORT:-8001}/"]
+      test: ["CMD", "curl", "-f", "http://localhost:${DEEPTUTOR_DOCKER_BACKEND_PORT:-8001}/health/ready"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
+
+    depends_on:
+      redis:
+        condition: service_healthy
 
     networks:
       - deeptutor-network

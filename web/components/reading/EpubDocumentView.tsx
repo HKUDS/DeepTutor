@@ -19,6 +19,7 @@ import {
   resolveEpubPageTurnSwipe,
   type EpubPageTurnDirection,
 } from "@/lib/epub-page-turn";
+import { extractEpubHeadings, type ReaderHeading } from "@/lib/reading-outline";
 import { cleanQuote } from "@/lib/reading-selection";
 import type { JumpRequest, SelectionPayload } from "./PdfDocumentView";
 
@@ -102,6 +103,13 @@ export interface EpubDocumentViewProps {
   onSelection: (payload: SelectionPayload | null) => void;
   onAnnotationClick?: (annotation: AnnotationItem) => void;
   onVisibleLocatorChange?: (locator: number) => void;
+  onHeadingsChange?: (headings: ReaderHeading[]) => void;
+  headingJump?: {
+    id: string;
+    nonce: number;
+    locator?: number;
+    sourceHref?: string;
+  } | null;
   onError?: (message: string) => void;
 }
 
@@ -116,6 +124,8 @@ export function EpubDocumentView({
   onSelection,
   onAnnotationClick,
   onVisibleLocatorChange,
+  onHeadingsChange,
+  headingJump,
   onError,
 }: EpubDocumentViewProps) {
   const { t } = useTranslation();
@@ -128,6 +138,8 @@ export function EpubDocumentView({
   const refsRef = useRef(unitRefs);
   const annotationClickRef = useRef(onAnnotationClick);
   const visibleChangeRef = useRef(onVisibleLocatorChange);
+  const headingsChangeRef = useRef(onHeadingsChange);
+  const headingsByLocatorRef = useRef<Map<number, ReaderHeading[]>>(new Map());
   const errorRef = useRef(onError);
   const locatorRef = useRef(1);
   const [loading, setLoading] = useState(true);
@@ -142,6 +154,13 @@ export function EpubDocumentView({
   useEffect(() => {
     visibleChangeRef.current = onVisibleLocatorChange;
   }, [onVisibleLocatorChange]);
+  useEffect(() => {
+    headingsChangeRef.current = onHeadingsChange;
+  }, [onHeadingsChange]);
+  useEffect(() => {
+    headingsByLocatorRef.current.clear();
+    headingsChangeRef.current?.([]);
+  }, [materialId]);
   useEffect(() => {
     errorRef.current = onError;
   }, [onError]);
@@ -178,6 +197,9 @@ export function EpubDocumentView({
       );
       locatorRef.current = nextLocator;
       visibleChangeRef.current?.(nextLocator);
+      headingsChangeRef.current?.(
+        headingsByLocatorRef.current.get(nextLocator) ?? [],
+      );
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       saveTimerRef.current = setTimeout(() => {
         void saveReadingPosition(materialId, {
@@ -229,6 +251,23 @@ export function EpubDocumentView({
       const doc = contents.document;
       if (!doc?.body || doc.body.dataset.dtReaderReady === "true") return;
       doc.body.dataset.dtReaderReady = "true";
+      const href = (doc.location?.pathname ?? "").replace(/^\//, "");
+      const locator =
+        locatorForEpubHref(href, refsRef.current) || locatorRef.current;
+      const sourceHref = bookRef.current?.spine.get(locator - 1)?.href || href;
+      const headingElements = Array.from(
+        doc.querySelectorAll<HTMLElement>("h1,h2,h3,h4,h5,h6"),
+      ).filter((element) => (element.textContent ?? "").trim());
+      const headings = extractEpubHeadings(
+        headingElements,
+        locator,
+        sourceHref,
+      );
+      headingElements.forEach((element, index) => {
+        element.id = headings[index].id;
+      });
+      headingsByLocatorRef.current.set(locator, headings);
+      if (locator === locatorRef.current) headingsChangeRef.current?.(headings);
       let gesture: { x: number; y: number } | null = null;
       doc.addEventListener(
         "touchstart",
@@ -361,6 +400,20 @@ export function EpubDocumentView({
   }, [materialId, unitCount, onSelection, t, turnPage]);
 
   useEffect(() => {
+    if (!headingJump || !renditionRef.current || !bookRef.current) return;
+    const section = bookRef.current.spine.get(
+      (headingJump.locator ?? locatorRef.current) - 1,
+    );
+    const sourceHref = headingJump.sourceHref || section?.href;
+    if (!sourceHref) return;
+    void renditionRef.current
+      .display(`${sourceHref}#${headingJump.id}`)
+      .catch(() => {
+        // A damaged publisher anchor leaves the reader on the current page.
+      });
+  }, [headingJump]);
+
+  useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
       if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey)
@@ -475,7 +528,7 @@ export function EpubDocumentView({
           <button
             type="button"
             onClick={() => turnPage("previous")}
-            className="absolute left-2 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--background)]/90 text-[var(--foreground)] shadow-sm backdrop-blur transition hover:bg-[var(--muted)]"
+            className="absolute left-2 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--border)] bg-[color-mix(in_srgb,var(--background)_90%,transparent)] text-[var(--foreground)] shadow-sm backdrop-blur transition hover:bg-[var(--muted)]"
             aria-label={t("Previous")}
           >
             <ChevronLeft size={19} />
@@ -483,7 +536,7 @@ export function EpubDocumentView({
           <button
             type="button"
             onClick={() => turnPage("next")}
-            className="absolute right-2 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--background)]/90 text-[var(--foreground)] shadow-sm backdrop-blur transition hover:bg-[var(--muted)]"
+            className="absolute right-2 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--border)] bg-[color-mix(in_srgb,var(--background)_90%,transparent)] text-[var(--foreground)] shadow-sm backdrop-blur transition hover:bg-[var(--muted)]"
             aria-label={t("Next")}
           >
             <ChevronRight size={19} />

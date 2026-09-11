@@ -3,6 +3,8 @@
  * Handles light/dark theme with localStorage fallback and system preference detection
  */
 
+import { browserStorage } from "@/shared/storage";
+
 export type Theme = "light" | "dark" | "glass" | "snow";
 
 export const THEME_STORAGE_KEY = "deeptutor-theme";
@@ -34,7 +36,7 @@ export function getStoredTheme(): Theme | null {
   if (typeof window === "undefined") return null;
 
   try {
-    const stored = localStorage.getItem(THEME_STORAGE_KEY);
+    const stored = browserStorage.readRaw("local", THEME_STORAGE_KEY);
     if (
       stored === "light" ||
       stored === "dark" ||
@@ -57,8 +59,7 @@ export function saveThemeToStorage(theme: Theme): boolean {
   if (typeof window === "undefined") return false;
 
   try {
-    localStorage.setItem(THEME_STORAGE_KEY, theme);
-    return true;
+    return browserStorage.writeRaw("local", THEME_STORAGE_KEY, theme);
   } catch (e) {
     // Silently fail - localStorage may be disabled or full
     return false;

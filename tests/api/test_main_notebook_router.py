@@ -1,7 +1,7 @@
-"""Tests for the main notebook router (/api/v1/notebook).
+"""Tests for the main notebook router (/api/notebooks).
 
 Verifies that records can only be saved using real notebook UUIDs
-(from /api/v1/notebook/list), not question-notebook category integer IDs.
+(from /api/notebooks), not question-notebook category integer IDs.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ from deeptutor.services.notebook.service import NotebookManager
 
 def _build_app(manager: NotebookManager) -> FastAPI:
     app = FastAPI()
-    app.include_router(notebook_router, prefix="/api/v1/notebook")
+    app.include_router(notebook_router, prefix="/api")
     return app
 
 
@@ -40,7 +40,7 @@ def manager(tmp_path, monkeypatch) -> NotebookManager:
 
 def test_list_notebooks_empty(manager: NotebookManager) -> None:
     with TestClient(_build_app(manager)) as client:
-        resp = client.get("/api/v1/notebook/list")
+        resp = client.get("/api/notebooks")
         assert resp.status_code == 200
         data = resp.json()
         assert data["notebooks"] == []
@@ -50,7 +50,7 @@ def test_list_notebooks_empty(manager: NotebookManager) -> None:
 def test_create_and_list_notebook(manager: NotebookManager) -> None:
     with TestClient(_build_app(manager)) as client:
         create_resp = client.post(
-            "/api/v1/notebook/create",
+            "/api/notebooks",
             json={"name": "Study Notes", "description": "Physics"},
         )
         assert create_resp.status_code == 200
@@ -58,7 +58,7 @@ def test_create_and_list_notebook(manager: NotebookManager) -> None:
         assert nb["name"] == "Study Notes"
         nb_id = nb["id"]
 
-        listing = client.get("/api/v1/notebook/list").json()
+        listing = client.get("/api/notebooks").json()
         assert listing["total"] == 1
         assert listing["notebooks"][0]["id"] == nb_id
 
@@ -70,7 +70,7 @@ def test_add_record_with_valid_notebook_id(manager: NotebookManager) -> None:
 
     with TestClient(_build_app(manager)) as client:
         resp = client.post(
-            "/api/v1/notebook/add_record",
+            "/api/notebooks/actions/add-record",
             json={
                 "notebook_ids": [nb_id],
                 "record_type": "chat",
@@ -85,7 +85,7 @@ def test_add_record_with_valid_notebook_id(manager: NotebookManager) -> None:
         assert body["success"] is True
         assert nb_id in body["added_to_notebooks"]
 
-        detail = client.get(f"/api/v1/notebook/{nb_id}").json()
+        detail = client.get(f"/api/notebooks/{nb_id}").json()
         assert len(detail["records"]) == 1
         assert detail["records"][0]["title"] == "Draft on Fourier"
 
@@ -94,14 +94,14 @@ def test_add_record_with_numeric_category_id_saves_nothing(manager: NotebookMana
     """Using a question-notebook integer category ID must NOT match any notebook.
 
     This is the root cause of issue #301: the old SaveToNotebookModal sent
-    numeric category IDs from /api/v1/question-notebook/categories instead of
-    UUID notebook IDs from /api/v1/notebook/list.
+    numeric category IDs from /api/question-notebook/categories instead of
+    UUID notebook IDs from /api/notebooks.
     """
     manager.create_notebook(name="My Notes")
 
     with TestClient(_build_app(manager)) as client:
         resp = client.post(
-            "/api/v1/notebook/add_record",
+            "/api/notebooks/actions/add-record",
             json={
                 "notebook_ids": ["1", "42"],
                 "record_type": "chat",
@@ -168,7 +168,7 @@ def test_health_is_not_shadowed_by_the_notebook_id_route(manager: NotebookManage
     found", because FastAPI matched `health` as an id.
     """
     with TestClient(_build_app(manager)) as client:
-        resp = client.get("/api/v1/notebook/health")
+        resp = client.get("/api/notebooks/health")
 
     assert resp.status_code == 200
     assert resp.json()["status"] == "healthy"
@@ -188,7 +188,7 @@ def test_renaming_a_record_over_http_keeps_its_kb_name(manager: NotebookManager)
 
     with TestClient(_build_app(manager)) as client:
         resp = client.put(
-            f"/api/v1/notebook/{notebook_id}/records/{record['id']}",
+            f"/api/notebooks/{notebook_id}/records/{record['id']}",
             json={"title": "Renamed"},
         )
 
@@ -211,7 +211,7 @@ def test_record_kb_name_can_still_be_cleared_explicitly(manager: NotebookManager
 
     with TestClient(_build_app(manager)) as client:
         resp = client.put(
-            f"/api/v1/notebook/{notebook_id}/records/{record['id']}",
+            f"/api/notebooks/{notebook_id}/records/{record['id']}",
             json={"kb_name": None},
         )
 
@@ -232,14 +232,14 @@ def test_move_and_copy_endpoints(manager: NotebookManager) -> None:
 
     with TestClient(_build_app(manager)) as client:
         copy_resp = client.post(
-            f"/api/v1/notebook/{source}/records/{record['id']}/copy",
+            f"/api/notebooks/{source}/records/{record['id']}/actions/copy",
             json={"target_notebook_id": target},
         )
         assert copy_resp.status_code == 200
         assert copy_resp.json()["record"]["id"] != record["id"]
 
         move_resp = client.post(
-            f"/api/v1/notebook/{source}/records/{record['id']}/move",
+            f"/api/notebooks/{source}/records/{record['id']}/actions/move",
             json={"target_notebook_id": target},
         )
         assert move_resp.status_code == 200
@@ -259,7 +259,7 @@ def test_export_returns_markdown(manager: NotebookManager) -> None:
     )
 
     with TestClient(_build_app(manager)) as client:
-        resp = client.get(f"/api/v1/notebook/{notebook_id}/export")
+        resp = client.get(f"/api/notebooks/{notebook_id}/export")
 
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("text/markdown")
@@ -270,7 +270,7 @@ def test_damaged_notebook_returns_a_named_conflict(manager: NotebookManager) -> 
     (manager.base_dir / "broken01.json").write_text("{ not json", encoding="utf-8")
 
     with TestClient(_build_app(manager)) as client:
-        resp = client.get("/api/v1/notebook/broken01")
+        resp = client.get("/api/notebooks/broken01")
 
     assert resp.status_code == 409
     assert resp.json()["detail"]["code"] == "notebook_unreadable"
@@ -288,19 +288,19 @@ def test_every_notebook_endpoint_reports_damage_as_409(manager: NotebookManager)
     healthy = manager.create_notebook("Healthy")["id"]
 
     requests = [
-        ("GET", "/api/v1/notebook/broken01", None),
-        ("PUT", "/api/v1/notebook/broken01", {"name": "Renamed"}),
-        ("GET", "/api/v1/notebook/broken01/export", None),
-        ("DELETE", "/api/v1/notebook/broken01/records/whatever", None),
-        ("PUT", "/api/v1/notebook/broken01/records/whatever", {"title": "x"}),
+        ("GET", "/api/notebooks/broken01", None),
+        ("PUT", "/api/notebooks/broken01", {"name": "Renamed"}),
+        ("GET", "/api/notebooks/broken01/export", None),
+        ("DELETE", "/api/notebooks/broken01/records/whatever", None),
+        ("PUT", "/api/notebooks/broken01/records/whatever", {"title": "x"}),
         (
             "POST",
-            "/api/v1/notebook/broken01/records/whatever/copy",
+            "/api/notebooks/broken01/records/whatever/actions/copy",
             {"target_notebook_id": healthy},
         ),
         (
             "POST",
-            "/api/v1/notebook/broken01/records/whatever/move",
+            "/api/notebooks/broken01/records/whatever/actions/move",
             {"target_notebook_id": healthy},
         ),
     ]

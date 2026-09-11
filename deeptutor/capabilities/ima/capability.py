@@ -4,7 +4,7 @@ Active whenever one of the turn's selected knowledge bases is a connected Tencen
 IMA library (resolved by :mod:`deeptutor.capabilities.ima.binding`).
 
 Unlike the Obsidian and subagent capabilities this is a *plain*
-:class:`~deeptutor.capabilities.protocol.LoopCapability`, not a
+:class:`~deeptutor.capabilities.protocol.LoopExtension`, not a
 :class:`~deeptutor.capabilities.protocol.KnowledgeCapability`: it **adds** its
 tools to chat's normal surface instead of replacing it. That difference is not
 stylistic — it follows from what the KB actually is. An Obsidian vault has no
@@ -28,6 +28,8 @@ from deeptutor.capabilities.ima.binding import ima_bindings
 from deeptutor.capabilities.ima.tools import BINDINGS_KWARG, IMA_TOOL_NAMES
 from deeptutor.capabilities.protocol import PromptBlock
 from deeptutor.core.context import UnifiedContext
+from deeptutor.services.prompt.language import is_chinese as _is_zh
+from deeptutor.services.prompt.lookup import prompt_text as _prompt_text
 
 
 class ImaCapability:
@@ -79,19 +81,6 @@ class ImaCapability:
     def pre_loop_seed(self, context: UnifiedContext) -> str:
         _ = context
         return ""
-
-
-def _prompt_text(prompts: dict[str, Any], path: tuple[str, ...]) -> str:
-    value: Any = prompts
-    for key in path:
-        if not isinstance(value, dict):
-            return ""
-        value = value.get(key)
-    return value if isinstance(value, str) and value else ""
-
-
-def _is_zh(language: str) -> bool:
-    return str(language or "en").lower().startswith("zh")
 
 
 def _load_system_prompt(language: str) -> str:

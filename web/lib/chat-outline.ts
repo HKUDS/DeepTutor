@@ -12,7 +12,7 @@
  * agree on a stable ``data-turn-key`` per bubble.
  */
 
-import type { MessageItem } from "@/context/UnifiedChatContext";
+import type { MessageItem } from "@/features/chat/ChatStateAdapter";
 import { buildVisiblePath } from "@/lib/message-branches";
 
 /**
@@ -37,6 +37,16 @@ export interface ChatOutlineEntry {
   capability?: string;
   /** 0..1, question length relative to the longest one in this session. */
   weight: number;
+  /**
+   * Who spoke. Product chat only ever has the user asking, so this is
+   * optional and defaults to ``"user"``. A Partner Group also puts an
+   * approved Partner-to-Partner question on the rail, and colours it
+   * differently so the rhythm of the discussion — where you spoke, where
+   * they spoke to each other — is readable at a glance.
+   */
+  tone?: "user" | "peer";
+  /** Small label above the hover preview (Group: who asked whom). */
+  badge?: string;
 }
 
 /**
@@ -144,4 +154,38 @@ export function buildChatOutline(
     }
   }
   return entries;
+}
+
+/**
+ * Scroll a transcript to the user bubble represented by an outline entry.
+ * Workspace shells own the auto-scroll pin, but the DOM lookup, offset, and
+ * optional arrival flash must stay identical wherever the outline appears.
+ */
+export function scrollToChatTurn(
+  container: HTMLElement | null,
+  key: string,
+  options: { topOffset?: number; flash?: boolean } = {},
+): boolean {
+  const target = container?.querySelector<HTMLElement>(
+    `[data-turn-key="${key}"]`,
+  );
+  if (!container || !target) return false;
+
+  const offset =
+    target.getBoundingClientRect().top - container.getBoundingClientRect().top;
+  container.scrollTo({
+    top: container.scrollTop + offset - (options.topOffset ?? 0),
+    behavior: "smooth",
+  });
+
+  if (options.flash) {
+    const bubble =
+      target.querySelector<HTMLElement>("[data-turn-bubble]") ?? target;
+    bubble.classList.remove("turn-flash");
+    // Force a reflow so choosing the same entry twice replays the animation.
+    void bubble.offsetWidth;
+    bubble.classList.add("turn-flash");
+    window.setTimeout(() => bubble.classList.remove("turn-flash"), 1300);
+  }
+  return true;
 }

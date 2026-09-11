@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 import logging
 import re
 
@@ -42,6 +43,21 @@ class BaseTTSAdapter(ABC):
         """
 
 
+@dataclass(frozen=True, slots=True)
+class TranscriptCue:
+    """One timed span of recognised speech, relative to the clip's own start.
+
+    ``timed`` is False for providers that only return a transcript, so callers
+    can tell "this whole clip says X" apart from "these words were said at
+    01:12" instead of guessing from a zero start time.
+    """
+
+    start_seconds: float
+    end_seconds: float
+    text: str
+    timed: bool = True
+
+
 class BaseSTTAdapter(ABC):
     """Abstract speech-to-text adapter."""
 
@@ -55,6 +71,25 @@ class BaseSTTAdapter(ABC):
         content_type: str = "application/octet-stream",
     ) -> str:
         """Transcribe ``audio`` bytes to text."""
+
+    async def transcribe_cues(
+        self,
+        audio: bytes,
+        config: STTConfig,
+        *,
+        filename: str = "audio.webm",
+        content_type: str = "application/octet-stream",
+    ) -> list[TranscriptCue]:
+        """Transcribe into timed cues, when the provider can produce them.
+
+        The base implementation returns the plain transcript as one untimed
+        cue, so a provider that cannot report word timings degrades to exactly
+        today's behaviour instead of failing. Adapters that can do better
+        override this.
+        """
+        text = await self.transcribe(audio, config, filename=filename, content_type=content_type)
+        cleaned = (text or "").strip()
+        return [TranscriptCue(0.0, 0.0, cleaned, timed=False)] if cleaned else []
 
 
 def build_auth_headers(auth_style: str, api_key: str) -> dict[str, str]:
@@ -146,6 +181,7 @@ def strip_markdown_for_speech(text: str, *, max_chars: int = 0) -> str:
 
 
 __all__ = [
+    "TranscriptCue",
     "VoiceProviderError",
     "VoiceProviderHTTPError",
     "BaseTTSAdapter",

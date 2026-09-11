@@ -34,10 +34,9 @@ interface QuizConfigPanelProps {
   uploadedPdf: File | null;
   onUploadPdf: (file: File | null) => void;
   /**
-   * When provided, the panel is wrapped in a `CollapsibleConfigSection` (used
-   * by /playground). Omit both to render the bare form — used inside the
-   * chat's right-side Activity panel where the parent card supplies its own
-   * header.
+   * When provided, the panel is wrapped in a `CollapsibleConfigSection`.
+   * Omit both to render the bare form inside a parent card that supplies its
+   * own header.
    */
   collapsed?: boolean;
   onToggleCollapsed?: () => void;

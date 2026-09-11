@@ -8,11 +8,16 @@ import pytest
 
 from deeptutor.learning.models import (
     InteractionStatus,
+    KnowledgePoint,
     KnowledgeType,
+    LearningModule,
     LearningProgress,
     MasteryInteraction,
     PendingQuestion,
     RepetitionState,
+    TopicMetadata,
+    TopicSource,
+    TopicSourceKind,
 )
 from deeptutor.learning.storage import (
     LearningConflictError,
@@ -20,6 +25,7 @@ from deeptutor.learning.storage import (
     LearningStoreError,
     PathLeaseConflictError,
     _atomic_write_text,
+    _initialized_db_paths,
 )
 
 
@@ -221,6 +227,88 @@ class TestListAll:
         assert store.list_all() == ["visible"]
 
 
+class TestTopicMetadata:
+    def test_topic_metadata_and_mixed_sources_roundtrip(self, store):
+        store.save(LearningProgress(book_id="path-1", name="Linear Algebra"))
+        metadata = TopicMetadata(
+            path_id="path-1",
+            goal="Understand vectors and linear maps",
+            description="A visual route through first-year linear algebra.",
+            emoji="🧭",
+            map_seed=42,
+        )
+        sources = [
+            TopicSource(
+                id="source-book",
+                kind=TopicSourceKind.BOOK,
+                source_id="book-1",
+                label="Linear Algebra Notes",
+                position=0,
+            ),
+            TopicSource(
+                id="source-kb",
+                kind=TopicSourceKind.KNOWLEDGE_BASE,
+                source_id="kb-1",
+                label="Course KB",
+                position=1,
+                metadata={"engine": "llamaindex"},
+            ),
+        ]
+
+        store.put_topic(metadata, sources)
+
+        topic = store.get_topic("path-1")
+        assert topic is not None
+        assert topic.metadata.goal == "Understand vectors and linear maps"
+        assert topic.metadata.emoji == "🧭"
+        assert [source.kind for source in topic.sources] == [
+            TopicSourceKind.BOOK,
+            TopicSourceKind.KNOWLEDGE_BASE,
+        ]
+        assert topic.sources[1].metadata == {"engine": "llamaindex"}
+        assert store.list_events("path-1")[-1].event_type == "topic.updated"
+
+    def test_existing_path_gets_stable_synthesized_topic_metadata(self, store):
+        store.save(LearningProgress(book_id="legacy-path", name="Legacy"))
+
+        first = store.get_topic("legacy-path")
+        second = store.get_topic("legacy-path")
+
+        assert first is not None and second is not None
+        assert first.metadata.path_id == "legacy-path"
+        assert first.metadata.map_seed == second.metadata.map_seed
+        assert first.sources == []
+
+    def test_topic_snapshots_batch_active_topics_with_counts_and_sources(self, store):
+        for path_id in ("active-path", "archived-path"):
+            store.save(LearningProgress(book_id=path_id, name=path_id))
+        store.put_topic(
+            TopicMetadata(path_id="active-path", goal="Learn"),
+            [
+                TopicSource(
+                    id="source-1",
+                    kind=TopicSourceKind.BOOK,
+                    label="Course book",
+                )
+            ],
+        )
+        store.put_topic(
+            TopicMetadata(path_id="archived-path", status="archived"),
+            [],
+        )
+        store.bind_session("active-path", "session-a")
+        store.bind_session("active-path", "session-b")
+
+        snapshots = store.list_topic_snapshots()
+
+        assert len(snapshots) == 1
+        progress, topic, session_count, active_interaction = snapshots[0]
+        assert progress.book_id == "active-path"
+        assert [source.label for source in topic.sources] == ["Course book"]
+        assert session_count == 2
+        assert active_interaction is None
+
+
 class TestLegacyMigration:
     def test_json_path_is_imported_and_archived_on_first_read(self, store, tmp_path):
         progress = LearningProgress(book_id="legacy")
@@ -256,6 +344,59 @@ class TestLegacyMigration:
         assert store.list_session_ids("legacy-bound") == ["session-1"]
 
 
+class TestSingleMembership:
+    """A conversation is on exactly one path — the rule the topic screens read."""
+
+    def test_moving_to_another_path_leaves_the_first_one(self, store):
+        store.bind_session("topic-japanese", "session-1")
+
+        store.bind_session("topic-english", "session-1")
+
+        assert store.list_session_ids("topic-japanese") == []
+        assert store.list_session_ids("topic-english") == ["session-1"]
+        assert store.path_id_for_session("session-1") == "topic-english"
+
+    def test_taking_the_lease_on_another_path_moves_the_membership(self, store):
+        """``mastery_switch`` mid-turn goes through the lease, not bind_session."""
+        store.bind_session("topic-japanese", "session-1")
+
+        store.acquire_path_lease("topic-english", "session-1", "turn-1")
+
+        assert store.list_session_ids("topic-japanese") == []
+        assert store.path_id_for_session("session-1") == "topic-english"
+
+    def test_a_path_still_holds_the_conversations_that_stayed(self, store):
+        store.bind_session("topic-a", "session-1")
+        store.bind_session("topic-a", "session-2")
+
+        store.bind_session("topic-b", "session-2")
+
+        assert store.list_session_ids("topic-a") == ["session-1"]
+        assert store.list_session_ids("topic-b") == ["session-2"]
+
+    def test_a_database_written_before_the_rule_converges_on_open(self, tmp_path):
+        """Rows left behind by the old append-only binding are cleaned up once."""
+        store = LearningStore(root=tmp_path)
+        store.bind_session("topic-japanese", "session-1")
+        store.bind_session("topic-english", "session-1")
+        with sqlite3.connect(store.db_path) as conn:
+            # Re-create the shape the old code could persist.
+            conn.execute("DROP INDEX idx_mastery_sessions_membership")
+            conn.execute(
+                """
+                INSERT INTO mastery_path_sessions (
+                    path_id, session_id, created_at, last_seen_at
+                ) VALUES ('topic-japanese', 'session-1', 1.0, 1.0)
+                """
+            )
+        _initialized_db_paths.discard(store.db_path.resolve())
+
+        reopened = LearningStore(root=tmp_path)
+
+        assert reopened.list_session_ids("topic-japanese") == []
+        assert reopened.path_id_for_session("session-1") == "topic-english"
+
+
 class TestPathSessionOwnership:
     def test_legacy_session_keyed_path_is_deleted_on_detach(self, store):
         store.save(LearningProgress(book_id="legacy-session"))
@@ -284,6 +425,39 @@ class TestPathSessionOwnership:
         store.bind_session("path-1", "session-1", owns_path=False)
 
         assert store.detach_session("session-1") == []
+        assert store.exists("path-1") is True
+
+    def test_scratch_path_still_dies_with_its_creator_after_it_moved_on(self, store):
+        """Ownership is the path's, so moving the conversation cannot orphan it."""
+        store.bind_session("scratch", "owner", owns_path=True)
+        store.bind_session("topic-a", "owner")
+
+        assert store.detach_session("owner") == ["scratch"]
+        assert store.exists("scratch") is False
+        assert store.exists("topic-a") is True
+
+    def test_a_built_path_outlives_the_conversation_that_created_it(self, store):
+        store.bind_session("path-1", "owner", owns_path=True)
+        progress = store.load("path-1")
+        assert progress is not None
+        progress.modules = [
+            LearningModule(
+                id="m1",
+                name="Module 1",
+                order=1,
+                knowledge_points=[
+                    KnowledgePoint(
+                        id="kp1",
+                        name="Objective 1",
+                        type=KnowledgeType.CONCEPT,
+                        module_id="m1",
+                    )
+                ],
+            )
+        ]
+        store.save(progress)
+
+        assert store.detach_session("owner") == []
         assert store.exists("path-1") is True
 
 

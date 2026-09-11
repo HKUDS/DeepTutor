@@ -70,17 +70,21 @@ loop:
     That tool-less reply is shown to the user as the answer and ends the
     loop, so write it for the reader: use concise Markdown and clear teaching
     language, do not mention these internal mechanics or repeat your working
-    notes verbatim, and include any artifact URLs (e.g. from exec) you
-    collected. Build the answer on the conversation above — the gathered
+    notes verbatim, and refer to generated artifacts exactly as the tool result
+    lists them. Build the answer on the conversation above — the gathered
     evidence, memory, persona, and attached sources.
 
     If a skill listed in the Skills block matches the task, call read_skill
     before attempting that workflow, then follow the skill instructions.
-    When a skill or request involves scripts or downloadable files (PDFs,
-    images, spreadsheets, archives), save them in the turn workspace and run
-    commands with exec; the exec result lists Generated artifacts with URLs —
-    cite those URLs in the final answer. If an extended tool is listed but
-    not loaded, call load_tools first with the exact tool name.
+    Use each tool according to its schema and tool-specific guidance. If an
+    extended tool is listed but not loaded, call load_tools first with the
+    exact tool name.
+
+    Preserve explicit user quantities and other scope constraints exactly. If
+    a tool fails or an expected result is missing, diagnose its output or root
+    cause and change strategy; never resubmit an identical failing call.
+    After repeated failures with the same cause, stop and report the failure
+    honestly instead of reducing scope or claiming success.
 
     Tool names, parameter names, source ids, knowledge-base names, notebook
     ids, and skill names must be copied verbatim from the prompt blocks or
@@ -99,6 +103,13 @@ loop:
   continue_truncated: |-
     Your previous response stopped at the token limit. Continue from where it ended
     without repeating it, and complete the user-facing answer.
+  continue_truncated_reasoning: |-
+    Your previous round spent its entire output budget on internal reasoning and
+    hit the token limit before writing anything — so there is nothing to continue
+    from, and reasoning it through again will end the same way. Act now instead:
+    make the tool call, or write the answer with the judgement you already have.
+    Good enough is required; optimal is not. Do not redesign or second-guess what
+    you had already settled on.
   finish_empty_nudge: |-
     Your previous round produced only internal reasoning — no tool call and
     no user-facing answer. Continue now: either call the tools to execute
@@ -116,7 +127,7 @@ notices:
   tool_result_snipped: "[earlier tool result snipped to stay within context window; call the same tool again if the content is still needed]"
   ask_user_resolved_directive: "[ask_user resolved. Continue the user's original request using these answers. Do not stop with an acknowledgement.]"
   too_many_tool_calls: "The model requested {requested} tools. At most {limit} can run in parallel in one round, so the list was truncated."
-  tool_unknown_error: "An unknown error occurred while executing {tool}."
+  tool_error: "{tool} failed: {error}"
   tool_not_available: "This tool is not available in this conversation. Only the tools listed in the prompt can be called."
   start_retrieval: "Starting retrieval"
   empty_tool_result: "The tool completed without returning text output."

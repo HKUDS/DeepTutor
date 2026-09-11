@@ -5,7 +5,7 @@ Skills API Router
 CRUD endpoints for user-authored SKILL.md files stored under
 ``data/user/workspace/skills/<name>/SKILL.md``.
 
-Mounted at ``/api/v1/skills``.
+Mounted at ``/api/skills``.
 """
 
 from __future__ import annotations

@@ -1,0 +1,3 @@
+# Mirrors pyproject.toml `[project.optional-dependencies].rag-rerank`.
+# Install deliberately: this pulls the sentence-transformers/torch stack.
+sentence-transformers>=3.0.0,<6.0.0; python_version < "3.14"

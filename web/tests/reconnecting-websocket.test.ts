@@ -157,6 +157,17 @@ test("stop cancels pending retries and closes without reconnecting", () => {
   assert.equal(sockets.length, 1);
 });
 
+test("stop defers closing a connecting browser socket until it opens", () => {
+  const { client, sockets } = createHarness();
+  client.start();
+  client.stop();
+
+  assert.equal(sockets[0].readyState, 0);
+  sockets[0].open();
+  assert.equal(sockets[0].readyState, 3);
+  assert.equal(sockets.length, 1);
+});
+
 test("partner composer restores focus after streaming and page return", () => {
   const source = readFileSync(
     path.resolve(process.cwd(), "components/partners/PartnerComposer.tsx"),

@@ -16,7 +16,7 @@ import pytest
 
 from deeptutor.agents.research.pipeline import ResearchedBlock, ResearchPipeline, SubTopicItem
 from deeptutor.core.context import UnifiedContext
-from deeptutor.core.stream_bus import StreamBus
+from deeptutor.runtime.stream_bus import StreamBus
 
 pytestmark = pytest.mark.asyncio
 

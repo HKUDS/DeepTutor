@@ -1,7 +1,9 @@
 import { expect, test } from "@playwright/test";
 import JSZip from "jszip";
 
-async function illustratedEpub(): Promise<Buffer> {
+async function illustratedEpub(options?: {
+  longPage?: boolean;
+}): Promise<Buffer> {
   const zip = new JSZip();
   zip.file("mimetype", "application/epub+zip", { compression: "STORE" });
   zip.file(
@@ -18,7 +20,7 @@ async function illustratedEpub(): Promise<Buffer> {
   );
   zip.file(
     "OPS/one.xhtml",
-    "<html xmlns='http://www.w3.org/1999/xhtml'><head><title>Illustrated chapter</title></head><body><h1>Illustrated chapter</h1><p>This layout comes from the EPUB.</p><img alt='source illustration' src='dot.png'/></body></html>",
+    `<html xmlns='http://www.w3.org/1999/xhtml'><head><title>Illustrated chapter</title></head><body><h1 id='publisher-title'>Illustrated chapter</h1><h2>Source layout</h2>${options?.longPage ? "<div style='height: 2500px'></div>" : ""}<h3 id='late-detail'>Late detail</h3><p>This layout comes from the EPUB.</p><img alt='source illustration' src='dot.png'/></body></html>`,
   );
   zip.file(
     "OPS/two.xhtml",
@@ -37,11 +39,66 @@ async function illustratedEpub(): Promise<Buffer> {
   });
 }
 
+test("EPUB headings feed and navigate the current-page outline", async ({
+  page,
+}, testInfo) => {
+  const filename = `epub-page-headings-${Date.now()}-${testInfo.project.name}.epub`;
+  await page.goto("/chat?capability=immersive_reading");
+  const fileInput = page
+    .getByRole("button", { name: /Open a document to read/i })
+    .locator('input[type="file"]');
+  await fileInput.setInputFiles({
+    name: filename,
+    mimeType: "application/epub+zip",
+    buffer: await illustratedEpub({ longPage: true }),
+  });
+
+  const readerFrame = page.locator("iframe").contentFrame();
+  await expect(
+    readerFrame.getByRole("heading", { name: "Illustrated chapter" }),
+  ).toBeVisible();
+  if (testInfo.project.name === "epub-reader-webkit") {
+    await page.getByRole("button", { name: "Contents" }).click();
+  }
+  await page.getByRole("tab", { name: "On this page" }).click();
+  await expect(
+    page.getByRole("button", { name: "Source layout" }),
+  ).toBeVisible();
+  const lateDetail = readerFrame.getByRole("heading", { name: "Late detail" });
+  const readerBox = await page.locator("iframe").boundingBox();
+  const beforeJump = await lateDetail.boundingBox();
+  expect(beforeJump?.y).toBeGreaterThan((readerBox?.y ?? 0) + 100);
+  await page.getByRole("button", { name: "Late detail" }).click();
+  await expect(lateDetail).toBeVisible();
+  await expect
+    .poll(
+      async () =>
+        (await lateDetail.boundingBox())?.x ?? Number.MAX_SAFE_INTEGER,
+    )
+    .toBeLessThan((beforeJump?.x ?? Number.MAX_SAFE_INTEGER) - 100);
+  const afterJump = await lateDetail.boundingBox();
+  expect(afterJump?.x).toBeLessThanOrEqual((readerBox?.x ?? 0) + 100);
+
+  await page.getByRole("tab", { name: "Document contents" }).click();
+  await page.getByRole("button", { name: "Second chapter" }).click();
+  await expect(
+    readerFrame.getByRole("heading", { name: "Second chapter" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Contents" }).click();
+  await page.getByRole("tab", { name: "On this page" }).click();
+  await expect(
+    page.getByRole("button", { name: "Source layout" }),
+  ).toBeHidden();
+  await expect(
+    page.getByRole("button", { name: "Second chapter" }),
+  ).toBeVisible();
+});
+
 test("faithfully renders EPUB resources, navigates, and restores its CFI", async ({
   page,
 }, testInfo) => {
-  const filename = `faithful-reader-${Date.now()}.epub`;
-  await page.goto("/home?capability=immersive_reading");
+  const filename = `faithful-reader-${Date.now()}-${testInfo.project.name}.epub`;
+  await page.goto("/chat?capability=immersive_reading");
   const fileInput = page
     .getByRole("button", { name: /Open a document to read/i })
     .locator('input[type="file"]');
@@ -61,9 +118,7 @@ test("faithfully renders EPUB resources, navigates, and restores its CFI", async
     testInfo.project.name === "epub-reader-webkit"
       ? () => page.getByRole("button", { name: "Next", exact: true }).click()
       : async () => {
-          await readerFrame
-            .getByText("This layout comes from the EPUB.")
-            .click();
+          await readerFrame.locator("body").click();
           await page.keyboard.press("ArrowRight");
         };
   for (let attempt = 0; attempt < 4; attempt += 1) {
@@ -81,7 +136,7 @@ test("faithfully renders EPUB resources, navigates, and restores its CFI", async
   ).toBeVisible();
   await expect
     .poll(async () => {
-      const response = await page.request.get("/api/v1/reading/materials");
+      const response = await page.request.get("/api/reading/materials");
       const rows = (await response.json()) as Array<{
         material_id: string;
         filename: string;
@@ -89,7 +144,7 @@ test("faithfully renders EPUB resources, navigates, and restores its CFI", async
       const material = rows.find((row) => row.filename === filename);
       if (!material) return 0;
       const position = await page.request.get(
-        `/api/v1/reading/materials/${material.material_id}/position`,
+        `/api/reading/materials/${material.material_id}/position`,
       );
       return ((await position.json()) as { locator: number }).locator;
     })

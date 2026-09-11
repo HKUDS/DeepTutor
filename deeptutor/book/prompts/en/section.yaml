@@ -30,7 +30,9 @@ subsection_system: |
   tightly written Markdown subsection that matches the given heading, role,
   and word target. You may use lists, `code`, and $math$. Do not emit any
   H1/H2 headings (start from H3 / ### only); do not repeat the full chapter
-  title; do not wrap output in JSON or code fences.
+  title; do not wrap output in JSON or code fences. Return only polished
+  reader-facing prose; omit planning notes, word budgets, draft comments, and
+  self-talk.
 
 subsection_user: |
   Chapter: {chapter_title}

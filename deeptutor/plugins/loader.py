@@ -2,12 +2,12 @@
 
 External packages register under the ``deeptutor.plugins`` entry-point group.
 This module is intentionally domain-agnostic: it only discovers manifests and
-instantiates ``BaseCapability`` subclasses.
+instantiates ``TurnCapability`` subclasses.
 
 Call sites already expect:
 
 * ``discover_plugins() -> list[PluginManifest]``
-* ``load_plugin_capability(manifest) -> BaseCapability | None``
+* ``load_plugin_capability(manifest) -> TurnCapability | None``
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ import inspect
 import logging
 from typing import Any
 
-from deeptutor.core.capability_protocol import BaseCapability
+from deeptutor.core.capability_protocol import TurnCapability
 from deeptutor.core.entry_points import load_entry_point_group
 
 logger = logging.getLogger(__name__)
@@ -44,7 +44,7 @@ def discover_plugins() -> list[PluginManifest]:
     return load_entry_point_group(ENTRY_POINT_GROUP, _coerce_manifest, log=logger)
 
 
-def load_plugin_capability(manifest: PluginManifest) -> BaseCapability | None:
+def load_plugin_capability(manifest: PluginManifest) -> TurnCapability | None:
     """Instantiate a capability plugin from *manifest*, or return ``None``."""
     if not manifest.entry:
         return None
@@ -64,7 +64,7 @@ def _coerce_manifest(ep_name: str, loaded: Any) -> PluginManifest | None:
         return loaded
 
     if callable(loaded) and not _is_capability_class(loaded):
-        # Manifest factory (not a BaseCapability subclass)
+        # Manifest factory (not a TurnCapability subclass)
         produced = loaded()
         if isinstance(produced, PluginManifest):
             if not produced.name:
@@ -72,14 +72,14 @@ def _coerce_manifest(ep_name: str, loaded: Any) -> PluginManifest | None:
             return produced
         if _is_capability_class(produced):
             return _manifest_from_capability_class(ep_name, produced)
-        if isinstance(produced, BaseCapability):
+        if isinstance(produced, TurnCapability):
             return _manifest_from_capability_instance(ep_name, produced)
         loaded = produced
 
     if _is_capability_class(loaded):
         return _manifest_from_capability_class(ep_name, loaded)
 
-    if isinstance(loaded, BaseCapability):
+    if isinstance(loaded, TurnCapability):
         return _manifest_from_capability_instance(ep_name, loaded)
 
     plugin_manifest = getattr(loaded, "PLUGIN_MANIFEST", None)
@@ -91,7 +91,7 @@ def _coerce_manifest(ep_name: str, loaded: Any) -> PluginManifest | None:
     create = getattr(loaded, "create_capability", None)
     if callable(create):
         cap = create()
-        if isinstance(cap, BaseCapability):
+        if isinstance(cap, TurnCapability):
             return _manifest_from_capability_instance(ep_name, cap)
         if _is_capability_class(cap):
             return _manifest_from_capability_class(ep_name, cap)
@@ -103,7 +103,7 @@ def _coerce_manifest(ep_name: str, loaded: Any) -> PluginManifest | None:
     return None
 
 
-def _manifest_from_capability_class(ep_name: str, cls: type[BaseCapability]) -> PluginManifest:
+def _manifest_from_capability_class(ep_name: str, cls: type[TurnCapability]) -> PluginManifest:
     m = cls.manifest
     return PluginManifest(
         name=m.name or ep_name,
@@ -114,7 +114,7 @@ def _manifest_from_capability_class(ep_name: str, cls: type[BaseCapability]) -> 
     )
 
 
-def _manifest_from_capability_instance(ep_name: str, cap: BaseCapability) -> PluginManifest:
+def _manifest_from_capability_instance(ep_name: str, cap: TurnCapability) -> PluginManifest:
     return PluginManifest(
         name=cap.manifest.name or ep_name,
         type="capability",
@@ -125,7 +125,7 @@ def _manifest_from_capability_instance(ep_name: str, cap: BaseCapability) -> Plu
 
 
 def _is_capability_class(obj: Any) -> bool:
-    return isinstance(obj, type) and issubclass(obj, BaseCapability) and obj is not BaseCapability
+    return isinstance(obj, type) and issubclass(obj, TurnCapability) and obj is not TurnCapability
 
 
 def _qualname(obj: Any) -> str:
@@ -147,14 +147,14 @@ def _resolve_entry(entry: str) -> Any:
     return obj
 
 
-def _instantiate_capability(obj: Any) -> BaseCapability | None:
-    if isinstance(obj, BaseCapability):
+def _instantiate_capability(obj: Any) -> TurnCapability | None:
+    if isinstance(obj, TurnCapability):
         return obj
     if _is_capability_class(obj):
         return obj()
     if callable(obj) and not inspect.isclass(obj):
         produced = obj()
-        if isinstance(produced, BaseCapability):
+        if isinstance(produced, TurnCapability):
             return produced
         if _is_capability_class(produced):
             return produced()

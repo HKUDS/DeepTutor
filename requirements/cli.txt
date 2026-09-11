@@ -34,15 +34,19 @@ tenacity>=8.0.0
 # --- Data models & storage ---
 pydantic>=2.0.0
 pydantic-settings>=2.0.0
+jsonschema>=4.20.0,<5.0.0
 aiosqlite>=0.19.0
 
 # --- RAG (LlamaIndex) ---
 llama-index>=0.14.12
-llama-index-retrievers-bm25>=0.7.1,<0.8.0
+# PyStemmer 2.x has no Python 3.14 wheels. LlamaIndex falls back to vector
+# retrieval when this optional BM25 integration is unavailable.
+llama-index-retrievers-bm25>=0.7.1,<0.8.0; python_version < "3.14"
 # FAISS vector store: ANN retrieval replacing SimpleVectorStore brute force for
 # large KBs (issue #552); imported lazily with SimpleVectorStore fallback.
 llama-index-vector-stores-faiss>=0.4.0,<1.0.0
-faiss-cpu>=1.8.0,<2.0.0
+faiss-cpu>=1.8.0,<2.0.0; python_version < "3.14"
+faiss-cpu>=1.12.0,<2.0.0; python_version >= "3.14"
 PyMuPDF>=1.26.0
 numpy>=1.24.0,<3.0.0
 arxiv>=2.0.0
@@ -52,9 +56,10 @@ python-docx>=1.1.0
 openpyxl>=3.1.0
 python-pptx>=1.0.0
 pypdf>=4.0.0
-pdfplumber>=0.11.0,<0.11.8  # 0.11.8+ pins pdfminer.six==20251230, conflicts with mineru (via raganything)
+pdfplumber>=0.11.0
 reportlab>=4.0.0
 defusedxml>=0.7.1
+youtube-transcript-api>=1.2.0,<2.0.0
 
 # --- Web search ---
 ddgs>=9.9.1

@@ -312,10 +312,21 @@ class FeishuChannel(BaseChannel):
         """Start the Feishu bot with WebSocket long connection."""
         if not FEISHU_AVAILABLE:
             logger.error("Feishu SDK not installed. Run: pip install lark-oapi")
+            self.set_setup_state(
+                "unavailable",
+                message="Required channel dependency is not installed on this server.",
+            )
             return
 
         if not self.config.app_id or not self.config.app_secret:
             logger.error("Feishu app_id and app_secret not configured")
+            self.set_setup_state(
+                "action_required",
+                message=(
+                    "Required fields are missing. Complete the channel configuration "
+                    "and save again."
+                ),
+            )
             return
 
         import lark_oapi as lark
@@ -380,9 +391,14 @@ class FeishuChannel(BaseChannel):
             try:
                 while self._running:
                     try:
+                        self.set_setup_state("connecting")
                         self._ws_client.start()
                     except Exception as e:
                         logger.warning("Feishu WebSocket error: {}", e)
+                        self.set_setup_state(
+                            "error",
+                            message="Channel connection failed; the listener will retry.",
+                        )
                     if self._running:
                         time.sleep(5)
             finally:
@@ -393,6 +409,7 @@ class FeishuChannel(BaseChannel):
 
         logger.info("Feishu bot started with WebSocket long connection")
         logger.info("No public IP required - using WebSocket to receive events")
+        self.set_setup_state("running")
 
         # Keep running until stopped
         while self._running:

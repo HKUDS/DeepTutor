@@ -1,4 +1,4 @@
-import type { StreamEvent } from "@/lib/unified-ws";
+import type { StreamEvent } from "@/features/chat/model/protocol";
 
 type ContentMeta = {
   call_id?: string;

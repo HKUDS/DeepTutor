@@ -71,9 +71,20 @@ class SlackChannel(BaseChannel):
         """Start the Slack Socket Mode client."""
         if not self.config.bot_token or not self.config.app_token:
             logger.error("Slack bot/app token not configured")
+            self.set_setup_state(
+                "action_required",
+                message=(
+                    "Required fields are missing. Complete the channel configuration "
+                    "and save again."
+                ),
+            )
             return
         if self.config.mode != "socket":
             logger.error("Unsupported Slack mode: {}", self.config.mode)
+            self.set_setup_state(
+                "action_required",
+                message="Unsupported channel mode. Check the selected mode.",
+            )
             return
 
         self._running = True
@@ -112,6 +123,7 @@ class SlackChannel(BaseChannel):
             raise RuntimeError("Slack Socket Mode WebSocket connect timed out") from None
 
         logger.info("Slack Socket Mode WebSocket connected (events enabled)")
+        self.set_setup_state("connected")
 
         while self._running:
             await asyncio.sleep(1)

@@ -17,8 +17,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from deeptutor.core.agentic import client as client_module
-from deeptutor.core.agentic.client import LLMClientConfig
+from deeptutor.runtime.agentic import client as client_module
+from deeptutor.runtime.agentic.client import LLMClientConfig
 from deeptutor.services.llm.provider_core.openai_compat_provider import (
     OpenAICompatProvider,
 )
@@ -103,12 +103,13 @@ def _provider(model: str) -> OpenAICompatProvider:
     )
 
 
-def test_only_supported_deepseek_model_uses_responses_for_native_search() -> None:
+def test_supported_deepseek_models_use_responses_for_native_search() -> None:
     assert _provider("deepseek-v4-flash")._should_use_responses_api(
         "deepseek-v4-flash", None, _TOOLS
     )
-    assert not _provider("deepseek-v4-pro")._should_use_responses_api(
-        "deepseek-v4-pro", None, _TOOLS
+    assert _provider("deepseek-v4-pro")._should_use_responses_api("deepseek-v4-pro", None, _TOOLS)
+    assert not _provider("deepseek-reasoner")._should_use_responses_api(
+        "deepseek-reasoner", None, _TOOLS
     )
     assert not _provider("deepseek-v4-flash")._should_use_responses_api(
         "deepseek-v4-flash", None, None
@@ -125,6 +126,15 @@ def test_native_mapping_is_model_scoped() -> None:
         None,
         None,
     )
+    reasoner_body = _provider("deepseek-reasoner")._build_responses_body(
+        [{"role": "user", "content": "latest news"}],
+        _TOOLS,
+        "deepseek-reasoner",
+        256,
+        0.7,
+        None,
+        None,
+    )
     pro_body = _provider("deepseek-v4-pro")._build_responses_body(
         [{"role": "user", "content": "latest news"}],
         _TOOLS,
@@ -135,10 +145,11 @@ def test_native_mapping_is_model_scoped() -> None:
         None,
     )
     assert flash_body["tools"] == [{"type": "web_search"}]
-    assert pro_body["tools"][0]["type"] == "function"
+    assert pro_body["tools"] == [{"type": "web_search"}]
+    assert reasoner_body["tools"][0]["type"] == "function"
 
 
-def test_agent_client_routes_only_supported_model_through_provider_adapter(monkeypatch) -> None:
+def test_agent_client_routes_supported_models_through_provider_adapter(monkeypatch) -> None:
     sentinel = object()
     monkeypatch.setattr(
         client_module,
@@ -153,14 +164,21 @@ def test_agent_client_routes_only_supported_model_through_provider_adapter(monke
         api_key="k",
         base_url="https://api.deepseek.com",
     )
+    reasoner = LLMClientConfig(
+        binding="deepseek",
+        model="deepseek-reasoner",
+        api_key="k",
+        base_url="https://api.deepseek.com",
+    )
+    assert client_module._build_native_provider_adapter(flash, spec) is sentinel
     pro = LLMClientConfig(
         binding="deepseek",
         model="deepseek-v4-pro",
         api_key="k",
         base_url="https://api.deepseek.com",
     )
-    assert client_module._build_native_provider_adapter(flash, spec) is sentinel
-    assert client_module._build_native_provider_adapter(pro, spec) is None
+    assert client_module._build_native_provider_adapter(pro, spec) is sentinel
+    assert client_module._build_native_provider_adapter(reasoner, spec) is None
 
 
 @pytest.mark.asyncio
@@ -216,6 +234,87 @@ async def test_provider_stream_returns_native_search_as_terminal_metadata() -> N
             "action": action,
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_deepseek_reasoning_items_are_replayed_after_a_local_tool_call() -> None:
+    provider = _provider("deepseek-v4-pro")
+    reasoning_item = SimpleNamespace(
+        type="reasoning",
+        id="rs_1",
+        status="completed",
+        content=[{"type": "reasoning_text", "text": "Check the MCP service."}],
+        summary=[],
+    )
+    function_call = SimpleNamespace(
+        type="function_call",
+        id="fc_1",
+        call_id="call_1",
+        name="check_mcp",
+        arguments="{}",
+    )
+    events = [
+        SimpleNamespace(type="response.reasoning_text.delta", delta="Check the MCP service."),
+        SimpleNamespace(type="response.output_item.done", item=reasoning_item),
+        SimpleNamespace(type="response.output_item.added", item=function_call),
+        SimpleNamespace(type="response.output_item.done", item=function_call),
+        SimpleNamespace(
+            type="response.completed",
+            response=SimpleNamespace(status="completed", usage=None),
+        ),
+    ]
+
+    async def create(**_body):
+        return _SDKStream(events)
+
+    provider._client = SimpleNamespace(
+        responses=SimpleNamespace(create=create),
+        chat=SimpleNamespace(completions=SimpleNamespace()),
+    )
+    tools = [
+        *_TOOLS,
+        {
+            "type": "function",
+            "function": {"name": "check_mcp", "parameters": {"type": "object"}},
+        },
+    ]
+
+    first = await provider.chat_stream(
+        messages=[{"role": "user", "content": "Check MCP"}],
+        tools=tools,
+        model="deepseek-v4-pro",
+        max_tokens=256,
+    )
+    native_items = first.provider_specific_fields["native_output_items"]
+    assistant = {
+        "role": "assistant",
+        "content": first.content,
+        "tool_calls": [first.tool_calls[0].to_openai_tool_call()],
+        "_provider_response_state": {"responses_output_items": native_items},
+    }
+
+    followup = provider._build_responses_body(
+        [
+            {"role": "user", "content": "Check MCP"},
+            assistant,
+            {"role": "tool", "tool_call_id": first.tool_calls[0].id, "content": "healthy"},
+        ],
+        tools,
+        "deepseek-v4-pro",
+        256,
+        0.7,
+        None,
+        None,
+    )
+
+    assert first.reasoning_content == "Check the MCP service."
+    assert native_items == [vars(reasoning_item), vars(function_call)]
+    assert followup["input"][1:3] == native_items
+    assert followup["input"][3] == {
+        "type": "function_call_output",
+        "call_id": "call_1",
+        "output": "healthy",
+    }
 
 
 # ---------------------------------------------------------------------------

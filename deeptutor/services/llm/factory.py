@@ -13,6 +13,7 @@ from deeptutor.services.keypool import primary_api_key
 from deeptutor.services.provider_registry import (
     PROVIDERS,
     canonical_provider_name,
+    effective_backend,
     find_by_model,
     find_by_name,
     find_gateway,
@@ -22,7 +23,8 @@ from .capabilities import supports_response_format, supports_vision
 from .config import LLMConfig, get_llm_config
 from .error_mapping import map_error
 from .multimodal import prepare_multimodal_messages
-from .provider_factory import get_runtime_provider
+from .provider_core.base import LLMProvider
+from .provider_factory import build_isolated_provider, get_runtime_provider
 from .utils import is_local_llm_server
 
 DEFAULT_MAX_RETRIES = settings.retry.max_retries
@@ -202,6 +204,8 @@ def _resolve_call_config(
             provider_mode=provider_mode,
             api_version=api_version,
             extra_headers=merged_headers,
+            wire_api=current.wire_api if current is not None else "auto",
+            api_format=current.api_format if current is not None else "auto",
             reasoning_effort=resolved_reasoning_effort,
         )
         return config, provider_spec
@@ -239,6 +243,8 @@ def _resolve_call_config(
             "provider_mode": provider_mode,
             "api_version": resolved_api_version,
             "extra_headers": merged_headers,
+            "wire_api": current.wire_api,
+            "api_format": current.api_format,
             "reasoning_effort": (
                 reasoning_effort if reasoning_effort is not None else current.reasoning_effort
             ),
@@ -248,9 +254,7 @@ def _resolve_call_config(
 
 
 def _capability_binding(config: LLMConfig, provider_spec: Any) -> str:
-    backend = (
-        getattr(provider_spec, "backend", "openai_compat") if provider_spec else "openai_compat"
-    )
+    backend = effective_backend(provider_spec, config.api_format)
     if backend == "anthropic":
         return "anthropic"
     if backend == "azure_openai":
@@ -325,8 +329,12 @@ def _sanitize_call_kwargs(
         "base_url",
         "api_version",
         "binding",
+        "effective_url",
         "extra_headers",
+        "provider_mode",
+        "provider_name",
         "reasoning_effort",
+        "wire_api",
     ):
         extra_kwargs.pop(key, None)
 
@@ -335,37 +343,25 @@ def _sanitize_call_kwargs(
     return extra_kwargs
 
 
-async def complete(
+async def _complete_with_resolved_config(
+    config: LLMConfig,
+    provider_spec: Any,
+    *,
     prompt: str,
-    system_prompt: str = "You are a helpful assistant.",
-    model: str | None = None,
-    api_key: str | list[str] | None = None,
-    base_url: str | None = None,
-    api_version: str | None = None,
-    binding: str | None = None,
-    messages: list[dict[str, Any]] | None = None,
-    max_retries: int = DEFAULT_MAX_RETRIES,
-    retry_delay: float = DEFAULT_RETRY_DELAY,
-    exponential_backoff: bool = DEFAULT_EXPONENTIAL_BACKOFF,
-    allow_image_fallback: bool | None = None,
-    **kwargs: Any,
+    system_prompt: str,
+    messages: list[dict[str, Any]] | None,
+    max_retries: int,
+    retry_delay: float,
+    exponential_backoff: bool,
+    allow_image_fallback: bool | None,
+    image_data: str | None,
+    image_mime_type: str,
+    image_filename: str,
+    kwargs: dict[str, Any],
+    provider: LLMProvider | None = None,
 ) -> str:
-    caller_extra_headers = kwargs.pop("extra_headers", None)
-    reasoning_effort = kwargs.pop("reasoning_effort", None)
-    image_data = kwargs.pop("image_data", None)
-    image_mime_type = kwargs.pop("image_mime_type", "image/png")
-    image_filename = kwargs.pop("image_filename", "image.png")
-
-    config, provider_spec = _resolve_call_config(
-        model=model,
-        api_key=api_key,
-        base_url=base_url,
-        api_version=api_version,
-        binding=binding,
-        extra_headers=caller_extra_headers,
-        reasoning_effort=reasoning_effort,
-    )
-    provider = get_runtime_provider(config)
+    """Execute one completion from an already resolved configuration."""
+    provider = provider or get_runtime_provider(config)
     capability_binding = _capability_binding(config, provider_spec)
     request_messages = _build_messages(prompt, system_prompt, messages)
     request_messages = _apply_inline_image_data(
@@ -402,7 +398,121 @@ async def complete(
         raise map_error(
             RuntimeError(response.content or "LLM request failed"), provider=config.provider_name
         )
+    # Provider adapters keep hidden reasoning in ``reasoning_content``.  A
+    # few gateways duplicate that field into ``content`` when no visible
+    # answer is present; never let that duplicate become user-facing text.
+    if response.content and response.reasoning_content:
+        if response.content == response.reasoning_content:
+            return ""
     return response.content or ""
+
+
+async def complete(
+    prompt: str,
+    system_prompt: str = "You are a helpful assistant.",
+    model: str | None = None,
+    api_key: str | list[str] | None = None,
+    base_url: str | None = None,
+    api_version: str | None = None,
+    binding: str | None = None,
+    messages: list[dict[str, Any]] | None = None,
+    max_retries: int = DEFAULT_MAX_RETRIES,
+    retry_delay: float = DEFAULT_RETRY_DELAY,
+    exponential_backoff: bool = DEFAULT_EXPONENTIAL_BACKOFF,
+    allow_image_fallback: bool | None = None,
+    **kwargs: Any,
+) -> str:
+    caller_extra_headers = kwargs.pop("extra_headers", None)
+    reasoning_effort = kwargs.pop("reasoning_effort", None)
+    image_data = kwargs.pop("image_data", None)
+    image_mime_type = kwargs.pop("image_mime_type", "image/png")
+    image_filename = kwargs.pop("image_filename", "image.png")
+
+    config, provider_spec = _resolve_call_config(
+        model=model,
+        api_key=api_key,
+        base_url=base_url,
+        api_version=api_version,
+        binding=binding,
+        extra_headers=caller_extra_headers,
+        reasoning_effort=reasoning_effort,
+    )
+    return await _complete_with_resolved_config(
+        config,
+        provider_spec,
+        prompt=prompt,
+        system_prompt=system_prompt,
+        messages=messages,
+        max_retries=max_retries,
+        retry_delay=retry_delay,
+        exponential_backoff=exponential_backoff,
+        allow_image_fallback=allow_image_fallback,
+        image_data=image_data,
+        image_mime_type=str(image_mime_type or "image/png"),
+        image_filename=str(image_filename or "image.png"),
+        kwargs=kwargs,
+    )
+
+
+async def complete_with_config(
+    config: LLMConfig,
+    prompt: str,
+    system_prompt: str = "You are a helpful assistant.",
+    messages: list[dict[str, Any]] | None = None,
+    max_retries: int = DEFAULT_MAX_RETRIES,
+    retry_delay: float = DEFAULT_RETRY_DELAY,
+    exponential_backoff: bool = DEFAULT_EXPONENTIAL_BACKOFF,
+    allow_image_fallback: bool | None = None,
+    **kwargs: Any,
+) -> str:
+    """Complete using only the supplied, fully resolved configuration."""
+    forbidden = {
+        "model",
+        "api_key",
+        "base_url",
+        "api_version",
+        "binding",
+        "effective_url",
+        "extra_headers",
+        "provider_mode",
+        "provider_name",
+        "reasoning_effort",
+        "wire_api",
+    }.intersection(kwargs)
+    if forbidden:
+        names = ", ".join(sorted(forbidden))
+        raise TypeError(f"complete_with_config does not accept config overrides: {names}")
+
+    image_data = kwargs.pop("image_data", None)
+    image_mime_type = kwargs.pop("image_mime_type", "image/png")
+    image_filename = kwargs.pop("image_filename", "image.png")
+    provider_spec = _resolve_provider_spec(
+        binding=config.provider_name or config.binding,
+        model=config.model,
+        api_key=config.api_key,
+        base_url=config.effective_url or config.base_url,
+        fallback=config.provider_name or config.binding,
+    )
+    provider = build_isolated_provider(config)
+    try:
+        return await _complete_with_resolved_config(
+            config,
+            provider_spec,
+            prompt=prompt,
+            system_prompt=system_prompt,
+            messages=messages,
+            max_retries=max_retries,
+            retry_delay=retry_delay,
+            exponential_backoff=exponential_backoff,
+            allow_image_fallback=allow_image_fallback,
+            image_data=image_data,
+            image_mime_type=str(image_mime_type or "image/png"),
+            image_filename=str(image_filename or "image.png"),
+            kwargs=kwargs,
+            provider=provider,
+        )
+    finally:
+        await provider.aclose()
 
 
 async def stream(
@@ -489,7 +599,7 @@ async def stream(
         await queue.put(chunk)
 
     async def _runner() -> None:
-        nonlocal in_think_block
+        nonlocal saw_output, in_think_block
         try:
             response = await provider.chat_stream_with_retry(
                 messages=request_messages,
@@ -505,9 +615,12 @@ async def stream(
                 in_think_block = False
                 await queue.put("</think>")
             # Some providers synthesize a final response only after the stream.
-            # Do not replay reasoning_content as user-visible answer text.
+            # Do not replay reasoning_content as user-visible answer text, and
+            # never surface an error-shaped response's operator message as if
+            # the model had written it: that case is raised below instead.
             if (
-                not saw_content
+                response.finish_reason != "error"
+                and not saw_content
                 and response.content
                 and response.content != response.reasoning_content
             ):
@@ -603,6 +716,7 @@ async def fetch_models(
     binding: str,
     base_url: str = "",
     api_key: str | None = None,
+    api_format: str = "auto",
 ) -> list[str]:
     if canonical_provider_name(binding) == "codebuddy":
         from .provider_core.codebuddy_models import fetch_codebuddy_models
@@ -616,7 +730,7 @@ async def fetch_models(
 
     from . import cloud_provider
 
-    return await cloud_provider.fetch_models(base_url, api_key, binding)
+    return await cloud_provider.fetch_models(base_url, api_key, binding, api_format=api_format)
 
 
 def _build_api_provider_presets() -> dict[str, ApiProviderPreset]:

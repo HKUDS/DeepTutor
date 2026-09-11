@@ -283,8 +283,7 @@ def prune_index_cache() -> int:
 
 def retrieve_nodes(storage_dir: Path, query: str, *, top_k: int = 5) -> list[Any]:
     index = _cached_index(Path(storage_dir))
-    retriever = retrievers.build_retriever(index, Path(storage_dir), top_k=top_k)
-    return retriever.retrieve(query)
+    return retrievers.retrieve_nodes(index, Path(storage_dir), query, top_k=top_k)
 
 
 def delete_kb_dir(kb_dir: Path) -> bool:

@@ -16,9 +16,10 @@ from typing import Any, Literal
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from deeptutor.api.routers.settings import get_enabled_optional_tools
 from deeptutor.core.tool_protocol import BaseTool, ToolDefinition, ToolPromptHints
 from deeptutor.i18n.metadata_i18n import tool_description_i18n
+from deeptutor.services.config import resolve_search_runtime_config
+from deeptutor.services.settings.interface_settings import get_enabled_optional_tools
 from deeptutor.tools.builtin import (
     BUILTIN_TOOL_TYPES,
     COMING_SOON_TOOL_TYPES,
@@ -84,6 +85,11 @@ class BuiltinToolPayload(BaseModel):
     # capability on top of the shared built-in surface; the settings UI groups
     # them under their owner, below the built-in section.
     capability: str | None = None
+    # Runtime readiness is separate from the saved on/off preference.  A tool
+    # may be enabled in the composer while its backing service still needs
+    # configuration (notably web_search with provider="none").
+    available: bool = True
+    unavailable_reason: str | None = None
 
 
 class ToolsListResponse(BaseModel):
@@ -105,6 +111,24 @@ def _serialise_definition(
         )
         for p in definition.parameters
     ]
+    if not params and isinstance(definition.raw_parameters, dict):
+        properties = definition.raw_parameters.get("properties")
+        required = definition.raw_parameters.get("required")
+        required_names = set(required) if isinstance(required, list) else set()
+        if isinstance(properties, dict):
+            for name, raw in properties.items():
+                schema = raw if isinstance(raw, dict) else {}
+                enum = schema.get("enum")
+                params.append(
+                    ToolParameterPayload(
+                        name=str(name),
+                        type=str(schema.get("type") or "object"),
+                        description=str(schema.get("description") or ""),
+                        required=str(name) in required_names,
+                        default=schema.get("default"),
+                        enum=([str(value) for value in enum] if isinstance(enum, list) else None),
+                    )
+                )
     return definition.name, definition.description, params
 
 
@@ -149,6 +173,7 @@ def _build_tool_payload(
         enabled = name in enabled_optional
     else:
         enabled = True
+    available, unavailable_reason = _runtime_availability(name, coming_soon=coming_soon)
     return BuiltinToolPayload(
         name=name,
         description=descriptions.get("en") or description,
@@ -163,7 +188,28 @@ def _build_tool_payload(
         enabled=enabled,
         coming_soon=coming_soon,
         capability=capability,
+        available=available,
+        unavailable_reason=unavailable_reason,
     )
+
+
+def _runtime_availability(name: str, *, coming_soon: bool = False) -> tuple[bool, str | None]:
+    if coming_soon:
+        return False, "coming_soon"
+    if name != "web_search":
+        return True, None
+    try:
+        config = resolve_search_runtime_config()
+    except Exception:
+        logger.exception("Failed to resolve web_search runtime availability")
+        return False, "search_configuration_error"
+    if config.provider == "none":
+        return False, "search_provider_not_configured"
+    if config.unsupported_provider or config.deprecated_provider:
+        return False, "search_provider_unsupported"
+    if config.missing_credentials:
+        return False, "search_credentials_missing"
+    return True, None
 
 
 @router.get("", response_model=ToolsListResponse)

@@ -18,7 +18,7 @@ three objective signals — the user picked the capability, the message pairs an
 action word with a configuration object, or this is the user's first
 conversation on an install that still has a real gap (once, ever).
 
-Everything is cached on ``context.metadata`` so the several hooks that run per
+Everything is cached in a namespaced extension state so the hooks that run per
 turn share one filesystem pass, matching how the other capabilities bind.
 """
 
@@ -139,11 +139,12 @@ def setup_gaps() -> tuple[SetupGap, ...]:
 
 
 def cached_gaps(context: UnifiedContext) -> tuple[SetupGap, ...]:
-    cached = context.metadata.get(_GAPS_CACHE_KEY)
+    state = context.extension("setup")
+    cached = state.get(_GAPS_CACHE_KEY)
     if cached is not None:
         return cached
     gaps = setup_gaps()
-    context.metadata[_GAPS_CACHE_KEY] = gaps
+    state[_GAPS_CACHE_KEY] = gaps
     return gaps
 
 
@@ -222,7 +223,8 @@ def setup_activation(context: UnifiedContext) -> str:
     The check order matters: the two cheap signals are evaluated before
     ``_intro_pending``, which reads settings and computes the install's gaps.
     """
-    cached = context.metadata.get(_ACTIVE_CACHE_KEY)
+    state = context.extension("setup")
+    cached = state.get(_ACTIVE_CACHE_KEY)
     if cached is not None:
         return str(cached)
     if context.active_capability == SETUP_CAPABILITY_NAME:
@@ -233,7 +235,7 @@ def setup_activation(context: UnifiedContext) -> str:
         reason = "intro"
     else:
         reason = ""
-    context.metadata[_ACTIVE_CACHE_KEY] = reason
+    state[_ACTIVE_CACHE_KEY] = reason
     return reason
 
 

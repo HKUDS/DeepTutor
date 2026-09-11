@@ -21,7 +21,7 @@ DEFAULT_INTERFACE_SETTINGS = {
     "language": "en",
     "sidebar_description": "✨ Data Intelligence Lab @ HKU",
     "sidebar_nav_order": {
-        "start": ["/", "/history", "/knowledge", "/notebook"],
+        "start": ["/", "/history", "/knowledge-bases", "/notebooks"],
         "learnResearch": ["/question", "/solver", "/research", "/co_writer"],
     },
 }
@@ -36,7 +36,7 @@ DEFAULT_MAIN_SETTINGS = {
         "console_output": True,
     },
     "tools": {
-        "run_code": {
+        "exec": {
             "allowed_roots": ["./data/user"],
         },
         "web_search": {
@@ -75,6 +75,14 @@ DEFAULT_AGENTS_SETTINGS = {
         "question": {"temperature": 0.7, "max_tokens": 4096},
         "co_writer": {"temperature": 0.7, "max_tokens": 4096},
         "visualize": {"temperature": 0.4, "max_tokens": 16384},
+        # A book spine is one JSON payload holding a concept graph plus every
+        # chapter, and a reasoning model pays for its hidden tokens out of the
+        # same budget. 4096 (the old, unreachable global fallback) truncated
+        # both (#1316). Matched to `research` rather than pushed higher: the
+        # same "long structured output" shape, the same accepted risk against
+        # providers that cap `max_tokens`, and the low-effort retry in
+        # `book/json_retry.py` is what actually rescues a starved round.
+        "book": {"temperature": 0.5, "max_tokens": 12000},
         "chat": {
             "temperature": 0.2,
             "responding": {"max_tokens": 8000},
@@ -135,7 +143,7 @@ def init_user_directories(project_root: Path | None = None) -> None:
             ├── deep_question/
             ├── deep_research/
             ├── math_animator/
-            └── _detached_code_execution/
+            └── _detached_exec/
 
     Args:
         project_root: Project root directory (ignored, kept for API compatibility)

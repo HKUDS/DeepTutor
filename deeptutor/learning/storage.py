@@ -16,12 +16,16 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+import hashlib
 import json
+import logging
 from pathlib import Path
 import sqlite3
 import threading
 import time
 from typing import Any, TypeVar
+
+from pydantic import ValidationError
 
 from deeptutor.learning.models import (
     InteractionStatus,
@@ -29,9 +33,14 @@ from deeptutor.learning.models import (
     MasteryEvent,
     MasteryInteraction,
     MasteryPathLease,
+    MasteryTopic,
+    TopicMetadata,
+    TopicSource,
 )
 from deeptutor.services.file_io import atomic_write_text as _atomic_write_text
 from deeptutor.services.path_service import get_path_service
+
+logger = logging.getLogger(__name__)
 
 _schema_lock = threading.RLock()
 _initialized_db_paths: set[Path] = set()
@@ -242,6 +251,69 @@ class LearningTransaction:
             self.touch()
         return int(cursor.rowcount)
 
+    def put_topic(self, metadata: TopicMetadata, sources: list[TopicSource]) -> None:
+        """Persist product metadata and the ordered source set in this unit."""
+
+        if metadata.path_id != self.progress.book_id:
+            raise ValueError("topic metadata path_id does not match transaction path")
+        now = time.time()
+        metadata.updated_at = now
+        self._conn.execute(
+            """
+            INSERT INTO mastery_topic_meta (
+                path_id, goal, description, emoji, map_seed, status,
+                created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(path_id) DO UPDATE SET
+                goal = excluded.goal,
+                description = excluded.description,
+                emoji = excluded.emoji,
+                map_seed = excluded.map_seed,
+                status = excluded.status,
+                updated_at = excluded.updated_at
+            """,
+            (
+                metadata.path_id,
+                metadata.goal,
+                metadata.description,
+                metadata.emoji,
+                int(metadata.map_seed),
+                metadata.status,
+                metadata.created_at,
+                now,
+            ),
+        )
+        self._conn.execute(
+            "DELETE FROM mastery_topic_sources WHERE path_id = ?",
+            (metadata.path_id,),
+        )
+        for position, source in enumerate(sorted(sources, key=lambda item: item.position)):
+            self._conn.execute(
+                """
+                INSERT INTO mastery_topic_sources (
+                    source_id, path_id, kind, external_id, label, excerpt,
+                    position, available, metadata_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    source.id,
+                    metadata.path_id,
+                    source.kind.value,
+                    source.source_id,
+                    source.label,
+                    source.excerpt,
+                    position,
+                    int(source.available),
+                    json.dumps(source.metadata, ensure_ascii=False),
+                    source.created_at,
+                ),
+            )
+        self.touch()
+        self.emit(
+            "topic.updated",
+            {"source_count": len(sources), "status": metadata.status},
+        )
+
 
 class LearningStore:
     """Workspace-scoped transactional store for Mastery Path state."""
@@ -249,7 +321,16 @@ class LearningStore:
     _DB_FILENAME = "mastery.sqlite3"
 
     def __init__(self, root: Path | None = None) -> None:
-        self._root = root or (get_path_service().get_workspace_dir() / "learning")
+        if root is None:
+            # Explicit roots are used by tests and SDK callers as direct store
+            # directories.  The app-owned default is the only location that
+            # participates in the one-way workspace V1 → V2 migration.
+            from deeptutor.learning.migration import prepare_mastery_v2_root
+
+            learning_root = get_path_service().get_workspace_dir() / "learning"
+            self._root = prepare_mastery_v2_root(learning_root)
+        else:
+            self._root = Path(root)
         self._root.mkdir(parents=True, exist_ok=True)
         self._initialized = False
         self._ensure_initialized()
@@ -257,6 +338,12 @@ class LearningStore:
     @property
     def db_path(self) -> Path:
         return Path(self._root) / self._DB_FILENAME
+
+    @property
+    def event_scope(self) -> str:
+        """Stable workspace identity used by the process-local wake-up hub."""
+
+        return str(Path(self._root).resolve())
 
     def _path(self, book_id: str) -> Path:
         """Return the legacy JSON location after validating the public id."""
@@ -292,13 +379,16 @@ class LearningStore:
                         state_json TEXT NOT NULL,
                         revision INTEGER NOT NULL,
                         created_at REAL NOT NULL,
-                        updated_at REAL NOT NULL
+                        updated_at REAL NOT NULL,
+                        owner_session_id TEXT NOT NULL DEFAULT ''
                     );
 
+                    -- Membership, not history: at most one row per session.
+                    -- The unique index below is what makes a conversation
+                    -- claimed by two paths structurally impossible.
                     CREATE TABLE IF NOT EXISTS mastery_path_sessions (
                         path_id TEXT NOT NULL REFERENCES mastery_paths(path_id) ON DELETE CASCADE,
                         session_id TEXT NOT NULL,
-                        owns_path INTEGER NOT NULL DEFAULT 0,
                         created_at REAL NOT NULL,
                         last_seen_at REAL NOT NULL,
                         PRIMARY KEY(path_id, session_id)
@@ -343,11 +433,125 @@ class LearningStore:
                         turn_id TEXT NOT NULL UNIQUE,
                         acquired_at REAL NOT NULL
                     );
+
+                    CREATE TABLE IF NOT EXISTS mastery_topic_meta (
+                        path_id TEXT PRIMARY KEY REFERENCES mastery_paths(path_id) ON DELETE CASCADE,
+                        goal TEXT NOT NULL DEFAULT '',
+                        description TEXT NOT NULL DEFAULT '',
+                        emoji TEXT NOT NULL DEFAULT '🧭',
+                        map_seed INTEGER NOT NULL DEFAULT 0,
+                        status TEXT NOT NULL DEFAULT 'active',
+                        created_at REAL NOT NULL,
+                        updated_at REAL NOT NULL
+                    );
+
+                    CREATE TABLE IF NOT EXISTS mastery_topic_sources (
+                        source_id TEXT PRIMARY KEY,
+                        path_id TEXT NOT NULL REFERENCES mastery_paths(path_id) ON DELETE CASCADE,
+                        kind TEXT NOT NULL,
+                        external_id TEXT NOT NULL DEFAULT '',
+                        label TEXT NOT NULL,
+                        excerpt TEXT NOT NULL DEFAULT '',
+                        position INTEGER NOT NULL DEFAULT 0,
+                        available INTEGER NOT NULL DEFAULT 1,
+                        metadata_json TEXT NOT NULL DEFAULT '{}',
+                        created_at REAL NOT NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_mastery_topic_sources_path
+                        ON mastery_topic_sources(path_id, position);
                     """
                 )
+                self._converge_single_membership(conn)
+                # V2 metadata is a persisted part of every topic, not a
+                # runtime-only fallback. Existing V1 paths receive neutral,
+                # deterministic metadata during schema initialization; their
+                # learning state and session bindings remain untouched.
+                legacy_topics = conn.execute(
+                    """
+                    SELECT path_id, created_at, updated_at
+                    FROM mastery_paths
+                    WHERE path_id NOT IN (SELECT path_id FROM mastery_topic_meta)
+                    """
+                ).fetchall()
+                for row in legacy_topics:
+                    path_id = str(row["path_id"])
+                    conn.execute(
+                        """
+                        INSERT INTO mastery_topic_meta (
+                            path_id, goal, description, emoji, map_seed, status,
+                            created_at, updated_at
+                        ) VALUES (?, '', '', '🧭', ?, 'active', ?, ?)
+                        """,
+                        (
+                            path_id,
+                            self._default_map_seed(path_id),
+                            float(row["created_at"]),
+                            float(row["updated_at"]),
+                        ),
+                    )
                 conn.commit()
             self._initialized = True
             _initialized_db_paths.add(db_path)
+
+    @staticmethod
+    def _converge_single_membership(conn: sqlite3.Connection) -> None:
+        """Bring an existing database onto the one-path-per-conversation rule.
+
+        Two things used to live in ``mastery_path_sessions``: which path a
+        conversation is *on*, and which conversation a scratch path belongs
+        *to*. Because the second one has to survive, nothing ever deleted a
+        row — so a conversation that moved to another path (``mastery_switch``,
+        or simply being reopened from another topic's screen) stayed listed
+        under the path it had left, and both topics went on claiming it.
+
+        The two are separated here: ownership moves onto the path it is a
+        property of, membership keeps only the most recent row per session,
+        and a unique index makes the old shape unrepresentable from now on.
+        Every step is idempotent, so this runs on each schema initialization.
+        """
+
+        columns = {str(row["name"]) for row in conn.execute("PRAGMA table_info(mastery_paths)")}
+        if "owner_session_id" not in columns:
+            conn.execute(
+                "ALTER TABLE mastery_paths ADD COLUMN owner_session_id TEXT NOT NULL DEFAULT ''"
+            )
+        binding_columns = {
+            str(row["name"]) for row in conn.execute("PRAGMA table_info(mastery_path_sessions)")
+        }
+        if "owns_path" in binding_columns:
+            # The owning session is the one that created the scratch path, so
+            # the earliest claim wins if a database somehow carries several.
+            conn.execute(
+                """
+                UPDATE mastery_paths SET owner_session_id = (
+                    SELECT b.session_id FROM mastery_path_sessions b
+                    WHERE b.path_id = mastery_paths.path_id AND b.owns_path = 1
+                    ORDER BY b.created_at ASC LIMIT 1
+                )
+                WHERE owner_session_id = '' AND EXISTS (
+                    SELECT 1 FROM mastery_path_sessions b
+                    WHERE b.path_id = mastery_paths.path_id AND b.owns_path = 1
+                )
+                """
+            )
+        conn.execute(
+            """
+            DELETE FROM mastery_path_sessions
+            WHERE rowid NOT IN (
+                SELECT rowid FROM (
+                    SELECT rowid, ROW_NUMBER() OVER (
+                        PARTITION BY session_id ORDER BY last_seen_at DESC, rowid DESC
+                    ) AS rank FROM mastery_path_sessions
+                ) WHERE rank = 1
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_mastery_sessions_membership
+                ON mastery_path_sessions(session_id)
+            """
+        )
 
     @contextmanager
     def _connect(self, *, initialize: bool = True) -> Iterator[sqlite3.Connection]:
@@ -390,15 +594,53 @@ class LearningStore:
             # removes any unarchived copy so it cannot resurrect the path.
             pass
 
-    def _import_legacy_if_needed(self, book_id: str) -> None:
-        path_id = self._validate_id(book_id)
-        legacy_path = self._path(path_id)
+    @staticmethod
+    def _quarantine_failed_legacy(path: Path) -> Path | None:
+        failed_dir = path.parent / "archive" / "failed"
+        failed_dir.mkdir(parents=True, exist_ok=True)
+        target = failed_dir / path.name
+        if target.exists():
+            target = failed_dir / f"{path.stem}.{int(time.time() * 1000)}{path.suffix}"
+        try:
+            path.replace(target)
+        except OSError:
+            logger.exception("Could not quarantine corrupt legacy mastery file %s", path)
+            return None
+        return target
+
+    def import_legacy_json(self, legacy_path: Path, *, archive: bool = True) -> bool:
+        """Import one V1 JSON aggregate into this store exactly once.
+
+        ``legacy_path`` may live outside the store root.  That small public
+        boundary lets the workspace migration merge still-live V1 JSON files
+        into an already-created V2 database without teaching the migration
+        module about the SQLite schema.  The committed row always wins over a
+        duplicate JSON file.  ``archive=False`` is reserved for callers that
+        have already made their own durable archive copy.
+
+        Returns ``True`` when this call inserted a new aggregate.
+        """
+
+        legacy_path = Path(legacy_path)
+        if legacy_path.suffix != ".json":
+            raise ValueError(f"Legacy mastery path must be a JSON file: {legacy_path}")
+        try:
+            path_id = self._validate_id(legacy_path.stem)
+        except ValueError:
+            quarantined = self._quarantine_failed_legacy(legacy_path)
+            logger.exception(
+                "Rejected legacy mastery file with invalid id path=%s quarantine=%s",
+                legacy_path,
+                quarantined,
+            )
+            return False
         if not legacy_path.exists():
-            return
+            return False
         with self._connect() as conn:
             if conn.execute("SELECT 1 FROM mastery_paths WHERE path_id = ?", (path_id,)).fetchone():
-                self._archive_legacy(legacy_path)
-                return
+                if archive:
+                    self._archive_legacy(legacy_path)
+                return False
         try:
             legacy_text = legacy_path.read_text(encoding="utf-8")
         except FileNotFoundError:
@@ -410,17 +652,36 @@ class LearningStore:
                     "SELECT 1 FROM mastery_paths WHERE path_id = ?", (path_id,)
                 ).fetchone()
             if imported is not None:
-                return
+                return False
             raise
-        data = json.loads(legacy_text)
-        progress = LearningProgress.model_validate(data)
-        if progress.book_id != path_id:
-            raise ValueError(
-                f"Legacy mastery path id mismatch: expected {path_id!r}, got {progress.book_id!r}"
+        except (OSError, UnicodeError):
+            quarantined = self._quarantine_failed_legacy(legacy_path)
+            logger.exception(
+                "Could not read legacy mastery file path=%s quarantine=%s",
+                legacy_path,
+                quarantined,
             )
+            return False
+        try:
+            data = json.loads(legacy_text)
+            progress = LearningProgress.model_validate(data)
+            if progress.book_id != path_id:
+                raise ValueError(
+                    f"Legacy mastery path id mismatch: expected {path_id!r}, "
+                    f"got {progress.book_id!r}"
+                )
+        except (json.JSONDecodeError, ValidationError, TypeError, ValueError):
+            quarantined = self._quarantine_failed_legacy(legacy_path)
+            logger.exception(
+                "Quarantined corrupt legacy mastery file path=%s quarantine=%s",
+                legacy_path,
+                quarantined,
+            )
+            return False
         now = time.time()
         revision = max(1, int(progress.version or 0))
         payload = self._progress_payload(progress, revision, now)
+        inserted = False
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:
@@ -433,6 +694,7 @@ class LearningStore:
                     (path_id, payload, revision, progress.created_at, now),
                 )
                 if conn.execute("SELECT changes()").fetchone()[0]:
+                    inserted = True
                     conn.execute(
                         """
                         INSERT INTO mastery_events (
@@ -445,7 +707,13 @@ class LearningStore:
             except Exception:
                 conn.rollback()
                 raise
-        self._archive_legacy(legacy_path)
+        if archive:
+            self._archive_legacy(legacy_path)
+        return inserted
+
+    def _import_legacy_if_needed(self, book_id: str) -> None:
+        path_id = self._validate_id(book_id)
+        self.import_legacy_json(self._path(path_id))
 
     def load(self, book_id: str) -> LearningProgress | None:
         path_id = self._validate_id(book_id)
@@ -528,6 +796,14 @@ class LearningStore:
                 raise
         progress.version = revision
         progress.updated_at = now
+        from deeptutor.learning.event_hub import publish_topic_signal
+
+        publish_topic_signal(
+            path_id,
+            revision,
+            event_type,
+            scope=self.event_scope,
+        )
 
     @contextmanager
     def transaction(
@@ -544,6 +820,8 @@ class LearningStore:
         """
         path_id = self._validate_id(book_id)
         self._import_legacy_if_needed(path_id)
+        committed_revision: int | None = None
+        committed_reason = "topic.changed"
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             tx: LearningTransaction | None = None
@@ -617,12 +895,24 @@ class LearningStore:
                                 now,
                             ),
                         )
+                    committed_revision = revision
+                    if tx.events:
+                        committed_reason = tx.events[-1][0]
                     tx.progress.version = revision
                     tx.progress.updated_at = now
                 conn.commit()
             except Exception:
                 conn.rollback()
                 raise
+        if committed_revision is not None:
+            from deeptutor.learning.event_hub import publish_topic_signal
+
+            publish_topic_signal(
+                path_id,
+                committed_revision,
+                committed_reason,
+                scope=self.event_scope,
+            )
 
     def mutate(
         self,
@@ -655,6 +945,14 @@ class LearningStore:
             for archived in archive_dir.glob("*.json"):
                 if archived.stem == path_id or archived.stem.startswith(f"{path_id}."):
                     archived.unlink(missing_ok=True)
+        from deeptutor.learning.event_hub import publish_topic_signal
+
+        publish_topic_signal(
+            path_id,
+            0,
+            "topic.deleted",
+            scope=self.event_scope,
+        )
 
     def exists(self, book_id: str) -> bool:
         path_id = self._validate_id(book_id)
@@ -674,18 +972,252 @@ class LearningStore:
         }
         return sorted(stored | legacy)
 
+    # ---- product topic metadata -----------------------------------------
+
+    @staticmethod
+    def _default_map_seed(path_id: str) -> int:
+        return int.from_bytes(hashlib.sha256(path_id.encode("utf-8")).digest()[:4], "big")
+
+    def put_topic(self, metadata: TopicMetadata, sources: list[TopicSource]) -> MasteryTopic:
+        path_id = self._validate_id(metadata.path_id)
+        normalized = metadata.model_copy(deep=True)
+        normalized.path_id = path_id
+        if normalized.map_seed == 0:
+            normalized.map_seed = self._default_map_seed(path_id)
+        ordered = [source.model_copy(deep=True) for source in sources]
+        for index, source in enumerate(ordered):
+            source.position = index
+
+        def apply(tx: LearningTransaction) -> None:
+            tx.put_topic(normalized, ordered)
+
+        self.mutate(path_id, apply)
+        topic = self.get_topic(path_id)
+        if topic is None:  # pragma: no cover - transaction guarantees the row
+            raise LearningStoreError(f"Failed to persist topic {path_id!r}")
+        return topic
+
+    def get_topic(
+        self,
+        path_id: str,
+        *,
+        progress: LearningProgress | None = None,
+    ) -> MasteryTopic | None:
+        path_id = self._validate_id(path_id)
+        if progress is None:
+            progress = self.load(path_id)
+        elif progress.book_id != path_id:
+            raise ValueError("progress does not belong to the requested topic")
+        if progress is None:
+            return None
+        with self._connect() as conn:
+            meta_row = conn.execute(
+                "SELECT * FROM mastery_topic_meta WHERE path_id = ?", (path_id,)
+            ).fetchone()
+            source_rows = conn.execute(
+                """
+                SELECT * FROM mastery_topic_sources
+                WHERE path_id = ? ORDER BY position ASC, created_at ASC
+                """,
+                (path_id,),
+            ).fetchall()
+        return self._topic_from_rows(path_id, progress, meta_row, source_rows)
+
+    def _topic_from_rows(
+        self,
+        path_id: str,
+        progress: LearningProgress,
+        meta_row: sqlite3.Row | None,
+        source_rows: list[sqlite3.Row],
+    ) -> MasteryTopic:
+        if meta_row is None:
+            metadata = TopicMetadata(
+                path_id=path_id,
+                map_seed=self._default_map_seed(path_id),
+                created_at=progress.created_at,
+                updated_at=progress.updated_at,
+            )
+        else:
+            metadata = TopicMetadata(
+                path_id=path_id,
+                goal=meta_row["goal"] or "",
+                description=meta_row["description"] or "",
+                emoji=meta_row["emoji"] or "🧭",
+                map_seed=int(meta_row["map_seed"] or self._default_map_seed(path_id)),
+                status=meta_row["status"] or "active",
+                created_at=float(meta_row["created_at"]),
+                updated_at=float(meta_row["updated_at"]),
+            )
+        sources = [
+            TopicSource(
+                id=row["source_id"],
+                kind=row["kind"],
+                source_id=row["external_id"] or "",
+                label=row["label"],
+                excerpt=row["excerpt"] or "",
+                position=int(row["position"]),
+                available=bool(row["available"]),
+                metadata=json.loads(row["metadata_json"] or "{}"),
+                created_at=float(row["created_at"]),
+            )
+            for row in source_rows
+        ]
+        return MasteryTopic(metadata=metadata, sources=sources)
+
+    def list_topic_snapshots(
+        self,
+        *,
+        status: str = "active",
+    ) -> list[
+        tuple[
+            LearningProgress,
+            MasteryTopic,
+            int,
+            MasteryInteraction | None,
+        ]
+    ]:
+        """Read the atlas in a constant number of bounded SQLite queries."""
+
+        with self._connect() as conn:
+            progress_rows = conn.execute(
+                """
+                SELECT p.* FROM mastery_paths p
+                JOIN mastery_topic_meta m ON m.path_id = p.path_id
+                WHERE m.status = ?
+                ORDER BY p.updated_at DESC
+                """,
+                (status,),
+            ).fetchall()
+            meta_rows = {
+                str(row["path_id"]): row
+                for row in conn.execute(
+                    "SELECT * FROM mastery_topic_meta WHERE status = ?",
+                    (status,),
+                ).fetchall()
+            }
+            source_rows: dict[str, list[sqlite3.Row]] = {}
+            for row in conn.execute(
+                """
+                SELECT s.* FROM mastery_topic_sources s
+                JOIN mastery_topic_meta m ON m.path_id = s.path_id
+                WHERE m.status = ?
+                ORDER BY s.path_id, s.position ASC, s.created_at ASC
+                """,
+                (status,),
+            ).fetchall():
+                source_rows.setdefault(str(row["path_id"]), []).append(row)
+            session_counts = {
+                str(row["path_id"]): int(row["session_count"])
+                for row in conn.execute(
+                    """
+                    SELECT b.path_id, COUNT(*) AS session_count
+                    FROM mastery_path_sessions b
+                    JOIN mastery_topic_meta m ON m.path_id = b.path_id
+                    WHERE m.status = ?
+                    GROUP BY b.path_id
+                    """,
+                    (status,),
+                ).fetchall()
+            }
+            placeholders = ",".join("?" for _ in _ACTIVE_INTERACTION_STATES)
+            active_rows = {
+                str(row["path_id"]): row
+                for row in conn.execute(
+                    f"""
+                    SELECT i.* FROM mastery_interactions i
+                    JOIN mastery_topic_meta m ON m.path_id = i.path_id
+                    WHERE m.status = ? AND i.status IN ({placeholders})
+                    """,  # nosec B608 - generated placeholders; values remain bound
+                    (status, *_ACTIVE_INTERACTION_STATES),
+                ).fetchall()
+            }
+
+        snapshots = []
+        for progress_row in progress_rows:
+            path_id = str(progress_row["path_id"])
+            progress = self._progress_from_row(progress_row)
+            snapshots.append(
+                (
+                    progress,
+                    self._topic_from_rows(
+                        path_id,
+                        progress,
+                        meta_rows.get(path_id),
+                        source_rows.get(path_id, []),
+                    ),
+                    session_counts.get(path_id, 0),
+                    LearningTransaction._interaction_from_row(active_rows.get(path_id)),
+                )
+            )
+        return snapshots
+
+    @staticmethod
+    def default_db_path() -> Path:
+        """Where the app-owned store's database is, creating nothing.
+
+        Constructing a store runs the V1 to V2 migration and writes the schema,
+        which is the right thing for anyone about to read or teach a path and
+        the wrong thing for a per-turn gate asking "does this learner have any
+        mastery topics at all?". That gate probes this path first, so a learner
+        who has never opened a topic never gets a store created for them.
+        """
+        from deeptutor.learning.migration import mastery_v2_root
+
+        learning_root = get_path_service().get_workspace_dir() / "learning"
+        return mastery_v2_root(learning_root) / LearningStore._DB_FILENAME
+
+    def has_active_topics(self) -> bool:
+        """Whether any named, unarchived topic exists.
+
+        Deliberately not ``len(list_topic_snapshots())``: that walk loads every
+        path's state, metadata, sources and open interaction to answer a
+        yes/no question a single indexed row settles.
+        """
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM mastery_topic_meta WHERE status = 'active' LIMIT 1"
+            ).fetchone()
+        return row is not None
+
     # ---- explicit path/session ownership ---------------------------------
 
     def bind_session(self, path_id: str, session_id: str, *, owns_path: bool = False) -> None:
+        """Make ``path_id`` the one path this conversation is on.
+
+        Membership is exclusive and always current: a conversation that moves
+        to another path stops being listed under the one it left, so two
+        topics can never both claim it. ``owns_path`` is the separate,
+        permanent fact that this conversation *created* the path — recorded on
+        the path itself, so deleting the conversation still takes its scratch
+        path with it after the conversation has moved on.
+        """
         path_id = self._validate_id(path_id)
         self._import_legacy_if_needed(path_id)
         session_id = str(session_id or "").strip()
         if not session_id:
             raise ValueError("session_id must not be empty")
         now = time.time()
+        current_revision = 0
+        released_path_id = ""
+        released_revision = 0
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:
+                previous = conn.execute(
+                    "SELECT path_id FROM mastery_path_sessions WHERE session_id = ?",
+                    (session_id,),
+                ).fetchone()
+                if previous is not None and str(previous["path_id"]) != path_id:
+                    released_path_id = str(previous["path_id"])
+                    conn.execute(
+                        "DELETE FROM mastery_path_sessions WHERE session_id = ?",
+                        (session_id,),
+                    )
+                    released_row = conn.execute(
+                        "SELECT revision FROM mastery_paths WHERE path_id = ?",
+                        (released_path_id,),
+                    ).fetchone()
+                    released_revision = int(released_row["revision"]) if released_row else 0
                 row = conn.execute(
                     "SELECT 1 FROM mastery_paths WHERE path_id = ?", (path_id,)
                 ).fetchone()
@@ -717,18 +1249,49 @@ class LearningStore:
                 conn.execute(
                     """
                     INSERT INTO mastery_path_sessions (
-                        path_id, session_id, owns_path, created_at, last_seen_at
-                    ) VALUES (?, ?, ?, ?, ?)
+                        path_id, session_id, created_at, last_seen_at
+                    ) VALUES (?, ?, ?, ?)
                     ON CONFLICT(path_id, session_id) DO UPDATE SET
-                        owns_path = MAX(mastery_path_sessions.owns_path, excluded.owns_path),
                         last_seen_at = excluded.last_seen_at
                     """,
-                    (path_id, session_id, int(owns_path), now, now),
+                    (path_id, session_id, now, now),
+                )
+                if owns_path:
+                    # Granted once and never transferred: a path has exactly
+                    # one creator, whatever conversations pass through later.
+                    conn.execute(
+                        """
+                        UPDATE mastery_paths SET owner_session_id = ?
+                        WHERE path_id = ? AND owner_session_id = ''
+                        """,
+                        (session_id, path_id),
+                    )
+                current_revision = int(
+                    conn.execute(
+                        "SELECT revision FROM mastery_paths WHERE path_id = ?", (path_id,)
+                    ).fetchone()["revision"]
                 )
                 conn.commit()
             except Exception:
                 conn.rollback()
                 raise
+        from deeptutor.learning.event_hub import publish_topic_signal
+
+        publish_topic_signal(
+            path_id,
+            current_revision,
+            "session.bound",
+            scope=self.event_scope,
+        )
+        if released_path_id:
+            # The path it left lost a conversation from its list; its screen
+            # is as stale as the one it joined.
+            publish_topic_signal(
+                released_path_id,
+                released_revision,
+                "session.released",
+                scope=self.event_scope,
+            )
 
     def list_session_ids(self, path_id: str) -> list[str]:
         path_id = self._validate_id(path_id)
@@ -743,23 +1306,47 @@ class LearningStore:
             ).fetchall()
         return [str(row["session_id"]) for row in rows]
 
-    def list_paths_for_session(self, session_id: str) -> list[dict[str, Any]]:
+    def path_id_for_session(self, session_id: str) -> str:
+        """The one path this conversation is on, or ``""`` when it is on none."""
         session_id = str(session_id or "").strip()
         if not session_id:
-            return []
+            return ""
         with self._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT path_id, owns_path, created_at, last_seen_at
-                FROM mastery_path_sessions
-                WHERE session_id = ? ORDER BY last_seen_at DESC
-                """,
+            row = conn.execute(
+                "SELECT path_id FROM mastery_path_sessions WHERE session_id = ?",
                 (session_id,),
-            ).fetchall()
-        return [dict(row) for row in rows]
+            ).fetchone()
+        return str(row["path_id"]) if row is not None else ""
+
+    @staticmethod
+    def _is_scratch_state(state_json: Any) -> bool:
+        """Whether a path never got a curriculum, and so is only a scratchpad.
+
+        A conversation that starts tutoring without naming a topic gets a path
+        of its own to write into. Until something is built there it is part of
+        the conversation and dies with it; once it holds objectives it is a
+        course the learner can return to from anywhere, and outlives whichever
+        conversation happened to create it.
+        """
+        try:
+            state = json.loads(str(state_json or "{}"))
+        except (TypeError, ValueError):
+            return False
+        modules = state.get("modules") if isinstance(state, dict) else None
+        if not isinstance(modules, list):
+            return True
+        return not any(
+            isinstance(module, dict) and module.get("knowledge_points") for module in modules
+        )
 
     def detach_session(self, session_id: str, *, delete_owned_orphans: bool = True) -> list[str]:
-        """Remove a session association and optionally delete owned orphan paths."""
+        """Forget this conversation, and delete the scratch path it created.
+
+        Deleting a conversation deletes what only it could see. Its membership
+        goes unconditionally; the path goes with it only when this conversation
+        created it, nothing was ever built there, and no other conversation has
+        since moved onto it.
+        """
         session_id = str(session_id or "").strip()
         if not session_id:
             return []
@@ -773,34 +1360,26 @@ class LearningStore:
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:
-                rows = conn.execute(
-                    "SELECT path_id, owns_path FROM mastery_path_sessions WHERE session_id = ?",
-                    (session_id,),
+                # Ownership is a property of the path. The second clause covers
+                # data written before it was: an ad-hoc path was then named
+                # after the conversation that opened it.
+                owned = conn.execute(
+                    """
+                    SELECT path_id, state_json FROM mastery_paths
+                    WHERE owner_session_id = ?
+                       OR (owner_session_id = '' AND path_id = ?)
+                    """,
+                    (session_id, session_id),
                 ).fetchall()
                 conn.execute("DELETE FROM mastery_path_leases WHERE session_id = ?", (session_id,))
                 conn.execute(
                     "DELETE FROM mastery_path_sessions WHERE session_id = ?", (session_id,)
                 )
                 if delete_owned_orphans:
-                    if not rows:
-                        # Compatibility for pre-association data, where an
-                        # ad-hoc path was implicitly named after its session.
-                        # All new turns create an explicit binding, so this
-                        # narrow fallback cannot delete a newly shared path.
-                        legacy = conn.execute(
-                            "SELECT 1 FROM mastery_paths WHERE path_id = ?",
-                            (session_id,),
-                        ).fetchone()
-                        if legacy is not None:
-                            conn.execute(
-                                "DELETE FROM mastery_paths WHERE path_id = ?",
-                                (session_id,),
-                            )
-                            deleted_paths.append(session_id)
-                    for row in rows:
-                        if not bool(row["owns_path"]):
-                            continue
+                    for row in owned:
                         path_id = str(row["path_id"])
+                        if not self._is_scratch_state(row["state_json"]):
+                            continue
                         remaining = conn.execute(
                             "SELECT 1 FROM mastery_path_sessions WHERE path_id = ? LIMIT 1",
                             (path_id,),

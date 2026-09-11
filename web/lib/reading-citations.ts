@@ -1,3 +1,4 @@
+import { toolResultMetadata } from "@/lib/tool-event";
 /**
  * Locator citations in assistant prose: `[p.12]`, `[p.12,17]`, `[p.12-14]`.
  *
@@ -34,6 +35,23 @@ export interface LocatorCitation {
 
 /** Anchor prefix the reader listens for. */
 export const LOCATOR_HREF_PREFIX = "#dt-locator-";
+const MATERIAL_LOCATOR_HREF_PREFIX = "#dt-material-";
+const READING_EVIDENCE_TOOLS = new Set([
+  "search_material",
+  "read_material",
+  "reader_goto",
+]);
+
+export interface ReadingCitationTarget {
+  materialId?: string;
+  materialRevision?: number;
+  locator: number;
+}
+
+interface ReadingEvidenceEvent {
+  type?: string;
+  metadata?: unknown;
+}
 
 /** Largest locator span a single `[p.a-b]` may expand to. */
 const MAX_RANGE_SPAN = 40;
@@ -205,16 +223,29 @@ export function findLocatorCitations(text: string): LocatorCitation[] {
  */
 export function linkifyLocatorCitations(
   text: string,
-  options: { maxLocator?: number } = {},
+  options: {
+    maxLocator?: number;
+    materialId?: string;
+    materialRevision?: number;
+    allowedLocators?: Iterable<number>;
+  } = {},
 ): string {
   const citations = findLocatorCitations(text);
   if (!citations.length) return text;
-  const { maxLocator } = options;
+  const { maxLocator, materialId, materialRevision } = options;
+  const allowed = options.allowedLocators
+    ? new Set(options.allowedLocators)
+    : null;
 
   const skip = codeRanges(text);
   let out = "";
   let cursor = 0;
   for (const citation of citations) {
+    if (allowed && citation.locators.some((locator) => !allowed.has(locator))) {
+      out += text.slice(cursor, citation.end);
+      cursor = citation.end;
+      continue;
+    }
     const locators =
       typeof maxLocator === "number" && maxLocator > 0
         ? citation.locators.filter((n) => n <= maxLocator)
@@ -225,7 +256,13 @@ export function linkifyLocatorCitations(
       continue;
     }
 
-    const href = `${LOCATOR_HREF_PREFIX}${locators[0]}`;
+    const revisionAddress =
+      Number.isSafeInteger(materialRevision) && Number(materialRevision) >= 1
+        ? `-revision-${materialRevision}`
+        : "";
+    const href = materialId
+      ? `${MATERIAL_LOCATOR_HREF_PREFIX}${encodeURIComponent(materialId)}${revisionAddress}-locator-${locators[0]}`
+      : `${LOCATOR_HREF_PREFIX}${locators[0]}`;
     const absorbed =
       locators.length === citation.locators.length
         ? findAbsorbablePhrase(text, citation, skip)
@@ -254,9 +291,80 @@ export function linkifyLocatorCitations(
 export function locatorFromHref(
   href: string | null | undefined,
 ): number | null {
-  if (!href || !href.startsWith(LOCATOR_HREF_PREFIX)) return null;
-  const parsed = Number(href.slice(LOCATOR_HREF_PREFIX.length));
-  return Number.isInteger(parsed) && parsed >= 1 ? parsed : null;
+  return citationTargetFromHref(href)?.locator ?? null;
+}
+
+/** Material-aware reader address, with support for legacy locator-only links. */
+export function citationTargetFromHref(
+  href: string | null | undefined,
+): ReadingCitationTarget | null {
+  if (!href) return null;
+  if (href.startsWith(LOCATOR_HREF_PREFIX)) {
+    const locator = Number(href.slice(LOCATOR_HREF_PREFIX.length));
+    return Number.isInteger(locator) && locator >= 1 ? { locator } : null;
+  }
+  if (!href.startsWith(MATERIAL_LOCATOR_HREF_PREFIX)) return null;
+  const match =
+    /^#dt-material-([0-9a-f]{8,64})(?:-revision-(\d+))?-locator-(\d+)$/i.exec(
+      href,
+    );
+  if (!match) return null;
+  const materialRevision = match[2] ? Number(match[2]) : undefined;
+  const locator = Number(match[3]);
+  const materialId = match[1];
+  if (!Number.isSafeInteger(locator) || locator < 1) return null;
+  if (
+    materialRevision !== undefined &&
+    (!Number.isSafeInteger(materialRevision) || materialRevision < 1)
+  ) {
+    return null;
+  }
+  return {
+    materialId: materialId.toLowerCase(),
+    ...(materialRevision !== undefined ? { materialRevision } : {}),
+    locator,
+  };
+}
+
+/** Locators grounded by successful reading-tool results for one turn. */
+export function verifiedReadingLocators(
+  events: ReadingEvidenceEvent[] | null | undefined,
+  materialId: string | null | undefined,
+  materialRevision?: number | null,
+): Set<number> {
+  const verified = new Set<number>();
+  if (!materialId) return verified;
+  const expected = materialId.toLowerCase();
+  for (const event of events ?? []) {
+    if (event.type !== "tool_result" || !event.metadata) continue;
+    const outer = event.metadata as Record<string, unknown>;
+    const tool = String(outer.tool ?? outer.tool_name ?? "");
+    if (!READING_EVIDENCE_TOOLS.has(tool)) {
+      continue;
+    }
+    const metadata = toolResultMetadata(outer);
+    if (!metadata) continue;
+    if (String(metadata.material_id ?? "").toLowerCase() !== expected) continue;
+    if (materialRevision) {
+      const evidenceRevision = Number(metadata.material_revision);
+      if (evidenceRevision !== materialRevision) continue;
+    }
+    const add = (value: unknown) => {
+      const locator = Number(value);
+      if (Number.isInteger(locator) && locator >= 1) verified.add(locator);
+    };
+    if (Array.isArray(metadata.locators)) metadata.locators.forEach(add);
+    if (Array.isArray(metadata.hits)) {
+      metadata.hits.forEach((hit) => {
+        if (hit && typeof hit === "object") {
+          add((hit as Record<string, unknown>).locator);
+        }
+      });
+    }
+    add(metadata.locator);
+    add(metadata.found_locator);
+  }
+  return verified;
 }
 
 /** Human label for a locator, using the material's own unit word. */

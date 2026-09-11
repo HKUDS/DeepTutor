@@ -5,7 +5,7 @@ MCP Settings API Router
 Manage the deployment-global MCP server registry: read/update the config,
 inspect live connection status, and probe a server before saving.
 
-Mounted at ``/api/v1/settings/mcp``. Admin-gated: the registry is
+Mounted at ``/api/settings/mcp``. Admin-gated: the registry is
 deployment-global state, and a stdio server's ``command`` runs on the host
 as the app user — letting non-admins edit it would be privilege escalation.
 Per-user MCP access is granted through the multi-user grant whitelist
@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, ValidationError
 
 from deeptutor.api.routers.auth import require_admin
-from deeptutor.core.i18n import t
+from deeptutor.services.i18n import t
 from deeptutor.services.mcp import (
     MCPConfig,
     MCPServerConfig,

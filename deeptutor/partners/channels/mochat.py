@@ -320,6 +320,13 @@ class MochatChannel(BaseChannel):
         """Start Mochat channel workers and websocket connection."""
         if not self.config.claw_token:
             logger.error("Mochat claw_token not configured")
+            self.set_setup_state(
+                "action_required",
+                message=(
+                    "Required fields are missing. Complete the channel configuration "
+                    "and save again."
+                ),
+            )
             return
 
         self._running = True
@@ -331,6 +338,7 @@ class MochatChannel(BaseChannel):
 
         if not await self._start_socket_client():
             await self._ensure_fallback_workers()
+            self.set_setup_state("running")
 
         self._refresh_task = asyncio.create_task(self._refresh_loop())
         while self._running:
@@ -448,6 +456,7 @@ class MochatChannel(BaseChannel):
             subscribed = await self._subscribe_all()
             self._ws_ready = subscribed
             await (self._stop_fallback_workers() if subscribed else self._ensure_fallback_workers())
+            self.set_setup_state("connected" if subscribed else "running")
 
         @client.event
         async def disconnect() -> None:
@@ -456,10 +465,15 @@ class MochatChannel(BaseChannel):
             self._ws_connected = self._ws_ready = False
             logger.warning("Mochat websocket disconnected")
             await self._ensure_fallback_workers()
+            self.set_setup_state("running")
 
         @client.event
         async def connect_error(data: Any) -> None:
             logger.error("Mochat websocket connect error: {}", data)
+            self.set_setup_state(
+                "error",
+                message="Channel connection failed; the listener will retry.",
+            )
 
         @client.on("claw.session.events")
         async def on_session_events(payload: dict[str, Any]) -> None:

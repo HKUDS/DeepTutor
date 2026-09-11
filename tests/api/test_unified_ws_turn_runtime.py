@@ -240,6 +240,10 @@ async def test_turn_runtime_replays_events_and_materializes_messages(
         # preference (survives reloads; later turns fall back to it).
         "persona": "socratic",
         "mastery_path_id": "path-1",
+        # No mode is persisted here: this turn never recorded one, and an
+        # unrecorded mode has to stay unrecorded — the tools read its absence
+        # as "enforce nothing", which is what keeps every conversation that
+        # predates modes working exactly as it did.
     }
 
     persisted_turn = await store.get_turn(turn["id"])
@@ -257,6 +261,91 @@ async def test_turn_runtime_replays_events_and_materializes_messages(
     replayed_done = next(event for event in replayed if event["type"] == "done")
     assert replayed_done["seq"] == persisted_done["seq"]
     assert replayed_done["metadata"]["assistant_message_id"] == assistant_row["id"]
+
+
+@pytest.mark.asyncio
+async def test_turn_runtime_persists_private_provider_response_state(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    runtime = TurnRuntimeManager(store)
+    captured: dict[str, object] = {}
+    state = {"reasoning_content": "private reasoning"}
+
+    class FakeContextBuilder:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        async def build(self, **_kwargs):
+            return SimpleNamespace(
+                conversation_history=[],
+                conversation_summary="",
+                context_text="",
+                token_count=0,
+                budget=0,
+            )
+
+    class FakeOrchestrator:
+        async def handle(self, context):
+            captured["metadata"] = context.metadata
+            context.runtime.provider_response_state = state
+            yield StreamEvent(
+                type=StreamEventType.CONTENT,
+                source="chat",
+                stage="responding",
+                content="A direct answer",
+                metadata={"call_kind": "llm_final_response"},
+            )
+            yield StreamEvent(type=StreamEventType.DONE, source="chat")
+
+    async def title_after_done(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr("deeptutor.services.llm.config.get_llm_config", lambda: SimpleNamespace())
+    monkeypatch.setattr(
+        "deeptutor.services.session.context_builder.ContextBuilder", FakeContextBuilder
+    )
+    monkeypatch.setattr("deeptutor.runtime.orchestrator.ChatOrchestrator", FakeOrchestrator)
+    monkeypatch.setattr(runtime, "_maybe_generate_session_title", title_after_done)
+    monkeypatch.setattr(
+        "deeptutor.services.memory.get_memory_store",
+        lambda: SimpleNamespace(read_l3_concat=lambda: "", emit=_noop_async),
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.skill.get_skill_service",
+        _fake_skill_service,
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.persona.get_persona_service",
+        _fake_persona_service,
+    )
+
+    session, turn = await runtime.start_turn(
+        {
+            "type": "start_turn",
+            "content": "hello",
+            "session_id": None,
+            "capability": None,
+            "tools": [],
+            "knowledge_bases": [],
+            "attachments": [],
+            "language": "en",
+            "config": {},
+        }
+    )
+    async for _event in runtime.subscribe_turn(turn["id"], after_seq=0):
+        pass
+
+    context_messages = await store.get_messages_for_context(session["id"])
+    assistant = context_messages[-1]
+    assert assistant["metadata"]["provider_response_state"] == state
+    detail = await store.get_session_with_messages(session["id"])
+    assert detail is not None
+    assert "provider_response_state" not in detail["messages"][-1]["metadata"]
+    metadata = captured["metadata"]
+    assert isinstance(metadata, dict)
+    assert "_provider_response_state" not in metadata
 
 
 @pytest.mark.asyncio
@@ -932,3 +1021,32 @@ async def test_turn_runtime_injects_memory_and_refreshes_after_completion(
     assert captured["memory_context"] == "## Memory\n## Preferences\n- Prefer concise answers."
     assert captured["conversation_history"] == []
     assert captured["conversation_context_text"] == "Recent chat summary"
+
+
+@pytest.mark.asyncio
+async def test_a_null_mode_on_the_wire_keeps_the_conversation_in_the_mode_it_was_in(
+    tmp_path, monkeypatch
+):
+    """The client writes ``mastery_session_mode`` on every turn and leaves it
+    null whenever it does not happen to hold the mode in memory — a reload, or
+    a session loaded from the server before its preference came back.
+
+    Reading that null as "the client said none" threw the mode away, so the
+    tutor was told it was studying while the learner watched the outline mode
+    highlighted above the transcript — and never switched, because it believed
+    it already had.
+    """
+    from deeptutor.capabilities.mastery.mode import enforced_mode
+
+    # The resolution the preparer performs, isolated: payload first, stored
+    # preference when the payload said nothing.
+    def resolve(payload_value, stored):
+        return enforced_mode(payload_value or stored)
+
+    assert resolve("outline", None) == "outline"
+    assert resolve(None, "outline") == "outline"
+    assert resolve("", "outline") == "outline"
+    # An explicit switch still wins over what was stored.
+    assert resolve("review", "outline") == "review"
+    # And a conversation that has never had one stays unrecorded.
+    assert resolve(None, None) is None

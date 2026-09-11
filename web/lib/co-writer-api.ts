@@ -1,6 +1,6 @@
 import { apiFetch, apiUrl } from "@/lib/api";
 
-const BASE = "/api/v1/co_writer";
+const BASE = "/api";
 
 export interface CoWriterDocumentSummary {
   id: string;
@@ -39,7 +39,7 @@ export async function listCoWriterDocuments(): Promise<
 }
 
 export async function createCoWriterDocument(payload?: {
-  title?: string;
+  title?: string | null;
   content?: string;
 }): Promise<CoWriterDocument> {
   const res = await apiFetch(apiUrl(`${BASE}/documents`), {
@@ -92,4 +92,37 @@ export async function deleteCoWriterDocument(docId: string): Promise<boolean> {
   );
   const data = await jsonOrThrow<{ deleted: boolean }>(res);
   return Boolean(data?.deleted);
+}
+
+export async function importCoWriterDocx(
+  file: File,
+): Promise<CoWriterDocument> {
+  const body = new FormData();
+  body.append("file", file);
+  const res = await apiFetch(apiUrl(`${BASE}/documents/import/docx`), {
+    method: "POST",
+    body,
+  });
+  return jsonOrThrow<CoWriterDocument>(res);
+}
+
+export async function exportCoWriterDocx(payload: {
+  title: string;
+  content: string;
+}): Promise<Blob> {
+  const res = await apiFetch(apiUrl(`${BASE}/documents/export/docx`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      title: payload.title ?? "",
+      content: payload.content ?? "",
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(
+      `Request failed (${res.status}): ${text || res.statusText}`,
+    );
+  }
+  return res.blob();
 }

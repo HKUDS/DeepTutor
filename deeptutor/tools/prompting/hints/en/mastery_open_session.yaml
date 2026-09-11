@@ -1,0 +1,6 @@
+short_description: "Hand the learner a card that reopens one existing study conversation, with the opening message already written."
+when_to_use: "When they want to continue something they were already doing on a topic. Needs a session_id from mastery_sessions."
+input_format: "{\"path_id\": \"...\", \"session_id\": \"...\", \"opening_message\": \"first message in their voice\", \"module\": \"optional lesson id / name / number\", \"reason\": \"one line on why now\"}"
+guideline: "Write the opening message as the learner would type it, in their language, and name the lesson in it when they asked for one — the tutor on the other side reads it before deciding what to teach. Then say in one sentence what they will find there. Do not describe the button, do not claim you are opening it, and do not start tutoring the topic in this chat."
+note: "Produces a card the learner clicks; nothing navigates on its own and no progress changes. Ids are validated first, so a card never points at a lesson or conversation that does not exist."
+phase: "synthesis"

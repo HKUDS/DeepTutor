@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -22,6 +23,55 @@ def _signature(model: str = "embed-a", dim: int = 1024) -> EmbeddingSignature:
         base_url="https://example.test/v1",
         api_version="",
     )
+
+
+def test_legacy_role_naive_signature_hash_is_stable() -> None:
+    fields = {
+        "api_version": "",
+        "base_url": "https://api.openai.com/v1/embeddings",
+        "binding": "openai",
+        "dimension": 1536,
+        "model": "text-embedding-3-small",
+    }
+    signature = EmbeddingSignature(
+        binding=fields["binding"],
+        model=fields["model"],
+        dimension=fields["dimension"],
+        base_url=fields["base_url"],
+        api_version="",
+    )
+    expected_hash = hashlib.sha256(
+        json.dumps(fields, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    ).hexdigest()[:16]
+
+    assert signature.hash() == expected_hash
+    assert signature.role_semantics == ""
+
+
+def test_jina_role_semantics_changes_signature() -> None:
+    from types import SimpleNamespace
+
+    from deeptutor.services.rag.embedding_signature import signature_from_config
+
+    config = SimpleNamespace(
+        binding="jina",
+        model="jina-embeddings-v3",
+        dim=1024,
+        base_url="https://api.jina.ai/v1/embeddings",
+        effective_url="https://api.jina.ai/v1/embeddings",
+        api_version="",
+    )
+    legacy_signature = EmbeddingSignature(
+        binding="jina",
+        model="jina-embeddings-v3",
+        dimension=1024,
+        base_url="https://api.jina.ai/v1/embeddings",
+        api_version="",
+    )
+    active_signature = signature_from_config(config)
+
+    assert active_signature.role_semantics == "jina-task"
+    assert active_signature.hash() != legacy_signature.hash()
 
 
 def test_resolve_storage_dir_for_write_allocates_flat_version_dirs(tmp_path: Path) -> None:

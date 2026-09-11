@@ -5,7 +5,7 @@ import {
   knowledgeBaseFilePath,
   knowledgeBaseFilePreviewTextPath,
   type KnowledgeBaseFile,
-} from "@/lib/knowledge-api";
+} from "@/features/knowledge/api/files";
 import type { KnowledgeBase } from "@/lib/knowledge-helpers";
 import type { TaskState } from "@/hooks/useKnowledgeProgress";
 import type { FilePreviewSource } from "@/components/chat/preview/previewerFor";
@@ -21,7 +21,7 @@ interface KbFilesTabProps {
 /**
  * Master-detail view for the "Files" tab: list of raw documents on the
  * left, inline preview pane on the right. Both the parent KB list (in
- * `/knowledge`) and this file list can be collapsed to icon-only strips
+ * `/knowledge-bases`) and this file list can be collapsed to icon-only strips
  * to reclaim horizontal space for the actual preview content.
  */
 export default function KbFilesTab({ kb, task }: KbFilesTabProps) {

@@ -22,7 +22,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from deeptutor.api.routers.auth import require_admin
-from deeptutor.core.i18n import t
+from deeptutor.app.container import get_application_container
 from deeptutor.multi_user.context import get_current_user
 from deeptutor.multi_user.partner_access import (
     assert_partner_manageable,
@@ -33,6 +33,8 @@ from deeptutor.multi_user.partner_access import (
 )
 from deeptutor.partners.config.paths import get_partner_media_dir
 from deeptutor.partners.helpers import safe_filename
+from deeptutor.runtime.coordination import BackgroundCommandKind
+from deeptutor.services.i18n import t
 from deeptutor.services.partners import (
     get_partner_manager,
     slugify_partner_id,
@@ -42,12 +44,16 @@ from deeptutor.services.partners.channel_onboarding import (
     ChannelOnboardingError,
     get_channel_onboarding_manager,
 )
+from deeptutor.services.partners.drafts import PartnerDraftStore
 from deeptutor.services.partners.manager import (
     LEGACY_GLOBAL_DELIVERY_KEYS,
     PartnerConfig,
     PartnerInstance,
     mask_channel_secrets,
     strip_legacy_global_delivery,
+)
+from deeptutor.services.partners.runtime_status import (
+    get_partner_runtime_status_repository,
 )
 from deeptutor.services.partners.workspace import (
     list_assets,
@@ -60,6 +66,7 @@ from deeptutor.services.partners.workspace import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+ws_router = APIRouter()
 
 
 # ── Access guards ──────────────────────────────────────────────
@@ -93,6 +100,8 @@ _MANAGEABLE = [Depends(manageable_partner)]
 # not async-safe under concurrent connections).
 _start_locks: dict[str, asyncio.Lock] = {}
 _start_locks_mutex = asyncio.Lock()
+_draft_confirm_locks: dict[tuple[str, str], asyncio.Lock] = {}
+_draft_confirm_locks_mutex = asyncio.Lock()
 
 
 async def _get_start_lock(partner_id: str) -> asyncio.Lock:
@@ -102,6 +111,63 @@ async def _get_start_lock(partner_id: str) -> asyncio.Lock:
             lock = asyncio.Lock()
             _start_locks[partner_id] = lock
         return lock
+
+
+async def _get_draft_confirm_lock(draft_id: str) -> asyncio.Lock:
+    key = (get_current_user().id, draft_id)
+    async with _draft_confirm_locks_mutex:
+        lock = _draft_confirm_locks.get(key)
+        if lock is None:
+            lock = asyncio.Lock()
+            _draft_confirm_locks[key] = lock
+        return lock
+
+
+async def _request_partner_control(
+    kind: BackgroundCommandKind,
+    partner_id: str,
+    **payload: Any,
+) -> dict[str, Any] | None:
+    """Send lifecycle work to the leader in multi-worker mode.
+
+    ``None`` means this process may execute the operation locally. Otherwise
+    the returned shared status was written by the leader after the command.
+    """
+
+    container = get_application_container()
+    if container.settings.backend_workers <= 1:
+        return None
+    if await container.coordinator.leader_id() == container.worker_id:
+        return None
+    command = await container.coordinator.submit_background_command(
+        kind,
+        {"partner_id": partner_id, **payload},
+    )
+    if command is None:
+        raise HTTPException(status_code=409, detail="Duplicate Partner lifecycle command")
+
+    deadline = asyncio.get_running_loop().time() + 20.0
+    repository = get_partner_runtime_status_repository()
+    while asyncio.get_running_loop().time() < deadline:
+        status = repository.get(partner_id)
+        if status and float(status.get("runtime_updated_at") or 0) >= command.created_at:
+            state = str(status.get("runtime_state") or "")
+            if kind == BackgroundCommandKind.PARTNER_START and status.get("running"):
+                return status
+            if kind == BackgroundCommandKind.PARTNER_STOP and not status.get("running"):
+                return status
+            if kind == BackgroundCommandKind.PARTNER_RELOAD and state in {
+                "running",
+                "reload_failed",
+            }:
+                if state == "reload_failed":
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Failed to reload channels: {status.get('last_reload_error')}",
+                    )
+                return status
+        await asyncio.sleep(0.05)
+    raise HTTPException(status_code=503, detail="Partner leader did not process the command")
 
 
 async def _ensure_running_partner(
@@ -171,6 +237,18 @@ class CreatePartnerRequest(BaseModel):
     # default); ``null`` is the deliberate opt-in to every configured MCP tool.
     mcp_tools: list[str] | None = []
     assets: AssetSpec | None = None
+    start: bool = True
+
+
+class ConfirmPartnerDraftRequest(BaseModel):
+    """Editable fields accepted by the explicit draft-confirmation step."""
+
+    name: str | None = Field(default=None, min_length=1)
+    description: str | None = None
+    soul: str | None = None
+    language: str | None = None
+    emoji: str | None = None
+    color: str | None = None
     start: bool = True
 
 
@@ -244,7 +322,13 @@ class ChannelOnboardingStartRequest(BaseModel):
 
 
 def _validate_channels_payload(channels: dict) -> None:
-    """Reject malformed channel configs at the API boundary (422)."""
+    """Reject malformed channel configs at the API boundary (422).
+
+    ``ChannelsConfig`` intentionally allows plugin-shaped extras, so it only
+    validates the top-level container. Every discovered channel must also be
+    checked with its own Pydantic config model; otherwise a bad field type is
+    saved successfully and the listener merely disappears during reload.
+    """
     from deeptutor.partners.config.schema import ChannelsConfig
 
     legacy_keys = sorted(k for k in channels if k in LEGACY_GLOBAL_DELIVERY_KEYS)
@@ -271,6 +355,41 @@ def _validate_channels_payload(channels: dict) -> None:
             status_code=422,
             detail=f"{t('api.invalid_channels_config')}: {exc}",
         ) from None
+
+    from deeptutor.api.routers._partners_channel_schema import resolve_config_model
+    from deeptutor.partners.channels.registry import discover_all
+
+    nested_errors: list[dict[str, Any]] = []
+    discovered = discover_all()
+    for name, section in channels.items():
+        channel_cls = discovered.get(name)
+        if channel_cls is None:
+            # Preserve configs for optional/external channels that are not
+            # installed in this process. Their runtime status explains that
+            # the implementation is unavailable.
+            continue
+        model = resolve_config_model(channel_cls)
+        if model is None:
+            continue
+        try:
+            model.model_validate(section)
+        except ValidationError as exc:
+            for error in exc.errors(include_url=False):
+                nested_errors.append(
+                    {
+                        **error,
+                        "loc": (name, *error.get("loc", ())),
+                    }
+                )
+
+    if nested_errors:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": t("api.invalid_channels_config"),
+                "errors": nested_errors,
+            },
+        )
 
     empty_allow_lists = sorted(
         name
@@ -598,6 +717,11 @@ async def create_partner(payload: CreatePartnerRequest):
     resolved against the creator's own permissions (see ``provision_assets``),
     so this hands nobody access they did not already have.
     """
+    return await _create_partner(payload)
+
+
+async def _create_partner(payload: CreatePartnerRequest) -> dict[str, Any]:
+    """Validated creation transaction shared by the wizard and chat drafts."""
     mgr = get_partner_manager()
     partner_id = slugify_partner_id(payload.partner_id or payload.name)
     if mgr.partner_exists(partner_id):
@@ -642,17 +766,91 @@ async def create_partner(payload: CreatePartnerRequest):
         )
 
     if payload.start:
-        try:
-            instance = await mgr.start_partner(partner_id, config)
-            result = instance.to_dict(mask_secrets=True)
-        except Exception:
-            logger.exception("Partner '%s' created but failed to start", partner_id)
+        remote = await _request_partner_control(
+            BackgroundCommandKind.PARTNER_START,
+            partner_id,
+            persist_auto_start=True,
+        )
+        if remote is not None:
             result = _stopped_partner_dict(partner_id, config)
-            result["start_error"] = "Partner created but failed to start"
+        else:
+            try:
+                instance = await mgr.start_partner(partner_id, config)
+                result = instance.to_dict(mask_secrets=True)
+            except Exception:
+                logger.exception("Partner '%s' created but failed to start", partner_id)
+                result = _stopped_partner_dict(partner_id, config)
+                result["start_error"] = "Partner created but failed to start"
     else:
         result = _stopped_partner_dict(partner_id, config)
 
     result["provisioning"] = provisioning
+    return result
+
+
+@router.get("/drafts/{draft_id}")
+async def get_partner_draft(draft_id: str):
+    """Reload one pending/created draft for the authenticated user."""
+    try:
+        draft = PartnerDraftStore().get(draft_id)
+    except ValueError:
+        draft = None
+    if draft is None:
+        raise HTTPException(status_code=404, detail="Partner draft not found")
+    return draft.to_dict()
+
+
+@router.post("/drafts/{draft_id}/confirm")
+async def confirm_partner_draft(
+    draft_id: str,
+    payload: ConfirmPartnerDraftRequest,
+):
+    """Promote a reviewable Chat draft into a real Partner exactly once."""
+    lock = await _get_draft_confirm_lock(draft_id)
+    async with lock:
+        return await _confirm_partner_draft(draft_id, payload)
+
+
+async def _confirm_partner_draft(
+    draft_id: str,
+    payload: ConfirmPartnerDraftRequest,
+) -> dict[str, Any]:
+    store = PartnerDraftStore()
+    try:
+        draft = store.get(draft_id)
+    except ValueError:
+        draft = None
+    if draft is None:
+        raise HTTPException(status_code=404, detail="Partner draft not found")
+
+    if draft.status == "created" and draft.created_partner_id:
+        cfg = get_partner_manager().load_config(draft.created_partner_id)
+        if cfg is not None:
+            result = _stopped_partner_dict(draft.created_partner_id, cfg)
+            instance = get_partner_manager().get_partner(draft.created_partner_id)
+            if instance is not None:
+                result = instance.to_dict(mask_secrets=True)
+            result["draft_id"] = draft.draft_id
+            result["already_created"] = True
+            return result
+
+    data = payload.model_dump(exclude_none=True)
+    create_payload = CreatePartnerRequest(
+        name=str(data.get("name", draft.name)),
+        description=str(data.get("description", draft.description)),
+        soul=SoulSpec(source="custom", content=str(data.get("soul", draft.soul))),
+        language=str(data.get("language", draft.language)),
+        emoji=str(data.get("emoji", draft.emoji)),
+        color=str(data.get("color", draft.color)),
+        enabled_tools=draft.enabled_tools,
+        builtin_tools=draft.builtin_tools,
+        mcp_tools=draft.mcp_tools,
+        start=bool(data.get("start", True)),
+    )
+    result = await _create_partner(create_payload)
+    store.mark_created(draft, str(result["partner_id"]))
+    result["draft_id"] = draft.draft_id
+    result["already_created"] = False
     return result
 
 
@@ -666,7 +864,7 @@ def _stopped_partner_dict(
         channels: object = strip_legacy_global_delivery(cfg.channels)
     else:
         channels = mask_channel_secrets(strip_legacy_global_delivery(cfg.channels))
-    return {
+    result = {
         "partner_id": partner_id,
         "name": cfg.name,
         "description": cfg.description,
@@ -686,6 +884,27 @@ def _stopped_partner_dict(
         "started_at": None,
         "last_reload_error": None,
     }
+    from deeptutor.services.partners.runtime_status import (
+        get_partner_runtime_status_repository,
+    )
+
+    status = get_partner_runtime_status_repository().get(partner_id)
+    if status:
+        result.update(
+            {
+                key: status[key]
+                for key in (
+                    "running",
+                    "started_at",
+                    "last_reload_error",
+                    "runtime_owner_id",
+                    "runtime_state",
+                    "runtime_updated_at",
+                )
+                if key in status
+            }
+        )
+    return result
 
 
 @router.get("/{partner_id}", dependencies=_USABLE)
@@ -759,7 +978,7 @@ async def update_partner(partner_id: str, payload: UpdatePartnerRequest):
 
     mgr = get_partner_manager()
     instance = mgr.get_partner(partner_id)
-    if instance:
+    if instance and instance.running:
         _apply_update(instance.config, payload)
         mgr.save_config(partner_id, instance.config)
         if payload.channels is not None:
@@ -783,11 +1002,27 @@ async def update_partner(partner_id: str, payload: UpdatePartnerRequest):
         raise HTTPException(status_code=404, detail=t("api.partner_not_found"))
     _apply_update(cfg, payload)
     mgr.save_config(partner_id, cfg)
+    status = get_partner_runtime_status_repository().get(partner_id) or {}
+    if status.get("running"):
+        await _request_partner_control(
+            BackgroundCommandKind.PARTNER_RELOAD,
+            partner_id,
+        )
     return _stopped_partner_dict(partner_id, cfg)
 
 
 @router.post("/{partner_id}/start", dependencies=_MANAGEABLE)
 async def start_partner(partner_id: str):
+    remote = await _request_partner_control(
+        BackgroundCommandKind.PARTNER_START,
+        partner_id,
+        persist_auto_start=True,
+    )
+    if remote is not None:
+        cfg = get_partner_manager().load_config(partner_id)
+        if cfg is None:
+            raise HTTPException(status_code=404, detail=t("api.partner_not_found"))
+        return _stopped_partner_dict(partner_id, cfg)
     instance = await _ensure_running_partner(partner_id, allow_stopped=True)
     # An explicit start is a persisted "run on boot" intent — so the partner
     # comes back in this state after a DeepTutor restart (a manual /stop clears
@@ -798,6 +1033,13 @@ async def start_partner(partner_id: str):
 
 @router.post("/{partner_id}/stop", dependencies=_MANAGEABLE)
 async def stop_partner(partner_id: str):
+    remote = await _request_partner_control(
+        BackgroundCommandKind.PARTNER_STOP,
+        partner_id,
+        preserve_auto_start=False,
+    )
+    if remote is not None:
+        return {"partner_id": partner_id, "stopped": True}
     stopped = await get_partner_manager().stop_partner(partner_id)
     if not stopped:
         raise HTTPException(status_code=404, detail=t("api.partner_not_found_or_not_running"))
@@ -806,6 +1048,11 @@ async def stop_partner(partner_id: str):
 
 @router.delete("/{partner_id}", dependencies=_MANAGEABLE)
 async def destroy_partner(partner_id: str):
+    await _request_partner_control(
+        BackgroundCommandKind.PARTNER_STOP,
+        partner_id,
+        preserve_auto_start=False,
+    )
     destroyed = await get_partner_manager().destroy_partner(partner_id)
     if not destroyed:
         raise HTTPException(status_code=404, detail=t("api.partner_not_found"))
@@ -816,6 +1063,13 @@ async def destroy_partner(partner_id: str):
 async def reload_partner_channels(partner_id: str):
     mgr = get_partner_manager()
     instance = mgr.get_partner(partner_id)
+    status = get_partner_runtime_status_repository().get(partner_id) or {}
+    if (not instance or not instance.running) and status.get("running"):
+        await _request_partner_control(
+            BackgroundCommandKind.PARTNER_RELOAD,
+            partner_id,
+        )
+        return {"partner_id": partner_id, "reloaded": True}
     if not instance or not instance.running:
         raise HTTPException(status_code=404, detail=t("api.partner_not_running"))
     try:
@@ -826,6 +1080,46 @@ async def reload_partner_channels(partner_id: str):
             detail=f"Failed to reload channels: {type(exc).__name__}",
         ) from None
     return {"partner_id": partner_id, "reloaded": True}
+
+
+@router.get("/{partner_id}/channels/status", dependencies=_MANAGEABLE)
+async def get_partner_channel_status(partner_id: str):
+    """User-facing listener/setup state, including QR output when available."""
+    mgr = get_partner_manager()
+    instance = mgr.get_partner(partner_id)
+    config = instance.config if instance else mgr.load_config(partner_id)
+    if config is None:
+        raise HTTPException(status_code=404, detail=t("api.partner_not_found"))
+    source = config.channels if isinstance(config.channels, dict) else {}
+    channels = {
+        name: {
+            "enabled": bool(value.get("enabled")) if isinstance(value, dict) else False,
+            "running": False,
+            "setup": {},
+        }
+        for name, value in source.items()
+    }
+    if instance and instance.channel_manager:
+        # Merge instead of replacing so an enabled channel that could not be
+        # constructed (missing dependency, invalid allowlist, plugin absent)
+        # remains visible alongside live listeners.
+        channels.update(instance.channel_manager.get_status())
+
+    # QR rendering is intentionally server-side: it keeps channel bridges and
+    # the web bundle dependency-free while ensuring their interactive output is
+    # visible on the page rather than only in a terminal.
+    from deeptutor.services.partners.channel_onboarding import _qr_data_url
+
+    for state in channels.values():
+        setup = state.get("setup") if isinstance(state, dict) else None
+        payload = setup.get("qr_payload") if isinstance(setup, dict) else ""
+        if payload:
+            setup["qr_data_url"] = _qr_data_url(str(payload))
+    return {
+        "partner_id": partner_id,
+        "running": bool(instance and instance.running),
+        "channels": channels,
+    }
 
 
 def _onboarding_manager_and_partner(partner_id: str):
@@ -991,7 +1285,14 @@ async def get_partner_history(
     mgr = get_partner_manager()
     if session_id and not session_key:
         session_key = mgr.web_session_key(partner_id, session_id=session_id)
-    return mgr.get_history(partner_id, session_key=session_key, limit=limit)
+    return mgr.get_history(
+        partner_id,
+        session_key=session_key,
+        limit=limit,
+        # Owners/admins can observe unlinked channel traffic in the Partner's
+        # shared store; assigned users still see only their own linked account.
+        include_shared=not session_key and can_manage_partner(partner_id),
+    )
 
 
 @router.get("/{partner_id}/sessions", dependencies=_USABLE)
@@ -1004,7 +1305,8 @@ async def get_partner_sessions(partner_id: str):
 async def archive_partner_session(partner_id: str, payload: SessionKeyBody):
     """Soft-archive a session (web /new) — it stays resumable, file untouched."""
     mgr = get_partner_manager()
-    mgr.archive_session(partner_id, payload.session_key)
+    if not mgr.archive_session(partner_id, payload.session_key):
+        raise HTTPException(status_code=404, detail="Session not found")
     return {"partner_id": partner_id, "archived": True, "session_key": payload.session_key}
 
 
@@ -1139,7 +1441,10 @@ async def partner_chat_http(partner_id: str, payload: ChatMessageRequest) -> dic
     content = payload.content.strip()
     if not content and not payload.attachments:
         raise HTTPException(status_code=400, detail=t("api.content_required"))
-    await _ensure_running_partner(partner_id)
+    # Web chat is a first-class entry point. Start the partner runtime on
+    # demand even when external channel listeners are not configured for boot;
+    # ``auto_start`` controls restart persistence, not chat access.
+    await _ensure_running_partner(partner_id, allow_stopped=True)
     media_paths = _materialize_partner_attachments(partner_id, payload.attachments)
     if not content and media_paths:
         content = _default_attachment_prompt(payload.attachments)
@@ -1229,7 +1534,7 @@ async def partner_chat_http_stream(partner_id: str, payload: ChatMessageRequest)
     """Stream one HTTP message to a partner as server-sent events."""
     if not payload.content.strip() and not payload.attachments:
         raise HTTPException(status_code=400, detail=t("api.content_required"))
-    await _ensure_running_partner(partner_id)
+    await _ensure_running_partner(partner_id, allow_stopped=True)
     return StreamingResponse(
         _partner_chat_stream(partner_id, payload),
         media_type="text/event-stream",
@@ -1237,7 +1542,7 @@ async def partner_chat_http_stream(partner_id: str, payload: ChatMessageRequest)
     )
 
 
-@router.websocket("/{partner_id}/ws")
+@ws_router.websocket("/{partner_id}")
 async def partner_chat_ws(ws: WebSocket, partner_id: str):
     """Web chat socket.
 
@@ -1249,10 +1554,12 @@ async def partner_chat_ws(ws: WebSocket, partner_id: str):
       StreamEvent (content/thinking/tool_call/progress/sources/result),
       letting the UI render the same live trace as product chat;
     * ``{"type": "content", "content": str}`` — the final reply;
+    * ``{"type": "ready"}`` — the runtime is ready to accept a web turn;
     * ``{"type": "done"}`` / ``{"type": "error"}`` / ``{"type": "proactive"}``.
     """
     from deeptutor.api.routers.auth import ws_auth_failed, ws_require_auth
-    from deeptutor.multi_user.context import reset_current_user
+    from deeptutor.multi_user.context import get_current_user_or_none, reset_current_user
+    from deeptutor.services.partners.interaction import personal_actor_id
 
     user_token = await ws_require_auth(ws)
     if user_token is ws_auth_failed:
@@ -1282,7 +1589,7 @@ async def partner_chat_ws(ws: WebSocket, partner_id: str):
 
     await ws.accept()
     try:
-        instance = await _ensure_running_partner(partner_id)
+        instance = await _ensure_running_partner(partner_id, allow_stopped=True)
     except HTTPException as exc:
         message = str(exc.detail)
         await _safe_send({"type": "error", "content": message})
@@ -1290,13 +1597,24 @@ async def partner_chat_ws(ws: WebSocket, partner_id: str):
         await ws.close(code=code, reason=message[:120])
         return
 
+    if not await _safe_send({"type": "ready"}):
+        return
+
     logger.info("WebSocket connected for partner '%s'", partner_id)
+    activity_actor_id = personal_actor_id(get_current_user_or_none())
+    activity_actor_ids = (
+        (activity_actor_id, None)
+        if activity_actor_id is not None and can_manage_partner(partner_id)
+        else (activity_actor_id,)
+    )
 
     # Web turns run on the partner instance (see LiveTurn), NOT tied to this
     # socket — so a refresh reattaches and replays instead of killing the turn.
     # The socket just drains a subscriber queue; the receive loop stays free to
     # process stop / attach frames concurrently.
     drain: dict[str, asyncio.Task | None] = {"task": None}
+    activity: dict[str, asyncio.Queue | None] = {"queue": None}
+    activity_attached = asyncio.Event()
 
     async def _drain(queue: asyncio.Queue) -> None:
         while True:
@@ -1341,6 +1659,13 @@ async def partner_chat_ws(ws: WebSocket, partner_id: str):
                 mgr.stop_web_turn(partner_id, _resolve_key(data))
                 continue
             if action == "attach":
+                # The same attachment that follows the history request also
+                # starts the cross-channel activity feed. The feed replays a
+                # bounded recent window, and persisted activity ids let the
+                # client remove any overlap with the history snapshot.
+                if activity["queue"] is None:
+                    activity["queue"] = instance.activity_feed.subscribe_many(activity_actor_ids)
+                    activity_attached.set()
                 # Reconnect (a page refresh) — replay an in-flight turn so the
                 # streaming answer the user was watching survives the reload.
                 turn = mgr.subscribe_web_turn(partner_id, _resolve_key(data))
@@ -1382,9 +1707,13 @@ async def partner_chat_ws(ws: WebSocket, partner_id: str):
                 continue
             _start_drain(turn.subscribe())
 
-    async def _handle_notifications():
+    async def _handle_channel_activity():
+        await activity_attached.wait()
         while not disconnected.is_set():
-            get_task = asyncio.create_task(instance.notify_queue.get())
+            queue = activity["queue"]
+            if queue is None:
+                return
+            get_task = asyncio.create_task(queue.get())
             wait_task = asyncio.create_task(disconnected.wait())
             done, pending = await asyncio.wait(
                 {get_task, wait_task},
@@ -1394,15 +1723,14 @@ async def partner_chat_ws(ws: WebSocket, partner_id: str):
                 t.cancel()
             if get_task not in done:
                 break
-            content = get_task.result()
-            if not await _safe_send({"type": "proactive", "content": content}):
+            if not await _safe_send(get_task.result()):
                 break
 
     user_task = asyncio.create_task(_handle_user_messages())
-    notify_task = asyncio.create_task(_handle_notifications())
+    activity_task = asyncio.create_task(_handle_channel_activity())
     try:
         done, pending = await asyncio.wait(
-            [user_task, notify_task],
+            [user_task, activity_task],
             return_when=asyncio.FIRST_COMPLETED,
         )
         disconnected.set()
@@ -1418,13 +1746,16 @@ async def partner_chat_ws(ws: WebSocket, partner_id: str):
     except Exception:
         disconnected.set()
         user_task.cancel()
-        notify_task.cancel()
+        activity_task.cancel()
     finally:
         # Detach from the stream only — the turn keeps running on the instance
         # so a reconnecting client can reattach and replay it.
         d = drain["task"]
         if d is not None and not d.done():
             d.cancel()
+        activity_queue = activity["queue"]
+        if activity_queue is not None:
+            instance.activity_feed.unsubscribe_many(activity_actor_ids, activity_queue)
         if user_token is not None:
             try:
                 reset_current_user(user_token)

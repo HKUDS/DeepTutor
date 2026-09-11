@@ -1,5 +1,6 @@
 import { apiFetch, apiUrl } from "@/lib/api";
 import { invalidateClientCache, withClientCache } from "@/lib/client-cache";
+import { asJsonOrThrow as asJson } from "@/lib/api";
 
 const SKILLS_CACHE_PREFIX = "skills:";
 const SKILL_TAGS_CACHE_KEY = `${SKILLS_CACHE_PREFIX}tags`;
@@ -51,27 +52,13 @@ function normalizeTags(raw: unknown): string[] {
   return out;
 }
 
-async function asJson(response: Response) {
-  if (!response.ok) {
-    let detail = `${response.status} ${response.statusText}`;
-    try {
-      const body = await response.json();
-      if (body?.detail) detail = String(body.detail);
-    } catch {
-      /* ignore */
-    }
-    throw new Error(detail);
-  }
-  return response.json();
-}
-
 export async function listSkills(options?: {
   force?: boolean;
 }): Promise<SkillInfo[]> {
   return withClientCache<SkillInfo[]>(
     `${SKILLS_CACHE_PREFIX}list`,
     async () => {
-      const response = await apiFetch(apiUrl("/api/v1/skills/list"), {
+      const response = await apiFetch(apiUrl("/api/skills/list"), {
         cache: "no-store",
       });
       const data = await asJson(response);
@@ -98,7 +85,7 @@ export async function listSkills(options?: {
 
 export async function getSkill(name: string): Promise<SkillDetail> {
   const response = await apiFetch(
-    apiUrl(`/api/v1/skills/${encodeURIComponent(name)}`),
+    apiUrl(`/api/skills/${encodeURIComponent(name)}`),
     {
       cache: "no-store",
     },
@@ -130,7 +117,7 @@ export async function installSkillFromHub(
   ref: string,
   options?: { name?: string; force?: boolean; allowUnverified?: boolean },
 ): Promise<InstalledSkill> {
-  const response = await apiFetch(apiUrl("/api/v1/skills/install"), {
+  const response = await apiFetch(apiUrl("/api/skills/install"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -207,7 +194,7 @@ export async function fetchHubCatalog(options?: {
   if (options?.limit) params.set("limit", String(options.limit));
   const qs = params.toString();
   const response = await apiFetch(
-    apiUrl(`/api/v1/skills/hub/catalog${qs ? `?${qs}` : ""}`),
+    apiUrl(`/api/skills/hub/catalog${qs ? `?${qs}` : ""}`),
     { cache: "no-store" },
   );
   const data = await asJson(response);
@@ -229,7 +216,7 @@ export async function fetchHubSkillDetail(
   const params = new URLSearchParams({ slug });
   if (options?.hub) params.set("hub", options.hub);
   const response = await apiFetch(
-    apiUrl(`/api/v1/skills/hub/detail?${params.toString()}`),
+    apiUrl(`/api/skills/hub/detail?${params.toString()}`),
     { cache: "no-store" },
   );
   const data = await asJson(response);
@@ -244,7 +231,7 @@ export async function fetchHubSkillDetail(
 export async function createSkill(
   payload: CreateSkillPayload,
 ): Promise<SkillInfo> {
-  const response = await apiFetch(apiUrl("/api/v1/skills/create"), {
+  const response = await apiFetch(apiUrl("/api/skills/create"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -268,7 +255,7 @@ export async function updateSkill(
   payload: UpdateSkillPayload,
 ): Promise<SkillInfo> {
   const response = await apiFetch(
-    apiUrl(`/api/v1/skills/${encodeURIComponent(name)}`),
+    apiUrl(`/api/skills/${encodeURIComponent(name)}`),
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -286,7 +273,7 @@ export async function updateSkill(
 
 export async function deleteSkill(name: string): Promise<void> {
   const response = await apiFetch(
-    apiUrl(`/api/v1/skills/${encodeURIComponent(name)}`),
+    apiUrl(`/api/skills/${encodeURIComponent(name)}`),
     {
       method: "DELETE",
     },
@@ -301,7 +288,7 @@ export async function listSkillTags(options?: {
   return withClientCache<string[]>(
     SKILL_TAGS_CACHE_KEY,
     async () => {
-      const response = await apiFetch(apiUrl("/api/v1/skills/tags/list"), {
+      const response = await apiFetch(apiUrl("/api/skills/tags/list"), {
         cache: "no-store",
       });
       const data = await asJson(response);
@@ -312,7 +299,7 @@ export async function listSkillTags(options?: {
 }
 
 export async function createSkillTag(name: string): Promise<string> {
-  const response = await apiFetch(apiUrl("/api/v1/skills/tags/create"), {
+  const response = await apiFetch(apiUrl("/api/skills/tags/create"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name }),
@@ -327,7 +314,7 @@ export async function renameSkillTag(
   newName: string,
 ): Promise<string> {
   const response = await apiFetch(
-    apiUrl(`/api/v1/skills/tags/${encodeURIComponent(oldName)}`),
+    apiUrl(`/api/skills/tags/${encodeURIComponent(oldName)}`),
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -341,7 +328,7 @@ export async function renameSkillTag(
 
 export async function deleteSkillTag(name: string): Promise<void> {
   const response = await apiFetch(
-    apiUrl(`/api/v1/skills/tags/${encodeURIComponent(name)}`),
+    apiUrl(`/api/skills/tags/${encodeURIComponent(name)}`),
     {
       method: "DELETE",
     },

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   Bot,
@@ -39,6 +39,7 @@ import {
   readImportMeta,
 } from "@/lib/chat-import/attribution";
 import { normalizeMessageContent, truncateText } from "@/lib/message-content";
+import { displaySessionTitle } from "@/lib/session-title";
 
 interface MyAgentsPickerProps {
   open: boolean;
@@ -122,6 +123,13 @@ export default function MyAgentsPicker({
   onApply,
 }: MyAgentsPickerProps) {
   const { t, i18n } = useTranslation();
+  // Backend writes the English sentinel "New conversation" until the LLM title
+  // lands; mirror SessionList with a localized "New chat" label.
+  const placeholderLabel = t("New chat");
+  const formatRowTitle = useCallback(
+    (title: string) => displaySessionTitle(title, placeholderLabel),
+    [placeholderLabel],
+  );
   const [sessions, setSessions] = useState<
     Awaited<ReturnType<typeof listImportedSessions>>
   >([]);
@@ -315,7 +323,7 @@ export default function MyAgentsPicker({
     for (const row of rows) {
       if (activeAgent !== ALL && row.ownerKey !== activeAgent) continue;
       if (keyword) {
-        const title = row.title.toLowerCase();
+        const title = formatRowTitle(row.title).toLowerCase();
         const last = normalizeMessageContent(row.lastMessage).toLowerCase();
         if (!title.includes(keyword) && !last.includes(keyword)) continue;
       }
@@ -333,14 +341,13 @@ export default function MyAgentsPicker({
       map.set(row.groupKey, group);
     }
     return Array.from(map.values()).sort((a, b) => b.latest - a.latest);
-  }, [rows, activeAgent, query]);
+  }, [rows, activeAgent, query, formatRowTitle]);
 
   const titleById = useMemo(() => {
     const map = new Map<string, string>();
-    for (const row of rows)
-      map.set(row.id, row.title || t("Untitled conversation"));
+    for (const row of rows) map.set(row.id, formatRowTitle(row.title));
     return map;
-  }, [rows, t]);
+  }, [rows, formatRowTitle]);
 
   const toggleSession = (id: string) =>
     setSelectedIds((prev) =>
@@ -401,7 +408,7 @@ export default function MyAgentsPicker({
   const handleApply = () => {
     const selected = selectedIds.map((id) => ({
       sessionId: id,
-      title: titleById.get(id) || t("Untitled conversation"),
+      title: titleById.get(id) || placeholderLabel,
     }));
     onApply(selected);
     onClose();
@@ -570,7 +577,7 @@ export default function MyAgentsPicker({
                                   </div>
                                   <div className="min-w-0 flex-1">
                                     <span className="block truncate text-[14px] font-medium text-[var(--foreground)]">
-                                      {row.title || t("Untitled conversation")}
+                                      {formatRowTitle(row.title)}
                                     </span>
                                     {row.lastMessage ? (
                                       <p className="mt-1 line-clamp-2 text-[12px] leading-5 text-[var(--muted-foreground)]">
@@ -676,6 +683,7 @@ function PreviewPane({
   onToggleSelect: () => void;
 }) {
   const { t } = useTranslation();
+  const placeholderLabel = t("New chat");
   const { row, messages, loading } = preview;
   const visible = (messages ?? []).filter(
     (m) => (m.content || "").trim() && m.role !== "system",
@@ -693,7 +701,7 @@ function PreviewPane({
         </button>
         <div className="min-w-0 flex-1">
           <div className="truncate text-[13px] font-semibold text-[var(--foreground)]">
-            {row.title || t("Untitled conversation")}
+            {displaySessionTitle(row.title, placeholderLabel)}
           </div>
           <div className="text-[11px] text-[var(--muted-foreground)]">
             {row.messageCount || visible.length} {t("messages")}

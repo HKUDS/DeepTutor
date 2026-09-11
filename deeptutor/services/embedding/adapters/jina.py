@@ -14,6 +14,11 @@ logger = logging.getLogger(__name__)
 
 
 class JinaEmbeddingAdapter(BaseEmbeddingAdapter):
+    # Jina ignores `input_type` unless explicitly opted in. Enabling it changes
+    # vectors for both documents and queries, so the embedding signature must
+    # distinguish pre-role Jina indexes.
+    SUPPORTS_INPUT_TYPE = True
+
     MODELS_INFO = {
         "jina-embeddings-v3": {
             "default": 1024,

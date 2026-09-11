@@ -7,16 +7,16 @@ import time
 from typing import Any
 
 from deeptutor.agents._shared.capability_result import emit_capability_result
-from deeptutor.core.agentic.usage import UsageTracker
-from deeptutor.core.capability_protocol import BaseCapability, CapabilityManifest
+from deeptutor.core.capability_protocol import CapabilityManifest, TurnCapability
 from deeptutor.core.context import UnifiedContext
-from deeptutor.core.stream_bus import StreamBus
 from deeptutor.core.trace import build_trace_metadata, merge_trace_metadata, new_call_id
 from deeptutor.i18n import StatusI18n
+from deeptutor.runtime.agentic.usage import UsageTracker
 from deeptutor.runtime.request_contracts import get_capability_request_schema
+from deeptutor.runtime.stream_bus import StreamBus
 
 
-class MathAnimatorCapability(BaseCapability):
+class MathAnimatorCapability(TurnCapability):
     manifest = CapabilityManifest(
         name="math_animator",
         description="Generate math animations or storyboard images with Manim.",
@@ -55,12 +55,16 @@ class MathAnimatorCapability(BaseCapability):
         request_config = validate_math_animator_request_config(context.config_overrides)
         usage = UsageTracker(model=getattr(llm_config, "model", None))
         i18n = StatusI18n(self.name, context.language, module="math_animator")
+        workspace = context.runtime.workspace
         pipeline = MathAnimatorPipeline(
             api_key=llm_config.api_key,
             base_url=llm_config.base_url,
             api_version=llm_config.api_version,
             language=context.language,
             trace_callback=self._build_trace_bridge(stream, i18n=i18n),
+            workspace_output_dir=workspace.output_dir if workspace else None,
+            workspace_root=workspace.root if workspace else None,
+            workspace_id=workspace.workspace_id if workspace else "",
         )
 
         timings: dict[str, float] = {}
@@ -198,6 +202,13 @@ class MathAnimatorCapability(BaseCapability):
             )
         timings["render_output"] = 0.0
         visual_review = getattr(render_result, "visual_review", None)
+        workspace_items = list(getattr(render_result, "workspace_items", []) or [])
+        if workspace_items:
+            await stream.sources(
+                [{"type": "workspace_item", **item} for item in workspace_items],
+                source=self.name,
+                stage="render_output",
+            )
 
         await emit_capability_result(
             stream,
@@ -210,6 +221,7 @@ class MathAnimatorCapability(BaseCapability):
                 },
                 "output_mode": request_config.output_mode,
                 "artifacts": [artifact.model_dump() for artifact in render_result.artifacts],
+                "workspace_items": workspace_items,
                 "timings": timings,
                 "render": {
                     "quality": request_config.quality,

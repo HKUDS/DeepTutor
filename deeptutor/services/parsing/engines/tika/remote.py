@@ -1,8 +1,8 @@
 """Apache Tika REST API backend.
 
-Sends a local file to a Tika server via ``PUT /tika`` (``Accept: text/plain``)
-and writes the extracted text into the working directory as ``<stem>.md``, so
-the downstream ``ParseService`` is backend-agnostic.
+Sends a local file to a Tika 4 server via ``PUT /tika``. Tika 4's bare endpoint
+returns Markdown by default (and no longer selects handlers via ``Accept``), so
+the response is written directly to ``<stem>.md`` for the canonical IR.
 
 Runs synchronously inside the worker thread that the parsing service invokes, so
 a blocking ``httpx.Client`` is the simplest correct choice (no nested event
@@ -20,6 +20,7 @@ import httpx
 
 from ...types import ParserError
 from .config import TikaConfig
+from .formats import MIN_TIKA_VERSION, tika_version_is_current
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +80,12 @@ def verify_remote(config: TikaConfig, timeout: float = _HEALTH_TIMEOUT_SECONDS) 
             version = _get_text(client, base_url + _VERSION_ENDPOINT)
     except _ConnectivityError as exc:
         return False, str(exc)
+    if not tika_version_is_current(version):
+        return (
+            False,
+            f"{version}. DeepTutor recommends Apache Tika >= {MIN_TIKA_VERSION}; "
+            "update the remote server to enable the current parser and format set.",
+        )
     return True, version
 
 
@@ -88,7 +95,6 @@ class _ConnectivityError(Exception):
 
 def _convert_file(source_path: Path, base_url: str) -> str:
     headers = {
-        "Accept": "text/plain",
         "Content-Type": "application/octet-stream",
         "Content-Disposition": f"attachment; filename*=UTF-8''{quote(source_path.name, safe='')}",
     }

@@ -311,20 +311,23 @@ def test_a_file_the_app_wrote_is_surfaced_as_a_link(
     monkeypatch.setattr("deeptutor.services.cli_apps.provider.run_app", _fake_run)
     # Real artifact rows, built by the same helper exec uses — only the path
     # policy is bypassed, because that is tested where it lives.
-    from deeptutor.services.sandbox.artifacts import SandboxArtifact
+    from deeptutor.services.sandbox.artifacts import SandboxArtifact, SandboxArtifactBatch
 
     monkeypatch.setattr(
-        "deeptutor.services.sandbox.artifacts.collect_public_artifacts",
-        lambda _workdir: [
-            SandboxArtifact(
-                filename="out.png",
-                path=str(workdir / "out.png"),
-                relative_path="out.png",
-                url="/api/outputs/out.png",
-                size_bytes=8,
-                mime_type="image/png",
-            )
-        ],
+        "deeptutor.services.sandbox.artifacts.collect_public_artifact_batch",
+        lambda _workdir, **_kwargs: SandboxArtifactBatch(
+            artifacts=(
+                SandboxArtifact(
+                    filename="out.png",
+                    path=str(workdir / "out.png"),
+                    relative_path="out.png",
+                    url="/files/outputs/out.png",
+                    size_bytes=8,
+                    mime_type="image/png",
+                ),
+            ),
+            total_count=1,
+        ),
     )
     result = asyncio.run(tool.execute(args=["render"], _sandbox_workdir=str(workdir)))
 
@@ -518,8 +521,8 @@ def test_an_abi_mismatch_refuses_with_an_actionable_message(monkeypatch) -> None
 
 
 def test_an_app_whose_files_are_gone_reports_that_rather_than_a_spawn_error() -> None:
-    from deeptutor.core.i18n import t
     from deeptutor.services.cli_apps.runner import run_app
+    from deeptutor.services.i18n import t
 
     app = _install()
     result = asyncio.run(run_app(app, ["--help"], user_id="u_ada"))

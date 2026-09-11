@@ -12,14 +12,21 @@ logger = logging.getLogger(__name__)
 
 def signature_from_config(config: Any) -> EmbeddingSignature:
     """Build a stable RAG index signature from an embedding config object."""
+    binding = (getattr(config, "binding", "") or "").strip().lower()
+    # Role support is a vector-space change. Jina previously sent no task, so
+    # its role-aware indexes need a different signature. Providers that were
+    # already role-aware before signatures gained this field keep the blank
+    # value to avoid invalidating compatible indexes.
+    role_semantics = "jina-task" if binding == "jina" else ""
     return EmbeddingSignature(
-        binding=(getattr(config, "binding", "") or "").strip().lower(),
+        binding=binding,
         model=(getattr(config, "model", "") or "").strip(),
         dimension=int(getattr(config, "dim", 0) or 0),
         base_url=(
             getattr(config, "effective_url", None) or getattr(config, "base_url", None) or ""
         ).strip(),
         api_version=(getattr(config, "api_version", "") or "").strip(),
+        role_semantics=role_semantics,
     )
 
 

@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { StreamEvent } from "@/lib/unified-ws";
-import { getTraceMeta } from "./TracePanels";
+import type { StreamEvent } from "@/features/chat/model/protocol";
+import { getTraceMeta } from "@/features/chat/trace";
 
 /**
  * A connected subagent's native run, rendered close to how its own CLI shows it:

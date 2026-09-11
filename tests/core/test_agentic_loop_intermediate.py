@@ -16,9 +16,9 @@ from typing import Any
 
 import pytest
 
-from deeptutor.core.agentic.loop import LabelProtocol, run_agentic_loop
-from deeptutor.core.agentic.tool_dispatch import DispatchOutcome
-from deeptutor.core.stream_bus import StreamBus
+from deeptutor.runtime.agentic.loop import LabelProtocol, run_agentic_loop
+from deeptutor.runtime.agentic.tool_dispatch import DispatchOutcome
+from deeptutor.runtime.stream_bus import StreamBus
 
 # --------------------------- scripted LLM client ---------------------------
 

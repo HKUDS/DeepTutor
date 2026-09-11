@@ -11,9 +11,10 @@ from deeptutor.book.storage import BookStorage
 
 @pytest.fixture
 def permission_client(tmp_path, monkeypatch):
+    from deeptutor.api.routers import multi_user as router
     from deeptutor.book import engine as engine_module
     from deeptutor.book import storage as storage_module
-    from deeptutor.multi_user import audit, grants, identity, paths, router
+    from deeptutor.multi_user import audit, grants, identity, paths
     from deeptutor.multi_user.paths import get_admin_path_service
 
     admin_root = (tmp_path / "data").resolve()
@@ -43,19 +44,19 @@ def permission_client(tmp_path, monkeypatch):
     )
 
     app = FastAPI()
-    app.include_router(router.router, prefix="/api/v1/multi-user")
+    app.include_router(router.router, prefix="/api/multi-user")
     app.dependency_overrides[require_admin] = lambda: object()
     return TestClient(app), alice
 
 
 def test_admin_can_list_books_and_set_permission(permission_client) -> None:
     client, alice = permission_client
-    catalog = client.get("/api/v1/multi-user/admin/books")
+    catalog = client.get("/api/multi-user/admin/books")
     assert catalog.status_code == 200
     assert catalog.json()["books"][0]["book_id"] == "bk_shared"
 
     response = client.put(
-        f"/api/v1/multi-user/users/{alice['id']}/book-permission",
+        f"/api/multi-user/users/{alice['id']}/book-permission",
         json={
             "create": False,
             "default": "none",
@@ -73,13 +74,13 @@ def test_admin_can_list_books_and_set_permission(permission_client) -> None:
 def test_permission_api_rejects_unknown_book_and_delete_level(permission_client) -> None:
     client, alice = permission_client
     unknown = client.put(
-        f"/api/v1/multi-user/users/{alice['id']}/book-permission",
+        f"/api/multi-user/users/{alice['id']}/book-permission",
         json={"books": {"bk_missing": "read"}},
     )
     assert unknown.status_code == 400
 
     delete = client.put(
-        f"/api/v1/multi-user/users/{alice['id']}/book-permission",
+        f"/api/multi-user/users/{alice['id']}/book-permission",
         json={"books": {"bk_shared": "delete"}},
     )
     assert delete.status_code == 422
@@ -88,7 +89,7 @@ def test_permission_api_rejects_unknown_book_and_delete_level(permission_client)
 def test_permission_api_rejects_default_edit(permission_client) -> None:
     client, alice = permission_client
     response = client.put(
-        f"/api/v1/multi-user/users/{alice['id']}/book-permission",
+        f"/api/multi-user/users/{alice['id']}/book-permission",
         json={"default": "edit"},
     )
     assert response.status_code == 422

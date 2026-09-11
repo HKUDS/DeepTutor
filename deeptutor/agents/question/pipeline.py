@@ -20,7 +20,7 @@ Phase shape:
 
 The orchestrator owns control flow (per-question iteration, repair pass,
 incremental emission) and prompt assembly; everything else is delegated
-to :mod:`deeptutor.core.agentic` and the shared tool-composition policy.
+to :mod:`deeptutor.runtime.agentic` and the shared tool-composition policy.
 """
 
 from __future__ import annotations
@@ -30,6 +30,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 import json
 import logging
+from pathlib import Path
 import re
 from typing import Any
 
@@ -42,7 +43,19 @@ from deeptutor.agents._shared.tool_composition import (
     user_has_notebooks,
     user_has_question_bank,
 )
-from deeptutor.core.agentic import (
+from deeptutor.agents._shared.tool_runtime import (
+    bind_workspace_tool_runtime,
+    drop_unconfigured_generation_tools,
+    fallback_task_dir_from_metadata,
+)
+from deeptutor.core.context import Attachment, UnifiedContext
+from deeptutor.core.trace import (
+    build_trace_metadata,
+    derive_trace_metadata,
+    merge_trace_metadata,
+    new_call_id,
+)
+from deeptutor.runtime.agentic import (
     DispatchOutcome,
     LabeledStepResult,
     LabelProtocol,
@@ -55,21 +68,18 @@ from deeptutor.core.agentic import (
     run_agentic_loop,
     run_labeled_step,
 )
-from deeptutor.core.agentic.labels import find_inline_labels
-from deeptutor.core.agentic.tool_dispatch import MAX_PARALLEL_TOOL_CALLS
-from deeptutor.core.agentic.usage import record_streamed_usage
-from deeptutor.core.context import Attachment, UnifiedContext
-from deeptutor.core.stream_bus import StreamBus
-from deeptutor.core.trace import (
-    build_trace_metadata,
-    derive_trace_metadata,
-    merge_trace_metadata,
-    new_call_id,
+from deeptutor.runtime.agentic.labels import find_inline_labels
+from deeptutor.runtime.agentic.messages import assistant_message
+from deeptutor.runtime.agentic.tool_dispatch import (
+    MAX_PARALLEL_TOOL_CALLS,
+    tool_error_message_factory,
 )
+from deeptutor.runtime.agentic.usage import record_streamed_usage
 from deeptutor.runtime.registry.tool_registry import get_tool_registry
+from deeptutor.runtime.stream_bus import StreamBus
 from deeptutor.services.config import parse_language
 from deeptutor.services.llm import get_llm_config, prepare_multimodal_messages
-from deeptutor.services.path_service import get_path_service
+from deeptutor.services.llm.reasoning_params import RETRY_REASONING_EFFORT
 from deeptutor.services.prompt import get_prompt_manager
 from deeptutor.services.prompt.language import append_language_directive
 from deeptutor.services.sandbox import exec_capability_available
@@ -129,7 +139,15 @@ DEFAULT_MAX_EXPLORE_ITERATIONS = 8
 DEFAULT_MAX_QUIZ_ITERATIONS_PER_QUESTION = 5
 DEFAULT_MAX_TOKENS = 4000
 EXPLORE_FINISH_MAX_TOKENS = 3000
-PLAN_MAX_TOKENS = 2000
+# Plan is the one step asked for a whole JSON object in a single shot, and it
+# was the tightest budget in this file — below even the 4096 the ``question``
+# capability ships with. A reasoning model pays for its hidden tokens out of
+# this same allowance, so on a rich exploration trace it could spend the lot
+# deliberating and end the stream before writing a single template (#1318).
+# Reachable, not generous: the plan itself is a few hundred tokens, the rest
+# is headroom to think in, and the low-effort retry below covers the models
+# that want more than any fixed number.
+PLAN_MAX_TOKENS = 6000
 QUIZ_FINISH_MAX_TOKENS = 3000
 REPAIR_MAX_TOKENS = 2500
 FINALIZATION_REPAIR_ATTEMPTS = 2
@@ -413,6 +431,8 @@ class QuestionPipeline:
             api_version=getattr(self.llm_config, "api_version", None),
             extra_headers=getattr(self.llm_config, "extra_headers", None) or None,
             reasoning_effort=self.reasoning_effort,
+            wire_api=getattr(self.llm_config, "wire_api", None) or "auto",
+            api_format=getattr(self.llm_config, "api_format", None) or "auto",
         )
 
         self.registry = get_tool_registry()
@@ -638,6 +658,11 @@ class QuestionPipeline:
             tool_list=self._tool_list_text(context),
             num_questions=num_questions,
         )
+        from deeptutor.agents._shared.workspace_prompt import workspace_system_note
+
+        workspace_note = workspace_system_note(context, language=self.language)
+        if workspace_note:
+            system_prompt = f"{system_prompt}\n\n{workspace_note}"
         system_prompt = append_language_directive(system_prompt, self.language)
         user_prompt = self._t(
             "explore.user_template",
@@ -732,6 +757,36 @@ class QuestionPipeline:
             iter_meta=iter_meta,
             max_tokens=PLAN_MAX_TOKENS,
         )
+        if step.reasoning_only:
+            # The round was all thinking and no plan. Parsing it would hand
+            # back an empty object indistinguishable from a model that had
+            # nothing to say, and phase 3 iterates the templates — so a quiz
+            # of zero questions would ship with no error anywhere (#1318).
+            # Ask once more with thinking turned down, which is what frees
+            # the budget for the answer.
+            await stream.progress(
+                self._t(
+                    "notices.plan_reasoning_retry",
+                    default=(
+                        "The planner spent its whole budget reasoning; "
+                        "asking again with less thinking."
+                    ),
+                ),
+                source=SOURCE,
+                stage=STAGE_PLANNING,
+                metadata={"trace_kind": "warning"},
+            )
+            step = await self._run_labeled_step(
+                client=client,
+                messages=messages,
+                tool_schemas=None,
+                protocol=_PROTOCOL_PLAN,
+                stream=stream,
+                stage=STAGE_PLANNING,
+                iter_meta=iter_meta,
+                max_tokens=PLAN_MAX_TOKENS,
+                reasoning_effort=RETRY_REASONING_EFFORT,
+            )
         plan = self._parse_plan(
             step.text,
             requested=num_questions,
@@ -1472,7 +1527,13 @@ class QuestionPipeline:
                 step.text, allowed_labels=_PROTOCOL_EXPLORE.allowed
             ):
                 return step.text, True, calls
-            messages.append({"role": "assistant", "content": step.text[:500]})
+            messages.append(
+                assistant_message(
+                    step.text[:500],
+                    reasoning_content=step.reasoning_content or None,
+                    thinking_blocks=list(step.thinking_blocks) or None,
+                )
+            )
             messages.append({"role": "user", "content": self._t("protocol.force_finish_repair")})
         return self._t("protocol.fallback_final"), False, calls
 
@@ -1502,7 +1563,7 @@ class QuestionPipeline:
             has_memory=user_has_memory(),
             has_notebooks=user_has_notebooks(),
             has_question_bank=user_has_question_bank(),
-            has_code=exec_capability_available(),
+            has_exec=exec_capability_available(),
         )
 
     def _resolved_tools(self, context: UnifiedContext) -> list[str]:
@@ -1512,7 +1573,8 @@ class QuestionPipeline:
             optional_whitelist=self._optional_tools,
             mount_flags=self._mount_flags(context),
         )
-        return list(dict.fromkeys([*names, *self._pageindex_tool_names()]))
+        resolved = list(dict.fromkeys([*names, *self._pageindex_tool_names()]))
+        return drop_unconfigured_generation_tools(resolved)
 
     def _use_native_tools(self, context: UnifiedContext) -> bool:
         """Native tool calling is only worth enabling when (a) the binding /
@@ -1556,25 +1618,22 @@ class QuestionPipeline:
         args: dict[str, Any],
         context: UnifiedContext,
     ) -> dict[str, Any]:
-        kwargs = dict(args)
-        turn_id = str(context.metadata.get("turn_id", "") or "").strip()
-        task_dir = None
-        if turn_id:
-            task_dir = get_path_service().get_task_workspace(FEATURE, turn_id)
+        workspace = context.runtime.workspace
+        task_dir = (
+            Path(workspace.output_dir)
+            if workspace is not None
+            else fallback_task_dir_from_metadata(context, feature=FEATURE)
+        )
+        kwargs = bind_workspace_tool_runtime(
+            tool_name,
+            args,
+            context,
+            fallback_task_dir=task_dir,
+        )
         if tool_name == "rag":
             kwargs.setdefault("mode", "hybrid")
             if self.kb_name:
                 kwargs.setdefault("kb_name", self.kb_name)
-        elif tool_name == "code_execution":
-            from deeptutor.services.sandbox import Mount
-
-            if task_dir is not None:
-                code_dir = task_dir / "code_runs"
-                code_dir.mkdir(parents=True, exist_ok=True)
-                kwargs["_sandbox_workdir"] = str(code_dir)
-                kwargs["_sandbox_mounts"] = (
-                    Mount(host_path=str(code_dir), sandbox_path=str(code_dir), read_only=False),
-                )
         elif tool_name in {"reason", "brainstorm"}:
             kwargs.setdefault("context", context.user_message)
         elif tool_name == "web_search":
@@ -1661,13 +1720,18 @@ class QuestionPipeline:
     # ------------------------------------------------------------------
     # LLM call helpers
     # ------------------------------------------------------------------
-    def _completion_kwargs(self, max_tokens: int) -> dict[str, Any]:
+    def _completion_kwargs(
+        self, max_tokens: int, reasoning_effort: str | None = None
+    ) -> dict[str, Any]:
         return build_completion_kwargs(
             temperature=self._temperature,
             model=self.model,
             max_tokens=max_tokens,
             binding=self.binding,
-            reasoning_effort=self.reasoning_effort,
+            # A step may turn thinking down for one call (a retry after the
+            # model spent the whole budget on it); otherwise the configured
+            # level stands.
+            reasoning_effort=reasoning_effort or self.reasoning_effort,
         )
 
     async def _run_labeled_step(
@@ -1681,6 +1745,7 @@ class QuestionPipeline:
         stage: str,
         iter_meta: dict[str, Any],
         max_tokens: int = DEFAULT_MAX_TOKENS,
+        reasoning_effort: str | None = None,
         final_meta: dict[str, Any] | None = None,
         eager_sub_trace: bool = True,
     ) -> LabeledStepResult:
@@ -1688,7 +1753,7 @@ class QuestionPipeline:
             client=client,
             model=self.model,
             messages=messages,
-            completion_kwargs=self._completion_kwargs(max_tokens),
+            completion_kwargs=self._completion_kwargs(max_tokens, reasoning_effort),
             tool_schemas=tool_schemas,
             allowed_labels=protocol.allowed,
             final_labels=protocol.final,
@@ -1980,11 +2045,7 @@ class _BaseLoopHost:
                 "notices.start_retrieval", default="Starting retrieval"
             ),
             too_many_tool_calls_message=too_many,
-            unknown_error_message_factory=lambda tn: self._pipeline._t(
-                "notices.tool_unknown_error",
-                tool=tn,
-                default=f"Error executing {tn}.",
-            ),
+            tool_error_message_factory=tool_error_message_factory(self._pipeline._t),
             trace_id_prefix=self._trace_id_prefix,
         )
         pageindex_sources = [

@@ -6,19 +6,25 @@ from datetime import datetime, timezone
 import json
 from typing import Any
 
+from . import paths
 from .context import get_current_user
-from .paths import SYSTEM_ROOT, ensure_system_dirs
+
+# Keep the legacy module-level hook for callers and tests that redirect the
+# audit root directly; path resolution remains dynamic per call.
+SYSTEM_ROOT = paths.SYSTEM_ROOT
+_DEFAULT_SYSTEM_ROOT = SYSTEM_ROOT
 
 
 def _audit_file():
     # Resolved per call so monkey-patched SYSTEM_ROOT (e.g. in tests) takes
     # effect without a module reload.
-    return SYSTEM_ROOT / "audit" / "usage.jsonl"
+    root = SYSTEM_ROOT if SYSTEM_ROOT != _DEFAULT_SYSTEM_ROOT else paths.SYSTEM_ROOT
+    return root / "audit" / "usage.jsonl"
 
 
 def _write(payload: dict[str, Any]) -> None:
     try:
-        ensure_system_dirs()
+        paths.ensure_system_dirs()
         with _audit_file().open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
     except Exception:
@@ -75,6 +81,28 @@ def log_admin_action(
     }
     if target_user_id:
         payload["target_user_id"] = target_user_id
+    if summary:
+        payload["summary"] = summary
+    _write(payload)
+
+
+def log_guardian_action(
+    action: str,
+    guardian_user_id: str,
+    learner_user_id: str,
+    summary: dict[str, Any] | None = None,
+) -> None:
+    """Record an action performed through an explicit guardian relationship."""
+    user = get_current_user()
+    payload: dict[str, Any] = {
+        "time": datetime.now(timezone.utc).isoformat(),
+        "actor_id": user.id,
+        "actor_username": user.username,
+        "actor_role": user.role,
+        "action": action,
+        "guardian_user_id": guardian_user_id,
+        "learner_user_id": learner_user_id,
+    }
     if summary:
         payload["summary"] = summary
     _write(payload)

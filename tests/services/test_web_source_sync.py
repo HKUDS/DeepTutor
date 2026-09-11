@@ -103,7 +103,7 @@ async def test_process_page_resolves_relative_images(
     </body></html>
     """
 
-    async def fake_fetch_page(url, client):
+    async def fake_fetch_page(url, *, client):
         return html, "https://docs.example.com/guide/introduction/"
 
     monkeypatch.setattr("deeptutor.services.web_source.crawler._fetch_page", fake_fetch_page)

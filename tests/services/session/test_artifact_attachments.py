@@ -29,7 +29,7 @@ class TestArtifactAttachments:
                 {
                     "type": "artifact",
                     "filename": "report.pdf",
-                    "url": "/api/outputs/workspace/chat/chat/t1/exec/report.pdf",
+                    "url": "/files/outputs/workspace/chat/chat/t1/exec/report.pdf",
                     "mime_type": "application/pdf",
                     "size_bytes": 2048,
                 }
@@ -50,7 +50,7 @@ class TestArtifactAttachments:
                 {
                     "type": "artifact",
                     "filename": "chart.png",
-                    "url": "/api/outputs/x/chart.png",
+                    "url": "/files/outputs/x/chart.png",
                     "mime_type": "image/png",
                 }
             ]
@@ -74,7 +74,7 @@ class TestArtifactAttachments:
                     "artifacts": [
                         {
                             "filename": "notes.pdf",
-                            "url": "/api/outputs/workspace/chat/chat/t2/exec/notes.pdf",
+                            "url": "/files/outputs/workspace/chat/chat/t2/exec/notes.pdf",
                             "mime_type": "application/pdf",
                             "size_bytes": 1024,
                         }
@@ -95,6 +95,28 @@ class TestArtifactAttachments:
         )
         assert artifact_attachments(event) == []
 
+    def test_presented_user_file_keeps_workspace_identity(self) -> None:
+        event = self._sources_event(
+            [
+                {
+                    "type": "workspace_item",
+                    "workspace_id": "ws_one",
+                    "workspace_item_id": "wsi_one",
+                    "relative_path": "lesson/notes.md",
+                    "filename": "notes.md",
+                    "url": "/files/workspace-items/ws_one/wsi_one",
+                    "mime_type": "text/markdown",
+                    "generated": False,
+                }
+            ]
+        )
+
+        attachment = artifact_attachments(event)[0]
+
+        assert attachment["origin"] == "workspace"
+        assert attachment["relative_path"] == "lesson/notes.md"
+        assert attachment["generated"] is False
+
     def test_non_sources_event_ignored(self) -> None:
         event = StreamEvent(type=StreamEventType.CONTENT, content="hello")
         assert artifact_attachments(event) == []
@@ -111,7 +133,7 @@ class TestArtifactAttachments:
                 {
                     "type": "artifact",
                     "filename": "deck.pptx",
-                    "url": "/api/outputs/x/deck.pptx",
+                    "url": "/files/outputs/x/deck.pptx",
                     "path": "/home/someone/data/users/u1/workspace/x/deck.pptx",
                     "mime_type": "application/vnd.openxmlformats-officedocument"
                     ".presentationml.presentation",
@@ -128,17 +150,17 @@ class TestArtifactAttachments:
 
 class TestResolveArtifactPath:
     def test_non_outputs_url_rejected(self) -> None:
-        assert _resolve_artifact_path("/api/attachments/abc/deck.pptx") is None
+        assert _resolve_artifact_path("/files/attachments/abc/deck.pptx") is None
 
     def test_empty_url_rejected(self) -> None:
         assert _resolve_artifact_path("") is None
 
     def test_traversal_outside_public_root_rejected(self) -> None:
-        assert _resolve_artifact_path("/api/outputs/../../../etc/passwd") is None
+        assert _resolve_artifact_path("/files/outputs/../../../etc/passwd") is None
 
     def test_missing_file_rejected(self) -> None:
         # is_public_output_path also requires the target to exist as a file.
-        assert _resolve_artifact_path("/api/outputs/workspace/chat/chat/t/exec/gone.pptx") is None
+        assert _resolve_artifact_path("/files/outputs/workspace/chat/chat/t/exec/gone.pptx") is None
 
 
 # ---------------------------------------------------------------------------
@@ -166,10 +188,13 @@ class TestFillPreviewText:
     async def test_pptx_gets_preview_text(self, tmp_path, monkeypatch) -> None:
         from deeptutor.services.session import artifact_attachments as module
 
-        _write_minimal_pptx(tmp_path / "deck.pptx", "Chapter one")
-        monkeypatch.setattr(module, "_resolve_artifact_path", lambda url: tmp_path / "deck.pptx")
+        # Workspace snapshots are physically stored by hash without an
+        # extension; format routing must use the attachment's logical name.
+        blob = tmp_path / "4f73c2a1"
+        _write_minimal_pptx(blob, "Chapter one")
+        monkeypatch.setattr(module, "_resolve_artifact_path", lambda url: blob)
 
-        attachments = [{"filename": "deck.pptx", "url": "/api/outputs/x/deck.pptx"}]
+        attachments = [{"filename": "deck.pptx", "url": "/files/outputs/x/deck.pptx"}]
         await fill_preview_text(attachments)
 
         assert "Chapter one" in attachments[0]["extracted_text"]
@@ -184,10 +209,10 @@ class TestFillPreviewText:
         monkeypatch.setattr(module, "_resolve_artifact_path", lambda url: calls.append(url) or None)
 
         attachments = [
-            {"filename": "report.docx", "url": "/api/outputs/x/report.docx"},
-            {"filename": "sheet.xlsx", "url": "/api/outputs/x/sheet.xlsx"},
-            {"filename": "paper.pdf", "url": "/api/outputs/x/paper.pdf"},
-            {"filename": "chart.png", "url": "/api/outputs/x/chart.png"},
+            {"filename": "report.docx", "url": "/files/outputs/x/report.docx"},
+            {"filename": "sheet.xlsx", "url": "/files/outputs/x/sheet.xlsx"},
+            {"filename": "paper.pdf", "url": "/files/outputs/x/paper.pdf"},
+            {"filename": "chart.png", "url": "/files/outputs/x/chart.png"},
         ]
         await fill_preview_text(attachments)
 
@@ -201,7 +226,7 @@ class TestFillPreviewText:
         missing = tmp_path / "gone.pptx"
         monkeypatch.setattr(module, "_resolve_artifact_path", lambda url: missing)
 
-        attachments = [{"filename": "gone.pptx", "url": "/api/outputs/x/gone.pptx"}]
+        attachments = [{"filename": "gone.pptx", "url": "/files/outputs/x/gone.pptx"}]
         await fill_preview_text(attachments)
 
         assert "extracted_text" not in attachments[0]

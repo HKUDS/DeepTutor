@@ -1,7 +1,14 @@
 "use client";
 
 import { useTranslation } from "react-i18next";
-import { Bookmark, FolderOpen, Inbox, LayoutGrid, XCircle } from "lucide-react";
+import {
+  Bookmark,
+  CheckCircle2,
+  FolderOpen,
+  Inbox,
+  LayoutGrid,
+  XCircle,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { NotebookCategory, QuestionBankStats } from "@/lib/notebook-api";
 import type { BankScope } from "./useQuestionBank";
@@ -14,13 +21,19 @@ interface BankScopeRailProps {
 }
 
 const STATUS_SCOPES: {
-  kind: "all" | "wrong" | "bookmarked" | "uncategorized";
+  kind: "all" | "wrong" | "unresolved" | "bookmarked" | "uncategorized";
   label: string;
   icon: LucideIcon;
   count: (stats: QuestionBankStats) => number;
 }[] = [
   { kind: "all", label: "All", icon: LayoutGrid, count: (s) => s.total },
   { kind: "wrong", label: "Wrong Only", icon: XCircle, count: (s) => s.wrong },
+  {
+    kind: "unresolved",
+    label: "Needs Review",
+    icon: CheckCircle2,
+    count: (s) => s.unresolved,
+  },
   {
     kind: "bookmarked",
     label: "Bookmarked",

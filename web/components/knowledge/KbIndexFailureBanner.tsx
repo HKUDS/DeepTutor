@@ -36,7 +36,7 @@ export default function KbIndexFailureBanner({
       <div className="flex shrink-0 flex-wrap items-center gap-2">
         {failure.requiresModelChange && (
           <Link
-            href={failure.settingsHref || "/settings/models"}
+            href={failure.settingsHref || "/settings#models"}
             className="inline-flex items-center gap-1.5 rounded-md border border-red-300 bg-red-100 px-2 py-1 text-[11.5px] font-medium text-red-800 transition-colors hover:bg-red-200 dark:border-red-800 dark:bg-red-950/50 dark:text-red-200"
           >
             <Settings className="h-3 w-3" />

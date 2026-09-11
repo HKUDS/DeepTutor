@@ -64,6 +64,37 @@ class BaseChannel(ABC):
         self.bus = bus
         self._running = False
         self.partner_id = _constructing_for.get()
+        # User-actionable setup/runtime output belongs in the WebUI. Channels
+        # may publish a small, deliberately non-secret status payload here
+        # instead of printing QR codes, login URLs or setup instructions to
+        # the backend terminal.
+        self._setup_state: dict[str, str] = {}
+        self._setup_revision = 0
+
+    def set_setup_state(
+        self,
+        status: str,
+        *,
+        message: str = "",
+        qr_payload: str = "",
+    ) -> None:
+        """Publish sanitized channel setup state for the Partner WebUI."""
+        self._setup_revision += 1
+        self._setup_state = {
+            "status": str(status or ""),
+            **({"message": str(message)} if message else {}),
+            **({"qr_payload": str(qr_payload)} if qr_payload else {}),
+        }
+
+    @property
+    def setup_state(self) -> dict[str, str]:
+        """A copy of the current user-facing setup state (never credentials)."""
+        return dict(self._setup_state)
+
+    @property
+    def setup_revision(self) -> int:
+        """Monotonic marker used to detect channel-owned status updates."""
+        return self._setup_revision
 
     def media_dir(self, channel: str | None = None) -> Path:
         """Download directory isolated to this channel's owning Partner."""

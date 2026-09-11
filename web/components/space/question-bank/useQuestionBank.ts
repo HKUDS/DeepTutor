@@ -10,6 +10,7 @@ import {
   deleteNotebookEntry,
   getQuestionBankStats,
   listCategories,
+  listQuestionBankMaterials,
   listNotebookEntries,
   removeEntryFromCategory,
   renameCategory,
@@ -17,6 +18,9 @@ import {
   type NotebookCategory,
   type NotebookEntry,
   type QuestionBankStats,
+  type QuestionBankMaterial,
+  type AssessmentSource,
+  type ScoreTrend,
 } from "@/lib/notebook-api";
 
 /**
@@ -28,7 +32,7 @@ import {
  * uncategorized" representable when it is not a real thing.
  */
 export type BankScope =
-  | { kind: "all" | "wrong" | "bookmarked" | "uncategorized" }
+  | { kind: "all" | "wrong" | "unresolved" | "bookmarked" | "uncategorized" }
   | { kind: "category"; categoryId: number };
 
 export type BankSort = "recent" | "oldest";
@@ -39,15 +43,39 @@ const SEARCH_DEBOUNCE_MS = 250;
 
 export const DEFAULT_SCOPE: BankScope = { kind: "all" };
 
-function scopeToFilter(scope: BankScope, search: string, sort: BankSort) {
+export interface ReviewFilters {
+  source: AssessmentSource | "";
+  materialId: string;
+  scoreTrend: ScoreTrend | "";
+}
+
+/**
+ * A course narrows *which questions exist* for this visit; a scope narrows
+ * which of those to show. They are separate axes on purpose — the course comes
+ * from the URL and stays put while the learner clicks through wrong / bookmarked
+ * / a category inside it.
+ */
+export function buildQuestionBankFilter(
+  scope: BankScope,
+  filters: ReviewFilters,
+  search: string,
+  sort: BankSort,
+  courseId = "",
+) {
   return {
     category_id: scope.kind === "category" ? scope.categoryId : undefined,
     uncategorized: scope.kind === "uncategorized" || undefined,
     bookmarked: scope.kind === "bookmarked" ? true : undefined,
-    is_correct: scope.kind === "wrong" ? false : undefined,
+    is_correct:
+      scope.kind === "wrong" || scope.kind === "unresolved" ? false : undefined,
+    source: filters.source || undefined,
+    material_id: filters.materialId || undefined,
+    resolved: scope.kind === "unresolved" ? false : undefined,
+    score_trend: filters.scoreTrend || undefined,
     search: search || undefined,
     sort,
     limit: PAGE_SIZE,
+    course_id: courseId || undefined,
   };
 }
 
@@ -56,7 +84,9 @@ export interface QuestionBankController {
   total: number;
   categories: NotebookCategory[];
   stats: QuestionBankStats;
+  materials: QuestionBankMaterial[];
   scope: BankScope;
+  reviewFilters: ReviewFilters;
   sort: BankSort;
   searchInput: string;
   loading: boolean;
@@ -67,6 +97,7 @@ export interface QuestionBankController {
   selectedIds: ReadonlySet<number>;
 
   setScope: (scope: BankScope) => void;
+  setReviewFilters: (filters: ReviewFilters) => void;
   setSort: (sort: BankSort) => void;
   setSearchInput: (value: string) => void;
   refresh: () => Promise<void>;
@@ -79,6 +110,7 @@ export interface QuestionBankController {
   // once, as a toast, from inside the hook — the boolean is for the caller's
   // own UI decisions (keep the menu open, keep the typed name).
   toggleBookmark: (entry: NotebookEntry) => Promise<boolean>;
+  toggleResolved: (entry: NotebookEntry) => Promise<boolean>;
   removeEntry: (entry: NotebookEntry) => Promise<boolean>;
   fileEntries: (ids: number[], categoryId: number) => Promise<boolean>;
   unfileEntries: (ids: number[], categoryId: number) => Promise<boolean>;
@@ -92,8 +124,15 @@ export interface QuestionBankController {
 const EMPTY_STATS: QuestionBankStats = {
   total: 0,
   wrong: 0,
+  unresolved: 0,
   bookmarked: 0,
   uncategorized: 0,
+};
+
+const EMPTY_FILTERS: ReviewFilters = {
+  source: "",
+  materialId: "",
+  scoreTrend: "",
 };
 
 /**
@@ -106,12 +145,18 @@ const EMPTY_STATS: QuestionBankStats = {
  *  - a re-fetch never blanks the list — `refreshing` dims it instead, so
  *    filing a question does not make the page jump.
  */
-export function useQuestionBank(): QuestionBankController {
+export function useQuestionBank(
+  options: { courseId?: string } = {},
+): QuestionBankController {
+  const courseId = options.courseId ?? "";
   const [items, setItems] = useState<NotebookEntry[]>([]);
   const [total, setTotal] = useState(0);
   const [categories, setCategories] = useState<NotebookCategory[]>([]);
   const [stats, setStats] = useState<QuestionBankStats>(EMPTY_STATS);
+  const [materials, setMaterials] = useState<QuestionBankMaterial[]>([]);
   const [scope, setScopeState] = useState<BankScope>(DEFAULT_SCOPE);
+  const [reviewFilters, setReviewFiltersState] =
+    useState<ReviewFilters>(EMPTY_FILTERS);
   const [sort, setSort] = useState<BankSort>("recent");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
@@ -142,7 +187,7 @@ export function useQuestionBank(): QuestionBankController {
     setError(null);
     try {
       const response = await listNotebookEntries(
-        scopeToFilter(scope, search, sort),
+        buildQuestionBankFilter(scope, reviewFilters, search, sort, courseId),
       );
       if (seq !== requestSeq.current) return;
       setItems(response.items);
@@ -166,17 +211,21 @@ export function useQuestionBank(): QuestionBankController {
         setRefreshing(false);
       }
     }
-  }, [scope, search, sort]);
+  }, [courseId, scope, reviewFilters, search, sort]);
 
   const loadMeta = useCallback(async () => {
-    const [nextCategories, nextStats] = await Promise.allSettled([
-      listCategories(),
-      getQuestionBankStats(),
-    ]);
+    const [nextCategories, nextStats, nextMaterials] = await Promise.allSettled(
+      [
+        listCategories(courseId),
+        getQuestionBankStats(courseId),
+        listQuestionBankMaterials(courseId),
+      ],
+    );
     if (nextCategories.status === "fulfilled")
       setCategories(nextCategories.value);
     if (nextStats.status === "fulfilled") setStats(nextStats.value);
-  }, []);
+    if (nextMaterials.status === "fulfilled") setMaterials(nextMaterials.value);
+  }, [courseId]);
 
   useEffect(() => {
     void loadEntries();
@@ -191,6 +240,10 @@ export function useQuestionBank(): QuestionBankController {
   const setScope = useCallback((next: BankScope) => {
     setSelectedIds(new Set());
     setScopeState(next);
+  }, []);
+
+  const setReviewFilters = useCallback((next: ReviewFilters) => {
+    setReviewFiltersState(next);
   }, []);
 
   const refresh = useCallback(async () => {
@@ -256,6 +309,22 @@ export function useQuestionBank(): QuestionBankController {
         setItems((prev) =>
           prev.map((item) =>
             item.id === entry.id ? { ...item, bookmarked: next } : item,
+          ),
+        );
+        await refresh();
+      });
+    },
+    [refresh, withPending],
+  );
+
+  const toggleResolved = useCallback(
+    async (entry: NotebookEntry) => {
+      const next = !entry.resolved;
+      return withPending([entry.id], async () => {
+        await updateNotebookEntry(entry.id, { resolved: next });
+        setItems((prev) =>
+          prev.map((item) =>
+            item.id === entry.id ? { ...item, resolved: next } : item,
           ),
         );
         await refresh();
@@ -366,7 +435,9 @@ export function useQuestionBank(): QuestionBankController {
       total,
       categories,
       stats,
+      materials,
       scope,
+      reviewFilters,
       sort,
       searchInput,
       loading,
@@ -375,6 +446,7 @@ export function useQuestionBank(): QuestionBankController {
       pendingIds,
       selectedIds,
       setScope,
+      setReviewFilters,
       setSort,
       setSearchInput,
       refresh,
@@ -382,6 +454,7 @@ export function useQuestionBank(): QuestionBankController {
       selectAll,
       clearSelection,
       toggleBookmark,
+      toggleResolved,
       removeEntry,
       fileEntries,
       unfileEntries,
@@ -395,7 +468,9 @@ export function useQuestionBank(): QuestionBankController {
       total,
       categories,
       stats,
+      materials,
       scope,
+      reviewFilters,
       sort,
       searchInput,
       loading,
@@ -404,11 +479,13 @@ export function useQuestionBank(): QuestionBankController {
       pendingIds,
       selectedIds,
       setScope,
+      setReviewFilters,
       refresh,
       toggleSelected,
       selectAll,
       clearSelection,
       toggleBookmark,
+      toggleResolved,
       removeEntry,
       fileEntries,
       unfileEntries,

@@ -104,10 +104,10 @@ export interface McpStoreState extends McpSettings {
 }
 
 /** Deployment-global registry (admin-gated). */
-export const MCP_ADMIN_BASE_PATH = "/api/v1/settings/mcp";
+export const MCP_ADMIN_BASE_PATH = "/api/settings/mcp";
 
 /** The caller's own servers (auth-gated, remote transports only). */
-export const MCP_SPACE_BASE_PATH = "/api/v1/space/mcp";
+export const MCP_SPACE_BASE_PATH = "/api/space/mcp";
 
 /** Every transport the connection manager can open. */
 export const MCP_ALL_TRANSPORTS: readonly McpTransport[] = [

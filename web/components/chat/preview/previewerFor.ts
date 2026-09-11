@@ -14,6 +14,7 @@ import { extOf } from "@/lib/doc-attachments";
 export type PreviewKind =
   | "pdf"
   | "image"
+  | "video"
   | "svg"
   | "markdown"
   | "code"
@@ -31,7 +32,7 @@ export interface FilePreviewSource {
   /** Backend classification — "image" or anything else. Useful for
    *  attachments where the filename has no extension but the MIME is set. */
   type?: string;
-  /** Public URL served by /api/attachments. Preferred over base64. */
+  /** Public URL served by /files/attachments. Preferred over base64. */
   url?: string;
   /** Inline base64 payload — only present for pending (un-sent) attachments
    *  or messages that pre-date the storage rollout. */
@@ -73,6 +74,7 @@ const RASTER_IMAGE_EXTS = new Set([
   ".tiff",
   ".avif",
 ]);
+const VIDEO_EXTS = new Set([".mp4", ".webm", ".mov", ".m4v", ".ogv"]);
 
 /** Heuristic: does *source* refer to an image we can render via <img>? */
 function isImage(source: FilePreviewSource, ext: string): boolean {
@@ -93,6 +95,7 @@ export function previewKindFor(source: FilePreviewSource): PreviewKind {
   if (ext === ".pdf" || mime === "application/pdf") return "pdf";
   if (ext === ".svg" || mime === "image/svg+xml") return "svg";
   if (isImage(source, ext)) return "image";
+  if (VIDEO_EXTS.has(ext) || mime.startsWith("video/")) return "video";
   if (MARKDOWN_EXTS.has(ext) || mime === "text/markdown") return "markdown";
   if (
     DOCX_EXTS.has(ext) ||

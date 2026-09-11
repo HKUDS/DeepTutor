@@ -265,6 +265,7 @@ class TestBuildHistory:
         message = {
             "role": "assistant",
             "content": before + after,
+            "metadata": {"provider_response_state": {"reasoning_content": "private reasoning"}},
             "events": [
                 {
                     "type": "tool_result",
@@ -301,7 +302,11 @@ class TestBuildHistory:
         assert history == [
             {"role": "assistant", "content": before},
             {"role": "user", "content": clarification},
-            {"role": "assistant", "content": after},
+            {
+                "role": "assistant",
+                "content": after,
+                "_provider_response_state": {"reasoning_content": "private reasoning"},
+            },
         ]
         transcript = format_messages_as_transcript([message])
         assert transcript.index(before) < transcript.index(clarification) < transcript.index(after)
@@ -334,6 +339,22 @@ class TestSelectRecentMessages:
         older, recent = builder._select_recent_messages(messages, recent_budget=10)
         assert len(recent) >= 1
         assert len(older) + len(recent) == len(messages)
+
+    def test_budget_includes_private_provider_response_state(self) -> None:
+        builder = ContextBuilder(store=MagicMock())
+        messages = [
+            {
+                "role": "assistant",
+                "content": "short answer",
+                "metadata": {"provider_response_state": {"reasoning_content": "x" * 1000}},
+            },
+            {"role": "user", "content": "new question"},
+        ]
+
+        older, recent = builder._select_recent_messages(messages, recent_budget=100)
+
+        assert older == messages[:1]
+        assert recent == messages[1:]
 
 
 # ---------------------------------------------------------------------------

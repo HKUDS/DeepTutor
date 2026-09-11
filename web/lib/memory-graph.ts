@@ -241,7 +241,7 @@ export interface RawMemorySnapshot {
 export async function fetchMemorySnapshot(): Promise<RawMemorySnapshot> {
   const l1Promises = SURFACES.map(async (s): Promise<[Surface, L1Entity[]]> => {
     try {
-      const res = await apiFetch(apiUrl(`/api/v1/memory/snapshot/${s}`));
+      const res = await apiFetch(apiUrl(`/api/memory/snapshot/${s}`));
       const data = (await res.json()) as SnapshotResponse;
       return [s, data?.entities ?? []];
     } catch {
@@ -251,7 +251,7 @@ export async function fetchMemorySnapshot(): Promise<RawMemorySnapshot> {
 
   const l2Promises = SURFACES.map(async (s): Promise<[Surface, ParsedDoc]> => {
     try {
-      const res = await apiFetch(apiUrl(`/api/v1/memory/doc/L2/${s}`));
+      const res = await apiFetch(apiUrl(`/api/memory/doc/L2/${s}`));
       const data = (await res.json()) as DocResponse;
       return [s, parseDoc(data?.content ?? "")];
     } catch {
@@ -262,7 +262,7 @@ export async function fetchMemorySnapshot(): Promise<RawMemorySnapshot> {
   const l3Promises = L3_SLOTS.map(
     async (slot): Promise<[L3Slot, ParsedDoc]> => {
       try {
-        const res = await apiFetch(apiUrl(`/api/v1/memory/doc/L3/${slot}`));
+        const res = await apiFetch(apiUrl(`/api/memory/doc/L3/${slot}`));
         const data = (await res.json()) as DocResponse;
         return [slot, parseDoc(data?.content ?? "")];
       } catch {

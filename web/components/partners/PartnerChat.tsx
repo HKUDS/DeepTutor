@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Web chat with a partner over `WS /api/v1/partners/{id}/ws`.
+ * Web chat with a partner over `WS /ws/partners/{id}`.
  *
  * The socket forwards every chat-loop StreamEvent verbatim (`stream_event`
  * frames carry the backend event's `to_dict()`, which IS the frontend
@@ -25,9 +25,11 @@ import {
   resumePartnerSession,
 } from "@/lib/partners-api";
 import { freshPartnerSessionKey } from "@/lib/partner-session";
+import { displaySessionTitle } from "@/lib/session-title";
+import { createPartnerDraftPublisher } from "@/lib/partner-chat-draft";
 import { ReconnectingWebSocket } from "@/lib/reconnecting-websocket";
 import type { ExportableMessage } from "@/lib/chat-export";
-import type { StreamEvent } from "@/lib/unified-ws";
+import type { StreamEvent } from "@/features/chat/model/protocol";
 import { docIconFor, formatBytes, isSvgFilename } from "@/lib/doc-attachments";
 import {
   isNarrationMarker,
@@ -35,7 +37,7 @@ import {
   shouldAppendEventContent,
 } from "@/lib/stream";
 import { useChatAutoScroll } from "@/hooks/useChatAutoScroll";
-import { AssistantActivity } from "@/components/chat/home/TracePanels";
+import { AssistantActivity } from "@/features/chat/trace";
 import {
   PartnerComposer,
   type PartnerPendingAttachment,
@@ -50,10 +52,19 @@ const AssistantResponse = dynamic(
 interface ChatMsg {
   role: "user" | "assistant";
   content: string;
+  activityId?: string;
+  channel?: string;
   attachments?: PartnerMessageAttachment[];
   /** Full turn event stream (live turns only; restored history has none). */
   events?: StreamEvent[];
   error?: boolean;
+}
+
+interface ExternalDraft {
+  activityId: string;
+  channel?: string;
+  events: StreamEvent[];
+  content: string;
 }
 
 interface PartnerMessageAttachment {
@@ -191,18 +202,17 @@ export default function PartnerChat({
   emoji,
   color,
   avatar,
-  running,
   sessionKey,
   onSessionKeyChange,
   onToast,
   onMessagesChange,
+  onRuntimeReady,
 }: {
   partnerId: string;
   partnerName: string;
   emoji?: string;
   color?: string;
   avatar?: string;
-  running: boolean;
   /** The active web session key (canonical id), owned by the page so the
    *  Archive tab can switch which conversation the Chat tab is on. */
   sessionKey: string;
@@ -213,6 +223,8 @@ export default function PartnerChat({
    *  Fires only on discrete message events (send / turn done / clear), not
    *  per streamed token — the live `draft` is intentionally excluded. */
   onMessagesChange?: (messages: ExportableMessage[]) => void;
+  /** The socket sends ready only after the on-demand partner runtime exists. */
+  onRuntimeReady?: () => void;
 }) {
   const { t } = useTranslation();
   const [messages, setMessages] = useState<ChatMsg[]>([]);
@@ -225,6 +237,7 @@ export default function PartnerChat({
     events: StreamEvent[];
     content: string;
   } | null>(null);
+  const [externalDrafts, setExternalDrafts] = useState<ExternalDraft[]>([]);
   const connectionRef = useRef<ReconnectingWebSocket | null>(null);
   // Mirror the active session into a ref so the socket's onopen (which closes
   // over the effect's first render) attaches to the CURRENT session.
@@ -242,15 +255,20 @@ export default function PartnerChat({
     scrollToBottom,
     handleScroll,
   } = useChatAutoScroll({
-    hasMessages: messages.length > 0 || draft !== null,
-    isStreaming: streaming,
+    hasMessages:
+      messages.length > 0 || draft !== null || externalDrafts.length > 0,
+    isStreaming: streaming || externalDrafts.length > 0,
     // PartnerComposer sits outside the scrollport and currently exposes no
     // measured-height callback. Sending explicitly re-arms the shared hook
     // below, while streamed content changes drive its normal pin logic.
     composerHeight: 0,
-    messageCount: messages.length + (draft ? 1 : 0),
-    lastMessageContent: draft?.content ?? lastMessage?.content,
-    lastEventCount: draft?.events.length ?? lastMessage?.events?.length,
+    messageCount: messages.length + (draft ? 1 : 0) + externalDrafts.length,
+    lastMessageContent:
+      externalDrafts.at(-1)?.content ?? draft?.content ?? lastMessage?.content,
+    lastEventCount:
+      externalDrafts.at(-1)?.events.length ??
+      draft?.events.length ??
+      lastMessage?.events?.length,
   });
 
   const tryAttach = useCallback(() => {
@@ -271,35 +289,35 @@ export default function PartnerChat({
     }
   }, []);
 
-  // Restore the active session's history (scoped to it — the cross-channel
-  // "memory feel" is served by the read_memory tool now, not by merging raw
-  // transcripts). Re-runs when the page switches the active session (resume /
-  // branch). Persisted turn events rehydrate the collapsible "Done" activity.
+  // Restore exactly the active conversation. External-channel activity still
+  // arrives live over the activity feed, but must not leak into a resumed or
+  // archived web session after refresh.
   useEffect(() => {
     if (!sessionKey) return;
     let cancelled = false;
     historyReadyRef.current = false;
     attachedRef.current = false;
-    void getPartnerHistory(partnerId, {
-      sessionKey,
-      limit: 60,
-    })
+    void getPartnerHistory(partnerId, { sessionKey, limit: 60 })
       .then((history) => {
         if (cancelled) return;
         shouldAutoScrollRef.current = true;
         setMessages(
           history
             .filter((m) => m.role === "user" || m.role === "assistant")
-            .map((m) => ({
-              role: m.role as "user" | "assistant",
-              content: m.content,
-              attachments: normalizeHistoryAttachments(
-                (m as Record<string, unknown>).attachments,
-              ),
-              events: normalizeHistoryEvents(
-                (m as Record<string, unknown>).events,
-              ),
-            })),
+            .map((m) => {
+              const activityId =
+                typeof m.metadata?.activity_id === "string"
+                  ? m.metadata.activity_id
+                  : undefined;
+              return {
+                role: m.role as "user" | "assistant",
+                content: m.content,
+                activityId,
+                channel: m.channel,
+                attachments: normalizeHistoryAttachments(m.attachments),
+                events: normalizeHistoryEvents(m.events),
+              };
+            }),
         );
         historyReadyRef.current = true;
         tryAttach();
@@ -315,34 +333,114 @@ export default function PartnerChat({
   }, [partnerId, sessionKey, scrollToBottom, shouldAutoScrollRef, tryAttach]);
 
   useEffect(() => {
-    if (!running) {
-      connectionRef.current?.stop();
-      connectionRef.current = null;
-      setConnected(false);
-      setStreaming(false);
-      setDraft(null);
-      return;
-    }
-
     attachedRef.current = false;
     // Authoritative live-turn accumulator. Lives in the effect scope so
     // connection handlers can mutate it cheaply; renders see snapshots only.
     let live: { events: StreamEvent[]; content: string } | null = null;
-    const publish = () => {
-      setDraft(
-        live ? { events: [...live.events], content: live.content } : null,
+    const externalLive = new Map<string, ExternalDraft>();
+    const publishExternal = () => {
+      setExternalDrafts(
+        Array.from(externalLive.values(), (item) => ({
+          ...item,
+          events: [...item.events],
+        })),
       );
     };
+    // Local providers can emit many tokens between animation frames. Publish
+    // one immutable snapshot per frame so React never enters an update storm.
+    const {
+      publish,
+      publishNow,
+      cancel: cancelPendingPublish,
+    } = createPartnerDraftPublisher(() => live, setDraft);
 
     const handleMessage = (message: MessageEvent) => {
       let data: {
         type: string;
         content?: string;
         event?: StreamEvent;
+        activity_id?: string;
+        channel?: string;
+        external?: boolean;
       };
       try {
         data = JSON.parse(String(message.data));
       } catch {
+        return;
+      }
+      if (data.type === "ready") {
+        setConnected(true);
+        onRuntimeReady?.();
+        tryAttach();
+        return;
+      }
+      if (data.external && data.activity_id) {
+        const activityId = data.activity_id;
+        if (data.type === "user_echo") {
+          externalLive.set(activityId, {
+            activityId,
+            channel: data.channel,
+            events: [],
+            content: "",
+          });
+          setMessages((msgs) =>
+            msgs.some(
+              (msg) => msg.activityId === activityId && msg.role === "user",
+            )
+              ? msgs
+              : [
+                  ...msgs,
+                  {
+                    role: "user",
+                    content: data.content ?? "",
+                    activityId,
+                    channel: data.channel,
+                  },
+                ],
+          );
+          publishExternal();
+        } else if (data.type === "stream_event" && data.event) {
+          const current = externalLive.get(activityId) ?? {
+            activityId,
+            channel: data.channel,
+            events: [],
+            content: "",
+          };
+          current.events.push(data.event);
+          if (shouldAppendEventContent(data.event)) {
+            current.content += data.event.content;
+          } else if (isNarrationMarker(data.event)) {
+            current.content = recomputeAnswerContent(current.events);
+          }
+          externalLive.set(activityId, current);
+          publishExternal();
+        } else if (data.type === "content") {
+          const finished = externalLive.get(activityId);
+          externalLive.delete(activityId);
+          setMessages((msgs) =>
+            msgs.some(
+              (msg) =>
+                msg.activityId === activityId && msg.role === "assistant",
+            )
+              ? msgs
+              : [
+                  ...msgs,
+                  {
+                    role: "assistant",
+                    content: data.content || finished?.content || "",
+                    activityId,
+                    channel: data.channel,
+                    events: finished?.events.length
+                      ? finished.events
+                      : undefined,
+                  },
+                ],
+          );
+          publishExternal();
+        } else if (data.type === "done" || data.type === "stopped") {
+          externalLive.delete(activityId);
+          publishExternal();
+        }
         return;
       }
       if (data.type === "resuming") {
@@ -389,11 +487,11 @@ export default function PartnerChat({
             events: finished?.events.length ? finished.events : undefined,
           },
         ]);
-        publish();
+        publishNow();
       } else if (data.type === "done") {
         setStreaming(false);
         live = null;
-        publish();
+        publishNow();
       } else if (data.type === "stopped") {
         // Server cancelled the turn (/stop or the stop button). Keep any
         // partial answer the user already saw; drop the live draft.
@@ -410,7 +508,7 @@ export default function PartnerChat({
           ]);
         }
         setStreaming(false);
-        publish();
+        publishNow();
       } else if (data.type === "proactive") {
         setMessages((msgs) => [
           ...msgs,
@@ -422,25 +520,27 @@ export default function PartnerChat({
           { role: "assistant", content: data.content ?? "Error", error: true },
         ]);
         live = null;
-        publish();
+        publishNow();
         setStreaming(false);
       }
     };
 
     const connection = new ReconnectingWebSocket(
-      wsUrl(`/api/v1/partners/${partnerId}/ws`),
+      wsUrl(`/ws/partners/${partnerId}`),
       {
         onOpen: () => {
-          setConnected(true);
+          // TCP/WebSocket open is not application readiness: the backend may
+          // still be lazily starting this partner. The explicit ready frame
+          // below is what enables the composer.
+          setConnected(false);
           attachedRef.current = false;
-          // Reattach after every reconnect so the server can replay an
-          // in-flight turn. tryAttach waits for history before doing so.
-          tryAttach();
         },
         onMessage: handleMessage,
         onDisconnect: () => {
           setConnected(false);
           setStreaming(false);
+          externalLive.clear();
+          setExternalDrafts([]);
         },
       },
       {
@@ -464,13 +564,16 @@ export default function PartnerChat({
     connection.start();
 
     return () => {
+      cancelPendingPublish();
+      externalLive.clear();
+      setExternalDrafts([]);
       window.removeEventListener("focus", wakeWhenActive);
       window.removeEventListener("online", wakeWhenActive);
       document.removeEventListener("visibilitychange", wakeWhenActive);
       connection.stop();
       if (connectionRef.current === connection) connectionRef.current = null;
     };
-  }, [partnerId, running, tryAttach]);
+  }, [onRuntimeReady, partnerId, tryAttach]);
 
   // Report the settled transcript to the parent for header export controls.
   useEffect(() => {
@@ -579,9 +682,10 @@ export default function PartnerChat({
               .slice(0, 30)
               .map(
                 (s) =>
-                  `- \`${s.session_key}\`${s.archived ? ` (${t("Archived")})` : ""} — ${
-                    s.title || t("New conversation")
-                  } · ${s.message_count}`,
+                  `- \`${s.session_key}\`${s.archived ? ` (${t("Archived")})` : ""} — ${displaySessionTitle(
+                    s.title,
+                    t("New conversation"),
+                  )} · ${s.message_count}`,
               )
               .join("\n");
             setMessages((msgs) => [
@@ -618,7 +722,7 @@ export default function PartnerChat({
 
   const handleSend = useCallback(
     (content: string, attachments: PartnerPendingAttachment[]) => {
-      if (streaming || !running) return false;
+      if (streaming || !connected) return false;
 
       // A new user-authored turn explicitly returns to live-follow mode.
       // During the answer, the shared hook releases that mode as soon as the
@@ -664,7 +768,7 @@ export default function PartnerChat({
     },
     [
       sessionKey,
-      running,
+      connected,
       streaming,
       scrollToBottom,
       runClientCommand,
@@ -695,11 +799,9 @@ export default function PartnerChat({
                 {partnerName}
               </p>
               <p className="mt-1 max-w-sm text-[12.5px] text-[var(--muted-foreground)]">
-                {running
-                  ? t(
-                      "Say hello — this conversation shares the same memory your partner has on its connected channels.",
-                    )
-                  : t("Partner is stopped. Start it before chatting.")}
+                {t(
+                  "Say hello — channels are optional, and any connected channel shares this partner's memory.",
+                )}
               </p>
             </div>
           </div>
@@ -771,16 +873,40 @@ export default function PartnerChat({
                 </div>
               </div>
             )}
+
+            {externalDrafts.map((externalDraft) => (
+              <div
+                key={externalDraft.activityId}
+                className="flex items-start gap-2.5"
+              >
+                <PartnerAvatar
+                  name={partnerName}
+                  emoji={emoji}
+                  color={color}
+                  size={26}
+                />
+                <div className="min-w-0 flex-1">
+                  <AssistantActivity
+                    events={externalDraft.events}
+                    isStreaming
+                    content={externalDraft.content}
+                    className="mb-1.5"
+                    agentName={partnerName}
+                    showMark={false}
+                    headerClassName="min-h-[26px]"
+                  />
+                  {externalDraft.content ? (
+                    <AssistantResponse content={externalDraft.content} />
+                  ) : null}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
 
       <div className="mx-auto w-full max-w-2xl px-1 pb-4">
-        {!running ? (
-          <p className="mb-1 text-center text-[11px] text-[var(--muted-foreground)]">
-            {t("Partner is stopped. Start it before chatting.")}
-          </p>
-        ) : !connected ? (
+        {!connected ? (
           <p className="mb-1 text-center text-[11px] text-[var(--muted-foreground)]">
             {t("Connecting…")}
           </p>
@@ -789,7 +915,7 @@ export default function PartnerChat({
           onSend={handleSend}
           onStop={sendStop}
           streaming={streaming}
-          disabled={!connected || !running}
+          disabled={!connected}
         />
       </div>
     </div>

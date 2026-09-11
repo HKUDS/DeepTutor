@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -12,6 +12,7 @@ import {
   NotebookPen,
   Pencil,
   Plus,
+  School,
   Search,
   Trash2,
   X,
@@ -21,8 +22,10 @@ import Tooltip from "@/components/common/Tooltip";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import NotebookRecordRow from "@/components/notebook/NotebookRecordRow";
 import { useNotebookLibrary } from "@/components/notebook/useNotebookLibrary";
+import { attachCourseResource } from "@/lib/courses-api";
 import { notify } from "@/lib/notifications";
 import { exportNotebookMarkdown } from "@/lib/notebook-api";
+import { notebookRoute } from "@/lib/resource-routes";
 
 const SWATCHES = [
   "#6366F1",
@@ -34,17 +37,35 @@ const SWATCHES = [
   "#64748B",
 ];
 
+/** The course this visit is scoped to, resolved by the route. */
+export interface NotebookCourseScope {
+  id: string;
+  /** Empty when the course could not be read; the chip then says "this course". */
+  name: string;
+  /** Notebooks the course references. Empty means the course has none. */
+  notebookIds: string[];
+}
+
 interface NotebookConsoleProps {
-  /** Notebook to open on arrival, e.g. from a `?notebook=<id>` deep link. */
+  /** Notebook to open on arrival from `/notebooks/<id>`. */
   initialNotebookId?: string | null;
+  /** Present when arriving from a course; narrows the library to its notebooks. */
+  courseScope?: NotebookCourseScope | null;
+  /** Called after this console attaches something to the course, so the route can re-read it. */
+  onScopeChanged?: () => void;
 }
 
 export default function NotebookConsole({
   initialNotebookId,
+  courseScope = null,
+  onScopeChanged,
 }: NotebookConsoleProps) {
   const { t } = useTranslation();
   const router = useRouter();
-  const library = useNotebookLibrary(initialNotebookId);
+  const library = useNotebookLibrary(
+    initialNotebookId,
+    courseScope?.notebookIds ?? null,
+  );
 
   const [notebookQuery, setNotebookQuery] = useState("");
   const [recordQuery, setRecordQuery] = useState("");
@@ -61,16 +82,51 @@ export default function NotebookConsole({
   const [deleting, setDeleting] = useState(false);
 
   const { notebooks, selected, selectedId } = library;
+  const courseId = courseScope?.id ?? null;
+
+  // Default selection, scope repair, create, and delete can all change the
+  // visible resource without a click. Keep the address bar canonical too.
+  useEffect(() => {
+    if (!selectedId || selectedId === initialNotebookId) return;
+    router.replace(notebookRoute(selectedId, courseId));
+  }, [courseId, initialNotebookId, router, selectedId]);
+
+  // How many notebooks exist *for this visit*. Everything the console counts —
+  // the badge, whether a filter box is worth showing, which empty state to use
+  // — reads this rather than the whole library, or a course-scoped visit would
+  // report numbers the list does not back up.
+  const scopedNotebooks = useMemo(
+    () =>
+      courseScope
+        ? notebooks.filter((notebook) =>
+            courseScope.notebookIds.includes(notebook.id),
+          )
+        : notebooks,
+    [courseScope, notebooks],
+  );
 
   const visibleNotebooks = useMemo(() => {
     const needle = notebookQuery.trim().toLowerCase();
-    if (!needle) return notebooks;
-    return notebooks.filter((notebook) =>
+    if (!needle) return scopedNotebooks;
+    return scopedNotebooks.filter((notebook) =>
       `${notebook.name} ${notebook.description ?? ""}`
         .toLowerCase()
         .includes(needle),
     );
-  }, [notebooks, notebookQuery]);
+  }, [scopedNotebooks, notebookQuery]);
+
+  // The library opens the most recent notebook by default, which under a course
+  // scope can be one the course does not reference — the list then shows one
+  // notebook while the pane beside it shows another. Pull the selection back
+  // inside the scope, and when the scope is empty clear it outright: a course
+  // with no notebooks must not leave some other course's notes on screen next
+  // to a list that says there are none.
+  const scopedSelect = library.select;
+  useEffect(() => {
+    if (!courseScope) return;
+    if (selectedId && courseScope.notebookIds.includes(selectedId)) return;
+    scopedSelect(scopedNotebooks.length ? scopedNotebooks[0].id : null);
+  }, [courseScope, scopedNotebooks, scopedSelect, selectedId]);
 
   const visibleRecords = useMemo(() => {
     const records = selected?.records ?? [];
@@ -84,16 +140,37 @@ export default function NotebookConsole({
   }, [selected, recordQuery]);
 
   const handleCreate = useCallback(async () => {
-    if (!newName.trim()) return;
+    const name = newName.trim();
+    if (!name) return;
     try {
-      await library.create(newName, newDescription);
+      const createdId = await library.create(name, newDescription);
+      // Made while looking at one course, so it belongs to that course. Asking
+      // the learner to go back and attach what they just created inside the
+      // course's own view is the busywork the container exists to remove.
+      if (createdId && courseScope) {
+        await attachCourseResource(courseScope.id, {
+          kind: "notebook",
+          ref_id: createdId,
+          label: name,
+        });
+        onScopeChanged?.();
+      }
+      if (createdId) router.push(notebookRoute(createdId, courseId));
       setNewName("");
       setNewDescription("");
       setCreating(false);
     } catch (err) {
       setBanner(err instanceof Error ? err.message : String(err));
     }
-  }, [library, newName, newDescription]);
+  }, [
+    courseId,
+    courseScope,
+    library,
+    newName,
+    newDescription,
+    onScopeChanged,
+    router,
+  ]);
 
   const beginMetaEdit = useCallback(() => {
     if (!selected) return;
@@ -123,6 +200,7 @@ export default function NotebookConsole({
     setDeleting(true);
     try {
       await library.remove(selected.id);
+      router.replace(notebookRoute(null, courseId));
       notify(t('Deleted "{{name}}"', { name }), { tone: "success" });
       setConfirmingDelete(false);
     } catch (err) {
@@ -130,7 +208,7 @@ export default function NotebookConsole({
     } finally {
       setDeleting(false);
     }
-  }, [library, selected, t]);
+  }, [courseId, library, router, selected, t]);
 
   const handleExport = useCallback(async () => {
     if (!selected) return;
@@ -153,7 +231,7 @@ export default function NotebookConsole({
 
   const openSession = useCallback(
     (sessionId: string) => {
-      router.push(`/?session=${encodeURIComponent(sessionId)}`);
+      router.push(`/chat/${encodeURIComponent(sessionId)}`);
     },
     [router],
   );
@@ -188,7 +266,7 @@ export default function NotebookConsole({
               <NotebookPen size={14} strokeWidth={1.7} />
               {t("Notebooks")}
               <span className="rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-normal tabular-nums text-[var(--muted-foreground)]">
-                {notebooks.length}
+                {scopedNotebooks.length}
               </span>
             </h1>
             <button
@@ -245,7 +323,26 @@ export default function NotebookConsole({
             </div>
           )}
 
-          {notebooks.length > 6 && (
+          {courseScope ? (
+            <div className="flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] py-1 pl-2 pr-1 text-[11px] text-[var(--muted-foreground)]">
+              <School size={11} strokeWidth={1.8} className="shrink-0" />
+              <Link
+                href={`/courses/${courseScope.id}`}
+                className="min-w-0 flex-1 truncate transition-colors hover:text-[var(--foreground)]"
+              >
+                {courseScope.name || t("This course")}
+              </Link>
+              <Link
+                href="/notebooks"
+                aria-label={t("Show every notebook")}
+                className="shrink-0 rounded p-0.5 transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+              >
+                <X size={11} />
+              </Link>
+            </div>
+          ) : null}
+
+          {scopedNotebooks.length > 6 && (
             <div className="relative">
               <Search
                 size={12}
@@ -268,7 +365,10 @@ export default function NotebookConsole({
               <button
                 key={notebook.id}
                 type="button"
-                onClick={() => library.select(notebook.id)}
+                onClick={() => {
+                  library.select(notebook.id);
+                  router.push(notebookRoute(notebook.id, courseId));
+                }}
                 aria-current={active ? "true" : undefined}
                 className={`group/nb relative mb-0.5 flex w-full items-start gap-2 rounded-lg py-2 pl-3 pr-2 text-left transition-[background-color,color] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40 ${
                   active
@@ -322,7 +422,7 @@ export default function NotebookConsole({
               data-test="notebooks-empty"
               className="px-2 py-8 text-center text-[12px] text-[var(--muted-foreground)]"
             >
-              {notebooks.length
+              {scopedNotebooks.length
                 ? t("No notebooks match your filter.")
                 : t("No notebooks yet.")}
             </p>
@@ -366,11 +466,19 @@ export default function NotebookConsole({
             title={
               library.detailError
                 ? t("This notebook could not be opened")
-                : t("No notebook selected")
+                : courseScope && scopedNotebooks.length === 0
+                  ? t("This course has no notebook yet")
+                  : t("No notebook selected")
             }
             detail={
               library.detailError ??
-              t("Pick a notebook on the left, or create one to get started.")
+              (courseScope && scopedNotebooks.length === 0
+                ? t(
+                    "Make one here and it joins this course — its notes then travel with everything else in it.",
+                  )
+                : t(
+                    "Pick a notebook on the left, or create one to get started.",
+                  ))
             }
           />
         ) : (

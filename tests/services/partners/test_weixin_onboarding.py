@@ -41,6 +41,12 @@ def stub_partner(monkeypatch) -> dict[str, Any]:
         channels = saved["channels"]
 
     class _Manager:
+        def __init__(self) -> None:
+            self.reload_calls = 0
+
+        def get_partner(self, partner_id: str):  # noqa: ARG002
+            return None
+
         def load_config(self, partner_id: str):  # noqa: ARG002
             return _Config()
 
@@ -49,7 +55,11 @@ def stub_partner(monkeypatch) -> dict[str, Any]:
             return _Config()
 
         def save_config(self, partner_id: str, config, **kwargs):  # noqa: ARG002
+            saved["channels"] = config.channels
             saved["written"] = True
+
+        async def reload_channels(self, partner_id: str):  # noqa: ARG002
+            self.reload_calls += 1
 
     monkeypatch.setattr(
         "deeptutor.services.partners.manager.get_partner_manager", lambda: _Manager()
@@ -163,7 +173,53 @@ async def test_a_confirmed_scan_writes_the_token_into_the_channel_config(
     assert status["status"] == "confirmed"
     assert stub_partner["channels"]["weixin"]["token"] == "bot-token"
     assert stub_partner["channels"]["weixin"]["base_url"] == "https://edge"
+    assert stub_partner["channels"]["weixin"]["enabled"] is True
+    assert stub_partner["channels"]["weixin"]["allow_from"] == ["*"]
     assert stub_partner["written"] is True
+
+
+@pytest.mark.asyncio
+async def test_a_running_partner_reloads_with_the_new_identity(monkeypatch) -> None:
+    saved: dict[str, Any] = {"channels": {"weixin": {"enabled": False}}}
+
+    class _Config:
+        def __init__(self) -> None:
+            self.channels = saved["channels"]
+
+    class _Instance:
+        def __init__(self) -> None:
+            self.config = _Config()
+
+    class _Manager:
+        def __init__(self) -> None:
+            self.instance = _Instance()
+            self.reloaded_with = ""
+
+        def get_partner(self, partner_id: str):  # noqa: ARG002
+            return self.instance
+
+        def load_config(self, partner_id: str):  # noqa: ARG002
+            # start_login reads provider options from disk; persistence must
+            # still update the running instance's object before reload.
+            return self.instance.config
+
+        def save_config(self, partner_id: str, config, **kwargs):  # noqa: ARG002
+            saved["channels"] = config.channels
+
+        async def reload_channels(self, partner_id: str):  # noqa: ARG002
+            self.reloaded_with = self.instance.config.channels["weixin"]["token"]
+
+    manager = _Manager()
+    monkeypatch.setattr("deeptutor.services.partners.manager.get_partner_manager", lambda: manager)
+    _stub_exchange(monkeypatch, outcomes=[QrOutcome(status="confirmed", token="live-token")])
+
+    started = await weixin_onboarding.start_login("p1")
+    status = await weixin_onboarding.poll_login("p1", started["session_id"])
+
+    assert status["status"] == "confirmed"
+    assert manager.reloaded_with == "live-token"
+    assert manager.instance.config.channels["weixin"]["enabled"] is True
+    assert manager.instance.config.channels["weixin"]["allow_from"] == ["*"]
 
 
 @pytest.mark.asyncio

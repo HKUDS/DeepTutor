@@ -17,7 +17,7 @@ import {
   sameLLMSelection,
   type LLMOption,
 } from "@/lib/llm-options";
-import type { LLMSelection } from "@/lib/unified-ws";
+import type { LLMSelection } from "@/features/chat/model/protocol";
 import {
   createPartner,
   getToolOptions,

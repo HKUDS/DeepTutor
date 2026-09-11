@@ -9,7 +9,7 @@ import {
   removeWebSource,
   syncWebSources,
   type WebSource,
-} from "@/lib/knowledge-api";
+} from "@/features/knowledge/api/sources";
 import { formatKnowledgeTimestamp } from "@/lib/knowledge-helpers";
 
 interface KbWebSourcesSectionProps {

@@ -10,7 +10,7 @@ from typing import Any
 from ..models import BlockType, SourceAnchor
 from ._llm_writer import llm_text
 from ._prompts import get_book_prompt, load_book_prompts
-from .base import BlockContext, BlockGenerator
+from .base import BlockContext, BlockGenerator, GenerationFailure
 
 _VARIANT_LABELS = {
     "key_idea": ("Key Idea", "核心要点"),
@@ -50,7 +50,10 @@ class CalloutGenerator(BlockGenerator):
             max_tokens=250,
             temperature=0.5,
             language=ctx.language,
+            reasoning_effort="none",
         )
+        if not body.strip():
+            raise GenerationFailure("LLM returned no visible callout content.")
         return (
             {"variant": variant, "label": label, "body": body},
             [],

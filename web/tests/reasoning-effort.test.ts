@@ -92,11 +92,62 @@ test("known reasoning families get conservative provider-specific choices", () =
     "high",
   ]);
   assert.deepEqual(values("dashscope", "qwen3-max"), ["", "minimal", "high"]);
-  assert.deepEqual(values("custom", "deepseek-reasoner"), [
+});
+
+test("gpt-5.6-sol swaps minimal for none and adds max", () => {
+  // Its enum is not the gpt-5 one: `minimal` is a 400 and `max` sits above
+  // `xhigh`. The generic gpt-5 branch must not swallow it.
+  assert.deepEqual(values("openai", "gpt-5.6-sol"), [
     "",
-    "minimal",
+    "none",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+  ]);
+  // Sibling gpt-5.6 variants are unconfirmed, so they stay on the gpt-5 list
+  // rather than being offered a level they may reject.
+  assert.equal(values("openai", "gpt-5.6-luna").includes("max"), false);
+});
+
+test("OpenAI-compatible gateways expose explicit effort levels", () => {
+  assert.deepEqual(values("custom", "idrouter/qd/lite"), [
+    "",
+    "none",
+    "low",
+    "medium",
     "high",
   ]);
+  assert.deepEqual(values("openai-compatible", "gateway/model"), [
+    "",
+    "none",
+    "low",
+    "medium",
+    "high",
+  ]);
+  assert.deepEqual(values("custom", "gateway/model", "vendor-level"), [
+    "",
+    "none",
+    "low",
+    "medium",
+    "high",
+    "vendor-level",
+  ]);
+});
+
+test("Anthropic-compatible aliases follow the Anthropic model rules", () => {
+  assert.deepEqual(values("anthropic-compatible", "claude-sonnet-4-5"), [
+    "",
+    "none",
+    "low",
+    "medium",
+    "high",
+  ]);
+  assert.deepEqual(
+    values("anthropic_compatible", "claude-opus-4-6").includes("adaptive"),
+    false,
+  );
 });
 
 test("unknown models stay hidden unless they already carry an override", () => {

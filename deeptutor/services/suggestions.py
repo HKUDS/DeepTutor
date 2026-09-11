@@ -54,6 +54,9 @@ import logging
 import time
 from typing import Any
 
+from deeptutor.services.file_io import atomic_write_json
+from deeptutor.services.prompt.language import is_chinese as _is_zh
+
 logger = logging.getLogger(__name__)
 
 # How many starting points the home screen offers. One per line, so fewer than
@@ -195,13 +198,7 @@ def _load() -> SuggestionSet | None:
 
 def _save(value: SuggestionSet) -> None:
     try:
-        path = _cache_path()
-        tmp = path.with_suffix(".json.tmp")
-        tmp.write_text(
-            json.dumps(value.to_dict(), ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-        tmp.replace(path)
+        atomic_write_json(_cache_path(), value.to_dict())
     except Exception:
         logger.debug("suggestions cache unwritable", exc_info=True)
 
@@ -212,7 +209,7 @@ def _save(value: SuggestionSet) -> None:
 def _output_language() -> str:
     """The language these lines are written in.
 
-    The learner's model-output setting (Settings → Appearance), the same one
+    The learner's model-output setting (Settings → Overview), the same one
     that decides what the chat agent answers in — not the UI locale. A chip
     proposing something to ask should read like the answer it will get.
     """
@@ -457,10 +454,6 @@ _SYSTEM_ZH = """你要提出三个"接下来值得探索什么"。每一个都�
 - 不要问候语、不要 emoji、字段文本里不要加引号。"""
 
 
-def _is_zh(language: str) -> bool:
-    return str(language or "en").lower().startswith("zh")
-
-
 def _render_topics(topics: list[_Topic], zh: bool) -> str:
     labels = _SURFACE_LABELS_ZH if zh else _SURFACE_LABELS_EN
     lines: list[str] = []
@@ -556,16 +549,20 @@ async def _generate(language: str, material: _Material) -> SuggestionSet:
 
     try:
         from deeptutor.services.llm import complete
+        from deeptutor.services.model_selection.tasks import task_llm_scope
 
-        raw = await asyncio.wait_for(
-            complete(
-                prompt=user_prompt,
-                system_prompt=_SYSTEM_ZH if zh else _SYSTEM_EN,
-                temperature=0.8,  # suggestions may vary; these are not facts
-                max_tokens=500,
-            ),
-            timeout=_LLM_TIMEOUT,
-        )
+        # Runs on the task model when one is configured, and on the active
+        # default otherwise — which is what this always did.
+        with task_llm_scope():
+            raw = await asyncio.wait_for(
+                complete(
+                    prompt=user_prompt,
+                    system_prompt=_SYSTEM_ZH if zh else _SYSTEM_EN,
+                    temperature=0.8,  # suggestions may vary; these are not facts
+                    max_tokens=500,
+                ),
+                timeout=_LLM_TIMEOUT,
+            )
     except asyncio.TimeoutError:
         logger.debug("suggestions LLM call timed out")
         return empty

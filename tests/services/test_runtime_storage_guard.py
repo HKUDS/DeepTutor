@@ -18,7 +18,7 @@ def test_runtime_config_paths_are_confined_to_data_user() -> None:
     assert Path(paths["research_output_dir"]).resolve().is_relative_to(user_root)
     assert Path(paths["research_reports_dir"]).resolve().is_relative_to(user_root)
     assert Path(paths["user_log_dir"]).resolve() == user_root / "logs"
-    assert Path(config["tools"]["run_code"]["workspace"]).resolve().is_relative_to(user_root)
+    assert Path(config["tools"]["exec"]["workspace"]).resolve().is_relative_to(user_root)
 
 
 def test_citation_manager_defaults_to_research_workspace(tmp_path: Path) -> None:

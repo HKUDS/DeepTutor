@@ -11,7 +11,7 @@ from deeptutor.capabilities.explore_context import explorer as explorer_mod
 from deeptutor.capabilities.protocol import PromptBlock
 from deeptutor.core.context import Attachment, UnifiedContext
 from deeptutor.core.stream import StreamEventType
-from deeptutor.core.stream_bus import StreamBus
+from deeptutor.runtime.stream_bus import StreamBus
 
 
 def _ctx(**metadata: Any) -> UnifiedContext:
@@ -101,6 +101,7 @@ async def test_single_pass_returns_investigation_block(
     assert block.name == "explore_context"
     # Header framing + the model's third-person account are both present.
     assert "Context Investigation" in block.content
+    assert "Do not call a file, PDF, or source-loading tool" in block.content
     assert "the other agent updated the nav." in block.content
 
 

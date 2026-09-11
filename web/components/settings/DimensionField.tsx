@@ -3,7 +3,10 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import type { CatalogModel, EmbeddingCapabilities } from "./SettingsContext";
+import type {
+  CatalogModel,
+  EmbeddingCapabilities,
+} from "@/features/settings/store/SettingsStore";
 import { nativeSelectClass, selectOptionClass } from "./shared";
 
 const CUSTOM_DIM_SENTINEL = "__custom__";

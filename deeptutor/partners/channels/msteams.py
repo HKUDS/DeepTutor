@@ -146,10 +146,21 @@ class MSTeamsChannel(BaseChannel):
         """Start the Teams webhook listener."""
         if not MSTEAMS_AVAILABLE:
             logger.error("MSTeams channel disabled: {}", MSTEAMS_DEPS_HINT)
+            self.set_setup_state(
+                "unavailable",
+                message="Required channel dependency is not installed on this server.",
+            )
             return
 
         if not self.config.app_id or not self.config.app_password:
             logger.error("MSTeams app_id/app_password not configured")
+            self.set_setup_state(
+                "action_required",
+                message=(
+                    "Required fields are missing. Complete the channel configuration "
+                    "and save again."
+                ),
+            )
             return
 
         if not self.config.validate_inbound_auth:
@@ -228,6 +239,7 @@ class MSTeamsChannel(BaseChannel):
             self.config.port,
             self.config.path,
         )
+        self.set_setup_state("connected")
 
         while self._running:
             await asyncio.sleep(1)

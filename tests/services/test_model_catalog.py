@@ -2,7 +2,7 @@ from concurrent.futures import ThreadPoolExecutor
 import json
 from pathlib import Path
 
-from deeptutor.services.config.model_catalog import ModelCatalogService
+from deeptutor.services.config.model_catalog import SERVICE_NAMES, ModelCatalogService
 
 
 def test_load_creates_empty_catalog_without_dotenv_hydration(tmp_path: Path):
@@ -105,18 +105,57 @@ def test_load_recovers_invalid_catalog_with_defaults(tmp_path: Path):
 
     catalog = ModelCatalogService(path=catalog_path).load()
 
-    expected_services = {
-        "llm",
-        "embedding",
-        "search",
-        "tts",
-        "stt",
-        "imagegen",
-        "videogen",
-    }
+    # Derived rather than re-listed: a new service should not need this test
+    # edited to keep passing, only the one that describes it.
+    expected_services = set(SERVICE_NAMES)
     assert set(catalog["services"]) == expected_services
     saved = json.loads(catalog_path.read_text(encoding="utf-8"))
     assert set(saved["services"]) == expected_services
+
+
+def test_load_normalizes_wire_api_to_supported_profile_backends(tmp_path: Path):
+    catalog_path = tmp_path / "model_catalog.json"
+    catalog_path.write_text(
+        json.dumps(
+            {
+                "services": {
+                    "llm": {
+                        "active_profile_id": "azure-profile",
+                        "active_model_id": "azure-model",
+                        "profiles": [
+                            {
+                                "id": "azure-profile",
+                                "name": "Azure",
+                                "binding": "azure_openai",
+                                "wire_api": "responses",
+                                "models": [
+                                    {
+                                        "id": "azure-model",
+                                        "name": "Deployment",
+                                        "model": "deployment-name",
+                                    }
+                                ],
+                            },
+                            {
+                                "id": "custom-profile",
+                                "name": "Custom",
+                                "binding": "custom",
+                                "wire_api": "unknown-protocol",
+                                "models": [],
+                            },
+                        ],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = ModelCatalogService(path=catalog_path).load()
+    profiles = loaded["services"]["llm"]["profiles"]
+
+    assert profiles[0]["wire_api"] == "auto"
+    assert profiles[1]["wire_api"] == "auto"
 
 
 def _gemini_embedding_catalog(path: Path, model: str) -> Path:

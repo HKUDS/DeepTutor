@@ -1,5 +1,7 @@
 "use client";
 
+import { browserStorage } from "@/shared/storage";
+
 /**
  * SessionViewerPanel — full right-side sidebar with browser-style tabs that
  * can hold (a) attachment previews and (b) embedded web pages clicked from
@@ -37,6 +39,7 @@ import {
   GraduationCap,
   Loader2,
   MessageSquarePlus,
+  NotebookPen,
   Paperclip,
   X,
 } from "lucide-react";
@@ -55,8 +58,8 @@ import SubagentTabBody from "@/components/chat/home/SubagentTabBody";
 import type { QuizFollowupTabContext } from "@/context/QuizFollowupContext";
 import type { GeogebraTabPayload } from "@/context/GeogebraTabContext";
 import { apiUrl } from "@/lib/api";
-import type { MessageAttachment } from "@/context/UnifiedChatContext";
-import type { StreamEvent } from "@/lib/unified-ws";
+import type { MessageAttachment } from "@/features/chat/ChatStateAdapter";
+import type { StreamEvent } from "@/features/chat/model/protocol";
 import {
   normalizeSelectedText,
   selectionTutorKey,
@@ -68,6 +71,9 @@ const PdfPreview = dynamic(
 );
 const ImagePreview = dynamic(
   () => import("@/components/chat/preview/previewers/ImagePreview"),
+);
+const VideoPreview = dynamic(
+  () => import("@/components/chat/preview/previewers/VideoPreview"),
 );
 const SvgPreview = dynamic(
   () => import("@/components/chat/preview/previewers/SvgPreview"),
@@ -89,6 +95,10 @@ const OfficeTextPreview = dynamic(
 );
 const FallbackPreview = dynamic(
   () => import("@/components/chat/preview/previewers/FallbackPreview"),
+);
+const ChatMarkdownNoteTabBody = dynamic(
+  () => import("@/components/chat/home/ChatMarkdownNoteTab"),
+  { ssr: false },
 );
 const Geogebra = dynamic(() => import("@/components/Geogebra"), {
   ssr: false,
@@ -121,7 +131,7 @@ function clampViewerWidth(px: number): number {
 
 function readStoredViewerWidth(): number {
   if (typeof window === "undefined") return VIEWER_WIDTH_DEFAULT;
-  const raw = window.localStorage.getItem(VIEWER_WIDTH_KEY);
+  const raw = browserStorage.readRaw("local", VIEWER_WIDTH_KEY);
   const parsed = raw ? Number(raw) : NaN;
   return Number.isFinite(parsed)
     ? clampViewerWidth(parsed)
@@ -135,6 +145,7 @@ function readStoredViewerWidth(): number {
 type ViewerTab =
   | { kind: "file"; id: string; label: string; source: FilePreviewSource }
   | { kind: "web"; id: string; label: string; url: string }
+  | { kind: "markdown-note"; id: string; label: string }
   | {
       kind: "quiz-followup";
       id: string;
@@ -164,6 +175,8 @@ type ViewerTab =
 export interface SessionViewerPanelHandle {
   openFileTab(a: MessageAttachment): void;
   openWebTab(url: string): void;
+  /** Opens the session-scoped inline Markdown editor tab. */
+  openMarkdownNoteTab(): void;
   /** Opens (or focuses) the follow-up chat tab for a quiz question. */
   openQuizFollowupTab(context: QuizFollowupTabContext): void;
   /** Opens an independent Little Tutor thread grounded in selected chat text. */
@@ -198,6 +211,8 @@ function fileTabIdFor(a: MessageAttachment, fallback: number): string {
 function webTabIdFor(url: string): string {
   return `web:${url}`;
 }
+
+const markdownNoteTabId = "markdown-note";
 
 function quizFollowupTabIdFor(questionKey: string): string {
   return `quiz-followup:${questionKey}`;
@@ -298,7 +313,11 @@ function SessionViewerPanelInner(
       document.body.style.cursor = "";
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
-      window.localStorage.setItem(VIEWER_WIDTH_KEY, String(widthRef.current));
+      browserStorage.writeRaw(
+        "local",
+        VIEWER_WIDTH_KEY,
+        String(widthRef.current),
+      );
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
@@ -361,6 +380,24 @@ function SessionViewerPanelInner(
     },
     [onAutoOpen],
   );
+
+  const openMarkdownNoteTab = useCallback(() => {
+    setTabs((prev) => {
+      const existingIdx = prev.findIndex((tab) => tab.id === markdownNoteTabId);
+      if (existingIdx >= 0) {
+        setActiveTabId(markdownNoteTabId);
+        return prev;
+      }
+      const next: ViewerTab = {
+        kind: "markdown-note",
+        id: markdownNoteTabId,
+        label: t("Markdown note"),
+      };
+      setActiveTabId(markdownNoteTabId);
+      return [...prev, next];
+    });
+    onAutoOpen();
+  }, [onAutoOpen, t]);
 
   const openQuizFollowupTab = useCallback(
     (context: QuizFollowupTabContext) => {
@@ -527,6 +564,7 @@ function SessionViewerPanelInner(
     () => ({
       openFileTab,
       openWebTab,
+      openMarkdownNoteTab,
       openQuizFollowupTab,
       openSelectionTutorTab,
       openGeogebraTab,
@@ -536,6 +574,7 @@ function SessionViewerPanelInner(
     [
       openFileTab,
       openWebTab,
+      openMarkdownNoteTab,
       openQuizFollowupTab,
       openSelectionTutorTab,
       openGeogebraTab,
@@ -648,6 +687,11 @@ function SessionViewerPanelInner(
           <FileTabBody source={activeTab.source} />
         ) : activeTab?.kind === "web" ? (
           <WebTabBody key={activeTab.url} url={activeTab.url} />
+        ) : activeTab?.kind === "markdown-note" ? (
+          <ChatMarkdownNoteTabBody
+            key={`${activeTab.id}:${sessionId ?? "pending"}`}
+            sessionId={sessionId}
+          />
         ) : activeTab?.kind === "quiz-followup" ? (
           <QuizFollowupTabBody
             key={activeTab.context.questionKey}
@@ -737,13 +781,15 @@ function TabBar({
           const Icon =
             tab.kind === "web"
               ? Globe
-              : tab.kind === "selection-tutor"
-                ? GraduationCap
-                : tab.kind === "quiz-followup"
-                  ? MessageSquarePlus
-                  : tab.kind === "geogebra"
-                    ? Compass
-                    : Paperclip;
+              : tab.kind === "markdown-note"
+                ? NotebookPen
+                : tab.kind === "selection-tutor"
+                  ? GraduationCap
+                  : tab.kind === "quiz-followup"
+                    ? MessageSquarePlus
+                    : tab.kind === "geogebra"
+                      ? Compass
+                      : Paperclip;
           return (
             <div
               key={tab.id}
@@ -1004,6 +1050,8 @@ const PreviewBody = memo(function PreviewBody({
       return <XlsxPreview url={previewUrl} />;
     case "image":
       return <ImagePreview url={previewUrl} filename={filename} />;
+    case "video":
+      return <VideoPreview url={previewUrl} filename={filename} />;
     case "svg":
       return <SvgPreview url={previewUrl} filename={filename} />;
     case "markdown":

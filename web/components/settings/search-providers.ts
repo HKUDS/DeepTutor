@@ -11,7 +11,7 @@
 // entry), every field is shown: better an extra control than a hidden one the
 // provider actually needs.
 
-import type { ProviderOption } from "./SettingsContext";
+import type { ProviderOption } from "@/features/settings/store/SettingsStore";
 
 export type SearchProviderFieldSpec = {
   /** Provider authenticates with an API key. */

@@ -73,7 +73,7 @@ export interface NormalizedMessage {
   metadata?: Record<string, unknown>;
 }
 
-/** A conversation ready to POST to `/api/v1/imports/chat-history`. */
+/** A conversation ready to POST to `/api/imports/chat-history`. */
 export interface NormalizedSession {
   external_id: string;
   title: string;

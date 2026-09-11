@@ -88,6 +88,13 @@ class NapcatChannel(BaseChannel):
     async def start(self) -> None:
         if not self.config.ws_url:
             logger.error("napcat: ws_url not configured")
+            self.set_setup_state(
+                "action_required",
+                message=(
+                    "Required fields are missing. Complete the channel configuration "
+                    "and save again."
+                ),
+            )
             return
 
         self._running = True
@@ -102,6 +109,10 @@ class NapcatChannel(BaseChannel):
                 raise
             except Exception as e:
                 logger.warning("napcat: connection lost: {}", e)
+                self.set_setup_state(
+                    "error",
+                    message="Channel connection failed; the listener will retry.",
+                )
             if self._running:
                 await asyncio.sleep(next(backoff, 30))
 
@@ -111,6 +122,7 @@ class NapcatChannel(BaseChannel):
             headers.append(("Authorization", f"Bearer {self.config.access_token}"))
 
         logger.info("napcat: connecting to {}", self.config.ws_url)
+        self.set_setup_state("connecting")
         async with ws_connect(self.config.ws_url, additional_headers=headers) as ws:
             self._ws = ws
             logger.info("napcat: connected")
@@ -142,6 +154,7 @@ class NapcatChannel(BaseChannel):
                             data.get("nickname"),
                             data.get("user_id"),
                         )
+                        self.set_setup_state("connected")
                         break
                     await self._dispatch_frame(raw)
 

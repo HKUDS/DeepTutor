@@ -10,6 +10,10 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, ValidationError
 
+from deeptutor.multi_user.learning_access import (
+    allowed_reading_extensions,
+    assert_learning_material,
+)
 from deeptutor.reading import ReadingStore
 from deeptutor.reading.extensions import (
     ReadingContext,
@@ -38,7 +42,12 @@ def _verified_selection(candidate: str, unit_text: str) -> str:
 
 @router.get("/extensions")
 async def list_extensions() -> list[dict[str, Any]]:
-    return [extension.manifest.model_dump() for extension in get_reading_extension_registry().all()]
+    allowed = allowed_reading_extensions()
+    return [
+        extension.manifest.model_dump()
+        for extension in get_reading_extension_registry().all()
+        if allowed is None or extension.manifest.id in allowed
+    ]
 
 
 @router.post("/materials/{material_id}/extensions/{extension_id}/actions/{action}")
@@ -48,6 +57,15 @@ async def run_extension_action(
     action: str,
     payload: ActionPayload,
 ) -> dict[str, Any]:
+    try:
+        assert_learning_material(material_id)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+    allowed = allowed_reading_extensions()
+    if allowed is not None and extension_id not in allowed:
+        raise HTTPException(status_code=403, detail="This reading extension is not allowed.")
+
     registry = get_reading_extension_registry()
     extension = registry.get(extension_id)
     if extension is None:

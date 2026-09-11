@@ -13,7 +13,7 @@ import { emptyMcpServerConfig } from "@/lib/mcp-api";
 /**
  * The deployment-wide MCP registry, embedded on `/space/mcp` for admins.
  *
- * This is the old `/settings/mcp` page. It lives here so both kinds of server
+ * This is the old `/settings#mcp` page. It lives here so both kinds of server
  * are managed in one place, and it stays behind an `isAdmin` check by its
  * caller: stdio is selectable on this surface, and a stdio `command` runs on the
  * host as the application user.

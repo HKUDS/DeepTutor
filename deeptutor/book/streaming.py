@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from deeptutor.core.stream import StreamEvent, StreamEventType
-from deeptutor.core.stream_bus import StreamBus
+from deeptutor.runtime.stream_bus import StreamBus
 
 SOURCE = "book_engine"
 

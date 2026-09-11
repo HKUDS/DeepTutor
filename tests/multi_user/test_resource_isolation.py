@@ -33,7 +33,7 @@ def test_partner_data_is_admin_anchored_not_user_scoped(as_user) -> None:
     request user's scope: partner runtimes execute inside a synthetic partner
     scope whose own workspace lives below ``data/partners``, so resolving the
     base dir through the contextvar would recurse the layout. Access control
-    is enforced at the API layer instead (the /api/v1/partners router is
+    is enforced at the API layer instead (the /api/partners router is
     admin-gated in ``api/main.py``).
     """
     from deeptutor.services.partners.manager import PartnerManager

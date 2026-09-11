@@ -61,7 +61,8 @@ def client(monkeypatch) -> TestClient:
     engine = _StubEngine()
     monkeypatch.setattr(book_router, "get_book_engine", lambda: engine)
     app = FastAPI()
-    app.include_router(book_router.router, prefix="/api/v1/book")
+    app.include_router(book_router.router, prefix="/api")
+    app.include_router(book_router.ws_router, prefix="/ws")
     return TestClient(app)
 
 
@@ -75,20 +76,25 @@ def _drain_until(ws, predicate, *, limit=12):
 
 
 def test_subscribe_is_acknowledged(client: TestClient) -> None:
-    with client.websocket_connect("/api/v1/book/ws") as ws:
+    with client.websocket_connect("/ws/books") as ws:
         ws.send_json({"type": "subscribe", "book_id": BOOK_ID})
-        assert ws.receive_json() == {"type": "subscribed", "book_id": BOOK_ID}
+        assert ws.receive_json() == {
+            "type": "subscribed",
+            "book_id": BOOK_ID,
+            "latest_seq": 0,
+            "reset": False,
+        }
 
 
 def test_subscribe_without_a_book_id_is_rejected(client: TestClient) -> None:
-    with client.websocket_connect("/api/v1/book/ws") as ws:
+    with client.websocket_connect("/ws/books") as ws:
         ws.send_json({"type": "subscribe"})
         frame = ws.receive_json()
         assert frame["type"] == "error"
 
 
 def test_a_subscriber_receives_events_from_an_action(client: TestClient) -> None:
-    with client.websocket_connect("/api/v1/book/ws") as ws:
+    with client.websocket_connect("/ws/books") as ws:
         ws.send_json({"type": "subscribe", "book_id": BOOK_ID})
         assert ws.receive_json()["type"] == "subscribed"
 
@@ -100,7 +106,7 @@ def test_a_subscriber_receives_events_from_an_action(client: TestClient) -> None
 
 def test_the_book_stream_survives_the_action_that_used_it(client: TestClient) -> None:
     """The regression itself: work queued by an action keeps streaming after it."""
-    with client.websocket_connect("/api/v1/book/ws") as ws:
+    with client.websocket_connect("/ws/books") as ws:
         ws.send_json({"type": "subscribe", "book_id": BOOK_ID})
         assert ws.receive_json()["type"] == "subscribed"
 
@@ -131,7 +137,7 @@ def test_a_reconnecting_client_catches_up_on_replayed_history(client: TestClient
 
     asyncio.run(_emit_before_anyone_is_listening())
 
-    with client.websocket_connect("/api/v1/book/ws") as ws:
+    with client.websocket_connect("/ws/books") as ws:
         ws.send_json({"type": "subscribe", "book_id": BOOK_ID})
         kinds = []
         for _ in range(6):
@@ -144,12 +150,41 @@ def test_a_reconnecting_client_catches_up_on_replayed_history(client: TestClient
         assert "page_planned" in kinds and "block_ready" in kinds
 
 
+def test_reconnect_cursor_does_not_replay_already_seen_events(client: TestClient) -> None:
+    async def _emit_before_anyone_is_listening() -> None:
+        stream = get_book_stream(BOOK_ID)
+        await stream.book_event("page_planned", {"page_id": "pg_1"})
+        await stream.book_event("block_ready", {"page_id": "pg_1", "block_id": "blk_1"})
+
+    asyncio.run(_emit_before_anyone_is_listening())
+
+    with client.websocket_connect("/ws/books") as ws:
+        ws.send_json({"type": "subscribe", "book_id": BOOK_ID, "after_seq": 1})
+        ack = ws.receive_json()
+        assert ack["latest_seq"] == 2
+        event = ws.receive_json()
+        assert event["seq"] == 2
+        assert event["metadata"]["kind"] == "block_ready"
+
+
+def test_cursor_ahead_of_restarted_bus_requests_client_reset(client: TestClient) -> None:
+    with client.websocket_connect("/ws/books") as ws:
+        ws.send_json({"type": "subscribe", "book_id": BOOK_ID, "after_seq": 99})
+        ack = ws.receive_json()
+        assert ack == {
+            "type": "subscribed",
+            "book_id": BOOK_ID,
+            "latest_seq": 0,
+            "reset": True,
+        }
+
+
 def test_two_clients_watching_one_book_both_get_events(client: TestClient) -> None:
-    with client.websocket_connect("/api/v1/book/ws") as first:
+    with client.websocket_connect("/ws/books") as first:
         first.send_json({"type": "subscribe", "book_id": BOOK_ID})
         assert first.receive_json()["type"] == "subscribed"
 
-        with client.websocket_connect("/api/v1/book/ws") as second:
+        with client.websocket_connect("/ws/books") as second:
             second.send_json({"type": "subscribe", "book_id": BOOK_ID})
             assert second.receive_json()["type"] == "subscribed"
 
@@ -163,7 +198,7 @@ def test_two_clients_watching_one_book_both_get_events(client: TestClient) -> No
 
 
 def test_unknown_message_types_are_reported_not_ignored(client: TestClient) -> None:
-    with client.websocket_connect("/api/v1/book/ws") as ws:
+    with client.websocket_connect("/ws/books") as ws:
         ws.send_json({"type": "nonsense", "book_id": BOOK_ID})
         frame = ws.receive_json()
         assert frame["type"] == "error"
@@ -177,9 +212,10 @@ def test_subscribing_to_a_book_this_user_cannot_see_is_refused(
     engine = _StubEngine(known=set())
     monkeypatch.setattr(book_router, "get_book_engine", lambda: engine)
     app = FastAPI()
-    app.include_router(book_router.router, prefix="/api/v1/book")
+    app.include_router(book_router.router, prefix="/api")
+    app.include_router(book_router.ws_router, prefix="/ws")
 
-    with TestClient(app).websocket_connect("/api/v1/book/ws") as ws:
+    with TestClient(app).websocket_connect("/ws/books") as ws:
         ws.send_json({"type": "subscribe", "book_id": "bk_someone_else"})
         frame = ws.receive_json()
         assert frame["type"] == "error"

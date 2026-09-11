@@ -197,7 +197,7 @@ def test_visible_partners_projects_by_what_the_caller_may_do(as_user, monkeypatc
 
 
 def test_admin_partner_summary_is_identity_only(monkeypatch):
-    from deeptutor.multi_user import router
+    from deeptutor.api.routers import multi_user as router
 
     _patch_manager(
         monkeypatch,

@@ -29,9 +29,9 @@ from deeptutor.agents.research.pipeline import (
     _BlockLoopHost,
 )
 from deeptutor.agents.research.utils.citation_manager import CitationManager
-from deeptutor.core.agentic.tool_dispatch import DispatchOutcome
 from deeptutor.core.context import UnifiedContext
-from deeptutor.core.stream_bus import StreamBus
+from deeptutor.runtime.agentic.tool_dispatch import DispatchOutcome
+from deeptutor.runtime.stream_bus import StreamBus
 
 OBSIDIAN_TOOLS = ("obsidian_search", "obsidian_read", "obsidian_list")
 ALL_TOOLS = frozenset(
@@ -39,7 +39,7 @@ ALL_TOOLS = frozenset(
         "rag",
         "web_search",
         "paper_search",
-        "code_execution",
+        "exec",
         *OBSIDIAN_TOOLS,
     }
 )
@@ -344,7 +344,7 @@ def test_augment_leaves_non_obsidian_tools_untouched(monkeypatch: pytest.MonkeyP
         kb_name="vault",
     )
     ctx = UnifiedContext(session_id="s1", user_message="m")
-    for tool in ("rag", "web_search", "code_execution"):
+    for tool in ("rag", "web_search", "exec"):
         kwargs = pipeline._augment_tool_kwargs(tool, {"query": "q"}, ctx)
         assert "_vault_path" not in kwargs
 

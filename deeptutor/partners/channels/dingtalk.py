@@ -154,10 +154,21 @@ class DingTalkChannel(BaseChannel):
         try:
             if not DINGTALK_AVAILABLE:
                 logger.error("DingTalk Stream SDK not installed. Run: pip install dingtalk-stream")
+                self.set_setup_state(
+                    "unavailable",
+                    message="Required channel dependency is not installed on this server.",
+                )
                 return
 
             if not self.config.client_id or not self.config.client_secret:
                 logger.error("DingTalk client_id and client_secret not configured")
+                self.set_setup_state(
+                    "action_required",
+                    message=(
+                        "Required fields are missing. Complete the channel configuration "
+                        "and save again."
+                    ),
+                )
                 return
 
             self._running = True
@@ -179,15 +190,25 @@ class DingTalkChannel(BaseChannel):
             # Reconnect loop: restart stream if SDK exits or crashes
             while self._running:
                 try:
+                    self.set_setup_state("running")
                     await self._client.start()
                 except Exception as e:
                     logger.warning("DingTalk stream error: {}", e)
+                    self.set_setup_state(
+                        "error",
+                        message="Channel connection failed; the listener will retry.",
+                    )
                 if self._running:
                     logger.info("Reconnecting DingTalk stream in 5 seconds...")
                     await asyncio.sleep(5)
 
         except Exception as e:
             logger.exception("Failed to start DingTalk channel: {}", e)
+            self._running = False
+            self.set_setup_state(
+                "error",
+                message=f"Channel startup failed ({type(e).__name__}).",
+            )
 
     async def stop(self) -> None:
         """Stop the DingTalk bot."""

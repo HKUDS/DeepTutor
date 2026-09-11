@@ -82,7 +82,7 @@ export default function MemoryL1Workbench({
     const entries = await Promise.all(
       L1_NAV.map(async ({ key }) => {
         try {
-          const res = await apiFetch(apiUrl(`/api/v1/memory/snapshot/${key}`));
+          const res = await apiFetch(apiUrl(`/api/memory/snapshot/${key}`));
           const data = (await res.json()) as SnapshotResponse;
           return [
             key,

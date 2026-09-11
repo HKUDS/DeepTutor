@@ -22,7 +22,7 @@ Two properties this owes the caller:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import logging
 import secrets
 import threading
@@ -64,8 +64,6 @@ class _Attempt:
     status: str = "waiting"
     error: str = ""
     refreshes: int = 0
-    #: Set once, on success. Never rendered into a response.
-    token: str = field(default="", repr=False)
 
 
 _attempts: dict[str, _Attempt] = {}
@@ -230,18 +228,20 @@ async def _apply_outcome(attempt: _Attempt, outcome: QrOutcome) -> None:
         await _reissue(attempt)
         return
     if outcome.status == "confirmed":
-        attempt.token = outcome.token
         try:
-            _persist_token(attempt.partner_id, outcome)
+            await _persist_token(attempt.partner_id, outcome)
         except Exception as exc:
             logger.warning(
-                "weixin login succeeded but the token could not be saved for %s: %s",
+                "weixin login succeeded but the channel could not be applied for %s: %s",
                 attempt.partner_id,
                 exc,
                 exc_info=True,
             )
             attempt.status = "error"
-            attempt.error = "The login succeeded but the token could not be saved."
+            attempt.error = (
+                "WeChat confirmed the login, but DeepTutor could not save or start "
+                "the channel. Try the scan again or save the channel settings."
+            )
             return
         attempt.status = "confirmed"
         return
@@ -278,22 +278,36 @@ def current_scan_payload(partner_id: str, session_id: str) -> str:
     return attempt.scan_payload
 
 
-def _persist_token(partner_id: str, outcome: QrOutcome) -> None:
-    """Write the bot token into the partner's ``weixin`` channel config."""
+async def _persist_token(partner_id: str, outcome: QrOutcome) -> None:
+    """Persist the identity and immediately apply it to a running Partner.
+
+    The running instance owns the config object used by ``reload_channels``.
+    Updating a separately loaded copy writes the token to disk but restarts the
+    listener with stale credentials, which makes a successful WebUI scan look
+    like it did nothing.
+    """
     from deeptutor.services.partners.manager import get_partner_manager
 
     manager = get_partner_manager()
-    existing = manager.load_config(partner_id)
+    instance = manager.get_partner(partner_id)
+    existing = instance.config if instance else manager.load_config(partner_id)
+    if existing is None:
+        raise RuntimeError("Partner not found")
     channels = dict(getattr(existing, "channels", None) or {})
     entry = dict(channels.get(CHANNEL) or {})
     entry["token"] = outcome.token
     if outcome.base_url:
         entry["base_url"] = outcome.base_url
-    entry.setdefault("enabled", True)
+    entry["enabled"] = True
+    # An empty allow_from means "deny everyone" and ChannelManager skips the
+    # listener entirely. A QR-created binding must be usable immediately;
+    # owners can narrow this list after the first message reveals an id.
+    entry["allow_from"] = [item for item in entry.get("allow_from", []) or [] if item] or ["*"]
     channels[CHANNEL] = entry
-    # merge_config overlays and returns; save_config is what writes it down.
-    merged = manager.merge_config(partner_id, {"channels": channels})
-    manager.save_config(partner_id, merged)
+    existing.channels = channels
+    manager.save_config(partner_id, existing)
+    if instance:
+        await manager.reload_channels(partner_id)
 
 
 def forget(session_id: str) -> None:

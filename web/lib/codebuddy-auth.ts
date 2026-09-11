@@ -8,7 +8,7 @@ export type CodeBuddyAuthStatus = {
   error_code: string | null;
 };
 
-const BASE = "/api/v1/settings/providers/codebuddy/auth";
+const BASE = "/api/settings/providers/codebuddy/auth";
 
 async function request(
   path: string,

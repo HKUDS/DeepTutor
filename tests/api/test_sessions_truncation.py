@@ -9,6 +9,7 @@ helper mutates that list in place.
 from deeptutor.api.routers.sessions import (
     _TRUNCATION_NOTICE,
     MAX_EVENT_PAYLOAD,
+    _redact_private_message_metadata,
     _truncate_oversized_events,
 )
 
@@ -67,6 +68,24 @@ def test_small_payloads_are_left_untouched():
     # Non-truncatable event type left alone even when oversized.
     assert "_truncated" not in messages[1]["events"][0]
     assert len(messages[1]["events"][0]["content"]) == MAX_EVENT_PAYLOAD + 5
+
+
+def test_redacts_private_provider_response_state():
+    messages = [
+        {
+            "role": "assistant",
+            "content": "answer",
+            "metadata": {
+                "provider_response_state": {"reasoning_content": "private"},
+                "request_snapshot": {"content": "question"},
+            },
+        }
+    ]
+
+    _redact_private_message_metadata(messages)
+
+    assert "provider_response_state" not in messages[0]["metadata"]
+    assert messages[0]["metadata"]["request_snapshot"] == {"content": "question"}
 
 
 def test_handles_messages_without_events_or_malformed_events():

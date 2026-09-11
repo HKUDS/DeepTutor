@@ -1,9 +1,11 @@
+import { toolResultScope } from "@/lib/tool-event";
 /**
  * Bridge from a reading tool's result to the reader pane.
  *
  * The reading tools signal UI intent on their `ToolResult.metadata` under
  * `reader_action` — `goto` to move the view, `annotate` to surface a mark the
- * assistant just made. The chat forwards that as a DOM event and the reader pane
+ * assistant just made, or `switch_tab` to bind the workspace to another source.
+ * The chat forwards that as a DOM event and the reader pane
  * listens; neither side imports the other, so the chat needs no knowledge of the
  * reader and vice versa (the same seam the visualize-prompt bridge uses).
  *
@@ -37,7 +39,7 @@ function rememberMoved(turnId: string): void {
 
 export interface ReaderActionPayload {
   material_id?: string;
-  reader_action: "goto" | "annotate";
+  reader_action: "goto" | "annotate" | "switch_tab";
   locator?: number;
   quote?: string;
   annotation?: Record<string, unknown>;
@@ -58,17 +60,12 @@ export function readerActionFrom(event: {
   metadata?: unknown;
 }): ReaderActionPayload | null {
   if (event?.type !== "tool_result") return null;
-  const metadata = event.metadata;
-  if (!metadata || typeof metadata !== "object") return null;
+  const raw = toolResultScope(event.metadata);
+  if (!raw) return null;
 
-  const outer = metadata as Record<string, unknown>;
-  const nested = outer.tool_metadata;
-  const raw = (nested && typeof nested === "object" ? nested : outer) as Record<
-    string,
-    unknown
-  >;
   const action = raw.reader_action;
-  if (action !== "goto" && action !== "annotate") return null;
+  if (action !== "goto" && action !== "annotate" && action !== "switch_tab")
+    return null;
 
   const payload: ReaderActionPayload = { reader_action: action };
   if (typeof raw.material_id === "string" && raw.material_id) {

@@ -2,6 +2,7 @@
 
 import { Fragment, memo, useEffect, useRef, useState } from "react";
 import {
+  BookMarked,
   BookOpen,
   Bot,
   ChevronRight,
@@ -19,6 +20,7 @@ type SelectableSpaceKey =
   | "chat_history"
   | "my_agents"
   | "books"
+  | "reading"
   | "notebooks"
   | "question_bank"
   | "persona"
@@ -30,6 +32,7 @@ export interface ChatSpaceSelectionCounts {
   chatHistory: number;
   myAgents: number;
   books: number;
+  reading: number;
   notebooks: number;
   questionBank: number;
   persona: number;
@@ -50,6 +53,8 @@ interface ChatSpaceMenuProps {
   personaAvailable?: boolean;
   /** Hide the My Agents entry (e.g. the quiz follow-up surface). */
   agentsAvailable?: boolean;
+  /** Show imported Reading materials on surfaces that wire its picker. */
+  readingAvailable?: boolean;
   onSelectItem: (key: SelectableSpaceKey) => void;
 }
 
@@ -59,6 +64,7 @@ const ITEM_ORDER: SelectableSpaceKey[] = [
   "chat_history",
   "my_agents",
   "books",
+  "reading",
   "notebooks",
   "question_bank",
   "persona",
@@ -80,6 +86,8 @@ function countFor(
       return counts.myAgents;
     case "books":
       return counts.books;
+    case "reading":
+      return counts.reading;
     case "notebooks":
       return counts.notebooks;
     case "question_bank":
@@ -99,6 +107,7 @@ export default memo(function ChatSpaceMenu({
   knowledgeAvailable = true,
   personaAvailable = true,
   agentsAvailable = true,
+  readingAvailable = false,
   onSelectItem,
 }: ChatSpaceMenuProps) {
   const { t } = useTranslation();
@@ -111,6 +120,7 @@ export default memo(function ChatSpaceMenu({
     if (key === "knowledge") return knowledgeAvailable;
     if (key === "persona") return personaAvailable;
     if (key === "my_agents") return agentsAvailable;
+    if (key === "reading") return readingAvailable;
     return true;
   })
     .map((key) => {
@@ -146,6 +156,14 @@ export default memo(function ChatSpaceMenu({
           label: "Books",
           description: "Reference generated book chapters in chat.",
           icon: BookOpen,
+        };
+      }
+      if (key === "reading") {
+        return {
+          key,
+          label: "Reading",
+          description: "Reference imported reading sections in chat.",
+          icon: BookMarked,
         };
       }
       if (key === "persona") {

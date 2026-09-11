@@ -30,10 +30,10 @@ import {
  *
  * This provider lives in the workspace layout, NOT inside the chat page, and
  * that placement is the whole point: sending the first message of a session
- * changes the URL from `/home` to `/home/<id>`, which remounts the page
+ * changes the URL from `/chat` to `/chat/<id>`, which remounts the page
  * component. State held inside the reader pane died with it, so the document
  * vanished the moment the user asked their first question. The layout persists
- * across that navigation — which is exactly why `UnifiedChatProvider` sits there
+ * across that navigation — which is exactly why the chat runtime sits there
  * too.
  *
  * The viewport (scroll position, selection) is deliberately NOT state: it
@@ -48,7 +48,9 @@ export interface ReadingContextValue {
   loading: boolean;
   /** Last failure worth showing the user; cleared by `dismissError`. */
   error: string | null;
-  openMaterial: (candidate: MaterialDetail | MaterialInfo) => Promise<void>;
+  openMaterial: (
+    candidate: MaterialDetail | MaterialInfo | string,
+  ) => Promise<boolean>;
   closeMaterial: () => void;
   /** Insert or update an annotation, optimistically. */
   saveMark: (
@@ -62,7 +64,11 @@ export interface ReadingContextValue {
   dismissError: () => void;
   setError: (message: string) => void;
   /** Report scroll position / selection. Does not trigger a render. */
-  reportViewport: (next: { locator?: number; selection?: string }) => void;
+  reportViewport: (next: {
+    locator?: number;
+    selection?: string;
+    timeSeconds?: number | null;
+  }) => void;
 }
 
 const noop = () => {};
@@ -72,7 +78,7 @@ const ReadingContext = createContext<ReadingContextValue>({
   annotations: [],
   loading: false,
   error: null,
-  openMaterial: async () => {},
+  openMaterial: async () => false,
   closeMaterial: noop,
   saveMark: async () => {},
   removeMark: async () => {},
@@ -94,30 +100,37 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
   // reads when it sends. One effect rather than writes scattered through the
   // mutators, so the two can never disagree.
   useEffect(() => {
-    setReadingMaterial(material?.material_id ?? null);
+    setReadingMaterial(
+      material?.material_id ?? null,
+      material?.revision ?? null,
+    );
   }, [material]);
 
   const openMaterial = useCallback(
-    async (candidate: MaterialDetail | MaterialInfo) => {
+    async (candidate: MaterialDetail | MaterialInfo | string) => {
       const token = ++openTokenRef.current;
       setLoading(true);
       setErrorState(null);
       try {
         const detail =
-          "outline" in candidate
-            ? (candidate as MaterialDetail)
-            : await getMaterial(candidate.material_id);
+          typeof candidate === "string"
+            ? await getMaterial(candidate)
+            : "outline" in candidate
+              ? (candidate as MaterialDetail)
+              : await getMaterial(candidate.material_id);
         const marks = await listAnnotations(detail.material_id);
-        if (token !== openTokenRef.current) return;
+        if (token !== openTokenRef.current) return false;
         setMaterial(detail);
         setAnnotations(marks);
+        return true;
       } catch (caught) {
-        if (token !== openTokenRef.current) return;
+        if (token !== openTokenRef.current) return false;
         setErrorState(
           caught instanceof Error
             ? caught.message
             : "This document could not be opened.",
         );
+        return false;
       } finally {
         if (token === openTokenRef.current) setLoading(false);
       }
@@ -198,8 +211,11 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const reportViewport = useCallback(
-    (next: { locator?: number; selection?: string }) =>
-      setReadingViewport(next),
+    (next: {
+      locator?: number;
+      selection?: string;
+      timeSeconds?: number | null;
+    }) => setReadingViewport(next),
     [],
   );
 

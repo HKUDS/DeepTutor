@@ -8,7 +8,7 @@ import json
 import pytest
 
 from deeptutor.core.stream import StreamEvent, StreamEventType
-from deeptutor.core.stream_bus import StreamBus
+from deeptutor.runtime.stream_bus import StreamBus
 
 # ---------------------------------------------------------------------------
 # Basic emit / subscribe

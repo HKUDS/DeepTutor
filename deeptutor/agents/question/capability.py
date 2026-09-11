@@ -12,40 +12,65 @@ from __future__ import annotations
 
 import asyncio
 import base64
+from pathlib import Path
 import tempfile
 from typing import Any
 
 from deeptutor.agents._shared.capability_result import emit_capability_result
-from deeptutor.core.agentic.usage import UsageTracker
-from deeptutor.core.capability_protocol import BaseCapability, CapabilityManifest
+from deeptutor.core.capability_protocol import CapabilityManifest, TurnCapability
 from deeptutor.core.context import UnifiedContext
-from deeptutor.core.stream_bus import StreamBus
 from deeptutor.core.trace import merge_trace_metadata
 from deeptutor.i18n import StatusI18n
+from deeptutor.runtime.agentic.usage import UsageTracker
 from deeptutor.runtime.request_contracts import get_capability_request_schema
+from deeptutor.runtime.stream_bus import StreamBus
 
 
-class DeepQuestionCapability(BaseCapability):
+class DeepQuestionCapability(TurnCapability):
     manifest = CapabilityManifest(
         name="deep_question",
         description="Fast question generation (Template batches -> Generate).",
         stages=["ideation", "generation"],
-        tools_used=["rag", "web_search", "code_execution"],
+        tools_used=["rag", "web_search", "exec"],
         cli_aliases=["quiz"],
         request_schema=get_capability_request_schema("deep_question"),
     )
 
     async def run(self, context: UnifiedContext, stream: StreamBus) -> None:
         from deeptutor.services.llm.config import get_llm_config
-        from deeptutor.services.path_service import get_path_service
 
         llm_config = get_llm_config()
         kb_name = context.knowledge_bases[0] if context.knowledge_bases else None
         turn_id = str(context.metadata.get("turn_id", "") or context.session_id or "deep-question")
-        output_dir = get_path_service().get_task_workspace("deep_question", turn_id)
         i18n = StatusI18n(self.name, context.language, module="question")
 
         overrides = context.config_overrides
+        mode = str(overrides.get("mode", "custom") or "custom").strip().lower()
+        topic = str(overrides.get("topic") or context.user_message or "").strip()
+        # Validate user-fixable input before allocating a workspace or invoking
+        # any provider/parser.  This keeps an empty custom request from
+        # surfacing a low-level filesystem error such as ``Operation not
+        # permitted``.
+        if mode == "custom" and not topic:
+            await stream.error(
+                i18n.t(
+                    "topic_required",
+                    "Please provide a topic before generating questions.",
+                ),
+                source=self.name,
+                metadata={"code": "topic_required", "retryable": True},
+            )
+            return
+        runtime_workspace = context.runtime.workspace
+        if runtime_workspace is not None:
+            output_dir = Path(runtime_workspace.output_dir) / "question_generation"
+            output_dir.mkdir(parents=True, exist_ok=True)
+        else:
+            # Direct legacy callers that do not construct a TurnRuntimeContext
+            # retain their historical storage path.
+            from deeptutor.services.path_service import get_path_service
+
+            output_dir = get_path_service().get_task_workspace("deep_question", turn_id)
         followup_question_context = context.metadata.get("question_followup_context", {}) or {}
         if isinstance(followup_question_context, dict) and followup_question_context.get(
             "question"
