@@ -408,13 +408,19 @@ for (const mobile of [false, true]) {
       )
       .toBe(1.5)
 
-    await page.evaluate(() => {
-      const player = (
-        window as typeof window & { __fakePlayers: Array<{ current: number }> }
-      ).__fakePlayers.at(-1)
-      if (player) player.current = 8
-    })
-    await expect(page.getByText('The first grounded concept.').locator('..')).toHaveClass(/ring-1/)
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const player = (
+            window as typeof window & { __fakePlayers: Array<{ current: number }> }
+          ).__fakePlayers.at(-1)
+          if (player) player.current = 8
+          return document
+            .querySelector('[data-transcript-cue="0"]')
+            ?.getAttribute('data-active-cue')
+        })
+      )
+      .toBe('true')
 
     const transcriptList = page.getByTestId('video-transcript-list')
     const followButton = page.getByRole('button', { name: 'Follow playback' })
@@ -508,13 +514,21 @@ for (const mobile of [false, true]) {
       timed_media_id: MATERIAL_ID,
     })
     if (mobile) await page.getByRole('button', { name: 'Video', exact: true }).click()
-    await page.evaluate(() => {
-      const player = (
-        window as typeof window & { __fakePlayers: Array<{ current: number }> }
-      ).__fakePlayers.at(-1)
-      if (player) player.current = 8
-    })
-    await expect(page.getByText('The first grounded concept.').locator('..')).toHaveClass(/ring-1/)
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const player = (
+            window as typeof window & {
+              __fakePlayers?: Array<{ current: number }>
+            }
+          ).__fakePlayers?.at(-1)
+          if (player) player.current = 8
+          return document
+            .querySelector('[data-transcript-cue="0"]')
+            ?.getAttribute('data-active-cue')
+        })
+      )
+      .toBe('true')
 
     await page.getByRole('tab', { name: 'Video notes' }).click()
     await expect(page.getByText('No notes yet.')).toBeVisible()
@@ -696,8 +710,10 @@ for (const mobile of [false, true]) {
       .poll(() =>
         page.evaluate(() => {
           const player = (
-            window as typeof window & { __fakePlayers: Array<{ current: number }> }
-          ).__fakePlayers.at(-1)
+            window as typeof window & {
+              __fakePlayers?: Array<{ current: number }>
+            }
+          ).__fakePlayers?.at(-1)
           return player?.current || 0
         })
       )
