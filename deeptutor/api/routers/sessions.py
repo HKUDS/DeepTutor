@@ -154,6 +154,16 @@ def _truncate_oversized_events(
                 event["_truncated"] = True
 
 
+@router.get("/recycle-bin")
+async def list_recycle_bin(
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+):
+    store = get_session_store()
+    sessions = await store.list_deleted_sessions(limit=limit, offset=offset)
+    return {"sessions": sessions}
+
+
 @router.get("/{session_id}")
 async def get_session(session_id: str):
     store = get_session_store()
@@ -266,6 +276,25 @@ async def delete_session(session_id: str):
     deleted = await store.delete_session(session_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Session not found")
+    return {"deleted": True, "session_id": session_id, "recycled": True}
+
+
+@router.post("/{session_id}/restore")
+async def restore_session(session_id: str):
+    store = get_session_store()
+    restored = await store.restore_session(session_id)
+    if not restored:
+        raise HTTPException(status_code=404, detail="Session not found in recycle bin")
+    refreshed = await store.get_session(session_id)
+    return {"restored": True, "session": refreshed}
+
+
+@router.delete("/{session_id}/purge")
+async def purge_session(session_id: str):
+    store = get_session_store()
+    purged = await store.purge_session(session_id)
+    if not purged:
+        raise HTTPException(status_code=404, detail="Session not found in recycle bin")
     try:
         await asyncio.to_thread(LearningStore().detach_session, session_id)
     except Exception:
@@ -274,7 +303,7 @@ async def delete_session(session_id: str):
         await get_attachment_store().delete_session(session_id)
     except Exception:
         logger.exception("failed to clean up attachments for session %s", session_id)
-    return {"deleted": True, "session_id": session_id}
+    return {"purged": True, "session_id": session_id}
 
 
 @router.put("/{session_id}/branch-selection")

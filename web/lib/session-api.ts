@@ -299,6 +299,35 @@ export async function deleteSession(sessionId: string): Promise<void> {
   invalidateClientCache("sessions:");
 }
 
+export async function listRecycleBin(
+  limit = 50,
+  offset = 0,
+): Promise<SessionSummary[]> {
+  const response = await apiFetch(
+    apiUrl(`/api/sessions/recycle-bin?limit=${limit}&offset=${offset}`),
+  );
+  const data = await expectJson<{ sessions: SessionSummary[] }>(response);
+  return data.sessions ?? [];
+}
+
+export async function restoreSession(sessionId: string): Promise<void> {
+  const response = await apiFetch(
+    apiUrl(`/api/sessions/${sessionId}/restore`),
+    { method: "POST" },
+  );
+  await expectJson<{ restored: boolean }>(response);
+  invalidateClientCache("sessions:");
+}
+
+export async function purgeSession(sessionId: string): Promise<void> {
+  const response = await apiFetch(
+    apiUrl(`/api/sessions/${sessionId}/purge`),
+    { method: "DELETE" },
+  );
+  await expectJson<{ purged: boolean }>(response);
+  invalidateClientCache("sessions:");
+}
+
 export async function recordQuizResults(
   sessionId: string,
   answers: QuizResultItem[],

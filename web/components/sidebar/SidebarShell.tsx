@@ -116,6 +116,8 @@ interface SidebarShellProps {
     sessionId: string,
     patch: SessionOrganizationPatch,
   ) => void | Promise<void>;
+  /** Optional recycle-bin section rendered below the session list. */
+  recycleBinSlot?: ReactNode;
   /**
    * Footer content rendered below the nav. Pass a render function to receive
    * the current ``collapsed`` state so footer items (e.g. Admin / Sign out) can
@@ -137,6 +139,7 @@ export function SidebarShell({
   masteryTopics = [],
   readingCollections = [],
   onOrganizeSession,
+  recycleBinSlot,
   footerSlot,
 }: SidebarShellProps) {
   const pathname = usePathname();
@@ -390,6 +393,8 @@ export function SidebarShell({
           </div>
         </section>
       ) : null}
+
+      {recycleBinSlot}
 
       {/* With no session list at all, fill the gap above the footer. */}
       {(!showSessions ||

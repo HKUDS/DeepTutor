@@ -666,11 +666,16 @@ def test_delete_notebook_entry(store: SQLiteSessionStore) -> None:
     assert asyncio.run(store.delete_notebook_entry(99999)) is False
 
 
-def test_entries_cascade_on_session_delete(store: SQLiteSessionStore) -> None:
+def test_entries_cascade_on_session_purge(store: SQLiteSessionStore) -> None:
     session = asyncio.run(store.create_session())
     asyncio.run(store.upsert_notebook_entries(session["id"], _make_items(("q1", "Q?", False))))
     assert asyncio.run(store.list_notebook_entries())["total"] == 1
     asyncio.run(store.delete_session(session["id"]))
+    assert asyncio.run(store.list_notebook_entries())["total"] == 0
+    assert asyncio.run(store.restore_session(session["id"]))
+    assert asyncio.run(store.list_notebook_entries())["total"] == 1
+    asyncio.run(store.delete_session(session["id"]))
+    assert asyncio.run(store.purge_session(session["id"]))
     assert asyncio.run(store.list_notebook_entries())["total"] == 0
 
 
