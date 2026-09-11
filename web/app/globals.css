@@ -986,6 +986,14 @@ a[href^="#dt-locator-"]:hover {
    jumps do nothing at all. A jump should also be instant on its merits: easing
    through 400 pages to reach a citation is slow and disorienting. The motion in
    this feature belongs to the pane sliding in and to the highlight pulse. */
+.reading-v2[data-reading-workspace][data-learning="true"] {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  width: 100%;
+  height: 100dvh;
+}
+
 .dt-reader-scroll {
   scrollbar-width: thin;
 }
