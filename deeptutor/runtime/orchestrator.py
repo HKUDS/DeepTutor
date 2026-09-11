@@ -9,6 +9,7 @@ All consumers (CLI, WebSocket, SDK) call the orchestrator.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from typing import Any, AsyncIterator
 import uuid
@@ -168,11 +169,21 @@ class ChatOrchestrator:
 
         stream = bus.subscribe()
         task = asyncio.create_task(_run())
+        try:
+            async for event in stream:
+                yield event
+            await task
+        finally:
+            # The capability runs in its own task, so a consumer that stops
+            # reading — a cancelled turn, or a stream closed early — does not
+            # stop it. Left running, it keeps calling the model and tools for a
+            # turn already reported as stopped; left parked on ``ask_user``, it
+            # is collected mid-await and ``_run`` never unregisters the bus.
+            if not task.done():
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
 
-        async for event in stream:
-            yield event
-
-        await task
         await self._publish_completion(context, cap_name)
 
     async def _publish_completion(self, context: UnifiedContext, cap_name: str) -> None:

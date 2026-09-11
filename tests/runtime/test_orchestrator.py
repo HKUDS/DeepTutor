@@ -11,7 +11,7 @@ from deeptutor.core.capability_protocol import CapabilityManifest, TurnCapabilit
 from deeptutor.core.context import UnifiedContext
 from deeptutor.core.stream import StreamEvent, StreamEventType
 from deeptutor.runtime.orchestrator import ChatOrchestrator
-from deeptutor.runtime.stream_bus import StreamBus
+from deeptutor.runtime.stream_bus import StreamBus, get_bus
 
 
 @pytest.fixture(autouse=True)
@@ -51,6 +51,24 @@ class _FailingCapability(TurnCapability):
 
     async def run(self, context: UnifiedContext, stream: StreamBus) -> None:
         raise RuntimeError("intentional failure")
+
+
+class _ParkedCapability(TurnCapability):
+    """Capability that streams once, then waits until it is cancelled."""
+
+    manifest = CapabilityManifest(name="parked", description="Waits after its first event.")
+
+    def __init__(self) -> None:
+        self.cancelled = asyncio.Event()
+
+    async def run(self, context: UnifiedContext, stream: StreamBus) -> None:
+        await stream.content("thinking", source=self.name)
+        try:
+            # Stands in for a long model round or an ``ask_user`` pause.
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            self.cancelled.set()
+            raise
 
 
 def _make_orchestrator(
@@ -198,6 +216,59 @@ class TestOrchestratorErrorHandling:
             "retryable": True,
             "partial_response": False,
         }
+
+
+# ---------------------------------------------------------------------------
+# Cancellation
+# ---------------------------------------------------------------------------
+
+
+class TestOrchestratorCancellation:
+    @pytest.mark.asyncio
+    async def test_cancelling_the_consumer_cancels_the_capability(self) -> None:
+        """Stopping a turn must stop the capability, not only the event stream."""
+        parked = _ParkedCapability()
+        orch = _make_orchestrator({"parked": parked})
+        ctx = UnifiedContext(
+            user_message="hi",
+            active_capability="parked",
+            metadata={"turn_id": "turn-cancelled"},
+        )
+        first_content = asyncio.Event()
+
+        async def _consume() -> None:
+            async for event in orch.handle(ctx):
+                if event.type == StreamEventType.CONTENT:
+                    first_content.set()
+
+        consumer = asyncio.create_task(_consume())
+        await asyncio.wait_for(first_content.wait(), timeout=1)
+        consumer.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await consumer
+
+        assert parked.cancelled.is_set()
+        assert get_bus("turn-cancelled") is None
+
+    @pytest.mark.asyncio
+    async def test_closing_the_stream_early_cancels_the_capability(self) -> None:
+        """A consumer that stops reading takes the capability down with it."""
+        parked = _ParkedCapability()
+        orch = _make_orchestrator({"parked": parked})
+        ctx = UnifiedContext(
+            user_message="hi",
+            active_capability="parked",
+            metadata={"turn_id": "turn-closed"},
+        )
+
+        stream = orch.handle(ctx)
+        async for event in stream:
+            if event.type == StreamEventType.CONTENT:
+                break
+        await stream.aclose()
+
+        assert parked.cancelled.is_set()
+        assert get_bus("turn-closed") is None
 
 
 # ---------------------------------------------------------------------------
