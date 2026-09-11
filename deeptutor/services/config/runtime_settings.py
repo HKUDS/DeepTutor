@@ -29,7 +29,7 @@ DEFAULT_SYSTEM_SETTINGS: dict[str, Any] = {
     "disable_ssl_verify": False,
     "chat_attachment_dir": "",
     # Enable the restricted-subprocess code-execution sandbox (the `exec` /
-    # `code_execution` tools the office skills — docx/pdf/pptx/xlsx — run on).
+    # unified `exec` tool the office skills — docx/pdf/pptx/xlsx — run on).
     # Default on so document generation works out of the box across all
     # deployment shapes; a stronger backend (runner sidecar / bwrap) still
     # takes precedence when available. Set false to disable host-side exec.

@@ -23,9 +23,13 @@ import {
   CODE_BLOCK_SETTINGS_EVENT,
   CODE_BLOCK_THEME_STORAGE_KEY,
   CODE_BLOCK_WRAP_LONG_LINES_STORAGE_KEY,
+  DEFAULT_CODE_BLOCK_SHOW_LINE_NUMBERS,
+  DEFAULT_CODE_BLOCK_THEME,
+  DEFAULT_CODE_BLOCK_WRAP_LONG_LINES,
   LANGUAGE_EVENT,
   LANGUAGE_STORAGE_KEY,
   hasStoredLanguage,
+  hasStoredResponseLanguage,
   SIDEBAR_COLLAPSED_EVENT,
   SIDEBAR_COLLAPSED_STORAGE_KEY,
   normalizeCodeBlockShowLineNumbers,
@@ -82,13 +86,13 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
   // Always start expanded to match SSR; hydrate from localStorage after mount
   const [sidebarCollapsed, setSidebarCollapsedState] = useState<boolean>(false);
   // Code block settings - start with defaults, hydrate from localStorage after mount
-  const [codeBlockTheme, setCodeBlockThemeState] = useState<string>(() =>
-    readStoredCodeBlockTheme(),
+  const [codeBlockTheme, setCodeBlockThemeState] = useState<string>(
+    DEFAULT_CODE_BLOCK_THEME,
   );
   const [codeBlockShowLineNumbers, setCodeBlockShowLineNumbersState] =
-    useState<boolean>(() => readStoredCodeBlockShowLineNumbers());
+    useState<boolean>(DEFAULT_CODE_BLOCK_SHOW_LINE_NUMBERS);
   const [codeBlockWrapLongLines, setCodeBlockWrapLongLinesState] =
-    useState<boolean>(() => readStoredCodeBlockWrapLongLines());
+    useState<boolean>(DEFAULT_CODE_BLOCK_WRAP_LONG_LINES);
 
   useEffect(() => {
     // Hydrate client-only preferences after SSR-safe first render.
@@ -113,7 +117,12 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
     void (async () => {
-      if (hasStoredLanguage()) {
+      // Both keys are checked, not just the interface one. They were split
+      // after the interface language shipped, so a browser from before the
+      // split has `deeptutor-language` and no `deeptutor-response-language` —
+      // and returning here on the first alone locked it out of ever adopting
+      // the account's model output language.
+      if (hasStoredLanguage() && hasStoredResponseLanguage()) {
         if (!cancelled) {
           setLanguageState(readStoredLanguage());
           setLanguageReady(true);
@@ -135,19 +144,25 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
           response_language?: unknown;
         };
         if (payload.language !== "zh" && payload.language !== "en") return;
-        writeStoredLanguage(payload.language);
-        // A backend that predates the split sends no response_language;
-        // resolveResponseLanguage inherits the interface locale, matching what
-        // the server does for a legacy interface.json.
-        writeStoredResponseLanguage(
-          resolveResponseLanguage(
-            typeof payload.response_language === "string"
-              ? payload.response_language
-              : null,
-            payload.language,
-          ),
-        );
-        if (!cancelled) setLanguageState(payload.language);
+        // Only what this browser is actually missing: a stored interface
+        // language is this user's own choice and the server must not overwrite
+        // it just because the response key was absent.
+        const hadLanguage = hasStoredLanguage();
+        if (!hadLanguage) writeStoredLanguage(payload.language);
+        if (!hasStoredResponseLanguage()) {
+          // A backend that predates the split sends no response_language;
+          // resolveResponseLanguage inherits the interface locale, matching
+          // what the server does for a legacy interface.json.
+          writeStoredResponseLanguage(
+            resolveResponseLanguage(
+              typeof payload.response_language === "string"
+                ? payload.response_language
+                : null,
+              payload.language,
+            ),
+          );
+        }
+        if (!cancelled && !hadLanguage) setLanguageState(payload.language);
       } catch {
         // Offline or unauthenticated: keep the local default.
       } finally {

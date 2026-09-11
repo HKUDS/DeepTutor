@@ -161,8 +161,12 @@ def test_register_rejects_a_name_that_derives_an_existing_store(
     """Distinct names can still derive one SQLite file.
 
     ``default_db_path`` keeps only alphanumerics, ``-`` and ``_``, so "My Lib"
-    and "My/Lib" both land on ``My_Lib.db``. Sharing it would merge two
+    and "My.Lib" both land on ``My_Lib.db``. Sharing it would merge two
     libraries' objects and let either one's paired devices sync into the other.
+
+    The pair used to be "My Lib" / "My/Lib". A ``/`` is now refused by
+    ``validate_knowledge_base_name`` before this guard is reached, so the
+    collision needs a character the name rule allows — a dot does.
     """
     monkeypatch.setenv("DEEPTUTOR_HOME", str(tmp_path / "home"))
     PathService.reset_instance()
@@ -171,7 +175,7 @@ def test_register_rejects_a_name_that_derives_an_existing_store(
         manager.register_marginnote4_kb("My Lib")
 
         with pytest.raises(ValueError, match="already uses that MarginNote store"):
-            manager.register_marginnote4_kb("My/Lib")
+            manager.register_marginnote4_kb("My.Lib")
 
         # A name that differs by more than punctuation is fine.
         manager.register_marginnote4_kb("Other Lib")

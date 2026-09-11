@@ -21,7 +21,7 @@ class ImmersiveWatchingCapability(TurnCapability):
         name="immersive_watching",
         description="Learn alongside a YouTube video with timestamp-grounded tutoring.",
         stages=["responding"],
-        tools_used=["web_search", "code_execution", "reason"],
+        tools_used=["web_search", "exec", "reason"],
         cli_aliases=["watching", "watch"],
     )
 

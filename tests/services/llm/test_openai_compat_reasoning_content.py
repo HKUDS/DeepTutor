@@ -36,6 +36,19 @@ def _reasoning_only_chunk():
     )
 
 
+def _response_with_reasoning_alias(alias: str):
+    message = SimpleNamespace(
+        content=None,
+        reasoning_content=None,
+        reasoning=None,
+        tool_calls=None,
+    )
+    setattr(message, alias, "Let me draft ~320 words.\nWord budget matters.")
+    return SimpleNamespace(
+        choices=[SimpleNamespace(message=message, finish_reason="stop")],
+    )
+
+
 @pytest.mark.parametrize(
     "provider_cls",
     [ServicesOpenAICompatProvider],
@@ -47,6 +60,48 @@ def test_parse_keeps_reasoning_content_out_of_visible_content(provider_cls) -> N
 
     assert response.content is None
     assert response.reasoning_content == "internal reasoning"
+
+
+@pytest.mark.parametrize("alias", ["reasoning", "reasoning_content"])
+def test_parse_never_promotes_untagged_reasoning_to_content(alias: str) -> None:
+    provider = ServicesOpenAICompatProvider.__new__(ServicesOpenAICompatProvider)
+
+    response = provider._parse(_response_with_reasoning_alias(alias))
+
+    assert response.content is None
+    assert response.reasoning_content == "Let me draft ~320 words.\nWord budget matters."
+
+
+def test_parse_keeps_visible_content_separate_from_reasoning() -> None:
+    provider = ServicesOpenAICompatProvider.__new__(ServicesOpenAICompatProvider)
+    message = SimpleNamespace(
+        content="Polished reader paragraph.",
+        reasoning="Let me draft ~320 words.",
+        reasoning_content=None,
+        tool_calls=None,
+    )
+    response = provider._parse(
+        SimpleNamespace(choices=[SimpleNamespace(message=message, finish_reason="stop")])
+    )
+
+    assert response.content == "Polished reader paragraph."
+    assert response.reasoning_content == "Let me draft ~320 words."
+
+
+def test_parse_drops_content_when_gateway_duplicates_reasoning() -> None:
+    provider = ServicesOpenAICompatProvider.__new__(ServicesOpenAICompatProvider)
+    message = SimpleNamespace(
+        content="Let me draft ~320 words.",
+        reasoning="Let me draft ~320 words.",
+        reasoning_content=None,
+        tool_calls=None,
+    )
+    response = provider._parse(
+        SimpleNamespace(choices=[SimpleNamespace(message=message, finish_reason="stop")])
+    )
+
+    assert response.content is None
+    assert response.reasoning_content == "Let me draft ~320 words."
 
 
 @pytest.mark.parametrize(
@@ -87,27 +142,52 @@ def test_services_provider_minimal_reasoning_uses_extra_body_only() -> None:
     assert kwargs["extra_body"] == {"thinking": {"type": "disabled"}}
 
 
-def test_services_deepseek_v4_flash_disables_thinking_by_default() -> None:
+def test_openrouter_none_reasoning_is_excluded_from_response() -> None:
     kwargs = _build_services_kwargs(
-        "deepseek",
-        None,
-        model="deepseek-v4-flash",
+        "openrouter",
+        "none",
+        model="z-ai/glm-4.5-air",
     )
 
     assert "reasoning_effort" not in kwargs
-    assert kwargs["extra_body"] == {"thinking": {"type": "disabled"}}
+    assert kwargs["extra_body"] == {
+        "reasoning": {"effort": "none", "exclude": True},
+    }
+
+    qwen_kwargs = _build_services_kwargs("openrouter", "none", model="qwen/qwen3-30b-a3b")
+    assert qwen_kwargs["extra_body"] == {
+        "reasoning": {"effort": "none", "exclude": True},
+    }
 
 
-def test_openai_binding_deepseek_v4_flash_disables_thinking_by_default() -> None:
-    """#1058: openai binding pointed at DeepSeek must still disable flash thinking."""
-    kwargs = _build_services_kwargs(
-        "openai",
-        None,
-        model="deepseek-v4-flash",
-    )
+@pytest.mark.parametrize("provider", ["deepseek", "dashscope"])
+@pytest.mark.parametrize("effort", ["none", "minimal", "minimum"])
+def test_provider_native_off_reasoning_disables_thinking(provider: str, effort: str) -> None:
+    kwargs = _build_services_kwargs(provider, effort)
 
     assert "reasoning_effort" not in kwargs
-    assert kwargs["extra_body"] == {"thinking": {"type": "disabled"}}
+    if provider == "deepseek":
+        assert kwargs["extra_body"] == {"thinking": {"type": "disabled"}}
+    else:
+        assert kwargs["extra_body"] == {"enable_thinking": False}
+
+
+@pytest.mark.parametrize("binding", ["deepseek", "openai"])
+def test_deepseek_v4_flash_is_left_to_its_own_default(binding: str) -> None:
+    """We no longer switch flash's thinking off, on any binding.
+
+    It used to be disabled to dodge the mid-conversation ``reasoning_content
+    must be passed back`` 400 (#1058). What actually fixes that is echoing the
+    previous round's reasoning on the assistant turn that issued the tool calls
+    — see ``test_assistant_message_with_tool_calls_replays_reasoning_content``, which is the
+    test that guards #1058. Disabling thinking as well bought nothing and cost
+    every flash user their whole reasoning stream, so the request now says
+    nothing about thinking and the provider applies its own default (on).
+    """
+    kwargs = _build_services_kwargs(binding, None, model="deepseek-v4-flash")
+
+    assert "reasoning_effort" not in kwargs
+    assert "extra_body" not in kwargs
 
 
 def test_openai_binding_deepseek_v4_pro_enables_thinking_by_default() -> None:
@@ -155,10 +235,19 @@ def test_services_deepseek_replays_persisted_reasoning_content() -> None:
     assert "_provider_response_state" not in assistant_message
 
 
-def test_non_deepseek_drops_persisted_reasoning_content() -> None:
+def test_replay_is_not_gated_on_the_model_being_named_deepseek() -> None:
+    """Volcengine Ark takes an endpoint id as the model name.
+
+    The replay used to require ``"deepseek" in model``, so an ``ep-…`` model
+    (and every Doubao / GLM / Qwen / Kimi thinking model) lost its reasoning
+    the moment a turn replayed history — and the provider answered "the
+    reasoning_content in the thinking mode must be passed back to the API".
+    Only a provider that sent the field can have put it in this state, so
+    replaying it is symmetric rather than additive.
+    """
     provider = ServicesOpenAICompatProvider.__new__(ServicesOpenAICompatProvider)
-    provider.default_model = "gpt-test"
-    provider._spec = find_service_provider("openai")
+    provider.default_model = "ep-20260101120000-abcde"
+    provider._spec = find_service_provider("volcengine")
 
     kwargs = provider._build_kwargs(
         messages=[
@@ -168,6 +257,26 @@ def test_non_deepseek_drops_persisted_reasoning_content() -> None:
                 "_provider_response_state": {"reasoning_content": "private reasoning"},
             }
         ],
+        tools=None,
+        model=None,
+        max_tokens=32,
+        temperature=0.7,
+        reasoning_effort=None,
+        tool_choice=None,
+    )
+
+    assert kwargs["messages"][0]["reasoning_content"] == "private reasoning"
+    assert "_provider_response_state" not in kwargs["messages"][0]
+
+
+def test_a_model_that_never_reasoned_carries_no_reasoning_content() -> None:
+    """No state, no field — the replay adds nothing to an ordinary history."""
+    provider = ServicesOpenAICompatProvider.__new__(ServicesOpenAICompatProvider)
+    provider.default_model = "gpt-test"
+    provider._spec = find_service_provider("openai")
+
+    kwargs = provider._build_kwargs(
+        messages=[{"role": "assistant", "content": "previous answer"}],
         tools=None,
         model="gpt-test",
         max_tokens=32,

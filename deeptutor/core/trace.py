@@ -5,6 +5,17 @@ from __future__ import annotations
 from typing import Any
 from uuid import uuid4
 
+# The only ``call_kind`` values whose ``content`` events make up the reply the
+# reader sees. Every other kind streams into the collapsed trace instead: a
+# retrieval summary, a planning step, a visualizer's repair pass.
+#
+# The client applies this same list in ``shouldAppendEventContent``
+# (``web/lib/stream.ts``); ``tests/core/test_answer_call_kinds.py`` holds the
+# two copies together. Adding a kind that writes a user-facing answer without
+# adding it here means the text streams and is then silently dropped from the
+# message body — the failure is invisible in the trace, which still shows it.
+ANSWER_BEARING_CALL_KINDS = frozenset({"llm_final_response", "agent_loop_round"})
+
 
 def new_call_id(prefix: str = "call") -> str:
     """Generate a short stable-enough id for one visible trace card."""
@@ -83,6 +94,7 @@ def merge_trace_metadata(
 
 
 __all__ = [
+    "ANSWER_BEARING_CALL_KINDS",
     "build_trace_metadata",
     "derive_trace_metadata",
     "merge_trace_metadata",

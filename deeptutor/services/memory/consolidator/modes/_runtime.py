@@ -13,13 +13,12 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 import logging
-import os
 from pathlib import Path
-import tempfile
 from typing import Any, Awaitable, Callable
 
 import yaml
 
+from deeptutor.services.file_io import atomic_write_text as _atomic_write
 from deeptutor.services.llm import clean_thinking_tags
 from deeptutor.services.llm import complete as llm_complete
 from deeptutor.services.llm import stream as llm_stream
@@ -265,23 +264,6 @@ async def write_doc_checkpoint(
         },
     )
     return undo_depth
-
-
-def _atomic_write(path: Path, content: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_str = tempfile.mkstemp(prefix=path.name + ".", dir=str(path.parent))
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(content)
-            fh.flush()
-            os.fsync(fh.fileno())
-        os.replace(tmp_str, path)
-    finally:
-        if os.path.exists(tmp_str):
-            try:
-                os.remove(tmp_str)
-            except OSError:
-                pass
 
 
 def _strip_thinking_delta(delta: str, in_block: bool) -> tuple[str, bool]:

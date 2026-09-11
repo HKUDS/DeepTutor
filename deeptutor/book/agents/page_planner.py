@@ -33,9 +33,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from deeptutor.utils.json_parser import parse_json_response
-
-from ..blocks._llm_writer import llm_text
+from ..blocks._llm_writer import llm_json
 from ..blocks._prompts import get_book_prompt, load_book_prompts
 from ..models import (
     Block,
@@ -330,7 +328,11 @@ class SectionArchitect:
 
         try:
             system_prompt, user_template = _architect_prompts(language)
-            raw = await llm_text(
+            # ``llm_json`` rather than ``llm_text`` + a parse: it retries once
+            # with thinking turned down when the first response is all hidden
+            # tokens and no JSON, which is what silently dropped whole chapter
+            # plans back to the static planner (#1316).
+            payload = await llm_json(
                 user_prompt=_architect_user_prompt(
                     chapter=chapter,
                     language=language,
@@ -340,15 +342,11 @@ class SectionArchitect:
                 system_prompt=system_prompt,
                 max_tokens=1200,
                 temperature=0.6,
-                response_format={"type": "json_object"},
                 language=language,
+                expected_key="blocks",
             )
         except Exception as exc:
             logger.warning(f"SectionArchitect LLM failed → fallback static: {exc}")
-            return self.plan_blocks(chapter, depth=depth, allowed=allowed)
-
-        payload = parse_json_response(raw, logger_instance=logger, fallback={})
-        if not isinstance(payload, dict):
             return self.plan_blocks(chapter, depth=depth, allowed=allowed)
 
         items = payload.get("blocks")

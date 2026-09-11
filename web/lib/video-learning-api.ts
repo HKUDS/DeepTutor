@@ -275,6 +275,56 @@ export async function testInvidious(
   );
 }
 
+export interface InvidiousAccountStatus {
+  connected: boolean;
+  needs_reauthorization?: boolean;
+}
+export interface InvidiousVideo {
+  videoId: string;
+  title: string;
+  author: string;
+  lengthSeconds: number;
+  videoThumbnails?: { url: string }[];
+}
+export interface InvidiousPlaylist {
+  playlistId: string;
+  title: string;
+  videoCount: number;
+  videos?: InvidiousVideo[];
+}
+export interface InvidiousCatalog {
+  videos?: InvidiousVideo[];
+}
+export async function invidiousAccount(
+  action: "status" | "authorize" | "disconnect",
+) {
+  return unwrap<InvidiousAccountStatus & { authorize_url?: string }>(
+    await apiFetch(`/api/video-learning/invidious/account/${action}`, {
+      method: action === "status" ? "GET" : "POST",
+      cache: "no-store",
+    }),
+  );
+}
+export async function browseInvidious(
+  kind: string,
+  query: string,
+  page: number,
+  playlistId: string,
+  signal: AbortSignal,
+) {
+  const params = new URLSearchParams({
+    q: query,
+    page: String(page),
+    playlist_id: playlistId,
+  });
+  return unwrap<InvidiousVideo[] | InvidiousPlaylist[] | InvidiousCatalog>(
+    await apiFetch(`/api/video-learning/invidious/browse/${kind}?${params}`, {
+      signal,
+      cache: "no-store",
+    }),
+  );
+}
+
 export interface InvidiousHubItem {
   video_id: string;
   title: string;
@@ -299,9 +349,7 @@ export function youtubeWatchUrl(videoId: string): string {
   return `https://youtu.be/${videoId}`;
 }
 
-export async function getInvidiousHome(
-  tab = "",
-): Promise<InvidiousHubFeed> {
+export async function getInvidiousHome(tab = ""): Promise<InvidiousHubFeed> {
   const query = tab ? `?tab=${encodeURIComponent(tab)}` : "";
   return unwrap(
     await apiFetch(apiUrl(`/api/video-learning/invidious/home${query}`), {

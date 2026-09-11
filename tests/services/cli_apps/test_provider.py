@@ -311,20 +311,23 @@ def test_a_file_the_app_wrote_is_surfaced_as_a_link(
     monkeypatch.setattr("deeptutor.services.cli_apps.provider.run_app", _fake_run)
     # Real artifact rows, built by the same helper exec uses — only the path
     # policy is bypassed, because that is tested where it lives.
-    from deeptutor.services.sandbox.artifacts import SandboxArtifact
+    from deeptutor.services.sandbox.artifacts import SandboxArtifact, SandboxArtifactBatch
 
     monkeypatch.setattr(
-        "deeptutor.services.sandbox.artifacts.collect_public_artifacts",
-        lambda _workdir: [
-            SandboxArtifact(
-                filename="out.png",
-                path=str(workdir / "out.png"),
-                relative_path="out.png",
-                url="/files/outputs/out.png",
-                size_bytes=8,
-                mime_type="image/png",
-            )
-        ],
+        "deeptutor.services.sandbox.artifacts.collect_public_artifact_batch",
+        lambda _workdir, **_kwargs: SandboxArtifactBatch(
+            artifacts=(
+                SandboxArtifact(
+                    filename="out.png",
+                    path=str(workdir / "out.png"),
+                    relative_path="out.png",
+                    url="/files/outputs/out.png",
+                    size_bytes=8,
+                    mime_type="image/png",
+                ),
+            ),
+            total_count=1,
+        ),
     )
     result = asyncio.run(tool.execute(args=["render"], _sandbox_workdir=str(workdir)))
 

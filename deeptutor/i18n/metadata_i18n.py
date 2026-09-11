@@ -42,13 +42,9 @@ _TOOL_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "en": "Explore ideas broadly and organize them with rationale.",
         "zh": "广泛发散想法，并按理由组织结果。",
     },
-    "code_execution": {
-        "en": "Run sandboxed Python code for computation and data exploration.",
-        "zh": "在沙箱中运行 Python，用于计算和数据探索。",
-    },
     "exec": {
-        "en": "Run shell commands inside an isolated sandbox workspace.",
-        "zh": "在隔离沙箱工作区中运行 shell 命令。",
+        "en": "Run source code or shell scripts inside an isolated workspace.",
+        "zh": "在隔离工作区中运行源码或 shell 脚本。",
     },
     "kb_files": {
         "en": "List the documents a knowledge base holds, with the total count.",

@@ -25,6 +25,7 @@ import {
   type ReadingLibraryMaterial,
   type ReadingWorkspace,
 } from "@/lib/reading-workspace-api";
+import { readingFailureMessage } from "@/lib/reading-failure";
 
 import { AddMaterialsDialog } from "./AddMaterialsDialog";
 import { LibraryShell } from "./LibraryShell";
@@ -406,8 +407,8 @@ function MaterialRow({
               </span>
             )}
             <span className="min-w-0 truncate">
-              {failed && material.error_detail
-                ? material.error_detail
+              {failed && readingFailureMessage(material, t)
+                ? readingFailureMessage(material, t)
                 : secondary}
             </span>
           </span>

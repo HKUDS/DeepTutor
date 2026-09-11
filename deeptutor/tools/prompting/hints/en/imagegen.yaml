@@ -1,0 +1,5 @@
+short_description: "Generate original images with the configured image-generation service and save them under the active workspace's outputs/."
+when_to_use: "Use for generative visual requests such as illustrations, artwork, concept images, posters, or photorealistic scenes. Use exec for programmatic charts, diagrams, or image post-processing."
+input_format: "A vivid, self-contained prompt; optionally size and n (1-4)."
+guideline: "Call imagegen directly for original visual media. It saves files and returns exact workspace-relative paths but does not present them automatically. Call workspace_present with each returned path before copying that path into Markdown. Do not expose provider URLs or host filesystem paths."
+phase: "synthesis"

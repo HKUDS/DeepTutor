@@ -39,6 +39,7 @@ class TimelineGenerator(BlockGenerator):
             temperature=0.4,
             language=ctx.language,
             expected_key="events",
+            reasoning_effort="none",
         )
         events_raw = data.get("events") if isinstance(data, dict) else None
         events: list[dict[str, str]] = []

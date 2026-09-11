@@ -15,6 +15,7 @@ import {
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { type ReadingLibraryMaterial } from "@/lib/reading-workspace-api";
+import { readingFailureMessage } from "@/lib/reading-failure";
 
 export function iconForMaterial(material: ReadingLibraryMaterial) {
   if (material.source_kind === "youtube") return Youtube;
@@ -175,7 +176,8 @@ export function MaterialFailure({
         {t("This material could not be prepared")}
       </p>
       <p className="mt-2 max-w-lg text-[10.5px] leading-relaxed text-[var(--muted-foreground)]">
-        {material.error_detail || t("Try importing this material again.")}
+        {readingFailureMessage(material, t) ||
+          t("Try importing this material again.")}
       </p>
       {retryError && (
         <p className="mt-2 max-w-lg text-[10.5px] text-red-700">{retryError}</p>

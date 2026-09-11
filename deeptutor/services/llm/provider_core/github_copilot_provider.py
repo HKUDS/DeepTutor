@@ -200,7 +200,13 @@ class GitHubCopilotProvider(OpenAICompatProvider):
             **kwargs,
         )
 
-    async def chat_stream(
+    # Deliberately does not declare ``on_tool_args_delta``. The runtime probes
+    # for that parameter by name (``_provider_streams_tool_args``) and only
+    # hands the callback to a provider that opts in; this one forwards unknown
+    # keywords into the request body, so declaring it without implementing the
+    # streaming would serialise a function into an API call. Not opting in
+    # simply keeps the old behaviour: tool calls arrive whole.
+    async def chat_stream(  # type: ignore[override]
         self,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,

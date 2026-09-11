@@ -95,6 +95,28 @@ class TestArtifactAttachments:
         )
         assert artifact_attachments(event) == []
 
+    def test_presented_user_file_keeps_workspace_identity(self) -> None:
+        event = self._sources_event(
+            [
+                {
+                    "type": "workspace_item",
+                    "workspace_id": "ws_one",
+                    "workspace_item_id": "wsi_one",
+                    "relative_path": "lesson/notes.md",
+                    "filename": "notes.md",
+                    "url": "/files/workspace-items/ws_one/wsi_one",
+                    "mime_type": "text/markdown",
+                    "generated": False,
+                }
+            ]
+        )
+
+        attachment = artifact_attachments(event)[0]
+
+        assert attachment["origin"] == "workspace"
+        assert attachment["relative_path"] == "lesson/notes.md"
+        assert attachment["generated"] is False
+
     def test_non_sources_event_ignored(self) -> None:
         event = StreamEvent(type=StreamEventType.CONTENT, content="hello")
         assert artifact_attachments(event) == []
@@ -166,8 +188,11 @@ class TestFillPreviewText:
     async def test_pptx_gets_preview_text(self, tmp_path, monkeypatch) -> None:
         from deeptutor.services.session import artifact_attachments as module
 
-        _write_minimal_pptx(tmp_path / "deck.pptx", "Chapter one")
-        monkeypatch.setattr(module, "_resolve_artifact_path", lambda url: tmp_path / "deck.pptx")
+        # Workspace snapshots are physically stored by hash without an
+        # extension; format routing must use the attachment's logical name.
+        blob = tmp_path / "4f73c2a1"
+        _write_minimal_pptx(blob, "Chapter one")
+        monkeypatch.setattr(module, "_resolve_artifact_path", lambda url: blob)
 
         attachments = [{"filename": "deck.pptx", "url": "/files/outputs/x/deck.pptx"}]
         await fill_preview_text(attachments)

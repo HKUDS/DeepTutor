@@ -93,3 +93,32 @@ class TestBuildOpenAICompatibleReasoningKwargsForGemini:
             spec=None, binding="openai", model="gpt-4o", reasoning_effort=None
         )
         assert kwargs == {}
+
+
+def test_an_explicitly_requested_off_is_narrowed_like_an_inferred_one() -> None:
+    """A caller that names ``"none"`` gets the same vendor limit as one that
+    says nothing.
+
+    ``default_reasoning_effort_for`` narrowed ``"none"`` to ``"minimal"`` for
+    the Gemini families that answer HTTP 400 to it (#734), but it only ran
+    when the caller passed nothing. The reader-facing Book blocks name
+    ``"none"`` on purpose — so they bypassed the narrowing and shipped the
+    exact 400 the table exists to prevent.
+    """
+    from deeptutor.services.llm.reasoning_params import (
+        build_openai_compatible_reasoning_kwargs,
+        thinking_off_effort_for,
+    )
+
+    def effort(model: str) -> str | None:
+        kwargs = build_openai_compatible_reasoning_kwargs(
+            spec=None, binding="gemini", model=model, reasoning_effort="none"
+        )
+        return kwargs.get("reasoning_effort")
+
+    assert effort("gemini-3-pro") == "minimal"
+    assert effort("gemini-2.5-pro") == "minimal"
+    # A sibling that does accept "none" keeps it, and so does everyone else.
+    assert effort("gemini-2.5-flash") == "none"
+    assert thinking_off_effort_for("openai", "gpt-4o") == "none"
+    assert thinking_off_effort_for(None, None) == "none"

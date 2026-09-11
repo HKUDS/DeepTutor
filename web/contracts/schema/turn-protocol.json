@@ -57,7 +57,9 @@
           "type": "array"
         }
       },
-      "required": ["book_id"],
+      "required": [
+        "book_id"
+      ],
       "title": "BookReference",
       "type": "object"
     },
@@ -86,7 +88,11 @@
           "type": "string"
         }
       },
-      "required": ["turn_id", "command_id", "protocol_version"],
+      "required": [
+        "turn_id",
+        "command_id",
+        "protocol_version"
+      ],
       "title": "CancelTurnCommand",
       "type": "object"
     },
@@ -110,7 +116,10 @@
           "type": "string"
         }
       },
-      "required": ["session_id", "protocol_version"],
+      "required": [
+        "session_id",
+        "protocol_version"
+      ],
       "title": "CheckActiveTurnCommand",
       "type": "object"
     },
@@ -127,7 +136,11 @@
           "type": "string"
         },
         "command_type": {
-          "enum": ["cancel_turn", "submit_user_reply", "user_input"],
+          "enum": [
+            "cancel_turn",
+            "submit_user_reply",
+            "user_input"
+          ],
           "title": "Command Type",
           "type": "string"
         },
@@ -159,7 +172,11 @@
           "type": "string"
         }
       },
-      "required": ["command_id", "command_type", "accepted"],
+      "required": [
+        "command_id",
+        "command_type",
+        "accepted"
+      ],
       "title": "CommandAckEvent",
       "type": "object"
     },
@@ -192,7 +209,10 @@
           "type": "boolean"
         }
       },
-      "required": ["error_code", "message"],
+      "required": [
+        "error_code",
+        "message"
+      ],
       "title": "ErrorEnvelope",
       "type": "object"
     },
@@ -208,8 +228,49 @@
           "type": "string"
         }
       },
-      "required": ["profile_id", "model_id"],
+      "required": [
+        "profile_id",
+        "model_id"
+      ],
       "title": "LLMSelection",
+      "type": "object"
+    },
+    "MasteryCardAnswer": {
+      "additionalProperties": false,
+      "description": "An answer submitted from a mastery question card.\n\nThe card outlives the turn that posed it — posing a question ends that\nturn — so the answer arrives as the next turn's message. This says which\nquestion the message is answering, letting the runtime commit it to the\nengine before the tutor's first token instead of asking the model to\nrecover the pairing from prose.",
+      "properties": {
+        "question_id": {
+          "minLength": 1,
+          "title": "Question Id",
+          "type": "string"
+        },
+        "text": {
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "question_id",
+        "text"
+      ],
+      "title": "MasteryCardAnswer",
+      "type": "object"
+    },
+    "MasteryCardSkip": {
+      "additionalProperties": false,
+      "description": "A question the learner dropped instead of answering.\n\nThe same shape of problem as :class:`MasteryCardAnswer`: the card outlives\nthe turn that posed it, so \"not this one\" also arrives as the next turn's\nmessage. Naming the question is what keeps the runtime from abandoning\nwhatever happens to be open by the time the turn starts.",
+      "properties": {
+        "question_id": {
+          "minLength": 1,
+          "title": "Question Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "question_id"
+      ],
+      "title": "MasteryCardSkip",
       "type": "object"
     },
     "NotebookReference": {
@@ -227,7 +288,9 @@
           "type": "array"
         }
       },
-      "required": ["notebook_id"],
+      "required": [
+        "notebook_id"
+      ],
       "title": "NotebookReference",
       "type": "object"
     },
@@ -287,7 +350,9 @@
           "title": "Url"
         }
       },
-      "required": ["type"],
+      "required": [
+        "type"
+      ],
       "title": "OutgoingAttachment",
       "type": "object"
     },
@@ -306,7 +371,9 @@
           "type": "string"
         }
       },
-      "required": ["protocol_version"],
+      "required": [
+        "protocol_version"
+      ],
       "title": "PingCommand",
       "type": "object"
     },
@@ -369,7 +436,10 @@
           "type": "string"
         }
       },
-      "required": ["error_code", "message"],
+      "required": [
+        "error_code",
+        "message"
+      ],
       "title": "ProtocolErrorEvent",
       "type": "object"
     },
@@ -393,7 +463,10 @@
           "type": "integer"
         }
       },
-      "required": ["material_id", "revision"],
+      "required": [
+        "material_id",
+        "revision"
+      ],
       "title": "ReadingReference",
       "type": "object"
     },
@@ -454,7 +527,10 @@
           "type": "string"
         }
       },
-      "required": ["session_id", "protocol_version"],
+      "required": [
+        "session_id",
+        "protocol_version"
+      ],
       "title": "RegenerateCommand",
       "type": "object"
     },
@@ -484,7 +560,10 @@
           "type": "string"
         }
       },
-      "required": ["turn_id", "protocol_version"],
+      "required": [
+        "turn_id",
+        "protocol_version"
+      ],
       "title": "ResumeTurnCommand",
       "type": "object"
     },
@@ -492,7 +571,10 @@
       "additionalProperties": false,
       "properties": {
         "coordination_mode": {
-          "enum": ["memory", "redis"],
+          "enum": [
+            "memory",
+            "redis"
+          ],
           "title": "Coordination Mode",
           "type": "string"
         },
@@ -559,7 +641,11 @@
           "type": "boolean"
         },
         "redis_status": {
-          "enum": ["ok", "unavailable", "not_configured"],
+          "enum": [
+            "ok",
+            "unavailable",
+            "not_configured"
+          ],
           "title": "Redis Status",
           "type": "string"
         },
@@ -651,7 +737,10 @@
           "title": "Updated At"
         }
       },
-      "required": ["id", "title"],
+      "required": [
+        "id",
+        "title"
+      ],
       "title": "SessionDetail",
       "type": "object"
     },
@@ -702,7 +791,10 @@
           "title": "Updated At"
         }
       },
-      "required": ["id", "title"],
+      "required": [
+        "id",
+        "title"
+      ],
       "title": "SessionSummary",
       "type": "object"
     },
@@ -818,6 +910,17 @@
           ],
           "default": null
         },
+        "mastery_answer": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MasteryCardAnswer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "mastery_path_id": {
           "anyOf": [
             {
@@ -835,9 +938,38 @@
           "title": "Mastery Path Lease Managed",
           "type": "boolean"
         },
+        "mastery_session_mode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mastery Session Mode"
+        },
+        "mastery_skip": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MasteryCardSkip"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "memory_references": {
           "items": {
-            "enum": ["recent", "profile", "scope", "preferences", "summary"],
+            "enum": [
+              "recent",
+              "profile",
+              "scope",
+              "preferences",
+              "summary"
+            ],
             "type": "string"
           },
           "title": "Memory References",
@@ -1068,7 +1200,10 @@
         },
         "type": {
           "default": "start_turn",
-          "enum": ["message", "start_turn"],
+          "enum": [
+            "message",
+            "start_turn"
+          ],
           "title": "Type",
           "type": "string"
         },
@@ -1085,7 +1220,10 @@
           "title": "Workspace Mode"
         }
       },
-      "required": ["content", "protocol_version"],
+      "required": [
+        "content",
+        "protocol_version"
+      ],
       "title": "StartTurnCommand",
       "type": "object"
     },
@@ -1142,7 +1280,10 @@
           "$ref": "#/$defs/StreamEventType"
         }
       },
-      "required": ["type", "timestamp"],
+      "required": [
+        "type",
+        "timestamp"
+      ],
       "title": "StreamEvent",
       "type": "object"
     },
@@ -1219,7 +1360,11 @@
           "type": "string"
         }
       },
-      "required": ["turn_id", "command_id", "protocol_version"],
+      "required": [
+        "turn_id",
+        "command_id",
+        "protocol_version"
+      ],
       "title": "SubmitUserReplyCommand",
       "type": "object"
     },
@@ -1249,7 +1394,10 @@
           "type": "string"
         }
       },
-      "required": ["session_id", "protocol_version"],
+      "required": [
+        "session_id",
+        "protocol_version"
+      ],
       "title": "SubscribeSessionCommand",
       "type": "object"
     },
@@ -1279,7 +1427,10 @@
           "type": "string"
         }
       },
-      "required": ["turn_id", "protocol_version"],
+      "required": [
+        "turn_id",
+        "protocol_version"
+      ],
       "title": "SubscribeTurnCommand",
       "type": "object"
     },
@@ -1292,7 +1443,9 @@
           "type": "number"
         }
       },
-      "required": ["time_seconds"],
+      "required": [
+        "time_seconds"
+      ],
       "title": "TimedMediaViewport",
       "type": "object"
     },
@@ -1422,7 +1575,11 @@
           "title": "Updated At"
         }
       },
-      "required": ["id", "session_id", "status"],
+      "required": [
+        "id",
+        "session_id",
+        "status"
+      ],
       "title": "TurnSummary",
       "type": "object"
     },
@@ -1465,7 +1622,9 @@
           "type": "string"
         }
       },
-      "required": ["protocol_version"],
+      "required": [
+        "protocol_version"
+      ],
       "title": "UnsubscribeCommand",
       "type": "object"
     },
@@ -1483,7 +1642,9 @@
           "type": "string"
         }
       },
-      "required": ["questionId"],
+      "required": [
+        "questionId"
+      ],
       "title": "UserAnswer",
       "type": "object"
     },
@@ -1516,7 +1677,12 @@
           "type": "string"
         }
       },
-      "required": ["turn_id", "content", "command_id", "protocol_version"],
+      "required": [
+        "turn_id",
+        "content",
+        "command_id",
+        "protocol_version"
+      ],
       "title": "UserInputCommand",
       "type": "object"
     }

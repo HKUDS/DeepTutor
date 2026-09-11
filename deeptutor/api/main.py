@@ -5,7 +5,7 @@ import sys
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 
 from deeptutor.logging import configure_logging
 from deeptutor.services.config import (
@@ -435,6 +435,17 @@ if not any(getattr(h, "_deeptutor_access_handler", False) for h in _access_logge
 @app.middleware("http")
 async def selective_access_log(request, call_next):
     response = await call_next(request)
+    # An expired app login must not strand provider credentials in a callback URL.
+    # Authentication still runs normally; only its failure presentation changes.
+    if (
+        request.url.path == "/api/video-learning/invidious/account/callback"
+        and response.status_code in {401, 403}
+    ):
+        response = RedirectResponse(
+            "/watching?account=authorization_login_required",
+            status_code=303,
+            headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+        )
     if response.status_code != 200:
         _access_logger.info(
             '%s - "%s %s HTTP/%s" %d',
@@ -513,6 +524,7 @@ from deeptutor.api.routers import (
     video_learning,
     visualizers,
     voice,
+    workspace,
 )
 from deeptutor.api.routers import (
     tools as tools_router,
@@ -522,6 +534,11 @@ from deeptutor.api.routers.multi_user import router as multi_user_router  # noqa
 # Auth router is public — login/logout/register/status require no token
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(outputs.router, prefix="/files/outputs", tags=["outputs"])
+app.include_router(
+    workspace.files_router,
+    prefix="/files/workspace-items",
+    tags=["workspace"],
+)
 
 # All other routers require a valid session when AUTH_ENABLED=true.
 # require_auth is a no-op when AUTH_ENABLED=false, so this is safe for local use.
@@ -607,6 +624,12 @@ app.include_router(
     tags=["settings"],
 )
 app.include_router(settings.router, prefix="/api/settings", tags=["settings"], dependencies=_auth)
+app.include_router(
+    workspace.settings_router,
+    prefix="/api/settings/workspace",
+    tags=["workspace-settings"],
+    dependencies=_auth,
+)
 app.include_router(
     video_learning.settings_router,
     prefix="/api/settings/video-learning",

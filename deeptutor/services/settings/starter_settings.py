@@ -14,6 +14,7 @@ import json
 import logging
 from typing import Any
 
+from deeptutor.services.file_io import atomic_write_json
 from deeptutor.services.path_service import get_path_service
 
 logger = logging.getLogger(__name__)
@@ -68,11 +69,7 @@ def save_starter_settings(settings: dict[str, Any]) -> dict[str, Any]:
         "version": 1,
         "trace_count": _clamp(settings.get("trace_count", DEFAULT_TRACE_COUNT)),
     }
-    path = _settings_file()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(resolved, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(path)
+    atomic_write_json(_settings_file(), resolved)
     return resolved
 
 

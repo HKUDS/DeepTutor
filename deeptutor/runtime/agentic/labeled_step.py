@@ -45,6 +45,7 @@ from deeptutor.runtime.agentic.labels import (
     classify_label,
     strip_label_probe_prefix,
 )
+from deeptutor.runtime.agentic.think_stream import InlineThinkFilter
 from deeptutor.runtime.agentic.tool_call_stream import ToolCallAccumulator
 from deeptutor.runtime.agentic.usage import (
     UsageTracker,
@@ -109,6 +110,30 @@ class LabeledStepResult:
     # escape hatch, but exposes that fact so strict callers can retry rather
     # than treating the partial text as complete.
     stream_idle_timeout: bool = False
+    # The round's own reasoning, kept so the caller can echo it back on the
+    # assistant turn it rebuilds. It used to be streamed to the trace UI and
+    # then dropped, which is fine for a single call and fatal for a loop:
+    # DeepSeek's thinking models reject a continuation whose history is missing
+    # the previous assistant turn's reasoning ("the reasoning_content in the
+    # thinking mode must be passed back to the API"), and quiz, research and
+    # explore_context are all multi-round.
+    reasoning_content: str = ""
+    # Anthropic's signed thinking blocks, which must be replayed verbatim and
+    # cannot be reconstructed from text.
+    thinking_blocks: tuple[dict[str, Any], ...] = ()
+    # The round was all thinking and no answer: no label was ever emitted,
+    # ``text`` came back empty, and the model *did* reason (inline ``<think>``
+    # or the provider's own reasoning channel). A reasoning model pays for its
+    # hidden tokens out of the same ``max_tokens`` as its answer, so a long
+    # enough deliberation ends the stream before the label.
+    #
+    # Callers need this because ``text == ""`` cannot say which happened: the
+    # scratchpad is stripped on the way out precisely so a truncated one never
+    # reaches a reader, which leaves "starved mid-thought" and "the model
+    # genuinely said nothing" byte-identical. Only the first is worth asking
+    # again with thinking turned down. Quiz's plan step read the empty string
+    # as a plan of zero questions and emitted no quiz at all (#1318).
+    reasoning_only: bool = False
 
 
 async def run_labeled_step(
@@ -179,9 +204,19 @@ async def run_labeled_step(
     # existing behavior; we always force the cleanup when a prelude was
     # detected so the synthetic markers we recorded don't leak out.
     saw_pre_label_think = False
+    # No label ever arrived, so ``LABEL_UNKNOWN`` below is our word rather
+    # than the model's. Half of ``reasoning_only``; see the field's docstring.
+    never_labelled = False
     sub_trace_opened = False
     content_acc: list[str] = []
+    # A reasoning model may open a ``<think>`` block *after* the protocol
+    # label just as readily as before it. The pre-label case is handled by the
+    # prelude state machine below; this splitter covers the post-label body.
+    post_label_think = InlineThinkFilter()
     tc_acc = ToolCallAccumulator()
+    # Kept for replay on the next round's assistant message, not for display.
+    reasoning_acc: list[str] = []
+    thinking_blocks: list[dict[str, Any]] = []
     usage_seen: Any = None
     output_chars_seen = 0
     finish_reason_seen: str | None = None
@@ -203,12 +238,42 @@ async def run_labeled_step(
         )
         sub_trace_opened = True
 
+    async def _emit_final_segments(segments: list[tuple[str, str]]) -> None:
+        """Route a final-label fragment, keeping inline reasoning out of it.
+
+        Streamed as content, a post-label ``<think>`` block put the model's
+        private deliberation into the reply — and ``clean_thinking_tags`` then
+        removed it from the returned text, so it reached the reader live and
+        existed nowhere afterwards. Sending it to the same reasoning sub-trace
+        the pre-label prelude uses keeps the reply clean and the reasoning
+        inspectable.
+        """
+        for kind, segment in segments:
+            if not segment:
+                continue
+            if kind == "thinking":
+                await _open_sub_trace()
+                await stream.thinking(
+                    segment,
+                    source=source,
+                    stage=stage,
+                    metadata=merge_trace_metadata(iter_meta, {"trace_kind": "llm_chunk"}),
+                )
+                continue
+            await stream.content(
+                segment,
+                source=source,
+                stage=stage,
+                metadata=merge_trace_metadata(final_meta, {"trace_kind": "llm_chunk"}),
+            )
+
     async def _emit_text(text: str) -> None:
         """Route post-label fragments.
 
         * Final-label text: buffered. If ``final_meta`` was supplied, the
           fragment is *also* emitted live as a ``content`` event so the chat
-          bubble streams chunk-by-chunk (call_kind ``llm_final_response``).
+          bubble streams chunk-by-chunk (call_kind ``llm_final_response``),
+          with any inline ``<think>`` block split off to the reasoning trace.
         * Non-final labels: streamed into the reasoning sub-trace.
         """
         nonlocal output_chars_seen
@@ -218,12 +283,7 @@ async def run_labeled_step(
         content_acc.append(text)
         if label in final_labels:
             if final_meta is not None:
-                await stream.content(
-                    text,
-                    source=source,
-                    stage=stage,
-                    metadata=merge_trace_metadata(final_meta, {"trace_kind": "llm_chunk"}),
-                )
+                await _emit_final_segments(post_label_think.feed(text))
             return
         await _open_sub_trace()
         await stream.thinking(
@@ -468,6 +528,16 @@ async def run_labeled_step(
             choice = choices[0]
             if getattr(choice, "finish_reason", None):
                 finish_reason_seen = str(choice.finish_reason)
+            # Anthropic's signed thinking blocks arrive here rather than on the
+            # delta, and they cannot be rebuilt from text — the signature is
+            # what makes them replayable.
+            provider_fields = getattr(choice, "provider_specific_fields", None)
+            if isinstance(provider_fields, dict):
+                signed_blocks = provider_fields.get("thinking_blocks")
+                if isinstance(signed_blocks, list) and signed_blocks:
+                    thinking_blocks = [
+                        dict(block) for block in signed_blocks if isinstance(block, dict)
+                    ]
             delta = choice.delta
             if delta is None:
                 continue
@@ -486,6 +556,11 @@ async def run_labeled_step(
             reasoning_text = getattr(delta, "reasoning_content", None) or getattr(
                 delta, "reasoning", None
             )
+            # Accumulated for every label, not only the pre-label prelude: the
+            # provider wants the whole round's reasoning back, and whether the
+            # trace UI showed it is a display question.
+            if reasoning_text:
+                reasoning_acc.append(str(reasoning_text))
             if reasoning_text and label is None:
                 output_chars_seen += len(reasoning_text)
                 saw_pre_label_think = True
@@ -534,9 +609,14 @@ async def run_labeled_step(
             await _emit_text(after_label)
         if label is None:
             label = LABEL_UNKNOWN
+            never_labelled = True
         if label_buf:
             await _emit_text(label_buf)
             label_buf = ""
+
+    if final_meta is not None:
+        # Release a partial trailing tag the splitter was still waiting on.
+        await _emit_final_segments(post_label_think.flush())
 
     record_streamed_usage(
         usage,
@@ -564,10 +644,22 @@ async def run_labeled_step(
         text = clean_thinking_tags(text, binding, model)
     ordered_tool_calls = tc_acc.ordered()
     ordered_tool_calls = [tc for tc in ordered_tool_calls if tc.get("name")]
+    reasoning_acc_text = "".join(reasoning_acc)
     return LabeledStepResult(
         label=label,
         text=text,
         tool_calls=ordered_tool_calls,
         finish_reason=finish_reason_seen,
         stream_idle_timeout=stream_idle_timeout,
+        reasoning_content=reasoning_acc_text,
+        thinking_blocks=tuple(thinking_blocks),
+        # Tool calls count as reaching the answer: the round acted, it just
+        # did not narrate. Only a round that produced nothing but thinking
+        # is worth asking again.
+        reasoning_only=(
+            never_labelled
+            and not text
+            and not ordered_tool_calls
+            and bool(reasoning_acc_text or saw_pre_label_think)
+        ),
     )

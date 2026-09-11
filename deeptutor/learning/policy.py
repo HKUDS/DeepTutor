@@ -321,6 +321,9 @@ def map_summary(progress: LearningProgress, *, now: float | None = None) -> dict
             {
                 "id": module.id,
                 "name": module.name,
+                # What the module is for. Empty on outlines built before the
+                # field existed; every reader falls back to the name.
+                "objective": module.objective,
                 "order": module.order,
                 "mastered": mastered,
                 "total": len(module.knowledge_points),

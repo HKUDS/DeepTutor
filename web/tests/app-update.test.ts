@@ -180,6 +180,11 @@ test("sidebar presents the version as a synced status dot and branded footer mar
   assert.match(badge, /bg-emerald-500/);
   assert.match(badge, /bg-amber-500/);
   assert.match(badge, /bg-red-500/);
-  assert.match(shell, /<BrandGlyph[\s\S]*?id="github"/);
+  // The footer GitHub mark is now an inline CC0 octocat (kept out of the
+  // app-shell chunk) instead of a lookup into the generated brand table.
+  assert.match(shell, /GitHubMarkLink/);
+  assert.match(shell, /GITHUB_REPO_URL/);
+  assert.match(shell, /GITHUB_MARK_PATH/);
+  assert.match(shell, /text-\[#181717\] dark:text-white/);
   assert.match(shell, /text-blue-600 dark:text-blue-400/);
 });

@@ -44,12 +44,16 @@ import SessionViewerPanel, {
 } from "@/components/chat/home/SessionViewerPanel";
 import { ChatViewerBridges } from "@/components/chat/home/ChatViewerBridges";
 import Tooltip from "@/components/common/Tooltip";
-import { useChatStateAdapter } from "@/features/chat/ChatStateAdapter";
+import {
+  type MessageAttachment,
+  useChatStateAdapter,
+} from "@/features/chat/ChatStateAdapter";
 import { useChatAutoScroll } from "@/hooks/useChatAutoScroll";
 import { useMeasuredHeight } from "@/hooks/useMeasuredHeight";
 import { useResearchOutlineContinuation } from "@/hooks/useResearchOutlineContinuation";
 import { buildChatOutline, scrollToChatTurn } from "@/lib/chat-outline";
 import { downloadChatMarkdown } from "@/lib/chat-export";
+import { copyText } from "@/lib/clipboard";
 import { buildConversationNotebookSave } from "@/lib/conversation-notebook-save";
 import { setReadingViewport } from "@/lib/reading-turn-state";
 import { workspaceActionNeedsConfiguration } from "@/lib/workspace-mode";
@@ -118,6 +122,8 @@ export function ReadingCompanion({
     deleteTurn,
     editMessage,
     switchBranch,
+    loadMessageTrace,
+    releaseMessageTrace,
   } = useChatStateAdapter();
   const confirmResearchOutline = useResearchOutlineContinuation();
 
@@ -127,6 +133,17 @@ export function ReadingCompanion({
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
   const viewerPanelRef = useRef<SessionViewerPanelHandle | null>(null);
+
+  // Attachment cards were rendered without a click handler here, so a
+  // generated file or image in the transcript simply did nothing when
+  // clicked. The viewer panel below is already mounted; this opens the
+  // attachment in it, the same way chat does.
+  const handlePreviewMessageAttachment = useCallback(
+    (attachment: MessageAttachment) => {
+      viewerPanelRef.current?.openFileTab(attachment);
+    },
+    [],
+  );
 
   const closeMenu = useCallback(() => {
     setMenuOpen(false);
@@ -280,9 +297,10 @@ export function ReadingCompanion({
     [state.messages],
   );
 
-  const copyAssistantMessage = useCallback(async (content: string) => {
-    await navigator.clipboard.writeText(content);
-  }, []);
+  const copyAssistantMessage = useCallback(
+    (content: string) => copyText(content),
+    [],
+  );
 
   return (
     <aside className="absolute inset-y-0 right-0 z-30 flex w-[min(420px,100%)] min-h-0 min-w-0 flex-col bg-[var(--card)] shadow-[-18px_0_42px_rgba(0,0,0,.12)] dark:bg-[var(--background)] xl:static xl:w-auto xl:shadow-none">
@@ -523,6 +541,17 @@ export function ReadingCompanion({
             onSwitchBranch={switchBranch}
             onSubmitUserReply={submitUserReply}
             onConfirmOutline={confirmResearchOutline}
+            onPreviewAttachment={handlePreviewMessageAttachment}
+            onLoadMessageTrace={(messageId) =>
+              state.sessionId
+                ? loadMessageTrace(state.sessionId, messageId)
+                : Promise.resolve()
+            }
+            onReleaseMessageTrace={(messageId) => {
+              if (state.sessionId) {
+                releaseMessageTrace(state.sessionId, messageId);
+              }
+            }}
             showModeBadge={false}
           />
         ) : (

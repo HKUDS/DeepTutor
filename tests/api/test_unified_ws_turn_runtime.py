@@ -240,6 +240,10 @@ async def test_turn_runtime_replays_events_and_materializes_messages(
         # preference (survives reloads; later turns fall back to it).
         "persona": "socratic",
         "mastery_path_id": "path-1",
+        # No mode is persisted here: this turn never recorded one, and an
+        # unrecorded mode has to stay unrecorded — the tools read its absence
+        # as "enforce nothing", which is what keeps every conversation that
+        # predates modes working exactly as it did.
     }
 
     persisted_turn = await store.get_turn(turn["id"])
@@ -1017,3 +1021,32 @@ async def test_turn_runtime_injects_memory_and_refreshes_after_completion(
     assert captured["memory_context"] == "## Memory\n## Preferences\n- Prefer concise answers."
     assert captured["conversation_history"] == []
     assert captured["conversation_context_text"] == "Recent chat summary"
+
+
+@pytest.mark.asyncio
+async def test_a_null_mode_on_the_wire_keeps_the_conversation_in_the_mode_it_was_in(
+    tmp_path, monkeypatch
+):
+    """The client writes ``mastery_session_mode`` on every turn and leaves it
+    null whenever it does not happen to hold the mode in memory — a reload, or
+    a session loaded from the server before its preference came back.
+
+    Reading that null as "the client said none" threw the mode away, so the
+    tutor was told it was studying while the learner watched the outline mode
+    highlighted above the transcript — and never switched, because it believed
+    it already had.
+    """
+    from deeptutor.capabilities.mastery.mode import enforced_mode
+
+    # The resolution the preparer performs, isolated: payload first, stored
+    # preference when the payload said nothing.
+    def resolve(payload_value, stored):
+        return enforced_mode(payload_value or stored)
+
+    assert resolve("outline", None) == "outline"
+    assert resolve(None, "outline") == "outline"
+    assert resolve("", "outline") == "outline"
+    # An explicit switch still wins over what was stored.
+    assert resolve("review", "outline") == "review"
+    # And a conversation that has never had one stays unrecorded.
+    assert resolve(None, None) is None

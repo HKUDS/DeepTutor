@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-from deeptutor.reading._grounding import grounding_context as _grounding_context
+from deeptutor.reading._grounding import grounded_prompt as _prompt
 from deeptutor.reading.extensions import (
     ReadingAction,
     ReadingContext,
@@ -64,19 +63,6 @@ def _target_language(action: str) -> Literal["en", "zh"]:
         return targets[action]
     except KeyError as exc:
         raise ValueError(f"Unsupported translation action: {action}") from exc
-
-
-def _prompt(context: ReadingContext) -> str:
-    return json.dumps(
-        {
-            "selection": context.selection,
-            "surrounding_context": _grounding_context(
-                context.visible_text,
-                context.selection,
-            ),
-        },
-        ensure_ascii=False,
-    )
 
 
 def _translation(raw: str, target_language: str) -> _Translation:

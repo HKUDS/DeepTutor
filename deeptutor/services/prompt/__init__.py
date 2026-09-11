@@ -19,17 +19,21 @@ Usage:
 
 from .language import (
     append_language_directive,
+    is_chinese,
     language_directive,
     language_label,
     normalize_language,
 )
+from .lookup import prompt_text
 from .manager import PromptManager, get_prompt_manager
 
 __all__ = [
     "PromptManager",
     "append_language_directive",
     "get_prompt_manager",
+    "is_chinese",
     "language_directive",
     "language_label",
     "normalize_language",
+    "prompt_text",
 ]

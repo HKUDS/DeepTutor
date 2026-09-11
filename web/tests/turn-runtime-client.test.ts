@@ -318,3 +318,103 @@ test("stopping cancels retries and idle hidden sessions do not reconnect", () =>
   assert.equal(client.state, "stopped");
   assert.equal(scheduler.tasks.length, 0);
 });
+
+test("a rejected reply resolves its waiter instead of leaving the card pending", async () => {
+  const { client, sockets } = harness();
+  client.connect();
+  sockets[0].open();
+
+  const verdict = client.sendAwaitingAck(
+    buildSubmitUserReply({
+      turnId: "turn-1",
+      text: "B",
+      commandId: "reply-1",
+    }),
+  );
+  sockets[0].message({
+    type: "command_ack",
+    command_id: "reply-1",
+    command_type: "submit_user_reply",
+    accepted: false,
+    turn_id: "turn-1",
+    error_code: "turn_not_waiting_input",
+    message: "not awaiting",
+    protocol_version: "2.0",
+  });
+
+  assert.equal(await verdict, false);
+});
+
+test("an accepted reply resolves true", async () => {
+  const { client, sockets } = harness();
+  client.connect();
+  sockets[0].open();
+
+  const verdict = client.sendAwaitingAck(
+    buildSubmitUserReply({
+      turnId: "turn-1",
+      text: "B",
+      commandId: "reply-2",
+    }),
+  );
+  sockets[0].message({
+    type: "command_ack",
+    command_id: "reply-2",
+    command_type: "submit_user_reply",
+    accepted: true,
+    turn_id: "turn-1",
+    error_code: "",
+    message: "",
+    protocol_version: "2.0",
+  });
+
+  assert.equal(await verdict, true);
+});
+
+test("stopping releases waiters that will never be acknowledged", async () => {
+  const { client, sockets } = harness();
+  client.connect();
+  sockets[0].open();
+
+  const verdict = client.sendAwaitingAck(
+    buildSubmitUserReply({
+      turnId: "turn-1",
+      text: "B",
+      commandId: "reply-3",
+    }),
+  );
+  client.stop();
+
+  assert.equal(await verdict, false);
+});
+
+
+test("acknowledged commands get a generated command_id when crypto.randomUUID is unavailable", () => {
+  const original = globalThis.crypto?.randomUUID;
+  const cryptoObject = globalThis.crypto as {
+    randomUUID?: typeof globalThis.crypto.randomUUID;
+  };
+  if (cryptoObject) cryptoObject.randomUUID = undefined;
+  try {
+    const { client, sockets } = harness();
+    client.connect();
+    sockets[0].open();
+    client.send(
+      buildSubmitUserReply({
+        turnId: "turn-1",
+        text: "A",
+        answers: [{ questionId: "q", text: "B" }],
+      }),
+    );
+    const sent = sockets[0].sent.find(
+      (item) => item.type === "submit_user_reply",
+    ) as Record<string, unknown>;
+    assert.ok(sent, "submit_user_reply should be sent");
+    assert.match(
+      String(sent.command_id),
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+  } finally {
+    if (cryptoObject) cryptoObject.randomUUID = original;
+  }
+});

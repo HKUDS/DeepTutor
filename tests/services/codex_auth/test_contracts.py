@@ -47,7 +47,7 @@ def _model() -> CodexModel:
 def test_codex_upstream_contract_is_pinned() -> None:
     assert CODEX_OAUTH_CLIENT_ID == "app_EMoamEEZ73f0CkXaXp7hrann"
     assert CODEX_CALLBACK_PORTS == (1455, 1457)
-    assert CODEX_CLIENT_VERSION == "0.145.0"
+    assert CODEX_CLIENT_VERSION == "0.153.4"
     assert CODEX_MODELS_URL.endswith("/backend-api/codex/models")
     assert CODEX_DEFAULT_MODEL == "gpt-5.6-sol"
 

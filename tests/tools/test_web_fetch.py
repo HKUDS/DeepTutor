@@ -40,14 +40,6 @@ def test_is_disallowed_host_blocks_private_addresses(host: str) -> None:
     assert _is_disallowed_host(host) is True, f"{host!r} should be disallowed"
 
 
-def test_is_disallowed_host_allows_public_hostname() -> None:
-    # The DNS-dependent positive test is environment-fragile (CI sandboxes
-    # often block outbound DNS). The negative coverage above plus the
-    # injectable ``host_validator`` (used in fetch tests) makes a fully-
-    # offline public-host assertion unnecessary.
-    pytest.skip("public DNS check skipped; relies on injectable validator in tests")
-
-
 def _dns_rows(*addresses: str) -> list[tuple]:
     return [
         (
@@ -61,14 +53,24 @@ def _dns_rows(*addresses: str) -> list[tuple]:
     ]
 
 
-def test_mixed_public_and_private_dns_answers_are_allowed(monkeypatch) -> None:
+def test_is_disallowed_host_allows_public_hostname(monkeypatch) -> None:
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        lambda _host, _port: _dns_rows("93.184.216.34", "2606:2800:220:1:248:1893:25c8:1946"),
+    )
+
+    assert _is_disallowed_host("public.example") is False
+
+
+def test_mixed_public_and_private_dns_answers_are_blocked(monkeypatch) -> None:
     monkeypatch.setattr(
         socket,
         "getaddrinfo",
         lambda _host, _port: _dns_rows("2001::1", "93.184.216.34"),
     )
 
-    assert _is_disallowed_host("mixed.example") is False
+    assert _is_disallowed_host("mixed.example") is True
 
 
 def test_all_unsafe_dns_answers_are_blocked(monkeypatch) -> None:
@@ -253,7 +255,7 @@ async def test_default_fetch_connects_by_hostname_not_by_address(
     monkeypatch.setattr(
         socket,
         "getaddrinfo",
-        lambda _host, _port: _dns_rows("2001::1", "93.184.216.34"),
+        lambda _host, _port: _dns_rows("93.184.216.34"),
     )
     client = _StubAsyncClient(_StubResponse())
 

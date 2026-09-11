@@ -102,3 +102,64 @@ test("a whole library still travels as a knowledge_base source", async () => {
   assert.equal(source.kind, "knowledge_base");
   assert.equal(source.source_id, "course");
 });
+
+test("a conversation hydrates to its own kind, not to a knowledge base", async () => {
+  // Every kind that is not book/notebook/file used to fall through to
+  // `knowledge_base`, which would have filed a transcript as a corpus to
+  // search and left the tutor unable to read it.
+  const chat: SourceCandidate = {
+    key: "chat:sess_1",
+    kind: "chat",
+    sourceId: "sess_1",
+    label: "线性代数答疑",
+    detail: "12 messages",
+    available: true,
+    excerpt: "上次我们聊到特征值",
+  };
+
+  assert.deepEqual(await hydrateTopicSource(chat), {
+    kind: "chat",
+    source_id: "sess_1",
+    label: "线性代数答疑",
+    excerpt: "上次我们聊到特征值",
+    available: true,
+  });
+});
+
+test("a partner conversation carries the reference form its reader expects", async () => {
+  const hydrated = await hydrateTopicSource({
+    key: "chat:partner:p1:s9",
+    kind: "chat",
+    sourceId: "partner:p1:s9",
+    label: "和小助教的讨论",
+    detail: "8 messages",
+    available: true,
+  });
+
+  assert.equal(hydrated.kind, "chat");
+  assert.equal(hydrated.source_id, "partner:p1:s9");
+});
+
+test("a question-bank entry and a draft keep their own kinds", async () => {
+  const entry = await hydrateTopicSource({
+    key: "question_bank:7",
+    kind: "question_bank",
+    sourceId: "7",
+    label: "特征值的几何意义是什么",
+    detail: "Answered wrong",
+    available: true,
+  });
+  assert.equal(entry.kind, "question_bank");
+  assert.equal(entry.source_id, "7");
+
+  const draft = await hydrateTopicSource({
+    key: "cowriter:doc_1",
+    kind: "cowriter",
+    sourceId: "doc_1",
+    label: "RAG 综述初稿",
+    detail: "第一节 检索增强的动机",
+    available: true,
+  });
+  assert.equal(draft.kind, "cowriter");
+  assert.equal(draft.source_id, "doc_1");
+});

@@ -9,7 +9,6 @@ provider URLs.
 
 from __future__ import annotations
 
-import base64
 import logging
 from typing import Any
 
@@ -18,6 +17,7 @@ import httpx
 from deeptutor.services.generation_http import (
     GenerationProviderError,
     build_auth_headers,
+    decode_base64_media,
     join_api_path,
     raise_for_provider,
 )
@@ -81,7 +81,7 @@ class OpenAICompatImagegenAdapter(BaseImagegenAdapter):
     ) -> tuple[bytes, str]:
         b64 = item.get("b64_json")
         if isinstance(b64, str) and b64:
-            return base64.b64decode(b64), "image/png"
+            return decode_base64_media(b64, "Image generation"), "image/png"
         src = item.get("url")
         if isinstance(src, str) and src:
             resp = await client.get(src)
@@ -89,6 +89,8 @@ class OpenAICompatImagegenAdapter(BaseImagegenAdapter):
             content_type = resp.headers.get("content-type") or "image/png"
             if not content_type.startswith("image/"):
                 content_type = "image/png"
+            if not resp.content:
+                raise GenerationProviderError("Image download returned empty data.")
             return resp.content, content_type
         raise GenerationProviderError("Image item had neither `b64_json` nor `url`.")
 

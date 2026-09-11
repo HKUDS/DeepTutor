@@ -123,6 +123,25 @@ export function writeStoredLanguage(language: AppLanguage): void {
   }
 }
 
+/** Whether this browser has ever recorded a model-output-language choice.
+ *
+ * The mirror of {@link hasStoredLanguage}, and needed for the same reason but
+ * on the other key. The two languages were split later than the interface one,
+ * so a browser that predates the split has `deeptutor-language` and no
+ * `deeptutor-response-language` — and gating adoption of the server's value on
+ * `hasStoredLanguage` alone locks such a browser out of ever picking one up.
+ */
+export function hasStoredResponseLanguage(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return (
+      browserStorage.readRaw("local", RESPONSE_LANGUAGE_STORAGE_KEY) !== null
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function readStoredResponseLanguage(): AppLanguage {
   if (typeof window === "undefined") return "en";
   try {

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 from deeptutor.agents._shared.capability_result import emit_capability_result
@@ -24,6 +25,26 @@ from deeptutor.visualizers.protocol import (
 )
 from deeptutor.visualizers.registry import get_visualizer_registry
 from deeptutor.visualizers.store import VisualizerStoreError
+
+logger = logging.getLogger(__name__)
+
+# Default (English) copy for the tool-calling diagnosis, kept beside the code
+# that emits it. StatusI18n prefers the localized strings in this capability's
+# prompt files and falls back to these.
+_TOOL_CALLING_DISABLED_WARNING = (
+    "Tool calling is disabled for {target}, but a visualization only reaches "
+    "the canvas through the submit_visualization tool call. Enable it in "
+    "Settings → Models → LLM → Capabilities → Tool calling → Supported."
+)
+_NO_PAYLOAD_TOOL_CALLING_DISABLED = (
+    "No visualization was committed: tool calling is disabled for {target}, so "
+    "the model could not call submit_visualization — the only way to hand a "
+    "payload to the canvas. Local servers (LM Studio, Ollama, vLLM, llama.cpp) "
+    "are opted out by default; declare the model as tool-capable in "
+    "Settings → Models → LLM → Capabilities → Tool calling → Supported, "
+    "then run the visualization again."
+)
+_NO_PAYLOAD = "The visualization agent finished without a valid canvas payload."
 
 # Stages exposed in the manifest. The first three cover the text-emitting
 # path (svg/chartjs/mermaid/html); the rest cover the manim subprocess
@@ -112,6 +133,31 @@ class VisualizeCapability(TurnCapability):
         # the shared Chat Engine through VisualizationLoopCapability.
         from deeptutor.agents.chat.agentic_pipeline import AgenticChatPipeline
 
+        # A visualization only reaches the canvas through the
+        # submit_visualization tool call, so a provider that is never handed
+        # tool schemas has no way to commit one: it answers in prose, and the
+        # loop capability's output policy discards that prose. Local
+        # OpenAI-compatible servers (LM Studio, Ollama, vLLM, llama.cpp) are
+        # opted out of native tools by default, which used to surface only as
+        # a bare "no valid canvas payload" error after a full five-round loop.
+        # Say so up front, and keep the finding for the failure message.
+        #
+        # This deliberately does not abort the turn: the DSML fallback still
+        # recovers text-format tool calls from some local DeepSeek
+        # deployments, so a run without native tools can still succeed.
+        tool_calling_disabled_for = self._tool_calling_disabled_for()
+        if tool_calling_disabled_for:
+            await stream.progress(
+                i18n.t(
+                    "tool_calling_disabled",
+                    _TOOL_CALLING_DISABLED_WARNING,
+                    target=tool_calling_disabled_for,
+                ),
+                source=self.name,
+                stage="generating",
+                metadata={"trace_kind": "warning"},
+            )
+
         context.metadata[VISUALIZE_MODE_KEY] = True
         context.metadata[REQUESTED_VISUALIZER_KEY] = render_mode
         context.metadata.pop(VISUALIZATION_RESULT_KEY, None)
@@ -134,7 +180,15 @@ class VisualizeCapability(TurnCapability):
         loop_result = await pipeline.run(context, stream)
         envelope = context.metadata.get(VISUALIZATION_RESULT_KEY)
         if not isinstance(envelope, dict):
-            raise RuntimeError("The visualization agent finished without a valid canvas payload.")
+            if tool_calling_disabled_for:
+                raise RuntimeError(
+                    i18n.t(
+                        "no_payload_tool_calling_disabled",
+                        _NO_PAYLOAD_TOOL_CALLING_DISABLED,
+                        target=tool_calling_disabled_for,
+                    )
+                )
+            raise RuntimeError(i18n.t("no_payload", _NO_PAYLOAD))
 
         payload = envelope.get("payload") if isinstance(envelope.get("payload"), dict) else {}
         data = payload.get("data")
@@ -171,6 +225,30 @@ class VisualizeCapability(TurnCapability):
             source=self.name,
             usage=pipeline.usage,
         )
+
+    @staticmethod
+    def _tool_calling_disabled_for() -> str:
+        """``"binding/model"`` when this turn gets no tool schemas, else ``""``.
+
+        Mirrors the resolution ``AgenticChatPipeline`` performs for the same
+        LLM config, so the warning and the failure message describe the loop
+        that actually ran. Probing must never be why a visualization fails, so
+        an unreadable config reports "enabled" and leaves the generic
+        diagnosis in place.
+        """
+        try:
+            from deeptutor.runtime.agentic.client import can_use_native_tool_calling
+            from deeptutor.services.llm.config import get_llm_config
+
+            llm_config = get_llm_config()
+            binding = str(getattr(llm_config, "binding", None) or "openai")
+            model = str(getattr(llm_config, "model", None) or "")
+            if can_use_native_tool_calling(binding=binding, model=model or None):
+                return ""
+            return f"{binding}/{model}" if model else binding
+        except Exception:  # pragma: no cover - defensive: never block a turn
+            logger.debug("Tool-calling probe unavailable for visualize", exc_info=True)
+            return ""
 
     async def _run_manim_path(
         self,
@@ -213,12 +291,16 @@ class VisualizeCapability(TurnCapability):
         )
 
         llm_config = get_llm_config()
+        workspace = context.runtime.workspace
         pipeline = MathAnimatorPipeline(
             api_key=llm_config.api_key,
             base_url=llm_config.base_url,
             api_version=llm_config.api_version,
             language=context.language,
             trace_callback=self._build_trace_bridge(stream, i18n=i18n),
+            workspace_output_dir=workspace.output_dir if workspace else None,
+            workspace_root=workspace.root if workspace else None,
+            workspace_id=workspace.workspace_id if workspace else "",
         )
 
         timings: dict[str, float] = {}
@@ -360,6 +442,13 @@ class VisualizeCapability(TurnCapability):
             )
         timings["render_output"] = 0.0
         visual_review = getattr(render_result, "visual_review", None)
+        workspace_items = list(getattr(render_result, "workspace_items", []) or [])
+        if workspace_items:
+            await stream.sources(
+                [{"type": "workspace_item", **item} for item in workspace_items],
+                source=self.name,
+                stage="render_output",
+            )
 
         await emit_capability_result(
             stream,
@@ -373,6 +462,7 @@ class VisualizeCapability(TurnCapability):
                 },
                 "output_mode": request_config.output_mode,
                 "artifacts": [artifact.model_dump() for artifact in render_result.artifacts],
+                "workspace_items": workspace_items,
                 "timings": timings,
                 "render": {
                     "quality": request_config.quality,

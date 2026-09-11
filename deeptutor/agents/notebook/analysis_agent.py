@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Awaitable, Callable
 
+from deeptutor.agents.notebook._text import clip_text as _clip_text
 from deeptutor.core.stream import StreamEvent, StreamEventType
 from deeptutor.core.trace import build_trace_metadata, derive_trace_metadata, new_call_id
 from deeptutor.services.llm import clean_thinking_tags, get_llm_config, get_token_limit_kwargs
@@ -15,13 +16,6 @@ from deeptutor.utils.json_parser import parse_json_response
 logger = logging.getLogger(__name__)
 
 EventSink = Callable[[StreamEvent], Awaitable[None]]
-
-
-def _clip_text(value: str, limit: int) -> str:
-    text = str(value or "").strip()
-    if len(text) <= limit:
-        return text
-    return text[:limit].rstrip() + "\n...[truncated]"
 
 
 class NotebookAnalysisAgent:

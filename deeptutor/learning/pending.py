@@ -94,11 +94,6 @@ def has_option_bodies(options: dict[str, str]) -> bool:
     )
 
 
-def format_options(options: dict[str, str]) -> list[str]:
-    """Render a choice map as canonical, persistable ``"label: body"`` strings."""
-    return [f"{label}: {body}" for label, body in options.items()]
-
-
 def resolve_answer(answer: str, options: dict[str, str]) -> str:
     """Resolve a label, labelled option, or unique body to its stable label."""
     candidate = str(answer or "").strip()
@@ -228,9 +223,6 @@ class PublicPendingOption:
     def to_dict(self) -> dict[str, str]:
         return {"id": self.id, "label": self.label, "body": self.body}
 
-    def to_ask_user_dict(self) -> dict[str, str]:
-        return {"label": self.label, "description": self.body}
-
 
 @dataclass(frozen=True, slots=True)
 class PublicPendingQuestion:
@@ -249,23 +241,13 @@ class PublicPendingQuestion:
             "options": [option.to_dict() for option in self.options],
         }
 
-    def to_ask_user_dict(self) -> dict[str, Any]:
-        return {
-            "id": self.question_id,
-            "prompt": self.prompt,
-            "options": [option.to_ask_user_dict() for option in self.options],
-            "multi_select": False,
-            "allow_free_text": True,
-        }
-
 
 def public_pending_question(pending: PendingQuestion) -> PublicPendingQuestion:
     """Project persisted pending state without exposing ``expected_answer``."""
-    choice_map = parse_options(list(pending.options or []))
     options = (
         tuple(
-            PublicPendingOption(id=label, label=label, body=body)
-            for label, body in choice_map.items()
+            PublicPendingOption(id=option.label, label=option.label, body=option.body)
+            for option in pending.options
         )
         if pending.question_type == "choice"
         else ()
@@ -290,7 +272,6 @@ __all__ = [
     "canonical_labels",
     "PublicPendingOption",
     "PublicPendingQuestion",
-    "format_options",
     "has_option_bodies",
     "is_readable_choice_answer",
     "option_label_intent",

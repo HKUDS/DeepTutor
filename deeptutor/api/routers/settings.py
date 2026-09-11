@@ -8,6 +8,7 @@ UI preferences, configuration catalog management, and detailed streamed tests.
 from __future__ import annotations
 
 import asyncio
+from copy import deepcopy
 import json
 import logging
 import time
@@ -197,6 +198,22 @@ class EnabledToolsUpdate(BaseModel):
 
 class CatalogPayload(BaseModel):
     catalog: dict[str, Any]
+
+
+class CatalogServicePayload(BaseModel):
+    """One model-catalog service to promote without touching other drafts."""
+
+    service: Literal[
+        "llm",
+        "task",
+        "embedding",
+        "search",
+        "tts",
+        "stt",
+        "imagegen",
+        "videogen",
+    ]
+    config: dict[str, Any]
 
 
 class SettingsDraftPayload(BaseModel):
@@ -779,6 +796,30 @@ async def get_openai_codex_oauth_status() -> dict[str, Any]:
         raise _codex_http_exception(exc) from None
 
 
+class CodexOAuthCallbackPayload(BaseModel):
+    callback_url: str
+
+
+@router.post("/providers/openai-codex/oauth/complete")
+async def complete_openai_codex_oauth(payload: CodexOAuthCallbackPayload) -> dict[str, Any]:
+    """Finish a waiting Codex login from a callback address the user pasted.
+
+    The provider redirects the browser to a loopback listener. In Docker that
+    listener lives in the container and the published ports do not include it,
+    so the browser shows a failed page while the sign-in waits forever
+    (#1252). This is the way back in without a tunnel: the address is parsed
+    for its OAuth result and discarded, and the exchange is the same one the
+    listener would have driven.
+    """
+    _require_codex_oauth_actor()
+    try:
+        return await get_codex_oauth_service().complete_login_with_callback_url(
+            payload.callback_url
+        )
+    except CodexAuthError as exc:
+        raise _codex_http_exception(exc) from None
+
+
 @router.post("/providers/openai-codex/oauth/cancel")
 async def cancel_openai_codex_oauth() -> dict[str, Any]:
     _require_codex_oauth_actor()
@@ -1082,6 +1123,16 @@ async def update_mineru_settings(payload: MinerUSettingsUpdate):
 async def get_document_parsing_settings():
     _require_settings_admin()
     return _document_parsing_payload()
+
+
+@router.get("/readiness")
+async def get_settings_readiness():
+    """Return the value-free cross-setting capability readiness matrix."""
+
+    _require_settings_admin()
+    from deeptutor.services.config.readiness import build_settings_readiness
+
+    return await build_settings_readiness()
 
 
 @router.put("/document-parsing")
@@ -1408,6 +1459,52 @@ async def update_catalog(payload: CatalogPayload):
     catalog = service.save(proposed)
     _invalidate_runtime_caches()
     return {"catalog": redact_catalog_secrets(catalog)}
+
+
+@router.post("/apply/service")
+async def apply_catalog_service(payload: CatalogServicePayload):
+    """Apply one model service while leaving every other draft untouched.
+
+    Provider dialogs use this narrower commit path for their Done action. A
+    user may still have unrelated edits elsewhere in Settings, and closing an
+    STT dialog must not silently promote those edits too.
+    """
+
+    _require_settings_admin()
+    service = get_model_catalog_service()
+    current = service.load()
+    proposed = deepcopy(current)
+    proposed.setdefault("services", {})[payload.service] = deepcopy(payload.config)
+    restored = restore_catalog_secrets(proposed, current)
+    reconciled = reconcile_codex_catalog_update(current, restored)
+    runtime = service.apply(reconciled)
+    catalog = service.load()
+
+    # A previously saved draft contains a full catalog. Keep it, but advance
+    # this one service to the value that is now live; otherwise reloading the
+    # page would resurrect the pre-apply STT configuration over the live one.
+    draft_service = get_settings_draft_service()
+    stored_draft = draft_service.load()
+    draft_catalog = stored_draft.get("catalog")
+    if isinstance(draft_catalog, dict):
+        draft_catalog.setdefault("services", {})[payload.service] = deepcopy(
+            catalog["services"][payload.service]
+        )
+        stored_draft["catalog"] = None if draft_catalog == catalog else draft_catalog
+
+    if is_empty_draft(stored_draft):
+        draft_service.clear()
+        public_draft = None
+    else:
+        public_draft = redact_draft(draft_service.save(stored_draft))
+
+    _invalidate_runtime_caches()
+    return {
+        "message": f"{payload.service} settings applied to runtime.",
+        "catalog": redact_catalog_secrets(catalog),
+        "draft": public_draft,
+        "runtime": runtime,
+    }
 
 
 @router.get("/draft")

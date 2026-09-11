@@ -261,6 +261,29 @@ async def ground_topic_sources(
     )
 
 
+#: Keys a model reaches for when asked for a module's purpose. The prompt asks
+#: for ``objective``; the rest are what models substitute for it in practice,
+#: and a purpose written under the wrong key is still a purpose.
+_MODULE_OBJECTIVE_KEYS = ("objective", "goal", "purpose", "summary", "description")
+#: One sentence. Long enough to state a purpose, short enough that a whole
+#: outline's worth of them still fits beside the map.
+_MAX_MODULE_OBJECTIVE = 300
+
+
+def _module_objective(raw_module: dict[str, Any]) -> str:
+    """The one-sentence purpose a module was designed around, if it has one.
+
+    Never raises and never blocks a module: an outline without objectives is
+    the pre-existing shape, so a missing one degrades to empty rather than
+    failing generation that would otherwise have succeeded.
+    """
+    for key in _MODULE_OBJECTIVE_KEYS:
+        value = raw_module.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()[:_MAX_MODULE_OBJECTIVE]
+    return ""
+
+
 def _new_entity_id(prefix: str, reserved: set[str]) -> str:
     """Allocate a durable id that cannot inherit evidence from a deleted row."""
 
@@ -327,6 +350,7 @@ def materialize_modules(
                 raise TopicGenerationError(f"Route region {module_index + 1} needs a name")
             record_discard(module_index, "module name is missing")
             continue
+        module_objective = _module_objective(raw_module)
         requested_module_id = str(raw_module.get("id") or "").strip()
         if requested_module_id in allowed_modules and requested_module_id not in used_modules:
             module_id = requested_module_id
@@ -402,6 +426,7 @@ def materialize_modules(
                     name=module_name,
                     order=len(modules),
                     pass_threshold=0.7,
+                    objective=module_objective,
                     knowledge_points=knowledge_points,
                 )
             )

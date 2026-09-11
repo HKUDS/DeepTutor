@@ -358,6 +358,7 @@ class BaseAgent(ABC):
         stage: str | None = None,
         attachments: list[Any] | None = None,
         trace_meta: dict[str, Any] | None = None,
+        reasoning_effort: str | None = None,
     ) -> str:
         """
         Unified interface for calling LLM (non-streaming).
@@ -376,6 +377,9 @@ class BaseAgent(ABC):
             verbose: Whether to print raw LLM output (default True)
             stage: Stage marker for logging and tracking
             attachments: Image/file attachments for multimodal input (optional)
+            reasoning_effort: Override the model's thinking level for this one
+                call. Callers use it to free the token budget for the answer
+                when a reasoning model spent it all on hidden tokens.
 
         Returns:
             LLM response text
@@ -396,6 +400,9 @@ class BaseAgent(ABC):
         # Handle token limit for newer OpenAI models
         if max_tokens:
             kwargs.update(get_token_limit_kwargs(model, max_tokens))
+
+        if reasoning_effort is not None:
+            kwargs["reasoning_effort"] = reasoning_effort
 
         # Handle response_format with capability check
         if response_format:
@@ -520,6 +527,7 @@ class BaseAgent(ABC):
         stage: str | None = None,
         attachments: list[Any] | None = None,
         trace_meta: dict[str, Any] | None = None,
+        reasoning_effort: str | None = None,
     ) -> AsyncGenerator[str, None]:
         """
         Unified interface for streaming LLM responses.
@@ -537,6 +545,8 @@ class BaseAgent(ABC):
             response_format: JSON schema for structured output (optional)
             stage: Stage marker for logging
             attachments: Image/file attachments for multimodal input (optional)
+            reasoning_effort: Override the model's thinking level for this one
+                call (see :meth:`call_llm`).
 
         Yields:
             Response chunks as strings
@@ -554,6 +564,9 @@ class BaseAgent(ABC):
         # Handle token limit for newer OpenAI models
         if max_tokens:
             kwargs.update(get_token_limit_kwargs(model, max_tokens))
+
+        if reasoning_effort is not None:
+            kwargs["reasoning_effort"] = reasoning_effort
 
         # Handle response_format with capability check
         if response_format:

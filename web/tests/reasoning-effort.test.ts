@@ -94,6 +94,23 @@ test("known reasoning families get conservative provider-specific choices", () =
   assert.deepEqual(values("dashscope", "qwen3-max"), ["", "minimal", "high"]);
 });
 
+test("gpt-5.6-sol swaps minimal for none and adds max", () => {
+  // Its enum is not the gpt-5 one: `minimal` is a 400 and `max` sits above
+  // `xhigh`. The generic gpt-5 branch must not swallow it.
+  assert.deepEqual(values("openai", "gpt-5.6-sol"), [
+    "",
+    "none",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+  ]);
+  // Sibling gpt-5.6 variants are unconfirmed, so they stay on the gpt-5 list
+  // rather than being offered a level they may reject.
+  assert.equal(values("openai", "gpt-5.6-luna").includes("max"), false);
+});
+
 test("OpenAI-compatible gateways expose explicit effort levels", () => {
   assert.deepEqual(values("custom", "idrouter/qd/lite"), [
     "",

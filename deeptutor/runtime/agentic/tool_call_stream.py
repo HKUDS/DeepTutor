@@ -75,6 +75,15 @@ class ToolCallAccumulator:
             chars += len(str(arguments))
         return chars
 
+    def part_at(self, index: int) -> dict[str, Any] | None:
+        """The part a provider index is folding into, if it exists yet.
+
+        Lets a caller read one call's running ``name``/``arguments`` right
+        after feeding a delta for it, without guessing that the provider's
+        indices happen to line up with list positions.
+        """
+        return self._parts.get(int(index))
+
     def ordered(self) -> list[dict[str, Any]]:
         """Every accumulated part, in provider index order, unfiltered."""
         return [self._parts[key] for key in sorted(self._parts)]

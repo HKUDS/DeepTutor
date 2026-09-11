@@ -44,6 +44,10 @@ class PromptManager:
         "book": "book",
         "co_writer": "co_writer",
         "capabilities": "capabilities",
+        # A capability that owns a whole loop keeps its prompt pack beside its
+        # code rather than under agents/, so the pack and the tools it
+        # describes are read and reviewed together.
+        "mastery": "capabilities/mastery",
     }
 
     def __new__(cls) -> "PromptManager":
@@ -136,8 +140,11 @@ class PromptManager:
     def _candidate_prompt_dirs(self, module_name: str) -> list[Path]:
         """Return legacy and current prompt roots for a module."""
         if module_name in self.NON_AGENT_MODULES:
-            legacy_dir = PACKAGE_ROOT / "src" / module_name / "prompts"
-            current_dir = PACKAGE_ROOT / "deeptutor" / module_name / "prompts"
+            # The mapped value is the on-disk path, which is not always the
+            # module name (a capability-owned pack lives one level deeper).
+            component = self.NON_AGENT_MODULES[module_name]
+            legacy_dir = PACKAGE_ROOT / "src" / component / "prompts"
+            current_dir = PACKAGE_ROOT / "deeptutor" / component / "prompts"
             return [legacy_dir, current_dir]
 
         legacy_dir = PACKAGE_ROOT / "src" / "agents" / module_name / "prompts"

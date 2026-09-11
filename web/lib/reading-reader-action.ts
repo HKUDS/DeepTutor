@@ -1,3 +1,4 @@
+import { toolResultScope } from "@/lib/tool-event";
 /**
  * Bridge from a reading tool's result to the reader pane.
  *
@@ -59,15 +60,9 @@ export function readerActionFrom(event: {
   metadata?: unknown;
 }): ReaderActionPayload | null {
   if (event?.type !== "tool_result") return null;
-  const metadata = event.metadata;
-  if (!metadata || typeof metadata !== "object") return null;
+  const raw = toolResultScope(event.metadata);
+  if (!raw) return null;
 
-  const outer = metadata as Record<string, unknown>;
-  const nested = outer.tool_metadata;
-  const raw = (nested && typeof nested === "object" ? nested : outer) as Record<
-    string,
-    unknown
-  >;
   const action = raw.reader_action;
   if (action !== "goto" && action !== "annotate" && action !== "switch_tab")
     return null;

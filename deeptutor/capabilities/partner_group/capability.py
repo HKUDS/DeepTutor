@@ -25,6 +25,12 @@ class PartnerGroupCapability:
 
     name = "partner_group"
     owned_tools = PARTNER_GROUP_TOOL_NAMES
+    # The published answer is not the round's raw prose: a trailing peer
+    # request is stripped from it, and ``final_text_override`` republishes the
+    # saved, cleaned copy after the private invoke/no-invoke round. Streaming
+    # the raw prose would show text that is about to be edited, and then show
+    # the answer a second time.
+    buffers_visible_output = True
 
     def is_active(self, context: UnifiedContext) -> bool:
         group = context.metadata.get("partner_group")

@@ -165,3 +165,136 @@ def test_notebook_becomes_one_source_carrying_its_records(
     assert "Linear RAG cannot chain." in index["nb-topic-nb_1"]
     assert "Planning, memory, tools." in index["nb-topic-nb_1"]
     assert "Study log (2 records)" in manifest
+
+
+# ── the working-history sources added with the mastery goal rework ──────────
+
+
+def test_a_hand_picked_knowledge_base_file_is_searchable_not_a_dead_end(monkeypatch):
+    """Picking one document out of a library used to produce a material the
+    tutor was told it could never read — so the careful selection was silently
+    worse than selecting the whole base."""
+    materials = build_topic_materials(
+        [
+            _source(
+                TopicSourceKind.FILE,
+                "papers/attention.pdf",
+                "attention.pdf",
+                metadata={"kb_name": "ml-papers"},
+            )
+        ]
+    )
+    row = materials.materials[0]
+    assert row.available is True
+    assert "ml-papers" in row.note
+    assert "search with rag" in row.note
+
+    manifest, index = render_topic_manifest(materials)
+    # The header explains what an `unavailable` row means; this row must not be
+    # one, so check the row itself rather than the whole block.
+    file_row = next(line for line in manifest.splitlines() if "attention.pdf" in line)
+    assert "unavailable" not in file_row
+    assert index == {}
+
+
+def test_a_chat_transcript_becomes_readable_material(monkeypatch):
+    """Reuses chat's own reader, so a conversation attached to a goal reads
+    exactly like one attached to a chat turn."""
+
+    async def _fake_load(store, session_id, **kwargs):
+        assert session_id == "sess_42"
+        return "User: 什么是特征值\nAssistant: 一个向量方向不变的标量倍数…", "线性代数答疑"
+
+    monkeypatch.setattr(
+        "deeptutor.services.session.source_inventory._load_history_session", _fake_load
+    )
+    monkeypatch.setattr(
+        "deeptutor.learning.topic_materials._session_store", lambda: SimpleNamespace()
+    )
+
+    materials = build_topic_materials([_source(TopicSourceKind.CHAT, "sess_42", "旧对话")])
+    row = materials.materials[0]
+    assert row.readable is True
+    assert row.name == "线性代数答疑"
+    assert "特征值" in row.full_text
+    assert row.sid.startswith("tc-")
+    assert render_topic_manifest(materials)[1] == {row.sid: row.full_text}
+
+
+def test_a_question_bank_entry_becomes_readable_material(monkeypatch):
+    async def _fake_entry(store, entry_id):
+        assert entry_id == 7
+        return "**Q:** 2+2?\n**Their answer:** 5 (wrong)", "2+2?"
+
+    monkeypatch.setattr(
+        "deeptutor.services.session.source_inventory._load_question_entry", _fake_entry
+    )
+    monkeypatch.setattr(
+        "deeptutor.learning.topic_materials._session_store", lambda: SimpleNamespace()
+    )
+
+    materials = build_topic_materials([_source(TopicSourceKind.QUESTION_BANK, "7", "一道错题")])
+    row = materials.materials[0]
+    assert row.readable is True
+    assert row.sid == "tq-7"
+    assert "wrong" in row.full_text
+
+
+def test_a_malformed_question_bank_reference_says_so_instead_of_raising():
+    materials = build_topic_materials(
+        [_source(TopicSourceKind.QUESTION_BANK, "not-a-number", "坏引用")]
+    )
+    row = materials.materials[0]
+    assert row.available is False
+    assert "valid entry id" in row.note
+
+
+def test_a_cowriter_draft_becomes_readable_material(monkeypatch):
+    monkeypatch.setattr(
+        "deeptutor.co_writer.storage.get_co_writer_storage",
+        lambda: SimpleNamespace(
+            load_document=lambda doc_id: SimpleNamespace(
+                title="RAG 综述初稿", content="第一节 检索增强的动机……"
+            )
+        ),
+    )
+    materials = build_topic_materials([_source(TopicSourceKind.COWRITER, "doc_1", "草稿")])
+    row = materials.materials[0]
+    assert row.readable is True
+    assert row.name == "RAG 综述初稿"
+    assert row.sid == "tw-doc_1"
+
+
+def test_a_missing_cowriter_draft_degrades_to_unavailable(monkeypatch):
+    monkeypatch.setattr(
+        "deeptutor.co_writer.storage.get_co_writer_storage",
+        lambda: SimpleNamespace(load_document=lambda doc_id: None),
+    )
+    materials = build_topic_materials([_source(TopicSourceKind.COWRITER, "gone", "草稿")])
+    assert materials.materials[0].available is False
+    assert "no longer exists" in materials.materials[0].note
+
+
+def test_a_partner_group_conversation_becomes_readable_material(monkeypatch):
+    monkeypatch.setattr(
+        "deeptutor.services.session.source_inventory._load_partner_group_reference",
+        lambda ref, language: (
+            f"[{ref['group_id']}/{ref['session_key']}] 讨论记录",
+            "读书会",
+        ),
+    )
+    materials = build_topic_materials(
+        [_source(TopicSourceKind.PARTNER_GROUP, "grp_1:sess_9", "小组讨论")]
+    )
+    row = materials.materials[0]
+    assert row.readable is True
+    assert row.name == "读书会"
+    assert "grp_1/sess_9" in row.full_text
+
+
+def test_a_malformed_partner_group_reference_says_so():
+    materials = build_topic_materials(
+        [_source(TopicSourceKind.PARTNER_GROUP, "no-session-key", "小组讨论")]
+    )
+    assert materials.materials[0].available is False
+    assert "malformed" in materials.materials[0].note

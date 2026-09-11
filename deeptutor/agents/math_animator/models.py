@@ -51,6 +51,7 @@ class RenderedArtifact(BaseModel):
     filename: str
     content_type: str = ""
     label: str = ""
+    relative_path: str = ""
 
 
 class RetryAttempt(BaseModel):
@@ -81,6 +82,7 @@ class RenderResult(BaseModel):
     retry_attempts: int = 0
     retry_history: list[RetryAttempt] = Field(default_factory=list)
     visual_review: VisualReviewResult | None = None
+    workspace_items: list[dict] = Field(default_factory=list)
 
 
 __all__ = [

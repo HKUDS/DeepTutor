@@ -398,6 +398,12 @@ async def _complete_with_resolved_config(
         raise map_error(
             RuntimeError(response.content or "LLM request failed"), provider=config.provider_name
         )
+    # Provider adapters keep hidden reasoning in ``reasoning_content``.  A
+    # few gateways duplicate that field into ``content`` when no visible
+    # answer is present; never let that duplicate become user-facing text.
+    if response.content and response.reasoning_content:
+        if response.content == response.reasoning_content:
+            return ""
     return response.content or ""
 
 
@@ -593,7 +599,7 @@ async def stream(
         await queue.put(chunk)
 
     async def _runner() -> None:
-        nonlocal in_think_block
+        nonlocal saw_output, in_think_block
         try:
             response = await provider.chat_stream_with_retry(
                 messages=request_messages,
@@ -609,9 +615,12 @@ async def stream(
                 in_think_block = False
                 await queue.put("</think>")
             # Some providers synthesize a final response only after the stream.
-            # Do not replay reasoning_content as user-visible answer text.
+            # Do not replay reasoning_content as user-visible answer text, and
+            # never surface an error-shaped response's operator message as if
+            # the model had written it: that case is raised below instead.
             if (
-                not saw_content
+                response.finish_reason != "error"
+                and not saw_content
                 and response.content
                 and response.content != response.reasoning_content
             ):

@@ -45,7 +45,7 @@ The rest are **context-gated**: the chat capability auto-mounts them from
 `ToolMountFlags` (presence of a KB, attachments, sandbox availability, …), and
 any of them can also be force-enabled via `--tool`. Auto-mounted set: `rag`,
 `read_source`, `read_memory`, `write_memory`, `read_skill`, `load_tools`,
-`exec`, `code_execution` (sandboxed Python: NL intent → code → run),
+`exec` (sandboxed Python/C/C++ or shell execution),
 `list_notebook`, `write_note`, `web_fetch`, `github`, `cron`,
 `ask_user` (pauses the turn and resumes with the user's reply), plus the
 mastery-path tools. `geogebra_analysis` is parked under

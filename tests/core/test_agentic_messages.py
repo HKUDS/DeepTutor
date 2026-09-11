@@ -138,3 +138,24 @@ async def test_openai_sdk_keeps_gemini_signature_in_request_body() -> None:
     assert captured["messages"][1]["tool_calls"][0]["extra_content"] == {
         "google": {"thought_signature": "signature-from-gemini"}
     }
+
+
+def test_assistant_message_replays_anthropic_thinking_blocks() -> None:
+    """Extended thinking returns *signed* blocks that must be replayed.
+
+    Anthropic rejects a turn that issued tool calls and then failed to send
+    its thinking blocks back verbatim. The provider always read this field off
+    the message; nothing wrote it, so every round dropped the signature.
+    """
+    blocks = [{"type": "thinking", "thinking": "weighing it", "signature": "sig-abc"}]
+    message = assistant_message_with_tool_calls(
+        "",
+        [{"id": "call-1", "name": "rag", "arguments": "{}"}],
+        thinking_blocks=blocks,
+    )
+
+    assert message["thinking_blocks"] == blocks
+    assert "thinking_blocks" not in assistant_message_with_tool_calls(
+        "",
+        [{"id": "call-1", "name": "rag", "arguments": "{}"}],
+    )

@@ -2760,3 +2760,42 @@ def test_lightrag_config_validates_dedicated_llm_selection(monkeypatch, tmp_path
         json={"llm_profile_id": "", "llm_model_id": ""},
     )
     assert cleared.status_code == 200
+
+
+def test_delete_by_body_reaches_a_name_the_path_route_cannot(monkeypatch, tmp_path: Path) -> None:
+    """A slash in the name breaks path addressing, not the manager.
+
+    uvicorn percent-decodes the request path before routing, so ``%2F`` is a
+    real separator by the time Starlette matches ``{kb_name}`` — compiled to
+    ``[^/]+``, which cannot span it. Names like this were registered before
+    the ``register_*`` methods validated one, and the only way out was hand
+    editing ``kb_config.json``. Deleting by body sidesteps the path entirely.
+    """
+    manager = _real_manager(monkeypatch, tmp_path)
+    # Written straight into the config: registering it through the manager is
+    # exactly what is refused now, and the point is to clean up what predates
+    # that guard.
+    manager.config.setdefault("knowledge_bases", {})["数学/物理"] = {
+        "path": "数学/物理",
+        "type": "weknora",
+        "server_url": "http://localhost:8080",
+        "knowledge_base_id": "kb-1",
+    }
+    manager._save_config()
+
+    with TestClient(_build_app()) as client:
+        stranded = client.delete("/api/knowledge-bases/数学/物理")
+        assert stranded.status_code == 404
+
+        removed = client.post("/api/knowledge-bases/delete", json={"name": "数学/物理"})
+
+    assert removed.status_code == 200
+    assert "数学/物理" not in manager._load_config().get("knowledge_bases", {})
+
+
+def test_delete_reports_a_missing_knowledge_base_as_404(monkeypatch, tmp_path: Path) -> None:
+    """The catch-all used to swallow the 404 and answer 500 with it inside."""
+    _real_manager(monkeypatch, tmp_path)
+    with TestClient(_build_app()) as client:
+        response = client.post("/api/knowledge-bases/delete", json={"name": "never-created"})
+    assert response.status_code == 404

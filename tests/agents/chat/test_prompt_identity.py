@@ -6,7 +6,7 @@ from pathlib import Path
 
 import yaml
 
-from deeptutor.agents.chat.prompt_blocks import ChatPromptAssembler
+from deeptutor.agents.loop.prompt_blocks import ChatPromptAssembler
 from deeptutor.core.context import UnifiedContext
 
 PROMPTS = {

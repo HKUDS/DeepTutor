@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+from pathlib import Path
 import tempfile
 from typing import Any
 
@@ -30,14 +31,13 @@ class DeepQuestionCapability(TurnCapability):
         name="deep_question",
         description="Fast question generation (Template batches -> Generate).",
         stages=["ideation", "generation"],
-        tools_used=["rag", "web_search", "code_execution"],
+        tools_used=["rag", "web_search", "exec"],
         cli_aliases=["quiz"],
         request_schema=get_capability_request_schema("deep_question"),
     )
 
     async def run(self, context: UnifiedContext, stream: StreamBus) -> None:
         from deeptutor.services.llm.config import get_llm_config
-        from deeptutor.services.path_service import get_path_service
 
         llm_config = get_llm_config()
         kb_name = context.knowledge_bases[0] if context.knowledge_bases else None
@@ -61,7 +61,16 @@ class DeepQuestionCapability(TurnCapability):
                 metadata={"code": "topic_required", "retryable": True},
             )
             return
-        output_dir = get_path_service().get_task_workspace("deep_question", turn_id)
+        runtime_workspace = context.runtime.workspace
+        if runtime_workspace is not None:
+            output_dir = Path(runtime_workspace.output_dir) / "question_generation"
+            output_dir.mkdir(parents=True, exist_ok=True)
+        else:
+            # Direct legacy callers that do not construct a TurnRuntimeContext
+            # retain their historical storage path.
+            from deeptutor.services.path_service import get_path_service
+
+            output_dir = get_path_service().get_task_workspace("deep_question", turn_id)
         followup_question_context = context.metadata.get("question_followup_context", {}) or {}
         if isinstance(followup_question_context, dict) and followup_question_context.get(
             "question"

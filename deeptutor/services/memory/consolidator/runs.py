@@ -28,11 +28,11 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import logging
-import os
 from pathlib import Path
-import tempfile
 from typing import Any, Awaitable, Callable, Literal
 import uuid
+
+from deeptutor.services.file_io import atomic_write_text as _atomic_write
 
 logger = logging.getLogger(__name__)
 
@@ -381,23 +381,6 @@ def push_undo_checkpoint(
 
 def _now_iso() -> str:
     return datetime.now(tz=timezone.utc).isoformat()
-
-
-def _atomic_write(path: Path, content: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_str = tempfile.mkstemp(prefix=path.name + ".", dir=str(path.parent))
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(content)
-            fh.flush()
-            os.fsync(fh.fileno())
-        os.replace(tmp_str, path)
-    finally:
-        if os.path.exists(tmp_str):
-            try:
-                os.remove(tmp_str)
-            except OSError:
-                pass
 
 
 def _remove_if_exists(path: Path) -> None:

@@ -221,6 +221,117 @@ def test_supported_formats_names_faithful_documents_and_media(client: TestClient
     assert body["max_bytes"] > 0
 
 
+def _stub_media(monkeypatch: pytest.MonkeyPatch, cues_by_chunk) -> None:
+    """Drive the media path without ffmpeg or a speech-to-text provider."""
+    from deeptutor.reading import ingestion
+    from deeptutor.services import voice
+
+    async def chunker(_path: Path):
+        return [(0.0, 600.0, b"chunk-one"), (600.0, 900.0, b"chunk-two")]
+
+    async def transcriber(audio: bytes, **_kwargs):
+        return cues_by_chunk(audio)
+
+    monkeypatch.setattr(ingestion, "_chunk_media_audio", chunker)
+    monkeypatch.setattr(ingestion, "_probe_stt_configuration", lambda: "")
+    monkeypatch.setattr(voice, "transcribe_audio_cues", transcriber)
+
+
+def test_local_video_answers_before_transcription_and_plays_immediately(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Uploading media queues work; it does not hold the request open.
+
+    Transcribing a lecture takes minutes, so the route answers as soon as the
+    file is stored — with a material that already plays — and the transcript
+    lands afterwards. The old shape ran the whole pipeline inline, which meant
+    no progress could reach the client and a proxy timeout threw away work that
+    had already been paid for.
+    """
+    from deeptutor.services.voice import TranscriptCue
+
+    _stub_media(
+        monkeypatch,
+        lambda audio: (
+            [
+                TranscriptCue(0.0, 30.0, "Gradient descent, briefly."),
+                TranscriptCue(30.0, 62.0, "Then the learning rate."),
+            ]
+            if audio == b"chunk-one"
+            else [TranscriptCue(0.0, 25.0, "Closing remarks.")]
+        ),
+    )
+
+    response = client.post(
+        "/api/reading/materials",
+        files={"file": ("lecture.mp4", io.BytesIO(b"playable video bytes"), "video/mp4")},
+    )
+
+    assert response.status_code == 200, response.text
+    queued = response.json()
+    material_id = queued["material_id"]
+    assert queued["render_mode"] == "video"
+    assert queued["mime"] == "video/mp4"
+    # Playable before a single word has been transcribed.
+    raw = client.get(f"/api/reading/materials/{material_id}/raw")
+    assert raw.status_code == 200
+    assert raw.content == b"playable video bytes"
+
+    ready = client.get(f"/api/reading/materials/{material_id}").json()
+    assert ready["unit_count"] == 3
+    # Cue timings, rebased onto the clip — not one marker per audio chunk.
+    assert [row["source_href"] for row in ready["unit_refs"]] == [
+        "#t=0",
+        "#t=30",
+        "#t=600",
+    ]
+    assert [row["title"] for row in ready["unit_refs"]] == ["00:00", "00:30", "10:00"]
+
+
+def test_media_without_speech_stays_playable_instead_of_failing(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A silent screencast is a recording with no speech, not a failed import.
+
+    A YouTube video without captions already imports and plays; a local one
+    used to be rejected outright, taking the stored original with it.
+    """
+    _stub_media(monkeypatch, lambda _audio: [])
+
+    material = client.post(
+        "/api/reading/materials",
+        files={"file": ("silent.mp4", io.BytesIO(b"no speech here"), "video/mp4")},
+    ).json()
+    detail = client.get(f"/api/reading/materials/{material['material_id']}").json()
+
+    assert detail["render_mode"] == "video"
+    assert detail["extractor"] == "media-no-speech"
+    assert (
+        client.get(f"/api/reading/materials/{material['material_id']}/raw").content
+        == b"no speech here"
+    )
+
+
+def test_uploaded_audio_is_served_as_a_type_browsers_can_play(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``mimetypes`` calls .m4a ``audio/mp4a-latm``, which no player accepts."""
+    _stub_media(monkeypatch, lambda _audio: [])
+
+    material = client.post(
+        "/api/reading/materials",
+        files={"file": ("talk.m4a", io.BytesIO(b"podcast bytes"), "audio/mp4")},
+    ).json()
+
+    assert material["render_mode"] == "audio"
+    assert material["mime"] == "audio/mp4"
+    raw = client.get(f"/api/reading/materials/{material['material_id']}/raw")
+    assert raw.headers["content-type"] == "audio/mp4"
+
+
 def test_epub_contract_exposes_source_refs_original_and_position(client: TestClient) -> None:
     material = _upload(client, name="book.epub", data=_epub_bytes())
 

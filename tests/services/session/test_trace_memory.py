@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 from deeptutor.services.session.event_preview import (
     MAX_LEGACY_EVENT_PAYLOAD_CHARS,
+    MAX_TRACE_PREVIEW_EVENTS,
     compact_trace_preview,
 )
 from deeptutor.services.session.pocketbase_store import PocketBaseSessionStore
@@ -159,6 +160,55 @@ def test_session_preview_reads_a_bounded_number_of_canonical_rows(tmp_path, monk
     assert message["trace"]["truncated"] is True
     assert len(message["events"]) == 200
     assert converted == 200
+
+
+def test_an_early_mastery_card_survives_a_long_turns_preview(tmp_path) -> None:
+    """A posed question is the one row the settled message cannot render without.
+
+    The card used to travel on the ``ask_user`` channel, which both the
+    critical-row query and the preview compactor named explicitly. It has its
+    own channel now, so both had to learn the new key — otherwise a course
+    turn long enough to fill the preview budget dropped the question and left
+    the learner with prose about a card that was no longer there.
+    """
+    store = SQLiteSessionStore(tmp_path / "chat.db")
+    session = asyncio.run(store.ensure_session(None))
+    turn = asyncio.run(store.begin_turn(session["id"], capability="chat"))
+    message_id = asyncio.run(store.add_message(session["id"], "assistant", "answer"))
+    card = {
+        "type": "tool_result",
+        "content": "",
+        "metadata": {
+            "tool_call_id": "call-quiz",
+            "tool_metadata": {
+                "mastery_question": {"question_id": "q-1", "prompt": "Which reducer?"}
+            },
+        },
+    }
+    asyncio.run(
+        store.append_turn_events(
+            turn["id"],
+            [
+                card,
+                *[
+                    {"type": "tool_call", "content": f"call-{index}", "metadata": {}}
+                    for index in range(1_000)
+                ],
+            ],
+        )
+    )
+    asyncio.run(store.link_turn_message(turn["id"], message_id))
+
+    detail = asyncio.run(store.get_session_with_messages(session["id"]))
+
+    assert detail is not None
+    events = detail["messages"][0]["events"]
+    assert len(events) == MAX_TRACE_PREVIEW_EVENTS
+    posed = [
+        (event.get("metadata") or {}).get("tool_metadata", {}).get("mastery_question")
+        for event in events
+    ]
+    assert [card["question_id"] for card in posed if card] == ["q-1"]
 
 
 def test_pocketbase_trace_uses_server_side_pagination(monkeypatch) -> None:

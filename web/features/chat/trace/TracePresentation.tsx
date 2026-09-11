@@ -175,14 +175,11 @@ function describeToolCall(
   switch (toolName) {
     case "exec":
       return {
-        verb: t("Running command"),
-        chip: clip(str(a.command), 48) || null,
-        mono: true,
-      };
-    case "code_execution":
-      return {
-        verb: t("Running code"),
-        chip: str(a.language) || t("Code"),
+        verb: a.language === "shell" ? t("Running command") : t("Running code"),
+        chip:
+          a.language === "shell"
+            ? clip(str(a.code), 48) || null
+            : str(a.language) || t("Python"),
         mono: true,
       };
     case "rag":
@@ -1496,10 +1493,13 @@ export function StreamingStatus({
   onToggle,
   agentName,
   showMark = true,
+  traceBounds,
 }: {
   events: StreamEvent[];
   isStreaming?: boolean;
   content?: string;
+  /** The turn's real span, when ``events`` is only a preview of it. */
+  traceBounds?: { started_at?: number | null; ended_at?: number | null } | null;
   // Extra layout classes from the call site (e.g. ``mt-3`` when the row
   // sits at the bottom of the assistant output).
   className?: string;
@@ -1529,10 +1529,15 @@ export function StreamingStatus({
     return () => window.clearInterval(timer);
   }, [isStreaming]);
 
-  // Only render once we either have a streaming turn OR a completed turn that
-  // produced visible content — empty placeholders (e.g. system message
-  // shells) shouldn't show a status row.
-  if (!isStreaming && !hasFinalContent) return null;
+  // Only render once we either have a streaming turn, a completed turn that
+  // produced visible content, or a completed turn whose trace is still worth
+  // disclosing — empty placeholders (e.g. system message shells) shouldn't
+  // show a status row. A turn that ran tools and then ended without a
+  // user-facing answer belongs in that third case: dropping the row there
+  // also drops the only affordance for opening the trace, so the whole
+  // activity block renders as an invisible collapsed shell and the turn looks
+  // like it never happened.
+  if (!isStreaming && !hasFinalContent && !expandable) return null;
   const mode = detectStreamingMode(
     events,
     hasFinalContent,
@@ -1568,6 +1573,7 @@ export function StreamingStatus({
     events,
     nowSeconds,
     Boolean(isStreaming),
+    traceBounds,
   );
   const durationLabel =
     turnSeconds != null ? formatTurnDuration(turnSeconds) : null;
@@ -1724,6 +1730,23 @@ function isFinalAnswerPhase(
  * The header doubles as a disclosure toggle, so the user can re-open a
  * collapsed trace (or fold an expanded one) at any time.
  */
+/**
+ * Shown while a persisted trace is being fetched.
+ *
+ * The header can now open before its rows exist, so without this the panel
+ * would expand onto nothing and read as broken rather than as loading.
+ */
+function TraceLoadingRow() {
+  const { t } = useTranslation();
+  return (
+    <div className="flex items-center gap-2 py-1 pl-1 text-xs text-[var(--muted-foreground)]">
+      <span className="size-1.5 animate-pulse rounded-full bg-[var(--muted-foreground)]" />
+      {t("Loading the full trace…")}
+    </div>
+  );
+}
+
+
 export function AssistantActivity({
   events,
   traceEvents,
@@ -1734,6 +1757,8 @@ export function AssistantActivity({
   showMark = true,
   headerClassName = "",
   onTraceToggle,
+  traceBounds,
+  hasStoredTrace = false,
 }: {
   events: StreamEvent[];
   /**
@@ -1757,6 +1782,19 @@ export function AssistantActivity({
   headerClassName?: string;
   /** Notified when a persisted trace is opened or collapsed. */
   onTraceToggle?: (open: boolean) => void;
+  /** The turn's real span, when ``events`` is only a preview of it. */
+  traceBounds?: { started_at?: number | null; ended_at?: number | null } | null;
+  /**
+   * Whether the server still holds trace rows this preview dropped.
+   *
+   * A finished turn keeps only a compact preview in memory, and that preview
+   * discards ``thinking`` — which for a round that called no tools is the
+   * entire trace. The header then had nothing renderable, so it rendered as
+   * *not expandable*, so the click that would have fetched the full trace
+   * could never happen: no rows, therefore no way to ever get rows. This flag
+   * breaks that circle by letting the header open on the promise of rows.
+   */
+  hasStoredTrace?: boolean;
 }) {
   const shownTraceEvents = traceEvents ?? events;
   const hasTrace = useMemo(
@@ -1771,11 +1809,16 @@ export function AssistantActivity({
   // null = follow the phase automatically (open while working, collapsed
   // once answered). A click pins the user's choice for this message.
   const [userOpen, setUserOpen] = useState<boolean | null>(null);
-  const open = hasTrace && (userOpen ?? !finalPhase);
+  // Openable either because rows are already here, or because the server has
+  // rows to hand over once asked. Auto-open still follows the phase only when
+  // there is something to show right now: a settled turn stays collapsed until
+  // the reader asks for it.
+  const expandable = hasTrace || hasStoredTrace;
+  const open = expandable && (userOpen ?? (hasTrace && !finalPhase));
 
-  // Match StreamingStatus's own null-guard: nothing to show for an empty,
-  // non-streaming shell with no trace either.
-  if (!isStreaming && !hasFinalContent && !hasTrace) return null;
+  // Match StreamingStatus's own null-guard — it takes ``expandable`` into
+  // account for exactly this case, so both surfaces appear or neither does.
+  if (!isStreaming && !hasFinalContent && !expandable) return null;
 
   return (
     <div className={className}>
@@ -1783,7 +1826,7 @@ export function AssistantActivity({
         events={events}
         isStreaming={isStreaming}
         content={content}
-        expandable={hasTrace}
+        expandable={expandable}
         expanded={open}
         onToggle={() => {
           const next = !open;
@@ -1793,8 +1836,9 @@ export function AssistantActivity({
         agentName={agentName}
         showMark={showMark}
         className={headerClassName}
+        traceBounds={traceBounds}
       />
-      {hasTrace ? (
+      {expandable ? (
         <div
           className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${
             open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
@@ -1807,10 +1851,14 @@ export function AssistantActivity({
                 below the header when open; [&>div]:mb-0 strips
                 CallTracePanel's own bottom margin so the single gap to the
                 body comes from this block's outer ``mb-3`` in both states. */}
-            <NestedTraceFlow
-              events={shownTraceEvents}
-              isStreaming={isStreaming}
-            />
+            {hasTrace ? (
+              <NestedTraceFlow
+                events={shownTraceEvents}
+                isStreaming={isStreaming}
+              />
+            ) : (
+              <TraceLoadingRow />
+            )}
           </div>
         </div>
       ) : null}

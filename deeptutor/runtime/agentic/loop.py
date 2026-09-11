@@ -30,7 +30,10 @@ from typing import Any, Protocol
 
 from deeptutor.runtime.agentic.labeled_step import LabeledStepResult, run_labeled_step
 from deeptutor.runtime.agentic.labels import LABEL_UNKNOWN, find_inline_labels
-from deeptutor.runtime.agentic.messages import assistant_message_with_tool_calls
+from deeptutor.runtime.agentic.messages import (
+    assistant_message,
+    assistant_message_with_tool_calls,
+)
 from deeptutor.runtime.agentic.tool_dispatch import DispatchOutcome
 from deeptutor.runtime.agentic.usage import UsageTracker
 from deeptutor.runtime.stream_bus import StreamBus
@@ -259,7 +262,7 @@ async def run_agentic_loop(
             )
             _append_repair_messages(
                 messages=messages,
-                iteration_text=step.text,
+                step=step,
                 violation=violation,
                 host=host,
             )
@@ -279,7 +282,7 @@ async def run_agentic_loop(
                     )
                     _append_repair_messages(
                         messages=messages,
-                        iteration_text=step.text,
+                        step=step,
                         violation=violation,
                         host=host,
                     )
@@ -295,7 +298,18 @@ async def run_agentic_loop(
             break
 
         if protocol.tool_label is not None and step.label == protocol.tool_label:
-            messages.append(assistant_message_with_tool_calls(step.text, step.tool_calls))
+            # The reasoning rides along. A thinking model's provider requires
+            # the round's own reasoning on the assistant turn that issued the
+            # tool calls, and this loop used to drop it — so the second round
+            # of any DeepSeek thinking turn was rejected outright.
+            messages.append(
+                assistant_message_with_tool_calls(
+                    step.text,
+                    step.tool_calls,
+                    reasoning_content=step.reasoning_content or None,
+                    thinking_blocks=list(step.thinking_blocks) or None,
+                )
+            )
             outcome = await host.dispatch_tools(
                 iteration=iteration,
                 tool_calls=step.tool_calls,
@@ -324,7 +338,13 @@ async def run_agentic_loop(
             if step.label in protocol.final and step.text and not stream_body_live:
                 await host.emit_final(step.text, final_meta)
             if step.text:
-                messages.append({"role": "assistant", "content": step.text})
+                messages.append(
+                    assistant_message(
+                        step.text,
+                        reasoning_content=step.reasoning_content or None,
+                        thinking_blocks=list(step.thinking_blocks) or None,
+                    )
+                )
             # Optional hook for capabilities that attach side-effects to
             # intermediate labels (e.g. research's ``APPEND`` mutates the
             # topic queue). When the hook returns a non-empty string we
@@ -348,7 +368,7 @@ async def run_agentic_loop(
         )
         _append_repair_messages(
             messages=messages,
-            iteration_text=step.text,
+            step=step,
             violation="unknown_action",
             host=host,
         )
@@ -419,17 +439,28 @@ _REPAIR_PREVIEW_CHARS = 500
 def _append_repair_messages(
     *,
     messages: list[dict[str, Any]],
-    iteration_text: str,
+    step: LabeledStepResult,
     violation: str,
     host: LoopHost,
 ) -> None:
     """Preserve the model's unlabeled draft as assistant context, then add
-    a correction prompt that tells the next iteration what to do."""
-    clipped = str(iteration_text or "").strip()
+    a correction prompt that tells the next iteration what to do.
+
+    Takes the whole step rather than its text so the round's reasoning travels
+    with the draft: a repair round is still a round, and a thinking model's
+    provider rejects a history that lost it.
+    """
+    clipped = str(step.text or "").strip()
     if clipped:
         if len(clipped) > _REPAIR_PREVIEW_CHARS:
             clipped = clipped[:_REPAIR_PREVIEW_CHARS].rstrip() + "\n...[truncated]"
-        messages.append({"role": "assistant", "content": clipped})
+        messages.append(
+            assistant_message(
+                clipped,
+                reasoning_content=step.reasoning_content or None,
+                thinking_blocks=list(step.thinking_blocks) or None,
+            )
+        )
     messages.append({"role": "user", "content": host.protocol_repair_message(violation)})
 
 

@@ -20,19 +20,28 @@ import {
 } from "@/hooks/useTopicSourceLibrary";
 import {
   createMasteryTopic,
-  generateMasteryTopicDraft,
   type CreateTopicInput,
   type MasteryTopic,
-  type TopicDraft,
   type TopicSourceInput,
 } from "@/lib/learning-api";
 
 import type { Translate } from "./format";
-import { CoverageNotice } from "./CoverageNotice";
-import { RouteDraftEditor } from "./RouteDraftEditor";
-import { isRouteDraftValid } from "./route-draft";
 import { GoalStep, SourcesStep } from "./TopicWizardSteps";
 
+/**
+ * Creating a mastery goal: state the goal, choose the materials, done.
+ *
+ * The outline used to be the third step here — generated up front and edited
+ * in a form before the learner had said a word to the tutor. That put the most
+ * consequential decision of the whole course behind a static editor, at the
+ * one moment the learner knows least about what the material actually holds.
+ * Now creation stops at the materials, and the goal's first session designs
+ * the outline in conversation, where "make this one harder" and "I already
+ * know that chapter" are things you can simply say.
+ *
+ * So this dialog no longer names the goal either: a name is derived from the
+ * goal server-side and stays renameable. Two boxes, not four.
+ */
 export function CreateTopicWizard({
   onClose,
   onCreated,
@@ -44,19 +53,16 @@ export function CreateTopicWizard({
 }) {
   const { t } = useTranslation();
   const [step, setStep] = useState(1);
-  const [name, setName] = useState("");
   const [goal, setGoal] = useState("");
   const [emoji, setEmoji] = useState("🧭");
   const {
     library,
     loading: libraryLoading,
     candidates,
-    files,
-    loadKnowledgeBaseFiles,
-  } = useTopicSourceLibrary(t);
+    childLists,
+    loadChildren,
+  } = useTopicSourceLibrary(t as Translate);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [draft, setDraft] = useState<TopicDraft | null>(null);
-  const [sources, setSources] = useState<TopicSourceInput[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dialogRef = useModalDialog(onClose, busy, returnFocusRef);
@@ -65,7 +71,7 @@ export function CreateTopicWizard({
     setSelected((previous) => toggleSourceSelection(previous, key, candidates));
   };
 
-  const generate = async (mustCover: string[] = []) => {
+  const create = async () => {
     setBusy(true);
     setError(null);
     try {
@@ -73,7 +79,7 @@ export function CreateTopicWizard({
         selected.has(candidate.key),
       );
       const hydrated = await Promise.all(chosen.map(hydrateTopicSource));
-      const nextSources: TopicSourceInput[] = [
+      const sources: TopicSourceInput[] = [
         {
           kind: "goal",
           label: t("Learning goal"),
@@ -81,38 +87,12 @@ export function CreateTopicWizard({
         },
         ...hydrated,
       ];
-      const nextDraft = await generateMasteryTopicDraft({
-        name: name.trim(),
-        goal: goal.trim(),
-        sources: nextSources,
-        ...(mustCover.length ? { must_cover: mustCover } : {}),
-      });
-      setSources(nextDraft.sources ?? nextSources);
-      setDraft(nextDraft);
-      setStep(3);
-    } catch (reason) {
-      setError(
-        reason instanceof Error
-          ? reason.message
-          : t("Could not generate the outline. Please retry."),
-      );
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const confirm = async () => {
-    if (!draft || !isRouteDraftValid(draft)) return;
-    setBusy(true);
-    setError(null);
-    try {
       const payload: CreateTopicInput = {
-        name: name.trim(),
         goal: goal.trim(),
-        description: draft.description.trim(),
         emoji,
         sources,
-        modules: draft.modules,
+        // No outline yet: the first session designs it with the tutor.
+        modules: [],
       };
       onCreated(await createMasteryTopic(payload));
     } catch (reason) {
@@ -145,13 +125,13 @@ export function CreateTopicWizard({
           <div>
             <div className="flex items-center gap-2 text-xs font-medium text-[var(--primary)]">
               <Sparkles className="h-3.5 w-3.5" />
-              {t("New topic")}
+              {t("New mastery goal")}
             </div>
             <h2
               id="create-topic-title"
               className="mt-1 text-xl font-semibold tracking-tight text-[var(--foreground)]"
             >
-              {t("Plan the modules")}
+              {step === 1 ? t("What do you want to master?") : t("Choose materials")}
             </h2>
           </div>
           <button
@@ -167,10 +147,10 @@ export function CreateTopicWizard({
 
         <div className="border-b border-[var(--border)] px-5 py-3 sm:px-7">
           <ol
-            className="grid grid-cols-3 gap-2"
+            className="grid grid-cols-2 gap-2"
             aria-label={t("Creation steps")}
           >
-            {[t("Goal"), t("Materials"), t("Outline")].map((label, index) => {
+            {[t("Goal"), t("Materials")].map((label, index) => {
               const number = index + 1;
               const active = number === step;
               const done = number < step;
@@ -178,11 +158,9 @@ export function CreateTopicWizard({
                 <li key={label} className="flex items-center gap-2">
                   <span
                     className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold ${
-                      active
+                      active || done
                         ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
-                        : done
-                          ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
-                          : "bg-[var(--muted)] text-[var(--muted-foreground)]"
+                        : "bg-[var(--muted)] text-[var(--muted-foreground)]"
                     }`}
                   >
                     {done ? <Check className="h-3 w-3" /> : number}
@@ -205,10 +183,8 @@ export function CreateTopicWizard({
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-6 sm:px-7">
           {step === 1 && (
             <GoalStep
-              name={name}
               goal={goal}
               emoji={emoji}
-              onName={setName}
               onGoal={setGoal}
               onEmoji={setEmoji}
             />
@@ -219,23 +195,9 @@ export function CreateTopicWizard({
               loading={libraryLoading}
               selected={selected}
               onToggle={toggleSource}
-              files={files}
-              onExpand={loadKnowledgeBaseFiles}
+              childLists={childLists}
+              onExpand={loadChildren}
             />
-          )}
-          {step === 3 && draft && (
-            <>
-              <CoverageNotice
-                coverage={draft.coverage}
-                busy={busy}
-                onCover={(documents) => void generate(documents)}
-              />
-              <RouteDraftEditor
-                draft={draft}
-                onChange={setDraft}
-                moduleLimit={draft.module_limit}
-              />
-            </>
           )}
           {error && (
             <div className="mt-5 flex items-start gap-2 rounded-xl border border-red-500/20 bg-red-500/[0.06] p-3 text-xs leading-5 text-red-700 dark:text-red-300">
@@ -248,7 +210,7 @@ export function CreateTopicWizard({
         <footer className="flex items-center justify-between border-t border-[var(--border)] px-5 py-4 sm:px-7">
           <button
             type="button"
-            onClick={() => setStep((current) => Math.max(1, current - 1))}
+            onClick={() => setStep(1)}
             disabled={step === 1 || busy}
             className="inline-flex h-10 items-center gap-2 rounded-xl px-3 text-sm text-[var(--muted-foreground)] hover:bg-[var(--accent)] disabled:invisible"
           >
@@ -259,16 +221,16 @@ export function CreateTopicWizard({
             <button
               type="button"
               onClick={() => setStep(2)}
-              disabled={!name.trim() || !goal.trim()}
+              disabled={!goal.trim()}
               className="inline-flex h-10 items-center gap-2 rounded-xl bg-[var(--primary)] px-4 text-sm font-medium text-[var(--primary-foreground)] disabled:cursor-not-allowed disabled:opacity-40"
             >
               {t("Choose sources")}
               <ArrowRight className="h-4 w-4" />
             </button>
-          ) : step === 2 ? (
+          ) : (
             <button
               type="button"
-              onClick={() => void generate()}
+              onClick={() => void create()}
               disabled={busy}
               className="inline-flex h-10 items-center gap-2 rounded-xl bg-[var(--primary)] px-4 text-sm font-medium text-[var(--primary-foreground)] disabled:opacity-50"
             >
@@ -277,21 +239,7 @@ export function CreateTopicWizard({
               ) : (
                 <Sparkles className="h-4 w-4" />
               )}
-              {busy ? t("Charting…") : t("Generate outline")}
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => void confirm()}
-              disabled={busy || !draft || !isRouteDraftValid(draft)}
-              className="inline-flex h-10 items-center gap-2 rounded-xl bg-[var(--primary)] px-4 text-sm font-medium text-[var(--primary-foreground)] disabled:opacity-50"
-            >
-              {busy ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Check className="h-4 w-4" />
-              )}
-              {busy ? t("Saving map…") : t("Start learning")}
+              {busy ? t("Creating…") : t("Design the outline with the tutor")}
             </button>
           )}
         </footer>

@@ -171,6 +171,76 @@ def validate_equation_format(command: str) -> tuple[str, list[str]]:
     return command, warnings
 
 
+def _split_command_args(arg_string: str) -> list[str]:
+    """Split a comma-separated argument string, respecting nested brackets.
+
+    String literals (``"..."``) and parenthesised expressions may contain
+    commas that are not argument separators.
+    """
+    args: list[str] = []
+    depth = 0
+    in_string = False
+    current: list[str] = []
+    for char in arg_string:
+        if char == '"' and (not current or current[-1] != "\\"):
+            in_string = not in_string
+        if in_string:
+            current.append(char)
+            continue
+        if char in "([":
+            depth += 1
+        elif char in ")]":
+            depth -= 1
+        elif char == "," and depth == 0:
+            args.append("".join(current).strip())
+            current = []
+            continue
+        current.append(char)
+    tail = "".join(current).strip()
+    if tail:
+        args.append(tail)
+    return args
+
+
+def validate_text_command(command: str) -> tuple[str, list[str]]:
+    """Validate a ``Text`` command for arity and LaTeX balance.
+
+    GeoGebra accepts ``Text[<object>, <point>]`` (2 args) or
+    ``Text[<object>, <point>, <bool>, <bool>]`` (4 args) but **not**
+    ``Text[<string>, <x>, <y>]`` (3 args) — that last form is the one
+    reasoning models most often invent, and GeoGebra answers with
+    "illegal argument" rather than a structured error.
+
+    Also checks that ``$`` LaTeX delimiters are balanced inside string
+    arguments; an unbalanced ``$`` silently renders raw markup.
+
+    Returns:
+        Tuple of (command, list of error descriptions).
+    """
+    errors: list[str] = []
+    match = re.search(r"\bText\s*\[(.*)\]\s*$", command, re.DOTALL)
+    if match is None:
+        return command, errors
+
+    args = _split_command_args(match.group(1))
+    if len(args) == 3:
+        errors.append(
+            "Text[] has no 3-argument signature. Use Text[<object>, <point>] "
+            "(2 args) or Text[<object>, <point>, <bool>, <bool>] (4 args); "
+            "never Text[<string>, <x>, <y>]."
+        )
+
+    for arg in args:
+        if arg.startswith('"'):
+            if not arg.endswith('"'):
+                errors.append(f"Text[] argument {arg} has an unterminated string.")
+                continue
+            if arg.count("$") % 2 != 0:
+                errors.append(f"Text[] argument {arg} has unbalanced $ LaTeX delimiters.")
+
+    return command, errors
+
+
 def validate_command(command: str) -> ValidationResult:
     """Validate and fix a single GeoGebra command.
 
@@ -205,6 +275,13 @@ def validate_command(command: str) -> ValidationResult:
     # Check equation format
     _, warnings = validate_equation_format(result.fixed)
     result.warnings.extend(warnings)
+
+    # Check Text command arity and LaTeX balance
+    _, errors = validate_text_command(result.fixed)
+    result.errors.extend(errors)
+
+    if result.errors:
+        result.is_valid = False
 
     # Check if anything was fixed
     if result.original != result.fixed:

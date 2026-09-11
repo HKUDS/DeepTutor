@@ -99,6 +99,73 @@ class TestTurnExecution:
         ]
 
     @pytest.mark.asyncio
+    async def test_a_group_conversation_records_where_it_happened(
+        self, partners_root, fake_orchestrator
+    ):
+        """#1229: one partner serving three subject groups looked like three DMs.
+
+        Feishu states the kind of chat on the inbound event, so the turn that
+        is being written is the only moment the origin is known for certain.
+        The conversation list reads it back from there.
+        """
+        fake_orchestrator.script = finish("noted")
+        runner = _runner(partners_root)
+        group = InboundMessage(
+            channel="feishu",
+            sender_id="ou_student",
+            chat_id="oc_math_group",
+            content="老师这题怎么做",
+            metadata={"chat_type": "group"},
+        )
+
+        await runner.process_message(group)
+
+        summary = next(
+            row
+            for row in _shared_store().list_sessions()
+            if row["session_key"] == "feishu_oc_math_group"
+        )
+        assert summary["chat_id"] == "oc_math_group"
+        assert summary["scope"] == "group"
+
+    @pytest.mark.asyncio
+    async def test_a_direct_message_is_marked_as_one(self, partners_root, fake_orchestrator):
+        fake_orchestrator.script = finish("noted")
+        runner = _runner(partners_root)
+        direct = InboundMessage(
+            channel="feishu",
+            sender_id="ou_parent",
+            chat_id="ou_parent",
+            content="他最近怎么样",
+            metadata={"chat_type": "p2p"},
+        )
+
+        await runner.process_message(direct)
+
+        summary = next(
+            row
+            for row in _shared_store().list_sessions()
+            if row["session_key"] == "feishu_ou_parent"
+        )
+        assert summary["scope"] == "direct"
+
+    @pytest.mark.asyncio
+    async def test_a_channel_that_says_nothing_is_left_unlabelled(
+        self, partners_root, fake_orchestrator
+    ):
+        """A conversation list that guesses is worse than one that stays quiet."""
+        fake_orchestrator.script = finish("noted")
+        runner = _runner(partners_root)
+
+        await runner.process_message(_msg("hello"))
+
+        summary = next(
+            row for row in _shared_store().list_sessions() if row["session_key"] == "telegram_42"
+        )
+        assert summary["chat_id"] == "42"
+        assert "scope" not in summary
+
+    @pytest.mark.asyncio
     async def test_narration_streams_as_progress_outbound(self, partners_root, fake_orchestrator):
         fake_orchestrator.script = narration_round("c1", "exploring…") + finish("done")
         runner = _runner(partners_root)

@@ -1,20 +1,39 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import { Loader2 } from "lucide-react";
 import { useKnowledgeBases } from "@/hooks/useKnowledgeBases";
 import { updateRagProviderMode } from "@/features/knowledge/api/engines";
-import KnowledgeBaseDetail from "./KnowledgeBaseDetail";
 import KnowledgeHome, { type KnowledgeHomeSection } from "./KnowledgeHome";
-import EngineDetail from "@/features/knowledge/components/engines/EngineDetail";
-import CreateKbModal from "./CreateKbModal";
 import {
   decodeResourceSegment,
   knowledgeBaseRoute,
 } from "@/lib/resource-routes";
 import type { IndexingLLMSelection } from "@/features/knowledge/model/types";
+
+const panelLoading = () => (
+  <div
+    className="flex min-h-0 flex-1 items-center justify-center"
+    aria-busy="true"
+  >
+    <Loader2 className="h-5 w-5 animate-spin text-[var(--muted-foreground)]" />
+  </div>
+);
+
+// These panels are not part of the Knowledge overview's first interaction.
+// Keep their large forms and engine controls out of the overview bundle, while
+// still server-rendering the relevant panel for direct detail links.
+const KnowledgeBaseDetail = dynamic(() => import("./KnowledgeBaseDetail"), {
+  loading: panelLoading,
+});
+const EngineDetail = dynamic(
+  () => import("@/features/knowledge/components/engines/EngineDetail"),
+  { loading: panelLoading },
+);
+const CreateKbModal = dynamic(() => import("./CreateKbModal"));
 
 export default function KnowledgePage() {
   const { t } = useTranslation();
@@ -366,25 +385,27 @@ export default function KnowledgePage() {
         </div>
       )}
 
-      <CreateKbModal
-        isOpen={createOpen}
-        onClose={() => setCreateOpen(false)}
-        providers={providers}
-        uploadPolicy={uploadPolicy}
-        onCreate={handleCreate}
-        onConnectLinkedFolder={connectLinkedFolder}
-        onConnectObsidian={connectObsidian}
-        onConnectLightRagServer={connectLightRagServer}
-        onConnectWeKnora={connectWeKnora}
-        onConnectMarginNote4={connectMarginNote4}
-        onConnectIma={connectIma}
-        initialMode={createPreset?.mode}
-        initialSource={createPreset?.source}
-        onConfigureProvider={(providerId) => {
-          setCreateOpen(false);
-          openEngine(providerId);
-        }}
-      />
+      {createOpen ? (
+        <CreateKbModal
+          isOpen
+          onClose={() => setCreateOpen(false)}
+          providers={providers}
+          uploadPolicy={uploadPolicy}
+          onCreate={handleCreate}
+          onConnectLinkedFolder={connectLinkedFolder}
+          onConnectObsidian={connectObsidian}
+          onConnectLightRagServer={connectLightRagServer}
+          onConnectWeKnora={connectWeKnora}
+          onConnectMarginNote4={connectMarginNote4}
+          onConnectIma={connectIma}
+          initialMode={createPreset?.mode}
+          initialSource={createPreset?.source}
+          onConfigureProvider={(providerId) => {
+            setCreateOpen(false);
+            openEngine(providerId);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

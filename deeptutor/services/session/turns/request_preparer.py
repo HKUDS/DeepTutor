@@ -14,6 +14,7 @@ from deeptutor.runtime.capability_routing import route_explicit_quiz_request
 from deeptutor.services.session.workspace_preferences import (
     WORKSPACE_MODE_MASTERY,
     WORKSPACE_MODE_READING,
+    WORKSPACE_MODE_WATCHING,
 )
 
 from .._turn_runtime_shared import (
@@ -59,6 +60,16 @@ class TurnRequestPreparer:
             session_id: str,
             requested_path_id: str,
             remembered_path_id: str,
+        ) -> None: ...
+
+        async def _commit_mastery_card_answer(
+            self,
+            *,
+            path_id: str,
+            session_id: str,
+            turn_id: str,
+            question_id: str,
+            answer: str,
         ) -> None: ...
 
         async def _acquire_mastery_path_lease(
@@ -133,10 +144,21 @@ class TurnRequestPreparer:
             )
 
         requested_capability = str(payload.get("capability") or "chat")
+        # Resolved before routing, and from the *requested* action: the
+        # workspace is what decides whether this turn may be re-routed at all,
+        # so it cannot be derived from the routing outcome.
+        workspace_mode_explicit = "workspace_mode" in payload
+        workspace_mode = _workspace_mode(
+            payload.get("workspace_mode")
+            if workspace_mode_explicit
+            else preferences.get("workspace_mode"),
+            capability=requested_capability,
+        )
         capability_route = route_explicit_quiz_request(
             payload.get("content"),
             requested_capability,
             enabled=routing_enabled,
+            workspace_mode=workspace_mode,
         )
         capability = (
             capability_route.capability if capability_route is not None else requested_capability
@@ -148,13 +170,16 @@ class TurnRequestPreparer:
         except PermissionError as exc:
             raise RuntimeError(str(exc)) from exc
 
-        workspace_mode_explicit = "workspace_mode" in payload
-        workspace_mode = _workspace_mode(
-            payload.get("workspace_mode")
-            if workspace_mode_explicit
-            else preferences.get("workspace_mode"),
-            capability=capability,
-        )
+        if workspace_mode == WORKSPACE_MODE_WATCHING:
+            from deeptutor.video_learning import get_timed_media_store
+
+            media_id = _timed_media_id(payload.get("timed_media_id"))
+            if media_id:
+                # Resolve only in the authenticated owner's store before saving the binding.
+                get_timed_media_store().get(media_id)
+        else:
+            payload.pop("timed_media_id", None)
+            payload.pop("timed_media_viewport", None)
         try:
             from deeptutor.runtime.request_contracts import validate_capability_config
 
@@ -247,10 +272,33 @@ class TurnRequestPreparer:
         mastery_lease_managed = bool(
             mastery_binding is not None and _mastery_loop_managed(workspace_mode, capability)
         )
+        # What this conversation is for — designing the outline, learning, or
+        # reviewing. Durable session state like the path id, but *mutable*:
+        # the tutor may change it mid-turn with ``mastery_mode`` and the
+        # learner may change it from the header, so the value a turn starts
+        # with is only where it starts.
+        from deeptutor.capabilities.mastery.mode import enforced_mode
+
+        # ``or``, not "is the key present": the client writes this key on every
+        # turn and leaves it null whenever it does not happen to hold the mode
+        # in memory (a reload, a session loaded from the server before its
+        # preference came back). Reading a null as "the client said none" threw
+        # away the mode the conversation was actually in — so the tutor was
+        # told it was studying while the learner watched the outline mode
+        # highlighted above the transcript, and never switched because it
+        # believed it already had.
+        raw_mastery_mode = payload.get("mastery_session_mode") or preferences.get(
+            "mastery_session_mode"
+        )
+        # ``enforced_mode`` rather than ``normalize_mode``: a conversation that
+        # never recorded a mode must stay unrecorded all the way down to the
+        # tools, which read the absence as "enforce nothing".
+        mastery_session_mode = enforced_mode(raw_mastery_mode)
         payload = {
             **payload,
             "mastery_path_id": mastery_path_id,
             "mastery_path_lease_managed": mastery_lease_managed,
+            "mastery_session_mode": mastery_session_mode,
         }
         # Persona is a session-level preference (mirrors llm_selection): an
         # explicit ``persona`` key in the payload — including an empty string,
@@ -389,6 +437,8 @@ class TurnRequestPreparer:
         # non-empty legacy capability is persisted as part of migration.
         if workspace_mode_explicit or workspace_mode:
             preference_update["workspace_mode"] = workspace_mode
+        if workspace_mode == "immersive_watching":
+            preference_update["timed_media_id"] = _timed_media_id(payload.get("timed_media_id"))
         if course_id_explicit:
             preference_update["course_id"] = requested_course_id
 
@@ -440,6 +490,10 @@ class TurnRequestPreparer:
             # Mastery turns persist their fully resolved path so a later turn
             # cannot silently fall back to a different aggregate.
             preference_update["mastery_path_id"] = mastery_path_id
+            # …and what the conversation is for, which is decided when it is
+            # opened and must survive every later turn that does not restate it.
+            if mastery_session_mode:
+                preference_update["mastery_session_mode"] = mastery_session_mode
         if workspace_mode == WORKSPACE_MODE_READING and reading_workspace_id:
             preference_update.update(
                 {
@@ -511,6 +565,17 @@ class TurnRequestPreparer:
                     owns_path=mastery_binding.owned_by_session,
                 )
                 mastery_lease_acquired = True
+                card_answer = payload.get("mastery_answer") or {}
+                if isinstance(card_answer, dict) and card_answer.get("question_id"):
+                    # Commit before the loop starts so the tutor's first
+                    # mastery_status already reports this answer.
+                    await self._commit_mastery_card_answer(
+                        path_id=mastery_binding.path_id,
+                        session_id=session["id"],
+                        turn_id=turn["id"],
+                        question_id=str(card_answer.get("question_id") or ""),
+                        answer=str(card_answer.get("text") or ""),
+                    )
             except Exception as exc:
                 async with self._lock:
                     self._executions.pop(turn["id"], None)
@@ -707,6 +772,14 @@ class TurnRequestPreparer:
                 else snapshot.get("readingReferences")
             ),
             "mastery_path_id": mastery_path_id,
+            # A regenerate must run as the same kind of conversation the turn
+            # originally ran as, or it would be handed a different tool surface
+            # than the answer it is replacing.
+            "mastery_session_mode": (
+                overrides.get("mastery_session_mode")
+                if "mastery_session_mode" in overrides
+                else preferences.get("mastery_session_mode")
+            ),
             # Recovered from the original turn's snapshot so the regenerate runs
             # against the same document. An explicit override wins (the reader
             # may have moved on), and the viewport is deliberately not restored —

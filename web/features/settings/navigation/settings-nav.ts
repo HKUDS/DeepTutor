@@ -9,6 +9,7 @@ import {
   Clapperboard,
   Database,
   FileScan,
+  FolderOpen,
   Image as ImageIcon,
   Info,
   KeyRound,
@@ -406,7 +407,7 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
   {
     key: "appearance",
     label: { zh: "外观", en: "Appearance" },
-    blurb: { zh: "视觉主题与界面语言", en: "Theme and interface language" },
+    blurb: { zh: "视觉主题与代码块", en: "Theme and code blocks" },
     icon: Palette,
     href: "/settings#appearance",
   },
@@ -419,6 +420,16 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
     },
     icon: Network,
     href: "/settings#network",
+  },
+  {
+    key: "workspace",
+    label: { zh: "Workspace", en: "Workspace" },
+    blurb: {
+      zh: "Agent 可读取的文件与统一输出目录",
+      en: "Agent-readable files and the shared output folder",
+    },
+    icon: FolderOpen,
+    href: "/settings#workspace",
   },
   {
     key: "models",
@@ -520,6 +531,7 @@ export function settingsAnchorHref(key: string): string {
 const STORAGE_PATHS: Record<string, string> = {
   "/settings#appearance": "data/user/settings/interface.json",
   "/settings#network": "data/user/settings/system.json",
+  "/settings#workspace": "data/user/settings/content_workspace.json",
   "/settings#llm": "data/user/settings/model_catalog.json",
   "/settings#embedding": "data/user/settings/model_catalog.json",
   "/settings#search": "data/user/settings/model_catalog.json",
@@ -532,6 +544,7 @@ const STORAGE_PATHS: Record<string, string> = {
   "/settings#memory": "data/user/settings/main.yaml",
   appearance: "data/user/settings/interface.json",
   network: "data/user/settings/system.json",
+  workspace: "data/user/settings/content_workspace.json",
   connections: "data/user/settings/model_catalog.json",
   "task-models": "data/user/settings/model_catalog.json",
   knowledge: "data/user/settings/document_parsing.json",

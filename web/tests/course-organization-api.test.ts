@@ -1,9 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { listCourses } from "../lib/courses-api";
 import { listAllSessions, updateSessionOrganization } from "../lib/session-api";
 import { organizeSessionTree } from "../lib/session-organization";
 import type { SessionSummary } from "../lib/session-api";
+import { ApiError } from "../shared/api/errors";
 
 function session(
   id: string,
@@ -50,6 +52,34 @@ test("course organization fetches every session page", async () => {
     const sessions = await listAllSessions({ force: true });
     assert.equal(sessions.length, 203);
     assert.deepEqual(offsets, [0, 200]);
+  } finally {
+    (globalThis as { fetch: typeof fetch }).fetch = original;
+  }
+});
+
+test("course policy failures preserve the server denial", async () => {
+  const original = globalThis.fetch;
+  (globalThis as { fetch: typeof fetch }).fetch = async () =>
+    new Response(
+      JSON.stringify({
+        detail: "This learning account cannot use the reading surface."
+      }),
+      { status: 403, headers: { "Content-Type": "application/json" } },
+    );
+
+  try {
+    await assert.rejects(
+      listCourses({ force: true }),
+      (error: unknown) => {
+        assert.ok(error instanceof ApiError);
+        assert.equal(error.status, 403);
+        assert.equal(
+          error.message,
+          "This learning account cannot use the reading surface."
+        );
+        return true;
+      },
+    );
   } finally {
     (globalThis as { fetch: typeof fetch }).fetch = original;
   }

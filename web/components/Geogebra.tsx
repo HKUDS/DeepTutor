@@ -105,6 +105,7 @@ const Geogebra: React.FC<GeogebraProps> = ({
   );
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [commandErrors, setCommandErrors] = useState<string[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -164,14 +165,22 @@ const Geogebra: React.FC<GeogebraProps> = ({
                   view.y_max,
                 );
               }
+              const failures: string[] = [];
               for (const cmd of commands) {
                 try {
-                  api.evalCommand(cmd);
+                  if (!api.evalCommand(cmd)) {
+                    failures.push(cmd);
+                    console.warn("[ggb] evalCommand returned false", { cmd });
+                  }
                 } catch (err) {
+                  failures.push(cmd);
                   console.warn("[ggb] evalCommand failed", { cmd, err });
                 }
               }
               setLoading(false);
+              if (!cancelled && failures.length > 0) {
+                setCommandErrors(failures);
+              }
             },
           },
           true,
@@ -210,14 +219,36 @@ const Geogebra: React.FC<GeogebraProps> = ({
           {t("Failed to load GeoGebra")}: {error}
         </div>
       ) : (
-        <div className="relative" style={{ minHeight: height }}>
-          {loading ? (
-            <div className="absolute inset-0 flex items-center justify-center text-sm text-[var(--muted-foreground)]">
-              {t("Loading GeoGebra...")}
+        <>
+          {commandErrors.length > 0 ? (
+            <div
+              role="alert"
+              className="border-b border-[var(--border)] bg-[var(--destructive,#dc2626)]/5 px-3 py-2 text-[12px] leading-relaxed text-[var(--destructive,#dc2626)]"
+            >
+              <span className="font-medium">
+                {t("GeoGebra rejected {{count}} command(s)", {
+                  count: commandErrors.length,
+                })}
+                :
+              </span>
+              <ul className="mt-1 list-inside list-disc">
+                {commandErrors.map((cmd) => (
+                  <li key={cmd} className="truncate font-mono text-[11px]">
+                    {cmd}
+                  </li>
+                ))}
+              </ul>
             </div>
           ) : null}
-          <div ref={containerRef} className="ggb-applet-container" />
-        </div>
+          <div className="relative" style={{ minHeight: height }}>
+            {loading ? (
+              <div className="absolute inset-0 flex items-center justify-center text-sm text-[var(--muted-foreground)]">
+                {t("Loading GeoGebra...")}
+              </div>
+            ) : null}
+            <div ref={containerRef} className="ggb-applet-container" />
+          </div>
+        </>
       )}
     </div>
   );
