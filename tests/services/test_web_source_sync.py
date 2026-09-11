@@ -9,15 +9,20 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 
+import deeptutor.services.web_source.crawler as crawler_module
 from deeptutor.services.web_source.crawler import (
+    DEFAULT_REQUEST_INTERVAL_S,
     CrawledPage,
     CrawlResult,
     _fetch_page,
+    _HostRateLimiter,
     _is_internal,
     _normalise_link,
+    _parse_robots_txt,
     _source_filename,
     _to_filename,
     crawl_and_diff,
+    crawl_docs_site,
 )
 from deeptutor.services.web_source.sync import WebSyncResult, sync_source
 
@@ -88,6 +93,169 @@ async def test_fetch_page_blocks_private_redirect_before_request():
 
     assert result is None
     assert requested == ["https://docs.example.com/start"]
+
+
+def test_robots_parser_selects_applicable_agent_and_longest_rule():
+    policy = _parse_robots_txt(
+        "\n".join(
+            [
+                "User-agent: OtherBot",
+                "Disallow: /",
+                "",
+                "User-agent: DeepTutor",
+                "Crawl-delay: 2",
+                "Disallow: /private/",
+                "Allow: /private/public/",
+                "Allow: /private/exception",
+                "Disallow: /private/exception/private/",
+            ]
+        )
+    )
+
+    assert policy.crawl_delay_s == 2.0
+    assert policy.permits("https://example.com/docs/")
+    assert not policy.permits("https://example.com/private/secret")
+    assert policy.permits("https://example.com/private/public/guide")
+    assert not policy.permits("https://example.com/private/exception/private/x")
+
+    wildcard_policy = _parse_robots_txt("User-agent: *\nDisallow: /private/\n")
+    assert not wildcard_policy.permits("https://example.com/private/secret")
+
+
+@pytest.mark.asyncio
+async def test_host_rate_limiter_enforces_minimum_interval(monkeypatch):
+    now = 100.0
+    sleeps: list[float] = []
+
+    def fake_monotonic() -> float:
+        return now
+
+    async def fake_sleep(delay: float) -> None:
+        nonlocal now
+        sleeps.append(delay)
+        now += delay
+
+    monkeypatch.setattr(crawler_module.time, "monotonic", fake_monotonic)
+    monkeypatch.setattr(crawler_module.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(crawler_module, "_is_disallowed_host", lambda _host: False)
+    limiter = _HostRateLimiter(interval_s=DEFAULT_REQUEST_INTERVAL_S)
+
+    await limiter.wait("https://example.com/a")
+    await limiter.wait("https://example.com/b")
+    await limiter.wait("https://other.example/c")
+
+    assert sleeps == [DEFAULT_REQUEST_INTERVAL_S]
+
+
+@pytest.mark.asyncio
+async def test_crawler_blocks_disallowed_url_before_page_request(monkeypatch):
+    requested: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(request.url.path)
+        if request.url.path == "/robots.txt":
+            return httpx.Response(200, text="User-agent: DeepTutor\nDisallow: /docs/private/\n")
+        return httpx.Response(200, html="<html><body>private</body></html>")
+
+    async def no_sleep(_delay: float) -> None:
+        return None
+
+    monkeypatch.setattr(crawler_module.asyncio, "sleep", no_sleep)
+    monkeypatch.setattr(crawler_module, "_is_disallowed_host", lambda _host: False)
+    result = await crawl_docs_site(
+        "https://example.com/docs/private/secret",
+        max_depth=0,
+        client_factory=lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+    )
+
+    assert result.pages == []
+    assert result.errors == ["robots.txt disallows the configured URL"]
+    assert requested == ["/robots.txt"]
+
+
+@pytest.mark.asyncio
+async def test_missing_robots_allows_crawl(monkeypatch):
+    requested: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(request.url.path)
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404)
+        return httpx.Response(200, html="<html><body><h1>Docs</h1></body></html>")
+
+    async def no_sleep(_delay: float) -> None:
+        return None
+
+    monkeypatch.setattr(crawler_module.asyncio, "sleep", no_sleep)
+    monkeypatch.setattr(crawler_module, "_is_disallowed_host", lambda _host: False)
+    result = await crawl_docs_site(
+        "https://example.com/docs/",
+        max_depth=0,
+        client_factory=lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+    )
+
+    assert result.ok is True
+    assert result.errors == []
+    assert requested == ["/robots.txt", "/docs/"]
+
+
+@pytest.mark.asyncio
+async def test_unavailable_robots_blocks_crawl():
+    requested: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(request.url.path)
+        if request.url.path == "/robots.txt":
+            return httpx.Response(503)
+        return httpx.Response(200, html="<html><body>Docs</body></html>")
+
+    with patch(
+        "deeptutor.services.web_source.crawler._is_disallowed_host",
+        return_value=False,
+    ):
+        result = await crawl_docs_site(
+            "https://example.com/docs/",
+            max_depth=0,
+            client_factory=lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+        )
+
+    assert result.pages == []
+    assert result.errors == ["robots.txt unavailable; crawl blocked"]
+    assert requested == ["/robots.txt"]
+
+
+@pytest.mark.asyncio
+async def test_crawl_delay_replaces_minimum_interval(monkeypatch):
+    class RecordingLimiter:
+        def __init__(self, interval_s: float) -> None:
+            self.interval_s = interval_s
+
+        async def wait(self, _url: str) -> None:
+            return None
+
+    created: list[RecordingLimiter] = []
+
+    def factory(interval_s: float) -> RecordingLimiter:
+        limiter = RecordingLimiter(interval_s)
+        created.append(limiter)
+        return limiter
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(200, text="User-agent: DeepTutor\nCrawl-delay: 2\n")
+        return httpx.Response(200, html="<html><body><h1>Docs</h1></body></html>")
+
+    monkeypatch.setattr(crawler_module, "_HostRateLimiter", factory)
+    monkeypatch.setattr(crawler_module, "_is_disallowed_host", lambda _host: False)
+    result = await crawl_docs_site(
+        "https://example.com/docs/",
+        max_depth=0,
+        client_factory=lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+    )
+
+    assert result.ok is True
+    assert len(created) == 1
+    assert created[0].interval_s == 2.0
 
 
 def _make_kb(tmp_path: Path, kb_name: str = "kb") -> tuple[str, Path]:
