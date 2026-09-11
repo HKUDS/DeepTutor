@@ -3168,6 +3168,26 @@ export interface paths {
     readonly patch?: never;
     readonly trace?: never;
   };
+  readonly "/api/mastery-paths/reading/records": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    /**
+     * List Reading Learning Records
+     * @description Reading progress and extension activity for the current account.
+     */
+    readonly get: operations["list_reading_learning_records_api_mastery_paths_reading_records_get"];
+    readonly put?: never;
+    readonly post?: never;
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
   readonly "/api/mastery-paths/topics": {
     readonly parameters: {
       readonly query?: never;
@@ -5967,6 +5987,126 @@ export interface paths {
     readonly get: operations["get_unit_api_reading_materials__material_id__units__locator__get"];
     readonly put?: never;
     readonly post?: never;
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
+  readonly "/api/reading/plugins": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    /** List Plugins */
+    readonly get: operations["list_plugins_api_reading_plugins_get"];
+    readonly put?: never;
+    readonly post?: never;
+    /** Uninstall Plugin */
+    readonly delete: operations["uninstall_plugin_api_reading_plugins_delete"];
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
+  readonly "/api/reading/plugins/{extension}/enabled": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    readonly get?: never;
+    /** Enable Plugin */
+    readonly put: operations["enable_plugin_api_reading_plugins__extension__enabled_put"];
+    readonly post?: never;
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
+  readonly "/api/reading/plugins/components/{package}": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    readonly get?: never;
+    readonly put?: never;
+    readonly post?: never;
+    /** Remove Component */
+    readonly delete: operations["remove_component_api_reading_plugins_components__package__delete"];
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
+  readonly "/api/reading/plugins/download": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    readonly get?: never;
+    readonly put?: never;
+    /** Download Plugin */
+    readonly post: operations["download_plugin_api_reading_plugins_download_post"];
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
+  readonly "/api/reading/plugins/install": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    readonly get?: never;
+    readonly put?: never;
+    /** Install Plugin */
+    readonly post: operations["install_plugin_api_reading_plugins_install_post"];
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
+  readonly "/api/reading/plugins/providers/{slot}": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    readonly get?: never;
+    /** Select Provider */
+    readonly put: operations["select_provider_api_reading_plugins_providers__slot__put"];
+    readonly post?: never;
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
+  readonly "/api/reading/plugins/restore": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    readonly get?: never;
+    readonly put?: never;
+    /** Restore Builtin */
+    readonly post: operations["restore_builtin_api_reading_plugins_restore_post"];
     readonly delete?: never;
     readonly options?: never;
     readonly head?: never;
@@ -8955,6 +9095,8 @@ export interface components {
   schemas: {
     /** ActionPayload */
     readonly ActionPayload: {
+      readonly llm_selection?:
+        components["schemas"]["ReadingModelSelection"] | null;
       /**
        * Locale
        * @default en
@@ -9359,6 +9501,11 @@ export interface components {
     };
     /** Body_import_visualizer_api_visualizers_import_post */
     readonly Body_import_visualizer_api_visualizers_import_post: {
+      /** File */
+      readonly file: string;
+    };
+    /** Body_install_plugin_api_reading_plugins_install_post */
+    readonly Body_install_plugin_api_reading_plugins_install_post: {
       /** File */
       readonly file: string;
     };
@@ -11875,6 +12022,14 @@ export interface components {
       /** Mode */
       readonly mode: string;
     };
+    /** ProviderPayload */
+    readonly ProviderPayload: {
+      /**
+       * Package
+       * @default
+       */
+      readonly package: string;
+    };
     /** QuestionBankMaterial */
     readonly QuestionBankMaterial: {
       /** Entry Count */
@@ -12022,6 +12177,66 @@ export interface components {
        * @default []
        */
       readonly tools_used: readonly string[];
+    };
+    /**
+     * ReadingActivityRecord
+     * @description One successful Reading-extension action, without source content.
+     */
+    readonly ReadingActivityRecord: {
+      /** Action */
+      readonly action: string;
+      /** Activity Id */
+      readonly activity_id: string;
+      /** Created At */
+      readonly created_at?: number;
+      /** Extension Id */
+      readonly extension_id: string;
+      /** Locator */
+      readonly locator: number;
+      /** Material Id */
+      readonly material_id: string;
+      /**
+       * Result Type
+       * @enum {string}
+       */
+      readonly result_type: "card" | "quiz" | "feedback" | "browser_speech";
+    };
+    /**
+     * ReadingLearningRecords
+     * @description Account-scoped Reading summary for reporting surfaces.
+     */
+    readonly ReadingLearningRecords: {
+      /** Activities */
+      readonly activities?: readonly components["schemas"]["ReadingActivityRecord"][];
+      /** Progress */
+      readonly progress?: readonly components["schemas"]["ReadingProgressRecord"][];
+    };
+    /** ReadingModelSelection */
+    readonly ReadingModelSelection: {
+      /** Model Id */
+      readonly model_id: string;
+      /** Profile Id */
+      readonly profile_id: string;
+      /** Reasoning Effort */
+      readonly reasoning_effort?: string | null;
+    };
+    /**
+     * ReadingProgressRecord
+     * @description One material's Reading progress in an account's learning records.
+     */
+    readonly ReadingProgressRecord: {
+      /** Furthest Locator */
+      readonly furthest_locator: number;
+      /** Furthest Percentage */
+      readonly furthest_percentage: number;
+      /** Latest Locator */
+      readonly latest_locator: number;
+      /** Latest Percentage */
+      readonly latest_percentage: number;
+      /** Material Id */
+      readonly material_id: string;
+      /** Updated At */
+      readonly updated_at?: number;
     };
     /** ReadingReference */
     readonly ReadingReference: {
@@ -13573,6 +13788,8 @@ export type SchemaBodyImportDocxApiDocumentsImportDocxPost =
   components["schemas"]["Body_import_docx_api_documents_import_docx_post"];
 export type SchemaBodyImportVisualizerApiVisualizersImportPost =
   components["schemas"]["Body_import_visualizer_api_visualizers_import_post"];
+export type SchemaBodyInstallPluginApiReadingPluginsInstallPost =
+  components["schemas"]["Body_install_plugin_api_reading_plugins_install_post"];
 export type SchemaBodyReindexKnowledgeBaseApiKnowledgeBasesKbNameReindexPost =
   components["schemas"]["Body_reindex_knowledge_base_api_knowledge_bases__kb_name__reindex_post"];
 export type SchemaBodySpeechToTextApiVoiceSttPost =
@@ -13846,6 +14063,7 @@ export type SchemaProbeWeKnoraRequest =
   components["schemas"]["ProbeWeKnoraRequest"];
 export type SchemaProviderModeUpdate =
   components["schemas"]["ProviderModeUpdate"];
+export type SchemaProviderPayload = components["schemas"]["ProviderPayload"];
 export type SchemaQuestionBankMaterial =
   components["schemas"]["QuestionBankMaterial"];
 export type SchemaQuestionBankStats =
@@ -13858,6 +14076,14 @@ export type SchemaQuizResultsRequest =
 export type SchemaReactEditRequest = components["schemas"]["ReactEditRequest"];
 export type SchemaReactEditResponse =
   components["schemas"]["ReactEditResponse"];
+export type SchemaReadingActivityRecord =
+  components["schemas"]["ReadingActivityRecord"];
+export type SchemaReadingLearningRecords =
+  components["schemas"]["ReadingLearningRecords"];
+export type SchemaReadingModelSelection =
+  components["schemas"]["ReadingModelSelection"];
+export type SchemaReadingProgressRecord =
+  components["schemas"]["ReadingProgressRecord"];
 export type SchemaReadingReference = components["schemas"]["ReadingReference"];
 export type SchemaReadingSessionCreateRequest =
   components["schemas"]["ReadingSessionCreateRequest"];
@@ -20586,6 +20812,39 @@ export interface operations {
         };
         content: {
           readonly "application/json": unknown;
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly list_reading_learning_records_api_mastery_paths_reading_records_get: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path?: never;
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["ReadingLearningRecords"];
         };
       };
       /** @description Validation Error */
@@ -27338,6 +27597,290 @@ export interface operations {
         };
         content: {
           readonly "application/json": components["schemas"]["UnitText"];
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly list_plugins_api_reading_plugins_get: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path?: never;
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": unknown;
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly uninstall_plugin_api_reading_plugins_delete: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path?: never;
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": unknown;
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly enable_plugin_api_reading_plugins__extension__enabled_put: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path: {
+        readonly extension: string;
+      };
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody: {
+      readonly content: {
+        readonly "application/json": components["schemas"]["EnabledPayload"];
+      };
+    };
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": unknown;
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly remove_component_api_reading_plugins_components__package__delete: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path: {
+        readonly package: string;
+      };
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": unknown;
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly download_plugin_api_reading_plugins_download_post: {
+    readonly parameters: {
+      readonly query?: {
+        readonly package?: string;
+      };
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path?: never;
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": unknown;
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly install_plugin_api_reading_plugins_install_post: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path?: never;
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody: {
+      readonly content: {
+        readonly "multipart/form-data": components["schemas"]["Body_install_plugin_api_reading_plugins_install_post"];
+      };
+    };
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": unknown;
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly select_provider_api_reading_plugins_providers__slot__put: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path: {
+        readonly slot: string;
+      };
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody: {
+      readonly content: {
+        readonly "application/json": components["schemas"]["ProviderPayload"];
+      };
+    };
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": unknown;
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly restore_builtin_api_reading_plugins_restore_post: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path?: never;
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": unknown;
         };
       };
       /** @description Validation Error */

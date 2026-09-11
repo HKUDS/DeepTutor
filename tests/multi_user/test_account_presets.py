@@ -37,6 +37,8 @@ def test_learning_surface_routing_matches_complete_path_segments():
 
     assert _learning_surface_for_path("/api/reading/materials") == "reading"
     assert _learning_surface_for_path("/api/courses/course/state") == "reading"
+    assert _learning_surface_for_path("/api/mastery-paths/reading/records") == "reading"
+    assert _learning_surface_for_path("/api/mastery-paths/topics") == ""
     assert _learning_surface_for_path("/api/question-notebook/entries") == "chat"
     assert _learning_surface_for_path("/api/reading-private") == ""
     assert _learning_surface_for_path("/api/questions") == ""
@@ -239,3 +241,7 @@ def test_assigning_a_material_copies_the_admin_material_once(
     ).get_workspace_feature_dir("reading")
     staged = user_root / material.material_id
     assert staged.is_dir()
+    from deeptutor.reading import ReadingCatalogStore
+
+    workspace = ReadingCatalogStore(user_root).create_workspace("Assigned", [material.material_id])
+    assert workspace.active_material_id == material.material_id

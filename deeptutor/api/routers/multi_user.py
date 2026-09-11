@@ -53,7 +53,7 @@ from deeptutor.multi_user.paths import (
     get_path_service_for_scope,
     scope_for_user,
 )
-from deeptutor.reading import ReadingStore
+from deeptutor.reading import ReadingCatalogStore, ReadingStore
 from deeptutor.reading.extensions import get_reading_extension_registry
 from deeptutor.services.auth import POCKETBASE_ENABLED, hash_password
 from deeptutor.services.config.model_catalog import ModelCatalogService
@@ -244,23 +244,44 @@ def _stage_assigned_materials(user_id: str, grant: dict[str, Any]) -> None:
 
     admin_root = _reading_root(get_admin_path_service())
     admin_store = ReadingStore(admin_root)
+    admin_catalog = ReadingCatalogStore(admin_root)
     user_service = get_path_service_for_scope(scope_for_user(user_id, is_admin=False))
     target_root = _reading_root(user_service)
     target_root.mkdir(parents=True, exist_ok=True)
+    target_catalog = ReadingCatalogStore(target_root)
     for material_id in sorted(material_ids):
         try:
-            admin_store.manifest(material_id)
+            manifest = admin_store.manifest(material_id)
+            record = admin_catalog.get_material(material_id)
         except Exception as exc:
             raise ValueError(f"Unknown admin reading material: {material_id}") from exc
         target = target_root / material_id
-        if target.exists():
-            continue
-        stage = target_root / f".{material_id}.{uuid.uuid4().hex[:8]}.staging"
-        try:
-            shutil.copytree(admin_root / material_id, stage)
-            os.replace(stage, target)
-        finally:
-            shutil.rmtree(stage, ignore_errors=True)
+        if not target.exists():
+            stage = target_root / f".{material_id}.{uuid.uuid4().hex[:8]}.staging"
+            try:
+                shutil.copytree(admin_root / material_id, stage)
+                os.replace(stage, target)
+            finally:
+                shutil.rmtree(stage, ignore_errors=True)
+        if record is None:
+            target_catalog.register_manifest(manifest)
+        else:
+            target_catalog.upsert_material(
+                content_id=record.content_id,
+                material_id=record.material_id,
+                filename=record.filename,
+                title=record.title,
+                source_kind=record.source_kind,
+                source_url=record.source_url,
+                mime=record.mime,
+                render_mode=record.render_mode,
+                cover_url=record.cover_url,
+                duration_seconds=record.duration_seconds,
+                status=record.status,
+                progress=record.progress,
+                error_code=record.error_code,
+                error_detail=record.error_detail,
+            )
 
 
 def _validate_reading_policy(grant: dict[str, Any]) -> None:

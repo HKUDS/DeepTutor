@@ -406,6 +406,7 @@ def _learning_surface_for_path(path: str) -> str:
     for root, surface in (
         ("/api/reading", "reading"),
         ("/api/courses", "reading"),
+        ("/api/mastery-paths/reading", "reading"),
         ("/api/chat", "chat"),
         ("/api/question", "chat"),
         ("/api/question-notebook", "chat"),
