@@ -24,6 +24,9 @@ export async function importChatHistory(
   sessions: NormalizedSession[],
   agent?: { id: string; name: string },
 ): Promise<ImportResult> {
+  if (sessions.length === 0) {
+    throw new Error("No sessions to import");
+  }
   const response = await apiFetch(apiUrl("/api/imports/chat-history"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },

@@ -12,5 +12,10 @@
       "@/*": ["./*"]
     }
   },
-  "include": ["tests/**/*.ts"]
+  // The ambient File System Access declarations live in types/ and are
+  // listed in the app tsconfig's include. This program needs them too:
+  // a test that imports lib/chat-import/* pulls in code calling
+  // FileSystemDirectoryHandle.values(), which the DOM lib alone does not
+  // declare at this TS version.
+  "include": ["tests/**/*.ts", "types/**/*.d.ts"]
 }

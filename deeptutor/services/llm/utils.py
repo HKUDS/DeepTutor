@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 import ipaddress
 import os
+from pathlib import Path
 import re
 from urllib.parse import urlparse
 
@@ -96,6 +97,43 @@ def is_local_llm_server(base_url: str, allow_private: bool | None = None) -> boo
         pass
 
     return any(port in base_url_lower for port in LOCAL_PORTS)
+
+
+def unreachable_endpoint_hint(base_url: str | None) -> str:
+    """One sentence naming the likely cause of a failed connection, or ``""``.
+
+    "Unable to reach the model provider" is the whole story for a cloud
+    endpoint, and no story at all for a self-hosted one: the two ways a local
+    Ollama / LM Studio / vLLM base URL fails are that nothing is listening on
+    it, or that DeepTutor is in a container where ``localhost`` resolves to the
+    container itself rather than the host running the model. Both are the
+    user's to fix, and neither is guessable from a bare ``ConnectError`` —
+    which is what the traceback in the report showed and all it showed.
+    """
+    if not base_url or not is_local_llm_server(base_url):
+        return ""
+
+    parsed = urlparse(base_url if "://" in base_url else f"http://{base_url}")
+    hostname = (parsed.hostname or "").lower()
+    port = f":{parsed.port}" if parsed.port else ""
+    loopback = hostname in {"localhost", "127.0.0.1", "0.0.0.0"}  # nosec B104
+
+    if loopback and running_in_container():
+        return (
+            f"DeepTutor is running in a container, where {hostname}{port} is the container "
+            "itself — not the machine serving the model. Point the provider's Base URL at "
+            f"host.docker.internal{port} (start the container with "
+            "--add-host=host.docker.internal:host-gateway on Linux)."
+        )
+    return (
+        f"Nothing accepted a connection on {hostname}{port}. Start the local model server "
+        "(for Ollama: `ollama serve`) or correct the Base URL in Settings › Models."
+    )
+
+
+def running_in_container() -> bool:
+    """Whether this process is inside a Docker/Podman container."""
+    return any(Path(marker).exists() for marker in ("/.dockerenv", "/run/.containerenv"))
 
 
 def _needs_v1_suffix(base_url: str) -> bool:
@@ -316,6 +354,8 @@ def build_auth_headers(api_key: str | None, binding: str | None = None) -> dict[
 __all__ = [
     "sanitize_url",
     "is_local_llm_server",
+    "running_in_container",
+    "unreachable_endpoint_hint",
     "build_chat_url",
     "build_completion_url",
     "build_auth_headers",

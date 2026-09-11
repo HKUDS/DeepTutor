@@ -3,7 +3,11 @@ import type {
   ServerEvent,
   StreamEvent,
 } from "@/contracts/generated/turn-protocol";
-import { buildPing, buildResumeTurn } from "@/contracts/parse/turn-command";
+import {
+  buildPing,
+  buildResumeTurn,
+  newCommandId,
+} from "@/contracts/parse/turn-command";
 import { parseTurnEvent } from "@/contracts/parse/turn-event";
 
 import {
@@ -68,7 +72,7 @@ function prepareCommand(command: ClientCommand): {
   const record = command as unknown as Record<string, unknown>;
   const existing =
     typeof record.command_id === "string" ? record.command_id.trim() : "";
-  const commandId = existing || globalThis.crypto.randomUUID();
+  const commandId = existing || newCommandId();
   return {
     command: { ...command, command_id: commandId } as ClientCommand,
     commandId,

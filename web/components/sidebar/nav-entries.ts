@@ -1,4 +1,5 @@
 import {
+  Clapperboard,
   BookOpen,
   BookText,
   Bot,
@@ -93,6 +94,13 @@ export const PRIMARY_NAV: NavEntry[] = [
     tooltipKey: "Immersive Reading tooltip",
     requires: "llm",
     learningSurface: "reading",
+  },
+  {
+    href: "/watching",
+    label: "Immersive Watching",
+    icon: Clapperboard,
+    tooltipKey: "Watch videos with a grounded AI companion.",
+    requires: "llm",
   },
   {
     href: "/space",

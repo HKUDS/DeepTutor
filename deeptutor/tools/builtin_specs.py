@@ -210,6 +210,7 @@ BUILTIN_TOOL_SPEC_BY_NAME: dict[str, BuiltinToolSpec] = {
 }
 
 TOOL_ALIASES: dict[str, tuple[str, dict[str, object]]] = {
+    "pdf": ("read_source", {}),
     "rag_hybrid": ("rag", {"mode": "hybrid"}),
     "rag_naive": ("rag", {"mode": "naive"}),
     "rag_search": ("rag", {}),
