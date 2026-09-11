@@ -261,6 +261,7 @@ def _build_question(raw: Any, idx: int, used_ids: set[str]) -> AskUserQuestion |
             return f"Question #{idx + 1}: `options` must be an array."
         cleaned: list[AskUserOption] = []
         seen_labels: set[str] = set()
+        seen_bodies: set[str] = set()
         for opt in options_raw:
             normalised = _build_option(opt)
             if normalised is None:
@@ -272,6 +273,17 @@ def _build_question(raw: Any, idx: int, used_ids: set[str]) -> AskUserQuestion |
             if normalised.label in seen_labels:
                 continue
             seen_labels.add(normalised.label)
+            # Two options whose visible text matches once whitespace and case
+            # are folded leave the learner nothing to pick between — the same
+            # duplicate-body rule the mastery quiz contract enforces at
+            # registration (#1409). An option with no body *is* its label, so
+            # label-only cards are governed by label uniqueness alone.
+            body = (normalised.description or "").strip()
+            if body:
+                body_key = " ".join(body.split()).casefold()
+                if body_key in seen_bodies:
+                    continue
+                seen_bodies.add(body_key)
             cleaned.append(normalised)
             if len(cleaned) >= MAX_OPTIONS:
                 break
