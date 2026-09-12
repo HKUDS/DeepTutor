@@ -79,7 +79,9 @@ def _vocabulary(raw: str, selection: str) -> _Vocabulary:
     except ValidationError as exc:
         raise ValueError("Vocabulary model returned an invalid shape.") from exc
 
-    valid_terms = [term for term in vocabulary.terms if _term_comes_from_selection(term.term, selection)]
+    valid_terms = [
+        term for term in vocabulary.terms if _term_comes_from_selection(term.term, selection)
+    ]
     if not valid_terms:
         raise ValueError("Vocabulary terms must come from the selection.")
     return _Vocabulary(terms=valid_terms)
