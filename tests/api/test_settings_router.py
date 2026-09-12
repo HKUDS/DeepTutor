@@ -778,6 +778,70 @@ async def test_apply_catalog_invalidates_runtime_caches(monkeypatch: pytest.Monk
 
 
 @pytest.mark.asyncio
+async def test_reapplying_an_unchanged_catalog_keeps_the_runtime_clients(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An apply that changes nothing must not reset the shared clients.
+
+    The clients are process-wide singletons; resetting them flips the client
+    out from under any turn that is mid-call and hangs that turn in the
+    provider retry ladder. A settings visit that re-applies the same
+    configuration — the shape a cold-start first message keeps meeting
+    (#1421) — has nothing to invalidate.
+    """
+    catalog = _build_catalog(
+        llm_model="gpt-same",
+        llm_base_url="https://same-llm.example/v1",
+        llm_api_key="same-llm-key",
+        embedding_model="text-embedding-same",
+        embedding_base_url="https://same-embedding.example/v1/embeddings",
+        embedding_api_key="same-embedding-key",
+    )
+    service = _FakeCatalogService(catalog)
+    _patch_runtime(monkeypatch, service)
+
+    llm_config_module.get_llm_config()
+    old_llm_client = llm_client_module.get_llm_client()
+    old_embedding_client = embedding_client_module.get_embedding_client()
+
+    response = await settings_router.apply_catalog(settings_router.CatalogPayload(catalog=catalog))
+
+    new_llm_client = llm_client_module.get_llm_client()
+    new_embedding_client = embedding_client_module.get_embedding_client()
+
+    assert response["catalog"] == settings_router.redact_catalog_secrets(catalog)
+    assert new_llm_client is old_llm_client
+    assert new_embedding_client is old_embedding_client
+    assert new_llm_client.config.model == "gpt-same"
+
+
+@pytest.mark.asyncio
+async def test_re_saving_an_unchanged_catalog_keeps_the_runtime_clients(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``PUT /catalog`` with the stored catalog skips the reset too."""
+    catalog = _build_catalog(
+        llm_model="gpt-put",
+        llm_base_url="https://put-llm.example/v1",
+        llm_api_key="put-llm-key",
+        embedding_model="text-embedding-put",
+        embedding_base_url="https://put-embedding.example/v1/embeddings",
+        embedding_api_key="put-embedding-key",
+    )
+    service = _FakeCatalogService(catalog)
+    _patch_runtime(monkeypatch, service)
+
+    old_llm_client = llm_client_module.get_llm_client()
+    old_embedding_client = embedding_client_module.get_embedding_client()
+
+    response = await settings_router.update_catalog(settings_router.CatalogPayload(catalog=catalog))
+
+    assert response == {"catalog": settings_router.redact_catalog_secrets(catalog)}
+    assert llm_client_module.get_llm_client() is old_llm_client
+    assert embedding_client_module.get_embedding_client() is old_embedding_client
+
+
+@pytest.mark.asyncio
 async def test_apply_catalog_service_only_promotes_the_selected_service_and_updates_saved_draft(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
@@ -817,7 +881,7 @@ async def test_apply_catalog_service_only_promotes_the_selected_service_and_upda
     draft_service.save({"catalog": draft, "extensions": {"network": {"backend_port": 9000}}})
     monkeypatch.setattr(settings_router, "get_model_catalog_service", lambda: catalog_service)
     monkeypatch.setattr(settings_router, "get_settings_draft_service", lambda: draft_service)
-    monkeypatch.setattr(settings_router, "_invalidate_runtime_caches", lambda: None)
+    monkeypatch.setattr(settings_router, "_invalidate_runtime_caches", lambda **kwargs: None)
 
     response = await settings_router.apply_catalog_service(
         settings_router.CatalogServicePayload(service="stt", config=draft["services"]["stt"])
@@ -852,7 +916,7 @@ async def test_update_catalog_restores_masked_secrets(monkeypatch: pytest.Monkey
     )
     service = _FakeCatalogService(current)
     monkeypatch.setattr(settings_router, "get_model_catalog_service", lambda: service)
-    monkeypatch.setattr(settings_router, "_invalidate_runtime_caches", lambda: None)
+    monkeypatch.setattr(settings_router, "_invalidate_runtime_caches", lambda **kwargs: None)
     draft = settings_router.redact_catalog_secrets(current)
     draft["services"]["llm"]["profiles"][0]["name"] = "Renamed"
 
@@ -901,7 +965,7 @@ async def test_catalog_writes_preserve_current_managed_codex_metadata(
     current["services"]["llm"]["active_model_id"] = managed_model["id"]
     service = _FakeCatalogService(current)
     monkeypatch.setattr(settings_router, "get_model_catalog_service", lambda: service)
-    monkeypatch.setattr(settings_router, "_invalidate_runtime_caches", lambda: None)
+    monkeypatch.setattr(settings_router, "_invalidate_runtime_caches", lambda **kwargs: None)
 
     stale_draft = deepcopy(current)
     stale_draft["services"]["embedding"]["profiles"][0]["name"] = "Unsaved edit"
@@ -958,7 +1022,7 @@ async def test_catalog_write_rejects_unbound_or_cross_account_codex_reasoning_ch
     current["services"]["llm"]["profiles"].append(current_profile)
     service = _FakeCatalogService(current)
     monkeypatch.setattr(settings_router, "get_model_catalog_service", lambda: service)
-    monkeypatch.setattr(settings_router, "_invalidate_runtime_caches", lambda: None)
+    monkeypatch.setattr(settings_router, "_invalidate_runtime_caches", lambda **kwargs: None)
 
     stale_draft = deepcopy(current)
     stale_profile = stale_draft["services"]["llm"]["profiles"][1]
@@ -1002,7 +1066,7 @@ async def test_catalog_write_uses_current_managed_codex_profile_presence(
         stale_draft["services"]["llm"]["profiles"].append(managed_profile)
     service = _FakeCatalogService(current)
     monkeypatch.setattr(settings_router, "get_model_catalog_service", lambda: service)
-    monkeypatch.setattr(settings_router, "_invalidate_runtime_caches", lambda: None)
+    monkeypatch.setattr(settings_router, "_invalidate_runtime_caches", lambda **kwargs: None)
 
     await settings_router.update_catalog(settings_router.CatalogPayload(catalog=stale_draft))
 
@@ -1036,7 +1100,7 @@ async def test_incomplete_catalog_write_preserves_the_current_managed_codex_prof
     current["services"]["llm"]["profiles"].append(managed_profile)
     service = _FakeCatalogService(current)
     monkeypatch.setattr(settings_router, "get_model_catalog_service", lambda: service)
-    monkeypatch.setattr(settings_router, "_invalidate_runtime_caches", lambda: None)
+    monkeypatch.setattr(settings_router, "_invalidate_runtime_caches", lambda **kwargs: None)
     payload = settings_router.CatalogPayload(catalog={"version": 1})
 
     if operation == "save":
