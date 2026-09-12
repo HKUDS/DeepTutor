@@ -4045,5 +4045,16 @@
   "The Invidious instance could not verify your account. Check the instance and reconnect.": "Invidious 实例暂时无法验证账号，请检查实例后重新关联。",
   "Your DeepTutor login expired during authorization. Sign in, then start a new Invidious connection.": "授权期间 DeepTutor 登录已失效，请先登录 DeepTutor，再重新关联 Invidious。",
   "The account could not be connected. Please start a new connection.": "账号关联失败，请重新发起关联。",
-  "Sign in with your Invidious account, then approve read-only access to return here. Your DeepTutor login is separate.": "请使用 Invidious 账号登录，确认只读授权后会自动返回此页。DeepTutor 与 Invidious 使用各自的登录账号。"
+  "Sign in with your Invidious account, then approve read-only access to return here. Your DeepTutor login is separate.": "请使用 Invidious 账号登录，确认只读授权后会自动返回此页。DeepTutor 与 Invidious 使用各自的登录账号。",
+  "Relationship graph": "关系图",
+  "Graph scope": "关系图范围",
+  "Current unit": "当前单元",
+  "Through current unit": "截至当前单元",
+  "Generating relationship graph…": "正在生成关系图…",
+  "Failed to generate relationship graph": "关系图生成失败",
+  "No supported entities were found in this scope.": "此范围内没有可用的实体。",
+  "The source range was too long, so the graph uses the earliest units plus the current unit.": "来源范围过长，关系图使用靠前单元和当前单元生成。",
+  "Entities": "实体",
+  "Relationships": "关系",
+  "Also known as": "又名"
 }
