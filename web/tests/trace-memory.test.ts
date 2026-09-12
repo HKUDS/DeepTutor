@@ -3,11 +3,13 @@ import test from "node:test";
 
 import type { StreamEvent } from "../features/chat/model/protocol";
 import {
-  MAX_LEGACY_PAYLOAD_CHARS,
   TraceCache,
+} from "../features/chat/trace/memory";
+import {
+  MAX_LEGACY_PAYLOAD_CHARS,
   compactTracePreview,
   settleMessageTrace,
-} from "../features/chat/trace/memory";
+} from "../features/chat/trace/compact";
 
 function event(
   type: StreamEvent["type"],
