@@ -222,14 +222,14 @@ class TestSchedulerLoop:
             return "ok", None
 
         service = CronService(store_path=tmp_path / "jobs.json", on_job=on_job)
-        job = service.add_job(
-            name="soon",
-            message="x",
-            schedule=CronSchedule(kind="at", at_ms=_now_ms() + 150),
-            owner=_chat_owner(),
-        )
         await service.start()
         try:
+            job = service.add_job(
+                name="soon",
+                message="x",
+                schedule=CronSchedule(kind="at", at_ms=_now_ms() + 150),
+                owner=_chat_owner(),
+            )
             for _ in range(40):
                 if fired:
                     break
