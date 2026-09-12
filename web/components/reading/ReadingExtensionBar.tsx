@@ -18,6 +18,7 @@ import { useTranslation } from "react-i18next";
 import { fetchAuthStatus } from "@/lib/auth";
 import {
   readingActionClass,
+  readingActionIconClass,
   readingMoreClass,
   readingToolbarClass,
   resolveReadingAgeMode,
@@ -238,12 +239,23 @@ export function ReadingExtensionBar({
     const ActionIcon = actionIcon(extension.id, action.id);
     const iconSize =
       ageMode === "early"
-        ? 26
+        ? 22
         : ageMode === "young"
-          ? 22
+          ? 18
           : ageMode === "older"
             ? 18
             : 14;
+    const icon = (
+      <span
+        className={`shrink-0 ${readingActionIconClass(ageMode, tone)}`}
+      >
+        {busy === key ? (
+          <Loader2 size={iconSize} className="animate-spin" />
+        ) : (
+          <ActionIcon size={iconSize} />
+        )}
+      </span>
+    );
     return (
       <button
         key={key}
@@ -252,11 +264,7 @@ export function ReadingExtensionBar({
         onClick={() => void run(extension, action)}
         className={`inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 motion-safe:active:scale-[.98] ${readingActionClass(ageMode, tone)}`}
       >
-        {busy === key ? (
-          <Loader2 size={iconSize} className="shrink-0 animate-spin" />
-        ) : (
-          <ActionIcon size={iconSize} className="shrink-0" />
-        )}
+        {icon}
         <span className="truncate leading-tight">
           {builtInLabel ? t(builtInLabel) : action.label}
         </span>

@@ -46,7 +46,7 @@ export function readingToolbarClass(mode: ReadingAgeMode) {
 
 export function readingMoreClass(mode: ReadingAgeMode) {
   if (mode === "early")
-    return "min-h-14 rounded-[22px] border-[3px] px-4 text-base font-extrabold shadow-[0_5px_0_rgb(0_0_0_/_0.07)] transition-transform duration-150 motion-safe:hover:-translate-y-0.5";
+    return "min-h-16 rounded-full border-[3px] px-4 text-base font-extrabold transition-transform duration-200 ease-bounce motion-safe:hover:-translate-y-1";
   if (mode === "young")
     return "min-h-12 rounded-[18px] border-2 px-3 text-sm font-bold shadow-sm transition-transform duration-150 motion-safe:hover:-translate-y-px";
   if (mode === "older")
@@ -60,7 +60,7 @@ export function readingActionClass(
 ) {
   const size =
     mode === "early"
-      ? "min-h-14 rounded-[22px] border-[3px] px-3 py-2 text-base font-extrabold shadow-[0_5px_0_rgb(0_0_0_/_0.07)] transition-transform duration-150 motion-safe:hover:-translate-y-0.5"
+      ? "min-h-16 rounded-full border-[3px] px-4 py-2.5 text-base font-extrabold"
       : mode === "young"
         ? "min-h-12 rounded-[18px] border-2 px-3 py-2 text-sm font-bold shadow-sm transition-transform duration-150 motion-safe:hover:-translate-y-px"
         : mode === "older"
@@ -71,17 +71,23 @@ export function readingActionClass(
     return `${size} border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] transition hover:bg-[var(--muted)] disabled:opacity-50`;
   }
 
+  const lift =
+    mode === "early"
+      ? "transition-transform duration-200 ease-bounce motion-safe:hover:-translate-y-1 motion-safe:active:translate-y-0.5"
+      : mode === "young"
+        ? "transition-transform duration-150 motion-safe:hover:-translate-y-px"
+        : "transition hover:brightness-[.98]";
+
   const palette =
     mode === "early"
       ? {
           speech:
-            "border-emerald-300 bg-emerald-100 text-emerald-950 hover:border-emerald-400 hover:bg-emerald-200",
+            "border-emerald-300 bg-emerald-100 text-emerald-950 shadow-[0_5px_0_rgb(110_231_183)] hover:border-emerald-400 hover:bg-emerald-200",
           vocabulary:
-            "border-amber-300 bg-amber-100 text-amber-950 hover:border-amber-400 hover:bg-amber-200",
-          quiz:
-            "border-sky-300 bg-sky-100 text-sky-950 hover:border-sky-400 hover:bg-sky-200",
+            "border-amber-300 bg-amber-100 text-amber-950 shadow-[0_5px_0_rgb(252_211_77)] hover:border-amber-400 hover:bg-amber-200",
+          quiz: "border-sky-300 bg-sky-100 text-sky-950 shadow-[0_5px_0_rgb(125_211_252)] hover:border-sky-400 hover:bg-sky-200",
           general:
-            "border-violet-300 bg-violet-100 text-violet-950 hover:border-violet-400 hover:bg-violet-200",
+            "border-violet-300 bg-violet-100 text-violet-950 shadow-[0_5px_0_rgb(196_181_253)] hover:border-violet-400 hover:bg-violet-200",
         }
       : mode === "young"
         ? {
@@ -103,5 +109,26 @@ export function readingActionClass(
               "border-violet-200 bg-violet-50/60 text-violet-800 hover:bg-violet-50",
           };
 
-  return `${size} ${palette[tone]} transition disabled:opacity-50`;
+  return `${size} ${palette[tone]} ${lift} disabled:opacity-50`;
+}
+
+export function readingActionIconClass(
+  mode: ReadingAgeMode,
+  tone: ActionTone,
+) {
+  if (mode === "early") {
+    return `flex h-9 w-9 items-center justify-center rounded-full bg-white/80 shadow-inner ${
+      tone === "speech"
+        ? "text-emerald-700"
+        : tone === "vocabulary"
+          ? "text-amber-700"
+          : tone === "quiz"
+            ? "text-sky-700"
+            : "text-violet-700"
+    }`;
+  }
+  if (mode === "young") {
+    return "flex h-7 w-7 items-center justify-center rounded-full bg-white/80";
+  }
+  return "";
 }

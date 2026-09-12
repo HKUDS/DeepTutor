@@ -67,16 +67,19 @@ test("young learner actions use a cute age-specific presentation", async () => {
   expect(toolbar).toHaveAttribute("data-reading-presentation", "early");
   await vi.waitFor(() =>
     expect(screen.getByRole("button", { name: "Read aloud" })).toHaveClass(
-      "min-h-14",
+      "min-h-16",
     ),
   );
   expect(screen.getByRole("button", { name: "Look up word" })).toHaveClass(
-    "rounded-[22px]",
+    "rounded-full",
   );
   expect(screen.getByRole("button", { name: "Look up word" })).toHaveClass(
-    "motion-safe:hover:-translate-y-0.5",
+    "motion-safe:hover:-translate-y-1",
   );
   expect(screen.getByRole("button", { name: "Quiz me" })).toBeEnabled();
+  expect(
+    screen.getByRole("button", { name: "Read aloud" }).firstElementChild,
+  ).toHaveClass("h-9", "w-9", "rounded-full");
 });
 
 test("older learners keep the compact default presentation", async () => {
@@ -108,6 +111,9 @@ test("eight-year-old learners receive the young presentation", async () => {
   expect(screen.getByRole("button", { name: "Read aloud" })).toHaveClass(
     "motion-safe:hover:-translate-y-px",
   );
+  expect(
+    screen.getByRole("button", { name: "Read aloud" }).firstElementChild,
+  ).toHaveClass("h-7", "w-7", "rounded-full");
 });
 
 test("fixed primary order and secondary disclosure", async () => {
