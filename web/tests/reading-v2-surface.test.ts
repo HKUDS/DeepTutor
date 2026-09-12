@@ -220,6 +220,17 @@ test("naming the first turn's conversation does not remount the reader", () => {
   assert.doesNotMatch(page, /params\.sessionId/);
 });
 
+test("material hydration owns its loading state from the first request tick", () => {
+  const hook = source(`${WORKSPACE_DIR}/useReadingWorkspace.ts`);
+
+  // ReadingContext sets `loading` before it fetches a material. Fetching the
+  // detail in the workspace first creates a paintable gap after the collection
+  // finishes loading: no material, but no material-loading state either. The
+  // reader then flashes its unavailable recovery UI before the document opens.
+  assert.match(hook, /void openMaterial\(active\.material_id\);/);
+  assert.doesNotMatch(hook, /getMaterial\(active\.material_id\)/);
+});
+
 test("a material reopens where the reader left off", () => {
   const pane = source("components/reading/ReaderPane.tsx");
 
