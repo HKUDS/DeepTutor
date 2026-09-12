@@ -642,6 +642,65 @@ async def _load_lineage(
     return chain
 
 
+# ----- Prior-image collection (#1438) -------------------------------------
+
+
+# Images are the one attachment kind with no cross-turn path: the manifest
+# deliberately excludes them (they reach a vision model as multimodal blocks
+# on the upload turn only), so from the second turn onward the model could not
+# see an image it was just discussing. The turn executor re-attaches what this
+# collector returns; the cap keeps a long image-heavy conversation from
+# re-sending unbounded payloads every turn.
+MAX_REINJECTED_IMAGES = 4
+
+
+async def collect_prior_image_attachments(
+    store: SessionStoreProtocol,
+    *,
+    session_id: str,
+    leaf_message_id: int | None,
+    exclude_urls: set[str] | None = None,
+    limit: int = MAX_REINJECTED_IMAGES,
+) -> list[dict[str, Any]]:
+    """Return this conversation's earlier image attachments, most recent first.
+
+    Walks the active branch's persisted user messages — the same lineage the
+    manifest's historical walk uses — and collects every image entry that
+    carries an attachment-store URL, deduplicated by URL. The turn executor
+    re-attaches the result (URL-only; the multimodal layer resolves the bytes
+    from the attachment store at request time). Text attachments are not
+    collected here: they are re-served by the inventory's own historical walk.
+    """
+    excluded_urls = exclude_urls or set()
+    collected: list[dict[str, Any]] = []
+    seen_urls: set[str] = set()
+    lineage = await _load_lineage(store, session_id, leaf_message_id)
+    for msg in reversed(lineage):
+        if msg.get("role") != "user":
+            continue
+        for att in msg.get("attachments") or []:
+            mime = str(att.get("mime_type", "")).lower()
+            url = str(att.get("url", "") or "").strip()
+            if not url or url in seen_urls or url in excluded_urls:
+                continue
+            if not mime.startswith(_IMAGE_MIME_PREFIX):
+                continue
+            seen_urls.add(url)
+            collected.append(
+                {
+                    "id": str(att.get("id", "") or ""),
+                    "type": "image",
+                    "url": url,
+                    "base64": "",
+                    "filename": str(att.get("filename", "") or ""),
+                    "mime_type": str(att.get("mime_type", "") or ""),
+                }
+            )
+            if len(collected) >= limit:
+                return collected
+    return collected
+
+
 # ----- Per-type resolvers shared by fresh + historical paths --------------
 
 

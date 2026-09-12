@@ -11,6 +11,7 @@ from deeptutor.services.session.source_inventory import (
     SourceEntry,
     SourceInventory,
     build_inventory,
+    collect_prior_image_attachments,
     render_manifest,
     serialize_referenced_transcript,
 )
@@ -702,3 +703,167 @@ async def test_load_history_session_partner_missing_returns_empty(monkeypatch) -
 
     text, _ = await _load_history_session(FakeStore(), "partner:ghost:dt-1")
     assert text == ""
+
+
+# ---------------------------------------------------------------------------
+# Prior-image collection (#1438: images are the one attachment kind with no
+# cross-turn path — the manifest excludes them and multimodal blocks exist
+# only on the upload turn).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_collect_prior_images_returns_branch_images_most_recent_first() -> None:
+    messages = [
+        {
+            "id": 1,
+            "role": "user",
+            "content": "first",
+            "parent_message_id": None,
+            "attachments": [
+                {
+                    "id": "img-1",
+                    "type": "image",
+                    "filename": "first.png",
+                    "mime_type": "image/png",
+                    "url": "/files/attachments/s1/img-1/first.png",
+                }
+            ],
+        },
+        {"id": 2, "role": "assistant", "content": "ok", "parent_message_id": 1, "attachments": []},
+        {
+            "id": 3,
+            "role": "user",
+            "content": "second",
+            "parent_message_id": 2,
+            "attachments": [
+                {
+                    "id": "img-2",
+                    "type": "image",
+                    "filename": "second.png",
+                    "mime_type": "image/png",
+                    "url": "/files/attachments/s1/img-2/second.png",
+                }
+            ],
+        },
+    ]
+    store = FakeStore(messages=messages)
+
+    collected = await collect_prior_image_attachments(store, session_id="s1", leaf_message_id=None)
+
+    assert [entry["id"] for entry in collected] == ["img-2", "img-1"]
+    assert all(entry["type"] == "image" for entry in collected)
+    assert collected[0]["url"].endswith("second.png")
+
+
+@pytest.mark.asyncio
+async def test_collect_prior_images_skips_non_images_and_url_less_entries() -> None:
+    messages = [
+        {
+            "id": 1,
+            "role": "user",
+            "content": "first",
+            "parent_message_id": None,
+            "attachments": [
+                {
+                    "id": "doc-1",
+                    "filename": "notes.pdf",
+                    "mime_type": "application/pdf",
+                    "url": "/files/attachments/s1/doc-1/notes.pdf",
+                },
+                {
+                    "id": "img-nourl",
+                    "type": "image",
+                    "filename": "legacy.png",
+                    "mime_type": "image/png",
+                    "url": "",
+                },
+            ],
+        }
+    ]
+    store = FakeStore(messages=messages)
+
+    collected = await collect_prior_image_attachments(store, session_id="s1", leaf_message_id=None)
+
+    assert collected == []
+
+
+@pytest.mark.asyncio
+async def test_collect_prior_images_dedupes_and_excludes_current_ids() -> None:
+    messages = [
+        {
+            "id": 1,
+            "role": "user",
+            "content": "first",
+            "parent_message_id": None,
+            "attachments": [
+                {
+                    "id": "img-1",
+                    "type": "image",
+                    "filename": "shot.png",
+                    "mime_type": "image/png",
+                    "url": "/files/attachments/s1/img-1/shot.png",
+                }
+            ],
+        },
+        {
+            "id": 2,
+            "role": "user",
+            "content": "again",
+            "parent_message_id": 1,
+            "attachments": [
+                {
+                    "id": "img-1",
+                    "type": "image",
+                    "filename": "shot.png",
+                    "mime_type": "image/png",
+                    "url": "/files/attachments/s1/img-1/shot.png",
+                }
+            ],
+        },
+    ]
+    store = FakeStore(messages=messages)
+
+    collected = await collect_prior_image_attachments(store, session_id="s1", leaf_message_id=None)
+    assert [entry["id"] for entry in collected] == ["img-1"]
+
+    reattached = await collect_prior_image_attachments(
+        store,
+        session_id="s1",
+        leaf_message_id=None,
+        exclude_urls={"/files/attachments/s1/img-1/shot.png"},
+    )
+    assert reattached == []
+
+
+@pytest.mark.asyncio
+async def test_collect_prior_images_caps_at_limit() -> None:
+    messages = [
+        {
+            "id": idx + 1,
+            "role": "user" if idx % 2 == 0 else "assistant",
+            "content": f"m{idx}",
+            "parent_message_id": None if idx == 0 else idx,
+            "attachments": (
+                [
+                    {
+                        "id": f"img-{idx}",
+                        "type": "image",
+                        "filename": f"shot-{idx}.png",
+                        "mime_type": "image/png",
+                        "url": f"/files/attachments/s1/img-{idx}/shot-{idx}.png",
+                    }
+                ]
+                if idx % 2 == 0
+                else []
+            ),
+        }
+        for idx in range(10)
+    ]
+    store = FakeStore(messages=messages)
+
+    collected = await collect_prior_image_attachments(
+        store, session_id="s1", leaf_message_id=None, limit=3
+    )
+
+    assert [entry["id"] for entry in collected] == ["img-8", "img-6", "img-4"]

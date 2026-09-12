@@ -353,6 +353,38 @@ class TurnExecutor:
                 for r in attachment_records
             ]
 
+            # Images attached in earlier turns of this conversation stay
+            # readable (#1438): re-attach them (URL-only; the multimodal layer
+            # resolves the bytes from the attachment store at request time) so
+            # a vision model keeps seeing an image the learner attached before.
+            # Text attachments are not repeated here — the source inventory's
+            # historical walk already serves them. Selection tutoring is
+            # deliberately isolated from conversation context.
+            if not selection_tutor_context:
+                from deeptutor.services.session.source_inventory import (
+                    collect_prior_image_attachments,
+                )
+
+                prior_images = await collect_prior_image_attachments(
+                    self.store,
+                    session_id=session_id,
+                    leaf_message_id=branch_parent_id,
+                    exclude_urls={
+                        str(r.get("url") or "") for r in attachment_records if r.get("url")
+                    },
+                )
+                attachments.extend(
+                    Attachment(
+                        type="image",
+                        url=rec["url"],
+                        base64="",
+                        filename=rec.get("filename", ""),
+                        mime_type=rec.get("mime_type", ""),
+                        id=rec.get("id", ""),
+                    )
+                    for rec in prior_images
+                )
+
             sidebar_system_context = ""
             if selection_tutor_context:
                 sidebar_system_context = _format_selection_tutor_context(
