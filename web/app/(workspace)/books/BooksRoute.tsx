@@ -35,7 +35,7 @@ import LearningCapturePanel from './components/LearningCapturePanel'
 import SpineEditor from './components/SpineEditor'
 import type { QuizAttemptArgs } from './components/blocks/QuizBlock'
 
-type View = 'list' | 'creator' | 'spine' | 'reader'
+type View = 'list' | 'loading' | 'creator' | 'spine' | 'reader'
 
 // Blocks land one at a time during compilation. Coalescing a burst into a
 // single fetch keeps a page that is actively generating from issuing one
@@ -73,14 +73,23 @@ export default function BookPage() {
   // Keep one loading boundary for the library and its resource routes.
   return (
     <Suspense
-      fallback={
-        <div className="flex h-full w-full items-center justify-center text-[var(--muted-foreground)]">
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> <BookLoadingText />
-        </div>
-      }
+      fallback={<BookLoadingView />}
     >
       <BookPageInner />
     </Suspense>
+  )
+}
+
+function BookLoadingView() {
+  return (
+    <div
+      className="flex h-full w-full items-center justify-center text-[var(--muted-foreground)]"
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+    >
+      <Loader2 className="mr-2 h-4 w-4 animate-spin" /> <BookLoadingText />
+    </div>
   )
 }
 
@@ -98,7 +107,10 @@ function BookPageInner() {
   const [books, setBooks] = useState<Book[]>([])
   const [canCreateBook, setCanCreateBook] = useState(true)
   const [loadingBooks, setLoadingBooks] = useState(false)
-  const [view, setView] = useState<View>('list')
+  // A deep resource route already identifies the target book before its
+  // details arrive. Start in a route-level loading shell so the library's
+  // empty state cannot briefly claim that the book collection is the target.
+  const [view, setView] = useState<View>(requestedBookId ? 'loading' : 'list')
 
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null)
   const [detail, setDetail] = useState<BookDetail | null>(null)
@@ -386,50 +398,69 @@ function BookPageInner() {
       if (!id) {
         setSelectedBookId(null)
         setDetail(null)
+        setSelectedPageId(null)
         setView('list')
         if (requestedBookId) router.push(bookRoute())
         return
       }
+      setView('loading')
       const targetPath = bookRoute(id, openPageId)
       if (requestedBookId !== id || (openPageId && requestedPageId !== openPageId)) {
         router.push(targetPath)
       }
       setSelectedBookId(id)
-      const data = await loadBookDetail(id)
-      const hasReadableContent = data.pages.some(
-        p => p.status !== 'pending' || (p.block_count ?? p.blocks.length) > 0
-      )
-      const canEdit = data.book.can_edit !== false
-      if (canEdit && data.book.status === 'draft' && data.book.proposal) {
-        setPendingBook(data.book)
-        setPendingProposal(data.book.proposal)
-        setView('creator')
-      } else if (
-        canEdit &&
-        data.book.status === 'spine_ready' &&
-        data.spine &&
-        !hasReadableContent
-      ) {
-        // Spine confirmed but nothing built yet — the editor is still the right
-        // place. Once any chapter exists, the reader is.
-        setView('spine')
-      } else {
-        // Resume where the reader left off — that's what `current_page_id` is
-        // for, and until now nothing ever read it.
-        const requested = (openPageId && data.pages.find(p => p.id === openPageId)) || null
-        const resumed = data.pages.find(p => p.id === data.progress.current_page_id) || null
-        const firstReady = data.pages.find(p => p.status === 'ready') || null
-        const target = requested || resumed || firstReady || data.pages[0] || null
-        setSelectedPageId(target?.id || null)
-        setView('reader')
+      try {
+        const data = await loadBookDetail(id)
+        const hasReadableContent = data.pages.some(
+          p => p.status !== 'pending' || (p.block_count ?? p.blocks.length) > 0
+        )
+        const canEdit = data.book.can_edit !== false
+        if (canEdit && data.book.status === 'draft' && data.book.proposal) {
+          setPendingBook(data.book)
+          setPendingProposal(data.book.proposal)
+          setView('creator')
+        } else if (
+          canEdit &&
+          data.book.status === 'spine_ready' &&
+          data.spine &&
+          !hasReadableContent
+        ) {
+          // Spine confirmed but nothing built yet — the editor is still the right
+          // place. Once any chapter exists, the reader is.
+          setView('spine')
+        } else {
+          // Resume where the reader left off — that's what `current_page_id` is
+          // for, and until now nothing ever read it.
+          const requested = (openPageId && data.pages.find(p => p.id === openPageId)) || null
+          const resumed = data.pages.find(p => p.id === data.progress.current_page_id) || null
+          const firstReady = data.pages.find(p => p.status === 'ready') || null
+          const target = requested || resumed || firstReady || data.pages[0] || null
+          setSelectedPageId(target?.id || null)
+          setView('reader')
+        }
+      } catch (err) {
+        const reason = bookErrorMessage(err, t)
+        notify(reason, {
+          tone: 'error',
+          durationMs: 8000,
+        })
+        console.error('loadBookDetail failed:', err)
+        setSelectedBookId(null)
+        setDetail(null)
+        setSelectedPageId(null)
+        setPendingBook(null)
+        setPendingProposal(null)
+        setView('list')
+        router.replace(bookRoute())
       }
     },
-    [loadBookDetail, requestedBookId, requestedPageId, router]
+    [loadBookDetail, requestedBookId, requestedPageId, router, t]
   )
 
   // Resource identity belongs in the path: /books/<book>[/pages/<page>].
   useEffect(() => {
     if (!requestedBookId) {
+      lastDeepLinkedBookId.current = null
       if (selectedBookId) void handleSelectBook(null)
       return
     }
@@ -952,6 +983,13 @@ function BookPageInner() {
     })
 
   // ── Render ─────────────────────────────────────────────────────────
+
+  // Route params update before the deep-link effect runs. Treat a mismatched
+  // requested ID as loading immediately, preventing one frame of the previous
+  // book (or the parent library) during client-side navigation as well.
+  if (view === 'loading' || (!!requestedBookId && requestedBookId !== selectedBookId)) {
+    return <BookLoadingView />
+  }
 
   return (
     <div className="flex h-full w-full">
