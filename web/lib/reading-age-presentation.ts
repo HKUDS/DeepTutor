@@ -60,9 +60,9 @@ export function readingActionClass(
 ) {
   const size =
     mode === "early"
-      ? "min-h-16 rounded-full border-[3px] px-4 py-2.5 text-base font-extrabold"
+      ? "min-h-16 min-w-fit rounded-full border-[3px] px-4 py-2.5 text-base font-extrabold"
       : mode === "young"
-        ? "min-h-12 rounded-[18px] border-2 px-3 py-2 text-sm font-bold shadow-sm transition-transform duration-150 motion-safe:hover:-translate-y-px"
+        ? "min-h-12 min-w-fit rounded-[18px] border-2 px-3.5 py-2 text-sm font-bold shadow-sm transition-transform duration-150 motion-safe:hover:-translate-y-px"
         : mode === "older"
           ? "min-h-11 rounded-xl border px-3 py-1.5 text-sm font-semibold"
           : "min-h-8 rounded-lg border px-2 py-1 text-xs font-medium";

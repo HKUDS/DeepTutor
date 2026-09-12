@@ -225,6 +225,8 @@ export function ReadingExtensionBar({
       !primaryKeys.includes(`${extension.id}:${action.id}`),
   );
 
+  const floating = ageMode === "early" || ageMode === "young";
+
   function actionButton({ extension, action }: (typeof actions)[number]) {
     const key = `${extension.id}:${action.id}`;
     const builtInLabel = builtInActionLabel(extension.id, action.id);
@@ -265,12 +267,52 @@ export function ReadingExtensionBar({
         className={`inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 motion-safe:active:scale-[.98] ${readingActionClass(ageMode, tone)}`}
       >
         {icon}
-        <span className="truncate leading-tight">
+        <span className={`${floating ? "whitespace-nowrap" : "truncate"} leading-tight`}>
           {builtInLabel ? t(builtInLabel) : action.label}
         </span>
       </button>
     );
   }
+
+  const actionRow = (
+    <div
+      data-reading-actions
+      data-reading-presentation={ageMode}
+      role="toolbar"
+      aria-label={t("Reading actions")}
+      className={`relative flex shrink-0 border-[var(--border)] bg-[color-mix(in_srgb,var(--card)_92%,transparent)] ${
+        floating
+          ? "pointer-events-auto max-w-full flex-wrap items-center justify-center overflow-visible rounded-[28px] border p-2 shadow-2xl backdrop-blur"
+          : "overflow-x-auto border-b bg-[color-mix(in_srgb,var(--muted)_25%,transparent)]"
+      } ${readingToolbarClass(ageMode)}`}
+    >
+      {primary.map(actionButton)}
+      {secondary.length > 0 ? (
+        <>
+          <button
+            type="button"
+            aria-expanded={moreOpen}
+            onClick={() => setMoreOpen((open) => !open)}
+            className={`inline-flex shrink-0 items-center motion-safe:active:scale-[.98] ${readingMoreClass(ageMode)}`}
+          >
+            {t("More")}
+          </button>
+          {moreOpen ? (
+            <div
+              onKeyDown={(event) => {
+                if (event.key === "Escape") setMoreOpen(false);
+              }}
+              className={`absolute right-2 z-40 flex w-56 flex-col gap-1 rounded-lg border border-[var(--border)] bg-[var(--card)] p-2 shadow-lg ${
+                floating ? "bottom-full mb-2" : "top-full"
+              }`}
+            >
+              {secondary.map(actionButton)}
+            </div>
+          ) : null}
+        </>
+      ) : null}
+    </div>
+  );
 
   if (loading)
     return (
@@ -295,6 +337,56 @@ export function ReadingExtensionBar({
       </div>
     );
   if (actions.length === 0) return null;
+  if (floating)
+    return (
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex flex-col items-center gap-2 px-3 pb-3">
+        {actionError ? (
+          <div
+            role="alert"
+            className="pointer-events-auto max-w-full rounded-2xl border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-xs shadow-lg"
+          >
+            {actionError}
+          </div>
+        ) : null}
+        {hint ? (
+          <p
+            role="status"
+            className="pointer-events-auto max-w-full rounded-2xl border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-xs shadow-lg"
+          >
+            {hint}
+          </p>
+        ) : null}
+        {speaking ? (
+          <div
+            role="status"
+            className="pointer-events-auto flex max-w-full items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-xs text-[var(--muted-foreground)] shadow-lg"
+          >
+            <Volume2 size={14} />
+            <span>{t("Reading aloud")}</span>
+            <button
+              type="button"
+              aria-label={t("Stop reading aloud")}
+              title={t("Stop reading aloud")}
+              onClick={stopSpeaking}
+              className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--foreground)] transition hover:bg-[var(--muted)]"
+            >
+              <Square size={12} fill="currentColor" />
+            </button>
+          </div>
+        ) : null}
+        {result && result.type !== "browser_speech" ? (
+          <div className="pointer-events-auto max-h-[60vh] w-full max-w-lg overflow-y-auto rounded-[24px] border border-[var(--border)] bg-[var(--card)] shadow-2xl">
+            <ExtensionResult
+              key={requestVersion.current}
+              result={result}
+              closeLabel={t("Close")}
+              onClose={() => setResult(null)}
+            />
+          </div>
+        ) : null}
+        {actionRow}
+      </div>
+    );
   return (
     <>
       {actionError ? (
@@ -305,37 +397,7 @@ export function ReadingExtensionBar({
           {actionError}
         </div>
       ) : null}
-      <div
-        data-reading-actions
-        data-reading-presentation={ageMode}
-        role="toolbar"
-        aria-label={t("Reading actions")}
-        className={`relative flex shrink-0 overflow-x-auto border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--muted)_25%,transparent)] ${readingToolbarClass(ageMode)}`}
-      >
-        {primary.map(actionButton)}
-        {secondary.length > 0 ? (
-          <>
-            <button
-              type="button"
-              aria-expanded={moreOpen}
-              onClick={() => setMoreOpen((open) => !open)}
-              className={`inline-flex shrink-0 items-center motion-safe:active:scale-[.98] ${readingMoreClass(ageMode)}`}
-            >
-              {t("More")}
-            </button>
-            {moreOpen ? (
-              <div
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") setMoreOpen(false);
-                }}
-                className="absolute right-2 top-full z-40 flex w-56 flex-col gap-1 rounded-lg border border-[var(--border)] bg-[var(--card)] p-2 shadow-lg"
-              >
-                {secondary.map(actionButton)}
-              </div>
-            ) : null}
-          </>
-        ) : null}
-      </div>
+      {actionRow}
       {hint ? (
         <p role="status" className="shrink-0 px-3 py-2 text-xs">
           {hint}

@@ -73,7 +73,7 @@ def _quiz(raw: str, context: ReadingContext) -> _Quiz:
         raise ValueError("Reading quiz model returned an invalid shape.") from exc
 
     normalized_context = _normalise(context.visible_text)
-    if any(_normalise(question.evidence) not in normalized_context for question in quiz.questions):
+    if any(_normalise(question.evidence).rstrip(' .,!?;:\'"“”‘’') not in normalized_context for question in quiz.questions):
         raise ValueError("Reading quiz evidence must come from the reading context.")
     return quiz
 

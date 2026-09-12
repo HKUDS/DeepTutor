@@ -65,6 +65,7 @@ test("young learner actions use a cute age-specific presentation", async () => {
     name: "Reading actions",
   });
   expect(toolbar).toHaveAttribute("data-reading-presentation", "early");
+  expect(toolbar.parentElement).toHaveClass("absolute", "bottom-0", "z-30");
   await vi.waitFor(() =>
     expect(screen.getByRole("button", { name: "Read aloud" })).toHaveClass(
       "min-h-16",
@@ -105,6 +106,7 @@ test("eight-year-old learners receive the young presentation", async () => {
   await vi.waitFor(() =>
     expect(toolbar).toHaveAttribute("data-reading-presentation", "young"),
   );
+  expect(toolbar.parentElement).toHaveClass("absolute", "bottom-0", "z-30");
   expect(screen.getByRole("button", { name: "Read aloud" })).toHaveClass(
     "min-h-12",
   );
