@@ -24,6 +24,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
+  ChartNoAxesCombined,
   UserRound,
   Wrench,
   type LucideIcon,
@@ -219,6 +220,18 @@ const MODEL_CHILDREN: SettingsLeaf[] = [
 ];
 
 const CHAT_CHILDREN: SettingsLeaf[] = [
+  {
+    key: "reading-extensions",
+    href: "/settings#reading-extensions",
+    label: { zh: "阅读扩展", en: "Reading extensions" },
+    blurb: {
+      zh: "安装、更新和管理朗读、查词与测验。",
+      en: "Install, update and manage reading actions.",
+    },
+    icon: Library,
+    tile: "bg-sky-500/10 text-sky-600 dark:text-sky-400",
+    adminOnly: true,
+  },
   {
     key: "video-learning",
     href: "/settings#video-learning",
@@ -470,6 +483,13 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
     icon: Bot,
     href: "/settings#agents",
     children: AGENT_CHILDREN,
+  },
+  {
+    key: "progress",
+    label: { zh: "学习进度", en: "Learning progress" },
+    blurb: { zh: "查看自己的阅读与学习记录。", en: "Review your reading and learning activity." },
+    icon: ChartNoAxesCombined,
+    href: "/settings/progress",
   },
   {
     key: "learner-profile",

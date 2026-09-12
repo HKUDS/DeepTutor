@@ -17,6 +17,10 @@ console = Console()
 
 
 def register(app: typer.Typer) -> None:
+    from .reading_plugin import app as reading_app
+
+    app.add_typer(reading_app, name="reading")
+
     @app.command("list")
     def plugin_list() -> None:
         """List all registered tools and capabilities."""

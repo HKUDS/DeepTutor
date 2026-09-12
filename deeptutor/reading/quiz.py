@@ -73,7 +73,10 @@ def _quiz(raw: str, context: ReadingContext) -> _Quiz:
         raise ValueError("Reading quiz model returned an invalid shape.") from exc
 
     normalized_context = _normalise(context.visible_text)
-    if any(_normalise(question.evidence) not in normalized_context for question in quiz.questions):
+    if any(
+        _normalise(question.evidence).rstrip(" .,!?;:'\"“”‘’") not in normalized_context
+        for question in quiz.questions
+    ):
         raise ValueError("Reading quiz evidence must come from the reading context.")
     return quiz
 
@@ -82,6 +85,7 @@ class ReadingQuizExtension:
     """Return bounded comprehension questions grounded in the current unit."""
 
     manifest = ReadingExtensionManifest(
+        requires_llm=True,
         id="quiz",
         version="1.0.0",
         name="Reading quiz",
@@ -97,17 +101,14 @@ class ReadingQuizExtension:
         if not context.visible_text.strip():
             raise ValueError("Reading quiz requires visible text.")
 
-        from deeptutor.services.model_selection.tasks import task_llm_scope
-
-        with task_llm_scope():
-            raw = await complete(
-                prompt=_prompt(context),
-                system_prompt=_SYSTEM_ZH if _is_zh(context.locale) else _SYSTEM_EN,
-                temperature=0.3,
-                max_tokens=1000,
-                max_retries=0,
-                response_format={"type": "json_object"},
-            )
+        raw = await complete(
+            prompt=_prompt(context),
+            system_prompt=_SYSTEM_ZH if _is_zh(context.locale) else _SYSTEM_EN,
+            temperature=0.3,
+            max_tokens=1000,
+            max_retries=0,
+            response_format={"type": "json_object"},
+        )
         quiz = _quiz(raw, context)
         return ReadingExtensionResult(
             type="quiz",

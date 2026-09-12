@@ -1,0 +1,9 @@
+{
+  "model_not_configured": "Select a reading model, or ask your administrator.",
+  "model_forbidden": "Select an authorized model.",
+  "timeout": "Timed out. Try again.",
+  "worker_running": "Still running. Wait or ask an administrator to restart.",
+  "busy": "Busy. Try again when finished.",
+  "invalid_output": "Invalid provider output. Try again.",
+  "provider_error": "Provider failed. Check the model or ask an administrator."
+}

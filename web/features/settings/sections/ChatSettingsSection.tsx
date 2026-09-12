@@ -18,16 +18,21 @@ const CapabilitiesSettingsPage = dynamic(
   () => import("./CapabilitiesSettingsSection"),
   { loading },
 );
-const StarterSettingsPage = dynamic(
-  () => import("./StartersSettingsSection"),
-  { loading },
-);
+const StarterSettingsPage = dynamic(() => import("./StartersSettingsSection"), {
+  loading,
+});
 const AttachmentSettingsPage = dynamic(
   () => import("./AttachmentsSettingsSection"),
   { loading },
 );
 
+const ReadingPluginsSettingsPage = dynamic(
+  () => import("./ReadingPluginsSettingsSection"),
+  { loading },
+);
+
 const CHAT_SECTIONS = [
+  { key: "reading-extensions", Component: ReadingPluginsSettingsPage },
   { key: "video-learning", Component: VideoLearningSettingsPage },
   { key: "tools", Component: ToolsSettingsPage },
   { key: "capabilities", Component: CapabilitiesSettingsPage },

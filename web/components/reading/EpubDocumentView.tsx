@@ -102,7 +102,10 @@ export interface EpubDocumentViewProps {
   highlightedAnnotationId?: string | null;
   onSelection: (payload: SelectionPayload | null) => void;
   onAnnotationClick?: (annotation: AnnotationItem) => void;
-  onVisibleLocatorChange?: (locator: number) => void;
+  onVisibleLocatorChange?: (
+    locator: number,
+    navigation?: { navigationChanged: boolean },
+  ) => void;
   onHeadingsChange?: (headings: ReaderHeading[]) => void;
   headingJump?: {
     id: string;
@@ -142,6 +145,7 @@ export function EpubDocumentView({
   const headingsByLocatorRef = useRef<Map<number, ReaderHeading[]>>(new Map());
   const errorRef = useRef(onError);
   const locatorRef = useRef(1);
+  const pendingNavigationRef = useRef(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
 
@@ -169,6 +173,7 @@ export function EpubDocumentView({
     const rendition = renditionRef.current;
     if (!rendition) return;
     const physical = directionForEpubLayout(direction, isRtlRef.current);
+    pendingNavigationRef.current = true;
     void (physical === "next" ? rendition.next() : rendition.prev());
   }, []);
 
@@ -184,6 +189,10 @@ export function EpubDocumentView({
       const href = location.start?.href ?? "";
       const nextLocator = locatorForEpubHref(href, refsRef.current) || 1;
       const cfi = location.start?.cfi ?? "";
+      // Layout changes also emit relocated events; only an explicit page turn
+      // invalidates a selection and its in-flight extension actions.
+      const navigationChanged = pendingNavigationRef.current;
+      pendingNavigationRef.current = false;
       const percentage = Math.min(
         1,
         Math.max(
@@ -196,7 +205,7 @@ export function EpubDocumentView({
         ),
       );
       locatorRef.current = nextLocator;
-      visibleChangeRef.current?.(nextLocator);
+      visibleChangeRef.current?.(nextLocator, { navigationChanged });
       headingsChangeRef.current?.(
         headingsByLocatorRef.current.get(nextLocator) ?? [],
       );
@@ -251,6 +260,12 @@ export function EpubDocumentView({
       const doc = contents.document;
       if (!doc?.body || doc.body.dataset.dtReaderReady === "true") return;
       doc.body.dataset.dtReaderReady = "true";
+      // A click/new selection inside the document cancels the previous quote.
+      // Toolbar clicks occur outside this iframe and keep their source selection.
+      doc.addEventListener("pointerdown", () => onSelection(null));
+      doc.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") onSelection(null);
+      });
       const href = (doc.location?.pathname ?? "").replace(/^\//, "");
       const locator =
         locatorForEpubHref(href, refsRef.current) || locatorRef.current;

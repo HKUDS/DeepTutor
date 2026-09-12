@@ -25,6 +25,7 @@ export interface AnnotationPopoverProps {
   onCitation: (color: AnnotationColor) => void;
   onAsk: () => void;
   onDismiss: () => void;
+  onActionFocus?: () => void;
 }
 
 /**
@@ -48,6 +49,7 @@ export function AnnotationPopover({
   onCitation,
   onAsk,
   onDismiss,
+  onActionFocus,
 }: AnnotationPopoverProps) {
   const { t } = useTranslation();
   const ref = useRef<HTMLDivElement | null>(null);
@@ -82,6 +84,13 @@ export function AnnotationPopover({
       }
     };
     const onPointerDown = (event: PointerEvent) => {
+      if (
+        event.target instanceof Element &&
+        event.target.closest("[data-reading-actions]")
+      ) {
+        onActionFocus?.();
+        return;
+      }
       if (!ref.current?.contains(event.target as Node)) onDismiss();
     };
     document.addEventListener("keydown", onKey);
@@ -92,7 +101,7 @@ export function AnnotationPopover({
       document.removeEventListener("keydown", onKey);
       document.removeEventListener("pointerdown", onPointerDown, true);
     };
-  }, [onDismiss]);
+  }, [onDismiss, onActionFocus]);
 
   return (
     <div
