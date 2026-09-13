@@ -28,6 +28,7 @@ import hashlib
 import logging
 import os
 from pathlib import Path
+import threading
 import time
 from typing import Any, Iterator
 import uuid
@@ -98,6 +99,10 @@ class FileLibraryStore:
             root = get_path_service().get_user_root().joinpath(*_LIBRARY_FILES_SUBDIR).resolve()
         self._root = root
         self._db_path = db_path
+        # Serializes the check-then-write-then-insert sequence in
+        # _add_file_sync so concurrent uploads of identical content cannot
+        # both miss the dedup lookup and create duplicate rows/files.
+        self._add_lock = threading.Lock()
         self._init_db()
 
     # ------------------------------------------------------------------
@@ -117,6 +122,8 @@ class FileLibraryStore:
             conn.close()
 
     def _init_db(self) -> None:
+        import sqlite3
+
         with self._connect() as conn:
             conn.execute(
                 """
@@ -134,8 +141,25 @@ class FileLibraryStore:
                 )
                 """
             )
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_library_sha256 ON library_files(sha256)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_library_is_deleted ON library_files(is_deleted)")
+            # A plain index isn't enough to prevent duplicate active rows for
+            # the same content — enforce it at the DB layer too (belt and
+            # suspenders alongside the _add_lock in _add_file_sync, which is
+            # the primary guard within a single process).
+            conn.execute("DROP INDEX IF EXISTS idx_library_sha256")
+            try:
+                conn.execute(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_library_sha256_active "
+                    "ON library_files(sha256) WHERE is_deleted = 0"
+                )
+            except sqlite3.IntegrityError:
+                logger.warning(
+                    "Could not create unique active-sha256 index on %s: "
+                    "duplicate active rows already exist",
+                    self._db_path,
+                )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_library_is_deleted ON library_files(is_deleted)"
+            )
             conn.commit()
 
     # ------------------------------------------------------------------
@@ -207,10 +231,12 @@ class FileLibraryStore:
         filename: str,
         mime_type: str,
     ) -> dict[str, Any]:
+        import sqlite3
+
         sha = _sha256(data)
         now = time.time()
 
-        with self._connect() as conn:
+        with self._add_lock, self._connect() as conn:
             # Check for existing active entry with same hash
             existing = conn.execute(
                 "SELECT * FROM library_files WHERE sha256 = ? AND is_deleted = 0",
@@ -223,22 +249,35 @@ class FileLibraryStore:
             file_id = str(uuid.uuid4())
             ext = Path(filename).suffix or ""
             library_path = f"{file_id}{ext}"
-            full_path = self._file_path(library_path)
 
             # Ensure directory exists and write atomically
             self._ensure_root()
             self._write_file(library_path, data)
 
-            conn.execute(
-                """
-                INSERT INTO library_files
-                    (id, sha256, filename, mime_type, size_bytes, library_path,
-                     created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (file_id, sha, filename, mime_type, len(data), library_path, now, now),
-            )
-            conn.commit()
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO library_files
+                        (id, sha256, filename, mime_type, size_bytes, library_path,
+                         created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (file_id, sha, filename, mime_type, len(data), library_path, now, now),
+                )
+                conn.commit()
+            except sqlite3.IntegrityError:
+                # Lost a race against the partial unique index — the
+                # in-process _add_lock only serializes this process, so a
+                # second worker process could still get here first. Discard
+                # the file we just wrote and return the winning entry.
+                self._delete_file(library_path)
+                winner = conn.execute(
+                    "SELECT * FROM library_files WHERE sha256 = ? AND is_deleted = 0",
+                    (sha,),
+                ).fetchone()
+                if winner is not None:
+                    return self._row_to_entry(dict(winner))
+                raise
 
             return {
                 "id": file_id,
@@ -275,9 +314,7 @@ class FileLibraryStore:
         now = time.time()
         with self._connect() as conn:
             # Idempotent: return True whether the file was freshly deleted or already deleted.
-            exists = conn.execute(
-                "SELECT 1 FROM library_files WHERE id = ?", (file_id,)
-            ).fetchone()
+            exists = conn.execute("SELECT 1 FROM library_files WHERE id = ?", (file_id,)).fetchone()
             if exists is None:
                 return False
             conn.execute(
@@ -319,9 +356,7 @@ class FileLibraryStore:
         now = time.time()
         with self._connect() as conn:
             # Idempotent: return True if the file exists (whether already active or restored).
-            exists = conn.execute(
-                "SELECT 1 FROM library_files WHERE id = ?", (file_id,)
-            ).fetchone()
+            exists = conn.execute("SELECT 1 FROM library_files WHERE id = ?", (file_id,)).fetchone()
             if exists is None:
                 return False
             conn.execute(
@@ -422,16 +457,23 @@ _instances: dict[str, FileLibraryStore] = {}
 
 
 def get_file_library_store() -> FileLibraryStore:
-    """Return the process-wide FileLibraryStore singleton."""
-    key = "default"
-    if key not in _instances:
-        from deeptutor.services.path_service import get_path_service
+    """Return the FileLibraryStore singleton scoped to the current user.
 
-        user_root = get_path_service().get_user_root()
+    ``get_path_service().get_user_root()`` is resolved on every call (it is
+    request-scoped via a contextvar — see ``deeptutor.multi_user.paths``) and
+    the instance cache is keyed by that resolved root, mirroring
+    ``get_attachment_store`` in ``attachment_store.py``. Caching under a
+    constant key here would pin every user to whichever user's request
+    happened to populate the cache first.
+    """
+    user_root = get_path_service().get_user_root()
+    key = str(user_root)
+    if key not in _instances:
         db_dir = user_root.joinpath(*_LIBRARY_DB_SUBDIR)
         db_dir.mkdir(parents=True, exist_ok=True)
         db_path = db_dir / "library.db"
-        _instances[key] = FileLibraryStore(db_path=db_path)
+        root = user_root.joinpath(*_LIBRARY_FILES_SUBDIR).resolve()
+        _instances[key] = FileLibraryStore(db_path=db_path, root=root)
     return _instances[key]
 
 
