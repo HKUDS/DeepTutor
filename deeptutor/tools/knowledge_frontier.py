@@ -139,8 +139,6 @@ async def _derive_queries(
         result = await reason(
             query=prompt,
             context="\n".join(part for part in context if part),
-            max_tokens=512,
-            temperature=0.1,
             **llm_kwargs,
         )
         queries = _parse_queries(str(result.get("answer", "")))
