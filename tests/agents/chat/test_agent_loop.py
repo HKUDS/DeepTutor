@@ -1195,7 +1195,9 @@ async def test_repeated_reasoning_budget_exhaustion_is_retryable_error(
 
     with pytest.raises(LLMReasoningBudgetExhausted) as raised:
         await pipeline.run(
-            UnifiedContext(session_id="s1", user_message="Implement it", enabled_tools=["web_search"]),
+            UnifiedContext(
+                session_id="s1", user_message="Implement it", enabled_tools=["web_search"]
+            ),
             StreamBus(),
         )
 

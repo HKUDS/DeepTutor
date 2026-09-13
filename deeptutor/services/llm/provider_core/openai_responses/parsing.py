@@ -650,11 +650,14 @@ async def consume_sdk_stream(
             if status is None and event_type == "response.incomplete":
                 status = "incomplete"
             finish_reason = map_finish_reason(status, _incomplete_reason(response))
-            usage = usage_breakdown(
-                usage_obj,
-                prompt="input_tokens",
-                completion="output_tokens",
-            ) or usage
+            usage = (
+                usage_breakdown(
+                    usage_obj,
+                    prompt="input_tokens",
+                    completion="output_tokens",
+                )
+                or usage
+            )
             if usage and on_provider_event:
                 on_provider_event("usage", usage)
         elif event_type in {"error", "response.failed"}:

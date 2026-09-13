@@ -1437,9 +1437,7 @@ class AgentLoop:
             and str(finish_reason or "").strip().lower() != "content_filter"
             and (
                 truncated_round
-                or (
-                    usage_details.get("completion_tokens", 0) >= max(1, int(max_tokens))
-                )
+                or (usage_details.get("completion_tokens", 0) >= max(1, int(max_tokens)))
             )
         )
         completion_metadata: dict[str, Any] = {
@@ -1483,8 +1481,10 @@ class AgentLoop:
             tool_call_chars,
             len(tool_calls),
         )
-        if truncated_round or reasoning_budget_exhausted or (
-            not tool_calls and not visible_text.strip()
+        if (
+            truncated_round
+            or reasoning_budget_exhausted
+            or (not tool_calls and not visible_text.strip())
         ):
             logger.warning(log_line, *log_args)
         else:
