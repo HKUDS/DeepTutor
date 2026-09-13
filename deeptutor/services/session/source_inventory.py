@@ -61,6 +61,12 @@ class SourceEntry:
     # within the active branch's lineage. Fresh sources use the **current**
     # turn's ordinal so the manifest can label them consistently.
     first_seen_turn: int
+    # Set (and full_text empty) when the source exists but its text could not
+    # be served — for an attachment whose extraction produced nothing. The
+    # manifest renders the reason so the model can tell the learner *why* a
+    # file is not quotable instead of silently dropping it or asking for a
+    # blind re-upload (#1438 expected behavior 6).
+    availability_note: str = ""
 
     @property
     def char_count(self) -> int:
@@ -83,7 +89,7 @@ class SourceInventory:
     def add(self, entry: SourceEntry) -> None:
         if not entry.sid:
             return
-        if not entry.full_text.strip():
+        if not entry.full_text.strip() and not entry.availability_note:
             return
         existing_pos = self._index.get(entry.sid)
         if existing_pos is None:
@@ -184,7 +190,9 @@ def render_manifest(inv: SourceInventory) -> tuple[str, dict[str, str]]:
     if inv.is_empty():
         return "", {}
 
-    source_index: dict[str, str] = {sid: e.full_text for sid, e in _iter_sid_entries(inv)}
+    source_index: dict[str, str] = {
+        sid: e.full_text for sid, e in _iter_sid_entries(inv) if e.full_text.strip()
+    }
     rendered_rows: list[str] = []
     for entry in inv.entries:
         rendered_rows.append(_render_row(entry))
@@ -230,6 +238,14 @@ def _format_size(char_count: int) -> str:
 
 
 def _render_row(entry: SourceEntry) -> str:
+    if entry.availability_note:
+        identity = (
+            f"- id={entry.sid}  type={entry.kind}  name={entry.name!r}  "
+            f"source: previously attached (turn {entry.first_seen_turn})"
+        )
+        if entry.fresh:
+            identity = f"- id={entry.sid}  type={entry.kind}  name={entry.name!r}"
+        return f"{identity}\n  note: {entry.availability_note}"
     if entry.fresh:
         preview = _clip_preview(entry.full_text)
         return f"- id={entry.sid}  type={entry.kind}  name={entry.name!r}\n  preview: {preview!r}"
@@ -306,7 +322,28 @@ def _add_fresh(
             continue
         text = str(record.get("extracted_text", "") or "")
         att_id = str(record.get("id", "") or "").strip()
-        if not text.strip() or not att_id:
+        if not att_id:
+            continue
+        if not text.strip():
+            # The file is real but its text could not be extracted (scanned
+            # pages, an unsupported format, a failed parse). Surface the
+            # reason instead of silently dropping the attachment: the model
+            # can then tell the learner what happened and whether re-uploading
+            # is worth another try, rather than a blind "please upload again".
+            inv.add(
+                SourceEntry(
+                    sid=f"at-{att_id}",
+                    kind="attachment",
+                    name=str(record.get("filename") or "Untitled file"),
+                    full_text="",
+                    fresh=True,
+                    first_seen_turn=current_turn_ordinal,
+                    availability_note=(
+                        "text extraction produced no content for this file "
+                        "(scanned or unsupported format); it cannot be quoted"
+                    ),
+                )
+            )
             continue
         inv.add(
             SourceEntry(
@@ -456,6 +493,23 @@ async def _collect_from_user_message(
             continue
         text = str(att.get("extracted_text") or "")
         if not text.strip():
+            # Same as the fresh path: an earlier turn's file whose extraction
+            # produced nothing still gets a manifest row, with the reason
+            # attached, so the failure is visible on every later turn.
+            inv.add(
+                SourceEntry(
+                    sid=sid,
+                    kind="attachment",
+                    name=str(att.get("filename") or "Untitled file"),
+                    full_text="",
+                    fresh=False,
+                    first_seen_turn=turn_ordinal,
+                    availability_note=(
+                        "text extraction produced no content for this file "
+                        "(scanned or unsupported format); it cannot be quoted"
+                    ),
+                )
+            )
             continue
         inv.add(
             SourceEntry(

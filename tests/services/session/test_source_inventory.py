@@ -867,3 +867,102 @@ async def test_collect_prior_images_caps_at_limit() -> None:
     )
 
     assert [entry["id"] for entry in collected] == ["img-8", "img-6", "img-4"]
+
+
+# ---------------------------------------------------------------------------
+# Unavailable-attachment surfacing (#1438 expected behavior 6: a file whose
+# text extraction produced nothing must show a reason in the manifest instead
+# of being silently skipped — a silent skip is why the model asks the learner
+# to re-upload without ever saying why).
+# ---------------------------------------------------------------------------
+
+
+def test_inventory_accepts_note_only_entries() -> None:
+    """An entry with no text but an availability reason is kept."""
+    inv = SourceInventory()
+    inv.add(
+        SourceEntry(
+            sid="at-foo",
+            kind="attachment",
+            name="scan.pdf",
+            full_text="   ",
+            fresh=True,
+            first_seen_turn=1,
+            availability_note="text extraction produced no content",
+        )
+    )
+    assert not inv.is_empty()
+
+
+@pytest.mark.asyncio
+async def test_fresh_attachment_without_extracted_text_shows_a_reason() -> None:
+    store = FakeStore(messages=[])
+    inv = await build_inventory(
+        store,
+        session_id="s1",
+        leaf_message_id=None,
+        current_turn_ordinal=1,
+        fresh_attachment_records=[
+            {
+                "id": "att-scan",
+                "type": "file",
+                "filename": "scan.pdf",
+                "mime_type": "application/pdf",
+                "extracted_text": "",
+            }
+        ],
+        fresh_notebook_records=[],
+        fresh_book_context_text="",
+        fresh_book_references=[],
+        fresh_history_session_ids=[],
+        fresh_question_entry_ids=[],
+    )
+    manifest, source_index = render_manifest(inv)
+
+    # The row exists so the model can name the file and say why it cannot
+    # quote it — instead of silently pretending nothing was attached.
+    assert "at-att-scan" in manifest
+    assert "scan.pdf" in manifest
+    assert "extraction" in manifest
+    # But there is no full text to serve: the sid must not advertise itself
+    # as readable through read_source.
+    assert "at-att-scan" not in source_index
+
+
+@pytest.mark.asyncio
+async def test_historical_attachment_without_extracted_text_shows_a_reason() -> None:
+    messages = [
+        {
+            "id": 1,
+            "role": "user",
+            "content": "first",
+            "parent_message_id": None,
+            "attachments": [
+                {
+                    "id": "att-old",
+                    "filename": "scanned.pdf",
+                    "extracted_text": "",
+                    "mime_type": "application/pdf",
+                }
+            ],
+            "metadata": {"request_snapshot": {}},
+        }
+    ]
+    store = FakeStore(messages=messages)
+    inv = await build_inventory(
+        store,
+        session_id="s1",
+        leaf_message_id=None,
+        current_turn_ordinal=2,
+        fresh_attachment_records=[],
+        fresh_notebook_records=[],
+        fresh_book_context_text="",
+        fresh_book_references=[],
+        fresh_history_session_ids=[],
+        fresh_question_entry_ids=[],
+    )
+    manifest, source_index = render_manifest(inv)
+
+    assert "at-att-old" in manifest
+    assert "extraction" in manifest
+    assert "at-att-old" not in source_index
