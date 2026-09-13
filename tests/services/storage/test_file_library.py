@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import tempfile
 from pathlib import Path
+import tempfile
 
 import pytest
 
@@ -14,7 +14,6 @@ from deeptutor.services.storage.file_library import (
     get_file_library_store,
     reset_file_library_store,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

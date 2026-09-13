@@ -23,15 +23,14 @@ Listing and search both return only non-deleted entries.
 from __future__ import annotations
 
 import asyncio
+from contextlib import contextmanager
 import hashlib
 import logging
 import os
-import shutil
-import time
-import uuid
-from contextlib import contextmanager
 from pathlib import Path
+import time
 from typing import Any, Iterator
+import uuid
 
 from deeptutor.services.path_service import get_path_service
 

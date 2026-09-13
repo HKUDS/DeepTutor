@@ -529,8 +529,8 @@ from deeptutor.api.routers import (
 from deeptutor.api.routers import (
     tools as tools_router,
 )
-from deeptutor.api.routers.multi_user import router as multi_user_router  # noqa: E402
 from deeptutor.api.routers.file_library import router as file_library_router  # noqa: E402
+from deeptutor.api.routers.multi_user import router as multi_user_router  # noqa: E402
 
 # Auth router is public — login/logout/register/status require no token
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
