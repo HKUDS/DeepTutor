@@ -434,6 +434,21 @@ class MasteryNewSessionTool(_NavTool):
         topic, error = await _topic_or_error(kwargs.get("path_id", ""))
         if error is not None or topic is None:
             return error or _failure("path_id is required.")
+        tutoring = _text(kwargs.get("_mastery_path_id"))
+        if tutoring and tutoring == topic["path_id"]:
+            # Bound to the caller by the mastery loop on a mastery turn only
+            # (plain chats never carry it). The hand-off's own premise — "the
+            # mastery tutor picks up on the other side" — does not hold here:
+            # this window IS that topic's study session, so a card that starts
+            # another conversation on it just duplicates sessions (#1412).
+            return _failure(
+                "This conversation is already the study session for "
+                f"{topic['name']!r} ({topic['path_id']}). Tutor the learner "
+                "here instead of handing them a card that starts another "
+                "conversation on the same topic — that is how duplicate "
+                "sessions pile up. mastery_new_session is for sending the "
+                "learner to a different topic."
+            )
         module, module_error = _module_or_error(topic, kwargs.get("module", ""))
         if module_error is not None:
             return module_error
