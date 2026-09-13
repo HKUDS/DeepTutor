@@ -44,9 +44,7 @@ class SessionRepository(Protocol):
 
     async def hard_delete_session(self, session_id: str) -> bool: ...
 
-    async def list_recycle_bin(
-        self, limit: int = 50, offset: int = 0
-    ) -> list[dict[str, Any]]: ...
+    async def list_recycle_bin(self, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]: ...
 
     async def search_sessions(
         self,
@@ -167,9 +165,7 @@ class SessionStoreProtocol(SessionRepository, TurnRepository, MessageRepository,
 
     async def hard_delete_session(self, session_id: str) -> bool: ...
 
-    async def list_recycle_bin(
-        self, limit: int = 50, offset: int = 0
-    ) -> list[dict[str, Any]]: ...
+    async def list_recycle_bin(self, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]: ...
 
     async def search_sessions(
         self,

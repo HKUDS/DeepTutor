@@ -878,6 +878,7 @@ def test_branch_context_messages_carry_private_metadata(store: SQLiteSessionStor
 
     messages = asyncio.run(store.get_messages_for_context(session["id"], leaf_message_id=leaf))
 
+
 # ── Recycle bin ─────────────────────────────────────────────────────
 
 
@@ -1017,17 +1018,21 @@ def test_recycle_bin_preserves_deleted_at_order(store: SQLiteSessionStore) -> No
     result = asyncio.run(store.list_recycle_bin(limit=10))
     # Most recently deleted first.
     assert result[0]["id"] == s2["id"]
+
+
 # ── Search sessions ─────────────────────────────────────────────────
 
 
 def _seed_search_chat(store: SQLiteSessionStore) -> tuple[str, str, str]:
     """Create a session with user/assistant messages for search testing."""
     session = asyncio.run(store.create_session(title="Bayes Theorem Discussion"))
-    uid = asyncio.run(
-        store.add_message(session["id"], "user", "Can you explain Bayes theorem?")
-    )
+    uid = asyncio.run(store.add_message(session["id"], "user", "Can you explain Bayes theorem?"))
     aid = asyncio.run(
-        store.add_message(session["id"], "assistant", "Bayes theorem describes how to update probabilities based on new evidence.")
+        store.add_message(
+            session["id"],
+            "assistant",
+            "Bayes theorem describes how to update probabilities based on new evidence.",
+        )
     )
     return session["id"], str(uid), str(aid)
 
@@ -1043,6 +1048,7 @@ def test_search_sessions_finds_title(store: SQLiteSessionStore) -> None:
     # Excerpt carries the last message content for context.
     assert results[0]["excerpt"] is not None
 
+
 def test_search_sessions_finds_user_message(store: SQLiteSessionStore) -> None:
     """A user message match should return the session with the excerpt."""
     sid, uid, _ = _seed_search_chat(store)
@@ -1052,6 +1058,7 @@ def test_search_sessions_finds_user_message(store: SQLiteSessionStore) -> None:
     assert results[0]["id"] == sid
     assert results[0]["excerpt_role"] == "user"
     assert results[0]["excerpt_message_id"] == int(uid)
+
 
 def test_search_sessions_finds_assistant_message(store: SQLiteSessionStore) -> None:
     """An assistant message match should return the session with the excerpt."""
@@ -1117,10 +1124,10 @@ def test_search_sessions_excludes_deleted(store: SQLiteSessionStore) -> None:
 def test_search_sessions_excludes_imported(store: SQLiteSessionStore) -> None:
     """Imported sessions must not appear in search results."""
     imported_id = "imported_codex_test-session-001"
-    session = asyncio.run(
-        store.create_session(title="Imported Bayes Chat", session_id=imported_id)
+    session = asyncio.run(store.create_session(title="Imported Bayes Chat", session_id=imported_id))
+    asyncio.run(
+        store.add_message(session["id"], "user", "Explain Bayes theorem in the imported chat.")
     )
-    asyncio.run(store.add_message(session["id"], "user", "Explain Bayes theorem in the imported chat."))
     results = asyncio.run(store.search_sessions("Bayes"))
     # Should find the native session, not the imported one.
     native_ids = [r["id"] for r in results if not r["id"].startswith("imported_")]

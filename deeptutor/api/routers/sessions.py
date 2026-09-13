@@ -125,6 +125,7 @@ async def search_sessions(
     )
     return {"sessions": results}
 
+
 # Cap (in characters) for a single event payload returned to the UI. RAG
 # tools can attach whole KB documents to ``tool_result``/``observation``
 # events; the frontend TraceSurface only needs a preview, and the LLM context

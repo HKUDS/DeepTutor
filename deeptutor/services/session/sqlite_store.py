@@ -370,7 +370,9 @@ class SQLiteSessionStore:
             )
             columns = {row[1] for row in conn.execute("PRAGMA table_info(sessions)").fetchall()}
             if "is_deleted" not in columns:
-                conn.execute("ALTER TABLE sessions ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0")
+                conn.execute(
+                    "ALTER TABLE sessions ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0"
+                )
             if "deleted_at" not in columns:
                 conn.execute("ALTER TABLE sessions ADD COLUMN deleted_at REAL")
             # Must ensure preferences_json exists before the migration reads it;
@@ -1405,9 +1407,7 @@ class SQLiteSessionStore:
         """Permanently delete a session from the recycle bin."""
         return await self._run(self._hard_delete_session_sync, session_id)
 
-    async def list_recycle_bin(
-        self, limit: int = 50, offset: int = 0
-    ) -> list[dict[str, Any]]:
+    async def list_recycle_bin(self, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
         """List soft-deleted sessions ordered by deletion time."""
         return await self._run(self._list_recycle_bin_sync, limit, offset)
 
@@ -1464,9 +1464,7 @@ class SQLiteSessionStore:
         LIMIT :limit OFFSET :offset
     """
 
-    def _search_sessions_sync(
-        self, query: str, limit: int, offset: int
-    ) -> list[dict[str, Any]]:
+    def _search_sessions_sync(self, query: str, limit: int, offset: int) -> list[dict[str, Any]]:
         escaped = _escape_like(query)
         with self._connect() as conn:
             rows = conn.execute(
@@ -1504,6 +1502,7 @@ class SQLiteSessionStore:
             payload["excerpt_timestamp"] = matched_created
             results.append(payload)
         return results
+
     async def search_sessions(
         self,
         query: str,
@@ -1514,7 +1513,6 @@ class SQLiteSessionStore:
         if not query or not query.strip():
             return []
         return await self._run(self._search_sessions_sync, query.strip(), limit, offset)
-
 
     # Keep delete_session as soft-delete for backward compatibility
     async def delete_session(self, session_id: str) -> bool:
@@ -2300,7 +2298,6 @@ class SQLiteSessionStore:
                 (limit, offset),
             ).fetchall()
         return [self._session_summary_payload(row) for row in rows]
-
 
     def _get_session_summaries_sync(
         self,
