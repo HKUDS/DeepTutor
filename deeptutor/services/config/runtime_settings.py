@@ -60,6 +60,11 @@ DEFAULT_SYSTEM_SETTINGS: dict[str, Any] = {
     "chat_attachment_max_total_mb": 25,
     "chat_attachment_max_chars_per_doc": 200_000,
     "chat_attachment_max_chars_total": 150_000,
+    # Images the manifest cannot carry across turns are re-attached by the
+    # turn executor instead (#1438). This bounds how many of a conversation's
+    # earlier images ride along on every later turn — a re-sent payload, so
+    # it is a policy like the caps above, not an LLM budget.
+    "chat_prior_image_reinject_max": 4,
 }
 
 # Clamp bounds for the chat attachment knobs. The MB ceilings are deliberately
@@ -68,6 +73,9 @@ DEFAULT_SYSTEM_SETTINGS: dict[str, Any] = {
 CHAT_ATTACHMENT_MAX_FILE_MB_RANGE = (1, 1024)
 CHAT_ATTACHMENT_MAX_TOTAL_MB_RANGE = (1, 2048)
 CHAT_ATTACHMENT_CHARS_RANGE = (10_000, 5_000_000)
+# Zero is a real choice here — it turns prior-image re-injection off for a
+# deployment whose model or bandwidth cannot afford it.
+CHAT_PRIOR_IMAGE_REINJECT_RANGE = (0, 20)
 
 DEFAULT_AUTH_SETTINGS: dict[str, Any] = {
     "version": 1,
@@ -797,6 +805,8 @@ class RuntimeSettingsService:
             payload["chat_attachment_max_chars_per_doc"] = value
         if value := self._process_env_value("CHAT_ATTACHMENT_MAX_CHARS_TOTAL"):
             payload["chat_attachment_max_chars_total"] = value
+        if value := self._process_env_value("CHAT_PRIOR_IMAGE_REINJECT_MAX"):
+            payload["chat_prior_image_reinject_max"] = value
         return self._normalize_system(payload)
 
     def _apply_auth_process_overrides(self, settings: dict[str, Any]) -> dict[str, Any]:
@@ -1175,6 +1185,11 @@ class RuntimeSettingsService:
             },
             "chat_attachment_max_file_mb": max_file_mb,
             "chat_attachment_max_total_mb": max_total_mb,
+            "chat_prior_image_reinject_max": _coerce_clamped_int(
+                settings.get("chat_prior_image_reinject_max"),
+                DEFAULT_SYSTEM_SETTINGS["chat_prior_image_reinject_max"],
+                *CHAT_PRIOR_IMAGE_REINJECT_RANGE,
+            ),
             "chat_attachment_max_chars_per_doc": _coerce_clamped_int(
                 settings.get("chat_attachment_max_chars_per_doc"),
                 DEFAULT_SYSTEM_SETTINGS["chat_attachment_max_chars_per_doc"],
@@ -1307,6 +1322,23 @@ def compute_ws_max_size(max_total_bytes: int) -> int:
     """
     inflated = (max_total_bytes * 4) // 3
     return max(_WS_MAX_SIZE_FLOOR, inflated + 8 * 1024 * 1024)
+
+
+def get_prior_image_reinject_limit() -> int:
+    """How many earlier images a later turn re-attaches.
+
+    Read at call time like the attachment policy above, so a deployment can
+    change it without a restart, and 0 turns the behaviour off entirely.
+
+    Resolved with the seeded default rather than by subscript: a system.json
+    written before this key existed is the normal state of every upgraded
+    install, and a missing knob must not take image re-injection down with it.
+    """
+    return _coerce_clamped_int(
+        load_system_settings().get("chat_prior_image_reinject_max"),
+        DEFAULT_SYSTEM_SETTINGS["chat_prior_image_reinject_max"],
+        *CHAT_PRIOR_IMAGE_REINJECT_RANGE,
+    )
 
 
 def get_ws_max_size() -> int:

@@ -966,3 +966,86 @@ async def test_historical_attachment_without_extracted_text_shows_a_reason() -> 
     assert "at-att-old" in manifest
     assert "extraction" in manifest
     assert "at-att-old" not in source_index
+
+
+def _image_messages(count: int) -> list[dict[str, Any]]:
+    return [
+        {
+            "id": index,
+            "role": "user",
+            "attachments": [
+                {
+                    "id": f"img-{index}",
+                    "type": "image",
+                    "filename": f"{index}.png",
+                    "mime_type": "image/png",
+                    "url": f"/files/attachments/s1/img-{index}/{index}.png",
+                }
+            ],
+        }
+        for index in range(1, count + 1)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_prior_image_reinjection_is_bounded_by_system_settings(monkeypatch) -> None:
+    """The cap is deployment policy, not a number frozen into the collector.
+
+    Every later turn re-sends what this returns, so an operator whose model or
+    bandwidth cannot afford four images has to be able to say so.
+    """
+    store = FakeStore(messages=_image_messages(6))
+    monkeypatch.setattr(
+        "deeptutor.services.config.get_prior_image_reinject_limit",
+        lambda: 2,
+    )
+
+    collected = await collect_prior_image_attachments(store, session_id="s1", leaf_message_id=None)
+
+    assert [entry["id"] for entry in collected] == ["img-6", "img-5"]
+
+
+@pytest.mark.asyncio
+async def test_a_zero_limit_turns_prior_image_reinjection_off(monkeypatch) -> None:
+    """0 is a real setting: no re-injection, and no lineage read to do it."""
+    store = FakeStore(messages=_image_messages(3))
+    monkeypatch.setattr(
+        "deeptutor.services.config.get_prior_image_reinject_limit",
+        lambda: 0,
+    )
+
+    assert await collect_prior_image_attachments(store, session_id="s1", leaf_message_id=None) == []
+
+
+@pytest.mark.asyncio
+async def test_a_system_json_written_before_this_knob_existed_still_reinjects(
+    monkeypatch,
+) -> None:
+    """Every upgraded install has one, and it must not take the feature down.
+
+    Reading the knob by subscript turned a missing key into a KeyError raised
+    from inside turn setup, which surfaced as unrelated session tests failing.
+    """
+    from deeptutor.services.config import runtime_settings
+
+    monkeypatch.setattr(
+        runtime_settings,
+        "load_system_settings",
+        lambda: {"chat_attachment_max_file_mb": 20},
+    )
+    store = FakeStore(messages=_image_messages(2))
+
+    collected = await collect_prior_image_attachments(store, session_id="s1", leaf_message_id=None)
+
+    assert [entry["id"] for entry in collected] == ["img-2", "img-1"]
+
+
+def test_the_reinject_cap_is_clamped_into_a_sane_range() -> None:
+    from deeptutor.services.config.runtime_settings import (
+        CHAT_PRIOR_IMAGE_REINJECT_RANGE,
+        DEFAULT_SYSTEM_SETTINGS,
+    )
+
+    low, high = CHAT_PRIOR_IMAGE_REINJECT_RANGE
+    assert low == 0, "0 must stay reachable: it is how the feature is turned off"
+    assert low <= DEFAULT_SYSTEM_SETTINGS["chat_prior_image_reinject_max"] <= high

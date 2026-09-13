@@ -704,8 +704,9 @@ async def _load_lineage(
 # on the upload turn only), so from the second turn onward the model could not
 # see an image it was just discussing. The turn executor re-attaches what this
 # collector returns; the cap keeps a long image-heavy conversation from
-# re-sending unbounded payloads every turn.
-MAX_REINJECTED_IMAGES = 4
+# re-sending unbounded payloads every turn, and lives in system settings
+# beside the other chat-attachment policy — a deployment whose model or
+# bandwidth cannot afford the re-send sets it to 0.
 
 
 async def collect_prior_image_attachments(
@@ -714,7 +715,7 @@ async def collect_prior_image_attachments(
     session_id: str,
     leaf_message_id: int | None,
     exclude_urls: set[str] | None = None,
-    limit: int = MAX_REINJECTED_IMAGES,
+    limit: int | None = None,
 ) -> list[dict[str, Any]]:
     """Return this conversation's earlier image attachments, most recent first.
 
@@ -725,6 +726,12 @@ async def collect_prior_image_attachments(
     from the attachment store at request time). Text attachments are not
     collected here: they are re-served by the inventory's own historical walk.
     """
+    if limit is None:
+        from deeptutor.services.config import get_prior_image_reinject_limit
+
+        limit = get_prior_image_reinject_limit()
+    if limit <= 0:
+        return []
     excluded_urls = exclude_urls or set()
     collected: list[dict[str, Any]] = []
     seen_urls: set[str] = set()
