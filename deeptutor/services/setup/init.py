@@ -98,6 +98,12 @@ DEFAULT_AGENTS_SETTINGS = {
         "vision_solver": {"temperature": 0.3, "max_tokens": 12000},
         "math_animator": {"temperature": 0.4, "max_tokens": 12000},
     },
+    # Settings' "test this model" probe. A reasoning model spends its budget
+    # thinking before it answers, so the 1024 that sufficed for a chat model
+    # returned an empty completion and the probe reported the model broken.
+    "diagnostics": {
+        "llm_probe": {"temperature": 0.1, "max_tokens": 4096},
+    },
 }
 
 
