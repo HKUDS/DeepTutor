@@ -21,6 +21,10 @@ DEFAULT_SYSTEM_SETTINGS: dict[str, Any] = {
     "version_check_enabled": True,
     "backend_port": 8001,
     "backend_workers": 1,
+    # Seconds the launcher waits for the backend health endpoint before
+    # giving up. ARM devices and existing workspaces regularly need more than
+    # the historical hard-coded 60 (#1435).
+    "backend_ready_timeout_s": 60,
     "frontend_port": 3782,
     "next_public_api_base_external": "",
     "next_public_api_base": "",
@@ -1150,6 +1154,9 @@ class RuntimeSettingsService:
             "version_check_enabled": _coerce_bool(settings.get("version_check_enabled"), True),
             "backend_port": _coerce_port(settings.get("backend_port"), 8001),
             "backend_workers": _coerce_clamped_int(settings.get("backend_workers"), 1, 1, 64),
+            "backend_ready_timeout_s": _coerce_clamped_int(
+                settings.get("backend_ready_timeout_s"), 60, 30, 600
+            ),
             "frontend_port": _coerce_port(settings.get("frontend_port"), 3782),
             "next_public_api_base_external": public_api_base,
             "next_public_api_base": _string(settings.get("next_public_api_base")),

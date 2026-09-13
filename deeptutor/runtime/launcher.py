@@ -505,6 +505,21 @@ def _resolve_port_conflicts(
             _kill_port_listeners(listeners)
 
 
+def _backend_ready_timeout(settings: dict) -> int:
+    """Backend readiness budget from system settings, clamped to a sane range.
+
+    ARM devices and existing workspaces regularly exceed the historical
+    hard-coded 60 seconds while still initializing normally, and killing a
+    healthy-but-slow backend only guarantees a systemd restart loop (#1435).
+    """
+    raw = settings.get("backend_ready_timeout_s")
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return BACKEND_READY_TIMEOUT
+    return max(30, min(value, 600))
+
+
 def _wait_for_http(
     *,
     name: str,
@@ -1245,7 +1260,9 @@ def start(
     init_user_directories(runtime_home)
     ensure_runtime_settings_files()
     settings = load_launch_settings(runtime_home)
-    backend_workers = max(1, int(load_system_settings().get("backend_workers") or 1))
+    system_settings = load_system_settings()
+    backend_workers = max(1, int(system_settings.get("backend_workers") or 1))
+    backend_ready_timeout = _backend_ready_timeout(system_settings)
     runtime_env = export_runtime_settings_to_env(overwrite=True)
     auth_enabled = bool(load_auth_settings()["enabled"])
 
@@ -1433,7 +1450,7 @@ def start(
             name=_t("start.backend"),
             url=f"http://127.0.0.1:{backend_port}/",
             process=backend,
-            timeout=BACKEND_READY_TIMEOUT,
+            timeout=backend_ready_timeout,
             should_stop=should_stop,
         )
         if should_stop():

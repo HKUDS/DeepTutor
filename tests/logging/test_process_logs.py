@@ -1,5 +1,7 @@
 import logging
 
+import pytest
+
 from deeptutor.logging import (
     PROCESS_LOG_PRIVATE_ATTR,
     ProcessLogEvent,
@@ -57,3 +59,40 @@ def test_capture_process_logs_excludes_server_only_diagnostics():
             )
 
     assert events == []
+
+
+@pytest.mark.asyncio
+async def test_capture_process_logs_schedules_coroutines_logged_off_loop():
+    """Log records emitted from worker threads (no running loop there) must
+    still deliver their awaited event onto the capture's own loop.
+
+    RAG retrieval logs from ingestion/executor threads; when the emitted
+    coroutine was dropped instead of scheduled, the live raw-log stream lost
+    every such line and the process leaked a "never awaited" RuntimeWarning
+    per record (#1435)."""
+    import asyncio
+
+    received: list[tuple[str, str]] = []
+
+    async def sink(event_type: str, message: str) -> None:
+        received.append((event_type, message))
+
+    def emit(event: ProcessLogEvent) -> object:
+        return sink("raw_log", event.message)
+
+    logger = logging.getLogger("deeptutor.tests.process.threaded")
+    original_level = logger.level
+    logger.setLevel(logging.INFO)
+
+    try:
+        with capture_process_logs(emit):
+            await asyncio.to_thread(logger.warning, "indexed chunks from a worker thread")
+            # Give the scheduled coroutine a bounded window to run on the loop.
+            for _ in range(50):
+                if received:
+                    break
+                await asyncio.sleep(0.02)
+    finally:
+        logger.setLevel(original_level)
+
+    assert ("raw_log", "indexed chunks from a worker thread") in received

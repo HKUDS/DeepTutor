@@ -700,3 +700,13 @@ def test_stop_requests_only_the_registered_detached_launcher(
     assert launcher.stop(tmp_path, timeout=0.5) is True
     assert not paths.state.exists()
     assert not paths.stop.exists()
+
+
+def test_backend_ready_timeout_uses_system_setting() -> None:
+    from deeptutor.runtime import launcher
+
+    assert launcher._backend_ready_timeout({"backend_ready_timeout_s": 90}) == 90
+    # Unset falls back to the historical default; out-of-range values clamp.
+    assert launcher._backend_ready_timeout({}) == 60
+    assert launcher._backend_ready_timeout({"backend_ready_timeout_s": 5}) == 30
+    assert launcher._backend_ready_timeout({"backend_ready_timeout_s": 10_000}) == 600

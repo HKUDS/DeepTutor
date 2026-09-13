@@ -627,3 +627,17 @@ def test_compute_ws_max_size_floor_and_inflation() -> None:
     derived = compute_ws_max_size(total)
     assert derived > (total * 4) // 3
     assert derived == (total * 4) // 3 + 8 * 1024 * 1024
+
+
+def test_system_settings_clamp_backend_ready_timeout(monkeypatch, tmp_path: Path) -> None:
+    _clear_runtime_env(monkeypatch)
+    service = RuntimeSettingsService(tmp_path / "settings")
+
+    system = service.save_system({"backend_ready_timeout_s": 999})
+    assert system["backend_ready_timeout_s"] == 600
+
+    system = service.save_system({"backend_ready_timeout_s": 5})
+    assert system["backend_ready_timeout_s"] == 30
+
+    system = service.save_system({})
+    assert system["backend_ready_timeout_s"] == 60

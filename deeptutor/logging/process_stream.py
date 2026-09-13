@@ -61,11 +61,19 @@ class ProcessLogHandler(logging.Handler):
         task_id: str | None = None,
         turn_id: str | None = None,
         min_level: int = logging.INFO,
+        source_loop: asyncio.AbstractEventLoop | None = None,
     ) -> None:
         super().__init__(level=min_level)
         self._emit = emit
         self._task_id = task_id
         self._turn_id = turn_id
+        # The loop the capture was created on. Log records also arrive from
+        # worker threads (ingestion, executors, run_in_executor bodies) where
+        # no loop is running; a coroutine returned by *emit* in that case must
+        # be scheduled back onto this loop, or it is dropped with a "never
+        # awaited" RuntimeWarning and the live log line never reaches the
+        # stream (#1435).
+        self._source_loop = source_loop
         self.addFilter(ContextFilter())
 
     def emit(self, record: logging.LogRecord) -> None:
@@ -82,6 +90,8 @@ class ProcessLogHandler(logging.Handler):
                 try:
                     loop = asyncio.get_running_loop()
                 except RuntimeError:
+                    if self._source_loop is not None and self._source_loop.is_running():
+                        asyncio.run_coroutine_threadsafe(result, self._source_loop)
                     return
                 asyncio.ensure_future(result, loop=loop)
         except Exception:
@@ -97,11 +107,16 @@ def capture_process_logs(
     min_level: int = logging.INFO,
 ) -> Iterator[ProcessLogHandler]:
     """Capture matching stdlib log records and emit ``ProcessLogEvent`` objects."""
+    try:
+        source_loop: asyncio.AbstractEventLoop | None = asyncio.get_running_loop()
+    except RuntimeError:  # captured off-loop; coroutine scheduling degrades
+        source_loop = None
     handler = ProcessLogHandler(
         emit,
         task_id=task_id,
         turn_id=turn_id,
         min_level=min_level,
+        source_loop=source_loop,
     )
     root = logging.getLogger()
     root.addHandler(handler)
