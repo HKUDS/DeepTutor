@@ -1139,7 +1139,7 @@ async def canonicalize_book(req: CanonicalizeRequest) -> dict[str, Any]:
         if req.source == "layout_json" or req.layout is not None:
             if req.layout is None:
                 raise HTTPException(status_code=400, detail="source=layout_json requires layout")
-            spine = layout_to_spine(book.id, req.layout)
+            spine = layout_to_spine(book.id, req.layout, title=req.title)
         else:
             if not req.toc:
                 raise HTTPException(status_code=400, detail="toc is required for source=toc_json")
@@ -1328,7 +1328,7 @@ async def import_spine(book_id: str, req: SpineImportRequest) -> dict[str, Any]:
         if req.source == "layout_json" or req.layout is not None:
             if req.layout is None:
                 raise HTTPException(status_code=400, detail="source=layout_json requires layout")
-            spine = layout_to_spine(book_id, req.layout)
+            spine = layout_to_spine(book_id, req.layout, title=req.title)
         else:
             if not req.toc:
                 raise HTTPException(status_code=400, detail="toc is required for source=toc_json")
