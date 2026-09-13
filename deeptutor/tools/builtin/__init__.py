@@ -210,6 +210,12 @@ class KbFilesTool(_PromptHintsMixin, BaseTool):
         )
 
 
+# How many of a skill's files a not-found message names before it truncates.
+# Enough to identify the right path in any skill shaped like the ones shipped;
+# short enough that a skill carrying a reference tree cannot flood the turn.
+_SKILL_FILE_LIST_LIMIT = 40
+
+
 def _kb_files_limit(raw: Any) -> int:
     """Clamp a model-supplied ``limit`` into range; fall back on anything unusable."""
     try:
@@ -1346,11 +1352,19 @@ class ReadSkillTool(_PromptHintsMixin, BaseTool):
             try:
                 content = service.read_skill_file(name, rel_path)
             except SkillFileNotFoundError:
-                files = ", ".join(service.list_skill_files(name)) or "none"
+                # The skill resolved, so the name was right and only the path
+                # was wrong — naming its actual files is what ends the retry
+                # loop. A skill with a large references/ tree would otherwise
+                # spend the turn's context listing itself, so the list is
+                # bounded and says when it was cut.
+                available = service.list_skill_files(name)
+                shown = ", ".join(available[:_SKILL_FILE_LIST_LIMIT]) or "none"
+                if len(available) > _SKILL_FILE_LIST_LIMIT:
+                    shown += f", … ({len(available) - _SKILL_FILE_LIST_LIMIT} more)"
                 return ToolResult(
                     content=(
                         f"(file not found: {rel_path!r} does not exist in skill "
-                        f"{name!r}. Files: {files}. Do NOT try other skill names.)"
+                        f"{name!r}, which holds: {shown})"
                     ),
                     success=False,
                 )
