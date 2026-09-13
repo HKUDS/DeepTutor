@@ -273,7 +273,7 @@ async def delete_session(session_id: str):
         runtime = get_turn_runtime_manager()
         for turn in await list_active_turns(session_id):
             await runtime.cancel_turn(turn["id"])
-    deleted = await store.delete_session(session_id)
+    deleted = await store.soft_delete_session(session_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Session not found")
     return {"deleted": True, "session_id": session_id, "recycled": True}
@@ -292,7 +292,7 @@ async def restore_session(session_id: str):
 @router.delete("/{session_id}/purge")
 async def purge_session(session_id: str):
     store = get_session_store()
-    purged = await store.purge_session(session_id)
+    purged = await store.hard_delete_session(session_id)
     if not purged:
         raise HTTPException(status_code=404, detail="Session not found in recycle bin")
     try:

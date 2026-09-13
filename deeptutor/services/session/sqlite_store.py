@@ -1358,6 +1358,24 @@ class SQLiteSessionStore:
 
     def _delete_session_sync(self, session_id: str) -> bool:
         with self._connect() as conn:
+            cur = conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+            conn.commit()
+        return cur.rowcount > 0
+
+    async def delete_session(self, session_id: str) -> bool:
+        """Remove a session outright, recycle bin or not.
+
+        The internal cleanups own this one: a reading workspace that is gone
+        takes its sessions with it, and those never belonged to the learner's
+        recycle bin — they would arrive there unasked and restore into a
+        workspace that no longer exists. The chat surface calls
+        :meth:`soft_delete_session` instead, which is the deletion a learner
+        performs and can undo.
+        """
+        return await self._run(self._delete_session_sync, session_id)
+
+    def _soft_delete_session_sync(self, session_id: str) -> bool:
+        with self._connect() as conn:
             cur = conn.execute(
                 "UPDATE sessions SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL",
                 (time.time(), session_id),
@@ -1365,8 +1383,9 @@ class SQLiteSessionStore:
             conn.commit()
         return cur.rowcount > 0
 
-    async def delete_session(self, session_id: str) -> bool:
-        return await self._run(self._delete_session_sync, session_id)
+    async def soft_delete_session(self, session_id: str) -> bool:
+        """Move a session to the recycle bin, where a restore can reach it."""
+        return await self._run(self._soft_delete_session_sync, session_id)
 
     def _restore_session_sync(self, session_id: str) -> bool:
         with self._connect() as conn:
@@ -1380,7 +1399,7 @@ class SQLiteSessionStore:
     async def restore_session(self, session_id: str) -> bool:
         return await self._run(self._restore_session_sync, session_id)
 
-    def _purge_session_sync(self, session_id: str) -> bool:
+    def _hard_delete_session_sync(self, session_id: str) -> bool:
         with self._connect() as conn:
             cur = conn.execute(
                 "DELETE FROM sessions WHERE id = ? AND deleted_at IS NOT NULL",
@@ -1389,8 +1408,9 @@ class SQLiteSessionStore:
             conn.commit()
         return cur.rowcount > 0
 
-    async def purge_session(self, session_id: str) -> bool:
-        return await self._run(self._purge_session_sync, session_id)
+    async def hard_delete_session(self, session_id: str) -> bool:
+        """Delete a session that is already in the recycle bin, permanently."""
+        return await self._run(self._hard_delete_session_sync, session_id)
 
     def _list_deleted_sessions_sync(
         self,

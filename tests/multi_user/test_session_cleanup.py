@@ -16,10 +16,10 @@ def test_delete_session_cleans_only_current_user_artifacts(as_user, monkeypatch)
     attachment_id = "upload-1"
 
     class _SessionStore:
-        async def delete_session(self, candidate: str) -> bool:
+        async def soft_delete_session(self, candidate: str) -> bool:
             return candidate == session_id
 
-        async def purge_session(self, candidate: str) -> bool:
+        async def hard_delete_session(self, candidate: str) -> bool:
             return candidate == session_id
 
     monkeypatch.setattr(sessions_router, "get_session_store", lambda: _SessionStore())

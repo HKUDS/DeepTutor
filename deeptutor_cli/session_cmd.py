@@ -39,7 +39,7 @@ def register(app: typer.Typer) -> None:
     def delete_session(
         session_id: str = typer.Argument(..., help="Session id."),
     ) -> None:
-        """Delete a session and all of its turns/messages."""
+        """Move a session to the recycle bin (soft delete, recoverable)."""
         maybe_run(_delete_session(session_id))
 
     @app.command("rename")
