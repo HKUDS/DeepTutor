@@ -1,0 +1,239 @@
+/*
+    JSXGraph 1.13.1
+
+    Copyright 2008-2026
+        Matthias Ehmann,
+        Michael Gerhaeuser,
+        Carsten Miller,
+        Bianca Valentin,
+        Andreas Walter,
+        Alfred Wassermann,
+        Peter Wilfahrt
+
+    This file is part of JSXGraph.
+
+    JSXGraph is free software dual licensed under the GNU LGPL or MIT License.
+
+    You can redistribute it and/or modify it under the terms of the
+
+      * GNU Lesser General Public License as published by
+        the Free Software Foundation, either version 3 of the License, or
+        (at your option) any later version
+      OR
+      * MIT License: https://github.com/jsxgraph/jsxgraph/blob/master/LICENSE.MIT
+
+    JSXGraph is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License and
+    the MIT License along with JSXGraph. If not, see <https://www.gnu.org/licenses/>
+    and <https://opensource.org/licenses/MIT/>.
+ */
+
+.jxgbox {
+    /* for IE 7 */
+    position: relative;
+    overflow: hidden;
+    background-color: #fff;
+    border-style: solid;
+    border-width: 1px;
+    border-color: #356aa0;
+    border-radius: 10px;
+    -webkit-border-radius: 10px;
+    margin: 0;
+    -ms-touch-action: none;
+    /* "touch-action: none;" is set with JavaScript. */
+}
+
+.jxgbox svg text {
+    cursor: default;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+.JXGtext {
+    font-family: Courier, monospace;
+    /*
+     * The default font family is now set in
+     * JXG.Options.text.cssdefaultstyle = 'font-family: Arial, Helvetica, Geneva, sans-serif;'
+     */
+
+    /* "background-color: transparent;" may produce artefacts in IE. Solution: setting a color explicitly. */
+    background-color: transparent;
+    padding: 0;
+    margin: 0;
+}
+
+.JXGinfobox {
+    border-style: none;
+    border-width: 0;
+    border-color: black;
+}
+
+/* CSS attributes will (permantely) overwrite attributes set in JSXGraph */
+.JXGimage {
+    /* opacity: 1.0; */
+}
+
+.JXGimageHighlight {
+    /* opacity: 0.6; */
+}
+
+.jxgbox :focus {
+    outline-width: 0.5px;
+    outline-style: dotted;
+}
+
+/* CSS rules for the navigation bar */
+
+.JXG_navigation {
+    position: absolute;
+    right: 5px;
+    bottom: 5px;
+
+    z-index: 100;
+
+    background-color: transparent;
+    padding: 2px;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.JXG_navigation_button {
+    color: #666;
+}
+
+.JXG_navigation_button_left {
+}
+
+.JXG_navigation_button_right {
+}
+
+.JXG_navigation_button_up {
+}
+
+.JXG_navigation_button_down {
+}
+
+.JXG_navigation_button_out {
+}
+
+.JXG_navigation_button_100 {
+}
+
+.JXG_navigation_button_in {
+}
+
+.JXG_navigation_button_fullscreen {
+}
+
+.JXG_navigation_button_reload {
+}
+
+.JXG_navigation_button_cleartraces {
+}
+
+.JXG_navigation_button_screenshot {
+}
+
+.JXG_navigation_button:hover {
+    border-radius: 2px;
+    background: rgba(184, 184, 184, 0.5);
+}
+
+.JXG_navigation_button svg {
+    top: 0.2em;
+    position: relative;
+    padding: 0;
+}
+
+/* CSS rules for the wrapping div in fullscreen mode */
+
+.JXG_wrap_private:-moz-full-screen {
+    background-color: #ccc;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.JXG_wrap_private:-webkit-full-screen {
+    background-color: #ccc;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.JXG_wrap_private:fullscreen {
+    background-color: #ccc;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.JXG_wrap_private:-ms-fullscreen {
+    background-color: #ccc;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+}
+
+/* Classes for smartlabels */
+
+.smart-label-solid {
+    padding: 1px 7px 1px 7px;
+    margin: 0;
+    color: white;
+    border-radius: 150px;
+    text-align: center;
+    vertical-align: middle;
+}
+
+.smart-label-outline {
+    padding: 1px 7px 1px 7px;
+    margin: 0;
+    border: solid 2px black;
+    background-color: white;
+    color: black;
+    border-radius: 15px;
+    text-align: center;
+    vertical-align: middle;
+}
+
+.smart-label-pure {
+    padding: 20px 7px 1px 7px;
+    margin: 0;
+    border: none;
+    background-color: transparent;
+    color: black;
+    border-radius: 15px;
+    text-align: center;
+    vertical-align: middle;
+}
+
+.smart-label-line,
+.smart-label-point {
+    background-color: #0072b2;
+    border-color: #0072b2;
+}
+
+.smart-label-point {
+    margin-top: 12px;
+}
+
+.smart-label-angle {
+    background-color: #e69f00;
+    border-color: #e69f00;
+    padding: 1px 7px 1px 7px;
+}
+
+.smart-label-polygon,
+.smart-label-circle {
+    background-color: #f0e442;
+    color: black;
+    border-color: #f0e442;
+    padding: 1px 7px 1px 7px;
+}
