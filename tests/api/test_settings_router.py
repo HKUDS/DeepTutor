@@ -247,7 +247,8 @@ def _patch_runtime(
         lambda _binding: _FakeEmbeddingAdapter,
     )
 
-    def _resolve_llm_runtime_config() -> ResolvedLLMConfig:
+    def _resolve_llm_runtime_config(*_args, **_kwargs) -> ResolvedLLMConfig:
+        # 兼容 llm_selection kwarg（DEEPTUTOR_BOOKGEN_PROFILE pin / scoped 选取）。
         catalog = service.load()
         profile = catalog["services"]["llm"]["profiles"][0]
         model = profile["models"][0]

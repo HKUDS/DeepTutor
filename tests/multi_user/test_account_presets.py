@@ -40,6 +40,10 @@ def test_learning_surface_routing_matches_complete_path_segments():
     assert _learning_surface_for_path("/api/question-notebook/entries") == "chat"
     assert _learning_surface_for_path("/api/reading-private") == ""
     assert _learning_surface_for_path("/api/questions") == ""
+    assert _learning_surface_for_path("/api/settings/llm-options") == "chat"
+    assert _learning_surface_for_path("/api/settings") == ""
+    assert _learning_surface_for_path("/api/settings/catalog") == ""
+    assert _learning_surface_for_path("/api/settings/llm-options/other") == ""
 
 
 @pytest.mark.parametrize("preset", ["standard", "custom"])
@@ -94,7 +98,7 @@ def test_learner_preset_expands_to_a_conservative_grant(preset_client):
         "locked_persona": "teacher",
         "allowed_capabilities": ["chat", "immersive_reading"],
         "default_capability": "immersive_reading",
-        "allowed_surfaces": ["chat", "reading"],
+        "allowed_surfaces": ["chat", "reading", "daily-plan", "assignments"],
         "reading": {
             "allow_upload": False,
             "material_ids": [],

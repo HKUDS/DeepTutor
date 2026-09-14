@@ -95,6 +95,8 @@ EMBEDDING_PROVIDER_ALIASES = {
     "lm_studio": "vllm",
     "llama_cpp": "vllm",
     "openai_compatible": "custom",
+    "volcengine_plan": "volcengine_agent_plan",
+    "ark_plan": "volcengine_agent_plan",
 }
 
 EMBEDDING_PROVIDER_LABELS = {
@@ -107,6 +109,7 @@ EMBEDDING_PROVIDER_LABELS = {
     "siliconflow": "SiliconFlow",
     "ollama": "Ollama",
     "cohere": "Cohere",
+    "volcengine_agent_plan": "Volcengine Agent Plan",
 }
 
 EMBEDDING_PROVIDER_DEFAULT_ENDPOINTS = {
@@ -123,6 +126,9 @@ EMBEDDING_PROVIDER_DEFAULT_ENDPOINTS = {
         "https://dashscope.aliyuncs.com/api/v1/services/embeddings/"
         "multimodal-embedding/multimodal-embedding"
     ),
+    # Agent Plan keys authenticate only against /api/plan/v3; the endpoint URL
+    # is fully qualified (no /embeddings appending) per the spec contract.
+    "volcengine_agent_plan": "https://ark.cn-beijing.volces.com/api/plan/v3/embeddings",
 }
 
 EMBEDDING_PROVIDERS_REQUIRING_EMBEDDINGS_PATH = {

@@ -250,6 +250,20 @@ EMBEDDING_PROVIDERS: dict[str, EmbeddingProviderSpec] = {
         max_batch_items=20,
         multimodal=True,
     ),
+    # Agent Plan (AFP-deducted) keys only authenticate against /api/plan/v3 —
+    # the plain ark gateway rejects them, hence a dedicated entry.
+    "volcengine_agent_plan": EmbeddingProviderSpec(
+        label="Volcengine Agent Plan",
+        adapter="openai_compat",
+        default_api_base=EMBEDDING_PROVIDER_DEFAULT_ENDPOINTS["volcengine_agent_plan"],
+        keywords=("volcengine", "doubao-embedding", "embedding-vision", "agent plan"),
+        is_local=False,
+        default_model="doubao-embedding-vision",
+        default_dim=2048,
+        # Ark embeddings API rejects `input` arrays longer than 10.
+        max_batch_items=10,
+        multimodal=True,
+    ),
     "custom": EmbeddingProviderSpec(
         label="OpenAI Compatible",
         mode="direct",
@@ -330,6 +344,14 @@ TTS_PROVIDERS: dict[str, VoiceProviderSpec] = {
         adapter="openrouter_tts",
         default_model="openai/gpt-4o-mini-tts",
         default_voice="alloy",
+    ),
+    "volc_plan": VoiceProviderSpec(
+        label="Volcano Agent Plan (Seed TTS 2.0)",
+        # Agent-Plan exclusive endpoint; the public /api/v3/tts line bills extra.
+        default_api_base="https://openspeech.bytedance.com/api/v3/plan/tts/unidirectional",
+        adapter="volc_plan_tts",
+        default_model="seed-tts-2.0",
+        default_voice="",  # required: pick a speaker from the seed-tts-2.0 catalog
     ),
     "groq": VoiceProviderSpec(
         label="Groq",
@@ -468,6 +490,11 @@ IMAGEGEN_PROVIDERS: dict[str, GenerationProviderSpec] = {
         default_api_base="https://ark.cn-beijing.volces.com/api/v3",
         default_model="doubao-seedream-3-0-t2i-250415",
     ),
+    "volcengine_agent_plan": GenerationProviderSpec(
+        label="Volcengine Agent Plan (Seedream)",
+        default_api_base="https://ark.cn-beijing.volces.com/api/plan/v3",
+        default_model="doubao-seedream-5.0-lite",
+    ),
     "siliconflow": GenerationProviderSpec(
         label="SiliconFlow",
         default_api_base="https://api.siliconflow.cn/v1",
@@ -516,6 +543,13 @@ VIDEOGEN_PROVIDERS: dict[str, GenerationProviderSpec] = {
         adapter="async_task",
         default_model="doubao-seedance-1-0-pro-250528",
     ),
+    "volcengine_agent_plan": GenerationProviderSpec(
+        label="Volcengine Agent Plan (Seedance)",
+        default_api_base="https://ark.cn-beijing.volces.com/api/plan/v3",
+        adapter="async_task",
+        # Hyphenated name; the dotted "2.0" spelling is rejected by Ark.
+        default_model="doubao-seedance-2-0-fast",
+    ),
     "custom": GenerationProviderSpec(
         label="Async Task (Custom)",
         default_api_base="",
@@ -533,6 +567,8 @@ GENERATION_PROVIDER_ALIASES = {
     "doubao": "volcengine",
     "seedream": "volcengine",
     "seedance": "volcengine",
+    "volcengine_plan": "volcengine_agent_plan",
+    "ark_plan": "volcengine_agent_plan",
     "azure": "azure_openai",
     "aoai": "azure_openai",
     "openai_compatible": "custom",
@@ -629,7 +665,10 @@ class ResolvedSearchConfig:
         return "ok"
 
 
-def _as_str(value: Any) -> str:
+def _as_str(value: Any) -> Any:
+    # YuEdu fork: api_key 支持数组（KeyPool 轮换）——list 原样透传，其余行为不变
+    if isinstance(value, list):
+        return [str(v).strip() for v in value if str(v).strip()]
     return str(value).strip() if value is not None else ""
 
 
