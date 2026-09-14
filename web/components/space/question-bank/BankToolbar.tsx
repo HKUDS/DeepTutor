@@ -101,6 +101,7 @@ export default function BankToolbar({
         <option value="mastery_path">{t("Mastery Path")}</option>
         <option value="immersive_reading">{t("Immersive Reading")}</option>
         <option value="book">{t("Book")}</option>
+        <option value="partner_chat">{t("Partner Chat")}</option>
       </select>
 
       <select

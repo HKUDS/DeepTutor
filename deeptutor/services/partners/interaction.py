@@ -115,6 +115,9 @@ class PartnerTurnContext:
     store: PartnerSessionStore
     own_memory: PathService
     shared_memory: PathService
+    #: Display name of the partner, for surfaces that label content with it
+    #: (e.g. the question-bank session a partner records mistakes into).
+    partner_name: str = ""
 
     @property
     def actor_id(self) -> str | None:
@@ -132,6 +135,7 @@ def build_partner_turn_context(
     store: PartnerSessionStore,
     *,
     legacy_own_memory: PathService,
+    partner_name: str = "",
 ) -> PartnerTurnContext:
     actor_id = personal_actor_id(actor)
     if actor_id is None:
@@ -141,6 +145,7 @@ def build_partner_turn_context(
             store=store,
             own_memory=legacy_own_memory,
             shared_memory=get_admin_path_service(),
+            partner_name=partner_name,
         )
 
     assert actor is not None
@@ -154,6 +159,7 @@ def build_partner_turn_context(
         store=store,
         own_memory=PathService(workspace_root=private_workspace),
         shared_memory=get_path_service_for_scope(actor.scope),
+        partner_name=partner_name,
     )
 
 

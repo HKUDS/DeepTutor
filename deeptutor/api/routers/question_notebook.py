@@ -18,7 +18,9 @@ from deeptutor.services.storage import get_attachment_store
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-AssessmentSource = Literal["deep_question", "mastery_path", "immersive_reading", "book"]
+AssessmentSource = Literal[
+    "deep_question", "mastery_path", "immersive_reading", "book", "partner_chat"
+]
 ScoreTrend = Literal["new", "improved", "declined", "unchanged"]
 
 
