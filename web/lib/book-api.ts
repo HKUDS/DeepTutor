@@ -1,3 +1,5 @@
+let activeBookId: string | null = null;
+
 import { apiFetch, apiUrl, wsUrl } from "@/lib/api";
 import {
   BookSocketOperationError,
@@ -110,6 +112,25 @@ export interface EstimateBasis {
 
 export const bookApi = {
   list: () => request<{ books: Book[]; can_create: boolean }>("/books"),
+  activeBookId: () => activeBookId,
+  submitRecitation: (params: {
+    book_id: string;
+    block_id: string;
+    line_ids: string[];
+    audio: Blob;
+  }) => {
+    const body = new FormData();
+    body.append("book_id", params.book_id);
+    body.append("block_id", params.block_id);
+    for (const lineId of params.line_ids) body.append("line_ids", lineId);
+    const extension = params.audio.type.includes("mp4")
+      ? "mp4"
+      : params.audio.type.includes("ogg")
+        ? "ogg"
+        : "webm";
+    body.append("audio", params.audio, `recitation.${extension}`);
+    return requestForm<RecitationResponse>("/books/recitation", body);
+  },
 
   /**
    * Cost of one chapter of each content type, at a given depth.
@@ -528,3 +549,58 @@ export interface BookShareState {
 
 // Re-exported so callers can keep importing the event type from book-api.
 export type { BookWsEvent } from "@/lib/book-ws-operation";
+
+export type RecitationDataState = "scored" | "stt_failed";
+
+export interface RecitationLineResult {
+  line_id: string;
+  expected_text: string;
+  recognized_text: string;
+  character_accuracy: number;
+  omissions: string[];
+  insertions: string[];
+}
+
+export interface RecitationAttempt {
+  id: string;
+  book_id: string;
+  block_id: string;
+  target_line_ids: string[];
+  transcript: string;
+  line_results: RecitationLineResult[];
+  overall_accuracy: number | null;
+  data_state: RecitationDataState;
+  created_at: number;
+}
+
+export interface RecitationSummary {
+  last_attempt_id: string;
+  attempt_count: number;
+  latest_accuracy: number | null;
+  best_accuracy: number | null;
+  data_state: RecitationDataState | "";
+  updated_at: number;
+}
+
+export interface RecitationResponse {
+  attempt: RecitationAttempt;
+  summary: RecitationSummary;
+}
+
+async function requestForm<T>(path: string, body: FormData): Promise<T> {
+  const res = await apiFetch(apiUrl(`${BASE}${path}`), {
+    method: "POST",
+    body,
+  });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const data = await res.json();
+      detail = (data && (data.detail || data.message)) || detail;
+    } catch {
+      // Keep the HTTP status text when the response is not JSON.
+    }
+    throw new Error(`book api ${path} → ${res.status}: ${detail}`);
+  }
+  return (await res.json()) as T;
+}

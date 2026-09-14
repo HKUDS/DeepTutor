@@ -1,6 +1,6 @@
 import { apiFetch, apiUrl } from "@/lib/api";
 
-export type VideoProvider = "youtube" | "invidious";
+export type VideoProvider = "youtube" | "invidious" | "bilibili";
 
 export interface TranscriptCue {
   start: number;
@@ -20,6 +20,13 @@ export type VideoPlayback =
       start_seconds: number;
     }
   | {
+      provider: "bilibili";
+      kind: "bilibili_iframe";
+      bvid: string;
+      page: number;
+      start_seconds: number;
+    }
+  | {
       provider: "invidious";
       kind: "html5";
       format_id: string;
@@ -34,7 +41,7 @@ export interface TimedMediaMaterial {
   type: "timed_media";
   material_id: string;
   source: {
-    provider: "youtube";
+    provider: VideoProvider;
     video_id: string;
     url: string;
     entry_time_seconds: number;
@@ -74,6 +81,7 @@ export interface VideoLearningSettings {
   default_provider: VideoProvider;
   youtube: { transcript_provider: "youtube_transcript_api" | "none" };
   invidious: { api_base_url: string; public_base_url: string };
+  bilibili?: { cc_cookie: string };
 }
 
 async function unwrap<T>(response: Response): Promise<T> {

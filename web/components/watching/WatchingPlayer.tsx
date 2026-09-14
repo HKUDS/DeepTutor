@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { apiUrl } from "@/lib/api";
 import {
+  DEFAULT_PLAYBACK_RATE,
   html5PlayerController,
   youtubePlayerController,
   type PlayerController,
@@ -22,10 +23,67 @@ interface WatchingPlayerProps {
 }
 
 export function WatchingPlayer(props: WatchingPlayerProps) {
+  if (props.playback.kind === "bilibili_iframe") {
+    return <BilibiliPlayer {...props} playback={props.playback} />;
+  }
   return props.playback.kind === "youtube_iframe" ? (
     <YouTubePlayer {...props} playback={props.playback} />
   ) : (
     <InvidiousPlayer {...props} playback={props.playback} />
+  );
+}
+
+/** Bilibili embed: the official external player has no JS API — we can start
+ *  at a timestamp (remount on seek) but cannot track live position. Same
+ *  honest contract as BilibiliReadingPlayer in the reading workspace. */
+function BilibiliPlayer({
+  playback,
+  onController,
+  onTime,
+}: WatchingPlayerProps & {
+  playback: Extract<VideoPlayback, { kind: "bilibili_iframe" }>;
+}) {
+  const { t } = useTranslation();
+  const [start, setStart] = useState(playback.start_seconds);
+  const timeRef = useRef(playback.start_seconds);
+  const controller = useMemo(
+    () => ({
+      currentTime: () => timeRef.current,
+      duration: () => Number.POSITIVE_INFINITY,
+      playbackRate: () => DEFAULT_PLAYBACK_RATE,
+      seek: (seconds: number) => {
+        const next = Math.max(0, seconds);
+        timeRef.current = next;
+        setStart(next);
+        onTime(next, Number.POSITIVE_INFINITY);
+      },
+      setPlaybackRate: () => undefined,
+      play: () => undefined,
+      pause: () => undefined,
+      destroy: () => undefined,
+      tracksPosition: false,
+    }),
+    [onTime],
+  );
+  useEffect(() => {
+    onController(controller);
+    onTime(timeRef.current, Number.POSITIVE_INFINITY);
+    return () => onController(null);
+  }, [controller, onController, onTime]);
+  return (
+    <div className="relative h-full w-full">
+      <iframe
+        src={`https://player.bilibili.com/player.html?bvid=${playback.bvid}&page=${playback.page}&autoplay=0&start=${Math.floor(start)}`}
+        title="Bilibili"
+        className="aspect-video h-full w-full border-0 bg-black"
+        allow="autoplay; fullscreen; picture-in-picture"
+        allowFullScreen
+        referrerPolicy="strict-origin-when-cross-origin"
+      />
+      <div className="pointer-events-none absolute right-2 bottom-2 rounded bg-slate-900/70 px-2 py-1 text-xs text-slate-200">
+        {t("Bilibili 播放器不支持进度跟随；答疑不受影响。")}
+      </div>
+    </div>
   );
 }
 
