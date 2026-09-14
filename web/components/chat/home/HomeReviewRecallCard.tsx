@@ -100,7 +100,8 @@ export default function HomeReviewRecallCard() {
     : state.otherCount
       ? `${state.primaryTitle} ${zh ? `等 ${state.otherCount + 1} 本在学` : `+ ${state.otherCount} more paths`}`
       : state.primaryTitle;
-  const href = hasWrong ? "/notebook" : "/space/learning";
+  const target = hasWrong ? "notebook" : "space/learning";
+  const href = `/${target}`;
 
   return (
     <div className="mb-6 w-full max-w-[960px]">

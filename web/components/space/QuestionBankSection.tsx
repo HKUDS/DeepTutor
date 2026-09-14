@@ -629,7 +629,7 @@ export default function QuestionBankSection() {
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[11px]">
                   <div className="flex items-center gap-2">
                     <Link
-                      href={`/?session=${encodeURIComponent(item.session_id)}`}
+                      href={{ pathname: "/", query: { session: item.session_id } }}
                       className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--muted)]/40 px-2.5 py-1 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
                     >
                       <ExternalLink size={10} />
@@ -637,7 +637,7 @@ export default function QuestionBankSection() {
                     </Link>
                     {item.followup_session_id && (
                       <Link
-                        href={`/?session=${encodeURIComponent(item.followup_session_id)}`}
+                        href={{ pathname: "/", query: { session: item.followup_session_id } }}
                         className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--muted)]/40 px-2.5 py-1 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
                       >
                         <MessageSquare size={10} />

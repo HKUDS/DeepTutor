@@ -4,7 +4,7 @@ import type {
   StructQuestion,
   StructQuestionsResponse,
   TextbookSummary,
-} from "@/app/(utility)/space/questions/types";
+} from "@/lib/exam-paper/types";
 
 /** Response envelope of GET /api/{kb_name}/textbook-tree. */
 export interface TextbookTreeResponse {

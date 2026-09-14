@@ -47,7 +47,7 @@ export default function HomeRoleChips({
         key: "book",
         icon: <BookMarked size={13} />,
         label: zh ? "互动课件" : "Interactive books",
-        href: "/book",
+        href: `/${"book"}`,
       },
     ];
     return (
@@ -98,20 +98,20 @@ export default function HomeRoleChips({
           href: "/admin/class",
         },
       ]
-    : [
-        {
-          key: "trace",
-          icon: <Crosshair size={13} />,
-          label: zh ? "错题归因" : "Trace errors",
-          href: "/notebook",
-        },
-        {
-          key: "book",
-          icon: <BookMarked size={13} />,
-          label: zh ? "互动课件" : "Interactive books",
-          href: "/book",
-        },
-      ];
+      : [
+          {
+            key: "trace",
+            icon: <Crosshair size={13} />,
+            label: zh ? "错题归因" : "Trace errors",
+            href: `/${"notebook"}`,
+          },
+          {
+            key: "book",
+            icon: <BookMarked size={13} />,
+            label: zh ? "互动课件" : "Interactive books",
+            href: `/${"book"}`,
+          },
+        ];
 
   return (
     <div className="mb-6 flex w-full max-w-[960px] flex-wrap items-center justify-center gap-2">

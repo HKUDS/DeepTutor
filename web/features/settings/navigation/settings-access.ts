@@ -9,6 +9,8 @@ export interface SettingsAccess {
   showLearnerOnly: boolean;
   /** Ordinary standard/custom accounts may act as authorized guardians. */
   showGuardianOnly: boolean;
+  /** A learning policy redacts deployment-owned settings surfaces. */
+  learningPolicyActive: boolean;
 }
 
 export const PENDING_SETTINGS_ACCESS: SettingsAccess = {
@@ -16,6 +18,7 @@ export const PENDING_SETTINGS_ACCESS: SettingsAccess = {
   hideAdminOnly: true,
   showLearnerOnly: false,
   showGuardianOnly: false,
+  learningPolicyActive: false,
 };
 
 /** Convert the backend's account identity into the settings visibility model. */
@@ -29,13 +32,19 @@ export function settingsAccessFromAuthStatus(
   const ordinaryAuthenticatedUser = Boolean(
     authStatus.enabled && authStatus.authenticated && !authStatus.is_admin,
   );
+  const learningPolicyActive = Boolean(
+    ordinaryAuthenticatedUser && authStatus.learning_policy,
+  );
   return {
     resolved: true,
     hideAdminOnly: Boolean(authStatus.enabled) && !authStatus.is_admin,
     showLearnerOnly:
-      ordinaryAuthenticatedUser && authStatus.preset === "learner",
+      ordinaryAuthenticatedUser &&
+      (learningPolicyActive || authStatus.preset === "learner"),
     showGuardianOnly:
       ordinaryAuthenticatedUser &&
+      !learningPolicyActive &&
       (authStatus.preset === "standard" || authStatus.preset === "custom"),
+    learningPolicyActive,
   };
 }
