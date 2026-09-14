@@ -401,7 +401,7 @@ async def require_admin(
     return payload
 
 
-def _learning_surface_for_path(path: str) -> str:
+def _learning_surface_for_path(path: str, method: str = "GET") -> str:
     normalized = "/" + str(path or "").lstrip("/")
     for root, surface in (
         ("/api/reading", "reading"),
@@ -410,9 +410,20 @@ def _learning_surface_for_path(path: str) -> str:
         ("/api/question", "chat"),
         ("/api/question-notebook", "chat"),
         ("/api/sessions", "chat"),
+        # Mastery Path progress/topics are the learner's own per-user data;
+        # the router already scopes every record to the current account, so
+        # all methods (including progress PATCH/POST) belong to "chat".
+        ("/api/mastery-paths", "chat"),
     ):
         if normalized == root or normalized.startswith(f"{root}/"):
             return surface
+    # Knowledge-center browsing is a legitimate learner activity, but KB
+    # mutations affect shared/admin-owned resources — read-only methods only.
+    if method.upper() in ("GET", "HEAD", "OPTIONS") and (
+        normalized == "/api/knowledge-bases"
+        or normalized.startswith("/api/knowledge-bases/")
+    ):
+        return "reading"
     return ""
 
 
@@ -424,7 +435,7 @@ async def require_learning_surface(
     from deeptutor.multi_user.learning_access import assert_learning_surface
 
     try:
-        assert_learning_surface(_learning_surface_for_path(request.url.path))
+        assert_learning_surface(_learning_surface_for_path(request.url.path, request.method))
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
 
