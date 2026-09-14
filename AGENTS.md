@@ -106,6 +106,7 @@ deeptutor start                   # backend + frontend together
 | `deeptutor/runtime/registry/`              | Tool + Capability registries         |
 | `deeptutor/runtime/bootstrap/builtin_capabilities.py` | Built-in capability class paths |
 | `deeptutor/services/config/runtime_settings.py` | JSON settings + process-env overrides |
+| `deeptutor/services/subagent/`             | Local/remote agent connectors; register each backend in `registry.py` and its model options in `models.py` (Grok CLI uses native `streaming-json`) |
 | `deeptutor/core/stream.py`, `stream_bus.py` | StreamEvent protocol + async fan-out |
 | `deeptutor/core/tool_protocol.py`          | `BaseTool` + `ToolDefinition`         |
 | `deeptutor/core/capability_protocol.py`    | `BaseCapability` + `CapabilityManifest` |

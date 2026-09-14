@@ -9,6 +9,7 @@ const ClaudeCodeAgentSettingsPage = () => (
   <SubagentSettingsEditor kind="claude_code" />
 );
 const CodexAgentSettingsPage = () => <SubagentSettingsEditor kind="codex" />;
+const GrokAgentSettingsPage = () => <SubagentSettingsEditor kind="grok" />;
 const AntigravityAgentSettingsPage = () => (
   <SubagentSettingsEditor kind="antigravity" />
 );
@@ -31,6 +32,7 @@ const DeepSeekHarnessAgentSettingsPage = () => (
 const AGENT_SECTIONS = [
   { key: "agent-claude-code", Component: ClaudeCodeAgentSettingsPage },
   { key: "agent-codex", Component: CodexAgentSettingsPage },
+  { key: "agent-grok", Component: GrokAgentSettingsPage },
   { key: "agent-antigravity", Component: AntigravityAgentSettingsPage },
   { key: "agent-kimi", Component: KimiAgentSettingsPage },
   { key: "agent-opencode", Component: OpencodeAgentSettingsPage },

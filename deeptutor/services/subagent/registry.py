@@ -2,7 +2,7 @@
 
 Add a new subagent by writing a :class:`SubagentBackend` and listing it here;
 the capability, API and UI all discover it through these helpers. Local-CLI
-backends (Claude Code, Codex, Antigravity CLI, Kimi CLI, opencode,
+backends (Claude Code, Codex, Grok CLI, Antigravity CLI, Kimi CLI, opencode,
 MiMo Code, Hermes Agent, OpenClaw, DeepSeek Harness), configured remote
 backends, and the in-process partner backend live in the same registry.
 ``local_cli`` and ``detectable`` control which backends participate in
@@ -18,6 +18,7 @@ from deeptutor.services.subagent.base import SubagentBackend
 from deeptutor.services.subagent.claude_code import ClaudeCodeBackend
 from deeptutor.services.subagent.codex import CodexBackend
 from deeptutor.services.subagent.deepseek_harness import DeepSeekHarnessBackend
+from deeptutor.services.subagent.grok import GrokBackend
 from deeptutor.services.subagent.hermes import HermesBackend
 from deeptutor.services.subagent.hermes_remote import HermesRemoteBackend
 from deeptutor.services.subagent.kimi import KimiBackend
@@ -31,6 +32,7 @@ _BACKENDS: dict[str, SubagentBackend] = {
     for backend in (
         ClaudeCodeBackend(),
         CodexBackend(),
+        GrokBackend(),
         AntigravityBackend(),
         KimiBackend(),
         OpencodeBackend(),
