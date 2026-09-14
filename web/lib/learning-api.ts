@@ -68,6 +68,8 @@ export interface MapKnowledgePoint {
   mastery: number;
   mastery_source: "system" | "learner" | "";
   override_note: string;
+  /** M4 学件挂载: bound YuEdu visualizer ids (may be absent on old data). */
+  visualizers?: string[];
 }
 
 export interface MapModule {
@@ -393,6 +395,66 @@ export async function generateModulesFromNotebook(
   if (!res.ok)
     throw new Error(`Failed to generate modules from notebook: ${res.status}`);
   return res.json();
+}
+
+export type SixDimensionKey =
+  | "knowledge"
+  | "procedure"
+  | "understanding"
+  | "transfer"
+  | "retention"
+  | "habit";
+
+export type SixDimensionEvidenceKind =
+  | "attempt"
+  | "error"
+  | "review"
+  | "route_task";
+
+export interface SixDimensionEvidenceRef {
+  kind: SixDimensionEvidenceKind;
+  id: string;
+}
+
+export interface SixDimensionResult {
+  key: SixDimensionKey;
+  score: number | null;
+  data_state: "scored" | "insufficient";
+  confidence: number;
+  evidence_count: number;
+  evidence_refs: SixDimensionEvidenceRef[];
+  explanation: string;
+  next_action: string;
+}
+
+export interface SixDimensionSnapshot {
+  book_id: string;
+  generated_at: number;
+  dimensions: SixDimensionResult[];
+  overall: number | null;
+}
+
+export interface SixDimensionWindow {
+  since?: number;
+  until?: number;
+}
+
+export async function fetchSixDimensionSnapshot(
+  bookId: string,
+  window: SixDimensionWindow = {},
+): Promise<SixDimensionSnapshot> {
+  const query = new URLSearchParams();
+  if (window.since !== undefined) query.set("since", String(window.since));
+  if (window.until !== undefined) query.set("until", String(window.until));
+  const suffix = query.size > 0 ? `?${query.toString()}` : "";
+  const res = await apiFetch(
+    apiUrl(
+      `/api/mastery-paths/progress/${encodeURIComponent(bookId)}/six-dimensions${suffix}`,
+    ),
+  );
+  if (!res.ok)
+    throw new Error(`Failed to fetch six-dimension snapshot: ${res.status}`);
+  return res.json() as Promise<SixDimensionSnapshot>;
 }
 
 // ── Mastery Path V2 product surface ──────────────────────────────────────
