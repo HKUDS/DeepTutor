@@ -154,6 +154,7 @@ def test_catalog_snapshot_round_trip_preserves_tuples() -> None:
         etag='"catalog-v1"',
         generation=7,
         account_hash="account-hash",
+        client_version="1.2.3",
     )
 
     restored = CatalogSnapshot.from_dict(snapshot.to_dict())
@@ -161,6 +162,54 @@ def test_catalog_snapshot_round_trip_preserves_tuples() -> None:
     assert restored == snapshot
     assert isinstance(restored.models, tuple)
     assert isinstance(restored.models[0].supported_reasoning_levels, tuple)
+
+
+@pytest.mark.parametrize("version", [True, 123, "", "1.2.3-beta", "1.2.3\n"])
+def test_catalog_snapshot_rejects_invalid_cached_client_version(version: object) -> None:
+    payload = CatalogSnapshot(
+        models=(),
+        source="live",
+        fetched_at=1_000,
+        etag=None,
+        generation=1,
+        account_hash="account-hash",
+    ).to_dict()
+    payload["client_version"] = version
+    with pytest.raises(CodexAuthError) as error:
+        CatalogSnapshot.from_dict(payload)
+    assert error.value.code == "catalog_corrupt"
+
+
+def test_legacy_catalog_defaults_to_valid_models_without_known_version() -> None:
+    payload = CatalogSnapshot(
+        models=(_model(),),
+        source="live",
+        fetched_at=1_000,
+        etag=None,
+        generation=1,
+        account_hash="account-hash",
+    ).to_dict()
+    del payload["models_valid"]
+    del payload["client_version"]
+    restored = CatalogSnapshot.from_dict(payload)
+    assert restored.models_valid is True
+    assert restored.client_version is None
+
+
+@pytest.mark.parametrize("value", [None, "false", 0, 1])
+def test_cache_validity_marker_must_be_boolean(value: object) -> None:
+    payload = CatalogSnapshot(
+        models=(),
+        source="live",
+        fetched_at=1_000,
+        etag=None,
+        generation=1,
+        account_hash="account-hash",
+    ).to_dict()
+    payload["models_valid"] = value
+    with pytest.raises(CodexAuthError) as error:
+        CatalogSnapshot.from_dict(payload)
+    assert error.value.code == "catalog_corrupt"
 
 
 def test_codex_model_round_trip_preserves_context_windows() -> None:
