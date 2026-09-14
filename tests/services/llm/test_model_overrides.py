@@ -57,9 +57,29 @@ def test_tunable_moonshot_series_keeps_the_callers_temperature(model: str) -> No
     assert _payload("moonshot", model)["temperature"] == pytest.approx(0.7)
 
 
-@pytest.mark.parametrize("model", ["gpt-4o", "claude-sonnet-5", "deepseek-chat"])
+@pytest.mark.parametrize(
+    "model", ["gpt-4o", "claude-haiku-4-5-20251001", "claude-3-5-sonnet", "deepseek-chat"]
+)
 def test_unrelated_models_are_untouched(model: str) -> None:
     assert _payload("openai", model)["temperature"] == pytest.approx(0.7)
+
+
+@pytest.mark.parametrize("model", ["claude-sonnet-5", "claude-opus-4-8"])
+@pytest.mark.parametrize("binding", ["openai", "anthropic", "no-such-provider"])
+def test_claude_models_that_deprecated_temperature_never_send_it(
+    binding: str, model: str
+) -> None:
+    """Anthropic answers HTTP 400 ``\`temperature\` is deprecated for this
+    model.`` for Sonnet 5 and Opus 4.8. Haiku 4.5 still accepts it, so the
+    rule names models, not the vendor prefix.
+
+    Verified against the live API on 2026-09-09. Like the Kimi case, the limit
+    belongs to Anthropic's API and not to the route, so it must also fire for
+    ``binding="openai"`` — which is how every OpenAI-compatible gateway in
+    front of Claude reaches these models.
+    """
+    assert "temperature" not in _payload(binding, model)
+    assert model_overrides_for(model, find_by_name(binding)) == {"temperature": None}
 
 
 def test_configured_binding_wins_over_the_vendor_fallback() -> None:
