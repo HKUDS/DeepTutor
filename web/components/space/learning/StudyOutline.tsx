@@ -12,7 +12,7 @@
  * second box inside a column that is already bounded.
  */
 
-import { ChevronsLeft, ChevronsRight } from "lucide-react";
+import { ChevronsLeft, ChevronsRight, Puzzle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import type { MapKnowledgePoint, MasteryTopic } from "@/lib/learning-api";
@@ -171,6 +171,17 @@ export function StudyOutline({
                         }`}
                       >
                         {point.name}
+                        {point.visualizers && point.visualizers.length > 0 && (
+                          <span
+                            title={`学件: ${point.visualizers.join(", ")}`}
+                            className="ml-1.5 inline-flex items-center gap-0.5 rounded-full
+                                       bg-teal-500/10 px-1.5 py-px align-middle text-[10px]
+                                       text-teal-600 dark:text-teal-400"
+                          >
+                            <Puzzle size={10} strokeWidth={2} />
+                            {point.visualizers.length}
+                          </span>
+                        )}
                       </span>
                     </div>
                   </li>
