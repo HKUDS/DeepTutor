@@ -16,7 +16,7 @@ GRANTS_DIR = SYSTEM_ROOT / "grants"
 LEARNING_CAPABILITIES = {"chat", "immersive_reading"}
 LEARNING_AGE_BANDS = {"6-8", "9-12", "13-15"}
 LEARNING_PERSONAS = {"teacher"}
-LEARNING_SURFACES = {"chat", "reading"}
+LEARNING_SURFACES = {"chat", "reading", "daily-plan", "assignments"}
 _EXTENSION_ID_RE = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
 
 # The admin-workspace KB id prefix (same literal as knowledge_access.ADMIN_PREFIX;
@@ -176,7 +176,7 @@ def learner_grant(user_id: str) -> dict[str, Any]:
                 "locked_persona": "teacher",
                 "allowed_capabilities": ["chat", "immersive_reading"],
                 "default_capability": "immersive_reading",
-                "allowed_surfaces": ["chat", "reading"],
+                "allowed_surfaces": ["chat", "reading", "daily-plan", "assignments"],
                 "reading": {
                     "allow_upload": False,
                     "material_ids": [],

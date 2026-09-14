@@ -121,6 +121,7 @@ SOLO_COMMANDS = frozenset(
         "rho",
         "varrho",
         "sigma",
+        "pmb",
         "varsigma",
         "tau",
         "upsilon",
@@ -554,27 +555,13 @@ def _apply_block_layers(block: Any, layers: list[str]) -> None:
 def _resolve_write_storage(book_id: str) -> Any:
     """Pick the storage layer the page API will actually serve *book_id* from.
 
-    ``resolve_book`` (multi_user/book_access) serves shared books from the
-    admin workspace; the admin + student views of a production shared textbook
-    all read that layer. A CLI run's ``get_book_storage()`` follows the
-    *current user*, so ``-u deeptutor`` against a shared book wrote (a copy
-    in) the user workspace the API never read — the 09-27 double-workspace
-    miss. Probe the admin layer first (a book living there is a shared
-    textbook, and that is the layer every reader hits), then fall back to the
-    current user's own workspace; when neither has the book, return own so the
-    familiar not-found error still surfaces.
+    Thin alias for :func:`deeptutor.book.storage.resolve_book_storage_layer`
+    (the shared-textbook layer probe, public since the asset route needed the
+    same semantics). Kept so the existing call sites and tests keep their name.
     """
-    from deeptutor.multi_user.paths import get_admin_path_service
+    from .storage import resolve_book_storage_layer
 
-    from .storage import BookStorage, get_book_storage
-
-    admin = BookStorage(path_service=get_admin_path_service())
-    if admin.load_book(book_id) is not None:
-        return admin
-    own = get_book_storage()
-    if own.load_book(book_id) is not None:
-        return own
-    return own
+    return resolve_book_storage_layer(book_id)
 
 
 def fix_book(book_id: str, *, dry_run: bool = False, storage: Any = None) -> dict[str, Any]:

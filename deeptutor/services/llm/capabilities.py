@@ -290,6 +290,9 @@ MODEL_OVERRIDES: dict[str, dict[str, object]] = {
     # fail-closed.
     # https://help.aliyun.com/zh/model-studio/vision-model
     "qwen3.8-max": {"supports_vision": True},
+    # SenseNova free-tier multimodal agent model — accepts image_url content
+    # (data-URI form) via the OpenAI-compatible chat endpoint.
+    "sensenova-6.8-flash-lite": {"supports_vision": True, "has_thinking_tags": True},
     "qwen/qwen2.5-vl": {"has_thinking_tags": True, "supports_vision": True},
     "qwen/qwen3-vl": {"has_thinking_tags": True, "supports_vision": True},
     "qwen/qwen2-vl": {"has_thinking_tags": True, "supports_vision": True},

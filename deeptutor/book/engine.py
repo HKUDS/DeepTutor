@@ -127,6 +127,11 @@ _UNFINISHED_PAGE_STATUSES = frozenset(
 _EDITABLE_BLOCK_TYPES = frozenset({BlockType.TEXT, BlockType.USER_NOTE, BlockType.CALLOUT})
 
 
+# Deterministic zero-LLM blocks: the generator runs at insert time even when
+# ``compile_now=False`` (user notes + imported textbook canon).
+_PASSTHROUGH_BLOCK_TYPES = frozenset({BlockType.USER_NOTE, BlockType.READING})
+
+
 def _body_key(block: Block) -> str:
     """Which payload key holds a block's prose.
 
@@ -1803,14 +1808,27 @@ class BookEngine:
                     await generator.generate(ctx)
                 self.compiler._finalize_page_status(page)
                 self.storage.save_page(page)
-        elif block_type == BlockType.USER_NOTE:
-            block.status = BlockStatus.READY
-            block.payload = {
-                "format": "markdown",
-                "body": str(merged_params.get("body") or ""),
-                "author": "user",
-            }
-            self.storage.save_page(page)
+        elif block_type in _PASSTHROUGH_BLOCK_TYPES:
+            # Zero-LLM canon path: user notes and imported textbook prose run
+            # their (deterministic) generator immediately — READY at insert.
+            from .blocks.base import BlockContext, get_block_registry
+
+            generator = get_block_registry().get(block_type)
+            if generator is not None:
+                ctx = BlockContext(
+                    book_id=book_id,
+                    chapter=chapter,
+                    page=page,
+                    block=block,
+                    language=self.storage.load_book(book_id).language
+                    if self.storage.load_book(book_id)
+                    else "en",
+                    knowledge_bases=self.storage.load_book(book_id).knowledge_bases
+                    if self.storage.load_book(book_id)
+                    else [],
+                )
+                await generator.generate(ctx)
+                self.storage.save_page(page)
         self.storage.append_log(
             book_id,
             f"inserted {block_type.value} block on page {page_id} (pos={position})",

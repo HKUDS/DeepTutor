@@ -99,7 +99,10 @@ def collect_images(content_list: list[dict[str, Any]]) -> list[FigureSource]:
         img_path = item.get("img_path")
         if not isinstance(img_path, str) or not img_path:
             continue
+        # MinerU emits both spellings across versions; prefer whichever exists.
         caption_parts = item.get("img_caption")
+        if caption_parts is None:
+            caption_parts = item.get("image_caption")
         caption = ""
         if isinstance(caption_parts, list):
             caption = "".join(str(p) for p in caption_parts if isinstance(p, str)).strip()

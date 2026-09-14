@@ -190,9 +190,49 @@ def initialize_environment() -> None:
         )
 
 
+def _bookgen_profile_llm_selection() -> dict[str, str] | None:
+    """The ``DEEPTUTOR_BOOKGEN_PROFILE`` pin, as a resolver selection payload.
+
+    Book block generation ran on the whole-site active model, so a weak
+    active pick silently degraded every generated quiz/callout. This env pin
+    lets a deployment hold block generation on a strong profile regardless of
+    what is active. Fails open: unset env, missing catalog, or an unknown
+    profile id all fall back to the active model, matching pre-pin behavior.
+    """
+    profile_id = os.environ.get("DEEPTUTOR_BOOKGEN_PROFILE", "").strip()
+    if not profile_id:
+        return None
+    try:
+        from deeptutor.services.config.model_catalog import get_model_catalog_service
+
+        catalog = get_model_catalog_service().load()
+    except Exception:
+        logger.warning(
+            "DEEPTUTOR_BOOKGEN_PROFILE=%r set but catalog unreadable; using active model",
+            profile_id,
+            exc_info=True,
+        )
+        return None
+    profiles = (catalog.get("services", {}).get("llm", {}) or {}).get("profiles", []) or []
+    for profile in profiles:
+        if not isinstance(profile, dict) or profile.get("id") != profile_id:
+            continue
+        models = profile.get("models") or []
+        if not models:
+            break
+        model_id = profile.get("active_model_id") or (models[0] or {}).get("id")
+        if model_id:
+            return {"profile_id": profile_id, "model_id": str(model_id)}
+        break
+    logger.warning(
+        "DEEPTUTOR_BOOKGEN_PROFILE=%r not found in catalog; using active model", profile_id
+    )
+    return None
+
+
 def _get_llm_config_from_resolver() -> LLMConfig:
     """Resolve LLM config from the TutorBot-style runtime adapter."""
-    resolved = resolve_llm_runtime_config()
+    resolved = resolve_llm_runtime_config(llm_selection=_bookgen_profile_llm_selection())
     if not resolved.model:
         raise LLMConfigError(
             "No active LLM model is configured. Please set it in Settings > Catalog."
@@ -235,6 +275,11 @@ def _get_llm_config_from_resolver() -> LLMConfig:
 def get_llm_config() -> LLMConfig:
     """
     Load LLM configuration.
+
+    When ``DEEPTUTOR_BOOKGEN_PROFILE`` names a configured profile, the
+    unscoped resolution pins to it — this is the fetch point every book block
+    generator and compile-pipeline agent shares. Per-request scoped configs
+    (chat model picks) still win over this.
 
     Returns:
         LLMConfig: Configuration dataclass

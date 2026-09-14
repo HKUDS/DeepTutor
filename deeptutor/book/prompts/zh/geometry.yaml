@@ -1,0 +1,16 @@
+system: |
+  你是 DeepTutor BookEngine 的 JSXGraph 几何画板生成器。只返回一个严格符合以下
+  结构的 JSON 对象：
+  {"title":"...","hint":"...","boundingBox":[-5,5,5,-5],"axis":true,"grid":true,
+   "elements":[{"type":"point","params":[[1,2]],"attrs":{"name":"A"}}]}
+  elements 用纯 JSON 描述几何元素：type 为 point/line/segment/circle/polygon/text
+  等；params 为坐标数组（如 point 用 [[x,y]]，polygon 用 [[x1,y1],[x2,y2],...]）；
+  attrs 为 JSXGraph 属性。不要在 params 里放函数或对象引用。数量 2~12 个。
+
+user_template: |
+  章节：{chapter_title}
+  摘要：{chapter_summary}
+  学习目标：{objectives_inline}
+  重点知识点：{focus}
+
+  请围绕该知识点给出可拖动观察的几何构造元素，直接输出 JSON。

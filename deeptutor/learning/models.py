@@ -1,10 +1,20 @@
 from __future__ import annotations
-
 from enum import Enum
 import time
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+SixDimensionKey = Literal[
+    "knowledge",
+    "procedure",
+    "understanding",
+    "transfer",
+    "retention",
+    "habit",
+]
+SixDimensionDataState = Literal["scored", "insufficient"]
+SixDimensionEvidenceKind = Literal["attempt", "error", "review", "route_task"]
 
 _KNOWLEDGE_TYPE_LEGACY: dict[str, str] = {
     "记忆型": "memory",
@@ -78,6 +88,21 @@ class LearningStage(str, Enum):
 
 
 class KnowledgePoint(BaseModel):
+    struct_path: str = ""
+    textbook_node_id: str = ""
+    # 前置 KP id 列表（canonical 树推导或人工编排；空=无前置）。
+    prerequisite_ids: list[str] = Field(default_factory=list)
+    # 课标要求层级：了解/理解/掌握/应用；""=未标注（旧 state 兼容兜底）。
+    curriculum_level: str = ""
+    # 印刷页起止 [start, end]（doc_intel 页脚法 printed_page）；None=未标注。
+    page_span: list[int] | None = None
+    # M4 KP 挂载: declarative YuEdu visualizer ids bound to this KP
+    # (e.g. "yuedu_function_explorer"). Surfaced to the tutor agent as a
+    # manifest hint; empty for KPs without a bound interactive.
+    visualizers: list[str] = Field(default_factory=list)
+    # 错题闭环题源: KP-bound question bank (meta["question_bank"] items +
+    # meta["bank_cursor"] rotation). Stored verbatim from the external QB.
+    meta: dict[str, Any] = Field(default_factory=dict)
     model_config = ConfigDict(extra="ignore")
 
     id: str
@@ -487,3 +512,101 @@ __all__ = [
     "LearnerMasteryOverride",
     "LearningProgress",
 ]
+
+class LearningEvidence(BaseModel):
+    """One immutable row of learner evidence (collection-side payload).
+
+    Written by the fail-open hooks in :class:`LearningService` and persisted
+    append-only by ``deeptutor.learning.evidence_store.EvidenceStore``. Field
+    names align with the ``evidence_captured`` schema of education-agent-skills
+    so the engine's decision side can query a stable, cross-book evidence
+    stream. ``confidence_*`` / ``hint_level_reached`` are reserved for the
+    tutor-persona capture pass and stay NULL until then.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    #: Row id assigned by SQLite on append; None until persisted.
+    id: int | None = None
+    created_at: float = Field(default_factory=time.time)
+    user_id: str = ""
+    book_id: str = ""
+    kp_id: str = ""
+    question_id: str = ""
+    session_id: str = ""
+    evidence_type: Literal["graded_quiz", "qualitative_gate"]
+    is_correct: bool | None = None
+    passed: bool | None = None
+    cognitive_gate: str = ""
+    confidence_before: int | None = None
+    confidence_after: int | None = None
+    hint_level_reached: int | None = None
+    error_type: str = ""
+    detail_json: dict[str, Any] = Field(default_factory=dict)
+
+class SixDimensionEvidenceRef(BaseModel):
+    """Stable pointer to one item of evidence behind a dimension score."""
+
+    kind: SixDimensionEvidenceKind
+    id: str = Field(min_length=1)
+
+class SixDimensionResult(BaseModel):
+    """One explainable dimension in a :class:`SixDimensionSnapshot`."""
+
+    key: SixDimensionKey
+    score: float | None = Field(default=None, ge=0, le=100)
+    data_state: SixDimensionDataState
+    confidence: float = Field(ge=0, le=1)
+    evidence_count: int = Field(ge=0)
+    evidence_refs: list[SixDimensionEvidenceRef] = Field(default_factory=list)
+    explanation: str
+    next_action: str
+
+    @model_validator(mode="after")
+    def _validate_score_and_evidence(self) -> SixDimensionResult:
+        if self.evidence_count != len(self.evidence_refs):
+            raise ValueError("evidence_count must match evidence_refs")
+        if self.data_state == "scored":
+            if self.score is None:
+                raise ValueError("scored dimensions require a score")
+            if not self.evidence_refs:
+                raise ValueError("scored dimensions require traceable evidence")
+        elif self.score is not None:
+            raise ValueError("insufficient dimensions must use a null score")
+        return self
+
+class SixDimensionSnapshot(BaseModel):
+    """A point-in-time, evidence-backed learner profile for one book."""
+
+    book_id: str
+    generated_at: float = Field(default_factory=time.time)
+    dimensions: list[SixDimensionResult]
+    overall: float | None = Field(default=None, ge=0, le=100)
+
+    @model_validator(mode="after")
+    def _validate_complete_dimension_set(self) -> SixDimensionSnapshot:
+        expected = {
+            "knowledge",
+            "procedure",
+            "understanding",
+            "transfer",
+            "retention",
+            "habit",
+        }
+        keys = [dimension.key for dimension in self.dimensions]
+        if len(keys) != 6 or set(keys) != expected:
+            raise ValueError("dimensions must contain each six-dimension key exactly once")
+        return self
+
+
+# Stages removed in the Mastery Path simplification are mapped onto the nearest
+# surviving stage so progress persisted by the older engine still deserializes.
+_STAGE_LEGACY: dict[str, str] = {
+    "diagnostic_phase1": "diagnostic",
+    "diagnostic_phase2": "diagnostic",
+    "metacognitive_intro": "explain",
+    "plan": "explain",
+    "pretest": "explain",
+    "practice_quiz": "practice",
+    "module_test": "review",
+}

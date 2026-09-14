@@ -429,7 +429,7 @@ class SourceExplorer(BaseAgent):
             try:
                 result = await rag_search(query=query, kb_name=kb)
             except Exception as exc:
-                logger.debug(f"rag_search({kb}, {query!r}) failed: {exc}")
+                logger.warning("SourceExplorer retrieval failed for KB '%s': %s", kb, exc)
                 return []
             if not isinstance(result, dict):
                 return []

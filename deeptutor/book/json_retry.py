@@ -10,9 +10,9 @@ degrades silently — most visibly the spine, which collapses to one placeholder
 "Overview" chapter (#1316).
 
 The escape hatch is to ask the same model for the same thing with its thinking
-turned down, which frees the budget for the answer. ``"low"`` rather than
-``"minimal"``: local/Qwen models served via vLLM reject ``"minimal"``, and it
-disables thinking outright.
+turned down, which frees the budget for the answer — at
+:data:`~deeptutor.services.llm.reasoning_params.RETRY_REASONING_EFFORT`, which
+is where the choice of level and its reason live.
 
 This is the shared half of what ``blocks/_llm_writer.llm_json`` already did for
 block generators; the pipeline agents (ideation, source explorer, spine
@@ -25,11 +25,8 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from deeptutor.services.llm.reasoning_params import RETRY_REASONING_EFFORT
 from deeptutor.utils.json_parser import parse_json_response
-
-#: Reasoning level used for the second attempt. Not ``"minimal"`` — see module
-#: docstring.
-RETRY_REASONING_EFFORT = "low"
 
 
 def json_payload_is_usable(payload: Any, expected_key: str | None) -> bool:
@@ -73,7 +70,6 @@ async def json_with_reasoning_retry(
 
 
 __all__ = [
-    "RETRY_REASONING_EFFORT",
     "json_payload_is_usable",
     "json_with_reasoning_retry",
 ]
