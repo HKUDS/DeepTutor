@@ -1,0 +1,20 @@
+{
+  "name": "deeptutor-electron",
+  "version": "1.0.0",
+  "description": "DeepTutor Electron desktop wrapper",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "electron .",
+    "dist": "npm run build && electron-builder --win --x64"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.7.0",
+    "electron": "^33.4.11"
+  },
+  "author": "promoteAI <1035959050@qq.com>",
+  "homepage": "https://github.com/promoteAI/DeepTutor"
+}
