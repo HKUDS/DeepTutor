@@ -17,9 +17,12 @@ Configuration:
     Search profiles live in data/user/settings/model_catalog.json.
 
 Available Providers:
-    Defined once in ``SEARCH_PROVIDERS``
-    (``deeptutor/services/config/provider_runtime.py``); call
-    ``get_providers_info()`` for the live list with its credential requirements.
+    - brave: Brave web search API
+    - tavily: Research-focused with optional answers
+    - jina: SERP with full content extraction
+    - searxng: Self-hosted SearXNG endpoint
+    - duckduckgo: Zero-config search
+    - perplexity: AI-powered search with answers
 """
 
 # Re-export from services layer

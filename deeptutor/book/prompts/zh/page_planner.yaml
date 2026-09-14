@@ -21,6 +21,22 @@ block_catalog: |
     params: {"focus": "<动画要展示的内容>", "quality": "low|medium|high"}
   - **code**：可运行代码示例。params: {"language": "<python|js|...>", "intent": "<example|verify|scaffold>"}
   - **timeline**：按时间顺序的事件序列。
+  - **formula**：KaTeX 公式块 —— 多步公式推导、关键方程逐行呈现。
+    params: {"topic": "<公式要推导的内容>"}
+  - **desmos**：Desmos 交互函数图像 —— 函数行为、曲线、表达式可视化探索。
+    params: {"topic": "<图像展示的内容>"}
+  - **geogebra**：GeoGebra 交互几何 —— 动态几何、几何变换、可操作图形。
+    params: {"topic": "<要探索的作图>"}
+  - **geometry**：JSXGraph 静态几何作图 —— 固定几何图形与作图步骤。
+    params: {"topic": "<要绘制的作图>"}
+  - **three_scene**：Three.js 立体场景 —— 立体几何与三维图形。
+    params: {"topic": "<要可视化的几何体>"}
+  - **venn**：维恩图（SVG）—— 集合关系与交并补。
+    params: {"topic": "<要比较的集合>"}
+  - **complex**：复平面图（SVG）—— 复数及其在复平面上的运算。
+    params: {"topic": "<要绘制的复数>"}
+  - **chart**：ECharts 数据图 —— 统计：柱状 / 折线 / 饼图。
+    params: {"topic": "<图表要绘制的内容>"}
 
 architect_system: |
   你是 DeepTutor BookEngine 的 SectionArchitect。
@@ -37,6 +53,9 @@ architect_system: |
   - 根据内容本身的需要选择 block 类型：推导需要 animation/code，概念需要
     figure（svg/chartjs/mermaid），交互探索需要 interactive，实践需要
     quiz/code
+  - 数学类章节优先选用数学 block 家族：函数图像用 desmos、动态几何用
+    geogebra、统计（柱线饼）用 chart、静态作图用 geometry、多步推导用
+    formula、立体几何用 three_scene、集合用 venn、复数平面用 complex
   - 不要返回 deep_dive / user_note / concept_graph
 
 architect_user: |

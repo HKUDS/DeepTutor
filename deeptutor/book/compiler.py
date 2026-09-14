@@ -303,6 +303,8 @@ class BookCompiler:
             self.storage.save_page(page)
 
         kind = "block_ready" if block.status == BlockStatus.READY else "block_error"
+        if block.status == BlockStatus.HIDDEN and (block.metadata or {}).get("skipped"):
+            kind = "block_skipped"
         await stream.book_event(
             kind,
             {
@@ -452,7 +454,30 @@ class BookCompiler:
     # ── Status aggregation ─────────────────────────────────────────────
 
     @staticmethod
+    def _prune_skipped_blocks(page: Page) -> list[Block]:
+        """Drop blocks a generator silently skipped (``status == HIDDEN`` and
+        ``metadata.skipped``) from *page* and return the removed ones.
+
+        Called from :meth:`_finalize_page_status`, so every save-point that
+        aggregates page status (compiler page loop, engine regenerate and
+        insert-block paths) also persists the pruned list — a skipped block
+        must never reach the reader as an empty shell or an ERROR card.
+        """
+        skipped = [
+            b
+            for b in page.blocks
+            if b.status == BlockStatus.HIDDEN and (b.metadata or {}).get("skipped")
+        ]
+        if skipped:
+            page.blocks = [b for b in page.blocks if b not in skipped]
+        return skipped
+
+    @staticmethod
     def _finalize_page_status(page: Page) -> None:
+        # Skipped blocks leave the page before readiness is computed, so a
+        # silently-dropped block can never drag the page to PARTIAL/ERROR.
+        BookCompiler._prune_skipped_blocks(page)
+
         if not page.blocks:
             page.status = PageStatus.ERROR
             page.error = "No blocks were planned for this page."

@@ -6,9 +6,11 @@ from typing import TYPE_CHECKING
 import uuid
 
 from deeptutor.learning.grading import classify_error, grade_answer
+from deeptutor.learning.evidence_store import EvidenceStore
 from deeptutor.learning.mastery import compute_mastery
 from deeptutor.learning.models import (
     ErrorRecord,
+    LearningEvidence,
     InteractionStatus,
     LearnerMasteryOverride,
     LearnerProfile,
@@ -66,13 +68,34 @@ class StaleInteractionError(MasteryInteractionError):
 
 
 class LearningService:
-    def __init__(self, store: LearningStore | None = None) -> None:
+    def __init__(self, store: LearningStore | None = None, evidence_store: EvidenceStore | None = None) -> None:
         self._store = store or LearningStore()
+        self._evidence_store: EvidenceStore | None = evidence_store
 
     @property
     def store(self) -> LearningStore:
         """Expose the persistence boundary for read-only interaction queries."""
         return self._store
+
+    def _record_evidence(self, evidence: LearningEvidence) -> None:
+        """Persist one evidence row without ever failing the caller.
+
+        The evidence layer is a side channel: any failure to construct the
+        store or append a row must not interrupt the mastery main flow, so the
+        whole path is guarded and only logged.
+        """
+        try:
+            es = self._evidence_store
+            if es is None:
+                es = EvidenceStore()
+                self._evidence_store = es
+            es.append(evidence)
+        except Exception:
+            logging.getLogger(__name__).warning(
+                "Failed to persist learning evidence (evidence_type=%s)",
+                evidence.evidence_type,
+                exc_info=True,
+            )
 
     def get_or_create(self, book_id: str) -> LearningProgress:
         # The store serializes creation under BEGIN IMMEDIATE, so two callers
@@ -227,6 +250,10 @@ class LearningService:
         question_type: str = "short",
         self_attribution: str = "",
         scheduler: SpacedRepetitionScheduler | None = None,
+        user_id: str = "",
+        session_id: str = "",
+        hint_level: int | None = None,
+        confidence_before: int | None = None,
     ) -> bool:
         """Grade one answer and fold it through the full post-answer pipeline.
 
@@ -248,6 +275,21 @@ class LearningService:
             scheduler=scheduler,
         )
         self.save(progress)
+        self._record_evidence(
+            LearningEvidence(
+                user_id=user_id,
+                book_id=progress.book_id,
+                kp_id=knowledge_point_id,
+                question_id=question_id,
+                session_id=session_id,
+                evidence_type="graded_quiz",
+                is_correct=is_correct,
+                cognitive_gate="retrieval",
+                error_type="" if is_correct else classify_error(user_answer).value,
+                hint_level_reached=hint_level,
+                confidence_before=confidence_before,
+            )
+        )
         return is_correct
 
     def _apply_grade(
@@ -529,6 +571,8 @@ class LearningService:
         scheduler: SpacedRepetitionScheduler | None = None,
         session_id: str = "",
         turn_id: str = "",
+        hint_level: int | None = None,
+        confidence_before: int | None = None,
     ) -> tuple[LearningProgress, MasteryInteraction, bool]:
         """Grade and resolve an interaction in one idempotent transaction.
 
@@ -652,6 +696,24 @@ class LearningService:
 
         progress, result = self._store.mutate(book_id, grade)
         interaction, replayed = result
+        try:
+            is_corr = bool(interaction.result.get("is_correct"))
+            self._record_evidence(
+                LearningEvidence(
+                    user_id="",
+                    book_id=book_id,
+                    kp_id=interaction.question.knowledge_point_id if interaction.question else "",
+                    question_id=interaction.question.question_id if interaction.question else question_id,
+                    session_id=session_id,
+                    evidence_type="graded_quiz",
+                    is_correct=is_corr,
+                    cognitive_gate="retrieval",
+                    hint_level_reached=hint_level,
+                    confidence_before=confidence_before,
+                )
+            )
+        except Exception:
+            pass
         return progress, interaction, replayed
 
     def replace_modules_for_path(
@@ -965,7 +1027,8 @@ class LearningService:
         passed: bool,
         evidence: str = "",
         scheduler: SpacedRepetitionScheduler | None = None,
-    ) -> None:
+        user_id: str = "",
+        session_id: str = "",) -> None:
         """Record the qualitative (CONCEPT / DESIGN) gate outcome.
 
         The boolean is the gate of record; ``mastery_levels`` is nudged only so
@@ -983,7 +1046,18 @@ class LearningService:
             scheduler=scheduler,
         )
         self.save(progress)
-
+        self._record_evidence(
+            LearningEvidence(
+                user_id=user_id,
+                book_id=progress.book_id,
+                kp_id=kp_id,
+                session_id=session_id,
+                evidence_type="qualitative_gate",
+                passed=passed,
+                cognitive_gate="self_explanation",
+                detail_json={"evidence": evidence} if evidence else {},
+            )
+        )
     def record_qualitative_for_path(
         self,
         book_id: str,

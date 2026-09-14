@@ -280,7 +280,12 @@ Please analyze the above exam paper content, extract all question information, a
     return questions
 
 
-def save_questions_json(questions: list[dict[str, Any]], output_dir: Path, paper_name: str) -> Path:
+def save_questions_json(
+    questions: list[dict[str, Any]],
+    output_dir: Path,
+    paper_name: str,
+    images_dir: Path | None = None,
+) -> Path:
     """
     Save question information as JSON file
 
@@ -300,6 +305,7 @@ def save_questions_json(questions: list[dict[str, Any]], output_dir: Path, paper
         "paper_name": paper_name,
         "extraction_time": datetime.now().isoformat(),
         "total_questions": len(questions),
+        "images_dir": str(images_dir.resolve()) if images_dir is not None else None,
         "questions": questions,
     }
 
@@ -370,7 +376,7 @@ def extract_questions_from_paper(paper_dir: str, output_dir: str | None = None) 
         output_dir = Path(output_dir)
 
     paper_name = paper_dir.name
-    output_file = save_questions_json(questions, output_dir, paper_name)
+    output_file = save_questions_json(questions, output_dir, paper_name, images_dir)
 
     print("\n✓ Question extraction completed!")
     print(f"📄 View results: {output_file}")

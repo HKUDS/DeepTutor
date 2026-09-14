@@ -38,7 +38,7 @@ from deeptutor.multi_user.device_credentials import (
     list_device_credentials,
     revoke_device_credential,
 )
-from deeptutor.multi_user.identity import get_user_by_id
+from deeptutor.multi_user.identity import get_user_by_id, is_learner_account
 from deeptutor.multi_user.learning_access import learning_policy_for_user
 from deeptutor.multi_user.models import AccountPreset
 from deeptutor.multi_user.paths import local_admin_user
@@ -55,10 +55,12 @@ from deeptutor.services.auth import (
     decode_token,
     delete_user,
     get_user_info,
+    hash_password,
     is_first_user,
     list_users,
     register_pb,
     set_avatar,
+    set_children,
     set_learner_profile,
     set_role,
 )
@@ -160,8 +162,13 @@ class SetRoleRequest(BaseModel):
     @field_validator("role")
     @classmethod
     def role_valid(cls, v: str) -> str:
-        if v not in ("admin", "user"):
-            raise ValueError("Role must be 'admin' or 'user'")
+        # K12 fork: validate against the same whitelist the identity store
+        # enforces (admin/teacher/student/parent/user) — a hardcoded subset
+        # here would 422 the roles the store itself accepts.
+        from deeptutor.multi_user.models import VALID_ROLES
+
+        if v not in VALID_ROLES:
+            raise ValueError(f"Role must be one of {sorted(VALID_ROLES)}")
         return v
 
 
@@ -401,8 +408,56 @@ async def require_admin(
     return payload
 
 
+async def require_admin_or_teacher(
+    payload: TokenPayload | None = Depends(require_auth),
+) -> TokenPayload:
+    """
+    FastAPI dependency that requires the caller to be an admin or teacher.
+
+    Guards read-only class-level views (e.g. the class insights overview)
+    that teachers and admins share. Raises HTTP 403 otherwise. When
+    AUTH_ENABLED=false, all requests are treated as admin.
+    """
+    if not AUTH_ENABLED:
+        return _local_admin_token_payload()
+
+    if payload is None or payload.role not in ("admin", "teacher"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin or teacher access required",
+        )
+    return payload
+
+
+async def require_teacher(
+    payload: TokenPayload | None = Depends(require_auth),
+) -> TokenPayload:
+    """
+    FastAPI dependency that requires the caller to be a teacher.
+
+    Guards the teacher-only assignment flow (布置/判分统计), mirroring
+    :func:`require_admin`. When AUTH_ENABLED=false, all requests are treated
+    as admin and pass through with the local admin payload — the same
+    convention :func:`require_admin` uses.
+    """
+    if not AUTH_ENABLED:
+        return _local_admin_token_payload()
+
+    if payload is None or payload.role != "teacher":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Teacher access required",
+        )
+    return payload
+
+
 def _learning_surface_for_path(path: str) -> str:
     normalized = "/" + str(path or "").lstrip("/")
+    # Model choices are part of chat, but this is the only settings route a
+    # learner may read. Match the exact path so the rest of the router stays
+    # default-denied.
+    if normalized == "/api/settings/llm-options":
+        return "chat"
     for root, surface in (
         ("/api/reading", "reading"),
         ("/api/courses", "reading"),
@@ -410,6 +465,8 @@ def _learning_surface_for_path(path: str) -> str:
         ("/api/question", "chat"),
         ("/api/question-notebook", "chat"),
         ("/api/sessions", "chat"),
+        ("/api/daily-plan", "daily-plan"),
+        ("/api/assignments", "assignments"),
     ):
         if normalized == root or normalized.startswith(f"{root}/"):
             return surface
@@ -1012,14 +1069,10 @@ async def get_users(_: TokenPayload = Depends(require_admin)) -> list[UserInfo]:
 def _require_local_learner(current: TokenPayload) -> tuple[str, dict]:
     """Resolve a self-service profile request to its local learner account."""
 
-    if current.role != "user":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Learner profile required"
-        )
     account = get_user_by_id(current.user_id)
     if account is None or account[0] != current.username:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    if str(account[1].get("preset") or "standard") != "learner":
+    if not is_learner_account(current.role, account[1].get("preset")):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Learner profile required"
         )
@@ -1248,7 +1301,119 @@ async def update_user_role(
     if not updated:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
+    # Role assignment opens the account: seed the role's default grant (LLM +
+    # role KBs) when the account carries no grants yet. Best-effort — a
+    # deployment without a usable active LLM default, or an account that
+    # already has grants, simply applies nothing.
+    template_applied = False
+    try:
+        from deeptutor.multi_user.role_templates import apply_role_template
+
+        info = get_user_info(username)
+        user_id = str(info.get("id") or "") if info else ""
+        template_applied = bool(user_id and apply_role_template(user_id, body.role))
+    except Exception as exc:  # noqa: BLE001 — never block the role change on seeding
+        logger.warning(f"Role grant template skipped for '{username}': {exc}")
+
     logger.info(
         f"Admin '{current.username if current else 'local'}' set '{username}' role to {body.role!r}"
     )
-    return {"ok": True, "username": username, "role": body.role}
+    return {
+        "ok": True,
+        "username": username,
+        "role": body.role,
+        "grant_template_applied": template_applied,
+    }
+
+
+class SetChildrenRequest(BaseModel):
+    """Payload for the PUT /users/{username}/children endpoint."""
+
+    children: list[str] = Field(default_factory=list, max_length=20)
+
+
+@router.put("/users/{username}/children", status_code=status.HTTP_200_OK)
+async def update_user_children(
+    username: str,
+    body: SetChildrenRequest,
+    current: TokenPayload = Depends(require_admin),
+) -> dict:
+    """Set the parent → children family linkage (K12 家长学情视图的名单).
+
+    Only parent-role accounts carry a children list, and every entry must
+    resolve to a live student account — a typo'd child name would silently
+    strand the family insights view otherwise.
+    """
+    if POCKETBASE_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Family linkage is not available with PocketBase auth.",
+        )
+    info = get_user_info(username)
+    if not info:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if str(info.get("role") or "") != "parent":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only parent accounts carry a children list",
+        )
+
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for raw in body.children:
+        name = str(raw).strip()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        cleaned.append(name)
+    if username in seen:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A parent cannot be listed as their own child",
+        )
+    for child in cleaned:
+        child_info = get_user_info(child)
+        if not child_info or str(child_info.get("role") or "") != "student":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Child {child!r} is not an existing student account",
+            )
+
+    if not set_children(username, cleaned):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    logger.info(
+        f"Admin '{current.username if current else 'local'}' set children of "
+        f"'{username}' to {cleaned}"
+    )
+    return {"ok": True, "username": username, "children": cleaned}
+
+
+class ResetPasswordRequest(BaseModel):
+    """Payload for the PUT /users/{username}/password endpoint."""
+
+    password: str = Field(min_length=8, max_length=128)
+
+
+@router.put("/users/{username}/password", status_code=status.HTTP_200_OK)
+async def admin_reset_password(
+    username: str,
+    body: ResetPasswordRequest,
+    current: TokenPayload = Depends(require_admin),
+) -> dict:
+    """Admin password reset. Re-saving keeps the record's role and family
+    linkage (``save_user`` carries the parent ``children`` list over)."""
+    if POCKETBASE_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password resets are managed by PocketBase.",
+        )
+    info = get_user_info(username)
+    if not info:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    from deeptutor.multi_user.identity import save_user
+
+    save_user(username, hash_password(body.password), role=str(info.get("role") or "user"))
+    logger.info(
+        f"Admin '{current.username if current else 'local'}' reset the password of '{username}'"
+    )
+    return {"ok": True, "username": username}

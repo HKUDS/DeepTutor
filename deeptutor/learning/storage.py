@@ -346,7 +346,8 @@ class LearningStore:
         return str(Path(self._root).resolve())
 
     def _path(self, book_id: str) -> Path:
-        """Return the legacy JSON location after validating the public id."""
+        if "/" in book_id or "\\" in book_id or ".." in book_id or ":" in book_id:
+            raise ValueError(f"invalid book_id: {book_id!r}")
         self._validate_id(book_id)
         return Path(self._root) / f"{book_id}.json"
 

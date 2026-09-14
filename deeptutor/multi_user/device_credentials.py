@@ -13,7 +13,7 @@ from uuid import uuid4
 
 from deeptutor.services.file_io import atomic_write_text
 
-from .identity import get_user_by_id
+from .identity import get_user_by_id, is_learner_account
 from .paths import SYSTEM_ROOT
 
 DEVICE_CREDENTIALS_FILE = SYSTEM_ROOT / "auth" / "device_credentials.json"
@@ -156,9 +156,9 @@ def _active_account(user_id: str) -> tuple[str, dict[str, Any]] | None:
     if account is None:
         return None
     username, record = account
-    if str(record.get("role") or "user") != "user" or bool(record.get("disabled")):
+    if bool(record.get("disabled")):
         return None
-    if str(record.get("preset") or "standard") != "learner":
+    if not is_learner_account(record.get("role"), record.get("preset")):
         return None
     return username, record
 
