@@ -85,19 +85,19 @@ class BlockType(str, Enum):
     MODULE_TEST = "module_test"
     PROGRESS_DASHBOARD = "progress_dashboard"
     # YuEdu fork: 学科专属 block 类型
-    POETRY = "poetry"        # 诗词（原文+拼音+注解+朗读）
-    GRAMMAR = "grammar"      # 语法（句型模式+例句+练习）
-    TERRAIN = "terrain"      # 地形（地图/3D地形可视化）
-    CLIMATE = "climate"      # 气候（气候数据图表）
+    POETRY = "poetry"  # 诗词（原文+拼音+注解+朗读）
+    GRAMMAR = "grammar"  # 语法（句型模式+例句+练习）
+    TERRAIN = "terrain"  # 地形（地图/3D地形可视化）
+    CLIMATE = "climate"  # 气候（气候数据图表）
     # YuEdu fork: 数学交互 block（老悦学 8 件精华移植）
-    DESMOS = "desmos"            # Desmos 函数图像
-    GEOMETRY = "geometry"        # JSXGraph 几何画板
-    GEOGEBRA = "geogebra"        # GeoGebra 交互几何
+    DESMOS = "desmos"  # Desmos 函数图像
+    GEOMETRY = "geometry"  # JSXGraph 几何画板
+    GEOGEBRA = "geogebra"  # GeoGebra 交互几何
     THREE_SCENE = "three_scene"  # Three.js 立体几何 3D
-    FORMULA = "formula"          # KaTeX 公式渲染
-    VENN = "venn"                # 维恩图（SVG）
-    COMPLEX = "complex"          # 复数平面（SVG）
-    CHART = "chart"              # ECharts 数据图
+    FORMULA = "formula"  # KaTeX 公式渲染
+    VENN = "venn"  # 维恩图（SVG）
+    COMPLEX = "complex"  # 复数平面（SVG）
+    CHART = "chart"  # ECharts 数据图
 
 
 class BookDepth(str, Enum):
@@ -598,6 +598,7 @@ __all__ = [
     "Progress",
     "Book",
 ]
+
 
 class RecitationSummary(BaseModel):
     """Small poetry-practice summary persisted in ``Block.metadata``."""

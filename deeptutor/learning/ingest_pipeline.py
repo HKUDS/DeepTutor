@@ -85,6 +85,7 @@ def _acquire_run_exec(run_id: str) -> threading.Lock:
 # 状态仓（JSON 文件仓，仿 assignments.py）
 # ---------------------------------------------------------------------------
 
+
 def _runs_file() -> Path:
     # 每调用解析，honor 测试里 monkey-patch 的 SYSTEM_ROOT。
     from deeptutor.multi_user import paths as mu_paths
@@ -182,6 +183,7 @@ def find_latest_run(kb_name: str, book_id: str) -> dict[str, Any] | None:
 # ---------------------------------------------------------------------------
 # 默认依赖（真实实现；测试通过 PipelineDeps 注入 mock）
 # ---------------------------------------------------------------------------
+
 
 def _default_qbanks_dir() -> Path:
     """题库产物目录 data/question_banks/（每调用解析，honor 测试 patch）。"""
@@ -498,7 +500,10 @@ def _load_book_ctx(record: dict[str, Any], ctx: dict[str, Any], deps: PipelineDe
 # 四个 stage 实现
 # ---------------------------------------------------------------------------
 
-def _stage_structured(record: dict[str, Any], ctx: dict[str, Any], deps: PipelineDeps) -> dict[str, Any]:
+
+def _stage_structured(
+    record: dict[str, Any], ctx: dict[str, Any], deps: PipelineDeps
+) -> dict[str, Any]:
     _load_book_ctx(record, ctx, deps)
     node_count = len(extract_kps(ctx["tree"]))
     chapters = ctx["chapters"]
@@ -511,7 +516,9 @@ def _stage_structured(record: dict[str, Any], ctx: dict[str, Any], deps: Pipelin
     }
 
 
-def _stage_qb_generated(record: dict[str, Any], ctx: dict[str, Any], deps: PipelineDeps) -> dict[str, Any]:
+def _stage_qb_generated(
+    record: dict[str, Any], ctx: dict[str, Any], deps: PipelineDeps
+) -> dict[str, Any]:
     book_id = record["book_id"]
     bank_path = deps.qbanks_dir() / f"{book_id}.json"
     bank_path.parent.mkdir(parents=True, exist_ok=True)
@@ -604,7 +611,9 @@ def _stage_qb_generated(record: dict[str, Any], ctx: dict[str, Any], deps: Pipel
     return {"count": total, "tokens": total_tokens, "note": note}
 
 
-def _stage_kp_mapped(record: dict[str, Any], ctx: dict[str, Any], deps: PipelineDeps) -> dict[str, Any]:
+def _stage_kp_mapped(
+    record: dict[str, Any], ctx: dict[str, Any], deps: PipelineDeps
+) -> dict[str, Any]:
     book_id = record["book_id"]
     bank_path = Path(ctx.get("bank_path") or deps.qbanks_dir() / f"{book_id}.json")
     bank = _load_json(bank_path)
@@ -732,7 +741,9 @@ def _find_kp(progress: Any, kp_id: str, tree: Any = None) -> Any:
     return found[0] if found else None
 
 
-def _stage_qb_mounted(record: dict[str, Any], ctx: dict[str, Any], deps: PipelineDeps) -> dict[str, Any]:
+def _stage_qb_mounted(
+    record: dict[str, Any], ctx: dict[str, Any], deps: PipelineDeps
+) -> dict[str, Any]:
     book_id = record["book_id"]
     qbanks_dir = deps.qbanks_dir()
     bank = _load_json(qbanks_dir / f"{book_id}.json")
@@ -790,7 +801,9 @@ def _stage_qb_mounted(record: dict[str, Any], ctx: dict[str, Any], deps: Pipelin
     return {"mounted": mounted_kps, "note": note}
 
 
-_STAGE_FUNCS: dict[str, Callable[[dict[str, Any], dict[str, Any], PipelineDeps], dict[str, Any]]] = {
+_STAGE_FUNCS: dict[
+    str, Callable[[dict[str, Any], dict[str, Any], PipelineDeps], dict[str, Any]]
+] = {
     "structured": _stage_structured,
     "qb_generated": _stage_qb_generated,
     "kp_mapped": _stage_kp_mapped,
@@ -809,6 +822,7 @@ _STAGE_FIELDS = {
 # ---------------------------------------------------------------------------
 # 状态机推进
 # ---------------------------------------------------------------------------
+
 
 def _new_stage() -> dict[str, Any]:
     return {"status": "queued", "note": ""}
@@ -859,9 +873,7 @@ def _set_stage(
     save_run(record)
 
 
-def _run_stage(
-    record: dict[str, Any], stage: str, ctx: dict[str, Any], deps: PipelineDeps
-) -> bool:
+def _run_stage(record: dict[str, Any], stage: str, ctx: dict[str, Any], deps: PipelineDeps) -> bool:
     """执行单段，返回是否成功。失败落 failed + note（不抛）。"""
     _set_stage(record, stage, "running")
     try:
@@ -874,7 +886,9 @@ def _run_stage(
             record["error"] = f"{stage}: {note}"
             save_run(record)
         except OSError:
-            logger.exception("Ingest pipeline run %s: failed to persist failure state", record["run_id"])
+            logger.exception(
+                "Ingest pipeline run %s: failed to persist failure state", record["run_id"]
+            )
         return False
     note = str(result.pop("note", ""))
     # 终态落库包 OSError：磁盘故障若在此逃逸会杀死后台线程，段永远停在 running。
@@ -888,9 +902,7 @@ def _run_stage(
     return True
 
 
-def _execute_all(
-    record: dict[str, Any], deps: PipelineDeps, exec_lock: threading.Lock
-) -> None:
+def _execute_all(record: dict[str, Any], deps: PipelineDeps, exec_lock: threading.Lock) -> None:
     """顺次执行四段：某段失败 → 该段 failed、后续段 skipped（失败传播）。"""
     ctx: dict[str, Any] = {}
     try:
@@ -939,6 +951,7 @@ def _spawn(fn: Callable[[], None]) -> None:
 # ---------------------------------------------------------------------------
 # 公共入口
 # ---------------------------------------------------------------------------
+
 
 def start_pipeline(
     kb_name: str,

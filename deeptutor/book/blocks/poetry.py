@@ -23,12 +23,7 @@ class PoetryGenerator(BlockGenerator):
         chapter_title = str(params.get("chapter_title") or ctx.chapter.title)
         chapter_summary = str(params.get("chapter_summary") or ctx.chapter.summary)
         objectives = params.get("objectives") or ctx.chapter.learning_objectives
-        focus = str(
-            params.get("topic")
-            or params.get("title")
-            or ctx.block.title
-            or chapter_title
-        )
+        focus = str(params.get("topic") or params.get("title") or ctx.block.title or chapter_title)
 
         prompts = load_book_prompts("poetry", ctx.language)
         none_label = "(无)" if ctx.language == "zh" else "(none)"

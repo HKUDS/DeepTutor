@@ -45,22 +45,91 @@ _FULLWIDTH_TRANS = {0xFF01 + i: 0x21 + i for i in range(0x5E)} | {0x3000: 0x20}
 #: Unicode fraction/superscript/operator glyphs -> ASCII spellings.
 _UNICODE_MATH_MAP = str.maketrans(
     {
-        "½": "1/2", "⅓": "1/3", "⅔": "2/3", "¼": "1/4", "¾": "3/4",
-        "⅕": "1/5", "⅖": "2/5", "⅗": "3/5", "⅘": "4/5", "⅙": "1/6",
-        "⅚": "5/6", "⅛": "1/8", "⅜": "3/8", "⅝": "5/8", "⅞": "7/8",
-        "⅐": "1/7", "⅑": "1/9", "⅒": "1/10",
-        "¹": "^1", "²": "^2", "³": "^3",
-        "×": "*", "÷": "/", "⋅": "*", "·": "*",
+        "½": "1/2",
+        "⅓": "1/3",
+        "⅔": "2/3",
+        "¼": "1/4",
+        "¾": "3/4",
+        "⅕": "1/5",
+        "⅖": "2/5",
+        "⅗": "3/5",
+        "⅘": "4/5",
+        "⅙": "1/6",
+        "⅚": "5/6",
+        "⅛": "1/8",
+        "⅜": "3/8",
+        "⅝": "5/8",
+        "⅞": "7/8",
+        "⅐": "1/7",
+        "⅑": "1/9",
+        "⅒": "1/10",
+        "¹": "^1",
+        "²": "^2",
+        "³": "^3",
+        "×": "*",
+        "÷": "/",
+        "⋅": "*",
+        "·": "*",
     }
 )
 
 #: Unit tokens stripped from numeric answers (longest first in the alternation).
 _UNIT_TOKENS = [
-    "千米", "公里", "厘米", "毫米", "分米", "微米", "纳米", "千克", "公斤",
-    "毫克", "小时", "分钟", "毫升", "km/h", "m/s", "cm", "mm", "dm", "km",
-    "mg", "ml", "min", "kg", "℃", "°c", "米", "克", "吨", "升", "秒", "毫秒",
-    "元", "角", "分", "个", "只", "次", "名", "人", "岁", "天", "周", "月",
-    "年", "倍", "度", "点", "t", "h", "ms", "°", "m", "g", "s", "l",
+    "千米",
+    "公里",
+    "厘米",
+    "毫米",
+    "分米",
+    "微米",
+    "纳米",
+    "千克",
+    "公斤",
+    "毫克",
+    "小时",
+    "分钟",
+    "毫升",
+    "km/h",
+    "m/s",
+    "cm",
+    "mm",
+    "dm",
+    "km",
+    "mg",
+    "ml",
+    "min",
+    "kg",
+    "℃",
+    "°c",
+    "米",
+    "克",
+    "吨",
+    "升",
+    "秒",
+    "毫秒",
+    "元",
+    "角",
+    "分",
+    "个",
+    "只",
+    "次",
+    "名",
+    "人",
+    "岁",
+    "天",
+    "周",
+    "月",
+    "年",
+    "倍",
+    "度",
+    "点",
+    "t",
+    "h",
+    "ms",
+    "°",
+    "m",
+    "g",
+    "s",
+    "l",
 ]
 _UNIT_ALT = "|".join(re.escape(u) for u in sorted(_UNIT_TOKENS, key=len, reverse=True))
 _UNIT_SUFFIX_RE = re.compile(r"^(.+?)\s*(" + _UNIT_ALT + r")$")
@@ -70,8 +139,19 @@ _NUM_FRACTION_RE = re.compile(r"^([+-]?\d+)\s*/\s*([+-]?\d+)$")
 _NUM_PERCENT_RE = re.compile(r"^(" + _PLAIN_NUM_RE.pattern + r")\s*%$")
 _NUM_WAN_RE = re.compile(r"^(" + _PLAIN_NUM_RE.pattern + r")\s*([万亿])$")
 
-_CN_DIGITS = {"零": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4,
-              "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
+_CN_DIGITS = {
+    "零": 0,
+    "一": 1,
+    "二": 2,
+    "两": 2,
+    "三": 3,
+    "四": 4,
+    "五": 5,
+    "六": 6,
+    "七": 7,
+    "八": 8,
+    "九": 9,
+}
 
 _ALGEBRA_PREFIX_RE = re.compile(
     r"^(?:[a-zA-Z]|f\s*\(\s*x\s*\)|g\s*\(\s*x\s*\)|h\s*\(\s*x\s*\))\s*=\s*(.+)$"
@@ -471,10 +551,7 @@ def _interval_matches(a: _Interval, b: _Interval) -> bool:
     lo_a, a_lo, a_hi, ro_a = a
     lo_b, b_lo, b_hi, ro_b = b
     return (
-        lo_a == lo_b
-        and ro_a == ro_b
-        and _numbers_close(a_lo, b_lo)
-        and _numbers_close(a_hi, b_hi)
+        lo_a == lo_b and ro_a == ro_b and _numbers_close(a_lo, b_lo) and _numbers_close(a_hi, b_hi)
     )
 
 
@@ -520,9 +597,7 @@ def _interval_union_matches(user: _IntervalUnion, expected: _IntervalUnion) -> b
     """Order-free compare of union branches; no adjacent-branch merging."""
     if len(user) != len(expected):
         return False
-    return all(
-        _interval_matches(u, e) for u, e in zip(sorted(user), sorted(expected))
-    )
+    return all(_interval_matches(u, e) for u, e in zip(sorted(user), sorted(expected)))
 
 
 def _math_answers_match(user_norm: _Normalized, expected_norm: _Normalized) -> bool:
@@ -565,11 +640,7 @@ def grade_answer(user_answer: str, expected_answer: str, question_type: str = "s
     if question_type == "short":
         user_math = _normalize_math_answer(user)
         expected_math = _normalize_math_answer(expected)
-        if (
-            user_math is not None
-            and expected_math is not None
-            and user_math[0] == expected_math[0]
-        ):
+        if user_math is not None and expected_math is not None and user_math[0] == expected_math[0]:
             return _math_answers_match(user_math, expected_math)
         if user == expected:
             return True

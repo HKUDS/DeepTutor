@@ -68,11 +68,7 @@ class ClimateGenerator(BlockGenerator):
         )
         temperature = _finite_numbers(data.get("temperature"))
         precipitation = _finite_numbers(data.get("precipitation"))
-        if (
-            not months
-            or len(months) != len(temperature)
-            or len(months) != len(precipitation)
-        ):
+        if not months or len(months) != len(temperature) or len(months) != len(precipitation):
             raise GenerationFailure(
                 "LLM returned invalid climate series; months, temperature, and precipitation "
                 "must be non-empty arrays of equal length."

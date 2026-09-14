@@ -164,8 +164,7 @@ class EvidenceStore:
         params.append(max(1, int(limit)))
         with self._lock, self._connect() as conn:
             rows = conn.execute(
-                "SELECT * FROM learning_evidence"
-                f"{where} ORDER BY created_at DESC, id DESC LIMIT ?",
+                f"SELECT * FROM learning_evidence{where} ORDER BY created_at DESC, id DESC LIMIT ?",
                 params,
             ).fetchall()
         return [self._row_to_evidence(row) for row in rows]

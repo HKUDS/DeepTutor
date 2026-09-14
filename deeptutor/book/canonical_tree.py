@@ -39,9 +39,7 @@ def _canonical_copy(node: Any) -> dict[str, Any]:
     }
     children = node.get("children")
     if isinstance(children, list):
-        kept["children"] = [
-            _canonical_copy(child) for child in children if isinstance(child, dict)
-        ]
+        kept["children"] = [_canonical_copy(child) for child in children if isinstance(child, dict)]
     return kept
 
 
@@ -65,9 +63,7 @@ def _is_valid_root(node: Any) -> bool:
             return False
         # mu leaves legitimately carry no children key (slim doc_tree shape).
         children = node.get("children") or []
-        if not isinstance(children, list) or any(
-            not isinstance(child, dict) for child in children
-        ):
+        if not isinstance(children, list) or any(not isinstance(child, dict) for child in children):
             return False
         return all(valid(child) for child in children)
 
@@ -190,9 +186,7 @@ def _content_list_from_layout(layout: dict[str, Any]) -> list[dict[str, Any]]:
                 continue
             # Group blocks (figure captions etc.) wrap their children in
             # ``blocks`` — walk one level down, the shape MinerU emits.
-            children = (
-                para.get("blocks") if isinstance(para.get("blocks"), list) else [para]
-            )
+            children = para.get("blocks") if isinstance(para.get("blocks"), list) else [para]
             for block in children:
                 if not isinstance(block, dict) or block.get("type") == "image":
                     continue

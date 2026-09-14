@@ -878,8 +878,7 @@ class MasteryQuizTool(BaseTool):
                 q_type = str(item.get("question_type") or "choice")
                 option_map = item.get("options") or {}
                 options = [
-                    {"label": label, "body": str(body)}
-                    for label, body in option_map.items()
+                    {"label": label, "body": str(body)} for label, body in option_map.items()
                 ]
                 if item.get("explanation"):
                     kwargs["explanation"] = str(item["explanation"])

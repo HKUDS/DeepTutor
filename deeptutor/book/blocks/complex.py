@@ -32,7 +32,9 @@ class ComplexGenerator(MathBlockGenerator):
         # Clamp into the slider range used by the renderer (-5..5).
         re = max(-5.0, min(5.0, re))
         im = max(-5.0, min(5.0, im))
-        if not isinstance(data.get("re"), (int, float)) and not isinstance(data.get("im"), (int, float)):
+        if not isinstance(data.get("re"), (int, float)) and not isinstance(
+            data.get("im"), (int, float)
+        ):
             raise GenerationFailure("LLM did not return complex components.")
         return {
             "title": str(data.get("title") or focus).strip()[:200],

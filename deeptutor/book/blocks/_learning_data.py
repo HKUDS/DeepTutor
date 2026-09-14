@@ -38,9 +38,7 @@ def error_type_label(error_type: str, language: str) -> str:
     """Learner-facing label for one recorded ``error_type`` (fail-open)."""
     key = str(error_type or "").strip().lower()
     table = _ERROR_TYPE_LABELS.get(key) or {}
-    return table.get(language) or _ERROR_TYPE_DEFAULTS.get(
-        language, _ERROR_TYPE_DEFAULTS["en"]
-    )
+    return table.get(language) or _ERROR_TYPE_DEFAULTS.get(language, _ERROR_TYPE_DEFAULTS["en"])
 
 
 def clean_bank_item(item: Any) -> dict[str, Any] | None:
@@ -153,7 +151,8 @@ def load_error_evidence(book_id: str) -> list[Any]:
     return [
         row
         for row in rows
-        if (row.is_correct is False) or (row.evidence_type == "qualitative_gate" and row.passed is False)
+        if (row.is_correct is False)
+        or (row.evidence_type == "qualitative_gate" and row.passed is False)
     ]
 
 
@@ -172,8 +171,7 @@ def pick_bank_items(
     pools = [
         entry
         for entry in entries
-        if (module_id is None or entry.get("module_id") == module_id)
-        and entry.get("items")
+        if (module_id is None or entry.get("module_id") == module_id) and entry.get("items")
     ]
     if not pools:
         return selected
