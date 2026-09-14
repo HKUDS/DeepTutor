@@ -19,7 +19,6 @@ from .config import (
     indexing_kwargs_from_settings,
     normalize_mode,
     query_kwargs_from_settings,
-    resolve_lightrag_query_llm_config,
 )
 from .ingress import IngressError, StagedDocument, pending_root
 from .worker import OwnerLoopBridge
@@ -189,6 +188,8 @@ def build_rag(
     io_bridge: OwnerLoopBridge | None = None,
     enable_vlm: bool = False,
     indexing_snapshot: Any | None = None,
+    query_roles: dict[str, Any] | None = None,
+    embedding_config: Any | None = None,
 ) -> Any:
     """Construct one exact-version, version-isolated LightRAG instance."""
     _require_exact_version()
@@ -200,74 +201,62 @@ def build_rag(
     if io_bridge is not None:
         llm_adapter_kwargs["io_bridge"] = io_bridge
         embedding_adapter_kwargs["io_bridge"] = io_bridge
-    from .indexing_policy import cache_identity_for_config
+    if indexing_snapshot is not None:
+        embedding_config = indexing_snapshot.embedding_config
+    if embedding_config is not None:
+        embedding_adapter_kwargs["embedding_config"] = embedding_config
+    from .indexing_policy import cache_identity, cache_identity_for_config
+    from .roles import resolve_query_roles
 
-    query_config = resolve_lightrag_query_llm_config()
-    query_func = build_llm_model_func(
-        **llm_adapter_kwargs,
-        llm_config=query_config,
-    )
-    query_identity = cache_identity_for_config(query_config)
-    query_metadata = {
-        "binding": query_config.binding,
-        "model": query_identity,
-    }
+    role_configs: dict[str, Any] = {}
+    if indexing_snapshot is None:
+        calls = query_roles if query_roles is not None else resolve_query_roles()
+        for role, call in calls.items():
+            role_configs[role] = RoleLLMConfig(
+                func=build_llm_model_func(
+                    **llm_adapter_kwargs, llm_config=call.config, owner=call.owner
+                ),
+                metadata={
+                    "binding": call.config.binding,
+                    "model": cache_identity_for_config(call.config),
+                },
+                max_async=call.max_async,
+                timeout=call.timeout,
+            )
+        base = calls["query"]
+        base_config, base_owner = base.config, base.owner
+        base_identity = cache_identity_for_config(base_config)
+    else:
+        base = indexing_snapshot.extract
+        base_config, base_owner = base.config, base.owner
+        base_identity = cache_identity(base)
+        for role, snapshot in (("extract", base), ("vlm", indexing_snapshot.vlm)):
+            if snapshot is None or (role == "vlm" and not enable_vlm):
+                continue
+            builder = build_vision_model_func if role == "vlm" else build_llm_model_func
+            role_configs[role] = RoleLLMConfig(
+                func=builder(
+                    **llm_adapter_kwargs, llm_config=snapshot.config, owner=snapshot.owner
+                ),
+                metadata={"binding": snapshot.config.binding, "model": cache_identity(snapshot)},
+                **indexing_snapshot.limits.get(role, {}),
+            )
+    if enable_vlm and (indexing_snapshot is None or indexing_snapshot.vlm is None):
+        raise LightRagContractError("Image analysis requires a pinned VLM; run a full re-index.")
     constructor = {
         "working_dir": str(Path(working_dir)),
         "workspace": workspace_for(working_dir),
-        "llm_model_func": query_func,
-        "llm_model_name": query_identity,
+        "llm_model_func": build_llm_model_func(
+            **llm_adapter_kwargs, llm_config=base_config, owner=base_owner
+        ),
+        "llm_model_name": base_identity,
         "embedding_func": build_embedding_func(**embedding_adapter_kwargs),
         "auto_manage_storages_states": False,
         "vlm_process_enable": bool(enable_vlm),
         **indexing_kwargs_from_settings(),
         **constructor_kwargs_from_settings(),
+        "role_llm_configs": role_configs,
     }
-    role_configs: dict[str, Any] = {
-        "keyword": RoleLLMConfig(func=query_func, metadata=query_metadata),
-        "query": RoleLLMConfig(func=query_func, metadata=query_metadata),
-    }
-    if indexing_snapshot is not None:
-        from .indexing_policy import cache_identity
-
-        snapshot_kwargs = {
-            **llm_adapter_kwargs,
-            "llm_config": indexing_snapshot.config,
-            "owner": indexing_snapshot.owner,
-        }
-        metadata = {
-            "binding": indexing_snapshot.config.binding,
-            "model": cache_identity(indexing_snapshot),
-            "host": indexing_snapshot.descriptor.get("endpoint"),
-        }
-        role_configs["extract"] = RoleLLMConfig(
-            func=build_llm_model_func(**snapshot_kwargs), metadata=metadata
-        )
-    if enable_vlm:
-        if indexing_snapshot is None:
-            raise LightRagContractError(
-                "LightRAG vision indexing requires a frozen indexing-model policy."
-            )
-        vision_kwargs = llm_adapter_kwargs
-        metadata = None
-        if indexing_snapshot is not None:
-            from .indexing_policy import cache_identity
-
-            vision_kwargs = {
-                **llm_adapter_kwargs,
-                "llm_config": indexing_snapshot.config,
-                "owner": indexing_snapshot.owner,
-            }
-            metadata = {
-                "binding": indexing_snapshot.config.binding,
-                "model": cache_identity(indexing_snapshot),
-                "host": indexing_snapshot.descriptor.get("endpoint"),
-            }
-        role_configs["vlm"] = RoleLLMConfig(
-            func=build_vision_model_func(**vision_kwargs), metadata=metadata
-        )
-    if role_configs:
-        constructor["role_llm_configs"] = role_configs
     return _controlled_class()(**constructor)
 
 

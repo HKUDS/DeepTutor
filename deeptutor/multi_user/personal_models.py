@@ -113,6 +113,11 @@ def personal_llm_rows() -> list[dict[str, Any]]:
                     "provider": profile.get("binding") or "",
                     "reasoning_effort": model.get("reasoning_effort"),
                     "supported_reasoning_efforts": model.get("codex_supported_reasoning_levels"),
+                    **{
+                        f"declared_{key}": value
+                        for key, value in (model.get("capabilities") or {}).items()
+                        if key in {"reasoning", "vision"} and type(value) is bool
+                    },
                     "source": "personal",
                     "available": True,
                 }

@@ -158,6 +158,7 @@ class DocumentAdder:
         base_url: str | None = None,
         progress_tracker=None,
         rag_provider: str | None = None,
+        accepted_indexing_snapshot=None,
     ):
         self.kb_name = kb_name
         self.base_dir = Path(base_dir)
@@ -195,6 +196,20 @@ class DocumentAdder:
         )
         if not has_provider_index and not allows_lightrag_bootstrap:
             raise ValueError(f"Knowledge base not initialized ({self.rag_provider}): {kb_name}")
+
+        self.accepted_indexing_snapshot = accepted_indexing_snapshot
+        if self.rag_provider == LIGHTRAG_PROVIDER and self.accepted_indexing_snapshot is None:
+            from deeptutor.services.rag.pipelines.lightrag.indexing_policy import (
+                bind_target,
+                resolve_write_snapshot,
+            )
+
+            self.accepted_indexing_snapshot = bind_target(
+                resolve_write_snapshot(
+                    self.kb_dir, base_dir=str(self.base_dir), kb_name=self.kb_name
+                ),
+                self.kb_dir,
+            )
 
         self.api_key = api_key
         self.base_url = base_url
@@ -308,6 +323,9 @@ class DocumentAdder:
         if not new_files:
             return DocumentIndexResult(processed_files=[], failures=[])
 
+        if self.rag_provider == LIGHTRAG_PROVIDER:
+            return await self._process_lightrag_batch(new_files)
+
         rag_service = RAGService(kb_base_dir=str(self.base_dir), provider=self.rag_provider)
         processed_files: list[Path] = []
         failures: list[DocumentIndexFailure] = []
@@ -362,6 +380,60 @@ class DocumentAdder:
                 failures.append(DocumentIndexFailure(doc_file, str(e)))
 
         return DocumentIndexResult(processed_files=processed_files, failures=failures)
+
+    async def _process_lightrag_batch(self, files: List[Path]) -> DocumentIndexResult:
+        """Hold native write ownership across the entire accepted batch."""
+        from deeptutor.services.rag.pipelines.lightrag.pipeline import LightRagBatchError
+
+        def prepare_publication(root: Path) -> None:
+            from deeptutor.knowledge.progress_tracker import ProgressStage, ProgressTracker
+
+            tracker = self.progress_tracker or ProgressTracker(self.kb_name, self.base_dir)
+            tracker.update(
+                ProgressStage.COMPLETED,
+                message="Document indexing complete",
+                current=len(files),
+                total=len(files),
+                indexed_count=len(files),
+                index_changed=True,
+                index_action="upload",
+                publication_version=root.name,
+            )
+            tracker.verify_terminal(
+                current=len(files),
+                total=len(files),
+                indexed_count=len(files),
+                index_action="upload",
+                publication_version=root.name,
+            )
+
+        service = RAGService(kb_base_dir=str(self.base_dir), provider=LIGHTRAG_PROVIDER)
+        try:
+            success = await service.add_documents(
+                self.kb_name,
+                [str(path) for path in files],
+                accepted_indexing_snapshot=self.accepted_indexing_snapshot,
+                before_publish=prepare_publication,
+            )
+            if not success:
+                raise RuntimeError("LightRAG returned failure without details.")
+            processed = files
+            failures = []
+        except LightRagBatchError as exc:
+            processed = [path for path in files if path.name in exc.outcome.processed]
+            failures = [
+                DocumentIndexFailure(path, str(exc)) for path in files if path not in processed
+            ]
+        except Exception as exc:
+            return DocumentIndexResult([], [DocumentIndexFailure(path, str(exc)) for path in files])
+        for path in processed:
+            try:
+                await asyncio.to_thread(self._record_successful_hash, path)
+            except Exception:
+                logger.warning(
+                    "Indexed document hash could not be recorded: %s", path.name, exc_info=True
+                )
+        return DocumentIndexResult(processed, failures)
 
     def _record_successful_hash(self, file_path: Path) -> None:
         file_hash = self._get_file_hash(file_path)
@@ -486,6 +558,7 @@ async def add_documents(
     api_key: Optional[str] = None,
     base_url: Optional[str] = None,
     allow_duplicates: bool = False,
+    accepted_indexing_snapshot=None,
 ) -> int:
     """Convenience function used by CLI wrappers."""
     from deeptutor.knowledge.manager import KnowledgeBaseManager
@@ -514,6 +587,7 @@ async def add_documents(
                 base_dir=base_dir,
                 api_key=api_key,
                 base_url=base_url,
+                accepted_indexing_snapshot=accepted_indexing_snapshot,
             )
         except ValueError as exc:
             if "not initialized" not in str(exc).lower() or not source_files:

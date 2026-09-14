@@ -108,22 +108,26 @@ export default function KbDocumentsSection({
 
   const blockedReason = canUpload
     ? null
-    : requiresLightRagRebuild
-      ? t(
-          "This legacy LightRAG index remains queryable, but it must be fully rebuilt before incremental uploads.",
-        )
-      : needsReindex
+    : kb.metadata?.indexing_model_unavailable
         ? t(
-            "This knowledge base is in legacy index format and needs reindex before upload.",
+            "Restore access to the pinned indexing models in Settings before adding documents.",
           )
-        : status !== "ready"
+        : requiresLightRagRebuild
           ? t(
-              "This knowledge base is currently {{status}} and cannot accept uploads yet.",
-              {
-                status: status.replaceAll("_", " "),
-              },
+              "This legacy LightRAG index remains queryable, but it must be fully rebuilt before incremental uploads.",
             )
-          : null;
+          : needsReindex
+            ? t(
+                "This knowledge base is in legacy index format and needs reindex before upload.",
+              )
+            : status !== "ready"
+              ? t(
+                  "This knowledge base is currently {{status}} and cannot accept uploads yet.",
+                  {
+                    status: status.replaceAll("_", " "),
+                  },
+                )
+              : null;
 
   const selection = validateFiles(files, policyForProvider, t);
   const canRetry = Boolean(onRetry) && isError && !isIndexingHere;
@@ -186,7 +190,7 @@ export default function KbDocumentsSection({
         </p>
       </div>
 
-      {provider === "lightrag" && (
+      {provider === "lightrag" && publishedLightRagVersion && (
         <LightRagIndexingProvenance
           policy={kb.metadata?.indexing_policy}
           version={publishedLightRagVersion}
@@ -218,7 +222,11 @@ export default function KbDocumentsSection({
                 )}
                 {retrySubmitting || isRetryingHere
                   ? t("Retrying…")
-                  : t("Retry indexing")}
+                  : t(
+                      provider === "lightrag"
+                        ? "Review rebuild"
+                        : "Retry indexing",
+                    )}
               </button>
             ) : undefined
           }

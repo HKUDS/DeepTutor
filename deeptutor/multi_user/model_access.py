@@ -106,6 +106,11 @@ def redacted_model_access(user_id: str | None = None) -> dict[str, list[dict[str
                     "supported_reasoning_efforts": (model or {}).get(
                         "codex_supported_reasoning_levels"
                     ),
+                    **{
+                        f"declared_{key}": value
+                        for key, value in ((model or {}).get("capabilities") or {}).items()
+                        if key in {"reasoning", "vision"} and type(value) is bool
+                    },
                     "source": "admin",
                     "available": model is not None,
                 }
@@ -140,6 +145,7 @@ def allowed_llm_options() -> dict[str, Any]:
             "provider": item.get("provider") or "",
             "reasoning_effort": item.get("reasoning_effort"),
             "supported_reasoning_efforts": item.get("supported_reasoning_efforts"),
+            **{key: item[key] for key in ("declared_reasoning", "declared_vision") if key in item},
             "source": item.get("source") or "admin",
             "is_active_default": (
                 item.get("profile_id") == active_profile_id

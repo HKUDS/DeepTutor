@@ -20,6 +20,7 @@ import { useLLMOptions } from "@/hooks/useLLMOptions";
 import {
   getGraphRagConfig,
   getLightRagConfig,
+  getLightRagModelOptions,
   getLightRagServerConfig,
   getLlamaIndexConfig,
   getPageIndexConfig,
@@ -30,7 +31,6 @@ import {
   probeLinkedFolder,
   probeWeKnora,
   type KnowledgeUploadPolicy,
-  type IndexingLLMSelection,
   type LinkedFolderProbe,
   type RagProviderSummary,
   type WeKnoraProbe,
@@ -48,9 +48,11 @@ import { forbiddenKbNameChars, isValidKbName } from "@/lib/kb-name";
 import FileDropZone from "./FileDropZone";
 import ImaConnectionFields from "./ImaConnectionFields";
 import KnowledgeEngineIcon from "./KnowledgeEngineIcon";
-import IndexingModelSelector, {
-  selectionFromLightRagDefault,
-} from "./IndexingModelSelector";
+import {
+  indexingSelectionFromDefaults,
+  isCompleteIndexingSelection,
+} from "./LightRagIndexingSelector";
+import { resolvedRole } from "./LightRagRoleModelsEditor";
 
 const OBSIDIAN_SOURCE = "obsidian";
 const MARGINNOTE4_SOURCE = "marginnote4";
@@ -73,7 +75,6 @@ interface CreateKbModalProps {
     files: File[];
     pageindexMode?: "flash" | "standard";
     searchMode?: string;
-    indexingLLM?: IndexingLLMSelection;
   }) => Promise<void>;
   /** Link a pre-built engine index folder in place (no copy, no re-index). */
   onConnectLinkedFolder: (params: {
@@ -165,9 +166,6 @@ export default function CreateKbModal({
   const [weKnoraProbe, setWeKnoraProbe] = useState<WeKnoraProbe | null>(null);
   const [weKnoraProbing, setWeKnoraProbing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [indexingLLM, setIndexingLLM] = useState<IndexingLLMSelection | null>(
-    null,
-  );
   const [lightRagConfig, setLightRagConfig] = useState<Awaited<
     ReturnType<typeof getLightRagConfig>
   > | null>(null);
@@ -183,7 +181,61 @@ export default function CreateKbModal({
     onError: setError,
     active: linkIsIma,
   });
-  const llmCatalog = useLLMOptions();
+  const llmCatalog = useLLMOptions(getLightRagModelOptions);
+  const lightRagIndexingDefaults = lightRagConfig
+    ? indexingSelectionFromDefaults(
+        llmCatalog.options,
+        lightRagConfig,
+        llmCatalog.activeDefault,
+      )
+    : null;
+  const lightRagModelLabel = (
+    value?: {
+      profile_id: string;
+      model_id: string;
+      reasoning_effort?: string;
+    } | null,
+  ) => {
+    if (!value) return t("Disabled");
+    const option = llmCatalog.options.find(
+      (item) =>
+        item.profile_id === value.profile_id &&
+        item.model_id === value.model_id,
+    );
+    return `${option?.model_name ?? value.model_id} · ${value.reasoning_effort || t("Auto")}`;
+  };
+  const visibleEngineDefaultSummary =
+    provider === "lightrag" && lightRagIndexingDefaults
+      ? [
+          ...engineDefaultSummary,
+          ...(["query", "keyword", "extract", "vlm"] as const).map((role) => {
+            const value = lightRagConfig?.role_models
+              ? resolvedRole(lightRagConfig.role_models, role)
+              : role === "vlm"
+                ? lightRagIndexingDefaults.vlm.selection
+                : lightRagIndexingDefaults.extract;
+            return `${role.toUpperCase()}: ${lightRagModelLabel(value)}`;
+          }),
+        ]
+      : engineDefaultSummary;
+  const [defaultsRevision, setDefaultsRevision] = useState(0);
+  const refreshCatalog = llmCatalog.refresh;
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const refresh = () => setDefaultsRevision((value) => value + 1);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    window.addEventListener("focus", refresh);
+    window.addEventListener("pageshow", refresh);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("pageshow", refresh);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [isOpen]);
 
   const firstLinkable = providers.find((p) => p.linkable)?.id;
 
@@ -234,44 +286,19 @@ export default function CreateKbModal({
     setWeKnoraKnowledgeBaseId("");
     setWeKnoraProbe(null);
     setWeKnoraProbing(false);
-    setIndexingLLM(null);
     setLightRagConfig(null);
     setLightRagConfigLoaded(false);
     setLightRagConfigError(false);
   }, [isOpen, providers, firstLinkable, initialMode, initialSource]);
 
   useEffect(() => {
-    if (
-      !isOpen ||
-      mode !== "new" ||
-      provider !== "lightrag" ||
-      indexingLLM ||
-      !lightRagConfigLoaded ||
-      !lightRagConfig
-    ) {
-      return;
-    }
-    setIndexingLLM(
-      selectionFromLightRagDefault(
-        llmCatalog.options,
-        lightRagConfig,
-        llmCatalog.activeDefault,
-      ),
-    );
-  }, [
-    indexingLLM,
-    isOpen,
-    llmCatalog.activeDefault,
-    llmCatalog.options,
-    lightRagConfig,
-    lightRagConfigLoaded,
-    mode,
-    provider,
-  ]);
-
-  useEffect(() => {
     if (!isOpen || mode !== "new") return;
     let cancelled = false;
+    if (provider === "lightrag") {
+      setLightRagConfig(null);
+      setLightRagConfigLoaded(false);
+      void refreshCatalog({ force: true });
+    }
 
     const load = async () => {
       try {
@@ -290,7 +317,7 @@ export default function CreateKbModal({
             `${t("Community level")}: ${config.community_level}`,
           ];
         } else if (provider === "lightrag") {
-          const config = await getLightRagConfig();
+          const config = await getLightRagConfig({ force: true });
           if (!cancelled) {
             setLightRagConfig(config);
             setLightRagConfigLoaded(true);
@@ -299,7 +326,7 @@ export default function CreateKbModal({
           summary = [
             `${t("Results per query")}: ${config.top_k}`,
             `${t("Files in parallel")}: ${config.max_concurrent_files}`,
-            `${t("Concurrent LLM calls")}: ${config.llm_model_max_async}`,
+            `${t("Extra extraction passes")}: ${config.entity_extract_max_gleaning}`,
           ];
         } else if (provider === "pageindex") {
           const config = await getPageIndexConfig();
@@ -337,7 +364,7 @@ export default function CreateKbModal({
     return () => {
       cancelled = true;
     };
-  }, [isOpen, mode, provider, t]);
+  }, [isOpen, mode, provider, t, defaultsRevision, refreshCatalog]);
 
   // A fresh path / source invalidates a stale probe verdict.
   useEffect(() => {
@@ -397,7 +424,18 @@ export default function CreateKbModal({
           !!weKnoraProbe?.ok
         );
       }
-      if (provider === "lightrag" && !indexingLLM) return false;
+      if (
+        provider === "lightrag" &&
+        (!lightRagConfigLoaded ||
+          lightRagConfigError ||
+          llmCatalog.loading ||
+          llmCatalog.error ||
+          !isCompleteIndexingSelection(
+            lightRagIndexingDefaults,
+            llmCatalog.options,
+          ))
+      )
+        return false;
       return !providerUnavailable;
     }
     if (linkIsIma) return imaConnection.canSubmit;
@@ -499,8 +537,6 @@ export default function CreateKbModal({
             pageindexMode:
               isPageIndexOSS && pageIndexMode ? pageIndexMode : undefined,
             searchMode: retrievalMode || undefined,
-            indexingLLM:
-              provider === "lightrag" ? indexingLLM || undefined : undefined,
           });
         }
       } else if (linkIsIma) {
@@ -619,7 +655,7 @@ export default function CreateKbModal({
             providerNeedsKey={providerNeedsKey}
             onConfigureProvider={onConfigureProvider}
             activeProvider={activeProvider}
-            engineDefaultSummary={engineDefaultSummary}
+            engineDefaultSummary={visibleEngineDefaultSummary}
             modeOptions={modeOptions}
             retrievalMode={retrievalMode}
             setRetrievalMode={setRetrievalMode}
@@ -631,24 +667,20 @@ export default function CreateKbModal({
             setFiles={setFiles}
             policyForProvider={policyForProvider}
             indexingModelField={
-              provider === "lightrag" ? (
-                <IndexingModelSelector
-                  options={llmCatalog.options}
-                  selection={indexingLLM}
-                  loading={llmCatalog.loading}
-                  error={llmCatalog.error}
-                  defaultUnavailable={
-                    lightRagConfigLoaded &&
-                    !!(
-                      lightRagConfig?.llm_profile_id ||
-                      lightRagConfig?.llm_model_id
-                    ) &&
-                    !indexingLLM
-                  }
-                  defaultLoadError={lightRagConfigError}
-                  disabled={submitting}
-                  onChange={setIndexingLLM}
-                />
+              provider === "lightrag" &&
+              (lightRagConfigError ||
+                llmCatalog.error ||
+                (lightRagConfigLoaded &&
+                  !llmCatalog.loading &&
+                  !isCompleteIndexingSelection(
+                    lightRagIndexingDefaults,
+                    llmCatalog.options,
+                  ))) ? (
+                <p role="alert" className="text-[12px] text-red-600">
+                  {t(
+                    "Configure valid LightRAG defaults in Settings before creating a knowledge base.",
+                  )}
+                </p>
               ) : null
             }
             connectionForm={
@@ -969,11 +1001,7 @@ function NewModeFields({
         </div>
       )}
 
-      {indexingModelField && (
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--muted)]/20 p-3">
-          {indexingModelField}
-        </div>
-      )}
+      {indexingModelField && <div>{indexingModelField}</div>}
 
       {modeOptions.length > 0 && (
         <div>
