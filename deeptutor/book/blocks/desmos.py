@@ -23,7 +23,9 @@ class DesmosGenerator(MathBlockGenerator):
         if isinstance(raw, list):
             for item in raw[:12]:
                 if isinstance(item, dict):
-                    expr = str(item.get("formula") or item.get("latex") or item.get("expression") or "").strip()
+                    expr = str(
+                        item.get("formula") or item.get("latex") or item.get("expression") or ""
+                    ).strip()
                 else:
                     expr = str(item).strip()
                 if expr:

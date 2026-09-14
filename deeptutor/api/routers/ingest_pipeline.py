@@ -1,4 +1,4 @@
-""""素材处理管线" API Router — 教师自助上传全自动化（P2 v1）.
+""" "素材处理管线" API Router — 教师自助上传全自动化（P2 v1）.
 
 把解析→建结构→生成题库→挂载串成一条异步管线。状态机诚实：每段
 ``queued/running/done/failed/skipped``，单段失败让后续段 skipped，支持单段

@@ -245,7 +245,9 @@ class PublicPendingQuestion:
         return {
             "id": self.question_id,
             "prompt": self.prompt,
-            "options": [{"label": option.label, "description": option.body} for option in self.options],
+            "options": [
+                {"label": option.label, "description": option.body} for option in self.options
+            ],
             "multi_select": False,
             "allow_free_text": True,
         }

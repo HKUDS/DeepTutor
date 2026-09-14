@@ -143,9 +143,7 @@ def record_stage(
     """
     manager = _manager_for(base_dir)
     manager.config = manager._load_config()
-    entry = manager.config.setdefault("knowledge_bases", {}).setdefault(
-        kb_name, {"path": kb_name}
-    )
+    entry = manager.config.setdefault("knowledge_bases", {}).setdefault(kb_name, {"path": kb_name})
     pipeline = entry.setdefault("metadata", {}).setdefault(PIPELINE_KEY, {})
     record = pipeline.get(filename) if isinstance(pipeline.get(filename), dict) else {}
     record = {"file": filename, **record}
@@ -378,9 +376,7 @@ async def _canonicalize_stage(
         # 0 章 → 概述锚定法兜底（仅 en/英语书启用，见 chapter_rebuild.rebuild_with_fallback）。
         from deeptutor.textbook_struct.chapter_rebuild import rebuild_with_fallback
 
-        chapters = await asyncio.to_thread(
-            rebuild_with_fallback, layout, title=title
-        )
+        chapters = await asyncio.to_thread(rebuild_with_fallback, layout, title=title)
         specs = await asyncio.to_thread(_page_specs_from_layout, layout, chapters, title)
 
     if specs:
@@ -440,7 +436,9 @@ async def _canonicalize_stage(
     }, layout
 
 
-async def _figure_stage(book_id: str, parse_workdir: str | Path, *, book_storage: Any) -> dict[str, Any]:
+async def _figure_stage(
+    book_id: str, parse_workdir: str | Path, *, book_storage: Any
+) -> dict[str, Any]:
     """figure_backfill 的编程入口串联：plan_from_parse_dir + apply_plan（--apply 语义）.
 
     模块级 CLI 调用不等价编程复刻，这里直接用 :func:`plan_from_parse_dir`

@@ -149,14 +149,14 @@ class TestCollectionFailClosedGuards:
     @pytest.mark.parametrize(
         ("user", "expected", "want"),
         [
-            ("1/2", "0.5", True),          # 分数
-            ("√2/2", "二分之√2", True),     # 根式
-            ("y=2x+1", "2x+1", True),      # 代数
-            ("1<x<2", "(1,2)", True),      # 区间
+            ("1/2", "0.5", True),  # 分数
+            ("√2/2", "二分之√2", True),  # 根式
+            ("y=2x+1", "2x+1", True),  # 代数
+            ("1<x<2", "(1,2)", True),  # 区间
             ("photosynthesis", "photosynthesis", True),  # 非数学走旧路径
             ("half of one", "0.5", False),  # 仅一侧是数学 → 判错
-            ("{1,2}", "1,2", False),        # 集合形态与裸列表不混同
-            ("±2", "±2", True),             # 两侧同为多解 → 等
+            ("{1,2}", "1,2", False),  # 集合形态与裸列表不混同
+            ("±2", "±2", True),  # 两侧同为多解 → 等
         ],
     )
     def test_existing_semantics_unchanged(self, user: str, expected: str, want: bool):

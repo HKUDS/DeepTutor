@@ -102,9 +102,9 @@ def _math_blocks_allowed(chapter: Chapter) -> bool:
     的 extra 字段（``Chapter.model_config = extra="allow"``）。拿不到学科信息时
     退化为始终可用；待主题信息落到 Chapter 后升级为强门控。
     """
-    subject = str(
-        getattr(chapter, "subject", "") or getattr(chapter, "discipline", "")
-    ).strip().lower()
+    subject = (
+        str(getattr(chapter, "subject", "") or getattr(chapter, "discipline", "")).strip().lower()
+    )
     if not subject:
         return True
     return not any(keyword in subject for keyword in _NON_MATH_SUBJECT_KEYWORDS)
@@ -478,7 +478,7 @@ class SectionArchitect:
             return self.plan_blocks(chapter, depth=depth, allowed=allowed)
 
         # YuEdu fork: 学科门控——非数学章节从 LLM 可选集合中剔除数学交互块族
-        #（在 1.6.4 的 allowed 过滤之前生效，两层过滤正交：门控管学科、allowed 管版面）。
+        # （在 1.6.4 的 allowed 过滤之前生效，两层过滤正交：门控管学科、allowed 管版面）。
         allowed_types = _ALLOWED_LLM_TYPES
         if not _math_blocks_allowed(chapter):
             allowed_types = _ALLOWED_LLM_TYPES - _MATH_BLOCK_TYPES

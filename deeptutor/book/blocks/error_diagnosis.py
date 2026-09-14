@@ -71,8 +71,7 @@ class ErrorDiagnosisGenerator(BlockGenerator):
     ) -> tuple[str, dict[str, str]]:
         prompts = load_book_prompts("error_diagnosis", ctx.language)
         lines = [
-            f"- {d.get('kp_name')}: {d.get('error_label')} ×{d.get('count')}"
-            for d in diagnoses
+            f"- {d.get('kp_name')}: {d.get('error_label')} ×{d.get('count')}" for d in diagnoses
         ]
         user_prompt = get_book_prompt(prompts, "user_template").format(
             error_summary="\n".join(lines),
@@ -105,9 +104,7 @@ class ErrorDiagnosisGenerator(BlockGenerator):
         return guidance, advice_by_kp
 
 
-def _aggregate(
-    errors: list[Any], kp_names: dict[str, str], language: str
-) -> list[dict[str, Any]]:
+def _aggregate(errors: list[Any], kp_names: dict[str, str], language: str) -> list[dict[str, Any]]:
     """Group the raw evidence rows by (kp, error_type), hottest first."""
     grouped: Counter[tuple[str, str]] = Counter()
     question_ids: dict[tuple[str, str], list[str]] = {}
