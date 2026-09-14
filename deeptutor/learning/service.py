@@ -5,15 +5,15 @@ import time
 from typing import TYPE_CHECKING
 import uuid
 
-from deeptutor.learning.grading import classify_error, grade_answer
 from deeptutor.learning.evidence_store import EvidenceStore
+from deeptutor.learning.grading import classify_error, grade_answer
 from deeptutor.learning.mastery import compute_mastery
 from deeptutor.learning.models import (
     ErrorRecord,
-    LearningEvidence,
     InteractionStatus,
     LearnerMasteryOverride,
     LearnerProfile,
+    LearningEvidence,
     LearningModule,
     LearningProgress,
     LearningStage,
@@ -68,7 +68,9 @@ class StaleInteractionError(MasteryInteractionError):
 
 
 class LearningService:
-    def __init__(self, store: LearningStore | None = None, evidence_store: EvidenceStore | None = None) -> None:
+    def __init__(
+        self, store: LearningStore | None = None, evidence_store: EvidenceStore | None = None
+    ) -> None:
         self._store = store or LearningStore()
         self._evidence_store: EvidenceStore | None = evidence_store
 
@@ -703,7 +705,9 @@ class LearningService:
                     user_id="",
                     book_id=book_id,
                     kp_id=interaction.question.knowledge_point_id if interaction.question else "",
-                    question_id=interaction.question.question_id if interaction.question else question_id,
+                    question_id=interaction.question.question_id
+                    if interaction.question
+                    else question_id,
                     session_id=session_id,
                     evidence_type="graded_quiz",
                     is_correct=is_corr,
@@ -1028,7 +1032,8 @@ class LearningService:
         evidence: str = "",
         scheduler: SpacedRepetitionScheduler | None = None,
         user_id: str = "",
-        session_id: str = "",) -> None:
+        session_id: str = "",
+    ) -> None:
         """Record the qualitative (CONCEPT / DESIGN) gate outcome.
 
         The boolean is the gate of record; ``mastery_levels`` is nudged only so
@@ -1058,6 +1063,7 @@ class LearningService:
                 detail_json={"evidence": evidence} if evidence else {},
             )
         )
+
     def record_qualitative_for_path(
         self,
         book_id: str,

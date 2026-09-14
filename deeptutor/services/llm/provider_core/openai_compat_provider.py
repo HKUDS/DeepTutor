@@ -16,8 +16,6 @@ import sys
 import time
 from typing import TYPE_CHECKING, Any
 
-from deeptutor.services.keypool import KeyPool
-
 import json_repair
 from loguru import logger
 from openai import AsyncOpenAI

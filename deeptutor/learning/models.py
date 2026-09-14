@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from enum import Enum
 import time
 from typing import Any, Literal
@@ -513,6 +514,7 @@ __all__ = [
     "LearningProgress",
 ]
 
+
 class LearningEvidence(BaseModel):
     """One immutable row of learner evidence (collection-side payload).
 
@@ -544,11 +546,13 @@ class LearningEvidence(BaseModel):
     error_type: str = ""
     detail_json: dict[str, Any] = Field(default_factory=dict)
 
+
 class SixDimensionEvidenceRef(BaseModel):
     """Stable pointer to one item of evidence behind a dimension score."""
 
     kind: SixDimensionEvidenceKind
     id: str = Field(min_length=1)
+
 
 class SixDimensionResult(BaseModel):
     """One explainable dimension in a :class:`SixDimensionSnapshot`."""
@@ -574,6 +578,7 @@ class SixDimensionResult(BaseModel):
         elif self.score is not None:
             raise ValueError("insufficient dimensions must use a null score")
         return self
+
 
 class SixDimensionSnapshot(BaseModel):
     """A point-in-time, evidence-backed learner profile for one book."""

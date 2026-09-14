@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..models import BlockType
-from ._math_base import GenerationFailure, MathBlockGenerator
+from ._math_base import MathBlockGenerator
 
 
 def _bounding_box(value: Any) -> list[float]:

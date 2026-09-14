@@ -10,7 +10,7 @@ reader alike. Nothing in this package imports deeptutor (asset red line #1).
 
 from .chapter_rebuild import Chapter, rebuild
 from .column_blacklist import COLUMN_BLACKLIST
-from .toc_crosscheck import extract_toc_entries, cross_check_with_toc
+from .toc_crosscheck import cross_check_with_toc, extract_toc_entries
 
 __all__ = [
     "Chapter",

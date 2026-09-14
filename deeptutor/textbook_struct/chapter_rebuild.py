@@ -14,8 +14,8 @@ page with ``page_idx`` / ``para_blocks``; blocks carry ``type`` / ``bbox`` /
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
+import re
 
 from .column_blacklist import COLUMN_BLACKLIST
 
@@ -40,9 +40,7 @@ class Chapter:
 
 def block_text(block: dict) -> str:
     return "".join(
-        span.get("content", "")
-        for line in block.get("lines", [])
-        for span in line.get("spans", [])
+        span.get("content", "") for line in block.get("lines", []) for span in line.get("spans", [])
     ).strip()
 
 
@@ -123,7 +121,9 @@ def assign_page_ranges(chapters: list[Chapter], *, page_count: int) -> list[Chap
     """Chapter i spans [start_i, start_{i+1}); the last runs to the last page."""
     for i, chapter in enumerate(chapters):
         chapter.end_page_idx = (
-            chapters[i + 1].page_idx if i + 1 < len(chapters) else max(page_count - 1, chapter.page_idx)
+            chapters[i + 1].page_idx
+            if i + 1 < len(chapters)
+            else max(page_count - 1, chapter.page_idx)
         )
     return chapters
 
@@ -171,7 +171,10 @@ def detect_frames(
             if height_range[0] <= height <= height_range[1]:
                 if len(text) >= 6:
                     # 封面/前置页噪音 + 课标题换行残留（是某课标题的子串）
-                    if first_lesson_page_idx is not None and item["page_idx"] < first_lesson_page_idx:
+                    if (
+                        first_lesson_page_idx is not None
+                        and item["page_idx"] < first_lesson_page_idx
+                    ):
                         continue
                     if any(text in lt for lt in lesson_titles):
                         continue

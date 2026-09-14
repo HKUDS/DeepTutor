@@ -13,8 +13,6 @@ fail-open/fail-closed 方向不变：采集是旁路，绝不因把握度缺失�
 
 from __future__ import annotations
 
-
-
 import pytest
 
 from deeptutor.learning.evidence_store import EvidenceStore
@@ -52,9 +50,7 @@ def _make_progress() -> LearningProgress:
                 name="M1",
                 order=0,
                 knowledge_points=[
-                    KnowledgePoint(
-                        id="kp1", name="KP1", type=KnowledgeType.MEMORY, module_id="m1"
-                    )
+                    KnowledgePoint(id="kp1", name="KP1", type=KnowledgeType.MEMORY, module_id="m1")
                 ],
             )
         ],
@@ -220,9 +216,7 @@ class TestQuizCardTwoQuestions:
 
 class TestGradeToolConfidenceRoundtrip:
     @pytest.mark.asyncio
-    async def test_roundtrips_confidence_before_into_evidence(
-        self, path_id, tmp_path, monkeypatch
-    ):
+    async def test_roundtrips_confidence_before_into_evidence(self, path_id, tmp_path, monkeypatch):
         evidence_store = _wire_tool_service(monkeypatch, tmp_path)
         registered = await _register_question(path_id)
 

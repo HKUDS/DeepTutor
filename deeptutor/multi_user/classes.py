@@ -21,10 +21,10 @@ student outside the class view); read paths re-verify and skip stale entries.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import json
 import logging
 import threading
-from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
@@ -145,7 +145,9 @@ def list_classes(teacher: str | None = None) -> list[dict[str, Any]]:
 
     Sorted by creation time then id so the listing is stable across reads.
     """
-    classes = [dict(record, id=cid) for cid, record in _read_classes().items() if isinstance(record, dict)]
+    classes = [
+        dict(record, id=cid) for cid, record in _read_classes().items() if isinstance(record, dict)
+    ]
     if teacher is not None:
         classes = [c for c in classes if str(c.get("teacher") or "") == teacher]
     classes.sort(key=lambda c: (str(c.get("created_at") or ""), str(c.get("id") or "")))

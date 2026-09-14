@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import re
 
-from .chapter_rebuild import Chapter, block_text
+from .chapter_rebuild import Chapter
 
 # 目录页正文行：「第一课 …… 3」/「1.1 某某 …… 12」（点线或空格引导 + 印刷页码）
 _TOC_LINE_RE = re.compile(r"^(.{2,40}?)[\s.．·…]{1,}(\d{1,3})$")
 
 
-def extract_toc_entries(layout: dict, *, toc_page_idxs: set[int] | None = None) -> list[tuple[str, int]]:
+def extract_toc_entries(
+    layout: dict, *, toc_page_idxs: set[int] | None = None
+) -> list[tuple[str, int]]:
     """Pull ``(title, printed_page)`` rows from the 目录 page(s).
 
     ``toc_page_idxs`` given → scan only those pages; otherwise scan every page's
@@ -24,9 +26,7 @@ def extract_toc_entries(layout: dict, *, toc_page_idxs: set[int] | None = None) 
             if block.get("type") == "title":
                 continue  # 目录页标题本体「目录」不算条目
             for line in block.get("lines", []):
-                text = "".join(
-                    span.get("content", "") for span in line.get("spans", [])
-                ).strip()
+                text = "".join(span.get("content", "") for span in line.get("spans", [])).strip()
                 match = _TOC_LINE_RE.match(text)
                 if match:
                     entries.append((match.group(1).strip(), int(match.group(2))))
@@ -46,8 +46,13 @@ def cross_check_with_toc(
     rebuild is suspicious — escalate to human review (spec §4 layer 4).
     """
     if not toc_entries:
-        return {"hits": 0, "total": len(chapters), "hit_rate": None, "ok": None,
-                "note": "no printed TOC entries found"}
+        return {
+            "hits": 0,
+            "total": len(chapters),
+            "hit_rate": None,
+            "ok": None,
+            "note": "no printed TOC entries found",
+        }
     hits = 0
     for chapter in chapters:
         for title, _page in toc_entries:

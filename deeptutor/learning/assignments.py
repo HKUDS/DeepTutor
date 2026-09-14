@@ -24,10 +24,10 @@ idempotent rather than growing an attempt log v1 does not use.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import json
 import logging
 import threading
-from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
@@ -118,10 +118,7 @@ def add_submission(
         submissions = record.get("submissions")
         if not isinstance(submissions, dict):
             submissions = {}
-        if (
-            student_id not in submissions
-            and len(submissions) >= MAX_SUBMISSIONS_PER_ASSIGNMENT
-        ):
+        if student_id not in submissions and len(submissions) >= MAX_SUBMISSIONS_PER_ASSIGNMENT:
             raise ValueError("assignment submission budget exceeded")
         submissions[student_id] = {
             "submitted_at": utc_now_iso(),
