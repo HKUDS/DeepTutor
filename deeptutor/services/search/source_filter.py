@@ -7,8 +7,10 @@ import json
 import logging
 import os
 import re
+import threading
+import time
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 import urllib.request
 
 from .types import Citation, SearchResult, WebSearchResponse
@@ -75,6 +77,17 @@ _UNSAFE_URL_PATH_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
 
 _MODERATION_URL = "https://api.openai.com/v1/moderations"
 _MODERATION_TIMEOUT_S = 8.0
+
+# Google Web Risk Lookup (#375 stage 3). Opt-in via ``use_web_risk`` plus an
+# API key; the free tier is the 100k lookups/month the issue pinned its hopes
+# on, so results are cached briefly and shared lookups are deduplicated.
+_WEB_RISK_URL = "https://webrisk.googleapis.com/v1/uris:search"
+_WEB_RISK_TIMEOUT_S = 5.0
+_WEB_RISK_THREAT_TYPES = ("MALWARE", "SOCIAL_ENGINEERING", "UNWANTED_SOFTWARE")
+_WEB_RISK_CACHE_TTL_S = 900.0
+_WEB_RISK_CACHE_MAX = 1024
+_web_risk_cache: dict[str, tuple[float, bool]] = {}
+_web_risk_cache_lock = threading.Lock()
 
 
 def _as_bool(value: Any, default: bool = False) -> bool:
@@ -240,6 +253,64 @@ def _request_openai_moderation(texts: list[str], *, api_key: str) -> list[bool]:
     return [bool(isinstance(result, dict) and result.get("flagged")) for result in results]
 
 
+def _request_web_risk(url: str, *, api_key: str) -> bool:
+    """Return True when the Web Risk Lookup API flags ``url`` as a threat."""
+    parts = [f"threatTypes={threat}" for threat in _WEB_RISK_THREAT_TYPES]
+    parts.append(f"uri={quote(url, safe='')}")
+    parts.append(f"key={quote(api_key, safe='')}")
+    request = urllib.request.Request(
+        f"{_WEB_RISK_URL}?{'&'.join(parts)}",
+        headers={"User-Agent": "DeepTutor-source-filter/1.0"},
+        method="GET",
+    )
+    with urllib.request.urlopen(request, timeout=_WEB_RISK_TIMEOUT_S) as response:  # nosec B310 - hardcoded https constant URL
+        raw = json.loads(response.read().decode("utf-8"))
+    threat = raw.get("threat") if isinstance(raw, dict) else None
+    return bool(isinstance(threat, dict) and threat)
+
+
+def _web_risk_rejections(
+    urls: list[str],
+    *,
+    api_key: str,
+    request_web_risk: Any | None = None,
+) -> set[str]:
+    """Return the subset of ``urls`` flagged by Web Risk.
+
+    Fail open on transport/API errors so an outage or exhausted quota never
+    blanks every web-search turn — heuristics and Moderation already ran.
+    """
+    unique = list(dict.fromkeys(url for url in urls if url))
+    if not unique or not api_key:
+        return set()
+    requester = request_web_risk or _request_web_risk
+    flagged: set[str] = set()
+    now = time.monotonic()
+    pending: list[str] = []
+    with _web_risk_cache_lock:
+        for url in unique:
+            entry = _web_risk_cache.get(url)
+            if entry is not None and now - entry[0] < _WEB_RISK_CACHE_TTL_S:
+                if entry[1]:
+                    flagged.add(url)
+            else:
+                pending.append(url)
+    for url in pending:
+        try:
+            is_flagged = bool(requester(url, api_key=api_key))
+        except Exception as exc:  # noqa: BLE001 — network / JSON / quota quirks
+            _logger.warning("Web Risk lookup skipped after error: %s", exc)
+            continue
+        with _web_risk_cache_lock:
+            if len(_web_risk_cache) >= _WEB_RISK_CACHE_MAX:
+                for stale in list(_web_risk_cache)[: len(_web_risk_cache) // 2]:
+                    _web_risk_cache.pop(stale, None)
+            _web_risk_cache[url] = (time.monotonic(), is_flagged)
+        if is_flagged:
+            flagged.add(url)
+    return flagged
+
+
 def _reference_text(*, title: str = "", snippet: str = "", content: str = "") -> str:
     parts = [str(title or "").strip(), str(snippet or "").strip(), str(content or "").strip()]
     return "\n".join(part for part in parts if part)
@@ -256,17 +327,24 @@ def filter_web_search_response(
     use_moderation: bool = False,
     moderation_api_key: str | None = None,
     request_moderation: Any | None = None,
+    use_web_risk: bool = False,
+    web_risk_api_key: str | None = None,
+    request_web_risk: Any | None = None,
 ) -> WebSearchResponse:
     """Drop unsafe or disallowed references from a provider response.
 
-    Citation ids and reference labels stay unchanged when an item is removed.
-    Provider-authored answers already cite those labels, so renumbering here
-    would turn a harmless gap into incorrect citations.
+    When citations are removed, the retained ones are renumbered ``1..k``:
+    the provider prose citing the old labels is discarded (the caller rebuilds
+    the answer from the retained raw results, whose markers are positional
+    ``[i]``), so a contiguous reference list is strictly more truthful than
+    keeping stale ids that point at dropped URLs. Removals that leave all
+    citations intact keep every label unchanged — the prose still cites them.
 
     Stages (in order):
     1. URL hygiene / domain policy (existing)
     2. Title + snippet heuristics (``content_filtering``, on by default)
     3. Optional OpenAI Moderation when ``use_moderation`` and a key are set
+    4. Optional Google Web Risk Lookup when ``use_web_risk`` and a key are set
     """
     if not enabled:
         return response
@@ -278,9 +356,11 @@ def filter_web_search_response(
 
     moderation_key = str(moderation_api_key or "").strip()
     moderation_active = bool(use_moderation and moderation_key)
+    web_risk_key = str(web_risk_api_key or "").strip()
+    web_risk_active = bool(use_web_risk and web_risk_key)
 
-    citation_rows: list[tuple[Citation, str, str, str]] = []
-    result_rows: list[tuple[SearchResult, str, str, str]] = []
+    citation_rows: list[list[Any]] = []
+    result_rows: list[list[Any]] = []
 
     for citation in response.citations:
         reason, host = _rejection_reason(
@@ -303,7 +383,7 @@ def filter_web_search_response(
             if not reason and moderation_active
             else ""
         )
-        citation_rows.append((citation, reason, host, moderation_text))
+        citation_rows.append([citation, reason, host, moderation_text])
 
     for result in response.search_results:
         reason, host = _rejection_reason(
@@ -326,13 +406,27 @@ def filter_web_search_response(
             if not reason and moderation_active
             else ""
         )
-        result_rows.append((result, reason, host, moderation_text))
+        result_rows.append([result, reason, host, moderation_text])
 
     moderation_decisions = _moderation_rejections(
         [row[3] for row in (*citation_rows, *result_rows) if row[3]],
         api_key=moderation_key,
         request_moderation=request_moderation,
     )
+
+    for row in (*citation_rows, *result_rows):
+        if not row[1] and moderation_decisions.get(row[3], False):
+            row[1] = "moderation_flagged"
+
+    web_risk_flagged: set[str] = set()
+    if web_risk_active:
+        # Only look up URLs that survived every earlier stage — moderation-
+        # flagged or heuristic-rejected rows must not burn lookup quota.
+        web_risk_flagged = _web_risk_rejections(
+            [row[0].url for row in (*citation_rows, *result_rows) if not row[1]],
+            api_key=web_risk_key,
+            request_web_risk=request_web_risk,
+        )
 
     kept_citations: list[Citation] = []
     kept_results: list[SearchResult] = []
@@ -348,18 +442,20 @@ def filter_web_search_response(
         if host and host not in rejected_hosts:
             rejected_hosts.append(host)
 
-    for citation, reason, host, moderation_text in citation_rows:
-        if not reason and moderation_decisions.get(moderation_text, False):
-            reason = "moderation_flagged"
+    for row in citation_rows:
+        citation, reason, host = row[0], row[1], row[2]
+        if not reason and citation.url in web_risk_flagged:
+            reason = "web_risk_threat"
         if reason:
             removed_citations += 1
             _record_reason(reason, host)
         else:
             kept_citations.append(citation)
 
-    for result, reason, host, moderation_text in result_rows:
-        if not reason and moderation_decisions.get(moderation_text, False):
-            reason = "moderation_flagged"
+    for row in result_rows:
+        result, reason, host = row[0], row[1], row[2]
+        if not reason and result.url in web_risk_flagged:
+            reason = "web_risk_threat"
         if reason:
             removed_results += 1
             _record_reason(reason, host)
@@ -374,6 +470,7 @@ def filter_web_search_response(
         "answer_invalidated": answer_invalidated,
         "content_filtering": content_filtering,
         "moderation_enabled": moderation_active,
+        "web_risk_enabled": web_risk_active,
         "educational_trusted_domains": use_educational_trusted_domains,
     }
 
@@ -391,6 +488,15 @@ def filter_web_search_response(
         answer_invalidated = True
         policy_meta["answer_invalidated"] = True
 
+    if removed_citations:
+        # The prose citing the old labels is gone, so renumber the retained
+        # citations to match the positional [i] markers the consolidator
+        # writes when it rebuilds the answer from raw results.
+        for index, citation in enumerate(kept_citations, 1):
+            citation.id = index
+            citation.reference = f"[{index}]"
+        policy_meta["citations_renumbered"] = True
+
     response.citations = kept_citations
     response.search_results = kept_results
     response.metadata["source_filter"] = policy_meta
@@ -406,12 +512,23 @@ def resolve_moderation_api_key() -> str:
     return ""
 
 
+def resolve_web_risk_api_key() -> str:
+    """Pick a Web Risk API key from the process environment."""
+    for name in ("GOOGLE_WEB_RISK_API_KEY", "WEB_RISK_API_KEY"):
+        value = str(os.environ.get(name) or "").strip()
+        if value:
+            return value
+    return ""
+
+
 def settings_from_config(config: Any) -> dict[str, Any]:
     """Read the optional ``tools.web_search.source_filtering`` config section."""
     raw = config.get("source_filtering", {}) if isinstance(config, dict) else {}
     settings = raw if isinstance(raw, dict) else {}
     use_moderation = _as_bool(settings.get("use_moderation"), False)
     moderation_key = resolve_moderation_api_key()
+    use_web_risk = _as_bool(settings.get("use_web_risk"), False)
+    web_risk_key = resolve_web_risk_api_key()
     return {
         "enabled": _as_bool(settings.get("enabled"), True),
         "blocked_domains": _domains(settings.get("blocked_domains")),
@@ -423,6 +540,8 @@ def settings_from_config(config: Any) -> dict[str, Any]:
         ),
         "use_moderation": use_moderation,
         "moderation_api_key": moderation_key if use_moderation else "",
+        "use_web_risk": use_web_risk,
+        "web_risk_api_key": web_risk_key if use_web_risk else "",
     }
 
 
@@ -430,5 +549,6 @@ __all__ = [
     "EDUCATIONAL_TRUSTED_DOMAINS",
     "filter_web_search_response",
     "resolve_moderation_api_key",
+    "resolve_web_risk_api_key",
     "settings_from_config",
 ]

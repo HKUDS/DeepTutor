@@ -265,8 +265,9 @@ def get_current_config() -> dict[str, Any]:
     resolved = resolve_search_runtime_config()
     source_filtering = dict(_get_source_filter_settings())
     # Never surface the bearer token to Settings / CLI — only whether Moderation
-    # is wired (key present + use_moderation).
+    # is wired (key present + use_moderation). Same for the Web Risk API key.
     source_filtering["moderation_configured"] = bool(source_filtering.pop("moderation_api_key", ""))
+    source_filtering["web_risk_configured"] = bool(source_filtering.pop("web_risk_api_key", ""))
     return {
         "enabled": config.get("enabled", True),
         "provider": resolved.provider,
