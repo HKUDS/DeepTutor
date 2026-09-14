@@ -253,10 +253,21 @@ test("an ordinary knowledge base has no devices section", () => {
   assert.deepEqual(kbDetailSections(indexed), [
     "files",
     "add",
+    "folders",
     "github",
     "web",
     "versions",
     "settings",
   ]);
   assert.equal(isMarginNoteKb(indexed), false);
+});
+
+test("connected knowledge bases do not expose local source-folder controls", () => {
+  assert.deepEqual(
+    kbDetailSections({
+      name: "Obsidian",
+      metadata: { type: "obsidian", vault_path: "/notes" },
+    }),
+    ["files", "add", "github", "web", "versions", "settings"],
+  );
 });

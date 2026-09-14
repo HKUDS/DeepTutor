@@ -215,7 +215,7 @@ export default function FileDropZone({
           onClick={() => dirInputRef.current?.click()}
           className="text-[11px] font-medium text-[var(--muted-foreground)] underline-offset-2 transition-colors hover:text-[var(--foreground)] hover:underline"
         >
-          {t("Or select an entire folder")}
+          {t("Or upload a folder (one-time import)")}
         </button>
       )}
 

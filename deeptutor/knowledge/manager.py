@@ -1756,6 +1756,7 @@ class KnowledgeBaseManager:
             "path": str(folder),
             "added_at": datetime.now().isoformat(),
             "file_count": len(files),
+            "last_sync": None,
         }
         metadata["linked_folders"].append(folder_info)
 

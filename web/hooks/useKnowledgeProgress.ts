@@ -9,7 +9,7 @@ import {
 } from "@/lib/knowledge-helpers";
 import { useTranslation } from "react-i18next";
 
-export type TaskKind = "create" | "upload" | "reindex" | "retry";
+export type TaskKind = "create" | "upload" | "sync" | "reindex" | "retry";
 
 export interface TaskState {
   taskId: string;

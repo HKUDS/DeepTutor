@@ -29,6 +29,7 @@ def _manager_with_linked_folder(tmp_path: Path) -> tuple[KnowledgeBaseManager, P
     doc.write_text("hello", encoding="utf-8")
 
     folder_info = manager.link_folder("kb", str(source))
+    assert folder_info["last_sync"] is None
     return manager, kb_dir / "metadata.json", folder_info["id"], doc
 
 
@@ -57,3 +58,35 @@ def test_update_folder_sync_state_unknown_folder_writes_nothing(tmp_path: Path) 
     manager.update_folder_sync_state("kb", "no-such-id", [str(doc)])
 
     assert metadata_file.read_bytes() == before
+
+
+def test_empty_successful_sync_records_last_sync_without_changing_file_state(
+    tmp_path: Path,
+) -> None:
+    manager, metadata_file, folder_id, doc = _manager_with_linked_folder(tmp_path)
+    manager.update_folder_sync_state("kb", folder_id, [str(doc)])
+    before = json.loads(metadata_file.read_text(encoding="utf-8"))["linked_folders"][0]
+
+    manager.update_folder_sync_state("kb", folder_id, [])
+
+    after = json.loads(metadata_file.read_text(encoding="utf-8"))["linked_folders"][0]
+    assert after["last_sync"]
+    assert after["last_sync"] >= before["last_sync"]
+    assert after["synced_files"] == before["synced_files"]
+
+
+def test_unlink_removes_only_the_source_registration(tmp_path: Path) -> None:
+    manager, _metadata_file, folder_id, _doc = _manager_with_linked_folder(tmp_path)
+    kb_dir = manager.base_dir / "kb"
+    raw_file = kb_dir / "raw" / "note.md"
+    index_marker = kb_dir / "version-1" / "index.marker"
+    raw_file.parent.mkdir(parents=True)
+    index_marker.parent.mkdir(parents=True)
+    raw_file.write_text("imported", encoding="utf-8")
+    index_marker.write_text("index", encoding="utf-8")
+
+    assert manager.unlink_folder("kb", folder_id) is True
+
+    assert manager.get_linked_folders("kb") == []
+    assert raw_file.read_text(encoding="utf-8") == "imported"
+    assert index_marker.read_text(encoding="utf-8") == "index"

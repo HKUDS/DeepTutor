@@ -318,6 +318,7 @@ export const isMarginNoteKb = (kb: KnowledgeBase): boolean =>
 export const KB_DETAIL_SECTIONS = [
   "files",
   "add",
+  "folders",
   "github",
   "web",
   "versions",
@@ -337,7 +338,13 @@ export type KbDetailSection = (typeof KB_DETAIL_SECTIONS)[number];
 export const kbDetailSections = (kb: KnowledgeBase): KbDetailSection[] =>
   isMarginNoteKb(kb)
     ? ["devices", "settings"]
-    : KB_DETAIL_SECTIONS.filter((section) => section !== "devices");
+    : KB_DETAIL_SECTIONS.filter(
+        (section) => section !== "devices" && (section !== "folders" || !kb.metadata?.type),
+      );
+
+/** Local source folders belong to ordinary, DeepTutor-managed indexed KBs. */
+export const kbSupportsLinkedFolders = (kb: KnowledgeBase): boolean =>
+  !isMarginNoteKb(kb) && !kb.metadata?.type;
 
 /** The retrieval engine a KB is bound to. Connected vaults badge by source. */
 export const kbProvider = (kb: KnowledgeBase): string => {
