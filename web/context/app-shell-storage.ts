@@ -2,7 +2,11 @@
 
 import { browserStorage } from "@/shared/storage";
 
-export type AppLanguage = "en" | "zh";
+// Re-exported rather than redeclared: this file had its own copy of the
+// union, so widening the i18n one left this narrow and every call site
+// that crossed the two failed to compile.
+export type { AppLanguage } from "@/i18n/init";
+import type { AppLanguage } from "@/i18n/init";
 
 export const ACTIVE_SESSION_STORAGE_KEY = "deeptutor.activeSessionId.tab";
 export const LANGUAGE_STORAGE_KEY = "deeptutor-language";

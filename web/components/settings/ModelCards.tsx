@@ -9,6 +9,7 @@ import type {
   CatalogProfile,
   ServiceName,
 } from "@/features/settings/store/SettingsStore";
+import type { AppLanguage } from "@/i18n/init";
 
 /**
  * The two levels of a model settings page, as cards.
@@ -344,7 +345,7 @@ export function ModelCard({
 }: {
   model: CatalogModel;
   service: ServiceName;
-  language: "en" | "zh";
+  language: AppLanguage;
   index: number;
   inUse: boolean;
   expanded: boolean;

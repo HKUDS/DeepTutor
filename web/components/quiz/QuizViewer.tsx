@@ -640,7 +640,10 @@ export default function QuizViewer({
     }));
     setAnswerViews((prev) => ({ ...prev, [idx]: "judgment" }));
 
-    const judgeLanguage: "zh" | "en" = language === "zh" ? "zh" : "en";
+    // Pass the UI language through; the backend falls back to English for
+    // any language it has no judge prompt for. Collapsing to "en" here
+    // meant a Ukrainian quiz was always graded in English.
+    const judgeLanguage = language;
 
     const handle = startQuizJudge(
       {

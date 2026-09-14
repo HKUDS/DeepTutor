@@ -128,6 +128,7 @@ class SettingSpec:
 _LANGUAGE_CHOICES: tuple[tuple[str, str, str], ...] = (
     ("en", "English", "Interface and replies in English."),
     ("zh", "简体中文", "Interface and replies in Simplified Chinese."),
+    ("uk", "Українська", "Interface and replies in Ukrainian."),
 )
 
 _THEME_CHOICES: tuple[tuple[str, str, str], ...] = (
