@@ -106,15 +106,26 @@ async def run_extension_action(
         )
     try:
         async with asyncio.timeout(ACTION_TIMEOUT_S):
-            loop = asyncio.get_running_loop()
-            value = await loop.run_in_executor(
-                registry.executor_for(extension_id),
-                extension.run_action,
-                action,
-                context,
-            )
-            if inspect.isawaitable(value):
-                value = await value
+            handler = extension.run_action
+            if inspect.iscoroutinefunction(handler):
+                # Async handlers run on the loop: handing one to
+                # run_in_executor calls it inside a worker thread, and the
+                # returned coroutine is rejected outright by uvloop
+                # ("coroutines cannot be used with run_in_executor()"), which
+                # 503'd every LLM-backed extension while the one sync
+                # extension kept working (#1448). The per-extension
+                # begin_action reservation above still serializes calls.
+                value = await handler(action, context)
+            else:
+                loop = asyncio.get_running_loop()
+                value = await loop.run_in_executor(
+                    registry.executor_for(extension_id),
+                    handler,
+                    action,
+                    context,
+                )
+                if inspect.isawaitable(value):
+                    value = await value
         result = (
             value
             if isinstance(value, ReadingExtensionResult)
