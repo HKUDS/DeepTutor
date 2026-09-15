@@ -37,6 +37,17 @@ DEFAULT_KB_BASE_DIR = str(get_runtime_data_root() / "knowledge_bases")
 # is treated as stalled (see _run_with_stall_guard).
 _INDEX_STALL_TIMEOUT_SECONDS = 600.0
 # How often the stall guard checks the progress heartbeat.
+# Which indexing run currently owns the shared embedding-progress callback
+# slot. ``set_progress_callback`` writes to the process-global LlamaIndex
+# ``Settings.embed_model`` (one slot), and a run that stalls leaves its sync
+# embedding worker running in a thread Python cannot interrupt. That worker
+# keeps calling the stored callback long after the run ended, so without an
+# ownership check the stale worker's batch events land in the *next* job that
+# grabbed the slot — the "infinite Embedding batches / reset to 1/N" leak
+# (#1478). The stall guard stamps each run with a fresh owner and its
+# ``_heartbeat`` refuses to forward progress once ``owner`` no longer matches.
+_ACTIVE_PROGRESS_OWNER: Optional[str] = None
+
 _INDEX_STALL_POLL_SECONDS = 5.0
 
 SignatureProvider = Callable[[], EmbeddingSignature | None]
@@ -79,9 +90,22 @@ async def _run_with_stall_guard(
     if stall_timeout is None:
         stall_timeout = _INDEX_STALL_TIMEOUT_SECONDS
 
+    # Stamp this run as the current owner of the shared progress slot. The
+    # ``_heartbeat`` wrapper refuses to forward progress once a newer run has
+    # taken ownership (or we have finished), so a worker thread left running
+    # by a stall can no longer write its batch events into the next job
+    # (#1478 — the "infinite Embedding batches / reset to 1/N" leak).
+    owner = f"{time.monotonic_ns()}"
+    global _ACTIVE_PROGRESS_OWNER
+    _ACTIVE_PROGRESS_OWNER = owner
+
     last_progress = {"at": time.monotonic()}
 
     def _heartbeat(*args: Any, **kwargs: Any) -> None:
+        if _ACTIVE_PROGRESS_OWNER != owner:
+            # A concurrent or previous run owns the slot now; this worker is
+            # either stale or displaced. Do not feed its progress elsewhere.
+            return
         last_progress["at"] = time.monotonic()
         if progress_callback is not None:
             progress_callback(*args, **kwargs)
@@ -95,21 +119,27 @@ async def _run_with_stall_guard(
         if not fut.cancelled():
             fut.exception()
 
-    while True:
-        done, _ = await asyncio.wait({future}, timeout=_INDEX_STALL_POLL_SECONDS)
-        if done:
-            return future.result()
-        # Reclaim the shared callback slot in case a concurrent job took it.
-        set_progress_callback(_heartbeat)
-        stalled_for = time.monotonic() - last_progress["at"]
-        if stalled_for > stall_timeout:
-            future.add_done_callback(_consume_terminal_exception)
-            raise IndexingStallError(
-                f"Indexing made no progress for {stalled_for:.0f}s while "
-                "embedding documents. The embedding provider may be accepting "
-                "requests without completing them; check the embedding "
-                "endpoint and retry."
-            )
+    try:
+        while True:
+            done, _ = await asyncio.wait({future}, timeout=_INDEX_STALL_POLL_SECONDS)
+            if done:
+                return future.result()
+            # Reclaim the shared callback slot in case a concurrent job took it.
+            set_progress_callback(_heartbeat)
+            stalled_for = time.monotonic() - last_progress["at"]
+            if stalled_for > stall_timeout:
+                future.add_done_callback(_consume_terminal_exception)
+                raise IndexingStallError(
+                    f"Indexing made no progress for {stalled_for:.0f}s while "
+                    "embedding documents. The embedding provider may be accepting "
+                    "requests without completing them; check the embedding "
+                    "endpoint and retry."
+                )
+    finally:
+        # Release ownership of the progress slot exactly when this run still
+        # holds it — never clobber a newer run that has already taken over.
+        if _ACTIVE_PROGRESS_OWNER == owner:
+            _ACTIVE_PROGRESS_OWNER = None
 
 
 class LlamaIndexPipeline:

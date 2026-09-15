@@ -204,3 +204,82 @@ async def test_initialize_succeeds_when_indexing_completes(
     monkeypatch.setattr(storage_module, "create_index", lambda *a, **k: 7)
 
     assert await pipeline.initialize("kb", ["doc.pdf"]) is True
+
+
+@pytest.mark.asyncio
+async def test_finished_job_progress_callback_stops_leaking_into_next_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A worker left running after a run finishes must no longer write
+    progress into the shared slot.
+
+    The stall guard leaves the sync embedding worker alive when it raises.
+    Without an ownership check, that stale worker keeps calling the stored
+    callback and its batches land in whatever job grabs the slot next —
+    the "Embedding batches reset / keep going after N/N" leak (#1478).
+    """
+    pipeline_module, _, _ = _llamaindex_modules()
+    monkeypatch.setattr(pipeline_module, "_INDEX_STALL_POLL_SECONDS", 0.05)
+    captured: dict = {}
+    monkeypatch.setattr(pipeline_module, "set_progress_callback", lambda cb: captured.update(cb=cb))
+    events: list[tuple[int, int]] = []
+
+    def user_cb(batch_num: int, total_batches: int) -> None:
+        events.append((batch_num, total_batches))
+
+    def quick() -> str:
+        captured["cb"](1, 1)
+        return "done"
+
+    assert (
+        await pipeline_module._run_with_stall_guard(
+            quick, progress_callback=user_cb, stall_timeout=1.0
+        )
+        == "done"
+    )
+
+    # The finished run's ownership has been released; a stale worker must not emit.
+    captured["cb"](9, 9)
+    assert events == [(1, 1)]
+
+
+@pytest.mark.asyncio
+async def test_stale_wrapper_from_finished_run_is_suppressed_after_ownership_changes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A stale worker from a finished run must not leak once a newer run owns
+    the progress slot.
+
+    This drives the ownership handoff directly (release + a simulated B taking
+    the slot) rather than racing two executors, pinning the invariant that
+    matters: once this run no longer owns the slot, its wrapper is a no-op, so
+    a worker thread left running by a stall can never feed batch events into
+    the next job (#1478).
+    """
+    pipeline_module, _, _ = _llamaindex_modules()
+    monkeypatch.setattr(pipeline_module, "_INDEX_STALL_POLL_SECONDS", 0.05)
+    captured: dict = {}
+    monkeypatch.setattr(pipeline_module, "set_progress_callback", lambda cb: captured.update(cb=cb))
+    events_a: list[tuple[int, int]] = []
+
+    def quick_a() -> str:
+        captured["cb"](1, 1)
+        return "done-a"
+
+    assert (
+        await pipeline_module._run_with_stall_guard(
+            quick_a,
+            progress_callback=lambda b, t: events_a.append((b, t)),
+            stall_timeout=1.0,
+        )
+        == "done-a"
+    )
+    stale_a_cb = captured["cb"]
+    # This run released the slot; a newer job takes ownership of it.
+    assert pipeline_module._ACTIVE_PROGRESS_OWNER is None
+    pipeline_module._ACTIVE_PROGRESS_OWNER = "job-b-owner"
+
+    stale_a_cb(9, 9)
+
+    assert events_a == [(1, 1)]
+    pipeline_module._ACTIVE_PROGRESS_OWNER = None
