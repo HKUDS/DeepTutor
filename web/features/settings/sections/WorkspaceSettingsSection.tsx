@@ -25,49 +25,29 @@ type WorkspaceSettings = {
 }
 
 export default function WorkspaceSettingsSection() {
-  const { i18n } = useTranslation()
-  const zh = i18n.language?.toLowerCase().startsWith('zh')
-  const copy = zh
-    ? {
-        title: 'Workspace',
-        description:
-          '选择 DeepTutor 读取资料和保存生成内容的文件夹。设置、密钥、数据库和记忆不会放进这里。',
-        location: '当前文件夹',
-        locationDescription:
-          'Agent 可读取整个 Workspace；新建、下载和生成的内容默认只写入 outputs/。远程部署中的路径指服务器文件系统。',
-        save: '使用此文件夹',
-        reset: '恢复默认',
-        loading: '正在读取 Workspace…',
-        ready: '可用',
-        invalid: '不可用',
-        hard: '文件系统硬隔离',
-        bestEffort: '本地兼容模式：执行工具没有完整文件系统隔离',
-        off: '执行工具不可用',
-        locked: '此 Docker/服务器部署已在启动时锁定 Workspace。',
-        saved: 'Workspace 已更新',
-        resetDone: '已恢复默认 Workspace',
-        failed: 'Workspace 更新失败',
-      }
-    : {
-        title: 'Workspace',
-        description:
-          'Choose the folder DeepTutor reads from and uses for generated content. Settings, secrets, databases, and memory stay elsewhere.',
-        location: 'Current folder',
-        locationDescription:
-          'The agent can read this workspace; new, downloaded, and generated content goes only to outputs/ by default. On a remote deployment this is a server path.',
-        save: 'Use this folder',
-        reset: 'Restore default',
-        loading: 'Loading workspace…',
-        ready: 'Ready',
-        invalid: 'Unavailable',
-        hard: 'Filesystem-enforced isolation',
-        bestEffort: 'Local compatibility mode: exec lacks full filesystem isolation',
-        off: 'Execution tools unavailable',
-        locked: 'This Docker/server deployment locks the workspace at startup.',
-        saved: 'Workspace updated',
-        resetDone: 'Default workspace restored',
-        failed: 'Could not update workspace',
-      }
+  const { t } = useTranslation()
+  const copy = {
+    title: t('Workspace'),
+    description: t(
+      'Choose the folder DeepTutor reads from and uses for generated content. Settings, secrets, databases, and memory stay elsewhere.',
+    ),
+    location: t('Current folder'),
+    locationDescription: t(
+      'The agent can read this workspace; new, downloaded, and generated content goes only to outputs/ by default. On a remote deployment this is a server path.',
+    ),
+    save: t('Use this folder'),
+    reset: t('Restore default'),
+    loading: t('Loading workspace…'),
+    ready: t('Ready'),
+    invalid: t('Unavailable'),
+    hard: t('Filesystem-enforced isolation'),
+    bestEffort: t('Local compatibility mode: exec lacks full filesystem isolation'),
+    off: t('Execution tools unavailable'),
+    locked: t('This Docker/server deployment locks the workspace at startup.'),
+    saved: t('Workspace updated'),
+    resetDone: t('Default workspace restored'),
+    failed: t('Could not update workspace'),
+  }
   const [settings, setSettings] = useState<WorkspaceSettings | null>(null)
   const [path, setPath] = useState('')
   const [loading, setLoading] = useState(true)

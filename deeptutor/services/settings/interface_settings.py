@@ -15,6 +15,7 @@ import tempfile
 import threading
 from typing import Any
 
+from deeptutor.i18n.languages import normalize_supported_language
 from deeptutor.services.path_service import get_path_service
 from deeptutor.tools.builtin import USER_TOGGLEABLE_TOOL_NAMES
 
@@ -54,25 +55,8 @@ def _interface_settings_file():
 
 
 def _normalize_language(language: Any, default: str = "en") -> str:
-    """
-    Normalize language codes:
-    - en/english -> en
-    - zh/chinese/cn -> zh
-    """
-    if language is None or language == "":
-        language = default
-
-    if isinstance(language, str):
-        s = language.lower().strip()
-        if s in {"en", "english"}:
-            return "en"
-        if s in {"zh", "chinese", "cn"}:
-            return "zh"
-
-    # Fall back to default
-    if isinstance(default, str):
-        return _normalize_language(default, "en")
-    return "en"
+    """Normalize UI language codes against the shared registry."""
+    return normalize_supported_language(language, default)
 
 
 def resolve_languages(saved: Mapping[str, Any]) -> dict[str, str]:

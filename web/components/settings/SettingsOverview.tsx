@@ -2,12 +2,18 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { ChevronDown, Languages } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { apiFetch, apiUrl } from "@/lib/api";
 import SettingsReadinessPanel from "@/components/settings/SettingsReadinessPanel";
 import SettingsStatusPanel from "@/components/settings/SettingsStatusPanel";
-import { SettingRow, SettingSection } from "@/components/settings/shared";
+import {
+  SettingRow,
+  SettingSection,
+  selectClass,
+  selectOptionClass,
+} from "@/components/settings/shared";
 import { setPendingPrompt } from "@/lib/pending-prompt";
 import {
   settingsAnchorHref,
@@ -15,31 +21,41 @@ import {
 } from "@/features/settings/navigation/settings-nav";
 import { useSettings } from "@/features/settings/store/SettingsStore";
 import { useUiSettings } from "@/features/settings/store";
+import { APP_LANGUAGE_DEFINITIONS } from "@/i18n/languages";
+import type { AppLanguage } from "@/i18n/languages";
 
-/** The en/zh segmented control both language rows use. */
-function LanguageToggle({
+/** A compact selector that remains usable as the language list grows. */
+function LanguageSelect({
   value,
+  label,
   onChange,
 }: {
-  value: string;
-  onChange: (next: "en" | "zh") => void;
+  value: AppLanguage;
+  label: string;
+  onChange: (next: AppLanguage) => void;
 }) {
-  const { t } = useTranslation();
   return (
-    <div className="flex gap-0.5 rounded-lg bg-[var(--muted)] p-0.5">
-      {(["en", "zh"] as const).map((option) => (
-        <button
-          key={option}
-          onClick={() => onChange(option)}
-          className={`rounded-md px-2.5 py-1 text-[12px] transition-all ${
-            value === option
-              ? "bg-[var(--card)] font-medium text-[var(--foreground)] shadow-sm"
-              : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-          }`}
-        >
-          {option === "en" ? t("language.english") : t("language.chinese")}
-        </button>
-      ))}
+    <div className="relative w-[180px] sm:w-[220px]">
+      <Languages
+        aria-hidden="true"
+        className="pointer-events-none absolute left-3 top-1/2 z-10 size-4 -translate-y-1/2 text-[var(--muted-foreground)]"
+      />
+      <select
+        aria-label={label}
+        value={value}
+        onChange={(event) => onChange(event.target.value as AppLanguage)}
+        className={`${selectClass} h-9 py-0 pl-9 pr-9 text-[13px] font-medium shadow-sm hover:border-[var(--muted-foreground)]/60`}
+      >
+        {APP_LANGUAGE_DEFINITIONS.map(({ code, nativeLabel }) => (
+          <option key={code} value={code} className={selectOptionClass}>
+            {nativeLabel}
+          </option>
+        ))}
+      </select>
+      <ChevronDown
+        aria-hidden="true"
+        className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-[var(--muted-foreground)]"
+      />
     </div>
   );
 }
@@ -108,10 +124,7 @@ export default function SettingsOverview() {
           type="button"
           onClick={() => {
             setPendingPrompt(
-              tr({
-                zh: "帮我配置一下 DeepTutor，先看看现在缺什么。",
-                en: "Help me configure DeepTutor — start by checking what's missing.",
-              }),
+              t("Help me configure DeepTutor — start by checking what's missing."),
             );
           }}
           className="hidden shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 text-[12px] font-medium text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] sm:inline-flex"
@@ -133,7 +146,11 @@ export default function SettingsOverview() {
               "Controls navigation, settings, and status text only.",
             )}
             control={
-              <LanguageToggle value={language} onChange={updateLanguage} />
+              <LanguageSelect
+                label={t("Interface language")}
+                value={language}
+                onChange={updateLanguage}
+              />
             }
           />
           <SettingRow
@@ -142,7 +159,8 @@ export default function SettingsOverview() {
               "Sets the default language for chat and capability responses.",
             )}
             control={
-              <LanguageToggle
+              <LanguageSelect
+                label={t("Model output language")}
                 value={responseLanguage}
                 onChange={updateResponseLanguage}
               />

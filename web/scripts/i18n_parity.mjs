@@ -1,88 +1,114 @@
-import fs from "node:fs";
-import path from "node:path";
+import fs from 'node:fs'
+import path from 'node:path'
 
 function listJsonFiles(dir) {
-  const out = [];
+  const out = []
   for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, ent.name);
-    if (ent.isDirectory()) out.push(...listJsonFiles(full));
-    else if (ent.isFile() && ent.name.endsWith(".json")) out.push(full);
+    const full = path.join(dir, ent.name)
+    if (ent.isDirectory()) out.push(...listJsonFiles(full))
+    else if (ent.isFile() && ent.name.endsWith('.json')) out.push(full)
   }
-  return out;
+  return out
 }
 
 function loadJson(p) {
-  return JSON.parse(fs.readFileSync(p, "utf8"));
+  return JSON.parse(fs.readFileSync(p, 'utf8'))
 }
 
-function flattenKeys(obj, prefix = "") {
-  const keys = [];
-  if (!obj || typeof obj !== "object") return keys;
-  for (const [k, v] of Object.entries(obj)) {
-    const next = prefix ? `${prefix}.${k}` : k;
-    if (v && typeof v === "object" && !Array.isArray(v)) keys.push(...flattenKeys(v, next));
-    else keys.push(next);
+function flattenValues(obj, prefix = '', out = new Map()) {
+  if (!obj || typeof obj !== 'object') return out
+  for (const [key, value] of Object.entries(obj)) {
+    const next = prefix ? `${prefix}.${key}` : key
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      flattenValues(value, next, out)
+    } else {
+      out.set(next, value)
+    }
   }
-  return keys;
+  return out
+}
+
+function interpolationFields(value) {
+  if (typeof value !== 'string') return []
+  return [...value.matchAll(/{{\s*([^{}]+?)\s*}}/g)].map(match => match[1].trim()).sort()
 }
 
 function toRel(p, root) {
-  return path.relative(root, p).replaceAll("\\", "/");
+  return path.relative(root, p).replaceAll('\\', '/')
 }
 
-const webRoot = path.resolve(process.cwd());
-const localesRoot = path.join(webRoot, "locales");
-const enRoot = path.join(localesRoot, "en");
-const zhRoot = path.join(localesRoot, "zh");
+const webRoot = path.resolve(process.cwd())
+const localesRoot = path.join(webRoot, 'locales')
+const enRoot = path.join(localesRoot, 'en')
 
-if (!fs.existsSync(enRoot) || !fs.existsSync(zhRoot)) {
-  console.error(`[i18n:parity] Missing locales roots: ${enRoot} or ${zhRoot}`);
-  process.exit(2);
+if (!fs.existsSync(enRoot)) {
+  console.error(`[i18n:parity] Missing source locale root: ${enRoot}`)
+  process.exit(2)
 }
 
-const enFiles = listJsonFiles(enRoot).map((p) => toRel(p, enRoot)).sort();
-const zhFiles = listJsonFiles(zhRoot).map((p) => toRel(p, zhRoot)).sort();
+const enFiles = listJsonFiles(enRoot)
+  .map(p => toRel(p, enRoot))
+  .sort()
+let ok = true
+const localeNames = fs
+  .readdirSync(localesRoot, { withFileTypes: true })
+  .filter(entry => entry.isDirectory() && entry.name !== 'en')
+  .map(entry => entry.name)
+  .sort()
 
-const missingInZh = enFiles.filter((f) => !zhFiles.includes(f));
-const extraInZh = zhFiles.filter((f) => !enFiles.includes(f));
+for (const locale of localeNames) {
+  const localeRoot = path.join(localesRoot, locale)
+  const localeFiles = listJsonFiles(localeRoot)
+    .map(p => toRel(p, localeRoot))
+    .sort()
+  const missingFiles = enFiles.filter(file => !localeFiles.includes(file))
+  const extraFiles = localeFiles.filter(file => !enFiles.includes(file))
 
-let ok = true;
-if (missingInZh.length) {
-  ok = false;
-  console.error("[i18n:parity] Missing zh files:");
-  for (const f of missingInZh) console.error(`- ${f}`);
-}
-if (extraInZh.length) {
-  ok = false;
-  console.error("[i18n:parity] Extra zh files:");
-  for (const f of extraInZh) console.error(`- ${f}`);
-}
-
-for (const rel of enFiles) {
-  if (!zhFiles.includes(rel)) continue;
-  const enPath = path.join(enRoot, rel);
-  const zhPath = path.join(zhRoot, rel);
-  const enJson = loadJson(enPath);
-  const zhJson = loadJson(zhPath);
-  const enKeys = new Set(flattenKeys(enJson));
-  const zhKeys = new Set(flattenKeys(zhJson));
-
-  const missingKeys = [...enKeys].filter((k) => !zhKeys.has(k)).sort();
-  const extraKeys = [...zhKeys].filter((k) => !enKeys.has(k)).sort();
-
-  if (missingKeys.length || extraKeys.length) {
-    ok = false;
-    console.error(`[i18n:parity] Key mismatch in ${rel}`);
-    if (missingKeys.length) {
-      console.error("  Missing zh keys:");
-      for (const k of missingKeys) console.error(`  - ${k}`);
+  if (missingFiles.length || extraFiles.length) {
+    ok = false
+    if (missingFiles.length) {
+      console.error(`[i18n:parity] Missing ${locale} files:`)
+      for (const file of missingFiles) console.error(`- ${file}`)
     }
-    if (extraKeys.length) {
-      console.error("  Extra zh keys:");
-      for (const k of extraKeys) console.error(`  - ${k}`);
+    if (extraFiles.length) {
+      console.error(`[i18n:parity] Extra ${locale} files:`)
+      for (const file of extraFiles) console.error(`- ${file}`)
+    }
+  }
+
+  for (const rel of enFiles) {
+    if (!localeFiles.includes(rel)) continue
+    const enValues = flattenValues(loadJson(path.join(enRoot, rel)))
+    const localeValues = flattenValues(loadJson(path.join(localeRoot, rel)))
+    const enKeys = new Set(enValues.keys())
+    const localeKeys = new Set(localeValues.keys())
+    const missingKeys = [...enKeys].filter(key => !localeKeys.has(key)).sort()
+    const extraKeys = [...localeKeys].filter(key => !enKeys.has(key)).sort()
+
+    if (missingKeys.length || extraKeys.length) {
+      ok = false
+      console.error(`[i18n:parity] Key mismatch in ${locale}/${rel}`)
+      if (missingKeys.length) {
+        console.error(`  Missing ${locale} keys:`)
+        for (const key of missingKeys) console.error(`  - ${key}`)
+      }
+      if (extraKeys.length) {
+        console.error(`  Extra ${locale} keys:`)
+        for (const key of extraKeys) console.error(`  - ${key}`)
+      }
+    }
+
+    for (const key of [...enKeys].filter(item => localeKeys.has(item))) {
+      const expected = interpolationFields(enValues.get(key))
+      const actual = interpolationFields(localeValues.get(key))
+      if (JSON.stringify(actual) === JSON.stringify(expected)) continue
+      ok = false
+      console.error(`[i18n:parity] Placeholder mismatch in ${locale}/${rel}: ${key}`)
+      console.error(`  Expected: ${expected.join(', ') || '(none)'}`)
+      console.error(`  Actual: ${actual.join(', ') || '(none)'}`)
     }
   }
 }
 
-if (!ok) process.exit(1);
-console.log("[i18n:parity] OK");
+if (!ok) process.exit(1)
+console.log('[i18n:parity] OK')

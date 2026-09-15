@@ -1,4 +1,5 @@
 import { wsUrl } from "@/lib/api";
+import type { AppLanguage } from "@/i18n/languages";
 
 export interface QuizJudgeImage {
   /** Base64 of the freshly-picked image (no ``data:`` prefix). */
@@ -18,7 +19,7 @@ export interface QuizJudgeRequest {
   user_answer: string;
   /** Multi-image list — backend builds a multimodal user message from this. */
   user_answer_images: QuizJudgeImage[];
-  language: "zh" | "en";
+  language: AppLanguage;
 }
 
 export interface QuizJudgeHandle {

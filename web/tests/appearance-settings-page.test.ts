@@ -95,7 +95,25 @@ test("appearance source contract: select maps the shared theme registry", () => 
   assert.match(source, /CODE_BLOCK_THEME_OPTIONS\.map/);
 });
 
-test("appearance source contract: preview contains a line that demonstrates wrapping", () => {
+test("settings overview: uses scalable selects for both language preferences", () => {
+  const source = readOverviewPage();
+
+  assert.match(source, /function LanguageSelect/);
+  assert.equal(
+    source.match(/<LanguageSelect/g)?.length,
+    2,
+    "Interface and model response languages should use the same select control.",
+  );
+  assert.match(source, /APP_LANGUAGE_DEFINITIONS\.map/);
+  assert.match(source, /nativeLabel/);
+  assert.doesNotMatch(
+    source,
+    /APP_LANGUAGE_DEFINITIONS\.map\(\(\{ code, labelKey \}\).*?<button/s,
+    "Language options should not grow horizontally as buttons.",
+  );
+});
+
+test("appearance settings page: preview includes a line long enough to demonstrate wrapping", () => {
   const source = readAppearancePage();
   const previewSource =
     source.match(/const CODE_BLOCK_PREVIEW_SNIPPET = `([\s\S]*?)`;/)?.[1] ?? "";

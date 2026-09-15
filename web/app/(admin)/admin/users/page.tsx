@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { formatDate as formatLocaleDate, type Language } from "@/lib/datetime";
+import { normalizeLanguage } from "@/i18n/languages";
 
 // Delegates to the shared locale mapping so a new UI language only has to be
 // taught to lib/datetime; the guard here is for the empty or unparseable
@@ -50,7 +51,7 @@ function formatDate(iso: string, lang: Language): string {
 export default function AdminUsersPage() {
   const router = useRouter();
   const { t, i18n } = useTranslation();
-  const lang: Language = i18n.language?.startsWith("zh") ? "zh" : "en";
+  const lang: Language = normalizeLanguage(i18n.language);
   const [currentUser, setCurrentUser] = useState<string | null>(null);
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [loading, setLoading] = useState(true);
