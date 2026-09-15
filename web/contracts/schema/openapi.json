@@ -4482,6 +4482,17 @@
             "title": "Id",
             "type": "string"
           },
+          "last_sync": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Sync"
+          },
           "path": {
             "title": "Path",
             "type": "string"
