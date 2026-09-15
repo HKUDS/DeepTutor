@@ -81,16 +81,30 @@ def test_transcript_normalization_enforces_the_storage_budget(monkeypatch) -> No
     assert [cue["text"] for cue in cues] == ["1234", "5678"]
 
 
+def test_transcript_normalization_decodes_entities_and_normalizes_whitespace() -> None:
+    cues = service.normalize_cues(
+        [
+            {
+                "start": 0,
+                "duration": 1,
+                "text": "Learn&nbsp;&nbsp;from &#x41; &amp; &#66;",
+            }
+        ]
+    )
+
+    assert cues == [{"start": 0.0, "end": 1.0, "text": "Learn from A & B"}]
+
+
 def test_webvtt_preserves_caption_after_leading_blank_and_inline_tags() -> None:
     cues = service.parse_webvtt(
-        "WEBVTT\n\n00:00:00.000 --> 00:00:02.000\n \nOpening <c>idea</c>\nand continuation\n"
+        "WEBVTT\n\n00:00:00.000 --> 00:00:02.000\n \nOpening <c>idea</c>&nbsp;&amp;\nand continuation\n"
     )
 
     assert cues == [
         {
             "start": 0.0,
             "end": 2.0,
-            "text": "Opening idea and continuation",
+            "text": "Opening idea & and continuation",
         }
     ]
 
@@ -112,6 +126,35 @@ Second line
         {"start": 1.0, "end": 2.5, "text": "Ordinary caption"},
         {"start": 3.0, "end": 4.0, "text": "Second line"},
     ]
+
+
+def test_store_repairs_legacy_caption_entities(isolated: Path) -> None:
+    store = service.TimedMediaStore()
+    material_id = service.material_id_for("dQw4w9WgXcQ")
+    store.save(
+        {
+            "version": 1,
+            "type": "timed_media",
+            "material_id": material_id,
+            "transcript": {
+                "status": "ready",
+                "cues": [{"start": 0, "end": 1, "text": "Learn&nbsp;&nbsp;&amp; apply"}],
+            },
+            "segments": [
+                {"locator": 7, "start": 0, "end": 1, "text": "Learn&nbsp;&nbsp;&amp; apply"}
+            ],
+            "learning": {"last_position": 0},
+        }
+    )
+
+    repaired = store.get(material_id)
+
+    assert repaired["transcript"]["cues"][0]["text"] == "Learn & apply"
+    assert repaired["segments"] == [
+        {"locator": 7, "start": 0, "end": 1, "text": "Learn & apply"}
+    ]
+    persisted = json.loads(store._path(material_id).read_text(encoding="utf-8"))
+    assert persisted["transcript"]["cues"][0]["text"] == "Learn & apply"
 
 
 def test_invidious_caption_choice_accepts_the_real_snake_case_schema() -> None:

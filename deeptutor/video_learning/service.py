@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
+import html
 import ipaddress
 import json
 import os
@@ -187,6 +188,11 @@ def save_video_learning_settings(payload: Any) -> dict[str, Any]:
     return normalized
 
 
+def clean_transcript_text(value: Any) -> str:
+    """Decode caption-source entities into the text readers should see."""
+    return re.sub(r"\s+", " ", html.unescape(str(value or ""))).strip()
+
+
 def normalize_cues(rows: Any) -> list[dict[str, Any]]:
     if not isinstance(rows, (list, tuple)):
         return []
@@ -201,7 +207,7 @@ def normalize_cues(rows: Any) -> list[dict[str, Any]]:
                 "duration": getattr(row, "duration", 0),
                 "text": getattr(row, "text", ""),
             }
-        text = str(merged.get("text") or merged.get("content") or "").strip()
+        text = clean_transcript_text(merged.get("text") or merged.get("content") or "")
         if not text:
             continue
         encoded = text.encode("utf-8")
@@ -276,8 +282,7 @@ def parse_webvtt(text: str) -> list[dict[str, Any]]:
             body_lines.append(line)
             index += 1
 
-        body = re.sub(r"<[^>]+>", "", "\n".join(body_lines))
-        body = re.sub(r"\s+", " ", body).strip()
+        body = clean_transcript_text(re.sub(r"<[^>]+>", "", "\n".join(body_lines)))
         if body:
             result.append(
                 {
@@ -310,7 +315,7 @@ class TimedMediaStore:
             raise TimedMediaNotFound("Timed media material was not found.")
         return self.root / f"{material_id}.json"
 
-    def get(self, material_id: str) -> dict[str, Any]:
+    def _load(self, material_id: str) -> dict[str, Any]:
         try:
             payload = json.loads(self._path(material_id).read_text(encoding="utf-8"))
         except (FileNotFoundError, OSError, json.JSONDecodeError) as exc:
@@ -318,6 +323,36 @@ class TimedMediaStore:
         if not isinstance(payload, dict) or payload.get("type") != "timed_media":
             raise TimedMediaNotFound("Timed media material was not found.")
         return payload
+
+    @staticmethod
+    def _repair_transcript_text(material: dict[str, Any]) -> bool:
+        """Repair legacy machine-generated captions without touching user content."""
+        transcript = material.get("transcript")
+        if not isinstance(transcript, dict):
+            return False
+        changed = False
+        for key in ("cues", "segments"):
+            rows = material.get(key) if key == "segments" else transcript.get(key)
+            if not isinstance(rows, list):
+                continue
+            for row in rows:
+                if not isinstance(row, dict) or not isinstance(row.get("text"), str):
+                    continue
+                text = clean_transcript_text(row["text"])
+                if text != row["text"]:
+                    row["text"] = text
+                    changed = True
+        return changed
+
+    def get(self, material_id: str) -> dict[str, Any]:
+        payload = self._load(material_id)
+        if not self._repair_transcript_text(payload):
+            return payload
+        with self.lock(material_id):
+            latest = self._load(material_id)
+            if self._repair_transcript_text(latest):
+                return self.save(latest)
+            return latest
 
     def save(self, material: dict[str, Any]) -> dict[str, Any]:
         payload = dict(material)
