@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import Tooltip from "@/components/common/Tooltip";
 import NotebookRecordActions from "@/components/notebook/NotebookRecordActions";
 import { notify } from "@/lib/notifications";
 import type { NotebookRecordItem, NotebookSummary } from "@/lib/notebook-api";
@@ -253,6 +254,21 @@ export default function NotebookRecordRow({
         <span className="shrink-0 text-[11px] tabular-nums text-[var(--muted-foreground)]">
           {timestamp}
         </span>
+
+        <Tooltip label={t("Edit record")} side="bottom">
+          <button
+            type="button"
+            disabled={busy}
+            aria-label={t("Edit record")}
+            onClick={() => {
+              if (!expanded) onToggle();
+              startEditing();
+            }}
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[var(--muted-foreground)] opacity-60 transition-[background-color,color,opacity,transform] duration-150 active:scale-[0.97] hover:bg-[var(--muted)] hover:text-[var(--foreground)] hover:opacity-100 focus-visible:bg-[var(--muted)] focus-visible:text-[var(--foreground)] focus-visible:opacity-100 focus-visible:outline-none disabled:opacity-30"
+          >
+            <Pencil size={14} />
+          </button>
+        </Tooltip>
 
         <NotebookRecordActions
           targets={moveTargets}
