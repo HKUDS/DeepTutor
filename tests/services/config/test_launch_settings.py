@@ -42,6 +42,26 @@ def test_launch_settings_reads_ports_from_system_json_and_ignores_env_json(
     assert "interface.json" in settings.source
 
 
+def test_launch_settings_reads_french_from_interface_json(monkeypatch, tmp_path: Path) -> None:
+    for key in ("BACKEND_PORT", "FRONTEND_PORT", "UI_LANGUAGE", "LANGUAGE"):
+        monkeypatch.delenv(key, raising=False)
+
+    settings_dir = _settings_dir(tmp_path)
+    (settings_dir / "system.json").write_text(
+        json.dumps({"backend_port": 8001, "frontend_port": 3782}),
+        encoding="utf-8",
+    )
+    (settings_dir / "interface.json").write_text(
+        json.dumps({"language": "french"}),
+        encoding="utf-8",
+    )
+
+    settings = load_launch_settings(tmp_path)
+
+    assert settings.language == "fr"
+    assert "interface.json" in settings.source
+
+
 def test_launch_settings_creates_default_system_json_without_dotenv_migration(
     monkeypatch, tmp_path: Path
 ) -> None:

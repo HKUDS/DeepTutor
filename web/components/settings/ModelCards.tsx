@@ -344,7 +344,7 @@ export function ModelCard({
 }: {
   model: CatalogModel;
   service: ServiceName;
-  language: "en" | "zh";
+  language: "en" | "zh" | "fr";
   index: number;
   inUse: boolean;
   expanded: boolean;

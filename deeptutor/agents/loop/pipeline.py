@@ -235,7 +235,8 @@ class AgenticLoopPipeline:
         event_stage: str = "responding",
         emit_result: bool = True,
     ) -> None:
-        self.language = "zh" if language.lower().startswith("zh") else "en"
+        _lang = language.lower()
+        self.language = "zh" if _lang.startswith("zh") else "fr" if _lang.startswith("fr") else "en"
         self.llm_config = get_llm_config()
         self.binding = getattr(self.llm_config, "binding", None) or "openai"
         self.model = getattr(self.llm_config, "model", None)
