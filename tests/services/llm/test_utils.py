@@ -109,6 +109,16 @@ def test_collect_model_names() -> None:
     assert collect_model_names(entries) == ["m1", "m2", "m3", "m4"]
 
 
+def test_collect_model_names_drops_repeats_in_payload_order() -> None:
+    """One id listed once per endpoint family must not become several choices."""
+    entries = [
+        {"id": "m1", "type": "openai/chat-completions"},
+        {"id": "m2", "type": "openai/chat-completions"},
+        {"id": "m1", "type": "openai/embeddings"},
+    ]
+    assert collect_model_names(entries) == ["m1", "m2"]
+
+
 def test_build_auth_headers() -> None:
     """Auth headers should vary by provider binding."""
     assert build_auth_headers("key", binding="anthropic")["x-api-key"] == "key"

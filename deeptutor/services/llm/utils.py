@@ -323,11 +323,25 @@ def _normalize_model_name(entry: object) -> str | None:
 
 
 def collect_model_names(entries: Sequence[object]) -> list[str]:
-    """Collect model names from provider payloads."""
+    """Collect model names from provider payloads, first occurrence wins.
+
+    A ``/models`` payload may list one model id once per endpoint family it
+    serves, so the same name arrives several times: AI/ML API returned 941 rows
+    for 789 distinct ids on 2026-09-14. Without the de-duplication the picker
+    shows the repeats as separate, identical choices.
+
+    Args:
+        entries: Raw provider payload entries, each a mapping or a bare string.
+
+    Returns:
+        Model names in payload order, without repeats.
+    """
     names: list[str] = []
+    seen: set[str] = set()
     for entry in entries:
         name = _normalize_model_name(entry)
-        if name:
+        if name and name not in seen:
+            seen.add(name)
             names.append(name)
     return names
 
