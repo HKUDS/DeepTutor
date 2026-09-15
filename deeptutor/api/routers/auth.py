@@ -517,6 +517,11 @@ async def auth_status(
             payload.user_id,
             is_admin=payload.role == "admin",
         )
+        # Guardians may attach a policy to a standard or custom account. That
+        # policy, not the stored label, is what the runtime must enforce and
+        # what clients need to render the scoped experience.
+        if learning_policy is not None and preset != "learner":
+            preset = "learner"
     return AuthStatusResponse(
         enabled=True,
         authenticated=payload is not None,
