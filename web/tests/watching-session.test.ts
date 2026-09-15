@@ -1,31 +1,19 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { sessionRoute } from "../lib/mastery-session";
-import { normalizeWorkspaceMode } from "../lib/workspace-mode";
-import { capabilityForPath } from "../lib/capability-routes";
-import type { SessionSummary } from "../lib/session-api";
 
-test("Watching links retain their owning workspace, including legacy sessions", () => {
-  for (const preferences of [
-    { workspace_mode: "immersive_watching" as const },
-    { capability: "immersive_watching" },
-  ]) {
-    assert.equal(
-      sessionRoute({ session_id: "lesson 1", preferences } as SessionSummary),
-      "/watching/lesson%201",
-    );
-  }
-  assert.equal(
-    sessionRoute({
-      session_id: "chat",
-      preferences: { timed_media_id: "stale" },
-    } as SessionSummary),
-    "/chat/chat",
-  );
+import { capabilityForPath } from "../lib/capability-routes";
+import { normalizeWorkspaceMode } from "../lib/workspace-mode";
+
+test("legacy Watching sessions canonicalize to the Reading workspace", () => {
+  assert.equal(normalizeWorkspaceMode("immersive_watching"), "immersive_reading");
   assert.equal(
     normalizeWorkspaceMode("", "immersive_watching"),
-    "immersive_watching",
+    "immersive_reading",
   );
-  assert.equal(capabilityForPath("/watching/lesson"), "llm");
+});
+
+test("stale timed-media provenance does not claim a workspace", () => {
+  assert.equal(normalizeWorkspaceMode("", ""), null);
+  assert.equal(capabilityForPath("/reading/lesson"), "llm");
   assert.equal(capabilityForPath("/watching-other"), null);
 });

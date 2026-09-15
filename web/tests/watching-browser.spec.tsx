@@ -6,9 +6,7 @@ import { WatchingBrowser } from "@/components/watching/WatchingBrowser";
 const mock = vi.hoisted(() => ({
   account: vi.fn(),
   browse: vi.fn(),
-  push: vi.fn(),
 }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: mock.push }) }));
 const translate = (key: string) => key;
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: translate }) }));
 vi.mock("@/hooks/useAuthStatus", () => ({
@@ -35,20 +33,35 @@ beforeEach(() => {
   mock.account.mockResolvedValue({ connected: true });
   mock.browse.mockResolvedValue({ videos: [video] });
 });
-describe("Watching account browser", () => {
-  it("opens a selected subscription video as a new Watching route", async () => {
-    render(<WatchingBrowser canDismiss onDismiss={vi.fn()} />);
+describe("Reading video source browser", () => {
+  it("returns a selected subscription video to Reading", async () => {
+    const onSelectUrl = vi.fn();
+    render(
+      <WatchingBrowser
+        canDismiss
+        onSelectUrl={onSelectUrl}
+        onDismiss={vi.fn()}
+      />,
+    );
+
     fireEvent.click(
       await screen.findByRole("button", { name: /Neural networks/ }),
     );
-    expect(mock.push).toHaveBeenCalledWith(
-      `/watching?video=${encodeURIComponent("https://www.youtube.com/watch?v=aircAruvnKk")}`,
+
+    expect(onSelectUrl).toHaveBeenCalledWith(
+      "https://www.youtube.com/watch?v=aircAruvnKk",
     );
     expect(mock.browse.mock.calls[0][0]).toBe("feed");
   });
   it("allows anonymous search and guides account-only browsing", async () => {
     mock.account.mockResolvedValue({ connected: false });
-    render(<WatchingBrowser canDismiss={false} onDismiss={vi.fn()} />);
+    render(
+      <WatchingBrowser
+        canDismiss={false}
+        onDismiss={vi.fn()}
+        onSelectUrl={vi.fn()}
+      />,
+    );
     await waitFor(() => expect(mock.account).toHaveBeenCalled());
     fireEvent.click(screen.getByRole("button", { name: "Subscription feed" }));
     await screen.findByText(
@@ -66,7 +79,13 @@ describe("Watching account browser", () => {
     ]);
   });
   it("clears private rows when disconnected", async () => {
-    render(<WatchingBrowser canDismiss={false} onDismiss={vi.fn()} />);
+    render(
+      <WatchingBrowser
+        canDismiss={false}
+        onDismiss={vi.fn()}
+        onSelectUrl={vi.fn()}
+      />,
+    );
     await screen.findByText("Neural networks");
     mock.account.mockResolvedValue({ connected: false });
     fireEvent.click(
@@ -82,7 +101,13 @@ describe("Watching account browser", () => {
         "Invidious could not load videos. Please retry or check the instance.",
       ),
     );
-    render(<WatchingBrowser canDismiss={false} onDismiss={vi.fn()} />);
+    render(
+      <WatchingBrowser
+        canDismiss={false}
+        onDismiss={vi.fn()}
+        onSelectUrl={vi.fn()}
+      />,
+    );
     await screen.findByRole("alert");
     mock.browse.mockResolvedValue({ videos: [video] });
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));

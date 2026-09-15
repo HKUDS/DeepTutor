@@ -74,11 +74,5 @@ export function sessionRoute(session: SessionSummary): string {
   if (workspaceId) {
     return `/reading/${encodeURIComponent(workspaceId)}/sessions/${sessionId}`;
   }
-  if (
-    session.preferences?.workspace_mode === "immersive_watching" ||
-    session.preferences?.capability === "immersive_watching"
-  ) {
-    return `/watching/${sessionId}`;
-  }
   return `/chat/${sessionId}`;
 }

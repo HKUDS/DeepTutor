@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ChevronRight,
   Loader2,
@@ -23,6 +23,7 @@ import {
   type ReadingWorkspace,
 } from "@/lib/reading-workspace-api";
 import { readingFailureMessage } from "@/lib/reading-failure";
+import { invidiousAccountResultMessage } from "@/lib/invidious-account-result";
 
 import {
   CourseScopeChip,
@@ -34,6 +35,34 @@ import { LibraryShell } from "./LibraryShell";
 import { MaterialGlyph, relativeDate } from "./shared";
 
 type SortMode = "recent" | "name";
+
+function InvidiousAccountFeedback() {
+  const { t } = useTranslation();
+  const params = useSearchParams();
+  const result = params.get("account");
+  const message = invidiousAccountResultMessage(result);
+  const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    if (params.has("account")) {
+      window.history.replaceState(null, "", "/reading");
+    }
+  }, [params]);
+
+  if (!message || dismissed) return null;
+  return (
+    <div
+      role={result === "connected" ? "status" : "alert"}
+      className="mt-4 flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2.5 text-[11.5px]"
+    >
+      <TriangleAlert size={13} />
+      <span className="min-w-0 flex-1">{t(message)}</span>
+      <button type="button" onClick={() => setDismissed(true)}>
+        {t("Dismiss")}
+      </button>
+    </div>
+  );
+}
 
 export function ReadingLibraryPage() {
   const { t, i18n } = useTranslation();
@@ -120,6 +149,7 @@ export function ReadingLibraryPage() {
       onAction={() => setShowAdd(true)}
       scopeChip={scope ? <CourseScopeChip scope={scope} /> : null}
     >
+      <InvidiousAccountFeedback />
       <div className="mt-5 flex flex-col gap-3 border-b border-[var(--border)] pb-3 sm:flex-row sm:items-center">
         <label className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg border border-[var(--border)] px-2.5 sm:max-w-[330px]">
           <Search

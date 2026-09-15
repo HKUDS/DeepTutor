@@ -245,6 +245,37 @@ async def test_provider_switch_preserves_material_and_progress(monkeypatch, isol
 
 
 @pytest.mark.asyncio
+async def test_youtube_captions_resolution_allows_invidious_without_playback_stream(
+    monkeypatch, isolated: Path
+) -> None:
+    service.save_video_learning_settings(
+        {
+            "default_provider": "invidious",
+            "invidious": {"api_base_url": "http://localhost:3000"},
+        }
+    )
+
+    async def metadata(_client, _base, _video_id):
+        return {
+            "title": "Captions only",
+            "captions": [{"label": "English", "languageCode": "en"}],
+        }
+
+    async def transcript(_client, _base, _video_id, _captions, _language, **_kwargs):
+        return ([{"start": 0, "end": 12, "text": "Hello"}], "en", "invidious")
+
+    monkeypatch.setattr(service, "_invidious_metadata", metadata)
+    monkeypatch.setattr(service, "_invidious_transcript", transcript)
+
+    resolution = await service.resolve_youtube_captions("https://youtu.be/dQw4w9WgXcQ")
+
+    assert resolution.metadata["title"] == "Captions only"
+    assert resolution.transcript_source == "invidious"
+    assert resolution.cues == [{"start": 0, "end": 12, "text": "Hello"}]
+    assert resolution.formats == []
+
+
+@pytest.mark.asyncio
 async def test_missing_transcript_does_not_block_native_playback(
     monkeypatch, isolated: Path
 ) -> None:

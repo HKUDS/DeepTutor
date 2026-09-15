@@ -81,7 +81,6 @@ def test_builtin_capability_registry_covers_documented_capabilities() -> None:
         # Course Study orchestrates across the surfaces above rather than
         # teaching itself, so it registers here like any other mode.
         "course_study",
-        "immersive_watching",
     }
 
 

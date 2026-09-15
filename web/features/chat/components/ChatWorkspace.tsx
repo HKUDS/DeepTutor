@@ -1,11 +1,5 @@
 "use client";
 
-import {
-  WatchingSessionBridge,
-  WatchingSurface,
-} from "@/components/watching/WatchingWorkspace";
-
-import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import {
   type KeyboardEvent,
@@ -61,7 +55,6 @@ import {
 } from "@/features/chat/ChatStateAdapter";
 import { useAppShell } from "@/context/AppShellContext";
 
-import { WATCHING_ASK_EVENT } from "@/components/watching/WatchingPane";
 import type { FilePreviewSource } from "@/components/chat/preview/previewerFor";
 import type { LLMSelection, StreamEvent } from "@/features/chat/model/protocol";
 import {
@@ -242,13 +235,8 @@ interface KnowledgeBase {
 /*  Chat page                                                         */
 /* ------------------------------------------------------------------ */
 
-export default function ChatWorkspace({
-  watching = false,
-}: {
-  watching?: boolean;
-}) {
+export default function ChatWorkspace() {
   const { router, sessionId: sessionIdParam } = useChatRouteSession();
-  const searchParams = useSearchParams();
   const { t } = useTranslation();
   const {
     capabilities,
@@ -587,28 +575,6 @@ export default function ChatWorkspace({
     return () => window.removeEventListener("dt:visualize-prompt", onVizPrompt);
   }, [handlePrefillComposer]);
 
-  useEffect(() => {
-    const onWatchingAsk = (event: Event) => {
-      const detail = (
-        event as CustomEvent<{ timeSeconds?: number; text?: string }>
-      ).detail;
-      const text = (detail?.text || "").trim();
-      if (!text) return;
-      const total = Math.max(0, Math.floor(Number(detail?.timeSeconds) || 0));
-      const hours = Math.floor(total / 3600);
-      const minutes = Math.floor((total % 3600) / 60);
-      const seconds = total % 60;
-      const timestamp = hours
-        ? `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
-        : `${minutes}:${String(seconds).padStart(2, "0")}`;
-      handlePrefillComposer(
-        `> [${timestamp}] ${text}\n\n${t("Explain this part of the video")}: `,
-      );
-    };
-    window.addEventListener(WATCHING_ASK_EVENT, onWatchingAsk);
-    return () => window.removeEventListener(WATCHING_ASK_EVENT, onWatchingAsk);
-  }, [handlePrefillComposer, t]);
-
   const activeCap = useMemo(
     () =>
       capabilities.find(
@@ -619,19 +585,6 @@ export default function ChatWorkspace({
   const isQuizMode = activeCap.value === "deep_question";
   const isVisualizeMode = activeCap.value === "visualize";
   const isResearchMode = activeCap.value === "deep_research";
-  const isWatchingMode = watching;
-  useEffect(() => {
-    if (!sessionIdParam || state.sessionId !== sessionIdParam) return;
-    if (!watching && state.workspaceMode === "immersive_watching") {
-      router.replace(`/watching/${encodeURIComponent(sessionIdParam)}`, {
-        scroll: false,
-      });
-    } else if (watching && state.workspaceMode !== "immersive_watching") {
-      router.replace(`/chat/${encodeURIComponent(sessionIdParam)}`, {
-        scroll: false,
-      });
-    }
-  }, [watching, state.workspaceMode, state.sessionId, sessionIdParam, router]);
   const capabilityNeedsConfig = isQuizMode || isVisualizeMode || isResearchMode;
   const returnedResearchTurnRef = useRef<string | null>(null);
 
@@ -1032,8 +985,8 @@ export default function ChatWorkspace({
   /* ---- URL-driven session loading ---- */
 
   const navigateToHome = useCallback(() => {
-    router.replace(watching ? "/watching" : "/chat", { scroll: false });
-  }, [router, watching]);
+    router.replace("/chat", { scroll: false });
+  }, [router]);
 
   /** Abort in-flight load + navigate home. */
   const cancelSessionLoad = useCallback(() => {
@@ -1138,14 +1091,7 @@ export default function ChatWorkspace({
     if (sessionIdParam) {
       startSessionLoad(sessionIdParam);
     } else {
-      newSession(
-        watching
-          ? {
-              capability: "immersive_watching",
-              workspaceMode: "immersive_watching",
-            }
-          : undefined,
-      );
+      newSession();
     }
     return () => {
       initialLoadRef.current = false;
@@ -1168,18 +1114,11 @@ export default function ChatWorkspace({
       }
       startSessionLoad(sessionIdParam);
     } else {
-      newSession(
-        watching
-          ? {
-              capability: "immersive_watching",
-              workspaceMode: "immersive_watching",
-            }
-          : undefined,
-      );
+      newSession();
       setSessionLoading(false);
       setSessionLoadFailed(false);
     }
-  }, [sessionIdParam, startSessionLoad, newSession, state.sessionId, watching]);
+  }, [sessionIdParam, startSessionLoad, newSession, state.sessionId]);
 
   // When a new session_id is assigned by the server, update the URL
   useEffect(() => {
@@ -1188,11 +1127,11 @@ export default function ChatWorkspace({
       !sessionIdParam &&
       state.sessionId !== entrySessionId.current
     ) {
-      router.replace(`${watching ? "/watching" : "/chat"}/${state.sessionId}`, {
+      router.replace(`/chat/${state.sessionId}`, {
         scroll: false,
       });
     }
-  }, [state.sessionId, sessionIdParam, router, watching]);
+  }, [state.sessionId, sessionIdParam, router]);
 
   useEffect(() => {
     setActiveSessionId(state.sessionId || sessionIdParam || null);
@@ -1409,11 +1348,6 @@ export default function ChatWorkspace({
 
   const handleSelectCapability = useCallback(
     (value: string) => {
-      if (value === "immersive_watching" && !watching) {
-        router.push("/watching");
-        return;
-      }
-      if (watching && value !== "immersive_watching") return;
       const cap =
         capabilities.find((capability) => capability.value === value) ??
         capabilities[0] ??
@@ -1433,7 +1367,7 @@ export default function ChatWorkspace({
       setCapabilityConfigConfirmed(false);
       setCapMenuOpen(false);
     },
-    [capabilities, setCapability, setTools, userEnabledTools, watching, router],
+    [capabilities, setCapability, setTools, userEnabledTools],
   );
 
   const fileToAttachment = fileToPendingAttachment;
@@ -2295,21 +2229,7 @@ export default function ChatWorkspace({
           messages={state.messages}
           viewerPanelRef={viewerPanelRef}
         />
-        <div
-          className="relative h-full overflow-hidden"
-          data-watching-workspace={watching ? "true" : undefined}
-        >
-          {watching &&
-            state.workspaceMode === "immersive_watching" &&
-            (!sessionIdParam || state.sessionId === sessionIdParam) && (
-              <WatchingSessionBridge
-                sessionKey={state.sessionId || "draft"}
-                sourceUrl={!sessionIdParam ? searchParams.get("video") : null}
-                materialId={state.timedMediaId}
-                onMaterial={configureSession}
-              />
-            )}
-          {watching && <WatchingSurface />}
+        <div className="relative h-full overflow-hidden">
           <div
             // When the preview drawer is open AND the viewport is wide enough,
             // push the chat content to the left by the drawer's width so the two
@@ -2320,7 +2240,6 @@ export default function ChatWorkspace({
             // hand-tune it without fighting Tailwind's arbitrary-value parser.
             data-preview-open={previewSource ? "true" : "false"}
             data-viewer-open={viewerPanelOpen ? "true" : "false"}
-            data-watching-open={isWatchingMode ? "true" : "false"}
             className="chat-preview-shell flex h-full flex-col overflow-hidden bg-[var(--background)]"
           >
             <div className="mx-auto flex w-full max-w-[960px] flex-wrap items-center justify-between gap-x-3 gap-y-1.5 px-6 pt-3 pb-0">
@@ -2582,13 +2501,7 @@ export default function ChatWorkspace({
                 capabilityNeedsConfig={capabilityNeedsConfig}
                 capabilityConfigConfirmed={capabilityConfigConfirmed}
                 onRequestConfigConfirm={ensureActivityPanelOpen}
-                capabilities={
-                  watching
-                    ? visibleCapabilities.filter(
-                        (cap) => cap.value === "immersive_watching",
-                      )
-                    : visibleCapabilities
-                }
+                capabilities={visibleCapabilities}
                 onSetCapMenuOpen={setCapMenuOpen}
                 onSetSpaceMenuOpen={setSpaceMenuOpen}
                 onToggleKB={handleToggleKB}

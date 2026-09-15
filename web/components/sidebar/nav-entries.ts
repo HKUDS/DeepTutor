@@ -90,13 +90,6 @@ export const PRIMARY_NAV: NavEntry[] = [
     requires: "llm",
   },
   {
-    href: "/watching",
-    label: "Immersive Watching",
-    icon: Clapperboard,
-    tooltipKey: "Watch videos with a grounded AI companion.",
-    requires: "llm",
-  },
-  {
     href: "/space",
     label: "Learning Space",
     icon: LayoutGrid,

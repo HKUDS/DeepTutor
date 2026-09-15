@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -367,8 +368,14 @@ def material_id_for(video_id: str) -> str:
     return hashlib.sha256(f"youtube-resolve-{video_id}".encode()).hexdigest()[:32]
 
 
+def _language_preferences(language: str | Sequence[str]) -> list[str]:
+    if isinstance(language, str):
+        return [language] if language else ["zh-CN", "zh-Hans", "zh", "en"]
+    return [value for value in (str(row).strip() for row in language) if value]
+
+
 async def _youtube_transcript(
-    video_id: str, language: str
+    video_id: str, language: str | Sequence[str]
 ) -> tuple[list[dict[str, Any]], str, str]:
     settings = load_video_learning_settings()
     if settings["youtube"]["transcript_provider"] == "none":
@@ -379,14 +386,14 @@ async def _youtube_transcript(
         return [], "", "dependency_missing"
 
     def fetch() -> tuple[list[dict[str, Any]], str]:
-        languages = [language] if language else ["zh-CN", "zh-Hans", "zh", "en"]
+        languages = _language_preferences(language)
         api = YouTubeTranscriptApi()
         if hasattr(api, "fetch"):
             response = api.fetch(video_id, languages=languages)
             return normalize_cues(list(response)), str(getattr(response, "language_code", "") or "")
         return normalize_cues(
             YouTubeTranscriptApi.get_transcript(video_id, languages=languages)
-        ), language
+        ), languages[0] if languages else ""
 
     try:
         cues, resolved_language = await asyncio.to_thread(fetch)
@@ -410,9 +417,9 @@ async def _youtube_metadata(request: YouTubeRequest) -> dict[str, Any]:
         return {}
 
 
-def _caption_choice(rows: Any, language: str) -> dict[str, Any] | None:
+def _caption_choice(rows: Any, language: str | Sequence[str]) -> dict[str, Any] | None:
     captions = [row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
-    priorities = [language] if language else ["zh-CN", "zh-Hans", "zh", "en"]
+    priorities = _language_preferences(language)
     for preferred in priorities:
         found = next(
             (
@@ -430,7 +437,9 @@ def _caption_choice(rows: Any, language: str) -> dict[str, Any] | None:
     ) or (captions[0] if captions else None)
 
 
-async def _youtube_resolution(request: YouTubeRequest, language: str) -> ProviderResolution:
+async def _youtube_resolution(
+    request: YouTubeRequest, language: str | Sequence[str]
+) -> ProviderResolution:
     metadata = await _youtube_metadata(request)
     cues, transcript_language, transcript_source = await _youtube_transcript(
         request.video_id, language
@@ -458,7 +467,7 @@ async def _invidious_transcript(
     base: str,
     video_id: str,
     captions: Any,
-    language: str,
+    language: str | Sequence[str],
     *,
     raise_on_failure: bool = False,
 ) -> tuple[list[dict[str, Any]], str, str]:
@@ -467,8 +476,10 @@ async def _invidious_transcript(
         return [], "", "unavailable"
 
     label = str(caption.get("label") or "")
+    priorities = _language_preferences(language)
+    fallback_language = priorities[0] if priorities else ""
     transcript_language = str(
-        caption.get("languageCode") or caption.get("language_code") or language
+        caption.get("languageCode") or caption.get("language_code") or fallback_language
     )
     caption_response = await client.get(
         f"{base}/api/v1/captions/{video_id}",
@@ -489,7 +500,9 @@ async def _invidious_transcript(
     return cues, transcript_language, "invidious" if cues else "unavailable"
 
 
-async def _invidious_resolution(request: YouTubeRequest, language: str) -> ProviderResolution:
+async def _invidious_resolution(
+    request: YouTubeRequest, language: str | Sequence[str]
+) -> ProviderResolution:
     settings = load_video_learning_settings()
     base = settings["invidious"]["api_base_url"]
     if not base:
@@ -527,11 +540,30 @@ async def _invidious_resolution(request: YouTubeRequest, language: str) -> Provi
 
 PROVIDER_RESOLVERS: dict[
     ProviderName,
-    Callable[[YouTubeRequest, str], Awaitable[ProviderResolution]],
+    Callable[[YouTubeRequest, str | Sequence[str]], Awaitable[ProviderResolution]],
 ] = {
     "youtube": lambda request, language: _youtube_resolution(request, language),
     "invidious": lambda request, language: _invidious_resolution(request, language),
 }
+
+
+async def resolve_youtube_captions(
+    url: str,
+    language: str | Sequence[str] = ("zh-CN", "zh-Hans", "zh", "en"),
+) -> ProviderResolution:
+    """Resolve captions through the configured provider without requiring playback."""
+
+    request = parse_youtube_url(url)
+    settings = load_video_learning_settings()
+    if settings["default_provider"] == "invidious":
+        base = settings["invidious"]["api_base_url"]
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=False) as client:
+            metadata = await _invidious_metadata(client, base, request.video_id)
+            cues, transcript_language, transcript_source = await _invidious_transcript(
+                client, base, request.video_id, metadata.get("captions"), language
+            )
+        return ProviderResolution(metadata, cues, transcript_language, transcript_source, [])
+    return await _youtube_resolution(request, language)
 
 
 async def resolve_material(
@@ -767,6 +799,7 @@ __all__ = [
     "public_material",
     "refresh_invidious_transcript",
     "resolve_material",
+    "resolve_youtube_captions",
     "save_video_learning_settings",
     "test_invidious_connection",
 ]

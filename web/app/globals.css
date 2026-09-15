@@ -842,7 +842,7 @@ body[data-picker-open] .dt-breathing-text {
   }
 }
 
-/* ----- Immersive watching -----------------------------------------------
+/* ----- Reading media source browser -------------------------------------
    Watching shares the conversation renderer and owns its responsive video surface. */
 .dt-watching-shell {
   position: absolute;

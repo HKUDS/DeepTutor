@@ -1,4 +1,4 @@
-"""Authenticated Immersive Watching and administrator provider settings."""
+"""Authenticated video providers and administrator provider settings."""
 
 from __future__ import annotations
 
@@ -137,7 +137,7 @@ async def invidious_account_callback(token: str = "", state: str = "") -> Redire
     except Exception as exc:
         result = invidious_account.authorization_failure_code(exc, has_token=bool(token))
     return RedirectResponse(
-        f"/watching?account={result}",
+        f"/reading?account={result}",
         status_code=303,
         headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
     )
