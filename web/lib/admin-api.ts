@@ -81,6 +81,65 @@ export async function deleteUser(username: string): Promise<void> {
   }
 }
 
+export interface UserBatchResult {
+  row?: number;
+  username: string;
+  ok: boolean;
+  error?: string | null;
+  user?: CreatedUser;
+}
+
+export interface UserImportResult {
+  ok: boolean;
+  created_count: number;
+  failed_count: number;
+  results: UserBatchResult[];
+}
+
+export interface UserBatchDeleteResult {
+  ok: boolean;
+  deleted_count: number;
+  failed_count: number;
+  results: Omit<UserBatchResult, "row">[];
+}
+
+export async function importUsers(file: File): Promise<UserImportResult> {
+  const body = new FormData();
+  body.append("file", file);
+  const res = await apiFetch(apiUrl("/api/auth/users/import"), {
+    method: "POST",
+    body,
+  });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { detail?: unknown };
+    throw new Error(
+      typeof data.detail === "string"
+        ? data.detail
+        : "Failed to import users",
+    );
+  }
+  return (await res.json()) as UserImportResult;
+}
+
+export async function deleteUsers(
+  usernames: string[],
+): Promise<UserBatchDeleteResult> {
+  const res = await apiFetch(apiUrl("/api/auth/users/batch-delete"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ usernames }),
+  });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { detail?: unknown };
+    throw new Error(
+      typeof data.detail === "string"
+        ? data.detail
+        : "Failed to delete users",
+    );
+  }
+  return (await res.json()) as UserBatchDeleteResult;
+}
+
 export async function setUserRole(
   username: string,
   role: "admin" | "user",

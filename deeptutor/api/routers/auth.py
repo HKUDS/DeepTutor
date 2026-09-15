@@ -1,7 +1,9 @@
 """Auth router — login, logout, status, registration, profile, and user-management endpoints."""
 
 from contextvars import Token as _CtxToken
+import csv
 from datetime import datetime, timedelta, timezone
+import io
 import logging
 import re
 
@@ -19,7 +21,7 @@ from fastapi import (
     status,
 )
 from fastapi.responses import FileResponse, HTMLResponse
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from deeptutor.services.config import load_auth_settings
 
@@ -74,6 +76,9 @@ router = APIRouter()
 
 _COOKIE_NAME = "dt_token"
 _COOKIE_MAX_AGE = TOKEN_EXPIRE_HOURS * 3600
+_USER_IMPORT_MAX_BYTES = 2 * 1024 * 1024
+_USER_IMPORT_MAX_ROWS = 500
+_USER_BATCH_MAX_ROWS = 500
 
 
 def _cookie_attrs() -> dict:
@@ -172,6 +177,26 @@ class AdminCreateUserRequest(RegisterRequest):
     """
 
     preset: AccountPreset = "standard"
+
+
+class AdminBatchDeleteRequest(BaseModel):
+    """Usernames for an admin-initiated batch deletion."""
+
+    usernames: list[str] = Field(min_length=1, max_length=_USER_BATCH_MAX_ROWS)
+
+    @field_validator("usernames")
+    @classmethod
+    def usernames_valid(cls, value: list[str]) -> list[str]:
+        usernames: list[str] = []
+        for raw_username in value:
+            username = raw_username.strip()
+            if not username:
+                raise ValueError("Usernames cannot be empty")
+            if username not in usernames:
+                usernames.append(username)
+        if not usernames:
+            raise ValueError("At least one username is required")
+        return usernames
 
 
 class AuthStatusResponse(BaseModel):
@@ -1106,22 +1131,20 @@ async def put_learner_profile(
     return {"learner_profile": updated}
 
 
-@router.post("/users", status_code=status.HTTP_201_CREATED)
-async def admin_create_user(
-    body: AdminCreateUserRequest,
-    current: TokenPayload = Depends(require_admin),
-) -> dict:
-    """Admin-only: create a new user account.
+def _validation_message(exc: ValidationError) -> str:
+    parts = []
+    for error in exc.errors():
+        location = ".".join(str(item) for item in error.get("loc", ()))
+        parts.append(f"{location or 'row'}: {error.get('msg', 'Invalid value')}")
+    return "; ".join(parts)
 
-    Replaces the public ``/register`` flow once the first admin exists. The
-    new account is always created with role=``user``; admins can promote
-    later via ``PUT /users/{username}/role``.
-    """
-    if not AUTH_ENABLED:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Auth is disabled — user creation is not available.",
-        )
+
+def _create_admin_user(
+    body: AdminCreateUserRequest,
+    current: TokenPayload | None,
+) -> dict:
+    """Create one ordinary account through the shared admin provision path."""
+    actor = current.username if current else "local"
 
     if POCKETBASE_ENABLED:
         if body.preset != "standard":
@@ -1135,10 +1158,7 @@ async def admin_create_user(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Failed to create user — username may already be taken.",
             )
-        logger.info(
-            f"Admin '{current.username if current else 'local'}' created PocketBase user "
-            f"'{body.username}'"
-        )
+        logger.info("Admin '%s' created PocketBase user '%s'", actor, body.username)
         return {
             "ok": True,
             "user_id": result.get("id", ""),
@@ -1148,23 +1168,25 @@ async def admin_create_user(
             "preset": "standard",
         }
 
-    existing = {u["username"] for u in list_users()}
-    if body.username in existing:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Username already taken",
-        )
+    if any(item.get("username") == body.username for item in list_users()):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already taken")
 
     add_user(body.username, body.password, preset=body.preset)
-    user_id = ""
-    role = "user"
-    preset = "standard"
-    for item in list_users():
-        if item.get("username") == body.username:
-            user_id = str(item.get("id") or "")
-            role = str(item.get("role") or "user")
-            preset = str(item.get("preset") or "standard")
-            break
+    created = next(
+        (item for item in list_users() if item.get("username") == body.username),
+        None,
+    )
+    user_id = str(created.get("id") or "") if created else ""
+    role = str(created.get("role") or "user") if created else "user"
+    preset = str(created.get("preset") or "standard") if created else "standard"
+
+    if role != "user":
+        delete_user(body.username)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Only non-admin users can be provisioned by this endpoint.",
+        )
+
     if preset == "learner":
         from deeptutor.multi_user.grants import learner_grant, save_grant
 
@@ -1188,18 +1210,177 @@ async def admin_create_user(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="The learner preset could not be initialized.",
             ) from exc
+
     logger.info(
-        f"Admin '{current.username if current else 'local'}' created user '{body.username}' "
-        f"(role={role!r}, preset={preset!r})"
+        "Admin '%s' created user '%s' (role=%r, preset=%r)",
+        actor,
+        body.username,
+        role,
+        preset,
     )
     return {
         "ok": True,
         "user_id": user_id,
         "username": body.username,
         "role": role,
-        "is_admin": role == "admin",
+        "is_admin": False,
         "preset": preset,
     }
+
+
+@router.post("/users", status_code=status.HTTP_201_CREATED)
+async def admin_create_user(
+    body: AdminCreateUserRequest,
+    current: TokenPayload = Depends(require_admin),
+) -> dict:
+    """Admin-only: create one ordinary user account."""
+    if not AUTH_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Auth is disabled — user creation is not available.",
+        )
+    return _create_admin_user(body, current)
+
+
+@router.post("/users/import")
+async def admin_import_users(
+    file: UploadFile = File(...),
+    current: TokenPayload = Depends(require_admin),
+) -> dict:
+    """Admin-only: provision ordinary users from a CSV file.
+
+    The response is row-oriented so one invalid record does not erase the
+    context of the valid records around it. Passwords are never returned.
+    """
+    if not AUTH_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Auth is disabled — user import is not available.",
+        )
+
+    content = await file.read(_USER_IMPORT_MAX_BYTES + 1)
+    await file.close()
+    if len(content) > _USER_IMPORT_MAX_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="User import file exceeds 2 MB.",
+        )
+    try:
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User import must be a UTF-8 CSV file.",
+        ) from exc
+
+    reader = csv.DictReader(io.StringIO(text, newline=""))
+    fieldnames = [str(name or "").strip().lower() for name in reader.fieldnames or []]
+    expected = ["username", "password", "preset"]
+    if fieldnames != expected:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="CSV header must be exactly: username,password,preset",
+        )
+
+    parsed: list[tuple[int, AdminCreateUserRequest, str]] = []
+    results: list[dict] = []
+    rows = list(reader)
+    if not rows:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="User import file contains no user rows.",
+        )
+    if len(rows) > _USER_IMPORT_MAX_ROWS:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"User import cannot exceed {_USER_IMPORT_MAX_ROWS} rows.",
+        )
+    for row_number, row in enumerate(rows, start=2):
+        username = str(row.get("username") or "").strip()
+        if row.get(None):
+            results.append(
+                {
+                    "row": row_number,
+                    "username": username[:100],
+                    "ok": False,
+                    "error": "Row has more values than the CSV header.",
+                }
+            )
+            continue
+        try:
+            body = AdminCreateUserRequest(
+                username=username,
+                password=str(row.get("password") or ""),
+                preset=str(row.get("preset") or "").strip() or "standard",
+            )
+        except ValidationError as exc:
+            results.append(
+                {
+                    "row": row_number,
+                    "username": username[:100],
+                    "ok": False,
+                    "error": _validation_message(exc),
+                }
+            )
+            continue
+        parsed.append((row_number, body, username[:100]))
+
+    for row_number, body, username in parsed:
+        try:
+            created = _create_admin_user(body, current)
+        except HTTPException as exc:
+            detail = exc.detail if isinstance(exc.detail, str) else "Failed to create user"
+            results.append({"row": row_number, "username": username, "ok": False, "error": detail})
+        except Exception:
+            logger.exception("Admin user import failed for row %s", row_number)
+            results.append(
+                {
+                    "row": row_number,
+                    "username": username,
+                    "ok": False,
+                    "error": "Failed to create user.",
+                }
+            )
+        else:
+            results.append({"row": row_number, "username": username, "ok": True, "user": created})
+
+    results.sort(key=lambda result: result["row"])
+    created_count = sum(1 for result in results if result["ok"])
+    failed_count = len(results) - created_count
+    logger.info(
+        "Admin '%s' imported users: %s created, %s failed",
+        current.username if current else "local",
+        created_count,
+        failed_count,
+    )
+    return {
+        "ok": failed_count == 0,
+        "created_count": created_count,
+        "failed_count": failed_count,
+        "results": results,
+    }
+
+
+def _delete_admin_user(username: str, current: TokenPayload | None) -> tuple[int, str]:
+    if current and username == current.username:
+        return 400, "You cannot delete your own account"
+
+    # Capture the id before the record disappears so the avatar file can go too.
+    info = get_user_info(username)
+
+    removed = delete_user(username)
+    if not removed:
+        return 404, "User not found"
+
+    user_id = str(info.get("id") or "") if info else ""
+    if user_id and _USER_ID_RE.match(user_id):
+        from deeptutor.multi_user.identity import delete_avatar_file
+
+        delete_avatar_file(user_id)
+
+    actor = current.username if current else "local"
+    logger.info("Admin '%s' deleted user '%s'", actor, username)
+    return 200, ""
 
 
 @router.delete("/users/{username}", status_code=status.HTTP_200_OK)
@@ -1208,27 +1389,37 @@ async def remove_user(
     current: TokenPayload = Depends(require_admin),
 ) -> dict:
     """Delete a user. Admins cannot delete their own account."""
-    if current and username == current.username:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="You cannot delete your own account",
-        )
-
-    # Capture the id before the record disappears so the avatar file can go too.
-    info = get_user_info(username)
-
-    removed = delete_user(username)
-    if not removed:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-
-    user_id = str(info.get("id") or "") if info else ""
-    if user_id and _USER_ID_RE.match(user_id):
-        from deeptutor.multi_user.identity import delete_avatar_file
-
-        delete_avatar_file(user_id)
-
-    logger.info(f"Admin '{current.username if current else 'local'}' deleted user '{username}'")
+    status_code, detail = _delete_admin_user(username, current)
+    if status_code != 200:
+        raise HTTPException(status_code=status_code, detail=detail)
     return {"ok": True}
+
+
+@router.post("/users/batch-delete")
+async def batch_remove_users(
+    body: AdminBatchDeleteRequest,
+    current: TokenPayload = Depends(require_admin),
+) -> dict:
+    """Delete selected users and report each outcome separately."""
+    results: list[dict] = []
+    for username in body.usernames:
+        _status_code, detail = _delete_admin_user(username, current)
+        results.append({"username": username, "ok": not detail, "error": detail or None})
+
+    deleted_count = sum(1 for result in results if result["ok"])
+    failed_count = len(results) - deleted_count
+    logger.info(
+        "Admin '%s' batch-deleted users: %s deleted, %s failed",
+        current.username if current else "local",
+        deleted_count,
+        failed_count,
+    )
+    return {
+        "ok": failed_count == 0,
+        "deleted_count": deleted_count,
+        "failed_count": failed_count,
+        "results": results,
+    }
 
 
 @router.put("/users/{username}/role", status_code=status.HTTP_200_OK)
