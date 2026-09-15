@@ -1,4 +1,10 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -150,5 +156,34 @@ describe("reading toolbar with a live selection", () => {
     // server verifies the quote against the text of the unit it is told about
     // and 400s when they disagree.
     expect(body.locator).toBe(4);
+  });
+
+  it("keeps secondary mobile tools behind the reading more menu", async () => {
+    const user = userEvent.setup();
+    render(
+      <ReaderPane
+        onClose={() => undefined}
+        onToggleBookmark={() => undefined}
+      />,
+    );
+
+    const more = await screen.findByRole("button", { name: "More" });
+    expect(more.className).toContain("md:hidden");
+    expect(more).toHaveAttribute("aria-haspopup", "menu");
+    expect(
+      screen.getByRole("button", { name: /Bookmark this page/ }),
+    ).toBeVisible();
+
+    await user.click(more);
+    const menu = screen.getByRole("menu", { name: "More" });
+    const autoJump = within(menu).getByRole("menuitemcheckbox", {
+      name: /Auto-jump on/,
+    });
+    expect(autoJump.getAttribute("aria-checked")).toBe("true");
+
+    await user.click(autoJump);
+    expect(
+      within(menu).getByRole("menuitemcheckbox", { name: /Auto-jump off/ }),
+    ).toHaveAttribute("aria-checked", "false");
   });
 });

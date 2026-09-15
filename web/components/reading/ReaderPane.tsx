@@ -11,6 +11,7 @@ import {
   Crosshair,
   Download,
   FileText,
+  MoreHorizontal,
   Loader2,
   History,
   PanelRightClose,
@@ -209,6 +210,7 @@ export function ReaderPane({
     string | null | undefined
   >(undefined);
   const [showHistory, setShowHistory] = useState(false);
+  const [showMoreTools, setShowMoreTools] = useState(false);
   const [unavailableMaterials, setUnavailableMaterials] = useState<Set<string>>(
     new Set(),
   );
@@ -773,12 +775,14 @@ export function ReaderPane({
                 locationHistory.index >= locationHistory.entries.length - 1
               }
               onClick={() => stepHistory(1)}
+              className="hidden md:inline-flex"
             />
             <HeaderButton
               icon={History}
               label={t("History")}
               active={showHistory}
               onClick={() => setShowHistory((current) => !current)}
+              className="hidden md:inline-flex"
             />
           </>
         )}
@@ -788,7 +792,7 @@ export function ReaderPane({
             {/* The one place the reader's position is stated. Monospace is for
                 code, not for a line of UI copy; tabular figures alone stop the
                 number from jittering as the learner scrolls. */}
-            <span className="shrink-0 whitespace-nowrap text-[10.5px] tabular-nums text-[var(--muted-foreground)]">
+            <span className="hidden shrink-0 whitespace-nowrap text-[10.5px] tabular-nums text-[var(--muted-foreground)] md:inline">
               {t("{{unit}} {{n}} / {{total}}", {
                 unit: unitWord,
                 n: currentLocator,
@@ -822,12 +826,14 @@ export function ReaderPane({
               }
               active={autoJump}
               onClick={toggleAutoJump}
+              className="hidden md:inline-flex"
             />
             <HeaderButton
               icon={exporting ? Loader2 : Download}
               label={t("Export annotated file")}
               spinning={exporting}
               onClick={() => void runExport()}
+              className="hidden md:inline-flex"
             />
             <HeaderButton
               icon={showAnnotations ? PanelRightClose : PanelRightOpen}
@@ -841,7 +847,73 @@ export function ReaderPane({
             />
           </>
         )}
+        {material && (
+          <HeaderButton
+            icon={MoreHorizontal}
+            label={t("More")}
+            active={showMoreTools}
+            menu
+            onClick={() => {
+              setShowMoreTools(!showMoreTools);
+              if (!showMoreTools) setShowHistory(false);
+            }}
+            className="inline-flex md:hidden"
+          />
+        )}
       </header>
+
+      {showMoreTools && material && (
+        <div
+          role="menu"
+          aria-label={t("More")}
+          className="absolute top-11 right-2 z-40 w-56 rounded-xl border border-[var(--border)] bg-[var(--background)] p-1.5 shadow-xl md:hidden"
+        >
+          {locationHistory.entries.length > 0 && (
+            <>
+              <MenuToolButton
+                icon={ArrowRight}
+                label={t("Forward")}
+                disabled={
+                  locationHistory.index < 0 ||
+                  locationHistory.index >= locationHistory.entries.length - 1
+                }
+                onClick={() => {
+                  stepHistory(1);
+                  setShowMoreTools(false);
+                }}
+              />
+              <MenuToolButton
+                icon={History}
+                label={t("History")}
+                active={showHistory}
+                onClick={() => {
+                  setShowHistory(true);
+                  setShowMoreTools(false);
+                }}
+              />
+            </>
+          )}
+          <MenuToolButton
+            icon={Crosshair}
+            label={
+              autoJump
+                ? t("Auto-jump on — the view follows what the assistant reads")
+                : t("Auto-jump off — the assistant will not move your view")
+            }
+            active={autoJump}
+            onClick={toggleAutoJump}
+          />
+          <MenuToolButton
+            icon={exporting ? Loader2 : Download}
+            label={t("Export annotated file")}
+            spinning={exporting}
+            onClick={() => {
+              void runExport();
+              setShowMoreTools(false);
+            }}
+          />
+        </div>
+      )}
 
       {showHistory && locationHistory.entries.length > 0 && (
         <div className="absolute top-11 right-2 z-30 max-h-72 w-72 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-1.5 shadow-xl">
@@ -1027,6 +1099,7 @@ function HeaderButton({
   active,
   spinning,
   disabled,
+  menu = false,
   className = "",
 }: {
   icon: typeof FileText;
@@ -1035,6 +1108,7 @@ function HeaderButton({
   active?: boolean;
   spinning?: boolean;
   disabled?: boolean;
+  menu?: boolean;
   className?: string;
 }) {
   return (
@@ -1042,7 +1116,9 @@ function HeaderButton({
       type="button"
       title={label}
       aria-label={label}
-      aria-pressed={active}
+      aria-pressed={menu ? undefined : active}
+      aria-haspopup={menu ? "menu" : undefined}
+      aria-expanded={menu ? active : undefined}
       disabled={spinning || disabled}
       onClick={onClick}
       className={`h-7 w-7 shrink-0 items-center justify-center rounded-lg transition disabled:cursor-default ${
@@ -1054,6 +1130,49 @@ function HeaderButton({
       }`}
     >
       <Icon size={14} className={spinning ? "animate-spin" : undefined} />
+    </button>
+  );
+}
+
+function MenuToolButton({
+  icon: Icon,
+  label,
+  onClick,
+  active,
+  spinning,
+  disabled,
+}: {
+  icon: typeof FileText;
+  label: string;
+  onClick: () => void;
+  active?: boolean;
+  spinning?: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      role={active === undefined ? "menuitem" : "menuitemcheckbox"}
+      title={label}
+      aria-label={label}
+      aria-checked={active}
+      disabled={spinning || disabled}
+      onClick={onClick}
+      className={`flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-[12px] transition disabled:cursor-default ${
+        active
+          ? "bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary)]"
+          : "text-[var(--foreground)] hover:bg-[var(--muted)] disabled:opacity-35 disabled:hover:bg-transparent"
+      }`}
+    >
+      <Icon
+        size={14}
+        className={
+          spinning
+            ? "animate-spin text-[var(--muted-foreground)]"
+            : "text-[var(--muted-foreground)]"
+        }
+      />
+      <span className="min-w-0 flex-1 truncate">{label}</span>
     </button>
   );
 }
