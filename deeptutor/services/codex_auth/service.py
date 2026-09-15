@@ -51,6 +51,14 @@ logger = logging.getLogger(__name__)
 MANAGED_BY = "openai_codex_oauth"
 CODEX_PROFILE_ID = "llm-profile-openai-codex-managed"
 
+# After a refresh the provider rejects, get_token stays terminal for this
+# long instead of calling the token endpoint again on every turn (#1454).
+# A revoked / de-authorized session used to surface a fresh reauth per
+# message; one acknowledged failure now fails fast with a clear error, and
+# the short window leaves room for a transient outage to clear before the
+# next attempt instead of permanently locking the credential.
+CODE_AUTH_FAILURE_COOLDOWN_S = 60
+
 
 @dataclass(frozen=True)
 class CatalogSyncResult:
@@ -418,6 +426,7 @@ class CodexOAuthService:
         self._inference_lock = asyncio.Lock()
         self._active_inferences = 0
         self._logging_out = False
+        self._reauth_until: float | None = None
 
     @staticmethod
     async def _start_default_callback(expected_state: str) -> LoopbackCallback:
@@ -587,6 +596,7 @@ class CodexOAuthService:
             self._last_snapshot = snapshot
             operation.activated = sync_result.activated
             operation.operation_state = "completed"
+            self._clear_reauth_required()
         except CodexAuthError as exc:
             operation.error_code = exc.code
             if exc.code == "login_cancelled":
@@ -669,6 +679,16 @@ class CodexOAuthService:
                     "Sign in to Codex before using this model.",
                     401,
                 )
+            if self._reauth_required():
+                # A recent refresh was rejected — the stored session no
+                # longer refreshes (revoked, de-authorized). Fail fast with a
+                # terminal error instead of asking the token endpoint again
+                # on this turn or the next (#1454).
+                raise CodexAuthError(
+                    "authentication_required",
+                    "Codex sign-in could not be renewed. Sign in to Codex again.",
+                    401,
+                )
             if credentials.expires_at - int(self._clock()) > 300:
                 return credentials.public_token()
             refreshed = await self._refresh_credentials(credentials)
@@ -728,7 +748,14 @@ class CodexOAuthService:
         self,
         credentials: CodexCredentials,
     ) -> CodexCredentials:
-        payload = await self._oauth.refresh(credentials.refresh_token)
+        try:
+            payload = await self._oauth.refresh(credentials.refresh_token)
+        except CodexAuthError:
+            # The refresh token is not just expiring — the provider rejected
+            # the refresh. Remember that so get_token fails fast for a while
+            # instead of retrying a dead refresh on every turn (#1454).
+            self._mark_reauth_required()
+            raise
         refreshed = self._credentials_from_payload(
             payload,
             expected_generation=credentials.generation,
@@ -758,7 +785,11 @@ class CodexOAuthService:
                 )
             if credentials.generation != generation:
                 return
-            await self._refresh_credentials(credentials)
+            try:
+                await self._refresh_credentials(credentials)
+            finally:
+                if not self._reauth_required():
+                    self._clear_reauth_required()
 
     @asynccontextmanager
     async def inference_guard(self) -> AsyncIterator[None]:
@@ -806,6 +837,7 @@ class CodexOAuthService:
                     pass
                 self._last_snapshot = None
                 self._operation = None
+                self._clear_reauth_required()
                 return self.public_status()
         finally:
             async with self._inference_lock:
@@ -865,6 +897,25 @@ class CodexOAuthService:
 
             self._model_catalog.update(mutate)
             return self.public_status()
+
+    def _mark_reauth_required(self) -> None:
+        self._reauth_until = self._clock() + CODE_AUTH_FAILURE_COOLDOWN_S
+
+    def _clear_reauth_required(self) -> None:
+        self._reauth_until = None
+
+    def _reauth_required(self) -> bool:
+        deadline = self._reauth_until
+        return deadline is not None and self._clock() < deadline
+
+    # Public entry points for the provider layer, which is in another module
+    # and calls the service across it.
+    def mark_reauth_required(self) -> None:
+        """Ask get_token to fail fast for the cooldown window."""
+        self._mark_reauth_required()
+
+    def clear_reauth_required(self) -> None:
+        self._clear_reauth_required()
 
     def public_status(self) -> dict[str, Any]:
         operation = self._operation

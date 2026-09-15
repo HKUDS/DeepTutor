@@ -582,6 +582,7 @@ class FakeOAuthClient:
         }
         self.exchange_error: CodexAuthError | None = None
         self.revoke_error: CodexAuthError | None = None
+        self.refresh_error: CodexAuthError | None = None
         self.refresh_started: asyncio.Event | None = None
         self.refresh_release: asyncio.Event | None = None
         self.refresh_calls = 0
@@ -600,6 +601,8 @@ class FakeOAuthClient:
     async def refresh(self, refresh_token: str) -> dict[str, Any]:
         del refresh_token
         self.refresh_calls += 1
+        if self.refresh_error is not None:
+            raise self.refresh_error
         if self.refresh_started is not None:
             self.refresh_started.set()
         if self.refresh_release is not None:
@@ -1546,6 +1549,101 @@ async def test_recover_after_unauthorized_forces_refresh_for_next_request(
 
     assert oauth.refresh_calls == 1
     assert store.load_credentials().access_token == "refreshed-access"  # type: ignore[union-attr]
+
+
+@pytest.mark.asyncio
+async def test_get_token_stops_refreshing_after_a_failed_refresh(tmp_path: Path) -> None:
+    """A refresh the provider rejects must not be retried on every get_token
+
+    When the stored credential no longer refreshes (a revoked session, an
+    account the provider no longer authorizes), every turn used to call the
+    token endpoint again, fail again, and surface a fresh reauth each message.
+    One failure is enough to hold the auth state for the cooldown window and
+    fail fast with a clear error instead of hammering the provider per turn.
+    """
+    clock = [1_000]
+    service, _callback, oauth, _catalog, store, _models = await _oauth_service(
+        tmp_path, clock=clock
+    )
+    store.commit_credentials(
+        _stored_credentials(expires_at=1_200),
+        expected_generation=0,
+    )
+    oauth.refresh_error = CodexAuthError(
+        "token_refresh_failed",
+        "Codex authentication could not be refreshed.",
+        502,
+    )
+
+    with pytest.raises(CodexAuthError) as first:
+        await service.get_token()
+    assert first.value.code == "token_refresh_failed"
+    assert oauth.refresh_calls == 1
+
+    # Same conversation, next turn, still inside the cooldown: no second trip
+    # to the provider, a clear terminal error instead.
+    with pytest.raises(CodexAuthError) as second:
+        await service.get_token()
+    assert second.value.code == "authentication_required"
+    assert oauth.refresh_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_get_token_retries_after_the_reauth_cooldown_elapses(tmp_path: Path) -> None:
+    """The cooldown is not a permanent lock: a transient failure can recover."""
+    clock = [1_000]
+    service, _callback, oauth, _catalog, store, _models = await _oauth_service(
+        tmp_path, clock=clock
+    )
+    store.commit_credentials(
+        _stored_credentials(expires_at=1_200),
+        expected_generation=0,
+    )
+    oauth.refresh_error = CodexAuthError("token_refresh_failed", "boom", 502)
+
+    with pytest.raises(CodexAuthError):
+        await service.get_token()
+    assert oauth.refresh_calls == 1
+
+    # Let the cooldown elapse; the next call is allowed one fresh attempt.
+    clock[0] += 120
+    oauth.refresh_error = None
+    token = await service.get_token()
+    assert oauth.refresh_calls == 2
+    assert token.access_token == "refreshed-access"
+
+
+@pytest.mark.asyncio
+async def test_failed_refresh_marks_reauth_required_until_next_login(
+    tmp_path: Path,
+) -> None:
+    """Once flagged, get_token stays terminal until a new sign-in succeeds."""
+    clock = [1_000]
+    service, _callback, oauth, _catalog, store, _models = await _oauth_service(
+        tmp_path, clock=clock
+    )
+    store.commit_credentials(
+        _stored_credentials(expires_at=1_200),
+        expected_generation=0,
+    )
+    oauth.refresh_error = CodexAuthError("token_refresh_failed", "boom", 502)
+
+    with pytest.raises(CodexAuthError):
+        await service.get_token()
+
+    started = await service.start_login()
+    query = urlsplit(started["authorize_url"]).query
+    state = parse_qs(query)["state"][0]
+    await service.complete_login_with_callback_url(
+        f"{started['redirect_uri']}?code=authorization-code&state={state}"
+    )
+    await _wait_until_terminal(service)
+
+    oauth.refresh_error = None
+    token = await service.get_token()
+    # A successful sign-in cleared the terminal flag and replaced the
+    # credential; no refresh is triggered because the new token is fresh.
+    assert token.access_token == "new-access"
 
 
 _REDIRECT_URI = "http://localhost:1455/auth/callback"

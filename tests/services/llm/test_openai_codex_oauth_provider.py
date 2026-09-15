@@ -28,6 +28,7 @@ class FakeCodexService:
         self.token_calls = 0
         self.guard_entries = 0
         self.recovered_generation: int | None = None
+        self.marked_reauth: bool = False
         self.runtime_validations: list[tuple[CodexToken, str, str | None]] = []
 
     async def get_token(self) -> CodexToken:
@@ -44,6 +45,9 @@ class FakeCodexService:
         reasoning_effort: str | None,
     ) -> None:
         self.runtime_validations.append((token, model_slug, reasoning_effort))
+
+    def mark_reauth_required(self) -> None:
+        self.marked_reauth = True
 
     @asynccontextmanager
     async def inference_guard(self) -> AsyncIterator[None]:
@@ -172,6 +176,30 @@ async def test_401_with_dead_refresh_token_does_not_promise_a_retry(
     assert result.finish_reason == "error"
     assert "retry" not in result.content.lower()
     assert "sign in again" in result.content.lower()
+
+
+@pytest.mark.asyncio
+async def test_403_marks_reauth_required_account_level_denial(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A 403 is an account-level denial refresh cannot fix; it must not be
+    replayed as a retry loop and should mark the session for fast failure."""
+    service = FakeCodexService()
+
+    async def rejected_request(*_args: Any, **_kwargs: Any) -> tuple[str, list[Any], str]:
+        raise CodexHTTPError(403, module._friendly_error(403))
+
+    monkeypatch.setattr(module, "get_codex_oauth_service", lambda: service)
+    monkeypatch.setattr(module, "_request_codex", rejected_request)
+
+    result = await OpenAICodexProvider().chat(
+        [{"role": "user", "content": "hello"}],
+        model="gpt-5.6-sol",
+    )
+
+    assert result.finish_reason == "error"
+    assert "account" in result.content.lower()
+    assert service.marked_reauth is True
 
 
 @pytest.mark.asyncio

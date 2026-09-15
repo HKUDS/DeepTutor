@@ -99,6 +99,12 @@ class OpenAICodexProvider(LLMProvider):
                                 exc.status_code,
                                 "Codex login expired and could not be renewed. Sign in again.",
                             ) from None
+                    elif exc.status_code == 403:
+                        # Account-level denial: the session itself is fine but
+                        # this account may no longer call the backend. Fail
+                        # fast for the cooldown instead of re-running an
+                        # auth+refresh round trip on every message (#1454).
+                        service.mark_reauth_required()
                     raise
                 return LLMResponse(
                     content=content,
