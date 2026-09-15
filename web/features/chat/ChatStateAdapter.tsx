@@ -317,7 +317,7 @@ type Action =
     }
   | { type: "POP_LAST_ASSISTANT"; key: string }
   | { type: "RESTORE_ASSISTANT"; key: string; message: MessageItem }
-  | { type: "STREAM_START"; key: string }
+  | { type: "STREAM_START"; key: string; startedAt: number }
   | { type: "STREAM_TOUCH"; key: string }
   | { type: "STREAM_EVENT"; key: string; event: StreamEvent }
   | {
@@ -692,6 +692,7 @@ function reducer(state: ProviderState, action: Action): ProviderState {
                 content: "",
                 rawContent: "",
                 events: [],
+                trace: { started_at: action.startedAt },
                 capability: session.activeCapability || "",
                 parentMessageId: tip?.id ?? null,
               },
@@ -1012,9 +1013,21 @@ function reducer(state: ProviderState, action: Action): ProviderState {
           return message;
         }
         changed = true;
+        const settled = settleMessageTrace(
+          message.events ?? [],
+          action.turnId,
+        );
+        const starts = [
+          message.trace?.started_at,
+          settled.trace.started_at,
+        ].filter((value): value is number => typeof value === "number");
         return {
           ...message,
-          ...settleMessageTrace(message.events ?? [], action.turnId),
+          ...settled,
+          trace: {
+            ...settled.trace,
+            ...(starts.length > 0 ? { started_at: Math.min(...starts) } : {}),
+          },
         };
       });
       if (!changed) return state;
@@ -2329,7 +2342,11 @@ export function ChatStateAdapterProvider({
           parentMessageId: localParentId,
         });
       }
-      dispatch({ type: "STREAM_START", key });
+      dispatch({
+        type: "STREAM_START",
+        key,
+        startedAt: Date.now() / 1000,
+      });
       const {
         _persist_user_message: legacyPersistUserMessage,
         _course_id: _legacyCourseId,
@@ -2494,7 +2511,11 @@ export function ChatStateAdapterProvider({
       pendingRegenerateRef.current.delete(key);
     }
     dispatch({ type: "POP_LAST_ASSISTANT", key });
-    dispatch({ type: "STREAM_START", key });
+    dispatch({
+      type: "STREAM_START",
+      key,
+      startedAt: Date.now() / 1000,
+    });
     sendThroughRunner(key, {
       type: "regenerate",
       session_id: session.sessionId,
