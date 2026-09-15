@@ -6,6 +6,7 @@ from deeptutor.learning.models import (
     ErrorType,
     KnowledgePoint,
     KnowledgeType,
+    LearningEvidence,
     LearningModule,
     LearningProgress,
     LearningStage,
@@ -184,12 +185,46 @@ class TestErrorRecord:
         assert isinstance(er.created_at, float)
 
 
+class TestLearningEvidence:
+    def test_defaults(self):
+        ev = LearningEvidence(knowledge_point_id="kp1")
+        assert ev.source == "mastery_path"
+        assert ev.assessment_type == "quiz"
+        assert ev.result == "incorrect"
+        assert ev.quality is None
+        assert ev.hints_used == 0
+        assert ev.attempt_count == 1
+        assert ev.session_id == ""
+        assert ev.turn_id == ""
+        assert isinstance(ev.timestamp, float)
+
+
 class TestRepetitionState:
     def test_defaults(self):
         rs = RepetitionState(next_review_at=time.time())
         assert rs.interval_index == 0
         assert rs.consecutive_correct == 0
         assert rs.consecutive_wrong == 0
+        assert rs.stability == 0.0
+        assert rs.retrievability == 1.0
+        assert rs.desired_retention == 0.9
+        assert rs.review_count == 0
+        assert rs.lapse_count == 0
+        assert rs.last_review_at is None
+
+    def test_legacy_payload_without_retention_fields(self):
+        rs = RepetitionState.model_validate(
+            {
+                "interval_index": 2,
+                "consecutive_correct": 1,
+                "consecutive_wrong": 0,
+                "next_review_at": 123456.0,
+            }
+        )
+        assert rs.interval_index == 2
+        assert rs.next_review_at == 123456.0
+        assert rs.stability == 0.0
+        assert rs.last_review_at is None
 
 
 class TestReviewTask:
@@ -204,6 +239,8 @@ class TestReviewTask:
             state=rs,
         )
         assert rt.priority == 1
+        assert rt.forgetting_risk == 0.0
+        assert rt.reason == ""
 
 
 class TestLearningProgress:
@@ -216,6 +253,7 @@ class TestLearningProgress:
         assert lp.modules == []
         assert lp.mastery_levels == {}
         assert lp.error_records == []
+        assert lp.learning_evidence == []
         assert lp.review_queue == []
         assert lp.feynman_retries == {}
         assert lp.feynman_explanations == {}
@@ -255,6 +293,28 @@ class TestSerializationRoundtrip:
         assert lp2.feynman_retries["kp1"] == 2
         assert lp2.stage_failure_counts["explain"] == 1
         assert lp2.current_stage == LearningStage.DIAGNOSTIC
+        assert lp2.learning_evidence == []
+
+    def test_learning_evidence_roundtrip(self):
+        lp = LearningProgress(book_id="b1")
+        lp.learning_evidence.append(
+            LearningEvidence(
+                knowledge_point_id="kp1",
+                assessment_type="quiz",
+                result="correct",
+                quality=1.0,
+                attempt_count=2,
+                session_id="s1",
+                turn_id="t1",
+            )
+        )
+        restored = LearningProgress.model_validate(lp.model_dump(mode="json"))
+        assert len(restored.learning_evidence) == 1
+        event = restored.learning_evidence[0]
+        assert event.knowledge_point_id == "kp1"
+        assert event.result == "correct"
+        assert event.quality == 1.0
+        assert event.session_id == "s1"
 
     def test_pending_choice_roundtrip_preserves_question_and_option_ids(self):
         lp = LearningProgress(

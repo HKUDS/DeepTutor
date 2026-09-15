@@ -1,3 +1,4 @@
+import math
 import time
 
 import pytest
@@ -6,6 +7,7 @@ from deeptutor.learning.models import (
     ErrorRecord,
     ErrorType,
     KnowledgeType,
+    LearningEvidence,
     LearningProgress,
     RepetitionState,
     ReviewTask,
@@ -58,37 +60,51 @@ class TestInitialState:
 class TestCorrectAdvances:
     def test_first_correct(self, scheduler):
         state = scheduler.get_initial_state(KnowledgeType.MEMORY)
+        initial_stability = state.stability
+        before = state.next_review_at
         state = scheduler.schedule_next(state, KnowledgeType.MEMORY, True)
-        assert state.interval_index == 1
         assert state.consecutive_correct == 1
         assert state.consecutive_wrong == 0
+        assert state.review_count == 1
+        assert state.stability > initial_stability
+        assert state.next_review_at > before
+        assert state.last_review_at is not None
 
-    def test_two_consecutive_skip(self, scheduler):
+    def test_two_consecutive_strong_successes_lengthen_more(self, scheduler):
         state = scheduler.get_initial_state(KnowledgeType.MEMORY)
-        state = scheduler.schedule_next(state, KnowledgeType.MEMORY, True)  # idx=1, cc=1
-        state = scheduler.schedule_next(state, KnowledgeType.MEMORY, True)  # idx=3, cc=0
-        assert state.interval_index == 3
+        state = scheduler.schedule_next(state, KnowledgeType.MEMORY, True)
+        after_one = state.stability
+        due_after_one = state.next_review_at
+        state = scheduler.schedule_next(state, KnowledgeType.MEMORY, True)
         assert state.consecutive_correct == 0
+        assert state.stability > after_one
+        assert state.next_review_at > due_after_one
+        assert state.lapse_count == 0
 
 
 # ── schedule_next: wrong retreats ────────────────────────────────────────
 
 
 class TestWrongRetreats:
-    def test_wrong_decrements(self, scheduler):
+    def test_wrong_shortens_stability_and_interval(self, scheduler):
         state = scheduler.get_initial_state(KnowledgeType.MEMORY)
-        state = scheduler.schedule_next(state, KnowledgeType.MEMORY, True)  # idx=1
-        state = scheduler.schedule_next(state, KnowledgeType.MEMORY, False)  # idx=0
-        assert state.interval_index == 0
+        state = scheduler.schedule_next(state, KnowledgeType.MEMORY, True)
+        after_success = state.stability
+        due_after_success = state.next_review_at - state.last_review_at
+        state = scheduler.schedule_next(state, KnowledgeType.MEMORY, False)
         assert state.consecutive_wrong == 1
         assert state.consecutive_correct == 0
+        assert state.lapse_count == 1
+        assert state.stability < after_success
+        assert (state.next_review_at - state.last_review_at) < due_after_success
 
     def test_two_consecutive_wrong_resets(self, scheduler):
         state = scheduler.get_initial_state(KnowledgeType.MEMORY)
-        state = scheduler.schedule_next(state, KnowledgeType.MEMORY, True)  # idx=1
-        state = scheduler.schedule_next(state, KnowledgeType.MEMORY, False)  # idx=0, cw=1
-        state = scheduler.schedule_next(state, KnowledgeType.MEMORY, False)  # idx=0, cw resets
+        state = scheduler.schedule_next(state, KnowledgeType.MEMORY, True)
+        state = scheduler.schedule_next(state, KnowledgeType.MEMORY, False)
+        state = scheduler.schedule_next(state, KnowledgeType.MEMORY, False)
         assert state.consecutive_wrong == 0
+        assert state.lapse_count == 2
 
 
 # ── schedule_next: boundaries ────────────────────────────────────────────
@@ -99,10 +115,14 @@ class TestBoundaries:
         state = scheduler.get_initial_state(KnowledgeType.MEMORY)
         state = scheduler.schedule_next(state, KnowledgeType.MEMORY, False)
         assert state.interval_index == 0
+        assert state.stability > 0
+        assert state.next_review_at > time.time() - 1
 
     def test_cant_exceed_sequence(self, scheduler):
         state = scheduler.get_initial_state(KnowledgeType.MEMORY)
         state.interval_index = 6  # max for MEMORY
+        state.stability = 0.0
+        scheduler.hydrate(state, KnowledgeType.MEMORY)
         state = scheduler.schedule_next(state, KnowledgeType.MEMORY, True)
         assert state.interval_index == 6
 
@@ -279,3 +299,83 @@ class TestBuildReviewQueue:
         assert len(tasks) == 1
         assert tasks[0].knowledge_type == KnowledgeType.MEMORY
         assert tasks[0].priority == 2
+        assert tasks[0].reason
+        assert 0.0 <= tasks[0].forgetting_risk <= 1.0
+
+
+# ── adaptive retention baseline ──────────────────────────────────────────
+
+
+def _evidence(
+    *, quality: float, result: str = "correct", ts: float | None = None
+) -> LearningEvidence:
+    return LearningEvidence(
+        knowledge_point_id="kp1",
+        timestamp=time.time() if ts is None else ts,
+        assessment_type="quiz",
+        result="correct" if result == "correct" else "incorrect",
+        quality=quality,
+    )
+
+
+class TestRetentionBaseline:
+    def test_quality_differentiates_correct_updates(self, scheduler):
+        easy = scheduler.get_initial_state(KnowledgeType.MEMORY)
+        hard = scheduler.get_initial_state(KnowledgeType.MEMORY)
+        now = time.time()
+        scheduler.schedule_review(
+            easy, KnowledgeType.MEMORY, _evidence(quality=1.0, ts=now), now=now
+        )
+        scheduler.schedule_review(
+            hard, KnowledgeType.MEMORY, _evidence(quality=0.6, ts=now), now=now
+        )
+        assert easy.stability > hard.stability
+        assert easy.next_review_at > hard.next_review_at
+
+    def test_replay_matches_stepwise_updates(self, scheduler):
+        now = 1_700_000_000.0
+        events = [
+            _evidence(quality=1.0, ts=now),
+            _evidence(quality=0.0, result="incorrect", ts=now + 86400),
+            _evidence(quality=1.0, ts=now + 2 * 86400),
+        ]
+        replayed = scheduler.replay(KnowledgeType.CONCEPT, events)
+        stepwise = scheduler.get_initial_state(KnowledgeType.CONCEPT, now=events[0].timestamp)
+        for event in events:
+            scheduler.schedule_review(stepwise, KnowledgeType.CONCEPT, event, now=event.timestamp)
+        assert replayed.stability == pytest.approx(stepwise.stability)
+        assert replayed.next_review_at == pytest.approx(stepwise.next_review_at)
+        assert replayed.lapse_count == stepwise.lapse_count == 1
+        assert replayed.review_count == 3
+
+    def test_hydrates_legacy_interval_index_without_changing_due(self, scheduler):
+        due = 1_700_000_000.0 + 3 * 86400
+        state = RepetitionState(interval_index=2, consecutive_correct=1, next_review_at=due)
+        assert state.stability == 0.0
+        scheduler.hydrate(state, KnowledgeType.MEMORY)
+        assert state.stability == pytest.approx(
+            INTERVAL_SEQUENCES[KnowledgeType.MEMORY][2] / -math.log(0.9)
+        )
+        assert state.next_review_at == due
+        assert state.difficulty > 0
+
+    def test_queue_orders_by_forgetting_risk_then_overdue(self, scheduler):
+        now = time.time()
+        lp = LearningProgress(book_id="b1")
+        lp.knowledge_types["kp_risk"] = KnowledgeType.MEMORY
+        lp.knowledge_types["kp_safe"] = KnowledgeType.MEMORY
+        risky = scheduler.get_initial_state(KnowledgeType.MEMORY, now=now - 10 * 86400)
+        risky.last_review_at = now - 10 * 86400
+        risky.next_review_at = now - 5 * 86400
+        risky.stability = 2.0
+        risky.lapse_count = 2
+        safe = scheduler.get_initial_state(KnowledgeType.MEMORY, now=now)
+        safe.last_review_at = now
+        safe.next_review_at = now - 10
+        safe.stability = 30.0
+        lp.repetition_states["kp_risk"] = risky
+        lp.repetition_states["kp_safe"] = safe
+        tasks = scheduler.build_review_queue(lp, now=now)
+        assert [task.knowledge_point_id for task in tasks] == ["kp_risk", "kp_safe"]
+        assert tasks[0].forgetting_risk > tasks[1].forgetting_risk
+        assert "retrievability" in tasks[0].reason

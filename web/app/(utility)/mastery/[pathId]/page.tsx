@@ -264,6 +264,17 @@ export default function MasteryTopicPage() {
     router.push(`/mastery/${encodeURIComponent(pathId)}/sessions`);
   };
 
+  const startReview = (objectiveId: string, knowledgePointName: string) => {
+    setPendingPrompt(
+      masteryOpeningMessage("review", t as Translate, {
+        dueTitles: [knowledgePointName],
+      }),
+      MASTERY_OPENING_SCOPE,
+    );
+    setSelectedId(objectiveId);
+    router.push(masterySessionRoute(pathId, "review"));
+  };
+
   if (loading && !topic) {
     return (
       <div className="mastery-shell flex h-full items-center justify-center text-[var(--muted-foreground)]">
@@ -448,9 +459,23 @@ export default function MasteryTopicPage() {
             </button>
           ) : (
             <Link
+              onClick={() => {
+                if (topic.next.action === "review") {
+                  setPendingPrompt(
+                    masteryOpeningMessage("review", t as Translate, {
+                      dueTitles: topic.next.knowledge_point_name
+                        ? [topic.next.knowledge_point_name]
+                        : [],
+                    }),
+                    MASTERY_OPENING_SCOPE,
+                  );
+                }
+              }}
               href={
                 continuationSessionId
                   ? `/mastery/${encodeURIComponent(pathId)}/sessions/${encodeURIComponent(continuationSessionId)}`
+                  : topic.next.action === "review"
+                    ? masterySessionRoute(pathId, "review")
                   : `/mastery/${encodeURIComponent(pathId)}/sessions`
               }
               className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-[var(--primary)] px-3.5 text-[13px] font-medium text-[var(--primary-foreground)] transition hover:opacity-90"
@@ -593,6 +618,7 @@ export default function MasteryTopicPage() {
                         : "smooth",
                     });
                 }}
+                onStartReview={startReview}
               />
             </div>
           )}

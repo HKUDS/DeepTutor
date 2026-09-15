@@ -104,6 +104,7 @@ export interface NextStep {
   mastery: number;
   threshold: number;
   reason: string;
+  forgetting_risk: number;
   /** The outstanding question's text, when `action` is `answer_pending`. */
   pending_prompt: string;
   /** Session that owns an outstanding question; empty for non-pending steps. */
@@ -236,6 +237,28 @@ export interface ObjectiveReview {
   interval_index: number;
   consecutive_correct: number;
   consecutive_wrong: number;
+  stability: number;
+  retrievability: number;
+  desired_retention: number;
+  lapse_count: number;
+  forgetting_risk: number;
+  reason: string;
+  recent_failure?: boolean;
+}
+
+export interface LearningEvidence {
+  knowledge_point_id: string;
+  timestamp: number;
+  source: string;
+  assessment_type: "quiz" | "qualitative" | "review";
+  result: "correct" | "incorrect" | "partial";
+  quality: number | null;
+  hints_used: number;
+  attempt_count: number;
+  confidence: number | null;
+  response_time: number | null;
+  session_id: string;
+  turn_id: string;
 }
 
 export interface ObjectiveErrorRecord {
@@ -264,6 +287,11 @@ export interface ObjectiveReport {
   correct_count: number;
   explanation: string;
   review: ObjectiveReview | null;
+  // These fields were added after the initial objective report contract.
+  // Keep them optional so older API responses and embedded consumers remain
+  // readable while the current server includes both values.
+  evidence?: LearningEvidence[];
+  evidence_count?: number;
   errors: ObjectiveErrorRecord[];
 }
 
@@ -426,6 +454,13 @@ export interface TopicReview {
   due_at: number;
   priority: number;
   due: boolean;
+  forgetting_risk: number;
+  reason: string;
+  stability: number;
+  retrievability: number;
+  desired_retention: number;
+  lapse_count: number;
+  recent_failure: boolean;
 }
 
 export interface MasteryTopic {

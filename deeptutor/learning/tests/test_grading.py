@@ -246,3 +246,5 @@ class TestGradeAndRecordFailClosed:
         assert "kp1" in progress.repetition_states
         assert len(progress.review_queue) == 1
         assert progress.review_queue[0].knowledge_point_id == "kp1"
+        assert len(progress.learning_evidence) == 1
+        assert progress.learning_evidence[0].result == "correct"
