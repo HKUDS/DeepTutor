@@ -76,3 +76,57 @@ def test_user_with_empty_grant_has_no_access(tmp_path, monkeypatch):
         assert model_access.has_capability_access("llm") is False
     finally:
         reset_current_user(token)
+
+
+def test_user_default_matches_first_available_model(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        model_access,
+        "admin_catalog",
+        lambda: {
+            "services": {
+                "llm": {
+                    "active_profile_id": "global",
+                    "active_model_id": "global-model",
+                }
+            }
+        },
+    )
+    monkeypatch.setattr(
+        model_access,
+        "redacted_model_access",
+        _fake_access(
+            llm=[
+                {
+                    "profile_id": "first",
+                    "model_id": "first-model",
+                    "name": "First model",
+                    "available": True,
+                },
+                {
+                    "profile_id": "global",
+                    "model_id": "global-model",
+                    "name": "Global model",
+                    "available": True,
+                },
+                {
+                    "profile_id": "unavailable",
+                    "model_id": "unavailable-model",
+                    "name": "Unavailable model",
+                    "available": False,
+                },
+            ]
+        ),
+    )
+    token = set_current_user(make_user(tmp_path, role="user"))
+    try:
+        allowed = model_access.allowed_llm_options()
+        assert allowed["active"] == {
+            "profile_id": "first",
+            "model_id": "first-model",
+        }
+        assert [option["is_active_default"] for option in allowed["options"]] == [
+            True,
+            False,
+        ]
+    finally:
+        reset_current_user(token)
