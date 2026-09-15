@@ -8,6 +8,7 @@ import asyncio
 from datetime import datetime
 import json
 import logging
+import os
 from pathlib import Path
 import shutil
 from typing import TYPE_CHECKING, Optional
@@ -23,6 +24,11 @@ from deeptutor.services.file_io import atomic_write_json
 from deeptutor.services.rag.factory import normalize_provider_name
 from deeptutor.services.rag.file_routing import FileTypeRouter
 from deeptutor.services.rag.service import RAGService
+from deeptutor.services.setup.data_volume import (
+    DataVolumePermissionError,
+    ensure_data_volume_writable,
+    format_data_volume_permission_error,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +124,7 @@ class KnowledgeBaseInitializer:
     def create_directory_structure(self) -> None:
         """Create KB directory structure."""
         logger.info(f"Creating directory structure for knowledge base: {self.kb_name}")
+        ensure_data_volume_writable(self.base_dir)
 
         for dir_path in [
             self.raw_dir,
@@ -241,6 +248,17 @@ class KnowledgeBaseInitializer:
                     self.kb_name,
                     exc_info=True,
                 )
+        except PermissionError as e:
+            error_msg = format_data_volume_permission_error(
+                self.kb_dir, uid=os.geteuid(), gid=os.getegid(), cause=e
+            )
+            logger.error("Error processing documents: %s", error_msg)
+            self.progress_tracker.update(
+                ProgressStage.ERROR,
+                message_key="Failed to process documents",
+                error=error_msg,
+            )
+            raise DataVolumePermissionError(error_msg) from e
         except Exception as e:
             error_msg = str(e)
             logger.error(f"Error processing documents: {error_msg}")

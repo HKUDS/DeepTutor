@@ -990,6 +990,59 @@ def test_upload_task_marks_provider_failures_as_error(monkeypatch, tmp_path: Pat
     assert entry["progress"]["indexed_count"] == 0
 
 
+def test_upload_task_bootstraps_empty_llamaindex_kb(monkeypatch, tmp_path: Path) -> None:
+    """Create-KB-then-upload (issue #1458) must index instead of raising
+    ``Knowledge base not initialized (llamaindex)``.
+    """
+    base_dir = tmp_path / "knowledge_bases"
+    kb_dir = base_dir / "Medicine"
+    raw_dir = kb_dir / "raw"
+    raw_dir.mkdir(parents=True)
+    (base_dir / "kb_config.json").write_text(
+        json.dumps(
+            {
+                "knowledge_bases": {
+                    "Medicine": {
+                        "path": "Medicine",
+                        "rag_provider": "llamaindex",
+                        "status": "ready",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    source = tmp_path / "note.txt"
+    source.write_text("hello", encoding="utf-8")
+
+    class _SucceedingRagService:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        async def add_documents(self, *_args, **_kwargs) -> bool:
+            return True
+
+    monkeypatch.setattr(
+        "deeptutor.knowledge.add_documents.RAGService",
+        _SucceedingRagService,
+    )
+
+    asyncio.run(
+        knowledge_router_module.run_upload_processing_task(
+            kb_name="Medicine",
+            base_dir=str(base_dir),
+            uploaded_file_paths=[str(source)],
+            task_id="empty-llamaindex-upload",
+            rag_provider="llamaindex",
+        )
+    )
+
+    persisted = json.loads((base_dir / "kb_config.json").read_text(encoding="utf-8"))
+    entry = persisted["knowledge_bases"]["Medicine"]
+    assert entry["status"] != "error"
+    assert "not initialized" not in str(entry.get("last_error") or "")
+
+
 def test_upload_task_with_folder_root_preserves_subfolder_structure(
     monkeypatch, tmp_path: Path
 ) -> None:

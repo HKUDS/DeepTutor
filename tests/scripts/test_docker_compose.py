@@ -213,6 +213,23 @@ def test_supervisord_runs_as_root_with_unprivileged_children() -> None:
         )
 
 
+def test_entrypoint_fail_fasts_on_unwritable_data_volume_without_root_app() -> None:
+    """Unraid bind mounts owned by a non-1000 host user must not start the app
+    as root, and chown failure must not be swallowed into a later misleading
+    'Knowledge base not initialized' error (#1458).
+    """
+    root = Path(__file__).resolve().parents[2]
+    content = (root / "Dockerfile").read_text(encoding="utf-8")
+
+    assert "chown -R deeptutor:deeptutor /app/data 2>/dev/null || true" not in content
+    assert "check_container_data_volume" in content
+    assert 'PUID="${PUID:-${DEEPTUTOR_PUID:-1000}}"' in content
+    assert "skipping PUID remap" in content
+    assert "PUID/PGID must be non-root" in content
+    assert "gosu deeptutor /usr/bin/supervisord" not in content
+    assert "user=deeptutor" in content
+
+
 def test_frontend_api_is_url_agnostic_passthrough() -> None:
     """web/lib/api.ts no longer carries a build-time API base or a placeholder
     token; apiUrl/wsUrl are pass-throughs and the Next.js middleware

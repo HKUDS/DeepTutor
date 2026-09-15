@@ -4,6 +4,8 @@ import asyncio
 import json
 from pathlib import Path
 
+import pytest
+
 from deeptutor.knowledge.add_documents import (
     DocumentAdder,
     RawDocumentRemoval,
@@ -89,6 +91,59 @@ def test_document_adder_allows_empty_lightrag_kb_to_bootstrap(tmp_path: Path) ->
 
     assert adder.rag_provider == "lightrag"
     assert adder.raw_dir.is_dir()
+
+
+def test_document_adder_allows_empty_llamaindex_kb_to_bootstrap(tmp_path: Path) -> None:
+    """Create-then-upload (no files at create time) must not look uninitialized."""
+    (tmp_path / "Medicine").mkdir()
+
+    adder = DocumentAdder(
+        kb_name="Medicine",
+        base_dir=str(tmp_path),
+        rag_provider="llamaindex",
+    )
+
+    assert adder.rag_provider == "llamaindex"
+    assert adder.raw_dir.is_dir()
+
+
+def test_document_adder_unready_index_reports_probe_summary(tmp_path: Path) -> None:
+    kb_dir = tmp_path / "kb"
+    (kb_dir / "raw").mkdir(parents=True)
+    version = kb_dir / "version-1"
+    version.mkdir()
+    (version / "meta.json").write_text(
+        '{"provider": "llamaindex", "signature": "sig", "version": "version-1"}',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="no ready llamaindex index") as caught:
+        DocumentAdder(kb_name="kb", base_dir=str(tmp_path), rag_provider="llamaindex")
+
+    assert "not initialized" not in str(caught.value)
+    assert "docstore.json" in str(caught.value)
+
+
+def test_document_adder_unwritable_kb_is_not_reported_as_uninitialized(
+    tmp_path: Path, monkeypatch
+) -> None:
+    kb_dir = tmp_path / "Medicine"
+    kb_dir.mkdir()
+    monkeypatch.setattr(
+        "deeptutor.knowledge.add_documents.ensure_data_volume_writable",
+        lambda _path: (_ for _ in ()).throw(
+            PermissionError(
+                "Data directory is not writable by the running process "
+                "(euid=1000, egid=1000): /app/data/knowledge_bases/Medicine "
+                "is uid=99 gid=100 mode=0755."
+            )
+        ),
+    )
+
+    with pytest.raises(PermissionError, match="not writable") as caught:
+        DocumentAdder(kb_name="Medicine", base_dir=str(tmp_path), rag_provider="llamaindex")
+
+    assert "not initialized" not in str(caught.value)
 
 
 def test_process_new_documents_returns_failures_without_marking_processed(
