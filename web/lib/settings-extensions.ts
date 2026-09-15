@@ -20,6 +20,8 @@ export const EXTENSION_ENDPOINTS = {
   capabilities: "/api/capabilities/settings",
   memory: "/api/memory/settings",
   network: "/api/settings/network",
+  "document_parsing": "/api/settings/document-parsing",
+  enabled_tools: "/api/settings/enabled-tools",
 } as const;
 
 export type ExtensionKey = keyof typeof EXTENSION_ENDPOINTS;
