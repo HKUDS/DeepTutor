@@ -1397,6 +1397,8 @@ export interface WebSource {
   max_depth: number;
   max_pages: number;
   enabled: boolean;
+  auto_sync_enabled: boolean;
+  sync_interval_hours: number;
   page_count: number;
   last_synced_at: string;
   last_sync_status: string;
@@ -1426,6 +1428,23 @@ export interface WebSyncResult {
   ok: boolean;
   message: string;
   results: WebSyncSourceResult[];
+}
+
+export interface WebSourceSyncJob {
+  owner_id: string;
+  kb_name: string;
+  source_id: string;
+  state: string;
+  next_run_at: number;
+  last_run_at?: number | null;
+  attempt: number;
+  error?: string | null;
+  cancel_requested: boolean;
+}
+
+export interface WebSourceSchedulePayload {
+  auto_sync_enabled: boolean;
+  sync_interval_hours: number;
 }
 
 export async function listWebSources(
@@ -1485,6 +1504,82 @@ export async function removeWebSource(
     );
   }
   invalidateKnowledgeCaches();
+}
+
+export async function listWebSourceSyncJobs(
+  kbName: string,
+  options?: { signal?: AbortSignal },
+): Promise<WebSourceSyncJob[]> {
+  const res = await apiFetch(
+    apiUrl(
+      `/api/knowledge-bases/${encodeURIComponent(kbName)}/web-source-sync`,
+    ),
+    { signal: options?.signal },
+  );
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, `Failed to list sync jobs (${res.status})`),
+    );
+  }
+  return (await res.json()) as WebSourceSyncJob[];
+}
+
+export async function updateWebSourceSchedule(
+  kbName: string,
+  sourceId: string,
+  payload: WebSourceSchedulePayload,
+): Promise<WebSource> {
+  const res = await apiFetch(
+    apiUrl(
+      `/api/knowledge-bases/${encodeURIComponent(kbName)}/web-source/${encodeURIComponent(sourceId)}/schedule`,
+    ),
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, `Failed to update sync schedule (${res.status})`),
+    );
+  }
+  invalidateKnowledgeCaches();
+  return (await res.json()) as WebSource;
+}
+
+export async function cancelWebSourceSync(
+  kbName: string,
+  sourceId: string,
+): Promise<void> {
+  const res = await apiFetch(
+    apiUrl(
+      `/api/knowledge-bases/${encodeURIComponent(kbName)}/web-source/${encodeURIComponent(sourceId)}/cancel`,
+    ),
+    { method: "POST" },
+  );
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, `Failed to cancel sync (${res.status})`),
+    );
+  }
+}
+
+export async function retryWebSourceSync(
+  kbName: string,
+  sourceId: string,
+): Promise<void> {
+  const res = await apiFetch(
+    apiUrl(
+      `/api/knowledge-bases/${encodeURIComponent(kbName)}/web-source/${encodeURIComponent(sourceId)}/retry`,
+    ),
+    { method: "POST" },
+  );
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, `Failed to retry sync (${res.status})`),
+    );
+  }
 }
 
 export async function syncWebSources(kbName: string): Promise<WebSyncResult> {

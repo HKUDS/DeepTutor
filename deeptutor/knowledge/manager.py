@@ -2079,6 +2079,8 @@ class KnowledgeBaseManager:
             "max_depth": max_depth,
             "max_pages": max_pages,
             "enabled": True,
+            "auto_sync_enabled": True,
+            "sync_interval_hours": 24,
             "page_hashes": {},
             "page_count": 0,
             "last_synced_at": "",
@@ -2125,6 +2127,29 @@ class KnowledgeBaseManager:
                 source.update(fields)
                 atomic_write_json(metadata_file, metadata)
                 return
+
+    def update_web_source_schedule(
+        self,
+        kb_name: str,
+        source_id: str,
+        *,
+        auto_sync_enabled: bool,
+        sync_interval_hours: int,
+    ) -> dict:
+        """Persist the reviewable schedule fields for one web source."""
+        source = next(
+            (item for item in self.get_web_sources(kb_name) if item.get("id") == source_id),
+            None,
+        )
+        if source is None:
+            raise ValueError(f"Source '{source_id}' not found")
+        self.update_web_source_state(
+            kb_name,
+            source_id,
+            auto_sync_enabled=auto_sync_enabled,
+            sync_interval_hours=sync_interval_hours,
+        )
+        return next(item for item in self.get_web_sources(kb_name) if item.get("id") == source_id)
 
     def get_all_web_sources(self) -> list[tuple[str, dict]]:
         """Scan every KB and return (kb_name, source_dict) pairs."""

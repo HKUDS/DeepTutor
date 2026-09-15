@@ -203,6 +203,20 @@ async def lifespan(app: FastAPI):
 
         await get_sync_service().stop()
 
+    async def _start_web_source_sync() -> None:
+        from deeptutor.services.web_source.scheduler import (
+            start_web_source_sync_scheduler,
+        )
+
+        await start_web_source_sync_scheduler()
+
+    async def _stop_web_source_sync() -> None:
+        from deeptutor.services.web_source.scheduler import (
+            stop_web_source_sync_scheduler,
+        )
+
+        await stop_web_source_sync_scheduler()
+
     from deeptutor.runtime.coordination import BackgroundCommandKind
 
     async def _handle_background_command(command) -> None:
@@ -268,8 +282,18 @@ async def lifespan(app: FastAPI):
     background_supervisor = BackgroundLeaderSupervisor(
         application_container.coordinator,
         application_container.worker_id,
-        start_callbacks=[_start_partners, _start_cron, _start_github_sync],
-        stop_callbacks=[_stop_partners, _stop_cron, _stop_github_sync],
+        start_callbacks=[
+            _start_partners,
+            _start_cron,
+            _start_github_sync,
+            _start_web_source_sync,
+        ],
+        stop_callbacks=[
+            _stop_partners,
+            _stop_cron,
+            _stop_github_sync,
+            _stop_web_source_sync,
+        ],
         recovery_callback=application_container.recover_once,
         control_callback=_handle_background_command,
         renew_interval_seconds=application_container.settings.renew_interval_seconds,
