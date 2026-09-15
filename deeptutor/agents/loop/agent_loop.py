@@ -578,19 +578,7 @@ class AgentLoop:
                             messages.append(_assistant_round_message(result))
                         self._append_loop_instruction(messages, finish_redirect)
                         continue
-                    await self.stream.progress(
-                        self.pipeline._t(
-                            "notices.capability_finish_rejected",
-                            default=(
-                                "The model did not complete the required interactive step. "
-                                "Please retry the turn."
-                            ),
-                        ),
-                        source=self.source,
-                        stage=self.stage,
-                        metadata={"trace_kind": "warning"},
-                    )
-                    return LoopOutcome(final_text="", completed=False)
+                    return await self._reject_capability_finish()
                 final_override = self.pipeline._capability_final_text_override(
                     self.context, final_text
                 )
@@ -746,6 +734,22 @@ class AgentLoop:
         messages[:] = prefix
         return len(messages)
 
+    async def _reject_capability_finish(self) -> LoopOutcome:
+        """Fail a turn whose required interaction could not be completed."""
+        await self.stream.progress(
+            self.pipeline._t(
+                "notices.capability_finish_rejected",
+                default=(
+                    "The model did not complete the required interactive step. "
+                    "Please retry the turn."
+                ),
+            ),
+            source=self.source,
+            stage=self.stage,
+            metadata={"trace_kind": "warning"},
+        )
+        return LoopOutcome(final_text="", completed=False)
+
     async def _forced_finish(
         self,
         messages: list[dict[str, Any]],
@@ -755,6 +759,11 @@ class AgentLoop:
         error: str = "",
         continued_answer_parts: list[str] | None = None,
     ) -> LoopOutcome:
+        # A tool-free salvage reply cannot satisfy an outstanding interaction.
+        # Empty text asks capabilities about state, without inventing prose to
+        # validate or giving the model another chance to claim completion.
+        if self.pipeline._capability_finish_instruction(self.context, ""):
+            return await self._reject_capability_finish()
         if reason == "error":
             # The caller has the exception and logs it; without it here the
             # reader is told a step failed and never which one or why — the
