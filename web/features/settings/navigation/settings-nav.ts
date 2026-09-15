@@ -13,6 +13,7 @@ import {
   Image as ImageIcon,
   Info,
   KeyRound,
+  Languages,
   Library,
   ListChecks,
   MessagesSquare,
@@ -275,6 +276,17 @@ const CHAT_CHILDREN: SettingsLeaf[] = [
     icon: Paperclip,
     tile: "bg-teal-500/10 text-teal-600 dark:text-teal-400",
     adminOnly: true,
+  },
+  {
+    key: "resource-providers",
+    href: "/settings#resource-providers",
+    label: { zh: "资源提供方", en: "Resource Providers" },
+    blurb: {
+      zh: "词典、术语表和外部资源桥接的启用状态。",
+      en: "Enable state for dictionaries, glossaries, and external bridges.",
+    },
+    icon: Languages,
+    tile: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400",
   },
 ];
 

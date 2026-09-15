@@ -2,7 +2,7 @@
 CLI Plugin Command
 ==================
 
-List and inspect registered tools and capabilities.
+List and inspect registered tools, capabilities, and resource providers.
 """
 
 from __future__ import annotations
@@ -19,9 +19,10 @@ console = Console()
 def register(app: typer.Typer) -> None:
     @app.command("list")
     def plugin_list() -> None:
-        """List all registered tools and capabilities."""
+        """List all registered tools, capabilities, and resource providers."""
         from deeptutor.runtime.registry.capability_registry import get_capability_registry
         from deeptutor.runtime.registry.tool_registry import get_tool_registry
+        from deeptutor.services.resource_providers import get_resource_provider_registry
 
         tr = get_tool_registry()
         cr = get_capability_registry()
@@ -38,6 +39,26 @@ def register(app: typer.Typer) -> None:
             table.add_row(m["name"], "capability", m["description"][:80])
 
         console.print(table)
+
+        provider_rows = get_resource_provider_registry().descriptions()
+        if provider_rows:
+            provider_table = Table(title="Resource Providers")
+            provider_table.add_column("Name", style="bold")
+            provider_table.add_column("Type")
+            provider_table.add_column("Version")
+            provider_table.add_column("Languages")
+            provider_table.add_column("Offline")
+            provider_table.add_column("State")
+            for row in provider_rows:
+                provider_table.add_row(
+                    str(row["name"]),
+                    str(row["type"]),
+                    str(row["version"]),
+                    ",".join(row["languages"]),
+                    "yes" if row["offline"] else "no",
+                    "enabled" if row["enabled"] else "disabled",
+                )
+            console.print(provider_table)
 
     @app.command("info")
     def plugin_info(name: str = typer.Argument(..., help="Tool or capability name.")) -> None:
@@ -79,3 +100,26 @@ def register(app: typer.Typer) -> None:
 
         console.print(f"[red]'{name}' not found.[/]")
         raise typer.Exit(code=1)
+
+    @app.command("enable")
+    def plugin_enable(name: str = typer.Argument(..., help="Provider name.")) -> None:
+        """Enable one registered resource provider."""
+        _set_provider_enabled(name, True)
+
+    @app.command("disable")
+    def plugin_disable(name: str = typer.Argument(..., help="Provider name.")) -> None:
+        """Disable one registered resource provider (state is preserved)."""
+        _set_provider_enabled(name, False)
+
+
+def _set_provider_enabled(name: str, enabled: bool) -> None:
+    from deeptutor.services.resource_providers import (
+        get_resource_provider_registry,
+        set_provider_enabled,
+    )
+
+    if get_resource_provider_registry().get(name) is None:
+        console.print(f"[red]'{name}' is not a registered resource provider.[/]")
+        raise typer.Exit(code=1)
+    set_provider_enabled(name, enabled)
+    console.print(f"'{name}' {'enabled' if enabled else 'disabled'}.")
