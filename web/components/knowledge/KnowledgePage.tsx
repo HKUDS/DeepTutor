@@ -1,7 +1,7 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import { Loader2 } from "lucide-react";
@@ -22,7 +22,6 @@ const panelLoading = () => (
     <Loader2 className="h-5 w-5 animate-spin text-[var(--muted-foreground)]" />
   </div>
 );
-
 // These panels are not part of the Knowledge overview's first interaction.
 // Keep their large forms and engine controls out of the overview bundle, while
 // still server-rendering the relevant panel for direct detail links.
@@ -33,7 +32,9 @@ const EngineDetail = dynamic(
   () => import("@/features/knowledge/components/engines/EngineDetail"),
   { loading: panelLoading },
 );
-const CreateKbModal = dynamic(() => import("./CreateKbModal"));
+const CreateKbModal = dynamic(() => import("./CreateKbModal"), {
+  ssr: false,
+});
 
 export default function KnowledgePage() {
   const { t } = useTranslation();

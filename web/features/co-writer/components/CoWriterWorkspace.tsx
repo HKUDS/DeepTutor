@@ -83,7 +83,9 @@ const MarkdownRenderer = dynamic(
 
 const SaveToNotebookModal = dynamic(
   () => import("@/components/notebook/SaveToNotebookModal"),
-  { ssr: false },
+  {
+    ssr: false,
+  },
 );
 
 type EditAction = "rewrite" | "shorten" | "expand";
@@ -2413,15 +2415,17 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
         </div>
       )}
 
-      <SaveToNotebookModal
-        open={notebookSavePayload !== null}
-        payload={notebookSavePayload}
-        onClose={() => setNotebookSavePayload(null)}
-        onSaved={() => {
-          setStatus(t("Saved to notebook."));
-          setError("");
-        }}
-      />
+      {notebookSavePayload && (
+        <SaveToNotebookModal
+          open
+          payload={notebookSavePayload}
+          onClose={() => setNotebookSavePayload(null)}
+          onSaved={() => {
+            setStatus(t("Saved to notebook."));
+            setError("");
+          }}
+        />
+      )}
     </div>
   );
 }
