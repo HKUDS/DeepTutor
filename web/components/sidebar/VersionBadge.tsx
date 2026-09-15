@@ -76,6 +76,7 @@ export function VersionBadge({ collapsed = false }: VersionBadgeProps) {
   return (
     <Link
       href="/settings#about"
+      prefetch={false}
       scroll={false}
       onClick={(event) => {
         if (pathname !== "/settings") return;

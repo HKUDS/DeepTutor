@@ -226,6 +226,7 @@ export function SidebarShell({
         <div className="relative mb-2 flex h-9 w-9 items-center justify-center">
           <Link
             href="/"
+            prefetch={false}
             aria-label="DeepTutor"
             className="flex items-center justify-center transition-opacity duration-150 group-hover/sb:opacity-0"
           >
@@ -264,6 +265,7 @@ export function SidebarShell({
               <Link
                 key={item.href}
                 href={item.href}
+                prefetch={false}
                 title={t(item.label) as string}
                 className={`relative flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-150 ${
                   active
@@ -302,7 +304,11 @@ export function SidebarShell({
     <aside className="flex w-[220px] h-dvh shrink-0 flex-col bg-[var(--secondary)] transition-all duration-200">
       {/* Header: logo + collapse toggle */}
       <div className="flex h-14 items-center justify-between px-4">
-        <Link href="/" className="group flex items-center gap-1.5">
+        <Link
+          href="/"
+          prefetch={false}
+          className="group flex items-center gap-1.5"
+        >
           <Image
             src="/logo.png"
             alt="DeepTutor"
@@ -410,6 +416,7 @@ export function SidebarShell({
             <Link
               key={item.href}
               href={item.href}
+              prefetch={false}
               onClick={closeDrawerOnNav}
               className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] transition-colors ${
                 active
