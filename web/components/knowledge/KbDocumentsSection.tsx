@@ -109,7 +109,11 @@ export default function KbDocumentsSection({
   const blockedReason = canUpload
     ? null
     : requiresLightRagRebuild
-      ? t(
+      ? kb.metadata?.embedding_mismatch
+        ? t(
+            "The current embedding configuration does not match this index. Restore the original configuration or rebuild with the current embedding before querying or adding documents.",
+          )
+        : t(
           "This legacy LightRAG index remains queryable, but it must be fully rebuilt before incremental uploads.",
         )
       : needsReindex

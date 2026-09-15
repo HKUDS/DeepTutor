@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import LightRagEmbeddingWarning from "./LightRagEmbeddingWarning";
 import {
   ArrowLeft,
   Database,
@@ -226,6 +227,7 @@ export default function KnowledgeBaseDetail({
                   ? ` · ${t("Last indexed")} ${lastIndexedLabel}`
                   : ""}
               </p>
+              <LightRagEmbeddingWarning kb={kb} />
             </div>
           </div>
           {canRetry && (

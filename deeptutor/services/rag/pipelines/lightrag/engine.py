@@ -8,7 +8,10 @@ import hashlib
 from importlib.metadata import PackageNotFoundError, version
 import inspect
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from deeptutor.services.embedding.config import EmbeddingConfig
 
 from .config import (
     DEFAULT_MODE,
@@ -189,6 +192,7 @@ def build_rag(
     io_bridge: OwnerLoopBridge | None = None,
     enable_vlm: bool = False,
     indexing_snapshot: Any | None = None,
+    embedding_config: EmbeddingConfig | None = None,
 ) -> Any:
     """Construct one exact-version, version-isolated LightRAG instance."""
     _require_exact_version()
@@ -197,6 +201,8 @@ def build_rag(
 
     llm_adapter_kwargs: dict[str, Any] = {}
     embedding_adapter_kwargs: dict[str, Any] = {}
+    if embedding_config is not None:
+        embedding_adapter_kwargs["embedding_config"] = embedding_config
     if io_bridge is not None:
         llm_adapter_kwargs["io_bridge"] = io_bridge
         embedding_adapter_kwargs["io_bridge"] = io_bridge

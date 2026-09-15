@@ -39,6 +39,12 @@ class IndexingModelChangedError(IndexingPolicyError):
     code = "reindex_required"
 
 
+class EmbeddingMismatchError(IndexingPolicyError):
+    """The selected embedding does not match the published vector space."""
+
+    code = "lightrag_embedding_incompatible"
+
+
 def _endpoint_identity(value: str | None) -> str:
     if not value:
         return ""

@@ -41,6 +41,14 @@ REQUIRES_LIGHTRAG = pytest.mark.skipif(
 )
 
 
+@pytest.fixture(autouse=True)
+def _active_embedding(monkeypatch: pytest.MonkeyPatch) -> None:
+    from deeptutor.services.embedding.config import EmbeddingConfig
+
+    cfg = EmbeddingConfig(model="test-embedding", dim=3, api_key="test-key")
+    monkeypatch.setattr("deeptutor.services.embedding.get_embedding_config", lambda: cfg)
+
+
 class _Bridge:
     def __init__(self) -> None:
         self.calls = 0
@@ -403,12 +411,15 @@ def test_embedding_adapter_preserves_query_and_document_roles(monkeypatch) -> No
         max_tokens = 99
 
     class Client:
+        def __init__(self, *, config):
+            self.config = config
+
         async def embed(self, texts, *, input_type=None):
             calls.append((list(texts), input_type))
             return [[1, 2, 3] for _ in texts]
 
     monkeypatch.setattr("deeptutor.services.embedding.get_embedding_config", EmbeddingConfig)
-    monkeypatch.setattr("deeptutor.services.embedding.get_embedding_client", Client)
+    monkeypatch.setattr("deeptutor.services.embedding.client.EmbeddingClient", Client)
     adapter = config.build_embedding_func()
     query = asyncio.run(adapter(["question"], context="query"))
     document = asyncio.run(adapter(["passage"], context="document"))
@@ -626,6 +637,8 @@ def test_flat_schema_two_candidate_fails_closed_until_published(tmp_path: Path) 
 
 
 def _write_published_version(root: Path, *, indexing_policy_value: dict | None = None) -> None:
+    from deeptutor.services.rag.embedding_signature import embedding_meta_fields
+
     root.mkdir(parents=True)
     (root / "kv_store_doc_status.json").write_text(
         json.dumps({"doc": {"status": "processed", "chunks_list": ["chunk"]}}),
@@ -640,6 +653,7 @@ def _write_published_version(root: Path, *, indexing_policy_value: dict | None =
                 "parser_bridge_schema": 1,
                 "state": "published",
                 "indexing_policy": indexing_policy_value or {"policy": "legacy_unpinned"},
+                **embedding_meta_fields(),
             }
         ),
         encoding="utf-8",
@@ -1287,7 +1301,7 @@ def test_append_rejects_corrupt_or_unpublished_existing_version(
 
 def test_search_failure_is_not_reported_as_empty_success(tmp_path: Path, monkeypatch) -> None:
     root = tmp_path / "version-1"
-    root.mkdir()
+    _write_published_version(root)
     pipeline = LightRagPipeline(kb_base_dir=str(tmp_path))
     monkeypatch.setattr(storage, "latest_published_root", lambda _kb_dir: root)
     monkeypatch.setattr(pipeline, "_resolve_mode", lambda *_args: "hybrid")

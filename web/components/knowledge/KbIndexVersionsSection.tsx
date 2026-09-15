@@ -40,6 +40,7 @@ import IndexingModelSelector, {
   selectionFromLLMOption,
 } from "./IndexingModelSelector";
 import LightRagIndexingProvenance from "./LightRagIndexingProvenance";
+import LightRagEmbeddingWarning from "./LightRagEmbeddingWarning";
 
 export function selectionForLightRagModelDialog(
   options: LLMOption[],
@@ -278,6 +279,7 @@ export default function KbIndexVersionsSection({
       </div>
 
       {isError && <KbIndexFailureBanner kb={kb} />}
+      <LightRagEmbeddingWarning kb={kb} />
 
       {isLightRag && (
         <LightRagIndexingProvenance

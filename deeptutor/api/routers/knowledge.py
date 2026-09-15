@@ -3304,16 +3304,17 @@ async def run_reindex_task(
             # this cached instance before clearing flags so stale processing
             # state cannot overwrite the completed status it just wrote.
             manager.config = manager._load_config()
-            # Clear the legacy mismatch / needs_reindex flags now that an
-            # index version matching the active config exists on disk.
+            # LightRAG's loader reconciles its published embedding against current
+            # defaults, which may have changed during this accepted operation.
+            # Other providers retain their existing completion flag cleanup.
             kb_entry = manager.config.get("knowledge_bases", {}).get(kb_name) or {}
             if kb_entry.get("status") != "ready":
                 raise RuntimeError(f"Re-index terminal state was not persisted for '{kb_name}'.")
             mutated = False
-            if kb_entry.get("needs_reindex"):
+            if signature_hash != LIGHTRAG_PROVIDER and kb_entry.get("needs_reindex"):
                 kb_entry["needs_reindex"] = False
                 mutated = True
-            if kb_entry.get("embedding_mismatch"):
+            if signature_hash != LIGHTRAG_PROVIDER and kb_entry.get("embedding_mismatch"):
                 kb_entry.pop("embedding_mismatch", None)
                 mutated = True
             if mutated:

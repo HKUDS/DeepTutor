@@ -17,14 +17,18 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from copy import deepcopy
 import importlib.util
 import inspect
 import logging
 import re
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 if TYPE_CHECKING:
+    from lightrag.utils import EmbeddingFunc
+
     from deeptutor.multi_user.models import CurrentUser
+    from deeptutor.services.embedding.config import EmbeddingConfig
     from deeptutor.services.llm.config import LLMConfig
 
     from .worker import OwnerLoopBridge
@@ -357,13 +361,18 @@ def vision_model_available() -> bool:
         return False
 
 
-def build_embedding_func(*, io_bridge: OwnerLoopBridge | None = None):
-    """Wrap DeepTutor's embedding client in LightRAG's ``EmbeddingFunc``."""
+def build_embedding_func(
+    *,
+    io_bridge: OwnerLoopBridge | None = None,
+    embedding_config: EmbeddingConfig | None = None,
+) -> EmbeddingFunc:
+    """Wrap one captured embedding configuration in LightRAG's adapter."""
     from lightrag.utils import EmbeddingFunc
 
-    from deeptutor.services.embedding import get_embedding_client, get_embedding_config
+    from deeptutor.services.embedding import get_embedding_config
+    from deeptutor.services.embedding.client import EmbeddingClient
 
-    cfg = get_embedding_config()
+    cfg = deepcopy(embedding_config if embedding_config is not None else get_embedding_config())
     dim = int(getattr(cfg, "dim", 0) or 0)
     if not dim:
         raise LightRagNotConfiguredError(
@@ -371,9 +380,9 @@ def build_embedding_func(*, io_bridge: OwnerLoopBridge | None = None):
             "Settings → Catalog before using a LightRAG knowledge base."
         )
 
-    client = get_embedding_client()
+    client = EmbeddingClient(config=cfg)
 
-    async def embedding_func(texts, context=None, **_ignored):
+    async def embedding_func(texts: list[str], context: str | None = None, **_ignored: Any) -> Any:
         import numpy as np
 
         # No context means no role. Defaulting to "document" would label
@@ -383,7 +392,7 @@ def build_embedding_func(*, io_bridge: OwnerLoopBridge | None = None):
             "document": "search_document",
         }.get(str(context or "").strip().lower())
 
-        async def request():
+        async def request() -> Any:
             return await client.embed(texts, input_type=input_type)
 
         vectors = await io_bridge.run(request) if io_bridge is not None else await request()
