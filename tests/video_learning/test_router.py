@@ -8,7 +8,7 @@ import httpx
 import pytest
 
 from deeptutor.api.routers import video_learning
-from deeptutor.api.routers.auth import require_admin, require_learning_surface
+from deeptutor.api.routers.auth import require_admin, require_auth, require_learning_surface
 from deeptutor.services.notebook.service import NotebookManager
 from deeptutor.video_learning import notes as video_notes
 from deeptutor.video_learning import service
@@ -76,24 +76,32 @@ def test_main_mounts_settings_as_admin_only_and_learning_policy_scoped() -> None
     async def reject_learning_surface() -> None:
         raise HTTPException(status_code=419, detail="learning policy dependency called")
 
+    async def reject_auth() -> None:
+        raise HTTPException(status_code=420, detail="authentication dependency called")
+
     original_overrides = app.dependency_overrides.copy()
     app.dependency_overrides[require_admin] = reject_admin
-    app.dependency_overrides[require_learning_surface] = reject_learning_surface
+    app.dependency_overrides[require_auth] = reject_auth
     try:
         # Assert through HTTP instead of inspecting ``app.routes``. FastAPI
         # 0.141 keeps included routers nested, but dependency overrides remain
         # the public, representation-independent way to observe each gate.
         with TestClient(app) as app_client:
             settings_response = app_client.get("/api/settings/video-learning")
-            learning_response = app_client.get("/api/video-learning/materials/not-a-material")
+            auth_response = app_client.get("/api/video-learning/materials/not-a-material")
+
+            app.dependency_overrides[require_learning_surface] = reject_learning_surface
+            policy_response = app_client.get("/api/video-learning/materials/not-a-material")
     finally:
         app.dependency_overrides.clear()
         app.dependency_overrides.update(original_overrides)
 
     assert settings_response.status_code == 418
     assert settings_response.json()["detail"] == "admin dependency called"
-    assert learning_response.status_code == 419
-    assert learning_response.json()["detail"] == "learning policy dependency called"
+    assert auth_response.status_code == 420
+    assert auth_response.json()["detail"] == "authentication dependency called"
+    assert policy_response.status_code == 419
+    assert policy_response.json()["detail"] == "learning policy dependency called"
 
 
 def test_progress_clamps_to_duration_and_unknown_material_is_404(client: TestClient) -> None:
