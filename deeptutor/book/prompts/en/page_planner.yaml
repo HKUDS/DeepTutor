@@ -22,6 +22,22 @@ block_catalog: |
     params: {"focus": "<what the animation shows>", "quality": "low|medium|high"}
   - **code**: Runnable code example. params: {"language": "<python|js|...>", "intent": "<example|verify|scaffold>"}
   - **timeline**: Chronological event sequence.
+  - **formula**: KaTeX formula block — multi-step formula derivations and key
+    equations presented line by line. params: {"topic": "<what the formula derives>"}
+  - **desmos**: Interactive Desmos function graph — function behaviour, curves,
+    and visual exploration of expressions. params: {"topic": "<what the graph shows>"}
+  - **geogebra**: Interactive GeoGebra construction — dynamic geometry,
+    transformations, and manipulable figures. params: {"topic": "<the construction to explore>"}
+  - **geometry**: Static JSXGraph geometry drawing — fixed geometric diagrams
+    and construction steps. params: {"topic": "<the construction to draw>"}
+  - **three_scene**: Three.js 3D scene — solid geometry and three-dimensional
+    figures. params: {"topic": "<the solid to visualise>"}
+  - **venn**: Venn diagram (SVG) — set relationships and overlaps.
+    params: {"topic": "<the sets to compare>"}
+  - **complex**: Complex-plane diagram (SVG) — complex numbers and operations
+    on the Argand plane. params: {"topic": "<the complex numbers to plot>"}
+  - **chart**: ECharts data chart — statistics: bar / line / pie plots.
+    params: {"topic": "<what the chart plots>"}
 
 architect_system: |
   You are the SectionArchitect of DeepTutor's BookEngine.
@@ -41,6 +57,11 @@ architect_system: |
   - Match block types to the content's nature: derivations need animation/code,
     concepts need figure (svg/chartjs/mermaid), interactive exploration needs
     interactive, practice needs quiz/code.
+  - For mathematical chapters, prefer the math block family: desmos for
+    function graphs, geogebra for dynamic geometry, chart for statistics
+    (bar/line/pie), geometry for static constructions, formula for multi-step
+    derivations, three_scene for solid geometry, venn for sets, complex for
+    the complex plane.
   - Do NOT emit deep_dive / user_note / concept_graph.
 
 architect_user: |

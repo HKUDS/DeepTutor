@@ -68,6 +68,52 @@ def is_owner_bound(profile: dict[str, Any]) -> bool:
     return bool(profile.get("owner_bound"))
 
 
+def validate_llm_grant_items(
+    items: list[Any],
+    catalog: dict[str, Any] | None = None,
+) -> None:
+    """Reject LLM grant items that can never resolve to a usable model.
+
+    The runtime consumer (:func:`redacted_model_access`) silently skips a grant
+    item whose ``model_ids`` are missing or point at a profile/model that does
+    not exist — the account then shows "no model assigned" with nothing wrong
+    on the log. Saving such a grant must fail loudly instead: a 400 naming the
+    exact field beats a silent zero-match.
+
+    Raises ``ValueError`` with the offending field path, e.g.
+    ``grant.models.llm[0].model_ids``.
+    """
+    if catalog is None:
+        catalog = admin_catalog()
+    profiles = {
+        str(profile.get("id") or ""): profile
+        for profile in catalog.get("services", {}).get("llm", {}).get("profiles", []) or []
+    }
+    for index, item in enumerate(items if isinstance(items, list) else []):
+        if not isinstance(item, dict):
+            raise ValueError(f"grant.models.llm[{index}] must be an object")
+        trail = f"grant.models.llm[{index}]"
+        profile_id = str(item.get("profile_id") or item.get("id") or "").strip()
+        if not profile_id:
+            raise ValueError(f"{trail}.profile_id is required")
+        profile = profiles.get(profile_id)
+        if profile is None:
+            raise ValueError(f"{trail}.profile_id references unknown profile '{profile_id}'")
+        model_ids = item.get("model_ids")
+        if not isinstance(model_ids, list) or not model_ids:
+            raise ValueError(
+                f"{trail}.model_ids is required — list the model ids to grant "
+                f"from profile '{profile_id}'"
+            )
+        available = {str(model.get("id") or "") for model in profile.get("models", []) or []}
+        for model_id in model_ids:
+            if str(model_id).strip() not in available:
+                raise ValueError(
+                    f"{trail}.model_ids references unknown model '{model_id}' "
+                    f"in profile '{profile_id}'"
+                )
+
+
 def redacted_model_access(user_id: str | None = None) -> dict[str, list[dict[str, Any]]]:
     user = get_current_user()
     if user_id is None:

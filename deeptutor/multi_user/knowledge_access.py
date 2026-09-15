@@ -63,7 +63,10 @@ def _assigned_admin_names() -> set[str]:
     out: set[str] = set()
     for item in load_grant(user.id).get("knowledge_bases", []) or []:
         name = str(item.get("name") or item.get("kb_name") or "").strip()
-        resource_id = str(item.get("resource_id") or item.get("id") or "")
+        # ``kb_id`` is the key the admin grant editor writes; ``resource_id``
+        # is the canonical one normalize_grant derives. Read both so a raw
+        # (non-normalized) payload still resolves.
+        resource_id = str(item.get("resource_id") or item.get("kb_id") or item.get("id") or "")
         if resource_id.startswith(ADMIN_PREFIX):
             name = resource_id[len(ADMIN_PREFIX) :]
         if name:
@@ -197,7 +200,7 @@ def list_visible_knowledge_bases() -> list[dict[str, Any]]:
     existing_ids = {item["id"] for item in items}
     for item in load_grant(user.id).get("knowledge_bases", []) or []:
         name = str(item.get("name") or item.get("kb_name") or "").strip()
-        resource_id = str(item.get("resource_id") or item.get("id") or "")
+        resource_id = str(item.get("resource_id") or item.get("kb_id") or item.get("id") or "")
         if resource_id.startswith(ADMIN_PREFIX):
             name = resource_id[len(ADMIN_PREFIX) :]
         if not name:

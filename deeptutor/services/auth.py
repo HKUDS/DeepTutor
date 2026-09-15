@@ -200,16 +200,33 @@ def set_role(username: str, role: str) -> bool:
     """
     Change the role for an existing user. Returns True on success.
 
-    Valid roles: 'admin', 'user'.
+    Valid roles: 'admin', 'teacher', 'student', 'user' (K12 fork).
     """
-    if role not in ("admin", "user"):
-        raise ValueError(f"Invalid role: {role!r}. Must be 'admin' or 'user'.")
+    from deeptutor.multi_user.models import VALID_ROLES
+
+    if role not in VALID_ROLES:
+        raise ValueError(f"Invalid role: {role!r}. Must be one of {sorted(VALID_ROLES)}.")
 
     from deeptutor.multi_user.identity import set_role as _set_role
 
     if not _set_role(username, role):  # type: ignore[arg-type]
         return False
     logger.info(f"User '{username}' role updated to {role!r}")
+    return True
+
+
+def set_children(username: str, children: list[str]) -> bool:
+    """
+    Set the parent → children family linkage (K12). Returns True on success.
+
+    Only parent-role accounts accept a children list; entry validation lives
+    in the router (each name must resolve to a live student account).
+    """
+    from deeptutor.multi_user.identity import set_children as _set_children
+
+    if not _set_children(username, children):
+        return False
+    logger.info(f"User '{username}' children set to {children!r}")
     return True
 
 

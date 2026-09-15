@@ -2,7 +2,7 @@
 
 Modules:
     models      — Pydantic data models
-    storage     — transactional SQLite persistence and legacy JSON migration
+    storage     — JSON persistence
     scheduler   — Spaced repetition
     mastery     — Mastery scoring policy (swappable)
     grading     — Deterministic answer grading
@@ -14,38 +14,40 @@ from deeptutor.learning.models import (
     DiagnosticResult,
     ErrorRecord,
     ErrorType,
-    InteractionStatus,
     KnowledgePoint,
     KnowledgeType,
     LearningModule,
     LearningProgress,
     LearningStage,
-    MasteryEvent,
-    MasteryInteraction,
-    MasteryPathLease,
-    PendingQuestion,
     QuizAttempt,
     RepetitionState,
     RetryAttempt,
     ReviewTask,
+    SixDimensionDataState,
+    SixDimensionEvidenceKind,
+    SixDimensionEvidenceRef,
+    SixDimensionKey,
+    SixDimensionResult,
+    SixDimensionSnapshot,
 )
 
 __all__ = [
     "DiagnosticResult",
     "ErrorRecord",
     "ErrorType",
-    "InteractionStatus",
     "KnowledgePoint",
     "KnowledgeType",
     "LearningModule",
     "LearningProgress",
     "LearningStage",
-    "MasteryEvent",
-    "MasteryInteraction",
-    "MasteryPathLease",
-    "PendingQuestion",
     "QuizAttempt",
     "RepetitionState",
     "RetryAttempt",
     "ReviewTask",
+    "SixDimensionDataState",
+    "SixDimensionEvidenceKind",
+    "SixDimensionEvidenceRef",
+    "SixDimensionKey",
+    "SixDimensionResult",
+    "SixDimensionSnapshot",
 ]

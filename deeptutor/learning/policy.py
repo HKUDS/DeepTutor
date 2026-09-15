@@ -322,6 +322,9 @@ def map_summary(progress: LearningProgress, *, now: float | None = None) -> dict
                         if kp.id in progress.learner_mastery_overrides
                         else ""
                     ),
+                    # M4 学件挂载: bound interactive ids, empty list omitted
+                    # by the frontend badge logic anyway.
+                    "visualizers": list(kp.visualizers),
                 }
             )
         modules_out.append(

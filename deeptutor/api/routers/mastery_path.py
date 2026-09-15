@@ -8,12 +8,15 @@ import html
 import json
 import re
 import time
+from typing import Any
 import uuid
 
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 from pydantic import ValidationError as PydanticValidationError
 
+from deeptutor.api.routers.auth import require_auth
+from deeptutor.book.storage import get_book_storage
 from deeptutor.learning import policy as learning_policy
 from deeptutor.learning import prompts as learning_prompts
 from deeptutor.learning.models import (
@@ -21,15 +24,21 @@ from deeptutor.learning.models import (
     KnowledgeType,
     LearningModule,
     LearningProgress,
+    LearningStage,
     MasteryInteraction,
     MasteryTopic,
+    SixDimensionSnapshot,
     TopicMetadata,
     TopicSource,
     TopicSourceKind,
 )
 from deeptutor.learning.service import LearningService
+from deeptutor.learning.six_dimensions import compute_six_dimension_snapshot
 from deeptutor.learning.storage import LearningStore
 from deeptutor.learning.topic_generation import MAX_MODULE_LIMIT
+from deeptutor.multi_user.book_access import resolve_book
+from deeptutor.services.auth import TokenPayload
+from deeptutor.services.mastery import ChapterImport, chapters_from_kp_tree
 from deeptutor.services.settings.interface_settings import get_response_language
 from deeptutor.utils.json_parser import parse_json_response
 
@@ -55,13 +64,89 @@ def _validate_book_id(book_id: str) -> None:
         raise HTTPException(status_code=400, detail="Invalid book_id")
 
 
+def _bridge_str(value: Any) -> str:
+    """Coerce a KP textbook-bridge field to ``str`` (missing/None → "")."""
+    return value if isinstance(value, str) else ""
+
+
+def _modules_from_canonical_tree(book_id: str, tree: dict[str, Any]) -> list[LearningModule]:
+    """Build 目级 modules from the canonical KP tree cached in the manifest.
+
+    Mirrors the doc_tree rule in doc_intel: a ``type: "mu"`` node is a KP and
+    hangs off its nearest non-mu ancestor — that ancestor (节 or 课/单元,
+    depending on the book's depth) becomes the module. Structural nodes with
+    no mu underneath produce nothing (a module must carry KPs to be
+    runnable), and consecutive mus under the same ancestor share one module.
+    Each KP keeps the tree's stable ``node_id`` as its ``textbook_node_id``
+    bridge and the full ``struct_path``.
+    """
+    groups: list[list[Any]] = []  # [anchor_title, mu_nodes]
+    last_anchor: dict[str, Any] | None = None
+
+    def walk(node: Any, anchor: dict[str, Any] | None) -> None:
+        nonlocal last_anchor
+        if not isinstance(node, dict):
+            return
+        if node.get("type") == "mu":
+            if groups and anchor is last_anchor:
+                groups[-1][1].append(node)
+            else:
+                groups.append([str((anchor or {}).get("title") or ""), [node]])
+                last_anchor = anchor
+        child_anchor = anchor if node.get("type") == "mu" else node
+        for child in node.get("children") or []:
+            walk(child, child_anchor)
+
+    root_children = tree.get("children")
+    if isinstance(root_children, list):
+        for child in root_children:
+            walk(child, None)
+
+    modules: list[LearningModule] = []
+    for i, (anchor_title, mus) in enumerate(groups):
+        module_id = f"{book_id}_ch{i}"
+        kps = [
+            KnowledgePoint(
+                id=f"{module_id}_kp{j}",
+                name=_bridge_str(mu.get("title")),
+                type=KnowledgeType("concept"),
+                module_id=module_id,
+                struct_path=_bridge_str(mu.get("struct_path")),
+                textbook_node_id=_bridge_str(mu.get("node_id")),
+            )
+            for j, mu in enumerate(mus)
+            if _bridge_str(mu.get("title"))
+        ]
+        if not kps:
+            continue
+        modules.append(
+            LearningModule(
+                id=module_id,
+                name=anchor_title or f"Chapter {i + 1}",
+                order=i,
+                pass_threshold=0.7,
+                knowledge_points=kps,
+            )
+        )
+    return modules
+
+
 def _parse_modules(body_modules: list[dict]) -> list[LearningModule]:
     """Parse raw module dicts into LearningModule objects (shared by init/replace)."""
     modules: list[LearningModule] = []
     for i, m in enumerate(body_modules):
         kps_data = m.get("knowledge_points", [])
         try:
-            kps = [KnowledgePoint(**kp) for kp in kps_data]
+            kps = [
+                KnowledgePoint(
+                    **{
+                        **kp,
+                        "struct_path": _bridge_str(kp.get("struct_path")),
+                        "textbook_node_id": _bridge_str(kp.get("textbook_node_id")),
+                    }
+                )
+                for kp in kps_data
+            ]
         except PydanticValidationError as exc:
             raise HTTPException(
                 status_code=422,
@@ -95,32 +180,10 @@ def _validate_runnable_modules(modules: list[LearningModule], *, status_code: in
 async def _cancel_active_learning_turn(book_id: str) -> None:
     from deeptutor.services.session import get_turn_runtime_manager
 
-    learning_store = LearningStore()
     runtime = get_turn_runtime_manager()
-    lease = await asyncio.to_thread(learning_store.get_path_lease, book_id)
-    if lease is not None:
-        if lease.session_id == "__path_api__":
-            # Another administrative mutation owns the path. The caller's
-            # acquisition attempt will return a deterministic HTTP 409.
-            return
-        await runtime.cancel_turn(lease.turn_id)
-        # ``cancel_turn`` can finalize a restart orphan without an in-memory
-        # task, so its normal runtime ``finally`` cannot release the lease.
-        await asyncio.to_thread(
-            learning_store.release_path_lease,
-            book_id,
-            turn_id=lease.turn_id,
-        )
-        return
-
-    # Compatibility for turns started before explicit path leases existed.
-    session_ids = await asyncio.to_thread(learning_store.list_session_ids, book_id)
-    if book_id not in session_ids:
-        session_ids.append(book_id)
-    for session_id in session_ids:
-        for turn in await runtime.store.list_active_turns(session_id):
-            if str(turn.get("capability") or "") == "mastery_path":
-                await runtime.cancel_turn(turn["id"])
+    active_turn = await runtime.store.get_active_turn(book_id)
+    if active_turn:
+        await runtime.cancel_turn(active_turn["id"])
 
 
 @asynccontextmanager
@@ -170,13 +233,19 @@ class RenamePathRequest(BaseModel):
     name: str = ""
 
 
-class ChapterImport(BaseModel):
-    title: str
-    knowledge_points: list[str] = []
-
-
 class ImportFromBookRequest(BaseModel):
     chapters: list[ChapterImport]
+
+
+class ImportFromKpTreeRequest(BaseModel):
+    """One-click book-type path from the manifest's canonical KP tree.
+
+    Idempotent by default: a path that already has modules is returned as-is.
+    ``force`` re-derives the outline (learner mastery is then reset, like any
+    re-import).
+    """
+
+    force: bool = False
 
 
 class TopicSourceRequest(BaseModel):
@@ -745,6 +814,24 @@ async def get_progress_map(book_id: str):
     }
 
 
+@router.get(
+    "/progress/{book_id}/six-dimensions",
+    response_model=SixDimensionSnapshot,
+)
+async def get_six_dimension_snapshot(
+    book_id: str,
+    since: float | None = None,
+    until: float | None = None,
+):
+    """Return an evidence-backed learner profile for one mastery path."""
+    _validate_book_id(book_id)
+    if since is not None and until is not None and since > until:
+        raise HTTPException(status_code=400, detail="since must be <= until")
+    service = get_learning_service()
+    progress = service.get_or_create(book_id)
+    return compute_six_dimension_snapshot(progress, since=since, until=until)
+
+
 @router.get("/progress/{book_id}/board")
 async def get_progress_board(book_id: str):
     """The visual learning board: every knowledge point as a card, enriched
@@ -870,38 +957,209 @@ async def init_modules(book_id: str, body: InitModulesRequest):
     }
 
 
+@router.post("/progress/{book_id}/skip-question")
+async def skip_pending_question(book_id: str):
+    """Drop an outstanding question the learner can no longer answer.
+
+    The narrow escape hatch for a path stalled on ``answer_pending``; unlike
+    ``redo`` it keeps every mastery level and review the learner has earned.
+    """
+    _validate_book_id(book_id)
+    store = LearningStore()
+    if not await asyncio.to_thread(store.exists, book_id):
+        raise HTTPException(status_code=404, detail="Progress not found")
+    async with _exclusive_path_mutation(book_id):
+        progress, skipped = await asyncio.to_thread(
+            LearningService(store).abandon_active_question, book_id
+        )
+    return {"status": "ok", "skipped": skipped, "path_revision": progress.version}
+
+
+class QuestionBankItem(BaseModel):
+    question: str = Field(min_length=5, max_length=2000)
+    question_type: str = Field(default="choice", pattern="^(choice|short|open)$")
+    options: dict[str, str] = Field(default_factory=dict)
+    answer: str = Field(default="", max_length=500)
+    explanation: str = Field(default="", max_length=2000)
+    difficulty: str = Field(default="", max_length=16)
+
+
+class QuestionBankRequest(BaseModel):
+    """K12 错题闭环题源（QB 对接契约 v1）。HS 习题库 JSON 到位后转格式接此。"""
+
+    knowledge_point_id: str
+    questions: list[QuestionBankItem] = Field(min_length=1, max_length=200)
+
+
+@router.put("/progress/{book_id}/question-bank")
+async def set_kp_question_bank(
+    book_id: str,
+    body: QuestionBankRequest,
+    _: TokenPayload = Depends(require_auth),
+) -> dict[str, object]:
+    """Bind an external question bank to one knowledge point (错题闭环题源).
+
+    Per-user store isolation applies, same as the visualizers endpoint: the
+    learner (or whoever manages the path) binds questions to their own path.
+    Stored verbatim on the KP — the tutor's quiz flow reads the binding
+    before generating questions, so real bank items are always preferred
+    over model-generated ones.
+    """
+    _validate_book_id(book_id)
+    service = get_learning_service()
+    progress = await asyncio.to_thread(service.store.load, book_id)
+    if progress is None:
+        raise HTTPException(status_code=404, detail="Mastery progress not found")
+    target = next(
+        (
+            kp
+            for module in progress.modules
+            for kp in module.knowledge_points
+            if kp.id == body.knowledge_point_id
+        ),
+        None,
+    )
+    if target is None:
+        raise HTTPException(status_code=404, detail="Knowledge point not found")
+    target.meta = {"question_bank": [q.model_dump() for q in body.questions]}
+    await asyncio.to_thread(service.save, progress)
+    return {
+        "ok": True,
+        "kp_id": body.knowledge_point_id,
+        "count": len(body.questions),
+    }
+
+
+class KpVisualizersRequest(BaseModel):
+    kp_id: str
+    visualizers: list[str] = Field(default_factory=list, max_length=8)
+
+
+@router.put("/progress/{book_id}/visualizers")
+async def set_kp_visualizers(
+    book_id: str,
+    body: KpVisualizersRequest,
+    _: TokenPayload = Depends(require_auth),
+) -> dict[str, object]:
+    """Bind declarative YuEdu visualizers to one knowledge point (M4 挂载).
+
+    The mastery store is per-user isolated (each learner's workspace), so
+    this is inherently self-service: a learner binds interactives on their
+    own path, and the store boundary makes cross-user binding unreachable by
+    construction. Idempotent: the request replaces the KP's binding list
+    (empty list unbinds).
+    """
+    _validate_book_id(book_id)
+    service = get_learning_service()
+    progress = await asyncio.to_thread(service.store.load, book_id)
+    if progress is None:
+        raise HTTPException(status_code=404, detail="Mastery progress not found")
+    target = next(
+        (
+            kp
+            for module in progress.modules
+            for kp in module.knowledge_points
+            if kp.id == body.kp_id
+        ),
+        None,
+    )
+    if target is None:
+        raise HTTPException(status_code=404, detail="Knowledge point not found")
+    cleaned = list(dict.fromkeys(v.strip() for v in body.visualizers if v.strip()))[:8]
+    target.visualizers = cleaned
+    await asyncio.to_thread(service.save, progress)
+    return {"ok": True, "kp_id": body.kp_id, "visualizers": cleaned}
+
+
+async def _run_book_import(
+    book_id: str, body: ImportFromBookRequest, *, tree: dict[str, Any] | None = None
+) -> dict:
+    """The shared import-from-book pipeline.
+
+    The canonical KP tree cached in the book manifest (B2-b) wins: it carries
+    目级 KPs with real textbook-tree bridges, where the request chapters are
+    only a mechanical 课/章-level sketch. ``tree`` lets a caller that already
+    resolved the book's canonical store (import-from-kp-tree, which must read
+    granted books from their owner's workspace) supply it directly; missing/
+    empty cache or a tree that yields no runnable module falls back to the
+    mechanical chapter path.
+    """
+    if tree is None:
+        tree = get_book_storage().load_canonical_kp_tree(book_id)
+    modules = _modules_from_canonical_tree(book_id, tree) if tree else []
+    if not modules:
+        for i, ch in enumerate(body.chapters):
+            kps = [
+                KnowledgePoint(
+                    id=f"{book_id}_ch{i}_kp{j}",
+                    name=kp_name,
+                    type=KnowledgeType("concept"),
+                    module_id=f"{book_id}_ch{i}",
+                    # Bridge to the textbook-tree node the chapter came from; the
+                    # whole chapter shares one anchor (per-KP anchors can be sent
+                    # through init-modules instead).
+                    struct_path=_bridge_str(ch.struct_path),
+                    textbook_node_id=_bridge_str(ch.textbook_node_id),
+                )
+                for j, kp_name in enumerate(ch.knowledge_points)
+            ]
+            modules.append(
+                LearningModule(
+                    id=f"{book_id}_ch{i}",
+                    name=ch.title or f"Chapter {i + 1}",
+                    order=i,
+                    pass_threshold=0.7,
+                    knowledge_points=kps,
+                )
+            )
+    _validate_runnable_modules(modules)
+    await _cancel_active_learning_turn(book_id)
+    service = get_learning_service()
+    progress = service.get_or_create(book_id)
+    service.init_modules(progress, modules)
+    progress.current_module_id = modules[0].id
+    progress.current_kp_index = 0
+    service.save(progress)
+    return {"status": "ok", "module_count": len(modules)}
+
+
 @router.post("/progress/{book_id}/import-from-book")
 async def import_from_book(book_id: str, body: ImportFromBookRequest):
     _validate_book_id(book_id)
-    modules = []
-    for i, ch in enumerate(body.chapters):
-        kps = [
-            KnowledgePoint(
-                id=f"{book_id}_ch{i}_kp{j}",
-                name=kp_name,
-                type=KnowledgeType("concept"),
-                module_id=f"{book_id}_ch{i}",
-            )
-            for j, kp_name in enumerate(ch.knowledge_points)
-        ]
-        modules.append(
-            LearningModule(
-                id=f"{book_id}_ch{i}",
-                name=ch.title or f"Chapter {i + 1}",
-                order=i,
-                pass_threshold=0.7,
-                knowledge_points=kps,
-            )
-        )
-    _validate_runnable_modules(modules)
-    async with _exclusive_path_mutation(book_id):
-        service = get_learning_service()
-        progress = await asyncio.to_thread(service.replace_modules_for_path, book_id, modules)
-    return {
-        "status": "ok",
-        "module_count": len(modules),
-        "path_revision": progress.version,
-    }
+    return await _run_book_import(book_id, body)
+
+
+@router.post("/progress/{book_id}/import-from-kp-tree")
+async def import_from_kp_tree(book_id: str, body: ImportFromKpTreeRequest):
+    """Start a mastery path straight from a textbook, in one click.
+
+    P7 productizes the manual canonical_kp_tree→chapters conversion so the
+    student who has a fully parsed book but zero learning goals stops
+    staring at an empty map. Access mirrors the bookshelf: the caller must be
+    able to read the book (``resolve_book``) — an ungranted book id is
+    indistinguishable from a nonexistent one, so both are 404. The tree is
+    read from the book's canonical store, which for a granted book is the
+    owner's workspace, not the reader's.
+    """
+    _validate_book_id(book_id)
+    resolved = resolve_book(book_id)
+    if resolved is None:
+        raise HTTPException(status_code=404, detail="Book not found")
+    store = LearningStore()
+    progress = await asyncio.to_thread(store.load, book_id)
+    if progress is not None and progress.modules and not body.force:
+        # Already initialized: report the status quo instead of rebuilding
+        # (a rebuild would wipe the learner's mastery for nothing).
+        return {
+            "status": "ok",
+            "idempotent": True,
+            "module_count": len(progress.modules),
+            "modules": [module.name for module in progress.modules],
+        }
+    book_storage = resolved.engine.storage
+    chapters = await asyncio.to_thread(chapters_from_kp_tree, book_id, storage=book_storage)
+    tree = await asyncio.to_thread(book_storage.load_canonical_kp_tree, book_id)
+    return await _run_book_import(book_id, ImportFromBookRequest(chapters=chapters), tree=tree)
 
 
 @router.patch("/progress/{book_id}")
@@ -929,40 +1187,36 @@ async def rename_progress(book_id: str, body: RenamePathRequest):
 async def delete_progress(book_id: str):
     _validate_book_id(book_id)
     store = LearningStore()
-    if not await asyncio.to_thread(store.exists, book_id):
+    if not store.exists(book_id):
         raise HTTPException(status_code=404, detail="Progress not found")
-    async with _exclusive_path_mutation(book_id):
-        await asyncio.to_thread(store.delete, book_id)
+    store.delete(book_id)
     return {"status": "ok"}
-
-
-@router.post("/progress/{book_id}/skip-question")
-async def skip_pending_question(book_id: str):
-    """Drop an outstanding question the learner can no longer answer.
-
-    The narrow escape hatch for a path stalled on ``answer_pending``; unlike
-    ``redo`` it keeps every mastery level and review the learner has earned.
-    """
-    _validate_book_id(book_id)
-    store = LearningStore()
-    if not await asyncio.to_thread(store.exists, book_id):
-        raise HTTPException(status_code=404, detail="Progress not found")
-    async with _exclusive_path_mutation(book_id):
-        progress, skipped = await asyncio.to_thread(
-            LearningService(store).abandon_active_question, book_id
-        )
-    return {"status": "ok", "skipped": skipped, "path_revision": progress.version}
 
 
 @router.post("/progress/{book_id}/redo")
 async def redo_progress(book_id: str):
     _validate_book_id(book_id)
     store = LearningStore()
-    if not await asyncio.to_thread(store.exists, book_id):
+    progress = store.load(book_id)
+    if progress is None:
         raise HTTPException(status_code=404, detail="Progress not found")
-    async with _exclusive_path_mutation(book_id):
-        progress = await asyncio.to_thread(LearningService(store).reset_path, book_id)
-    return {"status": "ok", "path_revision": progress.version}
+    progress.current_stage = LearningStage.DIAGNOSTIC
+    progress.mastery_levels = {}
+    progress.qualitative_mastery = {}
+    progress.quiz_attempts = []
+    progress.error_records = []
+    progress.repetition_states = {}
+    progress.review_queue = []
+    progress.pending_question = None
+    progress.feynman_retries = {}
+    progress.feynman_explanations = {}
+    progress.stage_failure_counts = {}
+    progress.stage_failure_notes = {}
+    progress.diagnostic = None
+    progress.current_kp_index = 0
+    progress.current_module_id = progress.modules[0].id if progress.modules else ""
+    store.save(progress)
+    return {"status": "ok"}
 
 
 class NotebookRecordInput(BaseModel):
@@ -1036,6 +1290,11 @@ async def generate_from_notebook(book_id: str, body: GenerateFromNotebookRequest
                     name=kp_name,
                     type=KnowledgeType(kp_type),
                     module_id=f"{book_id}_nb{i}",
+                    # Pass through the textbook-tree bridge when the LLM
+                    # supplied it (it read the tree via the knowledge API);
+                    # absent → "" (progressive migration).
+                    struct_path=_bridge_str(kp.get("struct_path")),
+                    textbook_node_id=_bridge_str(kp.get("textbook_node_id")),
                 )
             )
         modules.append(
@@ -1048,14 +1307,17 @@ async def generate_from_notebook(book_id: str, body: GenerateFromNotebookRequest
             )
         )
     _validate_runnable_modules(modules, status_code=502)
-    async with _exclusive_path_mutation(book_id):
-        service = get_learning_service()
-        progress = await asyncio.to_thread(service.replace_modules_for_path, book_id, modules)
+    await _cancel_active_learning_turn(book_id)
+    service = get_learning_service()
+    progress = service.get_or_create(book_id)
+    service.init_modules(progress, modules)
+    progress.current_module_id = modules[0].id
+    progress.current_kp_index = 0
+    service.save(progress)
     return {
         "status": "ok",
         "module_count": len(modules),
         "modules": [m.model_dump() for m in modules],
-        "path_revision": progress.version,
     }
 
 

@@ -6,9 +6,20 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-Role = Literal["admin", "user"]
+# K12 fork 五角色 ⊕ 上游 AccountPreset（两套正交：role=授权身份，preset=账号画像模板；
+# student ↔ learner preset，标准账号 ↔ standard preset）。
+Role = Literal["admin", "teacher", "student", "parent", "user"]
 AccountPreset = Literal["standard", "learner", "custom"]
 ScopeKind = Literal["admin", "user"]
+
+#: K12 fork: four roles. Role-bearing stores/validators must accept all four;
+#: authorization stays least-privilege — only "admin" elevates.
+VALID_ROLES: frozenset[str] = frozenset({"admin", "teacher", "student", "parent", "user"})
+
+
+def normalize_role(value: str, default: str = "user") -> str:
+    """Return the role when legal, else the default (least-privilege degrade)."""
+    return value if value in VALID_ROLES else default
 
 
 @dataclass(frozen=True, slots=True)

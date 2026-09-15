@@ -81,6 +81,69 @@ def can_create_book() -> bool:
     return permission_for_user(get_current_user()).create
 
 
+def _peer_book_storage(owner_id: str) -> BookStorage:
+    """Storage rooted at another account's workspace."""
+
+    from .paths import get_path_service_for_scope, scope_for_user
+
+    return BookStorage(
+        path_service=get_path_service_for_scope(scope_for_user(owner_id, is_admin=False))
+    )
+
+
+def _peer_book_owner(book_id: str, *, exclude: set[str]) -> str | None:
+    """Find the workspace that holds *book_id*, or None.
+
+    A peer grant names a book that lives in another ordinary user's workspace,
+    so the grant alone cannot say whose it is. The deployment's book count is
+    of the order of a hundred, so scanning ``data/users/*/`` per lookup is
+    acceptable; the per-scope path services are cached, so each scan is one
+    ``stat`` per user directory.
+    """
+
+    from . import paths
+
+    users_root = paths.USERS_ROOT
+    try:
+        candidates = sorted(
+            child for child in users_root.iterdir() if child.is_dir() and child.name not in exclude
+        )
+    except OSError:
+        return None
+    for child in candidates:
+        try:
+            if _peer_book_storage(child.name).book_exists(book_id):
+                return child.name
+        except (OSError, ValueError):
+            continue
+    return None
+
+
+def _peer_resolved_book(book_id: str, user: Any, level: BookPermissionLevel) -> ResolvedBook | None:
+    """Resolve a book granted to *user* that lives in a peer workspace.
+
+    Returns None when the grant is stale (the owning workspace is gone), so
+    fail-close never depends on ACL hygiene.
+    """
+
+    from deeptutor.book.engine import BookEngine
+
+    owner_id = _peer_book_owner(book_id, exclude={user.id})
+    if owner_id is None:
+        return None
+    storage = _peer_book_storage(owner_id)
+    if storage.load_book(book_id) is None:
+        return None
+    return ResolvedBook(
+        engine=BookEngine(storage=storage),
+        source="shared",
+        permission=level,
+        can_edit=level == "edit",
+        can_delete=False,
+        learning=BookLearningOverlay(get_current_path_service()),
+    )
+
+
 def resolve_book(book_id: str) -> ResolvedBook | None:
     """Resolve own-first, then shared, returning None for denied/unknown ids."""
 
@@ -100,20 +163,22 @@ def resolve_book(book_id: str) -> ResolvedBook | None:
     if not _auth_enabled() or user.is_admin:
         return None
 
-    admin_storage = _admin_storage()
-    if not admin_storage.book_exists(book_id):
-        return None
     level = permission_for_user(user).level_for(book_id)
+    admin_storage = _admin_storage()
+    if admin_storage.book_exists(book_id):
+        if level == "none":
+            return None
+        return ResolvedBook(
+            engine=BookEngine(storage=admin_storage),
+            source="shared",
+            permission=level,
+            can_edit=level == "edit",
+            can_delete=False,
+            learning=BookLearningOverlay(get_current_path_service()),
+        )
     if level == "none":
         return None
-    return ResolvedBook(
-        engine=BookEngine(storage=admin_storage),
-        source="shared",
-        permission=level,
-        can_edit=level == "edit",
-        can_delete=False,
-        learning=BookLearningOverlay(get_current_path_service()),
-    )
+    return _peer_resolved_book(book_id, user, level)
 
 
 def accessible_books() -> list[tuple[Book, ResolvedBook]]:
@@ -148,7 +213,9 @@ def accessible_books() -> list[tuple[Book, ResolvedBook]]:
             admin_storage = _admin_storage()
             admin_engine = BookEngine(storage=admin_storage)
             overlay = BookLearningOverlay(get_current_path_service())
+            admin_ids: set[str] = set()
             for book in admin_engine.list_books():
+                admin_ids.add(book.id)
                 if book.id in own_ids:
                     continue
                 level = permission.level_for(book.id)
@@ -167,12 +234,77 @@ def accessible_books() -> list[tuple[Book, ResolvedBook]]:
                         ),
                     )
                 )
+            # Peer grants: books another ordinary user's workspace owns and
+            # this account was explicitly granted. A stale grant (workspace
+            # deleted) resolves to nothing and is skipped, fail-close.
+            for granted_id, level in permission.books:
+                if level == "none" or granted_id in own_ids or granted_id in admin_ids:
+                    continue
+                resolved = _peer_resolved_book(granted_id, user, level)
+                if resolved is None:
+                    continue
+                book = resolved.engine.load_book(granted_id)
+                if book is None:
+                    continue
+                results.append((book, resolved))
     results.sort(key=lambda item: item[0].updated_at, reverse=True)
     return results
 
 
 def shared_book_exists(book_id: str) -> bool:
     return _admin_storage().book_exists(book_id)
+
+
+def book_share_grants(book_id: str) -> list[dict[str, str]]:
+    """Every account holding an explicit grant on *book_id*.
+
+    Drives the owner's share dialog: who the book is shared with and at which
+    level. Admin-catalogue grants and peer grants are indistinguishable here —
+    both are plain ``book_permission.books`` entries — and that is fine: an
+    owner seeing (and being able to revoke) an admin-set grant is honest
+    reporting of who can read the book.
+    """
+
+    from .book_permission import normalize_book_permission
+    from .identity import load_users
+
+    grants: list[dict[str, str]] = []
+    for username, record in load_users().items():
+        permission = normalize_book_permission(record.get("book_permission"))
+        level = permission.books_dict().get(book_id)
+        # Only explicit per-book entries count. The admin record's default
+        # "read" (and any user default) is not a grant on this book — a share
+        # dialog that listed the admin as a revocable grantee would be lying.
+        if level is None or level == "none":
+            continue
+        grants.append(
+            {
+                "user_id": str(record.get("id") or ""),
+                "username": username,
+                "level": level,
+            }
+        )
+    return grants
+
+
+def share_candidate_users() -> list[dict[str, str]]:
+    """Ordinary, enabled accounts a book owner may share a book with."""
+
+    from .identity import load_users
+
+    candidates: list[dict[str, str]] = []
+    for username, record in load_users().items():
+        if str(record.get("role") or "user") == "admin":
+            continue
+        if bool(record.get("disabled", False)):
+            continue
+        candidates.append(
+            {
+                "user_id": str(record.get("id") or ""),
+                "username": username,
+            }
+        )
+    return sorted(candidates, key=lambda item: item["username"])
 
 
 def admin_book_catalog() -> list[dict[str, Any]]:
@@ -194,7 +326,9 @@ __all__ = [
     "ResolvedBook",
     "accessible_books",
     "admin_book_catalog",
+    "book_share_grants",
     "can_create_book",
     "resolve_book",
+    "share_candidate_users",
     "shared_book_exists",
 ]

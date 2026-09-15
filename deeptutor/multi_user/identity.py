@@ -16,7 +16,9 @@ from deeptutor.services.file_io import atomic_write_text
 from deeptutor.utils.secret_files import write_secret_text
 
 from .book_permission import (
+    BOOK_PERMISSION_LEVELS,
     BookPermission,
+    BookPermissionLevel,
     canonical_book_permission,
     normalize_book_permission,
     public_permission_dict,
@@ -69,9 +71,9 @@ def _canonical_record(
     hashed = str(value.get("hash") or value.get("password_hash") or "")
     if not hashed:
         return None
-    role = str(value.get("role") or default_role)
-    if role not in {"admin", "user"}:
-        role = default_role
+    from .models import normalize_role
+
+    role = normalize_role(str(value.get("role") or default_role), default_role)
     preset = str(value.get("preset") or "standard")
     if preset not in {"standard", "learner", "custom"}:
         preset = "standard"
@@ -86,6 +88,13 @@ def _canonical_record(
     }
     if "book_permission" in value:
         record["book_permission"] = canonical_book_permission(value.get("book_permission"))
+    # K12: parent → children username list (family linkage, read by the
+    # parent insights view). Only stored for parent-role accounts.
+    if role == "parent" and isinstance(value.get("children"), list):
+        children = [str(c) for c in value["children"] if str(c).strip()]
+        if children:
+            record["children"] = children
+    # 上游 1.6.3 learner 画像：learner preset 账号的画像（年龄/年级/课程体系等）。
     if "learner_profile" in value:
         record["learner_profile"] = normalize_profile(value.get("learner_profile"))
     return record
@@ -112,8 +121,10 @@ def _migrate_legacy_users() -> dict[str, dict[str, Any]] | None:
     users: dict[str, dict[str, Any]] = {}
     for username, value in legacy.items():
         role: Role = "admin" if not users else "user"
-        if isinstance(value, dict) and str(value.get("role") or "") in {"admin", "user"}:
-            role = str(value.get("role"))  # type: ignore[assignment]
+        if isinstance(value, dict):
+            from .models import normalize_role
+
+            role = normalize_role(str(value.get("role") or ""), role)  # type: ignore[assignment]
         record = _canonical_record(username, value, default_role=role)
         if record is not None:
             users[str(username)] = record
@@ -194,8 +205,10 @@ def load_users(  # nosec B107 - empty defaults mean "no env fallback supplied".
     changed = False
     for index, (username, value) in enumerate(users.items()):
         role: Role = "admin" if index == 0 else "user"
-        if isinstance(value, dict) and str(value.get("role") or "") in {"admin", "user"}:
-            role = str(value.get("role"))  # type: ignore[assignment]
+        if isinstance(value, dict):
+            from .models import normalize_role
+
+            role = normalize_role(str(value.get("role") or ""), role)  # type: ignore[assignment]
         record = _canonical_record(str(username), value, default_role=role)
         if record is None:
             changed = True
@@ -258,6 +271,15 @@ def save_user(
             "book_permission": canonical_book_permission(existing.get("book_permission")),
             "learner_profile": normalize_profile(existing.get("learner_profile")),
         }
+        # K12: save_user rebuilds the record from scratch, so the parent →
+        # children linkage must be carried over explicitly — dropping it would
+        # silently detach the family insights view on the next password
+        # (re)set. Only kept on parent-role records, matching the
+        # canonicalizer's whitelist.
+        if effective_role == "parent" and isinstance(existing.get("children"), list):
+            children = [str(c) for c in existing["children"] if str(c).strip()]
+            if children:
+                record["children"] = children
         users[username] = record
         _write_users(users)
     return record
@@ -330,6 +352,44 @@ def set_book_permission(username: str, permission: BookPermission) -> bool:
         if record is None:
             return False
         record["book_permission"] = public_permission_dict(permission)
+        _write_users(users)
+    return True
+
+
+def set_book_grant(username: str, book_id: str, level: BookPermissionLevel) -> bool:
+    """Merge one explicit book grant into a user's ACL, atomically.
+
+    Owner self-service sharing writes through the same ``book_permission``
+    record the admin uses; only the single ``books`` entry changes, so any
+    admin-set ``create``/``default`` fields survive untouched. ``level="none"``
+    revokes the entry.
+    """
+
+    if level not in BOOK_PERMISSION_LEVELS:
+        return False
+    book_id = str(book_id or "").strip()
+    if not book_id:
+        return False
+    if not USERS_FILE.exists():
+        return False
+    with _USERS_WRITE_LOCK:
+        users = load_users()
+        record = users.get(username)
+        if record is None:
+            return False
+        permission = normalize_book_permission(record.get("book_permission"))
+        books = permission.books_dict()
+        if level == "none":
+            books.pop(book_id, None)
+        else:
+            books[book_id] = level
+        record["book_permission"] = public_permission_dict(
+            BookPermission(
+                create=permission.create,
+                default=permission.default,
+                books=tuple(books.items()),
+            )
+        )
         _write_users(users)
     return True
 
@@ -455,14 +515,38 @@ def save_avatar_file(user_id: str, data: bytes, ext: str) -> Path:
     return target
 
 
+def is_learner_account(role: str | None, preset: str | None) -> bool:
+    """Whether a local account carries the learner profile.
+
+    Organizational roles other than admin may carry the learner preset;
+    upstream learner-only surfaces must accept them instead of hard-coding
+    ``role == "user"`` (fusion-mapping-163, domain 1).
+
+    The K12 student/parent roles are learners by definition — their entire
+    product surface (Learning Space, daily plan, device leases) is learner
+    territory — so they count regardless of preset. Gating on the preset
+    alone left every role-assigned student/parent 403-ing out of the daily
+    plan ("今日学习暂时无法加载") because role changes never touch the
+    preset.
+    """
+    role = role or "user"
+    if role == "admin":
+        return False
+    if role in ("student", "parent"):
+        return True
+    return (preset or "standard") == "learner"
+
+
 def delete_avatar_file(user_id: str) -> None:
     for ext in AVATAR_EXTENSIONS:
         (_avatar_dir() / f"{user_id}.{ext}").unlink(missing_ok=True)
 
 
 def set_role(username: str, role: Role) -> bool:
-    if role not in {"admin", "user"}:
-        raise ValueError("role must be 'admin' or 'user'")
+    from .models import VALID_ROLES
+
+    if role not in VALID_ROLES:
+        raise ValueError(f"role must be one of {sorted(VALID_ROLES)}")
     if not USERS_FILE.exists():
         return False
     users = load_users()
@@ -470,6 +554,32 @@ def set_role(username: str, role: Role) -> bool:
         return False
     users[username]["role"] = role
     _write_users(users)
+    return True
+
+
+def set_children(username: str, children: list[str]) -> bool:
+    """Set the parent → children family linkage on a parent account (K12).
+
+    Only parent-role records accept a children list, matching the store
+    canonicalizer's whitelist. Entry validation (each name resolves to a live
+    student account) is the caller's job — the router does it against the
+    live store before calling this.
+    """
+    if not USERS_FILE.exists():
+        return False
+    with _USERS_WRITE_LOCK:
+        users = load_users()
+        record = users.get(username)
+        if record is None:
+            return False
+        if str(record.get("role") or "") != "parent":
+            return False
+        cleaned = [str(c).strip() for c in children if str(c).strip()]
+        if cleaned:
+            record["children"] = cleaned
+        else:
+            record.pop("children", None)
+        _write_users(users)
     return True
 
 

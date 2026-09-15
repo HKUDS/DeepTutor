@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from enum import Enum
 import time
-from typing import Any
+from typing import Any, Literal
 import uuid
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -74,6 +74,9 @@ class BlockType(str, Enum):
     # Phase 4 (BookEngine v2)
     SECTION = "section"  # long-form chapter section (multi-subsection)
     CONCEPT_GRAPH = "concept_graph"  # rendered overview / TOC graph
+    # Textbook import (YuEdu proposal): verbatim canon block — zero-LLM path
+    # (like user_note) but rendered as textbook prose, not a note card.
+    READING = "reading"
     # Guided Learning
     DIAGNOSTIC = "diagnostic"
     PRETEST = "pretest"
@@ -81,6 +84,20 @@ class BlockType(str, Enum):
     ERROR_DIAGNOSIS = "error_diagnosis"
     MODULE_TEST = "module_test"
     PROGRESS_DASHBOARD = "progress_dashboard"
+    # YuEdu fork: 学科专属 block 类型
+    POETRY = "poetry"  # 诗词（原文+拼音+注解+朗读）
+    GRAMMAR = "grammar"  # 语法（句型模式+例句+练习）
+    TERRAIN = "terrain"  # 地形（地图/3D地形可视化）
+    CLIMATE = "climate"  # 气候（气候数据图表）
+    # YuEdu fork: 数学交互 block（老悦学 8 件精华移植）
+    DESMOS = "desmos"  # Desmos 函数图像
+    GEOMETRY = "geometry"  # JSXGraph 几何画板
+    GEOGEBRA = "geogebra"  # GeoGebra 交互几何
+    THREE_SCENE = "three_scene"  # Three.js 立体几何 3D
+    FORMULA = "formula"  # KaTeX 公式渲染
+    VENN = "venn"  # 维恩图（SVG）
+    COMPLEX = "complex"  # 复数平面（SVG）
+    CHART = "chart"  # ECharts 数据图
 
 
 class BookDepth(str, Enum):
@@ -236,6 +253,9 @@ class Chapter(BaseModel):
     source_anchors: list[SourceAnchor] = Field(default_factory=list)
     prerequisites: list[str] = Field(default_factory=list)  # other chapter ids
     page_ids: list[str] = Field(default_factory=list)
+    # P6 节级目录: canonical_kp_tree 的节节点挂页写回（{"title", "page_ids"}），
+    # 无节匹配的页保持章直挂（page_ids）。生成书流程不产出，默认空。
+    children: list[dict[str, Any]] = Field(default_factory=list)
     summary: str = ""
     order: int = 0
 
@@ -454,6 +474,9 @@ class Page(BaseModel):
     book_id: str = ""
     chapter_id: str = ""
     title: str = ""
+    # P6 页标题语义化: 从页 prose 首部提取的节/章标题（同节多页带"（1/3）"
+    # 序号）。空 = 无匹配，渲染侧栏回落到 title（"页N"）。
+    display_title: str = ""
     learning_objectives: list[str] = Field(default_factory=list)
     content_type: ContentType = ContentType.THEORY
     status: PageStatus = PageStatus.PENDING
@@ -575,3 +598,16 @@ __all__ = [
     "Progress",
     "Book",
 ]
+
+
+class RecitationSummary(BaseModel):
+    """Small poetry-practice summary persisted in ``Block.metadata``."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    last_attempt_id: str = ""
+    attempt_count: int = Field(default=0, ge=0)
+    latest_accuracy: float | None = Field(default=None, ge=0.0, le=1.0)
+    best_accuracy: float | None = Field(default=None, ge=0.0, le=1.0)
+    data_state: Literal["", "scored", "stt_failed"] = ""
+    updated_at: float = 0.0

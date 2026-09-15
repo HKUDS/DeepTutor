@@ -58,7 +58,7 @@ from deeptutor.learning.models import (
     LearningModule,
     PendingQuestion,
 )
-from deeptutor.learning.pending import public_pending_question
+from deeptutor.learning.pending import pending_ask_user_questions, public_pending_question
 from deeptutor.learning.policy import (
     QUALITATIVE_TYPES,
     display_mastery,
@@ -126,6 +126,27 @@ def _resolve_session_id(kwargs: dict[str, Any]) -> str:
 
 def _resolve_turn_id(kwargs: dict[str, Any]) -> str:
     return str(kwargs.get("_turn_id") or "").strip()
+
+
+def _resolve_confidence_before(raw: Any) -> int | None:
+    """Coerce the tool arg to an int in [1, 5]; anything else → None.
+
+    The confidence value is a research side-channel, never a gate: a missing
+    or out-of-range value must not fail the grade (collection is fail-open;
+    the correctness gate itself stays fail-closed). Booleans are rejected
+    explicitly so ``True``/``False`` cannot sneak in as 1/0.
+    """
+    if isinstance(raw, bool) or raw is None:
+        return None
+    if isinstance(raw, int):
+        value = raw
+    elif isinstance(raw, float) and raw.is_integer():
+        value = int(raw)
+    elif isinstance(raw, str) and raw.strip().lstrip("+-").isdigit():
+        value = int(raw.strip())
+    else:
+        return None
+    return value if 1 <= value <= 5 else None
 
 
 _DIFFICULTIES = ("easy", "medium", "hard")
@@ -839,6 +860,34 @@ class MasteryQuizTool(BaseTool):
                 content=f"Unknown objective {kp_id!r}; call mastery_status for valid ids.",
                 success=False,
             )
+        # 错题闭环题源: a KP-bound question bank always wins over the model's
+        # draft — the agent's call here acts as the trigger, but the question
+        # text, options, answer and explanation come verbatim from the bank
+        # (rotation via meta.bank_cursor). Empty-answer items stay strict:
+        # choice items must carry an answer or they are skipped.
+        bank = (kp.meta or {}).get("question_bank") or []
+        if bank:
+            cursor = int((kp.meta or {}).get("bank_cursor") or 0) % len(bank)
+            item = bank[cursor]
+            bank_question = str(item.get("question") or "").strip()
+            bank_answer = str(item.get("answer") or "").strip()
+            if bank_question and (bank_answer or item.get("question_type") != "choice"):
+                kp.meta["bank_cursor"] = cursor + 1
+                await asyncio.to_thread(service.save, progress)
+                question = bank_question
+                expected = bank_answer
+                q_type = str(item.get("question_type") or "choice")
+                option_map = item.get("options") or {}
+                options = [
+                    {"label": label, "body": str(body)} for label, body in option_map.items()
+                ]
+                if item.get("explanation"):
+                    kwargs["explanation"] = str(item["explanation"])
+                if item.get("difficulty"):
+                    kwargs["difficulty"] = str(item["difficulty"])
+                kwargs["bank_note"] = f"题源：挂载题库第 {cursor + 1}/{len(bank)} 题。"
+            else:
+                kwargs["bank_note"] = "题源：挂载题库的当前项缺答案，本轮由你出一题。"
         pending = PendingQuestion(
             question_id=uuid.uuid4().hex,
             knowledge_point_id=kp_id,
@@ -885,6 +934,11 @@ class MasteryQuizTool(BaseTool):
             "knowledge_point_id": pending.knowledge_point_id,
             "question_id": pending.question_id,
             "pending_question": public_question.to_dict(),
+            # The two-tab card (question + confidence self-report) in the
+            # structural ask_user shape, so research-side consumers read the
+            # confidence_before tab the card actually shows. The learner-facing
+            # card itself still travels under QUESTION_CARD_KEY.
+            "ask_user": {"questions": pending_ask_user_questions(pending)},
         }
         end_turn = kwargs.get("_end_turn_on_card")
         if callable(end_turn):
@@ -973,6 +1027,17 @@ class MasteryGradeTool(BaseTool):
                     ),
                     required=False,
                 ),
+                ToolParameter(
+                    name="confidence_before",
+                    type="integer",
+                    description=(
+                        "The learner's self-reported confidence BEFORE answering, "
+                        "from the confidence tab on the question card: 1=pure "
+                        "guess, 5=very sure. Optional — omit when the learner "
+                        "skipped it; values outside 1-5 are ignored."
+                    ),
+                    required=False,
+                ),
             ],
         )
 
@@ -1049,6 +1114,7 @@ class MasteryGradeTool(BaseTool):
                 scheduler=scheduler,
                 session_id=_resolve_session_id(kwargs),
                 turn_id=_resolve_turn_id(kwargs),
+                confidence_before=_resolve_confidence_before(kwargs.get("confidence_before")),
             )
         except MasteryInteractionError as exc:
             # The common way to land here now is grading something the runtime

@@ -8,39 +8,84 @@ create / confirm / compile / read / delete + a per-book event stream.
 
 from __future__ import annotations
 
+_MAX_RECITATION_AUDIO_BYTES = 25 * 1024 * 1024
+
 import asyncio
 import hashlib
 import logging
 import time
-from typing import Any
+from typing import Any, Literal
+import uuid
 
-from fastapi import APIRouter, HTTPException, Query, Response, WebSocket, WebSocketDisconnect
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Response,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+)
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+from deeptutor.api.routers.auth import require_admin_or_teacher
 from deeptutor.api.utils.http_headers import content_disposition
+from deeptutor.api.utils.task_id_manager import TaskIDManager
 from deeptutor.book import progress as progress_ops
+from deeptutor.book.backfill import (
+    BackfillJob,
+    fail_backfill_job,
+    get_backfill_job,
+    plan_backfill,
+    run_backfill,
+)
 from deeptutor.book.errors import BookPausedError
 from deeptutor.book.export import export_filename, render_book_markdown
+from deeptutor.book.importer import TocImportError, layout_to_spine, toc_to_spine
 from deeptutor.book.models import (
+    BlockStatus,
     BlockType,
+    Book,
     BookProposal,
+    BookStatus,
     ContentType,
     LearningCapture,
     LearningCaptureStatus,
+    Page,
+    PageStatus,
     Spine,
 )
-from deeptutor.book.storage import get_book_storage
+from deeptutor.book.recitation import (
+    resolve_target_lines,
+    score_recitation,
+    stt_failed_attempt,
+    update_recitation_summary,
+)
+from deeptutor.book.storage import get_book_storage, resolve_book_storage_layer
 from deeptutor.book.streaming import SOURCE as BOOK_SOURCE
 from deeptutor.multi_user.audit import log_admin_action, log_usage
 from deeptutor.multi_user.book_access import (
     ResolvedBook,
     accessible_books,
+    book_share_grants,
     can_create_book,
     resolve_book,
+    share_candidate_users,
 )
 from deeptutor.multi_user.context import get_current_user
-from deeptutor.multi_user.identity import remove_book_permission_overrides
+from deeptutor.multi_user.identity import (
+    get_user,
+    get_user_by_id,
+    remove_book_permission_overrides,
+    set_book_grant,
+)
 from deeptutor.runtime.stream_bus import StreamBus
+from deeptutor.services.auth import TokenPayload
+from deeptutor.services.voice import transcribe_audio
 
 router = APIRouter()
 ws_router = APIRouter()
@@ -92,6 +137,66 @@ class ConfirmSpineRequest(BaseModel):
     auto_compile: bool = True
     block_types: list[str] | None = None
     expected_revision: int | None = Field(default=None, ge=1)
+
+
+class SpineImportRequest(BaseModel):
+    """Import a textbook TOC as the spine (deterministic, no SpineAgent)."""
+
+    book_id: str
+    toc: list[dict[str, Any]] | None = None  # recursive: [{title, children?}]
+    layout: dict[str, Any] | None = None  # MinerU layout.json → 页脚法重建
+    source: str = "toc_json"  # "toc_json" | "layout_json"
+    auto_compile: bool = False
+
+
+class ImportedPageSpec(BaseModel):
+    """One page of a bulk pages-import: title + verbatim blocks."""
+
+    title: str
+    blocks: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class PagesImportRequest(BaseModel):
+    """Bulk-import verbatim pages under one chapter (zero-LLM canon channel)."""
+
+    book_id: str
+    chapter_id: str
+    pages: list[ImportedPageSpec]
+    mark_ready: bool = True  # pages whose blocks are all READY become READY
+
+
+class CanonicalizeChapterSpec(BaseModel):
+    """Verbatim pages destined for one chapter of the imported spine.
+
+    The chapter is addressed by its position in the flattened TOC
+    (``chapter_index``) or by exact title (``chapter_title``); ids are not
+    knowable to the caller because the spine is created by this same call.
+    """
+
+    chapter_index: int | None = Field(default=None, ge=0)
+    chapter_title: str = ""
+    pages: list[ImportedPageSpec] = Field(default_factory=list)
+
+
+class CanonicalizeRequest(BaseModel):
+    """One-shot textbook canonicalization: book + spine + verbatim pages.
+
+    Deterministic end to end — the IdeationAgent and SpineAgent never run, so
+    every title comes from the textbook itself. This is the orchestrator's
+    single entry point: what would otherwise be three calls (create, spine
+    import, pages import) with two round-trips to learn the generated ids.
+    """
+
+    title: str
+    description: str = ""
+    toc: list[dict[str, Any]] | None = None
+    layout: dict[str, Any] | None = None
+    source: str = "toc_json"  # "toc_json" | "layout_json"
+    language: str = "zh"
+    knowledge_bases: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    chapters: list[CanonicalizeChapterSpec] = Field(default_factory=list)
+    mark_ready: bool = True
 
 
 class CompilePageRequest(BaseModel):
@@ -270,6 +375,103 @@ def _book_payload(book: Any, resolved: ResolvedBook) -> dict[str, Any]:
         metadata["page_chat_sessions"] = resolved.learning.load_page_chat_sessions(book.id)
         data["metadata"] = metadata
     return data
+
+
+class ShareBookRequest(BaseModel):
+    user_id: str
+    level: Literal["read", "edit"]
+
+
+def _require_share_owner(book_id: str) -> ResolvedBook:
+    """Only the owner of a personal book may manage who it is shared with.
+
+    Every denial — unknown book, another user's book, auth off — answers with
+    the same 404 an unknown id gets, so the share surface cannot be probed
+    either for a book's existence or for who owns it.
+    """
+
+    if not _auth_enabled():
+        raise HTTPException(status_code=404, detail="Book not found")
+    resolved = _resolve_book_or_404(book_id)
+    if resolved.source != "own":
+        raise HTTPException(status_code=404, detail="Book not found")
+    return resolved
+
+
+def _resolve_share_target(raw_user_id: str) -> tuple[str, dict[str, Any]]:
+    """Resolve the ACL target account, accepting username or account id.
+
+    Returns the users.json key (username) plus its record; raises 404 when no
+    account matches, so a typo'd target never silently no-ops.
+    """
+
+    raw = (raw_user_id or "").strip()
+    record = get_user(raw) if raw else None
+    if record is not None:
+        return raw, record
+    found = get_user_by_id(raw)
+    if found is not None:
+        return found
+    raise HTTPException(status_code=404, detail="User not found")
+
+
+@router.get("/books/{book_id}/share")
+async def list_book_shares(book_id: str) -> dict[str, Any]:
+    _require_share_owner(book_id)
+    return {
+        "book_id": book_id,
+        "shares": book_share_grants(book_id),
+        "candidates": share_candidate_users(),
+    }
+
+
+@router.post("/books/{book_id}/share")
+async def share_book(book_id: str, req: ShareBookRequest) -> dict[str, Any]:
+    _require_share_owner(book_id)
+    username, record = _resolve_share_target(req.user_id)
+    user = get_current_user()
+    if username == user.username:
+        raise HTTPException(status_code=400, detail="Cannot share a book with yourself")
+    if str(record.get("role") or "user") == "admin":
+        raise HTTPException(status_code=400, detail="Admin accounts already access every book")
+    if bool(record.get("disabled", False)):
+        raise HTTPException(status_code=404, detail="User not found")
+    # Explicitly per-user, per-level; there is deliberately no public or
+    # role-wide mode here. The grant lands in the target's existing
+    # book_permission record, so admin-set defaults survive untouched.
+    if not set_book_grant(username, book_id, req.level):
+        raise HTTPException(status_code=404, detail="User not found")
+    log_usage(
+        "book",
+        book_id,
+        "book_share",
+        {"target_user_id": str(record.get("id") or ""), "level": req.level},
+    )
+    return {
+        "book_id": book_id,
+        "user_id": str(record.get("id") or ""),
+        "username": username,
+        "level": req.level,
+    }
+
+
+@router.delete("/books/{book_id}/share/{user_id}")
+async def revoke_book_share(book_id: str, user_id: str) -> dict[str, Any]:
+    _require_share_owner(book_id)
+    username, record = _resolve_share_target(user_id)
+    set_book_grant(username, book_id, "none")
+    log_usage(
+        "book",
+        book_id,
+        "book_share_revoke",
+        {"target_user_id": str(record.get("id") or "")},
+    )
+    return {
+        "book_id": book_id,
+        "user_id": str(record.get("id") or ""),
+        "username": username,
+        "revoked": True,
+    }
 
 
 def _claim_content_mutation(
@@ -747,6 +949,33 @@ async def get_book(book_id: str, include_blocks: bool = True) -> dict[str, Any]:
     }
 
 
+@router.get("/books/{book_id}/assets/{asset_path:path}")
+async def get_book_asset(book_id: str, asset_path: str) -> FileResponse:
+    """Serve a file from the book's ``assets/`` dir (figure backfill, P5).
+
+    Mirrors the visualizer-asset route's hardening: ids are validated, the
+    resolved path must stay inside the book root, and responses are nosniffed.
+    """
+    try:
+        # A shared textbook's files live in the admin layer regardless of who
+        # is asking — get_book_storage() would 404 every reader but the owner.
+        root = resolve_book_storage_layer(book_id).book_root(book_id) / "assets"
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    target = (root / asset_path).resolve()
+    if not str(target).startswith(str(root.resolve()) + "/"):
+        raise HTTPException(status_code=400, detail="invalid asset path")
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="Asset not found")
+    return FileResponse(
+        target,
+        headers={
+            "Cache-Control": "private, max-age=300",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
 @router.get("/books/{book_id}/spine")
 async def get_spine(book_id: str) -> dict[str, Any]:
     engine = _resolve_book_or_404(book_id).engine
@@ -778,6 +1007,9 @@ async def delete_book(book_id: str) -> dict[str, Any]:
             "book_delete",
             summary={"book_id": book_id, "acl_users_cleaned": len(affected)},
         )
+    elif resolved.source == "own" and _auth_enabled():
+        # An owner-deleted personal book must not leave dangling peer grants.
+        remove_book_permission_overrides(book_id)
     return {"deleted": True, "book_id": book_id}
 
 
@@ -809,6 +1041,215 @@ async def create_book(req: CreateBookRequest) -> dict[str, Any]:
         "book": book.model_dump(mode="json"),
         "proposal": proposal.model_dump(mode="json"),
     }
+
+
+async def _import_pages_into_chapter(
+    engine: Any,
+    book_id: str,
+    spine: Spine,
+    chapter: Any,
+    specs: list[ImportedPageSpec],
+    *,
+    mark_ready: bool,
+) -> list[Page]:
+    """Create verbatim pages under ``chapter`` and return what was persisted.
+
+    Shared by the bulk pages-import endpoint and the one-shot canonicalize
+    endpoint. Blocks go through ``insert_block(compile_now=False)``, so
+    verbatim generators (reading / user_note) materialize immediately and the
+    compiler is never invoked.
+
+    P5: reading bodies pass through ``delimit_bare_latex`` first so the bare
+    LaTeX fragments MinerU leaves in Chinese prose render on the frontend
+    KaTeX chain instead of leaking as raw text.
+    """
+    from deeptutor.book.latex_delimit import delimit_bare_latex
+
+    created: list[Page] = []
+    for spec in specs:
+        page = Page(
+            book_id=book_id,
+            chapter_id=chapter.id,
+            title=spec.title,
+            content_type=chapter.content_type,
+            order=chapter.order,
+            status=PageStatus.PENDING,
+        )
+        engine.storage.save_page(page)
+        chapter.page_ids.append(page.id)
+        engine.storage.save_spine(spine)
+        all_ready = True
+        for blk in spec.blocks:
+            params = dict(blk.get("params") or {})
+            if str(blk.get("block_type") or "") == "reading" and isinstance(
+                params.get("body"), str
+            ):
+                params["body"] = delimit_bare_latex(params["body"])
+            block = await engine.insert_block(
+                book_id=book_id,
+                page_id=page.id,
+                block_type=_coerce_block_type(str(blk.get("block_type") or "")),
+                params=params,
+                compile_now=False,
+            )
+            if block is None:
+                raise ValueError(f"failed to insert block into page {page.id}")
+            if block.status != BlockStatus.READY:
+                all_ready = False
+        if mark_ready and all_ready and spec.blocks:
+            # Reload before promoting: insert_block persisted blocks onto the
+            # stored page — the in-memory shell is stale now.
+            saved = engine.storage.load_page(book_id, page.id)
+            if saved is not None:
+                saved.status = PageStatus.READY
+                saved.updated_at = time.time()
+                engine.storage.save_page(saved)
+                created.append(saved)
+                continue
+        created.append(page)
+    return created
+
+
+@router.post("/books/canonicalize")
+async def canonicalize_book(req: CanonicalizeRequest) -> dict[str, Any]:
+    """Turn one parsed textbook into a canonical Book in a single call.
+
+    Collapses create → spine import → pages import. Fully deterministic: the
+    book title is the caller's, chapters come from the textbook's own TOC (or
+    a MinerU layout via the running-header rebuild), and page blocks are
+    verbatim. No agent invents anything, so an orchestrator can run this
+    unattended over a shelf of books.
+    """
+    title = req.title.strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="title is required")
+    if not can_create_book():
+        raise HTTPException(status_code=403, detail="Book creation is not allowed")
+
+    engine = get_book_engine()
+    book = Book(
+        title=title,
+        description=req.description,
+        status=BookStatus.DRAFT,
+        knowledge_bases=list(req.knowledge_bases),
+        language=req.language,
+        metadata={**req.metadata, "canonical_source": req.source},
+    )
+    engine.storage.save_book(book)
+
+    try:
+        if req.source == "layout_json" or req.layout is not None:
+            if req.layout is None:
+                raise HTTPException(status_code=400, detail="source=layout_json requires layout")
+            spine = layout_to_spine(book.id, req.layout, title=req.title)
+        else:
+            if not req.toc:
+                raise HTTPException(status_code=400, detail="toc is required for source=toc_json")
+            spine = toc_to_spine(book.id, req.toc)
+    except TocImportError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    try:
+        await engine.confirm_spine(book_id=book.id, edited_spine=spine, auto_compile=False)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"canonicalize spine import failed: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    # Re-read: confirm_spine owns page-shell creation and may rewrite chapters,
+    # so the ids the page import addresses must come from what was persisted.
+    saved_spine = engine.load_spine(book.id) or spine
+
+    chapter_reports: list[dict[str, Any]] = []
+    pages_created = 0
+    try:
+        for spec in req.chapters:
+            chapter = _resolve_canonical_chapter(saved_spine, spec)
+            pages = await _import_pages_into_chapter(
+                engine,
+                book.id,
+                saved_spine,
+                chapter,
+                spec.pages,
+                mark_ready=req.mark_ready,
+            )
+            pages_created += len(pages)
+            chapter_reports.append(
+                {
+                    "chapter_id": chapter.id,
+                    "chapter_title": chapter.title,
+                    "pages": [p.model_dump(mode="json") for p in pages],
+                }
+            )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"canonicalize pages import failed: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    final_spine = engine.load_spine(book.id) or saved_spine
+    book.chapter_count = len(final_spine.chapters)
+    book.page_count = pages_created
+    # READY only once real content landed; a spine-only import stays DRAFT so
+    # the library never advertises an empty book as readable.
+    book.status = BookStatus.READY if pages_created else BookStatus.DRAFT
+    book.updated_at = time.time()
+    engine.storage.save_book(book)
+
+    # P0: auto-cache the canonical KP tree. The textbook's doc_intel 目级 tree
+    # (docstore doc_tree metadata from the source KBs) is the one import-from-book
+    # prefers over the chapter-level mechanical sketch. Best-effort: no tree, a
+    # degraded doc_tree tier, or any storage failure only logs a warning — the
+    # canonicalized book itself is unaffected.
+    from deeptutor.book.canonical_tree import (
+        cache_canonical_tree_for_book,
+        rebuild_canonical_tree_from_layout,
+    )
+
+    if not cache_canonical_tree_for_book(book.id, req.knowledge_bases, storage=engine.storage):
+        # P7【1】inline rebuild: the KB docstore had no usable doc_tree (the
+        # 大部头 downgraded-tier case the p1-cache-tree patch used to bridge by
+        # hand). The request itself carries the MinerU layout, so rebuild the
+        # doc_intel tree from its para_blocks right here — no patch script, no
+        # restart. Only reached when the P0 path failed; failures are logged
+        # and swallowed so canonicalization stays unaffected.
+        rebuild_canonical_tree_from_layout(
+            book.id,
+            req.layout or {},
+            filename=title,
+            storage=engine.storage,
+        )
+
+    return {
+        "book": book.model_dump(mode="json"),
+        "spine": final_spine.model_dump(mode="json"),
+        "chapters": chapter_reports,
+        "pages_created": pages_created,
+    }
+
+
+def _resolve_canonical_chapter(spine: Spine, spec: CanonicalizeChapterSpec) -> Any:
+    """Find the chapter a canonicalize page-group addresses, or 404."""
+    if spec.chapter_index is not None:
+        if spec.chapter_index >= len(spine.chapters):
+            raise HTTPException(
+                status_code=404,
+                detail=f"chapter_index {spec.chapter_index} is out of range "
+                f"({len(spine.chapters)} chapters)",
+            )
+        return spine.chapters[spec.chapter_index]
+    wanted = spec.chapter_title.strip()
+    if not wanted:
+        raise HTTPException(
+            status_code=400, detail="each chapter group needs chapter_index or chapter_title"
+        )
+    for chapter in spine.chapters:
+        if chapter.title.strip() == wanted:
+            return chapter
+    raise HTTPException(status_code=404, detail=f"Chapter titled {wanted!r} not found")
 
 
 @router.post("/books/confirm-proposal")
@@ -872,6 +1313,83 @@ async def confirm_spine(req: ConfirmSpineRequest) -> dict[str, Any]:
         logger.error(f"confirm_spine failed: {exc}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(exc))
     return {"pages": [p.model_dump(mode="json") for p in pages], "book_revision": revision}
+
+
+@router.post("/books/{book_id}/spine/import")
+async def import_spine(book_id: str, req: SpineImportRequest) -> dict[str, Any]:
+    """Import a textbook TOC as the book's spine (deterministic canon path).
+
+    Complements the generated-spine flow: chapter titles come from the
+    textbook's own table of contents instead of SpineAgent invention, then the
+    confirmed-spine machinery (overview injection, page shells) runs unchanged.
+    """
+    engine = get_book_engine()
+    if req.book_id != book_id:
+        raise HTTPException(status_code=400, detail="book_id mismatch between path and body")
+    try:
+        if req.source == "layout_json" or req.layout is not None:
+            if req.layout is None:
+                raise HTTPException(status_code=400, detail="source=layout_json requires layout")
+            spine = layout_to_spine(book_id, req.layout, title=req.title)
+        else:
+            if not req.toc:
+                raise HTTPException(status_code=400, detail="toc is required for source=toc_json")
+            spine = toc_to_spine(book_id, req.toc)
+    except TocImportError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    try:
+        pages = await engine.confirm_spine(
+            book_id=book_id,
+            edited_spine=spine,
+            auto_compile=req.auto_compile,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"spine import failed: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc))
+    saved = engine.load_spine(book_id)
+    return {
+        "pages": [p.model_dump(mode="json") for p in pages],
+        "spine": saved.model_dump(mode="json") if saved else None,
+    }
+
+
+@router.post("/books/{book_id}/pages/import")
+async def import_pages(book_id: str, req: PagesImportRequest) -> dict[str, Any]:
+    """Bulk-import verbatim pages under one chapter (zero-LLM canon channel).
+
+    Blocks are inserted through the standard insert-block machinery with
+    ``compile_now=False``; verbatim generators (reading/user_note) materialize
+    immediately, so pages whose blocks are all READY are marked READY without
+    ever invoking the compiler.
+    """
+    engine = get_book_engine()
+    spine = engine.load_spine(book_id)
+    if spine is None:
+        raise HTTPException(status_code=404, detail=f"No spine for book {book_id}")
+    chapter = spine.chapter_by_id(req.chapter_id)
+    if chapter is None:
+        raise HTTPException(status_code=404, detail=f"Chapter {req.chapter_id} not found")
+
+    created: list[Page] = []
+    try:
+        created = await _import_pages_into_chapter(
+            engine,
+            book_id,
+            spine,
+            chapter,
+            req.pages,
+            mark_ready=req.mark_ready,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"pages import failed: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc))
+    return {"pages": [p.model_dump(mode="json") for p in created]}
 
 
 @router.post("/books/compile-page")
@@ -1395,6 +1913,109 @@ async def rebuild_book(req: RebuildBookRequest) -> dict[str, Any]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 存量书增量补缺（P1-E D2）：只补缺失块，不做全书 rebuild
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class BackfillBlocksRequest(BaseModel):
+    dry_run: bool = Field(default=False, description="true=只返回补缺计划（零写入）")
+    concurrency: int = Field(default=2, ge=1, le=8, description="LLM 并发上限")
+    limit_page: int | None = Field(default=None, ge=1, description="最多处理前 N 页（试点控量）")
+
+
+#: 持有后台补产任务引用，防止 asyncio.Task 被垃圾回收。
+_backfill_tasks: set[asyncio.Task[None]] = set()
+
+
+async def _backfill_worker(book_id: str, task_id: str, req: BackfillBlocksRequest) -> None:
+    task_manager = TaskIDManager.get_instance()
+    try:
+        job = await asyncio.to_thread(
+            run_backfill,
+            book_id,
+            concurrency=req.concurrency,
+            limit_page=req.limit_page,
+            task_id=task_id,
+        )
+        if job.stage in ("error", "failed"):
+            task_manager.update_task_status(task_id, "error", error=job.error)
+        else:
+            task_manager.update_task_status(task_id, "completed")
+    except Exception as exc:  # noqa: BLE001 — 后台任务异常落在任务状态里
+        logger.error(f"backfill_blocks task {task_id} failed: {exc}", exc_info=True)
+        task_manager.update_task_status(task_id, "error", error=str(exc))
+        # P4-B：线程外崩溃也必须把内存 job 拉离 running——否则同书互斥检查
+        # 永远命中 409，这本书被锁死，且状态端点对停摆毫无提示。
+        fail_backfill_job(book_id, str(exc))
+
+
+@router.post("/books/{book_id}/backfill-blocks")
+async def backfill_book_blocks(
+    book_id: str,
+    req: BackfillBlocksRequest,
+    _current: TokenPayload = Depends(require_admin_or_teacher),
+) -> dict[str, Any]:
+    """存量书增量补缺：对照页型模板检测缺失块，只补缺，不动已有块。
+
+    ``dry_run=true`` 同步返回计划（零写入）；否则后台任务执行补产，
+    返回 ``task_id``，进度见 ``GET /books/{book_id}/backfill-blocks/status``。
+    服务层单一真源：``deeptutor/book/backfill.py``。
+    """
+    _resolve_book_or_404(book_id)
+    if req.dry_run:
+        try:
+            # 服务层用 asyncio.run 驱动引擎协程，须丢到无事件循环的线程里执行。
+            plan = await asyncio.to_thread(plan_backfill, book_id, limit_page=req.limit_page)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Book not found")
+        return {"dry_run": True, "plan": plan}
+
+    existing = get_backfill_job(book_id)
+    if existing is not None and existing.stage == "running":
+        # P4-B：互斥语义要明确——返回在跑任务的 task_id 与实时状态，
+        # 不让调用方误以为新任务已 started。
+        snapshot = existing.snapshot()
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "backfill_running",
+                "message": "该书已有补缺任务在运行，请稍后或查询状态端点",
+                "task_id": existing.task_id,
+                "task_status": snapshot.get("task_status"),
+                "job": snapshot,
+            },
+        )
+    task_manager = TaskIDManager.get_instance()
+    # task_key 带随机后缀：同一本书的每次补产都是独立任务，不与历史任务撞 id。
+    task_id = task_manager.generate_task_id(
+        "book_backfill", f"book_backfill:{book_id}:{uuid.uuid4().hex[:8]}"
+    )
+    task_manager.update_task_status(task_id, "running")
+    worker = asyncio.create_task(_backfill_worker(book_id, task_id, req))
+    _backfill_tasks.add(worker)
+    worker.add_done_callback(_backfill_tasks.discard)
+    return {
+        "dry_run": False,
+        "task_id": task_id,
+        "book_id": book_id,
+        "status": "started",
+    }
+
+
+@router.get("/books/{book_id}/backfill-blocks/status")
+async def backfill_blocks_status(
+    book_id: str,
+    _current: TokenPayload = Depends(require_admin_or_teacher),
+) -> dict[str, Any]:
+    """查询存量书补缺进度（页/块成败计数、阶段）。"""
+    _resolve_book_or_404(book_id)
+    job: BackfillJob | None = get_backfill_job(book_id)
+    if job is None:
+        return {"book_id": book_id, "stage": "idle"}
+    return job.snapshot()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # WebSocket – streamed Book events
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -1743,3 +2364,80 @@ async def book_websocket(ws: WebSocket) -> None:
                 reset_current_user(user_token)
             except Exception:
                 logger.debug("Could not reset Book WebSocket user context", exc_info=True)
+
+
+@router.post("/books/recitation")
+async def submit_recitation(
+    book_id: str = Form(...),
+    block_id: str = Form(...),
+    line_ids: list[str] = Form(...),
+    audio: UploadFile = File(...),
+) -> dict[str, Any]:
+    """Transcribe and score selected poetry lines without accepting answer text."""
+
+    engine = get_book_engine()
+    book = engine.load_book(book_id)
+    if book is None:
+        raise HTTPException(status_code=404, detail="Book not found")
+
+    page_and_block = next(
+        (
+            (page, block)
+            for page in engine.list_pages(book_id)
+            for block in page.blocks
+            if block.id == block_id
+        ),
+        None,
+    )
+    if page_and_block is None:
+        raise HTTPException(status_code=404, detail="Block not found")
+    page, block = page_and_block
+    if block.type != BlockType.POETRY:
+        raise HTTPException(status_code=400, detail="Block is not a poetry block")
+
+    try:
+        target_lines = resolve_target_lines(block.payload.get("lines"), line_ids)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    audio_bytes = await audio.read()
+    await audio.close()
+    if not audio_bytes:
+        raise HTTPException(status_code=400, detail="Empty audio upload.")
+    if len(audio_bytes) > _MAX_RECITATION_AUDIO_BYTES:
+        raise HTTPException(status_code=413, detail="Audio exceeds the 25 MB limit.")
+
+    try:
+        transcript = await transcribe_audio(
+            audio_bytes,
+            filename=audio.filename or "recitation.webm",
+            content_type=audio.content_type or "application/octet-stream",
+            language=book.language or None,
+        )
+    except Exception as exc:  # noqa: BLE001 - provider/config failures are an explicit state
+        logger.warning("Poetry recitation STT failed: %s", exc)
+        attempt = stt_failed_attempt(
+            book_id=book_id,
+            block_id=block_id,
+            target_line_ids=[line_id for line_id, _ in target_lines],
+        )
+    else:
+        attempt = score_recitation(
+            book_id=book_id,
+            block_id=block_id,
+            target_lines=target_lines,
+            transcript=transcript,
+        )
+
+    summary = update_recitation_summary(block.metadata.get("recitation"), attempt)
+    block.metadata = {
+        **block.metadata,
+        "recitation": summary.model_dump(mode="json"),
+    }
+    block.updated_at = attempt.created_at
+    page.updated_at = attempt.created_at
+    engine.storage.save_page(page)
+    return {
+        "attempt": attempt.model_dump(mode="json"),
+        "summary": summary.model_dump(mode="json"),
+    }
