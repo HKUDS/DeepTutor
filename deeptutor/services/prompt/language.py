@@ -20,7 +20,29 @@ _LANGUAGE_LABELS: dict[str, str] = {
     "ru": "Русский",
     "pt": "Português",
     "it": "Italiano",
+    "ar": "العربية",
+    "pl": "Polski",
 }
+
+
+# Model output can use every language for which the prompt helper has a
+# reader-facing label. UI locale stays en/zh; response language is the wider
+# contract consumed by Settings and prompts.
+SUPPORTED_RESPONSE_LANGUAGES: tuple[str, ...] = (
+    "en",
+    "zh",
+    "zh-tw",
+    "ja",
+    "ko",
+    "es",
+    "fr",
+    "de",
+    "ru",
+    "pt",
+    "it",
+    "ar",
+    "pl",
+)
 
 
 def normalize_language(language: str | None) -> str:

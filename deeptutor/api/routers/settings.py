@@ -81,6 +81,24 @@ public_router = APIRouter()
 
 TOUR_CACHE = None
 
+# The UI locale is en/zh; reader-facing model output supports the wider set
+# already accepted by the shared prompt-language helper.
+ResponseLanguage = Literal[
+    "en",
+    "zh",
+    "zh-tw",
+    "ja",
+    "ko",
+    "es",
+    "fr",
+    "de",
+    "ru",
+    "pt",
+    "it",
+    "ar",
+    "pl",
+]
+
 
 def get_enabled_optional_tools() -> list[str]:
     """Compatibility export; the source of truth lives in the service layer."""
@@ -139,7 +157,7 @@ class SidebarNavOrder(BaseModel):
 class UISettings(BaseModel):
     theme: Literal["light", "dark", "glass", "snow"] = "snow"
     language: Literal["zh", "en"] = "en"
-    response_language: Literal["zh", "en"] = "en"
+    response_language: ResponseLanguage = "en"
     sidebar_description: Optional[str] = None
     sidebar_nav_order: Optional[SidebarNavOrder] = None
     code_block_theme: Optional[str] = None
@@ -162,7 +180,7 @@ class UISettingsUpdate(BaseModel):
     # so PUT /ui cannot persist a theme/language the app can't render.
     theme: Literal["light", "dark", "glass", "snow"] | None = None
     language: Literal["zh", "en"] | None = None
-    response_language: Literal["zh", "en"] | None = None
+    response_language: ResponseLanguage | None = None
     sidebar_description: str | None = None
     sidebar_nav_order: SidebarNavOrder | None = None
     code_block_theme: str | None = None
