@@ -55,6 +55,22 @@ test("the reader gives PDF.js an absolute same-origin decoder URL", () => {
   assert.match(reader, /wasmUrl:\s*pdfjsWasmUrl\(\)/);
 });
 
+test("the reader loads the polyfilled PDF.js build, not the latest-engines one", () => {
+  const loader = read("lib", "pdfjs-loader.ts");
+  // `pdfjs-dist`'s default bundle is neither transpiled nor polyfilled, and it
+  // calls `Map.prototype.getOrInsertComputed` (ES2026; Chrome/Edge 145+)
+  // directly. On anything older the worker throws
+  // `this._requestsByChunk.getOrInsertComputed is not a function` and the
+  // reader shows nothing — a failure invisible to a developer on a current
+  // browser, which is exactly why it is pinned here. The library and its
+  // worker must also come from the same bundle, or PDF.js aborts with a
+  // version-mismatch error.
+  assert.doesNotMatch(loader, /import\("pdfjs-dist"\)/);
+  assert.doesNotMatch(loader, /"pdfjs-dist\/build\//);
+  assert.match(loader, /import\("pdfjs-dist\/legacy\/build\/pdf\.mjs"\)/);
+  assert.match(loader, /"pdfjs-dist\/legacy\/build\/pdf\.worker\.min\.mjs"/);
+});
+
 test("the build wrapper restores every generated checked-in input", () => {
   const source = read("scripts", "build.mjs");
   for (const name of ["next-env.d.ts", "tsconfig.json"]) {
