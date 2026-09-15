@@ -23,6 +23,7 @@ from deeptutor.learning.models import (
     LearningProgress,
     MasteryInteraction,
     MasteryTopic,
+    ReadingLearningRecords,
     TopicMetadata,
     TopicSource,
     TopicSourceKind,
@@ -361,6 +362,14 @@ async def list_topic_index():
             ]
         )
     }
+
+
+@router.get("/reading/records", response_model=ReadingLearningRecords)
+async def list_reading_learning_records() -> ReadingLearningRecords:
+    """Reading progress and extension activity for the current account."""
+
+    store = LearningStore()
+    return await asyncio.to_thread(store.list_reading_records)
 
 
 @router.post("/topics/draft")
