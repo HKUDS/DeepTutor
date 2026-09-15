@@ -21,6 +21,7 @@ import hashlib
 import logging
 from pathlib import Path
 import re
+import time
 from typing import Any
 from urllib.parse import quote, unquote, urldefrag, urljoin, urlparse
 
@@ -47,6 +48,7 @@ MAX_CRAWL_DEPTH = 5
 MAX_CRAWL_PAGES = DEFAULT_MAX_PAGES
 DEFAULT_CONCURRENCY = 8
 MAX_REDIRECTS = 5
+DEFAULT_REQUEST_INTERVAL_S = 0.125
 
 
 @dataclass(frozen=True)
@@ -187,10 +189,215 @@ _RETRY_STATUS = {429, 500, 502, 503, 504}
 _MAX_RETRIES = 2
 
 
+@dataclass(frozen=True)
+class RobotsPolicy:
+    """The robots.txt subset used by the documentation crawler."""
+
+    available: bool = True
+    allowed: frozenset[str] = frozenset()
+    disallowed: frozenset[str] = frozenset()
+    crawl_delay_s: float | None = None
+
+    def permits(self, url: str) -> bool:
+        path = urlparse(url).path or "/"
+        allow = max(
+            (prefix for prefix in self.allowed if path.startswith(prefix)),
+            key=len,
+            default="",
+        )
+        disallow = max(
+            (prefix for prefix in self.disallowed if path.startswith(prefix)),
+            key=len,
+            default="",
+        )
+        if not allow and not disallow:
+            return True
+        if not disallow:
+            return True
+        return len(allow) >= len(disallow)
+
+
+@dataclass(frozen=True)
+class _RobotsGroup:
+    agents: frozenset[str]
+    allow: tuple[str, ...]
+    disallow: tuple[str, ...]
+    crawl_delay_s: float | None = None
+
+
+@dataclass
+class _HostRateLimiter:
+    interval_s: float
+    _locks: dict[str, asyncio.Lock] = field(default_factory=dict)
+    _last_request: dict[str, float] = field(default_factory=dict)
+
+    async def wait(self, url: str) -> None:
+        host = (urlparse(url).hostname or "").lower()
+        lock = self._locks.setdefault(host, asyncio.Lock())
+        async with lock:
+            now = time.monotonic()
+            last_request = self._last_request.get(host)
+            if last_request is not None:
+                wait_s = self.interval_s - (now - last_request)
+                if wait_s > 0:
+                    await asyncio.sleep(wait_s)
+            self._last_request[host] = time.monotonic()
+
+
+def _parse_robots_txt(raw: str, user_agent: str = DEFAULT_USER_AGENT) -> RobotsPolicy:
+    """Parse the crawler-specific robots.txt rules for *user_agent*."""
+    normalized_agent = user_agent.lower()
+    groups: list[_RobotsGroup] = []
+    agents: set[str] = set()
+    allow: list[str] = []
+    disallow: list[str] = []
+    delays: list[float] = []
+
+    def finalize_group() -> None:
+        if agents:
+            groups.append(
+                _RobotsGroup(
+                    agents=frozenset(agents),
+                    allow=tuple(allow),
+                    disallow=tuple(disallow),
+                    crawl_delay_s=max(delays, default=None),
+                )
+            )
+
+    for raw_line in raw.splitlines():
+        line = raw_line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        field, separator, value = line.partition(":")
+        field = field.strip().lower()
+        value = value.strip() if separator else ""
+        if field == "user-agent":
+            if allow or disallow or delays:
+                finalize_group()
+                agents.clear()
+                allow.clear()
+                disallow.clear()
+                delays.clear()
+            if value:
+                agents.add(value.lower())
+            continue
+        if not agents:
+            continue
+        if field in ("allow", "disallow"):
+            (allow if field == "allow" else disallow).append(value.rstrip())
+        elif field == "crawl-delay":
+            try:
+                delays.append(float(value))
+            except ValueError:
+                continue
+
+    finalize_group()
+
+    exact_matches = [
+        group
+        for group in groups
+        if any(token != "*" and normalized_agent.startswith(token) for token in group.agents)
+    ]
+    applicable = exact_matches or [group for group in groups if "*" in group.agents]
+    if not applicable:
+        return RobotsPolicy()
+
+    if exact_matches:
+        best_match = max(
+            max(len(token) for token in group.agents if token != "*") for group in exact_matches
+        )
+        selected = [
+            group
+            for group in exact_matches
+            if any(token != "*" and len(token) == best_match for token in group.agents)
+        ]
+    else:
+        selected = applicable
+    return RobotsPolicy(
+        allowed=frozenset(prefix for group in selected for prefix in group.allow if prefix),
+        disallowed=frozenset(prefix for group in selected for prefix in group.disallow if prefix),
+        crawl_delay_s=max((group.crawl_delay_s for group in selected), default=None),
+    )
+
+
+@dataclass(frozen=True)
+class _RobotsResponse:
+    status_code: int
+    text: str
+
+
+async def _fetch_robots_txt(
+    url: str,
+    *,
+    client: httpx.AsyncClient,
+    allowed_host: str,
+    rate_limiter: _HostRateLimiter,
+) -> _RobotsResponse:
+    """Fetch robots.txt without retries, distinguishing unavailable from absent."""
+    current_url = url
+    redirects = 0
+    while True:
+        parsed = urlparse(current_url)
+        host = (parsed.hostname or "").lower()
+        if parsed.scheme.lower() not in ("http", "https") or host != allowed_host:
+            return _RobotsResponse(status_code=0, text="")
+        if _is_disallowed_host(host):
+            return _RobotsResponse(status_code=0, text="")
+        await rate_limiter.wait(current_url)
+        try:
+            async with client.stream(
+                "GET",
+                current_url,
+                headers={"User-Agent": DEFAULT_USER_AGENT, "Accept": "text/plain,*/*"},
+                follow_redirects=False,
+            ) as response:
+                if response.status_code in {301, 302, 303, 307, 308}:
+                    location = response.headers.get("location", "").strip()
+                    if not location or redirects >= MAX_REDIRECTS:
+                        return _RobotsResponse(status_code=0, text="")
+                    current_url = urljoin(current_url, location)
+                    redirects += 1
+                    continue
+                if response.status_code in _RETRY_STATUS:
+                    return _RobotsResponse(status_code=response.status_code, text="")
+                if response.status_code >= 400:
+                    return _RobotsResponse(status_code=response.status_code, text="")
+                return _RobotsResponse(
+                    status_code=response.status_code,
+                    text=await _bounded_read(response, MAX_RESPONSE_BYTES),
+                )
+        except httpx.HTTPError:
+            return _RobotsResponse(status_code=0, text="")
+
+
+async def _load_robots_policy(
+    base_url: str,
+    *,
+    client: httpx.AsyncClient,
+    rate_limiter: _HostRateLimiter,
+) -> RobotsPolicy:
+    base_host = (urlparse(base_url).hostname or "").lower()
+    robots_url = urljoin(base_url, "/robots.txt")
+    response = await _fetch_robots_txt(
+        robots_url,
+        client=client,
+        allowed_host=base_host,
+        rate_limiter=rate_limiter,
+    )
+    if response.status_code == 0 or response.status_code in _RETRY_STATUS:
+        return RobotsPolicy(available=False, disallowed=frozenset({"/"}))
+    if response.status_code >= 400 or not response.text.strip():
+        return RobotsPolicy()
+    return _parse_robots_txt(response.text)
+
+
 async def _fetch_page(
     url: str,
     *,
     client: httpx.AsyncClient,
+    allowed_host: str = "",
+    robots_policy: RobotsPolicy | None = None,
+    rate_limiter: _HostRateLimiter | None = None,
 ) -> tuple[str, str] | None:
     """Fetch *url*, return ``(html, final_url)`` or ``None`` on failure.
 
@@ -206,12 +413,20 @@ async def _fetch_page(
         if parsed.scheme.lower() not in ("http", "https") or not host:
             logger.warning("Crawl: redirect to invalid URL %s blocked", current_url)
             return None
+        if allowed_host and host.lower() != allowed_host:
+            logger.warning("Crawl: cross-host redirect from %s to %s blocked", url, current_url)
+            return None
         # Validate every redirect hop before sending its request. Automatic
         # redirects followed by a final-host check have already contacted a
         # private target by the time they can be rejected.
         if _is_disallowed_host(host):
             logger.warning("Crawl: request to disallowed host %s blocked", host)
             return None
+        if robots_policy is not None and not robots_policy.permits(current_url):
+            logger.warning("Crawl: robots.txt disallows %s", current_url)
+            return None
+        if rate_limiter is not None:
+            await rate_limiter.wait(current_url)
         try:
             async with client.stream(
                 "GET",
@@ -282,6 +497,8 @@ async def _process_page(
     base_host: str,
     base_path_prefix: str,
     max_depth: int,
+    robots_policy: RobotsPolicy,
+    rate_limiter: _HostRateLimiter,
 ) -> dict | None:
     """Fetch and process a single page for concurrent crawling.
 
@@ -289,7 +506,13 @@ async def _process_page(
     or ``None`` on fetch failure.
     """
     async with sem:
-        fetched = await _fetch_page(url, client=client)
+        fetched = await _fetch_page(
+            url,
+            client=client,
+            allowed_host=base_host.lower(),
+            robots_policy=robots_policy,
+            rate_limiter=rate_limiter,
+        )
     if fetched is None:
         return None
     html, final_url = fetched
@@ -391,6 +614,22 @@ async def crawl_docs_site(
     sem = asyncio.Semaphore(concurrency)
 
     async with factory() as client:
+        rate_limiter = _HostRateLimiter(interval_s=DEFAULT_REQUEST_INTERVAL_S)
+        robots_policy = await _load_robots_policy(
+            base_url,
+            client=client,
+            rate_limiter=rate_limiter,
+        )
+        if not robots_policy.available:
+            result.errors.append("robots.txt unavailable; crawl blocked")
+            return result
+        if not robots_policy.permits(base_url):
+            result.errors.append("robots.txt disallows the configured URL")
+            return result
+        rate_limiter.interval_s = max(
+            DEFAULT_REQUEST_INTERVAL_S,
+            robots_policy.crawl_delay_s or 0.0,
+        )
         while queue and len(visited) < max_pages:
             # Dequeue a batch of URLs to process concurrently.
             batch: list[tuple[str, int]] = []
@@ -413,6 +652,8 @@ async def crawl_docs_site(
                     base_host=base_host,
                     base_path_prefix=base_path_prefix,
                     max_depth=max_depth,
+                    robots_policy=robots_policy,
+                    rate_limiter=rate_limiter,
                 )
                 for url, depth in batch
             ]
