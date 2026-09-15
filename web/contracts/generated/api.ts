@@ -9854,9 +9854,7 @@ export interface components {
       /** Goal */
       readonly goal: string;
       /** Modules */
-      readonly modules?: readonly {
-        readonly [key: string]: unknown;
-      }[];
+      readonly modules?: readonly components["schemas"]["ModuleInput"][];
       /** Must Cover */
       readonly must_cover?: readonly string[];
       /**
@@ -10450,9 +10448,7 @@ export interface components {
     /** EditTopicMapRequest */
     readonly EditTopicMapRequest: {
       /** Modules */
-      readonly modules: readonly {
-        readonly [key: string]: unknown;
-      }[];
+      readonly modules: readonly components["schemas"]["ModuleInput"][];
     };
     /** EnabledPayload */
     readonly EnabledPayload: {
@@ -10744,9 +10740,7 @@ export interface components {
     /** InitModulesRequest */
     readonly InitModulesRequest: {
       /** Modules */
-      readonly modules: readonly {
-        readonly [key: string]: unknown;
-      }[];
+      readonly modules: readonly components["schemas"]["ModuleInput"][];
     };
     /** InsertBlockRequest */
     readonly InsertBlockRequest: {
@@ -10867,6 +10861,38 @@ export interface components {
       /** Status */
       readonly status?: string | null;
     };
+    /** KnowledgePointInput */
+    readonly KnowledgePointInput: {
+      /**
+       * Client Ref
+       * @default
+       */
+      readonly client_ref: string;
+      /** Id */
+      readonly id?: string | null;
+      /**
+       * Module Id
+       * @default
+       */
+      readonly module_id: string;
+      /** Name */
+      readonly name: string;
+      /** Prerequisite Ids */
+      readonly prerequisite_ids?: readonly string[];
+      /** Prerequisite Refs */
+      readonly prerequisite_refs?: readonly string[];
+      /** Topic Source Ids */
+      readonly topic_source_ids?: readonly string[];
+      /** Topic Source Refs */
+      readonly topic_source_refs?: readonly string[];
+      /** @default concept */
+      readonly type: components["schemas"]["KnowledgeType"];
+    };
+    /**
+     * KnowledgeType
+     * @enum {string}
+     */
+    readonly KnowledgeType: "memory" | "concept" | "procedure" | "design";
     /** LanguageUpdate */
     readonly LanguageUpdate: {
       /**
@@ -11480,6 +11506,27 @@ export interface components {
        * @default
        */
       readonly model: string;
+    };
+    /** ModuleInput */
+    readonly ModuleInput: {
+      /** Id */
+      readonly id?: string | null;
+      /** Knowledge Points */
+      readonly knowledge_points?: readonly components["schemas"]["KnowledgePointInput"][];
+      /** Name */
+      readonly name: string;
+      /**
+       * Objective
+       * @default
+       */
+      readonly objective: string;
+      /** Order */
+      readonly order?: number | null;
+      /**
+       * Pass Threshold
+       * @default 0.7
+       */
+      readonly pass_threshold: number;
     };
     /** MoveBlockRequest */
     readonly MoveBlockRequest: {
@@ -12773,6 +12820,11 @@ export interface components {
        */
       readonly available: boolean;
       /**
+       * Client Ref
+       * @default
+       */
+      readonly client_ref: string;
+      /**
        * Excerpt
        * @default
        */
@@ -13782,6 +13834,9 @@ export type SchemaInvidiousSettings =
   components["schemas"]["InvidiousSettings"];
 export type SchemaKnowledgeBaseInfo =
   components["schemas"]["KnowledgeBaseInfo"];
+export type SchemaKnowledgePointInput =
+  components["schemas"]["KnowledgePointInput"];
+export type SchemaKnowledgeType = components["schemas"]["KnowledgeType"];
 export type SchemaLanguageUpdate = components["schemas"]["LanguageUpdate"];
 export type SchemaLearnerOverrideRequest =
   components["schemas"]["LearnerOverrideRequest"];
@@ -13822,6 +13877,7 @@ export type SchemaMinerUSettingsUpdate =
   components["schemas"]["MinerUSettingsUpdate"];
 export type SchemaModelCapabilitiesQuery =
   components["schemas"]["ModelCapabilitiesQuery"];
+export type SchemaModuleInput = components["schemas"]["ModuleInput"];
 export type SchemaMoveBlockRequest = components["schemas"]["MoveBlockRequest"];
 export type SchemaMoveFilePayload = components["schemas"]["MoveFilePayload"];
 export type SchemaMoveRecordRequest =

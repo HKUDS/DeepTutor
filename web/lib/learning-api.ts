@@ -7,9 +7,14 @@ export interface ModuleInit {
   pass_threshold?: number;
   knowledge_points: {
     id: string;
+    client_ref?: string;
     name: string;
     type: string;
     module_id: string;
+    prerequisite_ids?: string[];
+    prerequisite_refs?: string[];
+    topic_source_ids?: string[];
+    topic_source_refs?: string[];
   }[];
 }
 
@@ -64,6 +69,8 @@ export interface MapKnowledgePoint {
   id: string;
   name: string;
   type: string;
+  prerequisite_ids: string[];
+  topic_source_ids: string[];
   status: ObjectiveStatus;
   mastery: number;
   mastery_source: "system" | "learner" | "";
@@ -399,6 +406,7 @@ export interface TopicSource {
 
 export interface TopicSourceInput {
   id?: string;
+  client_ref?: string;
   kind: TopicSourceKind;
   source_id?: string;
   label: string;

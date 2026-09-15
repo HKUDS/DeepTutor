@@ -314,6 +314,31 @@ class LearningTransaction:
             {"source_count": len(sources), "status": metadata.status},
         )
 
+    def topic_sources(self) -> list[TopicSource]:
+        """Read this path's source set on the transaction connection."""
+
+        rows = self._conn.execute(
+            """
+            SELECT * FROM mastery_topic_sources
+            WHERE path_id = ? ORDER BY position ASC, created_at ASC
+            """,
+            (self.progress.book_id,),
+        ).fetchall()
+        return [
+            TopicSource(
+                id=row["source_id"],
+                kind=row["kind"],
+                source_id=row["external_id"] or "",
+                label=row["label"],
+                excerpt=row["excerpt"] or "",
+                position=int(row["position"]),
+                available=bool(row["available"]),
+                metadata=json.loads(row["metadata_json"] or "{}"),
+                created_at=float(row["created_at"]),
+            )
+            for row in rows
+        ]
+
 
 class LearningStore:
     """Workspace-scoped transactional store for Mastery Path state."""

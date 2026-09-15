@@ -132,6 +132,78 @@ class TestListProgress:
 
 
 class TestTopicProductApi:
+    def test_topic_relations_round_trip_through_create_and_reorder_edit(self, client):
+        created = client.post(
+            "/api/mastery-paths/topics",
+            json={
+                "name": "Structured route",
+                "goal": "Keep objective provenance",
+                "sources": [
+                    {
+                        "client_ref": "notes",
+                        "kind": "notebook",
+                        "label": "Study notes",
+                    }
+                ],
+                "modules": [
+                    {
+                        "name": "Region",
+                        "knowledge_points": [
+                            {"client_ref": "first", "name": "First objective"},
+                            {
+                                "client_ref": "second",
+                                "name": "Second objective",
+                                "prerequisite_refs": ["first"],
+                                "topic_source_refs": ["notes"],
+                            },
+                        ],
+                    }
+                ],
+            },
+        ).json()
+        module = created["map"]["modules"][0]
+        first, second = module["knowledge_points"]
+        source_id = created["sources"][0]["id"]
+        assert second["prerequisite_ids"] == [first["id"]]
+        assert second["topic_source_ids"] == [source_id]
+
+        response = client.put(
+            f"/api/mastery-paths/topics/{created['path_id']}/map",
+            json={
+                "modules": [
+                    {
+                        "id": module["id"],
+                        "name": "Reordered region",
+                        "knowledge_points": [
+                            {
+                                "id": second["id"],
+                                "name": "Second objective, renamed",
+                                "type": second["type"],
+                                "module_id": module["id"],
+                                "prerequisite_ids": second["prerequisite_ids"],
+                                "topic_source_ids": second["topic_source_ids"],
+                            },
+                            {
+                                "id": first["id"],
+                                "name": first["name"],
+                                "type": first["type"],
+                                "module_id": module["id"],
+                                "prerequisite_ids": first["prerequisite_ids"],
+                                "topic_source_ids": first["topic_source_ids"],
+                            },
+                        ],
+                    }
+                ]
+            },
+        )
+
+        assert response.status_code == 200
+        edited = response.json()["map"]["modules"][0]["knowledge_points"]
+        assert [point["id"] for point in edited] == [second["id"], first["id"]]
+        assert edited[0]["name"] == "Second objective, renamed"
+        assert edited[0]["prerequisite_ids"] == [first["id"]]
+        assert edited[0]["topic_source_ids"] == [source_id]
+
     def test_edit_topic_map_preserves_reordered_evidence_by_entity_id(self, client, app):
         created = client.post(
             "/api/mastery-paths/topics",

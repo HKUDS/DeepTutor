@@ -84,6 +84,11 @@ class KnowledgePoint(BaseModel):
     name: str
     type: KnowledgeType
     module_id: str
+    # Required objectives, not a presentation order. Empty on legacy paths.
+    prerequisite_ids: list[str] = Field(default_factory=list)
+    # Selected non-goal sources that justify this objective. They are curriculum
+    # provenance, not proof of factual correctness or retrieval permission.
+    topic_source_ids: list[str] = Field(default_factory=list)
 
 
 class LearningModule(BaseModel):

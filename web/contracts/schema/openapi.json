@@ -1793,8 +1793,7 @@
           },
           "modules": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/ModuleInput"
             },
             "maxItems": 20,
             "title": "Modules",
@@ -3074,8 +3073,7 @@
         "properties": {
           "modules": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/ModuleInput"
             },
             "maxItems": 20,
             "minItems": 1,
@@ -3817,8 +3815,7 @@
         "properties": {
           "modules": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/ModuleInput"
             },
             "title": "Modules",
             "type": "array"
@@ -4084,6 +4081,84 @@
         ],
         "title": "KnowledgeBaseInfo",
         "type": "object"
+      },
+      "KnowledgePointInput": {
+        "properties": {
+          "client_ref": {
+            "default": "",
+            "title": "Client Ref",
+            "type": "string"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "module_id": {
+            "default": "",
+            "title": "Module Id",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "prerequisite_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Prerequisite Ids",
+            "type": "array"
+          },
+          "prerequisite_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Prerequisite Refs",
+            "type": "array"
+          },
+          "topic_source_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Topic Source Ids",
+            "type": "array"
+          },
+          "topic_source_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Topic Source Refs",
+            "type": "array"
+          },
+          "type": {
+            "$ref": "#/components/schemas/KnowledgeType",
+            "default": "concept"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "KnowledgePointInput",
+        "type": "object"
+      },
+      "KnowledgeType": {
+        "enum": [
+          "memory",
+          "concept",
+          "procedure",
+          "design"
+        ],
+        "title": "KnowledgeType",
+        "type": "string"
       },
       "LLMSelection": {
         "additionalProperties": false,
@@ -5264,6 +5339,61 @@
           }
         },
         "title": "ModelCapabilitiesQuery",
+        "type": "object"
+      },
+      "ModuleInput": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "knowledge_points": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgePointInput"
+            },
+            "title": "Knowledge Points",
+            "type": "array"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "objective": {
+            "default": "",
+            "maxLength": 300,
+            "title": "Objective",
+            "type": "string"
+          },
+          "order": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order"
+          },
+          "pass_threshold": {
+            "default": 0.7,
+            "title": "Pass Threshold",
+            "type": "number"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ModuleInput",
         "type": "object"
       },
       "MoveBlockRequest": {
@@ -8063,6 +8193,11 @@
             "default": true,
             "title": "Available",
             "type": "boolean"
+          },
+          "client_ref": {
+            "default": "",
+            "title": "Client Ref",
+            "type": "string"
           },
           "excerpt": {
             "default": "",
