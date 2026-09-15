@@ -184,6 +184,7 @@ def test_lightrag_extra_is_the_exact_native_sdk_without_parser_transitives() -> 
         "pyte>=0.8.1",
         "pdfplumber>=0.11.0",
         "reportlab>=4.0.0",
+        "packaging>=24.2",
     ],
 )
 def test_cli_runtime_dependencies_match_every_install_surface(expected: str) -> None:

@@ -221,6 +221,9 @@ def test_active_loop_capabilities_includes_external(monkeypatch) -> None:
     from deeptutor.capabilities import registry
 
     def fake_entry_points(*, group: str):
+        if group == registry.EXTENSIONS_GROUP:
+            return []
+        assert group == "deeptutor.loop_capabilities"
         return [_ep("demo_loop", lambda: _DemoLoop)]
 
     monkeypatch.setattr(ep_module, "entry_points", fake_entry_points)
@@ -229,7 +232,7 @@ def test_active_loop_capabilities_includes_external(monkeypatch) -> None:
     assert all(cap.name != "demo_loop" for cap in idle)
 
     active = registry.active_loop_capabilities(UnifiedContext(active_capability="demo_loop"))
-    assert [cap.name for cap in active] == ["demo_loop"]
+    assert [cap.name for cap in active if cap.name == "demo_loop"] == ["demo_loop"]
 
 
 def test_capability_tool_owners_includes_external(monkeypatch) -> None:

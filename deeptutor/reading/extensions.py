@@ -90,6 +90,16 @@ class ReadingExtension(Protocol):
 
 
 def _coerce(name: str, loaded: Any) -> ReadingExtension | None:
+    from deeptutor.plugins.registry import PluginRegistry
+    from deeptutor.plugins.runtime import entry_point_allowed
+
+    if not entry_point_allowed(
+        PluginRegistry(),
+        extension_type="reading_extension",
+        entry_point=name,
+    ):
+        logger.warning("Reading extension %r is disabled or unapproved.", name)
+        return None
     candidate = loaded() if isinstance(loaded, type) else loaded
     try:
         manifest = ReadingExtensionManifest.model_validate(getattr(candidate, "manifest", None))

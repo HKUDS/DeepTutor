@@ -73,6 +73,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 _COOKIE_NAME = "dt_token"
+AUTH_COOKIE_NAME = _COOKIE_NAME
 _COOKIE_MAX_AGE = TOKEN_EXPIRE_HOURS * 3600
 
 

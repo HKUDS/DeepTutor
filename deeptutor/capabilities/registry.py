@@ -152,10 +152,24 @@ def _coerce_loop_factory(loaded: object) -> tuple[LoopExtension, LoopFactory] | 
 @cache
 def discover_external_loop_capabilities() -> tuple[tuple[str, LoopFactory], ...]:
     """Discover factory specs from canonical and one-version legacy groups."""
+    from deeptutor.plugins.registry import PluginRegistry
+    from deeptutor.plugins.runtime import entry_point_allowed
 
+    plugin_registry = PluginRegistry()
     seen = {spec.name for spec in BUILTIN_LOOP_CAPABILITY_SPECS}
 
     def _accept(ep_name: str, loaded: object) -> tuple[str, LoopFactory] | None:
+        extension_type = "loop_capability"
+        if not entry_point_allowed(
+            plugin_registry,
+            extension_type=extension_type,
+            entry_point=ep_name,
+        ):
+            logger.warning(
+                "Loop extension plugin '%s' is disabled or unapproved; ignoring",
+                ep_name,
+            )
+            return None
         resolved = _coerce_loop_factory(loaded)
         if resolved is None:
             logger.warning("Ignoring loop extension plugin '%s': invalid class or factory", ep_name)

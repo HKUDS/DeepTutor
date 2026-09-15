@@ -34264,6 +34264,173 @@
         ]
       }
     },
+    "/api/plugins/extensions": {
+      "get": {
+        "operationId": "list_extensions_api_plugins_extensions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Extensions Api Plugins Extensions Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Extensions",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
+    "/api/plugins/{plugin_id}/pages/{extension_id}": {
+      "get": {
+        "operationId": "redirect_plugin_frontend_page_api_plugins__plugin_id__pages__extension_id__get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Redirect Plugin Frontend Page",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
+    "/api/plugins/{plugin_id}/pages/{extension_id}/": {
+      "get": {
+        "operationId": "get_plugin_frontend_page_api_plugins__plugin_id__pages__extension_id___get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Plugin Frontend Page",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
+    "/api/plugins/{plugin_id}/pages/{extension_id}/assets/{asset_path}": {
+      "get": {
+        "operationId": "get_plugin_frontend_asset_api_plugins__plugin_id__pages__extension_id__assets__asset_path__get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Plugin Frontend Asset",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
+    "/api/plugins/{plugin_id}/{plugin_path}": {
+      "delete": {
+        "operationId": "dispatch_plugin_route_delete",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Dispatch Plugin Route",
+        "tags": [
+          "plugins"
+        ]
+      },
+      "get": {
+        "operationId": "dispatch_plugin_route_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Dispatch Plugin Route",
+        "tags": [
+          "plugins"
+        ]
+      },
+      "patch": {
+        "operationId": "dispatch_plugin_route_patch",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Dispatch Plugin Route",
+        "tags": [
+          "plugins"
+        ]
+      },
+      "post": {
+        "operationId": "dispatch_plugin_route_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Dispatch Plugin Route",
+        "tags": [
+          "plugins"
+        ]
+      },
+      "put": {
+        "operationId": "dispatch_plugin_route_put",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Dispatch Plugin Route",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
     "/api/question-notebook/categories": {
       "get": {
         "description": "Categories, with their counts scoped the same way the listing is.\n\nWithout the scope the rail would offer \"Address translation 3\" inside a\ncourse holding none of those three.",

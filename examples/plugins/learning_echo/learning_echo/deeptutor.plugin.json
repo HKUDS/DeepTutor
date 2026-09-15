@@ -1,0 +1,59 @@
+{
+  "schema_version": "deeptutor.plugin/v1",
+  "id": "org.deeptutor.learning_echo",
+  "name": "Learning Echo Example",
+  "version": "1.0.0",
+  "description_i18n": {
+    "en": "Minimal approved Tool and Capability worker example",
+    "zh": "最小化的已审批 Tool 与 Capability worker 示例"
+  },
+  "author": "DeepTutor",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/xzh/dev/deeptutor",
+  "source_url": "https://github.com/xzh/dev/deeptutor",
+  "compatibility": {
+    "deeptutor": ">=1.6.0,<3",
+    "api": {
+      "tool": "1",
+      "capability": "1",
+      "http_route": "1",
+      "frontend_page": "1"
+    }
+  },
+  "permissions": {
+    "reading": [],
+    "learning_events": [],
+    "network": [],
+    "models": [],
+    "storage": [],
+    "ui": ["sandboxed-iframe"]
+  },
+  "dependencies": [],
+  "extensions": [
+    {
+      "type": "tool",
+      "id": "learning_echo",
+      "entry_point": "learning_echo.worker"
+    },
+    {
+      "type": "capability",
+      "id": "learning_echo_capability",
+      "entry_point": "learning_echo.worker"
+    },
+    {
+      "type": "http_route",
+      "id": "learning_echo_http",
+      "entry_point": "learning_echo.worker",
+      "path": "/echo",
+      "methods": ["POST"],
+      "auth": "public"
+    },
+    {
+      "type": "frontend_page",
+      "id": "learning_echo_page",
+      "path": "/learning-echo",
+      "auth": "authenticated",
+      "manifest": "frontend/page.json"
+    }
+  ]
+}

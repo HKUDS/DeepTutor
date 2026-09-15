@@ -8,9 +8,11 @@ Provides lookup, listing, and OpenAI schema generation.
 
 from __future__ import annotations
 
+import inspect
 import logging
 from typing import Any
 
+from deeptutor.core.entry_points import load_entry_point_group
 from deeptutor.core.tool_protocol import BaseTool, ToolDefinition, ToolPromptHints
 from deeptutor.tools.builtin_specs import (
     BUILTIN_TOOL_NAMES,
@@ -21,6 +23,7 @@ from deeptutor.tools.builtin_specs import (
 from deeptutor.tools.prompting import compose_prompt_text
 
 logger = logging.getLogger(__name__)
+PLUGIN_TOOLS_GROUP = "deeptutor.tools"
 
 
 class ToolRegistry:
@@ -71,6 +74,37 @@ class ToolRegistry:
         self._tools[name] = tool
         logger.debug("Loaded built-in tool: %s", name)
         return tool
+
+    def load_plugins(self) -> None:
+        """Load approved entry-point tools, then managed worker tools."""
+        from deeptutor.plugins.registry import PluginRegistry
+        from deeptutor.plugins.runtime import entry_point_allowed, load_enabled_tools
+
+        plugin_registry = PluginRegistry()
+
+        def _coerce(ep_name: str, loaded: Any) -> BaseTool | None:
+            if not entry_point_allowed(
+                plugin_registry,
+                extension_type="tool",
+                entry_point=ep_name,
+            ):
+                logger.warning("Tool extension %r is disabled or unapproved; ignoring", ep_name)
+                return None
+            tool = _coerce_tool(loaded)
+            if tool is None:
+                logger.warning("Tool extension %r is not a BaseTool; ignoring", ep_name)
+                return None
+            if tool.name in self._tools:
+                logger.warning("Tool extension %r shadows an existing tool; ignoring", ep_name)
+                return None
+            return tool
+
+        for tool in load_entry_point_group(PLUGIN_TOOLS_GROUP, _coerce, log=logger):
+            self.register(tool)
+
+        for tool in load_enabled_tools(plugin_registry):
+            if tool.name not in self._tools:
+                self.register(tool)
 
     def _resolve_request(
         self,
@@ -173,4 +207,15 @@ def get_tool_registry() -> ToolRegistry:
     if _default_registry is None:
         _default_registry = ToolRegistry()
         _default_registry.load_builtins()
+        _default_registry.load_plugins()
     return _default_registry
+
+
+def _coerce_tool(loaded: Any) -> BaseTool | None:
+    candidate = loaded() if inspect.isclass(loaded) else loaded
+    if isinstance(candidate, BaseTool):
+        return candidate
+    if callable(candidate) and not inspect.isclass(candidate):
+        produced = candidate()
+        return produced if isinstance(produced, BaseTool) else None
+    return None

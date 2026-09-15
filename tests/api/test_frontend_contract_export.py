@@ -54,6 +54,13 @@ def test_openapi_operation_ids_are_unique_for_type_generation() -> None:
     ]
 
     assert len(operation_ids) == len(set(operation_ids))
+    assert {
+        "dispatch_plugin_route_get",
+        "dispatch_plugin_route_post",
+        "dispatch_plugin_route_put",
+        "dispatch_plugin_route_patch",
+        "dispatch_plugin_route_delete",
+    } <= set(operation_ids)
 
 
 def test_exported_runtime_contract_contains_no_secret_defaults() -> None:
