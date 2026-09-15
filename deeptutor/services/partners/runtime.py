@@ -99,6 +99,26 @@ def _format_tool_hint(tool_name: str, args: Any) -> str:
     return hint
 
 
+def _thread_delivery_meta(msg: InboundMessage) -> dict[str, Any]:
+    """Channel thread/reply identifiers to echo back onto outbound sends.
+
+    Telegram forum (topic) groups route outbound replies by
+    ``message_thread_id``, falling back to a ``message_id`` → thread cache
+    keyed off the message being replied to (see ``TelegramChannel.send``).
+    Both keys live on the *inbound* message's metadata but were never copied
+    onto outbound messages, so every reply landed in the group's General
+    topic instead of the topic the user actually wrote in (#1461). Channels
+    that don't use these keys simply ignore them.
+    """
+    in_meta = msg.metadata or {}
+    meta: dict[str, Any] = {}
+    for key in ("message_thread_id", "message_id"):
+        value = in_meta.get(key)
+        if value is not None:
+            meta[key] = value
+    return meta
+
+
 class PartnerRunner:
     """Consume a partner's inbound bus and answer with the chat agent loop."""
 
@@ -170,7 +190,7 @@ class PartnerRunner:
                 },
             )
 
-        delivery_meta: dict[str, Any] = {}
+        delivery_meta: dict[str, Any] = _thread_delivery_meta(msg)
         try:
             final = await self.process_message(
                 msg,
@@ -965,7 +985,11 @@ class PartnerRunner:
                 channel=msg.channel,
                 chat_id=msg.chat_id,
                 content=text,
-                metadata={"_progress": True, "_tool_hint": tool_hint},
+                metadata={
+                    "_progress": True,
+                    "_tool_hint": tool_hint,
+                    **_thread_delivery_meta(msg),
+                },
             )
         )
 
@@ -977,7 +1001,11 @@ class PartnerRunner:
                 channel=msg.channel,
                 chat_id=msg.chat_id,
                 content=delta,
-                metadata={"_stream_delta": True, "_stream_id": f"{turn_id}:{call_id}"},
+                metadata={
+                    "_stream_delta": True,
+                    "_stream_id": f"{turn_id}:{call_id}",
+                    **_thread_delivery_meta(msg),
+                },
             )
         )
 
@@ -987,7 +1015,11 @@ class PartnerRunner:
                 channel=msg.channel,
                 chat_id=msg.chat_id,
                 content="",
-                metadata={"_stream_end": True, "_stream_id": f"{turn_id}:{call_id}"},
+                metadata={
+                    "_stream_end": True,
+                    "_stream_id": f"{turn_id}:{call_id}",
+                    **_thread_delivery_meta(msg),
+                },
             )
         )
 

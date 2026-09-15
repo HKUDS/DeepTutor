@@ -461,6 +461,117 @@ class TestTurnExecution:
         assert out.content == "reply text"
 
 
+class TestOutboundThreadRouting:
+    """#1461: Telegram forum-topic replies must echo the inbound thread id.
+
+    ``TelegramChannel.send()`` already routes on ``metadata["message_thread_id"]``
+    (falling back to a ``message_id`` reply-cache lookup); the runner must copy
+    both keys from the inbound message onto every outbound message it publishes
+    for that turn, not just the final reply.
+    """
+
+    @pytest.mark.asyncio
+    async def test_final_reply_echoes_inbound_thread_and_message_id(
+        self, partners_root, fake_orchestrator
+    ):
+        fake_orchestrator.script = finish("reply text")
+        runner = _runner(partners_root)
+        msg = InboundMessage(
+            channel="telegram",
+            sender_id="42",
+            chat_id="42",
+            content="hi from a topic",
+            metadata={"message_thread_id": 55, "message_id": 999},
+        )
+
+        await runner._handle_inbound(msg)
+        out = await runner.bus.outbound.get()
+        assert out.metadata["message_thread_id"] == 55
+        assert out.metadata["message_id"] == 999
+
+    @pytest.mark.asyncio
+    async def test_progress_hint_echoes_inbound_thread_id(self, partners_root, fake_orchestrator):
+        fake_orchestrator.script = narration_round("c1", "exploring…") + finish("done")
+        runner = _runner(partners_root)
+        msg = InboundMessage(
+            channel="telegram",
+            sender_id="42",
+            chat_id="42",
+            content="hi",
+            metadata={"message_thread_id": 55, "message_id": 999},
+        )
+
+        await runner.process_message(msg)
+        progress = await runner.bus.outbound.get()
+        assert progress.metadata["_progress"] is True
+        assert progress.metadata["message_thread_id"] == 55
+        assert progress.metadata["message_id"] == 999
+
+    @pytest.mark.asyncio
+    async def test_tool_hint_echoes_inbound_thread_id(self, partners_root, fake_orchestrator):
+        fake_orchestrator.script = [
+            event(
+                StreamEventType.TOOL_CALL,
+                content="rag",
+                metadata={"args": {"query": "hello"}},
+            ),
+            *finish("done"),
+        ]
+        runner = _runner(partners_root)
+        msg = InboundMessage(
+            channel="telegram",
+            sender_id="42",
+            chat_id="42",
+            content="hi",
+            metadata={"message_thread_id": 55, "message_id": 999},
+        )
+
+        await runner.process_message(msg)
+        hint = await runner.bus.outbound.get()
+        assert hint.metadata["_tool_hint"] is True
+        assert hint.metadata["message_thread_id"] == 55
+        assert hint.metadata["message_id"] == 999
+
+    @pytest.mark.asyncio
+    async def test_stream_delta_and_end_echo_inbound_thread_id(
+        self, partners_root, fake_orchestrator
+    ):
+        fake_orchestrator.script = narration_round("c1", "streamed text") + finish("done")
+        runner = _runner(partners_root)
+        msg = InboundMessage(
+            channel="telegram",
+            sender_id="42",
+            chat_id="42",
+            content="hi",
+            metadata={"message_thread_id": 55, "message_id": 999, "_wants_stream": True},
+        )
+
+        await runner.process_message(msg)
+        published = []
+        while not runner.bus.outbound.empty():
+            published.append(await runner.bus.outbound.get())
+
+        streamed = [
+            out
+            for out in published
+            if out.metadata.get("_stream_delta") or out.metadata.get("_stream_end")
+        ]
+        assert streamed, "expected at least one streamed delta/end message"
+        for out in streamed:
+            assert out.metadata["message_thread_id"] == 55
+            assert out.metadata["message_id"] == 999
+
+    @pytest.mark.asyncio
+    async def test_missing_thread_metadata_is_not_injected(self, partners_root, fake_orchestrator):
+        fake_orchestrator.script = finish("reply text")
+        runner = _runner(partners_root)
+
+        await runner._handle_inbound(_msg())
+        out = await runner.bus.outbound.get()
+        assert "message_thread_id" not in out.metadata
+        assert "message_id" not in out.metadata
+
+
 class TestContextAssembly:
     @pytest.mark.asyncio
     async def test_context_carries_soul_tools_and_metadata(self, partners_root, fake_orchestrator):
