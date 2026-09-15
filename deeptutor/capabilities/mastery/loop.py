@@ -249,6 +249,7 @@ class MasteryLoopCapability:
         if tool_name in MASTERY_TOOL_NAMES:
             updated = dict(kwargs)
             if tool_name == "mastery_quiz":
+                state["quiz_requested"] = True
                 state["quiz_awaiting_grade"] = True
                 updated["_end_turn_on_card"] = _card_end_marker(context)
             elif tool_name == "mastery_grade":
@@ -289,11 +290,13 @@ class MasteryLoopCapability:
     def finish_instruction(self, context: UnifiedContext, final_text: str) -> str | None:
         """Catch a finish that leaves the learner with nothing to answer.
 
-        Only the *shape of the reply* can trigger this. Two states that read
-        like unfinished protocol are not:
+        A quiz selected in this turn must reach its success callback before
+        the turn can finish, regardless of reply wording or later grading.
+        Text heuristics are only a fallback for replies that never selected
+        the tool. Two other states are not an outstanding delivery:
 
-        ``mastery_quiz`` called without a grade no longer means the question
-        went unasked — that call now poses it on its own card — so a learner
+        A pending question from an earlier turn does not mean it went
+        unasked — it was already posed on its own card — so a learner
         who types a question instead of answering leaves the interaction open
         on purpose, and the tutor answering them is the right reply, not a
         skipped step.
@@ -314,6 +317,14 @@ class MasteryLoopCapability:
         if not self.is_active(context):
             return None
         state = context.extension("mastery")
+        if state.get("quiz_requested") and not state.get("card_posted"):
+            return (
+                "This turn selected mastery_quiz, but no question card was successfully "
+                "posted. Inspect the tool error and retry mastery_quiz with corrected "
+                "arguments. A prose reply or a grading call cannot complete the selected "
+                "question delivery. If delivery remains unsuccessful, this turn must "
+                "fail rather than report successful completion."
+            )
         if not state.get("card_posted") and (
             _announces_an_unposed_question(final_text) or _claims_card_delivery(final_text)
         ):

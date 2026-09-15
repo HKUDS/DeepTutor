@@ -1100,7 +1100,18 @@ async def test_repeated_plain_choice_failure_is_never_published_as_a_finish(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("repair", ["new", "existing", "tool_failure", "repeat"])
+@pytest.mark.parametrize(
+    "repair",
+    [
+        "new",
+        "existing",
+        "tool_failure",
+        "repeat",
+        "selected_retry",
+        "selected_failure",
+        "selected_budget",
+    ],
+)
 async def test_mastery_card_promise_repair_uses_real_question_tool(
     repair: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1174,9 +1185,49 @@ async def test_mastery_card_promise_repair_uses_real_question_tool(
         )
         if repair == "tool_failure":
             script.append([_llm_chunk(content=promise, finish_reason="stop")])
+    selected_quiz = repair.startswith("selected_")
+    if selected_quiz:
+        # No delivery keywords: a failed native tool call alone establishes
+        # the obligation, and unrelated final prose must not erase it.
+        promise = "Done."
+        script = [
+            [
+                _llm_chunk(
+                    tool_calls=[{"id": "bad-quiz", "name": "mastery_quiz", "arguments": "{}"}],
+                    finish_reason="tool_calls",
+                )
+            ],
+            [_llm_chunk(content=promise, finish_reason="stop")],
+            [
+                _llm_chunk(
+                    tool_calls=[
+                        {
+                            "id": "retry-quiz",
+                            "name": "mastery_quiz",
+                            "arguments": json.dumps(quiz_args),
+                        }
+                    ],
+                    finish_reason="tool_calls",
+                )
+            ]
+            if repair == "selected_retry"
+            else [_llm_chunk(content=promise, finish_reason="stop")],
+        ]
+    if repair == "selected_budget":
+        script = [
+            [
+                _llm_chunk(
+                    tool_calls=[{"id": f"bad-{index}", "name": "mastery_quiz", "arguments": "{}"}],
+                    finish_reason="tool_calls",
+                )
+            ]
+            for index in range(4)
+        ] + [[_llm_chunk(content="Done.", finish_reason="stop")]]
     client = _ScriptedChatClient(script)
     registry = RealQuizRegistry()
     pipeline = MasteryLoopPipeline(language="zh")
+    if repair == "selected_budget":
+        pipeline._max_rounds = 1
     pipeline.registry = registry
     monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["mastery_quiz"])
     monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
@@ -1199,10 +1250,17 @@ async def test_mastery_card_promise_repair_uses_real_question_tool(
         and "mastery_question" in e.metadata.get("tool_metadata", {})
     ]
     assert promise not in _answer_text(events)
-    assert "mastery_quiz" in client.calls[1]["messages"][-1]["content"]
-    assert any(s["function"]["name"] == "mastery_quiz" for s in client.calls[1]["tools"])
-    assert client.call_count == (3 if repair == "tool_failure" else 2)
-    succeeded = repair in {"new", "existing"}
+    if repair == "selected_budget":
+        # One exploration round plus three settlement rounds; no tool-less
+        # salvage call can discharge an unfulfilled quiz obligation.
+        assert client.call_count == 4
+        assert all("tools" in call for call in client.calls)
+    else:
+        correction = client.calls[2 if selected_quiz else 1]
+        assert "mastery_quiz" in correction["messages"][-1]["content"]
+        assert any(s["function"]["name"] == "mastery_quiz" for s in correction["tools"])
+        assert client.call_count == (3 if repair == "tool_failure" or selected_quiz else 2)
+    succeeded = repair in {"new", "existing", "selected_retry"}
     assert _result(events).metadata["completed"] is succeeded
     if succeeded:
         assert len(cards) == 1

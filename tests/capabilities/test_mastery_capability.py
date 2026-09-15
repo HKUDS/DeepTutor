@@ -82,7 +82,7 @@ def test_graded_review_may_finish_in_prose():
     capability = MasteryLoopCapability()
     context = _context()
 
-    capability.augment_kwargs("mastery_quiz", {}, context)
+    context.extension("mastery")["quiz_awaiting_grade"] = True
     capability.augment_kwargs("mastery_grade", {}, context)
 
     assert capability.finish_instruction(context, _GRADED_REVIEW) is None
@@ -98,7 +98,7 @@ def test_open_question_still_allows_answering_the_learner():
     capability = MasteryLoopCapability()
     context = _context()
 
-    capability.augment_kwargs("mastery_quiz", {}, context)
+    context.extension("mastery")["quiz_awaiting_grade"] = True
 
     assert capability.finish_instruction(context, "会的，路由失败时它会重写查询再试。") is None
 
@@ -108,7 +108,7 @@ def test_open_question_may_not_be_restated_in_prose():
     capability = MasteryLoopCapability()
     context = _context()
 
-    capability.augment_kwargs("mastery_quiz", {}, context)
+    context.extension("mastery")["quiz_awaiting_grade"] = True
 
     instruction = capability.finish_instruction(context, _GRADED_REVIEW)
     assert instruction is not None
@@ -208,6 +208,35 @@ def test_card_delivery_claim_does_not_guard_plain_chat() -> None:
     assert MasteryLoopCapability().finish_instruction(UnifiedContext(), "卡片就在下面。") is None
 
 
+@pytest.mark.parametrize(
+    "reply", ["Done.", "请继续。", "", "出题失败，请稍后重试。", _GRADED_REVIEW]
+)
+@pytest.mark.parametrize("graded", [False, True])
+def test_selected_quiz_requires_success_regardless_of_final_text(reply: str, graded: bool) -> None:
+    """A selected quiz is an obligation even if a later grade clears awaiting state."""
+    context = _context()
+    capability = MasteryLoopCapability()
+    kwargs = capability.augment_kwargs("mastery_quiz", {}, context)
+    if graded:
+        capability.augment_kwargs("mastery_grade", {}, context)
+        context.metadata["mastery_card_grade"] = {"is_correct": True}
+    instruction = capability.finish_instruction(context, reply)
+    assert instruction is not None
+    assert "no question card was successfully posted" in instruction
+    kwargs["_end_turn_on_card"]()
+    assert capability.finish_instruction(context, "Done.") is None
+
+
+def test_quiz_obligation_does_not_leak_into_another_turn() -> None:
+    """A failed quiz in one context does not require a quiz in another."""
+    capability = MasteryLoopCapability()
+    capability.augment_kwargs("mastery_quiz", {}, _context())
+    other_turn = _context()
+    other_turn.metadata["turn_id"] = "turn-3"
+    capability.augment_kwargs("mastery_status", {}, other_turn)
+    assert capability.finish_instruction(other_turn, "先解释一下冒泡排序。") is None
+
+
 def test_runtime_grading_also_frees_the_review_to_finish():
     """A ruling the runtime made counts as this turn having graded.
 
@@ -227,7 +256,7 @@ def test_reviewing_a_graded_attempt_is_not_an_announcement():
     capability = MasteryLoopCapability()
     context = _context()
 
-    capability.augment_kwargs("mastery_quiz", {}, context)
+    context.extension("mastery")["quiz_awaiting_grade"] = True
     capability.augment_kwargs("mastery_grade", {}, context)
 
     assert capability.finish_instruction(context, "这道题的关键在于闭环反馈，你抓住了。") is None
