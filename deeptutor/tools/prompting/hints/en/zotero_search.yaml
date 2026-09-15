@@ -1,0 +1,6 @@
+short_description: "Search a Zotero library for references already saved by the user."
+when_to_use: "Use when the user asks for an item from their Zotero library or asks whether a saved reference exists. Skip for public web or arXiv searches."
+input_format: "`query` plus the numeric Zotero `user_id`. Include `api_key` only when the user supplies one for a private library."
+guideline: "Do not invent a user_id or API key. If either is missing, ask for the user_id first; mention that the ID is in Zotero account settings."
+note: "Read-only Zotero Web API v3 lookup; returns at most 25 references."
+phase: "expansion"

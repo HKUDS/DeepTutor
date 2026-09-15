@@ -58,6 +58,7 @@ BUILTIN_CAPABILITY_SPECS: dict[str, BuiltinCapabilitySpec] = {
                 "brainstorm",
                 "web_search",
                 "paper_search",
+                "zotero_search",
                 "reason",
                 "geogebra_analysis",
                 "imagegen",

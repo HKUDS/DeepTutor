@@ -22,6 +22,8 @@ class TestExtensionClassification:
             ("notes.md", DocumentType.TEXT),
             ("readme.MARKDOWN", DocumentType.TEXT),
             ("data.json", DocumentType.TEXT),
+            ("references.bib", DocumentType.TEXT),
+            ("REFERENCES.BIB", DocumentType.TEXT),
             ("script.py", DocumentType.TEXT),
             ("config.yaml", DocumentType.TEXT),
             ("paper.docx", DocumentType.DOCX),
