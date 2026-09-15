@@ -41,6 +41,12 @@ dependencies = [
     # install must be able to connect them without an optional extra.
     "mcp>=1.26.0,<2.0.0",
     "pageindex>=0.2.10,<0.3.0",
+    # Partner channel QR onboarding (WeChat, WeCom, Feishu). Same reasoning as
+    # `mcp` above: scan-based onboarding is part of the default partner setup
+    # surface, it is pure Python with no compiled or system dependencies, and
+    # without it the browser renders no code at all — the operator sees a
+    # button that does nothing, with no error to explain why.
+    "qrcode>=7.4.0,<9.0.0",
     # Full app dependencies included by default for `pip install deeptutor`.
     "anthropic>=0.30.0",
     "dashscope>=1.14.0",
@@ -191,8 +197,6 @@ partners = [
     "aiohttp>=3.10.0,<4.0.0",
     # msteams Bot Framework token validation
     "PyJWT[crypto]>=2.8.0,<3.0.0",
-    # weixin QR-code login
-    "qrcode>=7.4.0,<9.0.0",
 ]
 
 # Optional document-parsing engines for the shared parse layer

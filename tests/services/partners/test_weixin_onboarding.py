@@ -370,7 +370,7 @@ async def test_an_unchanged_code_does_not_resend_the_image(monkeypatch, stub_par
 
 
 def test_a_deployment_without_the_qrcode_library_still_gets_a_page(monkeypatch) -> None:
-    """`qrcode` rides on the partners extra; missing it must degrade, not fail."""
+    """A trimmed deployment may still lack `qrcode`; missing it must degrade, not fail."""
     import builtins
 
     real_import = builtins.__import__
