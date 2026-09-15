@@ -38,10 +38,12 @@ import { useTranslation } from "react-i18next";
 
 import { useCapabilityAccess } from "@/components/access/CapabilityAccessContext";
 import {
+  MULTI_USER_DEFAULT_COLLAPSED_NAV_HREFS,
   NAV_BY_HREF,
   PRIMARY_NAV_HREFS,
   isNavActive,
 } from "@/components/sidebar/nav-entries";
+import { useAuthStatus } from "@/hooks/useAuthStatus";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { useDragSort, type DragSort } from "@/hooks/useDragSort";
 import { placeMenu, type FloatingMenuPosition } from "@/lib/floating-menu";
@@ -87,6 +89,7 @@ export function SidebarNav({
   const pathname = usePathname();
   const { t } = useTranslation();
   const { has } = useCapabilityAccess();
+  const { enabled: multiUserMode } = useAuthStatus();
 
   const [layout, setLayout] = useState<SidebarNavLayout>(DEFAULT_NAV_LAYOUT);
   const [moreExpanded, setMoreExpanded] = useState(false);
@@ -95,14 +98,36 @@ export function SidebarNav({
   const menuRootRef = useRef<HTMLDivElement>(null);
   const menuAnchorRef = useRef<HTMLElement | null>(null);
 
+  const applyLayout = useCallback((next: SidebarNavLayout) => {
+    setLayout(next);
+    writeNavLayout(next);
+  }, []);
+
   // Hydrate after first paint so the server and the client agree on the
   // shipped order, then settle into this machine's arrangement.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLayout(readNavLayout());
+    const stored = readNavLayout();
+    if (
+      multiUserMode &&
+      stored.order.length === 0 &&
+      stored.collapsed.length === 0
+    ) {
+      const initial: SidebarNavLayout = {
+        order: [...PRIMARY_NAV_HREFS],
+        collapsed: [...MULTI_USER_DEFAULT_COLLAPSED_NAV_HREFS],
+      };
+      writeNavLayout(initial);
+      // The storage read is one-shot hydration, not a stream of external updates.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLayout(initial);
+    } else {
+      setLayout(stored);
+    }
     setMoreExpanded(browserStorage.readRaw("local", MORE_EXPANDED_KEY) === "1");
-  }, []);
+    // Re-run only when auth resolves/changes so a first multi-user visitor can
+    // adopt the folded default without overwriting an existing arrangement.
+  }, [multiUserMode]);
 
   const resolved = useMemo(
     () => resolveNavLayout(PRIMARY_NAV_HREFS, layout),
@@ -113,11 +138,6 @@ export function SidebarNav({
     () => ({ order: resolved.order, collapsed: resolved.collapsed }),
     [resolved],
   );
-
-  const applyLayout = useCallback((next: SidebarNavLayout) => {
-    setLayout(next);
-    writeNavLayout(next);
-  }, []);
 
   const showMore = useCallback((next: boolean) => {
     setMoreExpanded(next);
