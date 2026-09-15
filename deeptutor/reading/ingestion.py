@@ -794,47 +794,14 @@ def build_transcript_segments(cues: Sequence[TranscriptSegment]) -> list[Transcr
 async def _load_youtube_captions(
     url: str, languages: Sequence[str]
 ) -> tuple[str, str, list[TranscriptSegment]]:
-    video_id = youtube_video_id(url)
-    if not video_id:
-        raise ReadingError("invalid YouTube URL")
+    from deeptutor.video_learning.service import resolve_youtube_captions
 
-    def fetch_rows() -> list[Any]:
-        try:
-            from youtube_transcript_api import YouTubeTranscriptApi
-        except ImportError:
-            # Native playback is independent from transcript extraction.  A
-            # lean CLI/server install may omit this optional dependency; treat
-            # that exactly like a video with no public captions so the material
-            # still opens and the UI explains the grounding limitation.
-            return []
-        api = YouTubeTranscriptApi()
-        try:
-            if hasattr(api, "fetch"):
-                return list(api.fetch(video_id, languages=list(languages)))
-            return list(YouTubeTranscriptApi.get_transcript(video_id, languages=list(languages)))
-        except Exception:
-            # Captions can be disabled, unavailable in the preferred language,
-            # region-blocked, or temporarily rejected by YouTube. None of those
-            # should turn a valid native player into a failed reading source.
-            return []
-
-    rows = await asyncio.to_thread(fetch_rows)
-    segments = build_transcript_segments(normalize_transcript_segments(rows))
-
-    title = "YouTube video"
-    try:
-        import httpx
-
-        async with httpx.AsyncClient(timeout=8) as client:
-            response = await client.get(
-                "https://www.youtube.com/oembed",
-                params={"url": f"https://www.youtube.com/watch?v={video_id}", "format": "json"},
-            )
-            if response.is_success:
-                title = str(response.json().get("title") or title)
-    except Exception:
-        pass
-    cover = f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
+    resolution = await resolve_youtube_captions(url, list(languages))
+    metadata = resolution.metadata
+    video_id = parse_youtube_url(url).video_id
+    segments = build_transcript_segments(normalize_transcript_segments(resolution.cues))
+    title = str(metadata.get("title") or "YouTube video")
+    cover = str(metadata.get("thumbnail_url") or f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg")
     return title, cover, segments
 
 
