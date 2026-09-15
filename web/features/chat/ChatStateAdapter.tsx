@@ -37,8 +37,6 @@ import {
 } from "@/lib/session-api";
 import {
   TraceCache,
-  compactTracePreview,
-  settleMessageTrace,
   type MessageTraceMetadata,
 } from "@/features/chat/trace/memory";
 import {
@@ -349,12 +347,6 @@ type Action =
       messageId: number;
       events: StreamEvent[];
       trace: MessageTraceMetadata;
-    }
-  | {
-      type: "SETTLE_MESSAGE_TRACE";
-      key: string;
-      messageId: number;
-      turnId: string | null;
     }
   | { type: "DELETE_TURN"; key: string; messageId: number }
   | {
@@ -997,35 +989,6 @@ function reducer(state: ProviderState, action: Action): ProviderState {
         },
       };
     }
-    case "SETTLE_MESSAGE_TRACE": {
-      // The finished message trades its full event list for the compact
-      // preview it keeps in memory. Done here, from the events the reducer
-      // holds, rather than from a snapshot taken in the ``done`` handler: that
-      // snapshot lags React's commit, and the last round's content, tool call
-      // and card arrive in the same burst as ``done`` — a stale snapshot
-      // settled the message on a trace without its card.
-      const session = state.sessions[action.key];
-      if (!session) return state;
-      let changed = false;
-      const messages = session.messages.map((message) => {
-        if (message.id !== action.messageId || message.role !== "assistant") {
-          return message;
-        }
-        changed = true;
-        return {
-          ...message,
-          ...settleMessageTrace(message.events ?? [], action.turnId),
-        };
-      });
-      if (!changed) return state;
-      return {
-        ...state,
-        sessions: {
-          ...state.sessions,
-          [action.key]: { ...session, messages, updatedAt: Date.now() },
-        },
-      };
-    }
     case "SET_SELECTED_BRANCH": {
       const session = state.sessions[action.key];
       if (!session) return state;
@@ -1441,6 +1404,7 @@ export function ChatStateAdapterProvider({
   const pendingRegenerateRef = useRef<Map<string, MessageItem>>(new Map());
   const traceCacheRef = useRef<TraceCache>(new TraceCache());
   const traceRequestsRef = useRef<Map<string, AbortController>>(new Map());
+  const turnEventsRef = useRef<Map<string, StreamEvent[]>>(new Map());
   // Forward-declared so ``handleRunnerEvent`` (created above
   // ``loadSession`` in source order) can trigger a server refresh after
   // a turn finishes without taking a stale closure of ``loadSession``.
@@ -1540,16 +1504,29 @@ export function ChatStateAdapterProvider({
   const moveRunner = useCallback((oldKey: string, newKey: string) => {
     if (oldKey === newKey) return;
     const runner = runnersRef.current.get(oldKey);
+    const turnEvents = turnEventsRef.current.get(oldKey);
+    turnEventsRef.current.delete(oldKey);
     if (!runner) return;
     runnersRef.current.delete(oldKey);
     runner.key = newKey;
     runnersRef.current.set(newKey, runner);
+    if (turnEvents) turnEventsRef.current.set(newKey, turnEvents);
   }, []);
 
   const handleRunnerEvent = useCallback(
     (runnerKey: string, event: StreamEvent) => {
       const runner = runnersRef.current.get(runnerKey);
       const effectiveKey = runner?.key || runnerKey;
+      if (
+        event.type !== "session" &&
+        event.type !== "session_meta" &&
+        event.type !== "done"
+      ) {
+        const sourceEvents = turnEventsRef.current.get(effectiveKey) ?? [];
+        if (!sourceEvents.some((item) => isSameTurnEvent(item, event))) {
+          turnEventsRef.current.set(effectiveKey, [...sourceEvents, event]);
+        }
+      }
       // Reading tools ask the reader to act (scroll to a locator, show a mark
       // they just made) by tagging their result metadata. Re-broadcast it as a
       // DOM event so the reader pane can listen without the chat knowing it
@@ -1674,15 +1651,27 @@ export function ChatStateAdapterProvider({
               userMessageId: doneMeta?.user_message_id ?? null,
               assistantMessageId,
             });
-            // Compact the finished message's trace inside the reducer — never
-            // from ``stateRef``, which still lacks whatever arrived in the
-            // same burst as this ``done``.
-            dispatch({
-              type: "SETTLE_MESSAGE_TRACE",
-              key: effectiveKey,
-              messageId: assistantMessageId,
-              turnId: event.turn_id || null,
-            });
+            // Settle from the turn's own event buffer. React's state snapshot
+            // can still lag the ``done`` burst; this buffer cannot.
+            const sourceEvents = turnEventsRef.current.get(effectiveKey) ?? [];
+            turnEventsRef.current.delete(effectiveKey);
+            void import("./trace/compact")
+              .then(({ settleMessageTrace }) => {
+                const settled = settleMessageTrace(
+                  sourceEvents,
+                  event.turn_id || null,
+                );
+                dispatch({
+                  type: "SET_MESSAGE_TRACE",
+                  key: effectiveKey,
+                  messageId: assistantMessageId,
+                  events: settled.events,
+                  trace: settled.trace,
+                });
+              })
+              .catch(() => {
+                // Preview compaction is an optimization; the full trace remains available.
+              });
           } else {
             // Older backend without ids on ``done`` — fall back to the
             // full session refetch.
@@ -1907,6 +1896,7 @@ export function ChatStateAdapterProvider({
           last_seq: page.last_seq,
           truncated: false,
         };
+        const { compactTracePreview } = await import("./trace/compact");
         const preview = compactTracePreview(message.events ?? []);
         const evicted = traceCacheRef.current.retain(key, {
           events: preview.events,
@@ -2330,6 +2320,7 @@ export function ChatStateAdapterProvider({
         });
       }
       dispatch({ type: "STREAM_START", key });
+      turnEventsRef.current.delete(key);
       const {
         _persist_user_message: legacyPersistUserMessage,
         _course_id: _legacyCourseId,
@@ -2495,6 +2486,7 @@ export function ChatStateAdapterProvider({
     }
     dispatch({ type: "POP_LAST_ASSISTANT", key });
     dispatch({ type: "STREAM_START", key });
+    turnEventsRef.current.delete(key);
     sendThroughRunner(key, {
       type: "regenerate",
       session_id: session.sessionId,

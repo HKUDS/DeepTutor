@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import { useTranslation } from "react-i18next";
 import {
   ArrowLeft,
@@ -35,7 +36,6 @@ import type { HistoryEntry } from "@/hooks/useKnowledgeHistory";
 import KbStatusBadge from "./KbStatusBadge";
 import KbFilesTab from "./KbFilesTab";
 import KbDocumentsSection from "./KbDocumentsSection";
-import KbIndexVersionsSection from "./KbIndexVersionsSection";
 import KbSettingsSection from "./KbSettingsSection";
 import KbGitHubSourcesSection from "./KbGitHubSourcesSection";
 import KbWebSourcesSection from "./KbWebSourcesSection";
@@ -43,6 +43,10 @@ import KbMarginNoteDevicesSection from "./KbMarginNoteDevicesSection";
 import KnowledgeEngineIcon, {
   knowledgeSourceIconId,
 } from "./KnowledgeEngineIcon";
+
+const KbIndexVersionsSection = dynamic(() => import("./KbIndexVersionsSection"), {
+  ssr: false,
+});
 
 interface KnowledgeBaseDetailProps {
   kb: KnowledgeBase | null;

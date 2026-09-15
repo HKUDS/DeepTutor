@@ -13,6 +13,7 @@ import {
   FileText,
   Loader2,
   History,
+  Network,
   PanelRightClose,
   PanelRightOpen,
   X,
@@ -38,6 +39,7 @@ import {
 import { AnnotationList } from "./AnnotationList";
 import { AnnotationPopover } from "./AnnotationPopover";
 import { EpubDocumentView } from "./EpubDocumentView";
+import { EntityGraphPanel } from "./EntityGraphPanel";
 import {
   PdfDocumentView,
   type JumpRequest,
@@ -200,6 +202,7 @@ export function ReaderPane({
   const [autoJump, setAutoJump] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [currentLocator, setCurrentLocator] = useState(1);
+  const [graphOpen, setGraphOpen] = useState(false);
   const nonceRef = useRef(0);
   const headingLocatorRef = useRef(1);
   const jumpMaterialIdRef = useRef<string | null>(null);
@@ -238,6 +241,10 @@ export function ReaderPane({
       // Private mode / storage disabled — keep the default.
     }
   }, []);
+
+  useEffect(() => {
+    setGraphOpen(false);
+  }, [material?.material_id]);
 
   const toggleAutoJump = useCallback(() => {
     setAutoJump((current) => {
@@ -812,6 +819,12 @@ export function ReaderPane({
               />
             )}
             <HeaderButton
+              icon={Network}
+              label={t("Relationship graph")}
+              active={graphOpen}
+              onClick={() => setGraphOpen((open) => !open)}
+            />
+            <HeaderButton
               icon={Crosshair}
               label={
                 autoJump
@@ -996,6 +1009,15 @@ export function ReaderPane({
               onDelete={(annotation) => void removeMark(annotation)}
             />
           </aside>
+        )}
+
+        {material && graphOpen && (
+          <EntityGraphPanel
+            materialId={material.material_id}
+            materialUnit={material.unit}
+            locator={currentLocator}
+            onClose={() => setGraphOpen(false)}
+          />
         )}
       </div>
 

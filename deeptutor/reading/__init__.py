@@ -32,6 +32,11 @@ from deeptutor.reading.catalog_models import (
     WorkspaceTab,
 )
 from deeptutor.reading.catalog_store import ReadingCatalogStore
+from deeptutor.reading.entity_graph import (
+    EntityGraphExtractionError,
+    normalise_entity_graph,
+    render_entity_graph_mermaid,
+)
 from deeptutor.reading.epub_bilingual import (
     create_epub_pairing,
     delete_epub_pairing,
@@ -83,6 +88,7 @@ __all__ = [
     "Extraction",
     "IngestionStatus",
     "MaterialRecord",
+    "EntityGraphExtractionError",
     "MaterialManifest",
     "MaterialNotFound",
     "OutlineEntry",
@@ -114,11 +120,13 @@ __all__ = [
     "extract_material",
     "list_epub_pairings",
     "material_summary",
+    "normalise_entity_graph",
     "parse_locators",
     "render_outline",
     "recommend_epub_candidates",
     "render_units",
     "unit_timestamps",
+    "render_entity_graph_mermaid",
     "search_material",
     "search_units",
     "verify_quote",
