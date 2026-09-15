@@ -232,6 +232,18 @@ class ReadingStore:
         if not data:
             raise ReadingError(f"{path.name} is empty")
 
+        is_epub = path.suffix.lower() == ".epub"
+        if is_epub:
+            from deeptutor.utils.document_extractor import (
+                DocumentExtractionError,
+                normalize_epub_archive,
+            )
+
+            try:
+                data = normalize_epub_archive(data, path.name)
+            except DocumentExtractionError as exc:
+                raise ReadingError(f"{path.name}: failed to read EPUB ({exc})") from exc
+
         material_id = content_hash(data)
         display_name = (filename or path.name).strip() or path.name
 
@@ -249,7 +261,7 @@ class ReadingStore:
                         "Export those annotations before replacing it with the source-faithful version."
                     )
 
-            extraction = extract_material(path)
+            extraction = extract_material(path, data=data if is_epub else None)
             material_dir = self._dir(material_id)
             stage_dir = self.root / f".{material_id}.{uuid.uuid4().hex[:8]}.staging"
             backup_dir = self.root / f".{material_id}.{uuid.uuid4().hex[:8]}.backup"

@@ -6,6 +6,7 @@ path service, a user workspace, or an LLM.
 
 from __future__ import annotations
 
+import io
 import json
 from pathlib import Path
 import zipfile
@@ -20,6 +21,7 @@ from deeptutor.reading import (
     Rect,
     TextPositionSelector,
     TextQuoteSelector,
+    content_hash,
     export_material,
     parse_locators,
     render_outline,
@@ -79,6 +81,22 @@ def _write_epub(path: Path) -> Path:
             "OEBPS/chapters/two.xhtml",
             "<html xmlns='http://www.w3.org/1999/xhtml'><body><h1>Second Chapter</h1><p>Beta source text.</p></body></html>",
         )
+    return path
+
+
+def _wrap_epub_for_finder(path: Path) -> Path:
+    """Model the package macOS Finder makes when it compresses an EPUB."""
+    data = path.read_bytes()
+    with zipfile.ZipFile(io.BytesIO(data)) as source:
+        output = io.BytesIO()
+        with zipfile.ZipFile(output, "w") as target:
+            for info in source.infolist():
+                target.writestr(f"MyBook/{info.filename}", source.read(info))
+            target.writestr(
+                "__MACOSX/OEBPS/._one.xhtml",
+                b"\x00\x05\x16\x07" + b"\x00" * 60,
+            )
+    path.write_bytes(output.getvalue())
     return path
 
 
@@ -256,6 +274,33 @@ def test_epub_store_keeps_original_but_legacy_pdf_flag_stays_false(
     assert manifest.has_raw_view is False
     assert store.raw_path(manifest.material_id) is not None
     assert store.unit_references(manifest.material_id)[1].source_href.endswith("two.xhtml")
+
+
+def test_epub_store_normalizes_finder_packages_for_browser_readers(
+    store: ReadingStore, tmp_path: Path
+) -> None:
+    path = _wrap_epub_for_finder(_write_epub(tmp_path / "book.epub"))
+
+    manifest = store.ingest(path)
+
+    raw = store.raw_path(manifest.material_id)
+    assert raw is not None
+    normalized = raw.read_bytes()
+    assert manifest.byte_size == len(normalized)
+    assert manifest.source_hash == content_hash(normalized)
+    assert [ref.source_href for ref in store.unit_references(manifest.material_id)] == [
+        "OEBPS/chapters/one.xhtml",
+        "OEBPS/chapters/two.xhtml",
+    ]
+    with zipfile.ZipFile(io.BytesIO(normalized)) as archive:
+        infos = archive.infolist()
+        assert archive.read("mimetype") == b"application/epub+zip"
+    assert infos[0].filename == "mimetype"
+    assert infos[0].compress_type == zipfile.ZIP_STORED
+    assert all(
+        "__MACOSX" not in info.filename and not info.filename.startswith("MyBook/")
+        for info in infos
+    )
 
 
 def test_position_round_trip_validates_locator_and_anchor(

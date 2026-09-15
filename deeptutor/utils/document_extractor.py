@@ -881,6 +881,67 @@ def extract_epub_spine(
     return tuple(units), tuple(outline)
 
 
+def normalize_epub_archive(data: bytes, filename: str) -> bytes:
+    """Return an EPUB archive that browser OCF readers can open directly.
+
+    The text extractor understands Finder-style packages with a top-level
+    directory and ``__MACOSX`` residue. Browser EPUB readers are stricter: they
+    expect ``META-INF/container.xml`` at the archive root. Repack only those
+    non-conforming archives so ordinary books keep their original bytes.
+    """
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            _validate_epub_archive(zf, filename)
+            infos = [info for info in zf.infolist() if not info.is_dir()]
+            useful = [info for info in infos if not _epub_is_packaging_residue(info.filename)]
+            has_residue = len(useful) != len(infos)
+            container = next(
+                (info.filename for info in useful if info.filename.endswith(_EPUB_CONTAINER_PATH)),
+                "",
+            )
+            prefix = container[: -len(_EPUB_CONTAINER_PATH)] if container else ""
+            if prefix and not all(info.filename.startswith(prefix) for info in useful):
+                # A package document buried among unrelated root files is not
+                # a wrapped book. Leave it for the extractor's fallback path.
+                prefix = ""
+            if not prefix and not has_residue:
+                return data
+
+            output = io.BytesIO()
+            with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as normalized:
+                mimetype_name = f"{prefix}mimetype"
+                mimetype_info = next(
+                    (info for info in useful if info.filename == mimetype_name), None
+                )
+                if mimetype_info is None:
+                    normalized.writestr(
+                        "mimetype",
+                        b"application/epub+zip",
+                        compress_type=zipfile.ZIP_STORED,
+                    )
+                else:
+                    normalized.writestr(
+                        "mimetype",
+                        zf.read(mimetype_info),
+                        compress_type=zipfile.ZIP_STORED,
+                    )
+
+                for info in useful:
+                    name = info.filename[len(prefix) :] if prefix else info.filename
+                    if not name or name == "mimetype":
+                        continue
+                    normalized.writestr(name, zf.read(info), compress_type=zipfile.ZIP_DEFLATED)
+            return output.getvalue()
+    except zipfile.BadZipFile as exc:
+        raise CorruptDocumentError(
+            f"{filename}: failed to open Office ZIP package ({exc})", filename=filename
+        ) from exc
+    except OSError as exc:
+        raise CorruptDocumentError(
+            f"{filename}: failed to normalize EPUB archive ({exc})", filename=filename
+        ) from exc
+
+
 def _extract_epub(data: bytes, filename: str) -> str:
     """Extract the reading text of an EPUB with only the standard library."""
     units, _ = extract_epub_spine(data, filename)
