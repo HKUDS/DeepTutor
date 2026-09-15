@@ -2,7 +2,13 @@
 
 from datetime import datetime, timezone
 
-from deeptutor.services.llm.error_mapping import map_error, retry_after_seconds
+import pytest
+
+from deeptutor.services.llm.error_mapping import (
+    map_error,
+    parse_retry_after_seconds,
+    retry_after_seconds,
+)
 from deeptutor.services.llm.exceptions import (
     LLMAPIError,
     LLMAuthenticationError,
@@ -60,6 +66,11 @@ def test_retry_after_seconds_parses_http_date() -> None:
     )
 
     assert delay == 10.0
+
+
+@pytest.mark.parametrize("value", ["", "tomorrow", "-1", "nan", True, None])
+def test_parse_retry_after_seconds_rejects_invalid_values(value: object) -> None:
+    assert parse_retry_after_seconds(value) is None
 
 
 def test_map_error_message_context_window() -> None:
