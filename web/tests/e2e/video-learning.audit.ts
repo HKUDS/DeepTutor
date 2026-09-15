@@ -14,6 +14,7 @@ for (const mobile of [false, true]) {
     let transcriptReady = true
     let transcriptRefreshCount = 0
     let savedPosition = 0
+    let recentMode: 'delayed' | 'ready' | 'empty' | 'error' = 'delayed'
     let nativeResolveCount = 0
     let exportRequestCount = 0
     let exportShouldFail = false
@@ -253,6 +254,25 @@ for (const mobile of [false, true]) {
         })
       }
       if (path === '/api/dashboard/suggestions') return json({ suggestions: [], stale: false })
+      if (path === '/api/video-learning/materials') {
+        if (recentMode === 'delayed') await new Promise(resolve => setTimeout(resolve, 400))
+        if (recentMode === 'error') return json({ detail: 'Recent videos are unavailable' }, 500)
+        if (recentMode === 'empty') return json([])
+        return json([
+          {
+            material_id: MATERIAL_ID,
+            title: 'Recent lesson',
+            author: 'Teacher',
+            duration_seconds: 120,
+            thumbnail_url: '',
+            provider: 'youtube',
+            video_id: 'dQw4w9WgXcQ',
+            source_url: 'https://youtu.be/dQw4w9WgXcQ',
+            last_position: savedPosition,
+            updated_at: '2026-08-31T12:00:00Z',
+          },
+        ])
+      }
       if (path === '/api/video-learning/materials/resolve') {
         const body = request.postDataJSON() as {
           provider_override?: 'youtube'
@@ -348,6 +368,8 @@ for (const mobile of [false, true]) {
 
     await page.goto('/chat?capability=immersive_watching')
     await expect(page).toHaveURL(/\/watching$/)
+    await expect(page.getByText('Loading recent videos.')).toBeVisible()
+    await expect(page.getByText('Recent lesson')).toBeVisible()
     await expect(page.getByRole('button', { name: 'Disconnect Invidious' })).toBeVisible()
     await expect(page.getByRole('button', { name: /Browse lesson/ })).toBeVisible()
     await page.getByRole('button', { name: 'Playlists', exact: true }).click()
@@ -372,7 +394,9 @@ for (const mobile of [false, true]) {
       'aria-pressed',
       'true'
     )
-    await page.getByRole('button', { name: 'Set playback speed to 1.5x' }).click()
+    await page
+      .getByRole('button', { name: 'Set playback speed to 1.5x' })
+      .click()
     await expect
       .poll(() =>
         page.evaluate(() => {
@@ -384,13 +408,19 @@ for (const mobile of [false, true]) {
       )
       .toBe(1.5)
 
-    await page.evaluate(() => {
-      const player = (
-        window as typeof window & { __fakePlayers: Array<{ current: number }> }
-      ).__fakePlayers.at(-1)
-      if (player) player.current = 8
-    })
-    await expect(page.getByText('The first grounded concept.').locator('..')).toHaveClass(/ring-1/)
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const player = (
+            window as typeof window & { __fakePlayers: Array<{ current: number }> }
+          ).__fakePlayers.at(-1)
+          if (player) player.current = 8
+          return document
+            .querySelector('[data-transcript-cue="0"]')
+            ?.getAttribute('data-active-cue')
+        })
+      )
+      .toBe('true')
 
     const transcriptList = page.getByTestId('video-transcript-list')
     const followButton = page.getByRole('button', { name: 'Follow playback' })
@@ -484,13 +514,21 @@ for (const mobile of [false, true]) {
       timed_media_id: MATERIAL_ID,
     })
     if (mobile) await page.getByRole('button', { name: 'Video', exact: true }).click()
-    await page.evaluate(() => {
-      const player = (
-        window as typeof window & { __fakePlayers: Array<{ current: number }> }
-      ).__fakePlayers.at(-1)
-      if (player) player.current = 8
-    })
-    await expect(page.getByText('The first grounded concept.').locator('..')).toHaveClass(/ring-1/)
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const player = (
+            window as typeof window & {
+              __fakePlayers?: Array<{ current: number }>
+            }
+          ).__fakePlayers?.at(-1)
+          if (player) player.current = 8
+          return document
+            .querySelector('[data-transcript-cue="0"]')
+            ?.getAttribute('data-active-cue')
+        })
+      )
+      .toBe('true')
 
     await page.getByRole('tab', { name: 'Video notes' }).click()
     await expect(page.getByText('No notes yet.')).toBeVisible()
@@ -595,9 +633,7 @@ for (const mobile of [false, true]) {
       )
       .toBeGreaterThanOrEqual(70)
 
-    await page
-      .getByRole('button', { name: 'Set playback speed to 1.5x' })
-      .click()
+    await page.getByRole('button', { name: 'Set playback speed to 1.5x' }).click()
 
     provider = 'invidious'
     transcriptReady = false
@@ -655,5 +691,32 @@ for (const mobile of [false, true]) {
         })
       )
       .toBe(1)
+
+    recentMode = 'empty'
+    await page.goto('/watching')
+    await expect(page.getByText('No recent videos yet.')).toBeVisible()
+
+    recentMode = 'error'
+    await page.reload()
+    await expect(page.getByText('Recent videos could not be loaded.')).toBeVisible()
+
+    recentMode = 'ready'
+    await page.getByRole('button', { name: 'Retry' }).click()
+    await expect(page.getByText('Recent lesson')).toBeVisible()
+    const resumedPosition = savedPosition
+    await page.getByRole('button', { name: 'Continue watching Recent lesson' }).click()
+    await expect(page).toHaveURL(/\/watching\?video=https%3A%2F%2Fyoutu\.be%2FdQw4w9WgXcQ/)
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const player = (
+            window as typeof window & {
+              __fakePlayers?: Array<{ current: number }>
+            }
+          ).__fakePlayers?.at(-1)
+          return player?.current || 0
+        })
+      )
+      .toBeGreaterThanOrEqual(resumedPosition)
   })
 }

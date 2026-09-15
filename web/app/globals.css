@@ -1184,6 +1184,11 @@ a[href^="#dt-locator-"]:hover {
   min-width: 0;
   border-radius: 12px;
 }
+.watching-recent-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 20px 16px;
+}
 .watching-video-card:hover h2 {
   text-decoration: underline;
 }
@@ -1226,6 +1231,9 @@ a[href^="#dt-locator-"]:hover {
 }
 @media (max-width: 520px) {
   .watching-video-grid {
+    grid-template-columns: 1fr;
+  }
+  .watching-recent-grid {
     grid-template-columns: 1fr;
   }
 }
