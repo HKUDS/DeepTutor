@@ -51,6 +51,39 @@ def _module_payload(module_id: str = "m1", kp_id: str = "kp1") -> dict:
 # -- GET /progress (list_all) --------------------------------------------
 
 
+class TestReadingLearningRecords:
+    def test_summary_returns_progress_and_activity(self, app, client):
+        store = LearningStore(root=app.state.learning_root)
+        store.record_reading_position("rm_one", locator=3, percentage=0.3)
+        store.record_reading_activity(
+            "rm_one",
+            extension_id="sample",
+            action="open",
+            locator=3,
+            result_type="card",
+        )
+
+        response = client.get("/api/mastery-paths/reading/records")
+
+        assert response.status_code == 200, response.text
+        data = response.json()
+        assert data["progress"] == [
+            {
+                "material_id": "rm_one",
+                "latest_locator": 3,
+                "latest_percentage": 0.3,
+                "furthest_locator": 3,
+                "furthest_percentage": 0.3,
+                "updated_at": data["progress"][0]["updated_at"],
+            }
+        ]
+        assert len(data["activities"]) == 1
+        assert data["activities"][0]["material_id"] == "rm_one"
+        assert data["activities"][0]["extension_id"] == "sample"
+        assert data["activities"][0]["action"] == "open"
+        assert data["activities"][0]["result_type"] == "card"
+
+
 class TestListProgress:
     def test_list_runs_blocking_store_work_in_worker_thread(self, client):
         with patch(
