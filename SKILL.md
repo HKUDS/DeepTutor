@@ -143,7 +143,7 @@ deeptutor notebook remove-record <notebook_id> <record_id>
 
 ```bash
 deeptutor provider login openai-codex               # OAuth login for OpenAI Codex
-deeptutor provider login github-copilot             # Validate an existing Copilot auth session
+deeptutor provider login github-copilot             # Sign in through GitHub device flow
 ```
 
 ### System

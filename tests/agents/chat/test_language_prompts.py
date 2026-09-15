@@ -6,6 +6,8 @@ import pytest
 
 from deeptutor.agents.chat.agentic_pipeline import AgenticChatPipeline
 from deeptutor.agents.loop.prompt_blocks import ChatPromptAssembler
+from deeptutor.services.llm.provider_core.openai_responses import convert_messages
+from deeptutor.services.prompt.language import language_directive
 
 
 @pytest.fixture(autouse=True)
@@ -50,6 +52,31 @@ def test_agentic_chat_final_prompt_uses_selected_language(
     # English text with a Chinese tail appended.
     assert "你是 DeepTutor" in zh_prompt
     assert "You are DeepTutor" in en_prompt
+
+
+@pytest.mark.parametrize("language", ["zh", "en"])
+def test_compacted_chat_keeps_language_directive_in_responses_request(
+    monkeypatch: pytest.MonkeyPatch, language: str
+) -> None:
+    from deeptutor.core.context import UnifiedContext
+
+    monkeypatch.setattr(
+        "deeptutor.agents.loop.pipeline.get_tool_registry",
+        lambda: SimpleNamespace(build_prompt_text=lambda *_args, **_kwargs: ""),
+    )
+    context = UnifiedContext(
+        language=language,
+        user_message="Continue",
+        conversation_history=[{"role": "system", "content": "Previous discussion was in English."}],
+    )
+    pipeline = AgenticChatPipeline(language=language)
+    messages = pipeline._build_loop_messages(enabled_tools=[], context=context)
+    assert len([msg for msg in messages if msg["role"] == "system"]) == 2
+
+    instructions, _items = convert_messages(messages)
+
+    assert language_directive(language).strip() in instructions
+    assert "Previous discussion was in English." in instructions
 
 
 def test_mastery_plugin_system_prompt_uses_localized_fallback(

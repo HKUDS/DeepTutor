@@ -52,7 +52,7 @@ def _model_by_id(profile: dict[str, Any], model_id: str) -> dict[str, Any] | Non
 #: a CodeBuddy profile is, and it reads the operator's own IDE-plugin session —
 #: and there is nowhere for such a profile to acquire the flag. Binding is the
 #: durable fact, so it decides too.
-OWNER_BOUND_BINDINGS = frozenset({"openai_codex", "codebuddy"})
+OWNER_BOUND_BINDINGS = frozenset({"openai_codex", "codebuddy", "github_copilot"})
 
 
 def is_owner_bound(profile: dict[str, Any]) -> bool:
@@ -62,7 +62,7 @@ def is_owner_bound(profile: dict[str, Any]) -> bool:
     a billable team key, so those profiles are never lent to other accounts
     through grants — each user signs in for themselves or goes without.
     """
-    binding = str(profile.get("binding") or "").strip().lower()
+    binding = str(profile.get("binding") or "").strip().lower().replace("-", "_")
     if binding in OWNER_BOUND_BINDINGS:
         return True
     return bool(profile.get("owner_bound"))
