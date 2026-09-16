@@ -1,0 +1,5 @@
+short_description: "Turn an attached knowledge base into grounded recent arXiv recommendations."
+when_to_use: "The learner asks for frontier papers, research trends, gaps to explore, or what to study next based on an attached knowledge base."
+input_format: "kb_name; optional focus, max_papers, and years_limit"
+guideline: "Use after the knowledge base is attached; call once per knowledge base. Treat results as suggestions for explicit review, not imported material."
+phase: expansion

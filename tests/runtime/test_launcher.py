@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import builtins
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -700,3 +701,46 @@ def test_stop_requests_only_the_registered_detached_launcher(
     assert launcher.stop(tmp_path, timeout=0.5) is True
     assert not paths.state.exists()
     assert not paths.stop.exists()
+
+
+def test_ready_timeout_is_overridable_for_slow_hardware(monkeypatch) -> None:
+    """An ARM board with a workspace to migrate can need past 60s (#1435).
+
+    The launcher killed a backend that was still initialising and let the
+    supervisor restart it into the same wall, so the wait has to be a property
+    of the machine rather than a constant.
+    """
+    monkeypatch.setenv(launcher.BACKEND_READY_TIMEOUT_ENV, "180")
+    assert launcher._ready_timeout(launcher.BACKEND_READY_TIMEOUT_ENV, 60) == 180
+
+    for unusable in ("", "   ", "soon", "0", "-5"):
+        monkeypatch.setenv(launcher.BACKEND_READY_TIMEOUT_ENV, unusable)
+        assert launcher._ready_timeout(launcher.BACKEND_READY_TIMEOUT_ENV, 60) == 60
+
+    monkeypatch.delenv(launcher.BACKEND_READY_TIMEOUT_ENV, raising=False)
+    assert launcher._ready_timeout(launcher.BACKEND_READY_TIMEOUT_ENV, 60) == 60
+
+
+def test_ready_timeout_failure_names_the_override(monkeypatch) -> None:
+    """A bare "did not become ready in 60s" left the reporter nothing to do."""
+    process = SimpleNamespace(process=SimpleNamespace(poll=lambda: None))
+    clock = iter([0.0, 0.0, 999.0])
+    monkeypatch.setattr(launcher.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(launcher.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(
+        launcher.urlrequest,
+        "urlopen",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("refused")),
+    )
+
+    with pytest.raises(RuntimeError) as excinfo:
+        launcher._wait_for_http(
+            name="Backend",
+            url="http://127.0.0.1:65535/",
+            process=process,
+            timeout=60,
+            env_name=launcher.BACKEND_READY_TIMEOUT_ENV,
+            should_stop=lambda: False,
+        )
+
+    assert launcher.BACKEND_READY_TIMEOUT_ENV in str(excinfo.value)

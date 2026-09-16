@@ -511,27 +511,28 @@ def test_report_outline_parser_repairs_missing_block_coverage(
         ResearchedBlock(block=b3, knowledge="Operational rollout."),
     ]
 
+    # The parser takes the decoded payload now: decoding moved out to the
+    # caller so a starved response can be retried at lower reasoning effort
+    # before anything tries to read sections out of it.
     outline = pipeline._parse_report_outline(
         "AI safety operations",
-        """
         {
-          "title": "AI Safety Operations",
-          "sections": [
-            {
-              "id": "S1",
-              "title": "Background",
-              "intent": "Definitions and history",
-              "block_ids": ["block_1"]
-            },
-            {
-              "id": "S2",
-              "title": "## [S2]：Deployment",
-              "intent": "Rollout plan",
-              "block_ids": []
-            }
-          ]
-        }
-        """,
+            "title": "AI Safety Operations",
+            "sections": [
+                {
+                    "id": "S1",
+                    "title": "Background",
+                    "intent": "Definitions and history",
+                    "block_ids": ["block_1"],
+                },
+                {
+                    "id": "S2",
+                    "title": "## [S2]：Deployment",
+                    "intent": "Rollout plan",
+                    "block_ids": [],
+                },
+            ],
+        },
         blocks,
     )
 

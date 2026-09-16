@@ -35,7 +35,15 @@ import LearningCapturePanel from './components/LearningCapturePanel'
 import SpineEditor from './components/SpineEditor'
 import type { QuizAttemptArgs } from './components/blocks/QuizBlock'
 
-type View = 'list' | 'creator' | 'spine' | 'reader'
+/**
+ * Which surface is on screen.
+ *
+ * `opening` is the one the route can assert before any data exists: a deep
+ * book URL is not the library, and defaulting to `list` while the fetch was
+ * in flight drew the (still empty) library first and jumped to the book when
+ * it landed — a direct link or a refresh looked like a bad route (#1440).
+ */
+type View = 'list' | 'opening' | 'creator' | 'spine' | 'reader'
 
 // Blocks land one at a time during compilation. Coalescing a burst into a
 // single fetch keeps a page that is actively generating from issuing one
@@ -98,7 +106,7 @@ function BookPageInner() {
   const [books, setBooks] = useState<Book[]>([])
   const [canCreateBook, setCanCreateBook] = useState(true)
   const [loadingBooks, setLoadingBooks] = useState(false)
-  const [view, setView] = useState<View>('list')
+  const [view, setView] = useState<View>(requestedBookId ? 'opening' : 'list')
 
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null)
   const [detail, setDetail] = useState<BookDetail | null>(null)
@@ -436,8 +444,21 @@ function BookPageInner() {
     if (requestedBookId === selectedBookId) return
     if (requestedBookId === lastDeepLinkedBookId.current) return
     lastDeepLinkedBookId.current = requestedBookId
-    void handleSelectBook(requestedBookId, requestedPageId)
-  }, [requestedBookId, requestedPageId, selectedBookId, handleSelectBook])
+    // The shell is now drawn before the book exists, so a load that fails has
+    // to say so and hand the reader back; otherwise the shell is where they
+    // stay. Selecting nothing returns to the library and to its URL.
+    void handleSelectBook(requestedBookId, requestedPageId).catch(err => {
+      notify(
+        t('{{action}} failed: {{reason}}', {
+          action: t('Open book'),
+          reason: bookErrorMessage(err, t),
+        }),
+        { tone: 'error', durationMs: 8000 }
+      )
+      console.error('Open book failed:', err)
+      void handleSelectBook(null)
+    })
+  }, [requestedBookId, requestedPageId, selectedBookId, handleSelectBook, t])
 
   useEffect(() => {
     if (view !== 'reader' || !selectedBookId) {
@@ -996,6 +1017,13 @@ function BookPageInner() {
             />
           )}
           <div className="min-h-0 flex-1 overflow-hidden">
+          {view === 'opening' && (
+            <div className="flex h-full w-full items-center justify-center gap-2 text-[12px] text-[var(--muted-foreground)]">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <BookLoadingText />
+            </div>
+          )}
+
           {view === 'list' && (
             <BookLibrary
               books={books}

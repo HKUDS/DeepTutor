@@ -86,6 +86,9 @@ def main() -> None:
         reload_excludes=reload_excludes if dev_reload else None,
         log_level="info",
         access_log=False,
+        # XFF is client-controlled in this deployment. Keep request.client tied
+        # to the actual backend peer for the selective access log.
+        proxy_headers=False,
         ws_max_size=get_ws_max_size(),
         timeout_keep_alive=HTTP_KEEP_ALIVE_TIMEOUT,
     )

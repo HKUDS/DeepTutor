@@ -32,8 +32,31 @@ from deeptutor.runtime.memory_probe import SUPERVISOR_PID_ENV
 from deeptutor.runtime.process import is_process_alive
 from deeptutor.services.app_update import LAUNCHER_PID_ENV
 
-BACKEND_READY_TIMEOUT = 60
-FRONTEND_READY_TIMEOUT = 120
+BACKEND_READY_TIMEOUT_ENV = "DEEPTUTOR_BACKEND_READY_TIMEOUT"
+FRONTEND_READY_TIMEOUT_ENV = "DEEPTUTOR_FRONTEND_READY_TIMEOUT"
+
+
+def _ready_timeout(env_name: str, default: int) -> int:
+    """Seconds to wait for a child to answer, overridable per deployment.
+
+    The wait has to end somewhere, but where is a property of the machine, not
+    of the product: on ARM boards and on workspaces with data to migrate the
+    backend has been seen reaching ``Application startup complete`` at 78s,
+    and a fixed 60 killed it mid-initialisation and let systemd restart it
+    into the same wall (#1435).
+    """
+    raw = str(os.environ.get(env_name, "")).strip()
+    if not raw:
+        return default
+    try:
+        seconds = int(raw)
+    except ValueError:
+        return default
+    return seconds if seconds > 0 else default
+
+
+BACKEND_READY_TIMEOUT = _ready_timeout(BACKEND_READY_TIMEOUT_ENV, 60)
+FRONTEND_READY_TIMEOUT = _ready_timeout(FRONTEND_READY_TIMEOUT_ENV, 120)
 FRONTEND_REUSE_PROBE_TIMEOUT = 2
 KILL_SIGNAL = getattr(signal, "SIGKILL", signal.SIGTERM)
 WEB_CACHE_DIR = Path("data") / "user" / "runtime" / "web"
@@ -511,6 +534,7 @@ def _wait_for_http(
     url: str,
     process: ManagedProcess | None,
     timeout: int,
+    env_name: str,
     should_stop: Callable[[], bool],
 ) -> None:
     _log(_t("start.waiting_for", name=name, url=url))
@@ -526,7 +550,7 @@ def _wait_for_http(
                 return
         except (urlerror.URLError, TimeoutError, OSError):
             time.sleep(0.5)
-    raise RuntimeError(_t("start.not_ready", name=name, timeout=timeout))
+    raise RuntimeError(_t("start.not_ready", name=name, timeout=timeout, env=env_name))
 
 
 def _http_ready(url: str, *, timeout: float) -> bool:
@@ -1368,6 +1392,8 @@ def start(
         # 200 polling (/settings, /tools, /knowledge-bases, ...) stays out of the
         # logs — matching run_server.py's access_log=False.
         "--no-access-log",
+        # Do not replace the backend peer with client-controlled XFF values.
+        "--no-proxy-headers",
         # Chat attachments ride the unified WS as base64 in one JSON message;
         # uvicorn's default 16MB frame cap would sever the socket on uploads
         # allowed by the configured policy. Derived from system.json — raising
@@ -1434,6 +1460,7 @@ def start(
             url=f"http://127.0.0.1:{backend_port}/",
             process=backend,
             timeout=BACKEND_READY_TIMEOUT,
+            env_name=BACKEND_READY_TIMEOUT_ENV,
             should_stop=should_stop,
         )
         if should_stop():
@@ -1447,6 +1474,7 @@ def start(
                 url=frontend_url,
                 process=None,
                 timeout=FRONTEND_READY_TIMEOUT,
+                env_name=FRONTEND_READY_TIMEOUT_ENV,
                 should_stop=should_stop,
             )
         else:
@@ -1458,6 +1486,7 @@ def start(
                 url=f"http://127.0.0.1:{frontend_port}/",
                 process=web,
                 timeout=FRONTEND_READY_TIMEOUT,
+                env_name=FRONTEND_READY_TIMEOUT_ENV,
                 should_stop=should_stop,
             )
         if should_stop():

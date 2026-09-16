@@ -63,8 +63,10 @@ export interface MessageTracePage {
 
 export interface SessionPreferences {
   capability?: string;
+  timed_media_id?: string;
   /** Stable learning surface, independent of the action used for a turn. */
-  workspace_mode?: "immersive_reading" | "mastery_path" | "";
+  workspace_mode?:
+    "immersive_reading" | "mastery_path" | "immersive_watching" | "";
   tools?: string[];
   knowledge_bases?: string[];
   language?: string;
@@ -101,14 +103,23 @@ export interface SessionSummary {
   message_count: number;
   last_message: string;
   status?:
-    | "idle"
-    | "running"
-    | "completed"
-    | "failed"
-    | "cancelled"
-    | "rejected";
+    "idle" | "running" | "completed" | "failed" | "cancelled" | "rejected";
   active_turn_id?: string;
   preferences?: SessionPreferences;
+}
+
+export interface SessionSearchResult extends SessionSummary {
+  match_excerpt: string;
+  match_role?: "user" | "assistant" | null;
+  match_message_id?: number | string | null;
+  match_created_at?: number | null;
+}
+
+export interface SessionSearchPage {
+  sessions: SessionSearchResult[];
+  total: number;
+  limit: number;
+  offset: number;
 }
 
 export interface ActiveTurnSummary {
@@ -131,12 +142,7 @@ export interface SessionDetail {
   created_at: number;
   updated_at: number;
   status?:
-    | "idle"
-    | "running"
-    | "completed"
-    | "failed"
-    | "cancelled"
-    | "rejected";
+    "idle" | "running" | "completed" | "failed" | "cancelled" | "rejected";
   active_turn_id?: string;
   compressed_summary?: string;
   summary_up_to_msg_id?: number;
@@ -209,6 +215,24 @@ export async function listAllSessions(options?: {
   }
 }
 
+export async function searchSessions(
+  query: string,
+  limit = 50,
+  offset = 0,
+  signal?: AbortSignal,
+): Promise<SessionSearchPage> {
+  const qs = new URLSearchParams({
+    q: query,
+    limit: String(limit),
+    offset: String(offset),
+  });
+  const response = await apiFetch(apiUrl(`/api/sessions/search?${qs}`), {
+    cache: "no-store",
+    signal,
+  });
+  return expectJson<SessionSearchPage>(response);
+}
+
 export async function getSession(
   sessionId: string,
   signal?: AbortSignal,
@@ -232,7 +256,10 @@ export async function fetchSessionAskHint(
   try {
     const response = await apiFetch(
       apiUrl(`/api/sessions/${sessionId}/ask-hint`),
-      { cache: "no-store", ...init },
+      {
+        cache: "no-store",
+        ...init,
+      },
     );
     const result = await expectJson<{ hint?: string }>(response);
     return typeof result.hint === "string" ? result.hint : "";
@@ -304,6 +331,35 @@ export async function deleteSession(sessionId: string): Promise<void> {
   invalidateClientCache("sessions:");
 }
 
+export async function listRecycleBin(
+  limit = 50,
+  offset = 0,
+): Promise<SessionSummary[]> {
+  const response = await apiFetch(
+    apiUrl(`/api/sessions/recycle-bin?limit=${limit}&offset=${offset}`),
+  );
+  const data = await expectJson<{ sessions: SessionSummary[] }>(response);
+  return data.sessions ?? [];
+}
+
+export async function restoreSession(sessionId: string): Promise<void> {
+  const response = await apiFetch(
+    apiUrl(`/api/sessions/${sessionId}/restore`),
+    { method: "POST" },
+  );
+  await expectJson<{ restored: boolean }>(response);
+  invalidateClientCache("sessions:");
+}
+
+export async function purgeSession(sessionId: string): Promise<void> {
+  const response = await apiFetch(
+    apiUrl(`/api/sessions/${sessionId}/purge`),
+    { method: "DELETE" },
+  );
+  await expectJson<{ purged: boolean }>(response);
+  invalidateClientCache("sessions:");
+}
+
 export async function recordQuizResults(
   sessionId: string,
   answers: QuizResultItem[],
@@ -326,7 +382,9 @@ export async function deleteMessage(
 ): Promise<void> {
   const response = await apiFetch(
     apiUrl(`/api/sessions/${sessionId}/messages/${messageId}`),
-    { method: "DELETE" },
+    {
+      method: "DELETE",
+    },
   );
   await expectJson<{ deleted: boolean }>(response);
 }

@@ -13,6 +13,20 @@ def extract_json_object(text: str) -> dict[str, Any]:
     if not raw:
         return {}
 
+    # Only strip complete leading reasoning blocks; tags inside JSON strings
+    # are payload data. Never fall back to JSON drafts from stripped reasoning.
+    while match := re.match(r"<think\b[^>]*>.*?</think>\s*", raw, re.DOTALL | re.IGNORECASE):
+        raw = raw[match.end() :]
+
+    # Preserve a complete object before looking for fenced examples in its
+    # string values, including after a reasoning prelude has been removed.
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, dict):
+            return parsed
+    except json.JSONDecodeError:
+        pass
+
     fenced = re.findall(r"```(?:json)?\s*([\s\S]*?)\s*```", raw)
     for candidate in [*fenced, raw]:
         try:

@@ -35,8 +35,8 @@ import logging
 from typing import Any
 
 from deeptutor.agents.base_agent import BaseAgent
+from deeptutor.services.llm.structured_retry import json_with_reasoning_retry
 
-from ..json_retry import json_with_reasoning_retry
 from ..models import (
     BookProposal,
     Chapter,

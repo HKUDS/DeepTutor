@@ -1483,6 +1483,29 @@ function getExploreContextStatusLabel(
   return null;
 }
 
+function getReasoningProgressStatusLabel(
+  events: StreamEvent[],
+  t: (key: string, opts?: Record<string, unknown>) => string,
+  isStreaming: boolean,
+) {
+  if (!isStreaming) return null;
+  for (let idx = events.length - 1; idx >= 0; idx -= 1) {
+    const event = events[idx];
+    const meta = getTraceMeta(event);
+    if (meta.trace_kind === "reasoning_progress") {
+      return t("Still reasoning before acting…");
+    }
+    if (
+      meta.trace_kind === "call_status" &&
+      (meta.call_state === "running" || meta.call_state === "complete")
+    ) {
+      return null;
+    }
+    if (event.type === "content" || event.type === "tool_call") return null;
+  }
+  return null;
+}
+
 export function StreamingStatus({
   events,
   isStreaming,
@@ -1563,6 +1586,7 @@ export function StreamingStatus({
   const label =
     getExploreContextStatusLabel(events, t, Boolean(isStreaming)) ??
     getDeepResearchStatusLabel(events, t, Boolean(isStreaming)) ??
+    getReasoningProgressStatusLabel(events, t, Boolean(isStreaming)) ??
     modeLabel;
 
   // Single turn-level clock. Ticks every second while the turn is in

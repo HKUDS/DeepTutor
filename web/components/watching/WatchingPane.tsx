@@ -71,13 +71,18 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
   const [notesLoading, setNotesLoading] = useState(false)
   const [notesError, setNotesError] = useState<string | null>(null)
   const [noteDraft, setNoteDraft] = useState('')
+  const [noteAnchorTime, setNoteAnchorTime] = useState<number | null>(null)
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
   const [editingDraft, setEditingDraft] = useState('')
   const [noteBusy, setNoteBusy] = useState(false)
   const [notesExportBusy, setNotesExportBusy] = useState(false)
   const [notesCopied, setNotesCopied] = useState(false)
+  const [noteSaveSuccess, setNoteSaveSuccess] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const notesExportRequestRef = useRef(0)
+  const notesLoadRequestRef = useRef(0)
+  const noteSubmitGuardRef = useRef(false)
   const [followTranscript, setFollowTranscript] = useState(true)
   const [transcriptQuery, setTranscriptQuery] = useState('')
   const [selectedTranscriptMatch, setSelectedTranscriptMatch] = useState(-1)
@@ -231,6 +236,7 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
     notesExportRequestRef.current += 1
     setNotesExportBusy(false)
     setNotesCopied(false)
+    const requestId = ++notesLoadRequestRef.current
     if (!materialId) {
       setNotesLoading(false)
       return () => {
@@ -241,7 +247,7 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
     void (async () => {
       try {
         const loaded = await listVideoNotes(materialId)
-        if (!cancelled) setNotes(loaded)
+        if (!cancelled && notesLoadRequestRef.current === requestId) setNotes(loaded)
       } catch (caught) {
         if (!cancelled) {
           setNotesError(caught instanceof Error ? caught.message : t('Notes could not be loaded.'))
@@ -265,20 +271,28 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
 
   const addNote = async () => {
     if (!material || !noteDraft.trim() || noteBusy) return
+    if (noteSubmitGuardRef.current) return
+    noteSubmitGuardRef.current = true
     const requestedMaterialId = material.material_id
+    const anchorTime = noteAnchorTime ?? time
     setNoteBusy(true)
     setNotesError(null)
+    setNoteSaveSuccess(false)
     try {
-      const saved = await createVideoNote(requestedMaterialId, noteDraft.trim(), time)
+      const saved = await createVideoNote(requestedMaterialId, noteDraft.trim(), anchorTime)
       if (activeMaterialIdRef.current !== requestedMaterialId) return
+      notesLoadRequestRef.current += 1
       setNotes(current => sortNotes([...current, saved]))
       setNoteDraft('')
+      setNoteAnchorTime(null)
       setNotesCopied(false)
+      setNoteSaveSuccess(true)
     } catch (caught) {
       if (activeMaterialIdRef.current !== requestedMaterialId) return
       setNotesError(caught instanceof Error ? caught.message : t('Note was not saved.'))
     } finally {
       setNoteBusy(false)
+      noteSubmitGuardRef.current = false
     }
   }
 
@@ -309,6 +323,7 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
     const requestedMaterialId = material.material_id
     setNoteBusy(true)
     setNotesError(null)
+    setDeleteError(null)
     try {
       await deleteVideoNote(requestedMaterialId, pendingDeleteId)
       if (activeMaterialIdRef.current !== requestedMaterialId) return
@@ -321,7 +336,7 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
       setNotesCopied(false)
     } catch (caught) {
       if (activeMaterialIdRef.current !== requestedMaterialId) return
-      setNotesError(caught instanceof Error ? caught.message : t('Note was not deleted.'))
+      setDeleteError(caught instanceof Error ? caught.message : t('Note was not deleted.'))
     } finally {
       setNoteBusy(false)
     }
@@ -782,9 +797,15 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
                 >
                   <textarea
                     value={noteDraft}
-                    onChange={event => setNoteDraft(event.target.value)}
+                    onChange={event => {
+                      const next = event.target.value
+                      if (!noteDraft.trim() && next.trim()) {
+                        setNoteAnchorTime(time)
+                      }
+                      setNoteDraft(next)
+                    }}
                     placeholder={t('Note at {{time}}', {
-                      time: formatTime(time),
+                      time: formatTime(noteAnchorTime ?? time),
                     })}
                     className="min-h-20 w-full resize-y rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm"
                   />
@@ -818,11 +839,26 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
                 </form>
 
                 {notesError && (
-                  <p
+                  <div
                     role="alert"
-                    className="rounded-lg border border-[var(--border)] bg-[var(--muted)] px-3 py-2 text-sm text-[var(--destructive)]"
+                    className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--muted)] px-3 py-2 text-sm text-[var(--destructive)]"
                   >
-                    {notesError}
+                    <span className="flex-1">{notesError}</span>
+                    <button
+                      type="button"
+                      onClick={() => void addNote()}
+                      disabled={noteBusy || !noteDraft.trim()}
+                      className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[var(--border)] px-2 py-1 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] disabled:opacity-50"
+                    >
+                      {noteBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                      {t('Retry')}
+                    </button>
+                  </div>
+                )}
+
+                {noteSaveSuccess && !notesError && (
+                  <p className="text-xs text-[var(--muted-foreground)]">
+                    {t('Note saved.')}
                   </p>
                 )}
 
@@ -936,6 +972,11 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
         onCancel={() => setPendingDeleteId(null)}
       >
         {t('This note will be removed from Video Learning.')}
+        {deleteError && (
+          <p role="alert" className="mt-2 text-sm text-[var(--destructive)]">
+            {deleteError}
+          </p>
+        )}
       </ConfirmDialog>
     </section>
   )

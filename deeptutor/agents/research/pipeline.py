@@ -88,7 +88,9 @@ from deeptutor.runtime.agentic.tool_dispatch import (
 from deeptutor.runtime.registry.tool_registry import get_tool_registry
 from deeptutor.runtime.stream_bus import StreamBus
 from deeptutor.services.config import parse_language
+from deeptutor.services.config.loader import get_capability_params
 from deeptutor.services.llm import get_llm_config, prepare_multimodal_messages
+from deeptutor.services.llm.structured_retry import payload_with_reasoning_retry
 from deeptutor.services.prompt import get_prompt_manager
 from deeptutor.services.prompt.language import append_language_directive
 from deeptutor.services.sandbox import exec_capability_available
@@ -237,7 +239,6 @@ def _is_citable_tool(name: str) -> bool:
 
 
 # Token budget for the note summarization sidecar.
-DEFAULT_NOTE_MAX_TOKENS = 1500
 # How much of the raw tool output we feed into the note summarizer.
 NOTE_RAW_INPUT_TRUNCATE_CHARS = 8000
 
@@ -249,13 +250,11 @@ DEFAULT_REPHRASE_MAX_ITERATIONS = (
 )
 DEFAULT_REPHRASE_MAX_ROUNDS = 3
 DEFAULT_REPHRASE_MAX_QUESTIONS_PER_ROUND = 3
+# Per-stage token budgets moved to agents.yaml — see
+# ``DEFAULT_RESEARCH_PARAMS`` in services.config.loader. agents.yaml owns
+# every LLM budget; this module keeps only runtime behaviour (iteration
+# caps, tool policy), which is main.yaml's half of the split.
 DEFAULT_BLOCK_MAX_ITERATIONS = 5
-DEFAULT_BLOCK_MAX_TOKENS = 6000
-DEFAULT_OUTLINE_MAX_TOKENS = 2000
-DEFAULT_REPORT_OUTLINE_MAX_TOKENS = 2000
-DEFAULT_REPORT_INTRO_MAX_TOKENS = 3000
-DEFAULT_REPORT_SECTION_MAX_TOKENS = 6000
-DEFAULT_REPORT_CONCLUSION_MAX_TOKENS = 3000
 DEFAULT_REPORT_STEP_MAX_ATTEMPTS = 3
 DEFAULT_INITIAL_SUBTOPICS = 5
 DEFAULT_MAX_PARALLEL_TOPICS = 3
@@ -302,6 +301,29 @@ class ReportOutline:
 # ---------------------------------------------------------------------------
 # ResearchPipeline
 # ---------------------------------------------------------------------------
+
+
+def _outline_payload_is_usable(payload: Any) -> bool:
+    """Whether a decompose response actually carries sub-topics.
+
+    The parser accepts a bare array as well as an object, so "usable" cannot
+    be the generic "is a non-empty dict" the object-shaped callers use — an
+    array answer would be thrown away and retried for nothing.
+    """
+    if isinstance(payload, list):
+        return bool(payload)
+    if isinstance(payload, dict):
+        return bool(payload.get("sub_topics") or payload.get("subtopics"))
+    return False
+
+
+def _report_outline_payload_is_usable(payload: Any) -> bool:
+    """Whether a report-outline response actually carries sections."""
+    if isinstance(payload, list):
+        return bool(payload)
+    if isinstance(payload, dict):
+        return bool(payload.get("sections"))
+    return False
 
 
 class ResearchPipeline:
@@ -406,6 +428,7 @@ class ResearchPipeline:
         # ``geogebra_analysis`` uses for the same reason, and retries are off by
         # default: only a caller who knows its tools are flaky (rather than
         # slow) should pay for a second attempt.
+        self._budgets = get_capability_params("research")
         self.tool_timeout = max(
             1,
             _read_int(
@@ -769,7 +792,7 @@ class ResearchPipeline:
                 protocol=_PROTOCOL_REPHRASE,
                 client=client,
                 model=self.model,
-                completion_kwargs=self._completion_kwargs(DEFAULT_BLOCK_MAX_TOKENS),
+                completion_kwargs=self._completion_kwargs(self._budgets["block"]["max_tokens"]),
                 binding=self.binding,
                 tool_schemas=tool_schemas,
                 stream=stream,
@@ -836,21 +859,32 @@ class ResearchPipeline:
             trace_group="plan",
             research_status_key="decompose_target",
         )
-        step = await self._run_labeled_step(
-            client=client,
-            messages=messages,
-            tool_schemas=None,
-            protocol=_PROTOCOL_DECOMPOSE,
-            stream=stream,
-            stage="decomposing",
-            iter_meta=iter_meta,
-            max_tokens=DEFAULT_OUTLINE_MAX_TOKENS,
-            eager_sub_trace=False,
-        )
-        return self._parse_outline(topic, step.text)
 
-    def _parse_outline(self, topic: str, raw: str) -> list[SubTopicItem]:
-        data = parse_json_response(raw, logger_instance=logger, fallback={})
+        async def _attempt(reasoning_effort: str | None) -> str:
+            step = await self._run_labeled_step(
+                client=client,
+                messages=messages,
+                tool_schemas=None,
+                protocol=_PROTOCOL_DECOMPOSE,
+                stream=stream,
+                stage="decomposing",
+                iter_meta=iter_meta,
+                max_tokens=self._budgets["outline"]["max_tokens"],
+                reasoning_effort=reasoning_effort,
+                eager_sub_trace=False,
+            )
+            return step.text
+
+        # Decompose asks for the whole outline in one shot, so a reasoning
+        # model that spends the budget thinking returns nothing to parse and
+        # the topic silently degrades to a single sub-topic — research's
+        # version of the one-chapter book (#1316).
+        data = await payload_with_reasoning_retry(
+            _attempt, is_usable=_outline_payload_is_usable, logger_instance=logger
+        )
+        return self._parse_outline(topic, data)
+
+    def _parse_outline(self, topic: str, data: Any) -> list[SubTopicItem]:
         if isinstance(data, list):
             iterable: list[Any] = data
         elif isinstance(data, dict):
@@ -960,7 +994,7 @@ class ResearchPipeline:
                 protocol=_PROTOCOL_BLOCK,
                 client=client,
                 model=self.model,
-                completion_kwargs=self._completion_kwargs(DEFAULT_BLOCK_MAX_TOKENS),
+                completion_kwargs=self._completion_kwargs(self._budgets["block"]["max_tokens"]),
                 binding=self.binding,
                 tool_schemas=tool_schemas,
                 stream=stream,
@@ -1198,7 +1232,7 @@ class ResearchPipeline:
         )
         messages = self._build_system_user_messages(system_prompt, user_prompt)
         try:
-            kwargs = self._completion_kwargs(DEFAULT_NOTE_MAX_TOKENS)
+            kwargs = self._completion_kwargs(self._budgets["note"]["max_tokens"])
             response = await client.chat.completions.create(
                 model=self.model, messages=messages, stream=False, **kwargs
             )
@@ -1506,23 +1540,32 @@ class ResearchPipeline:
             research_status_key="report_outline",
             report_part="outline",
         )
-        step = await self._run_labeled_step(
-            client=client,
-            messages=messages,
-            tool_schemas=None,
-            protocol=_PROTOCOL_REPORT_OUTLINE,
-            stream=stream,
-            stage="reporting",
-            iter_meta=iter_meta,
-            max_tokens=DEFAULT_REPORT_OUTLINE_MAX_TOKENS,
-            eager_sub_trace=False,
+
+        async def _attempt(reasoning_effort: str | None) -> str:
+            step = await self._run_labeled_step(
+                client=client,
+                messages=messages,
+                tool_schemas=None,
+                protocol=_PROTOCOL_REPORT_OUTLINE,
+                stream=stream,
+                stage="reporting",
+                iter_meta=iter_meta,
+                max_tokens=self._budgets["report_outline"]["max_tokens"],
+                reasoning_effort=reasoning_effort,
+                eager_sub_trace=False,
+            )
+            return step.text
+
+        # Same one-shot payload, same starvation: an empty outline here costs
+        # the reader the whole report structure.
+        data = await payload_with_reasoning_retry(
+            _attempt, is_usable=_report_outline_payload_is_usable, logger_instance=logger
         )
-        return self._parse_report_outline(topic, step.text, blocks)
+        return self._parse_report_outline(topic, data, blocks)
 
     def _parse_report_outline(
-        self, topic: str, raw: str, blocks: list[ResearchedBlock]
+        self, topic: str, data: Any, blocks: list[ResearchedBlock]
     ) -> ReportOutline:
-        data = parse_json_response(raw, logger_instance=logger, fallback={})
         valid_ids = {rb.block.block_id for rb in blocks}
         title_to_id = {rb.block.sub_topic.lower(): rb.block.block_id for rb in blocks}
 
@@ -1668,7 +1711,7 @@ class ResearchPipeline:
             client=client,
             label=self._t("labels.report_intro", default="Introduction"),
             call_id_root="research-report-intro",
-            max_tokens=DEFAULT_REPORT_INTRO_MAX_TOKENS,
+            max_tokens=self._budgets["report_intro"]["max_tokens"],
             extra_meta={
                 "research_status_key": "report_intro",
                 "report_part": "intro",
@@ -1711,7 +1754,7 @@ class ResearchPipeline:
             client=client,
             label=(f"{self._t('labels.report_section', default='Section')}: {section.title}"),
             call_id_root=f"research-report-section-{section.id}",
-            max_tokens=DEFAULT_REPORT_SECTION_MAX_TOKENS,
+            max_tokens=self._budgets["report_section"]["max_tokens"],
             extra_meta={
                 "research_status_key": "report_section",
                 "report_part": "section",
@@ -1755,7 +1798,7 @@ class ResearchPipeline:
             client=client,
             label=self._t("labels.report_conclusion", default="Conclusion"),
             call_id_root="research-report-conclusion",
-            max_tokens=DEFAULT_REPORT_CONCLUSION_MAX_TOKENS,
+            max_tokens=self._budgets["report_conclusion"]["max_tokens"],
             extra_meta={
                 "research_status_key": "report_conclusion",
                 "report_part": "conclusion",
@@ -2106,13 +2149,18 @@ class ResearchPipeline:
     def _build_client(self) -> Any:
         return build_openai_client(self.client_config)
 
-    def _completion_kwargs(self, max_tokens: int) -> dict[str, Any]:
+    def _completion_kwargs(
+        self, max_tokens: int, reasoning_effort: str | None = None
+    ) -> dict[str, Any]:
         return build_completion_kwargs(
             temperature=self._temperature,
             model=self.model,
             max_tokens=max_tokens,
             binding=self.binding,
-            reasoning_effort=self.reasoning_effort,
+            # A step may turn thinking down for one call (a retry after the
+            # model spent the whole budget on it); otherwise the configured
+            # level stands.
+            reasoning_effort=reasoning_effort or self.reasoning_effort,
         )
 
     async def _run_labeled_step(
@@ -2125,16 +2173,19 @@ class ResearchPipeline:
         stream: StreamBus,
         stage: str,
         iter_meta: dict[str, Any],
-        max_tokens: int = DEFAULT_BLOCK_MAX_TOKENS,
+        max_tokens: int | None = None,
+        reasoning_effort: str | None = None,
         final_meta: dict[str, Any] | None = None,
         eager_sub_trace: bool = True,
     ) -> LabeledStepResult:
         """Research-flavoured thin wrapper over :func:`run_labeled_step`."""
+        if max_tokens is None:
+            max_tokens = int(self._budgets["block"]["max_tokens"])
         return await run_labeled_step(
             client=client,
             model=self.model,
             messages=messages,
-            completion_kwargs=self._completion_kwargs(max_tokens),
+            completion_kwargs=self._completion_kwargs(max_tokens, reasoning_effort),
             tool_schemas=tool_schemas,
             allowed_labels=protocol.allowed,
             final_labels=protocol.final,

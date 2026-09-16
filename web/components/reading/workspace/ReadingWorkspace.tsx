@@ -611,6 +611,11 @@ export function ReadingWorkspacePage() {
                 externalJump={documentJump}
                 onHeadingsChange={setPageHeadings}
                 onActiveHeadingChange={setActiveHeadingId}
+                // The outline highlights the row the reader is inside, so it
+                // has to hear about pages turned in the document and not only
+                // about rows clicked in the panel. ReaderPane reports its own
+                // viewport, unlike the media stage above.
+                onLocatorChange={setActiveLocator}
                 headingJump={headingJump}
                 bookmarks={bookmarks}
                 onToggleBookmark={(locator, label) =>

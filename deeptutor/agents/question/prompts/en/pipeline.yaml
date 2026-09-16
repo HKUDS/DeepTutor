@@ -328,10 +328,11 @@ notices:
   context_window_guard: "Trimmed older tool results to keep within the model's context window."
   final_protocol_failed: "The model still did not produce a valid FINISH reply after the finalization prompt."
   plan_count_mismatch: "Plan returned {got} templates instead of {requested}; proceeding with what we have."
+  plan_unusable: "Quiz planning produced no usable question templates, so there is nothing to build a quiz from. Please retry or narrow the topic."
   plan_reasoning_retry: "The planner spent its whole budget reasoning and produced no plan; asking again with less thinking."
   repair_attempted: "The previous question payload was invalid; repairing the schema once."
   repair_failed: "Repair did not fully fix the question; emitting the best-effort version."
-  tool_summarizer_failed: "Tool summarizer could not produce a summary; passing raw tool result forward."
+  tool_summarizer_failed: "Tool summarizer could not produce a summary ({error}); passing raw tool result forward."
 
 empty:
   no_quiz_history: "(no prior quiz turns in this session)"

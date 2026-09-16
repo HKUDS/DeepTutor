@@ -1,7 +1,8 @@
 import { codeRanges } from "@/lib/reading-citations";
 
 export const VIDEO_TIME_HREF_PREFIX = "#dt-video-time-";
-const TIMESTAMP = /\[(?:(\d{1,2}):)?([0-5]?\d):([0-5]\d)\]/g;
+const TIMESTAMP =
+  /\[(?:(\d{1,2}):)?([0-5]?\d):([0-5]\d)\](?:\((?:[^()]|\([^()]*\))*\))?/g;
 
 export function linkifyVideoTimestamps(text: string): string {
   const skip = codeRanges(text);
@@ -15,10 +16,12 @@ export function linkifyVideoTimestamps(text: string): string {
       offset: number,
     ) => {
       if (skip.some(([from, to]) => offset >= from && offset < to)) return raw;
-      if (text[offset + raw.length] === "(") return raw;
+      // A video citation always seeks the current material, including when
+      // the model supplied a fabricated or external Markdown link target.
+      const label = raw.slice(0, raw.indexOf("]") + 1);
       const total =
         Number(hours || 0) * 3600 + Number(minutes) * 60 + Number(seconds);
-      return `${raw}(${VIDEO_TIME_HREF_PREFIX}${total})`;
+      return `${label}(${VIDEO_TIME_HREF_PREFIX}${total})`;
     },
   );
 }

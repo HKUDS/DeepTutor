@@ -271,6 +271,23 @@ def test_read_source_is_owned_and_reads_the_topic_index_on_demand():
     assert kwargs["source_index"] == {"bk-path-1-ch1": "chapter one text"}
 
 
+def test_navigation_tools_learn_which_topic_the_turn_is_tutoring():
+    """A hand-off card must be able to tell "elsewhere" from "right here".
+
+    The four navigation tools stay mounted inside a mastery session because
+    sending the learner to another topic mid-course is a real thing to want.
+    They just had no way to see the topic this conversation is already
+    teaching, so a card could point back at it (#1412).
+    """
+    context = _context()
+
+    bound = MasteryLoopCapability().augment_kwargs(
+        "mastery_new_session", {"path_id": "path-1"}, context
+    )
+
+    assert bound["_tutoring_path_id"] == "path-1"
+
+
 @pytest.mark.asyncio
 async def test_mastery_sync_carries_provenance_to_question_bank(tmp_path, monkeypatch) -> None:
     from deeptutor.capabilities.mastery.tools import (

@@ -63,6 +63,7 @@ from deeptutor.learning.policy import (
     QUALITATIVE_TYPES,
     display_mastery,
     find_knowledge_point,
+    gate_kind,
     gate_threshold,
     is_mastered,
     map_summary,
@@ -921,6 +922,20 @@ class MasteryQuizTool(BaseTool):
                 "button. That list was removed from the stem. Pass the ask in "
                 "'question' and the choices only in 'options'."
             )
+        if kp.type in QUALITATIVE_TYPES:
+            # The mirror of ``record_qualitative_for_path``, which refuses
+            # outright when mastery_assess is aimed at a quantitative
+            # objective. This direction stays allowed — a question is a fair
+            # way to probe a concept before teaching it — but it must not be
+            # silent: the attempt lands in ``mastery_levels``, the qualitative
+            # gate never reads it, and a tutor that assumes otherwise poses
+            # questions forever at an objective they cannot open.
+            notice += (
+                " This objective is gated qualitatively: grading this answer "
+                "will not open it, however right the answer is. Use the "
+                "question to probe, then have the learner explain the idea in "
+                "their own words and record that with mastery_assess."
+            )
 
         return ToolResult(
             content=notice,
@@ -1069,6 +1084,32 @@ class MasteryGradeTool(BaseTool):
             section_title=kp.name if kp else "",
         )
         mastered = bool(kp and is_mastered(progress, kp))
+        gate = gate_kind(kp) if kp else ""
+        # What to do after the verdict. A qualitative objective needs its own
+        # branch: quiz accuracy lands in ``mastery_levels`` without moving that
+        # gate — it can even read a full 1.0 against a 1.0 threshold while
+        # ``mastered`` stays false — so telling the model to pose another
+        # question here is telling it to loop forever on an objective no
+        # question can clear. That loop is invisible from the chat, where the
+        # tutor narrates progress it never actually recorded, and visible on
+        # the outline rail, which correctly never moves.
+        if mastered:
+            next_move = "going: this objective is mastered, so continue with mastery_status.next."
+        elif gate == "qualitative":
+            next_move = (
+                "going on the same objective — but this one is gated "
+                "qualitatively, so more questions cannot clear it however many "
+                "the learner gets right. Teach the gap this attempt exposed, "
+                "then ask them to explain the idea in their own words and "
+                "record your judgement with mastery_assess. That call is the "
+                "only thing that opens this gate."
+            )
+        else:
+            next_move = (
+                "going on the same objective — teach the gap this attempt "
+                "exposed, and when you pose the next question with "
+                "mastery_quiz put that call last, since it ends the turn."
+            )
         payload = {
             "is_correct": is_correct,
             "replayed": replayed,
@@ -1077,6 +1118,10 @@ class MasteryGradeTool(BaseTool):
             "question_id": pending.question_id,
             "mastery": round(display_mastery(progress, kp), 3) if kp else 0.0,
             "threshold": round(gate_threshold(kp.type), 3) if kp else 0.0,
+            # Which gate that number is being read against. Without it a
+            # qualitative objective reports mastery 1.0 / threshold 1.0 /
+            # mastered false, which is not a reading anyone can act on.
+            "gate": gate,
             "mastered": mastered,
             "next": next_objective(progress).to_dict(),
             # The answer key, released to the learner's card now that the gate
@@ -1097,13 +1142,7 @@ class MasteryGradeTool(BaseTool):
                 "The card now shows the verdict, the correct option and your "
                 "explanation, so do not restate the answer key. Say what this "
                 "attempt tells you about their grasp of the objective, then keep "
-                + (
-                    "going: this objective is mastered, so continue with mastery_status.next."
-                    if mastered
-                    else "going on the same objective — teach the gap this "
-                    "attempt exposed, and when you pose the next question with "
-                    "mastery_quiz put that call last, since it ends the turn."
-                )
+                + next_move
                 + " Never end the turn without saying anything."
             ),
         }

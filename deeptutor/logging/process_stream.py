@@ -66,7 +66,36 @@ class ProcessLogHandler(logging.Handler):
         self._emit = emit
         self._task_id = task_id
         self._turn_id = turn_id
+        # The loop that owns this capture, remembered while we are still on
+        # it. A record logged from a worker thread has no running loop of its
+        # own, and that is where an async ``emit`` used to be dropped (#1435).
+        try:
+            self._loop: asyncio.AbstractEventLoop | None = asyncio.get_running_loop()
+        except RuntimeError:
+            self._loop = None
         self.addFilter(ContextFilter())
+
+    def _schedule(self, coro: Any) -> None:
+        """Run an async ``emit`` on the loop that owns this capture.
+
+        Retrieval does its heavy work in worker threads, so its log records
+        arrive off-loop. ``ensure_future`` needs a loop running in *this*
+        thread; the owning loop is the one that can always take the call.
+        """
+        try:
+            running = asyncio.get_running_loop()
+        except RuntimeError:
+            running = None
+        if running is not None:
+            asyncio.ensure_future(coro, loop=running)
+            return
+        if self._loop is not None and self._loop.is_running():
+            asyncio.run_coroutine_threadsafe(coro, self._loop)
+            return
+        # Nothing is left to deliver to — the capture outlived its loop.
+        # Close it explicitly so an undeliverable event does not also
+        # surface as a "never awaited" warning with no context.
+        coro.close()
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
@@ -79,11 +108,7 @@ class ProcessLogHandler(logging.Handler):
                 return
             result = self._emit(event)
             if inspect.isawaitable(result):
-                try:
-                    loop = asyncio.get_running_loop()
-                except RuntimeError:
-                    return
-                asyncio.ensure_future(result, loop=loop)
+                self._schedule(result)
         except Exception:
             self.handleError(record)
 

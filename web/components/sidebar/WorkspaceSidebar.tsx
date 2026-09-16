@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import { SidebarShell } from "@/components/sidebar/SidebarShell";
+import { RecycleBinSection } from "@/components/sidebar/RecycleBinSection";
 import { reconcileUnread } from "@/lib/session-unread";
 import { LogoutButton } from "@/components/auth/LogoutButton";
 import { AdminLink } from "@/components/auth/AdminLink";
@@ -224,6 +225,7 @@ export default function WorkspaceSidebar() {
       onRenameSession={handleRenameSession}
       onDeleteSession={handleDeleteSession}
       onOrganizeSession={handleOrganizeSession}
+      recycleBinSlot={<RecycleBinSection />}
       footerSlot={(collapsed) => (
         <>
           <ProfileLink collapsed={collapsed} />

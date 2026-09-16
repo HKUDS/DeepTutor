@@ -18,6 +18,8 @@ from deeptutor.services.config import model_catalog as model_catalog_module
 from deeptutor.services.config.model_catalog import ModelCatalogService
 from deeptutor.services.llm.config import clear_llm_config_cache, get_llm_config
 
+pytestmark = pytest.mark.real_llm_resolver
+
 
 class _FakePathService:
     def __init__(self, root: Path) -> None:

@@ -23,11 +23,13 @@ except ImportError:  # pragma: no cover - exercised only on Windows
     fcntl = None  # type: ignore[assignment]
 
 from deeptutor.services.path_service import get_path_service
+from deeptutor.services.session.protocol import ActiveTurnConflict
 from deeptutor.utils.secret_files import ensure_private_directory, ensure_private_file
 
 from .ask_user_trace import select_ask_user_events
 from .event_preview import MAX_TRACE_PREVIEW_EVENTS, compact_trace_preview
 from .provider_response_state import redact_private_message_metadata
+from .search import bounded_search_excerpt, normalize_search_query
 from .workspace_preferences import upgrade_workspace_preferences
 
 
@@ -369,6 +371,8 @@ class SQLiteSessionStore:
             columns = {row[1] for row in conn.execute("PRAGMA table_info(sessions)").fetchall()}
             if "preferences_json" not in columns:
                 conn.execute("ALTER TABLE sessions ADD COLUMN preferences_json TEXT DEFAULT '{}'")
+            if "deleted_at" not in columns:
+                conn.execute("ALTER TABLE sessions ADD COLUMN deleted_at REAL DEFAULT NULL")
             self._migrate_workspace_preferences(conn)
             if "kind" in columns:
                 try:
@@ -859,7 +863,10 @@ class SQLiteSessionStore:
                     (session_id,),
                 ).fetchone()
                 if active is not None:
-                    raise RuntimeError(f"Session already has an active turn: {active['id']}")
+                    raise ActiveTurnConflict(
+                        f"Session already has an active turn: {active['id']}",
+                        turn_id=str(active["id"]),
+                    )
                 conn.execute(
                     """
                     INSERT INTO turns (
@@ -881,7 +888,7 @@ class SQLiteSessionStore:
         except sqlite3.IntegrityError as exc:
             # The partial unique index wins races where another process inserts
             # after our read but before our insert.
-            raise RuntimeError(f"Session already has an active turn: {session_id}") from exc
+            raise ActiveTurnConflict(f"Session already has an active turn: {session_id}") from exc
         return {
             "id": resolved_turn_id,
             "turn_id": resolved_turn_id,
@@ -1361,7 +1368,68 @@ class SQLiteSessionStore:
         return cur.rowcount > 0
 
     async def delete_session(self, session_id: str) -> bool:
+        """Remove a session outright, recycle bin or not.
+
+        The internal cleanups own this one: a reading workspace that is gone
+        takes its sessions with it, and those never belonged to the learner's
+        recycle bin — they would arrive there unasked and restore into a
+        workspace that no longer exists. The chat surface calls
+        :meth:`soft_delete_session` instead, which is the deletion a learner
+        performs and can undo.
+        """
         return await self._run(self._delete_session_sync, session_id)
+
+    def _soft_delete_session_sync(self, session_id: str) -> bool:
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE sessions SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL",
+                (time.time(), session_id),
+            )
+            conn.commit()
+        return cur.rowcount > 0
+
+    async def soft_delete_session(self, session_id: str) -> bool:
+        """Move a session to the recycle bin, where a restore can reach it."""
+        return await self._run(self._soft_delete_session_sync, session_id)
+
+    def _restore_session_sync(self, session_id: str) -> bool:
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE sessions SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL",
+                (session_id,),
+            )
+            conn.commit()
+        return cur.rowcount > 0
+
+    async def restore_session(self, session_id: str) -> bool:
+        return await self._run(self._restore_session_sync, session_id)
+
+    def _hard_delete_session_sync(self, session_id: str) -> bool:
+        with self._connect() as conn:
+            cur = conn.execute(
+                "DELETE FROM sessions WHERE id = ? AND deleted_at IS NOT NULL",
+                (session_id,),
+            )
+            conn.commit()
+        return cur.rowcount > 0
+
+    async def hard_delete_session(self, session_id: str) -> bool:
+        """Delete a session that is already in the recycle bin, permanently."""
+        return await self._run(self._hard_delete_session_sync, session_id)
+
+    def _list_deleted_sessions_sync(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        return self._list_session_summaries_sync("WHERE s.deleted_at IS NOT NULL", limit, offset)
+
+    async def list_deleted_sessions(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        return await self._run(self._list_deleted_sessions_sync, limit, offset)
 
     def _add_message_sync(
         self,
@@ -2112,9 +2180,9 @@ class SQLiteSessionStore:
     # their collection and ``sessionRoute`` sends a click back to the reader,
     # so they belong in the list like everything else.
     _WHERE_NATIVE = r"""
-        WHERE s.id NOT LIKE 'imported\_%' ESCAPE '\'
+        WHERE s.id NOT LIKE 'imported\_%' ESCAPE '\' AND s.deleted_at IS NULL
     """
-    _WHERE_IMPORTED = r"WHERE s.id LIKE 'imported\_%' ESCAPE '\'"
+    _WHERE_IMPORTED = r"WHERE s.id LIKE 'imported\_%' ESCAPE '\' AND s.deleted_at IS NULL"
 
     def _list_session_summaries_sync(
         self, where_sql: str, limit: int, offset: int
@@ -2172,6 +2240,133 @@ class SQLiteSessionStore:
         offset: int = 0,
     ) -> list[dict[str, Any]]:
         return await self._run(self._list_sessions_sync, limit, offset)
+
+    def _search_sessions_sync(
+        self,
+        query: str,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """Search native session titles and visible message text literally."""
+        normalized = normalize_search_query(query)
+        if not normalized:
+            return {"sessions": [], "total": 0}
+
+        match_condition = r"""
+            s.id NOT LIKE 'imported\_%' ESCAPE '\'
+            AND (
+                INSTR(LOWER(COALESCE(s.title, '')), LOWER(?)) > 0
+                OR EXISTS (
+                    SELECT 1 FROM messages candidate
+                    WHERE candidate.session_id = s.id
+                      AND candidate.role IN ('user', 'assistant')
+                      AND INSTR(LOWER(COALESCE(candidate.content, '')), LOWER(?)) > 0
+                )
+            )
+        """
+        with self._connect() as conn:
+            total = int(
+                conn.execute(
+                    f"SELECT COUNT(*) FROM sessions s WHERE {match_condition}",  # nosec B608
+                    (normalized, normalized),
+                ).fetchone()[0]
+            )
+            rows = conn.execute(
+                f"""
+                WITH matched_sessions AS (
+                    SELECT s.*
+                    FROM sessions s
+                    WHERE {match_condition}
+                    ORDER BY s.updated_at DESC
+                    LIMIT ? OFFSET ?
+                ),
+                best_messages AS (
+                    SELECT m.session_id, m.id, m.role, m.created_at,
+                           SUBSTR(
+                               m.content,
+                               MAX(1, INSTR(LOWER(m.content), LOWER(?)) - 160),
+                               520
+                           ) AS content
+                    FROM messages m
+                    JOIN matched_sessions s ON s.id = m.session_id
+                    WHERE m.role IN ('user', 'assistant')
+                      AND INSTR(LOWER(COALESCE(m.content, '')), LOWER(?)) > 0
+                      AND m.id = (
+                          SELECT newest.id FROM messages newest
+                          WHERE newest.session_id = m.session_id
+                            AND newest.role IN ('user', 'assistant')
+                            AND INSTR(
+                                LOWER(COALESCE(newest.content, '')), LOWER(?)
+                            ) > 0
+                          ORDER BY newest.created_at DESC, newest.id DESC
+                          LIMIT 1
+                      )
+                )
+                SELECT
+                    s.id, s.title, s.created_at, s.updated_at,
+                    s.compressed_summary, s.summary_up_to_msg_id,
+                    s.preferences_json,
+                    COUNT(CASE WHEN m.role != 'system' THEN 1 END) AS message_count,
+                    COALESCE(
+                        (SELECT t.status FROM turns t WHERE t.session_id = s.id
+                         ORDER BY t.updated_at DESC LIMIT 1),
+                        'idle'
+                    ) AS status,
+                    COALESCE(
+                        (SELECT t.id FROM turns t WHERE t.session_id = s.id
+                         AND t.status IN ('queued', 'running', 'waiting_input')
+                         ORDER BY t.updated_at DESC LIMIT 1),
+                        ''
+                    ) AS active_turn_id,
+                    COALESCE(
+                        (SELECT t.capability FROM turns t WHERE t.session_id = s.id
+                         ORDER BY t.updated_at DESC LIMIT 1),
+                        ''
+                    ) AS capability,
+                    COALESCE(
+                        (SELECT latest.content FROM messages latest
+                         WHERE latest.session_id = s.id AND latest.role != 'system'
+                           AND TRIM(COALESCE(latest.content, '')) != ''
+                         ORDER BY latest.id DESC LIMIT 1),
+                        ''
+                    ) AS last_message,
+                    bm.id AS match_message_id,
+                    bm.role AS match_role,
+                    bm.created_at AS match_created_at,
+                    COALESCE(bm.content, s.title, '') AS match_content
+                FROM matched_sessions s
+                LEFT JOIN messages m ON m.session_id = s.id
+                LEFT JOIN best_messages bm ON bm.session_id = s.id
+                GROUP BY s.id
+                ORDER BY s.updated_at DESC
+                """,  # nosec B608 - match_condition is a module-owned SQL literal
+                (
+                    normalized,
+                    normalized,
+                    max(1, min(int(limit), 100)),
+                    max(0, int(offset)),
+                    normalized,
+                    normalized,
+                    normalized,
+                ),
+            ).fetchall()
+
+        sessions: list[dict[str, Any]] = []
+        for row in rows:
+            payload = self._session_summary_payload(row)
+            content = str(payload.pop("match_content", "") or "")
+            payload["match_excerpt"] = bounded_search_excerpt(content, normalized)
+            sessions.append(payload)
+        return {"sessions": sessions, "total": total}
+
+    async def search_sessions(
+        self,
+        query: str,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """Return a bounded page of native sessions matching a literal query."""
+        return await self._run(self._search_sessions_sync, query, limit, offset)
 
     async def get_session_summaries(
         self,
@@ -2455,6 +2650,14 @@ class SQLiteSessionStore:
         conditions: list[str] = []
         params: list[Any] = []
 
+        conditions.append(
+            """
+            NOT EXISTS (
+                SELECT 1 FROM sessions s
+                WHERE s.id = n.session_id AND s.deleted_at IS NOT NULL
+            )
+            """
+        )
         if query.category_id is not None:
             joins.append(" INNER JOIN notebook_entry_categories ec ON ec.entry_id = n.id")
             conditions.append("ec.category_id = ?")

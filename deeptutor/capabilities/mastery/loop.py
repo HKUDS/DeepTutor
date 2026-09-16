@@ -23,6 +23,7 @@ from deeptutor.capabilities.mastery.tools import MASTERY_TOOL_NAMES
 from deeptutor.capabilities.protocol import PromptBlock
 from deeptutor.core.context import UnifiedContext
 from deeptutor.services.prompt.lookup import prompt_text as _prompt_text
+from deeptutor.tools.mastery_nav import MASTERY_NAV_TOOL_NAMES
 
 logger = logging.getLogger(__name__)
 
@@ -231,6 +232,15 @@ class MasteryLoopCapability:
                 # rest of the turn operates on, and this keeps the tool from
                 # needing to know a turn context exists.
                 updated["_bind_active_path"] = _path_binder(context)
+            return updated
+        if tool_name in MASTERY_NAV_TOOL_NAMES:
+            # The navigation tools stay mounted inside a mastery session —
+            # sending the learner to a *different* topic is a real thing to
+            # want mid-course. What they could not see is which topic this
+            # turn is already tutoring, so a hand-off card could point back at
+            # this very conversation's topic (#1412).
+            updated = dict(kwargs)
+            updated["_tutoring_path_id"] = path_id
             return updated
         return kwargs
 

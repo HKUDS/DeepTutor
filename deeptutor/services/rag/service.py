@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import asyncio
 import contextlib
 import importlib
-import inspect
 import logging
 import os
 from pathlib import Path
@@ -199,12 +197,7 @@ class RAGService:
             return contextlib.nullcontext()
 
         from deeptutor.logging import ProcessLogEvent, capture_process_logs
-        from deeptutor.logging.formatters import ContextFilter
-
-        try:
-            target_loop = asyncio.get_running_loop()
-        except RuntimeError:
-            target_loop = None
+        from deeptutor.logging.process_stream import ProcessLogHandler
 
         def should_skip_noisy_retrieve_log(event: ProcessLogEvent) -> bool:
             if event.level != "INFO":
@@ -242,26 +235,6 @@ class RAGService:
                 },
             )
 
-        class _NamedRawLogHandler(logging.Handler):
-            def __init__(self) -> None:
-                super().__init__(logging.INFO)
-                self.addFilter(ContextFilter())
-
-            def emit(self, record: logging.LogRecord) -> None:
-                try:
-                    result = emit(ProcessLogEvent.from_record(record))
-                    if not inspect.isawaitable(result):
-                        return
-                    try:
-                        loop = asyncio.get_running_loop()
-                    except RuntimeError:
-                        if target_loop and target_loop.is_running():
-                            asyncio.run_coroutine_threadsafe(result, target_loop)
-                        return
-                    asyncio.ensure_future(result, loop=loop)
-                except Exception:
-                    self.handleError(record)
-
         @contextlib.contextmanager
         def capture_non_propagating_logs():
             handlers: list[tuple[logging.Logger, logging.Handler]] = []
@@ -272,7 +245,7 @@ class RAGService:
                 source_logger = logging.getLogger(logger_name)
                 if source_logger.propagate:
                     continue
-                handler = _NamedRawLogHandler()
+                handler = ProcessLogHandler(emit, min_level=logging.INFO)
                 source_logger.addHandler(handler)
                 handlers.append((source_logger, handler))
             try:

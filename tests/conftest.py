@@ -4,6 +4,7 @@ Root conftest — shared fixtures for the entire test suite.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -218,3 +219,85 @@ def fake_llm_config() -> MagicMock:
     cfg.api_key = "sk-test"
     cfg.api_base = "https://api.openai.com/v1"
     return cfg
+
+
+@pytest.fixture(autouse=True)
+def _isolate_llm_config(request, monkeypatch):
+    """Give every test the same resolved LLM config, and no cache to inherit.
+
+    ``get_llm_config`` memoises into a module-level ``_LLM_CONFIG_CACHE``, so
+    whichever test resolved first decided what every later test saw. Anything
+    constructed at import-or-init time off that config — ``QuestionPipeline``
+    is one — therefore passed only when some earlier test had already filled
+    the cache: run the suite in a different order and it raised
+    ``LLMConfigError`` instead. It also meant a developer with a model
+    configured and CI without one were running different tests.
+
+    Resolve to a fixed fake and clear the cache on both sides. Tests that
+    exercise resolution itself patch ``resolve_llm_runtime_config`` again,
+    which wins over this one.
+    """
+    from deeptutor.services.config.provider_runtime import ResolvedLLMConfig
+    from deeptutor.services.llm import config as llm_config_module
+
+    if "real_llm_resolver" in request.keywords:
+        # Resolution is what this test is checking. Still clear the cache on
+        # both sides so it neither inherits nor leaves one.
+        llm_config_module._LLM_CONFIG_CACHE = None
+        yield
+        llm_config_module._LLM_CONFIG_CACHE = None
+        return
+
+    def _resolve(*_args, **_kwargs) -> ResolvedLLMConfig:
+        return ResolvedLLMConfig(
+            model="gpt-4o-mini",
+            provider_name="openai",
+            provider_mode="direct",
+            binding="openai",
+            api_key="sk-test",
+            base_url="https://api.openai.com/v1",
+            effective_url="https://api.openai.com/v1",
+            context_window=128000,
+        )
+
+    monkeypatch.setattr(llm_config_module, "resolve_llm_runtime_config", _resolve)
+    monkeypatch.setattr(llm_config_module, "_LLM_CONFIG_CACHE", None)
+    yield
+    llm_config_module._LLM_CONFIG_CACHE = None
+
+
+@pytest.fixture(autouse=True)
+def _isolate_application_container():
+    """No test inherits the process-wide container another test built.
+
+    ``get_application_container`` lazily builds once and keeps the result in a
+    module global, so the first test to reach it chose the coordinator backend
+    for every test after it. A run where that first test had redis settings in
+    scope left every later ``start()`` raising "Turn coordination backend is
+    unavailable" — including tests asserting on an entirely different error.
+    """
+    from deeptutor.app import container as container_module
+
+    container_module._default_container = None
+    yield
+    container_module._default_container = None
+
+
+@pytest.fixture(autouse=True)
+def _restore_process_env():
+    """Undo environment a test left behind outside monkeypatch's reach.
+
+    ``monkeypatch.setenv`` is restored for you; a production code path that
+    assigns ``os.environ`` directly is not. ``runtime.launcher`` exports
+    ``DEEPTUTOR_HOME`` that way to hand the runtime home to its children, so
+    every launcher test left the variable pointing at its own ``tmp_path``.
+    The directory is deleted at teardown but the variable is not, and each of
+    the eight tests that shell out to ``sys.executable`` then ran against a
+    home that no longer exists — creating default settings, and logging that
+    it did onto the stdout the parent was trying to parse.
+    """
+    before = dict(os.environ)
+    yield
+    if os.environ != before:
+        os.environ.clear()
+        os.environ.update(before)

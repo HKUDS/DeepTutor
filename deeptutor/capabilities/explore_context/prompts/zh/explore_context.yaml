@@ -87,3 +87,4 @@ briefing_header: |
 
 status:
   exploring: "上下文调查"
+  reasoning_only_nudged: "调查轮次只有内部推理，已要求模型直接写出调查结论。"

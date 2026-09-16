@@ -292,6 +292,69 @@ def test_v3_keeps_other_option_when_free_text_disabled() -> None:
     assert _labels(payload.questions[0]) == ("A", "Other")
 
 
+def test_v3_drops_an_option_whose_body_duplicates_another() -> None:
+    """Two options with the same visible text leave the learner nothing to
+    pick between (#1409: a duplicated choice makes the question unanswerable).
+
+    The mastery quiz contract already refuses duplicate bodies at
+    registration; the clarification-card channel gets the same rule here.
+    """
+    payload, _ = build_ask_user_payload(
+        questions=[
+            {
+                "prompt": "x",
+                "options": [
+                    {"label": "B", "description": "8"},
+                    {"label": "C", "description": "8"},
+                    {"label": "D", "description": "-2"},
+                ],
+            }
+        ]
+    )
+    assert payload is not None
+    assert _labels(payload.questions[0]) == ("B", "D")
+
+
+def test_v3_duplicate_body_comparison_ignores_case_and_spacing() -> None:
+    """Near-duplicates that differ only by case or spacing read as the same
+    choice to a learner, so the same rule applies to them."""
+    payload, _ = build_ask_user_payload(
+        questions=[
+            {
+                "prompt": "x",
+                "options": [
+                    {"label": "A", "description": "Rerank  the query."},
+                    {"label": "B", "description": "  rerank the query.  "},
+                    {"label": "C", "description": "Rewrite the query."},
+                ],
+            }
+        ]
+    )
+    assert payload is not None
+    assert _labels(payload.questions[0]) == ("A", "C")
+
+
+def test_v3_label_only_options_are_never_body_deduped() -> None:
+    """An option with no body is its label; distinct labels are distinct
+    choices even though every description is empty."""
+    payload, _ = build_ask_user_payload(questions=[{"prompt": "x", "options": ["A", "B", "C"]}])
+    assert payload is not None
+    assert _labels(payload.questions[0]) == ("A", "B", "C")
+
+
+def test_v3_duplicate_body_check_is_per_question() -> None:
+    """Two different questions may offer the same answer text."""
+    payload, _ = build_ask_user_payload(
+        questions=[
+            {"prompt": "x", "options": [{"label": "A", "description": "same"}]},
+            {"prompt": "y", "options": [{"label": "A", "description": "same"}]},
+        ]
+    )
+    assert payload is not None
+    assert _labels(payload.questions[0]) == ("A",)
+    assert _labels(payload.questions[1]) == ("A",)
+
+
 # ------------------------- frontend contract shape ------------------------
 
 

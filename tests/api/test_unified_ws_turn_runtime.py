@@ -1050,3 +1050,218 @@ async def test_a_null_mode_on_the_wire_keeps_the_conversation_in_the_mode_it_was
     assert resolve("review", "outline") == "review"
     # And a conversation that has never had one stays unrecorded.
     assert resolve(None, None) is None
+
+
+@pytest.mark.asyncio
+async def test_prior_image_attachments_are_reattached_on_the_next_turn(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    """An image attached in turn 1 must still reach a vision model on turn 2.
+
+    Multimodal blocks exist only on the upload turn and the source manifest
+    deliberately excludes images, so without re-attachment the model loses
+    the image entirely and asks the learner to resend it (#1438). The
+    executor re-attaches the conversation's earlier images (URL-only; the
+    multimodal layer resolves the bytes from the attachment store), and the
+    new message row must not duplicate them.
+    """
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    runtime = TurnRuntimeManager(store)
+    captured: list[list[SimpleNamespace]] = []
+
+    class FakeContextBuilder:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        async def build(self, **kwargs):
+            return SimpleNamespace(
+                conversation_history=[],
+                conversation_summary="",
+                context_text="",
+                token_count=0,
+                budget=0,
+            )
+
+    class FakeOrchestrator:
+        async def handle(self, context):
+            captured.append(list(context.attachments or []))
+            yield StreamEvent(
+                type=StreamEventType.CONTENT,
+                source="chat",
+                stage="responding",
+                content="ok",
+                metadata={"call_kind": "llm_final_response"},
+            )
+            yield StreamEvent(type=StreamEventType.DONE, source="chat")
+
+    monkeypatch.setattr("deeptutor.services.llm.config.get_llm_config", lambda: SimpleNamespace())
+    monkeypatch.setattr(
+        "deeptutor.services.session.context_builder.ContextBuilder", FakeContextBuilder
+    )
+    monkeypatch.setattr("deeptutor.runtime.orchestrator.ChatOrchestrator", FakeOrchestrator)
+    monkeypatch.setattr(
+        "deeptutor.book.context.build_book_context",
+        lambda *_args, **_kwargs: SimpleNamespace(text="", references=[], warnings=[]),
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.memory.get_memory_store",
+        lambda: SimpleNamespace(read_l3_concat=lambda: "", emit=_noop_async),
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.skill.get_skill_service",
+        _fake_skill_service,
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.persona.get_persona_service",
+        _fake_persona_service,
+    )
+
+    image_attachment = {
+        "type": "image",
+        "url": "/files/attachments/s1/img-1/shot.png",
+        "filename": "shot.png",
+        "mime_type": "image/png",
+        "base64": "",
+    }
+
+    session, turn1 = await runtime.start_turn(
+        {
+            "type": "start_turn",
+            "content": "what is in this picture?",
+            "session_id": None,
+            "capability": None,
+            "tools": [],
+            "knowledge_bases": [],
+            "attachments": [image_attachment],
+            "language": "en",
+            "config": {},
+        }
+    )
+    async for _event in runtime.subscribe_turn(turn1["id"], after_seq=0):
+        pass
+
+    _session2, turn2 = await runtime.start_turn(
+        {
+            "type": "start_turn",
+            "content": "and the top left corner?",
+            "session_id": session["id"],
+            "capability": None,
+            "tools": [],
+            "knowledge_bases": [],
+            "attachments": [],
+            "language": "en",
+            "config": {},
+        }
+    )
+    async for _event in runtime.subscribe_turn(turn2["id"], after_seq=0):
+        pass
+
+    assert [att.url for att in captured[0]] == [image_attachment["url"]]
+    # Turn 2 carries no payload attachment, yet the conversation's earlier
+    # image is re-attached for the model. (The payload contract has no
+    # attachment id, so the URL is the stable identity across turns.)
+    assert len(captured[1]) == 1
+    reattached = captured[1][0]
+    assert reattached.base64 == ""
+    assert reattached.url == image_attachment["url"]
+
+    # The turn-2 message row must not duplicate the attachment: the image
+    # belongs to turn 1's row and the re-attachment is per-turn context only.
+    rows = await store.get_messages(session["id"])
+    user_rows = [m for m in rows if m.get("role") == "user"]
+    assert user_rows[-1].get("attachments") == []
+
+
+@pytest.mark.asyncio
+async def test_reattaching_the_same_image_does_not_duplicate_it(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    runtime = TurnRuntimeManager(store)
+    captured: list[list[SimpleNamespace]] = []
+
+    class FakeContextBuilder:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        async def build(self, **kwargs):
+            return SimpleNamespace(
+                conversation_history=[],
+                conversation_summary="",
+                context_text="",
+                token_count=0,
+                budget=0,
+            )
+
+    class FakeOrchestrator:
+        async def handle(self, context):
+            captured.append(list(context.attachments or []))
+            yield StreamEvent(type=StreamEventType.DONE, source="chat")
+
+    monkeypatch.setattr("deeptutor.services.llm.config.get_llm_config", lambda: SimpleNamespace())
+    monkeypatch.setattr(
+        "deeptutor.services.session.context_builder.ContextBuilder", FakeContextBuilder
+    )
+    monkeypatch.setattr("deeptutor.runtime.orchestrator.ChatOrchestrator", FakeOrchestrator)
+    monkeypatch.setattr(
+        "deeptutor.book.context.build_book_context",
+        lambda *_args, **_kwargs: SimpleNamespace(text="", references=[], warnings=[]),
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.memory.get_memory_store",
+        lambda: SimpleNamespace(read_l3_concat=lambda: "", emit=_noop_async),
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.skill.get_skill_service",
+        _fake_skill_service,
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.persona.get_persona_service",
+        _fake_persona_service,
+    )
+
+    image_attachment = {
+        "type": "image",
+        "url": "/files/attachments/s1/img-1/shot.png",
+        "filename": "shot.png",
+        "mime_type": "image/png",
+        "base64": "",
+    }
+    session, turn1 = await runtime.start_turn(
+        {
+            "type": "start_turn",
+            "content": "look",
+            "session_id": None,
+            "capability": None,
+            "tools": [],
+            "knowledge_bases": [],
+            "attachments": [image_attachment],
+            "language": "en",
+            "config": {},
+        }
+    )
+    async for _event in runtime.subscribe_turn(turn1["id"], after_seq=0):
+        pass
+
+    _session2, turn2 = await runtime.start_turn(
+        {
+            "type": "start_turn",
+            "content": "look again",
+            "session_id": session["id"],
+            "capability": None,
+            "tools": [],
+            "knowledge_bases": [],
+            "attachments": [image_attachment],
+            "language": "en",
+            "config": {},
+        }
+    )
+    async for _event in runtime.subscribe_turn(turn2["id"], after_seq=0):
+        pass
+
+    # The same file re-attached in turn 2 must not appear twice: the fresh
+    # record and the re-attached prior entry share one URL, and the URL is
+    # the dedupe key.
+    assert [att.url for att in captured[1]] == [image_attachment["url"]]

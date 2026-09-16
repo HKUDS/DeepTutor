@@ -207,6 +207,9 @@ def serve(
         reload=reload,
         workers=backend_workers,
         reload_excludes=["web/*", "data/*"] if reload else None,
+        # Keep request.client tied to the actual peer; XFF is client-controlled
+        # unless the deployment explicitly provides a trusted proxy.
+        proxy_headers=False,
         ws_max_size=get_ws_max_size(),
         timeout_keep_alive=HTTP_KEEP_ALIVE_TIMEOUT,
     )

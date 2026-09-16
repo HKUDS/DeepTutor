@@ -7,9 +7,15 @@ Combines user directory initialization and port configuration management.
 import json
 import logging
 from pathlib import Path
+from typing import Any
 
 import yaml
 
+from deeptutor.services.config.loader import (
+    DEFAULT_EXPLORE_CONTEXT_PARAMS,
+    DEFAULT_QUESTION_PARAMS,
+    DEFAULT_RESEARCH_PARAMS,
+)
 from deeptutor.services.path_service import get_path_service
 
 # Initialize logger for setup operations
@@ -25,6 +31,7 @@ DEFAULT_INTERFACE_SETTINGS = {
         "learnResearch": ["/question", "/solver", "/research", "/co_writer"],
     },
 }
+
 
 DEFAULT_MAIN_SETTINGS = {
     "system": {
@@ -68,7 +75,7 @@ DEFAULT_MAIN_SETTINGS = {
     },
 }
 
-DEFAULT_AGENTS_SETTINGS = {
+DEFAULT_AGENTS_SETTINGS: dict[str, Any] = {
     "capabilities": {
         "solve": {"temperature": 0.3, "max_tokens": 8192},
         "research": {"temperature": 0.5, "max_tokens": 12000},
@@ -81,7 +88,8 @@ DEFAULT_AGENTS_SETTINGS = {
         # both (#1316). Matched to `research` rather than pushed higher: the
         # same "long structured output" shape, the same accepted risk against
         # providers that cap `max_tokens`, and the low-effort retry in
-        # `book/json_retry.py` is what actually rescues a starved round.
+        # `services/llm/structured_retry.py` is what actually rescues a starved
+        # round.
         "book": {"temperature": 0.5, "max_tokens": 12000},
         "chat": {
             "temperature": 0.2,
@@ -98,7 +106,27 @@ DEFAULT_AGENTS_SETTINGS = {
         "vision_solver": {"temperature": 0.3, "max_tokens": 12000},
         "math_animator": {"temperature": 0.4, "max_tokens": 12000},
     },
+    # Settings' "test this model" probe. A reasoning model spends its budget
+    # thinking before it answers, so the 1024 that sufficed for a chat model
+    # returned an empty completion and the probe reported the model broken.
+    "diagnostics": {
+        "llm_probe": {"temperature": 0.1, "max_tokens": 4096},
+    },
 }
+
+# Per-stage budgets are seeded from the same tables the pipelines read, so a
+# fresh agents.yaml shows every knob that governs a run and Settings can edit
+# it. Derived rather than copied: two lists of the same numbers is how a
+# default and its seed drift apart, which is the shape of #1316.
+for _capability, _stages in (
+    ("question", DEFAULT_QUESTION_PARAMS),
+    ("research", DEFAULT_RESEARCH_PARAMS),
+    ("explore_context", DEFAULT_EXPLORE_CONTEXT_PARAMS),
+):
+    _section = DEFAULT_AGENTS_SETTINGS["capabilities"].setdefault(_capability, {})
+    for _stage, _values in _stages.items():
+        _section.setdefault(_stage, dict(_values))
+del _capability, _stages, _section, _stage, _values
 
 
 def _get_setup_logger():

@@ -100,9 +100,11 @@ async def _run_quiz_turn(tmp_path, captured: dict, config: dict | None = None):
 
 
 @pytest.mark.asyncio
-async def test_quiz_requests_stay_in_chat_by_default(tmp_path) -> None:
+async def test_quiz_requests_stay_in_chat_by_default(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     captured: dict = {"global_enabled": False}
-    _configure_runtime(pytest.MonkeyPatch(), captured)
+    _configure_runtime(monkeypatch, captured)
 
     turn, session = await _run_quiz_turn(tmp_path, captured)
 
@@ -114,9 +116,11 @@ async def test_quiz_requests_stay_in_chat_by_default(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_enabled_explicit_quiz_routes_for_one_turn(tmp_path) -> None:
+async def test_enabled_explicit_quiz_routes_for_one_turn(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     captured: dict = {"global_enabled": True}
-    _configure_runtime(pytest.MonkeyPatch(), captured)
+    _configure_runtime(monkeypatch, captured)
 
     turn, session = await _run_quiz_turn(tmp_path, captured)
 
@@ -129,9 +133,11 @@ async def test_enabled_explicit_quiz_routes_for_one_turn(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_auto_route_false_overrides_global_setting(tmp_path) -> None:
+async def test_auto_route_false_overrides_global_setting(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     captured: dict = {"global_enabled": True}
-    _configure_runtime(pytest.MonkeyPatch(), captured)
+    _configure_runtime(monkeypatch, captured)
 
     turn, session = await _run_quiz_turn(tmp_path, captured, {"auto_route": False})
 
@@ -141,9 +147,11 @@ async def test_auto_route_false_overrides_global_setting(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_per_turn_flag_opts_in_when_global_default_is_off(tmp_path) -> None:
+async def test_per_turn_flag_opts_in_when_global_default_is_off(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     captured: dict = {"global_enabled": False}
-    _configure_runtime(pytest.MonkeyPatch(), captured)
+    _configure_runtime(monkeypatch, captured)
 
     turn, session = await _run_quiz_turn(tmp_path, captured, {"auto_route": True})
 

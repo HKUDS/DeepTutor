@@ -68,12 +68,18 @@ if (isEntry) {
   let result;
   try {
     copyPdfjsAssets();
+    // On Vercel (process.env.VERCEL === "1") do NOT force --webpack: the
+    // post-build validator expects Turbopack's output layout and fails with
+    // ENOENT routes-manifest-deterministic.json otherwise (see issue #1428).
+    // The Webpack standalone bundle is only needed by the local
+    // `deeptutor start` launcher, so keep the flag for local/Docker builds.
+    const isVercel = process.env.VERCEL === "1";
+    const args = isVercel
+      ? [nextBin, "build", ...process.argv.slice(2)]
+      : [nextBin, "build", "--webpack", ...process.argv.slice(2)];
     result = spawnSync(
       process.execPath,
-      // Next.js 16 defaults to Turbopack, which does not emit the standalone
-      // server bundle expected by `deeptutor start`. The production launcher
-      // needs the Webpack output at `.next-deeptutor/standalone/server.js`.
-      [nextBin, "build", "--webpack", ...process.argv.slice(2)],
+      args,
       {
         cwd: webRoot,
         stdio: "inherit",

@@ -19,10 +19,9 @@ from deeptutor.services.llm import (
     complete as llm_complete,
 )
 from deeptutor.services.llm.reasoning_params import RETRY_REASONING_EFFORT
+from deeptutor.services.llm.structured_retry import json_payload_is_usable
 from deeptutor.services.prompt.language import append_language_directive
 from deeptutor.utils.json_parser import parse_json_response
-
-from ..json_retry import json_payload_is_usable
 
 
 async def llm_text(
@@ -142,7 +141,7 @@ async def llm_json(
     we first honor the configured reasoning mode, then retry once with low
     reasoning effort if parsing fails or the expected top-level key is missing
     — the same rule the Book pipeline agents apply via
-    :func:`deeptutor.book.json_retry.json_with_reasoning_retry`.
+    :func:`deeptutor.services.llm.structured_retry.json_with_reasoning_retry`.
 
     A caller that supplies an effort of its own (book reader-facing blocks pass
     ``"none"``) keeps that value on the retry, so a round that was deliberately

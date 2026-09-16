@@ -16,7 +16,9 @@ import PickerHeader from "@/components/common/PickerHeader";
 import {
   getSession,
   listSessions,
+  searchSessions,
   type SessionDetail,
+  type SessionSearchResult,
   type SessionSummary,
 } from "@/lib/session-api";
 import { normalizeMessageContent, truncateText } from "@/lib/message-content";
@@ -58,9 +60,19 @@ export default function HistorySessionPicker({
   // title lands; mirror SessionList with a localized "New chat" label.
   const placeholderLabel = t("New chat");
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedSessions, setSelectedSessions] = useState<
+    Record<string, SessionSummary>
+  >({});
   const [query, setQuery] = useState("");
+  const queryRef = useRef(query);
   const [loading, setLoading] = useState(false);
+  const [searchResults, setSearchResults] = useState<SessionSearchResult[]>([]);
+  const [searchTotal, setSearchTotal] = useState(0);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const searchGenerationRef = useRef(0);
+  const loadMoreAbortRef = useRef<AbortController | null>(null);
+  const selectedIds = Object.keys(selectedSessions);
 
   // The session shown in the right-hand preview pane. Driven by hover/focus
   // and click so the preview tracks wherever the user's attention is — the
@@ -84,6 +96,7 @@ export default function HistorySessionPicker({
         const data = await listSessions(200, 0, { force: true });
         if (!mounted) return;
         setSessions(data);
+        if (queryRef.current.trim()) return;
         // Default the preview to the most recent session so the right pane is
         // never blank on open.
         setActiveId((prev) => {
@@ -103,6 +116,51 @@ export default function HistorySessionPicker({
       mounted = false;
     };
   }, [open]);
+
+  useEffect(() => {
+    const generation = ++searchGenerationRef.current;
+    loadMoreAbortRef.current?.abort();
+    loadMoreAbortRef.current = null;
+    setLoadingMore(false);
+    const term = query.trim();
+    if (!open || !term) {
+      setSearchResults([]);
+      setSearchTotal(0);
+      setSearchLoading(false);
+      return;
+    }
+
+    setSearchResults([]);
+    setSearchTotal(0);
+    setSearchLoading(true);
+    let controller: AbortController | null = null;
+    const timer = window.setTimeout(() => {
+      controller = new AbortController();
+      searchSessions(term, 50, 0, controller.signal)
+        .then((page) => {
+          if (generation !== searchGenerationRef.current) return;
+          setSearchResults(page.sessions);
+          setSearchTotal(page.total);
+          setActiveId(page.sessions[0] ? sessionKey(page.sessions[0]) : null);
+        })
+        .catch((error: unknown) => {
+          if (error instanceof DOMException && error.name === "AbortError")
+            return;
+          if (generation !== searchGenerationRef.current) return;
+          setSearchResults([]);
+          setSearchTotal(0);
+        })
+        .finally(() => {
+          if (generation === searchGenerationRef.current)
+            setSearchLoading(false);
+        });
+    }, 300);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller?.abort();
+    };
+  }, [open, query]);
 
   // Lazily fetch the active session's transcript for the preview pane.
   useEffect(() => {
@@ -127,27 +185,25 @@ export default function HistorySessionPicker({
     };
   }, [activeId, open]);
 
-  const filteredSessions = useMemo(() => {
-    const keyword = query.trim().toLowerCase();
-    if (!keyword) return sessions;
-    return sessions.filter((session) => {
-      const title = String(session.title || "").toLowerCase();
-      const lastMessage = normalizeMessageContent(
-        session.last_message,
-      ).toLowerCase();
-      return title.includes(keyword) || lastMessage.includes(keyword);
-    });
-  }, [query, sessions]);
+  const searching = query.trim().length > 0;
+  const visibleSessions: SessionSummary[] = searching
+    ? searchResults
+    : sessions;
 
-  const toggleSession = (id: string) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
-    );
+  const toggleSession = (session: SessionSummary) => {
+    const id = sessionKey(session);
+    setSelectedSessions((prev) => {
+      if (!prev[id]) return { ...prev, [id]: session };
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
   };
 
   const handleApply = () => {
-    const selected = sessions
-      .filter((session) => selectedIds.includes(sessionKey(session)))
+    const selected = selectedIds
+      .map((id) => selectedSessions[id])
+      .filter((session): session is SessionSummary => Boolean(session))
       .map((session) => ({
         sessionId: sessionKey(session),
         title: displaySessionTitle(session.title, placeholderLabel),
@@ -157,8 +213,12 @@ export default function HistorySessionPicker({
   };
 
   const activeSession = activeId
-    ? sessions.find((s) => sessionKey(s) === activeId)
+    ? visibleSessions.find((s) => sessionKey(s) === activeId)
     : undefined;
+  const activeSearchResult =
+    searching && activeId
+      ? searchResults.find((s) => sessionKey(s) === activeId)
+      : undefined;
   const activeDetail = activeId ? details[activeId] : undefined;
   const activeLoading =
     previewLoadingId !== null && previewLoadingId === activeId;
@@ -190,14 +250,18 @@ export default function HistorySessionPicker({
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
                 <input
                   value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder={t("Search sessions by title or last message")}
+                  onChange={(event) => {
+                    queryRef.current = event.target.value;
+                    setQuery(event.target.value);
+                  }}
+                  maxLength={200}
+                  placeholder={t("Search full conversation history")}
                   className="w-full rounded-xl border border-[var(--border)] bg-[var(--card)] py-2.5 pl-9 pr-3 text-[13px] text-[var(--foreground)] outline-none transition focus:border-[var(--primary)]/50 focus:ring-2 focus:ring-[var(--primary)]/15"
                 />
               </div>
               {selectedIds.length > 0 && (
                 <button
-                  onClick={() => setSelectedIds([])}
+                  onClick={() => setSelectedSessions({})}
                   className="shrink-0 rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 text-[12px] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
                 >
                   {t("Clear")}
@@ -206,21 +270,24 @@ export default function HistorySessionPicker({
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
-              {loading ? (
+              {(searching ? searchLoading : loading) ? (
                 <div className="flex min-h-[280px] items-center justify-center">
                   <Loader2 className="h-5 w-5 animate-spin text-[var(--muted-foreground)]" />
                 </div>
-              ) : filteredSessions.length ? (
+              ) : visibleSessions.length ? (
                 <div className="flex flex-col gap-0.5">
-                  {filteredSessions.map((session) => {
+                  {visibleSessions.map((session) => {
                     const id = sessionKey(session);
                     const selected = selectedIds.includes(id);
                     const active = id === activeId;
+                    const searchResult = searching
+                      ? (session as SessionSearchResult)
+                      : null;
                     return (
                       <button
                         key={id}
                         onClick={() => {
-                          toggleSession(id);
+                          toggleSession(session);
                           setActiveId(id);
                         }}
                         onMouseEnter={() => setActiveId(id)}
@@ -259,10 +326,56 @@ export default function HistorySessionPicker({
                             <MessageSquare size={11} strokeWidth={1.8} />
                             {session.message_count ?? 0} {t("messages")}
                           </span>
+                          {searchResult && (
+                            <span className="mt-1 line-clamp-2 block text-[11px] leading-relaxed text-[var(--muted-foreground)]">
+                              {searchResult.match_excerpt}
+                            </span>
+                          )}
                         </span>
                       </button>
                     );
                   })}
+                  {searching && searchResults.length < searchTotal && (
+                    <button
+                      type="button"
+                      disabled={loadingMore}
+                      onClick={() => {
+                        const term = query.trim();
+                        if (!term || loadingMore) return;
+                        const generation = searchGenerationRef.current;
+                        const controller = new AbortController();
+                        loadMoreAbortRef.current?.abort();
+                        loadMoreAbortRef.current = controller;
+                        setLoadingMore(true);
+                        searchSessions(
+                          term,
+                          50,
+                          searchResults.length,
+                          controller.signal,
+                        )
+                          .then((page) => {
+                            if (generation !== searchGenerationRef.current)
+                              return;
+                            setSearchResults((prev) => [
+                              ...prev,
+                              ...page.sessions,
+                            ]);
+                            setSearchTotal(page.total);
+                          })
+                          .catch(() => {
+                            /* keep the already loaded page */
+                          })
+                          .finally(() => {
+                            if (generation === searchGenerationRef.current) {
+                              setLoadingMore(false);
+                            }
+                          });
+                      }}
+                      className="mx-2 my-2 rounded-lg px-3 py-2 text-[12px] font-medium text-[var(--primary)] transition hover:bg-[var(--muted)] disabled:opacity-50"
+                    >
+                      {loadingMore ? t("Loading…") : t("Load more")}
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div className="px-6 py-14 text-center text-[13px] text-[var(--muted-foreground)]">
@@ -315,7 +428,10 @@ export default function HistorySessionPicker({
                       {t("Loading preview…")}
                     </div>
                   ) : activeDetail ? (
-                    <ConversationPreview detail={activeDetail} />
+                    <ConversationPreview
+                      detail={activeDetail}
+                      focusMessageId={activeSearchResult?.match_message_id}
+                    />
                   ) : (
                     <div className="flex min-h-[200px] items-center justify-center text-[12px] text-[var(--muted-foreground)]">
                       {t("No messages in this session.")}
@@ -359,8 +475,15 @@ export default function HistorySessionPicker({
  * role-labelled text — enough to recognize a conversation at a glance without
  * pulling in the full markdown/KaTeX renderer.
  */
-function ConversationPreview({ detail }: { detail: SessionDetail }) {
+function ConversationPreview({
+  detail,
+  focusMessageId,
+}: {
+  detail: SessionDetail;
+  focusMessageId?: number | string | null;
+}) {
   const { t } = useTranslation();
+  const messageRefs = useRef(new Map<string, HTMLDivElement>());
   const turns = useMemo(
     () =>
       (detail.messages || [])
@@ -373,6 +496,13 @@ function ConversationPreview({ detail }: { detail: SessionDetail }) {
         .filter((m) => m.text.trim().length > 0),
     [detail.messages],
   );
+
+  useEffect(() => {
+    if (focusMessageId === null || focusMessageId === undefined) return;
+    messageRefs.current
+      .get(String(focusMessageId))
+      ?.scrollIntoView?.({ block: "center" });
+  }, [focusMessageId, turns]);
 
   if (turns.length === 0) {
     return (
@@ -387,7 +517,21 @@ function ConversationPreview({ detail }: { detail: SessionDetail }) {
       {turns.map((turn) => {
         const isUser = turn.role === "user";
         return (
-          <div key={turn.id}>
+          <div
+            key={turn.id}
+            ref={(node) => {
+              const key = String(turn.id);
+              if (node) messageRefs.current.set(key, node);
+              else messageRefs.current.delete(key);
+            }}
+            className={
+              focusMessageId !== null &&
+              focusMessageId !== undefined &&
+              String(turn.id) === String(focusMessageId)
+                ? "rounded-xl bg-[var(--primary)]/[0.06] p-3 ring-1 ring-[var(--primary)]/20"
+                : undefined
+            }
+          >
             <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-[var(--muted-foreground)]">
               {isUser ? (
                 <UserRound size={12} strokeWidth={1.9} />

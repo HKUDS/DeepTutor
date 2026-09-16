@@ -293,30 +293,94 @@ DEFAULT_CHAT_PARAMS: dict[str, Any] = {
     "responding": {"max_tokens": 8000},
 }
 
+# A capability that makes several different LLM calls cannot be described by
+# one ``max_tokens``: the step that emits a whole JSON plan and the step that
+# writes one paragraph need different room. ``chat`` has said so since it
+# gained ``exploring``/``responding``; ``question`` and ``research`` said the
+# same thing in module-level constants instead, where no user could reach them
+# — which is how #1318 shipped a plan step budgeted below the capability's own
+# 4096, and how ``capabilities.question.max_tokens`` came to govern exactly one
+# of that capability's LLM calls (the follow-up agent) while five others
+# ignored it.
+#
+# The rule these tables enforce: **agents.yaml owns every LLM budget**
+# (temperature, max_tokens, per stage), **main.yaml owns runtime behaviour**
+# (iteration caps, timeouts, retry policy, modes). A budget in main.yaml is a
+# bug, not a style choice.
+#
+# Values here are the ones these pipelines shipped as constants, so adopting
+# the table changes nothing until somebody edits agents.yaml. Stage names are
+# the pipeline's own vocabulary — they are the key a user types.
+DEFAULT_QUESTION_PARAMS: dict[str, Any] = {
+    "answering": {"max_tokens": 4000},
+    "planning": {"max_tokens": 6000},
+    "quiz_finish": {"max_tokens": 3000},
+    "repair": {"max_tokens": 2500},
+    "tool_summarizer": {"max_tokens": 800},
+}
 
-def get_chat_params() -> dict[str, Any]:
-    """
-    Read ``capabilities.chat`` from agents.yaml with deep-merged defaults.
+DEFAULT_RESEARCH_PARAMS: dict[str, Any] = {
+    "note": {"max_tokens": 1500},
+    "block": {"max_tokens": 6000},
+    "outline": {"max_tokens": 2000},
+    "report_outline": {"max_tokens": 2000},
+    "report_intro": {"max_tokens": 3000},
+    "report_section": {"max_tokens": 6000},
+    "report_conclusion": {"max_tokens": 3000},
+}
 
-    Unlike :func:`get_agent_params`, the chat capability has per-stage
-    sub-sections (``exploring``, ``responding``), each with its own
-    ``max_tokens``. A single ``temperature`` and round budget are shared
-    across the chat loop. Legacy keys from the targeting-era schema
-    (``max_iterations``, ``max_explore_rounds``, …) are filtered out.
+DEFAULT_EXPLORE_CONTEXT_PARAMS: dict[str, Any] = {
+    "loop": {"max_tokens": 2000},
+    "briefing": {"max_tokens": 1400},
+}
+
+_STAGED_CAPABILITY_DEFAULTS: dict[str, dict[str, Any]] = {
+    "chat": DEFAULT_CHAT_PARAMS,
+    "question": DEFAULT_QUESTION_PARAMS,
+    "research": DEFAULT_RESEARCH_PARAMS,
+    "explore_context": DEFAULT_EXPLORE_CONTEXT_PARAMS,
+}
+
+
+def get_capability_params(capability: str) -> dict[str, Any]:
+    """Read one capability's per-stage settings from agents.yaml.
+
+    Unlike :func:`get_agent_params` — which answers "what temperature and
+    ceiling does this module's :class:`BaseAgent` use" — this answers "what
+    does each *step* of this capability's pipeline get". Unknown keys in the
+    user's file are dropped rather than merged, so a legacy or misspelled
+    entry cannot smuggle a value into a stage that does not exist.
 
     Returns:
-        dict: Deep-merged chat configuration. Always contains every stage key
-        from :data:`DEFAULT_CHAT_PARAMS` so callers can index without checks.
+        dict: the shipped defaults deep-merged with the user's overrides.
+        Every stage in the capability's default table is present, so callers
+        index without checks.
+
+    Raises:
+        KeyError: if ``capability`` has no staged defaults. Adding a stage
+            means adding it to the table above, which is the point: there is
+            one list of budgets, and it is this one.
     """
+    defaults = _STAGED_CAPABILITY_DEFAULTS[capability]
     path = get_runtime_settings_dir(PROJECT_ROOT) / "agents.yaml"
     cfg: dict[str, Any] = {}
     if path.exists():
         with open(path, encoding="utf-8") as f:
             agents_config = yaml.safe_load(f) or {}
-        cfg = (agents_config.get("capabilities", {}) or {}).get("chat", {}) or {}
-    known_keys = set(DEFAULT_CHAT_PARAMS)
+        cfg = (agents_config.get("capabilities", {}) or {}).get(capability, {}) or {}
+    known_keys = set(defaults)
     filtered_cfg = {key: value for key, value in cfg.items() if key in known_keys}
-    return _deep_merge(DEFAULT_CHAT_PARAMS, filtered_cfg)
+    return _deep_merge(defaults, filtered_cfg)
+
+
+def get_chat_params() -> dict[str, Any]:
+    """Read ``capabilities.chat`` from agents.yaml with deep-merged defaults.
+
+    Kept as its own name because the chat loop reads it on a hot path and
+    every caller already spells it this way; the behaviour is
+    :func:`get_capability_params` with ``"chat"``.
+    """
+    return get_capability_params("chat")
 
 
 __all__ = [

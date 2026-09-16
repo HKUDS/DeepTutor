@@ -122,7 +122,11 @@ LABELS: dict[str, dict[str, str]] = {
         "stop.requested": "Requested a graceful stop from launcher PID {pid}.",
         "stop.complete": "DeepTutor stopped.",
         "stop.timeout": "Launcher PID {pid} did not stop in time. Check {log}.",
-        "start.not_ready": "{name} did not become ready within {timeout}s",
+        "start.not_ready": (
+            "{name} did not become ready within {timeout}s. "
+            "Slow hardware or a workspace with data to migrate can need longer; "
+            "set {env} to a larger number of seconds."
+        ),
         "start.port_in_use": (
             "DeepTutor cannot start because port(s) already in use: {ports}. "
             "Stop the existing process or change data/user/settings/system.json."
@@ -236,7 +240,11 @@ LABELS: dict[str, dict[str, str]] = {
         "stop.requested": "已请求 launcher PID {pid} 正常停止。",
         "stop.complete": "DeepTutor 已停止。",
         "stop.timeout": "launcher PID {pid} 未能及时停止，请检查 {log}。",
-        "start.not_ready": "{name} 在 {timeout} 秒内未就绪",
+        "start.not_ready": (
+            "{name} 在 {timeout} 秒内未就绪。"
+            "硬件较慢或工作区需要迁移数据时启动会更久,"
+            "可将 {env} 设为更大的秒数。"
+        ),
         "start.port_in_use": (
             "无法启动 DeepTutor,端口已被占用: {ports}。"
             "请先停止占用进程,或修改 data/user/settings/system.json 中的端口设置。"

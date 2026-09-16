@@ -327,3 +327,46 @@ async def test_an_invented_lesson_is_refused_with_the_real_outline(store):
     assert result.success is False
     assert "Descriptive statistics" in result.content
     assert "Sampling distributions" in result.content
+
+
+@pytest.mark.asyncio
+async def test_new_session_refuses_to_restart_the_topic_it_is_already_teaching(store):
+    """The review session's own opening turn used to answer with a start card.
+
+    `mastery_new_session` stays mounted inside a mastery session so the tutor
+    can send the learner to another topic, but its hand-off instruction says
+    the mastery tutor picks the topic up "on the other side" — false when this
+    window already is that side. The model followed it, the learner clicked,
+    the draft route opened one more conversation on the same topic, and the
+    banner in the new one offered the same card again (#1412). The churned
+    conversations carry no study context, which is where the replies with no
+    question card come from (#1411).
+    """
+    _create_topic()
+
+    result = await MasteryNewSessionTool().execute(
+        path_id="stats_101",
+        opening_message="Review lesson 1 with me",
+        _tutoring_path_id="stats_101",
+    )
+
+    assert result.success is False
+    assert "already the study session" in result.content
+
+
+@pytest.mark.asyncio
+async def test_new_session_still_hands_off_to_a_different_topic_mid_course(store):
+    """Sending the learner to another topic is the tool working as intended."""
+    _create_topic()
+    _create_topic("ml_path", "Machine Learning")
+
+    payload = _payload(
+        await MasteryNewSessionTool().execute(
+            path_id="ml_path",
+            opening_message="Start me on machine learning",
+            _tutoring_path_id="stats_101",
+        )
+    )
+
+    assert payload["kind"] == "new"
+    assert payload["path_id"] == "ml_path"

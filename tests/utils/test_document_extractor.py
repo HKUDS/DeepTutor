@@ -21,6 +21,7 @@ from deeptutor.utils.document_extractor import (
     EmptyDocumentError,
     UnsupportedDocumentError,
     extract_documents_from_records,
+    extract_epub_spine,
     extract_text_from_bytes,
     extract_text_from_path,
     is_document_extension,
@@ -82,12 +83,18 @@ def _make_epub(
     opf_dir: str = "OEBPS",
     with_container: bool = True,
     with_opf: bool = True,
+    wrapper: str = "",
+    with_macosx: bool = False,
 ) -> bytes:
     """Build a minimal EPUB in memory.
 
     ``chapters`` maps member names (relative to ``opf_dir``) to XHTML body
     markup. ``spine`` is an ordered subset of chapter keys controlling the
     reading order; it defaults to the dict order.
+
+    ``wrapper`` nests the whole book under one directory and ``with_macosx``
+    adds AppleDouble resource forks — together, what macOS Finder's "Compress"
+    produces.
     """
     opf_path = f"{opf_dir}/content.opf"
     manifest = "".join(
@@ -102,18 +109,23 @@ def _make_epub(
         '<package xmlns="http://www.idpf.org/2007/opf" version="3.0">'
         f"<manifest>{manifest}</manifest><spine>{spine_xml}</spine></package>"
     )
+    root = f"{wrapper}/" if wrapper else ""
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
         zf.writestr("mimetype", "application/epub+zip")
         if with_container:
-            zf.writestr("META-INF/container.xml", _CONTAINER_XML.format(opf=opf_path))
+            zf.writestr(f"{root}META-INF/container.xml", _CONTAINER_XML.format(opf=opf_path))
         if with_opf:
-            zf.writestr(opf_path, opf)
+            zf.writestr(f"{root}{opf_path}", opf)
         for name, body in chapters.items():
             zf.writestr(
-                f"{opf_dir}/{name}",
+                f"{root}{opf_dir}/{name}",
                 f'<html xmlns="http://www.w3.org/1999/xhtml"><body>{body}</body></html>',
             )
+            if with_macosx:
+                # AppleDouble: the content file's name and extension, binary
+                # resource-fork bytes inside.
+                zf.writestr(f"__MACOSX/{opf_dir}/._{name}", b"\x00\x05\x16\x07" + b"\x00" * 60)
     return buf.getvalue()
 
 
@@ -280,6 +292,42 @@ class TestExtractEpub:
         text = extract_text_from_bytes("book.epub", data)
 
         assert "Solo chapter." in text
+
+    def test_a_finder_compressed_epub_still_reads_as_the_book_it_is(self) -> None:
+        """macOS "Compress" wraps the book in a folder and adds ``__MACOSX``.
+
+        Both together used to defeat the package lookup: the container was no
+        longer at the archive root, so resolution fell back to matching file
+        extensions, which picked up the AppleDouble forks as chapters. The
+        reader then reported "Could not load this section" on binary members
+        that were never part of the book (#1447).
+        """
+        data = _make_epub(
+            {
+                "index_split_000.xhtml": "<h1>Chapter One</h1><p>Alpha text.</p>",
+                "index_split_001.xhtml": "<h1>Chapter Two</h1><p>Beta text.</p>",
+            },
+            spine=["index_split_001.xhtml", "index_split_000.xhtml"],
+            wrapper="MyBook",
+            with_macosx=True,
+        )
+
+        units, _ = extract_epub_spine(data, "book.epub")
+
+        assert [unit.title for unit in units] == ["Chapter Two", "Chapter One"]
+        assert all("__MACOSX" not in unit.href for unit in units)
+
+    def test_resource_forks_are_not_chapters_even_without_a_package(self) -> None:
+        """The extension-matching fallback must not read AppleDouble bytes."""
+        data = _make_epub(
+            {"a.xhtml": "<p>First member.</p>"},
+            with_container=False,
+            with_macosx=True,
+        )
+
+        units, _ = extract_epub_spine(data, "book.epub")
+
+        assert [unit.href for unit in units] == ["OEBPS/a.xhtml"]
 
     def test_malformed_xhtml_uses_tolerant_html_fallback(self) -> None:
         buf = io.BytesIO()

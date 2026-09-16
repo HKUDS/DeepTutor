@@ -78,18 +78,24 @@ function normalizedHttpError(
     value.detail && typeof value.detail === "object"
       ? (value.detail as Record<string, unknown>)
       : {};
+  let retryable: boolean;
+  if (typeof value.retryable === "boolean") {
+    retryable = value.retryable;
+  } else if (typeof detail.retryable === "boolean") {
+    retryable = detail.retryable;
+  } else {
+    retryable =
+      response.status === 408 ||
+      response.status === 429 ||
+      response.status >= 500;
+  }
   return {
     code:
       (typeof value.error_code === "string" && value.error_code) ||
       (typeof detail.error_code === "string" && detail.error_code) ||
       `http_${response.status}`,
     message: messageFromBody(body, response.statusText || "Request failed"),
-    retryable:
-      (typeof value.retryable === "boolean" && value.retryable) ||
-      (typeof detail.retryable === "boolean" && detail.retryable) ||
-      response.status === 408 ||
-      response.status === 429 ||
-      response.status >= 500,
+    retryable,
     scope,
     correlationId:
       (typeof value.correlation_id === "string" && value.correlation_id) ||

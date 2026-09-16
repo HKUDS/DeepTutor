@@ -114,6 +114,10 @@ loop:
     Your previous round produced only internal reasoning — no tool call and
     no user-facing answer. Continue now: either call the tools to execute
     your plan, or write the final user-facing answer directly.
+  repeat_reasoning_only_nudge: |-
+    Your previous rounds produced only internal reasoning — no tool call and
+    no user-facing answer. Do not reason further. Select the most likely next
+    action and produce it now.
 
 knowledge_base_seed:
   header: |-
@@ -134,7 +138,7 @@ notices:
   loop_budget_exhausted: "Exploration budget reached; answering with what has been gathered."
   loop_settlement: "Exploration budget reached; completing required follow-up before the final answer."
   output_truncated: "The model output reached its token limit; asked it to continue."
-  loop_error_finish: "A step failed; answering with what has been gathered."
+  loop_error_finish: "A step failed ({error}); answering with what has been gathered."
   provider_retry: "The model provider connection was interrupted; retrying."
   provider_unavailable: "Unable to reach the model provider. Please retry."
   provider_stream_interrupted: "The model provider interrupted this response. Please retry."
@@ -143,7 +147,10 @@ notices:
   ask_questions_fallback_prompt: "What is the most important goal or constraint I should account for?"
   image_fallback: "Model does not support image input; retrying without images."
   empty_final_response: "I could not produce a useful response from the model output. Please try again or narrow the request."
+  reasoning_only_final_response: "The model produced internal reasoning but no usable answer. Please try again or narrow the request."
   empty_finish_nudged: "The round produced only internal reasoning; asked the model to continue."
+  reasoning_progress: "The model is still reasoning; it has not produced an answer or tool action yet."
+  reasoning_budget_exhausted: "The model exhausted its output budget on internal reasoning twice without producing an answer or tool action. Please retry, lower reasoning effort, or split the task into smaller steps."
 
 empty:
   empty_reply: "(empty reply)"

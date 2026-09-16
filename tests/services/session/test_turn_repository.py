@@ -125,7 +125,11 @@ async def test_only_one_process_can_begin_an_active_turn_per_session(tmp_path) -
     assert errors == []
     results = [stdout.strip().splitlines()[-1] for stdout, _stderr in completed]
     assert sum(result.startswith("ok:") for result in results) == 1, results
-    assert results.count("error:RuntimeError") == 7, results
+    # The loser reports the named conflict, not a bare RuntimeError: callers
+    # that can clear a stale row need to tell "this session is busy" from any
+    # other failure without matching on the message. It still subclasses
+    # RuntimeError, so every existing handler keeps working.
+    assert results.count("error:ActiveTurnConflict") == 7, results
 
 
 @pytest.mark.asyncio

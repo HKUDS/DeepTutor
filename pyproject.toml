@@ -475,6 +475,7 @@ markers = [
     "asyncio: mark async tests that require pytest-asyncio",
     "integration: requires explicitly configured external services",
     "redis_integration: requires DEEPTUTOR_TEST_REDIS_URL",
+    "real_llm_resolver: exercises LLM config resolution itself, so it keeps the real resolver",
 ]
 asyncio_default_fixture_loop_scope = "function"
 addopts = [

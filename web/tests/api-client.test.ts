@@ -78,6 +78,60 @@ test("structured server errors retain stable fields and correlation IDs", async 
   }
 });
 
+test("explicit retryable flags take precedence over status fallbacks", async () => {
+  const cases = [
+    {
+      name: "top-level false",
+      body: { retryable: false },
+      expected: false,
+    },
+    {
+      name: "nested false",
+      body: { detail: { retryable: false } },
+      expected: false,
+    },
+    {
+      name: "status fallback",
+      body: {},
+      expected: true,
+    },
+    {
+      name: "top-level wins conflicts",
+      body: { retryable: false, detail: { retryable: true } },
+      expected: false,
+    },
+  ];
+
+  for (const entry of cases) {
+    const restore = withFetch(async () =>
+      Response.json(entry.body, { status: 503 }),
+    );
+    try {
+      const error = await expectApiError(() => requestJson("/turn"));
+      assert.equal(error.retryable, entry.expected, entry.name);
+    } finally {
+      restore();
+    }
+  }
+});
+
+test("without an explicit flag every retryable status falls back to true", async () => {
+  // 503 alone does not prove the fallback arm: it is one of several statuses
+  // the arm answers for, and a regression that narrowed the set would still
+  // pass. Pin each status the fallback claims.
+  for (const status of [408, 429, 500, 503]) {
+    const restore = withFetch(async () =>
+      Response.json({ error_code: "opaque" }, { status }),
+    );
+    try {
+      const error = await expectApiError(() => requestJson("/turn"));
+      assert.equal(error.retryable, true, `status ${status}`);
+    } finally {
+      restore();
+    }
+  }
+});
+
 test("invalid JSON success becomes a normalized response error", async () => {
   const restore = withFetch(
     async () =>

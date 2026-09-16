@@ -1,0 +1,5 @@
+short_description: "把已选知识库转化为有依据的近期 arXiv 研究推荐。"
+when_to_use: "学习者希望基于知识库寻找前沿论文、研究趋势、空白方向或下一步学习内容时。"
+input_format: "kb_name；可选 focus、max_papers、years_limit"
+guideline: "知识库已附加后按库调用一次。结果只是待审阅的推荐，不是已导入知识库的资料。"
+phase: expansion

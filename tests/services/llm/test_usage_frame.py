@@ -6,7 +6,7 @@ plain-dict case). These tests pin all three shapes plus the two API dialects.
 
 from __future__ import annotations
 
-from deeptutor.services.llm.usage_frame import token_counts, usage_mapping
+from deeptutor.services.llm.usage_frame import token_counts, usage_breakdown, usage_mapping
 
 
 class _PydanticLike:
@@ -104,4 +104,21 @@ def test_counts_map_responses_api_dialect_from_attributes() -> None:
         "prompt_tokens": 8,
         "completion_tokens": 2,
         "total_tokens": 10,
+    }
+
+
+def test_breakdown_preserves_responses_reasoning_tokens() -> None:
+    assert usage_breakdown(
+        {
+            "input_tokens": 30,
+            "output_tokens": 12,
+            "output_tokens_details": {"reasoning_tokens": 9},
+        },
+        prompt="input_tokens",
+        completion="output_tokens",
+    ) == {
+        "prompt_tokens": 30,
+        "completion_tokens": 12,
+        "total_tokens": 42,
+        "reasoning_tokens": 9,
     }

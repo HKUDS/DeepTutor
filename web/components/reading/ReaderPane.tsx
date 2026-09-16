@@ -105,6 +105,16 @@ export interface ReaderPaneProps {
    */
   bookmarks?: ReadingBookmark[];
   onToggleBookmark?: (locator: number, label?: string) => void;
+  /**
+   * Where in the material the reader now is.
+   *
+   * Only the rendered document knows this, and the workspace is where it is
+   * needed: the outline panel highlights the row the reader is inside. The
+   * media stage has always reported it; the document surface did not, so on
+   * an EPUB, PDF or Markdown the outline stayed on whichever row was last
+   * clicked while the header counted up (#1447).
+   */
+  onLocatorChange?: (locator: number) => void;
 }
 
 /**
@@ -135,6 +145,7 @@ export function ReaderPane({
   headingJump = null,
   bookmarks = [],
   onToggleBookmark,
+  onLocatorChange,
 }: ReaderPaneProps) {
   const { t } = useTranslation();
   // Document + annotations live in the provider (workspace layout), so they
@@ -245,6 +256,7 @@ export function ReaderPane({
   const handleVisibleLocator = useCallback(
     (locator: number) => {
       setCurrentLocator(locator);
+      onLocatorChange?.(locator);
       reportViewport({ locator });
       // Remember where the reader got to, so opening this material again
       // starts here instead of at page 1. EPUB writes its own position — a
@@ -284,7 +296,7 @@ export function ReaderPane({
         });
       }
     },
-    [historyReady, material, reportViewport],
+    [historyReady, material, onLocatorChange, reportViewport],
   );
 
   useEffect(() => {

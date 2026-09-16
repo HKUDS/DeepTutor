@@ -78,6 +78,7 @@ from deeptutor.runtime.agentic.usage import record_streamed_usage
 from deeptutor.runtime.registry.tool_registry import get_tool_registry
 from deeptutor.runtime.stream_bus import StreamBus
 from deeptutor.services.config import parse_language
+from deeptutor.services.config.loader import get_capability_params
 from deeptutor.services.llm import get_llm_config, prepare_multimodal_messages
 from deeptutor.services.llm.reasoning_params import RETRY_REASONING_EFFORT
 from deeptutor.services.prompt import get_prompt_manager
@@ -137,26 +138,18 @@ _PROTOCOL_REPAIR = LabelProtocol(
 
 DEFAULT_MAX_EXPLORE_ITERATIONS = 8
 DEFAULT_MAX_QUIZ_ITERATIONS_PER_QUESTION = 5
-DEFAULT_MAX_TOKENS = 4000
-EXPLORE_FINISH_MAX_TOKENS = 3000
-# Plan is the one step asked for a whole JSON object in a single shot, and it
-# was the tightest budget in this file — below even the 4096 the ``question``
-# capability ships with. A reasoning model pays for its hidden tokens out of
-# this same allowance, so on a rich exploration trace it could spend the lot
-# deliberating and end the stream before writing a single template (#1318).
-# Reachable, not generous: the plan itself is a few hundred tokens, the rest
-# is headroom to think in, and the low-effort retry below covers the models
-# that want more than any fixed number.
-PLAN_MAX_TOKENS = 6000
-QUIZ_FINISH_MAX_TOKENS = 3000
-REPAIR_MAX_TOKENS = 2500
+# Token budgets live in agents.yaml, one entry per stage — see
+# ``DEFAULT_QUESTION_PARAMS`` in services.config.loader. They used to be
+# constants here, which meant no user could raise the plan step's ceiling
+# (#1318) and that ``capabilities.question.max_tokens`` governed only the
+# follow-up agent while these five calls ignored it. ``EXPLORE_FINISH`` went
+# with them: it had been dead since it was written, referenced nowhere.
 FINALIZATION_REPAIR_ATTEMPTS = 2
 # Tool-result summarizer (Phase 1 reflection step). The summarizer runs
 # after every tool_result returned during Explore; its compressed output
 # replaces the raw tool message in the loop's buffer so subsequent
 # iterations — and the exploration_trace passed downstream — see only the
 # distilled version. Cost: one extra main-model LLM call per tool result.
-DEFAULT_TOOL_SUMMARIZER_MAX_TOKENS = 800
 TOOL_SUMMARIZER_TEMPERATURE = 0.2
 
 
@@ -410,11 +403,16 @@ class QuestionPipeline:
             if isinstance(exploring_cfg.get("tool_summarizer"), dict)
             else {}
         )
+        self._budgets = get_capability_params("question")
         summarizer_tokens = summarizer_cfg.get("max_tokens")
         if isinstance(summarizer_tokens, int) and summarizer_tokens > 0:
+            # main.yaml still wins where a user already set it, so nobody's
+            # existing configuration changes underneath them. New installs
+            # reach the same number through agents.yaml like every other
+            # budget.
             self.tool_summarizer_max_tokens = int(summarizer_tokens)
         else:
-            self.tool_summarizer_max_tokens = DEFAULT_TOOL_SUMMARIZER_MAX_TOKENS
+            self.tool_summarizer_max_tokens = int(self._budgets["tool_summarizer"]["max_tokens"])
         self.tool_summarizer_enabled = bool(summarizer_cfg.get("enabled", True))
 
         self.max_quiz_iterations_per_question = max(1, int(max_quiz_iterations_per_question))
@@ -584,14 +582,6 @@ class QuestionPipeline:
                     client=client,
                 )
 
-            if not plan.templates:
-                await stream.progress(
-                    self._t("notices.plan_count_mismatch", got=0, requested=num_questions),
-                    source=SOURCE,
-                    stage=STAGE_PLANNING,
-                    metadata={"trace_kind": "warning"},
-                )
-
         # ----- Phase 3: Quiz (per-question) -----
         qa_pairs: list[QuizPair] = []
         async with stream.stage(STAGE_QUIZZING, source=SOURCE):
@@ -693,7 +683,7 @@ class QuestionPipeline:
             protocol=_PROTOCOL_EXPLORE,
             client=client,
             model=self.model,
-            completion_kwargs=self._completion_kwargs(DEFAULT_MAX_TOKENS),
+            completion_kwargs=self._completion_kwargs(self._budgets["answering"]["max_tokens"]),
             binding=self.binding,
             tool_schemas=tool_schemas,
             stream=stream,
@@ -755,7 +745,7 @@ class QuestionPipeline:
             stream=stream,
             stage=STAGE_PLANNING,
             iter_meta=iter_meta,
-            max_tokens=PLAN_MAX_TOKENS,
+            max_tokens=self._budgets["planning"]["max_tokens"],
         )
         if step.reasoning_only:
             # The round was all thinking and no plan. Parsing it would hand
@@ -784,7 +774,7 @@ class QuestionPipeline:
                 stream=stream,
                 stage=STAGE_PLANNING,
                 iter_meta=iter_meta,
-                max_tokens=PLAN_MAX_TOKENS,
+                max_tokens=self._budgets["planning"]["max_tokens"],
                 reasoning_effort=RETRY_REASONING_EFFORT,
             )
         plan = self._parse_plan(
@@ -793,7 +783,16 @@ class QuestionPipeline:
             allowed_types=allowed_types,
             target_difficulty=difficulty,
         )
-        if len(plan.templates) != num_questions:
+        if not plan.templates:
+            # The retry above already gave a starved planner its second pass.
+            # Still nothing means phase 3 would iterate an empty list and ship
+            # a quiz of zero questions with no error anywhere — the shape
+            # #1318 took. Fail where the cause is still legible.
+            raise RuntimeError(self._t("notices.plan_unusable"))
+        if len(plan.templates) < num_questions:
+            # Fewer than asked is a smaller quiz, not a broken one: the
+            # learner would rather answer three real questions than read a
+            # failure. `_parse_plan` already caps the other direction.
             await stream.progress(
                 self._t(
                     "notices.plan_count_mismatch",
@@ -926,7 +925,7 @@ class QuestionPipeline:
             protocol=_PROTOCOL_QUIZ,
             client=client,
             model=self.model,
-            completion_kwargs=self._completion_kwargs(QUIZ_FINISH_MAX_TOKENS),
+            completion_kwargs=self._completion_kwargs(self._budgets["quiz_finish"]["max_tokens"]),
             binding=self.binding,
             tool_schemas=tool_schemas,
             stream=stream,
@@ -1009,7 +1008,7 @@ class QuestionPipeline:
             stream=stream,
             stage=STAGE_QUIZZING,
             iter_meta=iter_meta,
-            max_tokens=REPAIR_MAX_TOKENS,
+            max_tokens=self._budgets["repair"]["max_tokens"],
         )
         return self._parse_quiz_payload(step.text)
 
@@ -1116,7 +1115,14 @@ class QuestionPipeline:
         except Exception as exc:
             logger.warning("Tool summarizer failed for %s: %s", tool_name, exc)
             await stream.progress(
-                self._t("notices.tool_summarizer_failed"),
+                self._t(
+                    "notices.tool_summarizer_failed",
+                    error=str(exc),
+                    default=(
+                        f"Tool summarizer could not produce a summary ({exc}); "
+                        "passing raw tool result forward."
+                    ),
+                ),
                 source=SOURCE,
                 stage=STAGE_EXPLORING,
                 metadata=merge_trace_metadata(
@@ -1519,7 +1525,7 @@ class QuestionPipeline:
                 stream=stream,
                 stage=stage,
                 iter_meta=iter_meta,
-                max_tokens=DEFAULT_MAX_TOKENS,
+                max_tokens=self._budgets["answering"]["max_tokens"],
                 final_meta=final_meta,
             )
             calls += 1
@@ -1744,11 +1750,13 @@ class QuestionPipeline:
         stream: StreamBus,
         stage: str,
         iter_meta: dict[str, Any],
-        max_tokens: int = DEFAULT_MAX_TOKENS,
+        max_tokens: int | None = None,
         reasoning_effort: str | None = None,
         final_meta: dict[str, Any] | None = None,
         eager_sub_trace: bool = True,
     ) -> LabeledStepResult:
+        if max_tokens is None:
+            max_tokens = int(self._budgets["answering"]["max_tokens"])
         return await run_labeled_step(
             client=client,
             model=self.model,

@@ -91,6 +91,36 @@ async def _topic_or_error(path_id: str) -> tuple[dict[str, Any] | None, ToolResu
     return topic, None
 
 
+def _handoff_lands_where_we_already_are(
+    topic: dict[str, Any],
+    tutoring_path_id: Any,
+) -> ToolResult | None:
+    """Refuse a "start a session on this topic" card inside that topic's session.
+
+    ``_HANDOFF_INSTRUCTION`` tells the model not to tutor the topic in this
+    window, because the mastery tutor picks it up on the other side. Inside a
+    mastery session that premise is false — this window *is* the topic's study
+    session — and nothing in the tool's result told the model otherwise, so it
+    answered the opening turn with a card offering to start the very topic it
+    was already teaching. Each click opens the draft route and creates one
+    more conversation (#1412); those conversations begin with no study context
+    to quiz against, which is where the replies that carry no question card
+    come from (#1411).
+
+    A hand-off to a *different* topic is the tool working as intended and is
+    left alone.
+    """
+    current = _text(tutoring_path_id)
+    if not current or current != _text(topic.get("path_id")):
+        return None
+    return _failure(
+        "This conversation is already the study session for that topic, so a "
+        "card would only start a second one on it. Teach the lesson here "
+        "instead. Reserve mastery_new_session for sending the learner to a "
+        "different topic."
+    )
+
+
 def _module_or_error(
     topic: dict[str, Any], module_ref: str
 ) -> tuple[dict[str, Any] | None, ToolResult | None]:
@@ -434,6 +464,9 @@ class MasteryNewSessionTool(_NavTool):
         topic, error = await _topic_or_error(kwargs.get("path_id", ""))
         if error is not None or topic is None:
             return error or _failure("path_id is required.")
+        looping = _handoff_lands_where_we_already_are(topic, kwargs.get("_tutoring_path_id"))
+        if looping is not None:
+            return looping
         module, module_error = _module_or_error(topic, kwargs.get("module", ""))
         if module_error is not None:
             return module_error

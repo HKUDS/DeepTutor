@@ -11,6 +11,7 @@ from deeptutor.services.session.source_inventory import (
     SourceEntry,
     SourceInventory,
     build_inventory,
+    collect_prior_image_attachments,
     render_manifest,
     serialize_referenced_transcript,
 )
@@ -702,3 +703,349 @@ async def test_load_history_session_partner_missing_returns_empty(monkeypatch) -
 
     text, _ = await _load_history_session(FakeStore(), "partner:ghost:dt-1")
     assert text == ""
+
+
+# ---------------------------------------------------------------------------
+# Prior-image collection (#1438: images are the one attachment kind with no
+# cross-turn path — the manifest excludes them and multimodal blocks exist
+# only on the upload turn).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_collect_prior_images_returns_branch_images_most_recent_first() -> None:
+    messages = [
+        {
+            "id": 1,
+            "role": "user",
+            "content": "first",
+            "parent_message_id": None,
+            "attachments": [
+                {
+                    "id": "img-1",
+                    "type": "image",
+                    "filename": "first.png",
+                    "mime_type": "image/png",
+                    "url": "/files/attachments/s1/img-1/first.png",
+                }
+            ],
+        },
+        {"id": 2, "role": "assistant", "content": "ok", "parent_message_id": 1, "attachments": []},
+        {
+            "id": 3,
+            "role": "user",
+            "content": "second",
+            "parent_message_id": 2,
+            "attachments": [
+                {
+                    "id": "img-2",
+                    "type": "image",
+                    "filename": "second.png",
+                    "mime_type": "image/png",
+                    "url": "/files/attachments/s1/img-2/second.png",
+                }
+            ],
+        },
+    ]
+    store = FakeStore(messages=messages)
+
+    collected = await collect_prior_image_attachments(store, session_id="s1", leaf_message_id=None)
+
+    assert [entry["id"] for entry in collected] == ["img-2", "img-1"]
+    assert all(entry["type"] == "image" for entry in collected)
+    assert collected[0]["url"].endswith("second.png")
+
+
+@pytest.mark.asyncio
+async def test_collect_prior_images_skips_non_images_and_url_less_entries() -> None:
+    messages = [
+        {
+            "id": 1,
+            "role": "user",
+            "content": "first",
+            "parent_message_id": None,
+            "attachments": [
+                {
+                    "id": "doc-1",
+                    "filename": "notes.pdf",
+                    "mime_type": "application/pdf",
+                    "url": "/files/attachments/s1/doc-1/notes.pdf",
+                },
+                {
+                    "id": "img-nourl",
+                    "type": "image",
+                    "filename": "legacy.png",
+                    "mime_type": "image/png",
+                    "url": "",
+                },
+            ],
+        }
+    ]
+    store = FakeStore(messages=messages)
+
+    collected = await collect_prior_image_attachments(store, session_id="s1", leaf_message_id=None)
+
+    assert collected == []
+
+
+@pytest.mark.asyncio
+async def test_collect_prior_images_dedupes_and_excludes_current_ids() -> None:
+    messages = [
+        {
+            "id": 1,
+            "role": "user",
+            "content": "first",
+            "parent_message_id": None,
+            "attachments": [
+                {
+                    "id": "img-1",
+                    "type": "image",
+                    "filename": "shot.png",
+                    "mime_type": "image/png",
+                    "url": "/files/attachments/s1/img-1/shot.png",
+                }
+            ],
+        },
+        {
+            "id": 2,
+            "role": "user",
+            "content": "again",
+            "parent_message_id": 1,
+            "attachments": [
+                {
+                    "id": "img-1",
+                    "type": "image",
+                    "filename": "shot.png",
+                    "mime_type": "image/png",
+                    "url": "/files/attachments/s1/img-1/shot.png",
+                }
+            ],
+        },
+    ]
+    store = FakeStore(messages=messages)
+
+    collected = await collect_prior_image_attachments(store, session_id="s1", leaf_message_id=None)
+    assert [entry["id"] for entry in collected] == ["img-1"]
+
+    reattached = await collect_prior_image_attachments(
+        store,
+        session_id="s1",
+        leaf_message_id=None,
+        exclude_urls={"/files/attachments/s1/img-1/shot.png"},
+    )
+    assert reattached == []
+
+
+@pytest.mark.asyncio
+async def test_collect_prior_images_caps_at_limit() -> None:
+    messages = [
+        {
+            "id": idx + 1,
+            "role": "user" if idx % 2 == 0 else "assistant",
+            "content": f"m{idx}",
+            "parent_message_id": None if idx == 0 else idx,
+            "attachments": (
+                [
+                    {
+                        "id": f"img-{idx}",
+                        "type": "image",
+                        "filename": f"shot-{idx}.png",
+                        "mime_type": "image/png",
+                        "url": f"/files/attachments/s1/img-{idx}/shot-{idx}.png",
+                    }
+                ]
+                if idx % 2 == 0
+                else []
+            ),
+        }
+        for idx in range(10)
+    ]
+    store = FakeStore(messages=messages)
+
+    collected = await collect_prior_image_attachments(
+        store, session_id="s1", leaf_message_id=None, limit=3
+    )
+
+    assert [entry["id"] for entry in collected] == ["img-8", "img-6", "img-4"]
+
+
+# ---------------------------------------------------------------------------
+# Unavailable-attachment surfacing (#1438 expected behavior 6: a file whose
+# text extraction produced nothing must show a reason in the manifest instead
+# of being silently skipped — a silent skip is why the model asks the learner
+# to re-upload without ever saying why).
+# ---------------------------------------------------------------------------
+
+
+def test_inventory_accepts_note_only_entries() -> None:
+    """An entry with no text but an availability reason is kept."""
+    inv = SourceInventory()
+    inv.add(
+        SourceEntry(
+            sid="at-foo",
+            kind="attachment",
+            name="scan.pdf",
+            full_text="   ",
+            fresh=True,
+            first_seen_turn=1,
+            availability_note="text extraction produced no content",
+        )
+    )
+    assert not inv.is_empty()
+
+
+@pytest.mark.asyncio
+async def test_fresh_attachment_without_extracted_text_shows_a_reason() -> None:
+    store = FakeStore(messages=[])
+    inv = await build_inventory(
+        store,
+        session_id="s1",
+        leaf_message_id=None,
+        current_turn_ordinal=1,
+        fresh_attachment_records=[
+            {
+                "id": "att-scan",
+                "type": "file",
+                "filename": "scan.pdf",
+                "mime_type": "application/pdf",
+                "extracted_text": "",
+            }
+        ],
+        fresh_notebook_records=[],
+        fresh_book_context_text="",
+        fresh_book_references=[],
+        fresh_history_session_ids=[],
+        fresh_question_entry_ids=[],
+    )
+    manifest, source_index = render_manifest(inv)
+
+    # The row exists so the model can name the file and say why it cannot
+    # quote it — instead of silently pretending nothing was attached.
+    assert "at-att-scan" in manifest
+    assert "scan.pdf" in manifest
+    assert "extraction" in manifest
+    # But there is no full text to serve: the sid must not advertise itself
+    # as readable through read_source.
+    assert "at-att-scan" not in source_index
+
+
+@pytest.mark.asyncio
+async def test_historical_attachment_without_extracted_text_shows_a_reason() -> None:
+    messages = [
+        {
+            "id": 1,
+            "role": "user",
+            "content": "first",
+            "parent_message_id": None,
+            "attachments": [
+                {
+                    "id": "att-old",
+                    "filename": "scanned.pdf",
+                    "extracted_text": "",
+                    "mime_type": "application/pdf",
+                }
+            ],
+            "metadata": {"request_snapshot": {}},
+        }
+    ]
+    store = FakeStore(messages=messages)
+    inv = await build_inventory(
+        store,
+        session_id="s1",
+        leaf_message_id=None,
+        current_turn_ordinal=2,
+        fresh_attachment_records=[],
+        fresh_notebook_records=[],
+        fresh_book_context_text="",
+        fresh_book_references=[],
+        fresh_history_session_ids=[],
+        fresh_question_entry_ids=[],
+    )
+    manifest, source_index = render_manifest(inv)
+
+    assert "at-att-old" in manifest
+    assert "extraction" in manifest
+    assert "at-att-old" not in source_index
+
+
+def _image_messages(count: int) -> list[dict[str, Any]]:
+    return [
+        {
+            "id": index,
+            "role": "user",
+            "attachments": [
+                {
+                    "id": f"img-{index}",
+                    "type": "image",
+                    "filename": f"{index}.png",
+                    "mime_type": "image/png",
+                    "url": f"/files/attachments/s1/img-{index}/{index}.png",
+                }
+            ],
+        }
+        for index in range(1, count + 1)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_prior_image_reinjection_is_bounded_by_system_settings(monkeypatch) -> None:
+    """The cap is deployment policy, not a number frozen into the collector.
+
+    Every later turn re-sends what this returns, so an operator whose model or
+    bandwidth cannot afford four images has to be able to say so.
+    """
+    store = FakeStore(messages=_image_messages(6))
+    monkeypatch.setattr(
+        "deeptutor.services.config.get_prior_image_reinject_limit",
+        lambda: 2,
+    )
+
+    collected = await collect_prior_image_attachments(store, session_id="s1", leaf_message_id=None)
+
+    assert [entry["id"] for entry in collected] == ["img-6", "img-5"]
+
+
+@pytest.mark.asyncio
+async def test_a_zero_limit_turns_prior_image_reinjection_off(monkeypatch) -> None:
+    """0 is a real setting: no re-injection, and no lineage read to do it."""
+    store = FakeStore(messages=_image_messages(3))
+    monkeypatch.setattr(
+        "deeptutor.services.config.get_prior_image_reinject_limit",
+        lambda: 0,
+    )
+
+    assert await collect_prior_image_attachments(store, session_id="s1", leaf_message_id=None) == []
+
+
+@pytest.mark.asyncio
+async def test_a_system_json_written_before_this_knob_existed_still_reinjects(
+    monkeypatch,
+) -> None:
+    """Every upgraded install has one, and it must not take the feature down.
+
+    Reading the knob by subscript turned a missing key into a KeyError raised
+    from inside turn setup, which surfaced as unrelated session tests failing.
+    """
+    from deeptutor.services.config import runtime_settings
+
+    monkeypatch.setattr(
+        runtime_settings,
+        "load_system_settings",
+        lambda: {"chat_attachment_max_file_mb": 20},
+    )
+    store = FakeStore(messages=_image_messages(2))
+
+    collected = await collect_prior_image_attachments(store, session_id="s1", leaf_message_id=None)
+
+    assert [entry["id"] for entry in collected] == ["img-2", "img-1"]
+
+
+def test_the_reinject_cap_is_clamped_into_a_sane_range() -> None:
+    from deeptutor.services.config.runtime_settings import (
+        CHAT_PRIOR_IMAGE_REINJECT_RANGE,
+        DEFAULT_SYSTEM_SETTINGS,
+    )
+
+    low, high = CHAT_PRIOR_IMAGE_REINJECT_RANGE
+    assert low == 0, "0 must stay reachable: it is how the feature is turned off"
+    assert low <= DEFAULT_SYSTEM_SETTINGS["chat_prior_image_reinject_max"] <= high

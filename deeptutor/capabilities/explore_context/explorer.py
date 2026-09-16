@@ -38,13 +38,15 @@ from deeptutor.runtime.agentic import (
     can_use_native_tool_calling,
     dispatch_tool_calls,
 )
-from deeptutor.runtime.agentic.messages import assistant_message_with_tool_calls
+from deeptutor.runtime.agentic.messages import assistant_message, assistant_message_with_tool_calls
 from deeptutor.runtime.agentic.tool_call_stream import ToolCallAccumulator
 from deeptutor.runtime.registry.tool_registry import get_tool_registry
 from deeptutor.runtime.stream_bus import StreamBus
+from deeptutor.services.config.loader import get_capability_params
 from deeptutor.services.llm import clean_thinking_tags, get_llm_config, get_token_limit_kwargs
 from deeptutor.services.llm import stream as llm_stream
 from deeptutor.services.llm.capabilities import threads_session_id
+from deeptutor.services.session.provider_response_state import normalize_provider_response_state
 
 logger = logging.getLogger(__name__)
 
@@ -60,14 +62,23 @@ EXPLORE_SOURCE = "chat"
 # finishes earlier by writing its investigation without a tool call. The last
 # round runs with tools disabled so it is always forced to finish.
 MAX_LOOP_ROUNDS = 5
-LOOP_MAX_TOKENS = 2000
+
+
+def _budgets() -> dict:
+    """This capability's per-stage token budgets, from agents.yaml.
+
+    Read at the call site rather than at import: a user who edits
+    ``capabilities.explore_context`` should not have to restart the process,
+    and both call sites here run once per turn at most.
+    """
+    return get_capability_params("explore_context")
+
 
 # Single-pass fallback budgets. The same sources remain reachable via
 # ``read_source`` in the loop path, so clipping here only bounds the fallback.
 MAX_SOURCES = 12
 CHARS_PER_SOURCE = 8000
 TOTAL_CHARS = 48000
-BRIEFING_MAX_TOKENS = 1400
 
 # Maps a manifest source-id prefix to a human kind label (en, zh).
 _KIND_BY_PREFIX: dict[str, tuple[str, str]] = {
@@ -88,6 +99,14 @@ class _CallResult:
     # Streamed to the trace and also kept: a thinking model's provider needs
     # it echoed on the assistant turn that issued the tool calls.
     reasoning_content: str = ""
+    # The provider's own native output items (Responses wire) and Anthropic's
+    # signed thinking blocks, replayed on the next request. On a Responses-wire
+    # provider the chat-dialect ``reasoning_content`` field is not understood
+    # by the request converter — a tool-round history that lost the native
+    # items is rejected by thinking models with "the ``reasoning_content`` in
+    # the thinking mode must be passed back to the API".
+    response_output_items: list[dict[str, Any]] = field(default_factory=list)
+    thinking_blocks: list[dict[str, Any]] = field(default_factory=list)
 
 
 class ContextExplorer:
@@ -199,6 +218,8 @@ class ContextExplorer:
         investigation = ""
         total_in = 0
         total_out = 0
+        nudged_empty_finish = False
+        forced_finish_appended = False
         async with stream.stage(EXPLORE_STAGE, source=EXPLORE_SOURCE, metadata=stage_meta):
             await stream.progress(
                 self._status_exploring(),
@@ -210,10 +231,11 @@ class ContextExplorer:
             )
             for round_idx in range(MAX_LOOP_ROUNDS):
                 is_last = round_idx == MAX_LOOP_ROUNDS - 1
-                if is_last:
+                if is_last and not forced_finish_appended:
                     # Budget exhausted while still calling tools — force a
                     # tool-less finish from what has been gathered.
                     messages.append({"role": "user", "content": self._forced_finish_instruction()})
+                    forced_finish_appended = True
                 total_in += sum(_content_chars(m) for m in messages)
                 result = await self._call_llm(
                     client,
@@ -226,14 +248,41 @@ class ContextExplorer:
                 total_out += result.output_chars
                 if not result.tool_calls:
                     investigation = result.text
+                    if (
+                        not investigation.strip()
+                        and result.reasoning_content
+                        and not is_last
+                        and not nudged_empty_finish
+                    ):
+                        # The round burned its output budget on internal
+                        # reasoning and never acted — the shape a thinking
+                        # model falls into on a tight per-round budget. Nudge
+                        # it once with the same forced-finish instruction the
+                        # last round uses; a second reasoning-only round still
+                        # ends the loop and degrades to the single pass.
+                        nudged_empty_finish = True
+                        await stream.progress(
+                            self._t(
+                                "status.reasoning_only_nudged",
+                                default=(
+                                    "The exploration round produced only internal "
+                                    "reasoning; asked the model to write its "
+                                    "investigation now."
+                                ),
+                            ),
+                            source=EXPLORE_SOURCE,
+                            stage=EXPLORE_STAGE,
+                            metadata=merge_trace_metadata(stage_meta, {"trace_kind": "warning"}),
+                        )
+                        nudged = _assistant_message_with_provider_state(result)
+                        messages.append(nudged)
+                        messages.append(
+                            {"role": "user", "content": self._forced_finish_instruction()}
+                        )
+                        forced_finish_appended = True
+                        continue
                     break
-                messages.append(
-                    assistant_message_with_tool_calls(
-                        result.text,
-                        result.tool_calls,
-                        reasoning_content=result.reasoning_content or None,
-                    )
-                )
+                messages.append(_assistant_message_with_provider_state(result))
                 dispatch = await dispatch_tool_calls(
                     tool_calls=result.tool_calls,
                     context=context,
@@ -278,7 +327,7 @@ class ContextExplorer:
             **build_completion_kwargs(
                 temperature=0.2,
                 model=self.model,
-                max_tokens=LOOP_MAX_TOKENS,
+                max_tokens=_budgets()["loop"]["max_tokens"],
                 binding=self.binding,
                 reasoning_effort=self.reasoning_effort,
             ),
@@ -291,6 +340,8 @@ class ContextExplorer:
 
         text_parts: list[str] = []
         reasoning_parts: list[str] = []
+        response_output_items: list[dict[str, Any]] = []
+        thinking_blocks: list[dict[str, Any]] = []
         tool_acc = ToolCallAccumulator()
         output_chars = 0
         response_stream = await client.chat.completions.create(**kwargs)
@@ -299,7 +350,18 @@ class ContextExplorer:
                 choices = getattr(chunk, "choices", None) or []
                 if not choices:
                     continue
-                delta = getattr(choices[0], "delta", None)
+                choice = choices[0]
+                provider_fields = getattr(choice, "provider_specific_fields", None)
+                if isinstance(provider_fields, dict):
+                    native_items = provider_fields.get("native_output_items")
+                    if isinstance(native_items, list):
+                        response_output_items.extend(
+                            item for item in native_items if isinstance(item, dict)
+                        )
+                    blocks = provider_fields.get("thinking_blocks")
+                    if isinstance(blocks, list):
+                        thinking_blocks.extend(block for block in blocks if isinstance(block, dict))
+                delta = getattr(choice, "delta", None)
                 if delta is None:
                     continue
                 reasoning = getattr(delta, "reasoning_content", None) or getattr(
@@ -332,6 +394,8 @@ class ContextExplorer:
             tool_calls=tool_calls,
             output_chars=output_chars,
             reasoning_content="".join(reasoning_parts),
+            response_output_items=response_output_items,
+            thinking_blocks=thinking_blocks,
         )
 
     def _read_source_schemas(self, source_index: dict[str, str]) -> list[dict[str, Any]]:
@@ -419,7 +483,7 @@ class ContextExplorer:
                     api_version=self.api_version,
                     binding=self.binding,
                     temperature=0.2,
-                    **self._token_kwargs(BRIEFING_MAX_TOKENS),
+                    **self._token_kwargs(_budgets()["briefing"]["max_tokens"]),
                 ):
                     if not chunk:
                         continue
@@ -521,6 +585,42 @@ class ContextExplorer:
 
     def _briefing_header(self) -> str:
         return self._t("briefing_header", default="[Context Investigation]")
+
+
+def _assistant_message_with_provider_state(result: _CallResult) -> dict[str, Any]:
+    """The round's assistant turn with its reasoning replay state attached.
+
+    The chat-dialect ``reasoning_content`` field covers Chat Completions
+    providers. On a Responses-wire provider the request converter only
+    replays reasoning from the provider's own native output items — a history
+    that lost them is rejected by thinking models with "the
+    ``reasoning_content`` in the thinking mode must be passed back to the
+    API" (#1400), so the native items ride along as private state.
+    """
+    if result.tool_calls:
+        message = assistant_message_with_tool_calls(
+            result.text,
+            result.tool_calls,
+            reasoning_content=result.reasoning_content or None,
+            thinking_blocks=result.thinking_blocks or None,
+        )
+    else:
+        message = assistant_message(
+            result.text,
+            reasoning_content=result.reasoning_content or None,
+            thinking_blocks=result.thinking_blocks or None,
+        )
+    state: dict[str, Any] = {}
+    if result.response_output_items:
+        state["responses_output_items"] = result.response_output_items
+    if result.reasoning_content:
+        state["reasoning_content"] = result.reasoning_content
+    if result.thinking_blocks:
+        state["thinking_blocks"] = result.thinking_blocks
+    normalized = normalize_provider_response_state(state)
+    if normalized is not None:
+        message["_provider_response_state"] = normalized
+    return message
 
 
 def _content_chars(message: dict[str, Any]) -> int:

@@ -84,6 +84,21 @@ def _resolve_turn_outcome(
     return status, error
 
 
+def _resolve_turn_failure_metadata(
+    assistant_events: Sequence[dict[str, Any]],
+) -> tuple[str, bool]:
+    """Recover structured failure metadata from a terminal error event."""
+    for event in reversed(assistant_events):
+        metadata = event.get("metadata")
+        metadata = metadata if isinstance(metadata, dict) else {}
+        if event.get("type") != StreamEventType.ERROR.value or not metadata.get("turn_terminal"):
+            continue
+        code = str(metadata.get("error_code") or "")
+        retryable = _coerce_bool(metadata.get("retryable"), False)
+        return code, retryable
+    return "", False
+
+
 def _narration_marker_call_id(event: StreamEvent) -> str | None:
     """call_id of a chat-loop round that resolved as narration (a short
     preamble streamed alongside a tool call). Its text belongs to the trace,

@@ -37,6 +37,15 @@ def test_run_server_disables_reload_by_default(
     assert uvicorn_kwargs["reload_excludes"] is None
 
 
+def test_run_server_preserves_actual_proxy_peer(
+    uvicorn_kwargs: dict[str, Any],
+) -> None:
+    """Do not replace the backend peer with client-controlled XFF values."""
+    run_server.main()
+
+    assert uvicorn_kwargs["proxy_headers"] is False
+
+
 def test_run_server_reload_remains_available_for_development(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

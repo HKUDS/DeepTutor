@@ -116,7 +116,16 @@ export function ObjectiveDetail({
 /** Mastery against the gate it has to clear. */
 function GateBar({ report }: { report: ObjectiveReport }) {
   const { t } = useTranslation();
-  const pct = Math.round(report.mastery * 100);
+  const qualitative = report.gate === "qualitative";
+  // A qualitative gate is a boolean, so all-or-nothing is the only honest
+  // fill. `mastery` carries quiz accuracy for these objectives too, and
+  // drawing that as gate progress is how a waypoint comes to show a full bar
+  // beside a hollow dot — the learner reads "100%, still not cleared".
+  const pct = qualitative
+    ? report.mastered
+      ? 100
+      : 0
+    : Math.round(report.mastery * 100);
   const thresholdPct = Math.round(report.threshold * 100);
   const perfectButBelowGate =
     report.gate === "quantitative" &&
@@ -158,6 +167,13 @@ function GateBar({ report }: { report: ObjectiveReport }) {
           {t(
             "Even with {{correct}}/{{total}} correct so far, mastery also weighs evidence volume, difficulty, and recent consistency. One more discriminating practice can raise it further.",
             { correct: report.correct_count, total: report.attempts.length },
+          )}
+        </p>
+      )}
+      {qualitative && !report.mastered && report.attempts.length > 0 && (
+        <p className="mt-1.5 text-[11px] leading-4 text-[var(--muted-foreground)]">
+          {t(
+            "Practice questions do not open this gate — it opens when you explain the idea in your own words and your tutor records that. Your answers here still count as practice.",
           )}
         </p>
       )}

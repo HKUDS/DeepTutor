@@ -137,7 +137,6 @@ def stub_client(monkeypatch: pytest.MonkeyPatch):
 class TestBinding:
     def test_only_ima_knowledge_bases_bind(self, monkeypatch: pytest.MonkeyPatch) -> None:
         metadata = {"ima知识库": _metadata("ima"), "Papers": {"name": "Papers"}}
-        monkeypatch.setattr(ima_binding, "resolve_kb_metadata", metadata.get, raising=False)
         monkeypatch.setattr(
             "deeptutor.multi_user.knowledge_access.resolve_kb_metadata",
             metadata.get,

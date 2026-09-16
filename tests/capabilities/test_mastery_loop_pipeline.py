@@ -104,6 +104,11 @@ def test_tool_surface_matches_chat_plus_the_mastery_tools(
         return []
 
     monkeypatch.setattr("deeptutor.agents.loop.pipeline.compose_enabled_tools", _record)
+    # The baseline has to be a plain chat turn. Setup's first-run offer joins a
+    # turn on its own once the install has a blocking gap and the intro has not
+    # been shown, both read from real settings — so on an unconfigured machine
+    # the "chat" side of this comparison silently grew setup's tools.
+    monkeypatch.setattr("deeptutor.capabilities.setup.binding._intro_pending", lambda _c: False)
 
     chat_context = UnifiedContext(metadata={})
     AgenticChatPipeline(language="en")._compose_enabled_tools(chat_context)

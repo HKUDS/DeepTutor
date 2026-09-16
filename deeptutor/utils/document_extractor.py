@@ -96,6 +96,8 @@ _PDF_MAGIC = b"%PDF-"
 _OOXML_MAGIC = b"PK\x03\x04"
 
 _EPUB_CONTENT_EXTENSIONS: frozenset[str] = frozenset({".xhtml", ".html", ".htm"})
+#: Where an EPUB declares its package document, relative to the book root.
+_EPUB_CONTAINER_PATH = "META-INF/container.xml"
 _EPUB_MAX_MEMBERS = 4096
 _EPUB_MAX_MEMBER_BYTES = 20 * 1024 * 1024
 _EPUB_MAX_TOTAL_UNCOMPRESSED_BYTES = 200 * 1024 * 1024
@@ -642,29 +644,61 @@ def _epub_html_members(names: list[str]) -> list[str]:
     return [name for name in names if _ext(name) in _EPUB_CONTENT_EXTENSIONS]
 
 
+def _epub_is_packaging_residue(name: str) -> bool:
+    """Whether an archive member is packaging leftovers, not book content.
+
+    macOS writes a ``__MACOSX/`` tree of AppleDouble resource forks (``._x``)
+    alongside the real files. They carry the content file's extension while
+    holding binary metadata, so a fallback that matches on extension alone
+    reads them as chapters.
+    """
+    return any(part == "__MACOSX" or part.startswith(".") for part in name.split("/") if part)
+
+
+def _epub_open_package(
+    zf: zipfile.ZipFile,
+    filename: str,
+) -> tuple[list[str], str, Any | None]:
+    """Locate an EPUB's package document: content members, OPF path, OPF root.
+
+    The standard chain is ``META-INF/container.xml`` -> ``rootfile`` -> OPF.
+    Finder's "Compress" wraps the selection in a folder, which puts that whole
+    chain one level down; looking only at the archive root made every such
+    book fall back to extension matching, losing spine order and picking up
+    ``__MACOSX`` resource forks as chapters (#1447). Resolving the wrapper
+    here keeps both readers of the package — spine and navigation — agreeing
+    on where the book is.
+    """
+    names = [name for name in zf.namelist() if not _epub_is_packaging_residue(name)]
+    container = next((name for name in names if name.endswith(_EPUB_CONTAINER_PATH)), "")
+    if not container:
+        return names, "", None
+    prefix = container[: -len(_EPUB_CONTAINER_PATH)]
+
+    container_root = _epub_parse_member(zf, container, filename)
+    if container_root is None:
+        return names, "", None
+
+    rootfile = ""
+    for node in container_root.iter():
+        if _local_name(node.tag) == "rootfile":
+            rootfile = node.get("full-path") or ""
+            break
+    opf_path = f"{prefix}{rootfile}" if rootfile else ""
+    if not opf_path or opf_path not in set(names):
+        return names, "", None
+
+    return names, opf_path, _epub_parse_member(zf, opf_path, filename)
+
+
 def _epub_content_files(zf: zipfile.ZipFile, filename: str) -> list[str]:
     """Resolve the XHTML content documents of an EPUB in reading order.
 
-    Follows the standard chain ``META-INF/container.xml`` -> OPF package
-    document -> spine ``itemref`` order. Falls back to every HTML/XHTML
-    member in archive order when package metadata is missing or unusable.
+    Falls back to every HTML/XHTML member in archive order when package
+    metadata is missing or unusable.
     """
-    names = zf.namelist()
+    names, opf_path, opf_root = _epub_open_package(zf, filename)
     name_set = set(names)
-
-    container_root = _epub_parse_member(zf, "META-INF/container.xml", filename)
-    if container_root is None:
-        return _epub_html_members(names)
-
-    opf_path = ""
-    for node in container_root.iter():
-        if _local_name(node.tag) == "rootfile":
-            opf_path = node.get("full-path") or ""
-            break
-    if not opf_path or opf_path not in name_set:
-        return _epub_html_members(names)
-
-    opf_root = _epub_parse_member(zf, opf_path, filename)
     if opf_root is None:
         return _epub_html_members(names)
 
@@ -706,20 +740,7 @@ def _epub_package_navigation(
     spine_members: list[str],
 ) -> list[EpubOutlineItem]:
     """Read EPUB3 nav or EPUB2 NCX entries and map them to spine locators."""
-    container_root = _epub_parse_member(zf, "META-INF/container.xml", filename)
-    if container_root is None:
-        return []
-    opf_path = next(
-        (
-            str(node.get("full-path") or "")
-            for node in container_root.iter()
-            if _local_name(node.tag) == "rootfile"
-        ),
-        "",
-    )
-    if not opf_path:
-        return []
-    opf_root = _epub_parse_member(zf, opf_path, filename)
+    _, opf_path, opf_root = _epub_open_package(zf, filename)
     if opf_root is None:
         return []
 

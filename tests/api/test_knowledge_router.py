@@ -685,11 +685,12 @@ def test_create_kb_does_not_require_llm_precheck(monkeypatch, tmp_path: Path) ->
     manager = _FakeKBManager(tmp_path / "knowledge_bases")
     monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
     monkeypatch.setattr(knowledge_router_module, "KnowledgeBaseInitializer", _FakeInitializer)
+    # Patch the source module, not the router's namespace: the router does not
+    # import this symbol at all, so a `raising=False` patch on it would create
+    # an attribute nobody reads and the guard would pass no matter what.
     monkeypatch.setattr(
-        knowledge_router_module,
-        "get_llm_config",
+        "deeptutor.services.llm.config.get_llm_config",
         lambda: (_ for _ in ()).throw(RuntimeError("should not be called")),
-        raising=False,
     )
 
     async def _noop_init_task(*_args, **_kwargs):

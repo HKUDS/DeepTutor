@@ -36,8 +36,8 @@ from typing import Any
 from deeptutor.agents.base_agent import BaseAgent
 from deeptutor.core.context import UnifiedContext
 from deeptutor.runtime.stream_bus import StreamBus
+from deeptutor.services.llm.structured_retry import json_with_reasoning_retry
 
-from ..json_retry import json_with_reasoning_retry
 from ..models import (
     BookInputs,
     BookProposal,

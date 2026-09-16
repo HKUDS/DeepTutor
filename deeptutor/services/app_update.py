@@ -321,8 +321,12 @@ class VersionCheckService:
             else:
                 response.raise_for_status()
                 release_url = str(response.url)
-        except httpx.HTTPError:
-            raise VersionCheckError("Unable to check for updates") from None
+        except httpx.HTTPError as exc:
+            # The release URL is public and carries no credentials, so the
+            # transport reason is safe to show — and it is the difference
+            # between "try again" and "you are offline" / "your proxy blocked
+            # github.com".
+            raise VersionCheckError(f"Unable to check for updates: {exc}") from None
         return _release_from_latest_url(release_url)
 
 

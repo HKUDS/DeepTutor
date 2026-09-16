@@ -86,6 +86,21 @@ export function useMasteryStudySession(
     };
   }, [activity.revision, pathId, t]);
 
+  // A turn that just ended is the moment the map is most likely to have moved:
+  // grading an answer and recording an assessment both happen inside one. The
+  // socket normally says so first — but it is the only thing that does, and it
+  // is the part most likely to be missing, since a reverse proxy that will not
+  // upgrade WebSockets fails silently. Without this the rail then sits frozen
+  // until the learner happens to switch windows and come back, which is the
+  // one thing someone working through a question never does.
+  const wasStreamingRef = useRef(false);
+  const refreshActivity = activity.refresh;
+  useEffect(() => {
+    const streaming = state.isStreaming;
+    if (wasStreamingRef.current && !streaming) refreshActivity();
+    wasStreamingRef.current = streaming;
+  }, [refreshActivity, state.isStreaming]);
+
   const knowledgeBases = useMemo(
     () =>
       topic?.sources

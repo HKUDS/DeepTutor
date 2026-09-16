@@ -106,6 +106,7 @@ class TestMountGate:
             "obsidian_read",
             "rag",
             "kb_files",
+            "knowledge_frontier",
             "ask_user",
         ]
 

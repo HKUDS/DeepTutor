@@ -36,7 +36,7 @@ repos:
         args: [--unsafe]
 
       - id: check-json
-        exclude: ^(.*\.lock|.*\.log)
+        exclude: ^(.*\.lock|.*\.log|.*tsconfig.*\.json)
 
       - id: check-added-large-files
         args: [--maxkb=6144]

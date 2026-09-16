@@ -40,7 +40,18 @@ class TestGetAgentParamsLlmProbe:
         params = get_agent_params("llm_probe")
         assert params["max_tokens"] == 2048
 
-    def test_uses_default_when_section_absent(self, tmp_path: Path, monkeypatch):
+    def test_uses_the_seeded_probe_defaults_when_the_section_is_absent(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """A stale agents.yaml still gets the probe's own defaults.
+
+        `get_agent_params` falls back to `DEFAULT_AGENTS_SETTINGS` before the
+        generic 0.5/4096, so seeding `diagnostics.llm_probe` is what actually
+        sets this — the module-level constant in `test_runner` is unreachable,
+        since this function always returns both keys.
+        """
+        from deeptutor.services.setup.init import DEFAULT_AGENTS_SETTINGS
+
         project_root = _write_agents_yaml(
             tmp_path,
             {
@@ -49,8 +60,10 @@ class TestGetAgentParamsLlmProbe:
         )
         monkeypatch.setattr(loader_module, "PROJECT_ROOT", project_root)
         params = get_agent_params("llm_probe")
-        assert params["max_tokens"] == 4096
-        assert params["temperature"] == 0.5
+        seeded = DEFAULT_AGENTS_SETTINGS["diagnostics"]["llm_probe"]
+        assert params["max_tokens"] == seeded["max_tokens"] == 4096
+        # A diagnostic wants a reproducible answer, not a creative one.
+        assert params["temperature"] == seeded["temperature"] == 0.1
 
     def test_uses_default_when_max_tokens_key_absent(self, tmp_path: Path, monkeypatch):
         project_root = _write_agents_yaml(

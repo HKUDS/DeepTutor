@@ -38,11 +38,15 @@ def isolated_root(tmp_path, monkeypatch) -> Path:
 
 @pytest.fixture
 def client(isolated_root, monkeypatch) -> TestClient:
+    from deeptutor.api.routers import auth as auth_module
     import deeptutor.api.routers.partners as partners_router_mod
     from deeptutor.multi_user.context import reset_current_user, set_current_user
     from deeptutor.multi_user.models import CurrentUser, UserScope
     from deeptutor.services.partners.manager import PartnerManager
 
+    # This fixture mounts the router into a fresh app with a synthetic owner.
+    # Explicitly disable auth so the deployment's global setting cannot leak in.
+    monkeypatch.setattr(auth_module, "AUTH_ENABLED", False)
     token = set_current_user(
         CurrentUser(
             id="test-admin",

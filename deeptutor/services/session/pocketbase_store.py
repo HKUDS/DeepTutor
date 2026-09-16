@@ -25,10 +25,13 @@ import time
 from typing import Any
 import uuid
 
+from deeptutor.services.session.protocol import ActiveTurnConflict
+
 from .ask_user_trace import filter_ask_user_events
 from .event_preview import MAX_TRACE_PREVIEW_EVENTS, compact_trace_preview
 from .provider_response_state import redact_private_message_metadata
 from .scope import StoreScope
+from .search import bounded_search_excerpt, normalize_search_query
 from .workspace_preferences import upgrade_workspace_preferences
 
 logger = logging.getLogger(__name__)
@@ -96,17 +99,30 @@ def _current_user_id() -> str:
     return _validate_id(get_current_user().id, "user_id")
 
 
-def _find_session_record(pb: Any, session_id: str, user_id: str) -> Any | None:
+def _find_session_record(
+    pb: Any, session_id: str, user_id: str, *, recycled: bool | None = None
+) -> Any | None:
     """Return the ``sessions`` record for *session_id* owned by *user_id*.
 
     Scoping every session lookup by ``user_id`` is the single point that keeps
     one user from reading or mutating another's sessions on the shared
     PocketBase backend. Returns ``None`` when no such row exists for this user.
+
+    ``recycled`` narrows the match by ``deleted_at`` — ``False`` requires an
+    active session, ``True`` requires one already in the recycle bin, and
+    ``None`` (the default) ignores the recycle-bin state entirely, preserving
+    lookup behaviour for callers that predate it. One column carries this:
+    a row is in the bin exactly when ``deleted_at`` is set.
     """
     records = pb.collection("sessions").get_full_list(
         query_params={"filter": f'session_id="{session_id}" && user_id="{user_id}"'}
     )
-    return records[0] if records else None
+    if not records:
+        return None
+    record = records[0]
+    if recycled is not None and bool(_to_float(getattr(record, "deleted_at", None))) != recycled:
+        return None
+    return record
 
 
 class PocketBaseSessionStore:
@@ -210,7 +226,7 @@ class PocketBaseSessionStore:
 
         def _get():
             try:
-                return _find_session_record(_pb(), sid, uid)
+                return _find_session_record(_pb(), sid, uid, recycled=False)
             except Exception:
                 return None
 
@@ -251,6 +267,7 @@ class PocketBaseSessionStore:
             or time.time()
         )
         preferences_raw = getattr(record, "preferences_json", None)
+        deleted_at_raw = getattr(record, "deleted_at", None)
         return {
             "id": sid,
             "session_id": sid,
@@ -266,6 +283,8 @@ class PocketBaseSessionStore:
             "capability": getattr(record, "capability", "") or "",
             "status": getattr(record, "status", "idle") or "idle",
             "active_turn_id": "",
+            "is_deleted": bool(_to_float(getattr(record, "deleted_at", None))),
+            "deleted_at": _to_float(deleted_at_raw) if deleted_at_raw not in (None, "") else None,
         }
 
     async def update_session_title(self, session_id: str, title: str) -> bool:
@@ -369,10 +388,16 @@ class PocketBaseSessionStore:
         return await asyncio.to_thread(_import)
 
     async def delete_session(self, session_id: str) -> bool:
+        """Remove a session outright, recycle bin or not.
+
+        The internal cleanups own this one — a reading workspace that is gone
+        takes its sessions with it, and those never belonged to the learner's
+        recycle bin. The chat surface calls :meth:`soft_delete_session`.
+        """
         sid = _validate_id(session_id, "session_id")
         uid = _current_user_id()
 
-        def _delete():
+        def _do():
             record = _find_session_record(_pb(), sid, uid)
             if record is None:
                 return False
@@ -380,10 +405,94 @@ class PocketBaseSessionStore:
             return True
 
         try:
-            return await asyncio.to_thread(_delete)
+            return await asyncio.to_thread(_do)
         except Exception as exc:
             logger.warning(f"delete_session failed: {exc}")
             return False
+
+    async def soft_delete_session(self, session_id: str) -> bool:
+        """Move a session to the recycle bin (soft delete)."""
+        sid = _validate_id(session_id, "session_id")
+        uid = _current_user_id()
+
+        def _do():
+            record = _find_session_record(_pb(), sid, uid, recycled=False)
+            if record is None:
+                return False
+            _pb().collection("sessions").update(record.id, {"deleted_at": time.time()})
+            return True
+
+        try:
+            return await asyncio.to_thread(_do)
+        except Exception as exc:
+            logger.warning(f"soft_delete_session failed: {exc}")
+            return False
+
+    async def restore_session(self, session_id: str) -> bool:
+        """Restore a soft-deleted session from the recycle bin."""
+        sid = _validate_id(session_id, "session_id")
+        uid = _current_user_id()
+
+        def _do():
+            record = _find_session_record(_pb(), sid, uid, recycled=True)
+            if record is None:
+                return False
+            _pb().collection("sessions").update(record.id, {"deleted_at": None})
+            return True
+
+        try:
+            return await asyncio.to_thread(_do)
+        except Exception as exc:
+            logger.warning(f"restore_session failed: {exc}")
+            return False
+
+    async def hard_delete_session(self, session_id: str) -> bool:
+        """Permanently delete a session from the recycle bin.
+
+        Requires a prior soft-delete (defence-in-depth), matching the SQLite
+        backend's guard against accidentally skipping the recycle bin.
+        """
+        sid = _validate_id(session_id, "session_id")
+        uid = _current_user_id()
+
+        def _do():
+            record = _find_session_record(_pb(), sid, uid, recycled=True)
+            if record is None:
+                return False
+            _pb().collection("sessions").delete(record.id)
+            return True
+
+        try:
+            return await asyncio.to_thread(_do)
+        except Exception as exc:
+            logger.warning(f"hard_delete_session failed: {exc}")
+            return False
+
+    async def list_deleted_sessions(self, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
+        """List soft-deleted sessions ordered by deletion time.
+
+        PocketBase filter strings can't be trusted across server versions for
+        boolean comparisons, so the soft-delete filter and the ``deleted_at``
+        ordering are both applied client-side after fetching the user's rows.
+        """
+        uid = _current_user_id()
+
+        def _do():
+            records = (
+                _pb()
+                .collection("sessions")
+                .get_full_list(query_params={"filter": f'user_id="{uid}"'})
+            )
+            deleted = [r for r in records if _to_float(getattr(r, "deleted_at", None))]
+            deleted.sort(key=lambda r: _to_float(getattr(r, "deleted_at", None)), reverse=True)
+            page = deleted[offset : offset + limit]
+            return [self._session_record_to_dict(r) for r in page]
+
+        try:
+            return await asyncio.to_thread(_do)
+        except Exception as exc:
+            logger.warning(f"list_deleted_sessions failed: {exc}")
+            return []
 
     async def list_sessions(
         self,
@@ -396,7 +505,7 @@ class PocketBaseSessionStore:
         def _list():
             query_params: dict[str, Any] = {
                 "sort": "-session_updated_at",
-                "filter": f'user_id="{uid}"',
+                "filter": f'user_id="{uid}" && deleted_at = null',
             }
             return _pb().collection("sessions").get_list(page, limit, query_params=query_params)
 
@@ -405,10 +514,109 @@ class PocketBaseSessionStore:
             # Reading conversations are listed like any other: the sidebar
             # groups them under their collection and a click returns to the
             # reader. See the note on ``_WHERE_NATIVE`` in the SQLite store.
-            return [self._session_record_to_dict(r) for r in result.items]
+            #
+            # The filter above excludes soft-deleted rows on real PocketBase
+            # servers; this is a defensive re-check for servers/mocks where
+            # boolean filter comparisons behave unexpectedly.
+            return [
+                self._session_record_to_dict(r)
+                for r in result.items
+                if not _to_float(getattr(r, "deleted_at", None))
+            ]
         except Exception as exc:
             logger.warning(f"list_sessions failed: {exc}")
             return []
+
+    async def search_sessions(
+        self,
+        query: str,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """Search the current user's native sessions without loading transcripts."""
+        normalized = normalize_search_query(query)
+        if not normalized:
+            return {"sessions": [], "total": 0}
+        uid = _current_user_id()
+        bounded_limit = max(1, min(int(limit), 100))
+        bounded_offset = max(0, int(offset))
+
+        def _search() -> dict[str, Any]:
+            pb = _pb()
+            records = pb.collection("sessions").get_full_list(
+                query_params={"filter": f"user_id={json.dumps(uid)}"}
+            )
+            records = [
+                record
+                for record in records
+                if not str(getattr(record, "session_id", "") or "").startswith("imported_")
+            ]
+            records.sort(
+                key=lambda record: (
+                    _to_float(getattr(record, "session_updated_at", None))
+                    or _to_float(getattr(record, "updated", None))
+                ),
+                reverse=True,
+            )
+
+            matched: list[tuple[Any, Any | None]] = []
+            query_literal = json.dumps(normalized, ensure_ascii=False)
+            for record in records:
+                sid = _validate_id(str(getattr(record, "session_id", "")), "session_id")
+                message_page = pb.collection("messages").get_list(
+                    1,
+                    1,
+                    query_params={
+                        "filter": (
+                            f"session_id={json.dumps(sid)} && "
+                            '(role="user" || role="assistant") && '
+                            f"content~{query_literal}"
+                        ),
+                        "sort": "-msg_created_at,-created",
+                    },
+                )
+                matching_messages = self._page_items(message_page)
+                title = str(getattr(record, "title", "") or "")
+                if normalized.casefold() in title.casefold() or matching_messages:
+                    matched.append((record, matching_messages[0] if matching_messages else None))
+
+            page = matched[bounded_offset : bounded_offset + bounded_limit]
+            sessions: list[dict[str, Any]] = []
+            for record, match in page:
+                session = self._session_record_to_dict(record)
+                sid = session["session_id"]
+                summary_page = pb.collection("messages").get_list(
+                    1,
+                    1,
+                    query_params={
+                        "filter": f'session_id={json.dumps(sid)} && role!="system"',
+                        "sort": "-msg_created_at,-created",
+                    },
+                )
+                summary_items = self._page_items(summary_page)
+                session["message_count"] = self._page_total(summary_page)
+                session["last_message"] = str(
+                    getattr(summary_items[0], "content", "") if summary_items else ""
+                )
+                session["match_message_id"] = getattr(match, "id", None)
+                session["match_role"] = getattr(match, "role", None)
+                session["match_created_at"] = (
+                    _to_float(getattr(match, "msg_created_at", None)) if match is not None else None
+                )
+                match_content = (
+                    str(getattr(match, "content", "") or "")
+                    if match is not None
+                    else session["title"]
+                )
+                session["match_excerpt"] = bounded_search_excerpt(match_content, normalized)
+                sessions.append(session)
+            return {"sessions": sessions, "total": len(matched)}
+
+        try:
+            return await asyncio.to_thread(_search)
+        except Exception as exc:
+            logger.warning(f"search_sessions failed: {exc}")
+            return {"sessions": [], "total": 0}
 
     async def get_session_summaries(
         self,
@@ -449,7 +657,7 @@ class PocketBaseSessionStore:
                     1,
                     query_params={
                         "filter": f'session_id="{sid}" && role!="system"',
-                        "sort": "-msg_created_at",
+                        "sort": "-msg_created_at,-created",
                     },
                 )
             )
@@ -815,7 +1023,10 @@ class PocketBaseSessionStore:
                 if getattr(record, "status", "") in _ACTIVE_TURN_STATUSES
             ]
             if active:
-                raise RuntimeError(f"Session already has an active turn: {active[0].turn_id}")
+                raise ActiveTurnConflict(
+                    f"Session already has an active turn: {active[0].turn_id}",
+                    turn_id=str(active[0].turn_id),
+                )
             return (
                 _pb()
                 .collection("turns")
