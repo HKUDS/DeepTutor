@@ -110,13 +110,26 @@ def test_collect_model_names() -> None:
 
 
 def test_collect_model_names_drops_repeats_in_payload_order() -> None:
-    """One id listed once per endpoint family must not become several choices."""
     entries = [
         {"id": "m1", "type": "openai/chat-completions"},
         {"id": "m2", "type": "openai/chat-completions"},
-        {"id": "m1", "type": "openai/embeddings"},
+        {"id": "m1", "type": "openai/responses/submit"},
     ]
     assert collect_model_names(entries) == ["m1", "m2"]
+
+
+def test_collect_model_names_skips_non_chat_endpoint_families() -> None:
+    entries = [
+        {"id": "chat", "type": "openai/chat-completions"},
+        {"id": "image", "type": "openai/image-generations"},
+        {"id": "video", "type": "internal/video-generations/submit"},
+        {"id": "embed", "type": "openai/embeddings"},
+        {"id": "claude", "type": "anthropic/messages"},
+        # Not a family tag: other providers use "type" for something else.
+        {"id": "plain", "type": "model"},
+        {"id": "untagged"},
+    ]
+    assert collect_model_names(entries) == ["chat", "claude", "plain", "untagged"]
 
 
 def test_build_auth_headers() -> None:

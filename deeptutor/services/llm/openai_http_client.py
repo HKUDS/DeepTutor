@@ -26,9 +26,7 @@ OPENROUTER_ATTRIBUTION_HEADERS: dict[str, str] = {
     "X-OpenRouter-Title": "DeepTutor",
 }
 
-# AI/ML API attributes traffic the same way OpenRouter does, plus two headers
-# of its own. HTTP-Referer / X-Title identify DeepTutor as the calling app —
-# they are not AI/ML API's own URL and title.
+# AI/ML API attribution. HTTP-Referer / X-Title name the calling app.
 AIMLAPI_ATTRIBUTION_HEADERS: dict[str, str] = {
     "HTTP-Referer": "https://github.com/HKUDS/DeepTutor",
     "X-Title": "DeepTutor",
@@ -36,11 +34,8 @@ AIMLAPI_ATTRIBUTION_HEADERS: dict[str, str] = {
     "X-AIMLAPI-Source": "agent/deeptutor",
 }
 
-# Exact hosts these headers may be sent to. Matching the *host* of the resolved
-# endpoint — not a substring of the URL and not the configured provider name —
-# is what keeps attribution off a look-alike domain ("api.aimlapi.com.evil.io",
-# "notaimlapi.com") and off a self-hosted proxy that merely fronts the same API
-# under a binding still typed as "aimlapi".
+# Sent only when the client's endpoint host is exactly one of these, so a
+# look-alike domain or a proxy in front of the API never receives them.
 _AIMLAPI_ATTRIBUTION_HOSTS: frozenset[str] = frozenset({"api.aimlapi.com"})
 
 _warning_lock = threading.Lock()
@@ -132,23 +127,17 @@ def _uses_openrouter(spec: "ProviderSpec | None", api_base: str | None) -> bool:
     return bool(api_base and "openrouter" in api_base.lower())
 
 
-def _endpoint_host(spec: "ProviderSpec | None", api_base: str | None) -> str:
-    """Host of the endpoint a client will actually call, lowercased.
+def _sdk_endpoint_host(api_base: str | None) -> str:
+    """Lowercased host of the endpoint ``AsyncOpenAI`` will call.
 
-    Args:
-        spec: The resolved provider spec, whose ``default_api_base`` applies
-            when the profile carries no explicit endpoint.
-        api_base: The profile's configured endpoint, if any.
-
-    Returns:
-        The hostname, or an empty string when no endpoint resolves or the
-        value does not parse as a URL.
+    Mirrors the SDK's own resolution: an explicit ``base_url``, else
+    ``OPENAI_BASE_URL``, else api.openai.com. A registry default is not
+    consulted because it is not passed to the SDK here.
     """
-    resolved = (api_base or (spec.default_api_base if spec is not None else "") or "").strip()
-    if not resolved:
-        return ""
-    # A bare "api.example.com/v1" has no scheme, so urlsplit would read it all
-    # as a path; "//" makes it a netloc without guessing http vs https.
+    resolved = (
+        api_base or os.environ.get("OPENAI_BASE_URL") or "https://api.openai.com/v1"
+    ).strip()
+    # "api.example.com/v1" has no scheme; "//" makes urlsplit read it as a netloc.
     if "//" not in resolved:
         resolved = f"//{resolved}"
     try:
@@ -157,9 +146,8 @@ def _endpoint_host(spec: "ProviderSpec | None", api_base: str | None) -> str:
         return ""
 
 
-def _uses_aimlapi(spec: "ProviderSpec | None", api_base: str | None) -> bool:
-    """Whether the resolved endpoint is an AI/ML API host we may attribute to."""
-    return _endpoint_host(spec, api_base) in _AIMLAPI_ATTRIBUTION_HOSTS
+def _uses_aimlapi(api_base: str | None) -> bool:
+    return _sdk_endpoint_host(api_base) in _AIMLAPI_ATTRIBUTION_HOSTS
 
 
 def openai_sdk_client_kwargs(
@@ -186,7 +174,7 @@ def openai_sdk_client_kwargs(
         headers["x-session-affinity"] = uuid.uuid4().hex
     if _uses_openrouter(spec, base_url):
         headers.update(OPENROUTER_ATTRIBUTION_HEADERS)
-    if _uses_aimlapi(spec, base_url):
+    if _uses_aimlapi(base_url):
         headers.update(AIMLAPI_ATTRIBUTION_HEADERS)
     if extra_headers:
         headers.update(extra_headers)

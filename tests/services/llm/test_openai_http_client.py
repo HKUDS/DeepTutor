@@ -136,9 +136,7 @@ def test_embedding_sdk_passes_disable_ssl_http_client(
 
 
 # --- AI/ML API attribution ---------------------------------------------------
-# Attribution is scoped to the *host* of the resolved endpoint. A substring
-# match on the URL, or a match on the configured provider name, would also fire
-# for a look-alike domain and for a self-hosted proxy fronting the same API.
+# Scoped to the host the SDK client will call, never to the profile's binding.
 
 _AIMLAPI_SPEC = find_by_name("aimlapi")
 
@@ -153,22 +151,40 @@ def _default_headers(**kwargs: Any) -> dict[str, str]:
 
 
 def test_aimlapi_partner_id_and_source_match_the_gateway_contract() -> None:
-    """A malformed partner id is accepted silently and earns nothing, so assert its shape."""
     headers = openai_http_client.AIMLAPI_ATTRIBUTION_HEADERS
 
     assert _PARTNER_ID_PATTERN.match(headers["X-AIMLAPI-Partner-ID"])
     assert _SOURCE_PATTERN.match(headers["X-AIMLAPI-Source"])
-    # HTTP-Referer / X-Title identify the calling app, not the gateway.
     assert headers["HTTP-Referer"] == "https://github.com/HKUDS/DeepTutor"
     assert headers["X-Title"] == "DeepTutor"
 
 
 def test_aimlapi_attribution_sent_for_the_registry_endpoint() -> None:
-    headers = _default_headers(base_url=None, spec=_AIMLAPI_SPEC)
+    headers = _default_headers(base_url=_AIMLAPI_SPEC.default_api_base, spec=_AIMLAPI_SPEC)
 
     assert headers["X-AIMLAPI-Partner-ID"] == "part_ItAs0L5uSTvV2dFDOZZaS1BL"
     assert headers["X-AIMLAPI-Source"] == "agent/deeptutor"
     assert headers["X-Title"] == "DeepTutor"
+
+
+def test_aimlapi_attribution_withheld_when_sdk_falls_back_to_openai(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``base_url=None`` makes AsyncOpenAI call api.openai.com, whatever the binding says."""
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+
+    headers = _default_headers(base_url=None, spec=_AIMLAPI_SPEC)
+
+    assert not [key for key in headers if key.lower().startswith("x-aimlapi-")]
+
+
+def test_aimlapi_attribution_follows_openai_base_url_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """With no explicit base_url the SDK honours OPENAI_BASE_URL, so the gate must too."""
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://api.aimlapi.com/v1")
+    assert "X-AIMLAPI-Partner-ID" in _default_headers(base_url=None, spec=None)
+
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://proxy.example.com/v1")
+    assert "X-AIMLAPI-Partner-ID" not in _default_headers(base_url=None, spec=_AIMLAPI_SPEC)
 
 
 @pytest.mark.parametrize(
@@ -188,12 +204,9 @@ def test_aimlapi_attribution_sent_for_equivalent_spellings(base_url: str) -> Non
 @pytest.mark.parametrize(
     "base_url",
     [
-        # Suffix look-alike: a substring check on the URL would send our
-        # partner id to whoever controls evil.io.
         "https://api.aimlapi.com.evil.io/v1",
         "https://notaimlapi.com/v1",
         "https://aimlapi.com.attacker.example/v1",
-        # A proxy that merely fronts the same API is still someone else's host.
         "https://gateway.internal.example/aimlapi/v1",
         "https://openrouter.ai/api/v1",
         "https://api.openai.com/v1",
@@ -206,7 +219,6 @@ def test_aimlapi_attribution_withheld_from_other_hosts(base_url: str) -> None:
 
 
 def test_aimlapi_attribution_withheld_when_binding_points_at_a_proxy() -> None:
-    """An aimlapi-typed profile pointed elsewhere must not carry our headers."""
     headers = _default_headers(base_url="https://proxy.example.com/v1", spec=_AIMLAPI_SPEC)
 
     assert not [key for key in headers if key.lower().startswith("x-aimlapi-")]
@@ -237,10 +249,9 @@ def test_aimlapi_attribution_constant_is_never_mutated() -> None:
 
 
 def test_no_other_provider_spec_carries_aimlapi_headers() -> None:
-    """Attribution must never ride a request to a different vendor."""
     for spec in PROVIDERS:
         if spec.name == "aimlapi":
             continue
-        headers = _default_headers(base_url=None, spec=spec)
+        headers = _default_headers(base_url=spec.default_api_base or None, spec=spec)
         leaked = [key for key in headers if key.lower().startswith("x-aimlapi-")]
         assert not leaked, f"{spec.name} leaks {leaked}"

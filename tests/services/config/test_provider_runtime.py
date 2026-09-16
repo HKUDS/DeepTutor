@@ -295,6 +295,57 @@ def test_llm_novita_base_url_detection_preserves_openai_binding_compatibility() 
     assert resolved.effective_url == "https://api.novita.ai/openai"
 
 
+def test_llm_aimlapi_binding_uses_default_openai_compatible_endpoint() -> None:
+    catalog = _build_catalog(
+        llm_profile={
+            "id": "llm-p",
+            "name": "AI/ML API",
+            "binding": "aimlapi",
+            "base_url": "",
+            "api_key": "aiml-key",
+            "api_version": "",
+            "extra_headers": {},
+            "models": [
+                {
+                    "id": "llm-m",
+                    "name": "GPT-4o mini",
+                    "model": "openai/gpt-4o-mini",
+                }
+            ],
+        }
+    )
+
+    resolved = resolve_llm_runtime_config(catalog=catalog)
+
+    assert resolved.provider_name == "aimlapi"
+    assert resolved.provider_mode == "gateway"
+    assert resolved.binding == "aimlapi"
+    assert resolved.model == "openai/gpt-4o-mini"
+    assert resolved.api_key == "aiml-key"
+    assert resolved.effective_url == "https://api.aimlapi.com/v1"
+
+
+def test_llm_aimlapi_base_url_detection_preserves_openai_binding_compatibility() -> None:
+    catalog = _build_catalog(
+        llm_profile={
+            "id": "llm-p",
+            "name": "OpenAI Compatible",
+            "binding": "openai",
+            "base_url": "https://api.aimlapi.com/v1",
+            "api_key": "aiml-key",
+            "api_version": "",
+            "extra_headers": {},
+            "models": [{"id": "llm-m", "name": "GPT-4o mini", "model": "openai/gpt-4o-mini"}],
+        }
+    )
+
+    resolved = resolve_llm_runtime_config(catalog=catalog)
+
+    assert resolved.provider_name == "aimlapi"
+    assert resolved.provider_mode == "gateway"
+    assert resolved.effective_url == "https://api.aimlapi.com/v1"
+
+
 def test_llm_edenai_binding_uses_default_openai_compatible_endpoint() -> None:
     catalog = _build_catalog(
         llm_profile={
