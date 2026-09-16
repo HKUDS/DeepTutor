@@ -205,6 +205,63 @@ class TestRegenerateLastTurn:
         assert [m["id"] for m in remaining] == [user_id]
         assert assistant_id is not None and assistant_id not in {m["id"] for m in remaining}
 
+    def test_replays_rich_attachment_payload_without_breaking_turn_request(
+        self, store: SQLiteSessionStore
+    ) -> None:
+        """A turn whose persisted attachment carries the rich fields stored at
+        upload (id, extracted_chars, extracted_text) must still produce a
+        valid TurnRequest on regenerate.
+
+        #1484: regenerate echoed the stored message-row attachments verbatim,
+        whose extra fields OutgoingAttachment forbids, so start_turn's
+        TurnRequest validation raised and the WS closed with no terminal
+        event — the UI hung on "Thinking..." forever.
+        """
+        session = asyncio.run(store.create_session())
+        sid = session["id"]
+        asyncio.run(store.update_session_preferences(sid, {"capability": "chat", "language": "en"}))
+        asyncio.run(
+            store.add_message(
+                sid,
+                role="user",
+                content="summarize the pdf",
+                capability="chat",
+                attachments=[
+                    {
+                        "type": "file",
+                        "url": "/files/attachments/s1/att-1/a.pdf",
+                        "base64": "",
+                        "filename": "a.pdf",
+                        "mime_type": "application/pdf",
+                        # Extra fields persisted by the executor at upload.
+                        "id": "att-1",
+                        "extracted_chars": 67619,
+                        "extracted_text": "--- Page 1 --- body text",
+                    }
+                ],
+            )
+        )
+        runtime = TurnRuntimeManager(store=store)
+        recorder = _FakeStartTurnRecorder()
+        with patch.object(runtime, "start_turn", new=recorder):
+            asyncio.run(runtime.regenerate_last_turn(sid))
+
+        from deeptutor.core.turn_request import TurnRequest
+
+        payload = recorder.calls[0]
+        # The payload must validate against the wire contract...
+        TurnRequest.model_validate(payload)
+        # ...with the extra fields stripped to the allowed attachment shape.
+        assert payload["attachments"] == [
+            {
+                "type": "file",
+                "url": "/files/attachments/s1/att-1/a.pdf",
+                "base64": "",
+                "filename": "a.pdf",
+                "mime_type": "application/pdf",
+            }
+        ]
+
     def test_replays_book_references_from_request_snapshot(self, store: SQLiteSessionStore) -> None:
         sid, _, _ = _seed_session(
             store,

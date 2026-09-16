@@ -743,7 +743,21 @@ class TurnRequestPreparer:
             "tools": tools,
             "knowledge_bases": knowledge_bases,
             "language": language,
-            "attachments": list(last_user.get("attachments") or []),
+            "attachments": [
+                {
+                    key: att.get(key)
+                    for key in ("type", "url", "base64", "filename", "mime_type")
+                    if isinstance(att, dict) and key in att
+                }
+                for att in (last_user.get("attachments") or [])
+                if isinstance(att, dict)
+            ],
+            # The persisted message-row attachments carry upload-time extras
+            # (``id``, ``extracted_text``, ``extracted_chars``) that the wire
+            # contract ``OutgoingAttachment`` forbids; project to the allowed
+            # fields so start_turn's TurnRequest validation passes on retry
+            # (#1484 — otherwise the WS closed with no terminal event and the
+            # UI hung on "Thinking..." forever).
             "notebook_references": list(
                 overrides.get("notebook_references")
                 if overrides.get("notebook_references") is not None
