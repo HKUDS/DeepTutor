@@ -309,7 +309,7 @@ class VoiceProviderSpec:
 
 
 # Voice providers either use the shared OpenAI-compatible adapter or a native
-# protocol adapter registered by name (currently DashScope TTS/STT).
+# protocol adapter registered by name (currently DashScope and Volcengine).
 TTS_PROVIDERS: dict[str, VoiceProviderSpec] = {
     "dashscope": VoiceProviderSpec(
         label="Aliyun DashScope",
@@ -342,6 +342,19 @@ TTS_PROVIDERS: dict[str, VoiceProviderSpec] = {
         default_api_base="https://api.siliconflow.cn/v1",
         default_model="FunAudioLLM/CosyVoice2-0.5B",
         default_voice="FunAudioLLM/CosyVoice2-0.5B:alex",
+    ),
+    # Volcengine's speech service is not OpenAI-compatible: it authenticates on
+    # its own headers, selects the service version through X-Api-Resource-Id
+    # rather than a request-body model, and only serves the 2.0 voices
+    # (`*_uranus_bigtts`) over the V3 streaming interface. ``default_model`` is
+    # the resource id so the two agree out of the box; see the adapter for how
+    # they are reconciled.
+    "volcengine": VoiceProviderSpec(
+        label="Volcengine (Doubao Seed-TTS)",
+        default_api_base="https://openspeech.bytedance.com/api/v3/tts/unidirectional",
+        adapter="volcengine_tts",
+        default_model="seed-tts-2.0",
+        default_voice="zh_female_yingyujiaoxue_uranus_bigtts",
     ),
     "azure_openai": VoiceProviderSpec(
         label="Azure OpenAI",
@@ -1130,6 +1143,7 @@ def resolve_tts_runtime_config(
         voice=voice,
         response_format=response_format,
         speed=_coerce_optional_float((model or {}).get("speed")),
+        resource_id=_as_str((profile or {}).get("resource_id")),
     )
 
 
