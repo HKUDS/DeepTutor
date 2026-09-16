@@ -39,6 +39,9 @@ class TTSConfig:
     voice: str = ""
     response_format: str = "mp3"
     speed: float | None = None
+    # Provider-side service version, where one is selected by something other
+    # than the model name — Volcengine sends it as ``X-Api-Resource-Id``.
+    resource_id: str = ""
     max_input_chars: int = DEFAULT_MAX_INPUT_CHARS
     request_timeout: int = 60
 
