@@ -152,6 +152,18 @@ def _reset_runtime_singletons() -> None:
         pass
 
 
+def _no_window_creationflags() -> int:
+    """CREATE_NO_WINDOW on Windows so detached children do not flash a console.
+
+    ``subprocess.CREATE_NO_WINDOW`` exists only on Windows. POSIX ``Popen``
+    rejects any non-zero ``creationflags`` but accepts ``0``, so this is a
+    no-op off Windows (#1501).
+    """
+    if os.name != "nt":
+        return 0
+    return int(getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000))
+
+
 def _get_pgid(pid: int | None) -> int | None:
     if pid is None or os.name == "nt":
         return None
@@ -211,7 +223,13 @@ def _send_tree_signal(pid: int | None, pgid: int | None, sig: signal.Signals | i
         cmd = ["taskkill", "/PID", str(pid), "/T"]
         if sig == KILL_SIGNAL:
             cmd.append("/F")
-        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        subprocess.run(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            creationflags=_no_window_creationflags(),
+        )
         return
     if os.name != "nt" and pgid is not None:
         os.killpg(pgid, sig)
@@ -276,7 +294,10 @@ def _spawn(command: list[str], *, cwd: Path, env: dict[str, str], name: str) -> 
         "errors": "replace",
     }
     if os.name == "nt":
-        kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
+        kwargs["creationflags"] = (
+            subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
+            | _no_window_creationflags()
+        )
     else:
         kwargs["start_new_session"] = True
     process = subprocess.Popen(command, **kwargs)  # type: ignore[arg-type,call-overload]
@@ -338,6 +359,7 @@ def _port_listeners_windows(port: int) -> list[tuple[int, str]]:
             capture_output=True,
             text=True,
             timeout=5,
+            creationflags=_no_window_creationflags(),
         )
     except Exception:
         return []
@@ -366,6 +388,7 @@ def _port_listeners_windows(port: int) -> list[tuple[int, str]]:
                     capture_output=True,
                     text=True,
                     timeout=3,
+                    creationflags=_no_window_creationflags(),
                 )
                 first = result.stdout.strip().splitlines()[:1]
                 if first and first[0].startswith('"'):
@@ -662,7 +685,11 @@ def _ensure_web_dependencies(source: Path, npm: str) -> None:
         return
     action = "ci" if (source / "package-lock.json").exists() else "install"
     _log(f"web/node_modules not found — running `npm {action}` in {source} ...")
-    result = subprocess.run([npm, action], cwd=source)
+    result = subprocess.run(
+        [npm, action],
+        cwd=source,
+        creationflags=_no_window_creationflags(),
+    )
     if result.returncode != 0:
         raise SystemExit(
             f"`npm {action}` failed (exit {result.returncode}). "
@@ -758,7 +785,12 @@ def _ensure_source_production_build(
     generated_config = [source / "next-env.d.ts", source / "tsconfig.json"]
     snapshots = {path: path.read_bytes() if path.is_file() else None for path in generated_config}
     try:
-        result = subprocess.run([npm, "run", "build"], cwd=source, env=env)
+        result = subprocess.run(
+            [npm, "run", "build"],
+            cwd=source,
+            env=env,
+            creationflags=_no_window_creationflags(),
+        )
     finally:
         for path, original in snapshots.items():
             if original is None:
