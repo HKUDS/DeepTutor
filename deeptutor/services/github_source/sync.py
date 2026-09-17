@@ -158,6 +158,20 @@ async def sync_source(kb_name, source, *, base_dir=DEFAULT_BASE_DIR, client=None
         return SyncResult(ok=False, error=error)
 
     if old_sha and old_sha == latest_sha:
+        # The remote SHA matches what we last synced, so there is nothing to
+        # download or re-index. Still persist a fresh success state so the
+        # source does not stay marked stale past its freshness window, and so
+        # any previous transient sync error is cleared. Mirrors the
+        # web-source path, which records success on unchanged crawls.
+        from deeptutor.knowledge.manager import KnowledgeBaseManager
+
+        KnowledgeBaseManager(base_dir=base_dir).update_github_source_state(
+            kb_name=kb_name,
+            source_id=source["id"],
+            last_synced_at=_utcnow_iso(),
+            last_sync_status="success",
+            last_sync_error=None,
+        )
         return SyncResult(ok=True, skipped=True)
 
     try:
