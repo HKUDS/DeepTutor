@@ -163,6 +163,24 @@ def test_hanging_extension_action_times_out(material, monkeypatch):
     assert response.json()["detail"]["recoverable"] is True
 
 
+def test_language_model_errors_are_reported_distinctly(material, monkeypatch):
+    from deeptutor.services.llm.exceptions import LLMAuthenticationError
+
+    def run(*_args):
+        raise LLMAuthenticationError("Invalid API key")
+
+    client = _client(monkeypatch, _extension(run))
+    response = client.post(
+        f"/api/reading/materials/{material.material_id}/extensions/sample/actions/open",
+        json={"locator": 1},
+    )
+
+    assert response.status_code == 503
+    detail = response.json()["detail"]
+    assert detail["recoverable"] is True
+    assert "language model" in detail["message"].lower()
+
+
 def test_timed_out_sync_extension_opens_circuit_without_queueing(material, monkeypatch):
     release = threading.Event()
     calls = 0
@@ -188,6 +206,73 @@ def test_timed_out_sync_extension_opens_circuit_without_queueing(material, monke
 
         assert first.status_code == 503
         assert second.status_code == 503
+        assert first.json()["detail"]["reason"] == "timed_out"
         assert calls == 1
     finally:
         release.set()
+
+
+def test_timed_out_async_extension_can_retry(material, monkeypatch):
+    calls = 0
+
+    async def run(*_args):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            await asyncio.sleep(1)
+        return ReadingExtensionResult(type="card")
+
+    monkeypatch.setattr(reading_extensions, "ACTION_TIMEOUT_S", 0.01)
+    client = _client(monkeypatch, _extension(run))
+
+    first = client.post(
+        f"/api/reading/materials/{material.material_id}/extensions/sample/actions/open",
+        json={"locator": 1},
+    )
+    second = client.post(
+        f"/api/reading/materials/{material.material_id}/extensions/sample/actions/open",
+        json={"locator": 1},
+    )
+
+    assert first.status_code == 503
+    assert first.json()["detail"]["reason"] == "timed_out"
+    assert second.status_code == 200
+    assert calls == 2
+
+
+def test_async_extension_ignores_stale_circuit(material, monkeypatch):
+    async def run(*_args):
+        return ReadingExtensionResult(type="card", payload={"body": "ok"})
+
+    extension = _extension(run)
+    registry = ReadingExtensionRegistry([extension])
+    registry.mark_timed_out("sample")
+    monkeypatch.setattr(
+        reading_extensions,
+        "get_reading_extension_registry",
+        lambda: registry,
+    )
+    app = FastAPI()
+    app.include_router(reading_extensions.router, prefix="/api/reading")
+    client = TestClient(app)
+
+    response = client.post(
+        f"/api/reading/materials/{material.material_id}/extensions/sample/actions/open",
+        json={"locator": 1},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["type"] == "card"
+
+
+def test_plugin_exception_reason_is_returned(material, monkeypatch):
+    client = _client(
+        monkeypatch,
+        _extension(lambda *_: (_ for _ in ()).throw(RuntimeError("broken plugin"))),
+    )
+    response = client.post(
+        f"/api/reading/materials/{material.material_id}/extensions/sample/actions/open",
+        json={"locator": 1},
+    )
+    assert response.status_code == 503
+    assert response.json()["detail"]["reason"] == "broken plugin"

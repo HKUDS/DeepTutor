@@ -7,6 +7,7 @@ import uuid
 
 from deeptutor.learning.grading import classify_error, grade_answer
 from deeptutor.learning.mastery import compute_mastery
+from deeptutor.learning.misconceptions import drop_unknown, record_from_evidence
 from deeptutor.learning.models import (
     ErrorRecord,
     InteractionStatus,
@@ -24,6 +25,7 @@ from deeptutor.learning.models import (
     TopicMetadata,
     TopicSource,
 )
+from deeptutor.learning.prerequisites import remap_prerequisite_ids, resolve_prerequisite_ids
 from deeptutor.learning.storage import LearningStore
 
 if TYPE_CHECKING:
@@ -116,6 +118,7 @@ class LearningService:
         progress.learning_evidence = [
             event for event in progress.learning_evidence if event.knowledge_point_id in new_kp_ids
         ]
+        drop_unknown(progress, new_kp_ids)
         progress.feynman_retries = {
             k: v for k, v in progress.feynman_retries.items() if k in new_kp_ids
         }
@@ -131,6 +134,7 @@ class LearningService:
 
         # Set new modules
         progress.modules = list(modules)
+        resolve_prerequisite_ids(progress.modules)
         for mod in modules:
             for kp in mod.knowledge_points:
                 progress.knowledge_types[kp.id] = kp.type
@@ -308,6 +312,19 @@ class LearningService:
                 session_id=session_id,
                 turn_id=turn_id,
                 assessment_type="review" if already_scheduled else "quiz",
+            )
+            latest_attempt = next(
+                (
+                    attempt
+                    for attempt in reversed(progress.quiz_attempts)
+                    if attempt.knowledge_point_id == knowledge_point_id
+                ),
+                None,
+            )
+            record_from_evidence(
+                progress,
+                evidence,
+                error_type=None if latest_attempt is None else latest_attempt.error_type,
             )
             self.update_mastery(
                 progress, knowledge_point_id, self.calculate_mastery(progress, knowledge_point_id)
@@ -751,13 +768,23 @@ class LearningService:
             applied_modules = [module.model_copy(deep=True) for module in modules]
             if append:
                 offset = len(tx.progress.modules)
+                id_map: dict[str, str] = {}
+                remapped_points = []
+                existing_ids = {
+                    kp.id for module in tx.progress.modules for kp in module.knowledge_points
+                }
                 for index, module in enumerate(applied_modules, start=offset):
                     module.id = f"{book_id}_m{index}"
                     module.order = index
                     for kp_index, kp in enumerate(module.knowledge_points):
+                        new_id = f"{module.id}_kp{kp_index}"
+                        id_map[kp.id] = new_id
                         kp.module_id = module.id
-                        kp.id = f"{module.id}_kp{kp_index}"
+                        kp.id = new_id
                         tx.progress.knowledge_types[kp.id] = kp.type
+                        remapped_points.append(kp)
+                known_ids = existing_ids | set(id_map.values())
+                remap_prerequisite_ids(remapped_points, id_map, known_ids=known_ids)
                 tx.progress.modules.extend(applied_modules)
                 if not tx.progress.current_module_id and applied_modules:
                     tx.progress.current_module_id = applied_modules[0].id
@@ -1142,6 +1169,7 @@ class LearningService:
             turn_id=turn_id,
         )
         progress.learning_evidence.append(review_evidence)
+        record_from_evidence(progress, review_evidence)
         kp_type = progress.knowledge_types.get(kp_id)
         if kp_type is not None and scheduler is not None:
             state = progress.repetition_states.get(kp_id)

@@ -91,6 +91,41 @@ class TestSaveLoad:
         assert loaded.repetition_states["kp1"].stability == 4.0
         assert loaded.repetition_states["kp1"].lapse_count == 1
 
+    def test_misconception_and_prerequisite_state_roundtrip(self, store):
+        from deeptutor.learning.models import MisconceptionState
+
+        lp = LearningProgress(book_id="book1")
+        lp.modules = [
+            LearningModule(
+                id="m1",
+                name="M1",
+                order=0,
+                knowledge_points=[
+                    KnowledgePoint(
+                        id="kp2",
+                        name="B",
+                        type=KnowledgeType.MEMORY,
+                        module_id="m1",
+                        prerequisite_ids=["kp1"],
+                    )
+                ],
+            )
+        ]
+        lp.misconceptions["kp1:application"] = MisconceptionState(
+            knowledge_point_id="kp1",
+            signature="application",
+            status="active",
+            confidence=0.85,
+            occurrence_count=3,
+        )
+        store.save(lp)
+        loaded = store.load("book1")
+        assert loaded.modules[0].knowledge_points[0].prerequisite_ids == ["kp1"]
+        state = loaded.misconceptions["kp1:application"]
+        assert state.status == "active"
+        assert state.confidence == 0.85
+        assert state.occurrence_count == 3
+
     def test_learning_evidence_is_projected_and_queryable(self, store):
         from deeptutor.learning.models import LearningEvidence
 
@@ -149,6 +184,8 @@ class TestSaveLoad:
         assert state.next_review_at == 123456.0
         assert state.stability == 0.0
         assert loaded.learning_evidence == []
+        assert loaded.misconceptions == {}
+        assert loaded.modules == []
 
     def test_updated_at_auto_updates(self, store):
         lp = LearningProgress(book_id="book1")

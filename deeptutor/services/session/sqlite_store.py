@@ -99,7 +99,14 @@ def _json_loads(value: str | None, default: Any) -> Any:
 _IMPORTED_ID_PREFIX = "imported_"
 _ID_SAFE = re.compile(r"[^A-Za-z0-9_-]")
 ASSESSMENT_SOURCES = frozenset({"deep_question", "mastery_path", "immersive_reading", "book"})
+ASSESSMENT_TYPES = frozenset({"quiz", "focus_check", "qualitative", "review"})
+ASSESSMENT_RESULTS = frozenset({"correct", "incorrect", "partial", "ungraded"})
 SCORE_TRENDS = frozenset({"new", "improved", "declined", "unchanged"})
+# Stored ``result=''`` is a pre-v2 row: treat it as already graded so wrong
+# lists do not swallow ungraded spectacle rows, and old incorrect rows stay
+# in the wrong filter.
+_GRADED_RESULT_SQL = "COALESCE(NULLIF(n.result,''),'graded') NOT IN ('ungraded','')"
+_GRADED_RESULT_SQL_UNALIASED = "COALESCE(NULLIF(result,''),'graded') NOT IN ('ungraded','')"
 ACTIVE_TURN_STATUSES = frozenset({"queued", "running", "waiting_input"})
 TERMINAL_TURN_STATUSES = frozenset({"completed", "failed", "cancelled"})
 ALL_TURN_STATUSES = ACTIVE_TURN_STATUSES | TERMINAL_TURN_STATUSES
@@ -177,6 +184,10 @@ class QuestionBankQuery:
     source: str = ""
     material_id: str = ""
     section_id: str = ""
+    assessment_type: str = ""
+    result: str = ""
+    mastery_path_id: str = ""
+    knowledge_point_id: str = ""
     resolved: bool | None = None
     score_trend: str = ""
     search: str = ""
@@ -198,6 +209,14 @@ class QuestionBankQuery:
             else "",
             material_id=(self.material_id or "").strip(),
             section_id=(self.section_id or "").strip(),
+            assessment_type=(self.assessment_type or "").strip()
+            if (self.assessment_type or "").strip() in ASSESSMENT_TYPES
+            else "",
+            result=(self.result or "").strip()
+            if (self.result or "").strip() in ASSESSMENT_RESULTS
+            else "",
+            mastery_path_id=(self.mastery_path_id or "").strip(),
+            knowledge_point_id=(self.knowledge_point_id or "").strip(),
             resolved=self.resolved,
             score_trend=(self.score_trend or "").strip()
             if (self.score_trend or "").strip() in SCORE_TRENDS
@@ -339,6 +358,15 @@ class SQLiteSessionStore:
                     section_id TEXT NOT NULL DEFAULT '',
                     section_title TEXT NOT NULL DEFAULT '',
                     score_trend TEXT NOT NULL DEFAULT 'new',
+                    assessment_type TEXT NOT NULL DEFAULT '',
+                    result TEXT NOT NULL DEFAULT '',
+                    mastery_path_id TEXT NOT NULL DEFAULT '',
+                    knowledge_point_id TEXT NOT NULL DEFAULT '',
+                    attempt_count INTEGER NOT NULL DEFAULT 1,
+                    hints_used INTEGER NOT NULL DEFAULT 0,
+                    confidence REAL,
+                    response_time REAL,
+                    quality REAL,
                     is_correct INTEGER DEFAULT 0,
                     resolved INTEGER DEFAULT 0,
                     bookmarked INTEGER DEFAULT 0,
@@ -354,6 +382,15 @@ class SQLiteSessionStore:
 
                 CREATE INDEX IF NOT EXISTS idx_notebook_entries_bookmarked
                     ON notebook_entries(bookmarked, created_at DESC);
+
+                CREATE TABLE IF NOT EXISTS reading_quiz_pending (
+                    material_id TEXT NOT NULL,
+                    locator INTEGER NOT NULL,
+                    question_id TEXT NOT NULL,
+                    question_json TEXT NOT NULL,
+                    created_at REAL NOT NULL,
+                    PRIMARY KEY (material_id, locator, question_id)
+                );
 
                 CREATE TABLE IF NOT EXISTS notebook_categories (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -418,6 +455,7 @@ class SQLiteSessionStore:
             self._migrate_notebook_entries_add_user_answer_images(conn)
             self._migrate_notebook_entries_add_ai_judgment(conn)
             self._migrate_notebook_entries_add_assessment_review(conn)
+            self._migrate_notebook_entries_add_assessment_v2(conn)
             self._migrate_turn_runtime_columns(conn)
             conn.commit()
 
@@ -679,6 +717,47 @@ class SQLiteSessionStore:
             """
             CREATE INDEX IF NOT EXISTS idx_notebook_entries_review
             ON notebook_entries(source, material_id, resolved, created_at DESC)
+            """
+        )
+
+    @staticmethod
+    def _migrate_notebook_entries_add_assessment_v2(
+        conn: sqlite3.Connection,
+    ) -> None:
+        """Add the cross-surface review columns without rewriting history."""
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(notebook_entries)").fetchall()}
+        if not cols:
+            return
+        additions = {
+            "assessment_type": "TEXT NOT NULL DEFAULT ''",
+            "result": "TEXT NOT NULL DEFAULT ''",
+            "mastery_path_id": "TEXT NOT NULL DEFAULT ''",
+            "knowledge_point_id": "TEXT NOT NULL DEFAULT ''",
+            "attempt_count": "INTEGER NOT NULL DEFAULT 1",
+            "hints_used": "INTEGER NOT NULL DEFAULT 0",
+            "confidence": "REAL",
+            "response_time": "REAL",
+            "quality": "REAL",
+        }
+        for name, definition in additions.items():
+            if name not in cols:
+                conn.execute(f"ALTER TABLE notebook_entries ADD COLUMN {name} {definition}")
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_notebook_entries_linkage
+            ON notebook_entries(mastery_path_id, knowledge_point_id)
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS reading_quiz_pending (
+                material_id TEXT NOT NULL,
+                locator INTEGER NOT NULL,
+                question_id TEXT NOT NULL,
+                question_json TEXT NOT NULL,
+                created_at REAL NOT NULL,
+                PRIMARY KEY (material_id, locator, question_id)
+            )
             """
         )
 
@@ -2439,6 +2518,45 @@ class SQLiteSessionStore:
 
     # ── Notebook entries ──────────────────────────────────────────────
 
+    @staticmethod
+    def _optional_float(value: Any) -> float | None:
+        if value is None or value == "":
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    @classmethod
+    def _notebook_assessment_values(cls, item: dict[str, Any], is_correct: int) -> tuple[Any, ...]:
+        assessment_type = str(item.get("assessment_type") or "").strip()
+        if assessment_type not in ASSESSMENT_TYPES:
+            assessment_type = ""
+        result = str(item.get("result") or "").strip()
+        if result not in ASSESSMENT_RESULTS:
+            result = "correct" if is_correct else "incorrect"
+        try:
+            raw_attempts = item.get("attempt_count")
+            attempt_count = max(1, int(raw_attempts if raw_attempts is not None else 1))
+        except (TypeError, ValueError):
+            attempt_count = 1
+        try:
+            raw_hints = item.get("hints_used")
+            hints_used = max(0, int(raw_hints if raw_hints is not None else 0))
+        except (TypeError, ValueError):
+            hints_used = 0
+        return (
+            assessment_type,
+            result,
+            str(item.get("mastery_path_id") or ""),
+            str(item.get("knowledge_point_id") or ""),
+            attempt_count,
+            hints_used,
+            cls._optional_float(item.get("confidence")),
+            cls._optional_float(item.get("response_time")),
+            cls._optional_float(item.get("quality")),
+        )
+
     def _upsert_notebook_entries_sync(self, session_id: str, items: list[dict[str, Any]]) -> int:
         if not items:
             return 0
@@ -2488,6 +2606,8 @@ class SQLiteSessionStore:
                     str(item.get("section_title") or ""),
                     score_trend,
                 )
+                assessment = self._notebook_assessment_values(item, is_correct)
+                resolved_on_insert = 0 if assessment[1] == "ungraded" else (1 if is_correct else 0)
                 if images_json is None:
                     conn.execute(
                         """
@@ -2496,9 +2616,11 @@ class SQLiteSessionStore:
                             options_json, correct_answer, explanation, difficulty,
                             user_answer, user_answer_images_json, source, material_id,
                             material_title, section_id, section_title, score_trend,
+                            assessment_type, result, mastery_path_id, knowledge_point_id,
+                            attempt_count, hints_used, confidence, response_time, quality,
                             is_correct, resolved, bookmarked, followup_session_id,
                             created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?, ?, ?, ?, ?, ?, ?, 0, '', ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '', ?, ?)
                         ON CONFLICT(session_id, turn_id, question_id) DO UPDATE SET
                             question = excluded.question,
                             question_type = excluded.question_type,
@@ -2513,8 +2635,18 @@ class SQLiteSessionStore:
                             section_id = excluded.section_id,
                             section_title = excluded.section_title,
                             score_trend = excluded.score_trend,
+                            assessment_type = excluded.assessment_type,
+                            result = excluded.result,
+                            mastery_path_id = excluded.mastery_path_id,
+                            knowledge_point_id = excluded.knowledge_point_id,
+                            attempt_count = excluded.attempt_count,
+                            hints_used = excluded.hints_used,
+                            confidence = excluded.confidence,
+                            response_time = excluded.response_time,
+                            quality = excluded.quality,
                             is_correct = excluded.is_correct,
                             resolved = CASE
+                                WHEN excluded.result = 'ungraded' THEN notebook_entries.resolved
                                 WHEN excluded.is_correct = 1 THEN 1
                                 WHEN excluded.is_correct = 0 AND notebook_entries.is_correct = 1 THEN 0
                                 ELSE notebook_entries.resolved
@@ -2533,8 +2665,9 @@ class SQLiteSessionStore:
                             item.get("difficulty") or "",
                             item.get("user_answer") or "",
                             *provenance,
+                            *assessment,
                             is_correct,
-                            1 if is_correct else 0,
+                            resolved_on_insert,
                             now,
                             now,
                         ),
@@ -2547,9 +2680,11 @@ class SQLiteSessionStore:
                             options_json, correct_answer, explanation, difficulty,
                             user_answer, user_answer_images_json, source, material_id,
                             material_title, section_id, section_title, score_trend,
+                            assessment_type, result, mastery_path_id, knowledge_point_id,
+                            attempt_count, hints_used, confidence, response_time, quality,
                             is_correct, resolved, bookmarked, followup_session_id,
                             created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '', ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '', ?, ?)
                         ON CONFLICT(session_id, turn_id, question_id) DO UPDATE SET
                             question = excluded.question,
                             question_type = excluded.question_type,
@@ -2564,9 +2699,19 @@ class SQLiteSessionStore:
                             section_id = excluded.section_id,
                             section_title = excluded.section_title,
                             score_trend = excluded.score_trend,
+                            assessment_type = excluded.assessment_type,
+                            result = excluded.result,
+                            mastery_path_id = excluded.mastery_path_id,
+                            knowledge_point_id = excluded.knowledge_point_id,
+                            attempt_count = excluded.attempt_count,
+                            hints_used = excluded.hints_used,
+                            confidence = excluded.confidence,
+                            response_time = excluded.response_time,
+                            quality = excluded.quality,
                             user_answer_images_json = excluded.user_answer_images_json,
                             is_correct = excluded.is_correct,
                             resolved = CASE
+                                WHEN excluded.result = 'ungraded' THEN notebook_entries.resolved
                                 WHEN excluded.is_correct = 1 THEN 1
                                 WHEN excluded.is_correct = 0 AND notebook_entries.is_correct = 1 THEN 0
                                 ELSE notebook_entries.resolved
@@ -2586,8 +2731,9 @@ class SQLiteSessionStore:
                             item.get("user_answer") or "",
                             images_json,
                             *provenance,
+                            *assessment,
                             is_correct,
-                            1 if is_correct else 0,
+                            resolved_on_insert,
                             now,
                             now,
                         ),
@@ -2599,6 +2745,87 @@ class SQLiteSessionStore:
     async def upsert_notebook_entries(self, session_id: str, items: list[dict[str, Any]]) -> int:
         return await self._run(self._upsert_notebook_entries_sync, session_id, items)
 
+    def _put_reading_quiz_pending_sync(
+        self, material_id: str, locator: int, questions: list[Any]
+    ) -> int:
+        material = str(material_id or "").strip()
+        if not material:
+            return 0
+        now = time.time()
+        with self._connect() as conn:
+            conn.execute(
+                "DELETE FROM reading_quiz_pending WHERE material_id = ? AND locator = ?",
+                (material, int(locator)),
+            )
+            stored = 0
+            for index, question in enumerate(questions or [], start=1):
+                if not isinstance(question, dict):
+                    continue
+                question_id = str(question.get("id") or f"q_{index}").strip()
+                if not question_id:
+                    continue
+                conn.execute(
+                    """
+                    INSERT INTO reading_quiz_pending (
+                        material_id, locator, question_id, question_json, created_at
+                    ) VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (material, int(locator), question_id, _json_dumps(question), now),
+                )
+                stored += 1
+            conn.commit()
+        return stored
+
+    async def put_reading_quiz_pending(
+        self, material_id: str, locator: int, questions: list[Any]
+    ) -> int:
+        """Replace the server-side answer keys for one reading quiz."""
+        return await self._run(
+            self._put_reading_quiz_pending_sync, material_id, locator, list(questions or [])
+        )
+
+    def _get_reading_quiz_pending_sync(
+        self,
+        material_id: str,
+        locator: int,
+        question_ids: Sequence[str] | None = None,
+    ) -> dict[str, dict[str, Any]]:
+        material = str(material_id or "").strip()
+        sql = """
+            SELECT question_id, question_json FROM reading_quiz_pending
+            WHERE material_id = ? AND locator = ?
+        """
+        params: list[Any] = [material, int(locator)]
+        if question_ids is not None:
+            wanted = [str(qid).strip() for qid in question_ids if str(qid).strip()]
+            if not wanted:
+                return {}
+            placeholders = ",".join("?" for _ in wanted)
+            sql += f" AND question_id IN ({placeholders})"  # nosec B608
+            params.extend(wanted)
+        with self._connect() as conn:
+            rows = conn.execute(sql, tuple(params)).fetchall()
+        pending: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            parsed = _json_loads(row["question_json"], {})
+            if isinstance(parsed, dict):
+                pending[str(row["question_id"])] = parsed
+        return pending
+
+    async def get_reading_quiz_pending(
+        self,
+        material_id: str,
+        locator: int,
+        question_ids: Sequence[str] | None = None,
+    ) -> dict[str, dict[str, Any]]:
+        """Return stored reading-quiz items keyed by question id (includes answer keys)."""
+        return await self._run(
+            self._get_reading_quiz_pending_sync,
+            material_id,
+            locator,
+            None if question_ids is None else tuple(question_ids),
+        )
+
     @staticmethod
     def _serialize_notebook_entry(row: sqlite3.Row) -> dict[str, Any]:
         keys = set(row.keys())
@@ -2607,6 +2834,13 @@ class SQLiteSessionStore:
             raw_images = _json_loads(row["user_answer_images_json"], [])
             if isinstance(raw_images, list):
                 images = [r for r in raw_images if isinstance(r, dict)]
+        is_correct = bool(row["is_correct"])
+        stored_result = (row["result"] or "") if "result" in keys else ""
+        if stored_result in ASSESSMENT_RESULTS:
+            result = stored_result
+        else:
+            result = "correct" if is_correct else "incorrect"
+        assessment_type = (row["assessment_type"] or "") if "assessment_type" in keys else ""
         return {
             "id": int(row["id"]),
             "session_id": row["session_id"],
@@ -2621,14 +2855,31 @@ class SQLiteSessionStore:
             "difficulty": row["difficulty"] or "",
             "user_answer": row["user_answer"] or "",
             "user_answer_images": images,
-            "is_correct": bool(row["is_correct"]),
+            "is_correct": is_correct,
             "source": (row["source"] or "deep_question") if "source" in keys else "deep_question",
             "material_id": (row["material_id"] or "") if "material_id" in keys else "",
             "material_title": (row["material_title"] or "") if "material_title" in keys else "",
             "section_id": (row["section_id"] or "") if "section_id" in keys else "",
             "section_title": (row["section_title"] or "") if "section_title" in keys else "",
             "score_trend": (row["score_trend"] or "new") if "score_trend" in keys else "new",
-            "resolved": bool(row["resolved"]) if "resolved" in keys else bool(row["is_correct"]),
+            "assessment_type": assessment_type,
+            "result": result,
+            "mastery_path_id": (row["mastery_path_id"] or "") if "mastery_path_id" in keys else "",
+            "knowledge_point_id": (row["knowledge_point_id"] or "")
+            if "knowledge_point_id" in keys
+            else "",
+            "attempt_count": int(row["attempt_count"]) if "attempt_count" in keys else 1,
+            "hints_used": int(row["hints_used"]) if "hints_used" in keys else 0,
+            "confidence": SQLiteSessionStore._optional_float(
+                row["confidence"] if "confidence" in keys else None
+            ),
+            "response_time": SQLiteSessionStore._optional_float(
+                row["response_time"] if "response_time" in keys else None
+            ),
+            "quality": SQLiteSessionStore._optional_float(
+                row["quality"] if "quality" in keys else None
+            ),
+            "resolved": bool(row["resolved"]) if "resolved" in keys else is_correct,
             "bookmarked": bool(row["bookmarked"]),
             "followup_session_id": row["followup_session_id"] or "",
             "ai_judgment": (row["ai_judgment"] or "") if "ai_judgment" in keys else "",
@@ -2672,6 +2923,26 @@ class SQLiteSessionStore:
         if query.is_correct is not None:
             conditions.append("n.is_correct = ?")
             params.append(1 if query.is_correct else 0)
+            if not query.is_correct:
+                conditions.append(_GRADED_RESULT_SQL)
+        if query.assessment_type:
+            conditions.append("n.assessment_type = ?")
+            params.append(query.assessment_type)
+        if query.result:
+            if query.result in {"correct", "incorrect"}:
+                conditions.append(
+                    "(n.result = ? OR (COALESCE(n.result, '') = '' AND n.is_correct = ?))"
+                )
+                params.extend([query.result, 1 if query.result == "correct" else 0])
+            else:
+                conditions.append("n.result = ?")
+                params.append(query.result)
+        if query.mastery_path_id:
+            conditions.append("n.mastery_path_id = ?")
+            params.append(query.mastery_path_id)
+        if query.knowledge_point_id:
+            conditions.append("n.knowledge_point_id = ?")
+            params.append(query.knowledge_point_id)
         if query.source:
             conditions.append("n.source = ?")
             params.append(query.source)
@@ -2746,6 +3017,8 @@ class SQLiteSessionStore:
                 n.correct_answer, n.explanation, n.difficulty,
                 n.user_answer, n.user_answer_images_json, n.source, n.material_id,
                 n.material_title, n.section_id, n.section_title, n.score_trend,
+                n.assessment_type, n.result, n.mastery_path_id, n.knowledge_point_id,
+                n.attempt_count, n.hints_used, n.confidence, n.response_time, n.quality,
                 n.is_correct, n.resolved, n.bookmarked,
                 n.followup_session_id, n.ai_judgment, n.created_at, n.updated_at
             FROM notebook_entries n
@@ -2785,6 +3058,10 @@ class SQLiteSessionStore:
         source: str = "",
         material_id: str = "",
         section_id: str = "",
+        assessment_type: str = "",
+        result: str = "",
+        mastery_path_id: str = "",
+        knowledge_point_id: str = "",
         resolved: bool | None = None,
         score_trend: str = "",
         search: str = "",
@@ -2802,6 +3079,10 @@ class SQLiteSessionStore:
                 source=source,
                 material_id=material_id,
                 section_id=section_id,
+                assessment_type=assessment_type,
+                result=result,
+                mastery_path_id=mastery_path_id,
+                knowledge_point_id=knowledge_point_id,
                 resolved=resolved,
                 score_trend=score_trend,
                 search=search,
@@ -2829,8 +3110,8 @@ class SQLiteSessionStore:
                 f"""
                 SELECT
                     COUNT(*) AS total,
-                    COALESCE(SUM(CASE WHEN is_correct = 0 THEN 1 ELSE 0 END), 0) AS wrong,
-                    COALESCE(SUM(CASE WHEN is_correct = 0 AND resolved = 0 THEN 1 ELSE 0 END), 0) AS unresolved,
+                    COALESCE(SUM(CASE WHEN is_correct = 0 AND {_GRADED_RESULT_SQL_UNALIASED} THEN 1 ELSE 0 END), 0) AS wrong,
+                    COALESCE(SUM(CASE WHEN is_correct = 0 AND resolved = 0 AND {_GRADED_RESULT_SQL_UNALIASED} THEN 1 ELSE 0 END), 0) AS unresolved,
                     COALESCE(SUM(CASE WHEN bookmarked = 1 THEN 1 ELSE 0 END), 0) AS bookmarked,
                     COALESCE(SUM(
                         CASE WHEN NOT EXISTS (
@@ -2901,7 +3182,7 @@ class SQLiteSessionStore:
                     material_id,
                     COALESCE(NULLIF(MAX(material_title), ''), material_id, 'Unnamed material') AS material_title,
                     COUNT(*) AS entry_count,
-                    COALESCE(SUM(CASE WHEN is_correct = 0 AND resolved = 0 THEN 1 ELSE 0 END), 0) AS unresolved_count
+                    COALESCE(SUM(CASE WHEN is_correct = 0 AND resolved = 0 AND {_GRADED_RESULT_SQL_UNALIASED} THEN 1 ELSE 0 END), 0) AS unresolved_count
                 FROM notebook_entries
                 WHERE {where}
                 GROUP BY source, material_id

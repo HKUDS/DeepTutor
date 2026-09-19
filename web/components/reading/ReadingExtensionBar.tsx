@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import {
   listReadingExtensions,
   runReadingExtension,
+  submitReadingQuizAnswers,
   type ReadingExtensionManifest,
   type ReadingExtensionResult,
 } from "@/lib/reading-api";
@@ -34,6 +35,7 @@ export function ReadingExtensionBar({
   locator,
   selectionLocator,
   selection,
+  sessionId,
   onError,
 }: {
   materialId: string;
@@ -47,6 +49,7 @@ export function ReadingExtensionBar({
    */
   selectionLocator?: number;
   selection?: string;
+  sessionId?: string | null;
   onError: (message: string) => void;
 }) {
   const { i18n, t } = useTranslation();
@@ -148,7 +151,7 @@ export function ReadingExtensionBar({
           const needsSelection =
             action.requires.includes("selection") && !selection?.trim();
           // `busy === key`, not `Boolean(busy)`: an action can take the full
-          // 30s server timeout, and disabling all six meanwhile is
+          // server timeout, and disabling all six meanwhile is
           // indistinguishable from the toolbar being broken.
           const disabled = busy === key || needsSelection;
           const builtInLabel = builtInActionLabel(extension.id, action.id);
@@ -198,8 +201,12 @@ export function ReadingExtensionBar({
       {result && result.type !== "browser_speech" ? (
         <ExtensionResult
           result={result}
+          materialId={materialId}
+          locator={selection?.trim() ? (selectionLocator ?? locator) : locator}
+          sessionId={sessionId}
           closeLabel={t("Close")}
           onClose={() => setResult(null)}
+          onError={onError}
         />
       ) : null}
     </>
@@ -230,12 +237,20 @@ function builtInActionLabel(extensionId: string, actionId: string) {
 
 function ExtensionResult({
   result,
+  materialId,
+  locator,
+  sessionId,
   closeLabel,
   onClose,
+  onError,
 }: {
   result: ReadingExtensionResult;
+  materialId: string;
+  locator: number;
+  sessionId?: string | null;
   closeLabel: string;
   onClose: () => void;
+  onError: (message: string) => void;
 }) {
   const questions = Array.isArray(result.payload.questions)
     ? (result.payload.questions as QuizQuestion[])
@@ -331,14 +346,45 @@ function ExtensionResult({
           ))}
         </dl>
       ) : null}
-      {questions.length ? <QuizQuestions questions={questions} /> : null}
+      {questions.length ? (
+        <QuizQuestions
+          questions={questions}
+          materialId={materialId}
+          locator={locator}
+          sessionId={sessionId}
+          onError={onError}
+        />
+      ) : null}
     </section>
   );
 }
 
-function QuizQuestions({ questions }: { questions: QuizQuestion[] }) {
+function QuizQuestions({
+  questions,
+  materialId,
+  locator,
+  sessionId,
+  onError,
+}: {
+  questions: QuizQuestion[];
+  materialId: string;
+  locator: number;
+  sessionId?: string | null;
+  onError: (message: string) => void;
+}) {
   const { t } = useTranslation();
   const [answers, setAnswers] = useState<Record<string, number>>({});
+
+  function persistAnswer(question: QuizQuestion, index: number, choiceIndex: number) {
+    const questionId = question.id || `q_${index + 1}`;
+    void submitReadingQuizAnswers(materialId, {
+      locator,
+      session_id: sessionId || "",
+      answers: [{ question_id: questionId, selected_index: choiceIndex }],
+    }).catch((error) => {
+      onError(error instanceof Error ? error.message : String(error));
+    });
+  }
 
   return questions.map((question, index) => {
     const key = question.id || String(index);
@@ -369,9 +415,10 @@ function QuizQuestions({ questions }: { questions: QuizQuestion[] }) {
               key={choice}
               type="button"
               aria-pressed={selected === choiceIndex}
-              onClick={() =>
-                setAnswers((current) => ({ ...current, [key]: choiceIndex }))
-              }
+              onClick={() => {
+                setAnswers((current) => ({ ...current, [key]: choiceIndex }));
+                persistAnswer(question, index, choiceIndex);
+              }}
               className="rounded-md border border-[var(--border)] px-2 py-1.5 text-left text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] aria-pressed:bg-[var(--muted)] aria-pressed:text-[var(--foreground)]"
             >
               {String.fromCharCode(65 + choiceIndex)}. {choice}

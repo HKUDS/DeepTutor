@@ -154,3 +154,92 @@ def test_a_real_name_always_beats_a_description_or_id() -> None:
         0,
     )
     assert _names(modules) == [("Bases", ["Hex"])]
+
+
+def test_optional_prerequisite_metadata_is_resolved_to_ids() -> None:
+    modules, error = _parse_modules(
+        [
+            {
+                "name": "Linear maps",
+                "knowledge_points": [
+                    {"name": "Vector spaces", "type": "concept"},
+                    {
+                        "name": "Linear independence",
+                        "type": "concept",
+                        "prerequisites": ["Vector spaces"],
+                    },
+                ],
+            }
+        ],
+        "p1",
+        0,
+    )
+    assert error is None
+    first, second = modules[0].knowledge_points
+    assert first.prerequisite_ids == []
+    assert second.prerequisite_ids == [first.id]
+
+
+def test_json_prerequisite_ids_are_mapped_to_generated_ids() -> None:
+    """Models often name edges with the JSON ``id``, not the display name."""
+    modules, error = _parse_modules(
+        [
+            {
+                "name": "Linear maps",
+                "knowledge_points": [
+                    {"id": "a", "name": "Vector spaces", "type": "concept"},
+                    {
+                        "id": "b",
+                        "name": "Linear independence",
+                        "type": "concept",
+                        "prerequisite_ids": ["a", "missing"],
+                    },
+                ],
+            }
+        ],
+        "p1",
+        0,
+    )
+    assert error is None
+    first, second = modules[0].knowledge_points
+    assert first.id != "a"
+    assert second.prerequisite_ids == [first.id]
+
+
+def test_json_prerequisite_ids_resolve_across_modules() -> None:
+    modules, error = _parse_modules(
+        [
+            {"name": "A", "knowledge_points": [{"id": "a", "name": "Foundations"}]},
+            {
+                "name": "B",
+                "knowledge_points": [
+                    {"id": "b", "name": "Maps", "prerequisite_ids": ["a"]},
+                ],
+            },
+        ],
+        "p1",
+        0,
+    )
+    assert error is None
+    source = modules[0].knowledge_points[0]
+    target = modules[1].knowledge_points[0]
+    assert target.prerequisite_ids == [source.id]
+
+
+def test_duplicate_json_ids_are_not_used_as_prerequisite_aliases() -> None:
+    modules, error = _parse_modules(
+        [
+            {
+                "name": "Ambiguous",
+                "knowledge_points": [
+                    {"id": "a", "name": "First"},
+                    {"id": "a", "name": "Second"},
+                    {"id": "b", "name": "Third", "prerequisite_ids": ["a"]},
+                ],
+            }
+        ],
+        "p1",
+        0,
+    )
+    assert error is None
+    assert modules[0].knowledge_points[2].prerequisite_ids == []

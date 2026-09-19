@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import type { NotebookCategory, NotebookEntry } from "@/lib/notebook-api";
+import { optionIsAnswer } from "@/lib/question-bank-answers";
 import { bookRoute } from "@/lib/resource-routes";
 import CategoryMenu from "./CategoryMenu";
 
@@ -28,12 +29,56 @@ const SOURCE_LABELS: Record<NotebookEntry["source"], string> = {
   book: "Book",
 };
 
+const ASSESSMENT_TYPE_LABELS: Record<string, string> = {
+  quiz: "Quiz",
+  focus_check: "Focus Check",
+  qualitative: "Qualitative",
+  review: "Review",
+};
+
 const TREND_LABELS: Record<NotebookEntry["score_trend"], string> = {
   new: "First Attempt",
   improved: "Improved",
   declined: "Declined",
   unchanged: "Unchanged",
 };
+
+function entryResult(entry: NotebookEntry): string {
+  if (entry.result) return entry.result;
+  return entry.is_correct ? "correct" : "incorrect";
+}
+
+function resultBadge(entry: NotebookEntry): {
+  label: string;
+  className: string;
+} {
+  const result = entryResult(entry);
+  if (result === "partial") {
+    return {
+      label: "Partially Correct",
+      className:
+        "bg-amber-100 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400",
+    };
+  }
+  if (result === "ungraded") {
+    return {
+      label: "Not Graded",
+      className:
+        "bg-[var(--muted)] text-[var(--muted-foreground)]",
+    };
+  }
+  if (result === "correct" || entry.is_correct) {
+    return {
+      label: "Correct",
+      className:
+        "bg-green-100 text-green-700 dark:bg-green-950/30 dark:text-green-400",
+    };
+  }
+  return {
+    label: "Incorrect",
+    className: "bg-red-100 text-red-700 dark:bg-red-950/30 dark:text-red-400",
+  };
+}
 
 interface QuestionCardProps {
   entry: NotebookEntry;
@@ -125,6 +170,9 @@ export default function QuestionCard({
   const hasOptions = Object.keys(options).length > 0;
   const isCode = entry.question_type === "coding";
   const filed = entry.categories || [];
+  const result = entryResult(entry);
+  const badge = resultBadge(entry);
+  const showReviewState = result === "incorrect" || result === "partial";
 
   return (
     <li
@@ -148,13 +196,9 @@ export default function QuestionCard({
         <div className="min-w-0 flex-1">
           <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
             <span
-              className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${
-                entry.is_correct
-                  ? "bg-green-100 text-green-700 dark:bg-green-950/30 dark:text-green-400"
-                  : "bg-red-100 text-red-700 dark:bg-red-950/30 dark:text-red-400"
-              }`}
+              className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${badge.className}`}
             >
-              {entry.is_correct ? t("Correct") : t("Incorrect")}
+              {t(badge.label)}
             </span>
             {entry.difficulty && (
               <span
@@ -175,14 +219,19 @@ export default function QuestionCard({
               </span>
             )}
             <span className="rounded-md bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted-foreground)]">
-              {t(SOURCE_LABELS[entry.source] || "Deep Question")}
+              {t(SOURCE_LABELS[entry.source] || "Unknown Source")}
             </span>
+            {entry.assessment_type && ASSESSMENT_TYPE_LABELS[entry.assessment_type] ? (
+              <span className="rounded-md bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted-foreground)]">
+                {t(ASSESSMENT_TYPE_LABELS[entry.assessment_type])}
+              </span>
+            ) : null}
             {entry.score_trend && (
               <span className="rounded-md bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted-foreground)]">
                 {t(TREND_LABELS[entry.score_trend] || "First Attempt")}
               </span>
             )}
-            {!entry.is_correct && (
+            {showReviewState && (
               <span
                 className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${
                   entry.resolved
@@ -230,7 +279,7 @@ export default function QuestionCard({
               fill={entry.bookmarked ? "currentColor" : "none"}
             />
           </button>
-          {!entry.is_correct && (
+          {showReviewState && (
             <button
               type="button"
               onClick={onToggleResolved}
@@ -266,11 +315,15 @@ export default function QuestionCard({
         {hasOptions && (
           <div className="space-y-1">
             {Object.entries(options).map(([key, text]) => {
-              const isUserAnswer =
-                entry.user_answer?.toUpperCase() === key.toUpperCase();
+              const isUserAnswer = optionIsAnswer(
+                key,
+                text,
+                entry.user_answer || "",
+              );
               const isCorrectAnswer =
-                entry.correct_answer?.toUpperCase() === key.toUpperCase();
-              const isWrongPick = isUserAnswer && !entry.is_correct;
+                result !== "ungraded" &&
+                optionIsAnswer(key, text, entry.correct_answer || "");
+              const isWrongPick = isUserAnswer && result === "incorrect";
               return (
                 <div
                   key={key}
@@ -326,9 +379,17 @@ export default function QuestionCard({
         {!hasOptions && (
           <div className="grid gap-2 sm:grid-cols-2">
             <AnswerBlock
-              label={`${t("Your Answer")} ${entry.is_correct ? "✓" : "✗"}`}
+              label={`${t("Your Answer")}${
+                result === "correct" ? " ✓" : result === "incorrect" ? " ✗" : ""
+              }`}
               body={entry.user_answer}
-              tone={entry.is_correct ? "correct" : "wrong"}
+              tone={
+                result === "correct"
+                  ? "correct"
+                  : result === "incorrect"
+                    ? "wrong"
+                    : "neutral"
+              }
               isCode={isCode}
             />
             <AnswerBlock
@@ -397,6 +458,12 @@ export default function QuestionCard({
                 {entry.section_title ? ` · ${entry.section_title}` : ""}
               </span>
             )}
+            {entry.source === "immersive_reading" &&
+              (entry.material_title || entry.section_title || entry.material_id) && (
+                <span className="inline-flex items-center rounded-md border border-[var(--border)] bg-[var(--muted)]/40 px-2 py-0.5 text-[var(--muted-foreground)]">
+                  {entry.section_title || entry.material_title || entry.material_id}
+                </span>
+              )}
             {entry.followup_session_id && (
               <Link
                 href={`/chat/${encodeURIComponent(entry.followup_session_id)}`}

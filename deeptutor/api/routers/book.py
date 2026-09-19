@@ -1119,29 +1119,33 @@ async def quiz_attempt(req: QuizAttemptRequest) -> dict[str, Any]:
             # has no conversation yet, progress still persists and the optional
             # review sync waits for a later attempt after chat exists.
             if session_id and await store.get_session(session_id) is not None:
-                await store.upsert_notebook_entries(
-                    session_id,
-                    [
-                        {
-                            "turn_id": req.block_id,
-                            "question_id": question_id,
-                            "question": str(
-                                question.get("question") or block.title or "Focus check"
-                            ),
-                            "question_type": str(question.get("question_type") or ""),
-                            "options": question.get("options") or {},
-                            "correct_answer": str(question.get("correct_answer") or ""),
-                            "explanation": str(question.get("explanation") or ""),
-                            "difficulty": str(question.get("difficulty") or ""),
-                            "user_answer": req.user_answer,
-                            "is_correct": bool(req.is_correct),
-                            "source": "book",
-                            "material_id": req.book_id,
-                            "material_title": book.title,
-                            "section_id": req.page_id,
-                            "section_title": page.title if page is not None else "",
-                        }
-                    ],
+                from deeptutor.learning.assessment import (
+                    AssessmentRecord,
+                    is_correct_to_result,
+                    record_assessment,
+                )
+
+                await record_assessment(
+                    AssessmentRecord(
+                        session_id=session_id,
+                        turn_id=req.block_id,
+                        question_id=question_id,
+                        question=str(question.get("question") or block.title or "Focus check"),
+                        question_type=str(question.get("question_type") or ""),
+                        options=question.get("options") or {},
+                        correct_answer=str(question.get("correct_answer") or ""),
+                        explanation=str(question.get("explanation") or ""),
+                        difficulty=str(question.get("difficulty") or ""),
+                        user_answer=req.user_answer,
+                        is_correct=bool(req.is_correct),
+                        result=is_correct_to_result(bool(req.is_correct)),
+                        source="book",
+                        assessment_type="focus_check",
+                        material_id=req.book_id,
+                        material_title=book.title,
+                        section_id=req.page_id,
+                        section_title=page.title if page is not None else "",
+                    )
                 )
         except Exception:
             logger.warning(

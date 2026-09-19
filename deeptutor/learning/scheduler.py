@@ -5,12 +5,21 @@ import os
 import time
 from typing import Protocol
 
+from deeptutor.learning.misconceptions import (
+    REASON_ACTIVE_MISCONCEPTION,
+    has_active_misconception,
+)
 from deeptutor.learning.models import (
     KnowledgeType,
     LearningEvidence,
     LearningProgress,
     RepetitionState,
     ReviewTask,
+)
+from deeptutor.learning.prerequisites import (
+    REASON_WEAK_PREREQUISITE,
+    weak_prerequisite_ids,
+    weak_prerequisite_names,
 )
 
 INTERVAL_SEQUENCES: dict[KnowledgeType, list[int]] = {
@@ -38,6 +47,8 @@ DEFAULT_DESIRED_RETENTION = 0.9
 _MIN_STABILITY_DAYS = 0.5
 _FAIL_QUALITY = 0.5
 _EPS = 1e-6
+_ACTIVE_MISCONCEPTION_RISK = 0.2
+_WEAK_PREREQUISITE_RISK = 0.15
 
 
 class RetentionScheduler(Protocol):
@@ -239,6 +250,10 @@ class SpacedRepetitionScheduler:
             risk += 0.2
         if state.lapse_count:
             risk += min(0.1 * state.lapse_count, 0.2)
+        if has_active_misconception(progress, kp_id):
+            risk += _ACTIVE_MISCONCEPTION_RISK
+        if weak_prerequisite_ids(progress, kp_id):
+            risk += _WEAK_PREREQUISITE_RISK
         return float(min(1.0, max(0.0, risk)))
 
     def review_reason(
@@ -270,7 +285,21 @@ class SpacedRepetitionScheduler:
             parts.append(f"{state.lapse_count} lapse{'s' if state.lapse_count != 1 else ''}")
         elif failures:
             parts.append("recent failure")
+        if has_active_misconception(progress, kp_id):
+            parts.append("active misconception")
+        weak_names = weak_prerequisite_names(progress, kp_id)
+        if weak_names:
+            joined = ", ".join(weak_names[:3])
+            parts.append(f"weak prerequisite {joined}")
         return "; ".join(parts) + "."
+
+    def review_reason_codes(self, progress: LearningProgress, kp_id: str) -> list[str]:
+        codes: list[str] = []
+        if has_active_misconception(progress, kp_id):
+            codes.append(REASON_ACTIVE_MISCONCEPTION)
+        if weak_prerequisite_ids(progress, kp_id):
+            codes.append(REASON_WEAK_PREREQUISITE)
+        return codes
 
     def get_due_tasks(self, progress: LearningProgress, max_tasks: int = 5) -> list[ReviewTask]:
         now = time.time()
@@ -299,6 +328,7 @@ class SpacedRepetitionScheduler:
                     state=state,
                     forgetting_risk=round(risk, 4),
                     reason=self.review_reason(state, progress, kp_id, now=moment),
+                    reason_codes=self.review_reason_codes(progress, kp_id),
                 )
             )
         tasks.sort(key=lambda t: review_sort_key(t, now=moment))
@@ -346,6 +376,8 @@ BaselineRetentionScheduler = SpacedRepetitionScheduler
 __all__ = [
     "BaselineRetentionScheduler",
     "INTERVAL_SEQUENCES",
+    "REASON_ACTIVE_MISCONCEPTION",
+    "REASON_WEAK_PREREQUISITE",
     "RetentionScheduler",
     "SpacedRepetitionScheduler",
     "review_sort_key",

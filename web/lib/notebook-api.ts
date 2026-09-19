@@ -217,6 +217,15 @@ export interface NotebookEntry {
   section_id: string;
   section_title: string;
   score_trend: ScoreTrend;
+  assessment_type?: AssessmentType | "";
+  result?: AssessmentResult;
+  mastery_path_id?: string;
+  knowledge_point_id?: string;
+  attempt_count?: number;
+  hints_used?: number;
+  confidence?: number | null;
+  response_time?: number | null;
+  quality?: number | null;
   is_correct: boolean;
   resolved: boolean;
   bookmarked: boolean;
@@ -240,6 +249,14 @@ export type AssessmentSource =
   | "mastery_path"
   | "immersive_reading"
   | "book";
+
+export type AssessmentType = "quiz" | "focus_check" | "qualitative" | "review";
+
+export type AssessmentResult =
+  | "correct"
+  | "incorrect"
+  | "partial"
+  | "ungraded";
 
 export type ScoreTrend = "new" | "improved" | "declined" | "unchanged";
 
@@ -283,6 +300,10 @@ export interface NotebookEntryFilter {
   source?: AssessmentSource;
   material_id?: string;
   section_id?: string;
+  assessment_type?: AssessmentType;
+  result?: AssessmentResult;
+  mastery_path_id?: string;
+  knowledge_point_id?: string;
   resolved?: boolean;
   score_trend?: ScoreTrend;
   search?: string;
@@ -313,6 +334,12 @@ export async function listNotebookEntries(
   if (filter.source) params.set("source", filter.source);
   if (filter.material_id) params.set("material_id", filter.material_id);
   if (filter.section_id) params.set("section_id", filter.section_id);
+  if (filter.assessment_type) params.set("assessment_type", filter.assessment_type);
+  if (filter.result) params.set("result", filter.result);
+  if (filter.mastery_path_id)
+    params.set("mastery_path_id", filter.mastery_path_id);
+  if (filter.knowledge_point_id)
+    params.set("knowledge_point_id", filter.knowledge_point_id);
   if (filter.resolved !== undefined)
     params.set("resolved", String(filter.resolved));
   if (filter.score_trend) params.set("score_trend", filter.score_trend);
@@ -414,6 +441,15 @@ export async function upsertNotebookEntry(data: {
   material_title?: string;
   section_id?: string;
   section_title?: string;
+  assessment_type?: AssessmentType | "";
+  result?: AssessmentResult;
+  mastery_path_id?: string;
+  knowledge_point_id?: string;
+  attempt_count?: number;
+  hints_used?: number;
+  confidence?: number | null;
+  response_time?: number | null;
+  quality?: number | null;
 }): Promise<NotebookEntry> {
   const response = await apiFetch(
     apiUrl("/api/question-notebook/entries/upsert"),

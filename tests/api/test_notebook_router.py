@@ -542,3 +542,95 @@ def test_lookup_missing_entry_returns_204_when_missing_ok(store: SQLiteSessionSt
         )
         assert resp.status_code == 204
         assert resp.content == b""
+
+
+def test_assessment_v2_fields_round_trip_and_filters(store: SQLiteSessionStore) -> None:
+    session = asyncio.run(store.create_session(title="Review"))
+    asyncio.run(
+        store.upsert_notebook_entries(
+            session["id"],
+            [
+                {
+                    "question_id": "graded-wrong",
+                    "question": "Wrong?",
+                    "is_correct": False,
+                    "result": "incorrect",
+                    "assessment_type": "quiz",
+                    "source": "mastery_path",
+                    "mastery_path_id": "path-1",
+                    "knowledge_point_id": "kp-1",
+                },
+                {
+                    "question_id": "ungraded",
+                    "question": "Pending?",
+                    "is_correct": False,
+                    "result": "ungraded",
+                    "assessment_type": "review",
+                },
+                {
+                    "question_id": "book-old",
+                    "question": "Chapter?",
+                    "is_correct": False,
+                    "source": "book",
+                    "material_id": "book-1",
+                },
+            ],
+        )
+    )
+
+    with TestClient(_build_app(store)) as client:
+        all_rows = client.get("/api/question-notebook/entries").json()
+        assert all_rows["total"] == 3
+        ungraded = next(item for item in all_rows["items"] if item["question_id"] == "ungraded")
+        assert ungraded["result"] == "ungraded"
+        old_book = next(item for item in all_rows["items"] if item["question_id"] == "book-old")
+        assert old_book["source"] == "book"
+        assert old_book["result"] == "incorrect"
+
+        wrong = client.get("/api/question-notebook/entries", params={"is_correct": "false"}).json()
+        assert {item["question_id"] for item in wrong["items"]} == {"graded-wrong", "book-old"}
+
+        by_type = client.get(
+            "/api/question-notebook/entries", params={"assessment_type": "quiz"}
+        ).json()
+        assert {item["question_id"] for item in by_type["items"]} == {"graded-wrong"}
+
+        by_result = client.get(
+            "/api/question-notebook/entries", params={"result": "ungraded"}
+        ).json()
+        assert {item["question_id"] for item in by_result["items"]} == {"ungraded"}
+
+        by_link = client.get(
+            "/api/question-notebook/entries",
+            params={"mastery_path_id": "path-1", "knowledge_point_id": "kp-1"},
+        ).json()
+        assert {item["question_id"] for item in by_link["items"]} == {"graded-wrong"}
+
+        eid = next(
+            item["id"] for item in all_rows["items"] if item["question_id"] == "graded-wrong"
+        )
+        client.patch(f"/api/question-notebook/entries/{eid}", json={"resolved": True})
+        resolved = client.get("/api/question-notebook/entries", params={"resolved": "true"}).json()
+        assert eid in {item["id"] for item in resolved["items"]}
+        client.patch(f"/api/question-notebook/entries/{eid}", json={"resolved": False})
+        unresolved = client.get(
+            "/api/question-notebook/entries", params={"resolved": "false", "is_correct": "false"}
+        ).json()
+        assert eid in {item["id"] for item in unresolved["items"]}
+
+        client.post(
+            "/api/question-notebook/entries/upsert",
+            json={
+                "session_id": session["id"],
+                "question_id": "graded-wrong",
+                "question": "Wrong?",
+                "is_correct": False,
+                "result": "incorrect",
+                "assessment_type": "quiz",
+                "source": "mastery_path",
+                "mastery_path_id": "path-1",
+                "knowledge_point_id": "kp-1",
+            },
+        )
+        after = client.get("/api/question-notebook/entries").json()
+        assert after["total"] == 3

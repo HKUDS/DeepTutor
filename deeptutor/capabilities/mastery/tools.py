@@ -314,39 +314,104 @@ async def _sync_mastery_attempt_to_question_bank(
     correct_answer: str | None = None,
     material_title: str = "",
     section_title: str = "",
+    attempt_count: int = 1,
+    hints_used: int = 0,
+    confidence: float | None = None,
+    response_time: float | None = None,
+    quality: float | None = None,
 ) -> None:
     if not session_id:
         return
-    item = {
-        "turn_id": turn_id,
-        "question_id": pending.question_id,
-        "question": pending.prompt,
-        "question_type": _question_bank_type(pending.question_type),
-        "options": choice_options or pending.choice_map,
-        "correct_answer": correct_answer or pending.expected_answer,
-        # Carried from mastery_quiz. Without these the bank held a bare
-        # right/wrong for every mastery attempt — reviewable only as a score.
-        "explanation": pending.explanation,
-        "difficulty": pending.difficulty,
-        "user_answer": user_answer,
-        "is_correct": is_correct,
-        "source": "mastery_path",
-        "material_id": path_id,
-        "material_title": material_title,
-        "section_id": pending.knowledge_point_id,
-        "section_title": section_title,
-    }
-    try:
-        from deeptutor.services.session import get_sqlite_session_store
+    from deeptutor.learning.assessment import (
+        AssessmentRecord,
+        RecordAssessmentError,
+        is_correct_to_result,
+        record_assessment,
+    )
 
-        await asyncio.wait_for(
-            get_sqlite_session_store().upsert_notebook_entries(session_id, [item]),
-            timeout=5.0,
-        )
-    except Exception:
+    record = AssessmentRecord(
+        session_id=session_id,
+        turn_id=turn_id,
+        question_id=pending.question_id,
+        question=pending.prompt,
+        question_type=_question_bank_type(pending.question_type),
+        options=choice_options or pending.choice_map,
+        correct_answer=correct_answer or pending.expected_answer,
+        explanation=pending.explanation,
+        difficulty=pending.difficulty,
+        user_answer=user_answer,
+        is_correct=is_correct,
+        result=is_correct_to_result(is_correct),
+        source="mastery_path",
+        assessment_type="quiz",
+        material_id=path_id,
+        material_title=material_title,
+        section_id=pending.knowledge_point_id,
+        section_title=section_title,
+        mastery_path_id=path_id,
+        knowledge_point_id=pending.knowledge_point_id,
+        attempt_count=attempt_count,
+        hints_used=hints_used,
+        confidence=confidence,
+        response_time=response_time,
+        quality=quality,
+    )
+    try:
+        await asyncio.wait_for(record_assessment(record), timeout=5.0)
+    except (RecordAssessmentError, Exception):
         logger.warning(
             "Failed to sync mastery question %s to question bank for session %s",
             pending.question_id,
+            session_id,
+            exc_info=True,
+        )
+
+
+async def _sync_qualitative_to_question_bank(
+    *,
+    path_id: str,
+    session_id: str,
+    turn_id: str,
+    knowledge_point_id: str,
+    knowledge_point_name: str,
+    passed: bool,
+    evidence: str,
+    material_title: str = "",
+    quality: float | None = None,
+) -> None:
+    if not session_id:
+        return
+    from deeptutor.learning.assessment import (
+        AssessmentRecord,
+        RecordAssessmentError,
+        record_assessment,
+    )
+
+    record = AssessmentRecord(
+        session_id=session_id,
+        turn_id=turn_id,
+        question_id=f"qual:{knowledge_point_id}",
+        question=knowledge_point_name,
+        question_type="written",
+        user_answer=evidence,
+        is_correct=passed,
+        result="correct" if passed else "partial",
+        source="mastery_path",
+        assessment_type="qualitative",
+        material_id=path_id,
+        material_title=material_title,
+        section_id=knowledge_point_id,
+        section_title=knowledge_point_name,
+        mastery_path_id=path_id,
+        knowledge_point_id=knowledge_point_id,
+        quality=1.0 if passed else 0.2 if quality is None else quality,
+    )
+    try:
+        await asyncio.wait_for(record_assessment(record), timeout=5.0)
+    except (RecordAssessmentError, Exception):
+        logger.warning(
+            "Failed to sync qualitative assessment %s to question bank for session %s",
+            knowledge_point_id,
             session_id,
             exc_info=True,
         )
@@ -1069,6 +1134,15 @@ class MasteryGradeTool(BaseTool):
         # best-effort sync timed out, a safe retry repairs the auxiliary
         # question bank without duplicating the mastery attempt.
         kp, _, _ = find_knowledge_point(progress, pending.knowledge_point_id)
+        evidence_items = getattr(progress, "learning_evidence", None) or ()
+        evidence = next(
+            (
+                item
+                for item in reversed(evidence_items)
+                if getattr(item, "knowledge_point_id", "") == pending.knowledge_point_id
+            ),
+            None,
+        )
         await _sync_mastery_attempt_to_question_bank(
             path_id=path_id,
             session_id=interaction.session_id or _resolve_session_id(kwargs),
@@ -1082,6 +1156,11 @@ class MasteryGradeTool(BaseTool):
             correct_answer=expected_answer,
             material_title=progress.name,
             section_title=kp.name if kp else "",
+            attempt_count=getattr(evidence, "attempt_count", 1) if evidence is not None else 1,
+            hints_used=getattr(evidence, "hints_used", 0) if evidence is not None else 0,
+            confidence=getattr(evidence, "confidence", None) if evidence is not None else None,
+            response_time=getattr(evidence, "response_time", None) if evidence is not None else None,
+            quality=getattr(evidence, "quality", None) if evidence is not None else None,
         )
         mastered = bool(kp and is_mastered(progress, kp))
         gate = gate_kind(kp) if kp else ""
@@ -1235,6 +1314,16 @@ class MasteryAssessTool(BaseTool):
             return ToolResult(content=str(exc), success=False)
         kp, _, _ = find_knowledge_point(progress, kp_id)
         assert kp is not None
+        await _sync_qualitative_to_question_bank(
+            path_id=path_id,
+            session_id=_resolve_session_id(kwargs),
+            turn_id=_resolve_turn_id(kwargs),
+            knowledge_point_id=kp_id,
+            knowledge_point_name=kp.name,
+            passed=passed,
+            evidence=feedback,
+            material_title=progress.name,
+        )
         payload = {
             "knowledge_point_id": kp_id,
             "path_revision": progress.version,
@@ -1988,6 +2077,34 @@ def _raw_knowledge_points(raw: dict[str, Any]) -> list[Any] | None:
     return None
 
 
+def _raw_prerequisite_refs(raw_kp: Any) -> list[str]:
+    """Optional prerequisite ids or names from build JSON. Empty when absent."""
+    if not isinstance(raw_kp, dict):
+        return []
+    raw = raw_kp.get("prerequisite_ids")
+    if raw is None:
+        raw = raw_kp.get("prerequisites")
+    if not isinstance(raw, list):
+        return []
+    refs: list[str] = []
+    for item in raw:
+        if isinstance(item, str) and item.strip():
+            refs.append(item.strip())
+            continue
+        if isinstance(item, dict):
+            value = str(item.get("id") or item.get("name") or "").strip()
+            if value:
+                refs.append(value)
+    return refs
+
+
+def _raw_knowledge_point_id(raw_kp: Any) -> str:
+    """Caller-facing id from build JSON. Empty when the model did not send one."""
+    if not isinstance(raw_kp, dict):
+        return ""
+    return str(raw_kp.get("id") or "").strip()
+
+
 def _normalized_module_tree(
     raw_modules: Any, fallback_module_name: str
 ) -> list[tuple[str, str, list[Any]]]:
@@ -2107,6 +2224,7 @@ def _revise_points(
     taken = {kp.id for m in progress.modules for kp in m.knowledge_points}
     points: list[KnowledgePoint] = []
     reset_names: list[str] = []
+    alias_pairs: list[tuple[str, str]] = []
     for kp in module.knowledge_points:
         if kp.id in removals:
             continue
@@ -2125,12 +2243,18 @@ def _revise_points(
         # silently retyped a waypoint would change which gate it has to clear.
         kp_type = str(raw.get("type") or "").strip().lower()
         resolved = KnowledgeType(kp_type) if kp_type in _ALLOWED_KP_TYPES else kp.type
+        new_id = _revised_point_id(module.id, taken)
+        alias_pairs.append((kp.id, new_id))
+        original = _raw_knowledge_point_id(raw)
+        if original:
+            alias_pairs.append((original, new_id))
         points.append(
             KnowledgePoint(
-                id=_revised_point_id(module.id, taken),
+                id=new_id,
                 name=name,
                 type=resolved,
                 module_id=module.id,
+                prerequisite_ids=_raw_prerequisite_refs(raw) or list(kp.prerequisite_ids),
             )
         )
         reset_names.append(kp.name)
@@ -2144,12 +2268,17 @@ def _revise_points(
             kp_type = str(raw.get("type") or "concept").strip().lower()
             if kp_type not in _ALLOWED_KP_TYPES:
                 kp_type = "concept"
+        new_id = _revised_point_id(module.id, taken)
+        original = _raw_knowledge_point_id(raw)
+        if original:
+            alias_pairs.append((original, new_id))
         points.append(
             KnowledgePoint(
-                id=_revised_point_id(module.id, taken),
+                id=new_id,
                 name=name,
                 type=KnowledgeType(kp_type),
                 module_id=module.id,
+                prerequisite_ids=_raw_prerequisite_refs(raw),
             )
         )
 
@@ -2169,6 +2298,23 @@ def _revise_points(
             "split the material across modules with mastery_build.",
             [],
         )
+    from deeptutor.learning.prerequisites import resolve_prerequisite_ids, unique_id_aliases
+
+    extra = [
+        kp for other in progress.modules if other.id != module.id for kp in other.knowledge_points
+    ]
+    resolve_prerequisite_ids(
+        [
+            LearningModule(
+                id=module.id,
+                name=module.name,
+                order=module.order,
+                knowledge_points=points,
+            )
+        ],
+        extra_points=extra,
+        aliases=unique_id_aliases(alias_pairs),
+    )
     return points, None, reset_names
 
 
@@ -2184,6 +2330,7 @@ def _parse_modules(
     if not entries:
         return [], _BUILD_SHAPE_ERROR
     modules: list[LearningModule] = []
+    alias_pairs: list[tuple[str, str]] = []
     for i, (raw_name, raw_objective, raw_kps) in enumerate(entries):
         index = offset + len(modules)
         module_id = f"{path_id}_m{index}"
@@ -2198,12 +2345,17 @@ def _parse_modules(
                 kp_type = str(raw_kp.get("type") or "concept").strip().lower()
                 if kp_type not in _ALLOWED_KP_TYPES:
                     kp_type = "concept"
+            generated_id = f"{module_id}_kp{len(kps)}"
+            original = _raw_knowledge_point_id(raw_kp)
+            if original:
+                alias_pairs.append((original, generated_id))
             kps.append(
                 KnowledgePoint(
-                    id=f"{module_id}_kp{len(kps)}",
+                    id=generated_id,
                     name=kp_name,
                     type=KnowledgeType(kp_type),
                     module_id=module_id,
+                    prerequisite_ids=_raw_prerequisite_refs(raw_kp),
                 )
             )
         if not kps:
@@ -2219,6 +2371,9 @@ def _parse_modules(
         )
     if not modules:
         return [], _BUILD_SHAPE_ERROR
+    from deeptutor.learning.prerequisites import resolve_prerequisite_ids, unique_id_aliases
+
+    resolve_prerequisite_ids(modules, aliases=unique_id_aliases(alias_pairs))
     return modules, None
 
 

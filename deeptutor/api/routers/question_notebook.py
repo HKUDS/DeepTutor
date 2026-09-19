@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 AssessmentSource = Literal["deep_question", "mastery_path", "immersive_reading", "book"]
 ScoreTrend = Literal["new", "improved", "declined", "unchanged"]
+AssessmentType = Literal["quiz", "focus_check", "qualitative", "review"]
+AssessmentResult = Literal["correct", "incorrect", "partial", "ungraded"]
 
 
 # ── Models ────────────────────────────────────────────────────────
@@ -65,6 +67,15 @@ class NotebookEntryItem(BaseModel):
     section_id: str = ""
     section_title: str = ""
     score_trend: ScoreTrend = "new"
+    assessment_type: str = ""
+    result: AssessmentResult | str = ""
+    mastery_path_id: str = ""
+    knowledge_point_id: str = ""
+    attempt_count: int = 1
+    hints_used: int = 0
+    confidence: float | None = None
+    response_time: float | None = None
+    quality: float | None = None
     is_correct: bool = False
     resolved: bool = False
     bookmarked: bool = False
@@ -164,6 +175,15 @@ class UpsertEntryRequest(BaseModel):
     section_id: str = ""
     section_title: str = ""
     is_correct: bool = False
+    assessment_type: str = ""
+    result: str = ""
+    mastery_path_id: str = ""
+    knowledge_point_id: str = ""
+    attempt_count: int = 1
+    hints_used: int = 0
+    confidence: float | None = None
+    response_time: float | None = None
+    quality: float | None = None
 
 
 # ── Entry endpoints ──────────────────────────────────────────────
@@ -288,6 +308,10 @@ async def list_entries(
     ),
     material_id: str = Query(default="", max_length=500),
     section_id: str = Query(default="", max_length=500),
+    assessment_type: str = Query(default="", pattern="^(quiz|focus_check|qualitative|review)?$"),
+    result: str = Query(default="", pattern="^(correct|incorrect|partial|ungraded)?$"),
+    mastery_path_id: str = Query(default="", max_length=500),
+    knowledge_point_id: str = Query(default="", max_length=500),
     resolved: bool | None = Query(default=None),
     score_trend: str = Query(default="", pattern="^(new|improved|declined|unchanged)?$"),
     search: str = Query(default="", max_length=200),
@@ -297,7 +321,7 @@ async def list_entries(
 ) -> NotebookEntryListResponse:
     store = get_sqlite_session_store()
     session_ids = await _course_session_ids(store, course_id)
-    result = await store.list_notebook_entries(
+    listing = await store.list_notebook_entries(
         category_id=category_id,
         uncategorized=uncategorized,
         bookmarked=bookmarked,
@@ -306,6 +330,10 @@ async def list_entries(
         source=source,
         material_id=material_id,
         section_id=section_id,
+        assessment_type=assessment_type,
+        result=result,
+        mastery_path_id=mastery_path_id,
+        knowledge_point_id=knowledge_point_id,
         resolved=resolved,
         score_trend=score_trend,
         search=search,
@@ -314,8 +342,8 @@ async def list_entries(
         offset=offset,
     )
     return NotebookEntryListResponse(
-        items=[NotebookEntryItem(**item) for item in result["items"]],
-        total=result["total"],
+        items=[NotebookEntryItem(**item) for item in listing["items"]],
+        total=listing["total"],
     )
 
 

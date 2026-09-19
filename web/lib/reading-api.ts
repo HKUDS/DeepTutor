@@ -346,6 +346,57 @@ export async function runReadingExtension(
   );
 }
 
+export interface ReadingQuizAnswer {
+  question_id: string;
+  selected_index: number;
+}
+
+export interface ReadingQuizAnswerVerdict {
+  question_id: string;
+  is_correct: boolean;
+  result: "correct" | "incorrect" | "partial" | "ungraded";
+}
+
+/**
+ * Persist a reading Focus-Check on the server.
+ *
+ * The browser never sends the answer key — only the chosen index. Instant
+ * local feedback stays on the existing quiz card.
+ */
+export async function submitReadingQuizAnswers(
+  materialId: string,
+  payload: {
+    locator: number;
+    source_anchor?: string;
+    section_title?: string;
+    session_id?: string;
+    turn_id?: string;
+    answers: ReadingQuizAnswer[];
+  },
+): Promise<ReadingQuizAnswerVerdict[]> {
+  const data = await unwrap<{ answers?: ReadingQuizAnswerVerdict[] }>(
+    await apiFetch(
+      apiUrl(`${BASE}/materials/${materialId}/extensions/quiz/answers`),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          locator: payload.locator,
+          source_anchor: payload.source_anchor || "",
+          section_title: payload.section_title || "",
+          session_id: payload.session_id || "",
+          turn_id: payload.turn_id || "",
+          answers: payload.answers.map((row) => ({
+            question_id: row.question_id,
+            selected_index: row.selected_index,
+          })),
+        }),
+      },
+    ),
+  );
+  return data.answers ?? [];
+}
+
 /** URL of the original bytes. Served with Range support so pdf.js can stream. */
 export function rawMaterialUrl(materialId: string): string {
   return apiUrl(`${BASE}/materials/${materialId}/raw`);
