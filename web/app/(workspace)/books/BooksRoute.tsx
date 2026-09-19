@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState
 import { useParams, useRouter } from 'next/navigation'
 import { Loader2, MessageSquare } from 'lucide-react'
 import { notify } from '@/lib/notifications'
+import { isBookRouteLoading } from '@/lib/book-route-state'
 import { bookRoute } from '@/lib/resource-routes'
 import { useTranslation } from 'react-i18next'
 
@@ -103,6 +104,7 @@ function BookPageInner() {
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null)
   const [detail, setDetail] = useState<BookDetail | null>(null)
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null)
+  const loadingDeepLinkedBook = isBookRouteLoading(requestedBookId, detail?.book.id ?? null)
 
   // Creator-stage state
   const [creating, setCreating] = useState(false)
@@ -996,7 +998,16 @@ function BookPageInner() {
             />
           )}
           <div className="min-h-0 flex-1 overflow-hidden">
-          {view === 'list' && (
+          {view === 'list' && loadingDeepLinkedBook && (
+            <div
+              aria-busy="true"
+              className="flex h-full items-center justify-center text-[var(--muted-foreground)]"
+            >
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('Loading…')}
+            </div>
+          )}
+
+          {view === 'list' && !loadingDeepLinkedBook && (
             <BookLibrary
               books={books}
               loading={loadingBooks}
