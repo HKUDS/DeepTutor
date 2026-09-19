@@ -47,6 +47,7 @@ FEATURED_LLM_PROVIDERS: tuple[str, ...] = (
     "gemini",
     "siliconflow",
     "openrouter",
+    "github_copilot",
     "ollama",
 )
 
@@ -54,6 +55,11 @@ FEATURED_LLM_PROVIDERS: tuple[str, ...] = (
 # provider is "custom". Live fetch is preferred — keep these short, just enough
 # to unblock common cases.
 LLM_FALLBACK_MODELS: dict[str, tuple[str, ...]] = {
+    "github_copilot": (
+        "github-copilot/gpt-4.1",
+        "github-copilot/gpt-4o",
+        "github-copilot/claude-sonnet-4",
+    ),
     "openai": ("gpt-4o-mini", "gpt-4o", "o4-mini", "gpt-4.1", "gpt-4.1-mini"),
     "anthropic": (
         "claude-sonnet-4-6",

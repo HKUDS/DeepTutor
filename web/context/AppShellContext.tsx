@@ -29,7 +29,8 @@ import {
   LANGUAGE_EVENT,
   LANGUAGE_STORAGE_KEY,
   hasStoredLanguage,
-  hasStoredResponseLanguage,
+  RESPONSE_LANGUAGE_EVENT,
+  RESPONSE_LANGUAGE_STORAGE_KEY,
   SIDEBAR_COLLAPSED_EVENT,
   SIDEBAR_COLLAPSED_STORAGE_KEY,
   normalizeCodeBlockShowLineNumbers,
@@ -103,31 +104,27 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    // The saved languages live in the backend's ui settings, but only the
-    // settings route ever read them, so every other page started in English
-    // until the user changed it again in this browser. Adopt them once, and
-    // only when this browser has made no choice of its own — a local selection
-    // is the more specific signal and must win.
-    //
-    // One fetch carries both fields: the interface locale and the
-    // reader-facing output language are stored together and are gated by the
-    // same "has this browser chosen yet?" question, so splitting them into two
-    // bootstraps would only give them a chance to disagree.
+    // Keep the browser's interface locale, but refresh the account-level output
+    // preference independently. A cached UI locale says nothing about the
+    // response language, and chat sends that cache as an explicit turn override.
     const controller = new AbortController();
     let cancelled = false;
+    let responseLanguageChanged = false;
+    const onResponseLanguage = () => {
+      responseLanguageChanged = true;
+    };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === RESPONSE_LANGUAGE_STORAGE_KEY) onResponseLanguage();
+    };
+    window.addEventListener(RESPONSE_LANGUAGE_EVENT, onResponseLanguage);
+    window.addEventListener("storage", onStorage);
     let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
     void (async () => {
-      // Both keys are checked, not just the interface one. They were split
-      // after the interface language shipped, so a browser from before the
-      // split has `deeptutor-language` and no `deeptutor-response-language` —
-      // and returning here on the first alone locked it out of ever adopting
-      // the account's model output language.
-      if (hasStoredLanguage() && hasStoredResponseLanguage()) {
+      if (hasStoredLanguage()) {
         if (!cancelled) {
           setLanguageState(readStoredLanguage());
           setLanguageReady(true);
         }
-        return;
       }
       fallbackTimer = setTimeout(() => {
         controller.abort();
@@ -138,21 +135,21 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
           signal: controller.signal,
           skipAuthRedirect: true,
         });
-        if (!response.ok) return;
+        if (!response.ok || cancelled || controller.signal.aborted) return;
         const payload = (await response.json()) as {
           language?: unknown;
           response_language?: unknown;
         };
+        if (cancelled || controller.signal.aborted) return;
         if (payload.language !== "zh" && payload.language !== "en") return;
-        // Only what this browser is actually missing: a stored interface
-        // language is this user's own choice and the server must not overwrite
-        // it just because the response key was absent.
-        const hadLanguage = hasStoredLanguage();
-        if (!hadLanguage) writeStoredLanguage(payload.language);
-        if (!hasStoredResponseLanguage()) {
-          // A backend that predates the split sends no response_language;
-          // resolveResponseLanguage inherits the interface locale, matching
-          // what the server does for a legacy interface.json.
+        if (!hasStoredLanguage()) {
+          writeStoredLanguage(payload.language);
+          setLanguageState(payload.language);
+        }
+        // A backend that predates the split sends no response_language;
+        // resolveResponseLanguage inherits the interface locale, matching what
+        // the server does for a legacy interface.json.
+        if (!responseLanguageChanged) {
           writeStoredResponseLanguage(
             resolveResponseLanguage(
               typeof payload.response_language === "string"
@@ -162,7 +159,6 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
             ),
           );
         }
-        if (!cancelled && !hadLanguage) setLanguageState(payload.language);
       } catch {
         // Offline or unauthenticated: keep the local default.
       } finally {
@@ -172,6 +168,8 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
     })();
     return () => {
       cancelled = true;
+      window.removeEventListener(RESPONSE_LANGUAGE_EVENT, onResponseLanguage);
+      window.removeEventListener("storage", onStorage);
       if (fallbackTimer) clearTimeout(fallbackTimer);
       controller.abort();
     };
