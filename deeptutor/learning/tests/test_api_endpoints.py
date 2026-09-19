@@ -811,6 +811,8 @@ class TestObjectiveReport:
         assert objective["gate"] == "qualitative"  # concept type
         assert [a["prompt"] for a in objective["attempts"]] == ["What is 2+2?"]
         assert objective["attempts"][0]["answer"] == "4"
+        assert objective["evidence_count"] == 1
+        assert objective["evidence"][0]["assessment_type"] == "quiz"
         assert "do-not-expose" not in resp.text
 
     def test_report_for_unknown_objective_returns_404(self, client):

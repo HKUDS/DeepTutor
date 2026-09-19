@@ -61,6 +61,94 @@ class TestSaveLoad:
         store.save(lp)
         loaded = store.load("book1")
         assert loaded.repetition_states["kp1"].interval_index == 2
+        assert loaded.repetition_states["kp1"].stability == 0.0
+
+    def test_learning_evidence_roundtrip(self, store):
+        from deeptutor.learning.models import LearningEvidence
+
+        lp = LearningProgress(book_id="book1")
+        lp.learning_evidence.append(
+            LearningEvidence(
+                knowledge_point_id="kp1",
+                assessment_type="quiz",
+                result="incorrect",
+                quality=0.0,
+            )
+        )
+        lp.repetition_states["kp1"] = RepetitionState(
+            interval_index=1,
+            next_review_at=time.time() + 86400,
+            stability=4.0,
+            retrievability=0.8,
+            desired_retention=0.9,
+            review_count=2,
+            lapse_count=1,
+            last_review_at=time.time(),
+        )
+        store.save(lp)
+        loaded = store.load("book1")
+        assert loaded.learning_evidence[0].result == "incorrect"
+        assert loaded.repetition_states["kp1"].stability == 4.0
+        assert loaded.repetition_states["kp1"].lapse_count == 1
+
+    def test_learning_evidence_is_projected_and_queryable(self, store):
+        from deeptutor.learning.models import LearningEvidence
+
+        progress = LearningProgress(book_id="evidence-index")
+        progress.learning_evidence = [
+            LearningEvidence(
+                knowledge_point_id="kp1",
+                assessment_type="quiz",
+                result="incorrect",
+                quality=0.0,
+            ),
+            LearningEvidence(
+                knowledge_point_id="kp2",
+                assessment_type="review",
+                result="correct",
+                quality=1.0,
+            ),
+        ]
+        store.save(progress)
+
+        assert store.count_learning_evidence("evidence-index") == 2
+        evidence = store.list_learning_evidence("evidence-index", "kp1")
+        assert len(evidence) == 1
+        assert evidence[0].result == "incorrect"
+        with sqlite3.connect(store.db_path) as conn:
+            assert (
+                conn.execute(
+                    "SELECT COUNT(*) FROM mastery_learning_evidence WHERE path_id = ?",
+                    ("evidence-index",),
+                ).fetchone()[0]
+                == 2
+            )
+
+    def test_legacy_json_without_retention_fields_imports(self, store, tmp_path):
+        legacy_path = tmp_path / "old-srs.json"
+        legacy_path.write_text(
+            json.dumps(
+                {
+                    "book_id": "old-srs",
+                    "repetition_states": {
+                        "kp1": {
+                            "interval_index": 2,
+                            "consecutive_correct": 1,
+                            "consecutive_wrong": 0,
+                            "next_review_at": 123456.0,
+                        }
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        loaded = store.load("old-srs")
+        assert loaded is not None
+        state = loaded.repetition_states["kp1"]
+        assert state.interval_index == 2
+        assert state.next_review_at == 123456.0
+        assert state.stability == 0.0
+        assert loaded.learning_evidence == []
 
     def test_updated_at_auto_updates(self, store):
         lp = LearningProgress(book_id="book1")

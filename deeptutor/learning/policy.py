@@ -25,6 +25,7 @@ from deeptutor.learning.models import (
     KnowledgePoint,
     KnowledgeType,
     LearningProgress,
+    RepetitionState,
     ReviewTask,
 )
 from deeptutor.learning.pending import PublicPendingQuestion, public_pending_question
@@ -129,11 +130,13 @@ def objective_status(progress: LearningProgress, kp: KnowledgePoint) -> str:
 
 
 def due_reviews(progress: LearningProgress, *, now: float | None = None) -> list[ReviewTask]:
-    """Spaced-repetition tasks whose ``due_at`` has passed, highest priority
-    first. Pure read over ``progress.review_queue`` (built by the scheduler)."""
+    """Spaced-repetition tasks whose ``due_at`` has passed, highest forgetting
+    risk first. Pure read over ``progress.review_queue`` (built by the scheduler)."""
+    from deeptutor.learning.scheduler import review_sort_key
+
     moment = time.time() if now is None else now
     due = [task for task in progress.review_queue if task.due_at <= moment]
-    due.sort(key=lambda task: task.priority)
+    due.sort(key=lambda task: review_sort_key(task, now=moment))
     return due
 
 
@@ -163,6 +166,7 @@ class NextStep:
     mastery: float = 0.0
     threshold: float = 0.0
     reason: str = ""
+    forgetting_risk: float = 0.0
     pending_prompt: str = ""
     pending_question: PublicPendingQuestion | None = None
     session_id: str = ""
@@ -180,6 +184,7 @@ class NextStep:
             "mastery": round(self.mastery, 3),
             "threshold": round(self.threshold, 3),
             "reason": self.reason,
+            "forgetting_risk": round(self.forgetting_risk, 3),
             "pending_prompt": self.pending_prompt,
             "pending_question": (
                 self.pending_question.to_dict() if self.pending_question is not None else None
@@ -248,6 +253,7 @@ def next_objective(
     if due:
         kp, module_id, module_name = find_knowledge_point(progress, due[0].knowledge_point_id)
         if kp is not None:
+            task = due[0]
             return NextStep(
                 action="review",
                 module_id=module_id,
@@ -259,7 +265,8 @@ def next_objective(
                 gate=gate_kind(kp),
                 mastery=display_mastery(progress, kp),
                 threshold=gate_threshold(kp.type),
-                reason="This objective is due for spaced-repetition review.",
+                reason=(task.reason or "This objective is due for spaced-repetition review."),
+                forgetting_risk=task.forgetting_risk,
             )
 
     for module in sorted(progress.modules, key=lambda m: m.order):
@@ -346,7 +353,55 @@ def map_summary(progress: LearningProgress, *, now: float | None = None) -> dict
     }
 
 
-def objective_report(progress: LearningProgress, kp_id: str) -> dict | None:
+def _review_report(
+    progress: LearningProgress,
+    kp_id: str,
+    state: RepetitionState | None,
+    due_at: float | None,
+    *,
+    now: float,
+) -> dict | None:
+    if state is None:
+        return None
+    task = next((item for item in progress.review_queue if item.knowledge_point_id == kp_id), None)
+    from deeptutor.learning.scheduler import SpacedRepetitionScheduler
+
+    scheduler = SpacedRepetitionScheduler()
+    recall = scheduler.retrievability(state, now=now)
+    risk = (
+        task.forgetting_risk
+        if task is not None
+        else scheduler.forgetting_risk(state, progress, kp_id, now=now)
+    )
+    reason = (
+        task.reason
+        if task is not None
+        else scheduler.review_reason(state, progress, kp_id, now=now)
+    )
+    return {
+        "due_at": due_at,
+        "interval_index": state.interval_index,
+        "consecutive_correct": state.consecutive_correct,
+        "consecutive_wrong": state.consecutive_wrong,
+        "stability": round(state.stability, 3),
+        "retrievability": round(recall, 3),
+        "desired_retention": state.desired_retention,
+        "lapse_count": state.lapse_count,
+        "forgetting_risk": round(risk, 3),
+        "reason": reason,
+        "recent_failure": bool(
+            state.consecutive_wrong
+            or any(
+                record.knowledge_point_id == kp_id and record.status in ("active", "retrying")
+                for record in progress.error_records
+            )
+        ),
+    }
+
+
+def objective_report(
+    progress: LearningProgress, kp_id: str, *, now: float | None = None
+) -> dict | None:
     """Everything the engine knows about one objective, for review.
 
     ``map_summary`` stays deliberately thin because the tutor reads it on every
@@ -374,6 +429,7 @@ def objective_report(progress: LearningProgress, kp_id: str) -> dict | None:
         (task.due_at for task in progress.review_queue if task.knowledge_point_id == kp_id),
         None,
     )
+    moment = time.time() if now is None else now
     return {
         "id": kp.id,
         "name": kp.name,
@@ -396,16 +452,7 @@ def objective_report(progress: LearningProgress, kp_id: str) -> dict | None:
         "correct_count": sum(1 for attempt in attempts if attempt["is_correct"]),
         # The learner's own words, kept as the evidence behind a qualitative pass.
         "explanation": progress.feynman_explanations.get(kp_id, ""),
-        "review": (
-            {
-                "due_at": due_at,
-                "interval_index": state.interval_index,
-                "consecutive_correct": state.consecutive_correct,
-                "consecutive_wrong": state.consecutive_wrong,
-            }
-            if state is not None
-            else None
-        ),
+        "review": _review_report(progress, kp_id, state, due_at, now=moment),
         "errors": [
             {
                 "id": record.id,

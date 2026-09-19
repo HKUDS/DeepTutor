@@ -233,6 +233,21 @@ class TestReplaceModules:
         service.replace_modules(progress, [_make_module("m2", ["kp2"])])
         assert "kp1" not in progress.repetition_states
 
+    def test_replace_cleans_stale_learning_evidence(self, tmp_path: Path):
+        from deeptutor.learning.models import LearningEvidence
+
+        store = LearningStore(root=tmp_path)
+        service = LearningService(store)
+        progress = LearningProgress(book_id="test")
+
+        service.replace_modules(progress, [_make_module("m1", ["kp1"])])
+        progress.learning_evidence.append(
+            LearningEvidence(knowledge_point_id="kp1", result="correct")
+        )
+
+        service.replace_modules(progress, [_make_module("m2", ["kp2"])])
+        assert progress.learning_evidence == []
+
     def test_replace_cleans_stale_error_records(self, tmp_path: Path):
         store = LearningStore(root=tmp_path)
         service = LearningService(store)
