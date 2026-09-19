@@ -31,6 +31,7 @@ import {
   useChatStateAdapter,
 } from "@/features/chat/ChatStateAdapter";
 import { useChatAutoScroll } from "@/hooks/useChatAutoScroll";
+import { useMasteryOpening } from "@/hooks/useMasteryOpening";
 import { useMasteryStudySession } from "@/hooks/useMasteryStudySession";
 import { useMeasuredHeight } from "@/hooks/useMeasuredHeight";
 import { useResearchOutlineContinuation } from "@/hooks/useResearchOutlineContinuation";
@@ -45,8 +46,6 @@ import { consumePendingPrompt } from "@/lib/pending-prompt";
 import { buildChatOutline, scrollToChatTurn } from "@/lib/chat-outline";
 import { buildConversationNotebookSave } from "@/lib/conversation-notebook-save";
 import {
-  MASTERY_OPENING_SCOPE,
-  masteryOpeningMessage,
   masterySessionRoute,
   type MasteryMode,
 } from "@/lib/mastery-mode";
@@ -471,42 +470,16 @@ export function MasteryStudy({
     [state.activeCapability, submit],
   );
 
-  // A conversation that opens with nothing to say says the thing it was
-  // opened to say.
-  //
-  // Derived from the mode rather than handed across the navigation. The
-  // hand-off channel that used to carry it reads *destructively*, so a send
-  // refused for any reason (a turn still settling, a session still resolving)
-  // consumed the message and left the screen insisting work was under way
-  // forever — the same dead end twice, in two different places. There is no
-  // channel to lose now: an empty outline conversation always knows what it
-  // is for. The hand-off is still read, but only to *enrich* the opening (the
-  // review card names what is due), never to supply it.
-  const openingSentRef = useRef("");
-  useEffect(() => {
-    if (!topic || hasMessages || sessionLoading || sessionError) return;
-    if (state.isStreaming || openingSentRef.current === pathId) return;
-    const opening =
-      consumePendingPrompt(MASTERY_OPENING_SCOPE).trim() ||
-      masteryOpeningMessage(sessionMode, t as Translate);
-    // A study conversation opens with nothing on purpose: "start learning"
-    // does not say what to start with, so the screen offers ways in instead.
-    if (!opening) return;
-    // Latch on the send, never before it: ``submit`` refuses silently while a
-    // turn is live or the session is still resolving, and the next render
-    // tries again.
-    if (submit(opening)) openingSentRef.current = pathId;
-  }, [
-    hasMessages,
+  useMasteryOpening({
     pathId,
-    sessionError,
+    topicReady: Boolean(topic),
+    hasMessages,
     sessionLoading,
+    sessionError,
     sessionMode,
-    state.isStreaming,
+    isStreaming: state.isStreaming,
     submit,
-    t,
-    topic,
-  ]);
+  });
 
   // The learner pressing one of the three modes above the transcript. The same
   // move the tutor makes with ``mastery_mode``, through the same admission
