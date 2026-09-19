@@ -18,7 +18,7 @@ reads proven mastery, not a fixed sequence of stages.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import time
 
 from deeptutor.learning.models import (
@@ -167,6 +167,7 @@ class NextStep:
     threshold: float = 0.0
     reason: str = ""
     forgetting_risk: float = 0.0
+    reason_codes: list[str] = field(default_factory=list)
     pending_prompt: str = ""
     pending_question: PublicPendingQuestion | None = None
     session_id: str = ""
@@ -185,6 +186,7 @@ class NextStep:
             "threshold": round(self.threshold, 3),
             "reason": self.reason,
             "forgetting_risk": round(self.forgetting_risk, 3),
+            "reason_codes": list(self.reason_codes),
             "pending_prompt": self.pending_prompt,
             "pending_question": (
                 self.pending_question.to_dict() if self.pending_question is not None else None
@@ -267,6 +269,7 @@ def next_objective(
                 threshold=gate_threshold(kp.type),
                 reason=(task.reason or "This objective is due for spaced-repetition review."),
                 forgetting_risk=task.forgetting_risk,
+                reason_codes=list(task.reason_codes),
             )
 
     for module in sorted(progress.modules, key=lambda m: m.order):
@@ -389,6 +392,9 @@ def _review_report(
         "lapse_count": state.lapse_count,
         "forgetting_risk": round(risk, 3),
         "reason": reason,
+        "reason_codes": list(task.reason_codes)
+        if task is not None
+        else scheduler.review_reason_codes(progress, kp_id),
         "recent_failure": bool(
             state.consecutive_wrong
             or any(
@@ -430,6 +436,9 @@ def objective_report(
         None,
     )
     moment = time.time() if now is None else now
+    from deeptutor.learning.misconceptions import snapshot as misconception_snapshot
+    from deeptutor.learning.prerequisites import weak_prerequisite_ids
+
     return {
         "id": kp.id,
         "name": kp.name,
@@ -465,6 +474,9 @@ def objective_report(
             for record in progress.error_records
             if record.knowledge_point_id == kp_id
         ],
+        "misconceptions": misconception_snapshot(progress, kp_id),
+        "prerequisite_ids": list(kp.prerequisite_ids),
+        "weak_prerequisites": weak_prerequisite_ids(progress, kp_id),
     }
 
 

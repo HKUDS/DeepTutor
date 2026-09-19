@@ -84,6 +84,10 @@ class KnowledgePoint(BaseModel):
     name: str
     type: KnowledgeType
     module_id: str
+    # Explicit prerequisite KP ids. Empty on every outline built before this
+    # field existed — readers treat missing as "no declared prerequisites",
+    # so old aggregates need no migration. Never inferred from module order.
+    prerequisite_ids: list[str] = Field(default_factory=list)
 
 
 class LearningModule(BaseModel):
@@ -190,6 +194,29 @@ class RepetitionState(BaseModel):
     last_review_at: float | None = None
 
 
+class MisconceptionState(BaseModel):
+    """Repeated-error state for one knowledge point + error signature.
+
+    A single failure is only a weak signal. The same (or equivalent) failure
+    must recur before the misconception is treated as active. Consecutive
+    successes decay confidence and can resolve it. Absent on every path
+    written before this field existed.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    knowledge_point_id: str
+    signature: str = "repeated_failure"
+    status: Literal["weak", "active", "resolved"] = "weak"
+    confidence: float = 0.0
+    severity: float = 0.0
+    occurrence_count: int = 0
+    consecutive_successes: int = 0
+    last_seen_at: float | None = None
+    last_resolved_at: float | None = None
+    evidence_refs: list[str] = Field(default_factory=list)
+
+
 class ReviewTask(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -201,6 +228,7 @@ class ReviewTask(BaseModel):
     state: RepetitionState
     forgetting_risk: float = 0.0
     reason: str = ""
+    reason_codes: list[str] = Field(default_factory=list)
 
 
 class PendingOption(BaseModel):
@@ -482,6 +510,9 @@ class LearningProgress(BaseModel):
     # Durable review history used to recompute retention. Distinct from
     # ``quiz_attempts`` (mastery evidence) so the two can evolve separately.
     learning_evidence: list[LearningEvidence] = Field(default_factory=list)
+    # Repeated-error state keyed by "{knowledge_point_id}:{signature}". Empty
+    # on every aggregate written before misconception tracking existed.
+    misconceptions: dict[str, MisconceptionState] = Field(default_factory=dict)
     repetition_states: dict[str, RepetitionState] = Field(default_factory=dict)
     review_queue: list[ReviewTask] = Field(default_factory=list)
     # A learner may explicitly claim prior mastery.  Policy exposes this as a
@@ -512,6 +543,7 @@ __all__ = [
     "RetryAttempt",
     "ErrorRecord",
     "LearningEvidence",
+    "MisconceptionState",
     "RepetitionState",
     "ReviewTask",
     "PendingQuestion",

@@ -2077,6 +2077,34 @@ def _raw_knowledge_points(raw: dict[str, Any]) -> list[Any] | None:
     return None
 
 
+def _raw_prerequisite_refs(raw_kp: Any) -> list[str]:
+    """Optional prerequisite ids or names from build JSON. Empty when absent."""
+    if not isinstance(raw_kp, dict):
+        return []
+    raw = raw_kp.get("prerequisite_ids")
+    if raw is None:
+        raw = raw_kp.get("prerequisites")
+    if not isinstance(raw, list):
+        return []
+    refs: list[str] = []
+    for item in raw:
+        if isinstance(item, str) and item.strip():
+            refs.append(item.strip())
+            continue
+        if isinstance(item, dict):
+            value = str(item.get("id") or item.get("name") or "").strip()
+            if value:
+                refs.append(value)
+    return refs
+
+
+def _raw_knowledge_point_id(raw_kp: Any) -> str:
+    """Caller-facing id from build JSON. Empty when the model did not send one."""
+    if not isinstance(raw_kp, dict):
+        return ""
+    return str(raw_kp.get("id") or "").strip()
+
+
 def _normalized_module_tree(
     raw_modules: Any, fallback_module_name: str
 ) -> list[tuple[str, str, list[Any]]]:
@@ -2196,6 +2224,7 @@ def _revise_points(
     taken = {kp.id for m in progress.modules for kp in m.knowledge_points}
     points: list[KnowledgePoint] = []
     reset_names: list[str] = []
+    alias_pairs: list[tuple[str, str]] = []
     for kp in module.knowledge_points:
         if kp.id in removals:
             continue
@@ -2214,12 +2243,18 @@ def _revise_points(
         # silently retyped a waypoint would change which gate it has to clear.
         kp_type = str(raw.get("type") or "").strip().lower()
         resolved = KnowledgeType(kp_type) if kp_type in _ALLOWED_KP_TYPES else kp.type
+        new_id = _revised_point_id(module.id, taken)
+        alias_pairs.append((kp.id, new_id))
+        original = _raw_knowledge_point_id(raw)
+        if original:
+            alias_pairs.append((original, new_id))
         points.append(
             KnowledgePoint(
-                id=_revised_point_id(module.id, taken),
+                id=new_id,
                 name=name,
                 type=resolved,
                 module_id=module.id,
+                prerequisite_ids=_raw_prerequisite_refs(raw) or list(kp.prerequisite_ids),
             )
         )
         reset_names.append(kp.name)
@@ -2233,12 +2268,17 @@ def _revise_points(
             kp_type = str(raw.get("type") or "concept").strip().lower()
             if kp_type not in _ALLOWED_KP_TYPES:
                 kp_type = "concept"
+        new_id = _revised_point_id(module.id, taken)
+        original = _raw_knowledge_point_id(raw)
+        if original:
+            alias_pairs.append((original, new_id))
         points.append(
             KnowledgePoint(
-                id=_revised_point_id(module.id, taken),
+                id=new_id,
                 name=name,
                 type=KnowledgeType(kp_type),
                 module_id=module.id,
+                prerequisite_ids=_raw_prerequisite_refs(raw),
             )
         )
 
@@ -2258,6 +2298,23 @@ def _revise_points(
             "split the material across modules with mastery_build.",
             [],
         )
+    from deeptutor.learning.prerequisites import resolve_prerequisite_ids, unique_id_aliases
+
+    extra = [
+        kp for other in progress.modules if other.id != module.id for kp in other.knowledge_points
+    ]
+    resolve_prerequisite_ids(
+        [
+            LearningModule(
+                id=module.id,
+                name=module.name,
+                order=module.order,
+                knowledge_points=points,
+            )
+        ],
+        extra_points=extra,
+        aliases=unique_id_aliases(alias_pairs),
+    )
     return points, None, reset_names
 
 
@@ -2273,6 +2330,7 @@ def _parse_modules(
     if not entries:
         return [], _BUILD_SHAPE_ERROR
     modules: list[LearningModule] = []
+    alias_pairs: list[tuple[str, str]] = []
     for i, (raw_name, raw_objective, raw_kps) in enumerate(entries):
         index = offset + len(modules)
         module_id = f"{path_id}_m{index}"
@@ -2287,12 +2345,17 @@ def _parse_modules(
                 kp_type = str(raw_kp.get("type") or "concept").strip().lower()
                 if kp_type not in _ALLOWED_KP_TYPES:
                     kp_type = "concept"
+            generated_id = f"{module_id}_kp{len(kps)}"
+            original = _raw_knowledge_point_id(raw_kp)
+            if original:
+                alias_pairs.append((original, generated_id))
             kps.append(
                 KnowledgePoint(
-                    id=f"{module_id}_kp{len(kps)}",
+                    id=generated_id,
                     name=kp_name,
                     type=KnowledgeType(kp_type),
                     module_id=module_id,
+                    prerequisite_ids=_raw_prerequisite_refs(raw_kp),
                 )
             )
         if not kps:
@@ -2308,6 +2371,9 @@ def _parse_modules(
         )
     if not modules:
         return [], _BUILD_SHAPE_ERROR
+    from deeptutor.learning.prerequisites import resolve_prerequisite_ids, unique_id_aliases
+
+    resolve_prerequisite_ids(modules, aliases=unique_id_aliases(alias_pairs))
     return modules, None
 
 

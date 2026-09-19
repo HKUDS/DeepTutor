@@ -338,7 +338,11 @@ def test_objective_report_gathers_the_whole_evidence_trail():
     assert "forgetting_risk" in report["review"]
     assert "reason" in report["review"]
     assert report["review"]["desired_retention"] == 0.9
+    assert report["review"]["reason_codes"] == []
     assert [e["id"] for e in report["errors"]] == ["e1"]
+    assert report["misconceptions"] == []
+    assert report["prerequisite_ids"] == []
+    assert report["weak_prerequisites"] == []
 
 
 def test_objective_report_carries_qualitative_evidence():

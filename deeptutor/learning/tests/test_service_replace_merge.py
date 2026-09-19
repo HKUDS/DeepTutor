@@ -248,6 +248,81 @@ class TestReplaceModules:
         service.replace_modules(progress, [_make_module("m2", ["kp2"])])
         assert progress.learning_evidence == []
 
+    def test_replace_cleans_stale_misconceptions(self, tmp_path: Path):
+        from deeptutor.learning.models import MisconceptionState
+
+        store = LearningStore(root=tmp_path)
+        service = LearningService(store)
+        progress = LearningProgress(book_id="test")
+
+        service.replace_modules(progress, [_make_module("m1", ["kp1"])])
+        progress.misconceptions["kp1:application"] = MisconceptionState(
+            knowledge_point_id="kp1", signature="application", status="active"
+        )
+
+        service.replace_modules(progress, [_make_module("m2", ["kp2"])])
+        assert progress.misconceptions == {}
+
+    def test_replace_drops_unknown_prerequisite_ids(self, tmp_path: Path):
+        store = LearningStore(root=tmp_path)
+        service = LearningService(store)
+        progress = LearningProgress(book_id="test")
+        incoming = LearningModule(
+            id="m1",
+            name="Module m1",
+            order=0,
+            knowledge_points=[
+                KnowledgePoint(
+                    id="kp1",
+                    name="Alpha",
+                    type=KnowledgeType.CONCEPT,
+                    module_id="m1",
+                ),
+                KnowledgePoint(
+                    id="kp2",
+                    name="Beta",
+                    type=KnowledgeType.CONCEPT,
+                    module_id="m1",
+                    prerequisite_ids=["kp1", "a", "missing"],
+                ),
+            ],
+        )
+
+        service.replace_modules(progress, [incoming])
+
+        assert progress.modules[0].knowledge_points[1].prerequisite_ids == ["kp1"]
+
+    def test_append_remaps_prerequisite_ids_and_drops_unknowns(self, tmp_path: Path):
+        store = LearningStore(root=tmp_path)
+        service = LearningService(store)
+        service.replace_modules_for_path("test", [_make_module("seed", ["seed-kp"])])
+        incoming = LearningModule(
+            id="incoming",
+            name="Next",
+            order=0,
+            knowledge_points=[
+                KnowledgePoint(
+                    id="old-a",
+                    name="Alpha",
+                    type=KnowledgeType.CONCEPT,
+                    module_id="incoming",
+                ),
+                KnowledgePoint(
+                    id="old-b",
+                    name="Beta",
+                    type=KnowledgeType.CONCEPT,
+                    module_id="incoming",
+                    prerequisite_ids=["old-a", "seed-kp", "missing"],
+                ),
+            ],
+        )
+
+        progress = service.replace_modules_for_path("test", [incoming], append=True)
+
+        first, second = progress.modules[1].knowledge_points
+        assert first.id == "test_m1_kp0"
+        assert second.prerequisite_ids == ["test_m1_kp0", "seed-kp"]
+
     def test_replace_cleans_stale_error_records(self, tmp_path: Path):
         store = LearningStore(root=tmp_path)
         service = LearningService(store)

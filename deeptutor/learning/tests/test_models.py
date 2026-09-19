@@ -10,6 +10,7 @@ from deeptutor.learning.models import (
     LearningModule,
     LearningProgress,
     LearningStage,
+    MisconceptionState,
     PendingQuestion,
     QuizAttempt,
     RepetitionState,
@@ -108,6 +109,13 @@ class TestKnowledgePoint:
         kp = KnowledgePoint(id="kp1", name="Ohm's Law", type=KnowledgeType.CONCEPT, module_id="m1")
         assert kp.id == "kp1"
         assert kp.type == KnowledgeType.CONCEPT
+        assert kp.prerequisite_ids == []
+
+    def test_legacy_payload_without_prerequisite_ids(self):
+        kp = KnowledgePoint.model_validate(
+            {"id": "kp1", "name": "Ohm", "type": "concept", "module_id": "m1"}
+        )
+        assert kp.prerequisite_ids == []
 
     def test_extra_ignored(self):
         kp = KnowledgePoint(
@@ -241,6 +249,7 @@ class TestReviewTask:
         assert rt.priority == 1
         assert rt.forgetting_risk == 0.0
         assert rt.reason == ""
+        assert rt.reason_codes == []
 
 
 class TestLearningProgress:
@@ -254,6 +263,7 @@ class TestLearningProgress:
         assert lp.mastery_levels == {}
         assert lp.error_records == []
         assert lp.learning_evidence == []
+        assert lp.misconceptions == {}
         assert lp.review_queue == []
         assert lp.feynman_retries == {}
         assert lp.feynman_explanations == {}
@@ -294,6 +304,7 @@ class TestSerializationRoundtrip:
         assert lp2.stage_failure_counts["explain"] == 1
         assert lp2.current_stage == LearningStage.DIAGNOSTIC
         assert lp2.learning_evidence == []
+        assert lp2.misconceptions == {}
 
     def test_learning_evidence_roundtrip(self):
         lp = LearningProgress(book_id="b1")
@@ -315,6 +326,62 @@ class TestSerializationRoundtrip:
         assert event.result == "correct"
         assert event.quality == 1.0
         assert event.session_id == "s1"
+
+    def test_misconception_and_prerequisite_roundtrip(self):
+        lp = LearningProgress(book_id="b1")
+        lp.modules = [
+            LearningModule(
+                id="m1",
+                name="M1",
+                order=0,
+                knowledge_points=[
+                    KnowledgePoint(
+                        id="kp2",
+                        name="Downstream",
+                        type=KnowledgeType.MEMORY,
+                        module_id="m1",
+                        prerequisite_ids=["kp1"],
+                    )
+                ],
+            )
+        ]
+        lp.misconceptions["kp1:application"] = MisconceptionState(
+            knowledge_point_id="kp1",
+            signature="application",
+            status="active",
+            confidence=0.6,
+            severity=0.6,
+            occurrence_count=2,
+        )
+        restored = LearningProgress.model_validate(lp.model_dump(mode="json"))
+        assert restored.modules[0].knowledge_points[0].prerequisite_ids == ["kp1"]
+        state = restored.misconceptions["kp1:application"]
+        assert state.status == "active"
+        assert state.occurrence_count == 2
+
+    def test_legacy_progress_without_phase3_fields(self):
+        lp = LearningProgress.model_validate(
+            {
+                "book_id": "b1",
+                "modules": [
+                    {
+                        "id": "m1",
+                        "name": "M1",
+                        "order": 0,
+                        "knowledge_points": [
+                            {
+                                "id": "kp1",
+                                "name": "Ohm",
+                                "type": "concept",
+                                "module_id": "m1",
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+        assert lp.misconceptions == {}
+        assert lp.modules[0].knowledge_points[0].prerequisite_ids == []
 
     def test_pending_choice_roundtrip_preserves_question_and_option_ids(self):
         lp = LearningProgress(
