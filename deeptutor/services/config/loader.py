@@ -325,7 +325,7 @@ DEFAULT_RESEARCH_PARAMS: dict[str, Any] = {
     "outline": {"max_tokens": 2000},
     "report_outline": {"max_tokens": 2000},
     "report_intro": {"max_tokens": 3000},
-    "report_section": {"max_tokens": 6000},
+    "report_section": {"max_tokens": 12000},
     "report_conclusion": {"max_tokens": 3000},
 }
 
