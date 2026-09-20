@@ -88,6 +88,8 @@ MASTERY_TOOL_NAMES: tuple[str, ...] = (
     "mastery_quiz",
     "mastery_grade",
     "mastery_skip_question",
+    "mastery_repair_question",
+    "mastery_defer_objective",
     "mastery_assess",
     "mastery_build",
     "mastery_mode",
@@ -1385,6 +1387,190 @@ class MasterySkipQuestionTool(BaseTool):
         return _json_result(payload, meta_key="mastery_skip_question")
 
 
+class MasteryRepairQuestionTool(BaseTool):
+    """Void or re-key an invalid question so it cannot keep poisoning mastery."""
+
+    def get_definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name="mastery_repair_question",
+            description=(
+                "Repair an invalid mastery question or an incorrect answer key. "
+                "action='void' removes the attempt from mastery, errors, review, "
+                "and the question bank's wrong-answer set. action='correct' "
+                "writes the true expected answer and re-grades the stored reply. "
+                "Use this when the learner reports a bad question; do not keep "
+                "quizzing the same objective on a known-wrong key."
+            ),
+            parameters=[
+                ToolParameter(
+                    name="action",
+                    type="string",
+                    description="void | correct",
+                    enum=["void", "correct"],
+                ),
+                ToolParameter(
+                    name="reason",
+                    type="string",
+                    description="Why this question or answer key is being repaired.",
+                ),
+                ToolParameter(
+                    name="question_id",
+                    type="string",
+                    description="Question to repair. Defaults to the active or latest question.",
+                    required=False,
+                ),
+                ToolParameter(
+                    name="expected_answer",
+                    type="string",
+                    description="The corrected answer key. Required when action is correct.",
+                    required=False,
+                ),
+            ],
+        )
+
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        refusal = _wrong_mode_result("mastery_repair_question", kwargs)
+        if refusal is not None:
+            return refusal
+        path_id = _resolve_path_id(kwargs)
+        if not path_id:
+            return _no_path_result()
+        from deeptutor.learning.scheduler import SpacedRepetitionScheduler
+        from deeptutor.learning.service import MasteryInteractionError
+
+        service = _new_service()
+        if _load_path(service, path_id) is None:
+            return _no_built_path_result("mastery_repair_question")
+        try:
+            progress, details = service.repair_question(
+                path_id,
+                str(kwargs.get("question_id") or "").strip(),
+                action=str(kwargs.get("action") or ""),
+                expected_answer=str(kwargs.get("expected_answer") or ""),
+                reason=str(kwargs.get("reason") or ""),
+                scheduler=SpacedRepetitionScheduler(),
+                session_id=_resolve_session_id(kwargs),
+                turn_id=_resolve_turn_id(kwargs),
+            )
+        except MasteryInteractionError as exc:
+            return ToolResult(content=str(exc), success=False)
+
+        kp, _, section_title = find_knowledge_point(progress, details["knowledge_point_id"])
+        if details["session_id"] and details["question_id"]:
+            pending = PendingQuestion(
+                question_id=details["question_id"],
+                knowledge_point_id=details["knowledge_point_id"],
+                module_id=details["module_id"],
+                prompt=details["prompt"],
+                question_type=details["question_type"] or "short",
+                expected_answer=details["expected_answer"],
+                explanation=(
+                    f"Voided invalid question: {details['reason']}"
+                    if details["action"] == "void"
+                    else details["explanation"]
+                ),
+                difficulty=details["difficulty"],
+            )
+            await _sync_mastery_attempt_to_question_bank(
+                path_id=path_id,
+                session_id=details["session_id"],
+                turn_id=details["turn_id"],
+                pending=pending,
+                user_answer=details["user_answer"],
+                is_correct=True if details["action"] == "void" else bool(details["is_correct"]),
+                choice_options=details["options"] or None,
+                correct_answer=details["expected_answer"],
+                section_title=section_title or (kp.name if kp is not None else ""),
+            )
+        payload = {
+            "status": "repaired",
+            "action": details["action"],
+            "question_id": details["question_id"],
+            "knowledge_point_id": details["knowledge_point_id"],
+            "path_revision": progress.version,
+            "is_correct": details["is_correct"],
+            "mastery": round(display_mastery(progress, kp), 3) if kp is not None else 0.0,
+            "mastered": is_mastered(progress, kp) if kp is not None else False,
+            "next": next_objective(progress).to_dict(),
+            "instruction": (
+                "The invalid question no longer counts as learner error. "
+                "Continue from mastery_status.next."
+                if details["action"] == "void"
+                else "The answer key was corrected and the stored reply was re-graded. "
+                "Continue from mastery_status.next."
+            ),
+        }
+        return _json_result(payload, meta_key="mastery_repair_question")
+
+
+class MasteryDeferObjectiveTool(BaseTool):
+    """Leave the current objective for later without claiming it is mastered."""
+
+    def get_definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name="mastery_defer_objective",
+            description=(
+                "Temporarily defer the current (or named) objective and continue "
+                "with the next eligible one. This does not mark the objective "
+                "mastered and does not write a learner override. Use it only when "
+                "the learner explicitly asks to move on for now. Skipping a "
+                "question is still mastery_skip_question."
+            ),
+            parameters=[
+                ToolParameter(
+                    name="knowledge_point_id",
+                    type="string",
+                    description="Objective to defer. Defaults to the current next objective.",
+                    required=False,
+                ),
+                ToolParameter(
+                    name="reason",
+                    type="string",
+                    description="Optional note for why this objective is deferred.",
+                    required=False,
+                ),
+            ],
+        )
+
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        refusal = _wrong_mode_result("mastery_defer_objective", kwargs)
+        if refusal is not None:
+            return refusal
+        path_id = _resolve_path_id(kwargs)
+        if not path_id:
+            return _no_path_result()
+        from deeptutor.learning.service import MasteryInteractionError
+
+        service = _new_service()
+        if _load_path(service, path_id) is None:
+            return _no_built_path_result("mastery_defer_objective")
+        try:
+            progress, details = service.defer_objective(
+                path_id,
+                str(kwargs.get("knowledge_point_id") or "").strip(),
+                note=str(kwargs.get("reason") or ""),
+                session_id=_resolve_session_id(kwargs),
+                turn_id=_resolve_turn_id(kwargs),
+            )
+        except MasteryInteractionError as exc:
+            return ToolResult(content=str(exc), success=False)
+        kp, _, _ = find_knowledge_point(progress, details["knowledge_point_id"])
+        payload = {
+            "status": "deferred",
+            "knowledge_point_id": details["knowledge_point_id"],
+            "path_revision": progress.version,
+            "mastered": is_mastered(progress, kp) if kp is not None else False,
+            "abandoned_question": details["abandoned_question"],
+            "next": next_objective(progress).to_dict(),
+            "map": map_summary(progress),
+            "instruction": (
+                "The objective is deferred, not mastered. Continue with "
+                "mastery_status.next. Do not treat this as clearing the gate."
+            ),
+        }
+        return _json_result(payload, meta_key="mastery_defer_objective")
+
+
 class MasteryBuildTool(BaseTool):
     """Create / extend the skill map from objectives the tutor designed."""
 
@@ -1402,8 +1588,9 @@ class MasteryBuildTool(BaseTool):
                 "knowledge points against. Each knowledge point needs a 'type': "
                 "memory (facts), procedure (step-by-step skills), concept (ideas "
                 "to understand), or design (open-ended judgement). Use "
-                "mode='replace' to start fresh or 'append' to add to an "
-                "existing path."
+                "mode='replace' to start a new outline — semantically new "
+                "objectives get fresh IDs and do not inherit previous mastery — "
+                "or 'append' to add to an existing path."
             ),
             parameters=[
                 ToolParameter(
@@ -1459,7 +1646,8 @@ class MasteryBuildTool(BaseTool):
                 ToolParameter(
                     name="mode",
                     type="string",
-                    description="'replace' (default) starts fresh; 'append' adds modules.",
+                    description="'replace' (default) starts a new outline with "
+                    "fresh IDs for new objectives; 'append' adds modules.",
                     required=False,
                     default="replace",
                     enum=["replace", "append"],
@@ -1496,6 +1684,7 @@ class MasteryBuildTool(BaseTool):
             event_type="path.built",
             session_id=_resolve_session_id(kwargs),
             turn_id=_resolve_turn_id(kwargs),
+            identity_mode="semantic" if mode != "append" else "explicit",
         )
         kp_count = sum(len(m.knowledge_points) for m in new_modules)
         return _json_result(
@@ -1845,6 +2034,7 @@ class MasteryReviseTool(BaseTool):
             event_type="path.module_revised",
             session_id=_resolve_session_id(kwargs),
             turn_id=_resolve_turn_id(kwargs),
+            identity_mode="explicit",
         )
         return _json_result(
             {
@@ -2318,6 +2508,8 @@ MASTERY_TOOL_TYPES: tuple[type[BaseTool], ...] = (
     MasteryQuizTool,
     MasteryGradeTool,
     MasterySkipQuestionTool,
+    MasteryRepairQuestionTool,
+    MasteryDeferObjectiveTool,
     MasteryAssessTool,
     MasteryBuildTool,
     MasteryModeTool,
@@ -2334,12 +2526,14 @@ __all__ = [
     "MASTERY_TOOL_TYPES",
     "MasteryAssessTool",
     "MasteryBuildTool",
+    "MasteryDeferObjectiveTool",
     "MasteryGradeTool",
     "MasteryLeaveTool",
     "MasteryPathsTool",
     "MasteryModeTool",
     "MasteryProfileTool",
     "MasteryQuizTool",
+    "MasteryRepairQuestionTool",
     "MasteryReviseTool",
     "MasterySkipQuestionTool",
     "MasteryStatusTool",

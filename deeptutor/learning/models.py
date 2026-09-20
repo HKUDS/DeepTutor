@@ -123,6 +123,10 @@ class QuizAttempt(BaseModel):
     self_attribution: str = ""
     mastery_estimate: float = 0.0
     timestamp: float = Field(default_factory=time.time)
+    # Invalid questions / wrong answer keys are kept for audit, but voided
+    # attempts are excluded from mastery, errors, and spaced repetition.
+    voided: bool = False
+    void_reason: str = ""
 
 
 class RetryAttempt(BaseModel):
@@ -407,6 +411,16 @@ class LearnerMasteryOverride(BaseModel):
     created_at: float = Field(default_factory=time.time)
 
 
+class DeferredObjective(BaseModel):
+    """Learner asked to leave this objective for now without claiming mastery."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    knowledge_point_id: str
+    note: str = ""
+    created_at: float = Field(default_factory=time.time)
+
+
 class LearnerProfile(BaseModel):
     """Who is learning this goal — collected once, honoured every turn.
 
@@ -488,6 +502,9 @@ class LearningProgress(BaseModel):
     # separate provenance (``mastery_source=learner``); assessed mastery and
     # its evidence remain untouched and can take over later.
     learner_mastery_overrides: dict[str, LearnerMasteryOverride] = Field(default_factory=dict)
+    # Temporarily skipped objectives. These never count as mastered; routing
+    # just prefers any other eligible waypoint until only deferred ones remain.
+    deferred_objectives: dict[str, DeferredObjective] = Field(default_factory=dict)
     # A single outstanding question; grading reads its expected answer so the
     # model never has to recall it across turns.
     pending_question: PendingQuestion | None = None
@@ -524,5 +541,6 @@ __all__ = [
     "TopicMetadata",
     "MasteryTopic",
     "LearnerMasteryOverride",
+    "DeferredObjective",
     "LearningProgress",
 ]

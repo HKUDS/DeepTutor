@@ -14,6 +14,7 @@ import time
 
 from deeptutor.learning import policy
 from deeptutor.learning.models import (
+    DeferredObjective,
     ErrorRecord,
     ErrorType,
     KnowledgePoint,
@@ -256,6 +257,30 @@ def test_next_objective_complete_when_all_mastered():
     progress = _progress(kp)
     progress.mastery_levels["kp1"] = 0.95
     assert policy.next_objective(progress).action == "complete"
+
+
+def test_next_objective_skips_deferred_without_treating_it_as_mastered():
+    kp1, kp2 = _kp("kp1", KnowledgeType.MEMORY), _kp("kp2", KnowledgeType.MEMORY)
+    progress = _progress(kp1, kp2)
+    progress.deferred_objectives["kp1"] = DeferredObjective(knowledge_point_id="kp1", note="later")
+
+    step = policy.next_objective(progress)
+    assert step.knowledge_point_id == "kp2"
+    assert policy.is_mastered(progress, kp1) is False
+    assert policy.is_assessed_mastered(progress, kp1) is False
+    assert policy.objective_status(progress, kp1) == "new"
+    summary = policy.map_summary(progress)["modules"][0]["knowledge_points"][0]
+    assert summary["deferred"] is True
+    assert summary["status"] == "new"
+
+
+def test_next_objective_returns_deferred_when_nothing_else_is_open():
+    kp = _kp("kp1", KnowledgeType.MEMORY)
+    progress = _progress(kp)
+    progress.deferred_objectives["kp1"] = DeferredObjective(knowledge_point_id="kp1")
+    step = policy.next_objective(progress)
+    assert step.knowledge_point_id == "kp1"
+    assert step.action == "probe"
 
 
 # ── map_summary ─────────────────────────────────────────────────────────────
