@@ -27,6 +27,8 @@ import { useTranslation } from "react-i18next";
 
 import ChatComposer from "@/components/chat/home/ChatComposer";
 import type { ContextBudget } from "@/components/chat/home/ContextBudgetChip";
+import type { ComposerResourceCatalog } from "@/hooks/useComposerResources";
+import type { ResourceSelection } from "@/features/chat/ChatStateAdapter";
 import type { CapabilityDef } from "@/features/capabilities/presentation";
 import type { SelectedHistorySession } from "@/components/chat/HistorySessionPicker";
 import type { SelectedQuestionEntry } from "@/components/chat/QuestionBankPicker";
@@ -187,6 +189,16 @@ interface StandaloneComposerProps {
    */
   personaSelection?: string;
   onPersonaSelectionChange?: (persona: string) => void;
+  /**
+   * The skills / MCP servers this conversation may narrow itself to.
+   * Session-level like the persona pair above: the pick is stored on the
+   * conversation and every turn carries it, rather than being re-picked per
+   * send. `ChatComposer` shows a row only when its catalog has entries, so
+   * omitting the catalog (or passing an empty one) keeps the row off.
+   */
+  resourceCatalog?: ComposerResourceCatalog;
+  resourceSelection?: ResourceSelection;
+  onResourceSelectionChange?: (selection: ResourceSelection) => void;
   /** Hide the My Agents reference entry. */
   agentsAvailable?: boolean;
   /** Receives a function that drops text into the textarea (ask_user chips). */
@@ -217,6 +229,9 @@ function StandaloneComposerImpl({
   onLLMSelectionChange,
   personaSelection,
   onPersonaSelectionChange,
+  resourceCatalog,
+  resourceSelection,
+  onResourceSelectionChange,
   agentsAvailable = false,
   prefillInputRef,
   contextBudget = null,
@@ -880,6 +895,9 @@ function StandaloneComposerImpl({
         onSubagentBudgetChange={setSubagentBudget}
         personaSelection={personaSelection}
         onPersonaSelectionChange={onPersonaSelectionChange}
+        resourceCatalog={resourceCatalog}
+        resourceSelection={resourceSelection}
+        onResourceSelectionChange={onResourceSelectionChange}
         personaSelectorOpen={personaSelectorOpen}
         onPersonaSelectorOpenChange={setPersonaSelectorOpen}
         llmOptions={llmOptions}
