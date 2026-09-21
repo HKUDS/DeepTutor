@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+import hashlib
 import json
 from pathlib import Path
 import shutil
@@ -244,6 +245,14 @@ def _load_validated_index(storage_dir: Path) -> Any:
 
 def _cached_index(storage_dir: Path) -> Any:
     key = (str(storage_dir.resolve()), _freshness_token(storage_dir))
+    from deeptutor.services.embedding.config import scoped_embedding_config
+
+    config = scoped_embedding_config()
+    if config is not None:
+        # Include credentials too: rotating a key must not reuse a client with
+        # the old key. Only a digest is retained in the in-memory cache key.
+        identity = hashlib.sha256(json.dumps(asdict(config), sort_keys=True).encode()).hexdigest()
+        key = (*key, identity)
     now = time.monotonic()
     with _INDEX_CACHE_LOCK:
         _prune_index_cache_locked(now)

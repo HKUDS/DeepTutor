@@ -12,15 +12,14 @@ import uuid as _uuid
 from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 
+from deeptutor.core.assessment import AssessmentResult, AssessmentSource
 from deeptutor.services.session import get_sqlite_session_store
 from deeptutor.services.storage import get_attachment_store
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-AssessmentSource = Literal["deep_question", "mastery_path", "immersive_reading", "book"]
 ScoreTrend = Literal["new", "improved", "declined", "unchanged"]
-
 
 # ── Models ────────────────────────────────────────────────────────
 
@@ -65,6 +64,15 @@ class NotebookEntryItem(BaseModel):
     section_id: str = ""
     section_title: str = ""
     score_trend: ScoreTrend = "new"
+    assessment_type: str = ""
+    result: AssessmentResult | str = ""
+    mastery_path_id: str = ""
+    knowledge_point_id: str = ""
+    attempt_count: int = 1
+    hints_used: int = 0
+    confidence: float | None = None
+    response_time: float | None = None
+    quality: float | None = None
     is_correct: bool = False
     resolved: bool = False
     bookmarked: bool = False
@@ -73,6 +81,7 @@ class NotebookEntryItem(BaseModel):
     created_at: float
     updated_at: float
     categories: list[CategoryItem] | None = None
+    practice: dict[str, Any] | None = None
 
 
 class NotebookEntryListResponse(BaseModel):
@@ -164,6 +173,15 @@ class UpsertEntryRequest(BaseModel):
     section_id: str = ""
     section_title: str = ""
     is_correct: bool = False
+    assessment_type: str = ""
+    result: str = ""
+    mastery_path_id: str = ""
+    knowledge_point_id: str = ""
+    attempt_count: int = 1
+    hints_used: int = 0
+    confidence: float | None = None
+    response_time: float | None = None
+    quality: float | None = None
 
 
 # ── Entry endpoints ──────────────────────────────────────────────
@@ -275,6 +293,7 @@ async def _course_session_ids(store: Any, course_id: str) -> list[str] | None:
 @router.get("/entries", response_model=NotebookEntryListResponse)
 async def list_entries(
     category_id: int | None = Query(default=None),
+    mistakes_only: bool = Query(default=False),
     uncategorized: bool = Query(
         default=False,
         description="Only entries filed under no category — the triage inbox. "
@@ -283,11 +302,13 @@ async def list_entries(
     bookmarked: bool | None = Query(default=None),
     is_correct: bool | None = Query(default=None),
     course_id: str = Query(default=""),
-    source: str = Query(
-        default="", pattern="^(deep_question|mastery_path|immersive_reading|book)?$"
-    ),
+    source: AssessmentSource | Literal[""] = Query(default=""),
     material_id: str = Query(default="", max_length=500),
     section_id: str = Query(default="", max_length=500),
+    assessment_type: str = Query(default="", pattern="^(quiz|focus_check|qualitative|review)?$"),
+    result: str = Query(default="", pattern="^(correct|incorrect|partial|ungraded)?$"),
+    mastery_path_id: str = Query(default="", max_length=500),
+    knowledge_point_id: str = Query(default="", max_length=500),
     resolved: bool | None = Query(default=None),
     score_trend: str = Query(default="", pattern="^(new|improved|declined|unchanged)?$"),
     search: str = Query(default="", max_length=200),
@@ -297,8 +318,9 @@ async def list_entries(
 ) -> NotebookEntryListResponse:
     store = get_sqlite_session_store()
     session_ids = await _course_session_ids(store, course_id)
-    result = await store.list_notebook_entries(
+    listing = await store.list_notebook_entries(
         category_id=category_id,
+        mistakes_only=mistakes_only,
         uncategorized=uncategorized,
         bookmarked=bookmarked,
         is_correct=is_correct,
@@ -306,6 +328,10 @@ async def list_entries(
         source=source,
         material_id=material_id,
         section_id=section_id,
+        assessment_type=assessment_type,
+        result=result,
+        mastery_path_id=mastery_path_id,
+        knowledge_point_id=knowledge_point_id,
         resolved=resolved,
         score_trend=score_trend,
         search=search,
@@ -314,8 +340,8 @@ async def list_entries(
         offset=offset,
     )
     return NotebookEntryListResponse(
-        items=[NotebookEntryItem(**item) for item in result["items"]],
-        total=result["total"],
+        items=[NotebookEntryItem(**item) for item in listing["items"]],
+        total=listing["total"],
     )
 
 

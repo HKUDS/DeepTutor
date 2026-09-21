@@ -6,17 +6,13 @@ import test from "node:test";
 const read = (relative: string) =>
   readFileSync(path.resolve(process.cwd(), relative), "utf8");
 
-test("provider Done applies only the edited model service before closing", () => {
+test("provider edits stay in the shared draft until explicitly applied", () => {
   const editor = read("components/settings/ServiceConfigEditor.tsx");
-  const store = read("features/settings/store/SettingsStore.tsx");
-
-  assert.match(
+  assert.doesNotMatch(
     editor,
-    /const finishProviderEditing = useCallback\(async \(\) =>/,
+    /finishProviderEditing|<Modal|await applyService/,
   );
-  assert.match(editor, /serviceChanged && !\(await applyService\(service\)\)/);
-  assert.match(editor, /onClick=\{\(\) => void finishProviderEditing\(\)\}/);
-  assert.match(editor, /disabled=\{applying\}/);
-  assert.match(store, /apiUrl\("\/api\/settings\/apply\/service"\)/);
-  assert.match(store, /config: draft\.services\[service\]/);
+  assert.match(editor, /aria-label=\{t\("Provider configuration"\)\}/);
+  assert.match(editor, /getActiveProfile\(catalog, service\)/);
+  assert.match(editor, /mutateCatalog/);
 });

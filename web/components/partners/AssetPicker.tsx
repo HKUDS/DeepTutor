@@ -112,11 +112,21 @@ export default function AssetPicker({
           listNotebooks().catch(() => []),
         ]);
         setKbs(
-          kbList.map((kb) => ({
-            id: kb.id || kb.name,
-            label: kb.name,
-            hint: kb.provenance_label,
-          })),
+          // Match the server's provisioning contract: these connected kinds
+          // require their own capability and cannot be used by Partner RAG.
+          kbList
+            .filter(
+              (kb) =>
+                kb.available !== false &&
+                !["subagent", "obsidian", "marginnote4"].includes(
+                  String(kb.metadata?.type ?? ""),
+                ),
+            )
+            .map((kb) => ({
+              id: kb.id || kb.name,
+              label: kb.name,
+              hint: kb.provenance_label,
+            })),
         );
         setSkills(
           skillList.map((skill) => ({

@@ -1,5 +1,18 @@
 "use client";
 
+import { learningLibrary, libraryItemKey } from "@/lib/learning-library";
+import { activeWorkspaceId } from "@/lib/workspace-scope";
+import { useLearningCreation, requestedLearningCreation, useLibraryFilter, WorkspaceLabel } from "@/components/learning/LibraryWorkspace";
+import { LearningCardContent } from "@/components/learning/LearningCard";
+
+import {
+  LearningEmptyState,
+  LearningErrorState,
+  LearningSkeleton,
+} from "@/components/learning/LearningShell";
+
+import { readingCollectionRoute } from "@/lib/learning-routes";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -16,8 +29,6 @@ import { useTranslation } from "react-i18next";
 
 import {
   deleteReadingWorkspace,
-  listReadingLibraryMaterials,
-  listReadingWorkspaces,
   retryReadingMaterial,
   type ReadingLibraryMaterial,
   type ReadingWorkspace,
@@ -31,23 +42,25 @@ import {
 
 import { AddMaterialsDialog } from "./AddMaterialsDialog";
 import { LibraryShell } from "./LibraryShell";
-import { MaterialGlyph, relativeDate } from "./shared";
+import { MaterialGlyph } from "./shared";
 
 type SortMode = "recent" | "name";
 
 export function ReadingLibraryPage() {
   const { t, i18n } = useTranslation();
   const router = useRouter();
-  const [collections, setCollections] = useState<ReadingWorkspace[]>([]);
+  const [allCollections, setCollections] = useState<ReadingWorkspace[]>([]);
   const [materials, setMaterials] = useState<ReadingLibraryMaterial[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortMode>("recent");
-  const [showAdd, setShowAdd] = useState(false);
+  const [showAdd, setShowAdd] = useState(requestedLearningCreation);
+  const creation = useLearningCreation(() => setShowAdd(true));
+  const { rows: collections, control } = useLibraryFilter(allCollections);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ReadingWorkspace | null>(
-    null,
+    null
   );
 
   // Present when opened from a course page or a Course Study hand-off.
@@ -57,18 +70,19 @@ export function ReadingLibraryPage() {
     setError("");
     try {
       const [collectionRows, library] = await Promise.all([
-        listReadingWorkspaces({ search }),
-        listReadingLibraryMaterials(),
+        learningLibrary<ReadingWorkspace>("reading"),
+        learningLibrary<ReadingLibraryMaterial>("materials"),
       ]);
-      setCollections(collectionRows);
-      setMaterials(library.materials);
+      setCollections(collectionRows.items.filter(row => !search || `${row.title} ${row.description}`.toLowerCase().includes(search.toLowerCase())));
+      setMaterials(library.items);
+      if (collectionRows.unavailable_workspaces.length || library.unavailable_workspaces.length) setError(t("Some workspaces could not be loaded. Available content is shown."));
     } catch (caught) {
       // Keep whatever is on screen: an empty list would claim the user has no
       // collections, which is a different statement from "the request failed".
       setError(
         caught instanceof Error
           ? caught.message
-          : t("Could not load your collections."),
+          : t("Could not load your collections.")
       );
     } finally {
       setLoading(false);
@@ -86,12 +100,12 @@ export function ReadingLibraryPage() {
   const unsettled = useMemo(
     () =>
       materials.filter(
-        (material) =>
+        material =>
           material.status === "processing" ||
           material.status === "queued" ||
-          material.status === "failed",
+          material.status === "failed"
       ),
-    [materials],
+    [materials]
   );
 
   // Opened inside a course, this is that course's shelf: only the collections
@@ -101,12 +115,12 @@ export function ReadingLibraryPage() {
   const rows = useMemo(() => {
     const allowed = scope ? new Set(scope.refIds("reading_workspace")) : null;
     const sorted = collections.filter(
-      (collection) => !allowed || allowed.has(collection.workspace_id),
+      collection => !allowed || (allowed.has(collection.workspace_id) && (collection.content_workspace_id ?? "") === activeWorkspaceId())
     );
     sorted.sort((a, b) =>
       sort === "name"
         ? a.title.localeCompare(b.title, i18n.language)
-        : b.updated_at - a.updated_at,
+        : b.updated_at - a.updated_at
     );
     return sorted;
   }, [collections, i18n.language, scope, sort]);
@@ -117,9 +131,11 @@ export function ReadingLibraryPage() {
       collectionCount={rows.length}
       materialCount={materials.length}
       actionLabel={t("New collection")}
-      onAction={() => setShowAdd(true)}
+      onAction={creation.begin}
       scopeChip={scope ? <CourseScopeChip scope={scope} /> : null}
     >
+      {creation.dialog}
+      {control}
       <div className="mt-5 flex flex-col gap-3 border-b border-[var(--border)] pb-3 sm:flex-row sm:items-center">
         <label className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg border border-[var(--border)] px-2.5 sm:max-w-[330px]">
           <Search
@@ -128,7 +144,7 @@ export function ReadingLibraryPage() {
           />
           <input
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={event => setSearch(event.target.value)}
             placeholder={t("Search collections and materials")}
             className="min-w-0 flex-1 bg-transparent text-[12px] outline-none placeholder:text-[var(--muted-foreground)]"
           />
@@ -162,32 +178,19 @@ export function ReadingLibraryPage() {
       </div>
 
       {error && (
-        <div className="mt-4 flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2.5 text-[11.5px] text-[var(--destructive)]">
-          <TriangleAlert size={13} />
-          <span className="min-w-0 flex-1">{error}</span>
-          <button
-            type="button"
-            onClick={() => void refresh()}
-            className="shrink-0 font-semibold text-[var(--primary)]"
-          >
-            {t("Retry")}
-          </button>
-        </div>
+        <LearningErrorState message={error} onRetry={() => void refresh()} />
       )}
 
-      {unsettled.map((material) => (
+      {unsettled.map(material => (
         <UnsettledRow
-          key={material.material_id}
+          key={libraryItemKey(material, material.material_id)}
           material={material}
           onRetried={() => void refresh()}
         />
       ))}
 
       {loading ? (
-        <div className="flex min-h-[280px] items-center justify-center gap-2 text-[12px] text-[var(--muted-foreground)]">
-          <Loader2 size={15} className="animate-spin" />
-          {t("Loading…")}
-        </div>
+        <LearningSkeleton />
       ) : !rows.length ? (
         // A failed request is not an empty library: showing the "no
         // collections yet" pitch on top of an error would state something we
@@ -195,22 +198,21 @@ export function ReadingLibraryPage() {
         error ? null : (
           <EmptyCollections
             searching={Boolean(search)}
-            onCreate={() => setShowAdd(true)}
+            onCreate={creation.begin}
           />
         )
       ) : (
         <ul className="mt-1">
-          {rows.map((collection) => (
+          {rows.map(collection => (
             <CollectionRow
-              key={collection.workspace_id}
+              key={libraryItemKey(collection, collection.workspace_id)}
               collection={collection}
-              locale={i18n.language}
-              menuOpen={menuFor === collection.workspace_id}
+              menuOpen={menuFor === libraryItemKey(collection, collection.workspace_id)}
               onToggleMenu={() =>
-                setMenuFor((current) =>
-                  current === collection.workspace_id
+                setMenuFor(current =>
+                  current === libraryItemKey(collection, collection.workspace_id)
                     ? null
-                    : collection.workspace_id,
+                    : libraryItemKey(collection, collection.workspace_id)
                 )
               }
               onDelete={() => {
@@ -232,9 +234,9 @@ export function ReadingLibraryPage() {
               await scope?.attach(
                 "reading_workspace",
                 workspace.workspace_id,
-                workspace.title,
+                workspace.title
               );
-              router.push(`/reading/${workspace.workspace_id}`);
+              router.push(readingCollectionRoute(workspace.workspace_id));
             } else void refresh();
           }}
         />
@@ -280,59 +282,54 @@ function SortButton({
 
 function CollectionRow({
   collection,
-  locale,
   menuOpen,
   onToggleMenu,
   onDelete,
 }: {
   collection: ReadingWorkspace;
-  locale: string;
   menuOpen: boolean;
   onToggleMenu: () => void;
   onDelete: () => void;
 }) {
   const { t } = useTranslation();
   const first = collection.tabs[0]?.material;
-  const names = collection.tabs.slice(0, 2).map((tab) => tab.material.title);
+  const names = collection.tabs.slice(0, 2).map(tab => tab.material.title);
   const rest = collection.tabs.length - names.length;
   const preparing = collection.tabs.some(
-    (tab) =>
-      tab.material.status === "processing" || tab.material.status === "queued",
+    tab =>
+      tab.material.status === "processing" || tab.material.status === "queued"
   );
 
   return (
-    <li className="group relative border-b border-[var(--border)]">
+    <li className="group relative my-3 rounded-xl border border-[var(--border)]">
+      <WorkspaceLabel row={collection} />
       <Link
-        href={`/reading/${collection.workspace_id}`}
-        className="flex items-center gap-3.5 py-3 pl-1 pr-9 transition hover:bg-[var(--secondary)]"
+        href={readingCollectionRoute(collection.workspace_id, collection.content_workspace_id ?? "")}
+        className="flex items-center gap-3 rounded-xl py-4 pl-4 pr-10 transition hover:bg-[var(--secondary)]"
       >
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[var(--muted)] text-[var(--muted-foreground)]">
-          {preparing ? (
-            <Loader2 size={14} className="animate-spin" />
-          ) : first ? (
-            <MaterialGlyph material={first} />
-          ) : (
-            <ChevronRight size={14} />
-          )}
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate font-serif text-[14.5px] font-semibold tracking-[-0.01em]">
-            {collection.title}
-          </span>
-          <span className="mt-0.5 block truncate text-[11px] text-[var(--muted-foreground)]">
-            {names.length
+        <LearningCardContent
+          title={collection.title}
+          icon={
+            preparing ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : first ? (
+              <MaterialGlyph material={first} />
+            ) : (
+              <ChevronRight size={14} />
+            )
+          }
+          subtitle={
+            names.length
               ? [
                   names.join(" · "),
                   rest > 0 ? t("+{{count}} more", { count: rest }) : "",
                 ]
                   .filter(Boolean)
                   .join(" · ")
-              : t("No material yet")}
-          </span>
-        </span>
-        <span className="shrink-0 text-[10.5px] text-[var(--muted-foreground)]">
-          {relativeDate(collection.updated_at, locale)}
-        </span>
+              : t("No material yet")
+          }
+          updatedAt={collection.updated_at}
+        />
       </Link>
       <button
         type="button"
@@ -411,7 +408,7 @@ function UnsettledRow({
           disabled={retrying}
           onClick={() => {
             setRetrying(true);
-            void retryReadingMaterial(material.material_id)
+            void retryReadingMaterial(material.material_id, material.content_workspace_id ?? "")
               .then(onRetried)
               .catch(() => undefined)
               .finally(() => setRetrying(false));
@@ -433,31 +430,27 @@ function EmptyCollections({
   onCreate: () => void;
 }) {
   const { t } = useTranslation();
-  if (searching) {
-    return (
-      <p className="py-16 text-center text-[12px] text-[var(--muted-foreground)]">
-        {t("Nothing matches that.")}
-      </p>
-    );
-  }
   return (
-    <div className="mt-8 rounded-xl border border-dashed border-[var(--border)] px-6 py-14 text-center">
-      <h2 className="font-serif text-[17px] font-semibold">
-        {t("No collections yet")}
-      </h2>
-      <p className="mx-auto mt-2 max-w-md text-[12px] leading-relaxed text-[var(--muted-foreground)]">
-        {t(
-          "A collection is one reading task: a paper with its survey, every lecture of a course, a few chapters of a book. Everything in it shares the same conversations and annotations.",
-        )}
-      </p>
-      <button
-        type="button"
-        onClick={onCreate}
-        className="mt-5 inline-flex h-8 items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3.5 text-[12px] font-semibold text-[var(--primary-foreground)]"
-      >
-        {t("New collection")}
-      </button>
-    </div>
+    <LearningEmptyState
+      title={searching ? t("Nothing matches that.") : t("No collections yet")}
+      description={
+        !searching &&
+        t(
+          "A collection is one reading task: a paper with its survey, every lecture of a course, a few chapters of a book. Everything in it shares the same conversations and annotations."
+        )
+      }
+      action={
+        !searching && (
+          <button
+            type="button"
+            onClick={onCreate}
+            className="inline-flex h-8 items-center rounded-lg bg-[var(--primary)] px-3.5 text-xs font-semibold text-[var(--primary-foreground)]"
+          >
+            {t("New collection")}
+          </button>
+        )
+      }
+    />
   );
 }
 
@@ -486,7 +479,7 @@ function DeleteCollectionDialog({
             {
               title: collection.title,
               count: collection.tabs.length,
-            },
+            }
           )}
         </p>
         {error && (
@@ -506,14 +499,14 @@ function DeleteCollectionDialog({
             onClick={() => {
               setWorking(true);
               setError("");
-              void deleteReadingWorkspace(collection.workspace_id)
+              void deleteReadingWorkspace(collection.workspace_id, collection.content_workspace_id ?? "")
                 .then(onDeleted)
-                .catch((caught) =>
+                .catch(caught =>
                   setError(
                     caught instanceof Error
                       ? caught.message
-                      : t("Delete failed"),
-                  ),
+                      : t("Delete failed")
+                  )
                 )
                 .finally(() => setWorking(false));
             }}

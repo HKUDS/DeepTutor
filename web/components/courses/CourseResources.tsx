@@ -1,5 +1,7 @@
 "use client";
 
+import { MASTERY_HOME, READING_HOME } from "@/lib/learning-routes";
+
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
@@ -78,12 +80,12 @@ const CREATE_ROUTES: {
   },
   {
     kind: "mastery_path",
-    href: (courseId) => `/mastery?course=${encodeURIComponent(courseId)}`,
+    href: (courseId) => `${MASTERY_HOME}?course=${encodeURIComponent(courseId)}`,
     label: "New mastery path",
   },
   {
     kind: "reading_workspace",
-    href: (courseId) => `/reading?course=${encodeURIComponent(courseId)}`,
+    href: (courseId) => `${READING_HOME}?course=${encodeURIComponent(courseId)}`,
     label: "New reading collection",
   },
   {

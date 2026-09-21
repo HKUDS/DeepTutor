@@ -22,6 +22,7 @@ try:  # POSIX is the supported production target; fallback keeps Windows dev usa
 except ImportError:  # pragma: no cover - exercised only on Windows
     fcntl = None  # type: ignore[assignment]
 
+from deeptutor.core.assessment import ASSESSMENT_RESULTS, ASSESSMENT_SOURCES, ASSESSMENT_TYPES
 from deeptutor.services.path_service import get_path_service
 from deeptutor.services.session.protocol import ActiveTurnConflict
 from deeptutor.utils.secret_files import ensure_private_directory, ensure_private_file
@@ -98,8 +99,12 @@ def _json_loads(value: str | None, default: Any) -> Any:
 # this id prefix as their discriminator (see ``SQLiteSessionStore._WHERE_*``).
 _IMPORTED_ID_PREFIX = "imported_"
 _ID_SAFE = re.compile(r"[^A-Za-z0-9_-]")
-ASSESSMENT_SOURCES = frozenset({"deep_question", "mastery_path", "immersive_reading", "book"})
 SCORE_TRENDS = frozenset({"new", "improved", "declined", "unchanged"})
+# Stored ``result=''`` is a pre-v2 row: treat it as already graded so wrong
+# lists do not swallow ungraded spectacle rows, and old incorrect rows stay
+# in the wrong filter.
+_GRADED_RESULT_SQL = "COALESCE(NULLIF(n.result,''),'graded') NOT IN ('ungraded','')"
+_GRADED_RESULT_SQL_UNALIASED = "COALESCE(NULLIF(result,''),'graded') NOT IN ('ungraded','')"
 ACTIVE_TURN_STATUSES = frozenset({"queued", "running", "waiting_input"})
 TERMINAL_TURN_STATUSES = frozenset({"completed", "failed", "cancelled"})
 ALL_TURN_STATUSES = ACTIVE_TURN_STATUSES | TERMINAL_TURN_STATUSES
@@ -172,11 +177,16 @@ class QuestionBankQuery:
 
     category_id: int | None = None
     uncategorized: bool = False
+    mistakes_only: bool = False
     bookmarked: bool | None = None
     is_correct: bool | None = None
     source: str = ""
     material_id: str = ""
     section_id: str = ""
+    assessment_type: str = ""
+    result: str = ""
+    mastery_path_id: str = ""
+    knowledge_point_id: str = ""
     resolved: bool | None = None
     score_trend: str = ""
     search: str = ""
@@ -190,6 +200,7 @@ class QuestionBankQuery:
         """Clamp untrusted inputs into the ranges the SQL below assumes."""
         return QuestionBankQuery(
             category_id=self.category_id,
+            mistakes_only=self.mistakes_only,
             uncategorized=self.uncategorized and self.category_id is None,
             bookmarked=self.bookmarked,
             is_correct=self.is_correct,
@@ -198,6 +209,14 @@ class QuestionBankQuery:
             else "",
             material_id=(self.material_id or "").strip(),
             section_id=(self.section_id or "").strip(),
+            assessment_type=(self.assessment_type or "").strip()
+            if (self.assessment_type or "").strip() in ASSESSMENT_TYPES
+            else "",
+            result=(self.result or "").strip()
+            if (self.result or "").strip() in ASSESSMENT_RESULTS
+            else "",
+            mastery_path_id=(self.mastery_path_id or "").strip(),
+            knowledge_point_id=(self.knowledge_point_id or "").strip(),
             resolved=self.resolved,
             score_trend=(self.score_trend or "").strip()
             if (self.score_trend or "").strip() in SCORE_TRENDS
@@ -226,6 +245,10 @@ class SQLiteSessionStore:
 
     def _migrate_legacy_db(self, path_service) -> None:
         """Move the legacy ``data/chat_history.db`` into ``data/user/`` once."""
+        from deeptutor.multi_user.paths import get_account_path_service
+
+        if self.db_path != get_account_path_service().get_chat_history_db():
+            return
         legacy_path = path_service.project_root / "data" / "chat_history.db"
         if self.db_path.exists() or not legacy_path.exists() or legacy_path == self.db_path:
             return
@@ -339,6 +362,15 @@ class SQLiteSessionStore:
                     section_id TEXT NOT NULL DEFAULT '',
                     section_title TEXT NOT NULL DEFAULT '',
                     score_trend TEXT NOT NULL DEFAULT 'new',
+                    assessment_type TEXT NOT NULL DEFAULT '',
+                    result TEXT NOT NULL DEFAULT '',
+                    mastery_path_id TEXT NOT NULL DEFAULT '',
+                    knowledge_point_id TEXT NOT NULL DEFAULT '',
+                    attempt_count INTEGER NOT NULL DEFAULT 1,
+                    hints_used INTEGER NOT NULL DEFAULT 0,
+                    confidence REAL,
+                    response_time REAL,
+                    quality REAL,
                     is_correct INTEGER DEFAULT 0,
                     resolved INTEGER DEFAULT 0,
                     bookmarked INTEGER DEFAULT 0,
@@ -354,6 +386,15 @@ class SQLiteSessionStore:
 
                 CREATE INDEX IF NOT EXISTS idx_notebook_entries_bookmarked
                     ON notebook_entries(bookmarked, created_at DESC);
+
+                CREATE TABLE IF NOT EXISTS reading_quiz_pending (
+                    material_id TEXT NOT NULL,
+                    locator INTEGER NOT NULL,
+                    question_id TEXT NOT NULL,
+                    question_json TEXT NOT NULL,
+                    created_at REAL NOT NULL,
+                    PRIMARY KEY (material_id, locator, question_id)
+                );
 
                 CREATE TABLE IF NOT EXISTS notebook_categories (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -418,24 +459,36 @@ class SQLiteSessionStore:
             self._migrate_notebook_entries_add_user_answer_images(conn)
             self._migrate_notebook_entries_add_ai_judgment(conn)
             self._migrate_notebook_entries_add_assessment_review(conn)
+            self._migrate_notebook_entries_add_assessment_v2(conn)
             self._migrate_turn_runtime_columns(conn)
+            from deeptutor.services.practice.storage import initialize_practice
+
+            initialize_practice(conn)
             conn.commit()
 
     @staticmethod
     def _migrate_workspace_preferences(conn: sqlite3.Connection) -> int:
-        """Backfill the explicit workspace discriminator without reordering history."""
+        """Upgrade workspace metadata and preserve legacy deleted chats as archives.
+
+        Clearing deleted_at only after setting archived keeps old recoverable
+        conversations out of the sidebar without discarding their contents.
+        Logical timestamps stay unchanged.
+        """
 
         migrated = 0
-        rows = conn.execute("SELECT id, preferences_json FROM sessions").fetchall()
+        rows = conn.execute("SELECT id, preferences_json, deleted_at FROM sessions").fetchall()
         for row in rows:
             current = _json_loads(row["preferences_json"], {})
             if not isinstance(current, dict):
                 continue
             upgraded = upgrade_workspace_preferences(current)
-            if upgraded == current:
+            was_deleted = row["deleted_at"] is not None
+            if was_deleted:
+                upgraded = {**upgraded, "archived": True}
+            if upgraded == current and not was_deleted:
                 continue
             conn.execute(
-                "UPDATE sessions SET preferences_json = ? WHERE id = ?",
+                "UPDATE sessions SET preferences_json = ?, deleted_at = NULL WHERE id = ?",
                 (_json_dumps(upgraded), row["id"]),
             )
             migrated += 1
@@ -682,6 +735,47 @@ class SQLiteSessionStore:
             """
         )
 
+    @staticmethod
+    def _migrate_notebook_entries_add_assessment_v2(
+        conn: sqlite3.Connection,
+    ) -> None:
+        """Add the cross-surface review columns without rewriting history."""
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(notebook_entries)").fetchall()}
+        if not cols:
+            return
+        additions = {
+            "assessment_type": "TEXT NOT NULL DEFAULT ''",
+            "result": "TEXT NOT NULL DEFAULT ''",
+            "mastery_path_id": "TEXT NOT NULL DEFAULT ''",
+            "knowledge_point_id": "TEXT NOT NULL DEFAULT ''",
+            "attempt_count": "INTEGER NOT NULL DEFAULT 1",
+            "hints_used": "INTEGER NOT NULL DEFAULT 0",
+            "confidence": "REAL",
+            "response_time": "REAL",
+            "quality": "REAL",
+        }
+        for name, definition in additions.items():
+            if name not in cols:
+                conn.execute(f"ALTER TABLE notebook_entries ADD COLUMN {name} {definition}")
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_notebook_entries_linkage
+            ON notebook_entries(mastery_path_id, knowledge_point_id)
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS reading_quiz_pending (
+                material_id TEXT NOT NULL,
+                locator INTEGER NOT NULL,
+                question_id TEXT NOT NULL,
+                question_json TEXT NOT NULL,
+                created_at REAL NOT NULL,
+                PRIMARY KEY (material_id, locator, question_id)
+            )
+            """
+        )
+
     async def _run(self, fn, *args):
         async with self._lock:
             return await asyncio.to_thread(fn, *args)
@@ -712,16 +806,20 @@ class SQLiteSessionStore:
         now = time.time()
         resolved_id = session_id or f"unified_{int(now * 1000)}_{uuid.uuid4().hex[:8]}"
         resolved_title = (title or "New conversation").strip() or "New conversation"
+        from deeptutor.services.workspace.context import get_workspace_scope
+
+        scope = get_workspace_scope()
+        preferences = {"workspace_id": scope.workspace_id} if scope is not None else {}
         with self._connect() as conn:
             conn.execute(
                 """
                 INSERT INTO sessions (
                     id, title, created_at, updated_at,
-                    compressed_summary, summary_up_to_msg_id
+                    compressed_summary, summary_up_to_msg_id, preferences_json
                 )
-                VALUES (?, ?, ?, ?, '', 0)
+                VALUES (?, ?, ?, ?, '', 0, ?)
                 """,
-                (resolved_id, resolved_title[:100], now, now),
+                (resolved_id, resolved_title[:100], now, now, _json_dumps(preferences)),
             )
             conn.commit()
         return {
@@ -732,6 +830,7 @@ class SQLiteSessionStore:
             "updated_at": now,
             "compressed_summary": "",
             "summary_up_to_msg_id": 0,
+            "preferences": preferences,
         }
 
     async def create_session(
@@ -740,6 +839,33 @@ class SQLiteSessionStore:
         session_id: str | None = None,
     ) -> dict[str, Any]:
         return await self._run(self._create_session_sync, title, session_id)
+
+    async def ensure_notebook_session(self, session_id: str, title: str) -> bool:
+        """Insert a placeholder session row so notebook-only sources can file
+        entries against it (partner chat has no rows in this store otherwise).
+
+        Returns ``True`` when a row was created, ``False`` when it existed.
+        """
+        return await self._run(self._ensure_notebook_session_sync, session_id, title)
+
+    def _ensure_notebook_session_sync(self, session_id: str, title: str) -> bool:
+        resolved_id = (session_id or "").strip()
+        if not resolved_id:
+            raise ValueError("ensure_notebook_session requires a session_id")
+        now = time.time()
+        with self._connect() as conn:
+            exists = conn.execute("SELECT id FROM sessions WHERE id = ?", (resolved_id,)).fetchone()
+            if exists is not None:
+                return False
+            conn.execute(
+                """
+                INSERT INTO sessions (id, title, created_at, updated_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (resolved_id, (title or "New conversation").strip()[:100], now, now),
+            )
+            conn.commit()
+        return True
 
     def _get_session_sync(self, session_id: str) -> dict[str, Any] | None:
         with self._connect() as conn:
@@ -1368,15 +1494,7 @@ class SQLiteSessionStore:
         return cur.rowcount > 0
 
     async def delete_session(self, session_id: str) -> bool:
-        """Remove a session outright, recycle bin or not.
-
-        The internal cleanups own this one: a reading workspace that is gone
-        takes its sessions with it, and those never belonged to the learner's
-        recycle bin — they would arrive there unasked and restore into a
-        workspace that no longer exists. The chat surface calls
-        :meth:`soft_delete_session` instead, which is the deletion a learner
-        performs and can undo.
-        """
+        """Permanently remove a conversation and its stored messages."""
         return await self._run(self._delete_session_sync, session_id)
 
     def _soft_delete_session_sync(self, session_id: str) -> bool:
@@ -2047,6 +2165,57 @@ class SQLiteSessionStore:
     async def get_message_path(self, session_id: str, leaf_message_id: int) -> list[dict[str, Any]]:
         return await self._run(self._get_message_path_sync, session_id, int(leaf_message_id))
 
+    async def usage_records(self, start_at: float, end_at: float) -> list[dict[str, Any]]:
+        """Read usage from canonical turn events, with legacy message fallback."""
+        from .usage_statistics import summaries_from_events
+
+        def read() -> list[dict[str, Any]]:
+            with self._connect() as conn:
+                rows = conn.execute(
+                    """SELECT m.id, m.session_id, m.created_at, m.events_json, m.metadata_json AS message_metadata, t.id AS turn_id,
+                              e.type, e.metadata_json
+                       FROM messages AS m
+                       LEFT JOIN turns AS t
+                         ON t.assistant_message_id = m.id AND t.session_id = m.session_id
+                       LEFT JOIN turn_events AS e
+                         ON e.turn_id = t.id AND (e.type IN ('result', 'done') OR json_extract(e.metadata_json, '$.model') IS NOT NULL)
+                       WHERE m.role = 'assistant' AND m.created_at >= ? AND m.created_at < ?
+                         AND substr(m.session_id, 1, 9) != 'imported_'
+                       ORDER BY m.created_at, m.id, e.seq""",
+                    (start_at, end_at),
+                )
+                records: dict[int, dict[str, Any]] = {}
+                events: dict[int, list[dict[str, Any]]] = {}
+                metadata: dict[int, dict[str, Any]] = {}
+                for row in rows:
+                    mid = row["id"]
+                    if mid not in records:
+                        records[mid] = {
+                            "session_id": row["session_id"],
+                            "turn_id": row["turn_id"],
+                            "created_at": row["created_at"],
+                            "summaries": summaries_from_events(
+                                _json_loads(row["events_json"], []),
+                                _json_loads(row["message_metadata"], {}),
+                            ),
+                        }
+                        events[mid] = []
+                        metadata[mid] = _json_loads(row["message_metadata"], {})
+                    if row["type"]:
+                        events[mid].append(
+                            {
+                                "type": row["type"],
+                                "metadata": _json_loads(row["metadata_json"], {}),
+                            }
+                        )
+                for mid, record in records.items():
+                    canonical = summaries_from_events(events[mid], metadata[mid])
+                    if canonical:
+                        record["summaries"] = canonical
+                return list(records.values())
+
+        return await self._run(read)
+
     async def get_messages(self, session_id: str) -> list[dict[str, Any]]:
         return await self._run(self._get_messages_sync, session_id)
 
@@ -2164,7 +2333,7 @@ class SQLiteSessionStore:
         LEFT JOIN messages m ON m.session_id = s.id
         {where}
         GROUP BY s.id
-        ORDER BY s.updated_at DESC
+        ORDER BY s.updated_at DESC, s.id ASC
         LIMIT ? OFFSET ?
     """
 
@@ -2222,10 +2391,24 @@ class SQLiteSessionStore:
         self,
         limit: int = 50,
         offset: int = 0,
+        workspace_id: str | None = None,
     ) -> list[dict[str, Any]]:
-        # Native chats only — imported histories surface under their own
-        # Space category, not the regular history list.
-        return self._list_session_summaries_sync(self._WHERE_NATIVE, limit, offset)
+        if workspace_id is None:
+            return self._list_session_summaries_sync(self._WHERE_NATIVE, limit, offset)
+        where = (
+            self._WHERE_NATIVE
+            + """
+            AND COALESCE(json_extract(s.preferences_json, '$.workspace_id'), '') = ?
+            AND COALESCE(json_extract(s.preferences_json, '$.archived'), 0) = 0
+            AND COALESCE(json_extract(s.preferences_json, '$.parent_session_id'), '') = ''
+        """
+        )
+        with self._connect() as conn:
+            rows = conn.execute(
+                self._SESSION_SUMMARY_SQL.format(where=where),
+                (workspace_id, limit, offset),
+            ).fetchall()
+        return [self._session_summary_payload(row) for row in rows]
 
     def _list_imported_sessions_sync(
         self,
@@ -2238,8 +2421,10 @@ class SQLiteSessionStore:
         self,
         limit: int = 50,
         offset: int = 0,
+        *,
+        workspace_id: str | None = None,
     ) -> list[dict[str, Any]]:
-        return await self._run(self._list_sessions_sync, limit, offset)
+        return await self._run(self._list_sessions_sync, limit, offset, workspace_id)
 
     def _search_sessions_sync(
         self,
@@ -2277,7 +2462,7 @@ class SQLiteSessionStore:
                     SELECT s.*
                     FROM sessions s
                     WHERE {match_condition}
-                    ORDER BY s.updated_at DESC
+                    ORDER BY s.updated_at DESC, s.id ASC
                     LIMIT ? OFFSET ?
                 ),
                 best_messages AS (
@@ -2338,7 +2523,7 @@ class SQLiteSessionStore:
                 LEFT JOIN messages m ON m.session_id = s.id
                 LEFT JOIN best_messages bm ON bm.session_id = s.id
                 GROUP BY s.id
-                ORDER BY s.updated_at DESC
+                ORDER BY s.updated_at DESC, s.id ASC
                 """,  # nosec B608 - match_condition is a module-owned SQL literal
                 (
                     normalized,
@@ -2439,6 +2624,45 @@ class SQLiteSessionStore:
 
     # ── Notebook entries ──────────────────────────────────────────────
 
+    @staticmethod
+    def _optional_float(value: Any) -> float | None:
+        if value is None or value == "":
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    @classmethod
+    def _notebook_assessment_values(cls, item: dict[str, Any], is_correct: int) -> tuple[Any, ...]:
+        assessment_type = str(item.get("assessment_type") or "").strip()
+        if assessment_type not in ASSESSMENT_TYPES:
+            assessment_type = ""
+        result = str(item.get("result") or "").strip()
+        if result not in ASSESSMENT_RESULTS:
+            result = "correct" if is_correct else "incorrect"
+        try:
+            raw_attempts = item.get("attempt_count")
+            attempt_count = max(1, int(raw_attempts if raw_attempts is not None else 1))
+        except (TypeError, ValueError):
+            attempt_count = 1
+        try:
+            raw_hints = item.get("hints_used")
+            hints_used = max(0, int(raw_hints if raw_hints is not None else 0))
+        except (TypeError, ValueError):
+            hints_used = 0
+        return (
+            assessment_type,
+            result,
+            str(item.get("mastery_path_id") or ""),
+            str(item.get("knowledge_point_id") or ""),
+            attempt_count,
+            hints_used,
+            cls._optional_float(item.get("confidence")),
+            cls._optional_float(item.get("response_time")),
+            cls._optional_float(item.get("quality")),
+        )
+
     def _upsert_notebook_entries_sync(self, session_id: str, items: list[dict[str, Any]]) -> int:
         if not items:
             return 0
@@ -2488,6 +2712,8 @@ class SQLiteSessionStore:
                     str(item.get("section_title") or ""),
                     score_trend,
                 )
+                assessment = self._notebook_assessment_values(item, is_correct)
+                resolved_on_insert = 0 if assessment[1] == "ungraded" else (1 if is_correct else 0)
                 if images_json is None:
                     conn.execute(
                         """
@@ -2496,9 +2722,11 @@ class SQLiteSessionStore:
                             options_json, correct_answer, explanation, difficulty,
                             user_answer, user_answer_images_json, source, material_id,
                             material_title, section_id, section_title, score_trend,
+                            assessment_type, result, mastery_path_id, knowledge_point_id,
+                            attempt_count, hints_used, confidence, response_time, quality,
                             is_correct, resolved, bookmarked, followup_session_id,
                             created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?, ?, ?, ?, ?, ?, ?, 0, '', ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '', ?, ?)
                         ON CONFLICT(session_id, turn_id, question_id) DO UPDATE SET
                             question = excluded.question,
                             question_type = excluded.question_type,
@@ -2513,8 +2741,18 @@ class SQLiteSessionStore:
                             section_id = excluded.section_id,
                             section_title = excluded.section_title,
                             score_trend = excluded.score_trend,
+                            assessment_type = excluded.assessment_type,
+                            result = excluded.result,
+                            mastery_path_id = excluded.mastery_path_id,
+                            knowledge_point_id = excluded.knowledge_point_id,
+                            attempt_count = excluded.attempt_count,
+                            hints_used = excluded.hints_used,
+                            confidence = excluded.confidence,
+                            response_time = excluded.response_time,
+                            quality = excluded.quality,
                             is_correct = excluded.is_correct,
                             resolved = CASE
+                                WHEN excluded.result = 'ungraded' THEN notebook_entries.resolved
                                 WHEN excluded.is_correct = 1 THEN 1
                                 WHEN excluded.is_correct = 0 AND notebook_entries.is_correct = 1 THEN 0
                                 ELSE notebook_entries.resolved
@@ -2533,8 +2771,9 @@ class SQLiteSessionStore:
                             item.get("difficulty") or "",
                             item.get("user_answer") or "",
                             *provenance,
+                            *assessment,
                             is_correct,
-                            1 if is_correct else 0,
+                            resolved_on_insert,
                             now,
                             now,
                         ),
@@ -2547,9 +2786,11 @@ class SQLiteSessionStore:
                             options_json, correct_answer, explanation, difficulty,
                             user_answer, user_answer_images_json, source, material_id,
                             material_title, section_id, section_title, score_trend,
+                            assessment_type, result, mastery_path_id, knowledge_point_id,
+                            attempt_count, hints_used, confidence, response_time, quality,
                             is_correct, resolved, bookmarked, followup_session_id,
                             created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '', ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '', ?, ?)
                         ON CONFLICT(session_id, turn_id, question_id) DO UPDATE SET
                             question = excluded.question,
                             question_type = excluded.question_type,
@@ -2564,9 +2805,19 @@ class SQLiteSessionStore:
                             section_id = excluded.section_id,
                             section_title = excluded.section_title,
                             score_trend = excluded.score_trend,
+                            assessment_type = excluded.assessment_type,
+                            result = excluded.result,
+                            mastery_path_id = excluded.mastery_path_id,
+                            knowledge_point_id = excluded.knowledge_point_id,
+                            attempt_count = excluded.attempt_count,
+                            hints_used = excluded.hints_used,
+                            confidence = excluded.confidence,
+                            response_time = excluded.response_time,
+                            quality = excluded.quality,
                             user_answer_images_json = excluded.user_answer_images_json,
                             is_correct = excluded.is_correct,
                             resolved = CASE
+                                WHEN excluded.result = 'ungraded' THEN notebook_entries.resolved
                                 WHEN excluded.is_correct = 1 THEN 1
                                 WHEN excluded.is_correct = 0 AND notebook_entries.is_correct = 1 THEN 0
                                 ELSE notebook_entries.resolved
@@ -2586,8 +2837,9 @@ class SQLiteSessionStore:
                             item.get("user_answer") or "",
                             images_json,
                             *provenance,
+                            *assessment,
                             is_correct,
-                            1 if is_correct else 0,
+                            resolved_on_insert,
                             now,
                             now,
                         ),
@@ -2599,6 +2851,87 @@ class SQLiteSessionStore:
     async def upsert_notebook_entries(self, session_id: str, items: list[dict[str, Any]]) -> int:
         return await self._run(self._upsert_notebook_entries_sync, session_id, items)
 
+    def _put_reading_quiz_pending_sync(
+        self, material_id: str, locator: int, questions: list[Any]
+    ) -> int:
+        material = str(material_id or "").strip()
+        if not material:
+            return 0
+        now = time.time()
+        with self._connect() as conn:
+            conn.execute(
+                "DELETE FROM reading_quiz_pending WHERE material_id = ? AND locator = ?",
+                (material, int(locator)),
+            )
+            stored = 0
+            for index, question in enumerate(questions or [], start=1):
+                if not isinstance(question, dict):
+                    continue
+                question_id = str(question.get("id") or f"q_{index}").strip()
+                if not question_id:
+                    continue
+                conn.execute(
+                    """
+                    INSERT INTO reading_quiz_pending (
+                        material_id, locator, question_id, question_json, created_at
+                    ) VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (material, int(locator), question_id, _json_dumps(question), now),
+                )
+                stored += 1
+            conn.commit()
+        return stored
+
+    async def put_reading_quiz_pending(
+        self, material_id: str, locator: int, questions: list[Any]
+    ) -> int:
+        """Replace the server-side answer keys for one reading quiz."""
+        return await self._run(
+            self._put_reading_quiz_pending_sync, material_id, locator, list(questions or [])
+        )
+
+    def _get_reading_quiz_pending_sync(
+        self,
+        material_id: str,
+        locator: int,
+        question_ids: Sequence[str] | None = None,
+    ) -> dict[str, dict[str, Any]]:
+        material = str(material_id or "").strip()
+        sql = """
+            SELECT question_id, question_json FROM reading_quiz_pending
+            WHERE material_id = ? AND locator = ?
+        """
+        params: list[Any] = [material, int(locator)]
+        if question_ids is not None:
+            wanted = [str(qid).strip() for qid in question_ids if str(qid).strip()]
+            if not wanted:
+                return {}
+            placeholders = ",".join("?" for _ in wanted)
+            sql += f" AND question_id IN ({placeholders})"  # nosec B608
+            params.extend(wanted)
+        with self._connect() as conn:
+            rows = conn.execute(sql, tuple(params)).fetchall()
+        pending: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            parsed = _json_loads(row["question_json"], {})
+            if isinstance(parsed, dict):
+                pending[str(row["question_id"])] = parsed
+        return pending
+
+    async def get_reading_quiz_pending(
+        self,
+        material_id: str,
+        locator: int,
+        question_ids: Sequence[str] | None = None,
+    ) -> dict[str, dict[str, Any]]:
+        """Return stored reading-quiz items keyed by question id (includes answer keys)."""
+        return await self._run(
+            self._get_reading_quiz_pending_sync,
+            material_id,
+            locator,
+            None if question_ids is None else tuple(question_ids),
+        )
+
     @staticmethod
     def _serialize_notebook_entry(row: sqlite3.Row) -> dict[str, Any]:
         keys = set(row.keys())
@@ -2607,6 +2940,13 @@ class SQLiteSessionStore:
             raw_images = _json_loads(row["user_answer_images_json"], [])
             if isinstance(raw_images, list):
                 images = [r for r in raw_images if isinstance(r, dict)]
+        is_correct = bool(row["is_correct"])
+        stored_result = (row["result"] or "") if "result" in keys else ""
+        if stored_result in ASSESSMENT_RESULTS:
+            result = stored_result
+        else:
+            result = "correct" if is_correct else "incorrect"
+        assessment_type = (row["assessment_type"] or "") if "assessment_type" in keys else ""
         return {
             "id": int(row["id"]),
             "session_id": row["session_id"],
@@ -2621,14 +2961,31 @@ class SQLiteSessionStore:
             "difficulty": row["difficulty"] or "",
             "user_answer": row["user_answer"] or "",
             "user_answer_images": images,
-            "is_correct": bool(row["is_correct"]),
+            "is_correct": is_correct,
             "source": (row["source"] or "deep_question") if "source" in keys else "deep_question",
             "material_id": (row["material_id"] or "") if "material_id" in keys else "",
             "material_title": (row["material_title"] or "") if "material_title" in keys else "",
             "section_id": (row["section_id"] or "") if "section_id" in keys else "",
             "section_title": (row["section_title"] or "") if "section_title" in keys else "",
             "score_trend": (row["score_trend"] or "new") if "score_trend" in keys else "new",
-            "resolved": bool(row["resolved"]) if "resolved" in keys else bool(row["is_correct"]),
+            "assessment_type": assessment_type,
+            "result": result,
+            "mastery_path_id": (row["mastery_path_id"] or "") if "mastery_path_id" in keys else "",
+            "knowledge_point_id": (row["knowledge_point_id"] or "")
+            if "knowledge_point_id" in keys
+            else "",
+            "attempt_count": int(row["attempt_count"]) if "attempt_count" in keys else 1,
+            "hints_used": int(row["hints_used"]) if "hints_used" in keys else 0,
+            "confidence": SQLiteSessionStore._optional_float(
+                row["confidence"] if "confidence" in keys else None
+            ),
+            "response_time": SQLiteSessionStore._optional_float(
+                row["response_time"] if "response_time" in keys else None
+            ),
+            "quality": SQLiteSessionStore._optional_float(
+                row["quality"] if "quality" in keys else None
+            ),
+            "resolved": bool(row["resolved"]) if "resolved" in keys else is_correct,
             "bookmarked": bool(row["bookmarked"]),
             "followup_session_id": row["followup_session_id"] or "",
             "ai_judgment": (row["ai_judgment"] or "") if "ai_judgment" in keys else "",
@@ -2658,6 +3015,10 @@ class SQLiteSessionStore:
             )
             """
         )
+        if query.mistakes_only:
+            conditions.append(
+                "EXISTS (SELECT 1 FROM practice_review_state r WHERE r.entry_id = n.id AND r.is_mistake = 1)"
+            )
         if query.category_id is not None:
             joins.append(" INNER JOIN notebook_entry_categories ec ON ec.entry_id = n.id")
             conditions.append("ec.category_id = ?")
@@ -2672,6 +3033,26 @@ class SQLiteSessionStore:
         if query.is_correct is not None:
             conditions.append("n.is_correct = ?")
             params.append(1 if query.is_correct else 0)
+            if not query.is_correct:
+                conditions.append(_GRADED_RESULT_SQL)
+        if query.assessment_type:
+            conditions.append("n.assessment_type = ?")
+            params.append(query.assessment_type)
+        if query.result:
+            if query.result in {"correct", "incorrect"}:
+                conditions.append(
+                    "(n.result = ? OR (COALESCE(n.result, '') = '' AND n.is_correct = ?))"
+                )
+                params.extend([query.result, 1 if query.result == "correct" else 0])
+            else:
+                conditions.append("n.result = ?")
+                params.append(query.result)
+        if query.mastery_path_id:
+            conditions.append("n.mastery_path_id = ?")
+            params.append(query.mastery_path_id)
+        if query.knowledge_point_id:
+            conditions.append("n.knowledge_point_id = ?")
+            params.append(query.knowledge_point_id)
         if query.source:
             conditions.append("n.source = ?")
             params.append(query.source)
@@ -2735,6 +3116,24 @@ class SQLiteSessionStore:
             )
         return grouped
 
+    @staticmethod
+    def _load_practice_for(
+        conn: sqlite3.Connection, entry_ids: list[int]
+    ) -> dict[int, dict[str, Any]]:
+        if not entry_ids:
+            return {}
+        placeholders = ",".join("?" for _ in entry_ids)
+        rows = conn.execute(
+            f"""SELECT r.*,
+                (SELECT e.answer FROM practice_review_events e WHERE e.entry_id=r.entry_id
+                 ORDER BY e.reviewed_at DESC, e.rowid DESC LIMIT 1) AS last_answer,
+                (SELECT e.rating FROM practice_review_events e WHERE e.entry_id=r.entry_id
+                 ORDER BY e.reviewed_at DESC, e.rowid DESC LIMIT 1) AS last_rating
+                FROM practice_review_state r WHERE r.entry_id IN ({placeholders})""",  # nosec B608
+            entry_ids,
+        ).fetchall()
+        return {int(row["entry_id"]): dict(row) for row in rows}
+
     def _list_notebook_entries_sync(self, query: QuestionBankQuery) -> dict[str, Any]:
         query = query.normalized()
         join_sql, where_sql, params = self._question_bank_filters(query)
@@ -2746,6 +3145,8 @@ class SQLiteSessionStore:
                 n.correct_answer, n.explanation, n.difficulty,
                 n.user_answer, n.user_answer_images_json, n.source, n.material_id,
                 n.material_title, n.section_id, n.section_title, n.score_trend,
+                n.assessment_type, n.result, n.mastery_path_id, n.knowledge_point_id,
+                n.attempt_count, n.hints_used, n.confidence, n.response_time, n.quality,
                 n.is_correct, n.resolved, n.bookmarked,
                 n.followup_session_id, n.ai_judgment, n.created_at, n.updated_at
             FROM notebook_entries n
@@ -2768,8 +3169,10 @@ class SQLiteSessionStore:
             ).fetchall()
             items = [self._serialize_notebook_entry(r) for r in rows]
             grouped = self._load_categories_for(conn, [int(i["id"]) for i in items])
+            practice = self._load_practice_for(conn, [int(i["id"]) for i in items])
         for item in items:
             item["categories"] = grouped.get(int(item["id"]), [])
+            item["practice"] = practice.get(int(item["id"]))
         return {"items": items, "total": total}
 
     async def list_notebook_entries(
@@ -2785,10 +3188,15 @@ class SQLiteSessionStore:
         source: str = "",
         material_id: str = "",
         section_id: str = "",
+        assessment_type: str = "",
+        result: str = "",
+        mastery_path_id: str = "",
+        knowledge_point_id: str = "",
         resolved: bool | None = None,
         score_trend: str = "",
         search: str = "",
         uncategorized: bool = False,
+        mistakes_only: bool = False,
         sort: str = "recent",
     ) -> dict[str, Any]:
         """List question-bank entries. Every row carries its categories."""
@@ -2796,12 +3204,17 @@ class SQLiteSessionStore:
             self._list_notebook_entries_sync,
             QuestionBankQuery(
                 category_id=category_id,
+                mistakes_only=mistakes_only,
                 uncategorized=uncategorized,
                 bookmarked=bookmarked,
                 is_correct=is_correct,
                 source=source,
                 material_id=material_id,
                 section_id=section_id,
+                assessment_type=assessment_type,
+                result=result,
+                mastery_path_id=mastery_path_id,
+                knowledge_point_id=knowledge_point_id,
                 resolved=resolved,
                 score_trend=score_trend,
                 search=search,
@@ -2829,8 +3242,8 @@ class SQLiteSessionStore:
                 f"""
                 SELECT
                     COUNT(*) AS total,
-                    COALESCE(SUM(CASE WHEN is_correct = 0 THEN 1 ELSE 0 END), 0) AS wrong,
-                    COALESCE(SUM(CASE WHEN is_correct = 0 AND resolved = 0 THEN 1 ELSE 0 END), 0) AS unresolved,
+                    COALESCE(SUM(CASE WHEN is_correct = 0 AND {_GRADED_RESULT_SQL_UNALIASED} THEN 1 ELSE 0 END), 0) AS wrong,
+                    COALESCE(SUM(CASE WHEN is_correct = 0 AND resolved = 0 AND {_GRADED_RESULT_SQL_UNALIASED} THEN 1 ELSE 0 END), 0) AS unresolved,
                     COALESCE(SUM(CASE WHEN bookmarked = 1 THEN 1 ELSE 0 END), 0) AS bookmarked,
                     COALESCE(SUM(
                         CASE WHEN NOT EXISTS (
@@ -2901,7 +3314,7 @@ class SQLiteSessionStore:
                     material_id,
                     COALESCE(NULLIF(MAX(material_title), ''), material_id, 'Unnamed material') AS material_title,
                     COUNT(*) AS entry_count,
-                    COALESCE(SUM(CASE WHEN is_correct = 0 AND resolved = 0 THEN 1 ELSE 0 END), 0) AS unresolved_count
+                    COALESCE(SUM(CASE WHEN is_correct = 0 AND resolved = 0 AND {_GRADED_RESULT_SQL_UNALIASED} THEN 1 ELSE 0 END), 0) AS unresolved_count
                 FROM notebook_entries
                 WHERE {where}
                 GROUP BY source, material_id
@@ -2936,6 +3349,7 @@ class SQLiteSessionStore:
             if row is None:
                 return None
             entry = self._serialize_notebook_entry(row)
+            entry["practice"] = self._load_practice_for(conn, [entry_id]).get(entry_id)
             cats = conn.execute(
                 """
                 SELECT c.id, c.name
@@ -3253,9 +3667,24 @@ def get_sqlite_session_store() -> SQLiteSessionStore:
     return _instances[key]
 
 
+def get_sqlite_session_store_for(path_service: Any) -> SQLiteSessionStore:
+    """Store for an explicit path service (a scope other than the current one).
+
+    Partner turns run inside the partner's synthetic scope but record question
+    bank entries into the learner-facing bank; the target scope's path service
+    resolves its chat-history db, and instances stay cached per resolved path.
+    """
+    db_path = path_service.get_chat_history_db().resolve()
+    key = str(db_path)
+    if key not in _instances:
+        _instances[key] = SQLiteSessionStore(db_path=db_path)
+    return _instances[key]
+
+
 __all__ = [
     "QuestionBankQuery",
     "SQLiteSessionStore",
     "get_sqlite_session_store",
+    "get_sqlite_session_store_for",
     "make_imported_session_id",
 ]

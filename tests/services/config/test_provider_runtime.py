@@ -805,3 +805,12 @@ def test_every_search_provider_has_a_registered_implementation() -> None:
     registered = set(list_providers())
     expected = {name for name in SEARCH_PROVIDERS if name != "none"}
     assert registered == expected
+
+
+def test_old_adopted_fallback_is_not_a_model_capacity():
+    catalog = _build_catalog()
+    model = catalog["services"]["llm"]["profiles"][0]["models"][0]
+    model.update(model="glm-5.3-flash", context_window=16384, context_window_source="default")
+    assert resolve_llm_runtime_config(catalog=catalog).context_window is None
+    model["context_window_source"] = "manual"
+    assert resolve_llm_runtime_config(catalog=catalog).context_window == 16384

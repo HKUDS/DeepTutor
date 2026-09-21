@@ -233,6 +233,7 @@ export default function HistorySessionPicker({
     >
       <div className="surface-card flex h-[78vh] max-h-[660px] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)] text-[var(--card-foreground)] shadow-[0_22px_70px_rgba(0,0,0,0.18)]">
         <PickerHeader
+          resourceKind="chat_history"
           icon={HistoryIcon}
           titleId="history-picker-title"
           title={t("Select History Sessions")}

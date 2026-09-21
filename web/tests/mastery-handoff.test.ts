@@ -112,11 +112,11 @@ test("one card per destination, but two destinations both survive", () => {
 test("routes: open resumes a session, new lands on the draft route", () => {
   assert.equal(
     masteryHandoffHref({ ...OPEN, kind: "open" } as never),
-    "/mastery/stats_101/sessions/sess_7",
+    "/learning/mastery/stats_101/sessions/sess_7",
   );
   assert.equal(
     masteryHandoffHref({ ...OPEN, kind: "new", session_id: "" } as never),
-    "/mastery/stats_101/sessions",
+    "/learning/mastery/stats_101/sessions",
   );
 });
 
@@ -127,6 +127,6 @@ test("ids that reached us through a model are percent-encoded", () => {
       path_id: "a/b",
       session_id: "c d",
     } as never),
-    "/mastery/a%2Fb/sessions/c%20d",
+    "/learning/mastery/a%2Fb/sessions/c%20d",
   );
 });

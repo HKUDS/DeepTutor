@@ -1,10 +1,13 @@
+import { scopedUrl } from "@/lib/workspace-scope";
+import { sessionWorkspaceId } from "@/lib/session-api";
+import { masterySessionRoute, readingSessionRoute, watchingRoute } from "@/lib/learning-routes";
 /**
  * Which surface a conversation belongs to — the one place that decides.
  *
  * A mastery study conversation is an ordinary chat session that happens to
  * carry `mastery_path_id` in its preferences. Two surfaces need to read that:
  * the sidebar, to file the conversation under its topic, and the click
- * handler, to open it on `/mastery/<path>/sessions/<session>` instead of `/chat`.
+ * handler, to open it on its topic session route instead of `/chat`.
  * If those two ever disagreed, a conversation would render under a topic and
  * then navigate somewhere else — so the rule lives here and neither owns it.
  *
@@ -43,42 +46,29 @@ export function readingWorkspaceIdOf(session: SessionSummary): string {
   return String(preferences.reading_workspace_id || "");
 }
 
-/**
- * The reverse of the `/reading/...` branch of `sessionRoute`: which
- * conversation a reading URL names, or null for "a new one".
- *
- * It reads the path rather than route params because the workspace binds the
- * first turn's session id with the native history API — see the binding effect
- * in `useReadingWorkspace` for why — and only `usePathname` follows that.
- * It lives beside the function that writes these URLs because they are one
- * rule in two directions: if they ever disagreed, the first turn would land on
- * a URL the workspace then read as "new" and start the conversation over.
- */
-export function readingSessionIdFromPath(pathname: string): string | null {
-  const match = /^\/reading\/[^/]+\/sessions\/([^/?#]+)/.exec(pathname);
-  if (!match) return null;
-  return decodeURIComponent(match[1]).trim() || null;
-}
-
 /** Where clicking this conversation should land. */
 export function sessionRoute(session: SessionSummary): string {
+  return scopedUrl(surfaceRoute(session), sessionWorkspaceId(session));
+}
+
+function surfaceRoute(session: SessionSummary): string {
   const sessionId = encodeURIComponent(session.session_id);
   const pathId = masteryPathIdOf(session);
   if (pathId) {
-    return `/mastery/${encodeURIComponent(pathId)}/sessions/${sessionId}`;
+    return masterySessionRoute(pathId, session.session_id, sessionWorkspaceId(session));
   }
   // The reader, its outline and the material are the context this was held
   // in; /chat would drop all three and leave the citations pointing at a
   // document that is not open.
   const workspaceId = readingWorkspaceIdOf(session);
   if (workspaceId) {
-    return `/reading/${encodeURIComponent(workspaceId)}/sessions/${sessionId}`;
+    return readingSessionRoute(workspaceId, session.session_id, sessionWorkspaceId(session));
   }
   if (
     session.preferences?.workspace_mode === "immersive_watching" ||
     session.preferences?.capability === "immersive_watching"
   ) {
-    return `/watching/${sessionId}`;
+    return watchingRoute(session.session_id, sessionWorkspaceId(session));
   }
   return `/chat/${sessionId}`;
 }

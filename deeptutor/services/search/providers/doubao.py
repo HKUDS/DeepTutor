@@ -85,13 +85,27 @@ class DoubaoProvider(BaseSearchProvider):
         request_kwargs: dict[str, Any] = {"headers": headers, "json": payload}
         if self.proxy:
             request_kwargs["proxies"] = {"http": self.proxy, "https": self.proxy}
-        resp = requests.post(endpoint, timeout=timeout, **request_kwargs)
-        if resp.status_code != 200:
-            raise Exception(f"Doubao API error: {resp.status_code} - {resp.text}")
+        from deeptutor.services.llm.metrics import CallMeasurement
 
-        data = resp.json()
-        if data.get("error"):
-            raise Exception(f"Doubao API error: {data['error']}")
+        meter = CallMeasurement(model=model, provider="doubao", messages=query)
+        try:
+            resp = requests.post(endpoint, timeout=timeout, **request_kwargs)
+            if resp.status_code != 200:
+                raise Exception(f"Doubao API error: {resp.status_code} - {resp.text}")
+            data = resp.json()
+            if data.get("error"):
+                raise Exception(f"Doubao API error: {data['error']}")
+        except BaseException:
+            meter.finish(status="failed")
+            raise
+        meter.usage = data.get("usage")
+        # Non-streaming responses provide no TTFT; only estimate tokens if usage is absent.
+        meter.output_chars = sum(
+            len(str(block.get("text") or ""))
+            for item in data.get("output") or []
+            for block in item.get("content") or []
+        )
+        meter.finish()
 
         # Walk output[] -> message -> content[] -> output_text, collecting the
         # answer text and the url_citation annotations hanging off it.

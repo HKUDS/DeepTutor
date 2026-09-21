@@ -77,9 +77,9 @@ class StudyGuidanceExtension:
         if not context.selection.strip():
             raise ValueError("Study guidance requires selected text.")
 
-        from deeptutor.services.model_selection.tasks import task_llm_scope
+        from deeptutor.services.model_selection.tasks import TaskKind, task_llm_scope
 
-        with task_llm_scope():
+        with task_llm_scope(TaskKind.READING_GUIDANCE):
             raw = await complete(
                 prompt=_prompt(context),
                 system_prompt=_SYSTEM_ZH if _is_zh(context.locale) else _SYSTEM_EN,

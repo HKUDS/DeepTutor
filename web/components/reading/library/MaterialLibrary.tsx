@@ -1,5 +1,16 @@
 "use client";
 
+import {
+  LearningEmptyState,
+  LearningErrorState,
+  LearningSkeleton,
+} from "@/components/learning/LearningShell";
+
+import { learningLibrary, libraryItemKey } from "@/lib/learning-library";
+import { activeWorkspaceId, scopedUrl } from "@/lib/workspace-scope";
+import { useLearningCreation, requestedLearningCreation, useLibraryFilter } from "@/components/learning/LibraryWorkspace";
+import { readingCollectionRoute } from "@/lib/learning-routes";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -8,7 +19,6 @@ import {
   MoreHorizontal,
   Search,
   Trash2,
-  TriangleAlert,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -17,8 +27,6 @@ import { useTranslation } from "react-i18next";
 import {
   addReadingWorkspaceMaterial,
   deleteReadingMaterial,
-  listReadingLibraryMaterials,
-  listReadingWorkspaces,
   retryReadingMaterial,
   type ReadingLibraryCounts,
   type ReadingLibraryFilter,
@@ -51,42 +59,53 @@ const GRID =
 
 export function MaterialLibraryPage() {
   const { t, i18n } = useTranslation();
-  const [materials, setMaterials] = useState<ReadingLibraryMaterial[]>([]);
+  const [allMaterials, setMaterials] = useState<ReadingLibraryMaterial[]>([]);
   const [counts, setCounts] = useState<ReadingLibraryCounts | null>(null);
   const [collections, setCollections] = useState<ReadingWorkspace[]>([]);
   const [filter, setFilter] = useState<ReadingLibraryFilter>("all");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [showUpload, setShowUpload] = useState(false);
+  const router = useRouter();
+  const [showUpload, setShowUpload] = useState(requestedLearningCreation);
+  const creation = useLearningCreation(() => setShowUpload(true));
+  const { rows: materials, control } = useLibraryFilter(allMaterials);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [assignFor, setAssignFor] = useState<ReadingLibraryMaterial | null>(
-    null,
+    null
   );
   const [deleteFor, setDeleteFor] = useState<ReadingLibraryMaterial | null>(
-    null,
+    null
   );
 
   const refresh = useCallback(async () => {
     setError("");
     try {
       const [library, collectionRows] = await Promise.all([
-        listReadingLibraryMaterials(search, filter),
-        listReadingWorkspaces(),
+        learningLibrary<ReadingLibraryMaterial>("materials"),
+        learningLibrary<ReadingWorkspace>("reading"),
       ]);
-      setMaterials(library.materials);
-      setCounts(library.counts);
-      setCollections(collectionRows);
+      setMaterials(library.items);
+      setCounts(null);
+      setCollections(collectionRows.items);
+      if (library.unavailable_workspaces.length || collectionRows.unavailable_workspaces.length) setError(t("Some workspaces could not be loaded. Available content is shown."));
+      const requested = new URLSearchParams(window.location.search).get('assign');
+      if (requested) {
+        setAssignFor(library.items.find(row => row.material_id === requested && row.content_workspace_id === activeWorkspaceId()) ?? null);
+        const next = new URLSearchParams(window.location.search);
+        next.delete('assign');
+        router.replace(`${window.location.pathname}${next.size ? `?${next}` : ''}`, { scroll: false });
+      }
     } catch (caught) {
       setError(
         caught instanceof Error
           ? caught.message
-          : t("Could not load your library."),
+          : t("Could not load your library.")
       );
     } finally {
       setLoading(false);
     }
-  }, [filter, search, t]);
+  }, [t, router]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void refresh(), 140);
@@ -99,15 +118,20 @@ export function MaterialLibraryPage() {
     if (counts) return counts;
     return {
       all: materials.length,
-      unassigned: materials.filter((row) => !(row.collections ?? []).length)
+      unassigned: materials.filter(row => !(row.collections ?? []).length)
         .length,
       processing: materials.filter(
-        (row) => row.status === "processing" || row.status === "queued",
+        row => row.status === "processing" || row.status === "queued"
       ).length,
-      failed: materials.filter((row) => row.status === "failed").length,
+      failed: materials.filter(row => row.status === "failed").length,
       by_kind: {},
     } satisfies ReadingLibraryCounts;
   }, [counts, materials]);
+
+  const visibleMaterials = materials.filter(row =>
+    (!search || `${row.title} ${row.filename}`.toLowerCase().includes(search.toLowerCase())) &&
+    (filter === "all" || (filter === "unassigned" ? !(row.collections ?? []).length : filter === "processing" ? ["processing", "queued"].includes(row.status) : row.status === "failed"))
+  );
 
   return (
     <LibraryShell
@@ -115,8 +139,10 @@ export function MaterialLibraryPage() {
       materialCount={tally.all}
       collectionCount={collections.length}
       actionLabel={t("Upload material")}
-      onAction={() => setShowUpload(true)}
+      onAction={creation.begin}
     >
+      {creation.dialog}
+      {control}
       <div className="mt-5 flex flex-col gap-3 border-b border-[var(--border)] pb-3 sm:flex-row sm:items-center">
         <label className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg border border-[var(--border)] px-2.5 sm:max-w-[330px]">
           <Search
@@ -125,7 +151,7 @@ export function MaterialLibraryPage() {
           />
           <input
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={event => setSearch(event.target.value)}
             placeholder={t("Search by title, file name or link")}
             className="min-w-0 flex-1 bg-transparent text-[12px] outline-none placeholder:text-[var(--muted-foreground)]"
           />
@@ -171,17 +197,7 @@ export function MaterialLibraryPage() {
       </div>
 
       {error && (
-        <div className="mt-4 flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2.5 text-[11.5px] text-[var(--destructive)]">
-          <TriangleAlert size={13} />
-          <span className="min-w-0 flex-1">{error}</span>
-          <button
-            type="button"
-            onClick={() => void refresh()}
-            className="shrink-0 font-semibold text-[var(--primary)]"
-          >
-            {t("Retry")}
-          </button>
-        </div>
+        <LearningErrorState message={error} onRetry={() => void refresh()} />
       )}
 
       <div
@@ -196,40 +212,39 @@ export function MaterialLibraryPage() {
       </div>
 
       {loading ? (
-        <div className="flex min-h-[240px] items-center justify-center gap-2 text-[12px] text-[var(--muted-foreground)]">
-          <Loader2 size={15} className="animate-spin" />
-          {t("Loading…")}
-        </div>
-      ) : !materials.length ? (
+        <LearningSkeleton />
+      ) : !visibleMaterials.length ? (
         // Same rule as the collections view: an error already said what
         // happened, and "nothing here" would contradict it.
         error ? null : (
-          <p className="py-16 text-center text-[12px] text-[var(--muted-foreground)]">
-            {search
-              ? t("Nothing matches that.")
-              : filter === "all"
-                ? t("Everything you upload shows up here.")
-                : t("Nothing here yet.")}
-          </p>
+          <LearningEmptyState
+            title={
+              search
+                ? t("Nothing matches that.")
+                : filter === "all"
+                  ? t("Everything you upload shows up here.")
+                  : t("Nothing here yet.")
+            }
+          />
         )
       ) : (
         <ul>
-          {materials.map((material) => (
+          {visibleMaterials.map(material => (
             <MaterialRow
-              key={material.material_id}
+              key={libraryItemKey(material, material.material_id)}
               material={material}
               locale={i18n.language}
-              menuOpen={menuFor === material.material_id}
+              menuOpen={menuFor === libraryItemKey(material, material.material_id)}
               onToggleMenu={() =>
-                setMenuFor((current) =>
-                  current === material.material_id
-                    ? null
-                    : material.material_id,
+                setMenuFor(current =>
+                  current === libraryItemKey(material, material.material_id) ? null : libraryItemKey(material, material.material_id)
                 )
               }
               onAssign={() => {
                 setMenuFor(null);
-                setAssignFor(material);
+                if ((material.content_workspace_id ?? '') !== activeWorkspaceId()) {
+                  router.push(scopedUrl(`/learning/reading/materials?assign=${encodeURIComponent(material.material_id)}`, material.content_workspace_id ?? ''));
+                } else setAssignFor(material);
               }}
               onDelete={() => {
                 setMenuFor(null);
@@ -255,7 +270,7 @@ export function MaterialLibraryPage() {
       {assignFor && (
         <AssignDialog
           material={assignFor}
-          collections={collections}
+          collections={collections.filter(row => row.content_workspace_id === assignFor.content_workspace_id)}
           onClose={() => setAssignFor(null)}
           onAssigned={async () => {
             setAssignFor(null);
@@ -350,12 +365,12 @@ function MaterialRow({
       : material.filename;
   // What the file is called (or where it came from), plus its size. The type
   // facts follow only on narrow screens, where the type column is hidden.
-  const secondary = [identity, size, extent].filter(Boolean).join(" · ");
+  const secondary = [material.content_workspace_name || t("Default workspace"), identity, size, extent].filter(Boolean).join(" · ");
   const typeTail = [tag, duration].filter(Boolean).join(" · ");
 
   const open = () => {
     const target = collections[0];
-    if (target) router.push(`/reading/${target.workspace_id}`);
+    if (target) router.push(readingCollectionRoute(target.workspace_id, material.content_workspace_id ?? ""));
     else onAssign();
   };
 
@@ -401,7 +416,7 @@ function MaterialRow({
             {!failed && (
               <span className="hidden max-w-[45%] shrink-0 truncate sm:hidden min-[420px]:inline">
                 {collections.length
-                  ? collections.map((row) => row.title).join("、")
+                  ? collections.map(row => row.title).join("、")
                   : t("Not in a collection")}{" "}
                 ·
               </span>
@@ -428,7 +443,7 @@ function MaterialRow({
               {collections.slice(0, 2).map((row, index) => (
                 <Link
                   key={row.workspace_id}
-                  href={`/reading/${row.workspace_id}`}
+                  href={readingCollectionRoute(row.workspace_id, material.content_workspace_id ?? "")}
                   className={`min-w-0 truncate rounded-full border border-[var(--border)] px-2 py-0.5 text-[10.5px] hover:border-[var(--primary)] hover:text-[var(--primary)] ${
                     index === 0 ? "flex-1" : "max-w-[96px] shrink-0"
                   }`}
@@ -459,7 +474,7 @@ function MaterialRow({
             <button
               type="button"
               onClick={() => {
-                void retryReadingMaterial(material.material_id)
+                void retryReadingMaterial(material.material_id, material.content_workspace_id ?? "")
                   .then(onRetried)
                   .catch(() => undefined);
               }}
@@ -523,10 +538,10 @@ function AssignDialog({
   const [error, setError] = useState("");
   const [creating, setCreating] = useState(false);
   const held = new Set(
-    (material.collections ?? []).map((row) => row.workspace_id),
+    (material.collections ?? []).map(row => row.workspace_id)
   );
   const available = collections.filter(
-    (collection) => !held.has(collection.workspace_id),
+    collection => !held.has(collection.workspace_id)
   );
 
   if (creating) {
@@ -542,9 +557,11 @@ function AssignDialog({
           void addReadingWorkspaceMaterial(
             workspace.workspace_id,
             material.material_id,
-            true,
+            true
           )
-            .then(() => router.push(`/reading/${workspace.workspace_id}`))
+            .then(() =>
+              router.push(readingCollectionRoute(workspace.workspace_id))
+            )
             .catch(() => setCreating(false));
         }}
       />
@@ -564,7 +581,7 @@ function AssignDialog({
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-2">
           {available.length ? (
-            available.map((collection) => (
+            available.map(collection => (
               <button
                 key={collection.workspace_id}
                 type="button"
@@ -575,15 +592,15 @@ function AssignDialog({
                   void addReadingWorkspaceMaterial(
                     collection.workspace_id,
                     material.material_id,
-                    true,
+                    true
                   )
                     .then(onAssigned)
-                    .catch((caught) =>
+                    .catch(caught =>
                       setError(
                         caught instanceof Error
                           ? caught.message
-                          : t("Save failed."),
-                      ),
+                          : t("Save failed.")
+                      )
                     )
                     .finally(() => setWorking(""));
                 }}
@@ -664,8 +681,8 @@ function DeleteMaterialDialog({
                 "“{{title}}” is used by {{where}}. Deleting it removes it from those collections, along with its annotations.",
                 {
                   title: material.title,
-                  where: collections.map((row) => row.title).join("、"),
-                },
+                  where: collections.map(row => row.title).join("、"),
+                }
               )
             : t("“{{title}}” and its annotations will be deleted.", {
                 title: material.title,
@@ -688,14 +705,14 @@ function DeleteMaterialDialog({
             onClick={() => {
               setWorking(true);
               setError("");
-              void deleteReadingMaterial(material.material_id)
+              void deleteReadingMaterial(material.material_id, material.content_workspace_id ?? "")
                 .then(onDeleted)
-                .catch((caught) =>
+                .catch(caught =>
                   setError(
                     caught instanceof Error
                       ? caught.message
-                      : t("Delete failed"),
-                  ),
+                      : t("Delete failed")
+                  )
                 )
                 .finally(() => setWorking(false));
             }}

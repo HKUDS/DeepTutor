@@ -6,6 +6,7 @@ import {
   Loader2,
   MessagesSquare,
   Route,
+  Trash2,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -24,6 +25,9 @@ interface ArchivedConversationsProps {
   buckets: ArchiveBuckets;
   /** Conversation being restored right now, so its row can say so. */
   restoringId?: string | null;
+  deletingId?: string | null;
+  disabled?: boolean;
+  onDelete?: (sessionId: string) => void;
   onOpen: (sessionId: string) => void;
   onRestore: (sessionId: string) => void;
 }
@@ -38,13 +42,13 @@ interface ArchivedConversationsProps {
  * or the collection it belonged to. Three partitions and that container's name
  * on every row is the difference between a list you can scan and a pile.
  *
- * Restore is the only action here. Renaming, re-filing and deleting live on
- * the conversation row itself in the active list, and a second copy of those
- * would be a second menu to keep honest.
  */
 export default function ArchivedConversations({
   buckets,
   restoringId = null,
+  deletingId = null,
+  disabled = false,
+  onDelete,
   onOpen,
   onRestore,
 }: ArchivedConversationsProps) {
@@ -69,6 +73,7 @@ export default function ArchivedConversations({
       >
         <button
           type="button"
+          disabled={disabled}
           onClick={() => onOpen(session.session_id)}
           className="min-w-0 flex-1 px-1 text-left"
           title={t("Open")}
@@ -89,10 +94,26 @@ export default function ArchivedConversations({
               .join(" · ")}
           </p>
         </button>
+        {onDelete && (
+          <button
+            type="button"
+            onClick={() => onDelete(session.session_id)}
+            disabled={disabled || busy || deletingId === session.session_id}
+            aria-label={t("Delete permanently")}
+            title={t("Delete permanently")}
+            className="shrink-0 rounded-lg p-2 text-[var(--muted-foreground)] hover:bg-red-500/10 hover:text-red-600 disabled:opacity-50"
+          >
+            {deletingId === session.session_id ? (
+              <Loader2 size={15} className="animate-spin" />
+            ) : (
+              <Trash2 size={15} />
+            )}
+          </button>
+        )}
         <button
           type="button"
           onClick={() => onRestore(session.session_id)}
-          disabled={busy}
+          disabled={disabled || busy}
           className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] disabled:opacity-50"
         >
           {busy ? (
@@ -100,7 +121,7 @@ export default function ArchivedConversations({
           ) : (
             <ArchiveRestore size={13} strokeWidth={1.8} />
           )}
-          {t("Restore")}
+          {t("Unarchive")}
         </button>
       </div>
     );
@@ -119,7 +140,7 @@ export default function ArchivedConversations({
           <span className="min-w-0 truncate">{label}</span>
           <span className="tabular-nums opacity-60">{rows.length}</span>
         </div>
-        <div className="border-t border-[var(--border)]/60">
+        <div className="rounded-xl border border-[var(--border)]/60 px-3">
           {rows.map(renderRow)}
         </div>
       </div>

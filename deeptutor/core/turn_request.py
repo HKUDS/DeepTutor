@@ -16,6 +16,8 @@ _LEGACY_RUNTIME_CONFIG_KEYS: dict[str, str] = {
     "selection_tutor_context": "selection_tutor_context",
     "_course_id": "course_id",
     "subagent_consult_budget": "subagent_consult_budget",
+    "consult_partner_id": "consult_partner_id",
+    "partner_discussion_group_id": "partner_discussion_group_id",
     "auto_route": "auto_route",
 }
 
@@ -131,11 +133,19 @@ class TurnRequest(BaseModel):
     reading_references: list[ReadingReference] = Field(default_factory=list)
     memory_references: list[MemoryReference] = Field(default_factory=list)
     attachments: list[OutgoingAttachment] = Field(default_factory=list)
+    # Per-conversation narrowing of the workspace's skill and MCP selections.
+    # Empty means inherit — everything the workspace allows — so a client that
+    # never picks behaves exactly as it did before the pickers existed. A
+    # non-empty list is intersected with the workspace allowlist, never added to
+    # it: a conversation can narrow its own reach but never widen it.
     skills: list[str] = Field(default_factory=list)
+    mcp: list[str] = Field(default_factory=list)
 
     persona: str | None = None
     llm_selection: LLMSelection | None = None
     workspace_mode: str | None = None
+    # Content workspace ownership; omitted means inherit, null/empty means the general workspace.
+    workspace_id: str | None = None
     mastery_path_id: str | None = None
     #: What this mastery conversation is for — "outline" | "study" | "review".
     #: Durable session state (see
@@ -163,6 +173,8 @@ class TurnRequest(BaseModel):
     followup_question_context: dict[str, Any] | None = None
     selection_tutor_context: dict[str, Any] | None = None
     subagent_consult_budget: int | None = Field(default=None, ge=0)
+    consult_partner_id: str | None = None
+    partner_discussion_group_id: str | None = None
     auto_route: bool | None = None
 
     @model_validator(mode="before")

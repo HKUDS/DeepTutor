@@ -97,9 +97,9 @@ class ReadingQuizExtension:
         if not context.visible_text.strip():
             raise ValueError("Reading quiz requires visible text.")
 
-        from deeptutor.services.model_selection.tasks import task_llm_scope
+        from deeptutor.services.model_selection.tasks import TaskKind, task_llm_scope
 
-        with task_llm_scope():
+        with task_llm_scope(TaskKind.READING_QUIZ):
             raw = await complete(
                 prompt=_prompt(context),
                 system_prompt=_SYSTEM_ZH if _is_zh(context.locale) else _SYSTEM_EN,

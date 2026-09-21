@@ -1,21 +1,18 @@
 "use client";
-
 import { useTranslation } from "react-i18next";
-
-import { ServiceConfigEditor } from "@/components/settings/ServiceConfigEditor";
+import { ModelsWorkspace } from "@/components/settings/ModelsWorkspace";
 import { SettingsPageHeader } from "@/components/settings/shared";
-
 export default function LlmSettingsPage() {
   const { t } = useTranslation();
   return (
     <div>
       <SettingsPageHeader
-        title={t("LLM")}
+        title={t("Language models")}
         description={t(
-          "Configure language model profiles. The active model is used for chat and most agent reasoning.",
+          "Manage language models and their context, capabilities, and connection tests.",
         )}
       />
-      <ServiceConfigEditor service="llm" />
+      <ModelsWorkspace page="llm" />
     </div>
   );
 }

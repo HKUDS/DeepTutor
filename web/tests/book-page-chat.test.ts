@@ -6,7 +6,7 @@ import path from "node:path";
 const source = readFileSync(
   path.resolve(
     process.cwd(),
-    "app/(workspace)/books/components/BookChatPanel.tsx",
+    "app/(workspace)/learning/books/components/BookChatPanel.tsx",
   ),
   "utf8",
 );

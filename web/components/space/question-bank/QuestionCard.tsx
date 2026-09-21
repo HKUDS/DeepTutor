@@ -1,6 +1,7 @@
 "use client";
 
-import dynamic from "next/dynamic";
+import { useState } from "react";
+import MarkdownRenderer from "@/components/common/MarkdownRenderer";
 import Link from "next/link";
 import { useTranslation } from "react-i18next";
 import {
@@ -13,19 +14,44 @@ import {
   X,
 } from "lucide-react";
 import type { NotebookCategory, NotebookEntry } from "@/lib/notebook-api";
-import { bookRoute } from "@/lib/resource-routes";
+import { optionIsAnswer } from "@/lib/question-bank-answers";
+import { bookRoute, masterySessionRoute } from "@/lib/learning-routes";
 import CategoryMenu from "./CategoryMenu";
-
-const MarkdownRenderer = dynamic(
-  () => import("@/components/common/MarkdownRenderer"),
-  { ssr: false },
-);
+import { practiceMarkdown } from "@/lib/practice-content";
 
 const SOURCE_LABELS: Record<NotebookEntry["source"], string> = {
   deep_question: "Deep Question",
   mastery_path: "Mastery Path",
   immersive_reading: "Immersive Reading",
   book: "Book",
+  partner_chat: "Partner Chat",
+  import: "Imported",
+};
+
+const ASSESSMENT_TYPE_LABELS: Record<string, string> = {
+  quiz: "Quiz",
+  focus_check: "Focus Check",
+  qualitative: "Qualitative",
+  review: "Review",
+};
+
+const QUESTION_TYPE_LABELS: Record<string, string> = {
+  choice: "Single Choice",
+  short: "Short Answer",
+  open: "Short Answer",
+  written: "Written Answer",
+  concept: "Concept Check",
+  fill_in_blank: "Fill in the Blank",
+  single_choice: "Single Choice",
+  multiple_choice: "Single Choice",
+  mcq: "Single Choice",
+  multi_choice: "Multiple Select",
+  true_false: "True or False",
+  fill_blank: "Fill in the Blank",
+  short_answer: "Short Answer",
+  free_response: "Short Answer",
+  essay: "Short Answer",
+  coding: "Coding",
 };
 
 const TREND_LABELS: Record<NotebookEntry["score_trend"], string> = {
@@ -35,8 +61,44 @@ const TREND_LABELS: Record<NotebookEntry["score_trend"], string> = {
   unchanged: "Unchanged",
 };
 
+function entryResult(entry: NotebookEntry): string {
+  if (entry.result) return entry.result;
+  return entry.is_correct ? "correct" : "incorrect";
+}
+
+function resultBadge(entry: NotebookEntry): {
+  label: string;
+  className: string;
+} {
+  const result = entryResult(entry);
+  if (result === "partial") {
+    return {
+      label: "Partially Correct",
+      className: "bg-amber-100 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400",
+    };
+  }
+  if (result === "ungraded") {
+    return {
+      label: "Not Graded",
+      className: "bg-[var(--muted)] text-[var(--muted-foreground)]",
+    };
+  }
+  if (result === "correct" || entry.is_correct) {
+    return {
+      label: "Correct",
+      className: "bg-green-100 text-green-700 dark:bg-green-950/30 dark:text-green-400",
+    };
+  }
+  return {
+    label: "Incorrect",
+    className: "bg-red-100 text-red-700 dark:bg-red-950/30 dark:text-red-400",
+  };
+}
+
 interface QuestionCardProps {
   entry: NotebookEntry;
+  mistakesOnly?: boolean;
+  collapseAnswers?: boolean;
   categories: NotebookCategory[];
   selected: boolean;
   disabled: boolean;
@@ -75,18 +137,14 @@ function AnswerBlock({
 
   return (
     <div className={`rounded-lg border px-3 py-2 ${toneClass}`}>
-      <div
-        className={`mb-1 text-[10.5px] font-medium uppercase tracking-wide ${labelClass}`}
-      >
+      <div className={`mb-1 text-[10.5px] font-medium uppercase tracking-wide ${labelClass}`}>
         {label}
       </div>
       <div className="text-[13px] text-[var(--foreground)]">
         {body ? (
           <MarkdownRenderer
             content={
-              isCode && !body.trimStart().startsWith("```")
-                ? `\`\`\`python\n${body}\n\`\`\``
-                : body
+              isCode && !body.trimStart().startsWith("```") ? `\`\`\`python\n${body}\n\`\`\`` : body
             }
             variant="prose"
             className="text-[13px] leading-relaxed"
@@ -109,6 +167,8 @@ function AnswerBlock({
  */
 export default function QuestionCard({
   entry,
+  mistakesOnly = false,
+  collapseAnswers = false,
   categories,
   selected,
   disabled,
@@ -121,10 +181,15 @@ export default function QuestionCard({
   onCreateAndFile,
 }: QuestionCardProps) {
   const { t } = useTranslation();
+  const [answersVisible, setAnswersVisible] = useState(!collapseAnswers);
   const options = entry.options || {};
   const hasOptions = Object.keys(options).length > 0;
   const isCode = entry.question_type === "coding";
   const filed = entry.categories || [];
+  const result = entryResult(entry);
+  const badge = resultBadge(entry);
+  const showReviewState =
+    !!entry.practice?.is_mistake || mistakesOnly || result === "incorrect" || result === "partial";
 
   return (
     <li
@@ -141,20 +206,16 @@ export default function QuestionCard({
           onChange={onToggleSelected}
           aria-label={t("Select")}
           className={`mt-1 h-3.5 w-3.5 shrink-0 cursor-pointer accent-[var(--primary)] transition-opacity ${
-            selected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+            selected ? "opacity-100" : "opacity-70 hover:opacity-100"
           }`}
         />
 
         <div className="min-w-0 flex-1">
           <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
             <span
-              className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${
-                entry.is_correct
-                  ? "bg-green-100 text-green-700 dark:bg-green-950/30 dark:text-green-400"
-                  : "bg-red-100 text-red-700 dark:bg-red-950/30 dark:text-red-400"
-              }`}
+              className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${badge.className}`}
             >
-              {entry.is_correct ? t("Correct") : t("Incorrect")}
+              {t(badge.label)}
             </span>
             {entry.difficulty && (
               <span
@@ -171,18 +232,23 @@ export default function QuestionCard({
             )}
             {entry.question_type && (
               <span className="rounded-md bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted-foreground)]">
-                {entry.question_type}
+                {t(QUESTION_TYPE_LABELS[entry.question_type] || entry.question_type)}
               </span>
             )}
             <span className="rounded-md bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted-foreground)]">
-              {t(SOURCE_LABELS[entry.source] || "Deep Question")}
+              {t(SOURCE_LABELS[entry.source] || "Unknown Source")}
             </span>
+            {entry.assessment_type && ASSESSMENT_TYPE_LABELS[entry.assessment_type] ? (
+              <span className="rounded-md bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted-foreground)]">
+                {t(ASSESSMENT_TYPE_LABELS[entry.assessment_type])}
+              </span>
+            ) : null}
             {entry.score_trend && (
               <span className="rounded-md bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted-foreground)]">
                 {t(TREND_LABELS[entry.score_trend] || "First Attempt")}
               </span>
             )}
-            {!entry.is_correct && (
+            {showReviewState && (
               <span
                 className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${
                   entry.resolved
@@ -194,21 +260,12 @@ export default function QuestionCard({
               </span>
             )}
           </div>
-
-          <div className="text-[14px] font-medium text-[var(--foreground)]">
-            <MarkdownRenderer
-              content={entry.question}
-              variant="prose"
-              className="text-[14px] leading-relaxed"
-              enableMath
-            />
-          </div>
         </div>
 
         <div className="flex shrink-0 items-center gap-1">
           <CategoryMenu
             categories={categories}
-            activeIds={filed.map((category) => category.id)}
+            activeIds={filed.map(category => category.id)}
             disabled={disabled}
             onPick={onFile}
             onUnpick={onUnfile}
@@ -225,12 +282,9 @@ export default function QuestionCard({
                 : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]"
             }`}
           >
-            <Bookmark
-              className="h-3.5 w-3.5"
-              fill={entry.bookmarked ? "currentColor" : "none"}
-            />
+            <Bookmark className="h-3.5 w-3.5" fill={entry.bookmarked ? "currentColor" : "none"} />
           </button>
-          {!entry.is_correct && (
+          {showReviewState && (
             <button
               type="button"
               onClick={onToggleResolved}
@@ -261,16 +315,28 @@ export default function QuestionCard({
         </div>
       </div>
 
+      <div
+        className="mt-3 min-w-0 text-[14px] text-foreground sm:pl-[1.625rem]"
+        data-testid="question-stem"
+      >
+        <MarkdownRenderer
+          content={practiceMarkdown(entry.question)}
+          variant="prose"
+          className="text-[14px] leading-relaxed [overflow-wrap:anywhere] [&_pre]:max-w-full [&_pre]:overflow-x-auto"
+          allowHtml={false}
+        />
+      </div>
+
       {/* Aligned with the question text: checkbox (0.875rem) + gap (0.75rem). */}
       <div className="mt-3 space-y-2" style={{ paddingLeft: "1.625rem" }}>
         {hasOptions && (
           <div className="space-y-1">
             {Object.entries(options).map(([key, text]) => {
               const isUserAnswer =
-                entry.user_answer?.toUpperCase() === key.toUpperCase();
+                answersVisible && optionIsAnswer(key, text, entry.user_answer || "");
               const isCorrectAnswer =
-                entry.correct_answer?.toUpperCase() === key.toUpperCase();
-              const isWrongPick = isUserAnswer && !entry.is_correct;
+                answersVisible && optionIsAnswer(key, text, entry.correct_answer || "");
+              const isWrongPick = isUserAnswer && result === "incorrect";
               return (
                 <div
                   key={key}
@@ -294,17 +360,17 @@ export default function QuestionCard({
                     {key}.
                   </span>
                   <div
-                    className={`flex-1 ${
+                    className={`min-w-0 flex-1 [overflow-wrap:anywhere] ${
                       isCorrectAnswer || isWrongPick
                         ? "text-[var(--foreground)]"
                         : "text-[var(--muted-foreground)]"
                     }`}
                   >
                     <MarkdownRenderer
-                      content={text}
+                      content={practiceMarkdown(text)}
                       variant="compact"
                       className="font-sans text-[13px] [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_p]:my-0"
-                      enableMath
+                      allowHtml={false}
                     />
                   </div>
                   {isCorrectAnswer && (
@@ -322,43 +388,64 @@ export default function QuestionCard({
             })}
           </div>
         )}
+        <details
+          open={collapseAnswers ? undefined : true}
+          onToggle={event => setAnswersVisible(event.currentTarget.open)}
+          className="space-y-2"
+        >
+          <summary className="cursor-pointer py-1 text-xs font-medium text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
+            {t("Answer and explanation")}
+          </summary>
 
-        {!hasOptions && (
-          <div className="grid gap-2 sm:grid-cols-2">
-            <AnswerBlock
-              label={`${t("Your Answer")} ${entry.is_correct ? "✓" : "✗"}`}
-              body={entry.user_answer}
-              tone={entry.is_correct ? "correct" : "wrong"}
-              isCode={isCode}
-            />
-            <AnswerBlock
-              label={t("Reference Answer")}
-              body={entry.correct_answer}
-              tone="correct"
-              isCode={isCode}
-            />
-          </div>
-        )}
-
-        {entry.explanation && (
-          <div className="rounded-lg border border-blue-200/60 bg-blue-50/30 px-3 py-2 dark:border-blue-900/40 dark:bg-blue-950/15">
-            <div className="mb-1 text-[10.5px] font-medium uppercase tracking-wide text-blue-600 dark:text-blue-400">
-              {t("Explanation")}
-            </div>
-            <div className="text-[13px] leading-relaxed text-[var(--foreground)]">
-              <MarkdownRenderer
-                content={entry.explanation}
-                variant="prose"
-                className="text-[13px] leading-relaxed"
-                enableMath
+          {!hasOptions && (
+            <div className="grid gap-2 sm:grid-cols-2">
+              <AnswerBlock
+                label={`${t("Your Answer")}${
+                  result === "correct" ? " ✓" : result === "incorrect" ? " ✗" : ""
+                }`}
+                body={entry.user_answer}
+                tone={
+                  result === "correct" ? "correct" : result === "incorrect" ? "wrong" : "neutral"
+                }
+                isCode={isCode}
+              />
+              <AnswerBlock
+                label={t("Reference Answer")}
+                body={entry.correct_answer}
+                tone="correct"
+                isCode={isCode}
               />
             </div>
-          </div>
-        )}
+          )}
 
+          {entry.explanation && (
+            <div className="rounded-lg border border-blue-200/60 bg-blue-50/30 px-3 py-2 dark:border-blue-900/40 dark:bg-blue-950/15">
+              <div className="mb-1 text-[10.5px] font-medium uppercase tracking-wide text-blue-600 dark:text-blue-400">
+                {t("Explanation")}
+              </div>
+              <div className="text-[13px] leading-relaxed text-[var(--foreground)]">
+                <MarkdownRenderer
+                  content={entry.explanation}
+                  variant="prose"
+                  className="text-[13px] leading-relaxed"
+                  enableMath
+                />
+              </div>
+            </div>
+          )}
+
+          {!!entry.practice?.review_count && (
+            <AnswerBlock
+              label={t("Latest practice answer")}
+              body={entry.practice.last_answer || ""}
+              tone={entry.practice.last_rating === "again" ? "wrong" : "neutral"}
+              isCode={isCode}
+            />
+          )}
+        </details>
         <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5 text-[11px]">
           <div className="flex flex-wrap items-center gap-1.5">
-            {filed.map((category) => (
+            {filed.map(category => (
               <span
                 key={category.id}
                 className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--muted)]/40 py-0.5 pl-2 pr-1 text-[var(--muted-foreground)]"
@@ -368,20 +455,29 @@ export default function QuestionCard({
                   type="button"
                   onClick={() => void onUnfile(category.id)}
                   disabled={disabled}
-                  title={t("Remove from category")}
+                  title={t("Remove tag")}
                   className="rounded p-0.5 transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-40"
                 >
                   <X className="h-2.5 w-2.5" />
                 </button>
               </span>
             ))}
-            <Link
-              href={`/chat/${encodeURIComponent(entry.session_id)}`}
-              className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--muted)]/40 px-2 py-0.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-            >
-              <ExternalLink size={10} />
-              {entry.session_title || t("Original Session")}
-            </Link>
+            {entry.source !== "import" && !entry.session_id.startsWith("reading-notebook:") && (
+              <Link
+                href={
+                  entry.source === "mastery_path" && (entry.mastery_path_id || entry.material_id)
+                    ? masterySessionRoute(
+                        entry.mastery_path_id || entry.material_id,
+                        entry.session_id
+                      )
+                    : `/chat/${encodeURIComponent(entry.session_id)}`
+                }
+                className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--muted)]/40 px-2 py-0.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+              >
+                <ExternalLink size={10} />
+                {entry.session_title || t("Original Session")}
+              </Link>
+            )}
             {entry.source === "book" && entry.material_id && (
               <Link
                 href={bookRoute(entry.material_id, entry.section_id)}
@@ -397,6 +493,12 @@ export default function QuestionCard({
                 {entry.section_title ? ` · ${entry.section_title}` : ""}
               </span>
             )}
+            {entry.source === "immersive_reading" &&
+              (entry.material_title || entry.section_title || entry.material_id) && (
+                <span className="inline-flex items-center rounded-md border border-[var(--border)] bg-[var(--muted)]/40 px-2 py-0.5 text-[var(--muted-foreground)]">
+                  {entry.section_title || entry.material_title || entry.material_id}
+                </span>
+              )}
             {entry.followup_session_id && (
               <Link
                 href={`/chat/${encodeURIComponent(entry.followup_session_id)}`}
@@ -407,6 +509,13 @@ export default function QuestionCard({
               </Link>
             )}
           </div>
+          {!!entry.practice?.is_mistake && !entry.resolved && (
+            <span className="text-[var(--muted-foreground)]">
+              {t("Next review: {{date}}", {
+                date: new Date(entry.practice.due_at * 1000).toLocaleDateString(),
+              })}
+            </span>
+          )}
           <span className="text-[var(--muted-foreground)]">
             {new Date(entry.created_at * 1000).toLocaleString()}
           </span>

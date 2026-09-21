@@ -237,11 +237,17 @@ def build_openai_client(config: LLMClientConfig) -> Any:
     handle itself owns an HTTP connection pool, so reusing it is both faster
     and prevents a new allocator/socket high-water mark on every turn.
     """
+    from deeptutor.services.llm.metrics import instrument_client
+
     disable_ssl_verify = bool(load_system_settings()["disable_ssl_verify"])
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
-        return _build_openai_client(config, disable_ssl_verify=disable_ssl_verify)
+        return instrument_client(
+            _build_openai_client(config, disable_ssl_verify=disable_ssl_verify),
+            model=config.model or "",
+            provider=config.binding,
+        )
 
     key = _client_cache_key(config, loop, disable_ssl_verify)
     with _agentic_client_pool_lock:
@@ -249,7 +255,11 @@ def build_openai_client(config: LLMClientConfig) -> Any:
         if cached is not None:
             _agentic_client_pool.move_to_end(key)
             return cached
-        client = _build_openai_client(config, disable_ssl_verify=disable_ssl_verify)
+        client = instrument_client(
+            _build_openai_client(config, disable_ssl_verify=disable_ssl_verify),
+            model=config.model or "",
+            provider=config.binding,
+        )
         _agentic_client_pool[key] = client
         _agentic_client_pool.move_to_end(key)
         while len(_agentic_client_pool) > _AGENTIC_CLIENT_POOL_MAXSIZE:

@@ -68,6 +68,10 @@ class DashScopeTTSAdapter(BaseTTSAdapter):
         }
         if config.voice:
             payload["input"]["voice"] = config.voice
+        if config.language:
+            payload["input"]["language_type"] = config.language
+        if config.instructions:
+            payload["input"]["instructions"] = config.instructions
 
         try:
             async with httpx.AsyncClient(timeout=config.request_timeout) as client:
@@ -244,7 +248,11 @@ class DashScopeSTTAdapter(BaseSTTAdapter):
                 "task": "asr",
                 "function": "recognition",
                 "input": {},
-                "parameters": {"format": "wav", "sample_rate": sample_rate},
+                "parameters": {
+                    "format": "wav",
+                    "sample_rate": sample_rate,
+                    **({"language_hints": [config.language]} if config.language else {}),
+                },
             },
         }
 

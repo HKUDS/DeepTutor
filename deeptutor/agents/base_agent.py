@@ -528,6 +528,7 @@ class BaseAgent(ABC):
         attachments: list[Any] | None = None,
         trace_meta: dict[str, Any] | None = None,
         reasoning_effort: str | None = None,
+        tools: list[dict[str, Any]] | None = None,
     ) -> AsyncGenerator[str, None]:
         """
         Unified interface for streaming LLM responses.
@@ -560,6 +561,8 @@ class BaseAgent(ABC):
         kwargs = {
             "temperature": temperature,
         }
+        if tools:
+            kwargs["tools"] = tools
 
         # Handle token limit for newer OpenAI models
         if max_tokens:

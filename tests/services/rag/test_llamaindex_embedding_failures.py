@@ -192,6 +192,7 @@ async def test_search_reconfigures_llamaindex_settings_for_cached_pipeline(
     result = await pipeline.search("what is this?", "kb")
 
     assert result["provider"] == "llamaindex"
+    await pipeline.search("search again with the cached pipeline", "kb")
     assert configure_calls == ["configure", "configure"]
 
 

@@ -17,13 +17,13 @@ const ROUTE_TARGETS = [
   { route: "/co-writer", requestPath: "/co-writer", budgetKb: 320 },
   { route: "/co-writer/[docId]", requestPath: "/co-writer/perf-budget", budgetKb: 515 },
   {
-    route: "/reading/[workspaceId]/sessions/[sessionId]",
-    requestPath: "/reading/perf-budget/sessions/perf-session",
+    route: "/learning/reading/[workspaceId]/sessions/[sessionId]",
+    requestPath: "/learning/reading/perf-budget/sessions/perf-session",
     budgetKb: 1_120,
   },
   {
-    route: "/mastery/[pathId]/sessions/[sessionId]",
-    requestPath: "/mastery/perf-budget/sessions/perf-session",
+    route: "/learning/mastery/[pathId]/sessions/[sessionId]",
+    requestPath: "/learning/mastery/perf-budget/sessions/perf-session",
     budgetKb: 980,
   },
 ];

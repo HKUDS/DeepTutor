@@ -774,6 +774,36 @@ def _assert_provider_ready(provider: str) -> None:
             )
 
 
+def _resolve_embedding_form(value, provider: str, entry: dict | None = None):
+    from deeptutor.services.embedding.config import get_embedding_config
+    from deeptutor.services.rag.embedding_binding import EMBEDDING_PROVIDERS, default_selection
+
+    value = value if isinstance(value, str) else ""
+    if provider not in EMBEDDING_PROVIDERS:
+        if value:
+            raise HTTPException(
+                status_code=400,
+                detail="This knowledge engine does not use a local embedding model.",
+            )
+        return None, None
+    try:
+        selection = (
+            json.loads(value)
+            if value
+            else (entry or {}).get("embedding_selection") or default_selection()
+        )
+        if selection is None:
+            return None, None  # Old clients keep the existing default behavior.
+        if not isinstance(selection, dict) or not all(
+            isinstance(selection.get(k), str) and selection[k] for k in ("profile_id", "model_id")
+        ):
+            raise ValueError("Select a configured embedding model.")
+        selection = {k: selection[k] for k in ("profile_id", "model_id")}
+        return selection, get_embedding_config(selection)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 def _enforce_provider_formats(provider: str, files: list[UploadFile]) -> None:
     """Reject files PageIndex's document endpoint does not accept, up front."""
     if provider not in {PAGEINDEX_PROVIDER, PAGEINDEX_OSS_PROVIDER}:
@@ -1682,6 +1712,51 @@ async def get_rag_model_options(kinds: str = "llm,embedding"):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/knowledge-bases/embedding-usage")
+async def get_embedding_usage():
+    """References in this account's workspaces; no provider secrets or other users' KBs."""
+    from deeptutor.multi_user.paths import get_account_path_service
+    from deeptutor.services.config.knowledge_base_config import KnowledgeBaseConfigService
+    from deeptutor.services.path_service import get_path_service
+    from deeptutor.services.rag.embedding_binding import (
+        load_catalog,
+        migrate_binding,
+        uses_bound_embedding,
+    )
+    from deeptutor.services.workspace import get_content_workspace_service
+    from deeptutor.services.workspace.context import workspace_context
+
+    roots = {str(_current_kb_base_dir()): ""}
+    roots[str(get_account_path_service().get_knowledge_bases_root())] = ""
+    for workspace in get_content_workspace_service().list_workspaces():
+        # System folders hold configuration, not learning data, and cannot be
+        # entered as an application data scope. Archived content still counts.
+        if (
+            workspace.get("kind") not in {"general", "workspace"}
+            or workspace.get("status") != "ready"
+        ):
+            continue
+        with workspace_context(workspace["workspace_id"]):
+            roots[str(get_path_service().get_knowledge_bases_root())] = (
+                workspace.get("display_name") or ""
+            )
+    catalog = load_catalog()
+    usage = []
+    for root, workspace_name in roots.items():
+        entries = (
+            KnowledgeBaseConfigService(Path(root) / "kb_config.json")
+            .get_all_configs()
+            .get("knowledge_bases", {})
+        )
+        for name, entry in entries.items():
+            if not uses_bound_embedding(entry):
+                continue
+            migrate_binding(entry, Path(root) / name, catalog)
+            if selection := entry.get("embedding_selection"):
+                usage.append({"name": name, "workspace_name": workspace_name, **selection})
+    return {"knowledge_bases": usage}
+
+
 class GraphRagModelCompatibilityRequest(BaseModel):
     """Configured chat-model candidate to test without activating it."""
 
@@ -1817,6 +1892,18 @@ async def update_kb_config(kb_name: str, config: dict):
         from deeptutor.services.rag.index_probe import has_ready_provider_index
 
         config = dict(config or {})
+        service = get_kb_config_service()
+        current_config = service.get_kb_config(kb_name)
+        # Older clients may send back the full GET payload while editing a
+        # retrieval setting. Preserve those no-op fields, but disallow rebinding.
+        if any(
+            key.startswith("embedding_") and value != current_config.get(key)
+            for key, value in config.items()
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="Change a knowledge base's embedding model through re-indexing.",
+            )
         if "rag_provider" in config:
             requested_provider = _validate_registered_provider(config.get("rag_provider"))
             service = get_kb_config_service()
@@ -2389,9 +2476,51 @@ async def connect_ima_route(payload: ConnectImaRequest):
     }
 
 
+def _resource_knowledge_bases() -> list[KnowledgeBaseInfo]:
+    result = []
+    for access in list_visible_kb_access():
+        try:
+            resource = resolve_kb(access["id"])
+            info = manager_for_resource(resource).get_info(resource.name, refresh_config=False)
+            result.append(
+                KnowledgeBaseInfo(
+                    **{
+                        **info,
+                        "id": resource.id,
+                        "name": resource.name,
+                        "is_default": info.get("is_default", False),
+                        "statistics": info.get("statistics", {}),
+                        "source": resource.source,
+                        "assigned": resource.assigned,
+                        "read_only": resource.read_only,
+                        "provenance_label": access.get("provenance_label", ""),
+                    }
+                )
+            )
+        except (HTTPException, ValueError, OSError):
+            result.append(
+                KnowledgeBaseInfo(
+                    id=access["id"],
+                    name=access["name"],
+                    is_default=False,
+                    statistics={},
+                    status="unavailable",
+                    available=False,
+                    read_only=access.get("read_only", False),
+                    provenance_label=access.get("provenance_label", ""),
+                )
+            )
+    return result
+
+
 @router.get("/knowledge-bases", response_model=list[KnowledgeBaseInfo])
 async def list_knowledge_bases():
     """List all available knowledge bases with their details."""
+    from deeptutor.services.workspace.knowledge import library_request
+    from deeptutor.services.workspace.resources import current_resources
+
+    if library_request.get() or current_resources().knowledge_bases is not None:
+        return _resource_knowledge_bases()
     try:
         manager = get_kb_manager()
         kb_names = manager.list_knowledge_bases()
@@ -2913,7 +3042,19 @@ async def upload_files(
                     "A knowledge base is locked to the engine it was created with."
                 ),
             )
-        _assert_provider_ready(kb_provider)
+        from contextlib import nullcontext
+
+        from deeptutor.services.embedding.config import embedding_config_scope
+        from deeptutor.services.rag.embedding_binding import binding_status
+
+        binding_state, bound_config = binding_status(kb_entry)
+        if binding_state in {"missing", "changed", "unconfigured"}:
+            raise HTTPException(
+                status_code=409,
+                detail="The bound embedding model is unavailable or changed. Check the model settings or select a model to re-index this knowledge base.",
+            )
+        with embedding_config_scope(bound_config) if bound_config else nullcontext():
+            _assert_provider_ready(kb_provider)
         _enforce_provider_formats(kb_provider, files)
         allowed_extensions = (
             set()
@@ -2979,6 +3120,7 @@ async def create_knowledge_base(
     search_mode: str = Form(""),
     rel_paths: list[str] = Form(None),
     indexing_llm: str = Form(""),
+    embedding_model: str = Form(""),
 ):
     """Create a new knowledge base and initialize it with files."""
     try:
@@ -2993,6 +3135,9 @@ async def create_knowledge_base(
             raise HTTPException(status_code=400, detail=f"Knowledge base '{name}' already exists")
 
         rag_provider = _validate_registered_provider(rag_provider)
+        embedding_selection, embedding_config = _resolve_embedding_form(
+            embedding_model, rag_provider
+        )
         indexing_snapshot = None
         if rag_provider == LIGHTRAG_PROVIDER:
             if indexing_llm:
@@ -3014,7 +3159,12 @@ async def create_knowledge_base(
                 status_code=400,
                 detail="PageIndex OSS mode must be 'flash', 'standard', or omitted.",
             )
-        _assert_provider_ready(rag_provider)
+        from contextlib import nullcontext
+
+        from deeptutor.services.embedding.config import embedding_config_scope
+
+        with embedding_config_scope(embedding_config) if embedding_config else nullcontext():
+            _assert_provider_ready(rag_provider)
         search_mode = str(search_mode or "").strip().lower()
         if search_mode:
             from deeptutor.services.rag.service import RAGService
@@ -3063,6 +3213,12 @@ async def create_knowledge_base(
         if name in manager.config.get("knowledge_bases", {}):
             manager.config["knowledge_bases"][name]["rag_provider"] = rag_provider
             manager.config["knowledge_bases"][name]["needs_reindex"] = False
+            if embedding_selection:
+                from deeptutor.services.rag.embedding_binding import binding_fields
+
+                manager.config["knowledge_bases"][name].update(
+                    binding_fields(embedding_selection, embedding_config)
+                )
             if rag_provider == PAGEINDEX_OSS_PROVIDER and pageindex_mode:
                 manager.config["knowledge_bases"][name]["pageindex_mode"] = pageindex_mode
             if search_mode:
@@ -3161,13 +3317,14 @@ async def run_reindex_task(
     signature_hash: str,
     indexing_snapshot=None,
     owner=None,
+    embedding_selection=None,
+    embedding_config=None,
 ) -> None:
-    """Re-index a KB's raw documents against the currently-active embedding config.
+    """Re-index a KB's raw documents with its selected embedding configuration.
 
-    Each ``(profile, model, dimension, base_url)`` combination gets its own
-    flat ``<kb>/version-N/`` storage directory. Prior versions are preserved
-    untouched so switching the active embedding model back to a
-    previously-indexed one reuses the existing version with no extra work.
+    The admitted model snapshot travels with the background job. A successful
+    build publishes the new binding; a failed build leaves the previous binding
+    and index versions intact.
     """
     if owner is not None and get_current_user_or_none() != owner:
         token = set_current_user(owner)
@@ -3178,6 +3335,8 @@ async def run_reindex_task(
                 task_id=task_id,
                 signature_hash=signature_hash,
                 indexing_snapshot=indexing_snapshot,
+                embedding_selection=embedding_selection,
+                embedding_config=embedding_config,
             )
         finally:
             reset_current_user(token)
@@ -3210,7 +3369,7 @@ async def run_reindex_task(
             progress_tracker.task_id = task_id
             progress_tracker.update(
                 ProgressStage.PROCESSING_DOCUMENTS,
-                message_key="Re-indexing {{count}} document(s) with the active embedding model...",
+                message_key="Re-indexing {{count}} document(s) with the selected embedding model...",
                 message_params={"count": len(file_paths)},
                 current=0,
                 total=len(file_paths),
@@ -3242,6 +3401,14 @@ async def run_reindex_task(
                 file_paths=file_paths,
                 progress_callback=_on_progress,
                 indexing_snapshot=indexing_snapshot,
+                **(
+                    {
+                        "embedding_selection": embedding_selection,
+                        "embedding_config": embedding_config,
+                    }
+                    if embedding_selection
+                    else {}
+                ),
             )
             if not success:
                 raise RuntimeError(f"Re-index found no valid documents to index in '{kb_name}'.")
@@ -3358,10 +3525,11 @@ async def reindex_knowledge_base(
     kb_name: str,
     background_tasks: BackgroundTasks,
     indexing_llm: str = Form(""),
+    embedding_model: str = Form(""),
 ):
     """Re-index ``kb_name`` through its bound RAG provider.
 
-    LlamaIndex still keys versions by the active embedding model. The other
+    LlamaIndex keys versions by the selected embedding model. The other
     providers keep synthetic provider-keyed versions, so they should rebuild
     without requiring an embedding-signature precheck.
     """
@@ -3373,7 +3541,17 @@ async def reindex_knowledge_base(
         kb_provider = _validate_registered_provider(
             kb_entry.get("rag_provider") or DEFAULT_PROVIDER
         )
-        _assert_provider_ready(kb_provider)
+        embedding_selection, embedding_config = _resolve_embedding_form(
+            embedding_model, kb_provider, kb_entry
+        )
+        if isinstance(embedding_model, str) and embedding_model:
+            force_reindex = True
+        from contextlib import nullcontext
+
+        from deeptutor.services.embedding.config import embedding_config_scope
+
+        with embedding_config_scope(embedding_config) if embedding_config else nullcontext():
+            _assert_provider_ready(kb_provider)
         indexing_snapshot = None
         if kb_provider == LIGHTRAG_PROVIDER:
             if indexing_llm:
@@ -3388,13 +3566,40 @@ async def reindex_knowledge_base(
 
         kb_dir = kb_base_dir / kb_name
         signature_hash = kb_provider
+        from deeptutor.services.rag.index_probe import has_ready_provider_index
+
+        if (
+            isinstance(embedding_model, str)
+            and embedding_model
+            and embedding_selection
+            and not has_ready_provider_index(kb_dir, kb_provider)
+            and not FileTypeRouter.collect_supported_files(kb_dir / "raw", recursive=True)
+        ):
+            from deeptutor.services.rag.embedding_binding import binding_fields
+
+            kb_entry.update(binding_fields(embedding_selection, embedding_config))
+            kb_entry["needs_reindex"] = False
+            kb_entry["status"] = "ready"
+            manager._save_config()
+            return {
+                "message": "Embedding model updated for the empty knowledge base.",
+                "task_id": None,
+                "noop": True,
+            }
         if provider_uses_embedding_versions(kb_provider):
-            from deeptutor.services.rag.embedding_signature import signature_from_embedding_config
+            from deeptutor.services.rag.embedding_signature import (
+                signature_from_config,
+                signature_from_embedding_config,
+            )
             from deeptutor.services.rag.index_versioning import (
                 find_matching_version,
             )
 
-            signature = signature_from_embedding_config()
+            signature = (
+                signature_from_config(embedding_config)
+                if embedding_config
+                else signature_from_embedding_config()
+            )
             if signature is None:
                 raise HTTPException(
                     status_code=409,
@@ -3438,6 +3643,11 @@ async def reindex_knowledge_base(
             signature_hash=signature_hash,
             indexing_snapshot=indexing_snapshot,
             owner=get_current_user(),
+            **(
+                {"embedding_selection": embedding_selection, "embedding_config": embedding_config}
+                if embedding_selection
+                else {}
+            ),
         )
 
         return {
@@ -3559,7 +3769,7 @@ async def retry_knowledge_base(
                     "Use re-index when you want to rebuild a healthy knowledge base."
                 ),
             )
-        return await reindex_knowledge_base(resolved_name, background_tasks, indexing_llm="")
+        return await reindex_knowledge_base(kb_name, background_tasks, indexing_llm="")
     except HTTPException:
         raise
     except Exception as e:
@@ -3612,11 +3822,20 @@ async def websocket_progress(websocket: WebSocket, kb_name: str):
     await websocket.accept()
 
     broadcaster = ProgressBroadcaster.get_instance()
+    subscription_key = kb_name
 
     try:
-        await broadcaster.connect(kb_name, websocket)
+        from deeptutor.services.workspace.knowledge import parse_kb_id
 
-        base_dir = _current_kb_base_dir()
+        if parse_kb_id(kb_name) is not None:
+            resource = resolve_kb(kb_name)
+            base_dir, kb_name = resource.base_dir, resource.name
+            # Qualified catalogs use the durable polling path below, avoiding
+            # the legacy broadcaster's unqualified name channel.
+            subscription_key = f"{base_dir}/{kb_name}"
+        else:
+            base_dir = _current_kb_base_dir()
+        await broadcaster.connect(subscription_key, websocket)
         progress_tracker = ProgressTracker(kb_name, base_dir)
         initial_progress = progress_tracker.get_progress()
         expected_task_id = websocket.query_params.get("task_id")
@@ -3854,7 +4073,7 @@ async def websocket_progress(websocket: WebSocket, kb_name: str):
         except Exception:
             pass
     finally:
-        await broadcaster.disconnect(kb_name, websocket)
+        await broadcaster.disconnect(subscription_key, websocket)
         try:
             await websocket.close()
         except Exception:

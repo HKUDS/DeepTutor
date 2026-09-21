@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -9,26 +10,18 @@ import pytest
 from deeptutor.core.stream import StreamEvent, StreamEventType
 from deeptutor.services.session.sqlite_store import SQLiteSessionStore
 from deeptutor.services.session.turn_runtime import TurnRuntimeManager
+from deeptutor.services.skill.service import SkillService
 
 
 async def _noop_async(*_args, **_kwargs):
     return None
 
 
-def _fake_skill_service() -> SimpleNamespace:
-    return SimpleNamespace(
-        summary_entries=lambda: [],
-        load_always_for_context=lambda: "",
-        load_for_context=lambda _skills: "",
-        list_skills=lambda: [],
-    )
-
-
 def _fake_persona_service() -> SimpleNamespace:
     return SimpleNamespace(load_for_context=lambda _name: "")
 
 
-def _configure_runtime(monkeypatch: pytest.MonkeyPatch, captured: dict) -> None:
+def _configure_runtime(monkeypatch: pytest.MonkeyPatch, captured: dict, tmp_path: Path) -> None:
     class FakeContextBuilder:
         def __init__(self, *_args, **_kwargs) -> None:
             pass
@@ -70,7 +63,10 @@ def _configure_runtime(monkeypatch: pytest.MonkeyPatch, captured: dict) -> None:
         "deeptutor.services.memory.get_memory_store",
         lambda: SimpleNamespace(read_l3_concat=lambda: "", emit=_noop_async),
     )
-    monkeypatch.setattr("deeptutor.services.skill.get_skill_service", _fake_skill_service)
+    monkeypatch.setattr(
+        "deeptutor.services.skill.get_skill_service",
+        lambda: SkillService(root=tmp_path / "skills", builtin_root=None),
+    )
     monkeypatch.setattr("deeptutor.services.persona.get_persona_service", _fake_persona_service)
 
 
@@ -104,7 +100,7 @@ async def test_quiz_requests_stay_in_chat_by_default(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     captured: dict = {"global_enabled": False}
-    _configure_runtime(monkeypatch, captured)
+    _configure_runtime(monkeypatch, captured, tmp_path)
 
     turn, session = await _run_quiz_turn(tmp_path, captured)
 
@@ -120,7 +116,7 @@ async def test_enabled_explicit_quiz_routes_for_one_turn(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     captured: dict = {"global_enabled": True}
-    _configure_runtime(monkeypatch, captured)
+    _configure_runtime(monkeypatch, captured, tmp_path)
 
     turn, session = await _run_quiz_turn(tmp_path, captured)
 
@@ -137,7 +133,7 @@ async def test_auto_route_false_overrides_global_setting(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     captured: dict = {"global_enabled": True}
-    _configure_runtime(monkeypatch, captured)
+    _configure_runtime(monkeypatch, captured, tmp_path)
 
     turn, session = await _run_quiz_turn(tmp_path, captured, {"auto_route": False})
 
@@ -151,7 +147,7 @@ async def test_per_turn_flag_opts_in_when_global_default_is_off(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     captured: dict = {"global_enabled": False}
-    _configure_runtime(monkeypatch, captured)
+    _configure_runtime(monkeypatch, captured, tmp_path)
 
     turn, session = await _run_quiz_turn(tmp_path, captured, {"auto_route": True})
 

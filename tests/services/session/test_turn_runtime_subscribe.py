@@ -525,6 +525,19 @@ async def test_reconnect_after_turn_completion_still_carries_message_ids(
                 content="hello there",
                 metadata={"call_kind": "llm_final_response"},
             )
+            yield StreamEvent(
+                type=StreamEventType.DONE,
+                source="chat",
+                metadata={
+                    "status": "completed",
+                    "usage_summary": {
+                        "total_tokens": 120,
+                        "total_calls": 1,
+                        "cache_hit_rate": 0.75,
+                        "ttft_seconds": 1.5,
+                    },
+                },
+            )
 
     async def _noop_title(**_kwargs):
         return None
@@ -562,12 +575,19 @@ async def test_reconnect_after_turn_completion_still_carries_message_ids(
     messages = await store.get_messages(session["id"])
     assert [m["role"] for m in messages] == ["user", "assistant"]
     real_assistant_id = messages[1]["id"]
+    saved_usage = next(
+        e["metadata"]["usage_summary"] for e in messages[1]["events"] if e["type"] == "done"
+    )
+    assert saved_usage["total_tokens"] == 120
+    assert saved_usage["cache_hit_rate"] == 0.75
 
     # The client reconnects now and asks to catch up from the start.
     events = [event async for event in runtime.subscribe_turn(turn_id, after_seq=0)]
     done_events = [e for e in events if e["type"] == "done"]
     assert len(done_events) == 1
     assert done_events[0]["metadata"].get("assistant_message_id") == real_assistant_id
+
+    assert done_events[0]["metadata"]["usage_summary"] == saved_usage
 
 
 def _open_mastery_question(path_id: str, *, question_id: str = "q-1"):

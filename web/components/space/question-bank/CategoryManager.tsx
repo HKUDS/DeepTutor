@@ -121,7 +121,7 @@ export default function CategoryManager({
                     if (
                       window.confirm(
                         t(
-                          "Delete this category? The questions themselves stay in your bank.",
+                          "Delete this tag? The questions themselves stay in your bank.",
                         ),
                       )
                     )
@@ -138,7 +138,7 @@ export default function CategoryManager({
         ))}
         {categories.length === 0 && (
           <p className="py-2 text-center text-[12px] text-[var(--muted-foreground)]">
-            {t("No categories yet.")}
+            {t("No tags yet.")}
           </p>
         )}
       </div>
@@ -155,7 +155,7 @@ export default function CategoryManager({
               if (ok) setNewName("");
             });
           }}
-          placeholder={t("New category name...")}
+          placeholder={t("New tag name...")}
           className="min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-1.5 text-[12px] text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-foreground)] focus:border-[var(--primary)]/50"
         />
         <button

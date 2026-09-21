@@ -89,6 +89,8 @@ def test_quiz_attempt_syncs_focus_check_to_question_bank(tmp_path, monkeypatch) 
     assert entry["session_title"] == "Page 1 chat"
     assert entry["question"] == "Which chapter?"
     assert entry["source"] == "book"
+    assert entry["assessment_type"] == "focus_check"
+    assert entry["result"] == "incorrect"
     assert entry["material_id"] == "book-1"
     assert entry["material_title"] == "Compiled Book"
     assert entry["section_id"] == "page-1"

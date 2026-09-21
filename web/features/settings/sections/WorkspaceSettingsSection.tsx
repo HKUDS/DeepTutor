@@ -1,188 +1,150 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { FolderOpen, Loader2, RotateCcw } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import Link from 'next/link'
+import { Archive, ArchiveRestore, Folder, FolderInput, Globe2, Pencil, Plus, Settings2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-
+import { SettingSection, SettingsPageHeader, inputClass, subPanelClass } from '@/components/settings/shared'
+import { WorkspaceResourcePicker } from '@/components/workspaces/WorkspaceResourcePicker'
+import { SystemWorkspaceSnapshot } from '@/components/workspaces/SystemWorkspaceSnapshot'
 import {
-  SettingRow,
-  SettingSection,
-  SettingsPageHeader,
-  inputClass,
-} from '@/components/settings/shared'
-import { apiFetch, apiUrl } from '@/lib/api'
-import { notify } from '@/lib/notifications'
+  getWorkspaceCatalog, saveWorkspace, migrateWorkspace, workspaceChatHref, inheritedWorkspaceResources,
+  type WorkspaceCatalog, type ChatWorkspaceRegistration,
+} from '@/lib/workspaces-api'
 
-type WorkspaceSettings = {
-  workspace_id: string
-  path: string
-  display_name: string
-  is_default: boolean
-  locked: boolean
-  status: 'ready' | 'invalid'
-  security_level: 'hard' | 'best_effort' | 'off'
-  error?: string
+type RunAction = (action: () => Promise<unknown>) => Promise<boolean>
+const actionClass = 'inline-flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-2 text-xs text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-50'
+const primaryClass = 'inline-flex items-center justify-center gap-1.5 rounded-lg bg-[var(--foreground)] px-3 py-2 text-sm text-[var(--background)] disabled:opacity-50'
+
+function WorkspaceRow({ row, run, busy }: { row: ChatWorkspaceRegistration; run: RunAction; busy: boolean }) {
+  const { t } = useTranslation()
+  const [resourcesOpen, setResourcesOpen] = useState(false)
+  const [resources, setResources] = useState(row.resources ?? inheritedWorkspaceResources())
+  const [editing, setEditing] = useState(false)
+  const [name, setName] = useState(row.display_name)
+  const [moving, setMoving] = useState(false)
+  const [destination, setDestination] = useState('')
+  const custom = row.kind === 'workspace'
+  const Icon = row.kind === 'system' ? Settings2 : row.kind === 'general' ? Globe2 : Folder
+  const label = row.kind === 'system' ? t('System workspace') : row.kind === 'general' ? t('Default workspace') : row.display_name
+  return (
+    <article aria-label={label} className="group min-w-0 border-b border-[var(--border)] py-4 last:border-b-0">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <Icon size={18} strokeWidth={1.6} className="shrink-0 text-[var(--muted-foreground)]" />
+        <h3 className="min-w-0 flex-1 break-words text-[14px] font-medium">{label}</h3>
+        {row.archived && <span className="text-xs text-[var(--muted-foreground)]">{t('Archived')}</span>}
+        <div className="flex items-center gap-0.5 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+          {row.kind !== 'system' && !row.archived && row.status === 'ready' && !busy && (
+            <Link className={actionClass} href={row.kind === 'general' ? '/chat?dt_workspace=' : workspaceChatHref(row.workspace_id)}>
+              <Plus size={14} />{t('New chat')}
+            </Link>
+          )}
+          {row.kind !== 'system' && !row.archived && <button type="button" className={actionClass} onClick={() => { setResources(row.resources ?? inheritedWorkspaceResources()); setResourcesOpen(!resourcesOpen) }}><Settings2 size={14} />{t('Assigned resources')}</button>}
+          {custom && <button type="button" className={actionClass} aria-label={t('Rename workspace')} title={t('Rename workspace')} onClick={() => { setName(row.display_name); setEditing(!editing); setMoving(false) }}><Pencil size={14} /></button>}
+          <button type="button" className={actionClass} aria-label={t('Move folder')} title={t('Move folder')} onClick={() => { setMoving(!moving); setEditing(false); setDestination('') }}><FolderInput size={14} /></button>
+          {custom && <button type="button" className={actionClass} aria-label={row.archived ? t('Restore workspace') : t('Archive workspace')} title={row.archived ? t('Restore workspace') : t('Archive workspace')} onClick={() => void run(() => saveWorkspace({ archived: !row.archived }, row.workspace_id))}>{row.archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}</button>}
+        </div>
+      </div>
+      <div className="mt-1.5 min-w-0 sm:pl-[30px]">
+        {!custom && <p className="mb-2 text-[12.5px] leading-relaxed text-[var(--muted-foreground)]">{row.kind === 'system' ? t('Sanitized configuration snapshots, Skill files and MCP inventory. API keys and tokens remain in private configuration.') : t('Conversations without a selected workspace share files in this folder.')}</p>}
+        <p className="select-all break-all font-mono text-[11.5px] leading-relaxed text-[var(--muted-foreground)]">{row.path}</p>
+        {row.archived && <p className="mt-1 text-xs text-[var(--muted-foreground)]">{t('Archived. Existing conversations and files are kept.')}</p>}
+        {resourcesOpen && (
+          <form className={`${subPanelClass} mt-3 space-y-3 p-4`} onSubmit={async event => { event.preventDefault(); if (await run(() => saveWorkspace({ resources }, row.workspace_id))) setResourcesOpen(false) }}>
+            <WorkspaceResourcePicker value={resources} onChange={setResources} workspaceId={row.workspace_id} />
+            <p className="text-xs text-[var(--muted-foreground)]">{t('Changes apply to subsequent turns. Existing conversations and files are kept.')}</p>
+            <div className="flex gap-2"><button type="submit" className={primaryClass}>{t('Save')}</button><button type="button" className={actionClass} onClick={() => setResourcesOpen(false)}>{t('Cancel')}</button></div>
+          </form>
+        )}
+        {editing && (
+          <form className="mt-3 flex flex-wrap items-end gap-2" onSubmit={async event => { event.preventDefault(); if (await run(() => saveWorkspace({ name: name.trim() }, row.workspace_id))) setEditing(false) }}>
+            <label className="min-w-0 flex-1 text-xs">{t('Workspace name')}<input autoFocus className={`${inputClass} mt-1`} value={name} onChange={event => setName(event.target.value)} maxLength={100} required /></label>
+            <button className={primaryClass} disabled={!name.trim()} type="submit">{t('Save')}</button>
+            <button className={actionClass} type="button" onClick={() => setEditing(false)}>{t('Cancel')}</button>
+          </form>
+        )}
+        {moving && (
+          <form className={`${subPanelClass} mt-3 space-y-3 p-4`} onSubmit={async event => { event.preventDefault(); if (await run(() => migrateWorkspace(destination.trim(), row.workspace_id))) setMoving(false) }}>
+            <p className="text-xs text-[var(--muted-foreground)]">{row.follows_root ? t('Follows root') : t('Custom location')}</p>
+            <label className="block text-xs">{t('New storage folder')}<input autoFocus className={`${inputClass} mt-1 font-mono`} value={destination} onChange={event => setDestination(event.target.value)} required placeholder={t('Enter a destination folder that does not exist yet')} /></label>
+            <p className="text-xs leading-relaxed text-[var(--muted-foreground)]">{t('Copy and verify before switching. The workspace ID and conversation bindings stay unchanged; the old folder is kept as a backup.')}</p>
+            <div className="flex gap-2"><button type="submit" disabled={!destination.trim()} className={primaryClass}>{t('Start migration')}</button><button type="button" className={actionClass} onClick={() => setMoving(false)}>{t('Cancel')}</button></div>
+          </form>
+        )}
+        {row.error && <p role="alert" className="mt-2 text-xs text-[var(--destructive)]">{row.error}</p>}
+        {row.kind === 'system' && <SystemWorkspaceSnapshot />}
+      </div>
+    </article>
+  )
 }
 
 export default function WorkspaceSettingsSection() {
-  const { i18n } = useTranslation()
-  const zh = i18n.language?.toLowerCase().startsWith('zh')
-  const copy = zh
-    ? {
-        title: 'Workspace',
-        description:
-          '选择 DeepTutor 读取资料和保存生成内容的文件夹。设置、密钥、数据库和记忆不会放进这里。',
-        location: '当前文件夹',
-        locationDescription:
-          'Agent 可读取整个 Workspace；新建、下载和生成的内容默认只写入 outputs/。远程部署中的路径指服务器文件系统。',
-        save: '使用此文件夹',
-        reset: '恢复默认',
-        loading: '正在读取 Workspace…',
-        ready: '可用',
-        invalid: '不可用',
-        hard: '文件系统硬隔离',
-        bestEffort: '本地兼容模式：执行工具没有完整文件系统隔离',
-        off: '执行工具不可用',
-        locked: '此 Docker/服务器部署已在启动时锁定 Workspace。',
-        saved: 'Workspace 已更新',
-        resetDone: '已恢复默认 Workspace',
-        failed: 'Workspace 更新失败',
-      }
-    : {
-        title: 'Workspace',
-        description:
-          'Choose the folder DeepTutor reads from and uses for generated content. Settings, secrets, databases, and memory stay elsewhere.',
-        location: 'Current folder',
-        locationDescription:
-          'The agent can read this workspace; new, downloaded, and generated content goes only to outputs/ by default. On a remote deployment this is a server path.',
-        save: 'Use this folder',
-        reset: 'Restore default',
-        loading: 'Loading workspace…',
-        ready: 'Ready',
-        invalid: 'Unavailable',
-        hard: 'Filesystem-enforced isolation',
-        bestEffort: 'Local compatibility mode: exec lacks full filesystem isolation',
-        off: 'Execution tools unavailable',
-        locked: 'This Docker/server deployment locks the workspace at startup.',
-        saved: 'Workspace updated',
-        resetDone: 'Default workspace restored',
-        failed: 'Could not update workspace',
-      }
-  const [settings, setSettings] = useState<WorkspaceSettings | null>(null)
+  const { t } = useTranslation()
+  const [catalog, setCatalog] = useState<WorkspaceCatalog | null>(null)
+  const [root, setRoot] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [resources, setResources] = useState(inheritedWorkspaceResources)
+  const [name, setName] = useState('')
   const [path, setPath] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-
-  const load = async () => {
-    setLoading(true)
+  const [notice, setNotice] = useState('')
+  const refresh = useCallback(async () => {
+    const next = await getWorkspaceCatalog()
+    setCatalog(next)
+    setRoot(next.root)
     setError('')
-    try {
-      const response = await apiFetch(apiUrl('/api/settings/workspace'))
-      const payload = (await response.json().catch(() => ({}))) as
-        WorkspaceSettings | { detail?: string }
-      if (!response.ok) throw new Error('detail' in payload ? payload.detail : copy.failed)
-      const next = payload as WorkspaceSettings
-      setSettings(next)
-      setPath(next.path)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : copy.failed)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    void load()
-    // Language only changes copy; it must not refetch or replace an in-progress edit.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  const save = async (nextPath: string | null) => {
-    setSaving(true)
+  useEffect(() => { void refresh().catch(err => setError(String(err.message))) }, [refresh])
+  const run: RunAction = async action => {
+    setBusy(true)
     setError('')
+    setNotice('')
     try {
-      const response = await apiFetch(apiUrl('/api/settings/workspace'), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: nextPath }),
-      })
-      const payload = (await response.json().catch(() => ({}))) as
-        WorkspaceSettings | { detail?: string }
-      if (!response.ok) throw new Error('detail' in payload ? payload.detail : copy.failed)
-      const next = payload as WorkspaceSettings
-      setSettings(next)
-      setPath(next.path)
-      notify(nextPath === null ? copy.resetDone : copy.saved, { tone: 'success' })
+      await action()
+      await refresh()
+      setNotice(t('Workspace updated.'))
+      return true
     } catch (err) {
-      const message = err instanceof Error ? err.message : copy.failed
-      setError(message)
-      notify(message, { tone: 'error' })
-    } finally {
-      setSaving(false)
-    }
+      setError(err instanceof Error ? err.message : String(err))
+      return false
+    } finally { setBusy(false) }
   }
-
-  const securityCopy = settings
-    ? settings.security_level === 'hard'
-      ? copy.hard
-      : settings.security_level === 'best_effort'
-        ? copy.bestEffort
-        : copy.off
-    : ''
-
   return (
     <div>
-      <SettingsPageHeader title={copy.title} description={copy.description} />
-      {loading ? (
-        <div className="flex items-center gap-2 text-[13px] text-[var(--muted-foreground)]">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          {copy.loading}
-        </div>
-      ) : (
-        <SettingSection title={copy.location} description={copy.locationDescription}>
-          <SettingRow
-            title={settings?.display_name || copy.location}
-            description={`${settings?.status === 'ready' ? copy.ready : copy.invalid} · ${securityCopy}`}
-            control={
-              <span className="flex max-w-[min(62vw,680px)] items-center gap-2">
-                <FolderOpen className="h-4 w-4 shrink-0 text-[var(--muted-foreground)]" />
-                <input
-                  className={`${inputClass} min-w-64 font-mono text-[12px]`}
-                  value={path}
-                  disabled={saving || settings?.locked}
-                  onChange={event => setPath(event.target.value)}
-                  aria-label={copy.location}
-                />
-                <button
-                  type="button"
-                  disabled={saving || settings?.locked || !path.trim()}
-                  onClick={() => void save(path.trim())}
-                  className="shrink-0 rounded-lg bg-[var(--foreground)] px-3 py-2 text-[12px] font-medium text-[var(--background)] disabled:opacity-40"
-                >
-                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : copy.save}
-                </button>
-                <button
-                  type="button"
-                  disabled={saving || settings?.locked || settings?.is_default}
-                  onClick={() => void save(null)}
-                  className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-[var(--border)] px-3 py-2 text-[12px] disabled:opacity-40"
-                >
-                  <RotateCcw className="h-3.5 w-3.5" />
-                  {copy.reset}
-                </button>
-              </span>
-            }
-          />
-          {settings?.locked && (
-            <p className="mt-2 text-[12px] text-[var(--muted-foreground)]">{copy.locked}</p>
-          )}
-          {error && (
-            <p className="mt-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-[12px] text-red-600 dark:text-red-300">
-              {error}
-            </p>
-          )}
-        </SettingSection>
+      <SettingsPageHeader title={t('Workspaces')} description={t('Keep conversations, learning materials and progress together in one workspace.')} actions={
+        <button type="button" disabled={busy || !catalog} onClick={() => setCreating(!creating)} className={primaryClass}><Plus size={15} />{t('New workspace')}</button>
+      } />
+      {error && <div role="alert" className="mb-4 rounded-lg border border-[var(--destructive)] p-3 text-sm text-[var(--destructive)]">{error}{!catalog && <button className="ml-3 underline" onClick={() => void refresh().catch(err => setError(String(err.message)))}>{t('Retry')}</button>}</div>}
+      {(busy || notice) && <p role="status" className="mb-4 text-sm text-[var(--muted-foreground)]">{busy ? t('Working. Migration copies and verifies your files; please wait…') : notice}</p>}
+      {!catalog ? (!error && <div aria-busy="true" className="h-44 animate-pulse rounded-xl bg-[var(--muted)]" />) : (
+        <fieldset disabled={busy} className="min-w-0 disabled:opacity-70">
+          <SettingSection title={t('Custom workspaces')} description={t('Books, Mastery Path, Reading, Watching and conversations are isolated by workspace.')}>
+            {creating && (
+              <form className={`${subPanelClass} my-4 space-y-3 p-4 sm:p-5`} onSubmit={async event => {
+                event.preventDefault()
+                if (await run(() => saveWorkspace({ name: name.trim(), resources, ...(path.trim() ? { path: path.trim() } : {}) }))) { setName(''); setPath(''); setResources(inheritedWorkspaceResources()); setCreating(false) }
+              }}>
+                <label className="block text-sm">{t('Workspace name')}<input autoFocus className={`${inputClass} mt-1`} value={name} onChange={event => setName(event.target.value)} required maxLength={100} placeholder={t('e.g. Probability')} /></label>
+                <label className="block text-sm">{t('Existing folder path (optional)')}<input className={`${inputClass} mt-1 font-mono`} value={path} onChange={event => setPath(event.target.value)} placeholder={t('Leave empty to create under root')} /></label>
+                <p className="text-xs leading-relaxed text-[var(--muted-foreground)]">{t('Place files in the folder for the agent to read. Generated files go into outputs/.')}</p>
+                <WorkspaceResourcePicker value={resources} onChange={setResources} />
+                <div className="flex gap-2"><button type="submit" disabled={!name.trim()} className={primaryClass}>{t('Create workspace')}</button><button type="button" className={actionClass} onClick={() => setCreating(false)}>{t('Cancel')}</button></div>
+              </form>
+            )}
+            {catalog.workspaces.filter(row => row.kind === 'workspace').map(row => <WorkspaceRow key={row.workspace_id} row={row} run={run} busy={busy} />)}
+            {!catalog.workspaces.some(row => row.kind === 'workspace') && !creating && <div className="flex flex-col items-center gap-3 py-10 text-center text-[var(--muted-foreground)]"><Folder size={28} strokeWidth={1.2} /><p className="max-w-sm text-sm leading-relaxed">{t('Create a workspace for a topic or project so related conversations share its files.')}</p></div>}
+          </SettingSection>
+          <SettingSection title={t('Built-in workspaces')}>
+            {catalog.workspaces.filter(row => row.kind !== 'workspace').map(row => <WorkspaceRow key={row.workspace_id} row={row} run={run} busy={busy} />)}
+          </SettingSection>
+          <SettingSection title={t('Storage location')} description={t('Workspaces default to root / workspace ID. Changing root migrates folders that follow it; custom locations stay in place. Remote deployments use server folders.')}>
+            <form className="space-y-3 py-4" onSubmit={async event => { event.preventDefault(); await run(() => migrateWorkspace(root.trim())) }}>
+              <label className="block text-sm">{t('Workspace root folder')}<input className={`${inputClass} mt-2 font-mono`} value={root} onChange={event => setRoot(event.target.value)} required /></label>
+              {root.trim() !== catalog.root && <div className="flex flex-wrap items-center gap-3"><button type="submit" disabled={!root.trim()} className={primaryClass}>{t('Migrate to new root')}</button><p className="text-xs text-[var(--muted-foreground)]">{t('Old folders are kept as a backup. Finish running conversations before migrating.')}</p></div>}
+            </form>
+          </SettingSection>
+        </fieldset>
       )}
     </div>
   )

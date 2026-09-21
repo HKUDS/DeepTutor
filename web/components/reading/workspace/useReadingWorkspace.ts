@@ -1,5 +1,7 @@
 "use client";
 
+import { readingCollectionRoute, readingSessionRoute } from "@/lib/learning-routes";
+
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -415,7 +417,7 @@ export function useReadingWorkspace(
   const newConversation = useCallback(() => {
     if (!workspace) return;
     newSession({ ...sessionConfiguration, capability: null });
-    router.push(`/reading/${workspace.workspace_id}`);
+    router.push(readingCollectionRoute(workspace.workspace_id));
   }, [
     newSession,
     router,
@@ -447,7 +449,7 @@ export function useReadingWorkspace(
     window.history.replaceState(
       null,
       "",
-      `/reading/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(state.sessionId)}`,
+      readingSessionRoute(workspaceId, state.sessionId),
     );
     void listReadingConversations(workspaceId)
       .then(setConversations)
@@ -472,7 +474,7 @@ export function useReadingWorkspace(
       if (sessionId === sessionIdParam) {
         cancelStreamingTurn();
         newSession({ ...sessionConfiguration, capability: null });
-        router.push(`/reading/${workspaceId}`);
+        router.push(readingCollectionRoute(workspaceId));
       }
     },
     [
@@ -487,7 +489,7 @@ export function useReadingWorkspace(
 
   const openConversation = useCallback(
     async (sessionId: string) => {
-      router.push(`/reading/${workspaceId}/sessions/${sessionId}`);
+      router.push(readingSessionRoute(workspaceId, sessionId));
       await loadSession(sessionId);
       configureSession(sessionConfiguration, sessionId);
     },

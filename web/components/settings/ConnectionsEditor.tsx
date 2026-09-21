@@ -8,7 +8,6 @@ import {
   ChevronDown,
   Eye,
   EyeOff,
-  Loader2,
   Plus,
   Trash2,
   X,
@@ -16,7 +15,7 @@ import {
 import { useTranslation } from "react-i18next";
 
 import ProviderIcon from "@/components/common/ProviderIcon";
-import { apiFetch, apiUrl } from "@/lib/api";
+import { ProviderModelDiscovery } from "./ProviderModelDiscovery";
 import {
   CONNECTABLE_SERVICES,
   type CatalogConnection,
@@ -52,14 +51,14 @@ const SERVICE_LABEL: Record<ServiceName, { en: string; zh: string }> = {
 };
 
 const SERVICE_HREF: Record<ServiceName, string> = {
-  llm: "/settings#llm",
-  task: "/settings#task-models",
-  embedding: "/settings#embedding",
-  search: "/settings#search",
-  tts: "/settings#tts",
-  stt: "/settings#stt",
-  imagegen: "/settings#imagegen",
-  videogen: "/settings#videogen",
+  llm: "/settings/llm",
+  task: "/settings/task-models",
+  embedding: "/settings/embedding",
+  search: "/settings/search",
+  tts: "/settings/tts",
+  stt: "/settings/stt",
+  imagegen: "/settings/imagegen",
+  videogen: "/settings/videogen",
 };
 
 type ServiceLink = { service: ServiceName; profileId: string };
@@ -431,6 +430,7 @@ function ConnectionRow({
             </div>
             <input
               className={inputClass}
+              aria-label={t("Name")}
               value={connection.name}
               onChange={(event) => onField("name", event.target.value)}
             />
@@ -441,6 +441,7 @@ function ConnectionRow({
             </div>
             <input
               className={inputClass}
+              aria-label={t("Base URL")}
               value={connection.base_url}
               placeholder={target?.default_base_url || "https://…/v1"}
               onChange={(event) => onField("base_url", event.target.value)}
@@ -456,6 +457,7 @@ function ConnectionRow({
                 autoComplete="new-password"
                 spellCheck={false}
                 className={`${inputClass} pr-10 font-mono`}
+                aria-label={t("API Key")}
                 value={connection.api_key}
                 onChange={(event) => onField("api_key", event.target.value)}
                 placeholder="sk-..."
@@ -478,6 +480,22 @@ function ConnectionRow({
                 "Saving pushes these values into every profile this connection supplies.",
               )}
             </p>
+          </div>
+          <div className="sm:col-span-2">
+            <ProviderModelDiscovery
+              input={{
+                binding: target?.services.llm?.provider || connection.provider,
+                base_url:
+                  connection.base_url ||
+                  target?.services.llm?.base_url ||
+                  target?.default_base_url ||
+                  "",
+                api_key: connection.api_key,
+                connection_id: connection.id,
+                extra_headers: connection.extra_headers,
+                api_version: connection.api_version,
+              }}
+            />
           </div>
         </div>
       )}
@@ -510,9 +528,6 @@ function AddConnectionPanel({
   const [showKey, setShowKey] = useState(false);
   const [selected, setSelected] = useState<Set<ServiceName>>(new Set());
   const [llmModel, setLlmModel] = useState("");
-  const [fetchedModels, setFetchedModels] = useState<string[]>([]);
-  const [fetching, setFetching] = useState(false);
-  const [fetchError, setFetchError] = useState("");
 
   const target = targets.find((item) => item.provider === provider) ?? null;
   const supported = CONNECTABLE_SERVICES.filter(
@@ -524,8 +539,6 @@ function AddConnectionPanel({
 
   const choose = (next: string) => {
     setProvider(next);
-    setFetchedModels([]);
-    setFetchError("");
     setLlmModel("");
     const spec = targets.find((item) => item.provider === next);
     // Everything the vendor can serve starts checked: the whole point is that
@@ -535,38 +548,6 @@ function AddConnectionPanel({
         CONNECTABLE_SERVICES.filter((service) => spec?.services[service]),
       ),
     );
-  };
-
-  const fetchModels = async () => {
-    if (!target) return;
-    setFetching(true);
-    setFetchError("");
-    try {
-      const response = await apiFetch(apiUrl("/api/settings/fetch-models"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          binding: target.services.llm?.provider || provider,
-          base_url: baseUrl.trim() || target.services.llm?.base_url || "",
-          api_key: apiKey || null,
-        }),
-      });
-      const payload = (await response.json()) as {
-        models?: { id: string }[];
-        detail?: string;
-      };
-      if (!response.ok) throw new Error(payload.detail || "request failed");
-      const ids = (payload.models ?? []).map((item) => item.id);
-      setFetchedModels(ids);
-      if (ids.length === 0)
-        setFetchError(t("The provider returned no models."));
-    } catch (error) {
-      setFetchError(
-        error instanceof Error ? error.message : t("Could not reach provider."),
-      );
-    } finally {
-      setFetching(false);
-    }
   };
 
   const toggle = (service: ServiceName) => {
@@ -597,6 +578,7 @@ function AddConnectionPanel({
             )}
             <select
               className={`${selectClass} ${provider ? "pl-9" : ""}`}
+              aria-label={t("Provider")}
               value={provider}
               onChange={(event) => choose(event.target.value)}
             >
@@ -622,6 +604,7 @@ function AddConnectionPanel({
           </div>
           <input
             className={inputClass}
+            aria-label={t("Base URL")}
             value={baseUrl}
             placeholder={target?.default_base_url || "https://…/v1"}
             onChange={(event) => setBaseUrl(event.target.value)}
@@ -640,6 +623,7 @@ function AddConnectionPanel({
               autoComplete="new-password"
               spellCheck={false}
               className={`${inputClass} pr-10 font-mono`}
+              aria-label={t("API Key")}
               value={apiKey}
               onChange={(event) => setApiKey(event.target.value)}
               placeholder="sk-..."
@@ -662,6 +646,22 @@ function AddConnectionPanel({
 
       {target && (
         <div className="mt-4">
+          <ProviderModelDiscovery
+            input={{
+              binding: target.services.llm?.provider || provider,
+              base_url:
+                baseUrl.trim() ||
+                target.services.llm?.base_url ||
+                target.default_base_url,
+              api_key: apiKey,
+            }}
+            onPick={target.services.llm ? setLlmModel : undefined}
+          />
+        </div>
+      )}
+
+      {target && (
+        <div className="mt-4">
           <div className="mb-2 text-[12px] text-[var(--muted-foreground)]">
             {t("Configure these services")}
           </div>
@@ -680,6 +680,7 @@ function AddConnectionPanel({
                     type="button"
                     onClick={() => toggle(service)}
                     aria-pressed={checked}
+                    aria-label={label(service)}
                     className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
                       checked
                         ? "border-[var(--foreground)] bg-[var(--foreground)] text-[var(--background)]"
@@ -693,49 +694,13 @@ function AddConnectionPanel({
                   </span>
                   {service === "llm" ? (
                     <div className="flex min-w-0 flex-1 items-center gap-2">
-                      {fetchedModels.length > 0 ? (
-                        <div className="relative min-w-0 flex-1">
-                          <select
-                            className={`${selectClass} h-8 py-0 text-[12px]`}
-                            value={llmModel}
-                            onChange={(event) =>
-                              setLlmModel(event.target.value)
-                            }
-                          >
-                            <option className={selectOptionClass} value="">
-                              {t("Select a model...")}
-                            </option>
-                            {fetchedModels.map((id) => (
-                              <option
-                                className={selectOptionClass}
-                                key={id}
-                                value={id}
-                              >
-                                {id}
-                              </option>
-                            ))}
-                          </select>
-                          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
-                        </div>
-                      ) : (
-                        <input
-                          className={`${inputClass} h-8 min-w-0 flex-1 py-0 font-mono text-[12px]`}
-                          value={llmModel}
-                          placeholder={t("Model ID")}
-                          onChange={(event) => setLlmModel(event.target.value)}
-                        />
-                      )}
-                      <button
-                        type="button"
-                        onClick={fetchModels}
-                        disabled={fetching || !apiKey.trim()}
-                        className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)] px-2.5 text-[11px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] disabled:opacity-40"
-                      >
-                        {fetching && (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        )}
-                        {t("List models")}
-                      </button>
+                      <input
+                        aria-label={t("Model ID")}
+                        className={`${inputClass} h-8 min-w-0 flex-1 py-0 font-mono text-[12px]`}
+                        value={llmModel}
+                        placeholder={t("Model ID")}
+                        onChange={(event) => setLlmModel(event.target.value)}
+                      />
                     </div>
                   ) : (
                     <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-[var(--muted-foreground)]">
@@ -746,11 +711,6 @@ function AddConnectionPanel({
               );
             })}
           </div>
-          {fetchError && (
-            <p className="mt-1.5 text-[11px] text-amber-600 dark:text-amber-400">
-              {fetchError}
-            </p>
-          )}
           {selected.has("llm") && !llmModel.trim() && (
             <p className="mt-1.5 text-[11px] text-[var(--muted-foreground)]">
               {t(

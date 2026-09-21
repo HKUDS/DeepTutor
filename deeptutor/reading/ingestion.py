@@ -35,6 +35,7 @@ from deeptutor.services.web_source.snapshot_assets import (
     ImageFetcher,
     localize_snapshot_images,
 )
+from deeptutor.services.workspace.activity import workspace_writer
 from deeptutor.tools.web_fetch import FetchOutcome, fetch_url_as_markdown
 
 logger = logging.getLogger(__name__)
@@ -198,6 +199,7 @@ class ReadingIngestionService:
             status=IngestionStatus.QUEUED,
         )
 
+    @workspace_writer
     async def process_url(
         self, material_id: str, *, preferred_languages: Sequence[str] = ("zh-CN", "zh", "en")
     ) -> MaterialRecord:
@@ -466,6 +468,7 @@ class ReadingIngestionService:
             progress=5,
         )
 
+    @workspace_writer
     async def process_media(
         self,
         material_id: str,
@@ -1154,7 +1157,9 @@ def _media_identity(display_name: str) -> tuple[SourceKind, str, str]:
 
 def media_cover_url(material_id: str) -> str:
     """Where the poster frame captured at import time is served from."""
-    return f"/api/reading/materials/{material_id}/assets/{MEDIA_COVER_ASSET}"
+    from deeptutor.services.workspace.context import workspace_url
+
+    return workspace_url(f"/api/reading/materials/{material_id}/assets/{MEDIA_COVER_ASSET}")
 
 
 def _rebase_cues(spoken: Any, start: float, end: float) -> list[TranscriptSegment]:

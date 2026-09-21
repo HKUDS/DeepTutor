@@ -17,6 +17,8 @@ const RUNTIME_ONLY_CONFIG_KEYS = new Set([
   "followup_question_context",
   "selection_tutor_context",
   "subagent_consult_budget",
+  "consult_partner_id",
+  "partner_discussion_group_id",
 ]);
 
 function invalid(message: string): never {
@@ -66,6 +68,7 @@ export function buildStartTurnInput(input: StartTurnInput): StartTurnCommand {
   }
 
   return buildStartTurn({
+    ...(input.workspaceId !== undefined ? { workspace_id: input.workspaceId } : {}),
     content: input.content,
     capability: input.capability === undefined ? "chat" : input.capability,
     session_id: input.sessionId ?? null,
@@ -82,6 +85,7 @@ export function buildStartTurnInput(input: StartTurnInput): StartTurnCommand {
     reading_references: input.readingReferences ?? [],
     memory_references: input.memoryReferences ?? [],
     skills: input.skills ?? [],
+    mcp: input.mcp ?? [],
     persona: input.persona ?? null,
     llm_selection: input.llmSelection ?? null,
     workspace_mode: input.workspaceMode ?? null,
@@ -107,6 +111,8 @@ export function buildStartTurnInput(input: StartTurnInput): StartTurnCommand {
     followup_question_context: input.followupQuestionContext ?? null,
     selection_tutor_context: input.selectionTutorContext ?? null,
     subagent_consult_budget: input.subagentConsultBudget ?? null,
+    ...(input.consultPartnerId ? { consult_partner_id: input.consultPartnerId } : {}),
+    ...(input.partnerDiscussionGroupId ? { partner_discussion_group_id: input.partnerDiscussionGroupId } : {}),
     auto_route: input.autoRoute ?? null,
   });
 }

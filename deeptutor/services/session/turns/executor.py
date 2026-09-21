@@ -21,6 +21,7 @@ from deeptutor.services.session.workspace_preferences import (
     WORKSPACE_MODE_MASTERY,
     WORKSPACE_MODE_READING,
 )
+from deeptutor.services.workspace.activity import workspace_writer
 
 from .._turn_runtime_shared import (
     _assemble_persisted_answer,
@@ -34,7 +35,6 @@ from .._turn_runtime_shared import (
     _format_selection_tutor_context,
     _mastery_action_context,
     _mastery_path_id,
-    _narration_marker_call_id,
     _partner_group_references,
     _reading_action_context,
     _reading_material_id,
@@ -47,8 +47,9 @@ from .._turn_runtime_shared import (
     _resolve_selection_tutor_context,
     _resolve_turn_failure_metadata,
     _resolve_turn_outcome,
+    _retracted_round_call_id,
     _should_capture_assistant_content,
-    _stamp_ask_user_content_offset,
+    _stamp_content_offset,
     _timed_media_id,
     _timed_media_viewport,
     _topic_material_manifest,
@@ -135,6 +136,7 @@ class TurnExecutor:
             ui_language: str,
         ) -> None: ...
 
+    @workspace_writer
     async def _run_turn(self, execution: _TurnExecution) -> None:
         payload = execution.payload
         session_id = execution.session_id
@@ -147,18 +149,20 @@ class TurnExecutor:
         assistant_events: list[dict[str, Any]] = []
         assistant_content = ""
         provider_response_state: dict[str, Any] | None = None
-        # Per-round content segments + narration call_ids: a chat-loop round's
-        # text is captured live but a round that resolves as narration is
-        # dropped from the persisted answer (mirrors the frontend bubble).
+        context: UnifiedContext | None = None
+        # Per-round content segments + retracted call_ids: every chat-loop
+        # round's text is captured live and kept, commentary written before a
+        # tool call included. Only a round a capability retracted is dropped
+        # from the persisted answer (mirrors the frontend bubble).
         content_segments: list[tuple[str | None, str]] = []
-        narration_call_ids: set[str] = set()
+        retracted_call_ids: set[str] = set()
 
         def _persisted_answer() -> str:
             # clean_thinking_tags is a second line of defence: providers that
             # inline <think> in the content channel are split at streaming
             # time by the agent loop, but anything that slips through must
             # never be persisted as the user-facing answer.
-            return _assemble_persisted_answer(content_segments, narration_call_ids)
+            return _assemble_persisted_answer(content_segments, retracted_call_ids)
 
         # Files the model generated this turn (exec artifacts),
         # persisted as assistant-message attachments so the UI shows openable
@@ -211,6 +215,19 @@ class TurnExecutor:
                         )
                     )
 
+        # What this conversation narrowed its reach to. Entered before the turn
+        # body so prompt building, the deferred tool view and ``read_skill``
+        # all resolve against the same selection; ContextVars are task-local,
+        # so a concurrent turn in another conversation is unaffected.
+        from deeptutor.services.workspace.resources import turn_resource_selection
+
+        resource_scope = contextlib.ExitStack()
+        resource_scope.enter_context(
+            turn_resource_selection(
+                skills=list(payload.get("skills") or []),
+                mcp=list(payload.get("mcp") or []),
+            )
+        )
         try:
             from deeptutor.agents.notebook import NotebookAnalysisAgent
             from deeptutor.book.context import build_book_context
@@ -223,7 +240,6 @@ class TurnExecutor:
                 reset_llm_selection as reset_active_llm_selection,
             )
             from deeptutor.services.notebook import get_notebook_manager
-            from deeptutor.services.skill import get_skill_service
             from deeptutor.services.workspace import get_content_workspace_service
 
             request_config = dict(payload.get("config", {}) or {})
@@ -437,9 +453,7 @@ class TurnExecutor:
             # privileged workflow, so no grant gate applies).
             from deeptutor.multi_user.context import get_current_user
             from deeptutor.multi_user.paths import get_admin_path_service
-            from deeptutor.multi_user.skill_access import assigned_skill_ids
             from deeptutor.services.persona import PersonaService, get_persona_service
-            from deeptutor.services.skill.service import SkillService, render_skills_manifest
 
             current_user = get_current_user()
             learner_profile_prompt = ""
@@ -460,32 +474,9 @@ class TurnExecutor:
                     ).load_for_context(requested_persona)
             active_persona = requested_persona if persona_context else ""
 
-            # Skills: never user-selected per turn. The model sees a
-            # one-line manifest of every skill visible to this user (own +
-            # builtin, plus admin-assigned for non-admin users) and pulls
-            # full content on demand via ``read_skill``. ``always`` skills
-            # are the exception — their bodies are injected eagerly.
-            user_skill_service = get_skill_service()
-            skill_entries = user_skill_service.summary_entries()
-            always_blocks = [user_skill_service.load_always_for_context()]
-            if not current_user.is_admin:
-                assigned_service = SkillService(
-                    root=get_admin_path_service().get_workspace_dir() / "skills",
-                    builtin_root=None,
-                )
-                allowed_skills = assigned_skill_ids(current_user.id)
-                assigned_entries = [
-                    e for e in assigned_service.summary_entries() if e.name in allowed_skills
-                ]
-                skill_entries = skill_entries + assigned_entries
-                always_blocks.append(
-                    assigned_service.load_for_context(
-                        [e.name for e in assigned_entries if e.always and e.available]
-                    )
-                )
-            skills_manifest = "\n\n".join(
-                part for part in (*always_blocks, render_skills_manifest(skill_entries)) if part
-            )
+            from deeptutor.services.skill.runtime import skill_manifest
+
+            skills_manifest = skill_manifest()
 
             # Chat capability uses the lightweight manifest + read_source
             # affordance (no upstream LLM call, no wholesale-dump into the
@@ -791,13 +782,18 @@ class TurnExecutor:
                 skills_manifest=skills_manifest,
                 source_manifest=source_manifest_text,
                 runtime=TurnRuntimeContext(
+                    model_history=getattr(history_result, "model_history", None),
+                    previous_model_turn=getattr(history_result, "previous_model_turn", None),
                     turn_id=turn_id,
                     wait_for_user_reply=_wait_for_user_reply,
                     subagent_consult_budget=payload.get("subagent_consult_budget"),
+                    consult_partner_id=payload.get("consult_partner_id"),
+                    partner_discussion_group_id=payload.get("partner_discussion_group_id"),
                     workspace=get_content_workspace_service().create_runtime_context(
                         capability=capability_name,
                         session_id=session_id,
                         turn_id=turn_id,
+                        workspace_id=payload.get("_content_workspace_id"),
                     ),
                 ),
                 metadata={
@@ -878,6 +874,8 @@ class TurnExecutor:
                     continue
                 if event.type == StreamEventType.DONE:
                     pending_done_event = event
+                    if event.metadata.get("usage_summary"):
+                        assistant_events.append(event.to_dict())
                     capability_route = payload.get("capability_route")
                     if isinstance(capability_route, dict):
                         pending_done_event.metadata = {
@@ -887,17 +885,19 @@ class TurnExecutor:
                     continue
                 payload_event = await self._publish_live_event(execution, event)
                 if payload_event.get("type") not in {"done", "session"}:
-                    # A card reply lives inside this assistant row. Persist
-                    # the exact user-facing answer boundary so future context
-                    # can replay assistant -> user -> assistant in order.
-                    _stamp_ask_user_content_offset(payload_event, _persisted_answer())
+                    # Cards and tool calls render between runs of answer
+                    # text. Persist the exact boundary each one sat at so a
+                    # reloaded turn lays the answer out the way it streamed,
+                    # and so future context can replay assistant -> user ->
+                    # assistant in order.
+                    _stamp_content_offset(payload_event, _persisted_answer())
                     assistant_events.append(payload_event)
                 if _should_capture_assistant_content(event):
                     call_id = (event.metadata or {}).get("call_id")
                     content_segments.append((str(call_id) if call_id else None, event.content))
-                narration_call_id = _narration_marker_call_id(event)
-                if narration_call_id:
-                    narration_call_ids.add(narration_call_id)
+                retracted_call_id = _retracted_round_call_id(event)
+                if retracted_call_id:
+                    retracted_call_ids.add(retracted_call_id)
                 for attachment in artifact_attachments(event):
                     if attachment["url"] not in seen_artifact_urls:
                         seen_artifact_urls.add(attachment["url"])
@@ -906,11 +906,16 @@ class TurnExecutor:
             provider_response_state = normalize_provider_response_state(
                 context.runtime.provider_response_state
             )
-            assistant_provider_metadata = (
-                {"provider_response_state": provider_response_state}
-                if provider_response_state is not None
-                else None
-            )
+            assistant_provider_metadata = {
+                **(
+                    {"provider_response_state": provider_response_state}
+                    if provider_response_state
+                    else {}
+                ),
+                **(
+                    {"model_turn": context.runtime.model_turn} if context.runtime.model_turn else {}
+                ),
+            } or None
 
             # A mastery turn may have changed which path it is on
             # (``mastery_switch`` / ``mastery_leave``). The conversation's
@@ -939,8 +944,8 @@ class TurnExecutor:
             # already unwinding and must not start new blocking work.
             await fill_preview_text(generated_attachments)
 
-            # The persisted answer is the captured content minus any narration
-            # rounds (their text stayed in the trace, never the answer). Apply
+            # The persisted answer is the captured content minus any round a
+            # capability retracted (that text stayed in the trace). Apply
             # the CJK Markdown repair only after every streamed segment has
             # arrived, so no incomplete response is ever rewritten.
             assistant_content = _repair_chinese_emphasis_for_persistence(
@@ -1118,9 +1123,19 @@ class TurnExecutor:
                             events=[],
                             attachments=generated_attachments or None,
                             metadata=(
-                                {"provider_response_state": provider_response_state}
-                                if provider_response_state is not None
-                                else None
+                                {
+                                    **(
+                                        {"provider_response_state": provider_response_state}
+                                        if provider_response_state
+                                        else {}
+                                    ),
+                                    **(
+                                        {"model_turn": context.runtime.model_turn}
+                                        if context and context.runtime.model_turn
+                                        else {}
+                                    ),
+                                }
+                                or None
                             ),
                         )
                     )
@@ -1218,6 +1233,7 @@ class TurnExecutor:
                     retryable=resolved_retryable,
                 )
         finally:
+            resource_scope.close()
             if llm_scope_token is not None and reset_active_llm_selection is not None:
                 reset_active_llm_selection(llm_scope_token)
             # Drop the reply queue first — any in-flight ``submit_user_reply``

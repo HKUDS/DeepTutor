@@ -138,7 +138,7 @@ const RESPONSE_TYPE_PRESETS = [
 // Prerequisites prose per engine (English source doubles as i18n key).
 const ENGINE_PREREQUISITES: Record<string, string> = {
   llamaindex:
-    "Local vector engine — works out of the box. Retrieval uses your active embedding model; install the optional BM25 package to enable hybrid retrieval.",
+    "Local vector engine — works out of the box. Each knowledge base uses its selected embedding model; install the optional BM25 package to enable hybrid retrieval.",
   pageindex:
     "Hosted engine: documents are uploaded to PageIndex's servers and the chat agent reads them through the PageIndex MCP tools. Requires an API key; PDF, Office, text and Markdown formats.",
   "pageindex-oss":

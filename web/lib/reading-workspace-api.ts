@@ -1,3 +1,5 @@
+import { activeWorkspaceId, scopedUrl } from "@/lib/workspace-scope";
+import type { LearningOrigin } from "@/lib/learning-library";
 import { apiFetch, apiUrl } from "@/lib/api";
 
 const BASE = "/api/reading";
@@ -15,7 +17,7 @@ export type ReadingIngestionStatus =
   | "ready"
   | "failed";
 
-export interface ReadingLibraryMaterial {
+export interface ReadingLibraryMaterial extends LearningOrigin {
   material_id: string;
   content_id: string;
   filename: string;
@@ -75,7 +77,7 @@ export interface ReadingWorkspaceTab {
   added_at: number;
 }
 
-export interface ReadingWorkspace {
+export interface ReadingWorkspace extends LearningOrigin {
   workspace_id: string;
   title: string;
   description: string;
@@ -183,9 +185,10 @@ export async function checkReadingDuplicates(payload: {
 
 export async function deleteReadingMaterial(
   materialId: string,
+  contentWorkspaceId = activeWorkspaceId(),
 ): Promise<ReadingMaterialCollection[]> {
   const result = await json<{ removed_from?: ReadingMaterialCollection[] }>(
-    `/materials/${materialId}`,
+    scopedUrl(`/materials/${materialId}`, contentWorkspaceId),
     { method: "DELETE" },
   );
   return result.removed_from ?? [];
@@ -234,8 +237,9 @@ export async function updateReadingWorkspace(
 
 export async function deleteReadingWorkspace(
   workspaceId: string,
+  contentWorkspaceId = activeWorkspaceId(),
 ): Promise<void> {
-  await json(`/workspaces/${workspaceId}`, { method: "DELETE" });
+  await json(scopedUrl(`/workspaces/${workspaceId}`, contentWorkspaceId), { method: "DELETE" });
 }
 
 export async function importReadingUrls(payload: {
@@ -255,9 +259,10 @@ export async function importReadingUrls(payload: {
 
 export async function retryReadingMaterial(
   materialId: string,
+  contentWorkspaceId = activeWorkspaceId(),
 ): Promise<ReadingLibraryMaterial> {
   const result = await json<{ material: ReadingLibraryMaterial }>(
-    `/materials/${materialId}/retry`,
+    scopedUrl(`/materials/${materialId}/retry`, contentWorkspaceId),
     { method: "POST" },
   );
   return result.material;

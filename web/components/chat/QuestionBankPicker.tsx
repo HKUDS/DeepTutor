@@ -139,6 +139,7 @@ export default function QuestionBankPicker({
     >
       <div className="surface-card w-full max-w-4xl overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)] text-[var(--card-foreground)] shadow-[0_22px_70px_rgba(0,0,0,0.18)]">
         <PickerHeader
+          resourceKind="question_bank"
           icon={ClipboardList}
           titleId="question-bank-picker-title"
           title={t("Select Question Bank Entries")}

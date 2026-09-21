@@ -14,7 +14,11 @@ function source(file: string): string {
  * render, before the bare `/sessions` route can initialise its new session.
  */
 test("the mastery study route provides every shared chat viewer context", () => {
-  const layout = source("app/(utility)/mastery/[pathId]/sessions/layout.tsx");
+  const layout = source("app/(workspace)/layout.tsx");
+  const sessionLayout = source("app/(workspace)/learning/mastery/[pathId]/sessions/layout.tsx");
+  assert.doesNotMatch(sessionLayout, /ChatRuntimeProvider|ReadingProvider|WatchingProvider/);
+  assert.match(sessionLayout, /<QuizFollowupProvider>/);
+  assert.match(sessionLayout, /<GeogebraTabProvider>/);
   const response = source("components/common/AssistantResponse.tsx");
 
   assert.match(response, /useReading\(\)/);

@@ -2800,3 +2800,79 @@ def test_delete_reports_a_missing_knowledge_base_as_404(monkeypatch, tmp_path: P
     with TestClient(_build_app()) as client:
         response = client.post("/api/knowledge-bases/delete", json={"name": "never-created"})
     assert response.status_code == 404
+
+
+@pytest.mark.parametrize("first_upload_fails", [False, True])
+def test_create_empty_llamaindex_kb_then_upload_and_retry(
+    monkeypatch, tmp_path, first_upload_fails
+):
+    """The Web's empty-KB workflow can index, retry, and add another file (#1458)."""
+    from fastapi import BackgroundTasks
+
+    from deeptutor.knowledge.manager import KnowledgeBaseManager
+    from deeptutor.knowledge.progress_tracker import ProgressTracker
+
+    base = tmp_path / "knowledge_bases"
+    base.mkdir()
+    manager = KnowledgeBaseManager(base_dir=str(base))
+    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
+    monkeypatch.setattr(knowledge_router_module, "_current_kb_base_dir", lambda: base)
+    monkeypatch.setattr(knowledge_router_module, "_assert_provider_ready", lambda *_a, **_k: None)
+    calls = []
+
+    class Rag:
+        def __init__(self, *_a, **_k):
+            pass
+
+        async def add_documents(self, kb_name, files, **_kwargs):
+            calls.append(list(files))
+            if first_upload_fails and len(calls) == 1:
+                raise RuntimeError("temporary indexing failure")
+            version = base / kb_name / "version-1"
+            version.mkdir(exist_ok=True)
+            for name in ("docstore.json", "index_store.json"):
+                (version / name).write_text("{}")
+            (version / "meta.json").write_text(
+                json.dumps({"provider": "llamaindex", "version": "version-1"})
+            )
+            return True
+
+    monkeypatch.setattr("deeptutor.knowledge.add_documents.RAGService", Rag)
+
+    async def workflow():
+        await knowledge_router_module.create_knowledge_base(
+            BackgroundTasks(),
+            name="Medicine",
+            files=[],
+            rag_provider="llamaindex",
+            pageindex_mode="",
+            search_mode="",
+            rel_paths=None,
+            indexing_llm="",
+        )
+        kb_dir = base / "Medicine"
+        assert not (kb_dir / "version-1").exists()
+        source = kb_dir / "raw" / "first.txt"
+        source.write_text("First document", encoding="utf-8")
+
+        async def upload(file, task):
+            await knowledge_router_module.run_upload_processing_task(
+                "Medicine", str(base), [str(file)], task, rag_provider="llamaindex"
+            )
+
+        await upload(source, "empty-kb-first")
+        if first_upload_fails:
+            assert ProgressTracker("Medicine", base).get_progress()["stage"] == "error"
+            metadata = json.loads((kb_dir / "metadata.json").read_text())
+            assert not metadata.get("file_hashes", {}).get("first.txt")
+            await upload(source, "empty-kb-retry")
+        assert ProgressTracker("Medicine", base).get_progress()["stage"] == "completed"
+        second = kb_dir / "raw" / "second.txt"
+        second.write_text("Second document", encoding="utf-8")
+        await upload(second, "empty-kb-second")
+        assert ProgressTracker("Medicine", base).get_progress()["stage"] == "completed"
+        metadata = json.loads((kb_dir / "metadata.json").read_text())
+        assert set(metadata["file_hashes"]) == {"first.txt", "second.txt"}
+        assert len(calls) == (3 if first_upload_fails else 2)
+
+    asyncio.run(workflow())

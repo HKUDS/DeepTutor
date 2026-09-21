@@ -493,18 +493,11 @@ class PathService:
 
 
 def get_path_service() -> PathService:
-    try:
-        from deeptutor.multi_user.paths import get_current_path_service
+    from deeptutor.multi_user.paths import get_current_path_service
 
-        return get_current_path_service()
-    except Exception:
-        import logging as _logging
-
-        _logging.getLogger(__name__).warning(
-            "get_path_service() fell back to default instance; multi-user path resolution failed",
-            exc_info=True,
-        )
-        return PathService.get_instance()
+    # Resolution failure is an error, never permission to read the admin's
+    # data. This also prevents an invalid workspace silently falling back.
+    return get_current_path_service()
 
 
 __all__ = [

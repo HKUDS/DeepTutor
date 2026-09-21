@@ -209,12 +209,14 @@ async def test_dashscope_tts_posts_native_shape_and_downloads_audio(
     download = httpx.Response(200, content=b"WAVDATA", headers={"content-type": "audio/wav"})
     captured = _capture_http(monkeypatch, post=post, get=download)
     config = TTSConfig(
-        model="qwen3-tts-flash",
+        model="qwen3-tts-instruct-flash",
         provider_name="dashscope",
         adapter="dashscope",
         base_url="https://dashscope.aliyuncs.com/api/v1",
         api_key="dash-key",
         voice="Cherry",
+        language="Chinese",
+        instructions="Speak gently.",
     )
 
     audio, content_type = await DashScopeTTSAdapter().synthesize("hello", config)
@@ -225,8 +227,13 @@ async def test_dashscope_tts_posts_native_shape_and_downloads_audio(
         "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
     )
     assert captured["posts"][0]["json"] == {
-        "model": "qwen3-tts-flash",
-        "input": {"text": "hello", "voice": "Cherry"},
+        "model": "qwen3-tts-instruct-flash",
+        "input": {
+            "text": "hello",
+            "voice": "Cherry",
+            "language_type": "Chinese",
+            "instructions": "Speak gently.",
+        },
     }
     assert captured["posts"][0]["headers"]["Authorization"] == "Bearer dash-key"
     assert captured["gets"][0]["url"] == "https://cdn.example.com/audio.wav"

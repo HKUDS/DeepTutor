@@ -8,7 +8,7 @@ import asyncio
 import logging
 from typing import Any, Literal
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator
 
 from deeptutor.learning.storage import LearningStore
@@ -46,6 +46,7 @@ class SessionOrganizationRequest(BaseModel):
     """User-controlled organization metadata stored with the conversation."""
 
     course_id: str | None = None
+    workspace_id: str | None = None
     parent_session_id: str | None = None
     session_kind: Literal["chat", "selection_tutor", "immersive_reading"] | None = None
     pinned: bool | None = None
@@ -101,9 +102,19 @@ def _format_quiz_results_message(answers: list[QuizResultItem]) -> str:
 async def list_sessions(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    workspace_id: str | None = Query(default=None),
+    all_workspaces: bool = False,
 ):
+    if all_workspaces:
+        from deeptutor.services.workspace.navigation import session_index
+
+        return await session_index(limit, offset)
     store = get_session_store()
-    sessions = await store.list_sessions(limit=limit, offset=offset)
+    sessions = await store.list_sessions(
+        limit=limit,
+        offset=offset,
+        **({"workspace_id": workspace_id} if workspace_id is not None else {}),
+    )
     return {"sessions": sessions}
 
 
@@ -112,10 +123,15 @@ async def search_sessions(
     q: str = Query(..., min_length=1, max_length=MAX_SEARCH_QUERY_CHARS),
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
+    all_workspaces: bool = False,
 ):
     """Search titles and persisted user/assistant messages for a literal term."""
     if not q.strip():
         raise HTTPException(status_code=400, detail="Search query cannot be empty")
+    if all_workspaces:
+        from deeptutor.services.workspace.navigation import session_index
+
+        return await session_index(limit, offset, q)
     result = await get_session_store().search_sessions(q, limit=limit, offset=offset)
     return {
         "sessions": result["sessions"],
@@ -227,7 +243,9 @@ async def rename_session(session_id: str, payload: SessionRenameRequest):
 
 
 @router.patch("/{session_id}/organization")
-async def update_session_organization(session_id: str, payload: SessionOrganizationRequest):
+async def update_session_organization(
+    session_id: str, payload: SessionOrganizationRequest, request: Request = None
+):
     store = get_session_store()
     session = await store.get_session(session_id)
     if session is None:
@@ -235,6 +253,52 @@ async def update_session_organization(session_id: str, payload: SessionOrganizat
 
     updates: dict[str, Any] = {}
     fields = payload.model_fields_set
+    if "workspace_id" in fields:
+        from deeptutor.services.workspace import WorkspaceError, get_content_workspace_service
+
+        workspace_id = str(payload.workspace_id or "").strip()
+        if workspace_id:
+            try:
+                service = get_content_workspace_service()
+                service.validate_chat_binding(workspace_id)
+                if workspace_id == service.general_binding().workspace_id:
+                    workspace_id = ""
+            except WorkspaceError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if await store.get_active_turn(session_id) is not None:
+            raise HTTPException(
+                status_code=409, detail="Wait for the active turn before moving this conversation."
+            )
+        if (session.get("preferences") or {}).get("parent_session_id"):
+            raise HTTPException(status_code=400, detail="Move the parent conversation instead.")
+        from deeptutor.services.workspace.context import get_workspace_scope
+
+        current_scope = get_workspace_scope()
+        if current_scope is not None and current_scope.workspace_id != workspace_id:
+            # A move changes the store. Do not silently drop other fields or
+            # validate their foreign keys against the source and apply them in
+            # the destination. Reject the whole request before copying data.
+            if fields - {"workspace_id"}:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Move the conversation separately from other organization changes.",
+                )
+            from deeptutor.api.routers.workspace import _data_operation
+            from deeptutor.services.workspace.session_move import move_chat
+
+            # Upgrade this request's shared activity lease. The exclusive
+            # nonblocking lease rejects any concurrent writer before copying.
+            if request is not None:
+                handle = getattr(request.state, "workspace_activity", None)
+                if handle is not None:
+                    handle.close()
+                    request.state.workspace_activity = None
+            try:
+                moved = await _data_operation(move_chat, session_id, workspace_id)
+            except WorkspaceError as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+            return {"session": moved}
+        updates["workspace_id"] = workspace_id or None
     if "course_id" in fields:
         course_id = str(payload.course_id or "").strip()
         if course_id:
@@ -270,7 +334,9 @@ async def update_session_organization(session_id: str, payload: SessionOrganizat
 
     if updates:
         await store.update_session_preferences(session_id, updates)
-        cascade_updates = {key: updates[key] for key in ("course_id", "archived") if key in updates}
+        cascade_updates = {
+            key: updates[key] for key in ("course_id", "archived", "workspace_id") if key in updates
+        }
         if cascade_updates:
             # Selected-text tutor threads stay with their source conversation.
             candidates = await list_all_sessions_snapshot(store)
@@ -285,17 +351,48 @@ async def update_session_organization(session_id: str, payload: SessionOrganizat
 @router.delete("/{session_id}")
 async def delete_session(session_id: str):
     store = get_session_store()
+    if await store.get_session(session_id) is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Tutor threads belong to their parent conversation. Snapshot before any
+    # deletion changes pagination, and walk descendants without revisiting cycles.
+    candidates = await list_all_sessions_snapshot(store)
+    children: dict[str, list[str]] = {}
+    for row in candidates:
+        parent = str((row.get("preferences") or {}).get("parent_session_id") or "")
+        children.setdefault(parent, []).append(row["session_id"])
+    ordered = [session_id]
+    seen = {session_id}
+    for parent in ordered:
+        for child in children.get(parent, []):
+            if child not in seen:
+                seen.add(child)
+                ordered.append(child)
+
     list_active_turns = getattr(store, "list_active_turns", None)
     if callable(list_active_turns):
         from deeptutor.services.session import get_turn_runtime_manager
 
         runtime = get_turn_runtime_manager()
-        for turn in await list_active_turns(session_id):
-            await runtime.cancel_turn(turn["id"])
-    deleted = await store.soft_delete_session(session_id)
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Session not found")
-    return {"deleted": True, "session_id": session_id, "recycled": True}
+        for target in ordered:
+            for turn in await list_active_turns(target):
+                await runtime.cancel_turn(turn["id"])
+    for target in reversed(ordered):
+        if not await store.delete_session(target):
+            raise HTTPException(status_code=409, detail="Unable to delete conversation")
+        await _cleanup_deleted_session(target)
+    return {"deleted": True, "session_id": session_id}
+
+
+async def _cleanup_deleted_session(session_id: str) -> None:
+    try:
+        await asyncio.to_thread(LearningStore().detach_session, session_id)
+    except Exception:
+        logger.exception("failed to detach mastery paths for session %s", session_id)
+    try:
+        await get_attachment_store().delete_session(session_id)
+    except Exception:
+        logger.exception("failed to clean up attachments for session %s", session_id)
 
 
 @router.post("/{session_id}/restore")
@@ -314,14 +411,7 @@ async def purge_session(session_id: str):
     purged = await store.hard_delete_session(session_id)
     if not purged:
         raise HTTPException(status_code=404, detail="Session not found in recycle bin")
-    try:
-        await asyncio.to_thread(LearningStore().detach_session, session_id)
-    except Exception:
-        logger.exception("failed to detach mastery paths for session %s", session_id)
-    try:
-        await get_attachment_store().delete_session(session_id)
-    except Exception:
-        logger.exception("failed to clean up attachments for session %s", session_id)
+    await _cleanup_deleted_session(session_id)
     return {"purged": True, "session_id": session_id}
 
 

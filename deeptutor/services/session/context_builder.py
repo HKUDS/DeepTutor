@@ -19,6 +19,7 @@ from .ask_user_trace import (
     extract_ask_user_clarification_blocks,
     extract_ask_user_clarifications,
 )
+from .model_history import history_groups, model_turn, replay_history
 from .protocol import SessionStoreProtocol
 from .provider_response_state import normalize_provider_response_state
 
@@ -138,6 +139,8 @@ class ContextBuildResult:
     events: list[StreamEvent]
     token_count: int
     budget: int
+    model_history: list[dict[str, Any]] | None = None
+    previous_model_turn: dict[str, Any] | None = None
 
 
 class _ContextSummaryAgent(BaseAgent):
@@ -245,17 +248,31 @@ class ContextBuilder:
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         selected: list[dict[str, Any]] = []
         total = 0
-        for item in reversed(messages):
-            content = str(item.get("content", "") or "")
-            clarification = extract_ask_user_clarifications(item)
-            tokens = count_tokens(f"{content}\n{clarification}" if clarification else content)
-            tokens += _provider_response_state_tokens(item)
+        for group in reversed(history_groups(messages)):
+            if any(model_turn(row) is not None for row in group):
+                tokens = self._model_tokens(group)
+            else:
+                tokens = 0
+                for item in group:
+                    content = str(item.get("content", "") or "")
+                    clarification = extract_ask_user_clarifications(item)
+                    tokens += count_tokens(
+                        f"{content}\n{clarification}" if clarification else content
+                    )
+                    tokens += _provider_response_state_tokens(item)
             if selected and total + tokens > recent_budget:
                 break
-            selected.insert(0, item)
+            selected[0:0] = group
             total += tokens
         cutoff = len(messages) - len(selected)
         return messages[:cutoff], selected
+
+    def _model_tokens(self, messages: list[dict[str, Any]], summary: str = "") -> int:
+        if any(model_turn(row) is not None for row in messages):
+            return count_tokens(json.dumps(replay_history(messages, summary), ensure_ascii=False))
+        return count_tokens(build_history_text(self._build_history(summary, messages))) + sum(
+            _provider_response_state_tokens(row) for row in messages
+        )
 
     async def _summarize(
         self,
@@ -265,6 +282,7 @@ class ContextBuilder:
         source_text: str,
         summary_budget: int,
         on_event: Callable[[StreamEvent], Awaitable[None]] | None = None,
+        replay_request: dict[str, Any] | None = None,
     ) -> tuple[str, list[StreamEvent]]:
         events: list[StreamEvent] = []
         if not source_text.strip():
@@ -399,12 +417,28 @@ class ContextBuilder:
             )
         try:
             _chunks: list[str] = []
+            replay_kwargs: dict[str, Any] = {}
+            if replay_request is not None:
+                # Reuse the conversation's warm prefix; only the instruction
+                # is new. Tools are present for cache identity, never executed.
+                instruction = (
+                    f"{system_prompt}\n\nSummarize the conversation above in at most "
+                    f"{target_tokens} tokens. Output only the summary; do not call tools."
+                )
+                replay_kwargs = {
+                    "messages": [
+                        *replay_request["messages"],
+                        {"role": "user", "content": instruction},
+                    ],
+                    "tools": replay_request.get("tools"),
+                }
             async for _c in agent.stream_llm(
                 user_prompt=user_prompt,
                 system_prompt=system_prompt,
                 max_tokens=summary_budget,
                 stage="summarize_context",
                 trace_meta=trace_meta,
+                **replay_kwargs,
             ):
                 _chunks.append(_c)
             summary = "".join(_chunks).strip()
@@ -462,7 +496,15 @@ class ContextBuilder:
         ]
 
         current_history = self._build_history(stored_summary, unsummarized)
-        current_tokens = count_tokens(build_history_text(current_history))
+        current_tokens = self._model_tokens(unsummarized, stored_summary)
+        previous_model_turn = next(
+            (record for row in reversed(messages) if (record := model_turn(row)) is not None),
+            None,
+        )
+        binding = getattr(llm_config, "binding", None)
+        route = (
+            {"provider": binding, "model": llm_config.model} if isinstance(binding, str) else None
+        )
         if current_tokens <= budget:
             return ContextBuildResult(
                 conversation_history=current_history,
@@ -471,6 +513,8 @@ class ContextBuilder:
                 events=[],
                 token_count=current_tokens,
                 budget=budget,
+                model_history=replay_history(unsummarized, stored_summary, route),
+                previous_model_turn=previous_model_turn,
             )
 
         older_unsummarized, recent_messages = self._select_recent_messages(
@@ -501,6 +545,24 @@ class ContextBuilder:
             merge_parts.append(format_messages_as_transcript(recent_messages))
 
         summarize_ok = True
+        replay_request = None
+        if (
+            previous_model_turn
+            and older_unsummarized
+            and isinstance(previous_model_turn.get("system"), str)
+        ):
+            # The current retained prefix is authoritative once model turns
+            # exist; legacy sessions keep their raw-transcript rebuild path.
+            replay_request = {
+                "messages": [
+                    {"role": "system", "content": previous_model_turn["system"]},
+                    *[
+                        {key: value for key, value in message.items() if key != "_context_snapshot"}
+                        for message in replay_history(older_unsummarized, stored_summary, route)
+                    ],
+                ],
+                "tools": previous_model_turn.get("tools"),
+            }
         try:
             new_summary, events = await self._summarize(
                 session_id=session_id,
@@ -508,6 +570,7 @@ class ContextBuilder:
                 source_text="\n\n".join(part for part in merge_parts if part.strip()),
                 summary_budget=summary_budget,
                 on_event=on_event,
+                **({"replay_request": replay_request} if replay_request else {}),
             )
         except Exception:
             summarize_ok = False
@@ -522,17 +585,19 @@ class ContextBuilder:
                 up_to_msg_id = max(summary_up_to_msg_id, int(prefix_messages[-1].get("id", 0) or 0))
             await self.store.update_summary(session_id, new_summary, up_to_msg_id)
             stored_summary = new_summary
-            final_history = self._build_history(stored_summary, recent_messages)
+            retained_rows = recent_messages
         else:
             # Degrade for this turn only: keep the stale summary and as many
             # unsummarized turns as fit; nothing is marked as summarized, so
             # the next turn retries with the full material.
-            final_history = self._build_history(stored_summary, unsummarized)
-        while len(final_history) > 1 and count_tokens(build_history_text(final_history)) > budget:
-            summary_prefix = 1 if final_history and final_history[0].get("role") == "system" else 0
-            if len(final_history) <= summary_prefix + 1:
-                break
-            final_history.pop(summary_prefix)
+            retained_rows = unsummarized
+        retained_groups = history_groups(retained_rows)
+        while (
+            len(retained_groups) > 1 and self._model_tokens(retained_rows, stored_summary) > budget
+        ):
+            retained_groups.pop(0)
+            retained_rows = [row for group in retained_groups for row in group]
+        final_history = self._build_history(stored_summary, retained_rows)
 
         final_text = build_history_text(final_history)
         return ContextBuildResult(
@@ -540,8 +605,10 @@ class ContextBuilder:
             conversation_summary=stored_summary,
             context_text=final_text,
             events=events,
-            token_count=count_tokens(final_text),
+            token_count=self._model_tokens(retained_rows, stored_summary),
             budget=budget,
+            model_history=replay_history(retained_rows, stored_summary, route),
+            previous_model_turn=previous_model_turn,
         )
 
 

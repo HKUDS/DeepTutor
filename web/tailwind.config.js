@@ -1,12 +1,27 @@
 /** @type {import('tailwindcss').Config} */
+/**
+ * Theme colours live in CSS variables that hold whole colour values (`#f1ede2`,
+ * and `rgba(255,255,255,0.06)` in the glass theme) rather than channel
+ * triplets. Tailwind cannot fold an opacity modifier into such a value, so it
+ * dropped the declaration entirely: `bg-muted/70` and every
+ * `bg-[var(--muted)]/70` in the tree emitted no rule at all, which is why the
+ * sidebars had no hover state, no text hierarchy and no surface tint.
+ *
+ * `color-mix` gives the modifier somewhere to land. At full opacity it
+ * resolves to the variable untouched, so existing utilities keep their exact
+ * colour, and it composes correctly with the variables that already carry an
+ * alpha of their own.
+ */
+const alpha = name => `color-mix(in srgb, var(${name}) calc(<alpha-value> * 100%), transparent)`
+
 module.exports = {
-  darkMode: "class",
+  darkMode: 'class',
   content: [
-    "./pages/**/*.{js,ts,jsx,tsx,mdx}",
-    "./components/**/*.{js,ts,jsx,tsx,mdx}",
-    "./features/**/*.{js,ts,jsx,tsx,mdx}",
-    "./shared/**/*.{js,ts,jsx,tsx,mdx}",
-    "./app/**/*.{js,ts,jsx,tsx,mdx}",
+    './pages/**/*.{js,ts,jsx,tsx,mdx}',
+    './components/**/*.{js,ts,jsx,tsx,mdx}',
+    './features/**/*.{js,ts,jsx,tsx,mdx}',
+    './shared/**/*.{js,ts,jsx,tsx,mdx}',
+    './app/**/*.{js,ts,jsx,tsx,mdx}',
   ],
   theme: {
     extend: {
@@ -18,81 +33,80 @@ module.exports = {
         // pick. Naming the CJK faces makes both scripts deterministic and
         // pairs a Latin serif with a proper 宋体 rather than a stray fallback.
         sans: [
-          "var(--font-sans)",
-          "PingFang SC",
-          "Hiragino Sans GB",
-          "Microsoft YaHei",
-          "Noto Sans SC",
-          "system-ui",
-          "sans-serif",
+          'var(--font-sans)',
+          'PingFang SC',
+          'Hiragino Sans GB',
+          'Microsoft YaHei',
+          'Noto Sans SC',
+          'system-ui',
+          'sans-serif',
         ],
         serif: [
-          "var(--font-serif)",
-          "Songti SC",
-          "STSong",
-          "Noto Serif SC",
-          "Source Han Serif SC",
-          "SimSun",
-          "Georgia",
-          "serif",
+          'var(--font-serif)',
+          'Songti SC',
+          'STSong',
+          'Noto Serif SC',
+          'Source Han Serif SC',
+          'SimSun',
+          'Georgia',
+          'serif',
         ],
       },
       colors: {
-        border: "var(--border)",
-        input: "var(--input)",
-        ring: "var(--ring)",
-        background: "var(--background)",
-        foreground: "var(--foreground)",
+        border: alpha('--border'),
+        input: alpha('--input'),
+        ring: alpha('--ring'),
+        background: alpha('--background'),
+        foreground: alpha('--foreground'),
         primary: {
-          DEFAULT: "var(--primary)",
-          foreground: "var(--primary-foreground)",
+          DEFAULT: alpha('--primary'),
+          foreground: alpha('--primary-foreground'),
         },
         secondary: {
-          DEFAULT: "var(--secondary)",
-          foreground: "var(--secondary-foreground)",
+          DEFAULT: alpha('--secondary'),
+          foreground: alpha('--secondary-foreground'),
         },
         destructive: {
-          DEFAULT: "var(--destructive)",
-          foreground: "var(--destructive-foreground)",
+          DEFAULT: alpha('--destructive'),
+          foreground: alpha('--destructive-foreground'),
         },
         muted: {
-          DEFAULT: "var(--muted)",
-          foreground: "var(--muted-foreground)",
+          DEFAULT: alpha('--muted'),
+          foreground: alpha('--muted-foreground'),
         },
         accent: {
-          DEFAULT: "var(--accent)",
-          foreground: "var(--accent-foreground)",
+          DEFAULT: alpha('--accent'),
+          foreground: alpha('--accent-foreground'),
         },
         popover: {
-          DEFAULT: "var(--popover)",
-          foreground: "var(--popover-foreground)",
+          DEFAULT: alpha('--popover'),
+          foreground: alpha('--popover-foreground'),
         },
         card: {
-          DEFAULT: "var(--card)",
-          foreground: "var(--card-foreground)",
+          DEFAULT: alpha('--card'),
+          foreground: alpha('--card-foreground'),
         },
         success: {
-          DEFAULT: "var(--success)",
-          foreground: "var(--success-foreground)",
-          surface: "var(--success-surface)",
+          DEFAULT: alpha('--success'),
+          foreground: alpha('--success-foreground'),
+          surface: alpha('--success-surface'),
         },
         warning: {
-          DEFAULT: "var(--warning)",
-          foreground: "var(--warning-foreground)",
-          surface: "var(--warning-surface)",
+          DEFAULT: alpha('--warning'),
+          foreground: alpha('--warning-foreground'),
+          surface: alpha('--warning-surface'),
         },
         info: {
-          DEFAULT: "var(--info)",
-          foreground: "var(--info-foreground)",
-          surface: "var(--info-surface)",
+          DEFAULT: alpha('--info'),
+          foreground: alpha('--info-foreground'),
+          surface: alpha('--info-surface'),
         },
       },
       backgroundImage: {
-        "gradient-radial": "radial-gradient(var(--tw-gradient-stops))",
-        "gradient-conic":
-          "conic-gradient(from 180deg at 50% 50%, var(--tw-gradient-stops))",
+        'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
+        'gradient-conic': 'conic-gradient(from 180deg at 50% 50%, var(--tw-gradient-stops))',
       },
     },
   },
   plugins: [],
-};
+}

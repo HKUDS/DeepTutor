@@ -179,7 +179,12 @@ _CONNECTION_BASE_SUFFIX: dict[str, str] = {"embedding": "/embeddings"}
 
 # Credential fields a linked profile inherits from its connection. base_url is
 # handled separately because it is per-service (see _CONNECTION_BASE_SUFFIX).
-_CONNECTION_CREDENTIAL_FIELDS: tuple[str, ...] = ("api_key", "api_version", "extra_headers")
+_CONNECTION_CREDENTIAL_FIELDS: tuple[str, ...] = (
+    "api_key",
+    "api_version",
+    "extra_headers",
+    "app_id",
+)
 
 # Services whose profiles are LLM-shaped and therefore carry an API format.
 LLM_SHAPED_SERVICES: tuple[str, ...] = ("llm", "task")
@@ -404,6 +409,10 @@ class ModelCatalogService:
             if profile.get(field) != value:
                 profile[field] = value
                 changed = True
+        for field in ("api_format", "wire_api", "proxy"):
+            if field in connection and profile.get(field) != connection[field]:
+                profile[field] = deepcopy(connection[field])
+                changed = True
         base_url = str(connection.get("base_url") or "").strip()
         if base_url:
             # Gemini's native embedding endpoint carries the model in its path,
@@ -487,7 +496,7 @@ class ModelCatalogService:
                             # Provider/model-specific free-form voice string
                             # (e.g. "alloy", "autumn", "model:voice").
                             model.setdefault("voice", "")
-                            model.setdefault("response_format", "mp3")
+                            model.setdefault("response_format", "")  # Resolve per provider/model.
                         elif service_name == "imagegen":
                             # Generation knobs; empty → provider default.
                             model.setdefault("size", "")
@@ -498,12 +507,24 @@ class ModelCatalogService:
                             model.setdefault("aspect_ratio", "")
                             model.setdefault("duration", "")
                             model.setdefault("resolution", "")
-            profile_ids = {profile.get("id") for profile in profiles}
-            if profiles and service.get("active_profile_id") not in profile_ids:
-                service["active_profile_id"] = profiles[0]["id"]
+            selectable = [
+                p
+                for p in profiles
+                if not p.get("provider_only") and (service_name == "search" or p.get("models"))
+            ]
+            profile_ids = {profile.get("id") for profile in selectable}
+            if selectable and service.get("active_profile_id") not in profile_ids:
+                service["active_profile_id"] = selectable[0]["id"]
                 changed = True
             if service_name != "search":
-                active_profile = self.get_active_profile(catalog, service_name)
+                active_profile = next(
+                    (
+                        item
+                        for item in profiles
+                        if item.get("id") == service.get("active_profile_id")
+                    ),
+                    profiles[0] if profiles else None,
+                )
                 models = (active_profile or {}).get("models") or []
                 model_ids = {model.get("id") for model in models}
                 if models and service.get("active_model_id") not in model_ids:
@@ -519,17 +540,41 @@ class ModelCatalogService:
         service = catalog.get("services", {}).get(service_name, {})
         active_id = service.get("active_profile_id")
         for profile in service.get("profiles", []):
-            if profile.get("id") == active_id:
-                return profile
-        profiles = service.get("profiles", [])
-        return profiles[0] if profiles else None
+            if profile.get("id") == active_id and not profile.get("provider_only"):
+                break
+        else:
+            profiles = [
+                p
+                for p in service.get("profiles", [])
+                if not p.get("provider_only") and (service_name == "search" or p.get("models"))
+            ]
+            profile = profiles[0] if profiles else None
+        if not profile:
+            return None
+        from .provider_links import resolve_profile_provider
+
+        models = profile.get("models", [])
+        model = next(
+            (item for item in models if item.get("id") == service.get("active_model_id")),
+            models[0] if models else None,
+        )
+        return resolve_profile_provider(catalog, service_name, profile, model)
 
     def get_active_model(self, catalog: dict[str, Any], service_name: str) -> dict[str, Any] | None:
         if service_name == "search":
             return None
         service = catalog.get("services", {}).get(service_name, {})
         active_model_id = service.get("active_model_id")
-        profile = self.get_active_profile(catalog, service_name)
+        profile = next(
+            (
+                p
+                for p in service.get("profiles", [])
+                if p.get("id") == service.get("active_profile_id")
+            ),
+            None,
+        )
+        if profile is None:
+            profile = next((p for p in service.get("profiles", []) if p.get("models")), None)
         if not profile:
             return None
         for model in profile.get("models", []):

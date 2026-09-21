@@ -10,6 +10,7 @@ category when it is new.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -172,3 +173,122 @@ async def test_mount_gate_follows_the_data(store: SQLiteSessionStore) -> None:
     assert store.has_question_bank_entries() is False
     await _seed(store)
     assert store.has_question_bank_entries() is True
+
+
+# ── record (#1244): partner conversations file wrong questions ────────────
+
+
+class _FakePartnerContext:
+    """Duck-typed stand-in for PartnerTurnContext (only the fields the tool
+    reads via getattr: partner_id / actor_id / partner_name / shared_memory)."""
+
+    def __init__(self, shared_memory: Any, partner_id: str = "p1") -> None:
+        self.partner_id = partner_id
+        self.actor_id = "user-42"
+        self.partner_name = "Study Buddy"
+        self.shared_memory = shared_memory
+
+
+@pytest.mark.asyncio
+async def test_record_files_a_partner_mistake_into_a_browsable_session(
+    store: SQLiteSessionStore,
+) -> None:
+    outcome = await run_question_bank(
+        action="record",
+        question="  What is 7 × 8? ",
+        user_answer="54",
+        correct_answer="56",
+        explanation="7×8 = 56, not 54 — the 7× row is easy to off-by-one.",
+        category="Multiplication drills",
+        store=store,
+    )
+
+    assert outcome.ok, outcome.error
+    session_id = outcome.summary["session_id"]
+    assert outcome.summary["source"] == "partner_chat"
+    # The placeholder session exists so the entry is browsable, and the
+    # mistake landed in it, labelled as coming from a partner conversation.
+    stats = await store.question_bank_stats()
+    assert stats["total"] == 1
+    entry = await store.find_notebook_entry(session_id, outcome.summary["question_id"])
+    assert entry is not None
+    assert entry["source"] == "partner_chat"
+    assert entry["question"] == "What is 7 × 8?"
+    # The optional category was created and the entry filed into it.
+    assert "Filed under 'Multiplication drills'" in outcome.text
+
+
+@pytest.mark.asyncio
+async def test_record_same_question_twice_updates_instead_of_duplicating(
+    store: SQLiteSessionStore,
+) -> None:
+    first = await run_question_bank(action="record", question="What is 7 × 8?", store=store)
+    again = await run_question_bank(
+        action="record",
+        question="WHAT  is 7 × 8?",  # different case/spacing, same question
+        correct_answer="56",
+        store=store,
+    )
+
+    assert first.ok and again.ok
+    assert again.summary["question_id"] == first.summary["question_id"]
+    assert (await store.question_bank_stats())["total"] == 1
+
+
+@pytest.mark.asyncio
+async def test_record_requires_the_question(store: SQLiteSessionStore) -> None:
+    outcome = await run_question_bank(action="record", question="   ", store=store)
+    assert not outcome.ok
+    assert "`question` is required" in outcome.error
+
+
+@pytest.mark.asyncio
+async def test_record_routes_to_the_bank_the_family_browses(
+    store: SQLiteSessionStore, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from deeptutor.services.path_service import PathService
+    from deeptutor.services.session.sqlite_store import (
+        get_sqlite_session_store_for,
+    )
+
+    learner_paths = PathService(workspace_root=tmp_path / "learner-scope")
+    fake_context = _FakePartnerContext(shared_memory=learner_paths)
+    monkeypatch.setattr(
+        "deeptutor.services.partners.interaction.get_partner_turn_context",
+        lambda: fake_context,
+    )
+
+    # No explicit store: inside a partner turn the tool must resolve the
+    # learner-facing bank (the shared scope), not the partner's own.
+    outcome = await run_question_bank(action="record", question="Define entropy.")
+
+    assert outcome.ok, outcome.error
+    partner_bank = get_sqlite_session_store_for(learner_paths)
+    assert (await partner_bank.question_bank_stats())["total"] == 1
+    # …and nothing leaked into the current (partner-scope) store.
+    assert (await store.question_bank_stats())["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_partner_turns_mount_the_bank_even_when_it_is_empty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from deeptutor.agents._shared.tool_composition import partner_can_record_questions
+    from deeptutor.services.path_service import PathService
+
+    assert partner_can_record_questions() is False
+
+    fake_context = _FakePartnerContext(
+        shared_memory=PathService(workspace_root=Path(tmp_path) / "scope")
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.partners.interaction.get_partner_turn_context",
+        lambda: fake_context,
+    )
+    assert partner_can_record_questions() is True
+
+
+@pytest.mark.asyncio
+async def test_ensure_notebook_session_is_idempotent(store: SQLiteSessionStore) -> None:
+    assert await store.ensure_notebook_session("partner-notebook:p1:admin", "T (Partner)") is True
+    assert await store.ensure_notebook_session("partner-notebook:p1:admin", "T (Partner)") is False

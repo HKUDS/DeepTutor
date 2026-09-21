@@ -56,3 +56,51 @@ def test_non_admin_settings_catalog_is_forbidden(tmp_path):
         assert exc.value.status_code == 403
     finally:
         reset_current_user(token)
+
+
+@pytest.mark.asyncio
+async def test_personal_settings_drafts_are_private_and_do_not_grant_catalog_access(
+    tmp_path, monkeypatch
+):
+    from types import SimpleNamespace
+
+    from deeptutor.services.config.settings_draft import get_settings_draft_service
+
+    monkeypatch.setattr(
+        settings_router, "get_model_catalog_service", lambda: SimpleNamespace(load=lambda: {})
+    )
+    user = make_user(tmp_path, role="user")
+    admin = make_user(tmp_path, role="admin")
+    token = set_current_user(admin)
+    try:
+        get_settings_draft_service().save(
+            {"extensions": {"mineru": {"api_token": "admin-draft-secret"}}}
+        )
+    finally:
+        reset_current_user(token)
+    token = set_current_user(user)
+    try:
+        assert await settings_router.get_settings_draft() == {"draft": None}
+        payload = settings_router.SettingsDraftPayload(extensions={"ui": {"theme": "dark"}})
+        saved = await settings_router.update_settings_draft(payload)
+        assert saved["draft"]["extensions"] == {"ui": {"theme": "dark"}}
+        assert (await settings_router.get_settings_draft())["draft"][
+            "extensions"
+        ] == payload.extensions
+        with pytest.raises(HTTPException) as exc:
+            await settings_router.update_settings_draft(
+                settings_router.SettingsDraftPayload(catalog={"version": 1})
+            )
+        assert exc.value.status_code == 403
+        await settings_router.discard_settings_draft()
+        assert await settings_router.get_settings_draft() == {"draft": None}
+    finally:
+        reset_current_user(token)
+    token = set_current_user(admin)
+    try:
+        assert (
+            get_settings_draft_service().load()["extensions"]["mineru"]["api_token"]
+            == "admin-draft-secret"
+        )
+    finally:
+        reset_current_user(token)

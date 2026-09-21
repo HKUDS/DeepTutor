@@ -95,7 +95,7 @@ test("kbCanReindex keeps empty failed knowledge bases disabled", () => {
   );
 });
 
-test("kbCanReindex preserves mismatch and needs-reindex behavior", () => {
+test("kbCanReindex supports recovery and changing a healthy KB's model", () => {
   assert.equal(
     kbCanReindex(kb({ statistics: { raw_documents: 1, needs_reindex: true } })),
     true,
@@ -106,7 +106,7 @@ test("kbCanReindex preserves mismatch and needs-reindex behavior", () => {
   );
   assert.equal(
     kbCanReindex(kb({ statistics: { raw_documents: 1, active_match: true } })),
-    false,
+    true,
   );
 });
 

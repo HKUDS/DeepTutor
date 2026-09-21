@@ -131,3 +131,23 @@ def test_a_codebuddy_profile_is_owner_bound_by_its_binding() -> None:
     assert model_access.is_owner_bound({"binding": "openai"}) is False
     # The explicit flag still wins for anything else that sets it.
     assert model_access.is_owner_bound({"binding": "openai", "owner_bound": True}) is True
+
+
+def test_individual_provider_references_keep_subscription_models_private(tmp_path, monkeypatch):
+    catalog = _catalog(owner_bound=False)
+    profile = catalog["services"]["llm"]["profiles"][0]
+    profile["models"][0]["provider_ref"] = {"connection_id": "private", "binding": "codebuddy"}
+    catalog["connections"] = [{"id": "private", "name": "My IDE login", "provider": "codebuddy"}]
+    monkeypatch.setattr(model_access, "admin_catalog", lambda: catalog)
+    monkeypatch.setattr(model_access, "load_grant", _grant)
+    token = set_current_user(make_user(tmp_path))
+    try:
+        assert model_access.redacted_model_access()["llm"] == []
+        catalog["connections"][0]["provider"] = "custom"
+        profile["models"][0]["provider_ref"]["binding"] = "custom"
+        rows = model_access.redacted_model_access()["llm"]
+        assert rows[0]["provider"] == "custom"
+        assert rows[0]["profile_name"] == "My IDE login"
+        assert rows[0]["model_id"] == "m-sol"
+    finally:
+        reset_current_user(token)

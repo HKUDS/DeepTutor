@@ -139,7 +139,17 @@ class ReadingStore:
     """Materials and annotations for one user's workspace."""
 
     def __init__(self, root: Path | str | None = None) -> None:
-        self._root_override = Path(root) if root is not None else None
+        from deeptutor.services.workspace.context import get_workspace_scope
+
+        self._root_override = (
+            Path(root)
+            if root is not None
+            else (
+                get_path_service().get_workspace_feature_dir("reading")
+                if get_workspace_scope() is not None
+                else None
+            )
+        )
         self._locks_guard = threading.Lock()
         self._locks: dict[str, threading.RLock] = {}
 

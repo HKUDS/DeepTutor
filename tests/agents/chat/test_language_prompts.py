@@ -6,6 +6,9 @@ import pytest
 
 from deeptutor.agents.chat.agentic_pipeline import AgenticChatPipeline
 from deeptutor.agents.loop.prompt_blocks import ChatPromptAssembler
+from deeptutor.capabilities.mastery.pipeline import MasteryLoopPipeline
+from deeptutor.core.context import UnifiedContext
+from deeptutor.runtime.agentic.tool_dispatch import MAX_PARALLEL_TOOL_CALLS
 
 
 @pytest.fixture(autouse=True)
@@ -22,6 +25,27 @@ def _fake_llm_config(monkeypatch: pytest.MonkeyPatch) -> None:
         lambda: cfg,
     )
     monkeypatch.setattr("deeptutor.agents.base_agent.get_llm_config", lambda: cfg)
+
+
+@pytest.mark.parametrize("language", ["en", "zh"])
+@pytest.mark.parametrize("mode", ["chat", "immersive_reading", "mastery_path"])
+def test_tool_call_limit_reaches_each_loop_prompt(language: str, mode: str) -> None:
+    pipeline_type = MasteryLoopPipeline if mode == "mastery_path" else AgenticChatPipeline
+    pipeline = pipeline_type(language=language)
+    context = UnifiedContext(active_capability=mode)
+    prompt = pipeline._build_system_prompt([], context)
+
+    assert MAX_PARALLEL_TOOL_CALLS == 15
+    assert prompt.count("## tool_call_policy\n") == 1
+    assert "{limit}" not in prompt
+    if language == "zh":
+        assert "最多请求 15 次工具调用" in prompt
+        assert "不是用户整个请求的总次数" in prompt
+        assert "超出上限的调用不会执行" in prompt
+    else:
+        assert "at most 15 tool calls" in prompt
+        assert "not a total for the user's request" in prompt
+        assert "Calls beyond the limit\nare not executed" in prompt
 
 
 def test_agentic_chat_final_prompt_uses_selected_language(

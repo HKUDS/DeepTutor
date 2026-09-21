@@ -85,6 +85,48 @@ def _create(client: TestClient, **overrides):
 
 
 class TestCreate:
+    def test_workspace_binding_is_persisted_and_can_be_cleared(self, client):
+        from deeptutor.services.workspace import get_content_workspace_service
+
+        workspace = get_content_workspace_service().create_workspace("Partner research")
+        workspace_id = workspace["workspace_id"]
+        result = _create(client, workspace_id=workspace_id)
+        assert result.status_code == 200
+        assert result.json()["workspace_id"] == workspace_id
+        assert client.get("/api/partners/ada").json()["workspace_id"] == workspace_id
+        choices = client.get("/api/partners/ada/workspaces")
+        assert choices.status_code == 200
+        assert workspace_id in {row["workspace_id"] for row in choices.json()["workspaces"]}
+        assert client.post("/api/partners/ada/assets", json={"skills": ["pdf"]}).status_code == 400
+        assert (
+            client.patch("/api/partners/ada", json={"description": "Updated"}).json()[
+                "workspace_id"
+            ]
+            == workspace_id
+        )
+        result = client.patch("/api/partners/ada", json={"workspace_id": ""})
+        assert result.status_code == 200
+        assert result.json()["workspace_id"] == ""
+        assert client.get("/api/partners/ada").json()["workspace_id"] == ""
+
+    def test_rejects_unavailable_system_and_archived_workspaces_before_creation(self, client):
+        from deeptutor.services.workspace import get_content_workspace_service
+
+        service = get_content_workspace_service()
+        archived = service.create_workspace("Archived")
+        service.update_workspace(archived["workspace_id"], archived=True)
+        for workspace_id in ("ws_missing", service._builtin_id("system"), archived["workspace_id"]):
+            assert _create(client, workspace_id=workspace_id).status_code == 400
+            assert client.get("/api/partners/ada").status_code == 404
+
+    def test_rejects_assets_that_would_be_unused_by_shared_workspace(self, client):
+        from deeptutor.services.workspace import get_content_workspace_service
+
+        row = get_content_workspace_service().create_workspace("Shared")
+        result = _create(client, workspace_id=row["workspace_id"], assets={"skills": ["pdf"]})
+        assert result.status_code == 400
+        assert client.get("/api/partners/ada").status_code == 404
+
     def test_create_returns_masked_config(self, client):
         res = _create(
             client,
@@ -750,3 +792,30 @@ class TestChatAttachments:
         assert path.read_bytes() == b"hello"
         assert path.name.endswith("_notes.txt")
         assert path.parent == isolated_root / "partners" / "ada" / "media" / "web"
+
+
+@pytest.mark.asyncio
+async def test_legacy_consultation_lookup_requires_unique_visible_registry_match(monkeypatch):
+    from deeptutor.api.routers import partners as router
+    from deeptutor.services.subagent import sessions
+
+    monkeypatch.setattr(
+        router, "visible_partners", lambda: [{"partner_id": "frank", "name": "Frank"}]
+    )
+    monkeypatch.setattr(
+        sessions, "get_session", lambda key: "dt-native" if key == "chat::partner:frank" else None
+    )
+    assert await router.get_partner_consultation_session("chat", "Frank") == {
+        "partner_id": "frank",
+        "session_key": "dt-native",
+    }
+    assert await router.get_partner_consultation_session("other-chat", "Frank") is None
+    monkeypatch.setattr(router, "visible_partners", lambda: [])
+    assert await router.get_partner_consultation_session("chat", "Frank") is None
+    monkeypatch.setattr(
+        router,
+        "visible_partners",
+        lambda: [{"partner_id": "one", "name": "Frank"}, {"partner_id": "two", "name": "Frank"}],
+    )
+    monkeypatch.setattr(sessions, "get_session", lambda key: "dt-native")
+    assert await router.get_partner_consultation_session("chat", "Frank") is None

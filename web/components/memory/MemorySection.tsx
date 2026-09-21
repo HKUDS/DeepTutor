@@ -26,11 +26,8 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { apiFetch, apiUrl } from "@/lib/api";
-import {
-  bookRoute,
-  knowledgeBaseRoute,
-  notebookRoute,
-} from "@/lib/resource-routes";
+import { knowledgeBaseRoute, notebookRoute } from "@/lib/resource-routes";
+import { bookRoute } from "@/lib/learning-routes";
 import SpaceSectionHeader from "@/components/space/SpaceSectionHeader";
 
 const MarkdownRenderer = dynamic(
@@ -248,7 +245,7 @@ function entityDeepLinkUrl(surface: Surface, ent: Entity): string | null {
       const sessionId = asString(m.session_id) || ent.id.split(":")[0];
       return sessionId
         ? `/chat/${encodeURIComponent(sessionId)}`
-        : "/space/questions";
+        : "/learning/practice";
     }
     case "kb":
       return knowledgeBaseRoute(ent.id);
@@ -1474,7 +1471,7 @@ function StreamPanel({ stages, onDismiss, t }: StreamPanelProps) {
             </span>
             {typeof s.count === "number" && (
               <span className="ml-2 text-[var(--muted-foreground)]">
-                count={s.count}
+                {t("Count: {{count}}", { count: s.count })}
               </span>
             )}
             {s.delta && (
@@ -1489,17 +1486,17 @@ function StreamPanel({ stages, onDismiss, t }: StreamPanelProps) {
             )}
             {s.args && Object.keys(s.args).length > 0 && (
               <div className="mt-1 text-[var(--muted-foreground)]">
-                args: {JSON.stringify(s.args)}
+                {t("Arguments")}: {JSON.stringify(s.args)}
               </div>
             )}
             {s.ops && (
               <div className="mt-1 text-[var(--muted-foreground)]">
-                ops: {s.ops.length}
+                {t("Operations: {{count}}", { count: s.ops.length })}
               </div>
             )}
             {typeof s.ops_emitted === "number" && (
               <div className="mt-1 text-[var(--muted-foreground)]">
-                ops_emitted={s.ops_emitted} · turns={s.turns_used ?? "?"}
+                {t("Emitted operations: {{count}} · Turns: {{turns}}", { count: s.ops_emitted, turns: s.turns_used ?? "?" })}
                 {s.tools_used
                   ? ` · ${Object.entries(s.tools_used)
                       .map(([k, v]) => `${k}=${v}`)
@@ -1509,7 +1506,7 @@ function StreamPanel({ stages, onDismiss, t }: StreamPanelProps) {
             )}
             {s.report && (
               <div className="mt-1 text-[var(--muted-foreground)]">
-                accepted={String(s.report.accepted)}
+                {t("Accepted")}: {s.report.accepted ? t("Yes") : t("No")}
                 {s.report.reason ? ` · ${s.report.reason}` : ""}
               </div>
             )}

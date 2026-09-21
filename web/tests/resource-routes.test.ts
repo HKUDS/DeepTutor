@@ -1,18 +1,18 @@
+import { bookRoute } from "../lib/learning-routes";
 import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  bookRoute,
   decodeResourceSegment,
   knowledgeBaseRoute,
   notebookRoute,
 } from "../lib/resource-routes";
 
 test("resource identities are encoded as path segments", () => {
-  assert.equal(bookRoute("book one"), "/books/book%20one");
+  assert.equal(bookRoute("book one"), "/learning/books/book%20one");
   assert.equal(
     bookRoute("book one", "page/two"),
-    "/books/book%20one/pages/page%2Ftwo",
+    "/learning/books/book%20one/pages/page%2Ftwo",
   );
   assert.equal(notebookRoute("notes/一"), "/notebooks/notes%2F%E4%B8%80");
   assert.equal(

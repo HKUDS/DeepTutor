@@ -20,7 +20,7 @@ import {
 function findWebRoot(): string {
   let dir = __dirname;
   for (let i = 0; i < 8; i++) {
-    if (fs.existsSync(path.join(dir, "locales", "en", "app.json"))) return dir;
+    if (fs.existsSync(path.join(dir, "package.json")) && fs.existsSync(path.join(dir, "locales", "en", "app.json"))) return dir;
     dir = path.dirname(dir);
   }
   throw new Error("could not locate the web root from " + __dirname);

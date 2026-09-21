@@ -31,7 +31,11 @@ _SECURE = bool(load_auth_settings()["cookie_secure"])
 _SAMESITE = "none" if _SECURE else "lax"
 
 from deeptutor.multi_user.audit import log_admin_action, log_usage
-from deeptutor.multi_user.context import set_current_user, user_from_token_payload
+from deeptutor.multi_user.context import (
+    reset_current_user,
+    set_current_user,
+    user_from_token_payload,
+)
 from deeptutor.multi_user.device_credentials import (
     heartbeat_device_credential,
     issue_device_credential,
@@ -290,6 +294,7 @@ def _install_current_user(payload: TokenPayload | None) -> _CtxToken:
 async def require_auth(
     authorization: str | None = Header(default=None, alias="Authorization"),
     dt_token: str | None = Cookie(default=None, alias=_COOKIE_NAME),
+    request: Request = None,
 ) -> TokenPayload | None:
     """
     FastAPI dependency that enforces authentication when AUTH_ENABLED=true.
@@ -315,6 +320,7 @@ async def require_auth(
     """
     if not AUTH_ENABLED:
         _install_current_user(None)
+        _install_request_workspace(request)
         return None
 
     token = _extract_token(authorization, dt_token)
@@ -334,7 +340,64 @@ async def require_auth(
         )
 
     _install_current_user(payload)
+    _install_request_workspace(request)
     return payload
+
+
+def _install_request_workspace(request) -> None:
+    from deeptutor.services.workspace.context import install_workspace_scope
+    from deeptutor.services.workspace.models import WorkspaceError
+
+    headers = getattr(request, "headers", {})
+    params = getattr(request, "query_params", {})
+    header = headers.get("x-deeptutor-workspace")
+    query = params.get("dt_workspace")
+    if header is not None and query is not None and header != query:
+        raise HTTPException(status_code=400, detail="Conflicting workspace scopes.")
+    try:
+        path = getattr(getattr(request, "url", None), "path", "")
+        from deeptutor.services.workspace.knowledge import library_request
+
+        library_request.set(
+            path.startswith(("/api/knowledge-bases", "/ws/knowledge-bases"))
+            and params.get("resource_library") == "true"
+        )
+        from deeptutor.services.skill.runtime import library_workspace
+
+        skill_workspace = (
+            params.get("skill_workspace", "") if path.startswith("/api/skills") else ""
+        )
+        library_workspace.set(skill_workspace)
+        catalog_management = library_request.get() or path.startswith(
+            ("/api/skills", "/api/space/mcp")
+        )
+        management = path.startswith(("/api/settings", "/api/auth", "/api/multi-user"))
+        selected = install_workspace_scope(
+            None if management or catalog_management else header if header is not None else query
+        )
+        if skill_workspace:
+            from deeptutor.services.workspace import get_content_workspace_service
+
+            service = get_content_workspace_service()
+            service.validate_chat_binding(
+                skill_workspace,
+                existing=getattr(request, "method", "GET") in {"GET", "HEAD", "OPTIONS"},
+            )
+        if (
+            not management
+            and selected.archived
+            and getattr(request, "method", "GET") not in {"GET", "HEAD", "OPTIONS"}
+        ):
+            raise WorkspaceError("Restore this workspace before changing its data.")
+        # Management/migration requests acquire their own exclusive lease.
+        if getattr(request, "method", None) is not None and not management:
+            from deeptutor.services.workspace.activity import acquire_activity
+
+            state = getattr(request, "state", None)
+            if state is not None and getattr(state, "workspace_activity", None) is None:
+                state.workspace_activity = acquire_activity()
+    except WorkspaceError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 class _WsAuthFailed:
@@ -365,16 +428,21 @@ async def ws_require_auth(ws: WebSocket) -> _CtxToken | _WsAuthFailed:
         finally:
             reset_current_user(user_token)
     """
-    if not AUTH_ENABLED:
-        return _install_current_user(None)
-
-    token = ws.query_params.get("token") or ws.cookies.get(_COOKIE_NAME)
-    payload = decode_token(token) if token else None
-    if not payload:
-        await ws.close(code=4001)
+    payload = None
+    if AUTH_ENABLED:
+        token = ws.query_params.get("token") or ws.cookies.get(_COOKIE_NAME)
+        payload = decode_token(token) if token else None
+        if not payload:
+            await ws.close(code=4001)
+            return ws_auth_failed
+    user_token = _install_current_user(payload)
+    try:
+        _install_request_workspace(ws)
+    except HTTPException:
+        reset_current_user(user_token)
+        await ws.close(code=4004)
         return ws_auth_failed
-
-    return _install_current_user(payload)
+    return user_token
 
 
 async def require_admin(

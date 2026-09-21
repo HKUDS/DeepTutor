@@ -43,19 +43,19 @@ test("study opens with nothing, because starting is the learner's choice", () =>
 test("a route only ever sets the mode a NEW conversation starts in", () => {
   assert.equal(
     masterySessionRoute("p1", "outline"),
-    "/mastery/p1/sessions?mode=outline",
+    "/learning/mastery/p1/sessions?mode=outline",
   );
   // The default needs no parameter: a bare route is a study conversation.
-  assert.equal(masterySessionRoute("p1", "study"), "/mastery/p1/sessions");
+  assert.equal(masterySessionRoute("p1", "study"), "/learning/mastery/p1/sessions");
   assert.equal(
     masterySessionRoute("p 1", "review", "c1"),
-    "/mastery/p%201/sessions?mode=review&course=c1",
+    "/learning/mastery/p%201/sessions?mode=review&course=c1",
   );
 });
 
 test("every mode has a route and a label", () => {
   for (const mode of MASTERY_MODES) {
-    assert.ok(masterySessionRoute("p", mode).startsWith("/mastery/p/sessions"));
+    assert.ok(masterySessionRoute("p", mode).startsWith("/learning/mastery/p/sessions"));
   }
 });
 

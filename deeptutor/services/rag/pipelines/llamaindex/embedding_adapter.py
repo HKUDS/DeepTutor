@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextvars import ContextVar
 import logging
 from typing import Any, List
 
@@ -11,6 +12,7 @@ from llama_index.core.base.embeddings.base import BaseEmbedding
 from llama_index.core.bridge.pydantic import PrivateAttr
 
 from deeptutor.services.embedding import EmbeddingConfig, get_embedding_client, get_embedding_config
+from deeptutor.services.embedding.config import scoped_embedding_config
 from deeptutor.services.embedding.validation import validate_embedding_batch
 
 from .config import chunk_geometry
@@ -134,16 +136,33 @@ class CustomEmbedding(BaseEmbedding):
         return result
 
 
+_operation_adapter: ContextVar[CustomEmbedding | None] = ContextVar(
+    "llamaindex_embedding", default=None
+)
+
+
+def current_embedding():
+    if scoped_embedding_config() is not None and _operation_adapter.get() is not None:
+        return _operation_adapter.get()
+    return Settings.embed_model
+
+
 def configure_llamaindex_settings(logger=None) -> None:
     """Configure LlamaIndex globals for DeepTutor's current embedding config."""
     embedding_cfg = get_embedding_config()
 
-    current = getattr(Settings, "_embed_model", None)
+    current = (
+        None if scoped_embedding_config() is not None else getattr(Settings, "_embed_model", None)
+    )
     configured = False
     if isinstance(current, CustomEmbedding) and current.matches_config(embedding_cfg):
         current.refresh_client(embedding_cfg)
     else:
-        Settings.embed_model = CustomEmbedding(embedding_config=embedding_cfg)
+        adapter = CustomEmbedding(embedding_config=embedding_cfg)
+        if scoped_embedding_config() is not None:
+            _operation_adapter.set(adapter)
+        else:
+            Settings.embed_model = adapter
         configured = True
     chunk_size, chunk_overlap = chunk_geometry()
     Settings.chunk_size = chunk_size
@@ -162,7 +181,7 @@ def configure_llamaindex_settings(logger=None) -> None:
 
 def set_progress_callback(callback) -> None:
     """Attach an indexing progress callback to the active embedding adapter."""
-    embed_model = getattr(Settings, "_embed_model", None)
+    embed_model = current_embedding()
     if isinstance(embed_model, CustomEmbedding):
         embed_model.set_progress_callback(callback)
 

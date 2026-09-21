@@ -1,5 +1,6 @@
 "use client";
 
+import { knowledgeBaseRef } from "@/lib/knowledge-helpers";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -2134,7 +2135,7 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
             >
               <option value="">{t("Select a knowledge base...")}</option>
               {knowledgeBases.map((k) => (
-                <option key={k.name} value={k.name}>
+                <option key={knowledgeBaseRef(k)} value={knowledgeBaseRef(k)}>
                   {k.name}
                 </option>
               ))}
@@ -2309,7 +2310,7 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
                   >
                     <option value="">{t("Select...")}</option>
                     {knowledgeBases.map((k) => (
-                      <option key={k.name} value={k.name}>
+                      <option key={knowledgeBaseRef(k)} value={knowledgeBaseRef(k)}>
                         {k.name}
                       </option>
                     ))}

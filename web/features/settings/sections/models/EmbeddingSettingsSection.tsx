@@ -1,21 +1,18 @@
 "use client";
-
 import { useTranslation } from "react-i18next";
-
-import { ServiceConfigEditor } from "@/components/settings/ServiceConfigEditor";
+import { ModelsWorkspace } from "@/components/settings/ModelsWorkspace";
 import { SettingsPageHeader } from "@/components/settings/shared";
-
 export default function EmbeddingSettingsPage() {
   const { t } = useTranslation();
   return (
     <div>
       <SettingsPageHeader
-        title={t("Embedding")}
+        title={t("Embedding models")}
         description={t(
-          "Configure embedding model profiles. Used by retrieval and knowledge-base ingestion.",
+          "Manage embedding models for retrieval and knowledge bases.",
         )}
       />
-      <ServiceConfigEditor service="embedding" />
+      <ModelsWorkspace page="embedding" />
     </div>
   );
 }

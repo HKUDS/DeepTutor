@@ -359,6 +359,8 @@ async def partner_group_ws(ws: WebSocket, group_id: str):
     manager = get_partner_group_manager()
     send_lock = asyncio.Lock()
     push_tasks: dict[int, asyncio.Task] = {}
+    consultation_client = str(id(ws))
+    consultation_sessions: set[str] = set()
 
     async def send(frame: dict) -> None:
         async with send_lock:
@@ -403,6 +405,18 @@ async def partner_group_ws(ws: WebSocket, group_id: str):
                 continue
             session_key = str(data.get("session_key") or "default")[:120]
             action = str(data.get("action") or "")
+            if action == "consultation_activity":
+                consultation_sessions.add(session_key)
+                manager.consultation_activity(
+                    group_id,
+                    session_key,
+                    consultation_client,
+                    has_draft=data.get("has_draft") is True,
+                    active=data.get("active") is True,
+                )
+                continue
+            if action != "attach":
+                manager.consultation_activity(group_id, session_key, consultation_client)
             if action == "attach":
                 for live in manager.subscribe_live_turns(group_id, session_key):
                     attach(live)
@@ -504,6 +518,8 @@ async def partner_group_ws(ws: WebSocket, group_id: str):
             # to approve/reject/cancel while Partners are still running.
             attach(live)
     finally:
+        for key in consultation_sessions:
+            manager.disconnect_consultation(group_id, key, consultation_client)
         for task in tuple(push_tasks.values()):
             task.cancel()
         if push_tasks:

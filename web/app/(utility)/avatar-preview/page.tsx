@@ -3,6 +3,7 @@
 // TEMPORARY harness for the session-avatar states. Delete once signed off.
 
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import {
   SessionAvatar,
@@ -55,6 +56,7 @@ function SidebarMock({
 }
 
 export default function AvatarPreview() {
+  const { t } = useTranslation();
   const [phase, setPhase] = useState(0);
   const [auto, setAuto] = useState(true);
   const [size, setSize] = useState(12);
@@ -73,16 +75,9 @@ export default function AvatarPreview() {
 
   return (
     <div className="h-full overflow-y-auto bg-[var(--background)] p-8 text-[var(--foreground)]">
-      <h1 className="text-[15px] font-semibold">会话头像 — 三态</h1>
+      <h1 className="text-[15px] font-semibold">{t("Session avatars — states")}</h1>
       <p className="mt-1 max-w-[720px] text-[12.5px] leading-[1.7] text-[var(--muted-foreground)]">
-        <b className="font-medium text-[var(--foreground)]">运行中</b> ={" "}
-        <code>composing</code> orb，蓝色、1.3× 速度 ·{" "}
-        <b className="font-medium text-[var(--foreground)]">完成未读</b> =
-        蓝色实心圆点 ·{" "}
-        <b className="font-medium text-[var(--foreground)]">出错</b> =
-        琥珀实心点 ·{" "}
-        <b className="font-medium text-[var(--foreground)]">完成已读</b> =
-        灰色空心环（发丝描边）。每行错开一个阶段，1.8 秒推进一格，所以三态和两个方向的过渡同时都在播。
+        {t("Avatar state preview description")}
       </p>
 
       <div className="mt-5 flex items-center gap-3 text-[12.5px]">
@@ -91,16 +86,16 @@ export default function AvatarPreview() {
           onClick={() => setAuto((v) => !v)}
           className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
         >
-          {auto ? "暂停" : "播放"}
+          {auto ? t("Pause") : t("Play")}
         </button>
         <button
           type="button"
           onClick={() => setPhase((p) => p + 1)}
           className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
         >
-          单步
+          {t("Step forward")}
         </button>
-        <span className="ml-2 text-[var(--muted-foreground)]/60">尺寸</span>
+        <span className="ml-2 text-[var(--muted-foreground)]/60">{t("Size")}</span>
         {[11, 12, 13, 14].map((px) => (
           <button
             key={px}
@@ -120,14 +115,14 @@ export default function AvatarPreview() {
       <div className="mt-7 flex flex-wrap items-start gap-10">
         <div>
           <div className="mb-2 text-[11px] uppercase tracking-[0.08em] text-[var(--muted-foreground)]/50">
-            侧栏 1:1
+            {t("Sidebar 1:1")}
           </div>
           <SidebarMock marks={marks} size={size} />
         </div>
 
         <div>
           <div className="mb-2 text-[11px] uppercase tracking-[0.08em] text-[var(--muted-foreground)]/50">
-            三态定格 · 放大 4×
+            {t("State snapshots · 4× zoom")}
           </div>
           <div className="flex gap-7 rounded-xl border border-[var(--border)]/60 p-5">
             {(
@@ -138,7 +133,7 @@ export default function AvatarPreview() {
                   <SessionAvatar sessionId={mark} mark={mark} size={size} />
                 </span>
                 <span className="text-[11px] text-[var(--muted-foreground)]/60">
-                  {mark}
+                  {t({ running: "Running", unread: "Unread", failed: "Failed", idle: "Idle" }[mark])}
                 </span>
               </div>
             ))}

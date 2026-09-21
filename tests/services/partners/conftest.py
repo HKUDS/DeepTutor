@@ -50,7 +50,11 @@ def partners_root(tmp_path, monkeypatch) -> Path:
     monkeypatch.setattr(identity, "LEGACY_SECRET_FILE", project_root / "legacy_secret")
 
     admin_root.mkdir(parents=True, exist_ok=True)
-    return admin_root / "partners"
+    # Workspace-aware services now resolve the authenticated account before
+    # its content scope. Keep those lookups inside this test's temporary root
+    # too, rather than falling through to the process-wide PathService.
+    with paths.user_context(paths.local_admin_user()):
+        yield admin_root / "partners"
 
 
 class _FakeOrchestrator:
@@ -92,8 +96,10 @@ def fake_orchestrator(monkeypatch):
     monkeypatch.setattr(orch_mod, "ChatOrchestrator", _FakeOrchestrator)
 
     def _record_activate(selection):
+        from types import SimpleNamespace
+
         _FakeOrchestrator.activated_selections.append(selection)
-        return (None, None)
+        return (SimpleNamespace(binding="openai", model="test-model"), None)
 
     monkeypatch.setattr(selection_runtime, "activate_llm_selection", _record_activate)
     monkeypatch.setattr(selection_runtime, "reset_llm_selection", lambda token: None)

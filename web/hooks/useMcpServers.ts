@@ -1,5 +1,6 @@
 "use client";
 
+import { resourceUsage } from "@/lib/workspaces-api";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -123,10 +124,13 @@ export function useMcpServers(surface: McpSurface) {
   const remove = useCallback(
     async (name: string) => {
       if (!servers || saving) return;
-      if (
-        typeof window !== "undefined" &&
-        !window.confirm(t('Delete MCP server "{{name}}"?', { name }))
-      ) {
+      try {
+        const origin = surface.writes === "per-server" ? "account" : "deployment";
+        const workspaces = await resourceUsage("mcp", `${origin}:${name}`);
+        const impact = workspaces.length ? "\n\n" + t("Used by workspaces: {{names}}", { names: workspaces.join(", ") }) : "";
+        if (typeof window !== "undefined" && !window.confirm(t('Delete MCP server "{{name}}"?', { name }) + impact)) return;
+      } catch (err) {
+        setSaveError(describeMcpError(err, t));
         return;
       }
       const next = { ...servers };
@@ -134,7 +138,7 @@ export function useMcpServers(surface: McpSurface) {
       if (editingKey === name) setEditingKey(null);
       await persist(next);
     },
-    [servers, saving, t, editingKey, persist],
+    [servers, saving, t, editingKey, persist, surface],
   );
 
   /**

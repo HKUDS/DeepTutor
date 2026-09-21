@@ -1,3 +1,5 @@
+import { activeWorkspaceId } from "./workspace-scope";
+
 type CacheEntry<T> = {
   data?: T;
   promise?: Promise<T>;
@@ -23,6 +25,7 @@ export async function withClientCache<T>(
   }
 
   const now = Date.now();
+  key = `${key}:workspace=${activeWorkspaceId()}`;
   const cached = clientCache.get(key) as CacheEntry<T> | undefined;
   if (!force && cached) {
     if (cached.data !== undefined && cached.expiresAt > now) {
@@ -35,14 +38,17 @@ export async function withClientCache<T>(
 
   const promise = loader()
     .then((value) => {
-      clientCache.set(key, {
-        data: value,
-        expiresAt: Date.now() + ttlMs,
-      });
+      // Invalidated or superseded requests must not repopulate stale data.
+      if (clientCache.get(key)?.promise === promise) {
+        clientCache.set(key, {
+          data: value,
+          expiresAt: Date.now() + ttlMs,
+        });
+      }
       return value;
     })
     .catch((error) => {
-      clientCache.delete(key);
+      if (clientCache.get(key)?.promise === promise) clientCache.delete(key);
       throw error;
     });
 

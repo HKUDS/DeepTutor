@@ -54,7 +54,7 @@ test("an unbound draft stays on the sessionless study route", () => {
 test("legacy /mastery/.../study URLs permanently redirect to /sessions", async () => {
   const nextConfig = require(path.resolve(process.cwd(), "next.config.js")) as {
     redirects?: () => Promise<
-      Array<{ source: string; destination: string; permanent: boolean }>
+      Array<{ source: string; destination: string; statusCode: number }>
     >;
   };
   assert.equal(typeof nextConfig.redirects, "function");
@@ -64,13 +64,13 @@ test("legacy /mastery/.../study URLs permanently redirect to /sessions", async (
     [
       {
         source: "/mastery/:pathId/study",
-        destination: "/mastery/:pathId/sessions",
-        permanent: true,
+        destination: "/learning/mastery/:pathId/sessions",
+        statusCode: 301,
       },
       {
         source: "/mastery/:pathId/study/:sessionId",
-        destination: "/mastery/:pathId/sessions/:sessionId",
-        permanent: true,
+        destination: "/learning/mastery/:pathId/sessions/:sessionId",
+        statusCode: 301,
       },
     ],
   );

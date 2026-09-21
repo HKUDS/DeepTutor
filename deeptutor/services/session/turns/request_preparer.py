@@ -16,6 +16,7 @@ from deeptutor.services.session.workspace_preferences import (
     WORKSPACE_MODE_READING,
     WORKSPACE_MODE_WATCHING,
 )
+from deeptutor.services.workspace.activity import workspace_writer
 
 from .._turn_runtime_shared import (
     _apply_course_defaults,
@@ -91,8 +92,14 @@ class TurnRequestPreparer:
 
         async def _coordinate_execution(self, execution: _TurnExecution) -> None: ...
 
+    @workspace_writer
     async def start_turn(self, payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
         await self._ensure_accepting_turns()
+        from deeptutor.services.workspace.context import get_workspace_scope
+
+        active_scope = get_workspace_scope()
+        if active_scope is not None and active_scope.archived:
+            raise RuntimeError("Restore this workspace before starting a conversation.")
         # ``TurnRuntimeManager`` remains a one-version compatibility facade;
         # transport adapters normally strip their envelope before reaching it.
         payload = TurnRequest.model_validate(
@@ -106,6 +113,8 @@ class TurnRequestPreparer:
 
             payload = {**payload, "language": get_response_language(default="en")}
         raw_config = dict(payload.get("config", {}) or {})
+        resource_reuse = raw_config.pop("_resource_reuse", None)
+        persistent_kbs = raw_config.pop("_persistent_knowledge_bases", None)
         per_turn_auto_route = payload.get("auto_route")
         if per_turn_auto_route is None:
             from deeptutor.services.config.runtime_settings import load_system_settings
@@ -115,8 +124,56 @@ class TurnRequestPreparer:
             )
         else:
             routing_enabled = _coerce_bool(per_turn_auto_route, False)
+        if (
+            payload.get("session_id")
+            and await self.store.get_session(payload["session_id"]) is None
+        ):
+            raise RuntimeError("Conversation not found in this workspace.")
         session = await self.store.ensure_session(payload.get("session_id"))
         preferences = session.get("preferences") or {}
+
+        # Freeze the content binding at admission, before scheduling the turn.
+        # Existing conversations are moved through the organization endpoint;
+        # a stale tab must never move one by sending its cached preference.
+        from deeptutor.multi_user.context import get_current_user
+        from deeptutor.services.partners.scope import is_partner_user_id
+        from deeptutor.services.workspace import get_content_workspace_service
+        from deeptutor.services.workspace.context import get_workspace_scope
+
+        scope = get_workspace_scope()
+        if scope is not None:
+            requested = str(payload.get("workspace_id") or "")
+            if "workspace_id" in payload and requested != scope.workspace_id:
+                raise RuntimeError("The request workspace does not match its connection.")
+            stored = str(preferences.get("workspace_id") or "")
+            if "workspace_id" in preferences and stored != scope.workspace_id:
+                raise RuntimeError("The conversation belongs to another workspace.")
+            payload["workspace_id"] = scope.workspace_id
+
+        content_workspace_id = str(preferences.get("workspace_id") or "").strip()
+        if "workspace_id" in payload:
+            requested_workspace_id = str(payload.get("workspace_id") or "").strip()
+            if "workspace_id" in preferences and requested_workspace_id != content_workspace_id:
+                raise RuntimeError("The conversation workspace changed. Reload the conversation.")
+            content_workspace_id = requested_workspace_id
+        content_workspace_enabled = (
+            "workspace_id" in preferences
+            or "workspace_id" in payload
+            or (not is_partner_user_id(get_current_user().id))
+        )
+        if content_workspace_enabled:
+            workspace_service = get_content_workspace_service()
+            if content_workspace_id == workspace_service.general_binding().workspace_id:
+                content_workspace_id = ""
+            binding = (
+                workspace_service.validate_chat_binding(
+                    content_workspace_id,
+                    existing=content_workspace_id == preferences.get("workspace_id"),
+                )
+                if content_workspace_id
+                else workspace_service.session_binding(session["id"])
+            )
+            payload["_content_workspace_id"] = binding.workspace_id
 
         course_id_explicit = "course_id" in payload
         requested_course_id = str(
@@ -309,6 +366,18 @@ class TurnRequestPreparer:
             (payload.get("persona") if "persona" in payload else preferences.get("persona")) or ""
         ).strip()
         payload = {**payload, "persona": persona_pref}
+        # Which skills and MCP servers this conversation narrowed itself to,
+        # resolved the same way as persona and the KB scope: an explicit key in
+        # the payload wins and is persisted below (an explicit empty list means
+        # "back to everything the workspace allows"), an absent key keeps what
+        # the conversation already chose so a reload does not widen its reach.
+        skills_explicit = "skills" in payload
+        mcp_explicit = "mcp" in payload
+        selected_skills = list(
+            (payload.get("skills") if skills_explicit else preferences.get("skills")) or []
+        )
+        selected_mcp = list((payload.get("mcp") if mcp_explicit else preferences.get("mcp")) or [])
+        payload = {**payload, "skills": selected_skills, "mcp": selected_mcp}
         raw_llm_selection = payload.get("llm_selection")
         if raw_llm_selection is None:
             raw_llm_selection = preferences.get("llm_selection")
@@ -432,6 +501,8 @@ class TurnRequestPreparer:
             "knowledge_bases": list(payload.get("knowledge_bases") or []),
             "language": str(payload.get("language") or "en"),
         }
+        if content_workspace_enabled and "workspace_id" not in preferences:
+            preference_update["workspace_id"] = content_workspace_id or None
         # Missing legacy chat fields should not manufacture an empty stored
         # preference. Explicit empties still clear a workspace, while a
         # non-empty legacy capability is persisted as part of migration.
@@ -474,6 +545,16 @@ class TurnRequestPreparer:
                 except (LookupError, ValueError) as exc:
                     raise RuntimeError(str(exc)) from exc
                 parent_preferences = parent_session.get("preferences") or {}
+                if "workspace_id" in parent_preferences:
+                    inherited_id = str(parent_preferences.get("workspace_id") or "")
+                    preference_update["workspace_id"] = inherited_id or None
+                    workspace_service = get_content_workspace_service()
+                    inherited_binding = (
+                        workspace_service.validate_chat_binding(inherited_id, existing=True)
+                        if inherited_id
+                        else workspace_service.session_binding(parent_session_id)
+                    )
+                    payload["_content_workspace_id"] = inherited_binding.workspace_id
                 preference_update.update(
                     {
                         "parent_session_id": parent_session_id,
@@ -486,6 +567,13 @@ class TurnRequestPreparer:
         if persona_explicit:
             # Persist explicit set AND explicit clear ("" = back to Default).
             preference_update["persona"] = persona_pref
+        if skills_explicit:
+            preference_update["skills"] = selected_skills
+        if mcp_explicit:
+            preference_update["mcp"] = selected_mcp
+        from .resource_reuse import apply_resource_reuse
+
+        apply_resource_reuse(preference_update, resource_reuse, persistent_kbs)
         if mastery_path_explicit or mastery_binding is not None:
             # Mastery turns persist their fully resolved path so a later turn
             # cannot silently fall back to a different aggregate.
@@ -627,7 +715,15 @@ class TurnRequestPreparer:
                 ),
             )
             async with self._lock:
-                execution.task = asyncio.create_task(self._run_turn(execution))
+                from deeptutor.services.workspace.activity import acquire_activity
+
+                activity = acquire_activity()
+                try:
+                    execution.task = asyncio.create_task(self._run_turn(execution))
+                except BaseException:
+                    activity.close()
+                    raise
+                execution.task.add_done_callback(lambda _done: activity.close())
                 if execution.lease is not None and self.coordinator is not None:
                     execution.coordination_task = asyncio.create_task(
                         self._coordinate_execution(execution)
@@ -715,9 +811,31 @@ class TurnRequestPreparer:
             if overrides.get("knowledge_bases") is not None
             else preferences.get("knowledge_bases") or []
         )
+        skills = list(
+            overrides.get("skills")
+            if overrides.get("skills") is not None
+            else preferences.get("skills") or []
+        )
+        mcp = list(
+            overrides.get("mcp")
+            if overrides.get("mcp") is not None
+            else preferences.get("mcp") or []
+        )
         language = str(overrides.get("language") or preferences.get("language") or "en")
 
         config: dict[str, Any] = dict(overrides.get("config") or {})
+        consultation_fields = {}
+        snapshot_config = snapshot.get("config") or {}
+        for field, snapshot_key in (
+            ("consult_partner_id", "consultPartnerId"),
+            ("partner_discussion_group_id", "partnerDiscussionGroupId"),
+        ):
+            consultation_fields[field] = (
+                overrides[field]
+                if field in overrides
+                else config.get(field, snapshot.get(snapshot_key, snapshot_config.get(field)))
+            )
+
         llm_selection = (
             overrides.get("llm_selection")
             if overrides.get("llm_selection") is not None
@@ -742,6 +860,8 @@ class TurnRequestPreparer:
             "content": str(last_user.get("content", "") or ""),
             "tools": tools,
             "knowledge_bases": knowledge_bases,
+            "skills": skills,
+            "mcp": mcp,
             "language": language,
             "attachments": list(last_user.get("attachments") or []),
             "notebook_references": list(
@@ -805,6 +925,7 @@ class TurnRequestPreparer:
                 else snapshot.get("timedMediaId")
             ),
             "config": config,
+            **consultation_fields,
             "persist_user_message": False,
             "regenerate": True,
             "regenerated_from_message_id": int(last_user["id"]),

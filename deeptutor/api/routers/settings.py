@@ -16,8 +16,8 @@ import logging
 import time
 from typing import Any, List, Literal, Optional
 
-from fastapi import APIRouter, HTTPException, Request, status
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, HTTPException, Query, Request, status
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -54,6 +54,7 @@ from deeptutor.services.config.settings_draft import (
 from deeptutor.services.llm.config import clear_llm_config_cache
 from deeptutor.services.model_selection import list_llm_options
 from deeptutor.services.path_service import get_path_service
+from deeptutor.services.session.usage_statistics import UsageStatistics
 from deeptutor.services.settings.interface_settings import (
     DEFAULT_UI_SETTINGS as INTERFACE_DEFAULTS,
 )
@@ -198,8 +199,38 @@ class EnabledToolsUpdate(BaseModel):
     enabled_tools: List[str]
 
 
+class VoicePreviewPayload(BaseModel):
+    catalog: dict[str, Any]
+    profile_id: str
+    model_id: str
+    text: str = Field(min_length=1, max_length=500)
+
+
 class CatalogPayload(BaseModel):
     catalog: dict[str, Any]
+
+
+class ProviderEditPayload(BaseModel):
+    service: Literal["llm", "task", "embedding", "search", "tts", "stt", "imagegen", "videogen"]
+    profile: dict[str, Any]
+    connection: dict[str, Any] | None = None
+    active_model_id: str | None = None
+    activate: bool = False
+
+
+class RegistryEditPayload(BaseModel):
+    kind: Literal["provider", "model", "default", "task_choice"]
+    task: dict[str, Any] | None = None
+    ref: dict[str, Any] | None = None
+    fields: dict[str, Any] | None = None
+    service: (
+        Literal["llm", "task", "embedding", "search", "tts", "stt", "imagegen", "videogen"] | None
+    ) = None
+    profile_id: str | None = None
+    model_id: str | None = None
+    model: dict[str, Any] | None = None
+    config: dict[str, Any] | None = None
+    delete: bool = False
 
 
 class CatalogServicePayload(BaseModel):
@@ -245,6 +276,20 @@ class FetchModelsPayload(BaseModel):
 class ModelCapabilitiesQuery(BaseModel):
     binding: str = ""
     model: str = ""
+
+
+class ProviderProbePayload(BaseModel):
+    binding: str = "openai"
+    base_url: str = ""
+    api_key: str | list[str] | None = None
+    api_format: str = "auto"
+    api_version: str = ""
+    extra_headers: dict[str, str] | str | None = None
+    service: Literal["llm", "task", "embedding", "search", "tts", "stt", "imagegen", "videogen"] = (
+        "llm"
+    )
+    profile_id: str | None = None
+    connection_id: str | None = None
 
 
 class NetworkSettingsUpdate(BaseModel):
@@ -579,6 +624,8 @@ def _provider_choices() -> dict[str, list[dict[str, Any]]]:
         }
         for name in sorted(DEPRECATED_SEARCH_PROVIDERS)
     ]
+    from deeptutor.services.voice.options import voice_options
+
     tts = sorted(
         [
             {
@@ -587,6 +634,7 @@ def _provider_choices() -> dict[str, list[dict[str, Any]]]:
                 "base_url": spec.default_api_base,
                 "default_model": spec.default_model,
                 "default_voice": spec.default_voice,
+                "voice_options": voice_options(name, "tts"),
             }
             for name, spec in TTS_PROVIDERS.items()
         ],
@@ -599,6 +647,7 @@ def _provider_choices() -> dict[str, list[dict[str, Any]]]:
                 "label": spec.label,
                 "base_url": spec.default_api_base,
                 "default_model": spec.default_model,
+                "voice_options": voice_options(name, "stt"),
             }
             for name, spec in STT_PROVIDERS.items()
         ],
@@ -793,11 +842,17 @@ async def get_settings():
         # Non-admins never see the catalog (provider URLs/keys); their model
         # choices come from /settings/llm-options (grant-filtered).
         return {"ui": load_ui_settings()}
+    from deeptutor.services.model_selection.tasks import task_kind_payload
+
     return {
         "ui": load_ui_settings(),
         "catalog": redact_catalog_secrets(get_model_catalog_service().load()),
         "providers": _provider_choices(),
         "connection_targets": _connection_targets(),
+        # What actually runs on the background task model. The list comes from
+        # the call sites themselves (one TaskKind each), so the task models page
+        # cannot list a task DeepTutor no longer makes — or miss a new one.
+        "task_kinds": task_kind_payload(),
     }
 
 
@@ -1484,6 +1539,99 @@ async def update_catalog(payload: CatalogPayload):
     return {"catalog": redact_catalog_secrets(catalog)}
 
 
+@router.post("/apply/registry")
+async def apply_registry_edit(payload: RegistryEditPayload):
+    """Promote one provider, model, or default without replacing other drafts."""
+    _require_settings_admin()
+    from deeptutor.services.settings.registry_edit import merge_registry_edit
+
+    service = get_model_catalog_service()
+    draft_service = get_settings_draft_service()
+    stored = draft_service.load()
+    current = service.load()
+    edit = payload.model_dump(exclude_none=True)
+    try:
+        proposed = merge_registry_edit(current, edit, stored_draft=stored.get("catalog"))
+        proposed = reconcile_codex_catalog_update(current, proposed)
+        draft_catalog = stored.get("catalog")
+        if isinstance(draft_catalog, dict):
+            stored["catalog"] = merge_registry_edit(draft_catalog, edit, stored_draft=proposed)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    with _runtime_catalog_write():
+        service.apply(proposed)
+    catalog = service.load()
+    if stored.get("catalog") == catalog:
+        stored["catalog"] = None
+    if is_empty_draft(stored):
+        draft_service.clear()
+        public_draft = None
+    else:
+        public_draft = redact_draft(draft_service.save(stored))
+    return {"catalog": redact_catalog_secrets(catalog), "draft": public_draft}
+
+
+@router.post("/apply/provider")
+async def apply_provider_edit(payload: ProviderEditPayload):
+    """Save the provider on screen, preserving every unrelated live/draft entry."""
+    _require_settings_admin()
+    from deeptutor.services.settings.provider_edit import merge_provider_edit
+
+    service = get_model_catalog_service()
+    draft_service = get_settings_draft_service()
+    stored = draft_service.load()
+    current = service.load()
+    try:
+        proposed = merge_provider_edit(
+            current,
+            payload.service,
+            payload.profile,
+            connection=payload.connection,
+            active_model_id=payload.active_model_id,
+            activate=payload.activate,
+            stored_draft=stored.get("catalog"),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    reconciled = reconcile_codex_catalog_update(current, proposed)
+    with _runtime_catalog_write():
+        service.apply(reconciled)
+    catalog = service.load()
+    draft_catalog = stored.get("catalog")
+    if isinstance(draft_catalog, dict):
+        # Advance only the addressed profile in a saved draft, preserving edits
+        # to its sibling providers and to all non-model settings.
+        saved_profile = next(
+            item
+            for item in catalog["services"][payload.service]["profiles"]
+            if item["id"] == payload.profile["id"]
+        )
+        saved_connection = next(
+            (
+                item
+                for item in catalog.get("connections", [])
+                if item["id"] == (payload.connection or {}).get("id")
+            ),
+            None,
+        )
+        stored["catalog"] = merge_provider_edit(
+            draft_catalog,
+            payload.service,
+            saved_profile,
+            connection=saved_connection,
+            activate=payload.activate,
+            active_model_id=payload.active_model_id,
+        )
+        if stored["catalog"] == catalog:
+            stored["catalog"] = None
+    if is_empty_draft(stored):
+        draft_service.clear()
+        public_draft = None
+    else:
+        public_draft = redact_draft(draft_service.save(stored))
+    return {"catalog": redact_catalog_secrets(catalog), "draft": public_draft}
+
+
 @router.post("/apply/service")
 async def apply_catalog_service(payload: CatalogServicePayload):
     """Apply one model service while leaving every other draft untouched.
@@ -1496,9 +1644,22 @@ async def apply_catalog_service(payload: CatalogServicePayload):
     _require_settings_admin()
     service = get_model_catalog_service()
     current = service.load()
+    draft_service = get_settings_draft_service()
+    stored_draft = draft_service.load()
     proposed = deepcopy(current)
     proposed.setdefault("services", {})[payload.service] = deepcopy(payload.config)
-    restored = restore_catalog_secrets(proposed, current)
+    restored = restore_catalog_secrets(proposed, stored_draft.get("catalog") or current)
+    restored = restore_catalog_secrets(restored, current)
+    if payload.service == "task" and payload.config.get("mode") == "reference":
+        from deeptutor.services.model_selection import apply_llm_selection_to_catalog
+
+        try:
+            selection = payload.config.get("selection")
+            if not selection or not selection.get("profile_id") or not selection.get("model_id"):
+                raise ValueError("Choose a configured task model first.")
+            apply_llm_selection_to_catalog(restored, selection)
+        except (ValueError, AttributeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     reconciled = reconcile_codex_catalog_update(current, restored)
     with _runtime_catalog_write():
         runtime = service.apply(reconciled)
@@ -1507,8 +1668,6 @@ async def apply_catalog_service(payload: CatalogServicePayload):
     # A previously saved draft contains a full catalog. Keep it, but advance
     # this one service to the value that is now live; otherwise reloading the
     # page would resurrect the pre-apply STT configuration over the live one.
-    draft_service = get_settings_draft_service()
-    stored_draft = draft_service.load()
     draft_catalog = stored_draft.get("catalog")
     if isinstance(draft_catalog, dict):
         draft_catalog.setdefault("services", {})[payload.service] = deepcopy(
@@ -1538,7 +1697,6 @@ async def get_settings_draft():
     resolves runtime configuration looks here, which is the whole difference
     between saving a draft and applying it.
     """
-    _require_settings_admin()
     draft = get_settings_draft_service().load()
     if is_empty_draft(draft):
         return {"draft": None}
@@ -1547,7 +1705,8 @@ async def get_settings_draft():
 
 @router.put("/draft")
 async def update_settings_draft(payload: SettingsDraftPayload):
-    _require_settings_admin()
+    if payload.catalog is not None:
+        _require_settings_admin()
     service = get_settings_draft_service()
     stored = service.load()
     merged = merge_draft_secrets(
@@ -1564,7 +1723,6 @@ async def update_settings_draft(payload: SettingsDraftPayload):
 
 @router.delete("/draft")
 async def discard_settings_draft():
-    _require_settings_admin()
     get_settings_draft_service().clear()
     return {"draft": None}
 
@@ -1601,6 +1759,52 @@ async def apply_catalog(payload: CatalogPayload | None = None):
         "catalog": redact_catalog_secrets(catalog_after),
         "runtime": applied,
     }
+
+
+@router.post("/test-provider")
+async def test_provider_connection(payload: ProviderProbePayload):
+    """Test current form credentials, resolving masks from draft/live settings by ID."""
+    _require_settings_admin()
+    from deeptutor.services.settings.provider_probe import probe_provider, probe_search_provider
+
+    current = get_model_catalog_service().load()
+    saved = get_settings_draft_service().load().get("catalog")
+    source = restore_catalog_secrets(saved, current) if isinstance(saved, dict) else current
+    fields = payload.model_dump()
+    if payload.connection_id:
+        fields["id"] = payload.connection_id
+        proposed = {"connections": [fields]}
+        resolved = restore_catalog_secrets(proposed, source)["connections"][0]
+    else:
+        fields["id"] = payload.profile_id
+        proposed = {"services": {payload.service: {"profiles": [fields]}}}
+        resolved = restore_catalog_secrets(proposed, source)["services"][payload.service][
+            "profiles"
+        ][0]
+    from deeptutor.services.keypool import primary_api_key
+
+    key = primary_api_key(resolved.get("api_key"))
+    headers = resolved.get("extra_headers") or {}
+    if isinstance(headers, str):
+        try:
+            headers = json.loads(headers)
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(status_code=400, detail="Invalid extra headers JSON.") from exc
+    if not isinstance(headers, dict) or any(not isinstance(v, str) for v in headers.values()):
+        raise HTTPException(status_code=400, detail="Extra headers must contain text values.")
+    if (
+        (payload.api_key == CATALOG_SECRET_MASK and not key)
+        or key == CATALOG_SECRET_MASK
+        or any(v == CATALOG_SECRET_MASK for v in headers.values())
+    ):
+        raise HTTPException(
+            status_code=400, detail="Saved credentials were not found. Enter the key again."
+        )
+    if payload.service == "search":
+        return await probe_search_provider(payload.binding, payload.base_url, key)
+    return await probe_provider(
+        payload.binding, payload.base_url, key, payload.api_format, headers, payload.api_version
+    )
 
 
 @router.post("/fetch-models")
@@ -1789,6 +1993,43 @@ async def update_enabled_tools(update: EnabledToolsUpdate):
     return {"enabled_optional_tools": sanitized}
 
 
+@router.post(
+    "/voice/preview",
+    response_class=Response,
+    responses={200: {"content": {"audio/wav": {}, "audio/mpeg": {}}}},
+)
+async def preview_voice(payload: VoicePreviewPayload) -> Response:
+    """Audition the model being edited without saving or activating its catalog."""
+    _require_settings_admin()
+    from deeptutor.services.voice.base import VoiceProviderError
+    from deeptutor.services.voice.preview import synthesize_preview
+
+    service = get_model_catalog_service()
+    current = service.load()
+    saved = get_settings_draft_service().load().get("catalog")
+    # Restore the saved draft against live first; a missing draft secret must
+    # not replace an incoming mask with None before live can resolve it.
+    source = restore_catalog_secrets(saved, current) if isinstance(saved, dict) else current
+    catalog = restore_catalog_secrets(payload.catalog, source)
+    catalog = service.resolve_connections(catalog)
+    try:
+        audio, content_type = await synthesize_preview(
+            catalog, payload.profile_id, payload.model_id, payload.text
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except VoiceProviderError as exc:
+        # Other provider adapters may include raw upstream bodies in their errors.
+        # Never send those bodies (or echoed credentials) back to the browser.
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Voice preview failed. Check the provider credentials, model, voice, language and format."
+            ),
+        ) from exc
+    return Response(audio, media_type=content_type, headers={"Cache-Control": "no-store"})
+
+
 @router.post("/tests/{service}/start")
 async def start_service_test(service: str, payload: CatalogPayload | None = None):
     _require_settings_admin()
@@ -1796,7 +2037,13 @@ async def start_service_test(service: str, payload: CatalogPayload | None = None
     if payload is not None:
         catalog_service = get_model_catalog_service()
         current = catalog_service.load()
-        catalog = restore_catalog_secrets(payload.catalog, current)
+        saved = get_settings_draft_service().load().get("catalog")
+        catalog = (
+            restore_catalog_secrets(payload.catalog, saved)
+            if isinstance(saved, dict)
+            else payload.catalog
+        )
+        catalog = restore_catalog_secrets(catalog, current)
         catalog = catalog_service.resolve_connections(catalog)
     run = get_config_test_runner().start(service, catalog)
     return {"run_id": run.id}
@@ -1900,3 +2147,44 @@ async def reopen_tour():
         "message": "Run the terminal setup guide from the project root to re-open the guided setup.",
         "command": "deeptutor init",
     }
+
+
+@router.get("/usage", response_model=UsageStatistics)
+async def get_usage_statistics(
+    year: int = Query(..., ge=1970, le=9998),
+    timezone: str = Query("UTC", max_length=100),
+) -> UsageStatistics:
+    from datetime import datetime
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+    from deeptutor.services.session import get_session_store
+    from deeptutor.services.session.usage_statistics import aggregate_usage
+
+    try:
+        zone = ZoneInfo(timezone)
+    except (ZoneInfoNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid timezone") from exc
+    start = datetime(year, 1, 1, tzinfo=zone).timestamp()
+    end = datetime(year + 1, 1, 1, tzinfo=zone).timestamp()
+    from deeptutor.services.workspace import get_content_workspace_service
+    from deeptutor.services.workspace.activity import data_activity
+    from deeptutor.services.workspace.context import workspace_context
+    from deeptutor.services.workspace.models import WorkspaceError
+
+    records = []
+    with data_activity():
+        workspace_ids = [""] + [
+            row["workspace_id"]
+            for row in get_content_workspace_service()._catalog()
+            if row.get("kind") == "workspace"
+        ]
+        for workspace_id in workspace_ids:
+            try:
+                with workspace_context(workspace_id):
+                    records.extend(await get_session_store().usage_records(start, end))
+            except WorkspaceError:
+                continue
+    from deeptutor.services.llm.usage_ledger import combined_usage_records
+
+    combined = await asyncio.to_thread(combined_usage_records, records, start, end)
+    return await asyncio.to_thread(aggregate_usage, combined, year=year, timezone=timezone)

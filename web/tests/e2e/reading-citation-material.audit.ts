@@ -85,6 +85,7 @@ test.beforeEach(async ({ page }) => {
     const json = (payload: unknown, status = 200) =>
       route.fulfill({ status, json: payload });
 
+    if (path === "/api/partners" || path === "/api/partner-groups") return json([]);
     if (path === "/api/auth/status") {
       return json({ enabled: false, authenticated: true });
     }
@@ -211,7 +212,7 @@ test.beforeEach(async ({ page }) => {
 test("historical citation reopens its turn material and unsupported locator stays plain", async ({
   page,
 }) => {
-  await page.goto(`/reading/${WORKSPACE_ID}/sessions/${SESSION_ID}`);
+  await page.goto(`/learning/reading/${WORKSPACE_ID}/sessions/${SESSION_ID}`, { waitUntil: "domcontentloaded" });
 
   await expect(page.getByRole("link", { name: "p.2" })).toHaveAttribute(
     "href",

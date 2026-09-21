@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextvars import copy_context
 import json
 import logging
 from pathlib import Path
@@ -67,14 +68,9 @@ async def _run_with_stall_guard(
     Python cannot interrupt arbitrary synchronous code — but the API call
     fails fast with an actionable message instead of waiting forever.
 
-    ``set_progress_callback`` writes to the process-global LlamaIndex
-    ``Settings`` embed model, which holds exactly one callback. A second
-    indexing job started while this one runs therefore displaces our
-    heartbeat, so we re-arm it on every poll tick: missing a few
-    notifications for one tick is harmless, whereas never seeing our own
-    progress again would kill a perfectly healthy job. The guard is
-    consciously biased this way — it can be slow to notice a genuine stall
-    while another job indexes, and never fails a job that is making progress.
+    Bound knowledge-base operations own an embedding adapter in their context,
+    so concurrent jobs keep independent progress callbacks. Re-arming also
+    supports legacy callers that still use LlamaIndex's global Settings.
     """
     if stall_timeout is None:
         stall_timeout = _INDEX_STALL_TIMEOUT_SECONDS
@@ -87,7 +83,7 @@ async def _run_with_stall_guard(
             progress_callback(*args, **kwargs)
 
     set_progress_callback(_heartbeat)
-    future = asyncio.get_running_loop().run_in_executor(None, fn)
+    future = asyncio.get_running_loop().run_in_executor(None, copy_context().run, fn)
 
     def _consume_terminal_exception(fut: "asyncio.Future[Any]") -> None:
         # The stalled thread may finish after we raise; retrieve its exception
@@ -126,7 +122,6 @@ class LlamaIndexPipeline:
         self.kb_base_dir = kb_base_dir or DEFAULT_KB_BASE_DIR
         self._signature_provider = signature_provider or signature_from_embedding_config
         self.document_loader = document_loader or LlamaIndexDocumentLoader(self.logger)
-        self._configure_settings()
 
     def _configure_settings(self) -> None:
         configure_llamaindex_settings(self.logger)
@@ -220,7 +215,7 @@ class LlamaIndexPipeline:
             return {
                 "query": query,
                 "answer": (
-                    "This knowledge base has no index for the active embedding "
+                    "This knowledge base has no index for its selected embedding "
                     "model. Re-index it (or switch back to a previously-used "
                     "embedding model) before querying."
                 ),
@@ -236,6 +231,7 @@ class LlamaIndexPipeline:
             top_k = kwargs.get("top_k") or default_top_k()
             nodes = await loop.run_in_executor(
                 None,
+                copy_context().run,
                 lambda: storage.retrieve_nodes(storage_dir, query, top_k=top_k),
             )
 

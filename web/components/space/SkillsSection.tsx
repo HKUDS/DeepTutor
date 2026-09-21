@@ -1,5 +1,6 @@
 "use client";
 
+import { resourceUsage } from "@/lib/workspaces-api";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useTranslation } from "react-i18next";
@@ -278,9 +279,12 @@ export default function SkillsSection() {
 
   const handleDelete = useCallback(
     async (name: string) => {
-      if (!window.confirm(t('Delete skill "{{name}}"?', { name }))) return;
       setDeleting(name);
       try {
+        const scope = new URLSearchParams(window.location.search).get("skill_workspace") ?? "";
+        const workspaces = await resourceUsage("skills", name, scope);
+        const impact = workspaces.length ? "\n\n" + t("Used by workspaces: {{names}}", { names: workspaces.join(", ") }) : "";
+        if (!window.confirm(t('Delete skill "{{name}}"?', { name }) + impact)) return;
         await deleteSkill(name);
         await load();
       } catch (err) {

@@ -1,5 +1,8 @@
 "use client";
 
+import { scopedUrl } from "@/lib/workspace-scope";
+import { MASTERY_HOME, masterySessionsRoute, masteryTopicRoute } from "@/lib/learning-routes";
+
 import { browserStorage } from "@/shared/storage";
 
 import dynamic from "next/dynamic";
@@ -31,6 +34,7 @@ import {
   useChatStateAdapter,
 } from "@/features/chat/ChatStateAdapter";
 import { useChatAutoScroll } from "@/hooks/useChatAutoScroll";
+import { useMasteryOpening } from "@/hooks/useMasteryOpening";
 import { useMasteryStudySession } from "@/hooks/useMasteryStudySession";
 import { useMeasuredHeight } from "@/hooks/useMeasuredHeight";
 import { useResearchOutlineContinuation } from "@/hooks/useResearchOutlineContinuation";
@@ -45,8 +49,6 @@ import { consumePendingPrompt } from "@/lib/pending-prompt";
 import { buildChatOutline, scrollToChatTurn } from "@/lib/chat-outline";
 import { buildConversationNotebookSave } from "@/lib/conversation-notebook-save";
 import {
-  MASTERY_OPENING_SCOPE,
-  masteryOpeningMessage,
   masterySessionRoute,
   type MasteryMode,
 } from "@/lib/mastery-mode";
@@ -471,42 +473,16 @@ export function MasteryStudy({
     [state.activeCapability, submit],
   );
 
-  // A conversation that opens with nothing to say says the thing it was
-  // opened to say.
-  //
-  // Derived from the mode rather than handed across the navigation. The
-  // hand-off channel that used to carry it reads *destructively*, so a send
-  // refused for any reason (a turn still settling, a session still resolving)
-  // consumed the message and left the screen insisting work was under way
-  // forever — the same dead end twice, in two different places. There is no
-  // channel to lose now: an empty outline conversation always knows what it
-  // is for. The hand-off is still read, but only to *enrich* the opening (the
-  // review card names what is due), never to supply it.
-  const openingSentRef = useRef("");
-  useEffect(() => {
-    if (!topic || hasMessages || sessionLoading || sessionError) return;
-    if (state.isStreaming || openingSentRef.current === pathId) return;
-    const opening =
-      consumePendingPrompt(MASTERY_OPENING_SCOPE).trim() ||
-      masteryOpeningMessage(sessionMode, t as Translate);
-    // A study conversation opens with nothing on purpose: "start learning"
-    // does not say what to start with, so the screen offers ways in instead.
-    if (!opening) return;
-    // Latch on the send, never before it: ``submit`` refuses silently while a
-    // turn is live or the session is still resolving, and the next render
-    // tries again.
-    if (submit(opening)) openingSentRef.current = pathId;
-  }, [
-    hasMessages,
+  useMasteryOpening({
     pathId,
-    sessionError,
+    topicReady: Boolean(topic),
+    hasMessages,
     sessionLoading,
+    sessionError,
     sessionMode,
-    state.isStreaming,
+    isStreaming: state.isStreaming,
     submit,
-    t,
-    topic,
-  ]);
+  });
 
   // The learner pressing one of the three modes above the transcript. The same
   // move the tutor makes with ``mastery_mode``, through the same admission
@@ -561,7 +537,7 @@ export function MasteryStudy({
           {topicError}
         </p>
         <Link
-          href="/mastery"
+          href={scopedUrl(MASTERY_HOME)}
           className="mt-5 text-sm font-medium text-[var(--primary)] hover:underline"
         >
           {t("Back to topics")}
@@ -583,7 +559,7 @@ export function MasteryStudy({
           right saying the same thing twice. */}
       <header className="flex h-[56px] shrink-0 items-center gap-1 border-b border-[var(--border)] bg-[var(--background)]/95 px-3 backdrop-blur sm:px-4">
         <Link
-          href={`/mastery/${encodeURIComponent(pathId)}`}
+          href={masteryTopicRoute(pathId)}
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]"
           title={t("Learning topics")}
           aria-label={t("Learning topics")}
@@ -722,7 +698,7 @@ export function MasteryStudy({
                       {sessionError}
                     </p>
                     <Link
-                      href={`/mastery/${encodeURIComponent(pathId)}/sessions`}
+                      href={masterySessionsRoute(pathId)}
                       className="mt-4 inline-flex rounded-xl bg-[var(--primary)] px-3 py-2 text-xs font-medium text-[var(--primary-foreground)]"
                     >
                       {t("Start a new session")}

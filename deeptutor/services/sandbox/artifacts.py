@@ -171,7 +171,9 @@ def collect_public_artifact_batch(
             except ValueError:
                 continue
             rel_posix = rel.as_posix()
-            url = "/files/outputs/" + quote(rel_posix, safe="/")
+            from deeptutor.services.workspace.context import workspace_url
+
+            url = workspace_url("/files/outputs/" + quote(rel_posix, safe="/"))
             exposed_path = str(file_path.resolve())
         mime_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
         artifacts.append(

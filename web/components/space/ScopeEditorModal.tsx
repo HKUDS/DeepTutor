@@ -124,7 +124,7 @@ export default function ScopeEditorModal({
       if (orphaned.length > 0) {
         const ok = window.confirm(
           t(
-            "{{count}} conversations are no longer in scope. Remove them from your space?",
+            "{{count}} conversations are no longer in scope. Permanently delete their imported copies? This cannot be undone.",
             { count: orphaned.length },
           ),
         );

@@ -98,11 +98,13 @@ async def test_exec_tool_reports_generated_public_artifacts(
     assert "/files/outputs/" not in result.content
     assert "build_pdf.py" not in result.content
     assert result.metadata["artifacts"][0]["filename"] == "report.pdf"
+    # A local artifact URL is pinned to the data scope that produced it — the
+    # default workspace is the empty id, so the parameter is present but blank.
     assert (
         result.metadata["artifacts"][0]["url"]
-        == "/files/outputs/workspace/chat/chat/turn_1/exec/report.pdf"
+        == "/files/outputs/workspace/chat/chat/turn_1/exec/report.pdf?dt_workspace="
     )
-    assert result.sources[0]["url"].endswith("/report.pdf")
+    assert result.sources[0]["url"].endswith("/report.pdf?dt_workspace=")
 
 
 @pytest.mark.asyncio

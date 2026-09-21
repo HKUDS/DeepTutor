@@ -150,7 +150,7 @@ def get_admin_path_service() -> PathService:
     return get_path_service_for_scope(admin_scope())
 
 
-def get_current_path_service() -> PathService:
+def get_account_path_service() -> PathService:
     from .context import get_current_user_or_none
 
     user = get_current_user_or_none()
@@ -159,6 +159,12 @@ def get_current_path_service() -> PathService:
     if user.scope.kind == "user":
         ensure_scope_workspace(user.scope)
     return get_path_service_for_scope(user.scope)
+
+
+def get_current_path_service() -> PathService:
+    from deeptutor.services.workspace.context import scoped_path_service
+
+    return scoped_path_service(get_account_path_service())
 
 
 def _resolve_owner() -> tuple[str, PathService]:
@@ -252,10 +258,13 @@ def current_owner_id() -> str:
 
 @contextmanager
 def user_context(user: CurrentUser) -> Iterator[None]:
+    from deeptutor.services.workspace.context import account_workspace_context
+
     from .context import reset_current_user, set_current_user
 
     token = set_current_user(user)
     try:
-        yield
+        with account_workspace_context(user.scope.root):
+            yield
     finally:
         reset_current_user(token)

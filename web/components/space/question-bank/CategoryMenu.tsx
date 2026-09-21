@@ -109,7 +109,7 @@ export default function CategoryMenu({
         type="button"
         disabled={disabled}
         onClick={() => setOpen((v) => !v)}
-        title={t("Add to category")}
+        title={t("Add tag")}
         className={`inline-flex items-center gap-1.5 rounded-lg text-[11.5px] font-medium transition-colors disabled:opacity-40 ${
           variant === "outlined" ? "border px-2 py-1.5" : "p-1.5"
         } ${
@@ -135,7 +135,7 @@ export default function CategoryMenu({
           <div className="max-h-56 overflow-y-auto p-1.5">
             {categories.length === 0 && (
               <p className="px-2 py-3 text-center text-[11.5px] text-[var(--muted-foreground)]">
-                {t("No categories yet. Type a name below to create one.")}
+                {t("No tags yet. Type a name below to create one.")}
               </p>
             )}
             {categories.map((category) => {
@@ -181,7 +181,7 @@ export default function CategoryMenu({
                 if (event.key === "Enter" && !event.nativeEvent.isComposing)
                   void handleCreate();
               }}
-              placeholder={t("New category…")}
+              placeholder={t("New tag…")}
               className="min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-1.5 text-[12px] text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-foreground)] focus:border-[var(--primary)]/50"
             />
             <button

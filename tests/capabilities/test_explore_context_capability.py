@@ -236,8 +236,9 @@ def _force_loop(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("language", ["en", "zh"])
 async def test_loop_reads_source_then_writes_investigation(
-    monkeypatch: pytest.MonkeyPatch, _force_loop: None
+    monkeypatch: pytest.MonkeyPatch, _force_loop: None, language: str
 ) -> None:
     """The investigator calls read_source on a source, then writes an
     investigation grounded in the loaded full text."""
@@ -262,17 +263,23 @@ async def test_loop_reads_source_then_writes_investigation(
         history_references=["x"],
         _manifest="[Attached Sources]\n- id=hs-x type=history name='nav'",
     )
+    ctx.language = language
     bus = StreamBus()
 
     block = await cap.pre_loop(ctx, bus, usage=None)
 
     assert isinstance(block, PromptBlock)
-    assert "Context Investigation" in block.content
+    assert ("Context Investigation" if language == "en" else "上下文调查") in block.content
     assert "rewrote the nav" in block.content
     # read_source was dispatched (the model's source_id reached the create
     # call only via the tool round, and a tool result fed the second round).
     completions = fake_client.chat.completions
     assert len(completions.calls) == 2
+    system_prompt = completions.calls[0]["messages"][0]["content"]
+    assert (
+        "at most 15 tool calls" if language == "en" else "最多请求 15 次工具调用"
+    ) in system_prompt
+    assert "{tool_call_limit}" not in system_prompt
     # Never streamed CONTENT — the investigation rides the thinking channel.
     kinds = [e.type for e in bus._history]
     assert StreamEventType.CONTENT not in kinds

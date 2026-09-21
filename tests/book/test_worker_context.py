@@ -60,5 +60,7 @@ def test_the_worker_actually_clears_it() -> None:
 
     from deeptutor.book.engine import BookEngine
 
-    source = inspect.getsource(BookEngine._worker_loop)
+    # ``_worker_loop`` only opens the data-activity scope and delegates; the
+    # clear itself lives in the body it wraps.
+    source = inspect.getsource(BookEngine._worker_loop_active)
     assert "set_scoped_llm_config(None)" in source

@@ -1,8 +1,36 @@
-import { apiFetch, apiUrl } from "@/lib/api";
+import { apiFetch, apiUrl as baseApiUrl } from "@/lib/api";
 import { invalidateClientCache, withClientCache } from "@/lib/client-cache";
 import type { ImaKnowledgeBaseOption } from "@/lib/ima-connection";
 
+function inKnowledgeLibrary(): boolean {
+  return typeof window !== "undefined" && /^\/knowledge-bases(?:\/|$)/.test(window.location.pathname);
+}
+
+function apiUrl(path: string): string {
+  const url = baseApiUrl(path);
+  return inKnowledgeLibrary() && path.startsWith("/api/knowledge-bases") && !path.includes("resource_library=")
+    ? `${url}${url.includes("?") ? "&" : "?"}resource_library=true`
+    : url;
+}
+
 const KNOWLEDGE_CACHE_PREFIX = "knowledge:";
+
+export type EmbeddingModelSelection = { profile_id: string; model_id: string };
+export type EmbeddingUsage = EmbeddingModelSelection & {
+  name: string;
+  workspace_name: string;
+};
+
+export async function getEmbeddingUsage(): Promise<EmbeddingUsage[]> {
+  const res = await apiFetch(apiUrl("/api/knowledge-bases/embedding-usage"), {
+    cache: "no-store",
+  });
+  if (!res.ok)
+    throw new Error(
+      await readErrorDetail(res, "Failed to load embedding model usage"),
+    );
+  return (await res.json()).knowledge_bases;
+}
 
 export interface IndexingLLMSelection {
   profile_id: string;
@@ -226,11 +254,11 @@ function normalizeUploadPolicy(data: unknown): KnowledgeUploadPolicy {
   };
 }
 
-export async function listKnowledgeBases(options?: { force?: boolean }) {
+export async function listKnowledgeBases(options?: { force?: boolean; library?: boolean }) {
   return withClientCache<KnowledgeBaseSummary[]>(
-    `${KNOWLEDGE_CACHE_PREFIX}list`,
+    `${KNOWLEDGE_CACHE_PREFIX}list:${options?.library || inKnowledgeLibrary() ? "library" : "workspace"}`,
     async () => {
-      const response = await apiFetch(apiUrl("/api/knowledge-bases"), {
+      const response = await apiFetch(apiUrl(options?.library ? "/api/knowledge-bases?resource_library=true" : "/api/knowledge-bases"), {
         cache: "no-store",
       });
       if (!response.ok) {
@@ -640,7 +668,7 @@ export function knowledgeBaseFilePath(
   return `/api/knowledge-bases/${encodeURIComponent(kbName)}/files/${filename
     .split("/")
     .map(encodeURIComponent)
-    .join("/")}`;
+    .join("/")}${inKnowledgeLibrary() ? "?resource_library=true" : ""}`;
 }
 
 /** Build the `/api/...` path for extracted plain-text preview of a raw KB file. */
@@ -651,7 +679,7 @@ export function knowledgeBaseFilePreviewTextPath(
   return `/api/knowledge-bases/${encodeURIComponent(kbName)}/file-preview-text/${filename
     .split("/")
     .map(encodeURIComponent)
-    .join("/")}`;
+    .join("/")}${inKnowledgeLibrary() ? "?resource_library=true" : ""}`;
 }
 
 export interface KnowledgeTaskResponse {
@@ -690,6 +718,7 @@ export async function createKnowledgeBase(payload: {
   pageindexMode?: "flash" | "standard";
   searchMode?: string;
   indexingLLM?: IndexingLLMSelection;
+  embeddingModel?: EmbeddingModelSelection;
 }): Promise<KnowledgeTaskResponse> {
   const form = new FormData();
   form.append("name", payload.name);
@@ -698,6 +727,8 @@ export async function createKnowledgeBase(payload: {
     form.append("pageindex_mode", payload.pageindexMode);
   }
   if (payload.searchMode) form.append("search_mode", payload.searchMode);
+  if (payload.embeddingModel)
+    form.append("embedding_model", JSON.stringify(payload.embeddingModel));
   if (payload.indexingLLM) {
     form.append("indexing_llm", JSON.stringify(payload.indexingLLM));
   }
@@ -1184,11 +1215,14 @@ export async function setDefaultKnowledgeBase(name: string): Promise<void> {
 export async function reindexKnowledgeBase(
   name: string,
   indexingLLM?: IndexingLLMSelection,
+  embeddingModel?: EmbeddingModelSelection,
 ): Promise<KnowledgeTaskResponse> {
   const request: RequestInit = { method: "POST" };
-  if (indexingLLM) {
+  if (indexingLLM || embeddingModel) {
     const form = new FormData();
-    form.append("indexing_llm", JSON.stringify(indexingLLM));
+    if (indexingLLM) form.append("indexing_llm", JSON.stringify(indexingLLM));
+    if (embeddingModel)
+      form.append("embedding_model", JSON.stringify(embeddingModel));
     request.body = form;
   }
   const res = await apiFetch(

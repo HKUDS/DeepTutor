@@ -115,6 +115,9 @@ class GraphRagPipeline:
         self._ensure_available()
         kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
         existing = resolve_storage_dir_for_read(kb_dir, None)
+        from deeptutor.services.rag.embedding_binding import bound_graph_storage_root
+
+        existing = bound_graph_storage_root(kb_dir, storage.PROVIDER, existing)
         is_update = existing is not None and storage.has_output(existing)
         root_dir = (
             existing if existing is not None else resolve_storage_dir_for_rebuild(kb_dir, None)
@@ -177,6 +180,9 @@ class GraphRagPipeline:
     async def search(self, query: str, kb_name: str, **kwargs) -> Dict[str, Any]:
         kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
         root_dir = resolve_storage_dir_for_read(kb_dir, None)
+        from deeptutor.services.rag.embedding_binding import bound_graph_storage_root
+
+        root_dir = bound_graph_storage_root(kb_dir, storage.PROVIDER, root_dir)
 
         if root_dir is None or not storage.has_output(root_dir):
             return {

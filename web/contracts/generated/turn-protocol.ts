@@ -28,6 +28,7 @@ export type BookId = string;
 export type PageIds = string[];
 export type BookReferences = BookReference[];
 export type Capability = string | null;
+export type ConsultPartnerId = string | null;
 export type Content = string;
 export type CourseId = string | null;
 export type FollowupQuestionContext = {
@@ -44,6 +45,7 @@ export type MasteryPathId = string | null;
 export type MasteryPathLeaseManaged = boolean;
 export type MasterySessionMode = string | null;
 export type QuestionId1 = string;
+export type Mcp = string[];
 export type MemoryReferences = (
   "recent" | "profile" | "scope" | "preferences" | "summary"
 )[];
@@ -51,6 +53,7 @@ export type NotebookId = string;
 export type RecordIds = string[];
 export type NotebookReferences = NotebookReference[];
 export type ParentMessageId = number | null;
+export type PartnerDiscussionGroupId = string | null;
 export type PartnerGroupReferences = {
   [k: string]: unknown;
 }[];
@@ -80,6 +83,7 @@ export type TimedMediaId = string | null;
 export type TimeSeconds = number;
 export type Tools = string[] | null;
 export type Type1 = "message" | "start_turn";
+export type WorkspaceId = string | null;
 export type WorkspaceMode = string | null;
 export type AfterSeq = number;
 export type ProtocolVersion1 = "2.0";
@@ -271,6 +275,7 @@ export interface StartTurnCommand {
   book_references?: BookReferences;
   capability?: Capability;
   config?: Config;
+  consult_partner_id?: ConsultPartnerId;
   content: Content;
   course_id?: CourseId;
   followup_question_context?: FollowupQuestionContext;
@@ -283,9 +288,11 @@ export interface StartTurnCommand {
   mastery_path_lease_managed?: MasteryPathLeaseManaged;
   mastery_session_mode?: MasterySessionMode;
   mastery_skip?: MasteryCardSkip | null;
+  mcp?: Mcp;
   memory_references?: MemoryReferences;
   notebook_references?: NotebookReferences;
   parent_message_id?: ParentMessageId;
+  partner_discussion_group_id?: PartnerDiscussionGroupId;
   partner_group_references?: PartnerGroupReferences;
   persist_user_message?: PersistUserMessage;
   persona?: Persona;
@@ -307,6 +314,7 @@ export interface StartTurnCommand {
   timed_media_viewport?: TimedMediaViewport | null;
   tools?: Tools;
   type?: Type1;
+  workspace_id?: WorkspaceId;
   workspace_mode?: WorkspaceMode;
 }
 /**

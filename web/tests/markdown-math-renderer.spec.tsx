@@ -1,7 +1,7 @@
 import { render, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import QuizBlock from "@/app/(workspace)/books/components/blocks/QuizBlock";
+import QuizBlock from "@/app/(workspace)/learning/books/components/blocks/QuizBlock";
 import MarkdownRenderer from "@/components/common/MarkdownRenderer";
 import { initI18n } from "@/i18n/init";
 import type { Block } from "@/lib/book-types";
@@ -22,6 +22,54 @@ describe("math Markdown rendering", () => {
     });
     expect(container).not.toHaveTextContent("$f(x)$");
     expect(container).not.toHaveTextContent("$x=2$");
+  });
+
+  it("renders the formulas a model wrote without $ delimiters", async () => {
+    const { container } = render(
+      <MarkdownRenderer
+        content={"反演律 \\overline{A+B}=\\bar{A}\\bar{B} 必须熟练。"}
+        variant="prose"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".katex")).toHaveLength(1);
+    });
+    // KaTeX keeps the source in a MathML <annotation>, so assert on what the
+    // reader actually sees rather than on the element's text content.
+    expect(container.querySelector(".katex-html")?.textContent).not.toContain(
+      "\\overline",
+    );
+  });
+
+  it("renders a formula the model put in a code span", async () => {
+    const { container } = render(
+      <MarkdownRenderer
+        content={"反演律 `\\overline{A+B}=\\bar{A}\\bar{B}` 必须熟练。"}
+        variant="prose"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".katex")).toHaveLength(1);
+    });
+    expect(container.querySelector("code")).toBeNull();
+  });
+
+  it("keeps prices as prices in a message that also renders maths", async () => {
+    const { container } = render(
+      <MarkdownRenderer
+        content={"设 $x=1$。门票 $5 和 $10，共 $15。"}
+        variant="prose"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".katex").length).toBeGreaterThanOrEqual(
+        1,
+      );
+    });
+    expect(container).toHaveTextContent("门票 $5 和 $10，共 $15。");
   });
 
   it("renders generated quiz stems and option formulas with KaTeX", async () => {

@@ -1,5 +1,7 @@
 "use client";
 
+import { MASTERY_HOME, READING_HOME, masteryTopicRoute, readingCollectionRoute } from "@/lib/learning-routes";
+
 import Link from "next/link";
 import {
   ClipboardList,
@@ -66,8 +68,8 @@ export default function CourseProgress({
         // one manual step away from the container they started in.
         href={
           paths.length === 1
-            ? `/mastery/${encodeURIComponent(paths[0].path_id)}`
-            : `/mastery?course=${course}`
+            ? masteryTopicRoute(paths[0].path_id)
+            : `${MASTERY_HOME}?course=${course}`
         }
         icon={GraduationCap}
         label={t("Mastery Path")}
@@ -89,7 +91,7 @@ export default function CourseProgress({
         }
       />
       <Tile
-        href={`/space/questions?course=${course}`}
+        href={`/learning/practice?course=${course}`}
         icon={ClipboardList}
         label={t("Question Bank")}
         value={bank && bank.total > 0 ? String(bank.wrong) : "—"}
@@ -107,8 +109,8 @@ export default function CourseProgress({
       <Tile
         href={
           workspaces.length === 1
-            ? `/reading/${encodeURIComponent(workspaces[0].workspace_id)}`
-            : `/reading?course=${course}`
+            ? readingCollectionRoute(workspaces[0].workspace_id)
+            : `${READING_HOME}?course=${course}`
         }
         icon={ScrollText}
         label={t("Immersive Reading")}

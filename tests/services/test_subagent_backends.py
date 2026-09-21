@@ -916,13 +916,11 @@ async def test_codex_options_tolerate_missing_cache(monkeypatch, tmp_path) -> No
 # ---- registry: partner backend is registered but not a local CLI -------------
 
 
-def test_registry_partner_is_non_cli_backend() -> None:
+def test_registry_excludes_direct_partner_consultations() -> None:
     from deeptutor.services.subagent import PARTNER_BACKEND_KIND, get_backend, list_backend_kinds
 
-    assert PARTNER_BACKEND_KIND in list_backend_kinds()
-    backend = get_backend(PARTNER_BACKEND_KIND)
-    assert backend is not None
-    assert backend.local_cli is False
+    assert PARTNER_BACKEND_KIND not in list_backend_kinds()
+    assert get_backend(PARTNER_BACKEND_KIND) is None
     assert get_backend("claude_code").local_cli is True
 
 
@@ -986,6 +984,21 @@ class _FakePartnerManager:
         self._running = True
         return _FakePartnerInstance(True)
 
+    def subscribe_web_turn(self, pid, session_key):
+        return None
+
+    def start_web_turn(self, pid, session_key, content, media=None):
+        import asyncio
+
+        from deeptutor.services.partners.manager import LiveTurn, PartnerManager
+
+        turn = LiveTurn(user_content=content)
+        turn.task = asyncio.create_task(
+            PartnerManager._drive_web_turn(self, pid, session_key, content, media or [], turn)
+        )
+        self.live = turn
+        return turn
+
     async def send_message(self, pid, content, *, session_key, media=None, on_event=None):
         self.sent.append(
             {"pid": pid, "content": content, "session_key": session_key, "media": media or []}
@@ -1025,9 +1038,12 @@ async def test_partner_consult_mints_session_key_and_returns_reply(monkeypatch) 
     _patch_manager(monkeypatch, manager)
 
     emitted: list[tuple[str, str]] = []
+    identities = []
 
     async def on_event(ev):
         emitted.append((ev.kind, ev.text))
+        if ev.meta.get("partner_session_key"):
+            identities.append(ev.meta)
 
     result = await PartnerBackend().consult("hello", on_event=on_event, partner_id="paul")
 
@@ -1042,6 +1058,9 @@ async def test_partner_consult_mints_session_key_and_returns_reply(monkeypatch) 
     kinds = [k for k, _ in emitted]
     assert "reasoning" in kinds and "tool" in kinds and "text" in kinds
     assert result.event_count == 3
+    assert identities == [{"partner_id": "paul", "partner_session_key": result.session_id}]
+    assert manager.live.done
+    assert not manager.live.subscribers
 
 
 @pytest.mark.asyncio
@@ -1592,3 +1611,45 @@ async def test_server_registry_shutdown_terminates_everything() -> None:
     await srv.shutdown_servers()
     assert srv._servers == {}
     assert proc.terminated is True
+
+
+@pytest.mark.asyncio
+async def test_native_partner_consult_stop_and_parent_cancellation(monkeypatch):
+    import asyncio
+
+    from deeptutor.services.subagent.partner import PartnerBackend
+
+    manager = _FakePartnerManager()
+    entered = asyncio.Event()
+
+    async def slow(*args, **kwargs):
+        entered.set()
+        await asyncio.Event().wait()
+
+    manager.send_message = slow
+    _patch_manager(monkeypatch, manager)
+
+    async def on_event(event):
+        pass
+
+    task = asyncio.create_task(
+        PartnerBackend().consult("question", partner_id="paul", on_event=on_event)
+    )
+    await entered.wait()
+    # Native Stop cancels the same turn the consultation is awaiting.
+    manager.live.task.cancel()
+    result = await asyncio.wait_for(task, 1)
+    assert not result.success
+    assert "stopped" in result.error.lower()
+    assert not manager.live.subscribers
+
+    entered.clear()
+    task = asyncio.create_task(
+        PartnerBackend().consult("again", partner_id="paul", on_event=on_event)
+    )
+    await entered.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert manager.live.task.cancelled()
+    assert not manager.live.subscribers

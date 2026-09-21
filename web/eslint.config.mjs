@@ -4,7 +4,7 @@ import i18nPlugin from "./eslint/i18n-plugin.mjs";
 const config = [
   ...nextConfig,
   {
-    files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}"],
+    files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}", "features/**/*.{ts,tsx}"],
     plugins: {
       i18n: i18nPlugin,
     },

@@ -278,6 +278,39 @@ def catalog_service_rows(
             )
             continue
 
+        if profile.get("provider_ref") or any(
+            model.get("provider_ref")
+            for model in profile.get("models", [])
+            if isinstance(model, dict)
+        ):
+            from deeptutor.services.config.provider_links import resolve_profile_provider
+
+            model = next(
+                (
+                    m
+                    for m in profile.get("models", [])
+                    if m.get("id") == service.get("active_model_id")
+                ),
+                None,
+            )
+            try:
+                profile = resolve_profile_provider(catalog, name, profile, model)
+            except ValueError:
+                rows.append(
+                    readiness_row(
+                        f"catalog.{name}",
+                        "catalog",
+                        _SERVICE_LABELS[name],
+                        "misconfigured",
+                        "required_credential_missing",
+                        enabled=True,
+                        available=False,
+                        configured=False,
+                        verified=False,
+                        required=required,
+                    )
+                )
+                continue
         if name == "search":
             provider = str(profile.get("provider") or "").strip()
             configured = bool(provider and provider != "none")
@@ -903,7 +936,20 @@ async def build_settings_readiness() -> dict[str, Any]:
             metadata = info.get("metadata") if isinstance(info.get("metadata"), dict) else {}
             provider = str(metadata.get("rag_provider") or "")
             try:
-                prerequisites_ready = bool(engine_preflight(provider).get("ok"))
+                from contextlib import nullcontext
+
+                from deeptutor.services.embedding.config import embedding_config_scope
+                from deeptutor.services.rag.embedding_binding import binding_status
+
+                binding_state, embedding = binding_status(
+                    manager.config.get("knowledge_bases", {}).get(name, {})
+                )
+                with embedding_config_scope(embedding) if embedding else nullcontext():
+                    prerequisites_ready = binding_state not in {
+                        "missing",
+                        "changed",
+                        "unconfigured",
+                    } and bool(engine_preflight(provider).get("ok"))
             except Exception:
                 prerequisites_ready = False
             knowledge_entries.append(

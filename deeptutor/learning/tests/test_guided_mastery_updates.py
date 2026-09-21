@@ -155,8 +155,13 @@ def test_grade_and_record_advances_sr_state_and_builds_queue(tmp_path):
     assert "kp1" in progress.repetition_states
     # A correct answer advanced the interval index past the initial 0.
     assert progress.repetition_states["kp1"].interval_index >= 1
+    assert progress.repetition_states["kp1"].stability > 0
+    assert progress.repetition_states["kp1"].review_count == 1
     assert len(progress.review_queue) == 1
     assert progress.review_queue[0].knowledge_point_id == "kp1"
+    assert len(progress.learning_evidence) == 1
+    assert progress.learning_evidence[0].result == "correct"
+    assert progress.learning_evidence[0].quality == 1.0
 
 
 def test_grade_and_record_no_scheduler_skips_sr_state(tmp_path):
@@ -177,6 +182,8 @@ def test_grade_and_record_no_scheduler_skips_sr_state(tmp_path):
     assert progress.mastery_levels["kp1"] == 0.5
     assert progress.repetition_states == {}
     assert progress.review_queue == []
+    assert len(progress.learning_evidence) == 1
+    assert progress.learning_evidence[0].assessment_type == "quiz"
 
 
 def test_grade_and_record_blank_wrong_is_metacognitive(tmp_path):
@@ -276,10 +283,14 @@ def test_record_qualitative_pass_and_fail_drive_display_mastery(tmp_path):
     assert progress.qualitative_mastery["kp1"] is True
     assert progress.mastery_levels["kp1"] == 1.0
     assert progress.feynman_explanations["kp1"] == "clear explanation"
+    assert progress.learning_evidence[-1].result == "correct"
+    assert progress.learning_evidence[-1].quality == 1.0
 
     service.record_qualitative(progress, "kp1", passed=False)
     assert progress.qualitative_mastery["kp1"] is False
     assert progress.mastery_levels["kp1"] <= 0.4
+    assert progress.learning_evidence[-1].result == "partial"
+    assert progress.learning_evidence[-1].quality == 0.2
 
 
 @pytest.mark.parametrize(
@@ -299,14 +310,17 @@ def test_record_qualitative_starts_at_first_review_interval(
     progress.knowledge_types["kp1"] = knowledge_type
     now = 1_700_000_000.0
     monkeypatch.setattr("deeptutor.learning.scheduler.time.time", lambda: now)
+    monkeypatch.setattr("deeptutor.learning.service.time.time", lambda: now)
 
     service.record_qualitative(progress, "kp1", passed=True, scheduler=scheduler)
 
     state = progress.repetition_states["kp1"]
     assert state.interval_index == 0
     assert state.next_review_at == now + first_interval_days * 86400
+    assert state.stability > 0
     assert [task.knowledge_point_id for task in progress.review_queue] == ["kp1"]
     assert progress.review_queue[0].due_at == state.next_review_at
+    assert progress.learning_evidence[-1].assessment_type == "qualitative"
 
 
 def test_record_qualitative_updates_existing_review_state(tmp_path, monkeypatch):
@@ -316,23 +330,33 @@ def test_record_qualitative_updates_existing_review_state(tmp_path, monkeypatch)
     progress = _make_progress()
     now = [1_700_000_000.0]
     monkeypatch.setattr("deeptutor.learning.scheduler.time.time", lambda: now[0])
+    monkeypatch.setattr("deeptutor.learning.service.time.time", lambda: now[0])
 
     service.record_qualitative(progress, "kp1", passed=True, scheduler=scheduler)
     first_due = progress.repetition_states["kp1"].next_review_at
+    first_stability = progress.repetition_states["kp1"].stability
     service.record_qualitative(progress, "kp1", passed=True, scheduler=scheduler)
     assert progress.repetition_states["kp1"].interval_index == 0
     assert progress.repetition_states["kp1"].next_review_at == first_due
+    assert progress.repetition_states["kp1"].stability == first_stability
 
     now[0] = first_due
     service.record_qualitative(progress, "kp1", passed=True, scheduler=scheduler)
-    assert progress.repetition_states["kp1"].interval_index == 1
-    second_due = now[0] + 7 * 86400
-    assert progress.repetition_states["kp1"].next_review_at == second_due
+    after_success = progress.repetition_states["kp1"]
+    success_stability = after_success.stability
+    success_due = after_success.next_review_at
+    assert success_stability > first_stability
+    assert success_due > first_due
+    assert after_success.review_count == 1
 
-    now[0] = second_due
+    now[0] = success_due
     service.record_qualitative(progress, "kp1", passed=False, scheduler=scheduler)
-    assert progress.repetition_states["kp1"].interval_index == 0
-    assert progress.repetition_states["kp1"].next_review_at == now[0] + 3 * 86400
+    after_fail = progress.repetition_states["kp1"]
+    assert after_fail.stability < success_stability
+    assert after_fail.lapse_count == 1
+    success_interval = success_due - first_due
+    fail_interval = after_fail.next_review_at - now[0]
+    assert fail_interval < success_interval
 
 
 def test_record_qualitative_initial_failure_does_not_schedule_review(tmp_path):
@@ -345,3 +369,100 @@ def test_record_qualitative_initial_failure_does_not_schedule_review(tmp_path):
 
     assert progress.repetition_states == {}
     assert progress.review_queue == []
+    assert len(progress.learning_evidence) == 1
+    assert progress.learning_evidence[0].result == "partial"
+
+
+def test_grade_and_record_retry_correct_uses_weaker_quality(tmp_path):
+    store = LearningStore(root=tmp_path)
+    service = LearningService(store)
+    progress = _make_progress()
+
+    service.grade_and_record(
+        progress,
+        question_id="q1",
+        knowledge_point_id="kp1",
+        module_id="m1",
+        user_answer="london",
+        expected_answer="paris",
+    )
+    service.grade_and_record(
+        progress,
+        question_id="q1",
+        knowledge_point_id="kp1",
+        module_id="m1",
+        user_answer="paris",
+        expected_answer="paris",
+    )
+
+    assert [event.quality for event in progress.learning_evidence] == [0.0, 0.6]
+    assert progress.learning_evidence[1].attempt_count == 2
+
+
+def test_grade_interaction_persists_evidence_and_emits_event(tmp_path):
+    from deeptutor.learning.models import PendingQuestion
+
+    store = LearningStore(root=tmp_path)
+    service = LearningService(store)
+    service.save(_make_progress())
+    service.register_question(
+        "book1",
+        PendingQuestion(
+            question_id="q1",
+            knowledge_point_id="kp1",
+            module_id="m1",
+            prompt="Capital of France?",
+            expected_answer="paris",
+        ),
+        session_id="sess-1",
+        turn_id="turn-1",
+    )
+    progress, _interaction, replayed = service.grade_interaction(
+        "book1",
+        answer="paris",
+        question_id="q1",
+        scheduler=SpacedRepetitionScheduler(),
+        session_id="sess-1",
+        turn_id="turn-1",
+    )
+
+    assert replayed is False
+    assert progress.learning_evidence[-1].session_id == "sess-1"
+    assert progress.learning_evidence[-1].turn_id == "turn-1"
+    assert progress.learning_evidence[-1].quality == 1.0
+    assert any(event.event_type == "evidence.recorded" for event in store.list_events("book1"))
+
+
+@pytest.mark.parametrize("review_question", ["q1", "q2"])
+def test_graduated_retry_does_not_weaken_later_independent_review(tmp_path, review_question):
+    service = LearningService(LearningStore(root=tmp_path))
+    progress = _make_progress()
+    for question_id, answer in [("q1", "london"), ("q1", "paris"), (review_question, "paris")]:
+        service.grade_and_record(
+            progress,
+            question_id=question_id,
+            knowledge_point_id="kp1",
+            module_id="m1",
+            user_answer=answer,
+            expected_answer="paris",
+        )
+    assert progress.error_records[0].status == "graduated"
+    assert [event.quality for event in progress.learning_evidence] == [0.0, 0.6, 1.0]
+    restored = service.store.load(progress.book_id)
+    assert restored.learning_evidence[-1].quality == 1.0
+
+
+def test_active_error_on_another_question_does_not_weaken_correct_answer(tmp_path):
+    service = LearningService(LearningStore(root=tmp_path))
+    progress = _make_progress()
+    for question_id, answer in [("q1", "london"), ("q1", "london"), ("q2", "paris")]:
+        service.grade_and_record(
+            progress,
+            question_id=question_id,
+            knowledge_point_id="kp1",
+            module_id="m1",
+            user_answer=answer,
+            expected_answer="paris",
+        )
+    assert progress.error_records[0].status == "retrying"
+    assert [event.quality for event in progress.learning_evidence] == [0.0, 0.0, 1.0]

@@ -290,7 +290,47 @@ class PartnerSessionStore:
 
     def messages(self, session_key: str, *, limit: int = 100) -> list[dict[str, Any]]:
         """Raw records (role/content/timestamp/...) for the history API."""
-        return self._read_records(session_key)[-limit:]
+        from deeptutor.services.session.provider_response_state import (
+            redact_private_message_metadata,
+        )
+
+        records = self._read_records(session_key)[-limit:]
+        redact_private_message_metadata(records)
+        return records
+
+    def previous_model_turn(self, session_key: str) -> dict[str, Any] | None:
+        """Last private request header, used for tool order and cache diagnostics."""
+        from deeptutor.services.session.model_history import model_turn
+
+        return next(
+            (
+                record
+                for row in reversed(self._read_records(session_key))
+                if (record := model_turn(row)) is not None
+            ),
+            None,
+        )
+
+    def model_history(
+        self, session_key: str, route: dict[str, str] | None = None
+    ) -> list[dict[str, Any]]:
+        """Retain complete model turns within the Partner's existing budget."""
+        from deeptutor.services.session.model_history import history_groups, replay_group
+
+        kept: list[list[dict[str, Any]]] = []
+        chars = 0
+        count = 0
+        for group in reversed(history_groups(self._read_records(session_key))):
+            messages = replay_group(group, route)
+            size = len(json.dumps(messages, ensure_ascii=False))
+            if kept and (
+                chars + size > _HISTORY_MAX_CHARS or count + len(group) > _HISTORY_MAX_MESSAGES
+            ):
+                break
+            kept.insert(0, messages)
+            chars += size
+            count += len(group)
+        return [message for group in kept for message in group]
 
     def merged_messages(
         self, *, limit: int = 100, include_archived: bool = False
@@ -306,7 +346,13 @@ class PartnerSessionStore:
                 merged.append((str(record.get("timestamp", "")), sequence, record))
                 sequence += 1
         merged.sort(key=lambda item: (item[0], item[1]))
-        return [item[2] for item in merged[-limit:]]
+        from deeptutor.services.session.provider_response_state import (
+            redact_private_message_metadata,
+        )
+
+        records = [item[2] for item in merged[-limit:]]
+        redact_private_message_metadata(records)
+        return records
 
     def _session_summary(self, path: Path) -> dict[str, Any]:
         records = self._read_records(path.stem)

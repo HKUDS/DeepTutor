@@ -936,13 +936,17 @@ class QuestionBankTool(_PromptHintsMixin, BaseTool):
         return ToolDefinition(
             name="question_bank",
             description=(
-                "Read and organise the learner's question bank — the graded "
-                "quiz questions saved under Learning Space → Question Bank. "
-                "This is where wrong answers and quiz history live; it is NOT "
-                "the notebook (`write_note`). Use it whenever the learner asks "
-                "to review, group, file, or tidy their questions or mistakes. "
+                "Read, organise, and record the learner's question bank — the "
+                "graded quiz questions saved under Learning Space → Question "
+                "Bank. This is where wrong answers and quiz history live; it is "
+                "NOT the notebook (`write_note`). Use it whenever the learner "
+                "asks to review, group, file, or tidy their questions or "
+                "mistakes, or when they own up to a mistake worth keeping. "
                 "action='overview' for counts + existing categories; "
                 "action='list' to see entries (each prefixed with its id); "
+                "action='record' to save one wrong question from this "
+                "conversation into the bank the learner reviews (add "
+                "`category` to file it in the same call); "
                 "action='organize' to file entry_ids into a category by name "
                 "(the category is created if it does not exist); "
                 "action='unfile' to remove them; "
@@ -954,9 +958,51 @@ class QuestionBankTool(_PromptHintsMixin, BaseTool):
                     type="string",
                     description=(
                         "'overview' (counts + categories, needs nothing else), "
-                        "'list', 'organize', 'unfile', or 'bookmark'."
+                        "'list', 'record', 'organize', 'unfile', or 'bookmark'."
                     ),
                     enum=list(QB_ACTIONS),
+                ),
+                ToolParameter(
+                    name="question",
+                    type="string",
+                    description=(
+                        "For action='record'. The problem itself, as close to "
+                        "the learner's wording or photo as possible. Recording "
+                        "the same question again updates the existing entry."
+                    ),
+                    required=False,
+                ),
+                ToolParameter(
+                    name="user_answer",
+                    type="string",
+                    description=(
+                        "For action='record'. What the learner answered, if they attempted it."
+                    ),
+                    required=False,
+                ),
+                ToolParameter(
+                    name="correct_answer",
+                    type="string",
+                    description="For action='record'. The correct answer, if known.",
+                    required=False,
+                ),
+                ToolParameter(
+                    name="explanation",
+                    type="string",
+                    description=(
+                        "For action='record'. Why the correct answer is right — "
+                        "the coaching the learner just received, condensed."
+                    ),
+                    required=False,
+                ),
+                ToolParameter(
+                    name="is_correct",
+                    type="boolean",
+                    description=(
+                        "For action='record'. Whether the learner answered "
+                        "correctly. Default false — a recorded mistake."
+                    ),
+                    required=False,
                 ),
                 ToolParameter(
                     name="filter",
@@ -974,8 +1020,10 @@ class QuestionBankTool(_PromptHintsMixin, BaseTool):
                     type="string",
                     description=(
                         "Category name. Required for 'organize' / 'unfile'; "
-                        "optional on 'list' to look inside one category. "
-                        "'organize' creates the category when it is new."
+                        "optional on 'list' to look inside one category and on "
+                        "'record' to file the new entry in the same call. "
+                        "'organize' and 'record' create the category when it "
+                        "is new."
                     ),
                     required=False,
                 ),
@@ -1021,6 +1069,11 @@ class QuestionBankTool(_PromptHintsMixin, BaseTool):
             category=str(kwargs.get("category") or ""),
             search=str(kwargs.get("search") or ""),
             entry_ids=kwargs.get("entry_ids"),
+            question=str(kwargs.get("question") or ""),
+            user_answer=str(kwargs.get("user_answer") or ""),
+            correct_answer=str(kwargs.get("correct_answer") or ""),
+            explanation=str(kwargs.get("explanation") or ""),
+            is_correct=bool(kwargs.get("is_correct", False)),
             bookmarked=bool(kwargs.get("bookmarked", True)),
             limit=int(kwargs.get("limit") or 20),
         )
@@ -1403,34 +1456,22 @@ class ReadSkillTool(_PromptHintsMixin, BaseTool):
         )
 
     async def execute(self, **kwargs: Any) -> ToolResult:
-        from deeptutor.services.skill import get_skill_service
         from deeptutor.services.skill.service import (
             InvalidSkillNameError,
             InvalidSkillPathError,
             SkillFileNotFoundError,
             SkillNotFoundError,
-            SkillService,
         )
 
-        name = str(kwargs.get("name") or "").strip()
+        name = str(kwargs.get("name") or "").strip().lower()
         rel_path = str(kwargs.get("file") or "SKILL.md").strip() or "SKILL.md"
         if not name:
             raise ValueError("read_skill requires a skill name.")
 
-        services: list[SkillService] = [get_skill_service()]
-        try:
-            from deeptutor.multi_user.context import get_current_user
-            from deeptutor.multi_user.paths import get_admin_path_service
-            from deeptutor.multi_user.skill_access import assigned_skill_ids
+        from deeptutor.services.skill.runtime import runtime_skills
 
-            user = get_current_user()
-            if not user.is_admin and name in assigned_skill_ids(user.id):
-                services.append(
-                    SkillService(root=get_admin_path_service().get_workspace_dir() / "skills")
-                )
-        except Exception:
-            logger.debug("read_skill: assigned-skill scope unavailable", exc_info=True)
-
+        visible = runtime_skills()
+        services = [visible[name]] if name in visible else []
         for service in services:
             try:
                 content = service.read_skill_file(name, rel_path)
@@ -1459,9 +1500,7 @@ class ReadSkillTool(_PromptHintsMixin, BaseTool):
                 content=content,
                 metadata={"skill": name, "file": rel_path, "char_count": len(content)},
             )
-        available_names: set[str] = set()
-        for service in services:
-            available_names.update(skill.name for skill in service.list_skills())
+        available_names = set(visible)
         available_skills = ", ".join(sorted(available_names))
         available_hint = f". Available skills: {available_skills}" if available_skills else ""
         return ToolResult(

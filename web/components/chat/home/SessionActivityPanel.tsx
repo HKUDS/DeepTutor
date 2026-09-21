@@ -1,5 +1,7 @@
 "use client";
 
+import { BOOKS_HOME } from "@/lib/learning-routes";
+
 /**
  * SessionActivityPanel — right-side column of *floating cards* recording
  * the conversation's tools, knowledge bases, Space refs, and attachments.
@@ -156,7 +158,7 @@ const SPACE_CATEGORIES: Record<string, SpaceCategoryDef> = {
   },
   books: {
     key: "books",
-    href: "/books",
+    href: BOOKS_HOME,
     label: "Books",
     icon: BookOpen,
   },

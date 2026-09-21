@@ -154,7 +154,7 @@ class TestContextBuilderBudgets:
     def test_history_budget_uses_large_context_model_heuristic(self) -> None:
         builder = ContextBuilder(store=MagicMock(), history_budget_ratio=0.35)
         budget = builder._history_budget(self._make_llm_config(4096, model="gpt-4o-mini"))
-        assert budget == int(65536 * 0.35)
+        assert budget == int(128000 * 0.35)
 
     def test_history_budget_has_absolute_cap(self) -> None:
         builder = ContextBuilder(store=MagicMock(), history_budget_ratio=0.35)

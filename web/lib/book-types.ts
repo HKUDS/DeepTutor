@@ -1,3 +1,4 @@
+import type { LearningOrigin } from "@/lib/learning-library";
 // Type definitions mirroring deeptutor.book.models on the backend.
 // Kept loose (Record<string, unknown>) where the payload is block-type
 // specific so we don't have to keep these in lock-step.
@@ -198,7 +199,7 @@ export interface GenerationSummary extends GenerationOverview {
   failure_categories: Record<string, number>;
 }
 
-export interface Book {
+export interface Book extends LearningOrigin {
   id: string;
   revision: number;
   title: string;

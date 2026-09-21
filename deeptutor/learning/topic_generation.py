@@ -247,6 +247,17 @@ async def ground_topic_sources(
     query = f"{str(name or '').strip()}\n{str(goal or '').strip()}".strip()[:2_000]
 
     async def ground(source: TopicSource) -> TopicSource:
+        from deeptutor.services.workspace.knowledge import learning_source_access
+
+        refs = (
+            [source.source_id]
+            if source.kind == TopicSourceKind.KNOWLEDGE_BASE
+            else [source.metadata.get("kb_name", "")]
+        )
+        with learning_source_access(refs):
+            return await ground_one(source)
+
+    async def ground_one(source: TopicSource) -> TopicSource:
         if source.kind == TopicSourceKind.FILE:
             return await _ground_file_source(source)
         return await _ground_knowledge_base_source(source, query=query)

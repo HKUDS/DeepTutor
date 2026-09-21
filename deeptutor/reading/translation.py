@@ -105,9 +105,9 @@ class TranslationExtension:
         if not context.selection.strip():
             raise ValueError("Translation requires selected text.")
 
-        from deeptutor.services.model_selection.tasks import task_llm_scope
+        from deeptutor.services.model_selection.tasks import TaskKind, task_llm_scope
 
-        with task_llm_scope():
+        with task_llm_scope(TaskKind.READING_TRANSLATION):
             raw = await complete(
                 prompt=_prompt(context),
                 system_prompt=_SYSTEM_ZH if target_language == "zh" else _SYSTEM_EN,

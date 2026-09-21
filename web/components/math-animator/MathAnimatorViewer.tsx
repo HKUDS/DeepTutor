@@ -142,9 +142,9 @@ export default function MathAnimatorViewer({
       result.render.visual_review.passed === false ? (
         <div className="rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-2.5 text-[12px] leading-[1.6] text-amber-900 dark:text-amber-200">
           <div className="font-medium">
-            Visual review warning:{" "}
+            {t("Visual review warning:")}{" "}
             {result.render.visual_review.summary ||
-              "The generated result still has presentation issues."}
+              t("The generated result still has presentation issues.")}
           </div>
           {result.render.visual_review.issues &&
           result.render.visual_review.issues.length > 0 ? (
@@ -160,12 +160,12 @@ export default function MathAnimatorViewer({
         <div className="flex flex-wrap items-center gap-2 text-[11px] text-[var(--muted-foreground)]">
           {result.render.quality ? (
             <span className="rounded-full border border-[var(--border)] px-2 py-0.5">
-              quality: {result.render.quality}
+              {t("Quality: {{quality}}", { quality: result.render.quality })}
             </span>
           ) : null}
           {typeof result.render.retry_attempts === "number" ? (
             <span className="rounded-full border border-[var(--border)] px-2 py-0.5">
-              retries: {result.render.retry_attempts}
+              {t("Retries: {{count}}", { count: result.render.retry_attempts })}
             </span>
           ) : null}
           {Object.keys(result.timings).length > 0 ? (

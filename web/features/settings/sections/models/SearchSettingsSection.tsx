@@ -1,10 +1,7 @@
 "use client";
-
 import { useTranslation } from "react-i18next";
-
-import { ServiceConfigEditor } from "@/components/settings/ServiceConfigEditor";
+import { ModelsWorkspace } from "@/components/settings/ModelsWorkspace";
 import { SettingsPageHeader } from "@/components/settings/shared";
-
 export default function SearchSettingsPage() {
   const { t } = useTranslation();
   return (
@@ -12,10 +9,10 @@ export default function SearchSettingsPage() {
       <SettingsPageHeader
         title={t("Search")}
         description={t(
-          "Configure web search providers. Used by the web_search tool and any agent step that hits the open web.",
+          "Configure and test search engines using saved providers.",
         )}
       />
-      <ServiceConfigEditor service="search" />
+      <ModelsWorkspace page="search" />
     </div>
   );
 }

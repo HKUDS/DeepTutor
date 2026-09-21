@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useStagedSettings } from "@/features/settings/store/useStagedSettings";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, Loader2, Lock, Search, Wrench, X } from "lucide-react";
 import Link from "next/link";
 import { useTranslation } from "react-i18next";
@@ -8,7 +9,6 @@ import { useTranslation } from "react-i18next";
 import { useSettings } from "@/features/settings/store/SettingsStore";
 import { SettingsPageHeader } from "@/components/settings/shared";
 import { apiFetch, apiUrl } from "@/lib/api";
-import { invalidateEnabledOptionalToolsCache } from "@/lib/tools-settings";
 import {
   toolAvailabilityCopy,
   toolEffectiveEnabled,
@@ -75,13 +75,15 @@ const CAPABILITY_LABELS: Record<string, { zh: string; en: string }> = {
 
 export default function ToolsSettingsPage() {
   const { t } = useTranslation();
-  const { language } = useSettings();
+  const { language, draftRevision } = useSettings();
   const [tools, setTools] = useState<BuiltinTool[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [enabled, setEnabled] = useState<Set<string>>(new Set());
-  const [pending, setPending] = useState<Set<string>>(new Set());
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [liveTools, setLiveTools] = useState({ enabled_tools: [] as string[] });
+  const [toolDraft, setToolDraft] = useStagedSettings("tools", liveTools, setLiveTools);
+  const enabled = new Set(toolDraft.enabled_tools);
+  const pending = new Set<string>();
+
   const [query, setQuery] = useState("");
 
   useEffect(() => {
@@ -93,7 +95,7 @@ export default function ToolsSettingsPage() {
         const payload = (await res.json()) as ToolsResponse;
         if (!cancelled) {
           setTools(payload.tools);
-          setEnabled(new Set(payload.enabled_optional_tools ?? []));
+          setLiveTools({ enabled_tools: (payload.enabled_optional_tools ?? []).slice().sort() });
         }
       } catch (err) {
         if (!cancelled) {
@@ -104,48 +106,16 @@ export default function ToolsSettingsPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [draftRevision]);
 
-  const persist = useCallback(async (next: Set<string>) => {
-    const body = JSON.stringify({ enabled_tools: Array.from(next) });
-    const res = await apiFetch(apiUrl("/api/settings/enabled-tools"), {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body,
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const payload = (await res.json()) as { enabled_optional_tools: string[] };
-    // Bust the cached snapshot any other page in this tab is holding.
-    invalidateEnabledOptionalToolsCache();
-    return new Set(payload.enabled_optional_tools);
-  }, []);
-
-  const handleToggleEnabled = useCallback(
-    async (toolName: string) => {
-      if (pending.has(toolName)) return;
-      const before = enabled;
-      const next = new Set(before);
+  const handleToggleEnabled = (toolName: string) => {
+    setToolDraft((current) => {
+      const next = new Set(current.enabled_tools);
       if (next.has(toolName)) next.delete(toolName);
       else next.add(toolName);
-      setEnabled(next);
-      setPending((prev) => new Set(prev).add(toolName));
-      setSaveError(null);
-      try {
-        const saved = await persist(next);
-        setEnabled(saved);
-      } catch (err) {
-        setEnabled(before);
-        setSaveError(err instanceof Error ? err.message : String(err));
-      } finally {
-        setPending((prev) => {
-          const out = new Set(prev);
-          out.delete(toolName);
-          return out;
-        });
-      }
-    },
-    [enabled, pending, persist],
-  );
+      return { enabled_tools: Array.from(next).sort() };
+    });
+  };
 
   const sections = useMemo<ToolSection[] | null>(() => {
     if (!tools) return null;
@@ -303,11 +273,7 @@ export default function ToolsSettingsPage() {
         </div>
       )}
 
-      {saveError && (
-        <div className="mb-4 rounded-xl border border-red-500/40 bg-red-500/5 px-4 py-3 text-[12px] text-red-500">
-          {t("Failed to save")}: {saveError}
-        </div>
-      )}
+
 
       {!tools && !error && (
         <div className="flex items-center gap-2 text-[12px] text-[var(--muted-foreground)]">

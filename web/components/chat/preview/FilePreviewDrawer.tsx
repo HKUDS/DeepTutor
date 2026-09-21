@@ -1,5 +1,7 @@
 "use client";
 
+import { readingCollectionRoute } from "@/lib/learning-routes";
+
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
@@ -182,7 +184,7 @@ export default function FilePreviewDrawer({
         material_ids: [material.material_id],
       });
       onClose();
-      router.push(`/reading/${workspace.workspace_id}`);
+      router.push(readingCollectionRoute(workspace.workspace_id));
     } catch (caught) {
       setReaderError(
         caught instanceof Error

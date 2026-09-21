@@ -127,10 +127,17 @@ class ReadingExtensionRegistry:
     def get(self, extension_id: str) -> ReadingExtension | None:
         return self._extensions.get(extension_id)
 
-    def begin_action(self, extension_id: str) -> bool:
-        """Reserve one extension worker unless it is busy or circuit-broken."""
+    def begin_action(self, extension_id: str, *, circuit_break: bool = True) -> bool:
+        """Reserve one extension worker unless it is busy or circuit-broken.
+
+        ``circuit_break`` is for sync handlers whose worker may still be stuck
+        after a timeout. Async LLM actions are cancelled with the request, so
+        a stale circuit must not block Quiz me until process restart.
+        """
         with self._execution_lock:
-            if extension_id in self._active or extension_id in self._timed_out:
+            if extension_id in self._active:
+                return False
+            if circuit_break and extension_id in self._timed_out:
                 return False
             self._active.add(extension_id)
             return True

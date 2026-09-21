@@ -54,7 +54,7 @@ import {
   type SessionActivity,
 } from "@/components/chat/home/SessionActivityPanel";
 import QuizFollowupTabBody from "@/components/quiz/QuizFollowupTabBody";
-import SubagentTabBody from "@/components/chat/home/SubagentTabBody";
+import ConsultationTabBody from "@/components/chat/home/ConsultationTabBody";
 import type { QuizFollowupTabContext } from "@/context/QuizFollowupContext";
 import type { GeogebraTabPayload } from "@/context/GeogebraTabContext";
 import { apiUrl } from "@/lib/api";
@@ -187,7 +187,7 @@ export interface SessionViewerPanelHandle {
   /** Opens (or focuses) an interactive GeoGebra applet tab. */
   openGeogebraTab(payload: GeogebraTabPayload): void;
   /** Opens (first time) or live-updates a connected subagent's run tab. */
-  openSubagentTab(callId: string, label: string, events: StreamEvent[]): void;
+  openSubagentTab(callId: string, label: string, events: StreamEvent[], focus?: boolean): void;
   /** Opens the panel and switches to the Activity home (where the
    *  capability-config card lives). */
   focusActivityHome(): void;
@@ -530,7 +530,7 @@ function SessionViewerPanelInner(
   // events, so live streaming never yanks the user off whatever they're viewing.
   const subagentSeenRef = useRef<Set<string>>(new Set());
   const openSubagentTab = useCallback(
-    (callId: string, label: string, events: StreamEvent[]) => {
+    (callId: string, label: string, events: StreamEvent[], focus = false) => {
       const id = subagentTabIdFor(callId);
       const isNew = !subagentSeenRef.current.has(callId);
       subagentSeenRef.current.add(callId);
@@ -544,7 +544,7 @@ function SessionViewerPanelInner(
         }
         return [...prev, tab];
       });
-      if (isNew) {
+      if (isNew || focus) {
         setActiveTabId(id);
         onAutoOpen();
       }
@@ -682,7 +682,7 @@ function SessionViewerPanelInner(
         onCloseTab={closeTab}
         onClosePanel={onClose}
       />
-      <div className="relative flex-1 overflow-hidden bg-[var(--card)]">
+      <div className="relative min-h-0 flex-1 overflow-hidden bg-[var(--card)]">
         {activeTab?.kind === "file" ? (
           <FileTabBody source={activeTab.source} />
         ) : activeTab?.kind === "web" ? (
@@ -705,7 +705,7 @@ function SessionViewerPanelInner(
         ) : activeTab?.kind === "geogebra" ? (
           <GeogebraTabBody key={activeTab.id} script={activeTab.script} />
         ) : activeTab?.kind === "subagent" ? (
-          <SubagentTabBody
+          <ConsultationTabBody
             key={activeTab.id}
             tabEvents={activeTab.events}
             sessionId={sessionId}

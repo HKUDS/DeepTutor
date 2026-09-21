@@ -5,36 +5,23 @@ import { useTranslation } from "react-i18next";
 import { Cpu, Loader2, Plug, Plus, Trash2, X } from "lucide-react";
 
 import { agentGlyph } from "@/components/agents/agent-icons";
-import PartnerAvatar from "@/components/partners/PartnerAvatar";
 import SpaceSectionHeader from "@/components/space/SpaceSectionHeader";
 import {
   connectSubagent,
   detectSubagents,
   disconnectSubagent,
-  listConnectablePartners,
   listSubagentConnections,
-  type ConnectablePartner,
   type SubagentBackendInfo,
   type SubagentConnection,
 } from "@/lib/subagents-api";
 
-/**
- * Connected agents — live agents the chat composer can select and consult in
- * real time: a supported local harness, remote gateway, or one of the user's
- * partners.
- * Distinct from the imported-history agents below it: those replay
- * past transcripts, these drive the live agent now. Runtime detection is
- * machine-global; partners come from the user's partner list. Consulting a
- * partner opens a fresh session on it — every consult within one DeepTutor
- * chat is archived as one partner session.
- */
+/** Live local and remote agents, separate from imported histories. */
 
-const PARTNER_KIND = "partner";
 const REMOTE_HERMES_KIND = "hermes_remote";
 
 type Lang = { zh: string; en: string };
 
-function backendLabel(kind: string, tr: (l: Lang) => string): string {
+function backendLabel(kind: string): string {
   if (kind === "claude_code") return "Claude Code";
   if (kind === "codex") return "Codex";
   if (kind === "antigravity") return "Antigravity CLI";
@@ -45,7 +32,6 @@ function backendLabel(kind: string, tr: (l: Lang) => string): string {
   if (kind === REMOTE_HERMES_KIND) return "Hermes Agent (remote)";
   if (kind === "openclaw") return "OpenClaw";
   if (kind === "deepseek_harness") return "DeepSeek Harness";
-  if (kind === PARTNER_KIND) return tr({ zh: "伙伴", en: "Partner" });
   return kind;
 }
 
@@ -56,7 +42,6 @@ export default function ConnectedAgents() {
 
   const [backends, setBackends] = useState<SubagentBackendInfo[]>([]);
   const [connections, setConnections] = useState<SubagentConnection[]>([]);
-  const [partners, setPartners] = useState<ConnectablePartner[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [busyName, setBusyName] = useState<string | null>(null);
@@ -64,14 +49,12 @@ export default function ConnectedAgents() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [detected, conns, parts] = await Promise.all([
+      const [detected, conns] = await Promise.all([
         detectSubagents().catch(() => [] as SubagentBackendInfo[]),
         listSubagentConnections().catch(() => [] as SubagentConnection[]),
-        listConnectablePartners().catch(() => [] as ConnectablePartner[]),
       ]);
       setBackends(detected);
       setConnections(conns);
-      setPartners(parts);
     } finally {
       setLoading(false);
     }
@@ -85,12 +68,7 @@ export default function ConnectedAgents() {
     () => backends.filter((b) => b.available),
     [backends],
   );
-  // Something is connectable when a local/remote backend is available or a partner exists.
-  const canConnect = available.length > 0 || partners.length > 0;
-  const partnerName = useCallback(
-    (id: string) => partners.find((p) => p.partner_id === id)?.name || id,
-    [partners],
-  );
+  const canConnect = available.length > 0;
 
   const handleDisconnect = useCallback(
     async (name: string) => {
@@ -120,8 +98,8 @@ export default function ConnectedAgents() {
         icon={Plug}
         title={tr({ zh: "连接的智能体", en: "Connected agents" })}
         description={tr({
-          zh: "把本机智能体、已配置的远程 Hermes 网关或你的伙伴接进来，在对话中选中后直接向它提问——运行过程会实时展示。",
-          en: "Bring in a supported local agent, a configured remote Hermes gateway, or one of your partners. Select it in chat to consult it directly and see its run live.",
+          zh: "把本机智能体或已配置的远程 Hermes 网关接进来，在对话中选中后直接向它提问——运行过程会实时展示。",
+          en: "Bring in a supported local agent or a configured remote Hermes gateway. Select it in chat to consult it directly and see its run live.",
         })}
         action={
           canConnect ? (
@@ -145,42 +123,26 @@ export default function ConnectedAgents() {
       ) : !canConnect ? (
         <div className="rounded-xl border border-dashed border-[var(--border)] bg-[var(--card)]/40 px-4 py-5 text-[12.5px] leading-relaxed text-[var(--muted-foreground)]">
           {tr({
-            zh: "未检测到可用的本机智能体或已配置的远程 Hermes 网关，也还没有任何伙伴。安装并登录受支持的 CLI、配置远程网关，或在「伙伴」里新建一个，即可连接。",
-            en: "No supported local agent or configured remote Hermes gateway is available, and there are no partners yet. Set up a local CLI, configure the gateway, or create a partner to connect one.",
+            zh: "未检测到可用的本机智能体或已配置的远程 Hermes 网关。安装并登录受支持的 CLI 或配置远程网关，即可连接。",
+            en: "No supported local agent or configured remote Hermes gateway is available. Set up a local CLI or configure the gateway to connect one.",
           })}
         </div>
       ) : connections.length === 0 ? (
         <div className="rounded-xl border border-dashed border-[var(--border)] bg-[var(--card)]/40 px-4 py-5 text-[12.5px] leading-relaxed text-[var(--muted-foreground)]">
           {tr({
-            zh: "尚未连接任何智能体。点击「连接智能体」接入本机智能体、远程 Hermes 网关或你的伙伴。",
-            en: "No agents connected yet. Click “Connect agent” to add a local agent, remote Hermes gateway, or partner.",
+            zh: "尚未连接任何智能体。点击「连接智能体」接入本机智能体或远程 Hermes 网关。",
+            en: "No agents connected yet. Click “Connect agent” to add a local agent or remote Hermes gateway.",
           })}
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           {connections.map((conn) => {
             const Glyph = agentGlyph(conn.agent_kind);
-            // A partner connection wears its own face (the avatar set on the
-            // partner page), not the generic heart glyph.
-            const partner =
-              conn.agent_kind === PARTNER_KIND
-                ? partners.find((p) => p.partner_id === conn.partner_id)
-                : undefined;
             return (
               <div
                 key={conn.name}
                 className="group flex items-center gap-3 rounded-2xl border border-[var(--border)] bg-[var(--card)] px-4 py-3"
               >
-                {partner ? (
-                  <PartnerAvatar
-                    name={partner.name}
-                    emoji={partner.emoji}
-                    color={partner.color}
-                    image={partner.avatar}
-                    size={40}
-                    className="shrink-0"
-                  />
-                ) : (
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--border)]/60 bg-[var(--background)] text-[var(--foreground)]">
                     {Glyph ? (
                       <Glyph size={20} />
@@ -188,20 +150,13 @@ export default function ConnectedAgents() {
                       <Cpu size={18} strokeWidth={1.6} />
                     )}
                   </span>
-                )}
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-[13.5px] font-semibold tracking-tight text-[var(--foreground)]">
                     {conn.name}
                   </div>
                   <div className="mt-0.5 truncate text-[11.5px] text-[var(--muted-foreground)]">
-                    {backendLabel(conn.agent_kind, tr)}
-                    {conn.agent_kind === PARTNER_KIND
-                      ? conn.partner_id
-                        ? ` · ${partnerName(conn.partner_id)}`
-                        : ""
-                      : conn.cwd
-                        ? ` · ${conn.cwd}`
-                        : ""}
+                    {backendLabel(conn.agent_kind)}
+                    {conn.cwd ? ` · ${conn.cwd}` : ""}
                   </div>
                 </div>
                 <button
@@ -227,7 +182,6 @@ export default function ConnectedAgents() {
       {modalOpen && (
         <ConnectModal
           backends={available}
-          partners={partners}
           existingNames={connections.map((c) => c.name)}
           tr={tr}
           onClose={() => setModalOpen(false)}
@@ -243,48 +197,29 @@ export default function ConnectedAgents() {
 
 function ConnectModal({
   backends,
-  partners,
   existingNames,
   tr,
   onClose,
   onConnected,
 }: {
   backends: SubagentBackendInfo[];
-  partners: ConnectablePartner[];
   existingNames: string[];
   tr: (l: Lang) => string;
   onClose: () => void;
   onConnected: () => void;
 }) {
-  // The choices include every available runtime plus Partner when one exists.
   const options = useMemo(
-    () => [
-      ...backends.map((b) => ({ kind: b.kind, label: b.display_name })),
-      ...(partners.length
-        ? [{ kind: PARTNER_KIND, label: tr({ zh: "伙伴", en: "Partner" }) }]
-        : []),
-    ],
-    [backends, partners, tr],
+    () => backends.map((b) => ({ kind: b.kind, label: b.display_name })),
+    [backends],
   );
 
   const [kind, setKind] = useState(options[0]?.kind ?? "");
   const [name, setName] = useState("");
-  const [nameTouched, setNameTouched] = useState(false);
   const [cwd, setCwd] = useState("");
-  const [partnerId, setPartnerId] = useState(partners[0]?.partner_id ?? "");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const isPartner = kind === PARTNER_KIND;
   const isRemote = kind === REMOTE_HERMES_KIND;
-
-  // While the user hasn't renamed the connection, mirror the chosen partner's
-  // name so the connection reads as that partner by default.
-  useEffect(() => {
-    if (!isPartner || nameTouched) return;
-    const picked = partners.find((p) => p.partner_id === partnerId);
-    setName(picked?.name ?? "");
-  }, [isPartner, nameTouched, partnerId, partners]);
 
   const submit = useCallback(async () => {
     const trimmed = name.trim();
@@ -301,17 +236,11 @@ function ConnectModal({
       );
       return;
     }
-    if (isPartner && !partnerId) {
-      setError(tr({ zh: "请选择一个伙伴。", en: "Please pick a partner." }));
-      return;
-    }
     setSubmitting(true);
     setError("");
     try {
       await connectSubagent(
-        isPartner
-          ? { name: trimmed, agent_kind: PARTNER_KIND, partner_id: partnerId }
-          : isRemote
+        isRemote
             ? { name: trimmed, agent_kind: kind }
             : { name: trimmed, agent_kind: kind, cwd: cwd.trim() },
       );
@@ -321,7 +250,7 @@ function ConnectModal({
     } finally {
       setSubmitting(false);
     }
-  }, [name, kind, cwd, isPartner, isRemote, partnerId, existingNames, onConnected, tr]);
+  }, [name, kind, cwd, isRemote, existingNames, onConnected, tr]);
 
   return (
     <div
@@ -374,26 +303,6 @@ function ConnectModal({
             </div>
           </div>
 
-          {isPartner && (
-            <div>
-              <label className="mb-1.5 block text-[12px] font-medium text-[var(--foreground)]">
-                {tr({ zh: "伙伴", en: "Partner" })}
-              </label>
-              <select
-                value={partnerId}
-                onChange={(e) => setPartnerId(e.target.value)}
-                className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
-              >
-                {partners.map((p) => (
-                  <option key={p.partner_id} value={p.partner_id}>
-                    {p.emoji ? `${p.emoji} ` : ""}
-                    {p.name}
-                    {p.description ? ` — ${p.description}` : ""}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
 
           <div>
             <label className="mb-1.5 block text-[12px] font-medium text-[var(--foreground)]">
@@ -404,7 +313,6 @@ function ConnectModal({
               value={name}
               onChange={(e) => {
                 setName(e.target.value);
-                setNameTouched(true);
               }}
               placeholder={tr({
                 zh: "例如：我的代码助手",
@@ -414,7 +322,7 @@ function ConnectModal({
             />
           </div>
 
-          {!isPartner && !isRemote && (
+          {!isRemote && (
             <div>
               <label className="mb-1.5 block text-[12px] font-medium text-[var(--foreground)]">
                 {tr({
@@ -432,15 +340,6 @@ function ConnectModal({
                 className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 font-mono text-[12px] text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
               />
             </div>
-          )}
-
-          {isPartner && (
-            <p className="text-[11.5px] leading-relaxed text-[var(--muted-foreground)]">
-              {tr({
-                zh: "在对话中咨询该伙伴时，会像在伙伴页开启一个新 session；同一对话里的多次咨询都会归档为同一个 session。",
-                en: "Consulting this partner in chat opens a session on it, just like the partner page; every consult within one chat is archived as the same session.",
-              })}
-            </p>
           )}
 
           {error && (

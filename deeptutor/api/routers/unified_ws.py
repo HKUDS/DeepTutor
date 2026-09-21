@@ -18,7 +18,9 @@ from pydantic import TypeAdapter, ValidationError
 from deeptutor.api.contracts.turn_protocol import (
     PROTOCOL_VERSION,
     ClientCommand,
+    StartTurnCommand,
 )
+from deeptutor.services.workspace.models import WorkspaceError
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -204,7 +206,14 @@ async def unified_websocket(ws: WebSocket) -> None:
                 )
                 continue
 
-            msg = command.model_dump(mode="python")
+            # A continuing turn omits workspace_id to inherit its binding.
+            # Filling defaults here would turn that omission into an explicit
+            # null (and also turn an omitted parent into a root-branch edit).
+            msg = (
+                command.to_payload()
+                if isinstance(command, StartTurnCommand)
+                else command.model_dump(mode="python")
+            )
 
             msg_type = msg.get("type")
 
@@ -217,7 +226,7 @@ async def unified_websocket(ws: WebSocket) -> None:
                             if key not in {"type", "protocol_version"}
                         }
                     )
-                except RuntimeError as exc:
+                except (RuntimeError, WorkspaceError) as exc:
                     await send_error(
                         str(exc),
                         error_code="start_turn_rejected",
@@ -324,7 +333,7 @@ async def unified_websocket(ws: WebSocket) -> None:
                 overrides = msg.get("overrides") if isinstance(msg.get("overrides"), dict) else None
                 try:
                     _, turn = await turns.regenerate_last_turn(session_id, overrides=overrides)
-                except RuntimeError as exc:
+                except (RuntimeError, WorkspaceError) as exc:
                     await send_error(
                         str(exc),
                         error_code="regenerate_rejected",

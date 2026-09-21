@@ -1,4 +1,5 @@
 export {
+  getEmbeddingUsage,
   connectLightRagServer,
   getEngineModelOptions,
   getEnginePreflight,

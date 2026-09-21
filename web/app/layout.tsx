@@ -3,6 +3,9 @@ import { Geist, Lora } from "next/font/google";
 import "./globals.css";
 import ThemeScript from "@/components/ThemeScript";
 import ToastViewport from "@/components/common/ToastViewport";
+import MotionProvider from "@/components/common/MotionProvider";
+import SettingsReturnTracker from "@/components/settings/SettingsReturnTracker";
+import { WorkspaceNavigation } from "@/components/workspaces/WorkspaceNavigation";
 import { AppShellProvider } from "@/context/AppShellContext";
 import { I18nClientBridge } from "@/i18n/I18nClientBridge";
 
@@ -52,7 +55,11 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <AppShellProvider>
-          <I18nClientBridge>{children}</I18nClientBridge>
+          <SettingsReturnTracker />
+          <WorkspaceNavigation />
+          <MotionProvider>
+            <I18nClientBridge>{children}</I18nClientBridge>
+          </MotionProvider>
           <ToastViewport />
         </AppShellProvider>
       </body>

@@ -1,21 +1,18 @@
 "use client";
-
 import { useTranslation } from "react-i18next";
-
-import { ServiceConfigEditor } from "@/components/settings/ServiceConfigEditor";
+import { ModelsWorkspace } from "@/components/settings/ModelsWorkspace";
 import { SettingsPageHeader } from "@/components/settings/shared";
-
-export default function ImageGenSettingsPage() {
+export default function ImageSettingsPage() {
   const { t } = useTranslation();
   return (
     <div>
       <SettingsPageHeader
-        title={t("Image Generation")}
+        title={t("Multimodal generation")}
         description={t(
-          "Text-to-image model used by the chat 'imagegen' tool. Works with any OpenAI-compatible /images/generations API — OpenAI, Volcengine Seedream, or compatible gateways.",
+          "Manage image and video generation models using saved providers.",
         )}
       />
-      <ServiceConfigEditor service="imagegen" />
+      <ModelsWorkspace page="multimodal" initialService="imagegen" />
     </div>
   );
 }

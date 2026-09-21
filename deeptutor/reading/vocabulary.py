@@ -103,9 +103,9 @@ class VocabularyExtension:
         if not context.selection.strip():
             raise ValueError("Vocabulary help requires selected text.")
 
-        from deeptutor.services.model_selection.tasks import task_llm_scope
+        from deeptutor.services.model_selection.tasks import TaskKind, task_llm_scope
 
-        with task_llm_scope():
+        with task_llm_scope(TaskKind.READING_VOCABULARY):
             raw = await complete(
                 prompt=_prompt(context),
                 system_prompt=_SYSTEM_ZH if _is_zh(context.locale) else _SYSTEM_EN,

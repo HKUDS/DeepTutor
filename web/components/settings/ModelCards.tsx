@@ -1,6 +1,13 @@
 "use client";
 
-import { Check, ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  PencilLine,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import ProviderIcon from "@/components/common/ProviderIcon";
@@ -10,19 +17,9 @@ import type {
   ServiceName,
 } from "@/features/settings/store/SettingsStore";
 
-/**
- * The two levels of a model settings page, as cards.
- *
- * A page shows the providers configured for its service; opening one shows
- * the models under it. Cards rather than a list because each one carries more
- * than a name — what it points at, how many models it holds, whether it is the
- * one actually running — and because "open this" and "put this to use" have to
- * be visibly different acts, which a row that does both on click cannot say.
- *
- * The visual language is the one measured off the rest of the app: hairline
- * borders, the accent tint the sidebar uses for its selected row, one radius
- * from the settings scale, no shadows.
- */
+/** Provider disclosure rows contain connection fields and their model cards.
+ * Opening an editor and selecting a runtime model are separate actions;
+ * every selection remains a draft until the user applies it. */
 
 export function SectionHead({
   title,
@@ -64,7 +61,9 @@ export function CardAction({
 
 export function CardGrid({ children }: { children: React.ReactNode }) {
   return (
-    <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">{children}</div>
+    <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
+      {children}
+    </div>
   );
 }
 
@@ -100,9 +99,13 @@ function CardShell({
   expanded,
   inUse,
   onOpen,
+  editing = false,
+  editorId,
   children,
 }: {
   expanded: boolean;
+  editing?: boolean;
+  editorId?: string;
   inUse: boolean;
   onOpen?: () => void;
   children: React.ReactNode;
@@ -110,22 +113,27 @@ function CardShell({
   return (
     <div
       className={`group relative flex min-h-[86px] flex-col justify-between gap-2 rounded-xl border p-3 transition-[background-color,border-color,transform] duration-150 ${
-        expanded
-          ? "border-[var(--foreground)]/25 bg-[var(--accent)]/40"
-          : inUse
-            ? "border-[var(--border)] bg-[var(--accent)]/25"
-            : "border-[var(--border)]/70"
+        editing
+          ? "border-[var(--primary)] bg-[color-mix(in_srgb,var(--primary)_6%,var(--card))] ring-1 ring-[var(--primary)]"
+          : expanded
+            ? "border-[var(--foreground)]/25 bg-[var(--accent)]/40"
+            : inUse
+              ? "border-[var(--border)] bg-[var(--accent)]/25"
+              : "border-[var(--border)]/70"
       } ${
-        onOpen
+        onOpen && !editing
           ? "cursor-pointer hover:border-[var(--foreground)]/40 hover:bg-[var(--accent)]/45 active:scale-[0.995]"
           : ""
       }`}
       onClick={onOpen}
+      aria-current={editing ? "true" : undefined}
+      aria-controls={editorId}
       role={onOpen ? "button" : undefined}
       tabIndex={onOpen ? 0 : undefined}
       onKeyDown={
         onOpen
           ? (event) => {
+              if (event.target !== event.currentTarget) return;
               if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
                 onOpen();
@@ -135,12 +143,6 @@ function CardShell({
       }
     >
       {children}
-      {onOpen && (
-        <ChevronRight
-          aria-hidden
-          className="pointer-events-none absolute bottom-2.5 right-2.5 h-3.5 w-3.5 text-[var(--muted-foreground)]/35 transition-all duration-150 group-hover:translate-x-0.5 group-hover:text-[var(--foreground)]/70"
-        />
-      )}
     </div>
   );
 }
@@ -157,6 +159,7 @@ function NameRow({
   expanded,
   onToggleExpand,
   expandLabel,
+  status,
 }: {
   icon?: React.ReactNode;
   name: string;
@@ -171,6 +174,7 @@ function NameRow({
   expanded?: boolean;
   onToggleExpand?: () => void;
   expandLabel?: string;
+  status?: React.ReactNode;
 }) {
   if (renaming) {
     return (
@@ -203,6 +207,7 @@ function NameRow({
       >
         {name}
       </span>
+      {status}
       {onToggleExpand && (
         <button
           type="button"
@@ -223,13 +228,17 @@ function NameRow({
   );
 }
 
-/** "In use" is stated; everything else offers to become it. */
+/** Labels describe the selection in the draft, before it is applied. */
 export function UseRow({
   inUse,
   onUse,
   detail,
+  selectLabel,
+  selectedLabel,
 }: {
   inUse: boolean;
+  selectLabel?: string;
+  selectedLabel?: string;
   onUse: () => void;
   detail?: string;
 }) {
@@ -242,7 +251,7 @@ export function UseRow({
       {inUse ? (
         <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-medium text-[var(--foreground)]">
           <Check className="h-3 w-3" />
-          {t("In use")}
+          {selectedLabel ?? t("Selected")}
         </span>
       ) : (
         <button
@@ -253,7 +262,7 @@ export function UseRow({
           }}
           className="shrink-0 rounded-md px-1 text-[11px] text-[var(--muted-foreground)] underline-offset-2 transition-colors hover:text-[var(--foreground)] hover:underline"
         >
-          {t("Set as active")}
+          {selectLabel ?? t("Select")}
         </button>
       )}
     </div>
@@ -277,8 +286,7 @@ export function ProfileCard({
   profile: CatalogProfile;
   service: ServiceName;
   inUse: boolean;
-  /** Whether this card's dialog is currently open — a purely visual cue,
-   *  distinct from `inUse` (which provider is actually running). */
+  /** Whether this provider's connection fields and models are expanded. */
   open: boolean;
   renaming: boolean;
   renameValue: string;
@@ -296,32 +304,63 @@ export function ProfileCard({
   const count = profile.models.length;
 
   return (
-    <CardShell expanded={open} inUse={inUse} onOpen={onOpen}>
-      <NameRow
-        icon={<ProviderIcon provider={provider} size={15} className="mt-0.5" />}
-        name={profile.name}
-        renaming={renaming}
-        renameValue={renameValue}
-        onRenameChange={onRenameChange}
-        onRenameCommit={onRenameCommit}
-        onRenameCancel={onRenameCancel}
-        onRenameStart={onRenameStart}
-      />
-      <div className="min-w-0">
-        <p className="truncate font-mono text-[10.5px] text-[var(--muted-foreground)]/80">
-          {endpoint || t("Provider default endpoint")}
-        </p>
-      </div>
-      <div className="pr-5">
-        <UseRow
-          inUse={inUse}
-          onUse={onUse}
-          detail={
-            service === "search" ? undefined : t("{{count}} models", { count })
-          }
+    <div
+      className={`flex items-center gap-3 px-4 py-3 ${open ? "bg-[var(--muted)]/40" : ""}`}
+    >
+      <button
+        type="button"
+        onClick={onOpen}
+        aria-expanded={open}
+        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+      >
+        <ChevronRight
+          size={15}
+          className={`shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
         />
-      </div>
-    </CardShell>
+        <ProviderIcon provider={provider} size={20} />
+        <span className="min-w-0 flex-1">
+          <span className="block break-words text-sm font-medium">
+            {profile.name}
+          </span>
+          <span className="block truncate text-xs text-[var(--muted-foreground)]">
+            {endpoint || t("Provider default endpoint")}
+          </span>
+        </span>
+        <span className="shrink-0 text-xs text-[var(--muted-foreground)]">
+          {t("{{count}} models", { count })}
+        </span>
+      </button>
+      {renaming ? (
+        <NameRow
+          name={profile.name}
+          renaming
+          renameValue={renameValue}
+          onRenameChange={onRenameChange}
+          onRenameCommit={onRenameCommit}
+          onRenameCancel={onRenameCancel}
+          onRenameStart={onRenameStart}
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={onRenameStart}
+          className="min-h-9 px-1 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+        >
+          {t("Rename")}
+        </button>
+      )}
+      {service === "search" ? (
+        <UseRow inUse={inUse} onUse={onUse} />
+      ) : (
+        inUse && (
+          <Check
+            size={15}
+            aria-label={t("Selected")}
+            className="shrink-0"
+          />
+        )
+      )}
+    </div>
   );
 }
 
@@ -341,8 +380,10 @@ export function ModelCard({
   onToggleExpand,
   onUse,
   onDelete,
+  editorId,
 }: {
   model: CatalogModel;
+  editorId?: string;
   service: ServiceName;
   language: "en" | "zh";
   index: number;
@@ -376,7 +417,13 @@ export function ModelCard({
           : undefined;
 
   return (
-    <CardShell expanded={expanded} inUse={inUse} onOpen={onToggleExpand}>
+    <CardShell
+      expanded={expanded}
+      editing={expanded}
+      editorId={editorId}
+      inUse={inUse}
+      onOpen={onToggleExpand}
+    >
       <NameRow
         name={name}
         renaming={renaming}
@@ -388,6 +435,14 @@ export function ModelCard({
         expanded={expanded}
         onToggleExpand={onToggleExpand}
         expandLabel={t("Edit model")}
+        status={
+          expanded ? (
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-[var(--primary)] px-2 py-0.5 text-[10px] font-medium text-[var(--primary-foreground)]">
+              <PencilLine className="h-3 w-3" aria-hidden="true" />
+              {t("Configuring")}
+            </span>
+          ) : undefined
+        }
       />
       <div className="flex min-w-0 items-center gap-2">
         <p className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-[var(--muted-foreground)]/80">
@@ -405,7 +460,13 @@ export function ModelCard({
           <Trash2 className="h-3 w-3" />
         </button>
       </div>
-      <UseRow inUse={inUse} onUse={onUse} detail={detail} />
+      <UseRow
+        inUse={inUse}
+        onUse={onUse}
+        detail={detail}
+        selectLabel={t("Set as default")}
+        selectedLabel={t("Default model")}
+      />
     </CardShell>
   );
 }

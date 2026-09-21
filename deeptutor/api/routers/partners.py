@@ -220,6 +220,7 @@ class AssetSpec(BaseModel):
 
 
 class CreatePartnerRequest(BaseModel):
+    workspace_id: str = ""
     partner_id: str | None = None
     name: str = Field(..., min_length=1)
     description: str | None = None
@@ -253,6 +254,7 @@ class ConfirmPartnerDraftRequest(BaseModel):
 
 
 class UpdatePartnerRequest(BaseModel):
+    workspace_id: str | None = None
     name: str | None = None
     description: str | None = None
     channels: dict | None = None
@@ -629,6 +631,23 @@ async def list_partners():
     return visible_partners()
 
 
+@router.get("/consultation-session")
+async def get_partner_consultation_session(chat_session_id: str, partner_name: str):
+    """Recover native identity for older consultation traces in this user's registry."""
+    from deeptutor.services.subagent.sessions import get_session, session_key
+
+    matches = []
+    for partner in visible_partners():
+        if partner.get("name") != partner_name:
+            continue
+        partner_id = str(partner["partner_id"])
+        native_key = get_session(session_key(chat_session_id, f"partner:{partner_id}"))
+        if native_key:
+            matches.append({"partner_id": partner_id, "session_key": native_key})
+    # Never open a different conversation when names are ambiguous.
+    return matches[0] if len(matches) == 1 else None
+
+
 @router.get("/recent")
 async def recent_partners(limit: int = 3):
     recent = get_partner_manager().get_recent_active_partners(limit=limit)
@@ -736,7 +755,15 @@ async def _create_partner(payload: CreatePartnerRequest) -> dict[str, Any]:
     backup_llm_selection = _validate_llm_selection_payload(payload.backup_llm_selection)
     soul_content, soul_origin = _resolve_soul_content(payload.soul)
 
+    workspace_id = _validate_workspace(payload.workspace_id, get_current_user().id)
+    if workspace_id and payload.assets and any(payload.assets.model_dump().values()):
+        raise HTTPException(
+            status_code=400,
+            detail="Use the shared workspace resources or copy private assets, not both.",
+        )
+
     config = PartnerConfig(
+        workspace_id=workspace_id,
         name=payload.name.strip(),
         description=(payload.description or "").strip(),
         owner_id=get_current_user().id,
@@ -866,6 +893,7 @@ def _stopped_partner_dict(
         channels = mask_channel_secrets(strip_legacy_global_delivery(cfg.channels))
     result = {
         "partner_id": partner_id,
+        "workspace_id": cfg.workspace_id,
         "name": cfg.name,
         "description": cfg.description,
         "channels": channels,
@@ -942,7 +970,19 @@ async def get_partner(
     return {**full, "can_manage": True}
 
 
+def _validate_workspace(workspace_id: str, owner_id: str) -> str:
+    from deeptutor.services.partners.workspace_binding import validate_partner_workspace
+    from deeptutor.services.workspace import WorkspaceError
+
+    try:
+        return validate_partner_workspace(workspace_id, owner_id)
+    except WorkspaceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 def _apply_update(cfg: PartnerConfig, payload: UpdatePartnerRequest) -> None:
+    if "workspace_id" in payload.model_fields_set:
+        cfg.workspace_id = _validate_workspace(payload.workspace_id or "", cfg.owner_id)
     if payload.name is not None:
         cfg.name = payload.name
     if payload.description is not None:
@@ -1203,6 +1243,24 @@ async def put_partner_soul(partner_id: str, payload: SoulUpdateBody):
 # ── Assets ─────────────────────────────────────────────────────
 
 
+@router.get("/{partner_id}/workspaces", dependencies=_MANAGEABLE)
+async def get_partner_workspaces(partner_id: str):
+    """Configuration choices belong to the Partner owner, including admin edits."""
+    from deeptutor.multi_user.paths import user_context
+    from deeptutor.services.partners.workspace_binding import workspace_owner
+    from deeptutor.services.workspace import WorkspaceError, get_content_workspace_service
+    from deeptutor.services.workspace.context import workspace_context
+
+    config = get_partner_manager().load_config(partner_id)
+    if config is None:
+        raise HTTPException(status_code=404, detail=t("api.partner_not_found"))
+    try:
+        with user_context(workspace_owner(config.owner_id)), workspace_context(""):
+            return {"workspaces": get_content_workspace_service().list_workspaces()}
+    except WorkspaceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.get("/{partner_id}/assets", dependencies=_MANAGEABLE)
 async def get_partner_assets(partner_id: str):
     return list_assets(partner_id)
@@ -1210,6 +1268,12 @@ async def get_partner_assets(partner_id: str):
 
 @router.post("/{partner_id}/assets", dependencies=_MANAGEABLE)
 async def add_partner_assets(partner_id: str, payload: AssetAddRequest):
+    config = get_partner_manager().load_config(partner_id)
+    if config and config.workspace_id:
+        raise HTTPException(
+            status_code=400,
+            detail="This partner uses shared workspace resources. Add resources to that workspace.",
+        )
     report = provision_assets(
         partner_id,
         knowledge_bases=payload.knowledge_bases,
@@ -1663,7 +1727,7 @@ async def partner_chat_ws(ws: WebSocket, partner_id: str):
                 # starts the cross-channel activity feed. The feed replays a
                 # bounded recent window, and persisted activity ids let the
                 # client remove any overlap with the history snapshot.
-                if activity["queue"] is None:
+                if activity["queue"] is None and data.get("include_activity", True):
                     activity["queue"] = instance.activity_feed.subscribe_many(activity_actor_ids)
                     activity_attached.set()
                 # Reconnect (a page refresh) — replay an in-flight turn so the

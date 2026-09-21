@@ -4,6 +4,8 @@ import asyncio
 import json
 from pathlib import Path
 
+import pytest
+
 from deeptutor.knowledge.add_documents import (
     DocumentAdder,
     RawDocumentRemoval,
@@ -78,16 +80,17 @@ def test_document_adder_preserves_explicit_bound_provider(tmp_path: Path) -> Non
     assert adder.rag_provider == "graphrag"
 
 
-def test_document_adder_allows_empty_lightrag_kb_to_bootstrap(tmp_path: Path) -> None:
+@pytest.mark.parametrize("provider", ["llamaindex", "lightrag"])
+def test_document_adder_allows_empty_kb_to_bootstrap(tmp_path: Path, provider: str) -> None:
     (tmp_path / "empty-kb").mkdir()
 
     adder = DocumentAdder(
         kb_name="empty-kb",
         base_dir=str(tmp_path),
-        rag_provider="lightrag",
+        rag_provider=provider,
     )
 
-    assert adder.rag_provider == "lightrag"
+    assert adder.rag_provider == provider
     assert adder.raw_dir.is_dir()
 
 
@@ -211,3 +214,11 @@ def test_remove_raw_document_uses_relative_key_for_nested_file(
     assert removal.rel_path == "papers/2024/a.pdf"
     remaining = json.loads((kb_dir / "metadata.json").read_text(encoding="utf-8"))
     assert remaining["file_hashes"] == {"other.pdf": "keep"}
+
+
+@pytest.mark.parametrize("storage", ["version-1", "rag_storage"])
+def test_empty_bootstrap_does_not_replace_broken_existing_index(tmp_path, storage):
+    kb_dir = tmp_path / "kb"
+    (kb_dir / storage).mkdir(parents=True)
+    with pytest.raises(ValueError, match="reindex|not initialized"):
+        DocumentAdder(kb_name="kb", base_dir=str(tmp_path), rag_provider="llamaindex")

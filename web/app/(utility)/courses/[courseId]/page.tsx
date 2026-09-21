@@ -168,7 +168,7 @@ export default function CourseDetailPage() {
 
   const removeSession = useCallback(
     async (sessionId: string) => {
-      if (!window.confirm(t("Delete this chat?"))) return;
+      if (!window.confirm(t("Permanently delete this chat and its tutor threads? This cannot be undone."))) return;
       await deleteSession(sessionId);
       await load();
     },

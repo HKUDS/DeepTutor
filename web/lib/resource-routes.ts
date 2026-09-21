@@ -21,12 +21,6 @@ export function decodeResourceSegment(
   }
 }
 
-export function bookRoute(bookId?: string | null, pageId?: string | null): string {
-  if (!bookId?.trim()) return "/books";
-  const book = `/books/${segment(bookId)}`;
-  return pageId?.trim() ? `${book}/pages/${segment(pageId)}` : book;
-}
-
 export function notebookRoute(
   notebookId?: string | null,
   courseId?: string | null,

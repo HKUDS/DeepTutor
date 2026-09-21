@@ -254,6 +254,7 @@ def load_index(storage_dir: Path) -> Any:
     such a knowledge base rebuilds it as FAISS for the full speed-up.
     """
     storage_dir = Path(storage_dir)
+    from .embedding_adapter import current_embedding
 
     if detect_backend(storage_dir) == BACKEND_FAISS:
         cosine_cls = _cosine_faiss_cls()
@@ -267,10 +268,10 @@ def load_index(storage_dir: Path) -> Any:
         context = StorageContext.from_defaults(
             persist_dir=str(storage_dir), vector_store=vector_store
         )
-        return load_index_from_storage(context)
+        return load_index_from_storage(context, embed_model=current_embedding())
 
     context = StorageContext.from_defaults(persist_dir=str(storage_dir))
-    return load_index_from_storage(context)
+    return load_index_from_storage(context, embed_model=current_embedding())
 
 
 __all__ = [

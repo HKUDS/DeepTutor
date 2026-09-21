@@ -33,3 +33,16 @@ export function peekPickerOrigin(maxAgeMs = 700): DOMRect | null {
   if (Date.now() - current.ts > maxAgeMs) return null;
   return current.rect;
 }
+
+/** Map the final surface back onto the actual trigger, including off-center layouts. */
+export function pickerFlight(
+  source: Pick<DOMRect, "x" | "y" | "width" | "height">,
+  target: Pick<DOMRect, "x" | "y" | "width" | "height">,
+) {
+  return {
+    x: source.x + source.width / 2 - target.x - target.width / 2,
+    y: source.y + source.height / 2 - target.y - target.height / 2,
+    scaleX: target.width > 0 ? source.width / target.width : 1,
+    scaleY: target.height > 0 ? source.height / target.height : 1,
+  };
+}

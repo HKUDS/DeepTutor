@@ -415,10 +415,10 @@ def _response_language() -> str:
 
 async def _call_llm(material: _Material, language: str) -> str:
     from deeptutor.services.llm import complete
-    from deeptutor.services.model_selection.tasks import task_llm_scope
+    from deeptutor.services.model_selection.tasks import TaskKind, task_llm_scope
 
     zh = _is_zh(language)
-    with task_llm_scope():
+    with task_llm_scope(TaskKind.READING_ASK_HINT):
         return await asyncio.wait_for(
             complete(
                 prompt=_render(material, zh),
@@ -614,9 +614,9 @@ async def get_openers(workspace_id: str, locator: int | None = None) -> dict[str
     zh = _is_zh(language)
     try:
         from deeptutor.services.llm import complete
-        from deeptutor.services.model_selection.tasks import task_llm_scope
+        from deeptutor.services.model_selection.tasks import TaskKind, task_llm_scope
 
-        with task_llm_scope():
+        with task_llm_scope(TaskKind.READING_OPENERS):
             raw = await asyncio.wait_for(
                 complete(
                     prompt=_render_openers(material, zh),

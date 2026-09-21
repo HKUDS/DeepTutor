@@ -120,7 +120,7 @@ def normalize_stt_content_type(content_type: str | None) -> str:
 
 
 def join_audio_path(base_url: str, suffix: str) -> str:
-    """Append an OpenAI audio path to a configured base URL.
+    """Append a speech API path to a configured base URL.
 
     ``base_url`` is the API base (e.g. ``https://api.openai.com/v1``). If the
     admin already pasted a full ``.../audio/...`` endpoint (some gateways /
@@ -130,7 +130,7 @@ def join_audio_path(base_url: str, suffix: str) -> str:
     if not base:
         raise VoiceProviderError("No endpoint URL configured for this provider.")
     head, sep, query = base.partition("?")
-    if "/audio/" in head:
+    if "/audio/" in head or head.rstrip("/").endswith("/" + suffix.strip("/")):
         return base
     joined = f"{head.rstrip('/')}/{suffix.lstrip('/')}"
     return f"{joined}?{query}" if sep else joined

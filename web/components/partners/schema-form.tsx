@@ -7,6 +7,7 @@
  */
 
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Eye, EyeOff } from "lucide-react";
 
 export type JsonSchema = {
@@ -92,6 +93,7 @@ function JsonObjectField({
   value: unknown;
   onChange: (next: unknown) => void;
 }) {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState(() => {
     const obj =
       value && typeof value === "object"
@@ -104,7 +106,7 @@ function JsonObjectField({
     <div>
       <FieldLabel
         label={label}
-        description={description ?? 'JSON object, e.g. {"key": "value"}'}
+        description={description ?? t('JSON object, e.g. {"key": "value"}')}
       />
       <textarea
         value={draft}
@@ -137,7 +139,7 @@ function JsonObjectField({
       />
       {invalid && (
         <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
-          Invalid JSON — value not applied.
+          {t("Invalid JSON — value not applied.")}
         </p>
       )}
     </div>
@@ -164,6 +166,7 @@ export function SchemaField({
   showSecretFor: Set<string>;
   toggleSecret: (path: string) => void;
 }) {
+  const { t } = useTranslation();
   const v = resolveSchemaVariant(schema);
   const label = schema.title || v.title || humaniseKey(fieldKey);
   const description = schema.description || v.description;
@@ -219,7 +222,7 @@ export function SchemaField({
       <div>
         <FieldLabel
           label={label}
-          description={description ?? "One value per line"}
+          description={description ?? t("One value per line")}
         />
         <textarea
           value={lines.join("\n")}
@@ -330,8 +333,8 @@ export function SchemaField({
             type="button"
             onClick={() => toggleSecret(path)}
             className="absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-            aria-label={reveal ? "Hide secret" : "Show secret"}
-            title={reveal ? "Hide secret" : "Show secret"}
+            aria-label={reveal ? t("Hide secret") : t("Show secret")}
+            title={reveal ? t("Hide secret") : t("Show secret")}
           >
             {reveal ? (
               <EyeOff className="h-4 w-4" />

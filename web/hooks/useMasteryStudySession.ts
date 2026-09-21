@@ -1,5 +1,7 @@
 "use client";
 
+import { masterySessionRoute as existingMasterySessionRoute } from "@/lib/learning-routes";
+
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -17,6 +19,7 @@ import {
 } from "@/lib/learning-api";
 import {
   isMasteryDraftSessionReady,
+  isMasteryDraftSendReady,
   type MasteryDraftRouteGuard,
 } from "@/lib/mastery-study-route";
 import { courseSessionConfiguration } from "@/lib/course-session-scope";
@@ -61,7 +64,13 @@ export function useMasteryStudySession(
     routeKey: string;
     error: string | null;
   } | null>(null);
+  const [draftBinding, setDraftBinding] = useState<{
+    routeKey: string;
+    draftKey: string;
+    previousSessionId: string | null;
+  } | null>(null);
   const initializedRouteRef = useRef("");
+  const sessionLoadRef = useRef<AbortController | null>(null);
   const draftRouteGuardRef = useRef<MasteryDraftRouteGuard | null>(null);
   const activity = useMasteryPathActivity(pathId || null);
 
@@ -130,8 +139,18 @@ export function useMasteryStudySession(
     [knowledgeBases, pathId, requestedMode, routeSessionId],
   );
 
+  // Only leaving the route cancels its load. A refreshed learning map must
+  // not reload the conversation while a turn is streaming (#1392).
+  useEffect(
+    () => () => {
+      sessionLoadRef.current?.abort();
+      initializedRouteRef.current = "";
+    },
+    [currentRouteKey],
+  );
+
   useEffect(() => {
-    if (!topic) return;
+    if (topic?.path_id !== pathId) return;
     const routeKey = currentRouteKey;
     if (initializedRouteRef.current === routeKey) return;
     initializedRouteRef.current = routeKey;
@@ -141,14 +160,25 @@ export function useMasteryStudySession(
         routeKey,
         previousSessionId: state.sessionId,
       };
-      newSession(courseSessionConfiguration(sessionConfiguration, courseId));
+      const draftKey = newSession(
+        courseSessionConfiguration(sessionConfiguration, courseId),
+      );
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- record the draft created for this route.
+      setDraftBinding({
+        routeKey,
+        draftKey,
+        previousSessionId: state.sessionId,
+      });
       return;
     }
 
     draftRouteGuardRef.current = null;
+    const controller = new AbortController();
+    sessionLoadRef.current = controller;
 
     void fetchMasteryTopicSessions(pathId, { cache: "no-store" })
       .then((topicSessions) => {
+        if (controller.signal.aborted) return;
         if (
           !topicSessions.some(
             (candidate) => candidate.session_id === routeSessionId,
@@ -167,12 +197,13 @@ export function useMasteryStudySession(
             routeSessionId,
           );
         }
-        return loadSession(
-          routeSessionId,
-          cached ? { revalidate: true } : undefined,
-        );
+        return loadSession(routeSessionId, {
+          signal: controller.signal,
+          revalidate: Boolean(cached),
+        });
       })
       .then(() => {
+        if (controller.signal.aborted) return;
         configureSession(
           courseSessionConfiguration(sessionConfiguration, courseId),
           routeSessionId,
@@ -180,6 +211,7 @@ export function useMasteryStudySession(
         setSessionResolution({ routeKey, error: null });
       })
       .catch((reason: unknown) => {
+        if (controller.signal.aborted) return;
         setSessionResolution({
           routeKey,
           error:
@@ -217,13 +249,10 @@ export function useMasteryStudySession(
       })
     )
       return;
-    const courseQuery = courseId
-      ? `?course=${encodeURIComponent(courseId)}`
-      : "";
+    const destination = new URL(existingMasterySessionRoute(pathId, newSessionId), window.location.origin);
+    if (courseId) destination.searchParams.set("course", courseId);
     router.replace(
-      `/mastery/${encodeURIComponent(pathId)}/sessions/${encodeURIComponent(
-        newSessionId,
-      )}${courseQuery}`,
+      `${destination.pathname}${destination.search}`,
       { scroll: false },
     );
   }, [
@@ -240,16 +269,39 @@ export function useMasteryStudySession(
     sessionResolution?.routeKey === currentRouteKey
       ? sessionResolution.error
       : null;
-  const sessionLoading = Boolean(
-    routeSessionId && sessionResolution?.routeKey !== currentRouteKey,
-  );
+  const bindingMatches =
+    topic?.path_id === pathId &&
+    state.workspaceMode === MASTERY_WORKSPACE_MODE &&
+    state.masteryPathId === pathId;
+  const sessionLoading = routeSessionId
+    ? sessionResolution?.routeKey !== currentRouteKey ||
+      (!sessionError && (!bindingMatches || state.sessionId !== routeSessionId))
+    : !bindingMatches ||
+      !(
+        isMasteryDraftSendReady({
+          binding: draftBinding,
+          routeKey: currentRouteKey,
+          sessionKey: state.sessionKey,
+          workspaceMode: state.workspaceMode,
+          masteryPathId: state.masteryPathId,
+          pathId,
+          masterySessionMode: state.masterySessionMode,
+          requestedMode,
+        }) ||
+        isMasteryDraftSessionReady({
+          guard: draftBinding,
+          routeKey: currentRouteKey,
+          sessionId: state.sessionId,
+          masteryPathId: state.masteryPathId,
+          pathId,
+        })
+      );
 
   // The kind actually in force: what the server remembers for an existing
   // conversation, and what this route asked for while a new one is still
   // being created.
   const sessionMode: MasteryMode =
-    (state.masterySessionMode as MasteryMode | null) ||
-    requestedMode;
+    (state.masterySessionMode as MasteryMode | null) || requestedMode;
 
   return {
     topic,

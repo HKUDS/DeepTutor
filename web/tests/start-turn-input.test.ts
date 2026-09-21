@@ -117,3 +117,17 @@ test("the positional compatibility adapter produces object-shaped input", () => 
   assert.deepEqual(input.capabilityConfig, { difficulty: "hard" });
   assert.equal(buildStartTurnInput(input).session_id, "session-1");
 });
+
+test("consultation selections travel as runtime fields, not capability config", () => {
+  for (const capability of ["chat", "deep_solve", "visualize"]) {
+    for (const selection of [{}, { consultPartnerId: "partner-1" }, { partnerDiscussionGroupId: "group-1" }]) {
+      const wire = buildStartTurnInput({ content: "什么是agent", capability, ...selection });
+      assert.deepEqual(wire.config, {});
+      assert.equal(wire.consult_partner_id, selection.consultPartnerId);
+      assert.equal(wire.partner_discussion_group_id, selection.partnerDiscussionGroupId);
+    }
+  }
+  for (const key of ["consult_partner_id", "partner_discussion_group_id"]) {
+    assert.throws(() => buildStartTurnInput({ content: "hi", capabilityConfig: { [key]: "id" } }), /must use its typed turn property/);
+  }
+});

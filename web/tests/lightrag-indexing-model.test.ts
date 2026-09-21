@@ -62,12 +62,18 @@ test("create and re-index send the exact pinned selection and preserve none", as
     restore();
   }
 
-  assert.equal(requests[0].url, "/api/knowledge-bases");
+  assert.equal(
+    new URL(requests[0].url, "http://localhost").pathname,
+    "/api/knowledge-bases",
+  );
   assert.deepEqual(
     JSON.parse(String(requests[0].form.get("indexing_llm"))),
     selection,
   );
-  assert.equal(requests[1].url, "/api/knowledge-bases/papers/reindex");
+  assert.equal(
+    new URL(requests[1].url, "http://localhost").pathname,
+    "/api/knowledge-bases/papers/reindex",
+  );
   assert.deepEqual(
     JSON.parse(String(requests[1].form.get("indexing_llm"))),
     selection,
@@ -88,7 +94,10 @@ test("pending-policy update is JSON-only and creates no indexing request", async
   } finally {
     restore();
   }
-  assert.equal(captured?.url, "/api/knowledge-bases/empty/indexing-policy");
+  assert.equal(
+    new URL(captured!.url, "http://localhost").pathname,
+    "/api/knowledge-bases/empty/indexing-policy",
+  );
   assert.equal(captured?.init?.method, "PUT");
   assert.deepEqual(JSON.parse(String(captured?.init?.body)), {
     profile_id: "p",
@@ -314,6 +323,6 @@ test("model controls are scoped to built-in LightRAG create/rebuild surfaces", (
   );
   assert.match(
     detailSource,
-    /status === ['"]error['"] && kbProvider\(kb\) !== ['"]lightrag['"]/,
+    /status === ['"]error['"]\s*&&\s*kbProvider\(kb\) !== ['"]lightrag['"]\s*&&\s*!embeddingModel/,
   );
 });

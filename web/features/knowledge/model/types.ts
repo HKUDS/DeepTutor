@@ -1,4 +1,6 @@
 export type {
+  EmbeddingModelSelection,
+  EmbeddingUsage,
   AddGitHubSourcePayload,
   AddWebSourcePayload,
   EnginePreflight,

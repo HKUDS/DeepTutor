@@ -214,6 +214,41 @@ def test_next_objective_due_review_beats_new_ground():
     step = policy.next_objective(progress)
     assert step.action == "review"
     assert step.knowledge_point_id == "kp1"
+    assert step.forgetting_risk == 0.0
+
+
+def test_due_reviews_order_by_forgetting_risk_before_priority():
+    kp1, kp2 = _kp("kp_high", KnowledgeType.MEMORY), _kp("kp_low", KnowledgeType.MEMORY)
+    progress = _progress(kp1, kp2)
+    now = time.time()
+    progress.review_queue = [
+        ReviewTask(
+            id="r_low",
+            knowledge_point_id="kp_low",
+            knowledge_type=KnowledgeType.MEMORY,
+            due_at=now - 10,
+            priority=1,
+            state=RepetitionState(next_review_at=now - 10),
+            forgetting_risk=0.2,
+            reason="due now; retrievability 90%.",
+        ),
+        ReviewTask(
+            id="r_high",
+            knowledge_point_id="kp_high",
+            knowledge_type=KnowledgeType.MEMORY,
+            due_at=now - 10,
+            priority=5,
+            state=RepetitionState(next_review_at=now - 10),
+            forgetting_risk=0.85,
+            reason="due now; retrievability 40% below 90% target; 1 lapse.",
+        ),
+    ]
+    due = policy.due_reviews(progress, now=now)
+    assert [task.knowledge_point_id for task in due] == ["kp_high", "kp_low"]
+    step = policy.next_objective(progress, now=now)
+    assert step.knowledge_point_id == "kp_high"
+    assert step.forgetting_risk == 0.85
+    assert "retrievability" in step.reason
 
 
 def test_next_objective_complete_when_all_mastered():
@@ -298,6 +333,11 @@ def test_objective_report_gathers_the_whole_evidence_trail():
     assert report["attempts"][0]["error_type"] == "application"
     assert report["review"]["due_at"] == 1000.0
     assert report["review"]["interval_index"] == 2
+    assert "stability" in report["review"]
+    assert "retrievability" in report["review"]
+    assert "forgetting_risk" in report["review"]
+    assert "reason" in report["review"]
+    assert report["review"]["desired_retention"] == 0.9
     assert [e["id"] for e in report["errors"]] == ["e1"]
 
 

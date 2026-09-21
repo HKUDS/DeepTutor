@@ -491,6 +491,34 @@ def test_list_entries_filters_is_correct(store: SQLiteSessionStore) -> None:
     assert wrong["items"][0]["question_id"] == "q1"
 
 
+def test_ungraded_rows_are_not_listed_as_wrong(store: SQLiteSessionStore) -> None:
+    session = asyncio.run(store.create_session())
+    asyncio.run(
+        store.upsert_notebook_entries(
+            session["id"],
+            [
+                {
+                    "question_id": "wrong",
+                    "question": "Wrong?",
+                    "is_correct": False,
+                    "result": "incorrect",
+                },
+                {
+                    "question_id": "pending",
+                    "question": "Pending?",
+                    "is_correct": False,
+                    "result": "ungraded",
+                },
+            ],
+        )
+    )
+    wrong = asyncio.run(store.list_notebook_entries(is_correct=False))
+    assert [item["question_id"] for item in wrong["items"]] == ["wrong"]
+    stats = asyncio.run(store.question_bank_stats())
+    assert stats["wrong"] == 1
+    assert stats["unresolved"] == 1
+
+
 def test_notebook_review_metadata_filters_and_transitions(
     store: SQLiteSessionStore,
 ) -> None:

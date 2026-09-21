@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import importlib
 from pathlib import Path
+from typing import get_args
 
 import pytest
 
@@ -75,6 +76,35 @@ def test_stats_reports_the_triage_counts(client):
         "bookmarked": 0,
         "uncategorized": 2,
     }
+
+
+@pytest.mark.parametrize(
+    "source",
+    get_args(importlib.import_module("deeptutor.api.routers.question_notebook").AssessmentSource),
+)
+def test_every_assessment_source_can_be_saved_and_filtered(client, source):
+    _seed(client)
+    session_id = asyncio.run(client.store.create_session(title="Source filter"))["id"]
+    saved = client.post(
+        f"{PREFIX}/entries/upsert",
+        json={
+            "session_id": session_id,
+            "question_id": "source-question",
+            "question": "Which source?",
+            "source": source,
+        },
+    )
+    assert saved.status_code == 200
+    response = client.get(f"{PREFIX}/entries", params={"source": source})
+    assert response.status_code == 200
+    items = response.json()["items"]
+    assert saved.json()["id"] in {item["id"] for item in items}
+    assert all(item["source"] == source for item in items)
+
+
+def test_unknown_assessment_source_is_rejected(client):
+    response = client.get(f"{PREFIX}/entries", params={"source": "unknown"})
+    assert response.status_code == 422
 
 
 def test_listing_carries_each_entry_categories(client):

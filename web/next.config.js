@@ -140,21 +140,16 @@ const nextConfig = {
   // Transpile mermaid and related packages for proper ESM handling
   transpilePackages: ["mermaid"],
 
-  // v1.6.2 and earlier bookmarked Mastery Study at `/study`; tip teaches under
-  // `/sessions`. Permanent redirects keep old URLs (and issue repro links)
-  // landing on the live surface instead of a bare 404.
+  // Compatibility lives here; every rendered link uses learning-routes.ts.
   async redirects() {
     return [
-      {
-        source: "/mastery/:pathId/study",
-        destination: "/mastery/:pathId/sessions",
-        permanent: true,
-      },
-      {
-        source: "/mastery/:pathId/study/:sessionId",
-        destination: "/mastery/:pathId/sessions/:sessionId",
-        permanent: true,
-      },
+      { source: "/mastery/:pathId/study", destination: "/learning/mastery/:pathId/sessions", statusCode: 301 },
+      { source: "/mastery/:pathId/study/:sessionId", destination: "/learning/mastery/:pathId/sessions/:sessionId", statusCode: 301 },
+      ...["books", "mastery", "reading", "watching"].map((surface) => ({
+        source: `/${surface}/:path*`,
+        destination: `/learning/${surface}/:path*`,
+        statusCode: 301,
+      })),
     ];
   },
 
@@ -183,6 +178,11 @@ const nextConfig = {
   // Webpack configuration (used for production builds - next build)
   webpack: (config) => {
     const path = require("path");
+    config.module.rules.push({
+      test: /locales[/\\]en[/\\]app\.json$/,
+      type: "javascript/auto",
+      use: path.resolve(__dirname, "scripts/compact-locale-loader.cjs"),
+    });
     config.resolve.alias = {
       ...config.resolve.alias,
       cytoscape: path.resolve(

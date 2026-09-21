@@ -29,3 +29,24 @@ export function isMasteryDraftSessionReady({
     masteryPathId === pathId,
   );
 }
+
+/** Sending the first turn requires a committed local draft, not a server ID. */
+export function isMasteryDraftSendReady(input: {
+  binding: { routeKey: string; draftKey: string } | null;
+  routeKey: string;
+  sessionKey: string;
+  workspaceMode: string | null;
+  masteryPathId: string | null;
+  pathId: string;
+  masterySessionMode: string | null;
+  requestedMode: string;
+}): boolean {
+  return Boolean(
+    input.binding &&
+    input.binding.routeKey === input.routeKey &&
+    input.binding.draftKey === input.sessionKey &&
+    input.workspaceMode === "mastery_path" &&
+    input.masteryPathId === input.pathId &&
+    input.masterySessionMode === input.requestedMode,
+  );
+}

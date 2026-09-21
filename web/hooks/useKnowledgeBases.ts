@@ -1,5 +1,8 @@
 "use client";
 
+import { knowledgeBaseRef } from "@/lib/knowledge-helpers";
+import type { EmbeddingModelSelection } from "@/features/knowledge/model/types";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   connectImaKnowledgeBase as connectImaApi,
@@ -113,15 +116,17 @@ export function useKnowledgeBases() {
           const status = kb.status ?? kb.statistics?.status;
           const kbProgress = kb.progress ?? kb.statistics?.progress;
           if (status === "error" && kbProgress) {
-            progress.setProgress(kb.name, kbProgress as ProgressInfo);
+            progress.setProgress(knowledgeBaseRef(kb), kbProgress as ProgressInfo);
             continue;
           }
           if (
             kbHasLiveProgress({ ...kb, progress: kbProgress as ProgressInfo })
           ) {
-            progress.setProgress(kb.name, (kbProgress as ProgressInfo) ?? {});
-            const taskId = (kbProgress as ProgressInfo | undefined)?.task_id;
-            progress.subscribeWs(kb.name, taskId || undefined);
+            progress.resumeTask(
+              knowledgeBaseRef(kb),
+              (kbProgress as ProgressInfo) ?? {},
+              kb.name,
+            );
           }
         }
       } catch (err) {
@@ -150,7 +155,7 @@ export function useKnowledgeBases() {
         ...kb,
         status: kb.status ?? kb.statistics?.status,
         progress:
-          progress.progressByKb[kb.name] ||
+          progress.progressByKb[knowledgeBaseRef(kb)] ||
           kb.progress ||
           kb.statistics?.progress,
       })),
@@ -183,6 +188,7 @@ export function useKnowledgeBases() {
       pageindexMode?: "flash" | "standard";
       searchMode?: string;
       indexingLLM?: IndexingLLMSelection;
+      embeddingModel?: EmbeddingModelSelection;
     }): Promise<KnowledgeTaskResponse> => {
       const result = await createKbApi(params);
       invalidateKnowledgeCaches();
@@ -261,8 +267,9 @@ export function useKnowledgeBases() {
     async (
       kbName: string,
       indexingLLM?: IndexingLLMSelection,
+      embeddingModel?: EmbeddingModelSelection,
     ): Promise<KnowledgeTaskResponse> => {
-      const result = await reindexKbApi(kbName, indexingLLM);
+      const result = await reindexKbApi(kbName, indexingLLM, embeddingModel);
       if (result.noop) {
         await load({ force: true, showSpinner: false });
         return result;

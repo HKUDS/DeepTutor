@@ -487,6 +487,10 @@ async def test_grade_syncs_mastery_attempt_to_question_bank(path_id, session_sto
     assert entry["material_id"] == path_id
     assert entry["section_id"] == kp_id
     assert entry["section_title"] == "Truth tables"
+    assert entry["assessment_type"] == "quiz"
+    assert entry["result"] == "incorrect"
+    assert entry["mastery_path_id"] == path_id
+    assert entry["knowledge_point_id"] == kp_id
 
     # An idempotent retry with a changed model argument must not overwrite the
     # committed learner answer in the auxiliary question bank.
@@ -1277,6 +1281,57 @@ async def test_assess_rejects_quantitative_type(path_id):
         _mastery_path_id=path_id, knowledge_point_id=mem_kp, passed=True
     )
     assert result.success is False
+
+
+@pytest.mark.asyncio
+async def test_assess_syncs_qualitative_record_to_question_bank(path_id, session_store):
+    session = await session_store.create_session(title="Qualitative Session")
+    await _build_basic(path_id)
+    status = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
+    mem_kp = status["next"]["knowledge_point_id"]
+    for _ in range(3):
+        await MasteryQuizTool().execute(
+            _mastery_path_id=path_id, knowledge_point_id=mem_kp, question="q", expected_answer="a"
+        )
+        await MasteryGradeTool().execute(
+            _mastery_path_id=path_id,
+            _session_id=session["id"],
+            _turn_id="turn_mem",
+            answer="a",
+        )
+
+    status2 = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
+    concept_kp = status2["next"]["knowledge_point_id"]
+    await MasteryAssessTool().execute(
+        _mastery_path_id=path_id,
+        _session_id=session["id"],
+        _turn_id="turn_qual",
+        knowledge_point_id=concept_kp,
+        passed=True,
+        feedback="XOR is exclusive or.",
+    )
+    await MasteryAssessTool().execute(
+        _mastery_path_id=path_id,
+        _session_id=session["id"],
+        _turn_id="turn_qual",
+        knowledge_point_id=concept_kp,
+        passed=True,
+        feedback="XOR is exclusive or.",
+    )
+
+    qualitative = await session_store.list_notebook_entries(assessment_type="qualitative")
+    assert qualitative["total"] == 1
+    entry = qualitative["items"][0]
+    assert entry["source"] == "mastery_path"
+    assert entry["result"] == "correct"
+    assert entry["mastery_path_id"] == path_id
+    assert entry["knowledge_point_id"] == concept_kp
+    assert entry["question_id"] == f"qual:{concept_kp}"
+    assert entry["user_answer"] == "XOR is exclusive or."
+    assert entry["quality"] == 1.0
+    progress = LearningStore().load(path_id)
+    assert progress is not None
+    assert progress.repetition_states[concept_kp].interval_index == 0
 
 
 # ── path switching: a conversation is not bound to one path ───────────────

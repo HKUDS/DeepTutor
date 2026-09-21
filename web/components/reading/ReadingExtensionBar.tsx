@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import {
   listReadingExtensions,
   runReadingExtension,
+  submitReadingQuizAnswers,
   type ReadingExtensionManifest,
   type ReadingExtensionResult,
 } from "@/lib/reading-api";
@@ -34,6 +35,7 @@ export function ReadingExtensionBar({
   locator,
   selectionLocator,
   selection,
+  sessionId,
   onError,
 }: {
   materialId: string;
@@ -47,12 +49,14 @@ export function ReadingExtensionBar({
    */
   selectionLocator?: number;
   selection?: string;
+  sessionId?: string | null;
   onError: (message: string) => void;
 }) {
   const { i18n, t } = useTranslation();
   const [extensions, setExtensions] = useState<ReadingExtensionManifest[]>([]);
   const [busy, setBusy] = useState("");
   const [result, setResult] = useState<ReadingExtensionResult | null>(null);
+  const [resultLocator, setResultLocator] = useState(locator);
   const [speaking, setSpeaking] = useState(false);
 
   function stopSpeaking() {
@@ -67,8 +71,7 @@ export function ReadingExtensionBar({
         if (active) setExtensions(rows);
       })
       .catch((error) => {
-        if (active)
-          onError(error instanceof Error ? error.message : String(error));
+        if (active) onError(error instanceof Error ? error.message : String(error));
       });
     return () => {
       active = false;
@@ -94,9 +97,7 @@ export function ReadingExtensionBar({
 
   const actions = useMemo(
     () =>
-      extensions.flatMap((extension) =>
-        extension.actions.map((action) => ({ extension, action })),
-      ),
+      extensions.flatMap((extension) => extension.actions.map((action) => ({ extension, action }))),
     [extensions],
   );
 
@@ -105,19 +106,16 @@ export function ReadingExtensionBar({
     action: ReadingExtensionManifest["actions"][number],
   ) {
     const key = `${extension.id}:${action.id}`;
+    const requestedLocator = selection?.trim() ? (selectionLocator ?? locator) : locator;
     setBusy(key);
     try {
-      const next = await runReadingExtension(
-        materialId,
-        extension.id,
-        action.id,
-        {
-          locator: selection?.trim() ? (selectionLocator ?? locator) : locator,
-          selection: selection || "",
-          locale: i18n.language,
-        },
-      );
+      const next = await runReadingExtension(materialId, extension.id, action.id, {
+        locator: requestedLocator,
+        selection: selection || "",
+        locale: i18n.language,
+      });
       setResult(next);
+      setResultLocator(requestedLocator);
       if (next.type === "browser_speech") {
         const text = String(next.payload.text || "");
         if (!("speechSynthesis" in window) || !text) {
@@ -145,10 +143,9 @@ export function ReadingExtensionBar({
       <div className="flex shrink-0 gap-1.5 overflow-x-auto border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--muted)_25%,transparent)] px-2.5 py-2">
         {actions.map(({ extension, action }) => {
           const key = `${extension.id}:${action.id}`;
-          const needsSelection =
-            action.requires.includes("selection") && !selection?.trim();
+          const needsSelection = action.requires.includes("selection") && !selection?.trim();
           // `busy === key`, not `Boolean(busy)`: an action can take the full
-          // 30s server timeout, and disabling all six meanwhile is
+          // server timeout, and disabling all six meanwhile is
           // indistinguishable from the toolbar being broken.
           const disabled = busy === key || needsSelection;
           const builtInLabel = builtInActionLabel(extension.id, action.id);
@@ -157,11 +154,7 @@ export function ReadingExtensionBar({
               key={key}
               type="button"
               disabled={disabled}
-              title={
-                needsSelection
-                  ? t("Select text in the document first.")
-                  : undefined
-              }
+              title={needsSelection ? t("Select text in the document first.") : undefined}
               onClick={() => void run(extension, action)}
               className="inline-flex h-8 min-w-[88px] flex-1 items-center justify-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 text-xs font-medium text-[var(--foreground)] transition hover:bg-[var(--muted)] disabled:opacity-50"
             >
@@ -170,9 +163,7 @@ export function ReadingExtensionBar({
               ) : (
                 <Sparkles size={14} />
               )}
-              <span className="truncate">
-                {builtInLabel ? t(builtInLabel) : action.label}
-              </span>
+              <span className="truncate">{builtInLabel ? t(builtInLabel) : action.label}</span>
             </button>
           );
         })}
@@ -198,8 +189,12 @@ export function ReadingExtensionBar({
       {result && result.type !== "browser_speech" ? (
         <ExtensionResult
           result={result}
+          materialId={materialId}
+          locator={resultLocator}
+          sessionId={sessionId}
           closeLabel={t("Close")}
           onClose={() => setResult(null)}
+          onError={onError}
         />
       ) : null}
     </>
@@ -230,22 +225,26 @@ function builtInActionLabel(extensionId: string, actionId: string) {
 
 function ExtensionResult({
   result,
+  materialId,
+  locator,
+  sessionId,
   closeLabel,
   onClose,
+  onError,
 }: {
   result: ReadingExtensionResult;
+  materialId: string;
+  locator: number;
+  sessionId?: string | null;
   closeLabel: string;
   onClose: () => void;
+  onError: (message: string) => void;
 }) {
   const questions = Array.isArray(result.payload.questions)
     ? (result.payload.questions as QuizQuestion[])
     : [];
-  const items = Array.isArray(result.payload.items)
-    ? result.payload.items.map(String)
-    : [];
-  const steps = Array.isArray(result.payload.steps)
-    ? result.payload.steps.map(String)
-    : [];
+  const items = Array.isArray(result.payload.items) ? result.payload.items.map(String) : [];
+  const steps = Array.isArray(result.payload.steps) ? result.payload.steps.map(String) : [];
   const terms: VocabularyTerm[] = Array.isArray(result.payload.terms)
     ? result.payload.terms
         .map((row) => {
@@ -283,14 +282,10 @@ function ExtensionResult({
       ) : null}
       {body ? <p className="mt-2 whitespace-pre-wrap">{body}</p> : null}
       {translation.translation ? (
-        <p className="mt-2 whitespace-pre-wrap font-medium">
-          {translation.translation}
-        </p>
+        <p className="mt-2 whitespace-pre-wrap font-medium">{translation.translation}</p>
       ) : null}
       {translation.note ? (
-        <p className="mt-1 text-[var(--muted-foreground)]">
-          {translation.note}
-        </p>
+        <p className="mt-1 text-[var(--muted-foreground)]">{translation.note}</p>
       ) : null}
       {translation.alternatives.length ? (
         <ul className="mt-2 list-disc space-y-1 pl-5 text-[var(--muted-foreground)]">
@@ -321,24 +316,63 @@ function ExtensionResult({
               className="border-t border-[var(--border)] pt-2 first:border-t-0 first:pt-0"
             >
               <dt className="font-medium">{term.term}</dt>
-              <dd className="mt-1 text-[var(--muted-foreground)]">
-                {term.meaning}
-              </dd>
-              <dd className="mt-1 text-[var(--muted-foreground)]">
-                {term.usage}
-              </dd>
+              <dd className="mt-1 text-[var(--muted-foreground)]">{term.meaning}</dd>
+              <dd className="mt-1 text-[var(--muted-foreground)]">{term.usage}</dd>
             </div>
           ))}
         </dl>
       ) : null}
-      {questions.length ? <QuizQuestions questions={questions} /> : null}
+      {questions.length ? (
+        <QuizQuestions
+          questions={questions}
+          materialId={materialId}
+          locator={locator}
+          sessionId={sessionId}
+          onError={onError}
+        />
+      ) : null}
     </section>
   );
 }
 
-function QuizQuestions({ questions }: { questions: QuizQuestion[] }) {
+function QuizQuestions({
+  questions,
+  materialId,
+  locator,
+  sessionId,
+  onError,
+}: {
+  questions: QuizQuestion[];
+  materialId: string;
+  locator: number;
+  sessionId?: string | null;
+  onError: (message: string) => void;
+}) {
   const { t } = useTranslation();
   const [answers, setAnswers] = useState<Record<string, number>>({});
+  const [verdicts, setVerdicts] = useState<Record<string, boolean>>({});
+  const [saving, setSaving] = useState<Record<string, boolean>>({});
+
+  async function persistAnswer(question: QuizQuestion, index: number, choiceIndex: number) {
+    const questionId = question.id || `q_${index + 1}`;
+    const key = question.id || String(index);
+    setSaving((current) => ({ ...current, [key]: true }));
+    try {
+      const results = await submitReadingQuizAnswers(materialId, {
+        locator,
+        session_id: sessionId || "",
+        answers: [{ question_id: questionId, selected_index: choiceIndex }],
+      });
+      const verdict = results.find((item) => item.question_id === questionId);
+      if (!verdict) throw new Error(t("Failed to save answer. Please try again."));
+      setAnswers((current) => ({ ...current, [key]: choiceIndex }));
+      setVerdicts((current) => ({ ...current, [key]: verdict.is_correct }));
+    } catch (error) {
+      onError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSaving((current) => ({ ...current, [key]: false }));
+    }
+  }
 
   return questions.map((question, index) => {
     const key = question.id || String(index);
@@ -346,8 +380,7 @@ function QuizQuestions({ questions }: { questions: QuizQuestion[] }) {
     const correctChoiceIndex = Number.isInteger(question.correct_choice_index)
       ? Number(question.correct_choice_index)
       : -1;
-    const canGrade =
-      correctChoiceIndex >= 0 && correctChoiceIndex < question.choices.length;
+    const canGrade = correctChoiceIndex >= 0 && correctChoiceIndex < question.choices.length;
     if (!canGrade) {
       return (
         <div key={key} className="mt-3">
@@ -369,9 +402,10 @@ function QuizQuestions({ questions }: { questions: QuizQuestion[] }) {
               key={choice}
               type="button"
               aria-pressed={selected === choiceIndex}
-              onClick={() =>
-                setAnswers((current) => ({ ...current, [key]: choiceIndex }))
-              }
+              disabled={Boolean(saving[key])}
+              onClick={() => {
+                void persistAnswer(question, index, choiceIndex);
+              }}
               className="rounded-md border border-[var(--border)] px-2 py-1.5 text-left text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] aria-pressed:bg-[var(--muted)] aria-pressed:text-[var(--foreground)]"
             >
               {String.fromCharCode(65 + choiceIndex)}. {choice}
@@ -382,12 +416,12 @@ function QuizQuestions({ questions }: { questions: QuizQuestion[] }) {
           <p
             role="status"
             className={`mt-1 font-medium ${
-              selected === correctChoiceIndex
+              verdicts[key]
                 ? "text-emerald-600 dark:text-emerald-400"
                 : "text-amber-600 dark:text-amber-400"
             }`}
           >
-            {selected === correctChoiceIndex ? t("Correct") : t("Incorrect")}
+            {verdicts[key] ? t("Correct") : t("Incorrect")}
           </p>
         ) : null}
       </fieldset>

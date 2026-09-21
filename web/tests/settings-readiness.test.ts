@@ -54,7 +54,7 @@ test("readiness sections read in declared order, unknown sections last", () => {
   ]);
 
   assert.deepEqual(
-    groups.map(([section, rows]) => [section, rows.map((item) => item.id)]),
+    groups.map(([section, rows]) => [section, rows.map(item => item.id)]),
     [
       ["catalog", ["catalog.llm"]],
       ["document_parsing", ["parser.text", "parser.tika"]],
@@ -81,7 +81,9 @@ test("an optional capability nobody set up is not a problem", () => {
     "blocker",
   );
   assert.equal(
-    readinessRowSeverity(row("parser.tika", "document_parsing", "misconfigured")),
+    readinessRowSeverity(
+      row("parser.tika", "document_parsing", "misconfigured"),
+    ),
     "warning",
   );
 });
@@ -92,7 +94,9 @@ test("only running and troubled rows stay unfolded", () => {
     true,
   );
   assert.equal(
-    isProminentReadinessRow(row("parser.tika", "document_parsing", "misconfigured")),
+    isProminentReadinessRow(
+      row("parser.tika", "document_parsing", "misconfigured"),
+    ),
     true,
   );
   assert.equal(
@@ -100,20 +104,23 @@ test("only running and troubled rows stay unfolded", () => {
     false,
   );
   assert.equal(
-    isProminentReadinessRow(row("parser.mineru", "document_parsing", "available_disabled")),
+    isProminentReadinessRow(
+      row("parser.mineru", "document_parsing", "available_disabled"),
+    ),
     false,
   );
 });
 
 test("rows link to the page that owns them", () => {
-  assert.equal(readinessRowHref("catalog.task"), "/settings#task-models");
-  assert.equal(readinessRowHref("catalog.llm"), "/settings#llm");
-  assert.equal(readinessRowHref("parser.mineru"), "/settings#knowledge");
-  assert.equal(readinessRowHref("tool.videogen"), "/settings#tools");
-  assert.equal(readinessRowHref("video.invidious"), "/settings#video-learning");
+  // The task catalog is its own page now, not a section of the model page.
+  assert.equal(readinessRowHref("catalog.task"), "/settings/task-models");
+  assert.equal(readinessRowHref("catalog.llm"), "/settings/llm");
+  assert.equal(readinessRowHref("parser.mineru"), "/settings/knowledge");
+  assert.equal(readinessRowHref("tool.videogen"), "/settings/tools");
+  assert.equal(readinessRowHref("video.invidious"), "/settings/video-learning");
   assert.equal(
     readinessRowHref("runtime.coordination.redis"),
-    "/settings#network",
+    "/settings/network",
   );
   assert.equal(readinessRowHref("knowledge.0"), "/knowledge-bases");
   assert.equal(readinessRowHref("visualizer.manim_video"), null);

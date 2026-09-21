@@ -44,7 +44,8 @@ from deeptutor.utils.json_parser import parse_json_response
 
 logger = logging.getLogger(__name__)
 
-MAX_PARALLEL_TOOL_CALLS = 8
+# Per assistant-message execution budget, not a whole-turn tool budget.
+MAX_PARALLEL_TOOL_CALLS = 15
 
 # Tools that pause the turn to show the user something. They run *after* the
 # rest of their round and re-bind their arguments against whatever those calls
@@ -142,6 +143,7 @@ async def dispatch_tool_calls(
     """Execute tool calls in parallel and assemble a :class:`DispatchOutcome`."""
     registry = registry or get_tool_registry()
 
+    skipped_calls = tool_calls[MAX_PARALLEL_TOOL_CALLS:]
     if len(tool_calls) > MAX_PARALLEL_TOOL_CALLS:
         if too_many_tool_calls_message:
             await stream.progress(
@@ -228,7 +230,11 @@ async def dispatch_tool_calls(
             return rejection
         # Pause tools intentionally wait for user interaction. A wall-clock
         # tool timeout must not cancel that wait.
-        policy_exempt = tool_name in PAUSE_LAST_TOOLS
+        policy_exempt = tool_name in PAUSE_LAST_TOOLS or (
+            tool_name == "consult_subagent"
+            and isinstance(exec_args.get("_subagent"), dict)
+            and exec_args["_subagent"].get("kind") == "partner_group"
+        )
         return await execute_tool_call(
             registry=registry,
             tool_name=tool_name,
@@ -318,7 +324,7 @@ async def dispatch_tool_calls(
         )
     results = [by_index[index] for index in range(len(prepared))]
 
-    return await _collect_outcome(
+    outcome = await _collect_outcome(
         prepared=prepared,
         results=results,
         per_tool_trace_meta=per_tool_trace_meta,
@@ -327,6 +333,24 @@ async def dispatch_tool_calls(
         source=source,
         stage=stage,
     )
+    # The assistant message still contains every requested call. Both Chat
+    # Completions and Responses require an output for each id, even when the
+    # execution limit skips it; otherwise the next round AND hard finish fail.
+    # Keep these out of execution/argument binding and the executed-tool trace.
+    outcome.tool_messages.extend(
+        {
+            "role": "tool",
+            "tool_call_id": call["id"],
+            "name": call["name"],
+            "content": (
+                f"Tool call not executed: this round is limited to {MAX_PARALLEL_TOOL_CALLS} "
+                "tool calls. Request this call again in a later round if still needed, "
+                f"with at most {MAX_PARALLEL_TOOL_CALLS} calls per round."
+            ),
+        }
+        for call in skipped_calls
+    )
+    return outcome
 
 
 def _detect_duplicate_calls(

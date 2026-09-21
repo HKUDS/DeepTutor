@@ -136,6 +136,7 @@ class DeferredToolLoader:
         # Enforced here, not only at manifest time, so the model cannot load
         # an off-list tool by guessing its name.
         self._allowed = set(allowed) if allowed is not None else None
+        self._loaded = {name for name in self._loaded if self._is_allowed(name)}
         self._live_schemas: list[dict[str, Any]] | None = None
 
     def _is_allowed(self, name: str) -> bool:

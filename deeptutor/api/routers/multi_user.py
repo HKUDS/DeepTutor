@@ -57,7 +57,6 @@ from deeptutor.reading import ReadingStore
 from deeptutor.reading.extensions import get_reading_extension_registry
 from deeptutor.services.auth import POCKETBASE_ENABLED, hash_password
 from deeptutor.services.config.model_catalog import ModelCatalogService
-from deeptutor.services.skill.service import SkillService
 
 router = APIRouter()
 
@@ -163,6 +162,14 @@ def _admin_catalog_summary() -> dict[str, list[dict[str, Any]]]:
             profile_id = str(profile.get("id") or "")
             models = []
             for model in profile.get("models", []) or []:
+                from deeptutor.services.config.provider_links import resolve_profile_provider
+
+                try:
+                    effective = resolve_profile_provider(catalog, service, profile, model)
+                except ValueError:
+                    continue
+                if is_owner_bound(effective):
+                    continue
                 models.append(
                     {
                         "model_id": model.get("id", ""),
@@ -170,6 +177,8 @@ def _admin_catalog_summary() -> dict[str, list[dict[str, Any]]]:
                         "model": model.get("model", ""),
                     }
                 )
+            if profile.get("models") and not models:
+                continue
             out[service].append(
                 {
                     "profile_id": profile_id,
@@ -193,8 +202,9 @@ def _admin_kb_summary() -> list[dict[str, Any]]:
 
 
 def _admin_skill_summary() -> list[dict[str, Any]]:
-    root = get_admin_path_service().get_workspace_dir() / "skills"
-    service = SkillService(root=root)
+    from deeptutor.services.skill.service import get_admin_skill_service
+
+    service = get_admin_skill_service()
     return [item.to_dict() for item in service.list_skills()]
 
 
@@ -835,9 +845,10 @@ async def admin_install_skill(
         InvalidSkillNameError,
         SkillExistsError,
         SkillImportError,
+        get_admin_skill_service,
     )
 
-    service = SkillService(root=get_admin_path_service().get_workspace_dir() / "skills")
+    service = get_admin_skill_service()
     try:
         outcome = await asyncio.to_thread(
             install_from_hub,

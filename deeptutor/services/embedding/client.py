@@ -305,9 +305,12 @@ _client: Optional[EmbeddingClient] = None
 def get_embedding_client(config: Optional[EmbeddingConfig] = None) -> EmbeddingClient:
     global _client
     resolved_config = config or get_embedding_config()
-    if _client is None or _client.config != resolved_config:
-        _client = EmbeddingClient(resolved_config)
-    return _client
+    client = _client
+    if client is None or client.config != resolved_config:
+        client = EmbeddingClient(resolved_config)
+        _client = client
+    # Each caller retains its own client even if another worker changes the cache.
+    return client
 
 
 def reset_embedding_client() -> None:

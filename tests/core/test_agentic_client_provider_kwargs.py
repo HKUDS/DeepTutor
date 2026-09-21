@@ -683,6 +683,7 @@ async def test_agentic_client_pool_reuses_and_bounds_clients(monkeypatch) -> Non
     class FakeClient:
         def __init__(self) -> None:
             self.closed = 0
+            self.chat = SimpleNamespace(completions=SimpleNamespace(create=None))
 
         async def close(self) -> None:
             self.closed += 1

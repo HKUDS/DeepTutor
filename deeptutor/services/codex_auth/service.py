@@ -273,9 +273,25 @@ def reconcile_codex_catalog_update(
         if isinstance(proposed_profile, Mapping) and same_bound_account
         else _reasoning_efforts(current_profile)
     )
+    if same_bound_account and isinstance(proposed_profile, Mapping):
+        label = proposed_profile.get("user_name")
+        if isinstance(label, str) and label.strip():
+            current_profile["name"] = current_profile["user_name"] = label.strip()
+    named_models = (
+        {
+            m.get("id"): m.get("user_name")
+            for m in (proposed_profile or {}).get("models", [])
+            if isinstance(m, dict)
+        }
+        if same_bound_account
+        else {}
+    )
     for model in current_profile.get("models", []):
         if not isinstance(model, dict):
             continue
+        label = named_models.get(model.get("id"))
+        if isinstance(label, str) and label.strip():
+            model["name"] = model["user_name"] = label.strip()
         model.pop("reasoning_effort", None)
         slug = model.get("model")
         supported = model.get("codex_supported_reasoning_levels")
@@ -332,6 +348,19 @@ def sync_codex_catalog(
             reasoning_efforts,
             account_binding=account_binding,
         )
+        if preserve_overrides and isinstance(existing_profile, Mapping):
+            label = existing_profile.get("user_name")
+            if isinstance(label, str) and label.strip():
+                profile["name"] = profile["user_name"] = label.strip()
+            names = {
+                m.get("id"): m.get("user_name")
+                for m in existing_profile.get("models", [])
+                if isinstance(m, dict)
+            }
+            for model in profile["models"]:
+                label = names.get(model["id"])
+                if isinstance(label, str) and label.strip():
+                    model["name"] = model["user_name"] = label.strip()
         if managed_indexes:
             first_index = managed_indexes[0]
             managed_index_set = set(managed_indexes)

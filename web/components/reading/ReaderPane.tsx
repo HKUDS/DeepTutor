@@ -905,6 +905,7 @@ export function ReaderPane({
           locator={currentLocator}
           selectionLocator={selection?.locator}
           selection={selection?.quote}
+          sessionId={sessionId}
           onError={setError}
         />
       )}

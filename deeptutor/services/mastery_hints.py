@@ -322,11 +322,11 @@ async def _generate(path_id: str, session_id: str, key_hint: str) -> AskHint:
 
     try:
         from deeptutor.services.llm import complete
-        from deeptutor.services.model_selection.tasks import task_llm_scope
+        from deeptutor.services.model_selection.tasks import TaskKind, task_llm_scope
 
         # Same call class as titles and starter lines — short, frequent, and
         # nobody asked for it — so it runs on the task model when one is set.
-        with task_llm_scope():
+        with task_llm_scope(TaskKind.MASTERY_ASK_HINT):
             raw = await asyncio.wait_for(
                 complete(
                     prompt=_render(material, zh),

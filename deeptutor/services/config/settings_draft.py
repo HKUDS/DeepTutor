@@ -124,11 +124,10 @@ def is_empty_draft(draft: dict[str, Any] | None) -> bool:
 def redact_draft(draft: dict[str, Any]) -> dict[str, Any]:
     """Return an API-safe envelope.
 
-    Only the catalog half can be redacted meaningfully — extension payloads are
-    opaque here. None of the settings pages backed by them hold credentials
-    (they carry counts, budgets, ports and toggles), so there is nothing to
-    mask; a page that ever does needs its own handling rather than a guess at
-    this layer.
+    Catalog credentials use the catalog's mask/restore protocol. Extension
+    payloads round-trip only to their owning authenticated account, including
+    parser credentials entered into an unapplied draft. They are never shared
+    through the administrator's runtime settings scope.
     """
     safe = deepcopy(draft)
     catalog = safe.get("catalog")
@@ -161,22 +160,11 @@ def merge_draft_secrets(
 
 
 def get_settings_draft_service() -> SettingsDraftService:
-    """Resolve the draft for the acting scope, mirroring the model catalog.
+    """Drafts belong to the acting user, including personal UI preferences.
 
-    A non-admin never edits these settings, so their draft — if the UI somehow
-    offered one — belongs to the admin scope they are reading, not to a private
-    file that nothing would ever apply.
+    Runtime model visibility may inherit the admin catalog; an unapplied draft
+    must never inherit that scope or expose another user's pending credentials.
     """
-    try:
-        from deeptutor.multi_user.context import get_current_user
-        from deeptutor.multi_user.paths import get_admin_path_service
-
-        if not get_current_user().is_admin:
-            return SettingsDraftService.get_instance(
-                get_admin_path_service().get_settings_file("settings_draft")
-            )
-    except Exception:
-        pass
     return SettingsDraftService.get_instance(get_path_service().get_settings_file("settings_draft"))
 
 

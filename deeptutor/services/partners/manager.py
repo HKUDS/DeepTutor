@@ -189,6 +189,7 @@ class PartnerConfig:
     # predate ownership (and for anything an admin created before this field
     # existed) — those stay admin-managed, which is what they always were.
     owner_id: str = ""
+    workspace_id: str = ""  # Empty keeps the private Partner resource library.
     channels: dict[str, Any] = field(default_factory=dict)
     llm_selection: dict[str, str] | None = None
     # Fallback model: when a turn fails outright on the primary selection
@@ -380,6 +381,7 @@ class PartnerInstance:
             "name": self.config.name,
             "description": self.config.description,
             "owner_id": self.config.owner_id,
+            "workspace_id": self.config.workspace_id,
             "channels": channels,
             "llm_selection": self.config.llm_selection,
             "backup_llm_selection": self.config.backup_llm_selection,
@@ -485,6 +487,7 @@ class PartnerManager:
         "name",
         "description",
         "owner_id",
+        "workspace_id",
         "channels",
         "llm_selection",
         "backup_llm_selection",
@@ -509,6 +512,7 @@ class PartnerManager:
                 name=data.get("name", partner_id),
                 description=data.get("description", ""),
                 owner_id=str(data.get("owner_id", "") or ""),
+                workspace_id=str(data.get("workspace_id", "") or ""),
                 channels=strip_legacy_global_delivery(data.get("channels", {}) or {}),
                 llm_selection=data.get("llm_selection"),
                 backup_llm_selection=data.get("backup_llm_selection"),
@@ -544,6 +548,7 @@ class PartnerManager:
             "name": config.name,
             "description": config.description,
             "owner_id": config.owner_id,
+            "workspace_id": config.workspace_id,
             "channels": strip_legacy_global_delivery(config.channels),
             "language": config.language,
             "emoji": config.emoji,
@@ -898,6 +903,7 @@ class PartnerManager:
                 "name": cfg.name if cfg else pid,
                 "description": cfg.description if cfg else "",
                 "owner_id": cfg.owner_id if cfg else "",
+                "workspace_id": cfg.workspace_id if cfg else "",
                 "channels": list(cfg.channels.keys()) if cfg else [],
                 "llm_selection": cfg.llm_selection if cfg else None,
                 "backup_llm_selection": cfg.backup_llm_selection if cfg else None,

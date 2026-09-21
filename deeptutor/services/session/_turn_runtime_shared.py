@@ -29,9 +29,10 @@ MemoryReference = Literal["recent", "profile", "scope", "preferences", "summary"
 
 
 # Content call_kinds that make up the persisted answer. The chat agent loop
-# streams every round's text as ``content`` with ``agent_loop_round``; the
-# finish round (and forced-finish) are the answer, narration rounds are
-# filtered back out via their ``call_role`` marker (see _narration_marker_call_id).
+# streams every round's text as ``content`` with ``agent_loop_round``, and all
+# of it is the answer — the commentary a round wrote before calling a tool
+# included. Only a round a capability retracted is filtered back out (see
+# _retracted_round_call_id).
 _ANSWER_CONTENT_CALL_KINDS = frozenset({"llm_final_response", "agent_loop_round"})
 _FINAL_TURN_STATUSES = frozenset({"completed", "failed", "cancelled"})
 
@@ -99,21 +100,20 @@ def _resolve_turn_failure_metadata(
     return "", False
 
 
-def _narration_marker_call_id(event: StreamEvent) -> str | None:
-    """call_id of a chat-loop round that resolved as narration (a short
-    preamble streamed alongside a tool call). Its text belongs to the trace,
-    not the persisted answer, so it is excluded when assembling content.
+def _retracted_round_call_id(event: StreamEvent) -> str | None:
+    """call_id of a chat-loop round whose prose was taken back out of the answer.
 
-    A round may explicitly keep learner-facing prose surrounding a call via
-    ``answer_visible`` (for example DSML or mastery tutoring); that narrow
-    exception remains part of the persisted answer.
+    Commentary a round wrote before calling a tool is answer content — the
+    reader was shown it as the work happened, and the persisted answer keeps it
+    so a reloaded turn reads the way it did live. The single exception is a
+    round a capability's finish guard rejected, which republishes its marker
+    with ``answer_visible: False``; that text belongs to the trace only.
     """
     metadata = event.metadata or {}
     if (
         metadata.get("trace_kind") == "call_status"
         and metadata.get("call_state") == "complete"
-        and metadata.get("call_role") == "narration"
-        and metadata.get("answer_visible") is not True
+        and metadata.get("answer_visible") is False
     ):
         call_id = metadata.get("call_id")
         return str(call_id) if call_id else None
@@ -122,14 +122,14 @@ def _narration_marker_call_id(event: StreamEvent) -> str | None:
 
 def _assemble_persisted_answer(
     content_segments: Sequence[tuple[str | None, str]],
-    narration_call_ids: set[str],
+    retracted_call_ids: set[str],
 ) -> str:
-    """Replay visible content bytes, excluding trace-only narration rounds."""
+    """Replay visible content bytes, excluding rounds a capability retracted."""
     return clean_thinking_tags(
         "".join(
             text
             for call_id, text in content_segments
-            if not (call_id and call_id in narration_call_ids)
+            if not (call_id and call_id in retracted_call_ids)
         )
     )
 
@@ -278,13 +278,29 @@ def _repair_chinese_emphasis_for_persistence(content: str, language: str) -> str
     )
 
 
-def _stamp_ask_user_content_offset(
+def _stamp_content_offset(
     payload_event: dict[str, Any],
     assistant_content: str,
 ) -> None:
-    """Attach the replay boundary to a persisted ask_user resolution event."""
+    """Attach the replay boundary to an event the answer must be laid out around.
+
+    A settled turn is reloaded from an event *preview* that carries no
+    ``content`` events (see the web client's ``compactTracePreview``), so the
+    body has to be rebuilt from the persisted answer string. Without a mark
+    saying how much of that answer had been written when a row appeared, every
+    tool call and card would pile up at one end and the reload would not
+    resemble what the reader watched.
+
+    Two kinds of event carry the mark: a resolved ``ask_user`` card, and the
+    start of a tool call. Both are rendered between runs of answer text.
+    """
     metadata = payload_event.get("metadata")
-    if isinstance(metadata, dict) and metadata.get("ask_user_resolved"):
+    if not isinstance(metadata, dict):
+        return
+    anchors_layout = bool(metadata.get("ask_user_resolved")) or (
+        payload_event.get("type") == StreamEventType.TOOL_CALL.value
+    )
+    if anchors_layout:
         metadata.setdefault("assistant_content_offset", len(assistant_content))
 
 
@@ -787,6 +803,12 @@ def _request_snapshot_metadata(
         "knowledgeBases": _string_list(payload.get("knowledge_bases")),
         "language": str(payload.get("language", "en") or "en"),
     }
+    for payload_key, snapshot_key in (
+        ("consult_partner_id", "consultPartnerId"),
+        ("partner_discussion_group_id", "partnerDiscussionGroupId"),
+    ):
+        if payload_key in payload:
+            snapshot[snapshot_key] = payload[payload_key]
     workspace_mode = _workspace_mode(payload.get("workspace_mode"), capability=capability)
     if workspace_mode:
         snapshot["workspaceMode"] = workspace_mode

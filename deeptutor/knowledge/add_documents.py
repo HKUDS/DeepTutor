@@ -190,10 +190,13 @@ class DocumentAdder:
                 f"Knowledge base '{kb_name}' uses legacy index format and requires reindex before incremental add"
             )
 
-        allows_lightrag_bootstrap = self.rag_provider == LIGHTRAG_PROVIDER and not list_kb_versions(
-            self.kb_dir
-        )
-        if not has_provider_index and not allows_lightrag_bootstrap:
+        # Both pipelines create their first index on add; existing broken versions
+        # still require reindex instead of being silently replaced (#1458).
+        allows_bootstrap = self.rag_provider in {
+            DEFAULT_PROVIDER,
+            LIGHTRAG_PROVIDER,
+        } and not list_kb_versions(self.kb_dir)
+        if not has_provider_index and not allows_bootstrap:
             raise ValueError(f"Knowledge base not initialized ({self.rag_provider}): {kb_name}")
 
         self.api_key = api_key

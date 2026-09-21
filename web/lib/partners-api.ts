@@ -2,6 +2,19 @@
 
 import { apiFetch, apiUrl } from "@/lib/api";
 import type { LLMSelection } from "@/features/chat/model/protocol";
+import type { ChatWorkspaceRegistration } from "@/lib/workspaces-api";
+
+export async function getPartnerWorkspaces(
+  partnerId: string,
+): Promise<ChatWorkspaceRegistration[]> {
+  const response = await apiFetch(
+    apiUrl(`/api/partners/${encodeURIComponent(partnerId)}/workspaces`),
+  );
+  const result = await json<{ workspaces: ChatWorkspaceRegistration[] }>(
+    response,
+  );
+  return result.workspaces;
+}
 
 export interface PartnerInfo {
   partner_id: string;
@@ -9,6 +22,7 @@ export interface PartnerInfo {
   description: string;
   /** Account that created the partner; empty for admin-managed ones. */
   owner_id?: string;
+  workspace_id?: string;
   /**
    * Whether the signed-in user may configure this partner (its owner, or an
    * admin). False for a partner merely assigned to them, whose response is
@@ -104,6 +118,7 @@ export interface SoulSpec {
 }
 
 export interface CreatePartnerPayload {
+  workspace_id?: string;
   partner_id?: string;
   name: string;
   description?: string;
@@ -672,4 +687,10 @@ export async function pollWeixinQr(
       { cache: "no-store" },
     ),
   );
+}
+
+/** Resolve older saved consultations which did not yet carry native session IDs. */
+export async function getPartnerConsultationSession(chatSessionId: string, partnerName: string): Promise<{ partner_id: string; session_key: string } | null> {
+  const query = new URLSearchParams({ chat_session_id: chatSessionId, partner_name: partnerName });
+  return json(await apiFetch(apiUrl(`/api/partners/consultation-session?${query}`)));
 }

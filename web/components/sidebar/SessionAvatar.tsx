@@ -38,10 +38,11 @@ const RING_RATIO = 0.58;
  */
 function SettledMark({ size, mark }: { size: number; mark: SessionMark }) {
   const filled = mark === "unread" || mark === "failed";
-  // Ink rides on `currentColor` and alpha on `opacity-*`, never on Tailwind's
-  // `/NN` colour modifier: against an arbitrary `var()` colour that modifier
-  // compiles to nothing, and `stroke-[var(--muted-foreground)]/45` renders as
-  // `stroke: none` — an invisible ring. (Third time this repo has hit that.)
+  // Ink rides on `currentColor` and alpha on `opacity-*` rather than a colour
+  // modifier. `stroke-muted-foreground/45` does work now that the theme colours
+  // go through `color-mix` (see tailwind.config.js), but it would need one class
+  // per resting state; here a single opacity carries all three, and the hover
+  // lift animates that one property instead of a colour.
   return (
     <svg
       viewBox="0 0 12 12"

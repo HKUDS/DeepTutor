@@ -844,6 +844,18 @@
           "title": "Config",
           "type": "object"
         },
+        "consult_partner_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Consult Partner Id"
+        },
         "content": {
           "title": "Content",
           "type": "string"
@@ -961,6 +973,13 @@
           ],
           "default": null
         },
+        "mcp": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Mcp",
+          "type": "array"
+        },
         "memory_references": {
           "items": {
             "enum": [
@@ -993,6 +1012,18 @@
           ],
           "default": null,
           "title": "Parent Message Id"
+        },
+        "partner_discussion_group_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Partner Discussion Group Id"
         },
         "partner_group_references": {
           "items": {
@@ -1206,6 +1237,18 @@
           ],
           "title": "Type",
           "type": "string"
+        },
+        "workspace_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Workspace Id"
         },
         "workspace_mode": {
           "anyOf": [

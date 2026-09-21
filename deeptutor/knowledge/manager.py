@@ -156,12 +156,18 @@ def _reconcile_embedding_flags(knowledge_bases: dict, base_dir: Path | None = No
     fp = _get_embedding_fingerprint()
     signature = signature_from_embedding_config()
     changed = False
+    if base_dir is not None:
+        from deeptutor.services.rag.embedding_binding import reconcile_bindings
+
+        changed = reconcile_bindings(knowledge_bases, base_dir)
 
     if signature is None and not fp:
-        return False
+        return changed
 
     for kb_name, kb_entry in knowledge_bases.items():
         if not isinstance(kb_entry, dict):
+            continue
+        if kb_entry.get("embedding_selection"):
             continue
 
         # Connected KBs (Obsidian vaults, linked indexes) are pointers with no
@@ -484,19 +490,17 @@ class KnowledgeBaseManager:
                     "embedding_mismatch",
                 ):
                     kb_config.pop(key, None)
-            else:
+            elif not kb_config.get("embedding_selection"):
                 fp = _get_embedding_fingerprint()
                 if fp:
                     kb_config["embedding_model"], kb_config["embedding_dim"] = fp
             # Record the active signature + the on-disk version registry so
             # the UI can render version chips without recomputing.
             try:
-                from deeptutor.services.rag.embedding_signature import (
-                    signature_from_embedding_config,
-                )
+                from deeptutor.services.rag.embedding_binding import entry_signature
 
-                sig = None if pageindex_provider else signature_from_embedding_config()
-                if sig is not None:
+                sig = None if pageindex_provider else entry_signature(kb_config)
+                if sig is not None and not kb_config.get("embedding_selection"):
                     kb_config["embedding_signature"] = sig.hash()
                 kb_dir = self.base_dir / name
                 if kb_dir.is_dir():
@@ -824,21 +828,13 @@ class KnowledgeBaseManager:
         agent_kind: str,
         *,
         cwd: str = "",
-        partner_id: str = "",
         description: str = "",
     ) -> dict:
-        """Register a connected subagent (local Claude Code / Codex, or a partner) as a KB.
-
-        Like the other connected types this creates no folder and runs no index:
-        it records a ``type: subagent`` pointer naming the backend (``agent_kind``)
-        and its target — an optional working directory (``cwd``) for a local CLI,
-        or the bound ``partner_id`` for the partner backend. The subagent
-        capability drives the live agent; there is nothing on disk to retrieve or
-        reconcile. Raises ``ValueError`` on a missing name/kind or a name clash.
-        """
+        """Register a local or remote agent connection without creating an index."""
         name = validate_knowledge_base_name(name)
         agent_kind = (agent_kind or "").strip()
-        partner_id = (partner_id or "").strip()
+        if agent_kind == "partner":
+            raise ValueError("Select partners directly through Ask partner instead.")
         if not agent_kind:
             raise ValueError("agent_kind is required.")
         resolved_cwd = ""
@@ -859,7 +855,6 @@ class KnowledgeBaseManager:
             "type": SUBAGENT_KB_TYPE,
             "agent_kind": agent_kind,
             "cwd": resolved_cwd,
-            "partner_id": partner_id,
             "description": description or f"Connected subagent: {name}",
             "status": "ready",
             "created_at": now,
@@ -1119,12 +1114,17 @@ class KnowledgeBaseManager:
     def get_rag_storage_path(self, name: str | None = None) -> Path:
         """Get active index storage path for a knowledge base."""
         kb_dir = self.get_knowledge_base_path(name)
-        from deeptutor.services.rag.embedding_signature import signature_from_embedding_config
+        from deeptutor.services.rag.embedding_binding import binding_status, entry_signature
         from deeptutor.services.rag.index_versioning import (
             resolve_storage_dir_for_read,
         )
 
-        active_storage = resolve_storage_dir_for_read(kb_dir, signature_from_embedding_config())
+        entry = self.config.get("knowledge_bases", {}).get(name or kb_dir.name, {})
+        if entry.get("embedding_selection") and binding_status(entry)[0] != "ready":
+            raise ValueError(
+                "The bound embedding model is unavailable or changed. Check this knowledge base's model settings."
+            )
+        active_storage = resolve_storage_dir_for_read(kb_dir, entry_signature(entry))
         legacy_storage = kb_dir / "rag_storage"
         if active_storage is not None:
             return active_storage
@@ -1197,7 +1197,7 @@ class KnowledgeBaseManager:
     def _embedding_fields(kb_config: dict) -> dict:
         """Extract embedding fingerprint fields from a KB config entry."""
         fields = {}
-        for key in ("embedding_model", "embedding_dim"):
+        for key in ("embedding_model", "embedding_dim", "embedding_selection", "embedding_status"):
             val = kb_config.get(key)
             if val is not None:
                 fields[key] = val
@@ -1467,7 +1467,6 @@ class KnowledgeBaseManager:
                 pass
 
         # Check rag_initialized from provider-owned real output, not metadata alone.
-        from deeptutor.services.rag.embedding_signature import signature_from_embedding_config
         from deeptutor.services.rag.index_versioning import (
             find_matching_version,
         )
@@ -1476,7 +1475,9 @@ class KnowledgeBaseManager:
         rag_initialized = has_ready_provider
 
         pageindex_provider = rag_provider in {PAGEINDEX_PROVIDER, PAGEINDEX_OSS_PROVIDER}
-        active_signature = None if pageindex_provider else signature_from_embedding_config()
+        from deeptutor.services.rag.embedding_binding import entry_signature
+
+        active_signature = None if pageindex_provider else entry_signature(kb_config)
         if provider_uses_embedding_versions(rag_provider):
             matched_entry = (
                 find_matching_version(kb_probe_dir, active_signature)
@@ -1497,6 +1498,9 @@ class KnowledgeBaseManager:
                 )
         else:
             active_match = rag_initialized
+
+        if kb_config.get("embedding_status") in {"missing", "changed", "unconfigured"}:
+            active_match = False
 
         info["statistics"] = {
             "raw_documents": raw_count,

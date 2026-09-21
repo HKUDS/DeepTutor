@@ -83,6 +83,25 @@ def _load_config(root_dir: Path):
 
     register_completion_adapter()
     config = load_config(root_dir=Path(root_dir))
+    from deeptutor.services.embedding.config import scoped_embedding_config
+
+    embedding = scoped_embedding_config()
+    if embedding is not None:
+        from .config import _embedding_model_entry, graphrag_embedding_api_base
+
+        fields = _embedding_model_entry(
+            model=embedding.model,
+            api_base=graphrag_embedding_api_base(
+                embedding.binding, embedding.effective_url or embedding.base_url
+            ),
+            api_key=embedding.api_key,
+            binding=embedding.binding,
+            dimension=embedding.dim,
+            send_dimensions=embedding.send_dimensions,
+            extra_headers=embedding.extra_headers,
+        )
+        for name, model_config in config.embedding_models.items():
+            config.embedding_models[name] = model_config.model_copy(update=fields)
     for model_config in config.completion_models.values():
         if model_config.type in {"litellm", COMPLETION_TYPE}:
             model_config.type = COMPLETION_TYPE

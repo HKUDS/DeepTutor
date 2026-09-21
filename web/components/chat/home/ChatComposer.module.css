@@ -1,0 +1,66 @@
+.surface {
+  container: chat-composer / inline-size;
+}
+
+/* Use the actual composer width, including when a side panel is open. */
+.toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "context" "actions";
+  align-items: center;
+  gap: 4px;
+}
+
+.context {
+  grid-area: context;
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.context > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.actions {
+  grid-area: actions;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+/* Animated selector names must not displace the microphone or send button. */
+.toolbar [data-toolbar-label] {
+  display: none;
+}
+
+@container chat-composer (min-width: 420px) {
+  .toolbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "context actions";
+  }
+}
+
+@container chat-composer (min-width: 600px) {
+  .toolbar [data-toolbar-label] {
+    display: inline-flex;
+    max-width: 140px;
+  }
+
+  .toolbar [data-toolbar-label] > span {
+    min-width: 0;
+    flex-shrink: 1;
+    white-space: nowrap;
+  }
+
+  .toolbar [data-toolbar-label] > span > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}

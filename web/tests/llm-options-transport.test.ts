@@ -8,7 +8,7 @@ test("a timed-out model catalog request can be retried", async () => {
   (globalThis as { window?: unknown }).window = {
     setTimeout,
     clearTimeout,
-    location: { pathname: "/chat", href: "" },
+    location: { pathname: "/chat", href: "", search: "", origin: "http://localhost" },
   };
   let calls = 0;
   globalThis.fetch = async (_input, init) => {

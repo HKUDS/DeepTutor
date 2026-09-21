@@ -42,7 +42,7 @@ describe("Watching account browser", () => {
       await screen.findByRole("button", { name: /Neural networks/ }),
     );
     expect(mock.push).toHaveBeenCalledWith(
-      `/watching?video=${encodeURIComponent("https://www.youtube.com/watch?v=aircAruvnKk")}`,
+      `/learning/watching?video=${encodeURIComponent("https://www.youtube.com/watch?v=aircAruvnKk")}&dt_workspace=`,
     );
     expect(mock.browse.mock.calls[0][0]).toBe("feed");
   });

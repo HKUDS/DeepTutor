@@ -13,14 +13,12 @@ import {
   kbRequiresLightRagRebuildBeforeAppend,
   providerUsesEmbeddingMetadata,
   resolveKbStatus,
-  resolveProgressPercent,
   uploadPolicyForProvider,
   validateFiles,
   type KnowledgeBase,
 } from "@/lib/knowledge-helpers";
 import type { TaskState } from "@/hooks/useKnowledgeProgress";
 import type { HistoryEntry } from "@/hooks/useKnowledgeHistory";
-import ProcessLogs from "@/components/common/ProcessLogs";
 import FileDropZone from "./FileDropZone";
 import KbIndexFailureBanner from "./KbIndexFailureBanner";
 import KbUpdateHistory from "./KbUpdateHistory";
@@ -156,21 +154,6 @@ export default function KbDocumentsSection({
     }
   };
 
-  const percent = resolveProgressPercent(kb.progress);
-  const showTaskLogs =
-    task?.kind === "upload" ||
-    task?.kind === "create" ||
-    task?.kind === "reindex" ||
-    task?.kind === "retry";
-  const taskLogTitle =
-    task?.kind === "create"
-      ? t("Create Process")
-      : task?.kind === "retry"
-        ? t("Retry Process")
-        : task?.kind === "reindex"
-          ? t("Re-index Process")
-          : t("Upload Process");
-
   return (
     <div className="space-y-5">
       <div>
@@ -180,7 +163,7 @@ export default function KbDocumentsSection({
         <p className="mt-0.5 text-[11.5px] text-[var(--muted-foreground)]">
           {t(
             providerUsesEmbeddingMetadata(provider)
-              ? "Drop files here to add them to this knowledge base. New files are indexed against the active embedding model."
+              ? "Drop files here to add them to this knowledge base. New files use its bound embedding model."
               : "Drop files here",
           )}
         </p>
@@ -267,44 +250,6 @@ export default function KbDocumentsSection({
           {t("Upload")}
         </button>
       </div>
-
-      {showTaskLogs &&
-        task &&
-        (task.taskId || task.logs.length > 0 || task.executing) && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-[11px] text-[var(--muted-foreground)]">
-              <span>
-                {task.label}
-                {task.taskId ? ` · ${task.taskId}` : ""}
-              </span>
-              {task.executing && percent > 0 && (
-                <span className="font-medium text-[var(--foreground)]">
-                  {percent}%
-                </span>
-              )}
-            </div>
-            <ProcessLogs
-              logs={task.logs}
-              executing={task.executing}
-              title={taskLogTitle}
-            />
-            {task.executing && (
-              <div className="h-1.5 overflow-hidden rounded-full bg-[var(--border)]/70">
-                <div
-                  className="h-full rounded-full bg-[var(--primary)] transition-all duration-300"
-                  style={{ width: `${Math.max(percent, 4)}%` }}
-                />
-              </div>
-            )}
-            {task.error && (
-              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
-                <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed">
-                  {task.error}
-                </pre>
-              </div>
-            )}
-          </div>
-        )}
 
       <KbUpdateHistory entries={history} onClear={onClearHistory} />
     </div>

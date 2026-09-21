@@ -1,11 +1,11 @@
-"""The system prompt states what the attached knowledge bases contain.
+"""Runtime context states what the attached knowledge bases contain.
 
 Retrieval cannot answer "how many files are in this KB" — passages carry no
 information about the size of the collection they came from, so a model holding
 only ``rag`` guesses. The turn therefore reads the inventory off disk once and
-puts it in the system prompt, where a count is answerable with no tool call at
+puts it in a runtime snapshot, where a count is answerable with no tool call at
 all (the failure mode where a weaker model never calls the tool) and where the
-prompt stays byte-stable for the whole turn.
+snapshot stays byte-stable until the inventory changes.
 
 These tests pin the wiring: the note reaches the prompt, PageIndex KBs are not
 described twice, and an unreadable KB costs the manifest rather than the turn.
@@ -62,7 +62,9 @@ def _stub_resolver(
 
 
 @pytest.mark.asyncio
-async def test_manifest_reaches_the_system_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_manifest_reaches_runtime_context_without_changing_system(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     pipeline = _pipeline(monkeypatch)
     _stub_resolver(monkeypatch, {"course": _manifest("course", "a.pdf", "notes/week3.md")})
     context = UnifiedContext(
@@ -70,7 +72,9 @@ async def test_manifest_reaches_the_system_prompt(monkeypatch: pytest.MonkeyPatc
     )
 
     await pipeline._prepare_kb_manifests(context)
-    prompt = pipeline._build_system_prompt(["rag", "kb_files"], context)
+    messages = pipeline._build_loop_messages(context=context, enabled_tools=["rag", "kb_files"])
+    prompt = next(m["content"] for m in messages if m.get("_context_snapshot") == "tools")
+    assert "[Knowledge Base Inventory]" not in messages[0]["content"]
 
     assert "[Knowledge Base Inventory]" in prompt
     assert "2 documents" in prompt

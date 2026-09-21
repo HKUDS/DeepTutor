@@ -147,13 +147,13 @@ def test_container_docs_use_temporary_codex_oauth_bridge() -> None:
     """README links to the canonical guide, which owns the exact commands."""
     root = Path(__file__).resolve().parents[2]
     readme = (root / "README.md").read_text(encoding="utf-8")
-    guide = (root / "CONTAINERIZATION.md").read_text(encoding="utf-8")
+    guide = (root / "docs-for-user" / "CONTAINERIZATION.md").read_text(encoding="utf-8")
     heading = "### Temporary local Codex OAuth bridge"
     assert heading in guide, f"{heading} was renamed; update this test with it"
     section = guide.split(heading, 1)[1].split("\n### ", 1)[0]
     normalized_section = " ".join(section.replace("\\\n", " ").split())
 
-    assert "CONTAINERIZATION.md#temporary-local-codex-oauth-bridge" in readme
+    assert "docs-for-user/CONTAINERIZATION.md#temporary-local-codex-oauth-bridge" in readme
     assert "127.0.0.1:1455:3782" in section
     assert "127.0.0.1:1457:3782" in section
     for base_file in ("docker-compose.yml", "docker-compose.ghcr.yml"):

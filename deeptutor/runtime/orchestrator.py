@@ -131,6 +131,10 @@ class ChatOrchestrator:
             register_bus(_turn_id, bus)
 
         async def _run() -> None:
+            from deeptutor.services.llm.metrics import TurnUsage, current_usage
+
+            turn_usage = TurnUsage(session_id=context.session_id, turn_id=_turn_id, source=cap_name)
+            usage_token = current_usage.set(turn_usage)
             status = "completed"
             terminal_error_metadata: dict[str, Any] = {}
             try:
@@ -166,9 +170,14 @@ class ChatOrchestrator:
                     StreamEvent(
                         type=StreamEventType.DONE,
                         source=cap_name,
-                        metadata={"status": status, **terminal_error_metadata},
+                        metadata={
+                            "status": status,
+                            **terminal_error_metadata,
+                            **({"usage_summary": turn_usage.summary()} if turn_usage.calls else {}),
+                        },
                     )
                 )
+                current_usage.reset(usage_token)
                 await bus.close()
                 if _turn_id:
                     unregister_bus(_turn_id)

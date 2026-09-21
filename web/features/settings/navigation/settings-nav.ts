@@ -46,8 +46,8 @@ import type { SettingsAccess } from "@/features/settings/navigation/settings-acc
 /**
  * Settings information architecture.
  *
- * One document at `/settings`: categories and leaves map to stable fragment
- * identifiers, while this module remains the source for labels, visibility,
+ * Independent settings pages, with legacy fragment aliases preserved.
+ * This module remains the source for labels, visibility,
  * search metadata, and persistence hints.
  */
 
@@ -114,12 +114,34 @@ export function visibleSettingsChildren(
 
 const MODEL_CHILDREN: SettingsLeaf[] = [
   {
+    key: "voice",
+    href: "/settings/voice",
+    label: { en: "Voice", zh: "语音" },
+    blurb: {
+      en: "Speech synthesis and transcription models with saved providers.",
+      zh: "使用已配置的提供方管理语音合成与语音识别模型。",
+    },
+    icon: AudioLines,
+    tile: "bg-rose-500/10 text-rose-600",
+  },
+  {
+    key: "multimodal",
+    href: "/settings/multimodal",
+    label: { en: "Multimodal generation", zh: "多模态生成" },
+    blurb: {
+      en: "Image and video generation models with saved providers.",
+      zh: "使用已配置的提供方管理图片与视频生成模型。",
+    },
+    icon: ImageIcon,
+    tile: "bg-violet-500/10 text-violet-600",
+  },
+  {
     key: "connections",
     href: "/settings#connections",
-    label: { zh: "连接", en: "Connections" },
+    label: { zh: "提供方", en: "Providers" },
     blurb: {
-      zh: "一份凭据供给多个服务。",
-      en: "One credential, supplying several services.",
+      zh: "管理提供方的名称、地址、密钥并测试连接。",
+      en: "Manage provider names, addresses, credentials, and connectivity.",
     },
     icon: KeyRound,
     tile: "bg-sky-500/10 text-sky-600 dark:text-sky-400",
@@ -127,10 +149,10 @@ const MODEL_CHILDREN: SettingsLeaf[] = [
   {
     key: "llm",
     href: "/settings#llm",
-    label: { zh: "LLM", en: "LLM" },
+    label: { zh: "语言模型", en: "Language models" },
     blurb: {
-      zh: "语言模型供应商与当前档位。",
-      en: "Language model providers and active profile.",
+      zh: "模型名称、上下文窗口、能力与连接测试。",
+      en: "Model names, context windows, capabilities, and connection tests.",
     },
     icon: Brain,
     tile: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
@@ -139,7 +161,7 @@ const MODEL_CHILDREN: SettingsLeaf[] = [
   {
     key: "task-models",
     href: "/settings#task-models",
-    label: { zh: "任务模型", en: "Task models" },
+    label: { zh: "后台任务模型", en: "Task models" },
     blurb: {
       zh: "DeepTutor 自己发起的调用使用的模型。",
       en: "The model behind the calls DeepTutor makes on its own.",
@@ -150,10 +172,10 @@ const MODEL_CHILDREN: SettingsLeaf[] = [
   {
     key: "embedding",
     href: "/settings#embedding",
-    label: { zh: "嵌入模型", en: "Embedding" },
+    label: { zh: "嵌入模型", en: "Embedding models" },
     blurb: {
-      zh: "向量模型供应商与维度。",
-      en: "Embedding model providers and dimensions.",
+      zh: "嵌入模型、维度与连接测试。",
+      en: "Embedding models, dimensions, and connection tests.",
     },
     icon: Database,
     tile: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
@@ -423,10 +445,10 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
   },
   {
     key: "workspace",
-    label: { zh: "Workspace", en: "Workspace" },
+    label: { zh: "工作区", en: "Workspace" },
     blurb: {
-      zh: "Agent 可读取的文件与统一输出目录",
-      en: "Agent-readable files and the shared output folder",
+      zh: "系统、通用与自建工作区，根目录与存储迁移",
+      en: "System, general and custom workspaces, root folder and storage migration",
     },
     icon: FolderOpen,
     href: "/settings#workspace",
@@ -517,9 +539,28 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
 
 export const SETTINGS_HUB_HREF = "/settings";
 
-/** The canonical in-document URL used by the persistent settings navigator. */
+/** Stable aliases keep existing bookmarks and links from older clients working. */
+export const SETTINGS_ALIASES: Record<string, string> = {
+  tts: "voice",
+  stt: "voice",
+  imagegen: "multimodal",
+  videogen: "multimodal",
+  overview: "general",
+  models: "llm",
+  chat: "starters",
+  agents: "agent-claude-code",
+  "document-parsing": "knowledge",
+  image: "multimodal",
+  video: "multimodal",
+};
+
+export function resolveSettingsKey(key: string): string {
+  return SETTINGS_ALIASES[key] ?? key;
+}
+
+/** Kept as an API name for callers; URLs now address independent pages. */
 export function settingsAnchorHref(key: string): string {
-  return `${SETTINGS_HUB_HREF}#${key}`;
+  return `${SETTINGS_HUB_HREF}/${resolveSettingsKey(key)}`;
 }
 
 // The on-disk file (under data/user/settings/) each leaf module persists to.
@@ -531,7 +572,7 @@ export function settingsAnchorHref(key: string): string {
 const STORAGE_PATHS: Record<string, string> = {
   "/settings#appearance": "data/user/settings/interface.json",
   "/settings#network": "data/user/settings/system.json",
-  "/settings#workspace": "data/user/settings/content_workspace.json",
+  "/settings#workspace": "data/user/.runtime/workspaces.sqlite3",
   "/settings#llm": "data/user/settings/model_catalog.json",
   "/settings#embedding": "data/user/settings/model_catalog.json",
   "/settings#search": "data/user/settings/model_catalog.json",
@@ -544,7 +585,9 @@ const STORAGE_PATHS: Record<string, string> = {
   "/settings#memory": "data/user/settings/main.yaml",
   appearance: "data/user/settings/interface.json",
   network: "data/user/settings/system.json",
-  workspace: "data/user/settings/content_workspace.json",
+  workspace: "data/user/.runtime/workspaces.sqlite3",
+  voice: "data/user/settings/model_catalog.json",
+  multimodal: "data/user/settings/model_catalog.json",
   connections: "data/user/settings/model_catalog.json",
   "task-models": "data/user/settings/model_catalog.json",
   knowledge: "data/user/settings/document_parsing.json",
@@ -576,5 +619,8 @@ export function storagePathFor(
   if (pathname === SETTINGS_HUB_HREF) {
     return activeSection ? (STORAGE_PATHS[activeSection] ?? null) : null;
   }
-  return STORAGE_PATHS[pathname] ?? null;
+  const key = resolveSettingsKey(pathname.replace(/^\/settings[\/#]?/, ""));
+  if (key === "general") return "data/user/settings/interface.json";
+  if (key.startsWith("agent-")) return "data/user/settings/subagent.json";
+  return STORAGE_PATHS[key] ?? STORAGE_PATHS[pathname] ?? null;
 }

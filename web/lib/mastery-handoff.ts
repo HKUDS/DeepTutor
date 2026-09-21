@@ -1,3 +1,4 @@
+import { masterySessionRoute, masterySessionsRoute } from "@/lib/learning-routes";
 import type { StreamEvent } from "@/features/chat/model/protocol";
 import { toolResultPayload } from "@/lib/tool-event";
 
@@ -144,8 +145,7 @@ export function extractMasteryHandoffs(
  * page opens.
  */
 export function masteryHandoffHref(payload: MasteryHandoffPayload): string {
-  const path = encodeURIComponent(payload.path_id);
   return payload.kind === "open"
-    ? `/mastery/${path}/sessions/${encodeURIComponent(payload.session_id)}`
-    : `/mastery/${path}/sessions`;
+    ? masterySessionRoute(payload.path_id, payload.session_id)
+    : masterySessionsRoute(payload.path_id);
 }

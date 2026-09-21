@@ -11,6 +11,7 @@ from typing import Any
 from deeptutor.runtime.coordination import RuntimeCoordinator
 from deeptutor.services.session.protocol import ActiveTurnConflict, SessionStoreProtocol
 from deeptutor.services.session.turn_runtime import TurnRuntimeManager
+from deeptutor.services.workspace.activity import workspace_writer
 
 from .contracts import TurnRequest
 
@@ -30,6 +31,7 @@ class TurnApplicationService:
         store = self.store_provider.get()
         return store, self.runtime_registry.get(store)
 
+    @workspace_writer
     async def start_turn(
         self, payload: TurnRequest | dict[str, Any]
     ) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -37,6 +39,14 @@ class TurnApplicationService:
             payload if isinstance(payload, TurnRequest) else TurnRequest.model_validate(payload)
         )
         payload = request.to_payload()
+        from deeptutor.services.workspace.context import get_workspace_scope, workspace_context
+
+        # SDK/CLI callers may specify the scope in the request instead of
+        # wrapping their application in workspace_context. Resolve it before
+        # the store/runtime, and let the spawned turn inherit this context.
+        if get_workspace_scope() is None and "workspace_id" in payload:
+            with workspace_context(payload.get("workspace_id")):
+                return await self.start_turn(payload)
         store, runtime = self._resolve()
         try:
             session, turn = await runtime.start_turn(payload)
@@ -53,8 +63,36 @@ class TurnApplicationService:
                 "language": str(payload.get("language") or "en"),
                 "notebook_references": list(payload.get("notebook_references") or []),
                 "history_references": list(payload.get("history_references") or []),
+                "book_references": list(payload.get("book_references") or []),
+                "reading_references": list(payload.get("reading_references") or []),
+                "question_notebook_references": list(
+                    payload.get("question_notebook_references") or []
+                ),
+                "knowledge_bases": list(payload.get("knowledge_bases") or []),
                 "partner_group_references": list(payload.get("partner_group_references") or []),
             },
+        )
+        # Keep historical source references even when the current turn no
+        # longer selects them. Migration must preserve earlier citations too.
+        previous = (session.get("preferences") or {}).get("workspace_dependencies", {})
+        dependencies = {}
+        for key in (
+            "notebook_references",
+            "history_references",
+            "book_references",
+            "reading_references",
+            "question_notebook_references",
+            "knowledge_bases",
+        ):
+            values = list(previous.get(key) or [])
+            for value in list((session.get("preferences") or {}).get(key) or []) + list(
+                payload.get(key) or []
+            ):
+                if value not in values:
+                    values.append(value)
+            dependencies[key] = values
+        await store.update_session_preferences(
+            session["id"], {"workspace_dependencies": dependencies}
         )
         return session, turn
 
@@ -108,6 +146,8 @@ class TurnApplicationService:
         after_seq: int = 0,
     ) -> AsyncIterator[dict[str, Any]]:
         store, _runtime = self._resolve()
+        if await store.get_turn(turn_id) is None:
+            return
         last_seq = max(0, int(after_seq))
         done = False
         tail_possible = False
@@ -217,6 +257,7 @@ class TurnApplicationService:
             "owner_id": lease.owner_id if lease else str(turn.get("owner_id") or ""),
         }
 
+    @workspace_writer
     async def cancel_turn(self, turn_id: str, *, command_id: str | None = None) -> bool:
         store, _runtime = self._resolve()
         turn = await store.get_turn(turn_id)
@@ -239,6 +280,7 @@ class TurnApplicationService:
         # that lost the first ACK can retire its durable outbox entry.
         return True
 
+    @workspace_writer
     async def submit_user_reply(
         self,
         turn_id: str,
@@ -247,6 +289,9 @@ class TurnApplicationService:
         answers: list[dict[str, Any]] | None = None,
         command_id: str | None = None,
     ) -> bool:
+        store, _runtime = self._resolve()
+        if await store.get_turn(turn_id) is None:
+            return False
         if await self.coordinator.get_lease(turn_id) is None:
             # Nobody owns the turn: a queued command would never be read. If
             # the durable row still says ``waiting_input`` it is a zombie —
@@ -385,7 +430,11 @@ class TurnApplicationService:
         *,
         command_id: str | None = None,
     ) -> bool:
-        if await self.coordinator.get_lease(turn_id) is None:
+        store, _runtime = self._resolve()
+        if (
+            await store.get_turn(turn_id) is None
+            or await self.coordinator.get_lease(turn_id) is None
+        ):
             return False
         await self.coordinator.submit_command(
             turn_id,

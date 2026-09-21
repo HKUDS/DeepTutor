@@ -51,6 +51,8 @@ class TestRun:
     events: list[dict[str, Any]] = field(default_factory=list)
     lock: Lock = field(default_factory=Lock)
     cancelled: bool = False
+    # A caller-supplied catalog is a draft, not authorization to apply it.
+    persist_results: bool = True
 
     def emit(self, kind: str, message: str, **extra: Any) -> None:
         payload = {
@@ -81,7 +83,11 @@ class ConfigTestRunner:
         return cls._instance
 
     def start(self, service: str, catalog: dict[str, Any] | None = None) -> TestRun:
-        run = TestRun(id=f"{service}-{uuid4().hex[:10]}", service=service)
+        run = TestRun(
+            id=f"{service}-{uuid4().hex[:10]}",
+            service=service,
+            persist_results=catalog is None,
+        )
         with self._lock:
             self._runs[run.id] = run
         resolved = catalog or get_model_catalog_service().load()
@@ -116,7 +122,7 @@ class ConfigTestRunner:
                     model=model,
                 )
 
-            if service == "llm":
+            if service in {"llm", "task"}:
                 asyncio.run(self._test_llm(run, catalog))
             elif service == "embedding":
                 asyncio.run(self._test_embedding(run, model or {}, catalog))
@@ -208,13 +214,12 @@ class ConfigTestRunner:
         }
 
     async def _test_llm(self, run: TestRun, catalog: dict[str, Any]) -> None:
-        from deeptutor.services.llm import clear_llm_config_cache, get_token_limit_kwargs
-        from deeptutor.services.llm import complete as llm_complete
+        from deeptutor.services.llm import get_token_limit_kwargs
         from deeptutor.services.llm.config import LLMConfig
+        from deeptutor.services.llm.factory import complete_with_config
 
-        clear_llm_config_cache()
         run.emit("info", "Loading LLM config from the active catalog selection.")
-        resolved = resolve_llm_runtime_config(catalog=catalog)
+        resolved = resolve_llm_runtime_config(catalog=catalog, service_name=run.service)
         llm_config = LLMConfig(
             model=resolved.model,
             api_key=resolved.api_key,
@@ -226,6 +231,7 @@ class ConfigTestRunner:
             api_version=resolved.api_version,
             extra_headers=resolved.extra_headers,
             wire_api=resolved.wire_api,
+            api_format=resolved.api_format,
             reasoning_effort=resolved.reasoning_effort,
         )
         run.emit(
@@ -246,17 +252,11 @@ class ConfigTestRunner:
         run.emit("info", f"Token options: {json.dumps(token_kwargs)}")
         if llm_config.reasoning_effort:
             run.emit("info", f"Reasoning effort: {llm_config.reasoning_effort}")
-        response = await llm_complete(
-            model=llm_config.model,
-            prompt="Say 'OK' and identify the model you are using.",
-            system_prompt="Respond briefly but include your model identity if possible.",
-            binding=llm_config.binding,
-            api_key=llm_config.api_key or "sk-no-key-required",
-            base_url=llm_config.effective_url or llm_config.base_url or "",
-            api_version=llm_config.api_version,
+        response = await complete_with_config(
+            llm_config,
+            prompt="Reply with OK.",
+            system_prompt="This is a connection test. Respond briefly.",
             temperature=temperature,
-            extra_headers=llm_config.extra_headers,
-            reasoning_effort=llm_config.reasoning_effort,
             **token_kwargs,
         )
         snippet = (response or "").strip()
@@ -278,7 +278,11 @@ class ConfigTestRunner:
         )
         run.emit(
             "context_window",
-            (f"Detected context window {detection.context_window} tokens ({detection.source})."),
+            (
+                f"Context capacity unknown; conservative budget {detection.context_window} tokens."
+                if detection.source == "default"
+                else f"Detected context window {detection.context_window} tokens ({detection.source})."
+            ),
             context_window=detection.context_window,
             source=detection.source,
             detail=detection.detail,
@@ -365,6 +369,8 @@ class ConfigTestRunner:
             )
         else:
             active_message = f"Active dim {detected_dim}d set from API probe."
+        if not run.persist_results:
+            active_message = f"Detected {detected_dim}d. Model settings have not been changed."
 
         run.emit(
             "capabilities",
@@ -409,49 +415,40 @@ class ConfigTestRunner:
             active_dim_source=active_source,
         )
 
-        # Always persist: the probe runs end-to-end successfully, so the
-        # detected dim is authoritative. ``_persist_embedding_dimension`` also
-        # writes the refreshed ``supported_dimensions`` CSV in the same save.
-        saved_catalog = self._persist_embedding_dimension(catalog, model, detected_dim)
-        run.emit(
-            "catalog",
-            "Saved detected embedding dimension to model_catalog.json.",
-            catalog=saved_catalog,
-        )
+        # Existing live probes may refresh the cached dimensions. A draft probe
+        # must never promote its catalog (including provider/model selection).
+        if run.persist_results:
+            saved_catalog = self._persist_embedding_dimension(catalog, model, detected_dim)
+            run.emit(
+                "catalog",
+                "Saved detected embedding dimension to model_catalog.json.",
+                catalog=saved_catalog,
+            )
+        else:
+            run.emit(
+                "info", "Draft tested. Select the detected dimension in settings before applying."
+            )
 
     def _test_search(self, run: TestRun, catalog: dict[str, Any]) -> None:
-        from deeptutor.services.search import web_search
+        from deeptutor.services.settings.provider_probe import test_search_access
 
         resolved = resolve_search_runtime_config(catalog=catalog)
-        if resolved.provider == "none":
-            run.status = "completed"
-            run.emit("completed", "Search skipped because no active provider is configured.")
-            return
-        if resolved.unsupported_provider:
-            raise ValueError(
-                f"Search provider `{resolved.requested_provider}` is deprecated/unsupported. "
-                f"Switch to none/{supported_search_providers_hint()}."
-            )
-        if resolved.missing_credentials:
-            raise ValueError(
-                f"Search provider `{resolved.requested_provider}` requires api_key. "
-                "Set profile.api_key in Settings > Catalog."
-            )
-        provider = resolved.provider
-        run.emit("info", f"Resolved search provider `{provider}`.")
-        if resolved.fallback_reason:
-            run.emit("warning", resolved.fallback_reason)
-        run.emit("info", "Running search query: DeepTutor configuration health check")
-        result = web_search("DeepTutor configuration health check", provider=provider)
+        # Probe the requested engine and draft credentials; ordinary search's
+        # graceful fallbacks must not turn a broken configuration into success.
+        result = test_search_access(
+            resolved.requested_provider,
+            resolved.base_url,
+            resolved.api_key,
+            proxy=resolved.proxy or "",
+            max_results=resolved.max_results,
+        )
         run.emit(
             "response",
             "Search result received.",
-            answer_preview=str(result.get("answer", ""))[:240],
-            citation_count=len(result.get("citations", []) or []),
-            search_result_count=len(result.get("search_results", []) or []),
+            answer_preview=result.answer[:240],
+            citation_count=len(result.citations),
+            search_result_count=len(result.search_results),
         )
-        if not (result.get("answer") or result.get("search_results")):
-            raise ValueError("Search provider returned no answer and no search results.")
 
     async def _test_tts(self, run: TestRun, catalog: dict[str, Any]) -> None:
         import base64

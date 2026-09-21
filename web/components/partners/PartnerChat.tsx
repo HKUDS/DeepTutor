@@ -8,7 +8,7 @@
  * `StreamEvent` shape), so this reuses product chat's rendering wholesale:
  * `AssistantActivity` shows the live thinking/tool trace (open while
  * working, collapsed once answered) and the answer text is recomputed with
- * the same narration-demotion rules as chat.
+ * the same retraction rules as chat.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -32,7 +32,7 @@ import type { ExportableMessage } from "@/lib/chat-export";
 import type { StreamEvent } from "@/features/chat/model/protocol";
 import { docIconFor, formatBytes, isSvgFilename } from "@/lib/doc-attachments";
 import {
-  isNarrationMarker,
+  isRetractionMarker,
   recomputeAnswerContent,
   shouldAppendEventContent,
 } from "@/lib/stream";
@@ -207,6 +207,7 @@ export default function PartnerChat({
   onToast,
   onMessagesChange,
   onRuntimeReady,
+  embedded = false,
 }: {
   partnerId: string;
   partnerName: string;
@@ -217,7 +218,9 @@ export default function PartnerChat({
    *  Archive tab can switch which conversation the Chat tab is on. */
   sessionKey: string;
   /** Rotate to a different session (new / branch / resume / delete-current). */
-  onSessionKeyChange: (key: string) => void;
+  onSessionKeyChange?: (key: string) => void;
+  /** Keep an embedded consultation on its bound conversation. */
+  embedded?: boolean;
   onToast?: (message: string) => void;
   /** Lifts the settled conversation up so the page header can export it.
    *  Fires only on discrete message events (send / turn done / clear), not
@@ -281,13 +284,14 @@ export default function PartnerChat({
       !connection.send(
         JSON.stringify({
           action: "attach",
+          include_activity: !embedded,
           session_key: sessionKeyRef.current,
         }),
       )
     ) {
       attachedRef.current = false;
     }
-  }, []);
+  }, [embedded]);
 
   // Restore exactly the active conversation. External-channel activity still
   // arrives live over the activity feed, but must not leak into a resumed or
@@ -409,7 +413,7 @@ export default function PartnerChat({
           current.events.push(data.event);
           if (shouldAppendEventContent(data.event)) {
             current.content += data.event.content;
-          } else if (isNarrationMarker(data.event)) {
+          } else if (isRetractionMarker(data.event)) {
             current.content = recomputeAnswerContent(current.events);
           }
           externalLive.set(activityId, current);
@@ -468,9 +472,9 @@ export default function PartnerChat({
         live.events.push(event);
         if (shouldAppendEventContent(event)) {
           live.content += event.content;
-        } else if (isNarrationMarker(event)) {
-          // A round resolved as narration — its streamed text belongs to
-          // the trace, not the answer. Same demotion rule as product chat.
+        } else if (isRetractionMarker(event)) {
+          // A capability took this round's text back out of the answer.
+          // Same retraction rule as product chat.
           live.content = recomputeAnswerContent(live.events);
         }
         publish();
@@ -622,12 +626,16 @@ export default function PartnerChat({
   // true when handled (so the caller skips the normal send).
   const runClientCommand = useCallback(
     async (command: string, arg: string): Promise<void> => {
+      if (!onSessionKeyChange && command !== "/stop") {
+        onToast?.(t("Manage partner conversations on the partner page."));
+        return;
+      }
       switch (command) {
         case "/new":
         case "/clear": {
           await archivePartnerSession(partnerId, sessionKey).catch(() => {});
           setMessages([]);
-          onSessionKeyChange(freshPartnerSessionKey());
+          onSessionKeyChange?.(freshPartnerSessionKey());
           break;
         }
         case "/branch": {
@@ -639,7 +647,7 @@ export default function PartnerChat({
                 id: sessionKey,
               }),
             );
-            onSessionKeyChange(next); // history reload picks up the copy
+            onSessionKeyChange?.(next); // history reload picks up the copy
           } catch {
             onToast?.(t("Nothing to branch yet."));
           }
@@ -652,7 +660,7 @@ export default function PartnerChat({
           }
           try {
             await resumePartnerSession(partnerId, arg);
-            onSessionKeyChange(arg);
+            onSessionKeyChange?.(arg);
           } catch {
             onToast?.(t("Session not found"));
           }
@@ -668,7 +676,7 @@ export default function PartnerChat({
             onToast?.(t("Conversation deleted"));
             if (arg === sessionKey) {
               setMessages([]);
-              onSessionKeyChange(freshPartnerSessionKey());
+              onSessionKeyChange?.(freshPartnerSessionKey());
             }
           } catch {
             onToast?.(t("Session not found"));
@@ -778,7 +786,7 @@ export default function PartnerChat({
   );
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className={`flex h-full min-h-0 flex-col ${embedded ? "px-4" : ""}`}>
       <div
         ref={scrollRef}
         data-chat-scroll-root="true"

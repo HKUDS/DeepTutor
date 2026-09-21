@@ -12,6 +12,7 @@ import type {
 } from "@/contracts/generated/turn-protocol";
 
 export interface StartTurnInput {
+  workspaceId?: string | null;
   content: string;
   capability?: string | null;
   sessionId?: string | null;
@@ -29,6 +30,7 @@ export interface StartTurnInput {
   readingReferences?: ReadingReference[];
   memoryReferences?: MemoryReferences;
   skills?: string[];
+  mcp?: string[];
   persona?: string | null;
   llmSelection?: LLMSelection | null;
   workspaceMode?: string | null;
@@ -52,6 +54,8 @@ export interface StartTurnInput {
   followupQuestionContext?: Record<string, unknown> | null;
   selectionTutorContext?: Record<string, unknown> | null;
   subagentConsultBudget?: number | null;
+  consultPartnerId?: string | null;
+  partnerDiscussionGroupId?: string | null;
   autoRoute?: boolean | null;
 }
 

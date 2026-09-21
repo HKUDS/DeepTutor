@@ -80,3 +80,40 @@ def test_a_workspace_turn_is_never_re_routed():
         route_explicit_quiz_request("给我出几道测验题", "chat", enabled=True, workspace_mode="")
         is not None
     )
+
+
+@pytest.mark.parametrize("capability", ["chat", "deep_solve", "visualize", "mastery_path"])
+@pytest.mark.parametrize(
+    "selection",
+    [
+        {"consult_partner_id": None, "partner_discussion_group_id": None},
+        {"consult_partner_id": "partner-1", "partner_discussion_group_id": None},
+        {"consult_partner_id": None, "partner_discussion_group_id": "group-1"},
+    ],
+)
+def test_legacy_consultation_fields_are_runtime_options(capability, selection):
+    from deeptutor.api.contracts.turn_protocol import StartTurnCommand
+
+    with pytest.warns(DeprecationWarning):
+        command = StartTurnCommand.model_validate(
+            {
+                "type": "start_turn",
+                "protocol_version": "2.0",
+                "content": "什么是agent",
+                "capability": capability,
+                "config": selection,
+            }
+        )
+    assert command.config == {}
+    assert command.consult_partner_id == selection["consult_partner_id"]
+    assert command.partner_discussion_group_id == selection["partner_discussion_group_id"]
+    validate_capability_config(capability, command.config)
+
+
+def test_explicit_consultation_fields_win_over_legacy_config():
+    with pytest.warns(DeprecationWarning):
+        request = TurnRequest(
+            content="hi", consult_partner_id=None, config={"consult_partner_id": "old-partner"}
+        )
+    assert request.consult_partner_id is None
+    assert request.config == {}

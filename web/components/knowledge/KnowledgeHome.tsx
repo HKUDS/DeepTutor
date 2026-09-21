@@ -1,5 +1,6 @@
 "use client";
 
+import { knowledgeBaseRef } from "@/lib/knowledge-helpers";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -357,9 +358,9 @@ export default function KnowledgeHome({
                   const docs = kbDocCount(kb);
                   return (
                     <button
-                      key={kb.name}
+                      key={knowledgeBaseRef(kb)}
                       type="button"
-                      onClick={() => onOpenKb(kb.name)}
+                      onClick={() => onOpenKb(knowledgeBaseRef(kb))}
                       className="group flex flex-col gap-2 rounded-2xl border border-[var(--border)] p-4 text-left transition-colors hover:border-[var(--ring)]"
                     >
                       <div className="flex items-start gap-3">
@@ -383,6 +384,7 @@ export default function KnowledgeHome({
                               />
                             )}
                           </div>
+                          {kb.provenance_label && <p className="mt-1 truncate text-xs text-[var(--muted-foreground)]">{kb.provenance_label}</p>}
                           <div className="mt-2 flex items-center gap-2 text-[11px] text-[var(--muted-foreground)]">
                             <span className="rounded-full border border-[var(--border)] px-1.5 py-0.5">
                               {providerName(kbProvider(kb))}

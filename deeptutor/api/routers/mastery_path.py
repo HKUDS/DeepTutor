@@ -239,7 +239,11 @@ def _topic_sources(items: list[TopicSourceRequest]) -> list[TopicSource]:
     ]
 
 
-def _review_queue(progress) -> list[dict]:
+def _review_queue(progress, *, now: float | None = None) -> list[dict]:
+    from deeptutor.learning.scheduler import SpacedRepetitionScheduler, review_sort_key
+
+    moment = time.time() if now is None else now
+    scheduler = SpacedRepetitionScheduler()
     names = {kp.id: kp.name for module in progress.modules for kp in module.knowledge_points}
     return [
         {
@@ -249,10 +253,36 @@ def _review_queue(progress) -> list[dict]:
             "knowledge_type": task.knowledge_type.value,
             "due_at": task.due_at,
             "priority": task.priority,
-            "due": task.due_at <= time.time(),
+            "due": task.due_at <= moment,
+            "forgetting_risk": round(task.forgetting_risk, 3),
+            "reason": task.reason,
+            "stability": round(task.state.stability, 3),
+            "retrievability": round(scheduler.retrievability(task.state, now=moment), 3),
+            "desired_retention": task.state.desired_retention,
+            "lapse_count": task.state.lapse_count,
+            "recent_failure": bool(
+                task.state.consecutive_wrong
+                or any(
+                    error.knowledge_point_id == task.knowledge_point_id
+                    and error.status in ("active", "retrying")
+                    for error in progress.error_records
+                )
+            ),
         }
-        for task in sorted(progress.review_queue, key=lambda item: item.due_at)
+        for task in sorted(
+            progress.review_queue, key=lambda item: review_sort_key(item, now=moment)
+        )
     ]
+
+
+def _read_projection(progress, *, now: float | None = None):
+    """Build a fresh queue for reads without persisting hydration or time drift."""
+    from deeptutor.learning.scheduler import SpacedRepetitionScheduler
+
+    projected = progress.model_copy(deep=True)
+    moment = time.time() if now is None else now
+    projected.review_queue = SpacedRepetitionScheduler().build_review_queue(projected, now=moment)
+    return projected
 
 
 def _next_step_payload(store: LearningStore, path_id: str, progress) -> dict:
@@ -279,15 +309,21 @@ def _topic_payload_from_snapshot(
     active_interaction: MasteryInteraction | None,
 ) -> dict:
     path_id = progress.book_id
+    moment = time.time()
+    projected = _read_projection(progress, now=moment)
     return {
         "path_id": path_id,
         "name": learning_policy.path_display_name(progress),
         "metadata": topic.metadata.model_dump(mode="json"),
         "sources": [source.model_dump(mode="json") for source in topic.sources],
         "path_revision": progress.version,
-        "next": _next_step_from_interaction(progress, active_interaction),
-        "map": learning_policy.map_summary(progress),
-        "reviews": _review_queue(progress),
+        "next": learning_policy.next_objective(
+            projected,
+            now=moment,
+            pending_session_id=active_interaction.session_id if active_interaction else "",
+        ).to_dict(),
+        "map": learning_policy.map_summary(projected, now=moment),
+        "reviews": _review_queue(projected, now=moment),
         # Who this goal is for. Null until intake has happened, which is also
         # what the dashboard renders as "not asked yet".
         "learner_profile": (
@@ -736,12 +772,14 @@ async def get_progress_map(book_id: str):
     _validate_book_id(book_id)
     service = get_learning_service()
     progress = service.get_or_create(book_id)
+    moment = time.time()
+    progress = _read_projection(progress, now=moment)
     return {
         "book_id": book_id,
         "name": learning_policy.path_display_name(progress),
         "path_revision": progress.version,
-        "next": _next_step_payload(service.store, book_id, progress),
-        "map": learning_policy.map_summary(progress),
+        "next": learning_policy.next_objective(progress, now=moment).to_dict(),
+        "map": learning_policy.map_summary(progress, now=moment),
     }
 
 
@@ -754,7 +792,9 @@ async def get_progress_board(book_id: str):
     _validate_book_id(book_id)
     service = get_learning_service()
     progress = service.get_or_create(book_id)
-    summary = learning_policy.map_summary(progress)
+    moment = time.time()
+    progress = _read_projection(progress, now=moment)
+    summary = learning_policy.map_summary(progress, now=moment)
 
     due_by_kp = {task.knowledge_point_id: task.due_at for task in progress.review_queue}
 
@@ -806,10 +846,14 @@ async def get_objective_report(book_id: str, kp_id: str):
     """
     _validate_book_id(book_id)
     store = LearningStore()
-    progress = await asyncio.to_thread(store.load, book_id)
+    progress, evidence, evidence_count = await asyncio.to_thread(
+        store.load_with_learning_evidence, book_id, kp_id, limit=20
+    )
     if progress is None:
         raise HTTPException(status_code=404, detail="Progress not found")
-    report = learning_policy.objective_report(progress, kp_id)
+    moment = time.time()
+    progress = _read_projection(progress, now=moment)
+    report = learning_policy.objective_report(progress, kp_id, now=moment)
     if report is None:
         raise HTTPException(status_code=404, detail="Objective not found")
 
@@ -822,6 +866,8 @@ async def get_objective_report(book_id: str, kp_id: str):
     }
     for attempt in report["attempts"]:
         attempt["prompt"] = prompts.get(attempt["question_id"], "")
+    report["evidence"] = [item.model_dump(mode="json") for item in evidence]
+    report["evidence_count"] = evidence_count
     return {"book_id": book_id, "path_revision": progress.version, "objective": report}
 
 

@@ -9,7 +9,7 @@ import {
   useState,
   type RefObject,
 } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { saveWorkspaceDraft, readWorkspaceDraft } from "@/lib/workspace-drafts";
 import {
   ArrowUp,
   BookMarked,
@@ -20,26 +20,28 @@ import {
   ChevronDown,
   ChevronRight,
   ClipboardList,
+  Database,
   Loader2,
   MessageSquare,
   Mic,
   Paperclip,
-  Plus,
+  Plug,
   Sparkles,
   Square,
   UserRound,
+  Users,
+  Wand2,
   X,
 } from "lucide-react";
 import {
   ATTACHMENT_ACCEPT,
-  docIconFor,
-  formatBytes,
-  isSvgFilename,
 } from "@/lib/doc-attachments";
 import { useTranslation } from "react-i18next";
 
 import { CoursePill } from "@/components/chat/home/CoursePill";
+import { WorkspacePill } from "@/components/workspaces/WorkspacePill";
 import type { StudyCourse } from "@/lib/courses-api";
+import type { ChatWorkspaceRegistration } from "@/lib/workspaces-api";
 import type { SelectedHistorySession } from "@/components/chat/HistorySessionPicker";
 import type { SelectedQuestionEntry } from "@/components/chat/QuestionBankPicker";
 import type { SelectedRecord } from "@/lib/notebook-selection-types";
@@ -50,10 +52,22 @@ import type { SpaceMemoryFile } from "@/lib/space-items";
 import type { SelectedBookReference } from "@/lib/book-references";
 import type { SelectedReadingReference } from "@/lib/reading-references";
 import AgentSelector from "./AgentSelector";
+import PartnerSelector from "./PartnerSelector";
+import { listPartners, type PartnerInfo } from "@/lib/partners-api";
+import PartnerGroupSelector from "./PartnerGroupSelector";
+import { listPartnerGroups, type PartnerGroup } from "@/lib/partner-groups-api";
 import ContextBudgetChip, { type ContextBudget } from "./ContextBudgetChip";
+import { RailSlot } from "@/components/chat/home/ComposerRail";
+import ComposerResources, {
+  type ComposerResourceItem,
+} from "./ComposerResources";
 import KnowledgeSelector from "./KnowledgeSelector";
 import ModelSelector from "./ModelSelector";
+import styles from "./ChatComposer.module.css";
 import PersonaSelector from "./PersonaSelector";
+import ResourceSelector from "./ResourceSelector";
+import type { ComposerResourceCatalog } from "@/hooks/useComposerResources";
+import type { ResourceSelection } from "@/features/chat/ChatStateAdapter";
 
 type SpaceSelectionCounts = {
   attachments: number;
@@ -67,9 +81,9 @@ type SpaceSelectionCounts = {
   persona: number;
   memory: number;
 };
-import ContextReferenceTree, {
-  type ContextTreeItem,
-} from "./ContextReferenceTree";
+import type { ContextTreeItem } from "./ContextReferenceTree";
+import SelectedResources from "./SelectedResources";
+import { knowledgeBaseRef } from "@/lib/knowledge-helpers";
 import { ComposerInput, type ComposerInputHandle } from "./ComposerInput";
 import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
 import type { CapabilityDef } from "@/features/capabilities/presentation";
@@ -99,6 +113,7 @@ function CapMenuItem({
   onSelect: (value: string) => void;
 }) {
   const { t } = useTranslation();
+
   const Icon = cap.icon;
   return (
     <button
@@ -178,6 +193,11 @@ export default memo(function ChatComposer({
   courses = [],
   courseId = "",
   onSelectCourse,
+  workspaces = [],
+  workspaceId = "",
+  onSelectWorkspace,
+  workspaceError = "",
+  workspacePending = false,
   spaceMenuOpen,
   hasMessages,
   attachments,
@@ -185,6 +205,10 @@ export default memo(function ChatComposer({
   activeCap,
   knowledgeBases,
   connectedAgents = [],
+  selectedPartner = null,
+  onSelectPartner,
+  selectedPartnerGroup = null,
+  onSelectPartnerGroup,
   selectedAgent = null,
   onSelectAgent,
   subagentBudget = null,
@@ -230,6 +254,9 @@ export default memo(function ChatComposer({
   onPersonaSelectionChange,
   personaSelectorOpen,
   onPersonaSelectorOpenChange,
+  resourceCatalog,
+  resourceSelection,
+  onResourceSelectionChange,
   agentsAvailable = true,
   onToggleMemoryFile,
   onSend,
@@ -268,6 +295,13 @@ export default memo(function ChatComposer({
   courses?: StudyCourse[];
   courseId?: string;
   onSelectCourse?: (courseId: string) => void;
+  /* Workspace binding. Same shape as the course binding above, and absent for
+     the same reason on composers that live inside one surface already. */
+  workspaces?: ChatWorkspaceRegistration[];
+  workspaceId?: string;
+  onSelectWorkspace?: (workspaceId: string) => void;
+  workspaceError?: string;
+  workspacePending?: boolean;
   spaceMenuOpen: boolean;
   hasMessages: boolean;
   attachments: PendingAttachment[];
@@ -277,6 +311,10 @@ export default memo(function ChatComposer({
   /** Connected local subagents (Claude Code / Codex) selectable for this turn. */
   connectedAgents?: { name: string; kind?: string }[];
   /** The connected agent selected for this turn, if any (single-select). */
+  selectedPartner?: string | null;
+  onSelectPartner?: (id: string | null) => void;
+  selectedPartnerGroup?: string | null;
+  onSelectPartnerGroup?: (id: string | null) => void;
   selectedAgent?: string | null;
   onSelectAgent?: (name: string | null) => void;
   /** Max times DeepTutor may consult the selected agent this turn. */
@@ -349,6 +387,16 @@ export default memo(function ChatComposer({
   onPersonaSelectionChange?: (persona: string) => void;
   personaSelectorOpen?: boolean;
   onPersonaSelectorOpenChange?: (open: boolean) => void;
+  /**
+   * Skill / MCP narrowing for this conversation. Supplied together: the
+   * catalog is what may be picked (already clipped to what the workspace
+   * allows) and the selection is what was picked, where empty means the
+   * conversation inherits everything. Surfaces without a rail omit all three
+   * and keep inheriting, exactly as before the pickers existed.
+   */
+  resourceCatalog?: ComposerResourceCatalog;
+  resourceSelection?: ResourceSelection;
+  onResourceSelectionChange?: (selection: ResourceSelection) => void;
   /** Hide the My Agents reference entry (e.g. the quiz follow-up surface). */
   agentsAvailable?: boolean;
   onToggleMemoryFile: (file: SpaceMemoryFile) => void;
@@ -388,6 +436,45 @@ export default memo(function ChatComposer({
   showCapabilityChip?: boolean;
 }) {
   const { t } = useTranslation();
+  const [partners, setPartners] = useState<PartnerInfo[]>([]);
+  const [partnersLoading, setPartnersLoading] = useState(false);
+  const [partnerLoadError, setPartnerLoadError] = useState(false);
+  const canSelectPartner = Boolean(onSelectPartner);
+  const canSelectGroup = Boolean(onSelectPartnerGroup);
+  useEffect(() => {
+    if (!canSelectPartner) return;
+    let active = true;
+    const refresh = () => {
+      setPartnersLoading(true);
+      void listPartners().then(value => {
+        if (active) { setPartners(value); setPartnerLoadError(false); }
+      }).catch(() => { if (active) setPartnerLoadError(true); })
+        .finally(() => { if (active) setPartnersLoading(false); });
+    };
+    refresh();
+    window.addEventListener("focus", refresh);
+    return () => { active = false; window.removeEventListener("focus", refresh); };
+  }, [canSelectPartner]);
+  const partnerName = partners.find(partner => partner.partner_id === selectedPartner)?.name || selectedPartner;
+  const [partnerGroups, setPartnerGroups] = useState<PartnerGroup[]>([]);
+  const [groupLoadError, setGroupLoadError] = useState(false);
+  const [groupsLoading, setGroupsLoading] = useState(false);
+  useEffect(() => {
+    if (!canSelectGroup) return;
+    let active = true;
+    const refresh = () => {
+      setGroupsLoading(true);
+      void listPartnerGroups().then(groups => {
+        if (active) { setPartnerGroups(groups); setGroupLoadError(false); }
+      }).catch(() => { if (active) setGroupLoadError(true); })
+        .finally(() => { if (active) setGroupsLoading(false); });
+    };
+    refresh();
+    window.addEventListener("focus", refresh);
+    return () => { active = false; window.removeEventListener("focus", refresh); };
+  }, [canSelectGroup]);
+  const partnerGroupName = partnerGroups.find(group => group.group_id === selectedPartnerGroup)?.name || selectedPartnerGroup;
+
   const CapIcon = activeCap.icon;
 
   const [hasContent, setHasContent] = useState(false);
@@ -397,6 +484,64 @@ export default memo(function ChatComposer({
   const restoreFocusOnReturnRef = useRef(false);
   const inputHandleRef = useRef<ComposerInputHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const draftAttachmentsRef = useRef(attachments);
+  const addDraftFilesRef = useRef(onAddFiles);
+  useEffect(() => {
+    draftAttachmentsRef.current = attachments;
+  }, [attachments]);
+  useEffect(() => {
+    addDraftFilesRef.current = onAddFiles;
+  }, [onAddFiles]);
+  const restoredDraftRef = useRef(false);
+  useEffect(() => {
+    let alive = true;
+    const restore = readWorkspaceDraft();
+    if (!restoredDraftRef.current) {
+      void restore
+        .then((draft) => {
+          if (!alive || restoredDraftRef.current) return;
+          restoredDraftRef.current = true;
+          if (!draft) return;
+          const current = inputHandleRef.current?.getValue() || "";
+          inputHandleRef.current?.setValue(
+            current ? `${draft.text}\n${current}` : draft.text,
+          );
+          const files = draft.attachments
+            .filter((item) => item.base64)
+            .map((item) => {
+              const bytes = Uint8Array.from(atob(item.base64!), (char) =>
+                char.charCodeAt(0),
+              );
+              return new File([bytes], item.filename, {
+                type: item.mimeType || "application/octet-stream",
+              });
+            });
+          if (files.length) addDraftFilesRef.current(files);
+        })
+        .catch(() => {});
+    }
+    const save = (event: Event) => {
+      (event as CustomEvent<Promise<void>[]>).detail.push(
+        restore.then(() =>
+          saveWorkspaceDraft({
+            text: inputHandleRef.current?.getValue() || "",
+            attachments: draftAttachmentsRef.current.map(
+              ({ filename, base64, mimeType }) => ({
+                filename,
+                base64,
+                mimeType,
+              }),
+            ),
+          }),
+        ),
+      );
+    };
+    window.addEventListener("deeptutor:before-workspace-switch", save);
+    return () => {
+      alive = false;
+      window.removeEventListener("deeptutor:before-workspace-switch", save);
+    };
+  }, []);
   if (lastCapMenuOpen !== capMenuOpen) {
     setLastCapMenuOpen(capMenuOpen);
     if (!capMenuOpen) setMoreCapsOpen(false);
@@ -420,28 +565,6 @@ export default memo(function ChatComposer({
     inputHandleRef.current?.setValue(next);
   }, []);
   const recorder = useVoiceRecorder(handleTranscript);
-
-  // Composer-row compaction: when the available width drops below ~620 px
-  // (e.g. the Viewer panel is open or the user is on a narrow viewport),
-  // the cap chip + Tools/Attach/Space labels collide. We measure the
-  // composer itself and flip those labels to icon-only below the
-  // threshold. Count-badges stay visible so users still see how many
-  // things are selected.
-  const [composerCompact, setComposerCompact] = useState(false);
-  useEffect(() => {
-    const el = composerRef.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    setComposerCompact(el.getBoundingClientRect().width < 620);
-    const observer = new ResizeObserver(() => {
-      if (composerRef.current) {
-        setComposerCompact(
-          composerRef.current.getBoundingClientRect().width < 620,
-        );
-      }
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [composerRef]);
 
   const handlePickFiles = useCallback(() => {
     fileInputRef.current?.click();
@@ -508,6 +631,7 @@ export default memo(function ChatComposer({
   const doSend = useCallback(
     (content: string) => {
       onSend(content);
+      void saveWorkspaceDraft({ text: "", attachments: [] }).catch(() => {});
       setHasContent(false);
       inputHandleRef.current?.clear();
       // Sending can move focus to the button or rerender the empty-state
@@ -572,81 +696,61 @@ export default memo(function ChatComposer({
     persona: selectedPersona ? 1 : 0,
     memory: selectedMemoryFiles.length,
   };
-  // Badge on the "+" button = how many things are selected through the
-  // "+" menu. Knowledge is excluded: it no longer lives in this menu —
-  // it has its own toolbar chip (KnowledgeSelector) with its own active
-  // state, so counting it here would double-signal.
-  const contextSelectionCount = Object.entries(spaceSelectionCounts).reduce(
-    (total, [key, count]) => (key === "knowledge" ? total : total + count),
-    0,
-  );
-
-  // Unified reference tree above the textarea: Space references, persona
-  // and memory render as quiet monochrome rows, collapsed behind a count
-  // by default. File attachments intentionally stay OUT of the tree —
-  // they keep their preview cards below the textarea.
-  // Knowledge bases are intentionally NOT in this tree: they are a
-  // session-level retrieval SCOPE (sticky, persisted), not a one-shot
-  // reference like the rows below. That sticky state lives in the
-  // toolbar KnowledgeSelector chip instead — same lifecycle class as
-  // the persona selector.
+  // One selection summary for files, references, and conversation resources.
   const contextTreeItems: ContextTreeItem[] = [
-    ...selectedBookReferences.map(
-      (book): ContextTreeItem => ({
-        key: `book-${book.bookId}`,
-        icon: BookOpen,
-        kind: t("Book"),
-        label: `${book.bookTitle} (${book.pages.length})`,
-        onRemove: () => onRemoveBookReference(book.bookId),
-      }),
-    ),
-    ...selectedReadingReferences.map(
-      (material): ContextTreeItem => ({
-        key: `reading-${material.materialId}-r${material.revision}`,
-        icon: BookMarked,
-        kind: t("Reading"),
-        label: `${material.materialTitle} (${material.units.length})`,
-        onRemove: onRemoveReadingReference
-          ? () => onRemoveReadingReference(material.materialId)
-          : undefined,
-      }),
-    ),
-    ...notebookReferenceGroups.map(
-      (group): ContextTreeItem => ({
-        key: `nb-${group.notebookId}`,
-        icon: BookOpen,
-        kind: t("Notebook"),
-        label: `${group.notebookName} (${group.count})`,
-        onRemove: () => onRemoveNotebook(group.notebookId),
-      }),
-    ),
-    ...selectedHistorySessions.map(
-      (session): ContextTreeItem => ({
-        key: `hist-${session.sessionId}`,
-        icon: MessageSquare,
-        kind: t("Chat History"),
-        label: session.title,
-        onRemove: () => onRemoveHistory(session.sessionId),
-      }),
-    ),
-    ...selectedAgentSessions.map(
-      (session): ContextTreeItem => ({
-        key: `agent-${session.sessionId}`,
-        icon: Bot,
-        kind: t("My Agents"),
-        label: session.title,
-        onRemove: () => onRemoveAgent(session.sessionId),
-      }),
-    ),
-    ...selectedQuestionEntries.map(
-      (entry): ContextTreeItem => ({
-        key: `q-${entry.id}`,
-        icon: ClipboardList,
-        kind: t("Question Bank"),
-        label: entry.question,
-        onRemove: () => onRemoveQuestion(entry.id),
-      }),
-    ),
+    ...attachments.map((file, index): ContextTreeItem => ({key:`file-${index}`, icon:Paperclip, kind:t("Attach files"),label:file.filename,thumbnailUrl:file.type === "image" ? file.previewUrl : undefined,onClick:()=>onPreviewAttachment?.(index),onRemove:()=>onRemoveAttachment(index)})),
+    ...selectedKnowledgeBases.map((id): ContextTreeItem => ({key:`kb-${id}`,icon:Database,kind:t("Knowledge"),label:knowledgeBases.find(kb=>knowledgeBaseRef(kb)===id)?.name || id,onRemove:()=>onToggleKB(id)})),
+    ...(personaSelection ? [{key:"persona-scope",icon:UserRound,kind:t("Response style"),label:personaSelection,onRemove:()=>onPersonaSelectionChange?.("")}] : []),
+    ...(selectedPartner ? [{ key: "partner-current", icon: UserRound, kind: t("Ask partner"), label: partnerName!, onRemove: () => onSelectPartner?.(null) }] : []),
+    ...(selectedPartnerGroup ? [{ key: "partner-group-current", icon: Users, kind: t("Organize partner discussion"), label: partnerGroupName!, onRemove: () => onSelectPartnerGroup?.(null) }] : []),
+    ...(selectedAgent ? [{key:"collaborator-current",icon:Bot,kind:t("Ask subagent"),label:selectedAgent,onRemove:()=>onSelectAgent?.(null)}] : []),
+    ...(resourceSelection?.skills || []).map((id): ContextTreeItem=>({key:`skill-${id}`,icon:Wand2,kind:t("Skills"),label:resourceCatalog?.skills.find(option=>option.id===id)?.name || id,onRemove:()=>onResourceSelectionChange?.({...resourceSelection!,skills:resourceSelection!.skills.filter(value=>value!==id)})})),
+    ...(resourceSelection?.mcp || []).map((id): ContextTreeItem=>({key:`mcp-${id}`,icon:Plug,kind:t("MCP"),label:resourceCatalog?.mcp.find(option=>option.id===id)?.name || id,onRemove:()=>onResourceSelectionChange?.({...resourceSelection!,mcp:resourceSelection!.mcp.filter(value=>value!==id)})})),
+
+    ...selectedBookReferences.map((book): ContextTreeItem => ({
+      key: `book-${book.bookId}`,
+      icon: BookOpen,
+      kind: t("Book"),
+      label: `${book.bookTitle} (${book.pages.length})`,
+      onRemove: () => onRemoveBookReference(book.bookId),
+    })),
+    ...selectedReadingReferences.map((material): ContextTreeItem => ({
+      key: `reading-${material.materialId}-r${material.revision}`,
+      icon: BookMarked,
+      kind: t("Reading"),
+      label: `${material.materialTitle} (${material.units.length})`,
+      onRemove: onRemoveReadingReference
+        ? () => onRemoveReadingReference(material.materialId)
+        : undefined,
+    })),
+    ...notebookReferenceGroups.map((group): ContextTreeItem => ({
+      key: `nb-${group.notebookId}`,
+      icon: BookOpen,
+      kind: t("Notebook"),
+      label: `${group.notebookName} (${group.count})`,
+      onRemove: () => onRemoveNotebook(group.notebookId),
+    })),
+    ...selectedHistorySessions.map((session): ContextTreeItem => ({
+      key: `hist-${session.sessionId}`,
+      icon: MessageSquare,
+      kind: t("Chat History"),
+      label: session.title,
+      onRemove: () => onRemoveHistory(session.sessionId),
+    })),
+    ...selectedAgentSessions.map((session): ContextTreeItem => ({
+      key: `agent-${session.sessionId}`,
+      icon: Bot,
+      kind: t("My Agents"),
+      label: session.title,
+      onRemove: () => onRemoveAgent(session.sessionId),
+    })),
+    ...selectedQuestionEntries.map((entry): ContextTreeItem => ({
+      key: `q-${entry.id}`,
+      icon: ClipboardList,
+      kind: t("Question Bank"),
+      label: entry.question,
+      onRemove: () => onRemoveQuestion(entry.id),
+    })),
     ...(selectedPersona
       ? [
           {
@@ -658,15 +762,13 @@ export default memo(function ChatComposer({
           } satisfies ContextTreeItem,
         ]
       : []),
-    ...selectedMemoryFiles.map(
-      (file): ContextTreeItem => ({
-        key: `mem-${file}`,
-        icon: Brain,
-        kind: t("Memory"),
-        label: file === "summary" ? t("Summary") : t("Profile"),
-        onRemove: () => onToggleMemoryFile(file),
-      }),
-    ),
+    ...selectedMemoryFiles.map((file): ContextTreeItem => ({
+      key: `mem-${file}`,
+      icon: Brain,
+      kind: t("Memory"),
+      label: file === "summary" ? t("Summary") : t("Profile"),
+      onRemove: () => onToggleMemoryFile(file),
+    })),
   ];
 
   const handleManualSend = useCallback(() => {
@@ -702,6 +804,158 @@ export default memo(function ChatComposer({
       ? t("Confirm settings on the right to send.")
       : sendLabel;
 
+  const toggleResource = useCallback(
+    (kind: "skills" | "mcp", id: string) => {
+      if (!onResourceSelectionChange) return;
+      const current = resourceSelection ?? { skills: [], mcp: [] };
+      const list = current[kind];
+      onResourceSelectionChange({
+        ...current,
+        [kind]: list.includes(id)
+          ? list.filter((value) => value !== id)
+          : [...list, id],
+      });
+    },
+    [onResourceSelectionChange, resourceSelection],
+  );
+
+  // Available selectors share one resource panel; omitted catalogs stay hidden.
+  const selectedSkills = resourceSelection?.skills ?? [];
+  const selectedMcp = resourceSelection?.mcp ?? [];
+  const resourceItems: ComposerResourceItem[] = [];
+  if (knowledgeBases.length > 0) {
+    resourceItems.push({
+      key: "knowledge",
+      group: "Reference materials",
+      summary: selectedKnowledgeBases.length
+        ? `${selectedKnowledgeBases.length} ${t("selected")}`
+        : t("Default"),
+      onClear: () => [...selectedKnowledgeBases].forEach(onToggleKB),
+      label: t("Knowledge"),
+      icon: Database,
+      count: selectedKnowledgeBases.length,
+      node: (
+        <KnowledgeSelector
+          knowledgeBases={knowledgeBases}
+          selected={selectedKnowledgeBases}
+          onToggle={onToggleKB}
+          embedded
+        />
+      ),
+    });
+  }
+  if (onPersonaSelectionChange) {
+    resourceItems.push({
+      key: "persona",
+      group: "Answer preferences",
+      summary: personaSelection || t("Default"),
+      onClear: () => onPersonaSelectionChange(""),
+      label: t("Response style"),
+      icon: UserRound,
+      count: personaSelection ? 1 : 0,
+      node: (
+        <PersonaSelector
+          value={personaSelection ?? ""}
+          onChange={onPersonaSelectionChange}
+          embedded
+        />
+      ),
+    });
+  }
+  if (onResourceSelectionChange && (resourceCatalog?.skills.length ?? 0) > 0) {
+    resourceItems.push({
+      key: "skills",
+      group: "Tools",
+      summary: selectedSkills.length
+        ? `${selectedSkills.length} ${t("selected")}`
+        : t("Workspace default"),
+      resetLabel: t("Use workspace default"),
+      onClear: () =>
+        onResourceSelectionChange({ skills: [], mcp: selectedMcp }),
+      label: t("Skills"),
+      icon: Wand2,
+      count: selectedSkills.length,
+      node: (
+        <ResourceSelector
+          kind="skills"
+          options={resourceCatalog?.skills ?? []}
+          selected={selectedSkills}
+          onToggle={(id) => toggleResource("skills", id)}
+          embedded
+        />
+      ),
+    });
+  }
+  if (onResourceSelectionChange && (resourceCatalog?.mcp.length ?? 0) > 0) {
+    resourceItems.push({
+      key: "mcp",
+      group: "Tools",
+      summary: selectedMcp.length
+        ? `${selectedMcp.length} ${t("selected")}`
+        : t("Workspace default"),
+      resetLabel: t("Use workspace default"),
+      onClear: () =>
+        onResourceSelectionChange({ skills: selectedSkills, mcp: [] }),
+      label: t("MCP"),
+      icon: Plug,
+      count: selectedMcp.length,
+      node: (
+        <ResourceSelector
+          kind="mcp"
+          options={resourceCatalog?.mcp ?? []}
+          selected={selectedMcp}
+          onToggle={(id) => toggleResource("mcp", id)}
+          embedded
+        />
+      ),
+    });
+  }
+
+  if (onSelectAgent) {
+    resourceItems.push({
+      key: "agent",
+      group: "Answer preferences",
+      summary: selectedAgent || t("None"),
+      onClear: () => onSelectAgent(null),
+      label: t("Ask subagent"),
+      icon: Bot,
+      count: selectedAgent ? 1 : 0,
+      node: (
+        <AgentSelector
+          agents={connectedAgents}
+          selected={selectedAgent}
+          onSelect={onSelectAgent}
+          budget={subagentBudget}
+          onBudgetChange={onSubagentBudgetChange}
+          embedded
+        />
+      ),
+    });
+  }
+
+  if (onSelectPartner) {
+    resourceItems.push({
+      key: "partner", group: "Answer preferences",
+      summary: partnerName || t("None"), onClear: () => onSelectPartner(null),
+      label: t("Ask partner"), icon: UserRound, count: selectedPartner ? 1 : 0,
+      node: <PartnerSelector partners={partners} selected={selectedPartner} onSelect={onSelectPartner}
+        loading={partnersLoading} error={partnerLoadError} />,
+    });
+  }
+
+  if (onSelectPartnerGroup) {
+    resourceItems.push({
+      key: "partner_group", group: "Answer preferences",
+      summary: partnerGroupName || t("None"),
+      onClear: () => onSelectPartnerGroup(null),
+      label: t("Organize partner discussion"), icon: Users,
+      count: selectedPartnerGroup ? 1 : 0,
+      node: <PartnerGroupSelector groups={partnerGroups} selected={selectedPartnerGroup}
+        onSelect={onSelectPartnerGroup} error={groupLoadError} loading={groupsLoading} />,
+    });
+  }
+
+
   return (
     <div
       ref={composerRef}
@@ -716,7 +970,7 @@ export default memo(function ChatComposer({
 
       <div className="relative">
         <div
-          className={`relative rounded-[26px] border bg-[var(--card)] shadow-[0_1px_2px_rgba(0,0,0,0.025),0_10px_28px_-10px_rgba(0,0,0,0.08)] transition-colors ${
+          className={`${styles.surface} relative rounded-[26px] border bg-[var(--card)] shadow-[0_1px_2px_rgba(0,0,0,0.025),0_10px_28px_-10px_rgba(0,0,0,0.08)] transition-colors ${
             dragging
               ? "border-[var(--primary)] bg-[var(--primary)]/[0.03]"
               : "border-[var(--border)]/55"
@@ -752,23 +1006,7 @@ export default memo(function ChatComposer({
             tabIndex={-1}
           />
 
-          {contextTreeItems.length > 0 && (
-            // The reference zone reads as its own layer: a faint muted band
-            // with a hairline against the input area, following the card's
-            // top radius.
-            <div className="rounded-t-[26px] border-b border-[var(--border)]/30 bg-[var(--muted)]/30 px-4 pb-2 pt-2.5">
-              {/* Narrower than the composer on purpose — long titles
-                  truncate early so the tree reads as an annotation, not a
-                  content row. */}
-              <div className="max-w-[min(560px,85%)]">
-                <ContextReferenceTree
-                  items={contextTreeItems}
-                  direction="up"
-                  summaryNoun={t("references")}
-                />
-              </div>
-            </div>
-          )}
+          <SelectedResources items={contextTreeItems}/>
           <ComposerInput
             ref={inputHandleRef}
             textareaRef={textareaRef}
@@ -804,101 +1042,6 @@ export default memo(function ChatComposer({
             minHeight={hasMessages ? 28 : 64}
           />
 
-          {!!attachments.length && (
-            <div className="flex flex-wrap gap-2 px-4 pb-2">
-              {attachments.map((a, i) => {
-                const previewLabel = t("Preview");
-                const removeLabel = t("Remove attachment");
-                if (
-                  (a.type === "image" || isSvgFilename(a.filename)) &&
-                  a.previewUrl
-                ) {
-                  return (
-                    <div
-                      key={`${a.filename}-${i}`}
-                      className="group relative"
-                      title={a.filename || previewLabel}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => onPreviewAttachment?.(i)}
-                        aria-label={previewLabel}
-                        className="relative block h-16 w-16 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--card)] transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40"
-                      >
-                        {/* Native <img> is safe for SVG: scripts inside an
-                            SVG don't execute under <img> context. Next.js
-                            <Image> rejects SVG by default. */}
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={a.previewUrl}
-                          alt={a.filename || t("Attachment preview")}
-                          className={`h-full w-full ${isSvgFilename(a.filename) ? "object-contain p-1" : "object-cover"}`}
-                        />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onRemoveAttachment(i);
-                        }}
-                        aria-label={removeLabel}
-                        className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--foreground)] text-[var(--background)] opacity-0 shadow-sm transition-opacity group-hover:opacity-100"
-                      >
-                        <X size={10} />
-                      </button>
-                    </div>
-                  );
-                }
-                const spec = docIconFor(a.filename);
-                const Icon = spec.Icon;
-                const sizeLabel = a.size ? formatBytes(a.size) : "";
-                return (
-                  <div
-                    key={`${a.filename}-${i}`}
-                    className="group relative"
-                    title={a.filename}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => onPreviewAttachment?.(i)}
-                      aria-label={previewLabel}
-                      className="flex h-16 w-[160px] items-center gap-2.5 rounded-lg border border-[var(--border)] bg-[var(--card)] px-2.5 text-left transition-colors hover:border-[var(--primary)]/40 hover:bg-[var(--muted)]/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40"
-                    >
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[var(--muted)]/60">
-                        <Icon
-                          size={22}
-                          strokeWidth={1.5}
-                          className={spec.tint}
-                        />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-[12px] font-medium text-[var(--foreground)]">
-                          {a.filename}
-                        </div>
-                        <div className="truncate text-[10px] uppercase tracking-wide text-[var(--muted-foreground)]">
-                          {sizeLabel
-                            ? `${spec.label} · ${sizeLabel}`
-                            : spec.label}
-                        </div>
-                      </div>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onRemoveAttachment(i);
-                      }}
-                      aria-label={removeLabel}
-                      className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--foreground)] text-[var(--background)] opacity-0 shadow-sm transition-opacity group-hover:opacity-100"
-                    >
-                      <X size={10} />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
           {attachmentError && (
             <div className="px-4 pb-2 text-[11px] text-red-600">
               {attachmentError}
@@ -909,184 +1052,180 @@ export default memo(function ChatComposer({
               area, no pill borders — quiet text/icon buttons that surface
               on hover. */}
           <div className="px-3 pb-2 pt-0.5">
-            <div className="flex items-center gap-1">
-              {showCapabilityChip && (
-                <div className="relative">
-                  <button
-                    ref={capBtnRef}
-                    onClick={() => onSetCapMenuOpen((v) => !v)}
-                    className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2 text-[14px] font-medium transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
-                      capMenuOpen
-                        ? "bg-[var(--primary)]/10 text-[var(--primary)]"
-                        : "text-[var(--foreground)] hover:bg-[var(--muted)]/55"
-                    }`}
-                  >
-                    <span className="flex min-w-0 items-center gap-1.5">
-                      <CapIcon
-                        size={16}
-                        strokeWidth={1.7}
-                        className="shrink-0"
-                      />
-                      {composerCompact ? null : (
-                        <span className="truncate">{t(activeCap.label)}</span>
-                      )}
-                    </span>
-                    <ChevronDown
-                      size={13}
-                      strokeWidth={2}
-                      className={`-mr-0.5 shrink-0 transition-transform duration-200 ${capMenuOpen ? "rotate-180" : ""}`}
-                    />
-                  </button>
-
-                  {capMenuOpen && (
-                    <div
-                      ref={capMenuRef}
-                      className="dt-popup-up absolute bottom-full left-0 z-50 mb-1.5 w-[260px] overflow-visible rounded-xl border border-[var(--border)] bg-[var(--popover)] py-1 shadow-lg backdrop-blur-md"
+            <div className={styles.toolbar}>
+              <div className={styles.context}>
+                {showCapabilityChip && (
+                  <div className="relative min-w-0 max-w-full">
+                    <button
+                      ref={capBtnRef}
+                      aria-haspopup="menu"
+                      aria-expanded={capMenuOpen}
+                      onClick={() => onSetCapMenuOpen((v) => !v)}
+                      aria-label={t(activeCap.label)}
+                      title={t(activeCap.label)}
+                      className={`inline-flex h-8 max-w-full items-center rounded-lg px-2 text-[14px] font-medium transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
+                        capMenuOpen
+                          ? "bg-[var(--primary)]/10 text-[var(--primary)]"
+                          : "text-[var(--foreground)] hover:bg-[var(--muted)]/55"
+                      }`}
                     >
-                      {capabilities
-                        .filter((cap) => !cap.secondary)
-                        .map((cap) => (
-                          <CapMenuItem
-                            key={cap.value}
-                            cap={cap}
-                            selected={activeCap.value === cap.value}
-                            onSelect={handleSelectCapability}
-                          />
-                        ))}
-                      {(() => {
-                        const loopCaps = capabilities.filter(
-                          (cap) => cap.secondary,
-                        );
-                        if (loopCaps.length === 0) return null;
-                        const loopSelected = loopCaps.some(
-                          (cap) => cap.value === activeCap.value,
-                        );
-                        return (
-                          <div
-                            className="group/more relative"
-                            onMouseEnter={() => setMoreCapsOpen(true)}
-                            onMouseLeave={() => setMoreCapsOpen(false)}
-                            onFocus={() => setMoreCapsOpen(true)}
-                            onBlur={(event) => {
-                              const next = event.relatedTarget;
-                              if (
-                                !next ||
-                                !event.currentTarget.contains(next as Node)
-                              ) {
-                                setMoreCapsOpen(false);
-                              }
-                            }}
-                          >
-                            <button
-                              type="button"
-                              aria-haspopup="menu"
-                              aria-expanded={moreCapsOpen}
-                              onClick={() => setMoreCapsOpen((open) => !open)}
-                              className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-left transition-colors ${
-                                moreCapsOpen
-                                  ? "bg-[var(--muted)]/45"
-                                  : "group-hover/more:bg-[var(--muted)]/45"
-                              } ${
-                                loopSelected && !moreCapsOpen
-                                  ? "bg-[var(--primary)]/[0.06]"
-                                  : ""
-                              }`}
-                            >
-                              <Sparkles
-                                size={15}
-                                strokeWidth={1.7}
-                                className={`shrink-0 ${loopSelected ? "text-[var(--primary)]" : "text-[var(--muted-foreground)]"}`}
-                              />
-                              <div className="min-w-0 flex-1">
-                                <div className="truncate text-[12.5px] font-medium leading-snug text-[var(--foreground)]">
-                                  {t("More Capabilities")}
-                                </div>
-                                <div className="truncate text-[11px] leading-snug text-[var(--muted-foreground)]">
-                                  {t("Agent-loop driven modes")}
-                                </div>
-                              </div>
-                              <ChevronRight
-                                size={14}
-                                strokeWidth={2}
-                                className="shrink-0 text-[var(--muted-foreground)]"
-                              />
-                            </button>
-                            {/* Right flyout. ``pl-1.5`` is a pointer bridge so the
-                              cursor can cross the gap without dropping hover;
-                              click/focus also open it for touch and keyboard. */}
+                      <CapIcon size={16} strokeWidth={1.7} className="shrink-0" />
+                      <span className="ml-1.5 inline-flex min-w-0 items-center gap-1.5 whitespace-nowrap">
+                        <span className="min-w-0 truncate">{t(activeCap.label)}</span>
+                        <ChevronDown size={13} strokeWidth={2} className={`shrink-0 transition-transform duration-200 ${capMenuOpen ? "rotate-180" : ""}`} />
+                      </span>
+                    </button>
+
+                    {capMenuOpen && (
+                      <div
+                        ref={capMenuRef}
+                        className="dt-popup-up absolute bottom-full left-0 z-50 mb-1.5 w-[260px] overflow-visible rounded-xl border border-[var(--border)] bg-[var(--popover)] py-1 shadow-lg backdrop-blur-md"
+                      >
+                        {capabilities
+                          .filter((cap) => !cap.secondary)
+                          .map((cap) => (
+                            <CapMenuItem
+                              key={cap.value}
+                              cap={cap}
+                              selected={activeCap.value === cap.value}
+                              onSelect={handleSelectCapability}
+                            />
+                          ))}
+                        {(() => {
+                          const loopCaps = capabilities.filter(
+                            (cap) => cap.secondary,
+                          );
+                          if (loopCaps.length === 0) return null;
+                          const loopSelected = loopCaps.some(
+                            (cap) => cap.value === activeCap.value,
+                          );
+                          return (
                             <div
-                              className={`absolute bottom-0 left-full z-50 pl-1.5 transition-opacity duration-150 ${
-                                moreCapsOpen
-                                  ? "visible opacity-100"
-                                  : "invisible opacity-0"
-                              }`}
+                              className="group/more relative"
+                              onMouseEnter={() => setMoreCapsOpen(true)}
+                              onMouseLeave={() => setMoreCapsOpen(false)}
+                              onFocus={() => setMoreCapsOpen(true)}
+                              onBlur={(event) => {
+                                const next = event.relatedTarget;
+                                if (
+                                  !next ||
+                                  !event.currentTarget.contains(next as Node)
+                                ) {
+                                  setMoreCapsOpen(false);
+                                }
+                              }}
                             >
-                              <div className="w-[240px] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--popover)] py-1 shadow-lg backdrop-blur-md">
-                                {loopCaps.map((cap) => (
-                                  <CapMenuItem
-                                    key={cap.value}
-                                    cap={cap}
-                                    selected={activeCap.value === cap.value}
-                                    onSelect={handleSelectCapability}
-                                  />
-                                ))}
+                              <button
+                                type="button"
+                                aria-haspopup="menu"
+                                aria-expanded={moreCapsOpen}
+                                onClick={() => setMoreCapsOpen((open) => !open)}
+                                className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-left transition-colors ${
+                                  moreCapsOpen
+                                    ? "bg-[var(--muted)]/45"
+                                    : "group-hover/more:bg-[var(--muted)]/45"
+                                } ${
+                                  loopSelected && !moreCapsOpen
+                                    ? "bg-[var(--primary)]/[0.06]"
+                                    : ""
+                                }`}
+                              >
+                                <Sparkles
+                                  size={15}
+                                  strokeWidth={1.7}
+                                  className={`shrink-0 ${loopSelected ? "text-[var(--primary)]" : "text-[var(--muted-foreground)]"}`}
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <div className="truncate text-[12.5px] font-medium leading-snug text-[var(--foreground)]">
+                                    {t("More Capabilities")}
+                                  </div>
+                                  <div className="truncate text-[11px] leading-snug text-[var(--muted-foreground)]">
+                                    {t("Agent-loop driven modes")}
+                                  </div>
+                                </div>
+                                <ChevronRight
+                                  size={14}
+                                  strokeWidth={2}
+                                  className="shrink-0 text-[var(--muted-foreground)]"
+                                />
+                              </button>
+                              {/* Right flyout. ``pl-1.5`` is a pointer bridge so the
+                                cursor can cross the gap without dropping hover;
+                                click/focus also open it for touch and keyboard. */}
+                              <div
+                                className={`absolute bottom-0 left-full z-50 pl-1.5 transition-opacity duration-150 ${
+                                  moreCapsOpen
+                                    ? "visible opacity-100"
+                                    : "invisible opacity-0"
+                                }`}
+                              >
+                                <div className="w-[240px] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--popover)] py-1 shadow-lg backdrop-blur-md">
+                                  {loopCaps.map((cap) => (
+                                    <CapMenuItem
+                                      key={cap.value}
+                                      cap={cap}
+                                      selected={activeCap.value === cap.value}
+                                      onSelect={handleSelectCapability}
+                                    />
+                                  ))}
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  )}
-                </div>
-              )}
+                          );
+                        })()}
+                      </div>
+                    )}
+                  </div>
+                )}
 
-              {/* Which course this conversation belongs to. Sits beside the
-                  mode because the two are chosen together: Course Study
-                  without a course is an inert mode, and the learner should be
-                  able to see that from the composer rather than from a reply. */}
-              {onSelectCourse ? (
-                <CoursePill
-                  courses={courses}
-                  courseId={courseId}
-                  onSelect={onSelectCourse}
-                  needsCourse={activeCap.value === "course_study"}
-                  compact={composerCompact}
-                />
-              ) : null}
+                {onSelectWorkspace ? (
+                  <WorkspacePill
+                    collapsible
+                    workspaces={workspaces}
+                    workspaceId={workspaceId}
+                    onSelect={onSelectWorkspace}
+                    disabled={isStreaming || workspacePending}
+                    readOnly={hasMessages}
+                    error={workspaceError}
+                  />
+                ) : null}
 
-              <div className="relative flex min-w-0 flex-1 items-center">
-                <button
-                  ref={spaceBtnRef}
-                  type="button"
-                  onClick={() => onSetSpaceMenuOpen((v) => !v)}
-                  title={t("Add files & context")}
-                  aria-label={t("Add files & context")}
-                  className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-[background-color,color,transform] duration-150 active:scale-90 ${
-                    spaceMenuOpen
-                      ? "bg-[var(--muted)] text-[var(--foreground)]"
-                      : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/55 hover:text-[var(--foreground)]"
-                  }`}
-                >
-                  <Plus size={20} strokeWidth={1.8} />
-                  {contextSelectionCount > 0 && (
-                    <span className="absolute -right-0.5 -top-0.5 flex h-[13px] min-w-[13px] items-center justify-center rounded-full bg-[var(--primary)] px-[3px] text-[8px] font-semibold leading-none text-[var(--primary-foreground)] ring-[1.5px] ring-[var(--card)]">
-                      {contextSelectionCount}
-                    </span>
-                  )}
-                </button>
-                <AnimatePresence>
-                  {spaceMenuOpen && (
-                    <motion.div
-                      ref={spaceMenuRef}
-                      className="absolute bottom-full left-0 z-50 mb-1.5"
-                      style={{ transformOrigin: "bottom left" }}
-                      initial={{ opacity: 0, y: 6, scale: 0.96 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: 4, scale: 0.97 }}
-                      transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
-                    >
+                {onSelectCourse ? (
+                  <RailSlot
+                    onClear={courseId ? () => onSelectCourse("") : undefined}
+                    clearLabel={t("Clear course")}
+                  >
+                    <CoursePill
+                      courses={courses}
+                      courseId={courseId}
+                      onSelect={onSelectCourse}
+                      needsCourse={activeCap.value === "course_study"}
+                    />
+                  </RailSlot>
+                ) : null}
+
+                {
+                  <ComposerResources
+                    selectedCount={contextTreeItems.length}
+                    items={resourceItems}
+                    open={spaceMenuOpen || Boolean(personaSelectorOpen)}
+                    onOpenChange={(open) => {
+                      onSetSpaceMenuOpen(open);
+                      if (!open) onPersonaSelectorOpenChange?.(false);
+                    }}
+                    requestedKey={personaSelectorOpen ? "persona" : undefined}
+                    onBack={() => {
+                      if (personaSelectorOpen) {
+                        onSetSpaceMenuOpen(true);
+                        onPersonaSelectorOpenChange?.(false);
+                      }
+                    }}
+                    triggerRef={spaceBtnRef}
+                    panelRef={spaceMenuRef}
+                    materials={(query) => (
                       <ChatSpaceMenu
-                        variant="toolbar"
+                        variant="resources"
+                        query={query}
                         selectedCounts={spaceSelectionCounts}
                         knowledgeAvailable={false}
                         personaAvailable={!onPersonaSelectionChange}
@@ -1094,50 +1233,27 @@ export default memo(function ChatComposer({
                         readingAvailable={Boolean(onSelectReadingPicker)}
                         onSelectItem={(key) => {
                           onSetSpaceMenuOpen(false);
+                          onPersonaSelectorOpenChange?.(false);
                           if (key === "attach") handlePickFiles();
                           else if (key === "chat_history")
                             onSelectHistoryPicker();
                           else if (key === "my_agents") onSelectAgentsPicker();
                           else if (key === "books") onSelectBookPicker();
                           else if (key === "reading") onSelectReadingPicker?.();
-                          else if (key === "notebooks")
-                            onSelectNotebookPicker();
+                          else if (key === "notebooks") onSelectNotebookPicker();
                           else if (key === "question_bank")
                             onSelectQuestionBankPicker();
                           else if (key === "persona") onSelectPersonaPicker();
                           else if (key === "memory") onSelectMemoryPicker();
                         }}
                       />
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+                    )}
+                  />
+                }
+
               </div>
 
-              <div className="ml-auto flex shrink-0 items-center gap-1.5">
-                {connectedAgents.length > 0 && onSelectAgent ? (
-                  <AgentSelector
-                    agents={connectedAgents}
-                    selected={selectedAgent}
-                    onSelect={onSelectAgent}
-                    budget={subagentBudget}
-                    onBudgetChange={onSubagentBudgetChange}
-                  />
-                ) : null}
-                {knowledgeBases.length > 0 ? (
-                  <KnowledgeSelector
-                    knowledgeBases={knowledgeBases}
-                    selected={selectedKnowledgeBases}
-                    onToggle={onToggleKB}
-                  />
-                ) : null}
-                {onPersonaSelectionChange ? (
-                  <PersonaSelector
-                    value={personaSelection ?? ""}
-                    onChange={onPersonaSelectionChange}
-                    open={personaSelectorOpen}
-                    onOpenChange={onPersonaSelectorOpenChange}
-                  />
-                ) : null}
+              <div className={styles.actions}>
                 <ModelSelector
                   options={llmOptions}
                   activeDefault={activeLLMDefault}
@@ -1147,9 +1263,8 @@ export default memo(function ChatComposer({
                   onChange={onSelectLLM}
                   onRefresh={onRefreshLLMOptions}
                 />
-                {contextBudget ? (
-                  <ContextBudgetChip budget={contextBudget} />
-                ) : null}
+
+                {contextBudget ? <ContextBudgetChip budget={contextBudget} /> : null}
 
                 <button
                   type="button"

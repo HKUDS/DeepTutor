@@ -19,7 +19,6 @@ import {
   writeStoredCodeBlockShowLineNumbers,
   writeStoredCodeBlockTheme,
   writeStoredCodeBlockWrapLongLines,
-  hasStoredResponseLanguage,
   writeStoredLanguage,
   writeStoredResponseLanguage,
 } from "@/context/app-shell-storage";
@@ -29,161 +28,61 @@ import { invalidateLLMOptionsCache } from "@/lib/llm-options";
 import { setModelReasoningEffort } from "@/lib/reasoning-effort";
 import { applyExtensionPayload } from "@/lib/settings-extensions";
 import { setTheme as applyThemePreference } from "@/lib/theme";
+import {
+  detachProfileConnection,
+  modelTestKey,
+  reconcileProviderSave,
+  modelTestFingerprint,
+  type ModelTestState,
+} from "@/lib/model-settings";
+import {
+  reconcileRegistrySave,
+  type RegistryEdit,
+} from "@/lib/provider-registry";
 import { browserStorage } from "@/shared/storage";
 
+import {
+  CONNECTABLE_SERVICES,
+  type ProviderRef,
+  type Discovery,
+  type ServiceName,
+  type ModelCapabilities,
+  type ModelCapabilityKey,
+  type ApiFormat,
+  type CatalogModel,
+  type LlmContextWindowDetection,
+  type CatalogProfile,
+  type CatalogService,
+  type CatalogConnection,
+  type ConnectionTargetService,
+  type ConnectionTarget,
+  type Catalog,
+  type ProviderOption,
+  type CatalogTaskOverride,
+  type TaskKindInfo,
+} from "@/lib/model-catalog-types";
+export { CONNECTABLE_SERVICES } from "@/lib/model-catalog-types";
+export type {
+  ProviderRef,
+  Discovery,
+  ServiceName,
+  ModelCapabilities,
+  ModelCapabilityKey,
+  ApiFormat,
+  CatalogModel,
+  LlmContextWindowDetection,
+  CatalogProfile,
+  CatalogService,
+  CatalogTaskOverride,
+  TaskKindInfo,
+  CatalogConnection,
+  ConnectionTargetService,
+  ConnectionTarget,
+  Catalog,
+  ProviderOption,
+} from "@/lib/model-catalog-types";
+
 // ─── Domain types ─────────────────────────────────────────────────────────
-
-export type ServiceName =
-  | "llm"
-  /** Same shape as `llm`; stands in for it on the calls DeepTutor makes itself. */
-  | "task"
-  | "embedding"
-  | "search"
-  | "tts"
-  | "stt"
-  | "imagegen"
-  | "videogen";
-
-/**
- * What the user declared about a model, overriding the built-in capability
- * tables. A missing key means "let DeepTutor decide".
- */
-export type ModelCapabilities = {
-  tools?: boolean;
-  vision?: boolean;
-  json_output?: boolean;
-  reasoning?: boolean;
-};
-export type ModelCapabilityKey = keyof ModelCapabilities;
-
-export type ApiFormat = "auto" | "openai_chat" | "openai_responses" | "anthropic";
-
-export type CatalogModel = {
-  id: string;
-  name: string;
-  model: string;
-  managed_by?: string;
-  capabilities?: ModelCapabilities;
-  dimension?: string;
-  send_dimensions?: boolean;
-  supported_dimensions?: string;
-  context_window?: string;
-  context_window_source?: string;
-  context_window_detected_at?: string;
-  reasoning_effort?: string;
-  codex_supported_reasoning_levels?: string[];
-  // Voice (TTS): free-form provider/model-specific voice string, e.g.
-  // "alloy", "autumn", "model:voice". `response_format` is the TTS output
-  // codec (mp3/wav/...) and is reused by imagegen ("url"/"b64_json").
-  // `language` is an optional STT hint.
-  voice?: string;
-  response_format?: string;
-  language?: string;
-  // Image generation: pixel size (e.g. "1024x1024"), quality, and style.
-  size?: string;
-  quality?: string;
-  style?: string;
-  // Video generation: aspect ratio (e.g. "16:9"), duration (seconds), resolution.
-  aspect_ratio?: string;
-  duration?: string;
-  resolution?: string;
-};
-
-export type LlmContextWindowDetection = {
-  profileId: string | null;
-  modelId: string | null;
-  contextWindow: number;
-  source: string;
-  detail?: string;
-  detectedAt?: string;
-};
-
-export type CatalogProfile = {
-  id: string;
-  name: string;
-  managed_by?: string;
-  codex_account_binding?: string;
-  read_only?: boolean;
-  binding?: string;
-  provider?: string;
-  base_url: string;
-  api_key: string;
-  api_version: string;
-  extra_headers?: Record<string, string> | string;
-  wire_api?: "auto" | "responses" | "chat_completions";
-  /** The protocol this endpoint speaks; the backend derives wire_api from it. */
-  api_format?: ApiFormat;
-  proxy?: string;
-  max_results?: number;
-  /** Set when this profile's credentials come from a catalog connection. */
-  connection_id?: string;
-  models: CatalogModel[];
-};
-
-export type CatalogService = {
-  active_profile_id: string | null;
-  active_model_id?: string | null;
-  profiles: CatalogProfile[];
-};
-
-/**
- * One vendor credential, typed once and mirrored into every service profile
- * that links to it. The backend does the mirroring on save, so a linked
- * profile still stores its own resolved credentials — linking changes where
- * they were typed, not how they resolve.
- */
-export type CatalogConnection = {
-  id: string;
-  name: string;
-  provider: string;
-  api_key: string;
-  /** Optional endpoint override; blank means each service's own default. */
-  base_url: string;
-  api_version: string;
-  extra_headers?: Record<string, string> | string;
-};
-
-/** Per-service prefills a connection's provider can supply, from the backend. */
-export type ConnectionTargetService = {
-  provider: string;
-  base_url: string;
-  default_model: string;
-  default_dim?: string;
-  default_voice?: string;
-};
-
-export type ConnectionTarget = {
-  provider: string;
-  label: string;
-  default_base_url: string;
-  services: Partial<Record<ServiceName, ConnectionTargetService>>;
-};
-
-/** Services a connection can supply, in the order the UI lists them. */
-export const CONNECTABLE_SERVICES: ServiceName[] = [
-  "llm",
-  "task",
-  "embedding",
-  "tts",
-  "stt",
-  "imagegen",
-  "videogen",
-];
-
-export type Catalog = {
-  version: number;
-  connections?: CatalogConnection[];
-  services: {
-    llm: CatalogService;
-    task: CatalogService;
-    embedding: CatalogService;
-    search: CatalogService;
-    tts: CatalogService;
-    stt: CatalogService;
-    imagegen: CatalogService;
-    videogen: CatalogService;
-  };
-};
 
 export type UiSettings = {
   theme: "light" | "dark" | "glass" | "snow";
@@ -234,29 +133,6 @@ export async function persistUiSettingsPatch(
   });
 }
 
-export type ProviderOption = {
-  value: string;
-  label: string;
-  base_url?: string;
-  default_dim?: string;
-  default_model?: string;
-  default_voice?: string;
-  auth_mode?: "api_key" | "oauth";
-  supports_wire_api_selection?: boolean;
-  // LLM-shaped services: which API formats a profile may pick, the one a new
-  // profile starts on, and the vendor endpoint per format where it differs.
-  api_formats?: string[];
-  default_api_format?: string;
-  base_urls?: Record<string, string>;
-  // Search providers only, from the backend SEARCH_PROVIDERS spec table:
-  // which connection fields the provider consumes, whether missing ones fall
-  // back to a free provider or fail hard, and whether it is still offered.
-  requires_api_key?: boolean;
-  requires_base_url?: boolean;
-  soft_fallback?: boolean;
-  status?: "supported" | "deprecated" | "legacy";
-};
-
 export type SystemStatus = {
   backend: { status: string; timestamp: string };
   llm: { status: string; model?: string; error?: string };
@@ -282,10 +158,7 @@ export type DiagnosticsResult = {
 };
 
 export type ServiceReadiness =
-  | "not_configured"
-  | "untested"
-  | "passed"
-  | "failed";
+  "not_configured" | "untested" | "passed" | "failed";
 
 /**
  * Where the current settings state lives.
@@ -308,6 +181,7 @@ type SettingsPayload = {
   catalog?: Catalog;
   providers?: Record<ServiceName, ProviderOption[]>;
   connection_targets?: ConnectionTarget[];
+  task_kinds?: TaskKindInfo[];
 };
 
 const DIAGNOSTICS_RESULTS_KEY = "deeptutor.settings.diagnosticsResults.v1";
@@ -333,43 +207,43 @@ export type TourStep = {
 export const TOUR_STEPS: TourStep[] = [
   {
     target: "tour-status",
-    route: "/settings",
+    route: "/settings/status",
     titleKey: "settingsTour.status.title",
     descKey: "settingsTour.status.desc",
   },
   {
-    target: "tour-nav-appearance",
-    route: "/settings",
+    target: "tour-page-heading",
+    route: "/settings/appearance",
     titleKey: "settingsTour.appearance.title",
     descKey: "settingsTour.appearance.desc",
   },
   {
-    target: "tour-nav-network",
-    route: "/settings",
+    target: "tour-page-heading",
+    route: "/settings/network",
     titleKey: "settingsTour.network.title",
     descKey: "settingsTour.network.desc",
   },
   {
-    target: "tour-nav-models",
-    route: "/settings",
+    target: "tour-page-heading",
+    route: "/settings/llm",
     titleKey: "settingsTour.models.title",
     descKey: "settingsTour.models.desc",
   },
   {
-    target: "tour-nav-knowledge",
-    route: "/settings",
+    target: "tour-page-heading",
+    route: "/settings/knowledge",
     titleKey: "settingsTour.knowledge.title",
     descKey: "settingsTour.knowledge.desc",
   },
   {
-    target: "tour-nav-chat",
-    route: "/settings",
+    target: "tour-page-heading",
+    route: "/settings/starters",
     titleKey: "settingsTour.chat.title",
     descKey: "settingsTour.chat.desc",
   },
   {
-    target: "tour-nav-memory",
-    route: "/settings",
+    target: "tour-page-heading",
+    route: "/settings/memory",
     titleKey: "settingsTour.memory.title",
     descKey: "settingsTour.memory.desc",
   },
@@ -402,7 +276,11 @@ export function defaultCatalog(): Catalog {
     connections: [],
     services: {
       llm: { active_profile_id: null, active_model_id: null, profiles: [] },
-      task: { active_profile_id: null, active_model_id: null, profiles: [] },
+      task: {
+        active_profile_id: null,
+        active_model_id: null,
+        profiles: [],
+      },
       embedding: {
         active_profile_id: null,
         active_model_id: null,
@@ -629,6 +507,8 @@ export type SettingsContextValue = {
 
   // Connections + task models
   connectionTargets: ConnectionTarget[];
+  /** The calls DeepTutor makes on its own, in the order the backend lists them. */
+  taskKinds: TaskKindInfo[];
   connectionTarget: (provider: string) => ConnectionTarget | null;
   addConnection: (input: {
     provider: string;
@@ -656,10 +536,12 @@ export type SettingsContextValue = {
   // Save / apply
   saving: boolean;
   applying: boolean;
-  saveDraft: () => Promise<void>;
+  saveDraft: () => Promise<boolean>;
   applyCatalog: () => Promise<void>;
   /** Promote one model service without applying unrelated Settings drafts. */
   applyService: (service: ServiceName) => Promise<boolean>;
+  saveRegistry: (edit: RegistryEdit) => Promise<boolean>;
+  saveProvider: (service: ServiceName, profileId: string) => Promise<boolean>;
   discardDraft: () => Promise<void>;
   /** A draft parked on the server, waiting to be applied. */
   storedDraft: StoredDraft | null;
@@ -675,11 +557,15 @@ export type SettingsContextValue = {
   registerExtension: (key: string, ext: SettingsExtension | null) => void;
 
   // Diagnostics
+  modelTests: Record<string, ModelTestState>;
   logs: string;
   testRunning: ServiceName | null;
   diagnosticsResults: Partial<Record<ServiceName, DiagnosticsResult>>;
   embeddingCapabilities: EmbeddingCapabilities | null;
-  runDetailedTest: (service: ServiceName) => Promise<void>;
+  runDetailedTest: (
+    service: ServiceName,
+    selection?: { profileId: string; modelId?: string },
+  ) => Promise<void>;
 
   // Helpers
   embeddingDefaultDim: (binding?: string) => string;
@@ -720,9 +606,6 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     codeBlockTheme,
     codeBlockShowLineNumbers,
     codeBlockWrapLongLines,
-    setCodeBlockTheme: setAppShellCodeBlockTheme,
-    setCodeBlockShowLineNumbers: setAppShellCodeBlockShowLineNumbers,
-    setCodeBlockWrapLongLines: setAppShellCodeBlockWrapLongLines,
   } = useAppShell();
 
   const [status, setStatus] = useState<SystemStatus | null>(null);
@@ -748,6 +631,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [connectionTargets, setConnectionTargets] = useState<
     ConnectionTarget[]
   >([]);
+  const [taskKinds, setTaskKinds] = useState<TaskKindInfo[]>([]);
   const [storedDraft, setStoredDraft] = useState<StoredDraft | null>(null);
   // Signature of the envelope as last written to the draft store.
   const [savedSignature, setSavedSignature] = useState<string | null>(null);
@@ -759,6 +643,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   // a localized placeholder when logs is falsy. Don't seed an English
   // literal here — older code did, then read it back via .startsWith.
   const [logs, setLogs] = useState<string>("");
+  const [modelTests, setModelTests] = useState<Record<string, ModelTestState>>(
+    {},
+  );
+  const testBusyRef = useRef(false);
   const [testRunning, setTestRunning] = useState<ServiceName | null>(null);
   const [diagnosticsResults, setDiagnosticsResults] = useState<
     Partial<Record<ServiceName, DiagnosticsResult>>
@@ -868,6 +756,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       if (payload.providers) setProviders(payload.providers);
       if (payload.connection_targets)
         setConnectionTargets(payload.connection_targets);
+      if (payload.task_kinds) setTaskKinds(payload.task_kinds);
 
       // A draft parked in an earlier session takes over the editable copy —
       // otherwise "Save Draft" would look like it had done nothing at all.
@@ -887,6 +776,20 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
               pendingRef.current.set(key, value);
             }
             syncPendingKeys();
+            setSavedSignature(
+              JSON.stringify({
+                catalog: payload.catalog
+                  ? (stored.draft.catalog ?? payload.catalog)
+                  : null,
+                extensions: JSON.stringify(
+                  Object.fromEntries(
+                    Array.from(pendingRef.current.entries()).sort(([a], [b]) =>
+                      a < b ? -1 : a > b ? 1 : 0,
+                    ),
+                  ),
+                ),
+              }),
+            );
             // Pages fetch their own state in parallel with this and may have
             // already read an empty pending map. Bumping the revision re-runs
             // their load effect now that the draft is actually here.
@@ -945,10 +848,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       loadedOnce.current = true;
       loadSettings();
     }
-    return () => {
-      if (eventSourceRef.current) eventSourceRef.current.close();
-    };
   }, [loadSettings]);
+
+  // A language change recreates loadSettings; it must not close an ongoing test.
+  useEffect(() => () => eventSourceRef.current?.close(), []);
 
   useEffect(() => {
     if (!toast) return;
@@ -968,65 +871,37 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     }
   }, [diagnosticsResults]);
 
-  // ── UI preferences ──────────────────────────────────────────────────────
-  const updateTheme = useCallback(async (next: UiSettings["theme"]) => {
-    setTheme(next);
-    applyThemePreference(next);
-    await persistUiSettingsPatch({ theme: next });
+  // Preferences are drafts too. Browser-wide appearance/language changes only
+  // when Apply succeeds, so Discard has no global side effects to undo.
+  const liveUi = useMemo<UiSettings>(() => ({
+    theme, language, response_language: responseLanguage,
+    code_block_theme: codeBlockTheme,
+    code_block_show_line_numbers: codeBlockShowLineNumbers,
+    code_block_wrap_long_lines: codeBlockWrapLongLines,
+  }), [theme, language, responseLanguage, codeBlockTheme, codeBlockShowLineNumbers, codeBlockWrapLongLines]);
+  const applyUi = useCallback((ui: UiSettings) => {
+    setTheme(ui.theme);
+    setLanguage(ui.language);
+    setResponseLanguage(ui.response_language);
+    applyThemePreference(ui.theme);
+    writeStoredLanguage(ui.language);
+    writeStoredResponseLanguage(ui.response_language);
+    syncLoadedCodeBlockSettingsToAppShell(ui);
   }, []);
-
-  const updateLanguage = useCallback(
-    async (next: UiSettings["language"]) => {
-      setLanguage(next);
-      writeStoredLanguage(next);
-      // `PUT /ui` merges, so an account that never chose a model output
-      // language still has no stored `response_language` — and the server
-      // derives it from `language` on the next read. Mirror that here, or the
-      // page shows a value the browser will not send.
-      if (!hasStoredResponseLanguage()) {
-        setResponseLanguage(next);
-        writeStoredResponseLanguage(next);
-      }
-      await persistUiSettingsPatch({ language: next });
-    },
-    [],
-  );
-
-  const updateResponseLanguage = useCallback(
-    async (next: UiSettings["response_language"]) => {
-      setResponseLanguage(next);
-      writeStoredResponseLanguage(next);
-      await persistUiSettingsPatch({ response_language: next });
-    },
-    [],
-  );
-
-  // Each setter updates the app-shell source of truth (which normalizes,
-  // persists to localStorage, and notifies consumers) then mirrors the change
-  // to the backend.
-  const updateCodeBlockTheme = useCallback(
-    async (next: CodeBlockThemeId) => {
-      setAppShellCodeBlockTheme(next);
-      await persistUiSettingsPatch({ code_block_theme: next });
-    },
-    [setAppShellCodeBlockTheme],
-  );
-
-  const updateCodeBlockShowLineNumbers = useCallback(
-    async (next: boolean) => {
-      setAppShellCodeBlockShowLineNumbers(next);
-      await persistUiSettingsPatch({ code_block_show_line_numbers: next });
-    },
-    [setAppShellCodeBlockShowLineNumbers],
-  );
-
-  const updateCodeBlockWrapLongLines = useCallback(
-    async (next: boolean) => {
-      setAppShellCodeBlockWrapLongLines(next);
-      await persistUiSettingsPatch({ code_block_wrap_long_lines: next });
-    },
-    [setAppShellCodeBlockWrapLongLines],
-  );
+  const stageUi = useCallback(async (patch: Partial<UiSettings>) => {
+    const next = { ...liveUi, ...(pendingRef.current.get("ui") as Partial<UiSettings> | undefined), ...patch };
+    registerExtension("ui", {
+      dirty: JSON.stringify(next) !== JSON.stringify(liveUi),
+      payload: next,
+      save: async () => { await applyExtensionPayload("ui", next); applyUi(next); },
+    });
+  }, [liveUi, registerExtension, applyUi]);
+  const updateTheme = useCallback(async (theme: UiSettings["theme"]) => stageUi({ theme }), [stageUi]);
+  const updateLanguage = useCallback(async (language: UiSettings["language"]) => stageUi({ language }), [stageUi]);
+  const updateResponseLanguage = useCallback(async (response_language: UiSettings["response_language"]) => stageUi({ response_language }), [stageUi]);
+  const updateCodeBlockTheme = useCallback(async (code_block_theme: CodeBlockThemeId) => stageUi({ code_block_theme }), [stageUi]);
+  const updateCodeBlockShowLineNumbers = useCallback(async (code_block_show_line_numbers: boolean) => stageUi({ code_block_show_line_numbers }), [stageUi]);
+  const updateCodeBlockWrapLongLines = useCallback(async (code_block_wrap_long_lines: boolean) => stageUi({ code_block_wrap_long_lines }), [stageUi]);
 
   // ── Catalog mutators ────────────────────────────────────────────────────
   const mutateCatalog = useCallback((mutator: (next: Catalog) => void) => {
@@ -1066,12 +941,13 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           name: providerLabel,
           binding: defaultBinding,
           provider: defaultProvider,
-          base_url: "",
+          base_url: providerOption?.base_url ?? "",
           api_key: "",
           api_version: "",
           extra_headers: service === "search" ? undefined : {},
           wire_api: service === "llm" ? "auto" : undefined,
-          api_format: service === "llm" || service === "task" ? "auto" : undefined,
+          api_format:
+            service === "llm" || service === "task" ? "auto" : undefined,
           proxy: service === "search" ? "" : undefined,
           models: [],
         };
@@ -1093,14 +969,14 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
             ...(service === "tts"
               ? {
                   voice: providerOption?.default_voice ?? "",
-                  response_format: "mp3",
+                  response_format: "",
                 }
               : {}),
           });
-          target.active_model_id = modelId;
+          if (!target.active_profile_id) target.active_model_id = modelId;
         }
         target.profiles.push(profile);
-        target.active_profile_id = profileId;
+        if (!target.active_profile_id) target.active_profile_id = profileId;
       });
     },
     [embeddingDefaultDim, language, mutateCatalog, providers],
@@ -1158,13 +1034,15 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           ...(service === "tts"
             ? {
                 voice: providerOption?.default_voice ?? "",
-                response_format: "mp3",
+                response_format: "",
               }
             : {}),
         });
-        // A model added to the profile in use becomes the one in use; adding
-        // to any other profile must not move what chat resolves.
-        if (profile.id === target.active_profile_id) {
+        // Adding an option must not silently replace an existing selection.
+        if (
+          profile.id === target.active_profile_id &&
+          !target.active_model_id
+        ) {
           target.active_model_id = modelId;
         }
       });
@@ -1193,9 +1071,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       base_url: string;
     }) => {
       const connection: CatalogConnection = {
-        id: `conn-${Date.now().toString(36)}${Math.random()
-          .toString(36)
-          .slice(2, 6)}`,
+        id: `conn-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
         name: input.name.trim() || input.provider,
         provider: input.provider,
         api_key: input.api_key,
@@ -1233,14 +1109,15 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const removeConnection = useCallback(
     (id: string) => {
       mutateCatalog((next) => {
+        for (const service of CONNECTABLE_SERVICES) {
+          for (const profile of next.services[service].profiles) {
+            if (profile.connection_id === id)
+              detachProfileConnection(next, service, profile);
+          }
+        }
         next.connections = (next.connections ?? []).filter(
           (item) => item.id !== id,
         );
-        for (const service of CONNECTABLE_SERVICES) {
-          for (const profile of next.services[service].profiles) {
-            if (profile.connection_id === id) delete profile.connection_id;
-          }
-        }
       });
     },
     [mutateCatalog],
@@ -1252,7 +1129,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         const profile = next.services[service].profiles.find(
           (item) => item.id === profileId,
         );
-        if (profile) delete profile.connection_id;
+        if (profile) detachProfileConnection(next, service, profile);
       });
     },
     [mutateCatalog],
@@ -1282,9 +1159,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       const target = connectionTargets.find(
         (item) => item.provider === connection.provider,
       );
-      const stamp = `${Date.now().toString(36)}${Math.random()
-        .toString(36)
-        .slice(2, 6)}`;
+      const stamp = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
       const base = connection.base_url.trim().replace(/\/+$/, "");
       const plan = requests.flatMap((request, index) => {
         const spec = target?.services[request.service];
@@ -1334,7 +1209,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
                 ...(item.service === "tts"
                   ? {
                       voice: item.spec.default_voice || "",
-                      response_format: "mp3",
+                      response_format: "",
                     }
                   : {}),
               },
@@ -1522,7 +1397,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   );
 
   const applyDetectedContextWindow = useCallback(() => {
-    if (!llmContextDetection) return;
+    if (!llmContextDetection || llmContextDetection.source === "default") return;
     mutateCatalog((next) => {
       const target = next.services.llm;
       if (
@@ -1572,16 +1447,20 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify(draftEnvelope()),
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const payload = (await response.json()) as { draft: StoredDraft | null };
+      const payload = (await response.json()) as {
+        draft: StoredDraft | null;
+      };
       setStoredDraft(payload.draft ?? null);
       setSavedSignature(signature);
       setToast(t("Draft saved — not applied yet"));
+      return true;
     } catch (err) {
       setToast(
         t("Could not save the draft: {{message}}", {
           message: err instanceof Error ? err.message : String(err),
         }),
       );
+      return false;
     } finally {
       setSaving(false);
     }
@@ -1609,7 +1488,11 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         setCatalog(payload.catalog);
         setDraft((current) => {
           const next = cloneCatalog(current);
-          next.services[service] = appliedService;
+          if (
+            JSON.stringify(current.services[service]) ===
+            JSON.stringify(draft.services[service])
+          )
+            next.services[service] = appliedService;
           return next;
         });
         setStoredDraft(payload.draft ?? null);
@@ -1643,27 +1526,212 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     [draft.services, t],
   );
 
+  const saveRegistry = useCallback(
+    async (edit: RegistryEdit): Promise<boolean> => {
+      setApplying(true);
+      try {
+        const response = await apiFetch(
+          apiUrl("/api/settings/apply/registry"),
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(edit),
+          },
+        );
+        const payload = await response.json();
+        if (!response.ok)
+          throw new Error(
+            typeof payload.detail === "string"
+              ? payload.detail
+              : `HTTP ${response.status}`,
+          );
+        setCatalog(payload.catalog);
+        setDraft((current) =>
+          reconcileRegistrySave(current, draft, payload.catalog, edit),
+        );
+        const normalized = reconcileRegistrySave(
+          draft,
+          draft,
+          payload.catalog,
+          edit,
+        );
+        setModelTests((current) => {
+          const next = { ...current };
+          for (const [key, result] of Object.entries(next)) {
+            const [service, profileId, modelId] = JSON.parse(key) as [
+              ServiceName,
+              string,
+              string | null,
+            ];
+            if (
+              result.fingerprint ===
+              modelTestFingerprint(draft, service, profileId, modelId)
+            )
+              next[key] = {
+                ...result,
+                fingerprint: modelTestFingerprint(
+                  normalized,
+                  service,
+                  profileId,
+                  modelId,
+                ),
+              };
+          }
+          return next;
+        });
+        setStoredDraft(payload.draft ?? null);
+        setSavedSignature(null);
+        invalidateLLMOptionsCache();
+        setToast(t("Applied"));
+        return true;
+      } catch (error) {
+        setToast(
+          t("Could not apply: {{message}}", {
+            message: error instanceof Error ? error.message : String(error),
+          }),
+        );
+        return false;
+      } finally {
+        setApplying(false);
+      }
+    },
+    [draft, t],
+  );
+
+  const saveProvider = useCallback(
+    async (service: ServiceName, profileId: string): Promise<boolean> => {
+      const profile = draft.services[service].profiles.find(
+        (item) => item.id === profileId,
+      );
+      if (!profile) return false;
+      const connection = draft.connections?.find(
+        (item) => item.id === profile.connection_id,
+      );
+      const activate =
+        draft.services[service].active_profile_id === profileId &&
+        (service !== "task" ||
+          !["inherit", "reference"].includes(
+            draft.services.task.mode ?? "profiles",
+          ));
+      setApplying(true);
+      try {
+        const response = await apiFetch(
+          apiUrl("/api/settings/apply/provider"),
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              service,
+              profile,
+              connection,
+              activate,
+              active_model_id: draft.services[service].active_model_id,
+            }),
+          },
+        );
+        const payload = await response.json();
+        if (!response.ok)
+          throw new Error(
+            typeof payload.detail === "string"
+              ? payload.detail
+              : `HTTP ${response.status}`,
+          );
+        const live = payload.catalog as Catalog;
+        setCatalog(live);
+        setDraft((current) =>
+          reconcileProviderSave(current, draft, live, service, profileId),
+        );
+        // Saving masks credentials and normalizes fields. Keep tests valid for
+        // that exact submission; subsequent user edits still invalidate them.
+        const normalized = reconcileProviderSave(
+          draft,
+          draft,
+          live,
+          service,
+          profileId,
+        );
+        setModelTests((current) => {
+          const next = { ...current };
+          const modelIds =
+            service === "search"
+              ? [undefined]
+              : profile.models.map((model) => model.id);
+          for (const modelId of modelIds) {
+            const key = modelTestKey(service, profileId, modelId);
+            const result = next[key];
+            if (
+              result?.fingerprint ===
+              modelTestFingerprint(draft, service, profileId, modelId)
+            )
+              next[key] = {
+                ...result,
+                fingerprint: modelTestFingerprint(
+                  normalized,
+                  service,
+                  profileId,
+                  modelId,
+                ),
+              };
+          }
+          return next;
+        });
+        setStoredDraft(payload.draft ?? null);
+        setSavedSignature(null);
+        invalidateLLMOptionsCache();
+        setToast(t("Provider saved"));
+        return true;
+      } catch (error) {
+        setToast(
+          t("Could not apply: {{message}}", {
+            message: error instanceof Error ? error.message : String(error),
+          }),
+        );
+        return false;
+      } finally {
+        setApplying(false);
+      }
+    },
+    [draft, t],
+  );
+
   /** Apply — move everything into the live files and clear the draft. */
   const applyCatalog = useCallback(async () => {
     setApplying(true);
     try {
+      if (catalogEditable) {
+        for (const [service, bucket] of Object.entries(draft.services)) {
+          for (const profile of bucket.profiles) {
+            for (const model of profile.models) {
+              const original = catalog.services[service as ServiceName].profiles
+                .find((item) => item.id === profile.id)?.models.find((item) => item.id === model.id);
+              if (JSON.stringify(original) !== JSON.stringify(model) && !model.model.trim()) {
+                throw new Error(t("Enter a model ID before applying changes."));
+              }
+            }
+          }
+        }
+      }
+
       // Park the current state server-side first so Apply promotes exactly
       // what is on screen, and so credentials typed into a draft never have
       // to round-trip through the browser as placeholders.
-      await apiFetch(apiUrl("/api/settings/draft"), {
+      const draftResponse = await apiFetch(apiUrl("/api/settings/draft"), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(draftEnvelope()),
       });
 
+      if (!draftResponse.ok) throw new Error(`HTTP ${draftResponse.status}`);
+
       // Pages still on screen save themselves — they refresh their own local
       // state and surface their own errors. Everything else pending is
       // written straight to the endpoint that owns it.
       const mounted = extensionsRef.current;
-      for (const [key, payload] of pendingRef.current.entries()) {
+      for (const [key, payload] of Array.from(pendingRef.current.entries())) {
         const ext = mounted.get(key);
         if (ext?.dirty) await ext.save();
         else await applyExtensionPayload(key, payload);
+        if (key === "ui") applyUi(payload as UiSettings);
       }
 
       if (catalogEditable) {
@@ -1671,18 +1739,30 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
         });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const payload = await response.json();
+        if (!payload.catalog)
+          throw new Error("Missing catalog in apply response");
         setCatalog(payload.catalog);
         setDraft(cloneCatalog(payload.catalog));
         invalidateLLMOptionsCache();
-        const statusResponse = await apiFetch(apiUrl("/api/system/status"));
-        setStatus((await statusResponse.json()) as SystemStatus);
+        try {
+          const statusResponse = await apiFetch(apiUrl("/api/system/status"));
+          if (statusResponse.ok)
+            setStatus((await statusResponse.json()) as SystemStatus);
+        } catch {
+          /* Applying succeeded; diagnostics can be retried independently. */
+        }
       } else {
-        await apiFetch(apiUrl("/api/settings/draft"), { method: "DELETE" });
+        const response = await apiFetch(apiUrl("/api/settings/draft"), {
+          method: "DELETE",
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
       }
       clearPending();
       setStoredDraft(null);
       setSavedSignature(null);
+      setDraftRevision((value) => value + 1);
       setToast(t("Applied"));
     } catch (err) {
       setToast(
@@ -1693,13 +1773,16 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     } finally {
       setApplying(false);
     }
-  }, [catalogEditable, clearPending, draftEnvelope, t]);
+  }, [catalog, draft, catalogEditable, clearPending, draftEnvelope, applyUi, t]);
 
   /** Throw the draft away and go back to what is actually live. */
   const discardDraft = useCallback(async () => {
     setApplying(true);
     try {
-      await apiFetch(apiUrl("/api/settings/draft"), { method: "DELETE" });
+      const response = await apiFetch(apiUrl("/api/settings/draft"), {
+        method: "DELETE",
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       clearPending();
       setStoredDraft(null);
       setSavedSignature(null);
@@ -1707,6 +1790,12 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       setToast(t("Draft discarded"));
       // Pages holding their own copy of a discarded payload have to re-read.
       setDraftRevision((value) => value + 1);
+    } catch (err) {
+      setToast(
+        t("Could not discard the draft: {{message}}", {
+          message: err instanceof Error ? err.message : String(err),
+        }),
+      );
     } finally {
       setApplying(false);
     }
@@ -1738,147 +1827,155 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   }, [llmActiveProfileId, llmActiveModelId]);
 
   const runDetailedTest = useCallback(
-    async (service: ServiceName) => {
-      if (!catalogEditable) return;
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
-      }
-      setLogs(t("Preparing {{service}} diagnostics...", { service }) + "\n");
-      setTestRunning(service);
-      const target = draft.services[service];
-      const runProfileId = target.active_profile_id ?? null;
+    async (
+      service: ServiceName,
+      selection?: { profileId: string; modelId?: string },
+    ) => {
+      if (!catalogEditable || testBusyRef.current) return;
+      const diagnosticCatalog = cloneCatalog(draft);
+      const target = diagnosticCatalog.services[service];
+      const runProfileId = selection?.profileId ?? target.active_profile_id;
       const runModelId =
-        service === "search" ? null : (target.active_model_id ?? null);
-      setDiagnosticsResults((current) => {
-        const next = { ...current };
-        delete next[service];
-        return next;
-      });
-      if (service === "llm") setLlmContextDetection(null);
-      if (service === "embedding") setEmbeddingCapabilities(null);
+        service === "search"
+          ? null
+          : (selection?.modelId ?? target.active_model_id);
+      const profile = target.profiles.find((item) => item.id === runProfileId);
+      if (
+        !profile ||
+        (service !== "search" &&
+          !profile.models.some(
+            (item) => item.id === runModelId && item.model.trim(),
+          ))
+      )
+        return;
+      if (service === "task") target.mode = "profiles";
+      target.active_profile_id = runProfileId;
+      if (service !== "search") target.active_model_id = runModelId;
+      const key = modelTestKey(service, profile.id, runModelId);
+      const fingerprint = modelTestFingerprint(
+        draft,
+        service,
+        profile.id,
+        runModelId,
+      );
+      let finished = false;
+      testBusyRef.current = true;
+      setTestRunning(service);
+      setLogs("");
+      setModelTests((current) => ({
+        ...current,
+        [key]: {
+          state: "running",
+          fingerprint,
+          logs: "",
+          message: t("Testing model…"),
+        },
+      }));
+      const update = (patch: Partial<ModelTestState>) =>
+        setModelTests((current) => ({
+          ...current,
+          [key]: { ...current[key], ...patch },
+        }));
+      const finish = (state: "success" | "failed", message: string) => {
+        if (finished) return;
+        finished = true;
+        eventSourceRef.current?.close();
+        eventSourceRef.current = null;
+        testBusyRef.current = false;
+        setTestRunning(null);
+        update({ state, message });
+        setDiagnosticsResults((current) => ({
+          ...current,
+          [service]: {
+            state,
+            message,
+            profileId: profile.id,
+            modelId: runModelId ?? null,
+          },
+        }));
+      };
       try {
         const response = await apiFetch(
           apiUrl(`/api/settings/tests/${service}/start`),
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ catalog: draft }),
+            body: JSON.stringify({ catalog: diagnosticCatalog }),
           },
         );
-        const payload = (await response.json()) as {
-          run_id?: string;
-          detail?: string;
-        };
-        if (!response.ok || !payload.run_id) {
-          throw new Error(payload.detail || t("Could not start diagnostics."));
-        }
+        const payload = await response.json();
+        if (!response.ok || !payload.run_id)
+          throw new Error(
+            typeof payload.detail === "string"
+              ? payload.detail
+              : t("Could not start diagnostics."),
+          );
         const source = new EventSource(
           apiUrl(`/api/settings/tests/${service}/${payload.run_id}/events`),
           { withCredentials: true },
         );
         eventSourceRef.current = source;
         source.onmessage = (event) => {
-          const entry = JSON.parse(event.data) as {
-            type: string;
-            message: string;
-            catalog?: Catalog;
-            detected_dim?: number;
-            default_dim?: number;
-            supported_dimensions?: number[];
-            supports_variable_dimensions?: boolean;
-            model_known?: boolean;
-            active_dim?: number;
-            active_dim_source?: string;
-            context_window?: number;
-            source?: string;
-            detail?: string;
-            detected_at?: string;
-          };
-          setLogs((current) => `${current}[${entry.type}] ${entry.message}\n`);
-          if (service === "llm" && entry.type === "context_window") {
-            const detected =
-              typeof entry.context_window === "number"
-                ? entry.context_window
-                : Number.parseInt(String(entry.context_window ?? ""), 10);
-            if (Number.isFinite(detected) && detected > 0) {
-              setLlmContextDetection({
-                profileId: runProfileId,
-                modelId: runModelId,
-                contextWindow: detected,
+          if (finished) return;
+          try {
+            const entry = JSON.parse(event.data);
+            const line = `[${entry.type}] ${entry.message || ""}\n`;
+            setLogs((current) => current + line);
+            setModelTests((current) => ({
+              ...current,
+              [key]: {
+                ...current[key],
+                logs: current[key].logs + line,
+                message: entry.message || current[key].message,
+              },
+            }));
+            if (entry.type === "response" && entry.snippet)
+              update({ response: entry.snippet });
+            if (
+              entry.type === "context_window" &&
+              Number(entry.context_window) > 0
+            ) {
+              const context = {
+                value: Number(entry.context_window),
                 source: entry.source || "metadata",
                 detail: entry.detail,
                 detectedAt: entry.detected_at,
-              });
+              };
+              update({ context });
+              if (service === "llm")
+                setLlmContextDetection({
+                  profileId: profile.id,
+                  modelId: runModelId ?? null,
+                  contextWindow: context.value,
+                  source: context.source,
+                  detail: context.detail,
+                  detectedAt: context.detectedAt,
+                });
             }
-          }
-          if (entry.type === "capabilities") {
-            setEmbeddingCapabilities({
-              detected_dim: entry.detected_dim,
-              default_dim: entry.default_dim,
-              supported_dimensions: entry.supported_dimensions,
-              supports_variable_dimensions: entry.supports_variable_dimensions,
-              model_known: entry.model_known,
-              active_dim: entry.active_dim,
-              active_dim_source: entry.active_dim_source,
-            });
-          }
-          if (entry.catalog) {
-            setCatalog(entry.catalog);
-            setDraft(cloneCatalog(entry.catalog));
-          }
-          if (entry.type === "completed" || entry.type === "failed") {
-            source.close();
-            eventSourceRef.current = null;
-            setTestRunning(null);
-            setDiagnosticsResults((current) => ({
-              ...current,
-              [service]: {
-                state: entry.type === "completed" ? "success" : "failed",
-                message: entry.message,
-                profileId: runProfileId,
-                modelId: runModelId,
-              },
-            }));
-            setToast(entry.message);
+            if (entry.type === "capabilities") {
+              update({
+                dimension: entry.detected_dim,
+                supportedDimensions: entry.supported_dimensions,
+              });
+              setEmbeddingCapabilities(entry);
+            }
+            // A probe never replaces the catalog or the user's in-progress edits.
+            // Metadata is offered to the addressed model for explicit adoption.
+            if (entry.type === "completed") finish("success", entry.message);
+            if (entry.type === "failed") finish("failed", entry.message);
+          } catch {
+            finish("failed", t("Could not read the model test result."));
           }
         };
-        source.onerror = () => {
-          source.close();
-          eventSourceRef.current = null;
-          setTestRunning(null);
-          setLogs(
-            (current) =>
-              `${current}[failed] ${t("Diagnostics stream disconnected.")}\n`,
-          );
-          setDiagnosticsResults((current) => ({
-            ...current,
-            [service]: {
-              state: "failed",
-              message: t("Diagnostics stream disconnected."),
-              profileId: runProfileId,
-              modelId: runModelId,
-            },
-          }));
-          setToast(t("Diagnostics stream disconnected"));
-        };
+        source.onerror = () =>
+          finish("failed", t("Diagnostics stream disconnected."));
       } catch (error) {
-        const message =
+        finish(
+          "failed",
           error instanceof Error
             ? error.message
-            : t("Could not start diagnostics.");
-        setLogs((current) => `${current}[failed] ${message}\n`);
-        setDiagnosticsResults((current) => ({
-          ...current,
-          [service]: {
-            state: "failed",
-            message,
-            profileId: runProfileId,
-            modelId: runModelId,
-          },
-        }));
-        setToast(message);
-        setTestRunning(null);
+            : t("Could not start diagnostics."),
+        );
       }
     },
     [catalogEditable, draft, t],
@@ -1947,7 +2044,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const envelopeSignatureRef = useRef(envelopeSignature);
   envelopeSignatureRef.current = envelopeSignature;
 
-  const draftState: DraftState = !differsFromLive
+  const changedStoredDraft = storedDraft !== null && savedSignature !== null && envelopeSignature !== savedSignature;
+  const draftState: DraftState = !differsFromLive && !changedStoredDraft
     ? "clean"
     : envelopeSignature === savedSignature
       ? "saved"
@@ -1971,6 +2069,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   const settingsLoading = catalogEditable === null;
 
+  const editedUi = useMemo(() => ({ ...liveUi, ...(JSON.parse(pendingSignature).ui as Partial<UiSettings> | undefined) }), [liveUi, pendingSignature]);
   const value = useMemo<SettingsContextValue>(
     () => ({
       catalog,
@@ -1982,12 +2081,12 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       settingsError,
       reloadSettings: loadSettings,
       hasUnsavedChanges,
-      theme,
-      language,
-      responseLanguage,
-      codeBlockTheme,
-      codeBlockShowLineNumbers,
-      codeBlockWrapLongLines,
+      theme: editedUi.theme,
+      language: editedUi.language,
+      responseLanguage: editedUi.response_language,
+      codeBlockTheme: editedUi.code_block_theme,
+      codeBlockShowLineNumbers: editedUi.code_block_show_line_numbers,
+      codeBlockWrapLongLines: editedUi.code_block_wrap_long_lines,
       toast,
       setToast,
       updateTheme,
@@ -2008,6 +2107,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       updateReasoningEffort,
       updateModelCapability,
       connectionTargets,
+      taskKinds,
       connectionTarget,
       addConnection,
       updateConnectionField,
@@ -2020,6 +2120,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       applying,
       saveDraft,
       applyCatalog,
+      saveProvider,
+      saveRegistry,
       applyService,
       discardDraft,
       storedDraft,
@@ -2029,6 +2131,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       registerExtension,
       logs,
       testRunning,
+      modelTests,
       diagnosticsResults,
       embeddingCapabilities,
       runDetailedTest,
@@ -2042,11 +2145,14 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       setActiveSection,
     }),
     [
+      editedUi,
       activeSection,
       addModel,
       addProfile,
       applyDetectedContextWindow,
       applyCatalog,
+      saveProvider,
+      saveRegistry,
       applyService,
       applying,
       draftState,
@@ -2056,20 +2162,17 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       discardDraft,
       catalog,
       catalogEditable,
-      codeBlockShowLineNumbers,
-      codeBlockTheme,
-      codeBlockWrapLongLines,
+      modelTests,
       diagnosticsResults,
       draft,
       embeddingCapabilities,
       embeddingDefaultDim,
       hasUnsavedChanges,
-      language,
-      responseLanguage,
       llmContextDetection,
       logs,
       mutateCatalog,
       connectionTargets,
+      taskKinds,
       connectionTarget,
       addConnection,
       updateConnectionField,
@@ -2093,7 +2196,6 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       goBackTour,
       status,
       testRunning,
-      theme,
       toast,
       tourStepIndex,
       updateCodeBlockShowLineNumbers,
