@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import builtins
+import os
 from pathlib import Path
+import signal
+import subprocess
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -744,3 +748,268 @@ def test_ready_timeout_failure_names_the_override(monkeypatch) -> None:
         )
 
     assert launcher.BACKEND_READY_TIMEOUT_ENV in str(excinfo.value)
+
+
+CREATE_NO_WINDOW = 0x08000000
+CREATE_NEW_PROCESS_GROUP = 0x200
+
+
+def _windows_creation_constants(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(launcher.os, "name", "nt")
+    monkeypatch.setattr(
+        launcher.subprocess,
+        "CREATE_NEW_PROCESS_GROUP",
+        CREATE_NEW_PROCESS_GROUP,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        launcher.subprocess,
+        "CREATE_NO_WINDOW",
+        CREATE_NO_WINDOW,
+        raising=False,
+    )
+
+
+class _SilentThread:
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        pass
+
+    def start(self) -> None:
+        pass
+
+
+def test_no_window_creationflags_is_zero_on_posix(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(launcher.os, "name", "posix")
+    assert launcher._no_window_creationflags() == 0
+
+
+def test_no_window_creationflags_uses_create_no_window_on_windows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _windows_creation_constants(monkeypatch)
+    assert launcher._no_window_creationflags() == CREATE_NO_WINDOW
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX creationflags contract")
+def test_posix_accepts_zero_creationflags_from_helper() -> None:
+    flags = launcher._no_window_creationflags()
+    assert flags == 0
+    completed = subprocess.run([sys.executable, "-c", "pass"], check=True, creationflags=flags)
+    assert completed.returncode == 0
+    with pytest.raises(ValueError, match="creationflags"):
+        subprocess.run([sys.executable, "-c", "pass"], creationflags=1)
+
+
+def test_spawn_hides_windows_console_for_backend_and_frontend(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class _Process:
+        pid = 4242
+        stdout = iter(())
+
+    def fake_popen(command, **kwargs):
+        captured.update(kwargs)
+        return _Process()
+
+    _windows_creation_constants(monkeypatch)
+    monkeypatch.setattr(launcher.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(launcher.threading, "Thread", _SilentThread)
+
+    proc = launcher._spawn(["python"], cwd=tmp_path, env={}, name="backend")
+
+    assert proc.process.pid == 4242
+    assert captured["creationflags"] == CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
+    assert "start_new_session" not in captured
+
+
+def test_spawn_keeps_posix_start_new_session(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class _Process:
+        pid = 4242
+        stdout = iter(())
+
+    def fake_popen(command, **kwargs):
+        captured.update(kwargs)
+        return _Process()
+
+    monkeypatch.setattr(launcher.os, "name", "posix")
+    monkeypatch.setattr(launcher.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(launcher.threading, "Thread", _SilentThread)
+    monkeypatch.setattr(launcher, "_get_pgid", lambda _pid: None)
+
+    launcher._spawn(["python"], cwd=tmp_path, env={}, name="frontend")
+
+    assert captured.get("start_new_session") is True
+    assert "creationflags" not in captured
+
+
+@pytest.mark.skipif(os.name == "nt", reason="live POSIX spawn path")
+def test_spawn_on_linux_does_not_pass_creationflags(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+    real_popen = launcher.subprocess.Popen
+
+    def wrapping_popen(*args, **kwargs):
+        captured.update(kwargs)
+        return real_popen(*args, **kwargs)
+
+    monkeypatch.setattr(launcher.subprocess, "Popen", wrapping_popen)
+    proc = launcher._spawn(
+        [sys.executable, "-c", "pass"],
+        cwd=tmp_path,
+        env=os.environ.copy(),
+        name="probe",
+    )
+    assert proc.process.wait(timeout=5) == 0
+    assert captured.get("start_new_session") is True
+    assert "creationflags" not in captured
+
+
+def test_send_tree_signal_hides_windows_taskkill_console(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict[str, object]] = []
+
+    def fake_run(*_args, **kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(returncode=0)
+
+    _windows_creation_constants(monkeypatch)
+    monkeypatch.setattr(launcher.subprocess, "run", fake_run)
+
+    launcher._send_tree_signal(14168, None, signal.SIGTERM)
+
+    assert calls[0]["creationflags"] == CREATE_NO_WINDOW
+    assert calls[0]["stdout"] is subprocess.DEVNULL
+    assert calls[0]["stderr"] is subprocess.DEVNULL
+
+
+def test_send_tree_signal_does_not_spawn_taskkill_on_posix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    killed: list[tuple[int, object]] = []
+    monkeypatch.setattr(launcher.os, "name", "posix")
+    monkeypatch.setattr(launcher.os, "killpg", lambda pgid, sig: killed.append((pgid, sig)))
+    monkeypatch.setattr(
+        launcher.subprocess,
+        "run",
+        lambda *_args, **_kwargs: pytest.fail("taskkill must not run on POSIX"),
+    )
+
+    launcher._send_tree_signal(11, 22, signal.SIGTERM)
+
+    assert killed == [(22, signal.SIGTERM)]
+
+
+def test_windows_port_and_pid_probes_hide_console_tools(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[list[str], int]] = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append((list(cmd), kwargs.get("creationflags", 0)))
+        if cmd[0] == "netstat":
+            return SimpleNamespace(
+                stdout="  TCP    127.0.0.1:8001    0.0.0.0:0    LISTENING    4242\n",
+                returncode=0,
+            )
+        return SimpleNamespace(stdout='"python.exe","4242","Services","0","12 K"\n', returncode=0)
+
+    _windows_creation_constants(monkeypatch)
+    monkeypatch.setattr(launcher.shutil, "which", lambda name: name)
+    monkeypatch.setattr(launcher.subprocess, "run", fake_run)
+
+    listeners = launcher._port_listeners_windows(8001)
+
+    assert listeners == [(4242, "python.exe")]
+    assert calls == [
+        (["netstat", "-ano", "-p", "tcp"], CREATE_NO_WINDOW),
+        (["tasklist", "/FI", "PID eq 4242", "/FO", "CSV", "/NH"], CREATE_NO_WINDOW),
+    ]
+
+
+def test_ensure_web_dependencies_hides_windows_npm_console(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "web"
+    source.mkdir()
+    (source / "package-lock.json").write_text("{}", encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    def fake_run(cmd, cwd, **kwargs):
+        captured["cmd"] = list(cmd)
+        captured["kwargs"] = kwargs
+        (source / "node_modules").mkdir()
+        return _CompletedProcess(0)
+
+    _windows_creation_constants(monkeypatch)
+    monkeypatch.setattr(launcher.subprocess, "run", fake_run)
+
+    launcher._ensure_web_dependencies(source, "npm")
+
+    assert captured["cmd"] == ["npm", "ci"]
+    assert captured["kwargs"]["creationflags"] == CREATE_NO_WINDOW
+
+
+def test_ensure_web_dependencies_passes_zero_creationflags_on_posix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "web"
+    source.mkdir()
+    captured: dict[str, object] = {}
+
+    def fake_run(cmd, cwd, **kwargs):
+        captured["kwargs"] = kwargs
+        return _CompletedProcess(0)
+
+    monkeypatch.setattr(launcher.os, "name", "posix")
+    monkeypatch.setattr(launcher.subprocess, "run", fake_run)
+
+    launcher._ensure_web_dependencies(source, "npm")
+
+    assert captured["kwargs"]["creationflags"] == 0
+
+
+def test_source_production_build_hides_windows_npm_console(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "web"
+    source.mkdir()
+    (source / "package.json").write_text('{"scripts":{"build":"next build"}}', encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    def fake_run(command, cwd, env, **kwargs):
+        captured["cmd"] = list(command)
+        captured["kwargs"] = kwargs
+        dist = source / launcher.SOURCE_PRODUCTION_DIST_DIR
+        (dist / "standalone").mkdir(parents=True, exist_ok=True)
+        (dist / "BUILD_ID").write_text("build-1", encoding="utf-8")
+        (dist / "standalone" / "server.js").write_text("", encoding="utf-8")
+        return _CompletedProcess(0)
+
+    _windows_creation_constants(monkeypatch)
+    monkeypatch.setattr(launcher.subprocess, "run", fake_run)
+    monkeypatch.setattr(launcher, "_source_build_fingerprint", lambda *_a, **_k: "fp")
+    monkeypatch.setattr(launcher, "_prepare_source_standalone", lambda path: path)
+
+    launcher._ensure_source_production_build(
+        source,
+        "npm",
+        api_base="http://localhost:8001",
+        auth_enabled=False,
+    )
+
+    assert captured["cmd"] == ["npm", "run", "build"]
+    assert captured["kwargs"]["creationflags"] == CREATE_NO_WINDOW
