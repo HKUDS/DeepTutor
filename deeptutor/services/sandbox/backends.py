@@ -5,7 +5,8 @@ Sandbox backends: one class per isolation mechanism.
   container over HTTP (SYSTEM isolation). The deployment answer for Docker:
   the main app stays least-privileged and never executes untrusted shell.
 * :class:`BwrapBackend` — wraps the command in ``bwrap`` mount namespaces on
-  Linux bare-metal (SYSTEM isolation).
+  Linux bare-metal (SYSTEM isolation; degrades to APPLICATION after sticky
+  ``--share-net`` when the kernel denies loopback setup).
 * :class:`RestrictedSubprocessBackend` — a plain subprocess with cleaned env
   and path-confined cwd (APPLICATION isolation). Degraded fallback for local
   dev (e.g. macOS); admin-opt-in only because it does not OS-isolate.
@@ -155,9 +156,13 @@ def _is_bwrap_loopback_denied(result: ExecResult) -> bool:
 
 
 class BwrapBackend(SandboxBackend):
-    """Bubblewrap mount-namespace isolation (Linux only)."""
+    """Bubblewrap mount-namespace isolation (Linux only).
 
-    level = IsolationLevel.SYSTEM
+    Reports :attr:`IsolationLevel.SYSTEM` while network-isolated. After a
+    sticky ``--share-net`` degrade (loopback denial on modern kernels),
+    :attr:`level` becomes :attr:`IsolationLevel.APPLICATION` so exec-policy
+    gates treat it as admin-opt-in rather than OS-network-isolated.
+    """
 
     _RO_SYSTEM_DIRS = ("/usr", "/usr/local", "/bin", "/lib", "/lib64", "/etc", "/sbin")
     _DEFAULT_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -185,6 +190,13 @@ class BwrapBackend(SandboxBackend):
             if self._venv_path and uses_external_runtime
             else ()
         )
+
+    @property
+    def level(self) -> IsolationLevel:  # type: ignore[override]
+        """SYSTEM when network-isolated; APPLICATION after --share-net degrade."""
+        if self._share_net:
+            return IsolationLevel.APPLICATION
+        return IsolationLevel.SYSTEM
 
     @classmethod
     def _detect_python_runtime_mounts(cls) -> tuple[tuple[Path, Path], ...]:

@@ -331,6 +331,14 @@ async def test_service_runs_with_subprocess() -> None:
 _LOOPBACK_STDERR = "bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted\n"
 
 
+def test_bwrap_level_degrades_to_application_when_share_net() -> None:
+    """``level`` must track sticky --share-net so pipeline exec-policy sees degrade."""
+    backend = BwrapBackend()
+    assert backend.level is IsolationLevel.SYSTEM
+    backend._share_net = True
+    assert backend.level is IsolationLevel.APPLICATION
+
+
 @pytest.mark.asyncio
 async def test_bwrap_health_treats_loopback_denial_as_unhealthy(
     monkeypatch: pytest.MonkeyPatch,
@@ -357,6 +365,7 @@ async def test_bwrap_health_treats_loopback_denial_as_unhealthy(
 async def test_bwrap_retries_with_shared_net_after_loopback_denial() -> None:
     """Ubuntu 24.04 can deny loopback setup; keep mount isolation via --share-net."""
     backend = BwrapBackend()
+    assert backend.level is IsolationLevel.SYSTEM
     calls: list[list[str]] = []
 
     async def fake_run(argv: list[str], _request: ExecRequest) -> ExecResult:
@@ -374,11 +383,14 @@ async def test_bwrap_retries_with_shared_net_after_loopback_denial() -> None:
     assert len(calls) == 2
     assert "--unshare-all" in calls[0] and "--share-net" not in calls[0]
     assert "--share-net" in calls[1]
+    # Network isolation dropped → report APPLICATION so exec-policy gates see it.
+    assert backend.level is IsolationLevel.APPLICATION
     # Later execs must not pay the failed loopback spawn again.
     second = await backend.exec(ExecRequest(command="true"))
     assert second.exit_code == 0
     assert len(calls) == 3
     assert "--share-net" in calls[2]
+    assert backend.level is IsolationLevel.APPLICATION
 
 
 @pytest.mark.asyncio
