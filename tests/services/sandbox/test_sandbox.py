@@ -12,6 +12,7 @@ import pytest
 from deeptutor.services.sandbox.backends import (
     BwrapBackend,
     RestrictedSubprocessBackend,
+    RunnerSidecarBackend,
     _decode_process_output,
 )
 from deeptutor.services.sandbox.config import SandboxSettings, build_backend
@@ -325,6 +326,108 @@ async def test_service_runs_with_subprocess() -> None:
     svc._backend = RestrictedSubprocessBackend()
     result = await svc.run(ExecRequest(command="echo sandboxed"), user_id="u1")
     assert "sandboxed" in result.stdout
+
+
+_LOOPBACK_STDERR = "bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted\n"
+
+
+@pytest.mark.asyncio
+async def test_bwrap_health_treats_loopback_denial_as_unhealthy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A bwrap probe that exits 1 with empty ``error`` is not healthy (#1516)."""
+    backend = BwrapBackend()
+    monkeypatch.setattr(
+        "deeptutor.services.sandbox.backends.shutil.which",
+        lambda _name: "/usr/bin/bwrap",
+    )
+
+    async def fake_exec(_request: ExecRequest) -> ExecResult:
+        return ExecResult(stderr=_LOOPBACK_STDERR, exit_code=1)
+
+    monkeypatch.setattr(backend, "exec", fake_exec)
+
+    healthy, detail = await backend.health()
+    assert healthy is False
+    assert "RTM_NEWADDR" in detail
+    assert "Operation not permitted" in detail
+
+
+@pytest.mark.asyncio
+async def test_bwrap_retries_with_shared_net_after_loopback_denial() -> None:
+    """Ubuntu 24.04 can deny loopback setup; keep mount isolation via --share-net."""
+    backend = BwrapBackend()
+    calls: list[list[str]] = []
+
+    async def fake_run(argv: list[str], _request: ExecRequest) -> ExecResult:
+        calls.append(list(argv))
+        if "--share-net" not in argv:
+            return ExecResult(stderr=_LOOPBACK_STDERR, exit_code=1)
+        return ExecResult(stdout="ok\n", exit_code=0)
+
+    backend._run_bwrap = fake_run  # type: ignore[method-assign]
+
+    result = await backend.exec(ExecRequest(command="true"))
+
+    assert result.exit_code == 0
+    assert result.stdout.strip() == "ok"
+    assert len(calls) == 2
+    assert "--unshare-all" in calls[0] and "--share-net" not in calls[0]
+    assert "--share-net" in calls[1]
+    # Later execs must not pay the failed loopback spawn again.
+    second = await backend.exec(ExecRequest(command="true"))
+    assert second.exit_code == 0
+    assert len(calls) == 3
+    assert "--share-net" in calls[2]
+
+
+@pytest.mark.asyncio
+async def test_service_falls_back_to_subprocess_when_bwrap_unhealthy() -> None:
+    """``sandbox_allow_subprocess`` must recover partner/file exec when bwrap cannot run."""
+    svc = SandboxService(SandboxSettings(allow_subprocess=True))
+
+    class UnhealthyBwrap(BwrapBackend):
+        async def health(self) -> tuple[bool, str]:
+            return False, _LOOPBACK_STDERR.strip()
+
+    svc._backend = UnhealthyBwrap()
+
+    assert await svc.isolation_level() is IsolationLevel.APPLICATION
+    assert isinstance(svc._backend, RestrictedSubprocessBackend)
+    result = await svc.run(ExecRequest(command="echo recovered"), user_id="u1")
+    assert "recovered" in result.stdout
+
+
+@pytest.mark.asyncio
+async def test_service_surfaces_bwrap_failure_when_subprocess_disallowed() -> None:
+    svc = SandboxService(SandboxSettings(allow_subprocess=False))
+
+    class UnhealthyBwrap(BwrapBackend):
+        async def health(self) -> tuple[bool, str]:
+            return False, _LOOPBACK_STDERR.strip()
+
+    svc._backend = UnhealthyBwrap()
+
+    assert await svc.isolation_level() is IsolationLevel.OFF
+    assert isinstance(svc._backend, UnhealthyBwrap)
+    result = await svc.run(ExecRequest(command="echo hi"), user_id="u1")
+    assert not result.ok
+    assert "RTM_NEWADDR" in result.error
+
+
+@pytest.mark.asyncio
+async def test_service_does_not_fallback_from_unhealthy_runner() -> None:
+    """A down runner sidecar must not start executing untrusted shell in-process."""
+    svc = SandboxService(SandboxSettings(allow_subprocess=True))
+
+    class UnhealthyRunner(RunnerSidecarBackend):
+        async def health(self) -> tuple[bool, str]:
+            return False, "runner unreachable"
+
+    svc._backend = UnhealthyRunner("http://sandbox-runner:8900")
+
+    assert await svc.isolation_level() is IsolationLevel.OFF
+    assert isinstance(svc._backend, UnhealthyRunner)
 
 
 @pytest.mark.asyncio
