@@ -6,10 +6,11 @@
  *
  * A mastery session is a chat session, so the learner gets the whole
  * composer: attachments, `@`-space references, the knowledge picker, the
- * model selector, dictation. Two of those controls are session-scoped
- * rather than per-turn — the knowledge bases in play and the pinned model —
- * so both are driven straight off the session state instead of a second
- * copy inside the composer.
+ * model selector, dictation. Four of those controls are session-scoped
+ * rather than per-turn — the knowledge bases in play, the pinned model, the
+ * response style, and which skills / MCP servers the turn may use — so all
+ * four are driven straight off the session state instead of a second copy
+ * inside the composer.
  *
  * What it does NOT get is the action menu. This screen runs one loop — the
  * tutor — and it used to open on "Chat" instead, which reached the same tutor
@@ -26,6 +27,8 @@ import StandaloneComposer, {
 } from "@/components/chat/home/StandaloneComposer";
 import { MASTERY_CAPABILITY_VALUE } from "@/features/capabilities/presentation";
 import { useChatStateAdapter } from "@/features/chat/ChatStateAdapter";
+import { useComposerResources } from "@/hooks/useComposerResources";
+import { useChatWorkspaces } from "@/hooks/useChatWorkspaces";
 import { useContextBudget } from "@/hooks/useContextBudget";
 import { useWorkspaceChatActions } from "@/hooks/useWorkspaceChatActions";
 import {
@@ -56,10 +59,16 @@ export function MasteryComposer({
     setKBs,
     setLLMSelection,
     setPersonaSelection,
+    setResourceSelection,
   } = useChatStateAdapter();
   // Pins the turn to the tutor loop; returns no capabilities to offer.
   useWorkspaceChatActions({ pinnedCapability: MASTERY_CAPABILITY_VALUE });
   const contextBudget = useContextBudget(state.messages);
+  // What the Skills / MCP rows may offer, clipped to this conversation's
+  // workspace allowlist — the same catalog the chat page builds, because a
+  // mastery session is a chat session and narrows its tools the same way.
+  const { workspaces } = useChatWorkspaces();
+  const resourceCatalog = useComposerResources(state.workspaceId, workspaces);
   const { t } = useTranslation();
 
   // A turn paused on an ask_user card is still "streaming", but typing an
@@ -127,6 +136,9 @@ export function MasteryComposer({
       onLLMSelectionChange={setLLMSelection}
       personaSelection={state.personaSelection}
       onPersonaSelectionChange={setPersonaSelection}
+      resourceCatalog={resourceCatalog}
+      resourceSelection={state.resourceSelection}
+      onResourceSelectionChange={setResourceSelection}
       onSubmit={handleSubmit}
       onCancelStreaming={cancelStreamingTurn}
       // The suggested question *is* the placeholder once there is one: naming
