@@ -36,7 +36,7 @@ export default function Tooltip({
         <span
           role="tooltip"
           aria-hidden
-          className={`pointer-events-none absolute left-1/2 z-[80] -translate-x-1/2 ${place} whitespace-nowrap rounded-md bg-[var(--foreground)] px-2 py-1 text-[11px] font-medium leading-none text-[var(--background)] opacity-0 shadow-md transition-opacity duration-100 group-focus-within/tip:opacity-100 group-hover/tip:opacity-100 group-hover/tip:delay-150`}
+          className={`pointer-events-none absolute left-1/2 z-[80] -translate-x-1/2 ${place} whitespace-nowrap rounded-md bg-[var(--foreground)] px-2 py-1 text-[11px] font-medium leading-none text-[var(--background)] opacity-0 shadow-md transition-opacity duration-100 group-hover/tip:opacity-100 group-hover/tip:delay-150 group-has-[:focus-visible]/tip:opacity-100`}
         >
           {label}
         </span>
