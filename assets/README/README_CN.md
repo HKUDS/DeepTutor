@@ -389,10 +389,10 @@ DeepTutor 将已安装的代码、私有运行时主目录与可选的内容工�
 如果回答遗漏了先前的约束、引用了薄弱证据，或与选定素材不一致，请先按照 [`REASONING_SAFETY_CHECKLIST.md`](../../docs-for-user/REASONING_SAFETY_CHECKLIST.md) 收集诊断信息，再提交 Issue。
 
 <div align="center">
-<img src="../../assets/figs/web-1.6.5/OVERVIEW.png" alt="DeepTutor 主页 — 带有侧边栏所有入口的 Chat 工作区" width="900">
+<img src="../../assets/figs/web-1.6.5/OVERVIEW.png" alt="DeepTutor 主页 — Chat 工作区" width="900">
 </div>
 
-> **截图状态：** 总览图已更新到 v1.6.5。下方功能截图仍是 v1.4.6 参考图，正在分批替换。它们适合说明工作流，不代表当前精确导航。
+> **截图状态：** 主页、会话活动面板、Partners、My Agents、Co-Writer、书籍库、Mastery Path、沉浸式阅读、沉浸式观看、知识中心、学习空间、Memory，以及设置（通用、运行状态与就绪度、工作区、语言模型、外观）均为当前界面的默认主题截图。Partner 的 IM 配置、实时子智能体轨迹、Co-Writer 编辑器、书籍内容块特写、创建知识库和 EduHub 导入仍使用 v1.4.6 参考图。这些旧图用于说明流程，标签和布局可能与当前界面不同。
 
 <details>
 <summary><b>🏗️ 系统架构</b></summary>
@@ -409,7 +409,7 @@ DeepTutor 将已安装的代码、私有运行时主目录与可选的内容工�
 Chat 是默认能力，也是大多数工作的起点。单个对话线程可以正常交流、调用工具、基于选定知识库进行检索、读取附件、生成图像、调用子智能体、写入笔记本记录，并在多轮对话中保持相同的上下文。
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/home/00-overview.png" alt="DeepTutor 聊天工作区" width="900">
+<img src="../../assets/figs/web-1.6.5/home/00-overview.png" alt="DeepTutor 聊天工作区" width="900">
 </div>
 
 循环设计刻意保持简单：模型按轮次思考，在有用时调用工具，观察结果，最终以不调用工具的消息结束。`ask_user` 是特殊工具 — 智能体不是凭空猜测，而是可以暂停当前轮次，提出结构化的澄清问题，在你回答后恢复。
@@ -424,13 +424,29 @@ Chat 是默认能力，也是大多数工作的起点。单个对话线程可以
 
 主页让 **Chat**、**Ask Questions**、**Quiz** 和 **Visualize** 一键可达；用于生成引用报告的 **Research**、用于展示完整推理过程的 **Solve** 和 **Immersive Watching** 位于 *更多能力* 之下。**个性化学习**汇集 Book、**Mastery Path**、**Immersive Reading**、Watching 和**练习**；Reading 提供经过验证的引用、已保存的笔记、基于来源的朗读 / 学习指导 / 词汇 / 测验 / 翻译操作，以及笔记本摘录，而 Course Study 则保留与课程绑定的上下文。
 
+<div align="center">
+<img src="../../assets/figs/web-1.6.5/home/01-activity.png" alt="新对话中的会话活动面板" width="900">
+</div>
+
+<div align="center">
+<img src="../../assets/figs/web-1.6.5/mastery/00-overview.png" alt="Mastery Path" width="900">
+</div>
+
+<div align="center">
+<img src="../../assets/figs/web-1.6.5/reading/00-overview.png" alt="沉浸式阅读" width="900">
+</div>
+
+<div align="center">
+<img src="../../assets/figs/web-1.6.5/watching/00-overview.png" alt="沉浸式观看" width="900">
+</div>
+
 </details>
 
 <details>
 <summary><b>🤝 Partner — 运行在同一大脑上的持久伴侣</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/partners/00-partners%20overview.png" alt="DeepTutor Partners 工作区" width="900">
+<img src="../../assets/figs/web-1.6.5/partners/00-overview.png" alt="DeepTutor Partners 工作区" width="900">
 </div>
 
 Partners 是拥有独立灵魂、模型策略、知识库、记忆和渠道的持久伴侣。它们不是独立的机器人引擎：每条入站的 Web 或 IM 消息都会成为在 Partner 作用域工作区内的一次普通 `ChatOrchestrator` 对话轮次。Partner 就是"一个有个性和电话号码的聊天"。
@@ -455,7 +471,7 @@ Partners 是拥有独立灵魂、模型策略、知识库、记忆和渠道的�
 <summary><b>🧑‍🚀 我的智能体 — 调用与导入其他智能体</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/myagents/00-overview.png" alt="DeepTutor 我的智能体工作区" width="900">
+<img src="../../assets/figs/web-1.6.5/myagents/00-overview.png" alt="DeepTutor 我的智能体工作区" width="900">
 </div>
 
 "我的智能体"将其他智能体转化为 DeepTutor 的上下文，具备两种不同的功能。**连接实时智能体** — 连接你机器上的 Claude Code、Codex、Antigravity、Kimi、opencode、MiMo Code、Hermes Agent、OpenClaw 或 DeepSeek Harness、远程 Hermes 网关，或你的某个 Partner，在聊天轮次中调用它：DeepTutor 实际上会*运行*另一个智能体，并通过 `consult_subagent` 工具将其工作流式传输到 Activity 面板。使用 Agent 芯片选择智能体及其轮数上限，或通过 `@` 筛选同一份已连接智能体列表；所选配置会随会话保留。
@@ -472,7 +488,7 @@ Partners 是拥有独立灵魂、模型策略、知识库、记忆和渠道的�
 <summary><b>✍️ Co-Writer — 感知选区的 Markdown 写作台</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/co-writer/00-overview.png" alt="DeepTutor Co-Writer 工作区" width="900">
+<img src="../../assets/figs/web-1.6.5/co-writer/00-overview.png" alt="DeepTutor Co-Writer 工作区" width="900">
 </div>
 
 Co-Writer 是一个分屏 Markdown 工作区，适用于报告、教程、笔记和长篇学习素材的创作。文档自动保存并实时渲染预览（KaTeX 数学公式、图表围栏），草稿完成后可保存回笔记本成为可复用的上下文。可导入 `.docx` 新建草稿，也可将当前编辑器导出为 Markdown 或 Word。
@@ -489,7 +505,7 @@ Co-Writer 是一个分屏 Markdown 工作区，适用于报告、教程、笔记
 <summary><b>📖 Book — 从你的素材生成活书</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/book/00-book_overview.png" alt="DeepTutor 书籍库" width="900">
+<img src="../../assets/figs/web-1.6.5/book/00-book-overview.png" alt="DeepTutor 书籍库" width="900">
 </div>
 
 Book 将选定的来源转化为交互式**活书** — 不是静态 PDF，而是由类型化块构建的阅读环境。书籍可以从知识库、笔记本、题库或聊天历史开始创建；创建流程会在内容生成前提出章节大纲，让你审查结构，而不是被动接受一次性的盲目输出。
@@ -510,7 +526,7 @@ Book 将选定的来源转化为交互式**活书** — 不是静态 PDF，而�
 <summary><b>📚 知识中心 — 多引擎 RAG 知识库</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/knowledge/00-overview.png" alt="DeepTutor 知识中心" width="900">
+<img src="../../assets/figs/web-1.6.5/knowledge/00-overview.png" alt="DeepTutor 知识中心" width="900">
 </div>
 
 知识库是 RAG 背后的文档集合 — 为 Chat 对话、Co-Writer 编辑、Book 生成和 Partner 对话提供依据。其独特之处在于**检索引擎的选择**：**LlamaIndex**（默认，混合向量 + BM25，可选交叉编码器重排序及 exact-flat 或 HNSW FAISS 索引）、**PageIndex**（支持页面级引用的推理检索，托管或自托管 OSS）、**GraphRAG** 和 **LightRAG**（知识图谱检索）、**LightRAG Server**（将检索卸载至你通过 HTTP 连接的外部 LightRAG 实例）、**WeKnora**（从你的自托管部署中的知识库检索，无需本地索引或复制文档）、**Tencent IMA**（在 IMA 中维护的知识库 — 通过其 OpenAPI 进行检索、浏览并写回），**MarginNote 4**（你的 MN4 学习数据 — 文档、摘录、脑图卡片及其相互链接 — 由该应用的插件推送进来，并通过专用工具进行导航），或直接在原位读写的链接 **Obsidian** vault。每个 KB 绑定到单一引擎。
@@ -531,7 +547,7 @@ Book 将选定的来源转化为交互式**活书** — 不是静态 PDF，而�
 <summary><b>🌐 学习空间 — 技能、人格预设与可复用上下文</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/learning-space/00-overview.png" alt="DeepTutor 学习空间中心" width="900">
+<img src="../../assets/figs/web-1.6.5/learning-space/00-overview.png" alt="DeepTutor 学习空间中心" width="900">
 </div>
 
 学习空间是内容库、组织与个性化层。**对话与素材**包含聊天历史、支持移动记录和 Markdown 导出的笔记本，以及保存答案与解析的题库。个性化学习中的**练习**将已保存的题目转化为复习会话、错题追踪和定期复习。**个性化**包含人格预设、技能（`SKILL.md` 剧本）、一键安装的 **MCP 服务**，以及来自 [CLI-Anything](https://github.com/HKUDS/CLI-Anything) 目录的 **CLI 应用**，每个应用的使用指南按需加载。独立的**我的课程**工作区按学科归拢对话与导师线程；每项素材只会出现在支持它的工作流中。
@@ -548,13 +564,13 @@ Book 将选定的来源转化为交互式**活书** — 不是静态 PDF，而�
 <summary><b>🧠 Memory — 可审计的个性化记忆</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/memory/00-overview.png" alt="DeepTutor 记忆概览" width="900">
+<img src="../../assets/figs/web-1.6.5/memory/00-overview.png" alt="DeepTutor 记忆概览" width="900">
 </div>
 
 Memory 是一个基于文件、三层结构的系统，你可以读取、整理和审计它 — 刻意设计为*非*隐藏的向量库。**L1** 是工作区镜像加仅追加的事件追踪（`trace/<surface>/<date>.jsonl`）；**L2** 是按表面整理的事实（`L2/<surface>.md`），包含对 L1 实体的引用；**L3** 是跨表面的综合（`L3/<profile|recent|scope|preferences>.md`），记录参与综合的 L2 表面层。
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/memory/01-3%20layer%20memory%20graph.png" alt="DeepTutor 记忆图谱" width="900">
+<img src="../../assets/figs/web-1.6.5/memory/01-graph.png" alt="DeepTutor 记忆图谱" width="900">
 </div>
 
 Memory Graph 展示整个金字塔 — L3 综合位于中心，L2 在中间圆环，L1 追踪在外圈 — 并显示精确的 L2 → L1 证据边和 L3 → 参与表面层链接。Memory 在 `chat`、`notebook`、`quiz`、`kb`、`book`、partner 和 `cowriter` 表面进行追踪；整合器的更新 / 审计 / 去重预算可在 **Settings → Memory** 中调整。
@@ -565,7 +581,7 @@ Memory Graph 展示整个金字塔 — L3 综合位于中心，L2 在中间圆�
 <summary><b>⚙️ Settings — 统一的控制面板</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/settings/00-setting%20overview.png" alt="DeepTutor 设置中心" width="900">
+<img src="../../assets/figs/web-1.6.5/settings/00-settings-overview.png" alt="DeepTutor 设置中心" width="900">
 </div>
 
 Settings 是操作控制面板，首页**通用**用于设置界面与模型输出语言。可搜索的导航栏链接到各个独立页面：**个人**包括工作区、数据迁移、外观和用量统计；**学习与对话**包括起始建议、附件、Video Learning、学习者与监护人控制以及 Memory；**模型与服务**包括提供商、语言模型、任务模型、嵌入、搜索、语音和多模态生成；**功能与集成**包括工具、能力参数、Partners 与智能体以及知识与文档。**系统**包括网络、运行状态和关于；**已归档对话**支持搜索、恢复或永久删除归档的对话。运行状态展示后端健康状况、常驻内存占用，以及评估能力阻断项、警告和建议的**就绪度**（Readiness）矩阵。工作区将主题文件和学习状态分开，数据迁移提供经过验证的迁移和导出。**提供商**保存厂商地址和凭证，供其服务模型复用；模型页面选择已保存的提供商，并配置模型名称和能力。**任务模型**为后台工作（如给会话命名、撰写起始建议）指定一个小而快的模型，留空时则回退到当前默认模型。语音汇集语音合成与转录；多模态生成汇集图像与视频模型。Partners 与智能体用于配置本地智能体运行框架和远程 Hermes 网关。
@@ -573,7 +589,19 @@ Settings 是操作控制面板，首页**通用**用于设置界面与模型输�
 Settings → Learning & conversation 下的 **Video Learning** 默认使用 YouTube 官方的隐私增强型 IFrame Player。若要让播放保持在本地，请设置由管理员管理的 Invidious API 来源（例如 `http://127.0.0.1:3000`），测试后选择 Invidious 并保存。新建或重新打开的视频会立即采用该提供商，同时保留相同的素材 ID 和进度。Invidious 媒体通过 DeepTutor 的字节范围代理进行流式传输；上游 URL 既不会暴露给浏览器，也不会存储到磁盘。如果实例发生故障，DeepTutor 将保持与 YouTube 离线，直到学习者明确选择原生 YouTube 回退方案。公共字幕辅导是可选功能：安装 `.[video-learning]`；即使未安装，播放仍会继续，但基于转录的 **在此解释** 功能会被禁用并说明原因。
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="DeepTutor 外观设置与主题" width="900">
+<img src="../../assets/figs/web-1.6.5/settings/01-settings-readiness.png" alt="设置中的运行状态与就绪度矩阵" width="900">
+</div>
+
+<div align="center">
+<img src="../../assets/figs/web-1.6.5/settings/02-settings-workspace.png" alt="设置中的工作区" width="900">
+</div>
+
+<div align="center">
+<img src="../../assets/figs/web-1.6.5/settings/06-language-models.png" alt="设置中的语言模型" width="900">
+</div>
+
+<div align="center">
+<img src="../../assets/figs/web-1.6.5/settings/05-appearance.png" alt="DeepTutor 外观设置与主题" width="900">
 </div>
 
 大多数部分采用草稿-应用流程，因此你可以在提交前测试提供商配置。你也可以直接在 Chat 中开口：助手会读取当前配置、应用变更，并告知是否需要重启或重新索引 — 在提交前先探测新模型，因此它不会把自己切换到不可达的配置上。API Key 永远不会经过模型 — 它会为你打开对应的表单来输入。开箱即提供四种主题 — Default、Cream、Dark 和 Glass。项目根目录的 `.env` 文件被刻意忽略；运行时配置存储在 `data/user/settings/*.json` 下，除非 `DEEPTUTOR_HOME` 或 `deeptutor start --home` 将应用指向其他位置。

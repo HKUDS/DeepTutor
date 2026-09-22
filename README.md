@@ -630,10 +630,10 @@ Start with the main surfaces you will use day to day: Chat, Partners, My Agents,
 If an answer loses an earlier constraint, cites weak evidence, or disagrees with selected material, collect the diagnostics in [`REASONING_SAFETY_CHECKLIST.md`](./docs-for-user/REASONING_SAFETY_CHECKLIST.md) before opening an issue.
 
 <div align="center">
-<img src="assets/figs/web-1.6.5/OVERVIEW.png" alt="DeepTutor home — the Chat workspace with every surface in the sidebar" width="900">
+<img src="assets/figs/web-1.6.5/OVERVIEW.png" alt="DeepTutor home — Chat workspace" width="900">
 </div>
 
-> **Screenshot status:** The overview is current for v1.6.5. The surface screenshots below remain v1.4.6 references while a versioned refresh is in progress. Use them to understand workflows, not as exact navigation.
+> **Screenshot status:** Home, the session Activity panel, Partners, My Agents, Co-Writer, the book library, Mastery Path, Immersive Reading, Immersive Watching, Knowledge Center, Learning Space, Memory, and Settings (General, Runtime status and Readiness, Workspaces, Language models, and Appearance) show the current interface in the default theme. Partner IM setup, a live subagent trace, the Co-Writer editor, book block close-ups, knowledge-base creation, and EduHub import still use the v1.4.6 references. Those older images illustrate the workflow; labels and layout can differ.
 
 <details>
 <summary><b>🏗️ System architecture</b></summary>
@@ -650,7 +650,7 @@ If an answer loses an earlier constraint, cites weak evidence, or disagrees with
 Chat is the default capability and where most work begins. A single thread can talk normally, call tools, ground itself in selected knowledge bases, read attachments, generate images, consult subagents, write notebook records, and continue with the same context across turns.
 
 <div align="center">
-<img src="assets/figs/web-1.4.6+/home/00-overview.png" alt="DeepTutor chat workspace" width="900">
+<img src="assets/figs/web-1.6.5/home/00-overview.png" alt="DeepTutor chat workspace" width="900">
 </div>
 
 The loop is deliberately simple: the model thinks in rounds, calls tools when useful, observes the results, and finishes with a tool-free message. `ask_user` is special — instead of guessing, the agent can pause the turn, ask a structured clarifying question, and resume once you answer.
@@ -665,13 +665,29 @@ Context comes in two kinds: **sticky session context** (capability, workspace or
 
 Home keeps **Chat**, **Ask Questions**, **Quiz**, and **Visualize** one click away; **Research** for cited reports, **Solve** for worked reasoning, and **Immersive Watching** sit under *More Capabilities*. **Personalized Learning** groups Book, **Mastery Path**, **Immersive Reading**, Watching, and **Practice**; Reading adds verified citations, saved notes, source-grounded read-aloud / study guidance / vocabulary / quiz / translation actions, and notebook capture, while Course Study keeps its course-bound context.
 
+<div align="center">
+<img src="assets/figs/web-1.6.5/home/01-activity.png" alt="Session Activity panel on a new chat" width="900">
+</div>
+
+<div align="center">
+<img src="assets/figs/web-1.6.5/mastery/00-overview.png" alt="Mastery Path" width="900">
+</div>
+
+<div align="center">
+<img src="assets/figs/web-1.6.5/reading/00-overview.png" alt="Immersive Reading" width="900">
+</div>
+
+<div align="center">
+<img src="assets/figs/web-1.6.5/watching/00-overview.png" alt="Immersive Watching" width="900">
+</div>
+
 </details>
 
 <details>
 <summary><b>🤝 Partner — Persistent Companions on the Same Brain</b></summary>
 
 <div align="center">
-<img src="assets/figs/web-1.4.6+/partners/00-partners%20overview.png" alt="DeepTutor partners workspace" width="900">
+<img src="assets/figs/web-1.6.5/partners/00-overview.png" alt="DeepTutor partners workspace" width="900">
 </div>
 
 Partners are persistent companions with their own soul, model policy, library, memory, and channels. They are not a separate bot engine: every inbound web or IM message becomes a normal `ChatOrchestrator` turn inside a partner-scoped workspace. A partner is "a chat that has a personality and a phone number."
@@ -696,7 +712,7 @@ For faster setup, the Partner channel page can create a Feishu/Lark app or WeCom
 <summary><b>🧑‍🚀 My Agents — Consult & Import Other Agents</b></summary>
 
 <div align="center">
-<img src="assets/figs/web-1.4.6+/myagents/00-overview.png" alt="DeepTutor My Agents workspace" width="900">
+<img src="assets/figs/web-1.6.5/myagents/00-overview.png" alt="DeepTutor My Agents workspace" width="900">
 </div>
 
 My Agents turns other agents into context for DeepTutor, and does two distinct things. **Connect a live agent** — Claude Code, Codex, Antigravity, Kimi, opencode, MiMo Code, Hermes Agent, OpenClaw, or DeepSeek Harness on your machine, a remote Hermes gateway, or one of your Partners — and consult it from inside a chat turn: DeepTutor actually *runs* the other agent and streams its work into the Activity panel via the `consult_subagent` tool. Select it and its round limit with the Agent chip, or filter the same connected-agent list with `@`; the choice stays attached to the session.
@@ -713,7 +729,7 @@ My Agents turns other agents into context for DeepTutor, and does two distinct t
 <summary><b>✍️ Co-Writer — Selection-Aware Markdown Drafting</b></summary>
 
 <div align="center">
-<img src="assets/figs/web-1.4.6+/co-writer/00-overview.png" alt="DeepTutor Co-Writer workspace" width="900">
+<img src="assets/figs/web-1.6.5/co-writer/00-overview.png" alt="DeepTutor Co-Writer workspace" width="900">
 </div>
 
 Co-Writer is a split-view Markdown workspace for reports, tutorials, notes, and long-form learning artifacts. Documents autosave and render a live preview (KaTeX math, diagram fences), and can be saved back into notebooks when a draft becomes reusable context. Import a `.docx` to start a new draft, and export the current editor as Markdown or Word.
@@ -730,7 +746,7 @@ Its defining idea is **surgical editing**: select a span and ask DeepTutor to re
 <summary><b>📖 Book — Living Books from Your Materials</b></summary>
 
 <div align="center">
-<img src="assets/figs/web-1.4.6+/book/00-book_overview.png" alt="DeepTutor book library" width="900">
+<img src="assets/figs/web-1.6.5/book/00-book-overview.png" alt="DeepTutor book library" width="900">
 </div>
 
 Book turns selected sources into an interactive **living book** — not a static PDF, but a reading environment built from typed blocks. A book can start from knowledge bases, notebooks, question banks, or chat history; the creation flow proposes a chapter outline before content is generated, so you review the shape instead of accepting a blind one-shot output.
@@ -751,7 +767,7 @@ Each chapter compiles into editable typed blocks — text, callouts, quizzes, fl
 <summary><b>📚 Knowledge Center — Multi-Engine RAG Libraries</b></summary>
 
 <div align="center">
-<img src="assets/figs/web-1.4.6+/knowledge/00-overview.png" alt="DeepTutor Knowledge Center" width="900">
+<img src="assets/figs/web-1.6.5/knowledge/00-overview.png" alt="DeepTutor Knowledge Center" width="900">
 </div>
 
 Knowledge bases are the document collections behind RAG — they ground Chat turns, Co-Writer edits, Book generation, and Partner conversations. What's distinctive is a **choice of retrieval engines**: **LlamaIndex** (the default, hybrid vector + BM25 with optional cross-encoder reranking and exact-flat or HNSW FAISS indexes), **PageIndex** (reasoning retrieval with page-level citations, hosted or self-hosted OSS), **GraphRAG** and **LightRAG** (knowledge-graph retrieval), **LightRAG Server** (retrieval offloaded to an external LightRAG instance you connect over HTTP), **WeKnora** (retrieval from a knowledge base in your self-hosted deployment, without a local index or document copy), **Tencent IMA** (a library you curate in IMA — searched, browsed, and written back to over its OpenAPI), **MarginNote 4** (your MN4 study data — documents, excerpts, mind-map cards and the links between them — pushed in by the app's Add-on and navigated with dedicated tools), or a linked **Obsidian** vault the tutor reads and writes in place. Each KB is bound to one engine.
@@ -774,7 +790,7 @@ Native LightRAG queries and incremental indexing require the embedding configura
 <summary><b>🌐 Learning Space — Skills, Personas, and Reusable Context</b></summary>
 
 <div align="center">
-<img src="assets/figs/web-1.4.6+/learning-space/00-overview.png" alt="DeepTutor Learning Space hub" width="900">
+<img src="assets/figs/web-1.6.5/learning-space/00-overview.png" alt="DeepTutor Learning Space hub" width="900">
 </div>
 
 Learning Space is the library, organization, and personalization layer. **Conversations & Materials** holds Chat History, notebooks with movable records and Markdown export, and a question bank with answers and explanations. **Practice** in Personalized Learning turns saved questions into review sessions, mistake tracking, and scheduled repetition. **Personalization** holds personas, skills (`SKILL.md` playbooks), one-click **MCP Services**, and **CLI Apps** from the [CLI-Anything](https://github.com/HKUDS/CLI-Anything) catalog, each with an on-demand usage guide. The separate **My Courses** workspace groups subject conversations and tutor threads; each asset is offered only in the workflows that support it.
@@ -791,13 +807,13 @@ You don't have to write every skill yourself — **Import from EduHub** browses 
 <summary><b>🧠 Memory — Inspectable Personalization</b></summary>
 
 <div align="center">
-<img src="assets/figs/web-1.4.6+/memory/00-overview.png" alt="DeepTutor memory overview" width="900">
+<img src="assets/figs/web-1.6.5/memory/00-overview.png" alt="DeepTutor memory overview" width="900">
 </div>
 
 Memory is a file-backed, three-layer system you can read, curate, and audit — deliberately *not* a hidden vector store. **L1** is the workspace mirror plus an append-only event trace (`trace/<surface>/<date>.jsonl`); **L2** is per-surface curated facts (`L2/<surface>.md`) with references to L1 entities; **L3** is cross-surface synthesis (`L3/<profile|recent|scope|preferences>.md`) that records its contributing L2 surfaces.
 
 <div align="center">
-<img src="assets/figs/web-1.4.6+/memory/01-3%20layer%20memory%20graph.png" alt="DeepTutor memory graph" width="900">
+<img src="assets/figs/web-1.6.5/memory/01-graph.png" alt="DeepTutor memory graph" width="900">
 </div>
 
 The Memory Graph shows the whole pyramid — L3 synthesis at the centre, L2 in the middle ring, L1 traces on the outside — with exact L2 → L1 evidence edges and L3 → contributing-surface links. Memory is tracked across `chat`, `notebook`, `quiz`, `kb`, `book`, partner, and `cowriter` surfaces; the consolidator's Update / Audit / Dedup budgets are tuned in **Settings → Memory**.
@@ -808,7 +824,7 @@ The Memory Graph shows the whole pyramid — L3 synthesis at the centre, L2 in t
 <summary><b>⚙️ Settings — One Control Plane</b></summary>
 
 <div align="center">
-<img src="assets/figs/web-1.4.6+/settings/00-setting%20overview.png" alt="DeepTutor settings hub" width="900">
+<img src="assets/figs/web-1.6.5/settings/00-settings-overview.png" alt="DeepTutor settings hub" width="900">
 </div>
 
 Settings is the operational control plane, opening on **General** for interface and model output language. Its searchable navigator links to independent pages: **Personal** covers Workspaces, Data migration, Appearance, and Usage statistics; **Learning & conversation** covers starting points, attachments, Video Learning, learner and guardian controls, and Memory; **Models & services** covers Providers, Language models, Task models, Embedding, Search, Voice, and Multimodal generation; **Features & integrations** covers tools, capability parameters, Partners & agents, and Knowledge & documents. **System** holds Network, Runtime status, and About; **Archived chats** lets you search, restore, or permanently delete archived conversations. Runtime status contains backend health, resident memory, and the **Readiness** matrix grading capability blockers, warnings, and suggestions. Workspaces keeps topic files and learning state separate, with verified migration and export under Data migration. A **provider** holds a vendor's address and credential for reuse by its service models; the model pages choose saved providers and configure model names and capabilities. **Task models** pin a small, fast model for background work — naming conversations and writing starting points — and resolve to the active default when empty. Voice groups speech synthesis and transcription; Multimodal generation groups image and video models. Partners & agents configures local harnesses and a remote Hermes gateway.
@@ -816,7 +832,19 @@ Settings is the operational control plane, opening on **General** for interface 
 **Video Learning** under Settings → Learning & conversation defaults to the official privacy-enhanced YouTube IFrame Player. To keep playback local, set the administrator-managed Invidious API origin (for example `http://127.0.0.1:3000`), test it, select Invidious, and save. New or reopened videos pick up the provider immediately with the same material ID and progress. Invidious media is streamed through DeepTutor's byte-range proxy; upstream URLs are neither exposed to the browser nor stored on disk. If the instance fails, DeepTutor stays offline from YouTube until the learner explicitly chooses the native YouTube fallback. Public-caption tutoring is optional: install `.[video-learning]`; playback continues without it, while transcript-based **Explain here** is disabled with a reason.
 
 <div align="center">
-<img src="assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="DeepTutor appearance settings and themes" width="900">
+<img src="assets/figs/web-1.6.5/settings/01-settings-readiness.png" alt="Settings Runtime status and the Readiness matrix" width="900">
+</div>
+
+<div align="center">
+<img src="assets/figs/web-1.6.5/settings/02-settings-workspace.png" alt="Settings Workspaces" width="900">
+</div>
+
+<div align="center">
+<img src="assets/figs/web-1.6.5/settings/06-language-models.png" alt="Settings language models" width="900">
+</div>
+
+<div align="center">
+<img src="assets/figs/web-1.6.5/settings/05-appearance.png" alt="DeepTutor appearance settings and themes" width="900">
 </div>
 
 Most sections use a draft-and-apply flow, so you can test a provider before committing it. You can also just ask in Chat: the assistant reads the current configuration, applies a change, and says whether it needs a restart or a re-index — probing a new model before it commits, so it cannot switch itself onto something unreachable. API keys never pass through the model, which opens the matching form for you instead. Four themes ship in the box — Default, Cream, Dark, and Glass. Project-root `.env` files are intentionally ignored; runtime configuration lives under `data/user/settings/*.json` unless `DEEPTUTOR_HOME` or `deeptutor start --home` points the app elsewhere.
