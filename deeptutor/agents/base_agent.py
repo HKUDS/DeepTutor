@@ -529,6 +529,7 @@ class BaseAgent(ABC):
         trace_meta: dict[str, Any] | None = None,
         reasoning_effort: str | None = None,
         tools: list[dict[str, Any]] | None = None,
+        stream_meta: dict[str, Any] | None = None,
     ) -> AsyncGenerator[str, None]:
         """
         Unified interface for streaming LLM responses.
@@ -548,6 +549,9 @@ class BaseAgent(ABC):
             attachments: Image/file attachments for multimodal input (optional)
             reasoning_effort: Override the model's thinking level for this one
                 call (see :meth:`call_llm`).
+            stream_meta: Optional mutable dict filled with ``finish_reason``
+                after the stream completes. Omitted callers still receive
+                plain string chunks. The dict never stores response text.
 
         Yields:
             Response chunks as strings
@@ -635,6 +639,7 @@ class BaseAgent(ABC):
                 binding=self.binding,
                 messages=messages,
                 max_retries=max_retries,
+                stream_meta=stream_meta,
                 **kwargs,
             ):
                 full_response += chunk
