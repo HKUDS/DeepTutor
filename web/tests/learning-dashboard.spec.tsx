@@ -56,11 +56,13 @@ vi.mock('framer-motion', async () => {
     return plain
   }
   const cache: Record<string, unknown> = {}
+  const motion = new Proxy(cache, {
+    get: (store, tag: string) =>
+      (store[tag] ??= (props: Record<string, unknown>) => createElement(tag, strip(props))),
+  })
   return {
-    motion: new Proxy(cache, {
-      get: (store, tag: string) =>
-        (store[tag] ??= (props: Record<string, unknown>) => createElement(tag, strip(props))),
-    }),
+    motion,
+    m: motion,
     AnimatePresence: ({ children }: { children?: unknown }) => children,
     useReducedMotion: () => false,
   }
