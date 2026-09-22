@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 import sys
 import types
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
+import yaml
 
 import deeptutor.agents.chat.agentic_pipeline as chat_pipeline
 from deeptutor.agents.chat.capability import ChatCapability
@@ -21,6 +23,9 @@ from deeptutor.core.context import Attachment, UnifiedContext
 from deeptutor.core.stream import StreamEvent, StreamEventType
 from deeptutor.runtime.bootstrap.builtin_capabilities import BUILTIN_CAPABILITY_CLASSES
 from deeptutor.runtime.stream_bus import StreamBus
+from deeptutor.services.config import capabilities_settings as caps_settings
+from deeptutor.services.config.capabilities_settings import get_visualize_params
+from deeptutor.services.setup.init import DEFAULT_AGENTS_SETTINGS
 
 
 def _install_module(
@@ -414,8 +419,21 @@ async def test_deep_research_capability_delegates_to_pipeline(
 @pytest.mark.asyncio
 async def test_visualize_capability_reuses_chat_loop_and_preserves_attachments(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     captured: dict[str, Any] = {}
+
+    # The full suite can seed workspace agents.yaml via init_user_directories()
+    # before this test. Read a fresh seed instead of that leftover file; the
+    # seed must match the previously hardcoded visualize budget (#1546).
+    settings_dir = tmp_path / "data" / "user" / "settings"
+    settings_dir.mkdir(parents=True)
+    (settings_dir / "agents.yaml").write_text(
+        yaml.safe_dump(DEFAULT_AGENTS_SETTINGS, sort_keys=False, allow_unicode=True),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(caps_settings, "PROJECT_ROOT", tmp_path)
+    assert get_visualize_params() == {"temperature": 0.15, "max_tokens": 16000}
 
     class FakeAgenticChatPipeline:
         def __init__(self, **kwargs: Any) -> None:

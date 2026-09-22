@@ -81,7 +81,10 @@ DEFAULT_AGENTS_SETTINGS: dict[str, Any] = {
         "research": {"temperature": 0.5, "max_tokens": 12000},
         "question": {"temperature": 0.7, "max_tokens": 4096},
         "co_writer": {"temperature": 0.7, "max_tokens": 4096},
-        "visualize": {"temperature": 0.4, "max_tokens": 16384},
+        # Same numbers as capabilities_settings._SIMPLE_LLM_DEFAULTS["visualize"]
+        # (the previously hardcoded pipeline call, #1546). A second table here
+        # is what made a seeded agents.yaml disagree with get_visualize_params().
+        "visualize": {"temperature": 0.15, "max_tokens": 16000},
         # A book spine is one JSON payload holding a concept graph plus every
         # chapter, and a reasoning model pays for its hidden tokens out of the
         # same budget. 4096 (the old, unreachable global fallback) truncated
