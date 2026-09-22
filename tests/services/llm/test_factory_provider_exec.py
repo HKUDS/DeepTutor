@@ -222,6 +222,29 @@ async def test_stream_does_not_replay_reasoning_as_final_content(monkeypatch) ->
 
 
 @pytest.mark.asyncio
+async def test_stream_records_finish_reason_on_optional_metadata(monkeypatch) -> None:
+    cfg = _make_cfg()
+    provider = _FakeProvider(
+        stream_chunk="hello",
+        stream_response=LLMResponse(content="hello", finish_reason="length"),
+    )
+
+    monkeypatch.setattr("deeptutor.services.llm.factory.get_llm_config", lambda: cfg)
+    monkeypatch.setattr(
+        "deeptutor.services.llm.factory.get_runtime_provider",
+        lambda _config: provider,
+    )
+
+    meta: dict[str, Any] = {}
+    chunks = [chunk async for chunk in stream("hello", stream_meta=meta)]
+
+    assert chunks == ["hello"]
+    assert all(isinstance(chunk, str) for chunk in chunks)
+    assert meta == {"finish_reason": "length"}
+    assert "stream_meta" not in provider.stream_kwargs
+
+
+@pytest.mark.asyncio
 async def test_complete_does_not_return_duplicated_reasoning_as_content(monkeypatch) -> None:
     cfg = _make_cfg()
     provider = _FakeProvider(

@@ -528,6 +528,7 @@ async def stream(
     retry_delay: float = DEFAULT_RETRY_DELAY,
     exponential_backoff: bool = DEFAULT_EXPONENTIAL_BACKOFF,
     allow_image_fallback: bool | None = None,
+    stream_meta: dict[str, Any] | None = None,
     **kwargs: Any,
 ) -> AsyncGenerator[str, None]:
     caller_extra_headers = kwargs.pop("extra_headers", None)
@@ -611,6 +612,10 @@ async def stream(
                 allow_image_fallback=image_fallback_enabled,
                 **extra_kwargs,
             )
+            # Callers that need truncation detection read this after the
+            # generator ends. Keep the body and reasoning text out of it.
+            if stream_meta is not None:
+                stream_meta["finish_reason"] = response.finish_reason
             if in_think_block:
                 in_think_block = False
                 await queue.put("</think>")
