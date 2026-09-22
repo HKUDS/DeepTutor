@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+import logging
 
 import pytest
 
@@ -72,13 +73,18 @@ async def test_code_generation_fails_clearly_after_structured_retries(
     )
     agent = _agent(monkeypatch, ["", "{}"])
 
-    with pytest.raises(GeneratedCodeOutputError, match="after 2 attempts"):
+    with pytest.raises(GeneratedCodeOutputError, match="after 2 attempts") as exc_info:
         await agent.generate(
             user_input="Animate a proof",
             output_mode="video",
             analysis=ConceptAnalysis(),
             design=SceneDesign(),
         )
+
+    message = str(exc_info.value)
+    assert "structured response has an empty code field" in message
+    assert "len=2" in message
+    assert "{}" in message
 
 
 @pytest.mark.asyncio
@@ -158,3 +164,105 @@ async def test_malformed_output_is_reported_as_malformed_not_as_a_budget_problem
     message = str(raised.value)
     assert "no usable JSON object" in message
     assert "output cap" not in message
+
+
+def _long_raw(middle: str) -> str:
+    return ("H" * 200) + middle + ("T" * 200)
+
+
+@pytest.mark.asyncio
+async def test_exhausted_retries_summarize_last_raw_response_without_the_middle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_sleep(_delay: float) -> None:
+        return None
+
+    monkeypatch.setattr(
+        "deeptutor.agents.math_animator.agents.code_generator_agent.asyncio.sleep",
+        fake_sleep,
+    )
+    monkeypatch.delenv("DEEPTUTOR_DEBUG_LLM_RAW", raising=False)
+    last = _long_raw("UNIQUE_MIDDLE_MARKER")
+    agent = _agent(monkeypatch, ["", last])
+
+    with pytest.raises(GeneratedCodeOutputError) as exc_info:
+        await agent.generate(
+            user_input="Animate a proof",
+            output_mode="video",
+            analysis=ConceptAnalysis(),
+            design=SceneDesign(),
+        )
+
+    message = str(exc_info.value)
+    assert "after 2 attempts" in message
+    assert "No JSON object found" in message
+    assert "structured response has an empty code field" not in message
+    assert f"len={len(last)}" in message
+    assert "H" * 200 in message
+    assert "T" * 200 in message
+    assert "UNIQUE_MIDDLE_MARKER" not in message
+
+
+@pytest.mark.asyncio
+async def test_debug_flag_logs_raw_response_for_every_failed_attempt(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    async def fake_sleep(_delay: float) -> None:
+        return None
+
+    monkeypatch.setattr(
+        "deeptutor.agents.math_animator.agents.code_generator_agent.asyncio.sleep",
+        fake_sleep,
+    )
+    monkeypatch.setenv("DEEPTUTOR_DEBUG_LLM_RAW", "1")
+    first = _long_raw("RAW_ATTEMPT_ONE")
+    last = _long_raw("RAW_ATTEMPT_TWO")
+    agent = _agent(monkeypatch, [first, last])
+
+    with caplog.at_level(logging.DEBUG, logger=agent.logger.name):
+        with pytest.raises(GeneratedCodeOutputError) as exc_info:
+            await agent.generate(
+                user_input="Animate a proof",
+                output_mode="video",
+                analysis=ConceptAnalysis(),
+                design=SceneDesign(),
+            )
+
+    debug_text = "\n".join(
+        record.getMessage() for record in caplog.records if record.levelno == logging.DEBUG
+    )
+    assert "RAW_ATTEMPT_ONE" in debug_text
+    assert "RAW_ATTEMPT_TWO" in debug_text
+    assert "RAW_ATTEMPT_ONE" not in str(exc_info.value)
+    assert "RAW_ATTEMPT_TWO" not in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_raw_response_is_not_logged_without_debug_flag(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    async def fake_sleep(_delay: float) -> None:
+        return None
+
+    monkeypatch.setattr(
+        "deeptutor.agents.math_animator.agents.code_generator_agent.asyncio.sleep",
+        fake_sleep,
+    )
+    monkeypatch.delenv("DEEPTUTOR_DEBUG_LLM_RAW", raising=False)
+    first = _long_raw("RAW_ATTEMPT_ONE")
+    last = _long_raw("RAW_ATTEMPT_TWO")
+    agent = _agent(monkeypatch, [first, last])
+
+    with caplog.at_level(logging.DEBUG, logger=agent.logger.name):
+        with pytest.raises(GeneratedCodeOutputError):
+            await agent.generate(
+                user_input="Animate a proof",
+                output_mode="video",
+                analysis=ConceptAnalysis(),
+                design=SceneDesign(),
+            )
+
+    assert "RAW_ATTEMPT_ONE" not in caplog.text
+    assert "RAW_ATTEMPT_TWO" not in caplog.text
