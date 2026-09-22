@@ -622,6 +622,13 @@ def test_llm_provider_choices_include_novita() -> None:
     assert llm["novita"]["base_url"] == "https://api.novita.ai/openai"
 
 
+def test_llm_provider_choices_include_aimlapi() -> None:
+    llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
+
+    assert llm["aimlapi"]["label"] == "aimlapi.com"
+    assert llm["aimlapi"]["base_url"] == "https://api.aimlapi.com/v1"
+
+
 def test_llm_provider_choices_include_edenai() -> None:
     llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
 

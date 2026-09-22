@@ -6,6 +6,7 @@ import logging
 import os
 import threading
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlsplit
 import uuid
 
 import httpx
@@ -24,6 +25,18 @@ OPENROUTER_ATTRIBUTION_HEADERS: dict[str, str] = {
     "HTTP-Referer": "https://github.com/HKUDS/DeepTutor",
     "X-OpenRouter-Title": "DeepTutor",
 }
+
+# AI/ML API attribution. HTTP-Referer / X-Title name the calling app.
+AIMLAPI_ATTRIBUTION_HEADERS: dict[str, str] = {
+    "HTTP-Referer": "https://github.com/HKUDS/DeepTutor",
+    "X-Title": "DeepTutor",
+    "X-AIMLAPI-Partner-ID": "part_ItAs0L5uSTvV2dFDOZZaS1BL",
+    "X-AIMLAPI-Source": "agent/deeptutor",
+}
+
+# Sent only when the client's endpoint host is exactly one of these, so a
+# look-alike domain or a proxy in front of the API never receives them.
+_AIMLAPI_ATTRIBUTION_HOSTS: frozenset[str] = frozenset({"api.aimlapi.com"})
 
 _warning_lock = threading.Lock()
 _warning_logged = False
@@ -114,6 +127,29 @@ def _uses_openrouter(spec: "ProviderSpec | None", api_base: str | None) -> bool:
     return bool(api_base and "openrouter" in api_base.lower())
 
 
+def _sdk_endpoint_host(api_base: str | None) -> str:
+    """Lowercased host of the endpoint ``AsyncOpenAI`` will call.
+
+    Mirrors the SDK's own resolution: an explicit ``base_url``, else
+    ``OPENAI_BASE_URL``, else api.openai.com. A registry default is not
+    consulted because it is not passed to the SDK here.
+    """
+    resolved = (
+        api_base or os.environ.get("OPENAI_BASE_URL") or "https://api.openai.com/v1"
+    ).strip()
+    # "api.example.com/v1" has no scheme; "//" makes urlsplit read it as a netloc.
+    if "//" not in resolved:
+        resolved = f"//{resolved}"
+    try:
+        return (urlsplit(resolved).hostname or "").lower()
+    except ValueError:
+        return ""
+
+
+def _uses_aimlapi(api_base: str | None) -> bool:
+    return _sdk_endpoint_host(api_base) in _AIMLAPI_ATTRIBUTION_HOSTS
+
+
 def openai_sdk_client_kwargs(
     *,
     api_key: str | None,
@@ -127,7 +163,7 @@ def openai_sdk_client_kwargs(
     """Constructor kwargs for ``AsyncOpenAI`` / ``AsyncAzureOpenAI``.
 
     The one place that decides what every OpenAI-SDK client DeepTutor builds
-    looks like on the wire: default headers (session affinity, OpenRouter
+    looks like on the wire: default headers (session affinity, gateway
     attribution, the profile's extra headers), the SDK retry budget, and the
     TLS-verification bypass. ``disable_ssl_verify=None`` reads the system
     setting; callers that already hold the flag pass it through.
@@ -138,6 +174,8 @@ def openai_sdk_client_kwargs(
         headers["x-session-affinity"] = uuid.uuid4().hex
     if _uses_openrouter(spec, base_url):
         headers.update(OPENROUTER_ATTRIBUTION_HEADERS)
+    if _uses_aimlapi(base_url):
+        headers.update(AIMLAPI_ATTRIBUTION_HEADERS)
     if extra_headers:
         headers.update(extra_headers)
     kwargs: dict[str, Any] = {
@@ -159,6 +197,7 @@ def openai_sdk_client_kwargs(
 
 
 __all__ = [
+    "AIMLAPI_ATTRIBUTION_HEADERS",
     "OPENROUTER_ATTRIBUTION_HEADERS",
     "build_openai_http_client",
     "disable_ssl_verify_enabled",

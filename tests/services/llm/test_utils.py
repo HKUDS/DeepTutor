@@ -109,6 +109,29 @@ def test_collect_model_names() -> None:
     assert collect_model_names(entries) == ["m1", "m2", "m3", "m4"]
 
 
+def test_collect_model_names_drops_repeats_in_payload_order() -> None:
+    entries = [
+        {"id": "m1", "type": "openai/chat-completions"},
+        {"id": "m2", "type": "openai/chat-completions"},
+        {"id": "m1", "type": "openai/responses/submit"},
+    ]
+    assert collect_model_names(entries) == ["m1", "m2"]
+
+
+def test_collect_model_names_skips_non_chat_endpoint_families() -> None:
+    entries = [
+        {"id": "chat", "type": "openai/chat-completions"},
+        {"id": "image", "type": "openai/image-generations"},
+        {"id": "video", "type": "internal/video-generations/submit"},
+        {"id": "embed", "type": "openai/embeddings"},
+        {"id": "claude", "type": "anthropic/messages"},
+        # Not a family tag: other providers use "type" for something else.
+        {"id": "plain", "type": "model"},
+        {"id": "untagged"},
+    ]
+    assert collect_model_names(entries) == ["chat", "claude", "plain", "untagged"]
+
+
 def test_build_auth_headers() -> None:
     """Auth headers should vary by provider binding."""
     assert build_auth_headers("key", binding="anthropic")["x-api-key"] == "key"

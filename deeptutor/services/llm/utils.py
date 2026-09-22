@@ -322,12 +322,37 @@ def _normalize_model_name(entry: object) -> str | None:
     return None
 
 
+# Endpoint families a gateway may tag a ``/models`` row with. Only rows that
+# serve chat belong in the LLM picker; image, video, speech and embedding rows
+# would fail on first use. Rows without a family tag are kept.
+_CHAT_ENDPOINT_TYPES: frozenset[str] = frozenset(
+    {"openai/chat-completions", "openai/responses/submit", "anthropic/messages"}
+)
+
+
+def _serves_chat(entry: object) -> bool:
+    if not isinstance(entry, Mapping):
+        return True
+    family = entry.get("type")
+    if not isinstance(family, str) or "/" not in family:
+        return True
+    return family in _CHAT_ENDPOINT_TYPES
+
+
 def collect_model_names(entries: Sequence[object]) -> list[str]:
-    """Collect model names from provider payloads."""
+    """Collect chat model names from provider payloads, first occurrence wins.
+
+    A gateway may list one id once per endpoint family it serves, so repeats
+    are dropped and non-chat families are skipped.
+    """
     names: list[str] = []
+    seen: set[str] = set()
     for entry in entries:
+        if not _serves_chat(entry):
+            continue
         name = _normalize_model_name(entry)
-        if name:
+        if name and name not in seen:
+            seen.add(name)
             names.append(name)
     return names
 

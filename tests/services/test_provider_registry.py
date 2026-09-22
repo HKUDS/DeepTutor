@@ -1,4 +1,4 @@
-from deeptutor.services.provider_registry import find_by_name, find_gateway
+from deeptutor.services.provider_registry import find_by_model, find_by_name, find_gateway
 
 
 def test_nvidia_nim_gateway_detection_by_key_and_base() -> None:
@@ -51,6 +51,33 @@ def test_novita_provider_aliases_and_base_detection() -> None:
     assert find_by_name("novita-ai") == spec
     assert find_by_name("novita_ai") == spec
     assert find_gateway(api_base="https://api.novita.ai/openai") == spec
+
+
+def test_aimlapi_provider_aliases_and_base_detection() -> None:
+    spec = find_by_name("aimlapi")
+
+    assert spec is not None
+    # The user-facing label is the product's own name, lowercase domain form.
+    assert spec.display_name == "aimlapi.com"
+    assert spec.label == "aimlapi.com"
+    assert spec.env_key == "AIMLAPI_API_KEY"
+    assert spec.backend == "openai_compat"
+    assert spec.mode == "gateway"
+    assert spec.default_api_base == "https://api.aimlapi.com/v1"
+    # Keys carry no distinguishing prefix, so the endpoint is the only signal.
+    assert spec.detect_by_key_prefix == ""
+    # Model ids keep their vendor prefix ("openai/gpt-4o-mini").
+    assert spec.strip_model_prefix is False
+    assert find_by_name("aiml") == spec
+    assert find_by_name("aiml-api") == spec
+    assert find_by_name("AIMLAPI") == spec
+    assert find_gateway(api_base="https://api.aimlapi.com/v1") == spec
+
+
+def test_aimlapi_does_not_capture_unrelated_model_names() -> None:
+    """Gateways route any model; they must not claim one by keyword."""
+    assert find_by_model("openai/gpt-4o-mini") != find_by_name("aimlapi")
+    assert find_by_model("aimlapi") is None
 
 
 def test_openai_codex_is_not_detected_from_api_base() -> None:

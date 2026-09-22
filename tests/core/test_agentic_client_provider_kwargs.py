@@ -555,6 +555,7 @@ def test_registered_cloud_openai_compat_providers_enable_native_tools() -> None:
         "xiaomi_mimo",
         "nvidia_nim",
         "aihubmix",
+        "aimlapi",
         "atlascloud",
         "edenai",
         "novita",
