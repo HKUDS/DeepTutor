@@ -474,8 +474,12 @@ async def test_visualize_capability_reuses_chat_loop_and_preserves_attachments(
     assert captured["init"] == {
         "language": "en",
         "max_rounds": 5,
-        "temperature": 0.15,
-        "max_tokens": 16000,
+        # The visualize budget is configurable (#1546) and the shipped default
+        # in DEFAULT_AGENTS_SETTINGS is temperature 0.4 / max_tokens 16384, so
+        # the pipeline must receive those, not the pre-#1546 hardcoded literals
+        # this assertion used to pin.
+        "temperature": 0.4,
+        "max_tokens": 16384,
         "event_source": "visualize",
         "event_stage": "generating",
         "emit_result": False,
