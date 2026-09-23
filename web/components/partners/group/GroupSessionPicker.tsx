@@ -23,11 +23,13 @@ export default function GroupSessionPicker({
   sessionKey,
   onSelect,
   onCreate,
+  onTitleChange,
 }: {
   groupId: string;
   sessionKey: string;
   onSelect: (key: string) => void;
   onCreate: () => void;
+  onTitleChange?: (title: string) => void;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -65,6 +67,10 @@ export default function GroupSessionPicker({
 
   const current = sessions.find((item) => item.session_key === sessionKey);
   const label = current?.title || t("New discussion");
+
+  useEffect(() => {
+    onTitleChange?.(label);
+  }, [label, onTitleChange]);
 
   const remove = async (key: string) => {
     setBusy(key);

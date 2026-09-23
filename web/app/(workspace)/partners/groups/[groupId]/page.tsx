@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft,
+  Download,
   Loader2,
   PanelRight,
   Pencil,
@@ -27,8 +28,11 @@ import {
   partnerGroupSessionKey,
   setPartnerGroupSessionKey,
   type PartnerGroup,
+  type PartnerGroupMessage,
 } from "@/lib/partner-groups-api";
 import { listPartners, type PartnerInfo } from "@/lib/partners-api";
+import { downloadChatMarkdown } from "@/lib/chat-export";
+import { toPartnerGroupExportMessages } from "@/lib/partner-group-export";
 
 export default function PartnerGroupPage() {
   const { t } = useTranslation();
@@ -42,6 +46,21 @@ export default function PartnerGroupPage() {
   const [editing, setEditing] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
   const [sessionKey, setSessionKey] = useState("");
+  const [sessionTitle, setSessionTitle] = useState("");
+  const [groupMessages, setGroupMessages] = useState<PartnerGroupMessage[]>([]);
+
+  const exportMessages = useMemo(
+    () => toPartnerGroupExportMessages(groupMessages),
+    [groupMessages],
+  );
+  const exportTitle = group
+    ? `${group.name} — ${sessionTitle || t("New discussion")}`
+    : sessionTitle;
+
+  const handleDownload = useCallback(() => {
+    if (!exportMessages.length) return;
+    downloadChatMarkdown(exportMessages, { title: exportTitle });
+  }, [exportMessages, exportTitle]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -139,8 +158,19 @@ export default function PartnerGroupPage() {
               onCreate={() =>
                 setSessionKey(createPartnerGroupSessionKey(groupId))
               }
+              onTitleChange={setSessionTitle}
             />
           ) : null}
+          <button
+            type="button"
+            onClick={handleDownload}
+            disabled={!groupMessages.length}
+            title={t("Download chat history as Markdown")}
+            aria-label={t("Download Markdown")}
+            className="rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Download className="h-4 w-4" />
+          </button>
           <button
             type="button"
             onClick={() => setPanelOpen((value) => !value)}
@@ -170,6 +200,7 @@ export default function PartnerGroupPage() {
         panelOpen={panelOpen}
         onOpenPanel={() => setPanelOpen(true)}
         onClosePanel={() => setPanelOpen(false)}
+        onMessagesChange={setGroupMessages}
       />
 
       {editing ? (
