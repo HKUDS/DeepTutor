@@ -115,6 +115,15 @@ def test_strip_markdown_drops_code_and_unwraps_links() -> None:
     assert "Title" in out and "Hello world" in out and "the docs" in out
     assert "print(1)" not in out  # fenced code dropped
     assert "**" not in out and "[" not in out and "#" not in out
+    assert "*" not in out
+
+
+def test_strip_markdown_does_not_speak_asterisks_for_bold() -> None:
+    out = strip_markdown_for_speech("This is **bold** and *italic* and ** $x^2$ **.")
+    assert "*" not in out
+    assert "bold" in out
+    assert "italic" in out
+    assert "squared" in out
 
 
 def test_strip_markdown_truncates_on_boundary() -> None:

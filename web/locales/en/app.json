@@ -4937,6 +4937,7 @@
   "Subagent": "Subagent",
   "File": "File",
   "Play aloud": "Play aloud",
+  "Could not play this reply. Check Text-to-Speech in Settings.": "Could not play this reply. Check Text-to-Speech in Settings.",
   "Auto-play replies in this conversation?": "Auto-play replies in this conversation?",
   "Turn on": "Turn on",
   "items": "items",
