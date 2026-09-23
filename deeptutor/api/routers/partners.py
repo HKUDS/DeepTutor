@@ -63,6 +63,10 @@ from deeptutor.services.partners.workspace import (
     strip_frontmatter,
     write_soul,
 )
+from deeptutor.services.settings.interface_settings import (
+    get_partner_session_roaming,
+    update_partner_session_roaming,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -303,6 +307,22 @@ class SessionKeyBody(BaseModel):
 class SessionBranchBody(BaseModel):
     source_key: str = Field(..., min_length=1)
     new_key: str = Field(..., min_length=1)
+
+
+class SessionRoamingBody(BaseModel):
+    enabled: bool
+    # Adopt an existing browser session when roaming is first enabled.
+    session_key: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=200,
+        pattern=r"^[A-Za-z0-9._-]+$",
+    )
+
+
+class SessionRoamingResponse(BaseModel):
+    enabled: bool
+    session_key: str
 
 
 class SoulCreateRequest(BaseModel):
@@ -1363,6 +1383,26 @@ async def get_partner_history(
 async def get_partner_sessions(partner_id: str):
     mgr = get_partner_manager()
     return mgr.session_store(partner_id).list_sessions()
+
+
+@router.get("/{partner_id}/session-roaming", dependencies=_USABLE)
+async def get_partner_session_roaming_setting(partner_id: str) -> SessionRoamingResponse:
+    """Return this account's cross-browser session pointer for a Partner."""
+
+    return get_partner_session_roaming(partner_id)
+
+
+@router.put("/{partner_id}/session-roaming", dependencies=_USABLE)
+async def update_partner_session_roaming_setting(
+    partner_id: str, payload: SessionRoamingBody
+) -> SessionRoamingResponse:
+    """Adopt or release a Partner conversation as the account-wide session."""
+
+    return update_partner_session_roaming(
+        partner_id,
+        enabled=payload.enabled,
+        session_key=payload.session_key,
+    )
 
 
 @router.post("/{partner_id}/sessions/archive", dependencies=_USABLE)

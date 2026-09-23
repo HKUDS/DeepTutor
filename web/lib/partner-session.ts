@@ -5,7 +5,13 @@
  * the filename stem and the id used by resume / delete / branch).
  */
 
+import { apiFetch, apiUrl } from "@/lib/api";
 import { browserStorage } from "@/shared/storage";
+
+export type PartnerSessionRoaming = {
+  enabled: boolean;
+  session_key: string;
+};
 
 function storageKey(partnerId: string): string {
   return `partner-session:${partnerId}`;
@@ -33,4 +39,53 @@ export function persistPartnerSessionKey(partnerId: string, key: string): void {
   } catch {
     /* private mode / storage disabled — in-memory only */
   }
+}
+
+async function roamingResponse(
+  response: Response,
+): Promise<PartnerSessionRoaming> {
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(
+      typeof body.detail === "string"
+        ? body.detail
+        : `Partner session setting failed: HTTP ${response.status}`,
+    );
+  }
+  return response.json();
+}
+
+export async function getPartnerSessionRoaming(
+  partnerId: string,
+): Promise<PartnerSessionRoaming> {
+  return roamingResponse(
+    await apiFetch(
+      apiUrl(
+        `/api/partners/${encodeURIComponent(partnerId)}/session-roaming`,
+      ),
+      { cache: "no-store" },
+    ),
+  );
+}
+
+export async function updatePartnerSessionRoaming(
+  partnerId: string,
+  enabled: boolean,
+  sessionKey?: string,
+): Promise<PartnerSessionRoaming> {
+  return roamingResponse(
+    await apiFetch(
+      apiUrl(
+        `/api/partners/${encodeURIComponent(partnerId)}/session-roaming`,
+      ),
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          enabled,
+          ...(sessionKey ? { session_key: sessionKey } : {}),
+        }),
+      },
+    ),
+  );
 }

@@ -4262,5 +4262,11 @@
   "Explain this part of the video": "Expliquer cette partie de la vidéo",
   "YouTube Player API did not initialize.": "L'API YouTube Player n'a pas initialisé.",
   "YouTube Player API timed out.": "L'API YouTube Player a expiré.",
-  "YouTube Player API could not be loaded.": "L'API YouTube Player n'a pas pu être chargée."
+  "YouTube Player API could not be loaded.": "L'API YouTube Player n'a pas pu être chargée.",
+  "Partner conversation roaming": "Continuité des conversations Partner",
+  "Continue this Partner conversation across browsers": "Continuer cette conversation Partner dans d'autres navigateurs",
+  "This Partner conversation follows your account across browsers": "Cette conversation Partner suit votre compte dans tous les navigateurs",
+  "Partner conversation roaming enabled": "Continuité de la conversation Partner activée",
+  "Partner conversations stay in this browser": "Les conversations Partner restent dans ce navigateur",
+  "Could not update Partner session roaming.": "Impossible de mettre à jour la continuité de la session Partner."
 }

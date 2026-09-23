@@ -11,6 +11,7 @@ from collections.abc import Callable, Mapping
 import json
 import os
 from pathlib import Path
+import secrets
 import tempfile
 import threading
 from typing import Any
@@ -26,6 +27,9 @@ DEFAULT_UI_SETTINGS: dict[str, Any] = {
     # When true, TTS verbalizes LaTeX (fractions, powers, Greek). Dollar
     # delimiters are stripped either way so the voice never says "dollar".
     "voice_math_speak": True,
+    # Absence preserves the historical per-browser behaviour. Each entry is
+    # one Partner whose active web conversation follows the account.
+    "partner_session_roaming": {},
 }
 
 
@@ -238,6 +242,47 @@ def replace_ui_settings(settings: Mapping[str, Any]) -> dict[str, Any]:
 def set_ui_setting(key: str, value: Any) -> dict[str, Any]:
     """Persist one field, leaving every other field intact."""
     return update_ui_settings({key: value})
+
+
+def get_partner_session_roaming(partner_id: str) -> dict[str, Any]:
+    """Return the account preference and active roaming key for one Partner."""
+
+    settings = get_ui_settings()
+    keys = settings.get("partner_session_roaming")
+    session_key = keys.get(partner_id, "") if isinstance(keys, dict) else ""
+    return {
+        "enabled": bool(session_key),
+        "session_key": str(session_key or ""),
+    }
+
+
+def update_partner_session_roaming(
+    partner_id: str, *, enabled: bool, session_key: str | None = None
+) -> dict[str, Any]:
+    """Atomically update the account preference and one Partner's pointer."""
+
+    result: dict[str, Any] = {}
+
+    def _mutate(stored: dict[str, Any]) -> dict[str, Any]:
+        nonlocal result
+        raw_keys = stored.get("partner_session_roaming")
+        keys = dict(raw_keys) if isinstance(raw_keys, dict) else {}
+        resolved_key = session_key or str(keys.get(partner_id) or "")
+        if enabled and not resolved_key:
+            resolved_key = f"web-{secrets.token_hex(8)}"
+        if enabled:
+            keys[partner_id] = resolved_key
+        else:
+            keys.pop(partner_id, None)
+        stored["partner_session_roaming"] = keys
+        result = {
+            "enabled": enabled,
+            "session_key": resolved_key if enabled else "",
+        }
+        return stored
+
+    atomic_update(_interface_settings_file(), _mutate)
+    return result
 
 
 def get_ui_language(default: str = "en") -> str:

@@ -38,3 +38,16 @@ test("partner chat has a complete archive and resume surface", () => {
   assert.match(archiveSource, /\.filter\(\s*\(session\) => session\.archived,/);
   assert.match(archiveSource, /resumePartnerSession/);
 });
+
+test("partner chat can follow an account-scoped session across browsers", () => {
+  assert.match(pageSource, /getPartnerSessionRoaming\(partnerId\)/);
+  assert.match(
+    pageSource,
+    /updatePartnerSessionRoaming\(\s*partnerId,\s*!sessionRoaming,/,
+  );
+  assert.match(pageSource, /aria-pressed=\{sessionRoaming\}/);
+  assert.match(
+    pageSource,
+    /await updatePartnerSessionRoaming\(partnerId, true, key\)/,
+  );
+});

@@ -218,7 +218,7 @@ export default function PartnerChat({
    *  Archive tab can switch which conversation the Chat tab is on. */
   sessionKey: string;
   /** Rotate to a different session (new / branch / resume / delete-current). */
-  onSessionKeyChange?: (key: string) => void;
+  onSessionKeyChange?: (key: string) => void | Promise<void>;
   /** Keep an embedded consultation on its bound conversation. */
   embedded?: boolean;
   onToast?: (message: string) => void;
@@ -635,7 +635,7 @@ export default function PartnerChat({
         case "/clear": {
           await archivePartnerSession(partnerId, sessionKey).catch(() => {});
           setMessages([]);
-          onSessionKeyChange?.(freshPartnerSessionKey());
+          await onSessionKeyChange?.(freshPartnerSessionKey());
           break;
         }
         case "/branch": {
@@ -647,7 +647,7 @@ export default function PartnerChat({
                 id: sessionKey,
               }),
             );
-            onSessionKeyChange?.(next); // history reload picks up the copy
+            await onSessionKeyChange?.(next); // history reload picks up the copy
           } catch {
             onToast?.(t("Nothing to branch yet."));
           }
@@ -660,7 +660,7 @@ export default function PartnerChat({
           }
           try {
             await resumePartnerSession(partnerId, arg);
-            onSessionKeyChange?.(arg);
+            await onSessionKeyChange?.(arg);
           } catch {
             onToast?.(t("Session not found"));
           }
@@ -676,7 +676,7 @@ export default function PartnerChat({
             onToast?.(t("Conversation deleted"));
             if (arg === sessionKey) {
               setMessages([]);
-              onSessionKeyChange?.(freshPartnerSessionKey());
+              await onSessionKeyChange?.(freshPartnerSessionKey());
             }
           } catch {
             onToast?.(t("Session not found"));

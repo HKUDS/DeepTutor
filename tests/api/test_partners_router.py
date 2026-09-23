@@ -609,6 +609,46 @@ class TestSoulLibraryEndpoints:
 
 
 class TestHistory:
+    def test_session_roaming_keeps_an_independent_pointer_per_partner(self, client):
+        _create(client)
+        _create(client, name="Grace")
+
+        initial = client.get("/api/partners/ada/session-roaming")
+        assert initial.status_code == 200
+        assert initial.json() == {"enabled": False, "session_key": ""}
+
+        ada = client.put(
+            "/api/partners/ada/session-roaming",
+            json={"enabled": True, "session_key": "web-ada"},
+        )
+        grace = client.put(
+            "/api/partners/grace/session-roaming",
+            json={"enabled": True, "session_key": "web-grace"},
+        )
+        assert ada.json() == {"enabled": True, "session_key": "web-ada"}
+        assert grace.json() == {"enabled": True, "session_key": "web-grace"}
+        assert client.get("/api/partners/ada/session-roaming").json()["session_key"] == "web-ada"
+        assert client.get("/api/partners/grace/session-roaming").json()["session_key"] == "web-grace"
+
+        disabled = client.put(
+            "/api/partners/ada/session-roaming", json={"enabled": False}
+        )
+        assert disabled.json() == {"enabled": False, "session_key": ""}
+        assert client.get("/api/partners/grace/session-roaming").json() == {
+            "enabled": True,
+            "session_key": "web-grace",
+        }
+
+    def test_session_roaming_rejects_unsafe_keys(self, client):
+        _create(client)
+
+        response = client.put(
+            "/api/partners/ada/session-roaming",
+            json={"enabled": True, "session_key": "../other"},
+        )
+
+        assert response.status_code == 422
+
     def test_history_reads_session_store(self, client, isolated_root):
         _create(client)
         sessions = isolated_root / "partners" / "ada" / "sessions"

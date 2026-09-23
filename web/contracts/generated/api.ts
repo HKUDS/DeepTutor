@@ -5055,6 +5055,30 @@ export interface paths {
     readonly patch?: never;
     readonly trace?: never;
   };
+  readonly "/api/partners/{partner_id}/session-roaming": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    /**
+     * Get Partner Session Roaming Setting
+     * @description Return this account's cross-browser session pointer for a Partner.
+     */
+    readonly get: operations["get_partner_session_roaming_setting_api_partners__partner_id__session_roaming_get"];
+    /**
+     * Update Partner Session Roaming Setting
+     * @description Adopt or release a Partner conversation as the account-wide session.
+     */
+    readonly put: operations["update_partner_session_roaming_setting_api_partners__partner_id__session_roaming_put"];
+    readonly post?: never;
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
   readonly "/api/partners/{partner_id}/sessions": {
     readonly parameters: {
       readonly query?: never;
@@ -13776,6 +13800,20 @@ export interface components {
       /** Title */
       readonly title: string;
     };
+    /** SessionRoamingBody */
+    readonly SessionRoamingBody: {
+      /** Enabled */
+      readonly enabled: boolean;
+      /** Session Key */
+      readonly session_key?: string | null;
+    };
+    /** SessionRoamingResponse */
+    readonly SessionRoamingResponse: {
+      /** Enabled */
+      readonly enabled: boolean;
+      /** Session Key */
+      readonly session_key: string;
+    };
     /** SessionSummary */
     readonly SessionSummary: {
       /** @default null */
@@ -15583,6 +15621,10 @@ export type SchemaSessionOrganizationRequest =
   components["schemas"]["SessionOrganizationRequest"];
 export type SchemaSessionRenameRequest =
   components["schemas"]["SessionRenameRequest"];
+export type SchemaSessionRoamingBody =
+  components["schemas"]["SessionRoamingBody"];
+export type SchemaSessionRoamingResponse =
+  components["schemas"]["SessionRoamingResponse"];
 export type SchemaSessionSummary = components["schemas"]["SessionSummary"];
 export type SchemaSetRoleRequest = components["schemas"]["SetRoleRequest"];
 export type SchemaSetSessionModeRequest =
@@ -15723,7 +15765,7 @@ export interface operations {
           readonly [name: string]: unknown;
         };
         content: {
-          readonly "application/json": unknown;
+          readonly "application/json": components["schemas"]["SessionRoamingResponse"];
         };
       };
     };
@@ -15747,7 +15789,7 @@ export interface operations {
           readonly [name: string]: unknown;
         };
         content: {
-          readonly "application/json": unknown;
+          readonly "application/json": components["schemas"]["SessionRoamingResponse"];
         };
       };
       /** @description Validation Error */
@@ -26664,6 +26706,80 @@ export interface operations {
       };
     };
     readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": unknown;
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly get_partner_session_roaming_setting_api_partners__partner_id__session_roaming_get: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path: {
+        readonly partner_id: string;
+      };
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": unknown;
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly update_partner_session_roaming_setting_api_partners__partner_id__session_roaming_put: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path: {
+        readonly partner_id: string;
+      };
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody: {
+      readonly content: {
+        readonly "application/json": components["schemas"]["SessionRoamingBody"];
+      };
+    };
     readonly responses: {
       /** @description Successful Response */
       readonly 200: {

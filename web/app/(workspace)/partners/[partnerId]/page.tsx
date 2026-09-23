@@ -12,6 +12,7 @@ import {
   ArrowLeft,
   Archive,
   BookmarkPlus,
+  Cloud,
   Download,
   Link2,
   Loader2,
@@ -37,8 +38,10 @@ import {
 } from "@/lib/chat-export";
 import {
   freshPartnerSessionKey,
+  getPartnerSessionRoaming,
   loadPartnerSessionKey,
   persistPartnerSessionKey,
+  updatePartnerSessionRoaming,
 } from "@/lib/partner-session";
 import PartnerAvatar from "@/components/partners/PartnerAvatar";
 import PartnerChat from "@/components/partners/PartnerChat";
@@ -86,19 +89,79 @@ function PartnerDetail() {
   );
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [archiveBusy, setArchiveBusy] = useState(false);
+  const [sessionRoaming, setSessionRoaming] = useState(false);
+  const [roamingBusy, setRoamingBusy] = useState(false);
   // The active web session key lives here so the Archive tab's Resume can
   // point the (always-mounted) Chat tab at a different conversation.
   const [sessionKey, setSessionKey] = useState("");
   useEffect(() => {
-    setSessionKey(loadPartnerSessionKey(partnerId));
+    let cancelled = false;
+    void getPartnerSessionRoaming(partnerId)
+      .then((setting) => {
+        if (cancelled) return;
+        setSessionRoaming(setting.enabled);
+        if (setting.enabled && setting.session_key) {
+          // Keep this browser's fallback aligned with the last roaming
+          // conversation, so turning roaming off does not jump backwards.
+          persistPartnerSessionKey(partnerId, setting.session_key);
+          setSessionKey(setting.session_key);
+        } else {
+          setSessionKey(loadPartnerSessionKey(partnerId));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setSessionKey(loadPartnerSessionKey(partnerId));
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [partnerId]);
   const changeSessionKey = useCallback(
-    (key: string) => {
+    async (key: string) => {
       persistPartnerSessionKey(partnerId, key);
       setSessionKey(key);
+      if (!sessionRoaming) return;
+      try {
+        await updatePartnerSessionRoaming(partnerId, true, key);
+      } catch (error) {
+        setToast(
+          error instanceof Error
+            ? error.message
+            : t("Could not update Partner session roaming."),
+        );
+      }
     },
-    [partnerId],
+    [partnerId, sessionRoaming, t],
   );
+
+  const toggleSessionRoaming = useCallback(async () => {
+    if (!sessionKey || roamingBusy) return;
+    setRoamingBusy(true);
+    try {
+      const next = await updatePartnerSessionRoaming(
+        partnerId,
+        !sessionRoaming,
+        sessionRoaming ? undefined : sessionKey,
+      );
+      setSessionRoaming(next.enabled);
+      if (next.enabled && next.session_key) {
+        persistPartnerSessionKey(partnerId, next.session_key);
+        setSessionKey(next.session_key);
+        setToast(t("Partner conversation roaming enabled"));
+      } else {
+        setSessionKey(loadPartnerSessionKey(partnerId));
+        setToast(t("Partner conversations stay in this browser"));
+      }
+    } catch (error) {
+      setToast(
+        error instanceof Error
+          ? error.message
+          : t("Could not update Partner session roaming."),
+      );
+    } finally {
+      setRoamingBusy(false);
+    }
+  }, [partnerId, roamingBusy, sessionKey, sessionRoaming, t]);
 
   useEffect(() => {
     if (!toast) return;
@@ -165,7 +228,7 @@ function PartnerDetail() {
     try {
       await archivePartnerSession(partnerId, sessionKey);
       setChatMessages([]);
-      changeSessionKey(freshPartnerSessionKey());
+      await changeSessionKey(freshPartnerSessionKey());
       setToast(t("Archived conversation"));
     } catch (error) {
       setToast(error instanceof Error ? error.message : t("Action failed"));
@@ -330,20 +393,45 @@ function PartnerDetail() {
           {(activeTab === "chat" || activeTab === "archive") && (
             <>
               {activeTab === "chat" ? (
-                <button
-                  type="button"
-                  onClick={() => void handleArchiveConversation()}
-                  disabled={!chatMessages.length || archiveBusy}
-                  title={t("Archive")}
-                  aria-label={t("Archive")}
-                  className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  {archiveBusy ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Archive className="h-4 w-4" />
-                  )}
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void toggleSessionRoaming()}
+                    disabled={!sessionKey || roamingBusy}
+                    aria-pressed={sessionRoaming}
+                    title={t(
+                      sessionRoaming
+                        ? "This Partner conversation follows your account across browsers"
+                        : "Continue this Partner conversation across browsers",
+                    )}
+                    aria-label={t("Partner conversation roaming")}
+                    className={`rounded-md p-1.5 hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40 ${
+                      sessionRoaming
+                        ? "text-[var(--primary)]"
+                        : "text-[var(--muted-foreground)]"
+                    }`}
+                  >
+                    {roamingBusy ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Cloud className="h-4 w-4" />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleArchiveConversation()}
+                    disabled={!chatMessages.length || archiveBusy}
+                    title={t("Archive")}
+                    aria-label={t("Archive")}
+                    className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {archiveBusy ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Archive className="h-4 w-4" />
+                    )}
+                  </button>
+                </>
               ) : null}
               <button
                 type="button"
@@ -440,7 +528,7 @@ function PartnerDetail() {
               onToast={setToast}
               onMessagesChange={setArchiveMessages}
               onResume={(key) => {
-                changeSessionKey(key);
+                void changeSessionKey(key);
                 setTab("chat");
               }}
             />

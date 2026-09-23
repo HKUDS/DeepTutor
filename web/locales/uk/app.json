@@ -4008,5 +4008,11 @@
   "That question is no longer waiting for an answer, so this was sent as a new message.": "Це питання більше не очікує на відповідь, тому це було надіслано як нове повідомлення.",
   "A knowledge base name cannot contain {{chars}} — these separate paths and URLs.": "Назва бази знань не може містити {{chars}} — ці символи розділяють шляхи та URL-адреси.",
   "Select text in the document first.": "Спочатку виділіть текст у документі.",
-  "language.ukrainian": "Українська"
+  "language.ukrainian": "Українська",
+  "Partner conversation roaming": "Синхронізація розмов із Partner",
+  "Continue this Partner conversation across browsers": "Продовжувати цю розмову з Partner в інших браузерах",
+  "This Partner conversation follows your account across browsers": "Ця розмова з Partner доступна у вашому обліковому записі в усіх браузерах",
+  "Partner conversation roaming enabled": "Синхронізацію розмови з Partner увімкнено",
+  "Partner conversations stay in this browser": "Розмови з Partner залишаються в цьому браузері",
+  "Could not update Partner session roaming.": "Не вдалося оновити синхронізацію сесії Partner."
 }
