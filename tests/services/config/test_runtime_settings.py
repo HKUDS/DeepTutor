@@ -254,6 +254,28 @@ def test_existing_process_environment_remains_deployment_override(
     assert service.load_system()["backend_port"] == 9100
 
 
+def test_inherited_version_check_env_masks_saved_toggle_until_absent(tmp_path: Path) -> None:
+    """A fresh process that inherits DEEPTUTOR_VERSION_CHECK_ENABLED keeps the
+    startup value after system.json changes. The same save is live once that
+    variable is absent — the contract the launcher must preserve for children.
+    """
+    settings_dir = tmp_path / "settings"
+    inherited = RuntimeSettingsService(
+        settings_dir,
+        process_env={"DEEPTUTOR_VERSION_CHECK_ENABLED": "true"},
+    )
+    inherited.save_system({"version_check_enabled": False})
+    assert _read_json(inherited.path_for("system"))["version_check_enabled"] is False
+    assert inherited.load_system()["version_check_enabled"] is True
+
+    fresh = RuntimeSettingsService(settings_dir, process_env={})
+    assert _read_json(fresh.path_for("system"))["version_check_enabled"] is False
+    assert fresh.load_system()["version_check_enabled"] is False
+    fresh.save_system({"version_check_enabled": True})
+    assert _read_json(fresh.path_for("system"))["version_check_enabled"] is True
+    assert fresh.load_system()["version_check_enabled"] is True
+
+
 def test_startup_ensure_creates_missing_runtime_jsons_with_defaults(
     monkeypatch, tmp_path: Path
 ) -> None:

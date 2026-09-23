@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import builtins
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -10,6 +11,9 @@ from deeptutor.runtime import launcher
 from deeptutor.runtime import process as runtime_process
 from deeptutor.runtime.home import validate_runtime_home
 from deeptutor.services.app_update import UpdateJobStore, update_store_root
+from deeptutor.services.config.runtime_settings import RuntimeSettingsService
+
+_VERSION_CHECK_ENV = "DEEPTUTOR_VERSION_CHECK_ENABLED"
 
 
 class _FakeTty:
@@ -563,6 +567,117 @@ def test_start_uses_ipv4_loopback_for_frontend_proxy(
     assert "DEEPTUTOR_NEXT_DIST_DIR" not in captured_envs["frontend"]
     assert launcher.DETACHED_WORKER_ENV not in captured_envs["backend"]
     assert launcher.DETACHED_TOKEN_ENV not in captured_envs["backend"]
+
+
+def _capture_start_child_envs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    rendered_version_check: str,
+) -> dict[str, dict[str, str]]:
+    """Run ``start()`` until both children are spawned and return their envs.
+
+    ``rendered_version_check`` is what ``export_runtime_settings_to_env`` writes
+    into the process environment and returns — the launcher-generated value a
+    fresh backend would otherwise treat as a deployment override.
+    """
+    from deeptutor.services import config as config_module
+    from deeptutor.services import setup as setup_module
+
+    settings_dir = tmp_path / "data" / "user" / "settings"
+    settings = config_module.LaunchSettings(
+        backend_port=8001,
+        frontend_port=3782,
+        language="en",
+        source="test",
+        settings_dir=settings_dir,
+        interface_json_path=settings_dir / "interface.json",
+        system_json_path=settings_dir / "system.json",
+    )
+    captured_envs: dict[str, dict[str, str]] = {}
+
+    def _export(**_kwargs: object) -> dict[str, str]:
+        monkeypatch.setenv(_VERSION_CHECK_ENV, rendered_version_check)
+        return {_VERSION_CHECK_ENV: rendered_version_check}
+
+    monkeypatch.setattr(launcher, "_relax_console_encoding", lambda: None)
+    monkeypatch.setattr(launcher, "_reset_runtime_singletons", lambda: None)
+    monkeypatch.setattr(config_module, "ensure_runtime_settings_files", lambda: None)
+    monkeypatch.setattr(config_module, "load_launch_settings", lambda _home: settings)
+    monkeypatch.setattr(config_module, "load_system_settings", lambda: {"backend_workers": 1})
+    monkeypatch.setattr(config_module, "export_runtime_settings_to_env", _export)
+    monkeypatch.setattr(config_module, "load_auth_settings", lambda: {"enabled": False})
+    monkeypatch.setattr(config_module, "get_ws_max_size", lambda: 1024)
+    monkeypatch.setattr(setup_module, "init_user_directories", lambda _home: None)
+    monkeypatch.setattr(launcher, "resolve_language", lambda: "en")
+    monkeypatch.setattr(launcher, "print_banner", lambda **_kwargs: None)
+    monkeypatch.setattr(launcher, "_log", lambda _message: None)
+    monkeypatch.setattr(
+        launcher,
+        "_resolve_frontend",
+        lambda *_args, **_kwargs: launcher.FrontendRuntime("source-production", ["node"], tmp_path),
+    )
+    monkeypatch.setattr(launcher, "_detect_existing_source_frontend", lambda _runtime: None)
+    monkeypatch.setattr(
+        launcher,
+        "_resolve_port_conflicts",
+        lambda **_kwargs: (8001, 3782),
+    )
+    monkeypatch.setattr(launcher, "_install_signal_handlers", lambda _callback, **_kwargs: None)
+    monkeypatch.setattr(launcher.atexit, "register", lambda _callback: None)
+    monkeypatch.setattr(launcher, "_wait_for_http", lambda **_kwargs: None)
+    monkeypatch.setattr(launcher, "_terminate", lambda _process: None)
+
+    def _capture_spawn(_command, *, cwd, env, name):
+        assert cwd == tmp_path
+        captured_envs[name] = dict(env)
+        if name == "backend":
+            return launcher.ManagedProcess("backend", object(), None)
+        assert name == "frontend"
+        raise RuntimeError("captured launch environment")
+
+    monkeypatch.setattr(launcher, "_spawn", _capture_spawn)
+
+    with pytest.raises(RuntimeError, match="captured launch environment"):
+        launcher.start(tmp_path)
+    return captured_envs
+
+
+def test_start_omits_launcher_rendered_version_check_from_child_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv(_VERSION_CHECK_ENV, raising=False)
+
+    captured = _capture_start_child_envs(tmp_path, monkeypatch, rendered_version_check="true")
+
+    assert _VERSION_CHECK_ENV not in captured["backend"]
+    assert _VERSION_CHECK_ENV not in captured["frontend"]
+    assert _VERSION_CHECK_ENV not in os.environ
+
+    child = RuntimeSettingsService(tmp_path / "child-settings", process_env=captured["backend"])
+    saved = child.save_system({"version_check_enabled": False})
+    assert saved["version_check_enabled"] is False
+    assert child.load_system()["version_check_enabled"] is False
+    saved = child.save_system({"version_check_enabled": True})
+    assert saved["version_check_enabled"] is True
+    assert child.load_system()["version_check_enabled"] is True
+
+
+def test_start_keeps_operator_version_check_override_on_child_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(_VERSION_CHECK_ENV, "false")
+
+    captured = _capture_start_child_envs(tmp_path, monkeypatch, rendered_version_check="true")
+
+    assert captured["backend"][_VERSION_CHECK_ENV] == "false"
+    assert captured["frontend"][_VERSION_CHECK_ENV] == "false"
+    assert os.environ[_VERSION_CHECK_ENV] == "false"
+
+    child = RuntimeSettingsService(tmp_path / "child-settings", process_env=captured["backend"])
+    saved = child.save_system({"version_check_enabled": True})
+    assert saved["version_check_enabled"] is True
+    assert child.load_system()["version_check_enabled"] is False
 
 
 def test_foreground_signal_handlers_keep_windows_ctrl_c(monkeypatch) -> None:

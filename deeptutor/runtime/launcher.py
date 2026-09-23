@@ -1309,6 +1309,10 @@ def start(
     ensure_runtime_settings_files()
     settings = load_launch_settings(runtime_home)
     backend_workers = max(1, int(load_system_settings().get("backend_workers") or 1))
+    # Snapshot before export.  The call below always writes
+    # DEEPTUTOR_VERSION_CHECK_ENABLED from system.json; a value that appears
+    # only because of that write is not an operator override.
+    explicit_version_check = os.environ.get("DEEPTUTOR_VERSION_CHECK_ENABLED")
     runtime_env = export_runtime_settings_to_env(overwrite=True)
     auth_enabled = bool(load_auth_settings()["enabled"])
 
@@ -1425,6 +1429,20 @@ def start(
     common_env[SETTINGS_DERIVED_ENV_KEYS] = ",".join(
         sorted(key for key in derived_keys if common_env.get(key) == runtime_env.get(key))
     )
+    # Launcher-generated DEEPTUTOR_VERSION_CHECK_ENABLED must not masquerade
+    # as a process override.  The About "Check for updates" toggle persists
+    # system.json and should take effect without a restart, but a fresh
+    # backend treats any inherited value as a deployment override and keeps
+    # serving the startup setting.  Forward the variable only when the
+    # operator set it before export, and keep that original value rather
+    # than the post-export rendering.  Scrub this process too: update
+    # restarts inherit os.environ and would otherwise re-mask the toggle.
+    if explicit_version_check is None:
+        common_env.pop("DEEPTUTOR_VERSION_CHECK_ENABLED", None)
+        os.environ.pop("DEEPTUTOR_VERSION_CHECK_ENABLED", None)
+    else:
+        common_env["DEEPTUTOR_VERSION_CHECK_ENABLED"] = explicit_version_check
+        os.environ["DEEPTUTOR_VERSION_CHECK_ENABLED"] = explicit_version_check
 
     backend_cmd = [
         sys.executable,
