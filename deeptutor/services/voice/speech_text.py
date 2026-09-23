@@ -199,7 +199,6 @@ _SPACING_DROP = {
     "notag": "",
     "tag": "",
     "label": "",
-    "quad": " ",
 }
 
 _BLACKBOARD = {

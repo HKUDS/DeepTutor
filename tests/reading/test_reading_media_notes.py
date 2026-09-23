@@ -26,7 +26,6 @@ from deeptutor.capabilities.reading.media_notes import (
 )
 from deeptutor.capabilities.reading.tools import _media_note
 from deeptutor.core.context import UnifiedContext
-
 import deeptutor.reading as reading_pkg
 from deeptutor.reading import page_render as page_render_module
 
