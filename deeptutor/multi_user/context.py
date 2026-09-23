@@ -5,7 +5,7 @@ from __future__ import annotations
 from contextvars import ContextVar, Token
 from typing import Any
 
-from .models import CurrentUser
+from .models import CurrentUser, normalize_role
 from .paths import local_admin_user, scope_for_user
 
 _current_user: ContextVar[CurrentUser | None] = ContextVar("deeptutor_current_user", default=None)
@@ -32,9 +32,7 @@ def user_from_token_payload(payload: Any | None) -> CurrentUser:
         return local_admin_user()
     user_id = str(getattr(payload, "user_id", "") or "")
     username = str(getattr(payload, "username", "") or "local")
-    role = str(getattr(payload, "role", "user") or "user")
-    if role not in {"admin", "user"}:
-        role = "user"
+    role = normalize_role(str(getattr(payload, "role", "user") or "user"))
     if not user_id:
         user_id = "local-admin" if role == "admin" and username == "local" else username
     return CurrentUser(
