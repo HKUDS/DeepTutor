@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from typing import Any
 
 from deeptutor.agents.base_agent import BaseAgent
@@ -25,6 +26,24 @@ _RAW_EXCERPT_CHARS = 200
 
 class GeneratedCodeOutputError(ValueError):
     """The model exhausted its retries without returning runnable code."""
+
+
+_RAW_SUMMARY_EDGE = 200
+_DEBUG_LLM_RAW_VALUES = frozenset({"1", "true", "yes", "on"})
+
+
+def _debug_llm_raw_enabled() -> bool:
+    """Full failed responses are opt-in so ordinary logs stay bounded."""
+    value = os.environ.get("DEEPTUTOR_DEBUG_LLM_RAW", "").strip().lower()
+    return value in _DEBUG_LLM_RAW_VALUES
+
+
+def _raw_response_summary(raw: str, *, edge: int = _RAW_SUMMARY_EDGE) -> str:
+    text = raw or ""
+    length = len(text)
+    if length <= edge * 2:
+        return f"len={length} body={text!r}"
+    return f"len={length} head={text[:edge]!r} tail={text[-edge:]!r}"
 
 
 class CodeGeneratorAgent(BaseAgent):
@@ -172,6 +191,7 @@ class CodeGeneratorAgent(BaseAgent):
         attempts = max_retries + 1
         last_error: Exception | None = None
         last_failure = ""
+        last_raw = ""
         truncations = 0
         for structured_attempt in range(attempts):
             max_tokens = escalated_max_tokens(base_max_tokens, truncations)
@@ -203,6 +223,15 @@ class CodeGeneratorAgent(BaseAgent):
                 return generated
             except (json.JSONDecodeError, ValueError) as exc:
                 last_error = exc
+                last_raw = raw_response
+                if _debug_llm_raw_enabled():
+                    self.logger.debug(
+                        "Math animator %s raw LLM response on failed attempt %d/%d: %s",
+                        stage,
+                        structured_attempt + 1,
+                        attempts,
+                        raw_response,
+                    )
                 last_failure = describe_unusable_output(
                     error=exc,
                     raw_response=raw_response,
@@ -231,7 +260,8 @@ class CodeGeneratorAgent(BaseAgent):
 
         raise GeneratedCodeOutputError(
             f"Math animator {stage} returned no usable code after {attempts} attempts. "
-            f"Last attempt: {last_failure}"
+            f"Last attempt: {last_failure} (last error: {last_error}; "
+            f"raw response: {_raw_response_summary(last_raw)})."
         ) from last_error
 
     @staticmethod
