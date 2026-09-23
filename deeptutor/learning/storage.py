@@ -634,14 +634,21 @@ class LearningStore:
         This helper is always called inside the caller's write transaction, so
         a projection failure rolls back the aggregate and its public events.
         The ordinal is deliberately stable within the aggregate and avoids
-        inventing a second evidence identity.
+        inventing a second evidence identity. Ordinary appends update only
+        new rows; shrinking or repairing history removes only the stale tail.
         """
-        conn.execute(
-            "DELETE FROM mastery_learning_evidence WHERE path_id = ?",
-            (path_id,),
-        )
+        existing = {
+            int(row["ordinal"]): str(row["evidence_json"])
+            for row in conn.execute(
+                "SELECT ordinal, evidence_json FROM mastery_learning_evidence WHERE path_id = ?",
+                (path_id,),
+            ).fetchall()
+        }
         for ordinal, evidence in enumerate(progress.learning_evidence):
             payload = evidence.model_dump(mode="json")
+            encoded = json.dumps(payload, ensure_ascii=False)
+            if existing.get(ordinal) == encoded:
+                continue
             conn.execute(
                 """
                 INSERT INTO mastery_learning_evidence (
@@ -649,6 +656,16 @@ class LearningStore:
                     assessment_type, result, quality, session_id, turn_id,
                     evidence_json
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(path_id, ordinal) DO UPDATE SET
+                    knowledge_point_id = excluded.knowledge_point_id,
+                    timestamp = excluded.timestamp,
+                    source = excluded.source,
+                    assessment_type = excluded.assessment_type,
+                    result = excluded.result,
+                    quality = excluded.quality,
+                    session_id = excluded.session_id,
+                    turn_id = excluded.turn_id,
+                    evidence_json = excluded.evidence_json
                 """,
                 (
                     path_id,
@@ -661,8 +678,13 @@ class LearningStore:
                     evidence.quality,
                     evidence.session_id,
                     evidence.turn_id,
-                    json.dumps(payload, ensure_ascii=False),
+                    encoded,
                 ),
+            )
+        if len(existing) > len(progress.learning_evidence):
+            conn.execute(
+                "DELETE FROM mastery_learning_evidence WHERE path_id = ? AND ordinal >= ?",
+                (path_id, len(progress.learning_evidence)),
             )
 
     def _archive_legacy(self, path: Path) -> None:

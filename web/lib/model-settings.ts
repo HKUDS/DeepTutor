@@ -1,4 +1,5 @@
 import { modelProvider } from "./provider-registry";
+import { randomUuid } from "./random-uuid";
 import type {
   Catalog,
   CatalogModel,
@@ -154,7 +155,7 @@ export function addDiscoveredModels(
       return blank.id;
     }
     const model: CatalogModel = {
-      id: `model-${crypto.randomUUID()}`,
+      id: `model-${randomUuid()}`,
       name: value,
       model: value,
     };

@@ -161,13 +161,8 @@ def _reconcile_embedding_flags(knowledge_bases: dict, base_dir: Path | None = No
 
         changed = reconcile_bindings(knowledge_bases, base_dir)
 
-    if signature is None and not fp:
-        return changed
-
     for kb_name, kb_entry in knowledge_bases.items():
         if not isinstance(kb_entry, dict):
-            continue
-        if kb_entry.get("embedding_selection"):
             continue
 
         # Connected KBs (Obsidian vaults, linked indexes) are pointers with no
@@ -177,6 +172,53 @@ def _reconcile_embedding_flags(knowledge_bases: dict, base_dir: Path | None = No
             continue
 
         provider = normalize_provider_name(kb_entry.get("rag_provider"))
+        if provider == LIGHTRAG_PROVIDER and base_dir is not None:
+            from deeptutor.services.embedding.config import embedding_config_scope
+            from deeptutor.services.rag.embedding_binding import (
+                binding_status,
+                bound_graph_storage_root,
+                entry_signature,
+            )
+            from deeptutor.services.rag.pipelines.lightrag.storage import (
+                embedding_matches,
+                latest_published_root,
+            )
+
+            kb_dir = base_dir / kb_name
+            kb_entry["index_versions"] = inspect_kb_versions(kb_dir, provider)
+            published = latest_published_root(kb_dir)
+            state, bound_config = binding_status(kb_entry)
+            if state in {"missing", "unconfigured"}:
+                continue
+            if bound_config is not None:
+                with embedding_config_scope(bound_config):
+                    try:
+                        published = bound_graph_storage_root(kb_dir, provider, published)
+                    except ValueError:
+                        pass  # Check the unmatched published index below.
+            lightrag_mismatch = published is not None and not embedding_matches(
+                published, entry_signature(kb_entry)
+            )
+            lightrag_mismatch = lightrag_mismatch or state == "changed"
+            if lightrag_mismatch and not kb_entry.get("embedding_mismatch"):
+                kb_entry["embedding_mismatch"] = True
+                kb_entry["needs_reindex"] = True
+                changed = True
+            elif (
+                published is not None
+                and not lightrag_mismatch
+                and kb_entry.pop("embedding_mismatch", None)
+            ):
+                kb_entry["needs_reindex"] = False
+                changed = True
+            continue
+
+        if kb_entry.get("embedding_selection"):
+            continue
+
+        if signature is None and not fp:
+            continue
+
         if not provider_uses_embedding_versions(provider):
             kb_dir = (base_dir / kb_name) if base_dir is not None else None
             if kb_dir is not None:
@@ -601,9 +643,9 @@ class KnowledgeBaseManager:
                     continue
 
                 # Check if this is a valid KB directory (flat versions or legacy stores)
+                rag_storage = item / "rag_storage"
                 from deeptutor.services.rag.index_versioning import list_kb_versions
 
-                rag_storage = item / "rag_storage"
                 versions = list_kb_versions(item)
                 detected_provider = _detect_provider_from_versions(versions)
                 is_valid_kb = has_ready_provider_index(item, detected_provider) or (
@@ -1407,18 +1449,69 @@ class KnowledgeBaseManager:
 
         if rag_provider == LIGHTRAG_PROVIDER:
             from deeptutor.services.rag.pipelines.lightrag.storage import (
-                latest_published_root,
+                published_root_for_embedding,
                 read_published_policy,
             )
 
-            published_root = latest_published_root(kb_dir) if dir_exists else None
+            binding_signature = (
+                kb_config.get("embedding_signature")
+                if kb_config.get("embedding_selection")
+                else None
+            )
+            published_root = (
+                published_root_for_embedding(kb_dir, binding_signature) if dir_exists else None
+            )
             indexing_policy = read_published_policy(published_root)
+            if published_root is not None:
+                metadata["indexed_version"] = published_root.name
             if indexing_policy is None:
                 pending = kb_config.get("pending_indexing_policy")
                 indexing_policy = (
-                    pending if isinstance(pending, dict) else {"policy": "legacy_unpinned"}
+                    {"policy": "defaults"}
+                    if not index_versions
+                    else pending
+                    if isinstance(pending, dict)
+                    else {"policy": "legacy_unpinned"}
                 )
-            metadata["indexing_policy"] = indexing_policy
+            from deeptutor.services.rag.pipelines.lightrag.indexing_policy import public_policy
+
+            metadata["indexing_policy"] = public_policy(indexing_policy)
+            if published_root is not None and indexing_policy.get("policy") == "pinned":
+                from deeptutor.services.rag.pipelines.lightrag.indexing_policy import (
+                    IndexingPolicyError,
+                    snapshot_from_persisted,
+                )
+
+                try:
+                    snapshot_from_persisted(indexing_policy)
+                except (IndexingPolicyError, ValueError, PermissionError):
+                    # This is local catalog/access validation, not a model health probe.
+                    # Keep credential/provider exception details out of public metadata.
+                    metadata["indexing_model_unavailable"] = True
+            for version in index_versions:
+                if isinstance(version.get("indexing_policy"), dict):
+                    version["indexing_policy"] = public_policy(version["indexing_policy"])
+            if published_root is not None or kb_config.get("embedding_selection"):
+                from deeptutor.services.rag.embedding_binding import entry_signature
+
+                published = next(
+                    (
+                        v
+                        for v in index_versions
+                        if published_root is not None and v.get("version") == published_root.name
+                    ),
+                    {},
+                )
+                metadata["indexed_embedding_model"] = published.get(
+                    "embedding_model"
+                ) or kb_config.get("embedding_model")
+                metadata["indexed_embedding_dim"] = published.get("embedding_dim") or kb_config.get(
+                    "embedding_dim"
+                )
+                current_embedding = entry_signature(kb_config)
+                if current_embedding is not None:
+                    metadata["current_embedding_model"] = current_embedding.model
+                    metadata["current_embedding_dim"] = current_embedding.dimension
 
         metadata.update(self._embedding_fields(kb_config))
 

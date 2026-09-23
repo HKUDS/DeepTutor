@@ -56,11 +56,16 @@ vi.mock('framer-motion', async () => {
     return plain
   }
   const cache: Record<string, unknown> = {}
+  // Both names, one proxy: the app renders inside a strict `LazyMotion`, so its
+  // components import `m` rather than `motion` (#1549). A mock that exports only
+  // `motion` fails the import itself, which is a mock gap, not a real crash.
+  const motion = new Proxy(cache, {
+    get: (store, tag: string) =>
+      (store[tag] ??= (props: Record<string, unknown>) => createElement(tag, strip(props))),
+  })
   return {
-    motion: new Proxy(cache, {
-      get: (store, tag: string) =>
-        (store[tag] ??= (props: Record<string, unknown>) => createElement(tag, strip(props))),
-    }),
+    motion,
+    m: motion,
     AnimatePresence: ({ children }: { children?: unknown }) => children,
     useReducedMotion: () => false,
   }

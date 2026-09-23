@@ -9,6 +9,7 @@ import {
   Underline,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import Tooltip from "@/shared/ui/Tooltip";
 import {
   ANNOTATION_COLORS,
   ANNOTATION_SWATCH,
@@ -105,20 +106,20 @@ export function AnnotationPopover({
       <div className="flex items-center gap-1">
         <div className="flex items-center gap-0.5 pr-1">
           {ANNOTATION_COLORS.map((swatch) => (
-            <button
-              key={swatch}
-              type="button"
-              title={t(swatchLabel(swatch))}
-              aria-label={t(swatchLabel(swatch))}
-              aria-pressed={color === swatch}
-              onClick={() => setColor(swatch)}
-              className={`h-5 w-5 rounded-full border transition ${
-                color === swatch
-                  ? "border-[var(--foreground)] scale-110"
-                  : "border-black/10 hover:scale-105"
-              }`}
-              style={{ background: ANNOTATION_SWATCH[swatch] }}
-            />
+            <Tooltip key={swatch} label={t(swatchLabel(swatch))} side="top">
+              <button
+                type="button"
+                aria-label={t(swatchLabel(swatch))}
+                aria-pressed={color === swatch}
+                onClick={() => setColor(swatch)}
+                className={`h-5 w-5 rounded-full border transition ${
+                  color === swatch
+                    ? "border-[var(--foreground)] scale-110"
+                    : "border-black/10 hover:scale-105"
+                }`}
+                style={{ background: ANNOTATION_SWATCH[swatch] }}
+              />
+            </Tooltip>
           ))}
         </div>
         <span className="h-5 w-px bg-[var(--border)]" aria-hidden />
@@ -203,19 +204,20 @@ function IconButton({
   active?: boolean;
 }) {
   return (
-    <button
-      type="button"
-      title={label}
-      aria-label={label}
-      onClick={onClick}
-      className={`inline-flex h-7 w-7 items-center justify-center rounded-lg transition ${
-        active
-          ? "bg-[var(--muted)] text-[var(--foreground)]"
-          : "text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-      }`}
-    >
-      <Icon size={14} />
-    </button>
+    <Tooltip label={label} side="bottom">
+      <button
+        type="button"
+        aria-label={label}
+        onClick={onClick}
+        className={`inline-flex h-7 w-7 items-center justify-center rounded-lg transition ${
+          active
+            ? "bg-[var(--muted)] text-[var(--foreground)]"
+            : "text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+        }`}
+      >
+        <Icon size={14} />
+      </button>
+    </Tooltip>
   );
 }
 

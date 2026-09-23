@@ -190,7 +190,7 @@ class _FakePartnerContext:
 
 
 @pytest.mark.asyncio
-async def test_record_files_a_partner_mistake_into_a_browsable_session(
+async def test_record_files_a_partner_mistake_without_a_placeholder_session(
     store: SQLiteSessionStore,
 ) -> None:
     outcome = await run_question_bank(
@@ -204,16 +204,20 @@ async def test_record_files_a_partner_mistake_into_a_browsable_session(
     )
 
     assert outcome.ok, outcome.error
-    session_id = outcome.summary["session_id"]
+    assert outcome.summary["session_id"] == ""
+    assert outcome.summary["origin_type"] == "external_import"
+    origin_ref = outcome.summary["origin_ref"]
     assert outcome.summary["source"] == "partner_chat"
-    # The placeholder session exists so the entry is browsable, and the
-    # mistake landed in it, labelled as coming from a partner conversation.
     stats = await store.question_bank_stats()
     assert stats["total"] == 1
-    entry = await store.find_notebook_entry(session_id, outcome.summary["question_id"])
+    entry = await store.find_notebook_entry_by_origin(
+        "external_import", origin_ref, outcome.summary["question_id"]
+    )
     assert entry is not None
+    assert entry["session_id"] == ""
     assert entry["source"] == "partner_chat"
     assert entry["question"] == "What is 7 × 8?"
+    assert await store.list_sessions() == []
     # The optional category was created and the entry filed into it.
     assert "Filed under 'Multiplication drills'" in outcome.text
 

@@ -1,14 +1,17 @@
 """Unified assessment adapter for the Question Notebook review layer.
 
 Mastery Path, Book Focus-Check, and Immersive Reading persist graded attempts
-through :func:`record_assessment`. Identity is the existing
-``(session_id, turn_id, question_id)`` notebook unique key — there is no
-second question bank. Objective linkage is written only for
-``source="mastery_path"``.
+through :func:`record_assessment`. Identity is
+``(origin_type, origin_ref, turn_id, question_id)``; conversation-backed
+records use their session id as ``origin_ref`` for backward compatibility.
+Every graded submission is also appended to the immutable shared attempt log,
+and explicit objective linkage can update the same retention state from any
+learning surface.
 """
 
 from __future__ import annotations
 
+import asyncio
 from hashlib import sha1
 import logging
 import time
@@ -20,9 +23,11 @@ from deeptutor.core.assessment import (
     ASSESSMENT_RESULTS,
     ASSESSMENT_SOURCES,
     ASSESSMENT_TYPES,
+    QUESTION_ORIGIN_TYPES,
     AssessmentResult,
     AssessmentSource,
     AssessmentType,
+    QuestionOriginType,
 )
 
 logger = logging.getLogger(__name__)
@@ -37,6 +42,8 @@ class AssessmentOutcome(BaseModel):
 
     entry_id: int | None = None
     upserted: bool = False
+    attempt_id: str = ""
+    attempt_recorded: bool = False
     diagnostics: list[str] = Field(default_factory=list)
 
 
@@ -71,7 +78,9 @@ class AssessmentRecord(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    session_id: str
+    session_id: str = ""
+    origin_type: QuestionOriginType = "conversation"
+    origin_ref: str = ""
     turn_id: str = ""
     question_id: str
     source: AssessmentSource = "deep_question"
@@ -100,12 +109,19 @@ class AssessmentRecord(BaseModel):
     updated_at: float = Field(default_factory=time.time)
     bookmarked: bool = False
     resolved: bool | None = None
+    attempt_id: str = ""
 
     @field_validator("source", mode="before")
     @classmethod
     def _normalize_source(cls, value: object) -> str:
         raw = str(value or "").strip()
         return raw if raw in ASSESSMENT_SOURCES else "deep_question"
+
+    @field_validator("origin_type", mode="before")
+    @classmethod
+    def _normalize_origin_type(cls, value: object) -> str:
+        raw = str(value or "").strip()
+        return raw if raw in QUESTION_ORIGIN_TYPES else "conversation"
 
     @field_validator("assessment_type", mode="before")
     @classmethod
@@ -121,6 +137,7 @@ class AssessmentRecord(BaseModel):
 
     @field_validator(
         "session_id",
+        "origin_ref",
         "turn_id",
         "question_id",
         "question",
@@ -135,6 +152,7 @@ class AssessmentRecord(BaseModel):
         "section_title",
         "mastery_path_id",
         "knowledge_point_id",
+        "attempt_id",
         mode="before",
     )
     @classmethod
@@ -166,8 +184,16 @@ class AssessmentRecord(BaseModel):
 
     @model_validator(mode="after")
     def _require_identity(self) -> "AssessmentRecord":
-        if not self.session_id or not self.question_id:
-            raise ValueError("session_id and question_id are required")
+        if self.origin_type == "conversation":
+            if not self.session_id:
+                raise ValueError("conversation assessments require session_id")
+            if self.origin_ref and self.origin_ref != self.session_id:
+                raise ValueError("conversation origin_ref must match session_id")
+            self.origin_ref = self.session_id
+        elif not self.origin_ref:
+            raise ValueError(f"{self.origin_type} assessments require origin_ref")
+        if not self.question_id:
+            raise ValueError("question_id is required")
         if not self.question:
             raise ValueError("question is required")
         return self
@@ -175,7 +201,43 @@ class AssessmentRecord(BaseModel):
     @property
     def assessment_id(self) -> str:
         """Audit id derived from the notebook unique key — not a second identity."""
-        raw = f"{self.session_id}|{self.turn_id}|{self.question_id}"
+        owner = (
+            self.session_id
+            if self.origin_type == "conversation"
+            else f"{self.origin_type}:{self.origin_ref}"
+        )
+        raw = f"{owner}|{self.turn_id}|{self.question_id}"
+        return sha1(raw.encode("utf-8"), usedforsecurity=False).hexdigest()
+
+    @property
+    def attempt_identity(self) -> str:
+        """Idempotency key for one immutable submission.
+
+        Callers with their own durable attempt identity should pass it. The
+        fallback deliberately excludes wall-clock time so transport retries
+        of the same answer converge; callers that allow the exact same answer
+        more than once distinguish it with ``attempt_count`` or ``attempt_id``.
+        """
+        if self.attempt_id:
+            return self.attempt_id
+        owner = (
+            self.session_id
+            if self.origin_type == "conversation"
+            else f"{self.origin_type}:{self.origin_ref}"
+        )
+        raw = "|".join(
+            (
+                owner,
+                self.turn_id,
+                self.question_id,
+                self.source,
+                self.assessment_type,
+                str(self.attempt_count),
+                self.user_answer,
+                self.result,
+                str(self.is_correct),
+            )
+        )
         return sha1(raw.encode("utf-8"), usedforsecurity=False).hexdigest()
 
 
@@ -201,18 +263,96 @@ def _resolve_result(record: AssessmentRecord, diagnostics: list[str]) -> Assessm
 
 
 def _apply_linkage(record: AssessmentRecord, diagnostics: list[str]) -> tuple[str, str]:
-    if record.source == "mastery_path":
+    if record.mastery_path_id and record.knowledge_point_id:
         return record.mastery_path_id, record.knowledge_point_id
     if record.mastery_path_id or record.knowledge_point_id:
         logger.warning(
-            "Dropping mastery linkage on non-mastery assessment source=%s "
+            "Dropping incomplete mastery linkage on assessment source=%s "
             "mastery_path_id=%s knowledge_point_id=%s",
             record.source,
             record.mastery_path_id,
             record.knowledge_point_id,
         )
-        diagnostics.append("dropped_non_mastery_linkage")
+        diagnostics.append("dropped_incomplete_mastery_linkage")
     return "", ""
+
+
+def _get_learning_store():
+    from deeptutor.learning.storage import LearningStore
+
+    return LearningStore()
+
+
+def _apply_linked_retention(
+    record: AssessmentRecord,
+    *,
+    result: AssessmentResult,
+    attempt_id: str,
+) -> bool:
+    """Apply explicitly linked non-Mastery evidence to its objective once."""
+    if (
+        record.source == "mastery_path"
+        or result == "ungraded"
+        or not record.mastery_path_id
+        or not record.knowledge_point_id
+    ):
+        return False
+
+    from deeptutor.learning.models import LearningEvidence
+    from deeptutor.learning.policy import find_knowledge_point
+    from deeptutor.learning.scheduler import SpacedRepetitionScheduler
+
+    scheduler = SpacedRepetitionScheduler()
+    event_result = result if result in {"correct", "incorrect", "partial"} else "incorrect"
+    evidence = LearningEvidence(
+        evidence_id=attempt_id,
+        question_id=record.question_id,
+        knowledge_point_id=record.knowledge_point_id,
+        timestamp=record.created_at,
+        source=record.source,
+        assessment_type="quiz" if record.assessment_type in {"quiz", "focus_check"} else "review",
+        result=event_result,
+        quality=record.quality,
+        hints_used=record.hints_used,
+        attempt_count=record.attempt_count,
+        confidence=record.confidence,
+        response_time=record.response_time,
+        session_id=record.session_id,
+        turn_id=record.turn_id,
+    )
+
+    def apply(tx) -> bool:
+        progress = tx.progress
+        if any(item.evidence_id == attempt_id for item in progress.learning_evidence):
+            return False
+        kp, _, _ = find_knowledge_point(progress, record.knowledge_point_id)
+        if kp is None:
+            raise ValueError(
+                f"Unknown linked objective {record.knowledge_point_id!r} "
+                f"on path {record.mastery_path_id!r}"
+            )
+        progress.learning_evidence.append(evidence)
+        state = progress.repetition_states.get(kp.id) or scheduler.get_initial_state(
+            kp.type, now=evidence.timestamp
+        )
+        progress.repetition_states[kp.id] = state
+        scheduler.schedule_review(state, kp.type, evidence, now=evidence.timestamp)
+        progress.review_queue = scheduler.build_review_queue(progress)
+        tx.emit(
+            "evidence.recorded",
+            {
+                "evidence_id": attempt_id,
+                "knowledge_point_id": kp.id,
+                "source": record.source,
+                "result": event_result,
+            },
+            session_id=record.session_id,
+            turn_id=record.turn_id,
+        )
+        return True
+
+    _, applied = _get_learning_store().mutate(record.mastery_path_id, apply)
+    return applied
 
 
 def to_notebook_item(record: AssessmentRecord, diagnostics: list[str]) -> dict[str, Any]:
@@ -221,6 +361,8 @@ def to_notebook_item(record: AssessmentRecord, diagnostics: list[str]) -> dict[s
     mastery_path_id, knowledge_point_id = _apply_linkage(record, diagnostics)
     is_correct = result_to_is_correct(result)
     item: dict[str, Any] = {
+        "origin_type": record.origin_type,
+        "origin_ref": record.origin_ref,
         "turn_id": record.turn_id,
         "question_id": record.question_id,
         "question": record.question,
@@ -250,16 +392,35 @@ def to_notebook_item(record: AssessmentRecord, diagnostics: list[str]) -> dict[s
 
 
 async def record_assessment(record: AssessmentRecord) -> AssessmentOutcome:
-    """Persist one assessment into the unified Question Notebook."""
+    """Persist the latest projection, immutable attempt, and linked evidence."""
     diagnostics: list[str] = []
     item = to_notebook_item(record, diagnostics)
+    attempt_id = record.attempt_identity
     try:
         from deeptutor.services.session import get_sqlite_session_store
 
         store = get_sqlite_session_store()
-        upserted = await store.upsert_notebook_entries(record.session_id, [item])
-        entry = await store.find_notebook_entry(
-            record.session_id, record.question_id, turn_id=record.turn_id
+        upserted = await store.upsert_notebook_entries(record.session_id or None, [item])
+        entry = await store.find_notebook_entry_by_origin(
+            record.origin_type,
+            record.origin_ref,
+            record.question_id,
+            turn_id=record.turn_id,
+        )
+        entry_id = (
+            int(entry["id"]) if isinstance(entry, dict) and entry.get("id") is not None else None
+        )
+        attempt_recorded = await store.append_assessment_attempt(
+            record.session_id or None,
+            entry_id,
+            {
+                **record.model_dump(mode="json"),
+                "attempt_id": attempt_id,
+                "result": item["result"],
+                "mastery_path_id": item["mastery_path_id"],
+                "knowledge_point_id": item["knowledge_point_id"],
+                "occurred_at": record.created_at,
+            },
         )
     except Exception as exc:
         logger.exception(
@@ -270,10 +431,30 @@ async def record_assessment(record: AssessmentRecord) -> AssessmentOutcome:
         raise RecordAssessmentError(
             f"Failed to record assessment {record.question_id!r} for session {record.session_id!r}"
         ) from exc
-    entry_id = int(entry["id"]) if isinstance(entry, dict) and entry.get("id") is not None else None
+    if item["mastery_path_id"] and item["knowledge_point_id"]:
+        try:
+            applied = await asyncio.to_thread(
+                _apply_linked_retention,
+                record,
+                result=item["result"],
+                attempt_id=attempt_id,
+            )
+            if applied:
+                diagnostics.append("linked_retention_updated")
+        except Exception:
+            logger.warning(
+                "Assessment %s retained its linkage but could not update path %s objective %s",
+                attempt_id,
+                item["mastery_path_id"],
+                item["knowledge_point_id"],
+                exc_info=True,
+            )
+            diagnostics.append("linked_retention_failed")
     return AssessmentOutcome(
         entry_id=entry_id,
         upserted=bool(upserted),
+        attempt_id=attempt_id,
+        attempt_recorded=attempt_recorded,
         diagnostics=diagnostics,
     )
 
@@ -287,6 +468,7 @@ __all__ = [
     "AssessmentResult",
     "AssessmentSource",
     "AssessmentType",
+    "QuestionOriginType",
     "RecordAssessmentError",
     "build_grade_result",
     "is_correct_to_result",

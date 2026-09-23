@@ -249,7 +249,12 @@ def next_objective(
             session_id=str(pending_session_id or ""),
         )
 
-    due = due_reviews(progress, now=now)
+    deferred_ids = set(progress.deferred_objectives)
+    due = [
+        task
+        for task in due_reviews(progress, now=now)
+        if task.knowledge_point_id not in deferred_ids
+    ]
     if due:
         kp, module_id, module_name = find_knowledge_point(progress, due[0].knowledge_point_id)
         if kp is not None:
@@ -269,6 +274,7 @@ def next_objective(
                 forgetting_risk=task.forgetting_risk,
             )
 
+    deferred_fallback: NextStep | None = None
     for module in sorted(progress.modules, key=lambda m: m.order):
         for kp in module.knowledge_points:
             if is_mastered(progress, kp):
@@ -281,7 +287,7 @@ def next_objective(
                 action = "assess"
             else:
                 action = "practice"
-            return NextStep(
+            step = NextStep(
                 action=action,
                 module_id=module.id,
                 module_name=module.name,
@@ -298,6 +304,14 @@ def next_objective(
                     else "Objective is below its mastery gate; keep working it until it clears."
                 ),
             )
+            if kp.id in deferred_ids:
+                if deferred_fallback is None:
+                    deferred_fallback = step
+                continue
+            return step
+
+    if deferred_fallback is not None:
+        return deferred_fallback
 
     return NextStep(action="complete", reason="All objectives are mastered and no reviews are due.")
 
@@ -329,6 +343,7 @@ def map_summary(progress: LearningProgress, *, now: float | None = None) -> dict
                         if kp.id in progress.learner_mastery_overrides
                         else ""
                     ),
+                    "deferred": kp.id in progress.deferred_objectives,
                 }
             )
         modules_out.append(

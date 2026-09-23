@@ -116,6 +116,8 @@ def test_store_migrates_legacy_notebook_review_columns(tmp_path: Path) -> None:
     assert listing["total"] == 1
     entry = listing["items"][0]
     assert entry["source"] == "deep_question"
+    assert entry["origin_type"] == "conversation"
+    assert entry["origin_ref"] == "session-1"
     assert entry["score_trend"] == "new"
     assert entry["resolved"] is False
     assert all(not entry[key] for key in ("material_id", "section_id"))
@@ -457,6 +459,51 @@ def test_upsert_unknown_session_raises(store: SQLiteSessionStore) -> None:
         asyncio.run(store.upsert_notebook_entries("nope", _make_items(("q1", "Q?", False))))
 
 
+def test_non_conversation_origin_upserts_without_a_session(
+    store: SQLiteSessionStore,
+) -> None:
+    item = {
+        "origin_type": "document_analysis",
+        "origin_ref": "book:algebra:page-12",
+        "question_id": "q1",
+        "question": "What is the slope?",
+        "source": "book",
+        "material_id": "algebra",
+        "is_correct": False,
+    }
+
+    assert asyncio.run(store.upsert_notebook_entries(None, [item])) == 1
+    item["user_answer"] = "3"
+    assert asyncio.run(store.upsert_notebook_entries(None, [item])) == 1
+
+    listing = asyncio.run(store.list_notebook_entries())
+    assert listing["total"] == 1
+    entry = listing["items"][0]
+    assert entry["session_id"] == ""
+    assert entry["origin_type"] == "document_analysis"
+    assert entry["origin_ref"] == "book:algebra:page-12"
+    assert entry["user_answer"] == "3"
+    assert asyncio.run(store.list_notebook_entries(session_ids=[]))["total"] == 0
+
+
+def test_non_conversation_origin_requires_a_stable_reference(
+    store: SQLiteSessionStore,
+) -> None:
+    with pytest.raises(ValueError, match="require origin_ref"):
+        asyncio.run(
+            store.upsert_notebook_entries(
+                None,
+                [
+                    {
+                        "origin_type": "external_import",
+                        "question_id": "q1",
+                        "question": "Imported?",
+                    }
+                ],
+            )
+        )
+
+
 def test_list_entries_filters_bookmarked(store: SQLiteSessionStore) -> None:
     session = asyncio.run(store.create_session())
     asyncio.run(
@@ -710,25 +757,27 @@ def test_entries_follow_a_session_into_and_out_of_the_recycle_bin(
 
     asyncio.run(store.soft_delete_session(session["id"]))
     assert asyncio.run(store.hard_delete_session(session["id"]))
-    assert asyncio.run(store.list_notebook_entries())["total"] == 0
+    detached = asyncio.run(store.list_notebook_entries())
+    assert detached["total"] == 1
+    assert detached["items"][0]["session_id"] == ""
+    assert detached["items"][0]["origin_ref"] == session["id"]
 
 
-def test_entries_cascade_when_a_session_is_deleted_outright(
+def test_entries_keep_provenance_when_a_session_is_deleted_outright(
     store: SQLiteSessionStore,
 ) -> None:
-    """`delete_session` skips the bin, so ON DELETE CASCADE fires at once.
-
-    This is the path the reading cleanups take: a workspace that is gone
-    takes its sessions with it, and those must not surface in the learner's
-    recycle bin to be restored into a workspace that no longer exists.
-    """
+    """Deleting a chat removes navigation without deleting learning evidence."""
     session = asyncio.run(store.create_session())
     asyncio.run(store.upsert_notebook_entries(session["id"], _make_items(("q1", "Q?", False))))
     assert asyncio.run(store.list_notebook_entries())["total"] == 1
 
     assert asyncio.run(store.delete_session(session["id"]))
 
-    assert asyncio.run(store.list_notebook_entries())["total"] == 0
+    listing = asyncio.run(store.list_notebook_entries())
+    assert listing["total"] == 1
+    assert listing["items"][0]["session_id"] == ""
+    assert listing["items"][0]["origin_type"] == "conversation"
+    assert listing["items"][0]["origin_ref"] == session["id"]
     assert asyncio.run(store.list_deleted_sessions()) == []
     assert asyncio.run(store.restore_session(session["id"])) is False
 

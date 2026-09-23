@@ -16,7 +16,6 @@ import {
   decodeResourceSegment,
   knowledgeBaseRoute,
 } from "@/lib/resource-routes";
-import type { IndexingLLMSelection } from "@/features/knowledge/model/types";
 
 const panelLoading = () => (
   <div
@@ -68,7 +67,6 @@ export default function KnowledgePage() {
     uploadFiles,
     setDefault,
     reindex,
-    updatePendingIndexingPolicy,
     retry,
     deleteKb,
     connectObsidian,
@@ -149,13 +147,13 @@ export default function KnowledgePage() {
     // request is still in flight. Once loading finishes, the normal existence
     // check below may repair an actually stale name to the default KB.
     if (loading && explicitSelection) return explicitSelection;
-    const exact = kbs.find(kb => knowledgeBaseRef(kb) === explicitSelection);
+    const exact = kbs.find((kb) => knowledgeBaseRef(kb) === explicitSelection);
     if (exact) return knowledgeBaseRef(exact);
-    const legacy = kbs.filter(kb => kb.name === explicitSelection);
+    const legacy = kbs.filter((kb) => kb.name === explicitSelection);
     if (legacy.length === 1) return knowledgeBaseRef(legacy[0]);
     if (explicitSelection) return explicitSelection;
     if (!kbs.length) return null;
-    return knowledgeBaseRef(kbs.find(kb => kb.is_default) ?? kbs[0]);
+    return knowledgeBaseRef(kbs.find((kb) => kb.is_default) ?? kbs[0]);
   }, [explicitSelection, kbs, loading]);
 
   const selectedKb = useMemo(
@@ -231,8 +229,16 @@ export default function KnowledgePage() {
     async (name: string) => {
       try {
         const workspaces = await resourceUsage("knowledge_bases", name);
-        const impact = workspaces.length ? "\n\n" + t("Used by workspaces: {{names}}", { names: workspaces.join(", ") }) : "";
-        if (!window.confirm(t('Delete knowledge base "{{name}}"?', { name }) + impact)) return;
+        const impact = workspaces.length
+          ? "\n\n" +
+            t("Used by workspaces: {{names}}", { names: workspaces.join(", ") })
+          : "";
+        if (
+          !window.confirm(
+            t('Delete knowledge base "{{name}}"?', { name }) + impact,
+          )
+        )
+          return;
         await deleteKb(name);
         if (explicitSelection === name) {
           setExplicitSelection(null);
@@ -260,29 +266,17 @@ export default function KnowledgePage() {
   const handleReindex = useCallback(
     async (
       kbName: string,
-      indexingLLM?: IndexingLLMSelection,
+      configFingerprint?: string,
       embeddingModel?: EmbeddingModelSelection,
     ) => {
       try {
-        await reindex(kbName, indexingLLM, embeddingModel);
+        await reindex(kbName, configFingerprint, embeddingModel);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
         throw err;
       }
     },
     [reindex, setError],
-  );
-
-  const handleUpdatePendingIndexingPolicy = useCallback(
-    async (kbName: string, indexingLLM: IndexingLLMSelection) => {
-      try {
-        await updatePendingIndexingPolicy(kbName, indexingLLM);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-        throw err;
-      }
-    },
-    [setError, updatePendingIndexingPolicy],
   );
 
   const handleRetry = useCallback(
@@ -378,12 +372,17 @@ export default function KnowledgePage() {
             <KnowledgeBaseDetail
               kb={selectedKb}
               uploadPolicy={uploadPolicy}
-              task={selectedKb ? tasksByKb[knowledgeBaseRef(selectedKb)] : undefined}
-              history={selectedKb ? (historyByKb[knowledgeBaseRef(selectedKb)] ?? []) : []}
+              task={
+                selectedKb ? tasksByKb[knowledgeBaseRef(selectedKb)] : undefined
+              }
+              history={
+                selectedKb
+                  ? (historyByKb[knowledgeBaseRef(selectedKb)] ?? [])
+                  : []
+              }
               onCreate={openCreate}
               onUpload={handleUpload}
               onReindex={handleReindex}
-              onUpdatePendingIndexingPolicy={handleUpdatePendingIndexingPolicy}
               onRetry={handleRetry}
               onSetDefault={handleSetDefault}
               onDelete={handleDelete}

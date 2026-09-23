@@ -57,6 +57,7 @@ def transfer_sessions(
                 "notebook_entry_categories",
                 f"entry_id IN (SELECT id FROM main.notebook_entries WHERE session_id IN ({selected}))",  # nosec B608 - fixed tables and local schema; values bound
             ),
+            ("assessment_attempts", f"session_id IN ({selected})"),
         ]
         for table, where in tables:
             rows = conn.execute(f'SELECT * FROM main."{table}" WHERE {where}').fetchall()  # nosec B608 - fixed tables and local schema; values bound
@@ -114,6 +115,16 @@ def transfer_sessions(
         ).fetchone()[0]
         if copied != len(ids):
             raise WorkspaceError("The conversation copy could not be verified.")
+        # Notebook and assessment evidence normally survives a conversation
+        # deletion by detaching from it. A workspace transfer is different:
+        # verified copies now belong to the destination, so remove the source
+        # copies explicitly before deleting their conversations.
+        conn.execute(
+            f"DELETE FROM main.notebook_entries WHERE session_id IN ({selected})"  # nosec B608 - fixed tables and local schema; values bound
+        )
+        conn.execute(
+            f"DELETE FROM main.assessment_attempts WHERE session_id IN ({selected})"  # nosec B608 - fixed tables and local schema; values bound
+        )
         conn.execute(f"DELETE FROM main.sessions WHERE id IN ({selected})")  # nosec B608 - fixed tables and local schema; values bound
         conn.commit()
         return copied

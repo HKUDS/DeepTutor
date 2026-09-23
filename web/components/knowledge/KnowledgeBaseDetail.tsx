@@ -5,6 +5,7 @@ import type { EmbeddingModelSelection } from "@/features/knowledge/model/types";
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import LightRagEmbeddingWarning from "./LightRagEmbeddingWarning";
 import {
   ArrowLeft,
   Database,
@@ -19,10 +20,7 @@ import {
   Star,
   Upload,
 } from "lucide-react";
-import type {
-  IndexingLLMSelection,
-  KnowledgeUploadPolicy,
-} from "@/features/knowledge/model/types";
+import type { KnowledgeUploadPolicy } from "@/features/knowledge/model/types";
 import {
   formatKnowledgeTimestamp,
   isMarginNoteKb,
@@ -61,12 +59,8 @@ interface KnowledgeBaseDetailProps {
   ) => Promise<void>;
   onReindex: (
     kbName: string,
-    indexingLLM?: IndexingLLMSelection,
+    configFingerprint?: string,
     embeddingModel?: EmbeddingModelSelection,
-  ) => Promise<void>;
-  onUpdatePendingIndexingPolicy: (
-    kbName: string,
-    indexingLLM: IndexingLLMSelection,
   ) => Promise<void>;
   onRetry: (kbName: string) => Promise<void>;
   onSetDefault: (kbName: string) => Promise<void>;
@@ -99,7 +93,6 @@ export default function KnowledgeBaseDetail({
   onCreate,
   onUpload,
   onReindex,
-  onUpdatePendingIndexingPolicy,
   onRetry,
   onSetDefault,
   onDelete,
@@ -164,6 +157,10 @@ export default function KnowledgeBaseDetail({
 
   const handleRetry = async () => {
     if (!canRetry || retrySubmitting || isReindexingLocally) return;
+    if (kbProvider(kb) === "lightrag") {
+      setSection("versions");
+      return;
+    }
     setRetrySubmitting(true);
     try {
       await onRetry(knowledgeBaseRef(kb));
@@ -231,6 +228,7 @@ export default function KnowledgeBaseDetail({
                   ? ` · ${t("Last indexed")} ${lastIndexedLabel}`
                   : ""}
               </p>
+              <LightRagEmbeddingWarning kb={kb} />
             </div>
           </div>
           {canRetry && (
@@ -250,7 +248,11 @@ export default function KnowledgeBaseDetail({
               )}
               {retrySubmitting || isReindexingLocally
                 ? t("Retrying…")
-                : t("Retry indexing")}
+                : t(
+                    kbProvider(kb) === "lightrag"
+                      ? "Review rebuild"
+                      : "Retry indexing",
+                  )}
             </button>
           )}
         </div>
@@ -306,19 +308,18 @@ export default function KnowledgeBaseDetail({
                 <KbIndexVersionsSection
                   kb={kb}
                   task={task}
-                  onReindex={(indexingLLM, embeddingModel) =>
+                  onReindex={(configFingerprint, embeddingModel) =>
                     kb.read_only
                       ? Promise.resolve()
                       : status === "error" &&
                           kbProvider(kb) !== "lightrag" &&
                           !embeddingModel
                         ? handleRetry()
-                        : onReindex(knowledgeBaseRef(kb), indexingLLM, embeddingModel)
-                  }
-                  onUpdatePendingIndexingPolicy={(indexingLLM) =>
-                    kb.read_only
-                      ? Promise.resolve()
-                      : onUpdatePendingIndexingPolicy(knowledgeBaseRef(kb), indexingLLM)
+                        : onReindex(
+                            knowledgeBaseRef(kb),
+                            configFingerprint,
+                            embeddingModel,
+                          )
                   }
                 />
               )}
@@ -329,16 +330,23 @@ export default function KnowledgeBaseDetail({
                 <KbWebSourcesSection kbName={knowledgeBaseRef(kb)} />
               )}
               {activeSection === "devices" && (
-                <KbMarginNoteDevicesSection key={knowledgeBaseRef(kb)} kb={kb} />
+                <KbMarginNoteDevicesSection
+                  key={knowledgeBaseRef(kb)}
+                  kb={kb}
+                />
               )}
               {activeSection === "settings" && (
                 <KbSettingsSection
                   kb={kb}
                   onSetDefault={() =>
-                    kb.read_only ? Promise.resolve() : onSetDefault(knowledgeBaseRef(kb))
+                    kb.read_only
+                      ? Promise.resolve()
+                      : onSetDefault(knowledgeBaseRef(kb))
                   }
                   onDelete={() =>
-                    kb.read_only ? Promise.resolve() : onDelete(knowledgeBaseRef(kb))
+                    kb.read_only
+                      ? Promise.resolve()
+                      : onDelete(knowledgeBaseRef(kb))
                   }
                 />
               )}

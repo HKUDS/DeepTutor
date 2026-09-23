@@ -42,6 +42,18 @@ def _make_module(mod_id: str, kp_ids: list[str]) -> LearningModule:
     )
 
 
+def _make_named_module(mod_id: str, points: list[tuple[str, str]]) -> LearningModule:
+    return LearningModule(
+        id=mod_id,
+        name=f"Module {mod_id}",
+        order=0,
+        knowledge_points=[
+            KnowledgePoint(id=kp_id, name=name, type=KnowledgeType.MEMORY, module_id=mod_id)
+            for kp_id, name in points
+        ],
+    )
+
+
 # ── replace_modules / init_modules (replace semantics) ────────────────────
 
 
@@ -347,6 +359,67 @@ class TestReplaceModules:
         service.replace_modules(progress, [_make_module("m2", ["kp1"])])
         assert progress.mastery_levels["kp1"] == 0.8
         assert "kp2" not in progress.mastery_levels
+
+    def test_semantic_replace_does_not_reuse_positional_id_for_new_content(self, tmp_path: Path):
+        store = LearningStore(root=tmp_path)
+        service = LearningService(store)
+        service.replace_modules_for_path(
+            "test",
+            [_make_named_module("test_m0", [("test_m0_kp0", "Truth tables")])],
+            identity_mode="semantic",
+        )
+
+        def seed(tx):
+            tx.progress.mastery_levels["test_m0_kp0"] = 1.0
+            tx.touch()
+
+        store.mutate("test", seed)
+        progress = service.replace_modules_for_path(
+            "test",
+            [_make_named_module("test_m0", [("test_m0_kp0", "Karnaugh maps")])],
+            identity_mode="semantic",
+        )
+        new_id = progress.modules[0].knowledge_points[0].id
+        assert new_id != "test_m0_kp0"
+        assert "test_m0_kp0" not in progress.mastery_levels
+        assert new_id not in progress.mastery_levels
+
+    def test_semantic_replace_reorder_preserves_evidence_by_fingerprint(self, tmp_path: Path):
+        store = LearningStore(root=tmp_path)
+        service = LearningService(store)
+        service.replace_modules_for_path(
+            "test",
+            [
+                _make_named_module(
+                    "test_m0",
+                    [("test_m0_kp0", "Truth tables"), ("test_m0_kp1", "De Morgan")],
+                )
+            ],
+            identity_mode="semantic",
+        )
+
+        def seed(tx):
+            tx.progress.mastery_levels["test_m0_kp0"] = 0.8
+            tx.progress.mastery_levels["test_m0_kp1"] = 0.4
+            tx.touch()
+
+        store.mutate("test", seed)
+        progress = service.replace_modules_for_path(
+            "test",
+            [
+                _make_named_module(
+                    "test_m0",
+                    [("test_m0_kp0", "De Morgan"), ("test_m0_kp1", "Truth tables")],
+                )
+            ],
+            identity_mode="semantic",
+        )
+        names = [kp.name for kp in progress.modules[0].knowledge_points]
+        ids = [kp.id for kp in progress.modules[0].knowledge_points]
+        assert names == ["De Morgan", "Truth tables"]
+        assert ids == ["test_m0_kp1", "test_m0_kp0"]
+        assert progress.mastery_levels["test_m0_kp0"] == 0.8
+        assert progress.mastery_levels["test_m0_kp1"] == 0.4
 
 
 # ── mastery policy (recency-weighted with low-confidence cap) ─────────────

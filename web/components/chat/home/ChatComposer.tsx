@@ -87,6 +87,8 @@ import { knowledgeBaseRef } from "@/lib/knowledge-helpers";
 import { ComposerInput, type ComposerInputHandle } from "./ComposerInput";
 import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
 import type { CapabilityDef } from "@/features/capabilities/presentation";
+import AttachmentProcessingStatus from "./AttachmentProcessingStatus";
+import type { AttachmentProcessingItem } from "@/features/chat/selectors/attachment-processing";
 
 interface PendingAttachment {
   type: string;
@@ -202,6 +204,7 @@ export default memo(function ChatComposer({
   hasMessages,
   attachments,
   attachmentError,
+  attachmentProcessing = [],
   activeCap,
   knowledgeBases,
   connectedAgents = [],
@@ -306,6 +309,7 @@ export default memo(function ChatComposer({
   hasMessages: boolean;
   attachments: PendingAttachment[];
   attachmentError: string | null;
+  attachmentProcessing?: AttachmentProcessingItem[];
   activeCap: CapabilityDef;
   knowledgeBases: KnowledgeBase[];
   /** Connected local subagents (Claude Code / Codex) selectable for this turn. */
@@ -1007,6 +1011,7 @@ export default memo(function ChatComposer({
           />
 
           <SelectedResources items={contextTreeItems}/>
+          <AttachmentProcessingStatus items={attachmentProcessing} />
           <ComposerInput
             ref={inputHandleRef}
             textareaRef={textareaRef}

@@ -162,6 +162,7 @@ notices:
   loop_budget_exhausted: "Exploration budget reached; answering with what has been gathered."
   loop_settlement: "Exploration budget reached; completing required follow-up before the final answer."
   output_truncated: "The model output reached its token limit; asked it to continue."
+  tool_call_truncated: "The model reached its output token limit while writing a tool call, so the call may be incomplete. If this repeats, raise this capability's max tokens or pick a model that reasons less."
   loop_error_finish: "A step failed ({error}); answering with what has been gathered."
   provider_retry: "The model provider connection was interrupted; retrying."
   provider_unavailable: "Unable to reach the model provider. Please retry."

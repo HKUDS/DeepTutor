@@ -99,6 +99,8 @@ BUILTIN_TOOL_SPECS: tuple[BuiltinToolSpec, ...] = (
             ("mastery_quiz", "MasteryQuizTool"),
             ("mastery_grade", "MasteryGradeTool"),
             ("mastery_skip_question", "MasterySkipQuestionTool"),
+            ("mastery_repair_question", "MasteryRepairQuestionTool"),
+            ("mastery_defer_objective", "MasteryDeferObjectiveTool"),
             ("mastery_assess", "MasteryAssessTool"),
             ("mastery_build", "MasteryBuildTool"),
             ("mastery_mode", "MasteryModeTool"),

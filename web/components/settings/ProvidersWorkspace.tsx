@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ArrowRight, Cable, Plus, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import ProviderIcon from "@/components/common/ProviderIcon";
+import { randomUuid } from "@/lib/random-uuid";
 import {
   useSettings,
   type CatalogConnection,
@@ -107,7 +108,7 @@ export function ProvidersWorkspace() {
       setAdding(false);
       return;
     }
-    const id = `conn-${crypto.randomUUID()}`;
+    const id = `conn-${randomUuid()}`;
     const entry: CatalogConnection = {
       id,
       name: option.label,

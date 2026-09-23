@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+from hashlib import sha256
 import importlib
 from pathlib import Path
 
@@ -154,6 +155,55 @@ def test_upsert_entry_persists_base64_answer_image(
     )
     assert stored_path is not None
     assert stored_path.read_bytes() == b"image-bytes"
+
+
+def test_independent_entry_uses_stable_answer_image_owner_and_cleans_up(
+    store: SQLiteSessionStore, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    attachment_store = LocalDiskAttachmentStore(root=tmp_path / "attachments")
+    monkeypatch.setattr(
+        "deeptutor.api.routers.question_notebook.get_attachment_store",
+        lambda: attachment_store,
+    )
+    origin_ref = "document:guide.pdf:page-4"
+    owner = (
+        "question-notebook-" + sha256(f"document_analysis:{origin_ref}".encode()).hexdigest()[:24]
+    )
+
+    with TestClient(_build_app(store)) as client:
+        response = client.post(
+            "/api/question-notebook/entries/upsert",
+            json={
+                "origin_type": "document_analysis",
+                "origin_ref": origin_ref,
+                "question_id": "image-question",
+                "question": "Identify the diagram.",
+                "user_answer_images": [
+                    {
+                        "id": "answer-image-1",
+                        "base64": base64.b64encode(b"image-bytes").decode("ascii"),
+                        "filename": "answer.png",
+                        "mime_type": "image/png",
+                    }
+                ],
+            },
+        )
+        assert response.status_code == 200
+        entry_id = response.json()["id"]
+        assert response.json()["user_answer_images"][0]["url"].startswith(
+            f"/files/attachments/{owner}/answer-image-1/"
+        )
+        stored_path = attachment_store.resolve_path(
+            session_id=owner,
+            attachment_id="answer-image-1",
+            filename="answer.png",
+        )
+        assert stored_path is not None and stored_path.read_bytes() == b"image-bytes"
+
+        deleted = client.delete(f"/api/question-notebook/entries/{entry_id}")
+        assert deleted.status_code == 200
+
+    assert not stored_path.exists()
 
 
 def test_list_entries_filters_by_course_and_total(

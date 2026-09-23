@@ -39,6 +39,11 @@ vi.mock("react-i18next", () => ({
       s.replace(/{{(\w+)}}/g, (_, name) => String(args?.[name] ?? name)),
   }),
 }));
+// The embedding editor mounts the knowledge-base usage panel, which fetches.
+vi.mock("@/features/knowledge/api/engines", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  getEmbeddingUsage: () => Promise.resolve([]),
+}));
 vi.mock("@/components/settings/CodexOAuthCard", () => ({
   CodexOAuthCard: () => <div>Codex sign-in</div>,
 }));
@@ -105,6 +110,15 @@ function fixture(): Catalog {
   };
   return { version: 1, connections: [], services };
 }
+/** A vendor no service table vouches for, on a connection shared across pages. */
+const xai = () => ({
+  id: "x",
+  name: "xAI",
+  provider: "xai",
+  api_key: "***",
+  base_url: "https://api.x.ai/v1",
+  api_version: "",
+});
 let live: Catalog;
 function Harness({
   page,
@@ -241,6 +255,49 @@ it("search is a flat engine configuration without a fake context or model ID", (
   expect(screen.queryByLabelText("Model ID")).toBeNull();
   expect(screen.queryByLabelText("Context length (tokens)")).toBeNull();
 });
+it("offers a provider with no search API and leaves the rejection to the search test", () => {
+  live.connections = [xai()];
+  render(<Harness page="search" />);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Add search configuration" }),
+  );
+  const select = screen.getByLabelText("Configured provider");
+  // Nothing says xAI runs a search API, and that is not a veto either: it is
+  // offered, grouped apart, and the search test is what rejects it.
+  expect(within(select).getByRole("option", { name: "xAI" })).toBeTruthy();
+  fireEvent.change(select, { target: { value: "connection:x" } });
+  fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+  const profile = mocks.settings.draft.services.search.profiles.at(-1)!;
+  // Staged under the vendor's own name: search has no OpenAI-compatible
+  // fallback, so `custom` here would only hide which engine was meant.
+  expect(profile.provider).toBe("xai");
+  expect(
+    screen.getByRole("region", { name: "Model connection test" }),
+  ).toBeTruthy();
+});
+it("offers embedding providers with no adapter on record and leaves the verdict to the test", async () => {
+  live.connections = [xai()];
+  render(<Harness page="embedding" />);
+  fireEvent.click(screen.getByRole("button", { name: "Add model" }));
+  const select = screen.getByLabelText("Configured provider");
+  // Nothing on the backend claims xAI serves embeddings, and that is not a
+  // veto: it is offered, grouped apart, and settled by the model test.
+  expect(within(select).getByRole("option", { name: "xAI" })).toBeTruthy();
+  fireEvent.change(select, { target: { value: "connection:x" } });
+  fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+  const profile = mocks.settings.draft.services.embedding.profiles.at(-1)!;
+  // `custom` is the OpenAI-compatible binding, whose embedding endpoint the
+  // backend derives from the connection URL.
+  expect(profile.models[0].provider_ref).toMatchObject({
+    connection_id: "x",
+    binding: "custom",
+  });
+  expect(
+    screen.getByRole("region", { name: "Model connection test" }),
+  ).toBeTruthy();
+  // Let the editor's usage fetch land so its state update stays in this test.
+  await waitFor(() => expect(screen.queryByText("Loading...")).toBeNull());
+});
 it("invalidates tests on referenced key changes but keeps them after unrelated model edits", () => {
   const model = live.services.llm.profiles[0].models[0];
   model.provider_ref = {
@@ -346,4 +403,31 @@ it("does not reinterpret old broad multimodal discovery as generation support", 
   expect(screen.queryByText("Detected")).toBeNull();
   expect(screen.getByText("Voice")).toBeTruthy();
   expect(screen.getByText("Multimodal generation")).toBeTruthy();
+});
+it("adds a provider over plain HTTP, where crypto.randomUUID does not exist", () => {
+  // `crypto.randomUUID` is secure-context-only, so a deployment reached over
+  // plain HTTP (a LAN box, a VPS without TLS) has none. Minting the connection
+  // id used to throw inside the click handler, before anything was staged, so
+  // "Continue" did nothing at all and left nothing on screen to explain why.
+  const webCrypto = globalThis.crypto as {
+    randomUUID?: typeof globalThis.crypto.randomUUID;
+  };
+  const original = webCrypto?.randomUUID;
+  if (webCrypto) webCrypto.randomUUID = undefined;
+  try {
+    render(<Harness page="providers" />);
+    fireEvent.click(screen.getByRole("button", { name: "Add provider" }));
+    fireEvent.change(screen.getByLabelText("Provider type"), {
+      target: { value: "custom" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    const staged = (mocks.settings.draft.connections ?? []).at(-1)!;
+    expect(staged).toMatchObject({ provider: "custom", api_key: "" });
+    expect(staged.id).toMatch(/^conn-[0-9a-f-]{36}$/);
+    expect(
+      screen.getByRole("region", { name: "Provider settings" }),
+    ).toBeTruthy();
+  } finally {
+    if (webCrypto) webCrypto.randomUUID = original;
+  }
 });

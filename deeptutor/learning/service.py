@@ -8,8 +8,10 @@ import uuid
 from deeptutor.learning.grading import classify_error, grade_answer
 from deeptutor.learning.mastery import compute_mastery
 from deeptutor.learning.models import (
+    DeferredObjective,
     ErrorRecord,
     InteractionStatus,
+    KnowledgePoint,
     LearnerMasteryOverride,
     LearnerProfile,
     LearningEvidence,
@@ -45,6 +47,194 @@ _LEARNER_PROFILE_FIELDS: tuple[str, ...] = (
     "preferences",
     "notes",
 )
+
+
+def _objective_fingerprint(kp: KnowledgePoint) -> tuple[str, str]:
+    return (str(kp.name or "").strip().casefold(), kp.type.value)
+
+
+def _unique_fingerprint_map(
+    points: list[KnowledgePoint],
+) -> dict[tuple[str, str], KnowledgePoint]:
+    counts: dict[tuple[str, str], int] = {}
+    for kp in points:
+        fingerprint = _objective_fingerprint(kp)
+        counts[fingerprint] = counts.get(fingerprint, 0) + 1
+    return {
+        _objective_fingerprint(kp): kp for kp in points if counts[_objective_fingerprint(kp)] == 1
+    }
+
+
+def _reserved_objective_ids(progress: LearningProgress) -> set[str]:
+    ids = {kp.id for module in progress.modules for kp in module.knowledge_points}
+    ids.update(progress.mastery_levels)
+    ids.update(progress.knowledge_types)
+    ids.update(progress.qualitative_mastery)
+    ids.update(progress.repetition_states)
+    ids.update(progress.learner_mastery_overrides)
+    ids.update(progress.feynman_retries)
+    ids.update(progress.feynman_explanations)
+    ids.update(progress.deferred_objectives)
+    ids.update(attempt.knowledge_point_id for attempt in progress.quiz_attempts)
+    ids.update(record.knowledge_point_id for record in progress.error_records)
+    ids.update(task.knowledge_point_id for task in progress.review_queue)
+    ids.update(event.knowledge_point_id for event in progress.learning_evidence)
+    ids.discard("")
+    return ids
+
+
+def _new_objective_id(module_id: str, reserved: set[str]) -> str:
+    prefix = f"{module_id}_kp"
+    while True:
+        candidate = f"{prefix}_{uuid.uuid4().hex[:12]}"
+        if candidate not in reserved:
+            reserved.add(candidate)
+            return candidate
+
+
+_QUIZ_EVIDENCE_TYPES = ("quiz", "review")
+_QUIZ_EVIDENCE_WINDOW = 2.0
+
+
+def _quiz_evidence_matches_attempt(event: LearningEvidence, attempt: QuizAttempt) -> bool:
+    if (
+        event.knowledge_point_id != attempt.knowledge_point_id
+        or event.assessment_type not in _QUIZ_EVIDENCE_TYPES
+    ):
+        return False
+    if event.question_id:
+        return event.question_id == attempt.question_id
+    # Legacy evidence predates question linkage. Keep its narrow timestamp
+    # match so old paths remain repairable without risking newer linked rows.
+    return abs(event.timestamp - attempt.timestamp) <= _QUIZ_EVIDENCE_WINDOW
+
+
+def _drop_quiz_evidence_for_attempts(
+    progress: LearningProgress, attempts: list[QuizAttempt]
+) -> None:
+    if not attempts:
+        return
+    unmatched = list(attempts)
+    kept: list[LearningEvidence] = []
+    for event in progress.learning_evidence:
+        match_index = next(
+            (
+                index
+                for index, attempt in enumerate(unmatched)
+                if _quiz_evidence_matches_attempt(event, attempt)
+            ),
+            None,
+        )
+        if match_index is not None:
+            unmatched.pop(match_index)
+            continue
+        kept.append(event)
+    leftover_by_kp: dict[str, int] = {}
+    for attempt in unmatched:
+        leftover_by_kp[attempt.knowledge_point_id] = (
+            leftover_by_kp.get(attempt.knowledge_point_id, 0) + 1
+        )
+    if leftover_by_kp:
+        rebuilt: list[LearningEvidence] = []
+        for event in reversed(kept):
+            leftover = leftover_by_kp.get(event.knowledge_point_id, 0)
+            if leftover and not event.question_id and event.assessment_type in _QUIZ_EVIDENCE_TYPES:
+                leftover_by_kp[event.knowledge_point_id] = leftover - 1
+                continue
+            rebuilt.append(event)
+        kept = list(reversed(rebuilt))
+    progress.learning_evidence = kept
+
+
+def _update_quiz_evidence_for_attempts(
+    progress: LearningProgress, attempts: list[QuizAttempt]
+) -> None:
+    if not attempts:
+        return
+    unmatched = list(attempts)
+    for event in progress.learning_evidence:
+        match_index = next(
+            (
+                index
+                for index, attempt in enumerate(unmatched)
+                if _quiz_evidence_matches_attempt(event, attempt)
+            ),
+            None,
+        )
+        if match_index is None:
+            continue
+        attempt = unmatched.pop(match_index)
+        event.result = "correct" if attempt.is_correct else "incorrect"
+        event.quality = 1.0 if attempt.is_correct else 0.0
+
+
+def assign_objective_identities(
+    progress: LearningProgress,
+    modules: list[LearningModule],
+    *,
+    identity_mode: str,
+) -> dict[str, list[str] | str]:
+    """Rewrite *modules* in place so IDs never inherit unrelated evidence.
+
+    ``semantic`` (full replace) preserves an ID only when ``(name, type)`` is
+    unique in both maps. ``explicit`` (targeted revise / topic edits) keeps
+    caller-supplied IDs unless the same ID now names different content.
+    """
+    mode = "semantic" if identity_mode == "semantic" else "explicit"
+    old_points = [kp for module in progress.modules for kp in module.knowledge_points]
+    old_by_id = {kp.id: kp for kp in old_points}
+    old_ids = set(old_by_id)
+    reserved = _reserved_objective_ids(progress)
+    preserved: list[str] = []
+    minted: list[str] = []
+    used_old_ids: set[str] = set()
+
+    if mode == "semantic" and old_points:
+        old_unique = _unique_fingerprint_map(old_points)
+        new_unique = _unique_fingerprint_map(
+            [kp for module in modules for kp in module.knowledge_points]
+        )
+        for module in modules:
+            for kp in module.knowledge_points:
+                fingerprint = _objective_fingerprint(kp)
+                matched = None
+                if fingerprint in new_unique and fingerprint in old_unique:
+                    candidate = old_unique[fingerprint]
+                    if candidate.id not in used_old_ids:
+                        matched = candidate
+                if matched is not None:
+                    kp.id = matched.id
+                    used_old_ids.add(matched.id)
+                    preserved.append(kp.id)
+                elif kp.id not in reserved:
+                    reserved.add(kp.id)
+                    minted.append(kp.id)
+                else:
+                    kp.id = _new_objective_id(module.id, reserved)
+                    minted.append(kp.id)
+                kp.module_id = module.id
+    else:
+        for module in modules:
+            for kp in module.knowledge_points:
+                old = old_by_id.get(kp.id)
+                if old is not None and _objective_fingerprint(old) == _objective_fingerprint(kp):
+                    preserved.append(kp.id)
+                    reserved.add(kp.id)
+                elif kp.id in reserved:
+                    kp.id = _new_objective_id(module.id, reserved)
+                    minted.append(kp.id)
+                else:
+                    reserved.add(kp.id)
+                    minted.append(kp.id)
+                kp.module_id = module.id
+
+    new_ids = {kp.id for module in modules for kp in module.knowledge_points}
+    return {
+        "mode": mode,
+        "preserved": preserved,
+        "minted": minted,
+        "dropped": sorted(old_ids - new_ids),
+    }
 
 
 class MasteryInteractionError(RuntimeError):
@@ -105,6 +295,9 @@ class LearningService:
         for key in list(progress.learner_mastery_overrides.keys()):
             if key not in new_kp_ids:
                 del progress.learner_mastery_overrides[key]
+        for key in list(progress.deferred_objectives.keys()):
+            if key not in new_kp_ids:
+                del progress.deferred_objectives[key]
         progress.error_records = [
             r for r in progress.error_records if r.knowledge_point_id in new_kp_ids
         ]
@@ -211,7 +404,9 @@ class LearningService:
     def calculate_mastery(self, progress: LearningProgress, kp_id: str) -> float:
         """Mastery 0..1 for *kp_id* from its attempt history (policy in mastery.py)."""
         correctness = [
-            a.is_correct for a in progress.quiz_attempts if a.knowledge_point_id == kp_id
+            a.is_correct
+            for a in progress.quiz_attempts
+            if a.knowledge_point_id == kp_id and not a.voided
         ]
         return compute_mastery(correctness)
 
@@ -300,9 +495,11 @@ class LearningService:
         )
         evidence = None
         if knowledge_point_id:
+            progress.deferred_objectives.pop(knowledge_point_id, None)
             evidence = self._record_quiz_evidence(
                 progress,
                 knowledge_point_id,
+                question_id=question_id,
                 is_correct=is_correct,
                 retrying=retrying,
                 session_id=session_id,
@@ -327,6 +524,7 @@ class LearningService:
         progress: LearningProgress,
         kp_id: str,
         *,
+        question_id: str = "",
         is_correct: bool,
         retrying: bool = False,
         session_id: str = "",
@@ -334,9 +532,12 @@ class LearningService:
         assessment_type: Literal["quiz", "qualitative", "review"] = "quiz",
     ) -> LearningEvidence:
         attempt_count = sum(
-            1 for attempt in progress.quiz_attempts if attempt.knowledge_point_id == kp_id
+            1
+            for attempt in progress.quiz_attempts
+            if attempt.knowledge_point_id == kp_id and not attempt.voided
         )
         evidence = LearningEvidence(
+            question_id=question_id,
             knowledge_point_id=kp_id,
             assessment_type=assessment_type,
             result="correct" if is_correct else "incorrect",
@@ -442,6 +643,7 @@ class LearningService:
                 turn_id=turn_id,
             )
             tx.progress.pending_question = pending
+            tx.progress.deferred_objectives.pop(pending.knowledge_point_id, None)
             tx.put_interaction(interaction)
             from deeptutor.learning.pending import public_pending_question
 
@@ -735,6 +937,7 @@ class LearningService:
         event_type: str = "path.modules_replaced",
         session_id: str = "",
         turn_id: str = "",
+        identity_mode: str = "explicit",
     ) -> LearningProgress:
         """Install a module set, optionally naming a path that has no name yet.
 
@@ -743,22 +946,41 @@ class LearningService:
         Replacing the map deliberately does NOT rename: the map is what the
         path teaches, the name is which path it is — deriving one from the
         other is what made a rebuild look like a different course.
+
+        ``identity_mode`` is ``semantic`` for a full outline replace (unique
+        ``(name, type)`` mapping) and ``explicit`` for targeted revise / topic
+        edits that already carry durable IDs. Position never establishes identity.
         """
 
         def replace(tx):
             if name.strip() and not tx.progress.name.strip():
                 tx.progress.name = name.strip()[:_MAX_PATH_NAME_LEN]
             applied_modules = [module.model_copy(deep=True) for module in modules]
+            identity_map: dict[str, list[str] | str] = {
+                "mode": "append" if append else identity_mode,
+                "preserved": [],
+                "minted": [],
+                "dropped": [],
+            }
             if append:
+                reserved = _reserved_objective_ids(tx.progress)
                 offset = len(tx.progress.modules)
+                minted: list[str] = []
                 for index, module in enumerate(applied_modules, start=offset):
                     module.id = f"{book_id}_m{index}"
                     module.order = index
                     for kp_index, kp in enumerate(module.knowledge_points):
                         kp.module_id = module.id
-                        kp.id = f"{module.id}_kp{kp_index}"
+                        candidate = f"{module.id}_kp{kp_index}"
+                        if candidate in reserved:
+                            kp.id = _new_objective_id(module.id, reserved)
+                        else:
+                            kp.id = candidate
+                            reserved.add(candidate)
                         tx.progress.knowledge_types[kp.id] = kp.type
+                        minted.append(kp.id)
                 tx.progress.modules.extend(applied_modules)
+                identity_map["minted"] = minted
                 if not tx.progress.current_module_id and applied_modules:
                     tx.progress.current_module_id = applied_modules[0].id
                     tx.progress.current_kp_index = 0
@@ -784,6 +1006,11 @@ class LearningService:
                     else ""
                 )
 
+                identity_map = assign_objective_identities(
+                    tx.progress,
+                    applied_modules,
+                    identity_mode=identity_mode,
+                )
                 self.replace_modules(tx.progress, applied_modules)
                 objective_locations = {
                     kp.id: (module.id, kp_index)
@@ -823,6 +1050,7 @@ class LearningService:
                 event_type,
                 {
                     "mode": "append" if append else "replace",
+                    "identity_map": identity_map,
                     "module_count": len(applied_modules),
                     "knowledge_point_count": sum(
                         len(module.knowledge_points) for module in applied_modules
@@ -978,6 +1206,7 @@ class LearningService:
             progress.repetition_states = {}
             progress.review_queue = []
             progress.learner_mastery_overrides = {}
+            progress.deferred_objectives = {}
             progress.pending_question = None
             progress.feynman_retries = {}
             progress.feynman_explanations = {}
@@ -1014,6 +1243,7 @@ class LearningService:
                     knowledge_point_id=kp_id,
                     note=str(note or "").strip()[:500],
                 )
+                tx.progress.deferred_objectives.pop(kp_id, None)
                 event_type = "mastery.overridden"
             else:
                 if kp_id not in tx.progress.learner_mastery_overrides:
@@ -1029,6 +1259,305 @@ class LearningService:
         progress, _ = self._store.mutate(book_id, update)
         return progress
 
+    def _recompute_objective_state(
+        self,
+        progress: LearningProgress,
+        kp_id: str,
+        scheduler: SpacedRepetitionScheduler | None,
+    ) -> None:
+        if not kp_id:
+            return
+        self.update_mastery(progress, kp_id, self.calculate_mastery(progress, kp_id))
+        if scheduler is None:
+            return
+        kp_type = progress.knowledge_types.get(kp_id)
+        attempts = [
+            attempt
+            for attempt in progress.quiz_attempts
+            if attempt.knowledge_point_id == kp_id and not attempt.voided
+        ]
+        events = [
+            event for event in progress.learning_evidence if event.knowledge_point_id == kp_id
+        ]
+        if kp_type is None or (not attempts and not events):
+            progress.repetition_states.pop(kp_id, None)
+        elif events:
+            progress.repetition_states[kp_id] = scheduler.replay(
+                kp_type, sorted(events, key=lambda item: item.timestamp)
+            )
+        else:
+            synthesized = [
+                LearningEvidence(
+                    question_id=attempt.question_id,
+                    knowledge_point_id=kp_id,
+                    timestamp=attempt.timestamp,
+                    assessment_type="quiz",
+                    result="correct" if attempt.is_correct else "incorrect",
+                    quality=1.0 if attempt.is_correct else 0.0,
+                    attempt_count=index,
+                )
+                for index, attempt in enumerate(
+                    sorted(attempts, key=lambda item: item.timestamp),
+                    start=1,
+                )
+            ]
+            progress.repetition_states[kp_id] = scheduler.replay(kp_type, synthesized)
+        progress.review_queue = scheduler.build_review_queue(progress)
+
+    def repair_question(
+        self,
+        book_id: str,
+        question_id: str = "",
+        *,
+        action: str,
+        expected_answer: str = "",
+        reason: str = "",
+        scheduler: SpacedRepetitionScheduler | None = None,
+        session_id: str = "",
+        turn_id: str = "",
+    ) -> tuple[LearningProgress, dict]:
+        """Void or re-key one question and rebuild that objective's evidence."""
+
+        action_name = str(action or "").strip().lower()
+        if action_name not in {"void", "correct"}:
+            raise MasteryInteractionError("action must be 'void' or 'correct'")
+        note = str(reason or "").strip()[:500]
+        if not note:
+            raise MasteryInteractionError("A reason is required so the repair can be audited")
+        if action_name == "correct" and not str(expected_answer or "").strip():
+            raise MasteryInteractionError("correcting a question requires the new expected_answer")
+
+        def repair(tx):
+            requested_id = str(question_id or "").strip()
+            interaction = tx.get_interaction(requested_id) if requested_id else None
+            if interaction is None and not requested_id:
+                interaction = tx.active_interaction()
+            pending = tx.progress.pending_question
+            if interaction is not None:
+                resolved_id = interaction.interaction_id
+            elif requested_id:
+                resolved_id = requested_id
+            elif pending is not None:
+                resolved_id = pending.question_id
+            else:
+                latest = next(
+                    (
+                        attempt.question_id
+                        for attempt in reversed(tx.progress.quiz_attempts)
+                        if not attempt.voided
+                    ),
+                    "",
+                )
+                resolved_id = latest
+            if not resolved_id:
+                raise NoPendingInteractionError("No question is available to repair")
+            if interaction is None:
+                interaction = tx.get_interaction(resolved_id)
+            if pending is not None and pending.question_id != resolved_id:
+                pending = None
+            elif (
+                pending is None
+                and tx.progress.pending_question is not None
+                and tx.progress.pending_question.question_id == resolved_id
+            ):
+                pending = tx.progress.pending_question
+
+            attempts = [
+                attempt
+                for attempt in tx.progress.quiz_attempts
+                if attempt.question_id == resolved_id
+            ]
+            question = interaction.question if interaction is not None else pending
+            kp_id = (question.knowledge_point_id if question is not None else "") or (
+                attempts[0].knowledge_point_id if attempts else ""
+            )
+            module_id = (question.module_id if question is not None else "") or (
+                attempts[0].module_id if attempts else ""
+            )
+            question_type = question.question_type if question is not None else "short"
+            previous_expected = question.expected_answer if question is not None else ""
+            previous_is_correct = attempts[0].is_correct if attempts else None
+            user_answer = (interaction.user_answer if interaction is not None else "") or (
+                str(attempts[0].user_answer or "") if attempts else ""
+            )
+
+            repaired_correct: bool | None = previous_is_correct
+            new_expected = previous_expected
+            if action_name == "void":
+                for attempt in attempts:
+                    attempt.voided = True
+                    attempt.void_reason = note
+                tx.progress.error_records = [
+                    record
+                    for record in tx.progress.error_records
+                    if record.question_id != resolved_id
+                ]
+                if pending is not None:
+                    tx.progress.pending_question = None
+                active = tx.active_interaction()
+                if active is not None and active.interaction_id == resolved_id:
+                    tx.abandon_active_interactions()
+                elif interaction is not None and interaction.status != InteractionStatus.ABANDONED:
+                    interaction.result = {
+                        **dict(interaction.result or {}),
+                        "voided": True,
+                        "reason": note,
+                    }
+                    tx.put_interaction(interaction)
+                _drop_quiz_evidence_for_attempts(tx.progress, attempts)
+                repaired_correct = None
+            else:
+                new_expected = str(expected_answer or "").strip()
+                if question is not None:
+                    question.expected_answer = new_expected
+                if interaction is not None:
+                    interaction.question.expected_answer = new_expected
+                if (
+                    tx.progress.pending_question is not None
+                    and tx.progress.pending_question.question_id == resolved_id
+                ):
+                    tx.progress.pending_question.expected_answer = new_expected
+                if attempts:
+                    for attempt in attempts:
+                        if attempt.voided:
+                            continue
+                        is_correct = bool(new_expected) and grade_answer(
+                            str(attempt.user_answer or ""),
+                            new_expected,
+                            question_type,
+                        )
+                        attempt.is_correct = is_correct
+                        attempt.error_type = (
+                            None if is_correct else classify_error(str(attempt.user_answer or ""))
+                        )
+                        repaired_correct = is_correct
+                        if is_correct:
+                            for record in tx.progress.error_records:
+                                if record.question_id == resolved_id:
+                                    record.status = "graduated"
+                        elif not any(
+                            record.question_id == resolved_id
+                            for record in tx.progress.error_records
+                        ):
+                            tx.progress.error_records.append(
+                                ErrorRecord(
+                                    id=uuid.uuid4().hex,
+                                    question_id=resolved_id,
+                                    knowledge_point_id=kp_id,
+                                    module_id=module_id,
+                                    error_type=attempt.error_type
+                                    or classify_error(str(attempt.user_answer or "")),
+                                    status="active",
+                                )
+                            )
+                if interaction is not None:
+                    interaction.result = {
+                        **dict(interaction.result or {}),
+                        "is_correct": repaired_correct,
+                        "corrected": True,
+                        "reason": note,
+                    }
+                    tx.put_interaction(interaction)
+                _update_quiz_evidence_for_attempts(
+                    tx.progress,
+                    [attempt for attempt in attempts if not attempt.voided],
+                )
+
+            self._recompute_objective_state(tx.progress, kp_id, scheduler)
+            tx.touch()
+            tx.emit(
+                "assessment.voided" if action_name == "void" else "assessment.corrected",
+                {
+                    "question_id": resolved_id,
+                    "knowledge_point_id": kp_id,
+                    "reason": note,
+                    "previous_expected": previous_expected,
+                    "expected_answer": new_expected,
+                    "previous_is_correct": previous_is_correct,
+                    "is_correct": repaired_correct,
+                },
+                session_id=session_id or (interaction.session_id if interaction else ""),
+                turn_id=turn_id or (interaction.turn_id if interaction else ""),
+            )
+            return {
+                "action": action_name,
+                "question_id": resolved_id,
+                "knowledge_point_id": kp_id,
+                "module_id": module_id,
+                "reason": note,
+                "previous_expected": previous_expected,
+                "expected_answer": new_expected,
+                "previous_is_correct": previous_is_correct,
+                "is_correct": repaired_correct,
+                "user_answer": user_answer,
+                "question_type": question_type,
+                "prompt": question.prompt if question is not None else "",
+                "options": question.choice_map if question is not None else {},
+                "explanation": question.explanation if question is not None else "",
+                "difficulty": question.difficulty if question is not None else "",
+                "session_id": session_id or (interaction.session_id if interaction else ""),
+                "turn_id": turn_id or (interaction.turn_id if interaction else ""),
+            }
+
+        progress, details = self._store.mutate(book_id, repair)
+        return progress, details
+
+    def defer_objective(
+        self,
+        book_id: str,
+        kp_id: str = "",
+        *,
+        note: str = "",
+        session_id: str = "",
+        turn_id: str = "",
+    ) -> tuple[LearningProgress, dict]:
+        """Skip this objective for now without recording mastery."""
+
+        def defer(tx):
+            from deeptutor.learning.policy import find_knowledge_point, is_mastered, next_objective
+
+            target_id = str(kp_id or "").strip()
+            if not target_id:
+                pending = tx.progress.pending_question
+                if pending is not None:
+                    target_id = pending.knowledge_point_id
+                else:
+                    target_id = next_objective(tx.progress).knowledge_point_id
+            kp, _, _ = find_knowledge_point(tx.progress, target_id)
+            if kp is None:
+                raise MasteryInteractionError(f"Unknown objective {target_id!r}")
+            if is_mastered(tx.progress, kp):
+                raise MasteryInteractionError(
+                    f"{kp.name!r} is already mastered, so there is nothing to defer"
+                )
+            abandoned = False
+            pending = tx.progress.pending_question
+            if pending is not None and pending.knowledge_point_id == target_id:
+                tx.progress.pending_question = None
+                abandoned = True
+            active = tx.active_interaction()
+            if active is not None and active.question.knowledge_point_id == target_id:
+                tx.abandon_active_interactions()
+                abandoned = True
+            tx.progress.deferred_objectives[target_id] = DeferredObjective(
+                knowledge_point_id=target_id,
+                note=str(note or "").strip()[:500],
+            )
+            tx.touch()
+            tx.emit(
+                "objective.deferred",
+                {
+                    "knowledge_point_id": target_id,
+                    "note": str(note or "").strip()[:500],
+                    "abandoned_question": abandoned,
+                },
+                session_id=session_id,
+                turn_id=turn_id,
+            )
+            return {"knowledge_point_id": target_id, "abandoned_question": abandoned}
+
+        return self._store.mutate(book_id, defer)
+
     def record_qualitative(
         self,
         progress: LearningProgress,
@@ -1043,9 +1572,9 @@ class LearningService:
         The boolean is the gate of record; ``mastery_levels`` is nudged only so
         the map's colour matches the gate (full on pass, capped on fail).
 
-        A first pass starts spaced repetition at the type's first configured
-        interval. Later assessments advance or shorten that existing schedule.
-        An initial failure is not reviewable mastery, so it creates no state.
+        Every assessment applies the same retention transition that evidence
+        replay uses. This keeps the persisted state reproducible and lets an
+        initial failure schedule the prompt repair it demonstrably needs.
         """
         self.record_qualitative_in_memory(
             progress,
@@ -1079,7 +1608,7 @@ class LearningService:
                 raise MasteryInteractionError(
                     f"Objective {kp.name!r} must be graded with mastery_quiz + mastery_grade"
                 )
-            self.record_qualitative_in_memory(
+            applied = self.record_qualitative_in_memory(
                 tx.progress,
                 kp_id,
                 passed=passed,
@@ -1088,6 +1617,8 @@ class LearningService:
                 session_id=session_id,
                 turn_id=turn_id,
             )
+            if not applied:
+                return
             tx.touch()
             tx.emit(
                 "mastery.assessed",
@@ -1126,14 +1657,26 @@ class LearningService:
         scheduler: SpacedRepetitionScheduler | None = None,
         session_id: str = "",
         turn_id: str = "",
-    ) -> None:
+    ) -> bool:
+        evidence_id = ""
+        if session_id or turn_id:
+            evidence_id = uuid.uuid5(
+                uuid.NAMESPACE_URL,
+                f"deeptutor:qualitative:{session_id}:{turn_id}:{kp_id}",
+            ).hex
+            if any(item.evidence_id == evidence_id for item in progress.learning_evidence):
+                return False
         progress.qualitative_mastery[kp_id] = bool(passed)
+        progress.deferred_objectives.pop(kp_id, None)
         current = progress.mastery_levels.get(kp_id, 0.0)
         progress.mastery_levels[kp_id] = max(current, 1.0) if passed else min(current, 0.4)
         if evidence:
             progress.feynman_explanations[kp_id] = evidence
+        moment = time.time()
         review_evidence = LearningEvidence(
+            evidence_id=evidence_id,
             knowledge_point_id=kp_id,
+            timestamp=moment,
             assessment_type="qualitative",
             result="correct" if passed else "partial",
             quality=(1.0 if evidence else 0.9) if passed else 0.2,
@@ -1144,13 +1687,19 @@ class LearningService:
         progress.learning_evidence.append(review_evidence)
         kp_type = progress.knowledge_types.get(kp_id)
         if kp_type is not None and scheduler is not None:
-            state = progress.repetition_states.get(kp_id)
-            if state is not None and state.next_review_at <= time.time():
-                scheduler.schedule_review(state, kp_type, review_evidence)
-            elif state is None and passed:
-                progress.repetition_states[kp_id] = scheduler.get_initial_state(kp_type)
+            state = progress.repetition_states.get(kp_id) or scheduler.get_initial_state(
+                kp_type, now=review_evidence.timestamp
+            )
+            progress.repetition_states[kp_id] = state
+            scheduler.schedule_review(
+                state,
+                kp_type,
+                review_evidence,
+                now=review_evidence.timestamp,
+            )
             progress.review_queue = scheduler.build_review_queue(progress)
-        progress.updated_at = time.time()
+        progress.updated_at = moment
+        return True
 
     def list_path_overviews(self) -> list[dict]:
         """Gate-accurate one-line state for every path the learner owns.

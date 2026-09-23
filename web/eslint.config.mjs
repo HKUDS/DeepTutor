@@ -11,6 +11,42 @@ const config = [
     rules: {
       // During migration keep as warning; change to "error" once phase2/3 complete.
       "i18n/no-literal-ui-text": "warn",
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@/components/common/Tooltip",
+              message: "Import the canonical @/shared/ui/Tooltip primitive.",
+            },
+            {
+              name: "@/components/ui/Tooltip",
+              message: "Import the canonical @/shared/ui/Tooltip primitive.",
+            },
+            {
+              // The app tree renders inside a strict `LazyMotion`, which throws
+              // on a full `motion` component rather than degrading — one such
+              // import crashed the whole learning dashboard (#1549). Stating it
+              // here is what stops the next file from finding out at runtime.
+              name: "framer-motion",
+              importNames: ["motion"],
+              message:
+                "Import `m as motion`: a full `motion` component throws inside the strict LazyMotion provider.",
+            },
+          ],
+        },
+      ],
+      "no-restricted-syntax": [
+        "warn",
+        {
+          selector: "JSXAttribute[name.name='role'][value.value='tooltip']",
+          message: "Use @/shared/ui/Tooltip instead of a local tooltip implementation.",
+        },
+        {
+          selector: "FunctionDeclaration[id.name=/Icon(Button|Btn)$/] JSXOpeningElement[name.type='JSXIdentifier'][name.name=/^[a-z]/] > JSXAttribute[name.name='title']",
+          message: "Icon button hints must use @/shared/ui/Tooltip so they work on keyboard and touch.",
+        },
+      ],
     },
   },
   {

@@ -18,13 +18,14 @@ from typing import Any, AsyncGenerator, Awaitable, Callable
 from deeptutor.config.settings import settings
 from deeptutor.logging import LLMStats
 from deeptutor.services.config import get_agent_params
-from deeptutor.services.llm import complete as llm_complete
 from deeptutor.services.llm import (
+    StreamOutcome,
     get_llm_config,
     get_token_limit_kwargs,
     prepare_multimodal_messages,
     supports_response_format,
 )
+from deeptutor.services.llm import complete as llm_complete
 from deeptutor.services.llm import stream as llm_stream
 from deeptutor.services.prompt import get_prompt_manager
 
@@ -529,6 +530,7 @@ class BaseAgent(ABC):
         trace_meta: dict[str, Any] | None = None,
         reasoning_effort: str | None = None,
         tools: list[dict[str, Any]] | None = None,
+        outcome: StreamOutcome | None = None,
     ) -> AsyncGenerator[str, None]:
         """
         Unified interface for streaming LLM responses.
@@ -548,6 +550,10 @@ class BaseAgent(ABC):
             attachments: Image/file attachments for multimodal input (optional)
             reasoning_effort: Override the model's thinking level for this one
                 call (see :meth:`call_llm`).
+            outcome: Filled in with the provider's terminal reason and usage
+                when the stream ends. An agent that parses the streamed text
+                needs it to tell a complete response from one the provider cut
+                off at ``max_tokens`` (#1545).
 
         Yields:
             Response chunks as strings
@@ -635,6 +641,7 @@ class BaseAgent(ABC):
                 binding=self.binding,
                 messages=messages,
                 max_retries=max_retries,
+                outcome=outcome,
                 **kwargs,
             ):
                 full_response += chunk

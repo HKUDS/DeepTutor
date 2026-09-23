@@ -119,6 +119,7 @@ notices:
   loop_budget_exhausted: "探索轮次预算已用尽，将基于已收集的材料作答。"
   loop_settlement: "探索轮次预算已用尽；正在完成必要收尾，然后给出最终回答。"
   output_truncated: "模型输出达到 token 上限，已要求其继续完成回答。"
+  tool_call_truncated: "模型在生成工具调用时达到输出 token 上限，该调用可能不完整。若反复出现，请提高该能力的最大输出 token，或改用推理更短的模型。"
   loop_error_finish: "某一步执行失败（{error}），将基于已收集的材料作答。"
   provider_retry: "模型服务连接中断，正在重试。"
   provider_unavailable: "无法连接模型服务，请重试。"

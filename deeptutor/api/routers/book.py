@@ -1115,40 +1115,50 @@ async def quiz_attempt(req: QuizAttemptRequest) -> dict[str, Any]:
                 or book.chat_session_id
                 or ""
             ).strip()
-            # Notebook entries belong to real conversations. Creating a hidden
-            # ``book_<id>`` chat solely to satisfy the FK polluted history and
-            # made a Book Focus Check look like Immersive Reading. If the page
-            # has no conversation yet, progress still persists and the optional
-            # review sync waits for a later attempt after chat exists.
-            if session_id and await store.get_session(session_id) is not None:
-                from deeptutor.learning.assessment import (
-                    AssessmentRecord,
-                    is_correct_to_result,
-                    record_assessment,
-                )
+            has_session = bool(session_id and await store.get_session(session_id) is not None)
+            from deeptutor.learning.assessment import (
+                AssessmentRecord,
+                is_correct_to_result,
+                record_assessment,
+            )
 
-                await record_assessment(
-                    AssessmentRecord(
-                        session_id=session_id,
-                        turn_id=req.block_id,
-                        question_id=question_id,
-                        question=str(question.get("question") or block.title or "Focus check"),
-                        question_type=str(question.get("question_type") or ""),
-                        options=question.get("options") or {},
-                        correct_answer=str(question.get("correct_answer") or ""),
-                        explanation=str(question.get("explanation") or ""),
-                        difficulty=str(question.get("difficulty") or ""),
-                        user_answer=req.user_answer,
-                        is_correct=bool(req.is_correct),
-                        result=is_correct_to_result(bool(req.is_correct)),
-                        source="book",
-                        assessment_type="focus_check",
-                        material_id=req.book_id,
-                        material_title=book.title,
-                        section_id=req.page_id,
-                        section_title=page.title if page is not None else "",
-                    )
+            latest_attempt = progress.quiz_attempts[-1]
+            attempt_count = sum(
+                1
+                for attempt in progress.quiz_attempts
+                if attempt.block_id == req.block_id and attempt.question_id == req.question_id
+            )
+            await record_assessment(
+                AssessmentRecord(
+                    session_id=session_id if has_session else "",
+                    origin_type="conversation" if has_session else "document_analysis",
+                    origin_ref=session_id if has_session else f"book:{req.book_id}",
+                    turn_id=req.block_id,
+                    question_id=question_id,
+                    question=str(question.get("question") or block.title or "Focus check"),
+                    question_type=str(question.get("question_type") or ""),
+                    options=question.get("options") or {},
+                    correct_answer=str(question.get("correct_answer") or ""),
+                    explanation=str(question.get("explanation") or ""),
+                    difficulty=str(question.get("difficulty") or ""),
+                    user_answer=req.user_answer,
+                    is_correct=bool(req.is_correct),
+                    result=is_correct_to_result(bool(req.is_correct)),
+                    source="book",
+                    assessment_type="focus_check",
+                    material_id=req.book_id,
+                    material_title=book.title,
+                    section_id=req.page_id,
+                    section_title=page.title if page is not None else "",
+                    mastery_path_id=str(question.get("mastery_path_id") or ""),
+                    knowledge_point_id=str(question.get("knowledge_point_id") or ""),
+                    attempt_count=max(1, attempt_count),
+                    attempt_id=(
+                        f"book:{req.book_id}:{req.block_id}:{question_id}:"
+                        f"{latest_attempt.timestamp:.9f}"
+                    ),
                 )
+            )
         except Exception:
             logger.warning(
                 "Failed to sync Focus-Check %s to question bank for book %s",

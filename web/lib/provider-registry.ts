@@ -172,10 +172,17 @@ export function providerAdapter(
     service === "task" ? "llm" : service
   ];
   const exact = providers[service]?.find((p) => p.value === source.provider);
+  // `custom` is the generic OpenAI-compatible binding; every service but search
+  // has one, so an unrecognized vendor still resolves through it. Search has no
+  // generic adapter, so it keeps the vendor's own name and gets rejected by name
+  // rather than masquerading as an OpenAI-compatible search engine.
   const binding =
     target?.provider ||
     exact?.value ||
-    (service === "llm" || service === "task" || source.service === service
+    (service === "llm" ||
+    service === "task" ||
+    service === "search" ||
+    source.service === service
       ? source.provider
       : "custom");
   return {

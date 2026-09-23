@@ -28,6 +28,8 @@ import { useTranslation } from "react-i18next";
 import ChatComposer from "@/components/chat/home/ChatComposer";
 import type { ContextBudget } from "@/components/chat/home/ContextBudgetChip";
 import type { CapabilityDef } from "@/features/capabilities/presentation";
+import type { ResourceSelection } from "@/features/chat/ChatStateAdapter";
+import type { ComposerResourceCatalog } from "@/hooks/useComposerResources";
 import type { SelectedHistorySession } from "@/components/chat/HistorySessionPicker";
 import type { SelectedQuestionEntry } from "@/components/chat/QuestionBankPicker";
 import { useAttachmentLimits } from "@/lib/attachment-limits";
@@ -187,6 +189,18 @@ interface StandaloneComposerProps {
    */
   personaSelection?: string;
   onPersonaSelectionChange?: (persona: string) => void;
+  /**
+   * Which of the workspace's skills and MCP servers this conversation narrows
+   * itself to, and what there is to narrow. Session-level like the persona
+   * above: pass the trio and the "+" menu grows the Skills and MCP entries,
+   * omit it and the conversation keeps inheriting its workspace untouched.
+   * `ChatComposer` needs both halves — it hides an entry whose catalog is
+   * empty — which is why a surface that passed neither showed no picker at all
+   * while the chat page showed one for the same account (#1534).
+   */
+  resourceCatalog?: ComposerResourceCatalog;
+  resourceSelection?: ResourceSelection;
+  onResourceSelectionChange?: (selection: ResourceSelection) => void;
   /** Hide the My Agents reference entry. */
   agentsAvailable?: boolean;
   /** Receives a function that drops text into the textarea (ask_user chips). */
@@ -217,6 +231,9 @@ function StandaloneComposerImpl({
   onLLMSelectionChange,
   personaSelection,
   onPersonaSelectionChange,
+  resourceCatalog,
+  resourceSelection,
+  onResourceSelectionChange,
   agentsAvailable = false,
   prefillInputRef,
   contextBudget = null,
@@ -880,6 +897,9 @@ function StandaloneComposerImpl({
         onSubagentBudgetChange={setSubagentBudget}
         personaSelection={personaSelection}
         onPersonaSelectionChange={onPersonaSelectionChange}
+        resourceCatalog={resourceCatalog}
+        resourceSelection={resourceSelection}
+        onResourceSelectionChange={onResourceSelectionChange}
         personaSelectorOpen={personaSelectorOpen}
         onPersonaSelectorOpenChange={setPersonaSelectorOpen}
         llmOptions={llmOptions}

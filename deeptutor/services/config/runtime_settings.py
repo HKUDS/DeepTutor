@@ -350,7 +350,7 @@ DEFAULT_GRAPHRAG_SETTINGS: dict[str, Any] = {
 # Stable catalog references let LightRAG use a dedicated LLM while the global
 # active chat model remains unchanged for ordinary chat.
 DEFAULT_LIGHTRAG_SETTINGS: dict[str, Any] = {
-    "version": 1,
+    "version": 2,
     "top_k": 60,
     "response_type": "Multiple Paragraphs",
     "max_concurrent_files": 1,
@@ -370,6 +370,14 @@ DEFAULT_LIGHTRAG_SERVER_SETTINGS: dict[str, Any] = {
 }
 
 IGNORE_PROCESS_OVERRIDES_ENV = "DEEPTUTOR_IGNORE_PROCESS_ENV_OVERRIDES"
+
+# Names of the variables a parent DeepTutor process rendered out of the settings
+# files, handed to its children so they can tell "our own launcher derived this
+# from system.json" from "an operator set this in the deployment". Without it the
+# launcher's export looks like a deployment override to the backend and the file
+# can never win again: toggling "check for updates" wrote system.json while the
+# live API kept answering with the value captured at startup (#1536).
+SETTINGS_DERIVED_ENV_KEYS = "DEEPTUTOR_SETTINGS_DERIVED_ENV_KEYS"
 TRUTHY = {"1", "true", "yes", "on"}
 FALSY = {"0", "false", "no", "off"}
 
@@ -450,6 +458,10 @@ class RuntimeSettingsService:
         self.process_env = process_env if process_env is not None else os.environ
         self._external_process_keys: set[str] = set()
         self._internal_exported_values: dict[str, str] = {}
+        derived = self.process_env.get(SETTINGS_DERIVED_ENV_KEYS, "") or ""
+        self._settings_derived_keys: frozenset[str] = frozenset(
+            part.strip() for part in derived.split(",") if part.strip()
+        )
 
     @classmethod
     def get_instance(
@@ -621,6 +633,20 @@ class RuntimeSettingsService:
         return payload
 
     def load_lightrag(self) -> dict[str, Any]:
+        path = self.path_for("lightrag")
+        if path.exists():
+            # Invalid role settings must never become legacy chat-model fallback.
+            with path.open(encoding="utf-8") as handle:
+                loaded = json.load(handle)
+            if not isinstance(loaded, dict):
+                raise ValueError("LightRAG settings must be an object.")
+            # Existing files without a version predate independent roles.
+            normalized = self._normalize_lightrag(
+                {**DEFAULT_LIGHTRAG_SETTINGS, "version": 1, **loaded}
+            )
+            if normalized != loaded:
+                _atomic_write_json(path, normalized)
+            return normalized
         return self._load_or_create("lightrag", DEFAULT_LIGHTRAG_SETTINGS, self._normalize_lightrag)
 
     def save_lightrag(self, settings: dict[str, Any]) -> dict[str, Any]:
@@ -705,8 +731,14 @@ class RuntimeSettingsService:
     def export_environment(self, *, overwrite: bool = True) -> dict[str, str]:
         env = self.render_environment()
         for key, value in env.items():
-            current = os.environ.get(key)
-            if current and self._internal_exported_values.get(key) != current:
+            # Read through the same view the override policy reads, so "the
+            # operator set this" means one thing in both places.
+            current = self.process_env.get(key)
+            if (
+                current
+                and key not in self._settings_derived_keys
+                and self._internal_exported_values.get(key) != current
+            ):
                 self._external_process_keys.add(key)
             if overwrite or key not in os.environ:
                 os.environ[key] = value
@@ -714,8 +746,23 @@ class RuntimeSettingsService:
                     self._internal_exported_values[key] = value
         return env
 
+    def settings_derived_keys(self) -> frozenset[str]:
+        """Variables this process exported out of the settings files.
+
+        What a child needs in order to read its inherited environment correctly
+        (see :data:`SETTINGS_DERIVED_ENV_KEYS`). Anything the operator had
+        already set is excluded: there the environment is the authority and the
+        child must keep honouring it, exactly as this process does.
+        """
+        return frozenset(self._internal_exported_values)
+
     def _process_env_value(self, key: str) -> str:
         if self._ignore_process_overrides():
+            return ""
+        if key in self._settings_derived_keys:
+            # A parent DeepTutor process rendered this out of the settings files,
+            # so the files stay in charge and a later save takes effect live
+            # (#1536). An operator-set variable is never on that list.
             return ""
         value = self.process_env.get(key, "")
         if not value:
@@ -965,8 +1012,22 @@ class RuntimeSettingsService:
         }
 
     def _normalize_lightrag(self, settings: dict[str, Any]) -> dict[str, Any]:
-        return {
-            "version": 1,
+        from .lightrag_roles import LightRagRoleModels
+
+        version = settings.get("version", 1)
+        if type(version) is not int or version not in {1, 2}:
+            raise ValueError("Unsupported LightRAG settings version.")
+
+        # Missing means a released, legacy setting. Never turn malformed new
+        # configuration back into a legacy model fallback.
+        role_models = settings.get("role_models")
+        roles = (
+            LightRagRoleModels.model_validate(role_models).model_dump()
+            if "role_models" in settings
+            else None
+        )
+        result = {
+            "version": 2 if roles is not None or settings.get("version") == 2 else 1,
             "top_k": _coerce_clamped_int(settings.get("top_k"), 60, 1, 200),
             "response_type": self._normalize_response_type(settings.get("response_type")),
             "max_concurrent_files": _coerce_clamped_int(
@@ -981,6 +1042,9 @@ class RuntimeSettingsService:
             "llm_profile_id": _string(settings.get("llm_profile_id"))[:128],
             "llm_model_id": _string(settings.get("llm_model_id"))[:128],
         }
+        if roles is not None:
+            result["role_models"] = roles
+        return result
 
     def _normalize_lightrag_server(self, settings: dict[str, Any]) -> dict[str, Any]:
         return {
@@ -1424,6 +1488,7 @@ __all__ = [
     "LITEPARSE_IMAGE_MODES",
     "MINERU_MODE_CLOUD",
     "MINERU_MODE_LOCAL",
+    "SETTINGS_DERIVED_ENV_KEYS",
     "ChatAttachmentLimits",
     "RuntimeSettingsService",
     "compute_ws_max_size",

@@ -297,11 +297,8 @@ async def submit_quiz_answers(material_id: str, payload: QuizAnswersPayload) -> 
     if session_id:
         if await store.get_session(session_id) is None:
             raise HTTPException(status_code=404, detail="Reading session not found.")
-    else:
-        # A notebook container keeps standalone reading quizzes without requiring
-        # the learner to open a conversation first; it holds no invented messages.
-        session_id = f"reading-notebook:{material_id}"
-        await store.ensure_notebook_session(session_id, material_title or "Reading quiz")
+    origin_type = "conversation" if session_id else "document_analysis"
+    origin_ref = session_id or f"reading:{material_id}"
     turn_id = payload.turn_id.strip() or f"reading:{material_id}:loc:{payload.locator}"
     graded: list[dict[str, Any]] = []
     for item in payload.answers:
@@ -322,6 +319,8 @@ async def submit_quiz_answers(material_id: str, payload: QuizAnswersPayload) -> 
             await record_assessment(
                 AssessmentRecord(
                     session_id=session_id,
+                    origin_type=origin_type,
+                    origin_ref=origin_ref,
                     turn_id=turn_id,
                     question_id=item.question_id.strip(),
                     question=str(question.get("prompt") or "Reading quiz"),
@@ -337,6 +336,8 @@ async def submit_quiz_answers(material_id: str, payload: QuizAnswersPayload) -> 
                     material_title=material_title,
                     section_id=str(payload.locator),
                     section_title=section_title,
+                    mastery_path_id=str(question.get("mastery_path_id") or ""),
+                    knowledge_point_id=str(question.get("knowledge_point_id") or ""),
                 )
             )
         except RecordAssessmentError as exc:

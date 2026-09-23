@@ -52,8 +52,14 @@ class FakeCodexService:
 
 
 @pytest.mark.asyncio
-async def test_provider_uses_deeptutor_token_service_and_raw_sol_id(
+@pytest.mark.parametrize(
+    ("model_slug", "reasoning_effort"),
+    [("gpt-5.6-sol", "medium"), ("gpt-5.6-luna", "none")],
+)
+async def test_provider_uses_deeptutor_token_service_and_raw_model_id(
     monkeypatch: pytest.MonkeyPatch,
+    model_slug: str,
+    reasoning_effort: str,
 ) -> None:
     service = FakeCodexService()
     requests: list[tuple[str, dict[str, str], dict[str, Any]]] = []
@@ -81,8 +87,8 @@ async def test_provider_uses_deeptutor_token_service_and_raw_sol_id(
                 ],
             }
         ],
-        model="openai-codex/gpt-5.6-sol",
-        reasoning_effort="medium",
+        model=f"openai-codex/{model_slug}",
+        reasoning_effort=reasoning_effort,
         tools=[
             {
                 "type": "function",
@@ -99,12 +105,12 @@ async def test_provider_uses_deeptutor_token_service_and_raw_sol_id(
     assert result.finish_reason == "stop"
     assert service.token_calls == 1
     assert service.guard_entries == 1
-    assert service.runtime_validations == [(service.token, "gpt-5.6-sol", "medium")]
+    assert service.runtime_validations == [(service.token, model_slug, reasoning_effort)]
     assert url == CODEX_RESPONSES_URL
     assert headers["Authorization"] == "Bearer test-access-token"
     assert headers["chatgpt-account-id"] == "account-123"
-    assert body["model"] == "gpt-5.6-sol"
-    assert body["reasoning"] == {"effort": "medium"}
+    assert body["model"] == model_slug
+    assert body["reasoning"] == {"effort": reasoning_effort}
     assert body["tools"][0]["name"] == "lookup"
     assert body["input"] == [
         {

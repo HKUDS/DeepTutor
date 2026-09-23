@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -14,11 +15,14 @@ from deeptutor.agents.loop.agent_loop import InlineThinkFilter
 from deeptutor.capabilities.explore_context import explorer as explorer_mod
 from deeptutor.capabilities.mastery import MASTERY_TOOL_NAMES
 from deeptutor.capabilities.mastery.pipeline import MasteryLoopPipeline
+from deeptutor.capabilities.mastery.tools import MasteryQuizTool
 from deeptutor.capabilities.partner_group.tools import InvokeOtherTool
 from deeptutor.core.context import Attachment, TurnRuntimeContext, UnifiedContext
 from deeptutor.core.stream import StreamEvent, StreamEventType
 from deeptutor.core.tool_protocol import ToolResult
 from deeptutor.core.trace import ANSWER_BEARING_CALL_KINDS
+from deeptutor.learning.models import KnowledgePoint, LearningModule, LearningProgress
+from deeptutor.learning.storage import LearningStore
 from deeptutor.runtime.stream_bus import StreamBus
 from deeptutor.services.llm import LLMProviderTransportError, LLMReasoningBudgetExhausted
 from deeptutor.services.llm.provider_core.openai_responses import convert_messages
@@ -1317,6 +1321,183 @@ async def test_repeated_plain_choice_failure_is_never_published_as_a_finish(
     result = _result(events)
     assert result.metadata["completed"] is False
     assert result.metadata["response"] == ""
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "repair",
+    [
+        "new",
+        "existing",
+        "tool_failure",
+        "repeat",
+        "selected_retry",
+        "selected_failure",
+        "selected_budget",
+    ],
+)
+async def test_mastery_card_promise_repair_uses_real_question_tool(
+    repair: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A text-only claim repairs to a durable card or a bounded failed turn."""
+    monkeypatch.setenv("DEEPTUTOR_WORKSPACE_ROOT", str(tmp_path))
+
+    def init_store(self: LearningStore, root: Path | None = None) -> None:
+        self._root = tmp_path / "learning"
+        self._root.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(LearningStore, "__init__", init_store)
+    LearningStore().save(
+        LearningProgress(
+            book_id="p1",
+            modules=[
+                LearningModule(
+                    id="m1",
+                    name="Sorting",
+                    order=0,
+                    knowledge_points=[
+                        KnowledgePoint(
+                            id="kp1", name="Bubble sort", type="procedure", module_id="m1"
+                        )
+                    ],
+                )
+            ],
+        )
+    )
+    quiz_args = {
+        "knowledge_point_id": "kp1",
+        "question": "After one left-to-right ascending bubble-sort pass on [3, 1, 2]?",
+        "expected_answer": "A",
+        "options": [{"label": "A", "body": "1, 2, 3"}, {"label": "B", "body": "1, 3, 2"}],
+        "explanation": "The largest value 3 moves to the end in this pass.",
+    }
+    old_id = None
+    if repair == "existing":
+        old = await MasteryQuizTool().execute(
+            **quiz_args, _mastery_path_id="p1", _session_id="s1", _turn_id="previous"
+        )
+        assert old.success
+        old_id = old.metadata["mastery_question"]["question_id"]
+
+    class RealQuizRegistry(_Registry):
+        def build_openai_schemas(self, _enabled: list[str]) -> list[dict[str, Any]]:
+            return [MasteryQuizTool().get_definition().to_openai_schema()]
+
+        async def execute(self, name: str, **kwargs: Any) -> ToolResult:
+            self.executed.append({"name": name, "kwargs": kwargs})
+            assert name == "mastery_quiz"
+            return await MasteryQuizTool().execute(**kwargs)
+
+    promise = "卡片这次重开一遍，题面我直接写在题干里了。"
+    script = [[_llm_chunk(content=promise, finish_reason="stop")]]
+    if repair == "repeat":
+        script.append([_llm_chunk(content=promise, finish_reason="stop")])
+    else:
+        script.append(
+            [
+                _llm_chunk(
+                    tool_calls=[
+                        {
+                            "id": "quiz-1",
+                            "name": "mastery_quiz",
+                            "arguments": json.dumps({} if repair == "tool_failure" else quiz_args),
+                        }
+                    ],
+                    finish_reason="tool_calls",
+                )
+            ]
+        )
+        if repair == "tool_failure":
+            script.append([_llm_chunk(content=promise, finish_reason="stop")])
+    selected_quiz = repair.startswith("selected_")
+    if selected_quiz:
+        # No delivery keywords: a failed native tool call alone establishes
+        # the obligation, and unrelated final prose must not erase it.
+        promise = "Done."
+        script = [
+            [
+                _llm_chunk(
+                    tool_calls=[{"id": "bad-quiz", "name": "mastery_quiz", "arguments": "{}"}],
+                    finish_reason="tool_calls",
+                )
+            ],
+            [_llm_chunk(content=promise, finish_reason="stop")],
+            [
+                _llm_chunk(
+                    tool_calls=[
+                        {
+                            "id": "retry-quiz",
+                            "name": "mastery_quiz",
+                            "arguments": json.dumps(quiz_args),
+                        }
+                    ],
+                    finish_reason="tool_calls",
+                )
+            ]
+            if repair == "selected_retry"
+            else [_llm_chunk(content=promise, finish_reason="stop")],
+        ]
+    if repair == "selected_budget":
+        script = [
+            [
+                _llm_chunk(
+                    tool_calls=[{"id": f"bad-{index}", "name": "mastery_quiz", "arguments": "{}"}],
+                    finish_reason="tool_calls",
+                )
+            ]
+            for index in range(4)
+        ] + [[_llm_chunk(content="Done.", finish_reason="stop")]]
+    client = _ScriptedChatClient(script)
+    registry = RealQuizRegistry()
+    pipeline = MasteryLoopPipeline(language="zh")
+    if repair == "selected_budget":
+        pipeline._max_rounds = 1
+    pipeline.registry = registry
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["mastery_quiz"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    context = UnifiedContext(
+        session_id="s1",
+        user_message="没有卡片",
+        enabled_tools=["mastery_quiz"],
+        metadata={
+            "mastery_mode": True,
+            "mastery_path_id": "p1",
+            "mastery_session_mode": "study",
+            "turn_id": "repair-turn",
+        },
+    )
+    events = await _run(pipeline, context)
+    cards = [
+        e.metadata["tool_metadata"]["mastery_question"]
+        for e in events
+        if e.type == StreamEventType.TOOL_RESULT
+        and "mastery_question" in e.metadata.get("tool_metadata", {})
+    ]
+    assert promise not in _answer_text(events)
+    if repair == "selected_budget":
+        # One exploration round plus three settlement rounds; no tool-less
+        # salvage call can discharge an unfulfilled quiz obligation.
+        assert client.call_count == 4
+        assert all("tools" in call for call in client.calls)
+    else:
+        correction = client.calls[2 if selected_quiz else 1]
+        assert "mastery_quiz" in correction["messages"][-1]["content"]
+        assert any(s["function"]["name"] == "mastery_quiz" for s in correction["tools"])
+        assert client.call_count == (3 if repair == "tool_failure" or selected_quiz else 2)
+    succeeded = repair in {"new", "existing", "selected_retry"}
+    assert _result(events).metadata["completed"] is succeeded
+    if succeeded:
+        assert len(cards) == 1
+        persisted = LearningStore().load("p1").pending_question
+        assert persisted is not None
+        assert cards[0]["question_id"] == persisted.question_id
+        assert cards[0]["prompt"] == quiz_args["question"]
+        if old_id:
+            assert cards[0]["question_id"] == old_id
+    else:
+        assert cards == []
+        assert LearningStore().load("p1").pending_question is None
+        assert _result(events).metadata["response"] == ""
 
 
 @pytest.mark.asyncio
@@ -3248,3 +3429,44 @@ async def test_native_adapter_tool_argument_previews_reach_the_card(
         if isinstance(event.metadata.get("ask_user_draft"), dict)
     }
     assert call_ids == {"ask-1"}
+
+
+@pytest.mark.asyncio
+async def test_truncated_tool_call_says_the_output_hit_the_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The reader must learn the round was cut off, not just that an arg is missing.
+
+    Visualize's canvas came back empty with nothing on screen explaining why: a
+    reasoning model spent the round's budget on ``<think>`` and the tool call's
+    JSON stopped mid-argument, so the only trace row was the arg guard's
+    "missing query" — which reads as a model that forgot a field (#1546).
+    """
+    client = _ScriptedChatClient(
+        [
+            [
+                _llm_chunk(
+                    content="<think>先想清楚画什么</think>",
+                    tool_calls=[{"id": "a", "name": "web_search", "arguments": '{"que'}],
+                    finish_reason="length",
+                )
+            ],
+            [_llm_chunk(content="答案", finish_reason="stop")],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="zh")
+    pipeline.registry = _Registry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["web_search"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    events = await _run(pipeline, UnifiedContext(session_id="s1", user_message="画一张图"))
+
+    warnings = [
+        str(event.content)
+        for event in events
+        if (event.metadata or {}).get("trace_kind") == "warning"
+    ]
+    assert any("输出 token 上限" in text for text in warnings)
+    # The notice is a report, not a control-flow change: the round is handled
+    # exactly as before and the turn still finishes.
+    assert _answer_text(events) == "答案"

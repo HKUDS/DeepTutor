@@ -22,7 +22,12 @@ try:  # POSIX is the supported production target; fallback keeps Windows dev usa
 except ImportError:  # pragma: no cover - exercised only on Windows
     fcntl = None  # type: ignore[assignment]
 
-from deeptutor.core.assessment import ASSESSMENT_RESULTS, ASSESSMENT_SOURCES, ASSESSMENT_TYPES
+from deeptutor.core.assessment import (
+    ASSESSMENT_RESULTS,
+    ASSESSMENT_SOURCES,
+    ASSESSMENT_TYPES,
+    QUESTION_ORIGIN_TYPES,
+)
 from deeptutor.services.path_service import get_path_service
 from deeptutor.services.session.protocol import ActiveTurnConflict
 from deeptutor.utils.secret_files import ensure_private_directory, ensure_private_file
@@ -103,8 +108,10 @@ SCORE_TRENDS = frozenset({"new", "improved", "declined", "unchanged"})
 # Stored ``result=''`` is a pre-v2 row: treat it as already graded so wrong
 # lists do not swallow ungraded spectacle rows, and old incorrect rows stay
 # in the wrong filter.
-_GRADED_RESULT_SQL = "COALESCE(NULLIF(n.result,''),'graded') NOT IN ('ungraded','')"
-_GRADED_RESULT_SQL_UNALIASED = "COALESCE(NULLIF(result,''),'graded') NOT IN ('ungraded','')"
+_GRADED_RESULT_SQL = "COALESCE(NULLIF(n.result,''),'graded') NOT IN ('ungraded','voided','')"
+_GRADED_RESULT_SQL_UNALIASED = (
+    "COALESCE(NULLIF(result,''),'graded') NOT IN ('ungraded','voided','')"
+)
 ACTIVE_TURN_STATUSES = frozenset({"queued", "running", "waiting_input"})
 TERMINAL_TURN_STATUSES = frozenset({"completed", "failed", "cancelled"})
 ALL_TURN_STATUSES = ACTIVE_TURN_STATUSES | TERMINAL_TURN_STATUSES
@@ -345,7 +352,9 @@ class SQLiteSessionStore:
 
                 CREATE TABLE IF NOT EXISTS notebook_entries (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                    session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+                    origin_type TEXT NOT NULL DEFAULT 'conversation',
+                    origin_ref TEXT NOT NULL,
                     turn_id TEXT NOT NULL DEFAULT '',
                     question_id TEXT NOT NULL,
                     question TEXT NOT NULL,
@@ -378,7 +387,7 @@ class SQLiteSessionStore:
                     ai_judgment TEXT DEFAULT '',
                     created_at REAL NOT NULL,
                     updated_at REAL NOT NULL,
-                    UNIQUE(session_id, turn_id, question_id)
+                    UNIQUE(origin_type, origin_ref, turn_id, question_id)
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_notebook_entries_session
@@ -386,6 +395,29 @@ class SQLiteSessionStore:
 
                 CREATE INDEX IF NOT EXISTS idx_notebook_entries_bookmarked
                     ON notebook_entries(bookmarked, created_at DESC);
+
+                CREATE TABLE IF NOT EXISTS assessment_attempts (
+                    attempt_id TEXT PRIMARY KEY,
+                    notebook_entry_id INTEGER,
+                    session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+                    origin_type TEXT NOT NULL DEFAULT 'conversation',
+                    origin_ref TEXT NOT NULL,
+                    turn_id TEXT NOT NULL DEFAULT '',
+                    question_id TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    assessment_type TEXT NOT NULL,
+                    result TEXT NOT NULL,
+                    mastery_path_id TEXT NOT NULL DEFAULT '',
+                    knowledge_point_id TEXT NOT NULL DEFAULT '',
+                    occurred_at REAL NOT NULL,
+                    assessment_json TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_assessment_attempts_session_time
+                    ON assessment_attempts(session_id, occurred_at DESC);
+
+                CREATE INDEX IF NOT EXISTS idx_assessment_attempts_linkage
+                    ON assessment_attempts(mastery_path_id, knowledge_point_id, occurred_at DESC);
 
                 CREATE TABLE IF NOT EXISTS reading_quiz_pending (
                     material_id TEXT NOT NULL,
@@ -460,6 +492,8 @@ class SQLiteSessionStore:
             self._migrate_notebook_entries_add_ai_judgment(conn)
             self._migrate_notebook_entries_add_assessment_review(conn)
             self._migrate_notebook_entries_add_assessment_v2(conn)
+            self._migrate_notebook_entry_origins(conn)
+            self._migrate_assessment_attempt_origins(conn)
             self._migrate_turn_runtime_columns(conn)
             from deeptutor.services.practice.storage import initialize_practice
 
@@ -775,6 +809,247 @@ class SQLiteSessionStore:
             )
             """
         )
+
+    @staticmethod
+    def _migrate_notebook_entry_origins(conn: sqlite3.Connection) -> None:
+        """Detach Question Notebook identity from conversation ownership.
+
+        SQLite cannot relax a ``NOT NULL`` foreign key or replace a table-level
+        unique constraint in place, so this migration rebuilds the table once.
+        IDs are copied verbatim, which preserves categories, practice state,
+        bookmarks, answer images and external references. Existing rows become
+        conversation origins; future non-conversation rows may keep
+        ``session_id`` NULL without manufacturing a chat.
+        """
+        info = {
+            row[1]: row for row in conn.execute("PRAGMA table_info(notebook_entries)").fetchall()
+        }
+        if not info:
+            return
+        origin_unique = False
+        for index in conn.execute("PRAGMA index_list(notebook_entries)").fetchall():
+            if not index[2]:
+                continue
+            columns = [row[2] for row in conn.execute(f"PRAGMA index_info({index[1]})").fetchall()]
+            if columns == ["origin_type", "origin_ref", "turn_id", "question_id"]:
+                origin_unique = True
+                break
+        if (
+            "origin_type" in info
+            and "origin_ref" in info
+            and not bool(info["session_id"][3])
+            and origin_unique
+        ):
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_notebook_entries_origin "
+                "ON notebook_entries(origin_type, origin_ref, created_at DESC)"
+            )
+            return
+
+        origin_type = (
+            "CASE WHEN origin_type IN ('conversation','external_import','document_analysis') "
+            "THEN origin_type WHEN session_id IS NOT NULL AND session_id != '' "
+            "THEN 'conversation' ELSE 'external_import' END"
+            if "origin_type" in info
+            else "CASE WHEN session_id IS NOT NULL AND session_id != '' "
+            "THEN 'conversation' ELSE 'external_import' END"
+        )
+        origin_ref = (
+            "COALESCE(NULLIF(origin_ref, ''), NULLIF(session_id, ''), 'legacy:' || id)"
+            if "origin_ref" in info
+            else "COALESCE(NULLIF(session_id, ''), 'legacy:' || id)"
+        )
+
+        conn.commit()
+        conn.execute("PRAGMA foreign_keys = OFF")
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute("DROP TABLE IF EXISTS notebook_entries_new")
+            conn.execute(
+                """
+                CREATE TABLE notebook_entries_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+                    origin_type TEXT NOT NULL DEFAULT 'conversation',
+                    origin_ref TEXT NOT NULL,
+                    turn_id TEXT NOT NULL DEFAULT '',
+                    question_id TEXT NOT NULL,
+                    question TEXT NOT NULL,
+                    question_type TEXT DEFAULT '',
+                    options_json TEXT DEFAULT '{}',
+                    correct_answer TEXT DEFAULT '',
+                    explanation TEXT DEFAULT '',
+                    difficulty TEXT DEFAULT '',
+                    user_answer TEXT DEFAULT '',
+                    user_answer_images_json TEXT DEFAULT '[]',
+                    source TEXT NOT NULL DEFAULT 'deep_question',
+                    material_id TEXT NOT NULL DEFAULT '',
+                    material_title TEXT NOT NULL DEFAULT '',
+                    section_id TEXT NOT NULL DEFAULT '',
+                    section_title TEXT NOT NULL DEFAULT '',
+                    score_trend TEXT NOT NULL DEFAULT 'new',
+                    assessment_type TEXT NOT NULL DEFAULT '',
+                    result TEXT NOT NULL DEFAULT '',
+                    mastery_path_id TEXT NOT NULL DEFAULT '',
+                    knowledge_point_id TEXT NOT NULL DEFAULT '',
+                    attempt_count INTEGER NOT NULL DEFAULT 1,
+                    hints_used INTEGER NOT NULL DEFAULT 0,
+                    confidence REAL,
+                    response_time REAL,
+                    quality REAL,
+                    is_correct INTEGER DEFAULT 0,
+                    resolved INTEGER DEFAULT 0,
+                    bookmarked INTEGER DEFAULT 0,
+                    followup_session_id TEXT DEFAULT '',
+                    ai_judgment TEXT DEFAULT '',
+                    created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL,
+                    UNIQUE(origin_type, origin_ref, turn_id, question_id)
+                )
+                """
+            )
+            conn.execute(
+                f"""
+                INSERT INTO notebook_entries_new (
+                    id, session_id, origin_type, origin_ref, turn_id, question_id,
+                    question, question_type, options_json, correct_answer,
+                    explanation, difficulty, user_answer, user_answer_images_json,
+                    source, material_id, material_title, section_id, section_title,
+                    score_trend, assessment_type, result, mastery_path_id,
+                    knowledge_point_id, attempt_count, hints_used, confidence,
+                    response_time, quality, is_correct, resolved, bookmarked,
+                    followup_session_id, ai_judgment, created_at, updated_at
+                )
+                SELECT
+                    id, NULLIF(session_id, ''), {origin_type}, {origin_ref},
+                    COALESCE(turn_id, ''), question_id, question, question_type,
+                    options_json, correct_answer, explanation, difficulty,
+                    user_answer, user_answer_images_json, source, material_id,
+                    material_title, section_id, section_title, score_trend,
+                    assessment_type, result, mastery_path_id, knowledge_point_id,
+                    attempt_count, hints_used, confidence, response_time, quality,
+                    is_correct, resolved, bookmarked, followup_session_id,
+                    ai_judgment, created_at, updated_at
+                FROM notebook_entries
+                """  # nosec B608 - expressions depend only on inspected schema columns
+            )
+            conn.execute("DROP TABLE notebook_entries")
+            conn.execute("ALTER TABLE notebook_entries_new RENAME TO notebook_entries")
+            conn.execute(
+                "CREATE INDEX idx_notebook_entries_session "
+                "ON notebook_entries(session_id, created_at DESC)"
+            )
+            conn.execute(
+                "CREATE INDEX idx_notebook_entries_origin "
+                "ON notebook_entries(origin_type, origin_ref, created_at DESC)"
+            )
+            conn.execute(
+                "CREATE INDEX idx_notebook_entries_bookmarked "
+                "ON notebook_entries(bookmarked, created_at DESC)"
+            )
+            conn.execute(
+                "CREATE INDEX idx_notebook_entries_review "
+                "ON notebook_entries(source, material_id, resolved, created_at DESC)"
+            )
+            conn.execute(
+                "CREATE INDEX idx_notebook_entries_linkage "
+                "ON notebook_entries(mastery_path_id, knowledge_point_id)"
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.execute("PRAGMA foreign_keys = ON")
+
+    @staticmethod
+    def _migrate_assessment_attempt_origins(conn: sqlite3.Connection) -> None:
+        """Give immutable attempts the same independent origin as their projection."""
+        info = {
+            row[1]: row for row in conn.execute("PRAGMA table_info(assessment_attempts)").fetchall()
+        }
+        if not info:
+            return
+        if "origin_type" in info and "origin_ref" in info and not bool(info["session_id"][3]):
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_assessment_attempts_origin_time "
+                "ON assessment_attempts(origin_type, origin_ref, occurred_at DESC)"
+            )
+            return
+        origin_type = (
+            "CASE WHEN origin_type IN ('conversation','external_import','document_analysis') "
+            "THEN origin_type WHEN session_id IS NOT NULL AND session_id != '' "
+            "THEN 'conversation' ELSE 'external_import' END"
+            if "origin_type" in info
+            else "CASE WHEN session_id IS NOT NULL AND session_id != '' "
+            "THEN 'conversation' ELSE 'external_import' END"
+        )
+        origin_ref = (
+            "COALESCE(NULLIF(origin_ref, ''), NULLIF(session_id, ''), 'attempt:' || attempt_id)"
+            if "origin_ref" in info
+            else "COALESCE(NULLIF(session_id, ''), 'attempt:' || attempt_id)"
+        )
+        conn.commit()
+        conn.execute("PRAGMA foreign_keys = OFF")
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute("DROP TABLE IF EXISTS assessment_attempts_new")
+            conn.execute(
+                """
+                CREATE TABLE assessment_attempts_new (
+                    attempt_id TEXT PRIMARY KEY,
+                    notebook_entry_id INTEGER,
+                    session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+                    origin_type TEXT NOT NULL DEFAULT 'conversation',
+                    origin_ref TEXT NOT NULL,
+                    turn_id TEXT NOT NULL DEFAULT '',
+                    question_id TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    assessment_type TEXT NOT NULL,
+                    result TEXT NOT NULL,
+                    mastery_path_id TEXT NOT NULL DEFAULT '',
+                    knowledge_point_id TEXT NOT NULL DEFAULT '',
+                    occurred_at REAL NOT NULL,
+                    assessment_json TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                f"""
+                INSERT INTO assessment_attempts_new (
+                    attempt_id, notebook_entry_id, session_id, origin_type,
+                    origin_ref, turn_id, question_id, source, assessment_type,
+                    result, mastery_path_id, knowledge_point_id, occurred_at,
+                    assessment_json
+                )
+                SELECT
+                    attempt_id, notebook_entry_id, NULLIF(session_id, ''),
+                    {origin_type}, {origin_ref}, turn_id, question_id, source,
+                    assessment_type, result, mastery_path_id,
+                    knowledge_point_id, occurred_at, assessment_json
+                FROM assessment_attempts
+                """  # nosec B608 - expressions depend only on inspected schema columns
+            )
+            conn.execute("DROP TABLE assessment_attempts")
+            conn.execute("ALTER TABLE assessment_attempts_new RENAME TO assessment_attempts")
+            conn.execute(
+                "CREATE INDEX idx_assessment_attempts_session_time "
+                "ON assessment_attempts(session_id, occurred_at DESC)"
+            )
+            conn.execute(
+                "CREATE INDEX idx_assessment_attempts_origin_time "
+                "ON assessment_attempts(origin_type, origin_ref, occurred_at DESC)"
+            )
+            conn.execute(
+                "CREATE INDEX idx_assessment_attempts_linkage "
+                "ON assessment_attempts(mastery_path_id, knowledge_point_id, occurred_at DESC)"
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.execute("PRAGMA foreign_keys = ON")
 
     async def _run(self, fn, *args):
         async with self._lock:
@@ -2663,18 +2938,48 @@ class SQLiteSessionStore:
             cls._optional_float(item.get("quality")),
         )
 
-    def _upsert_notebook_entries_sync(self, session_id: str, items: list[dict[str, Any]]) -> int:
+    @staticmethod
+    def _notebook_origin(
+        session_id: str | None,
+        item: dict[str, Any],
+    ) -> tuple[str | None, str, str]:
+        """Return the optional navigation session and durable entry identity."""
+        navigation_session = str(session_id or item.get("session_id") or "").strip() or None
+        origin_type = str(item.get("origin_type") or "conversation").strip()
+        if origin_type not in QUESTION_ORIGIN_TYPES:
+            raise ValueError(f"Unsupported question origin: {origin_type}")
+        origin_ref = str(item.get("origin_ref") or "").strip()
+        if origin_type == "conversation":
+            if navigation_session is None:
+                raise ValueError("Conversation question origins require session_id")
+            if origin_ref and origin_ref != navigation_session:
+                raise ValueError("Conversation origin_ref must match session_id")
+            origin_ref = navigation_session
+        elif not origin_ref:
+            raise ValueError(f"{origin_type} question origins require origin_ref")
+        return navigation_session, origin_type, origin_ref
+
+    def _upsert_notebook_entries_sync(
+        self,
+        session_id: str | None,
+        items: list[dict[str, Any]],
+    ) -> int:
         if not items:
             return 0
         now = time.time()
         with self._connect() as conn:
-            if (
-                conn.execute("SELECT id FROM sessions WHERE id = ?", (session_id,)).fetchone()
-                is None
-            ):
-                raise ValueError(f"Session not found: {session_id}")
             upserted = 0
             for item in items:
+                navigation_session, origin_type, origin_ref = self._notebook_origin(
+                    session_id, item
+                )
+                if navigation_session is not None and (
+                    conn.execute(
+                        "SELECT id FROM sessions WHERE id = ?", (navigation_session,)
+                    ).fetchone()
+                    is None
+                ):
+                    raise ValueError(f"Session not found: {navigation_session}")
                 question = (item.get("question") or "").strip()
                 question_id = (item.get("question_id") or "").strip()
                 if not question or not question_id:
@@ -2695,9 +3000,10 @@ class SQLiteSessionStore:
                 existing = conn.execute(
                     """
                     SELECT is_correct FROM notebook_entries
-                    WHERE session_id = ? AND turn_id = ? AND question_id = ?
+                    WHERE origin_type = ? AND origin_ref = ?
+                      AND turn_id = ? AND question_id = ?
                     """,
-                    (session_id, turn_id, question_id),
+                    (origin_type, origin_ref, turn_id, question_id),
                 ).fetchone()
                 previous = bool(existing["is_correct"]) if existing is not None else None
                 if previous is None or previous == bool(is_correct):
@@ -2713,143 +3019,191 @@ class SQLiteSessionStore:
                     score_trend,
                 )
                 assessment = self._notebook_assessment_values(item, is_correct)
-                resolved_on_insert = 0 if assessment[1] == "ungraded" else (1 if is_correct else 0)
-                if images_json is None:
-                    conn.execute(
-                        """
-                        INSERT INTO notebook_entries (
-                            session_id, turn_id, question_id, question, question_type,
-                            options_json, correct_answer, explanation, difficulty,
-                            user_answer, user_answer_images_json, source, material_id,
-                            material_title, section_id, section_title, score_trend,
-                            assessment_type, result, mastery_path_id, knowledge_point_id,
-                            attempt_count, hints_used, confidence, response_time, quality,
-                            is_correct, resolved, bookmarked, followup_session_id,
-                            created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '', ?, ?)
-                        ON CONFLICT(session_id, turn_id, question_id) DO UPDATE SET
-                            question = excluded.question,
-                            question_type = excluded.question_type,
-                            options_json = excluded.options_json,
-                            correct_answer = excluded.correct_answer,
-                            explanation = excluded.explanation,
-                            difficulty = excluded.difficulty,
-                            user_answer = excluded.user_answer,
-                            source = excluded.source,
-                            material_id = excluded.material_id,
-                            material_title = excluded.material_title,
-                            section_id = excluded.section_id,
-                            section_title = excluded.section_title,
-                            score_trend = excluded.score_trend,
-                            assessment_type = excluded.assessment_type,
-                            result = excluded.result,
-                            mastery_path_id = excluded.mastery_path_id,
-                            knowledge_point_id = excluded.knowledge_point_id,
-                            attempt_count = excluded.attempt_count,
-                            hints_used = excluded.hints_used,
-                            confidence = excluded.confidence,
-                            response_time = excluded.response_time,
-                            quality = excluded.quality,
-                            is_correct = excluded.is_correct,
-                            resolved = CASE
-                                WHEN excluded.result = 'ungraded' THEN notebook_entries.resolved
-                                WHEN excluded.is_correct = 1 THEN 1
-                                WHEN excluded.is_correct = 0 AND notebook_entries.is_correct = 1 THEN 0
-                                ELSE notebook_entries.resolved
-                            END,
-                            updated_at = excluded.updated_at
-                        """,
-                        (
-                            session_id,
-                            turn_id,
-                            question_id,
-                            question,
-                            item.get("question_type") or "",
-                            _json_dumps(item.get("options") or {}),
-                            item.get("correct_answer") or "",
-                            item.get("explanation") or "",
-                            item.get("difficulty") or "",
-                            item.get("user_answer") or "",
-                            *provenance,
-                            *assessment,
-                            is_correct,
-                            resolved_on_insert,
-                            now,
-                            now,
-                        ),
-                    )
-                else:
-                    conn.execute(
-                        """
-                        INSERT INTO notebook_entries (
-                            session_id, turn_id, question_id, question, question_type,
-                            options_json, correct_answer, explanation, difficulty,
-                            user_answer, user_answer_images_json, source, material_id,
-                            material_title, section_id, section_title, score_trend,
-                            assessment_type, result, mastery_path_id, knowledge_point_id,
-                            attempt_count, hints_used, confidence, response_time, quality,
-                            is_correct, resolved, bookmarked, followup_session_id,
-                            created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '', ?, ?)
-                        ON CONFLICT(session_id, turn_id, question_id) DO UPDATE SET
-                            question = excluded.question,
-                            question_type = excluded.question_type,
-                            options_json = excluded.options_json,
-                            correct_answer = excluded.correct_answer,
-                            explanation = excluded.explanation,
-                            difficulty = excluded.difficulty,
-                            user_answer = excluded.user_answer,
-                            source = excluded.source,
-                            material_id = excluded.material_id,
-                            material_title = excluded.material_title,
-                            section_id = excluded.section_id,
-                            section_title = excluded.section_title,
-                            score_trend = excluded.score_trend,
-                            assessment_type = excluded.assessment_type,
-                            result = excluded.result,
-                            mastery_path_id = excluded.mastery_path_id,
-                            knowledge_point_id = excluded.knowledge_point_id,
-                            attempt_count = excluded.attempt_count,
-                            hints_used = excluded.hints_used,
-                            confidence = excluded.confidence,
-                            response_time = excluded.response_time,
-                            quality = excluded.quality,
-                            user_answer_images_json = excluded.user_answer_images_json,
-                            is_correct = excluded.is_correct,
-                            resolved = CASE
-                                WHEN excluded.result = 'ungraded' THEN notebook_entries.resolved
-                                WHEN excluded.is_correct = 1 THEN 1
-                                WHEN excluded.is_correct = 0 AND notebook_entries.is_correct = 1 THEN 0
-                                ELSE notebook_entries.resolved
-                            END,
-                            updated_at = excluded.updated_at
-                        """,
-                        (
-                            session_id,
-                            turn_id,
-                            question_id,
-                            question,
-                            item.get("question_type") or "",
-                            _json_dumps(item.get("options") or {}),
-                            item.get("correct_answer") or "",
-                            item.get("explanation") or "",
-                            item.get("difficulty") or "",
-                            item.get("user_answer") or "",
-                            images_json,
-                            *provenance,
-                            *assessment,
-                            is_correct,
-                            resolved_on_insert,
-                            now,
-                            now,
-                        ),
-                    )
+                resolved_on_insert = (
+                    0
+                    if assessment[1] == "ungraded"
+                    else 1
+                    if assessment[1] == "voided" or is_correct
+                    else 0
+                )
+                conn.execute(
+                    """
+                    INSERT INTO notebook_entries (
+                        session_id, origin_type, origin_ref, turn_id, question_id,
+                        question, question_type, options_json, correct_answer,
+                        explanation, difficulty, user_answer,
+                        user_answer_images_json, source, material_id,
+                        material_title, section_id, section_title, score_trend,
+                        assessment_type, result, mastery_path_id, knowledge_point_id,
+                        attempt_count, hints_used, confidence, response_time, quality,
+                        is_correct, resolved, bookmarked, followup_session_id,
+                        created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '', ?, ?)
+                    ON CONFLICT(origin_type, origin_ref, turn_id, question_id) DO UPDATE SET
+                        session_id = excluded.session_id,
+                        question = excluded.question,
+                        question_type = excluded.question_type,
+                        options_json = excluded.options_json,
+                        correct_answer = excluded.correct_answer,
+                        explanation = excluded.explanation,
+                        difficulty = excluded.difficulty,
+                        user_answer = excluded.user_answer,
+                        user_answer_images_json = CASE
+                            WHEN ? THEN notebook_entries.user_answer_images_json
+                            ELSE excluded.user_answer_images_json
+                        END,
+                        source = excluded.source,
+                        material_id = excluded.material_id,
+                        material_title = excluded.material_title,
+                        section_id = excluded.section_id,
+                        section_title = excluded.section_title,
+                        score_trend = excluded.score_trend,
+                        assessment_type = excluded.assessment_type,
+                        result = excluded.result,
+                        mastery_path_id = excluded.mastery_path_id,
+                        knowledge_point_id = excluded.knowledge_point_id,
+                        attempt_count = excluded.attempt_count,
+                        hints_used = excluded.hints_used,
+                        confidence = excluded.confidence,
+                        response_time = excluded.response_time,
+                        quality = excluded.quality,
+                        is_correct = excluded.is_correct,
+                        resolved = CASE
+                            WHEN excluded.result = 'ungraded' THEN notebook_entries.resolved
+                            WHEN excluded.result = 'voided' THEN 1
+                            WHEN excluded.is_correct = 1 THEN 1
+                            WHEN excluded.is_correct = 0 AND notebook_entries.is_correct = 1 THEN 0
+                            ELSE notebook_entries.resolved
+                        END,
+                        updated_at = excluded.updated_at
+                    """,
+                    (
+                        navigation_session,
+                        origin_type,
+                        origin_ref,
+                        turn_id,
+                        question_id,
+                        question,
+                        item.get("question_type") or "",
+                        _json_dumps(item.get("options") or {}),
+                        item.get("correct_answer") or "",
+                        item.get("explanation") or "",
+                        item.get("difficulty") or "",
+                        item.get("user_answer") or "",
+                        images_json if images_json is not None else "[]",
+                        *provenance,
+                        *assessment,
+                        is_correct,
+                        resolved_on_insert,
+                        now,
+                        now,
+                        images_json is None,
+                    ),
+                )
                 upserted += 1
             conn.commit()
         return upserted
 
-    async def upsert_notebook_entries(self, session_id: str, items: list[dict[str, Any]]) -> int:
+    async def upsert_notebook_entries(
+        self,
+        session_id: str | None,
+        items: list[dict[str, Any]],
+    ) -> int:
         return await self._run(self._upsert_notebook_entries_sync, session_id, items)
+
+    def _append_assessment_attempt_sync(
+        self,
+        session_id: str | None,
+        notebook_entry_id: int | None,
+        attempt: dict[str, Any],
+    ) -> bool:
+        attempt_id = str(attempt.get("attempt_id") or "").strip()
+        question_id = str(attempt.get("question_id") or "").strip()
+        if not attempt_id or not question_id:
+            raise ValueError("attempt_id and question_id are required")
+        navigation_session, origin_type, origin_ref = self._notebook_origin(session_id, attempt)
+        with self._connect() as conn:
+            if navigation_session is not None and (
+                conn.execute(
+                    "SELECT id FROM sessions WHERE id = ?", (navigation_session,)
+                ).fetchone()
+                is None
+            ):
+                raise ValueError(f"Session not found: {navigation_session}")
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO assessment_attempts (
+                    attempt_id, notebook_entry_id, session_id, origin_type,
+                    origin_ref, turn_id, question_id, source, assessment_type, result,
+                    mastery_path_id, knowledge_point_id, occurred_at,
+                    assessment_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    attempt_id,
+                    notebook_entry_id,
+                    navigation_session,
+                    origin_type,
+                    origin_ref,
+                    str(attempt.get("turn_id") or ""),
+                    question_id,
+                    str(attempt.get("source") or "deep_question"),
+                    str(attempt.get("assessment_type") or "quiz"),
+                    str(attempt.get("result") or "ungraded"),
+                    str(attempt.get("mastery_path_id") or ""),
+                    str(attempt.get("knowledge_point_id") or ""),
+                    float(attempt.get("occurred_at") or time.time()),
+                    _json_dumps(attempt),
+                ),
+            )
+            inserted = bool(conn.execute("SELECT changes()").fetchone()[0])
+            conn.commit()
+        return inserted
+
+    async def append_assessment_attempt(
+        self,
+        session_id: str | None,
+        notebook_entry_id: int | None,
+        attempt: dict[str, Any],
+    ) -> bool:
+        """Append one immutable assessment event; duplicate ids are idempotent."""
+        return await self._run(
+            self._append_assessment_attempt_sync,
+            session_id,
+            notebook_entry_id,
+            attempt,
+        )
+
+    def _list_assessment_attempts_sync(
+        self,
+        session_id: str,
+        question_id: str,
+    ) -> list[dict[str, Any]]:
+        clauses = ["session_id = ?"]
+        params: list[Any] = [session_id]
+        if question_id:
+            clauses.append("question_id = ?")
+            params.append(question_id)
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT assessment_json FROM assessment_attempts "
+                f"WHERE {' AND '.join(clauses)} ORDER BY occurred_at, rowid",  # nosec B608
+                tuple(params),
+            ).fetchall()
+        return [_json_loads(str(row["assessment_json"]), {}) for row in rows]
+
+    async def list_assessment_attempts(
+        self,
+        session_id: str,
+        *,
+        question_id: str = "",
+    ) -> list[dict[str, Any]]:
+        """Return immutable attempts in replay order for one session."""
+        return await self._run(
+            self._list_assessment_attempts_sync,
+            session_id,
+            question_id,
+        )
 
     def _put_reading_quiz_pending_sync(
         self, material_id: str, locator: int, questions: list[Any]
@@ -2949,8 +3303,14 @@ class SQLiteSessionStore:
         assessment_type = (row["assessment_type"] or "") if "assessment_type" in keys else ""
         return {
             "id": int(row["id"]),
-            "session_id": row["session_id"],
+            "session_id": (row["session_id"] or "") if "session_id" in keys else "",
             "session_title": row["session_title"] or "" if "session_title" in keys else "",
+            "origin_type": (row["origin_type"] or "conversation")
+            if "origin_type" in keys
+            else "conversation",
+            "origin_ref": (row["origin_ref"] or row["session_id"] or "")
+            if "origin_ref" in keys
+            else (row["session_id"] or ""),
             "turn_id": (row["turn_id"] or "") if "turn_id" in keys else "",
             "question_id": row["question_id"] or "",
             "question": row["question"],
@@ -3141,7 +3501,8 @@ class SQLiteSessionStore:
         base = f"""
             SELECT
                 n.id, n.session_id, COALESCE(s.title, '') AS session_title,
-                n.turn_id, n.question_id, n.question, n.question_type, n.options_json,
+                n.origin_type, n.origin_ref, n.turn_id, n.question_id,
+                n.question, n.question_type, n.options_json,
                 n.correct_answer, n.explanation, n.difficulty,
                 n.user_answer, n.user_answer_images_json, n.source, n.material_id,
                 n.material_title, n.section_id, n.section_title, n.score_trend,
@@ -3378,21 +3739,12 @@ class SQLiteSessionStore:
         # (``q_1``..``q_N``) repeat across quizzes in one session, so a
         # cross-turn match would leak a previous quiz's answers into a new
         # quiz (issues #487 / #677).
-        with self._connect() as conn:
-            row = conn.execute(
-                """
-                SELECT n.*, COALESCE(s.title, '') AS session_title
-                FROM notebook_entries n
-                LEFT JOIN sessions s ON s.id = n.session_id
-                WHERE n.session_id = ?
-                  AND n.turn_id = ?
-                  AND n.question_id = ?
-                """,
-                (session_id, turn_id if turn_id is not None else "", question_id),
-            ).fetchone()
-        if row is None:
-            return None
-        return self._serialize_notebook_entry(row)
+        return self._find_notebook_entry_by_origin_sync(
+            "conversation",
+            session_id,
+            question_id,
+            turn_id,
+        )
 
     async def find_notebook_entry(
         self,
@@ -3401,6 +3753,45 @@ class SQLiteSessionStore:
         turn_id: str | None = None,
     ) -> dict[str, Any] | None:
         return await self._run(self._find_notebook_entry_sync, session_id, question_id, turn_id)
+
+    def _find_notebook_entry_by_origin_sync(
+        self,
+        origin_type: str,
+        origin_ref: str,
+        question_id: str,
+        turn_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT n.*, COALESCE(s.title, '') AS session_title
+                FROM notebook_entries n
+                LEFT JOIN sessions s ON s.id = n.session_id
+                WHERE n.origin_type = ?
+                  AND n.origin_ref = ?
+                  AND n.turn_id = ?
+                  AND n.question_id = ?
+                """,
+                (origin_type, origin_ref, turn_id if turn_id is not None else "", question_id),
+            ).fetchone()
+        if row is None:
+            return None
+        return self._serialize_notebook_entry(row)
+
+    async def find_notebook_entry_by_origin(
+        self,
+        origin_type: str,
+        origin_ref: str,
+        question_id: str,
+        turn_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        return await self._run(
+            self._find_notebook_entry_by_origin_sync,
+            origin_type,
+            origin_ref,
+            question_id,
+            turn_id,
+        )
 
     def _update_notebook_entry_sync(self, entry_id: int, updates: dict[str, Any]) -> bool:
         allowed = {

@@ -294,15 +294,13 @@ def test_record_qualitative_pass_and_fail_drive_display_mastery(tmp_path):
 
 
 @pytest.mark.parametrize(
-    ("knowledge_type", "first_interval_days"),
+    "knowledge_type",
     [
-        (KnowledgeType.CONCEPT, 3),
-        (KnowledgeType.DESIGN, 14),
+        KnowledgeType.CONCEPT,
+        KnowledgeType.DESIGN,
     ],
 )
-def test_record_qualitative_starts_at_first_review_interval(
-    tmp_path, monkeypatch, knowledge_type, first_interval_days
-):
+def test_record_qualitative_starts_at_first_review_interval(tmp_path, monkeypatch, knowledge_type):
     store = LearningStore(root=tmp_path)
     service = LearningService(store)
     scheduler = SpacedRepetitionScheduler()
@@ -315,8 +313,9 @@ def test_record_qualitative_starts_at_first_review_interval(
     service.record_qualitative(progress, "kp1", passed=True, scheduler=scheduler)
 
     state = progress.repetition_states["kp1"]
-    assert state.interval_index == 0
-    assert state.next_review_at == now + first_interval_days * 86400
+    assert state.review_count == 1
+    assert state.last_review_at == now
+    assert state.next_review_at > now
     assert state.stability > 0
     assert [task.knowledge_point_id for task in progress.review_queue] == ["kp1"]
     assert progress.review_queue[0].due_at == state.next_review_at
@@ -336,18 +335,19 @@ def test_record_qualitative_updates_existing_review_state(tmp_path, monkeypatch)
     first_due = progress.repetition_states["kp1"].next_review_at
     first_stability = progress.repetition_states["kp1"].stability
     service.record_qualitative(progress, "kp1", passed=True, scheduler=scheduler)
-    assert progress.repetition_states["kp1"].interval_index == 0
-    assert progress.repetition_states["kp1"].next_review_at == first_due
-    assert progress.repetition_states["kp1"].stability == first_stability
+    immediate = progress.repetition_states["kp1"]
+    assert immediate.review_count == 2
+    assert immediate.stability > first_stability
+    immediate_stability = immediate.stability
 
-    now[0] = first_due
+    now[0] = immediate.next_review_at
     service.record_qualitative(progress, "kp1", passed=True, scheduler=scheduler)
     after_success = progress.repetition_states["kp1"]
     success_stability = after_success.stability
     success_due = after_success.next_review_at
-    assert success_stability > first_stability
+    assert success_stability > immediate_stability
     assert success_due > first_due
-    assert after_success.review_count == 1
+    assert after_success.review_count == 3
 
     now[0] = success_due
     service.record_qualitative(progress, "kp1", passed=False, scheduler=scheduler)
@@ -359,7 +359,7 @@ def test_record_qualitative_updates_existing_review_state(tmp_path, monkeypatch)
     assert fail_interval < success_interval
 
 
-def test_record_qualitative_initial_failure_does_not_schedule_review(tmp_path):
+def test_record_qualitative_initial_failure_schedules_repair_review(tmp_path):
     store = LearningStore(root=tmp_path)
     service = LearningService(store)
     scheduler = SpacedRepetitionScheduler()
@@ -367,10 +367,33 @@ def test_record_qualitative_initial_failure_does_not_schedule_review(tmp_path):
 
     service.record_qualitative(progress, "kp1", passed=False, scheduler=scheduler)
 
-    assert progress.repetition_states == {}
-    assert progress.review_queue == []
+    state = progress.repetition_states["kp1"]
+    assert state.review_count == 1
+    assert state.lapse_count == 1
+    assert [task.knowledge_point_id for task in progress.review_queue] == ["kp1"]
     assert len(progress.learning_evidence) == 1
     assert progress.learning_evidence[0].result == "partial"
+
+
+def test_qualitative_live_state_matches_evidence_replay(tmp_path, monkeypatch):
+    store = LearningStore(root=tmp_path)
+    service = LearningService(store)
+    scheduler = SpacedRepetitionScheduler()
+    progress = _make_progress()
+    moment = [1_700_000_000.0]
+    monkeypatch.setattr("deeptutor.learning.service.time.time", lambda: moment[0])
+
+    service.record_qualitative_in_memory(
+        progress, "kp1", passed=False, evidence="partial", scheduler=scheduler
+    )
+    moment[0] += 3 * 86400
+    service.record_qualitative_in_memory(
+        progress, "kp1", passed=True, evidence="clear", scheduler=scheduler
+    )
+
+    replayed = scheduler.replay(KnowledgeType.CONCEPT, progress.learning_evidence)
+    live = progress.repetition_states["kp1"]
+    assert live.model_dump() == pytest.approx(replayed.model_dump())
 
 
 def test_grade_and_record_retry_correct_uses_weaker_quality(tmp_path):

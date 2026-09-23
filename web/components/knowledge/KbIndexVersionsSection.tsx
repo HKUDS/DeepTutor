@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useEmbeddingModels } from "@/hooks/useEmbeddingModels";
-import EmbeddingModelSelector from "./EmbeddingModelSelector";
 import type { EmbeddingModelSelection } from "@/features/knowledge/model/types";
+import EmbeddingModelSelector from "./EmbeddingModelSelector";
 import { useTranslation } from "react-i18next";
 import {
   AlertTriangle,
@@ -28,51 +28,21 @@ import {
 } from "@/lib/knowledge-helpers";
 import type { TaskState } from "@/hooks/useKnowledgeProgress";
 import Modal from "@/components/common/Modal";
-import { useLLMOptions } from "@/hooks/useLLMOptions";
-import { getLightRagConfig } from "@/features/knowledge/api/engines";
-import type { LLMOption } from "@/lib/llm-options";
-import type {
-  IndexingLLMSelection,
-  LightRagConfig,
-} from "@/features/knowledge/model/types";
+import {
+  getReindexConfig,
+  type LightRagRebuildConfig,
+} from "@/features/knowledge/api/catalog";
 import KbIndexFailureBanner from "./KbIndexFailureBanner";
-import IndexingModelSelector, {
-  selectionFromLightRagDefault,
-  selectionFromLLMOption,
-} from "./IndexingModelSelector";
 import LightRagIndexingProvenance from "./LightRagIndexingProvenance";
-
-export function selectionForLightRagModelDialog(
-  options: LLMOption[],
-  config: Pick<LightRagConfig, "llm_profile_id" | "llm_model_id">,
-  activeDefault: {
-    profile_id?: string | null;
-    model_id?: string | null;
-  } | null,
-  savedPending: IndexingLLMSelection | undefined,
-  preserveSavedPending: boolean,
-): IndexingLLMSelection | null {
-  const savedOption = preserveSavedPending
-    ? options.find(
-        (option) =>
-          option.profile_id === savedPending?.profile_id &&
-          option.model_id === savedPending?.model_id,
-      )
-    : undefined;
-  return savedOption
-    ? selectionFromLLMOption(savedOption, savedPending?.reasoning_effort || "")
-    : selectionFromLightRagDefault(options, config, activeDefault);
-}
+import { knowledgeBaseRef } from "@/lib/knowledge-helpers";
+import LightRagEmbeddingWarning from "./LightRagEmbeddingWarning";
 
 interface KbIndexVersionsSectionProps {
   kb: KnowledgeBase;
   task?: TaskState;
   onReindex: (
-    indexingLLM?: IndexingLLMSelection,
+    configFingerprint?: string,
     embeddingModel?: EmbeddingModelSelection,
-  ) => Promise<void>;
-  onUpdatePendingIndexingPolicy: (
-    indexingLLM: IndexingLLMSelection,
   ) => Promise<void>;
 }
 
@@ -80,21 +50,14 @@ export default function KbIndexVersionsSection({
   kb,
   task,
   onReindex,
-  onUpdatePendingIndexingPolicy,
 }: KbIndexVersionsSectionProps) {
   const { t } = useTranslation();
   const [submitting, setSubmitting] = useState(false);
   const [modelDialogOpen, setModelDialogOpen] = useState(false);
-  const [indexingLLM, setIndexingLLM] = useState<IndexingLLMSelection | null>(
-    null,
-  );
+  const [rebuildConfig, setRebuildConfig] =
+    useState<LightRagRebuildConfig | null>(null);
   const [dialogError, setDialogError] = useState<string | null>(null);
-  const [lightRagConfig, setLightRagConfig] = useState<LightRagConfig | null>(
-    null,
-  );
-  const [lightRagConfigLoaded, setLightRagConfigLoaded] = useState(false);
-  const [lightRagConfigError, setLightRagConfigError] = useState(false);
-  const llmCatalog = useLLMOptions();
+  const [configLoading, setConfigLoading] = useState(false);
   const provider = kb.statistics?.rag_provider || "llamaindex";
   const isLightRag = provider === "lightrag";
   const needsEmbedding = ["llamaindex", "lightrag", "graphrag"].includes(
@@ -107,6 +70,10 @@ export default function KbIndexVersionsSection({
   const pageIndexProvider = !providerUsesEmbeddingMetadata(provider);
   const modelInsensitiveProvider = pageIndexProvider || isLightRag;
   const versions = kb.statistics?.index_versions ?? [];
+  const isEmptyEmbeddingKb =
+    needsEmbedding &&
+    kb.statistics?.raw_documents === 0 &&
+    !versions.some((version) => version.ready);
   const activeSig = modelInsensitiveProvider
     ? null
     : (kb.statistics?.active_signature ?? null);
@@ -120,74 +87,68 @@ export default function KbIndexVersionsSection({
 
   const publishedLightRagVersion = isLightRag
     ? versions.find(
-        (version) => version.provider === "lightrag" && version.ready,
+        (version) =>
+          version.provider === "lightrag" &&
+          version.ready &&
+          (!kb.metadata?.embedding_selection ||
+            version.version === kb.metadata.indexed_version),
       )
     : undefined;
   const buildingLightRagVersion = isLightRag
     ? currentLightRagBuildCandidate(versions, Boolean(isReindexingHere))
     : undefined;
-  const emptyPendingEligible =
-    isLightRag &&
-    !kb.read_only &&
-    kb.statistics?.raw_documents === 0 &&
-    !publishedLightRagVersion &&
-    !kbHasLiveProgress(kb) &&
-    !task?.executing;
+  const loadRebuildConfig = async () => {
+    setRebuildConfig(null);
+    setConfigLoading(true);
+    try {
+      setRebuildConfig(
+        await getReindexConfig(
+          knowledgeBaseRef(kb),
+          embeddingCatalog.selection || undefined,
+        ),
+      );
+    } catch (error) {
+      setDialogError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setConfigLoading(false);
+    }
+  };
 
+  const selectedProfile = embeddingCatalog.selection?.profile_id;
+  const selectedModel = embeddingCatalog.selection?.model_id;
+  const kbRef = knowledgeBaseRef(kb);
   useEffect(() => {
-    if (!isLightRag) return;
+    if (!modelDialogOpen || !isLightRag || !selectedProfile || !selectedModel)
+      return;
     let cancelled = false;
-    void getLightRagConfig()
+    setRebuildConfig(null);
+    setConfigLoading(true);
+    setDialogError(null);
+    void getReindexConfig(kbRef, {
+      profile_id: selectedProfile,
+      model_id: selectedModel,
+    })
       .then((config) => {
-        if (!cancelled) {
-          setLightRagConfig(config);
-          setLightRagConfigError(false);
-        }
+        if (!cancelled) setRebuildConfig(config);
       })
-      .catch(() => {
-        if (!cancelled) setLightRagConfigError(true);
+      .catch((error) => {
+        if (!cancelled)
+          setDialogError(
+            error instanceof Error ? error.message : String(error),
+          );
       })
       .finally(() => {
-        if (!cancelled) setLightRagConfigLoaded(true);
+        if (!cancelled) setConfigLoading(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [isLightRag, t]);
-
-  useEffect(() => {
-    if (!modelDialogOpen || indexingLLM || llmCatalog.options.length === 0)
-      return;
-    if (!lightRagConfigLoaded || !lightRagConfig) return;
-    setIndexingLLM(
-      selectionForLightRagModelDialog(
-        llmCatalog.options,
-        lightRagConfig,
-        llmCatalog.activeDefault,
-        kb.metadata?.indexing_policy?.selection,
-        emptyPendingEligible,
-      ),
-    );
-  }, [
-    emptyPendingEligible,
-    indexingLLM,
-    kb.metadata?.indexing_policy?.selection,
-    llmCatalog.activeDefault,
-    llmCatalog.options,
-    lightRagConfig,
-    lightRagConfigLoaded,
-    modelDialogOpen,
-  ]);
-
-  const openModelDialog = () => {
-    setIndexingLLM(null);
-    setDialogError(null);
-    setModelDialogOpen(true);
-  };
+  }, [modelDialogOpen, isLightRag, selectedProfile, selectedModel, kbRef]);
 
   const handleReindex = async () => {
-    if (needsEmbedding) {
-      openModelDialog();
+    if (isLightRag || needsEmbedding) {
+      setDialogError(null);
+      setModelDialogOpen(true);
       return;
     }
     setSubmitting(true);
@@ -199,32 +160,18 @@ export default function KbIndexVersionsSection({
   };
 
   const handleModelSubmit = async () => {
-    if (isLightRag && !indexingLLM) return;
-    if (needsEmbedding && !embeddingCatalog.selection) return;
+    if (isLightRag && !rebuildConfig) return;
     setSubmitting(true);
     setDialogError(null);
     try {
-      if (emptyPendingEligible) {
-        const saved = kb.metadata?.embedding_selection;
-        const selected = embeddingCatalog.selection;
-        if (
-          selected &&
-          (selected.profile_id !== saved?.profile_id ||
-            selected.model_id !== saved?.model_id ||
-            kb.metadata?.embedding_status !== "ready")
-        ) {
-          await onReindex(indexingLLM || undefined, selected);
-        }
-        if (indexingLLM) await onUpdatePendingIndexingPolicy(indexingLLM);
-      } else {
-        await onReindex(
-          isLightRag ? indexingLLM || undefined : undefined,
-          embeddingCatalog.selection || undefined,
-        );
-      }
+      await onReindex(
+        rebuildConfig?.fingerprint,
+        embeddingCatalog.selection || undefined,
+      );
       setModelDialogOpen(false);
     } catch (error) {
       setDialogError(error instanceof Error ? error.message : String(error));
+      if (isLightRag) await loadRebuildConfig();
     } finally {
       setSubmitting(false);
     }
@@ -262,7 +209,7 @@ export default function KbIndexVersionsSection({
           </div>
         </div>
 
-        {(showReindexCta || emptyPendingEligible) && (
+        {showReindexCta && (
           <button
             type="button"
             onClick={handleReindex}
@@ -274,7 +221,7 @@ export default function KbIndexVersionsSection({
                   )
                 : t(
                     isLightRag
-                      ? "Choose a model and publish a new LightRAG index version. The current published version remains available until the rebuild succeeds."
+                      ? "Rebuild with current defaults. The previous index version is preserved until the rebuild succeeds."
                       : pageIndexProvider
                         ? "Rebuild this PageIndex knowledge base. Existing index versions are preserved."
                         : "Choose an embedding model to rebuild this knowledge base. Existing index versions are preserved.",
@@ -291,20 +238,21 @@ export default function KbIndexVersionsSection({
             ) : (
               <RefreshCw className="h-3 w-3" />
             )}
-            {emptyPendingEligible
-              ? t("Change model")
-              : isReindexingHere
-                ? isError
-                  ? t("Retrying…")
-                  : t("Re-indexing…")
-                : isError
-                  ? t("Retry indexing")
+            {isReindexingHere
+              ? isError
+                ? t("Retrying…")
+                : t("Re-indexing…")
+              : isError
+                ? t("Retry indexing")
+                : isEmptyEmbeddingKb
+                  ? t("Change model")
                   : t("Re-index")}
           </button>
         )}
       </div>
 
       {isError && <KbIndexFailureBanner kb={kb} />}
+      <LightRagEmbeddingWarning kb={kb} />
       {kb.metadata?.embedding_status === "missing" && (
         <p
           role="alert"
@@ -326,21 +274,34 @@ export default function KbIndexVersionsSection({
         </p>
       )}
 
-      {isLightRag && (
+      {isLightRag && kb.metadata?.indexing_model_unavailable && (
+        <p
+          role="alert"
+          className="rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-[12px] text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-300"
+        >
+          {t(
+            "The pinned EXTRACT or VLM configuration is unavailable. Restore model access in Settings, or update defaults and rebuild to replace the model. Existing text retrieval does not require these indexing models.",
+          )}
+        </p>
+      )}
+
+      {isLightRag && publishedLightRagVersion && (
         <LightRagIndexingProvenance
           policy={kb.metadata?.indexing_policy}
           version={publishedLightRagVersion}
         />
       )}
 
-      {((!modelInsensitiveProvider && !isError && (needsReindex || mismatch)) ||
-        kb.metadata?.embedding_status === "changed") && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-[12px] text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-300">
-          {t(
-            "The bound embedding model does not match the index. Choose an embedding model to re-index this knowledge base.",
-          )}
-        </div>
-      )}
+      {!pageIndexProvider &&
+        !isLightRag &&
+        !isError &&
+        (needsReindex || mismatch) && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-[12px] text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-300">
+            {t(
+              "The active embedding configuration doesn't match any ready index version. Re-index to rebuild against the current embedding model.",
+            )}
+          </div>
+        )}
 
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-[var(--border)] bg-[var(--muted)]/30 px-3 py-2 text-[11.5px] text-[var(--muted-foreground)]">
         <Clock className="h-3.5 w-3.5 shrink-0" />
@@ -370,6 +331,7 @@ export default function KbIndexVersionsSection({
           {versions.map((version) => (
             <IndexVersionRow
               key={
+                version.version ??
                 version.signature ??
                 `${version.model}-${version.dimension}-${version.created_at}`
               }
@@ -396,11 +358,7 @@ export default function KbIndexVersionsSection({
       <Modal
         isOpen={modelDialogOpen}
         onClose={() => !submitting && setModelDialogOpen(false)}
-        title={
-          emptyPendingEligible
-            ? t("Change pending indexing model")
-            : t("Choose models for re-indexing")
-        }
+        title={t("Rebuild index with current defaults")}
         width="sm"
         footer={
           <div className="flex justify-end gap-2">
@@ -417,7 +375,7 @@ export default function KbIndexVersionsSection({
               onClick={() => void handleModelSubmit()}
               disabled={
                 submitting ||
-                (isLightRag && !indexingLLM) ||
+                (isLightRag && (configLoading || !rebuildConfig)) ||
                 (needsEmbedding &&
                   (!embeddingCatalog.selection ||
                     embeddingCatalog.loading ||
@@ -426,50 +384,45 @@ export default function KbIndexVersionsSection({
               className="inline-flex items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-1.5 text-[12px] font-medium text-[var(--primary-foreground)] disabled:opacity-50"
             >
               {submitting && <Loader2 className="h-3 w-3 animate-spin" />}
-              {emptyPendingEligible
-                ? t("Save model")
-                : t("Start full re-index")}
+              {t(
+                isEmptyEmbeddingKb
+                  ? "Save model"
+                  : isLightRag
+                    ? "Confirm rebuild"
+                    : "Start full re-index",
+              )}
             </button>
           </div>
         }
       >
         <div className="space-y-3 p-4">
-          <p className="text-[12px] text-[var(--muted-foreground)]">
-            {emptyPendingEligible
-              ? t(
-                  "This selection will take effect when the empty knowledge base is indexed for the first time.",
-                )
-              : t(
-                  "A full re-index publishes a new version and then makes this model the pinned identity for future incremental uploads.",
-                )}
-          </p>
           {needsEmbedding && (
             <EmbeddingModelSelector
               catalog={embeddingCatalog}
               disabled={submitting}
             />
           )}
-          {isLightRag && (
-            <IndexingModelSelector
-              options={llmCatalog.options}
-              selection={indexingLLM}
-              loading={llmCatalog.loading}
-              error={llmCatalog.error}
-              defaultUnavailable={
-                lightRagConfigLoaded &&
-                !!(
-                  lightRagConfig?.llm_profile_id || lightRagConfig?.llm_model_id
-                ) &&
-                !indexingLLM
-              }
-              defaultLoadError={lightRagConfigError}
-              disabled={submitting}
-              onChange={setIndexingLLM}
+          <p className="text-[12px] text-[var(--muted-foreground)]">
+            {t(
+              "This rebuild uses the selected embedding and the role defaults shown below. Change role models in Settings. The configuration is fixed when you confirm; the previous version is preserved if rebuilding fails.",
+            )}
+          </p>
+          {configLoading && (
+            <Loader2
+              aria-label={t("Loading")}
+              className="h-4 w-4 animate-spin"
+            />
+          )}
+          {rebuildConfig && (
+            <LightRagIndexingProvenance
+              policy={rebuildConfig.indexing_policy}
+              embedding={rebuildConfig.embedding}
+              title={t("Rebuild configuration")}
             />
           )}
           {dialogError && (
             <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
-              {dialogError}
+              {t(dialogError)}
             </div>
           )}
         </div>
@@ -514,15 +467,8 @@ function IndexVersionRow({
   const isFailedLightRagCandidate = lightRagState === "failed";
   const isBuildingLightRagCandidate = lightRagState === "building";
 
-  const title = isFailedLightRagCandidate
-    ? t("Failed rebuild candidate")
-    : isBuildingLightRagCandidate
-      ? t("Rebuild candidate in progress")
-      : isLegacy
-        ? t("Legacy index")
-        : version.model
-          ? version.model
-          : (version.signature ?? t("Unknown"));
+  const title =
+    version.version || (isLegacy ? t("Legacy index") : t("Unknown"));
 
   const created = formatKnowledgeTimestamp(version.created_at);
 
@@ -614,6 +560,19 @@ function IndexVersionRow({
             </span>
           )}
         </div>
+        {isLightRagVersion &&
+          !isPublishedLightRag &&
+          version.indexing_policy && (
+            <details className="mt-2 text-[11px]">
+              <summary className="cursor-pointer text-[var(--muted-foreground)]">
+                {t("Index configuration")}
+              </summary>
+              <LightRagIndexingProvenance
+                policy={version.indexing_policy}
+                version={version}
+              />
+            </details>
+          )}
       </div>
     </li>
   );

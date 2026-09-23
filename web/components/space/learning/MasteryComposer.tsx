@@ -26,6 +26,8 @@ import StandaloneComposer, {
 } from "@/components/chat/home/StandaloneComposer";
 import { MASTERY_CAPABILITY_VALUE } from "@/features/capabilities/presentation";
 import { useChatStateAdapter } from "@/features/chat/ChatStateAdapter";
+import { useChatWorkspaces } from "@/hooks/useChatWorkspaces";
+import { useComposerResources } from "@/hooks/useComposerResources";
 import { useContextBudget } from "@/hooks/useContextBudget";
 import { useWorkspaceChatActions } from "@/hooks/useWorkspaceChatActions";
 import {
@@ -56,7 +58,14 @@ export function MasteryComposer({
     setKBs,
     setLLMSelection,
     setPersonaSelection,
+    setResourceSelection,
   } = useChatStateAdapter();
+  // A mastery session is a chat session in a workspace, so the same skills and
+  // MCP servers are on offer here. Without the catalog the composer had no
+  // Skills entry at all, and a learner whose workspace allows a skill could
+  // only reach it by opening the chat page instead (#1534).
+  const { workspaces } = useChatWorkspaces();
+  const resourceCatalog = useComposerResources(state.workspaceId, workspaces);
   // Pins the turn to the tutor loop; returns no capabilities to offer.
   useWorkspaceChatActions({ pinnedCapability: MASTERY_CAPABILITY_VALUE });
   const contextBudget = useContextBudget(state.messages);
@@ -127,6 +136,9 @@ export function MasteryComposer({
       onLLMSelectionChange={setLLMSelection}
       personaSelection={state.personaSelection}
       onPersonaSelectionChange={setPersonaSelection}
+      resourceCatalog={resourceCatalog}
+      resourceSelection={state.resourceSelection}
+      onResourceSelectionChange={setResourceSelection}
       onSubmit={handleSubmit}
       onCancelStreaming={cancelStreamingTurn}
       // The suggested question *is* the placeholder once there is one: naming

@@ -3,12 +3,17 @@ import { invalidateClientCache, withClientCache } from "@/lib/client-cache";
 import type { ImaKnowledgeBaseOption } from "@/lib/ima-connection";
 
 function inKnowledgeLibrary(): boolean {
-  return typeof window !== "undefined" && /^\/knowledge-bases(?:\/|$)/.test(window.location.pathname);
+  return (
+    typeof window !== "undefined" &&
+    /^\/knowledge-bases(?:\/|$)/.test(window.location.pathname)
+  );
 }
 
 function apiUrl(path: string): string {
   const url = baseApiUrl(path);
-  return inKnowledgeLibrary() && path.startsWith("/api/knowledge-bases") && !path.includes("resource_library=")
+  return inKnowledgeLibrary() &&
+    path.startsWith("/api/knowledge-bases") &&
+    !path.includes("resource_library=")
     ? `${url}${url.includes("?") ? "&" : "?"}resource_library=true`
     : url;
 }
@@ -118,7 +123,29 @@ export interface GraphRagConfig {
   dynamic_community_selection: boolean;
 }
 
+export interface LightRagRoleModel {
+  mode: "inherit" | "model" | "disabled";
+  selection?: IndexingLLMSelection | null;
+  reasoning_effort?: string | null;
+  max_async: number;
+  timeout: number;
+}
+
+export interface LightRagRoleModels {
+  base: IndexingLLMSelection;
+  extract: LightRagRoleModel;
+  keyword: LightRagRoleModel;
+  query: LightRagRoleModel;
+  vlm: LightRagRoleModel;
+}
+
+export interface LightRagIndexingSelection {
+  extract: IndexingLLMSelection;
+  vlm: { mode: "disabled" | "enabled"; selection?: IndexingLLMSelection };
+}
+
 export interface LightRagConfig {
+  role_models?: LightRagRoleModels;
   version: number;
   top_k: number;
   response_type: string;
@@ -254,13 +281,23 @@ function normalizeUploadPolicy(data: unknown): KnowledgeUploadPolicy {
   };
 }
 
-export async function listKnowledgeBases(options?: { force?: boolean; library?: boolean }) {
+export async function listKnowledgeBases(options?: {
+  force?: boolean;
+  library?: boolean;
+}) {
   return withClientCache<KnowledgeBaseSummary[]>(
     `${KNOWLEDGE_CACHE_PREFIX}list:${options?.library || inKnowledgeLibrary() ? "library" : "workspace"}`,
     async () => {
-      const response = await apiFetch(apiUrl(options?.library ? "/api/knowledge-bases?resource_library=true" : "/api/knowledge-bases"), {
-        cache: "no-store",
-      });
+      const response = await apiFetch(
+        apiUrl(
+          options?.library
+            ? "/api/knowledge-bases?resource_library=true"
+            : "/api/knowledge-bases",
+        ),
+        {
+          cache: "no-store",
+        },
+      );
       if (!response.ok) {
         throw new Error(
           await readErrorDetail(response, "Failed to list knowledge bases"),
@@ -505,6 +542,22 @@ export const updateGraphRagConfig = (
   payload: Partial<Omit<GraphRagConfig, "version">>,
 ) => updateEngineConfig<GraphRagConfig>("graphrag", payload);
 
+export async function getLightRagModelOptions(): Promise<
+  import("@/lib/llm-options").LLMOptionsResponse
+> {
+  const res = await apiFetch(
+    apiUrl("/api/knowledge-bases/rag-pipelines/lightrag/model-options"),
+    {
+      cache: "no-store",
+    },
+  );
+  if (!res.ok)
+    throw new Error(
+      await readErrorDetail(res, "Failed to load LightRAG models"),
+    );
+  return res.json();
+}
+
 export const getLightRagConfig = (options?: { force?: boolean }) =>
   getEngineConfig<LightRagConfig>("lightrag", "lightrag-config", options);
 export const updateLightRagConfig = (
@@ -717,7 +770,6 @@ export async function createKnowledgeBase(payload: {
   files: File[];
   pageindexMode?: "flash" | "standard";
   searchMode?: string;
-  indexingLLM?: IndexingLLMSelection;
   embeddingModel?: EmbeddingModelSelection;
 }): Promise<KnowledgeTaskResponse> {
   const form = new FormData();
@@ -729,9 +781,6 @@ export async function createKnowledgeBase(payload: {
   if (payload.searchMode) form.append("search_mode", payload.searchMode);
   if (payload.embeddingModel)
     form.append("embedding_model", JSON.stringify(payload.embeddingModel));
-  if (payload.indexingLLM) {
-    form.append("indexing_llm", JSON.stringify(payload.indexingLLM));
-  }
   appendFilesWithPaths(form, payload.files);
 
   const res = await apiFetch(apiUrl("/api/knowledge-bases"), {
@@ -1212,15 +1261,42 @@ export async function setDefaultKnowledgeBase(name: string): Promise<void> {
   invalidateKnowledgeCaches();
 }
 
+export interface LightRagRebuildConfig {
+  fingerprint: string;
+  indexing_policy: import("@/lib/knowledge-helpers").LightRagIndexingPolicy;
+  embedding: { model: string; dimension: number };
+  embedding_selection?: EmbeddingModelSelection | null;
+}
+
+export async function getReindexConfig(
+  name: string,
+  embeddingModel?: EmbeddingModelSelection,
+): Promise<LightRagRebuildConfig> {
+  const query = embeddingModel
+    ? `?${new URLSearchParams({ embedding_model: JSON.stringify(embeddingModel) })}`
+    : "";
+  const res = await apiFetch(
+    apiUrl(
+      `/api/knowledge-bases/${encodeURIComponent(name)}/reindex-config${query}`,
+    ),
+    { cache: "no-store" },
+  );
+  if (!res.ok)
+    throw new Error(
+      await readErrorDetail(res, "Failed to load rebuild configuration"),
+    );
+  return (await res.json()) as LightRagRebuildConfig;
+}
+
 export async function reindexKnowledgeBase(
   name: string,
-  indexingLLM?: IndexingLLMSelection,
+  configFingerprint?: string,
   embeddingModel?: EmbeddingModelSelection,
 ): Promise<KnowledgeTaskResponse> {
   const request: RequestInit = { method: "POST" };
-  if (indexingLLM || embeddingModel) {
+  if (configFingerprint || embeddingModel) {
     const form = new FormData();
-    if (indexingLLM) form.append("indexing_llm", JSON.stringify(indexingLLM));
+    if (configFingerprint) form.append("config_fingerprint", configFingerprint);
     if (embeddingModel)
       form.append("embedding_model", JSON.stringify(embeddingModel));
     request.body = form;
@@ -1240,30 +1316,6 @@ export async function reindexKnowledgeBase(
   }
   invalidateKnowledgeCaches();
   return (await res.json()) as KnowledgeTaskResponse;
-}
-
-export async function updatePendingIndexingPolicy(
-  name: string,
-  indexingLLM: IndexingLLMSelection,
-): Promise<{ indexing_policy: Record<string, unknown> }> {
-  const res = await apiFetch(
-    apiUrl(`/api/knowledge-bases/${encodeURIComponent(name)}/indexing-policy`),
-    {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(indexingLLM),
-    },
-  );
-  if (!res.ok) {
-    throw new Error(
-      await readErrorDetail(
-        res,
-        `Failed to update indexing model (${res.status})`,
-      ),
-    );
-  }
-  invalidateKnowledgeCaches();
-  return (await res.json()) as { indexing_policy: Record<string, unknown> };
 }
 
 export async function retryKnowledgeBase(

@@ -77,6 +77,130 @@ def read_entry(root, name="kb"):
     return json.loads((root / "kb_config.json").read_text())["knowledge_bases"][name]
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", [None, "metadata", "binding"])
+@pytest.mark.parametrize("target_model", ["a", "b"])
+async def test_lightrag_rebuild_persists_binding_after_meta_under_write_ownership(
+    catalog, tmp_path, monkeypatch, failure, target_model
+):
+    from deeptutor.services.rag.pipelines.lightrag import engine, storage
+    from deeptutor.services.rag.pipelines.lightrag import pipeline as pipeline_module
+    from deeptutor.services.rag.pipelines.lightrag.indexing_policy import IndexingPolicyError
+    from deeptutor.services.rag.pipelines.lightrag.write_lock import write_ownership
+
+    monkeypatch.setattr(engine, "installed_version", lambda: "synthetic-test-version")
+    write_entry(tmp_path, rag_provider="lightrag")
+    old = tmp_path / "kb" / "version-1"
+    old.mkdir()
+    (old / "kv_store_doc_status.json").write_text('{"old":{"status":"processed"}}')
+    storage.write_meta(old, embedding_config=get_embedding_config(selection("a")))
+    old_meta = (old / "meta.json").read_bytes()
+    service = RAGService(kb_base_dir=str(tmp_path))
+    pipeline = pipeline_module.LightRagPipeline(str(tmp_path))
+    service._pipelines["lightrag"] = pipeline
+    monkeypatch.setattr(pipeline, "_ensure_available", lambda: None)
+    monkeypatch.setattr(
+        pipeline_module,
+        "freeze_default_snapshot",
+        lambda: SimpleNamespace(embedding_config=get_embedding_config()),
+    )
+
+    async def finish_index(root, *_args, **_kwargs):
+        (root / "kv_store_doc_status.json").write_text(
+            json.dumps({"doc": {"status": "processed", "chunks_list": ["chunk"]}})
+        )
+        return pipeline_module.BatchOutcome(
+            requested=1,
+            accepted=1,
+            processed=("doc",),
+            indexing_policy={"policy": "legacy_unpinned"},
+        )
+
+    monkeypatch.setattr(pipeline, "_run_indexing", finish_index)
+    original_persist = binding.persist_binding
+    calls = []
+
+    def persist(*args):
+        root = storage.latest_published_root(tmp_path / "kb")
+        assert root is not None
+        assert (
+            json.loads((root / "meta.json").read_text())["embedding_model"]
+            == f"embed-{target_model}"
+        )
+        with pytest.raises(IndexingPolicyError, match="Another indexing operation"):
+            with write_ownership(tmp_path / "kb"):
+                pytest.fail("Binding publication must retain indexing ownership")
+        calls.append(True)
+        if failure == "binding":
+            raise OSError("binding publication failed")
+        original_persist(*args)
+
+    monkeypatch.setattr(binding, "persist_binding", persist)
+    if failure == "metadata":
+
+        def fail_meta(*args, **kwargs):
+            raise OSError("publication failed")
+
+        monkeypatch.setattr(storage, "write_meta", fail_meta)
+    if failure:
+        with pytest.raises(OSError, match="publication failed"):
+            await service.initialize("kb", ["doc"], embedding_selection=selection(target_model))
+        assert calls == ([True] if failure == "binding" else [])
+        assert read_entry(tmp_path)["embedding_selection"] == selection("a")
+        assert storage.latest_published_root(tmp_path / "kb") == old
+        assert (
+            storage.published_root_for_embedding(
+                tmp_path / "kb", read_entry(tmp_path)["embedding_signature"]
+            )
+            == old
+        )
+        assert not (tmp_path / "kb" / "version-2" / "meta.json").exists()
+        assert (old / "meta.json").read_bytes() == old_meta
+    else:
+        assert await service.initialize("kb", ["doc"], embedding_selection=selection(target_model))
+        assert calls == [True]
+        assert read_entry(tmp_path)["embedding_selection"] == selection(target_model)
+        assert storage.latest_published_root(tmp_path / "kb").name == "version-2"
+    with write_ownership(tmp_path / "kb"):
+        pass  # Ownership is released on success and failure.
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["initialize", "add_documents"])
+async def test_lightrag_rejects_binding_changed_between_resolution_and_write_lock(
+    catalog, tmp_path, monkeypatch, operation
+):
+    from contextlib import contextmanager
+
+    from deeptutor.services.rag.pipelines.lightrag import write_lock
+    from deeptutor.services.rag.pipelines.lightrag.pipeline import LightRagPipeline
+
+    write_entry(tmp_path, rag_provider="lightrag")
+    service = RAGService(kb_base_dir=str(tmp_path))
+    pipeline = LightRagPipeline(str(tmp_path))
+    service._pipelines["lightrag"] = pipeline
+    original_lock = write_lock.write_ownership
+
+    @contextmanager
+    def changed_before_lock(kb_dir):
+        # Another worker completed its rebuild after decorator resolution.
+        binding.persist_binding(
+            tmp_path, "kb", selection("b"), get_embedding_config(selection("b"))
+        )
+        with original_lock(kb_dir):
+            yield
+
+    async def unexpected(*args, **kwargs):
+        pytest.fail("Stale binding must be rejected before any index write")
+
+    monkeypatch.setattr(write_lock, "write_ownership", changed_before_lock)
+    monkeypatch.setattr(pipeline, "_initialize_owned", unexpected)
+    monkeypatch.setattr(pipeline, "_add_documents_owned", unexpected)
+    with pytest.raises(ValueError, match="binding changed before indexing started"):
+        await getattr(service, operation)("kb", ["doc"])
+    assert read_entry(tmp_path)["embedding_selection"] == selection("b")
+
+
 def test_default_change_and_key_rotation_do_not_invalidate_binding(catalog, tmp_path):
     entry = write_entry(tmp_path)
     catalog["services"]["embedding"]["active_model_id"] = "b"
@@ -86,6 +210,122 @@ def test_default_change_and_key_rotation_do_not_invalidate_binding(catalog, tmp_
     assert config.model == "embed-a"
     assert config.api_key == "rotated-key"
     assert "original-key" not in json.dumps(entry)
+
+
+@pytest.mark.parametrize("missing_identity", [False, True])
+def test_lightrag_reconciliation_checks_bound_index_not_global_default(
+    catalog, tmp_path, monkeypatch, missing_identity
+):
+    from deeptutor.knowledge.manager import _reconcile_embedding_flags
+    from deeptutor.services.rag.pipelines.lightrag import engine, storage
+
+    monkeypatch.setattr(engine, "installed_version", lambda: "synthetic-test-version")
+    entry = write_entry(tmp_path, rag_provider="lightrag")
+    root = tmp_path / "kb" / "version-1"
+    root.mkdir()
+    (root / "kv_store_doc_status.json").write_text('{"doc":{"status":"processed"}}')
+    storage.write_meta(root, embedding_config=get_embedding_config(selection("a")))
+    workspace = root / engine.workspace_for(root)
+    workspace.mkdir()
+    (workspace / "kv_store_doc_status.json").write_text('{"doc":{"status":"processed"}}')
+    if missing_identity:
+        meta = json.loads((root / "meta.json").read_text())
+        meta.pop("embedding_signature")
+        (root / "meta.json").write_text(json.dumps(meta))
+    catalog["services"]["embedding"]["active_model_id"] = "b"
+    _reconcile_embedding_flags({"kb": entry}, tmp_path)
+    assert bool(entry.get("embedding_mismatch")) is missing_identity
+    assert entry["embedding_selection"] == selection("a")
+
+
+@pytest.mark.parametrize("drift", [False, True])
+def test_lightrag_detail_and_reconciliation_keep_recorded_bound_version(
+    catalog, tmp_path, monkeypatch, drift
+):
+    from deeptutor.knowledge.manager import KnowledgeBaseManager, _reconcile_embedding_flags
+    from deeptutor.services.rag.pipelines.lightrag import engine, storage
+
+    monkeypatch.setattr(engine, "installed_version", lambda: "synthetic-test-version")
+    entry = write_entry(tmp_path, rag_provider="lightrag")
+    for number, model in [(1, "a"), (2, "b")]:
+        root = tmp_path / "kb" / f"version-{number}"
+        root.mkdir()
+        (root / "kv_store_doc_status.json").write_text('{"doc":{"status":"processed"}}')
+        storage.write_meta(
+            root,
+            embedding_config=get_embedding_config(selection(model)),
+            indexing_policy={"policy": "pinned", "fingerprint": model * 64},
+        )
+        workspace = root / engine.workspace_for(root)
+        workspace.mkdir()
+        (workspace / "kv_store_doc_status.json").write_text('{"doc":{"status":"processed"}}')
+    _reconcile_embedding_flags({"kb": entry}, tmp_path)
+    assert not entry.get("embedding_mismatch")
+    assert entry["embedding_selection"] == selection("a")
+    manager = KnowledgeBaseManager(str(tmp_path))
+    if drift:
+        catalog["services"]["embedding"]["profiles"][0]["models"][0]["model"] = "changed-a"
+    _reconcile_embedding_flags(manager.config["knowledge_bases"], tmp_path)
+    metadata = manager.get_info("kb")["metadata"]
+    assert metadata["indexed_embedding_model"] == "embed-a"
+    assert metadata["current_embedding_model"] == ("changed-a" if drift else "embed-a")
+    assert metadata["indexing_policy"]["fingerprint"] == "a" * 64
+    assert metadata["indexed_version"] == "version-1"
+
+
+def test_lightrag_append_uses_policy_of_actual_bound_index(catalog, tmp_path, monkeypatch):
+    from deeptutor.services.embedding.config import embedding_config_scope
+    from deeptutor.services.rag.pipelines.lightrag import engine, indexing_policy, storage
+    from deeptutor.services.rag.pipelines.lightrag.pipeline import BatchOutcome, LightRagPipeline
+
+    monkeypatch.setattr(engine, "installed_version", lambda: "synthetic-test-version")
+    write_entry(tmp_path, rag_provider="lightrag")
+    for number, model in [(1, "a"), (2, "b")]:
+        root = tmp_path / "kb" / f"version-{number}"
+        root.mkdir()
+        workspace = root / engine.workspace_for(root)
+        workspace.mkdir()
+        (workspace / "kv_store_doc_status.json").write_text('{"doc":{"status":"processed"}}')
+        storage.write_meta(
+            root,
+            embedding_config=get_embedding_config(selection(model)),
+            indexing_policy={"policy": "pinned", "label": model},
+        )
+    newer = tmp_path / "kb" / "version-2" / "meta.json"
+    before = newer.read_bytes()
+    monkeypatch.setattr(
+        indexing_policy,
+        "snapshot_from_persisted",
+        lambda policy: SimpleNamespace(
+            vision_available=False,
+            embedding_config=get_embedding_config(selection("a")),
+            persisted_policy=lambda: policy,
+        ),
+    )
+    pipeline = LightRagPipeline(str(tmp_path))
+    monkeypatch.setattr(pipeline, "_ensure_available", lambda: None)
+
+    async def index(root, files, progress, snapshot, *, embedding_config):
+        assert root.name == "version-1"
+        assert snapshot.persisted_policy()["label"] == "a"
+        assert embedding_config.model == "embed-a"
+        return BatchOutcome(
+            requested=1,
+            accepted=1,
+            processed=("new.md",),
+            indexing_policy=snapshot.persisted_policy(),
+        )
+
+    monkeypatch.setattr(pipeline, "_run_indexing", index)
+    with embedding_config_scope(get_embedding_config(selection("a"))):
+        assert asyncio.run(pipeline.add_documents("kb", ["new.md"]))
+    assert newer.read_bytes() == before
+    assert (
+        json.loads((tmp_path / "kb" / "version-1" / "meta.json").read_text())["indexing_policy"][
+            "label"
+        ]
+        == "a"
+    )
 
 
 def test_deleted_or_edited_model_does_not_fall_back(catalog, tmp_path):

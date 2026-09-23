@@ -37,6 +37,7 @@ class OutgoingAttachment(BaseModel):
     base64: str | None = None
     filename: str | None = None
     mime_type: str | None = None
+    id: str | None = None
 
 
 class NotebookReference(BaseModel):

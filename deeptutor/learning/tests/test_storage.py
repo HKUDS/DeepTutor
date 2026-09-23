@@ -124,6 +124,43 @@ class TestSaveLoad:
                 == 2
             )
 
+    def test_evidence_projection_appends_without_rewriting_history(self, store):
+        from deeptutor.learning.models import LearningEvidence
+
+        progress = LearningProgress(book_id="append-only-evidence")
+        progress.learning_evidence = [
+            LearningEvidence(knowledge_point_id="kp1", result="incorrect", quality=0.0)
+        ]
+        store.save(progress)
+        with sqlite3.connect(store.db_path) as conn:
+            conn.execute(
+                """
+                CREATE TRIGGER reject_existing_evidence_update
+                BEFORE UPDATE ON mastery_learning_evidence
+                WHEN OLD.path_id = 'append-only-evidence'
+                BEGIN SELECT RAISE(ABORT, 'history rewrite'); END
+                """
+            )
+            conn.execute(
+                """
+                CREATE TRIGGER reject_existing_evidence_delete
+                BEFORE DELETE ON mastery_learning_evidence
+                WHEN OLD.path_id = 'append-only-evidence'
+                BEGIN SELECT RAISE(ABORT, 'history delete'); END
+                """
+            )
+
+        progress = store.load("append-only-evidence")
+        progress.learning_evidence.append(
+            LearningEvidence(knowledge_point_id="kp1", result="correct", quality=1.0)
+        )
+        store.save(progress)
+
+        assert [event.result for event in store.list_learning_evidence("append-only-evidence")] == [
+            "correct",
+            "incorrect",
+        ]
+
     def test_existing_paths_receive_evidence_projection_on_upgrade(self, store):
         from deeptutor.learning.models import LearningEvidence
 

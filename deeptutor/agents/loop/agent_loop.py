@@ -58,6 +58,7 @@ from deeptutor.services.llm import (
     clean_thinking_tags,
     supports_streaming,
 )
+from deeptutor.services.llm import finish_was_truncated as _finish_was_truncated
 from deeptutor.services.llm.capabilities import threads_session_id
 from deeptutor.services.llm.multimodal import should_degrade_to_text, strip_image_parts_inplace
 from deeptutor.services.llm.request_compat import (
@@ -92,17 +93,11 @@ MAX_SETTLEMENT_ROUNDS = 3
 # forced tool-less finish instead of spending the full exploration budget on
 # the same failure.
 MAX_REASONING_ONLY_RECOVERIES = 2
-_TRUNCATED_FINISH_REASONS = frozenset({"length", "max_tokens", "max_output_tokens"})
 # The SDK already retries failures that happen before response headers. These
 # short outer retries also cover SSE connections that fail before yielding any
 # user-visible output. Once output is visible, replay is unsafe because it can
 # duplicate prose or tool calls.
 _PROVIDER_RETRY_DELAYS = (0.5, 1.5)
-
-
-def _finish_was_truncated(reason: str | None) -> bool:
-    """Return whether a provider ended generation because output hit a cap."""
-    return str(reason or "").strip().lower() in _TRUNCATED_FINISH_REASONS
 
 
 def _reasoning_budget_exhausted(result: "LLMCallResult", max_tokens: int) -> bool:
@@ -614,19 +609,7 @@ class AgentLoop:
                             messages.append(_assistant_round_message(result))
                         self._append_loop_instruction(messages, finish_redirect)
                         continue
-                    await self.stream.progress(
-                        self.pipeline._t(
-                            "notices.capability_finish_rejected",
-                            default=(
-                                "The model did not complete the required interactive step. "
-                                "Please retry the turn."
-                            ),
-                        ),
-                        source=self.source,
-                        stage=self.stage,
-                        metadata={"trace_kind": "warning"},
-                    )
-                    return LoopOutcome(final_text="", completed=False)
+                    return await self._reject_capability_finish()
                 final_override = self.pipeline._capability_final_text_override(
                     self.context, final_text
                 )
@@ -657,6 +640,28 @@ class AgentLoop:
                 )
 
             tool_names = tuple(str(call.get("name") or "") for call in result.tool_calls)
+            if _finish_was_truncated(result.finish_reason):
+                # A round that hits the cap *while writing a tool call* never
+                # reaches the continuation branch above, so the only thing the
+                # reader used to see was the arg guard's "missing <arg>" — which
+                # reads as a model that forgot a field, not one whose JSON was
+                # cut off mid-argument. That is how a truncated
+                # ``submit_visualization`` became an empty canvas with nothing
+                # on screen explaining why (#1546).
+                await self.stream.progress(
+                    self.pipeline._t(
+                        "notices.tool_call_truncated",
+                        default=(
+                            "The model reached its output token limit while writing a "
+                            "tool call, so the call may be incomplete. If this repeats, "
+                            "raise this capability's max tokens or pick a model that "
+                            "reasons less."
+                        ),
+                    ),
+                    source=self.source,
+                    stage=self.stage,
+                    metadata={"trace_kind": "warning"},
+                )
             output_policy = self.pipeline._capability_tool_round_output_policy(
                 self.context,
                 self._clean(result.text),
@@ -785,6 +790,22 @@ class AgentLoop:
         messages[:] = prefix
         return len(messages)
 
+    async def _reject_capability_finish(self) -> LoopOutcome:
+        """Fail a turn whose required interaction could not be completed."""
+        await self.stream.progress(
+            self.pipeline._t(
+                "notices.capability_finish_rejected",
+                default=(
+                    "The model did not complete the required interactive step. "
+                    "Please retry the turn."
+                ),
+            ),
+            source=self.source,
+            stage=self.stage,
+            metadata={"trace_kind": "warning"},
+        )
+        return LoopOutcome(final_text="", completed=False)
+
     async def _forced_finish(
         self,
         messages: list[dict[str, Any]],
@@ -794,6 +815,11 @@ class AgentLoop:
         error: str = "",
         continued_answer_parts: list[str] | None = None,
     ) -> LoopOutcome:
+        # A tool-free salvage reply cannot satisfy an outstanding interaction.
+        # Empty text asks capabilities about state, without inventing prose to
+        # validate or giving the model another chance to claim completion.
+        if self.pipeline._capability_finish_instruction(self.context, ""):
+            return await self._reject_capability_finish()
         if reason == "error":
             # The caller has the exception and logs it; without it here the
             # reader is told a step failed and never which one or why — the

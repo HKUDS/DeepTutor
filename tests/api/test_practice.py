@@ -324,22 +324,19 @@ def test_course_imports_keep_their_course_and_file_provenance(bank, monkeypatch)
     store, repo, client = bank
     question = normalize_question({"question": "Q", "answer": "A"})
     repo.commit_import(repo.stage_import("lesson.csv", "mistakes", [question], "course-a"))
-    session_id = "practice-imports:course-a"
-    listing = asyncio.run(store.list_notebook_entries(session_ids=[session_id]))
+    listing = asyncio.run(store.list_notebook_entries())
     assert listing["total"] == 1
-    assert listing["items"][0]["material_id"].startswith("import:")
-    assert repo.overview("UTC", session_ids=[session_id])["mistakes"] == 1
-    session = asyncio.run(store.get_session(session_id))
-    assert session["preferences"]["course_id"] == "course-a"
-    assert session["preferences"]["archived"] is True
-    # Metadata enumeration includes archived notebook sessions, preserving course scope.
-    from deeptutor.services.session.organization import list_all_sessions_snapshot
-
-    assert session_id in {
-        item["session_id"] for item in asyncio.run(list_all_sessions_snapshot(store))
-    }
-    assert client.get("/bank/entries?course_id=course-a").json()["total"] == 1
-    assert client.get("/practice/summary?course_id=course-a").json()["mistakes"] == 1
+    item = listing["items"][0]
+    assert item["session_id"] == ""
+    assert item["origin_type"] == "external_import"
+    assert item["origin_ref"] == "practice-import"
+    assert item["material_id"].startswith("import:")
+    assert repo.overview("UTC")["mistakes"] == 1
+    # Import provenance must not manufacture a conversation or leak into a
+    # conversation-derived course scope.
+    assert asyncio.run(store.list_sessions()) == []
+    assert client.get("/bank/entries?course_id=course-a").json()["total"] == 0
+    assert client.get("/practice/summary?course_id=course-a").json()["mistakes"] == 0
     assert client.get("/bank/entries?course_id=course-b").json()["total"] == 0
 
 

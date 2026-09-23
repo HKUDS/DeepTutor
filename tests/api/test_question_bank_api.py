@@ -107,6 +107,56 @@ def test_unknown_assessment_source_is_rejected(client):
     assert response.status_code == 422
 
 
+def test_document_entry_without_session_is_idempotent_and_lookupable(client):
+    payload = {
+        "origin_type": "document_analysis",
+        "origin_ref": "book:linear-algebra:section-2",
+        "question_id": "focus-1",
+        "question": "What is the rank?",
+        "source": "book",
+        "material_id": "linear-algebra",
+        "material_title": "Linear Algebra",
+        "section_title": "Rank",
+    }
+    first = client.post(f"{PREFIX}/entries/upsert", json=payload)
+    second = client.post(
+        f"{PREFIX}/entries/upsert",
+        json={**payload, "user_answer": "2"},
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["id"] == second.json()["id"]
+    assert second.json()["session_id"] == ""
+    assert second.json()["origin_type"] == "document_analysis"
+    assert second.json()["origin_ref"] == payload["origin_ref"]
+    assert second.json()["user_answer"] == "2"
+
+    lookup = client.get(
+        f"{PREFIX}/entries/lookup/by-question",
+        params={
+            "origin_type": "document_analysis",
+            "origin_ref": payload["origin_ref"],
+            "question_id": payload["question_id"],
+        },
+    )
+    assert lookup.status_code == 200
+    assert lookup.json()["id"] == first.json()["id"]
+    assert client.get(f"{PREFIX}/entries").json()["total"] == 1
+
+
+def test_independent_entry_requires_a_stable_origin_reference(client):
+    response = client.post(
+        f"{PREFIX}/entries/upsert",
+        json={
+            "origin_type": "external_import",
+            "question_id": "q-1",
+            "question": "Imported?",
+        },
+    )
+    assert response.status_code == 422
+
+
 def test_listing_carries_each_entry_categories(client):
     ids = _seed(client)
     category_id = client.post(f"{PREFIX}/categories", json={"name": "Set A"}).json()["id"]

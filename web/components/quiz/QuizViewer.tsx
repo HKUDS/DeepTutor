@@ -55,6 +55,8 @@ import {
 import { recordQuizResults } from "@/lib/session-api";
 import { apiUrl } from "@/lib/api";
 
+import { randomUuid } from "@/lib/random-uuid";
+
 /** Resolve a possibly-relative AttachmentStore URL to an absolute one so
  *  ``<img src>`` works regardless of the API/frontend port pairing. */
 function resolveImageSrc(url: string | null | undefined): string | undefined {
@@ -111,10 +113,7 @@ const EMPTY_ANSWER: AnswerState = {
 };
 
 function makeAnswerImageId(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID().replaceAll("-", "").slice(0, 12);
-  }
-  return Math.random().toString(36).slice(2, 14);
+  return randomUuid().replaceAll("-", "").slice(0, 12);
 }
 
 type JudgmentState = {

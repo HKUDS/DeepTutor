@@ -56,6 +56,7 @@ import {
   SectionHead,
 } from "./ModelCards";
 import { nextProfileName } from "./profile-naming";
+import Tooltip from "@/shared/ui/Tooltip";
 import { searchProviderFields } from "./search-providers";
 import {
   activeProfileDetail,
@@ -1023,20 +1024,20 @@ export function ServiceConfigEditor({
                                               <span>
                                                 {t("Send dimensions")}
                                               </span>
-                                              <span
-                                                tabIndex={0}
-                                                className="group/info relative inline-flex cursor-help focus:outline-none"
+                                              <Tooltip
+                                                side="bottom"
+                                                label={t("Send dimensions")}
+                                                description={t(
+                                                  "Some embedding models (e.g. Qwen text-embedding-v4) reject the `dimensions` request param. Turn this off if your provider returns HTTP 400.",
+                                                )}
                                               >
-                                                <Info className="h-3 w-3 opacity-50 transition-opacity group-hover/info:opacity-100 group-focus/info:opacity-100" />
                                                 <span
-                                                  role="tooltip"
-                                                  className="pointer-events-none absolute top-full left-1/2 z-20 mt-1.5 w-64 -translate-x-1/2 rounded-lg border border-[var(--border)] bg-[var(--card)] p-2.5 text-[11px] leading-relaxed text-[var(--foreground)] opacity-0 shadow-lg transition-opacity duration-75 group-hover/info:opacity-100 group-focus/info:opacity-100"
+                                                  tabIndex={0}
+                                                  className="inline-flex cursor-help focus:outline-none"
                                                 >
-                                                  {t(
-                                                    "Some embedding models (e.g. Qwen text-embedding-v4) reject the `dimensions` request param. Turn this off if your provider returns HTTP 400.",
-                                                  )}
+                                                  <Info className="h-3 w-3 opacity-50 transition-opacity hover:opacity-100 focus:opacity-100" />
                                                 </span>
-                                              </span>
+                                              </Tooltip>
                                             </label>
                                           </div>
                                           <DimensionField

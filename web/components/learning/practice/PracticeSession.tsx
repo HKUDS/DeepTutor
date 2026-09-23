@@ -2,6 +2,7 @@
 
 import Markdown from '@/components/common/MarkdownRenderer'
 import { practiceMarkdown } from '@/lib/practice-content'
+import { randomUuid } from '@/lib/random-uuid'
 import { WorkspaceLabel } from '../LibraryWorkspace'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -193,7 +194,7 @@ function PracticeTurn({
     setError('')
     // Retrying a lost response must reuse its ID and exact payload.
     submission.current ??= {
-      request_id: crypto.randomUUID(),
+      request_id: randomUuid(),
       version: question.state.version,
       rating,
       answer,

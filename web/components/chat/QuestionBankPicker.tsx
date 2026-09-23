@@ -27,6 +27,15 @@ export interface SelectedQuestionEntry {
   difficulty: string;
 }
 
+function provenanceLabel(entry: NotebookEntry): string {
+  return (
+    entry.session_title ||
+    entry.section_title ||
+    entry.material_title ||
+    (entry.origin_type === "conversation" ? "" : entry.origin_ref || "")
+  );
+}
+
 interface QuestionBankPickerProps {
   open: boolean;
   onClose: () => void;
@@ -101,8 +110,8 @@ export default function QuestionBankPicker({
     if (!keyword) return entries;
     return entries.filter((entry) => {
       const question = String(entry.question || "").toLowerCase();
-      const session = String(entry.session_title || "").toLowerCase();
-      return question.includes(keyword) || session.includes(keyword);
+      const provenance = provenanceLabel(entry).toLowerCase();
+      return question.includes(keyword) || provenance.includes(keyword);
     });
   }, [entries, query]);
 
@@ -280,9 +289,9 @@ export default function QuestionBankPicker({
                         <p className="mt-1 line-clamp-2 text-[13px] leading-5 text-[var(--foreground)]">
                           {entry.question}
                         </p>
-                        {entry.session_title && (
+                        {provenanceLabel(entry) && (
                           <div className="mt-1 truncate text-[11px] text-[var(--muted-foreground)]/85">
-                            {entry.session_title}
+                            {provenanceLabel(entry)}
                           </div>
                         )}
                       </div>

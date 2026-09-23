@@ -321,6 +321,18 @@
           "default": null,
           "title": "Filename"
         },
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
         "mime_type": {
           "anyOf": [
             {

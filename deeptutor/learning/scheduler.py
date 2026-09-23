@@ -184,21 +184,54 @@ class SpacedRepetitionScheduler:
         intervals = INTERVAL_SEQUENCES[knowledge_type]
         max_index = len(intervals) - 1
 
+        # A successful delayed retrieval is stronger evidence than an
+        # immediate repetition. Measure the state before applying the review;
+        # replay uses the event timestamp and therefore follows this exact
+        # transition deterministically.
+        previous_stability = max(state.stability, _EPS)
+        previous_retrievability = self.retrievability(state, now=moment)
+        elapsed_days = (
+            max(0.0, moment - state.last_review_at) / self._seconds_per_unit()
+            if state.last_review_at is not None
+            else 0.0
+        )
+        spacing_ratio = min(elapsed_days / previous_stability, 4.0)
+
+        # Difficulty is an item/learner estimate, not the knowledge-type
+        # category. Surprising failures raise it; strong retrieval lowers it.
+        outcome_error = (1.0 - quality) - state.difficulty
+        surprise = previous_retrievability - quality
+        state.difficulty = float(
+            min(0.95, max(0.05, state.difficulty + 0.12 * outcome_error + 0.08 * surprise))
+        )
+
         if quality < _FAIL_QUALITY:
             state.consecutive_wrong += 1
             state.consecutive_correct = 0
             state.lapse_count += 1
-            state.stability = max(_MIN_STABILITY_DAYS * 0.1, state.stability * 0.5)
+            # Forgetting something that was predicted to be retrievable is a
+            # stronger negative update. A hard item also recovers less of its
+            # prior stability after a lapse.
+            retention_factor = 0.55 - 0.25 * previous_retrievability
+            difficulty_factor = 1.0 - 0.25 * state.difficulty
+            state.stability = max(
+                _MIN_STABILITY_DAYS * 0.1,
+                previous_stability * retention_factor * difficulty_factor,
+            )
             state.retrievability = max(quality, 0.2)
             if state.consecutive_wrong >= 2:
                 state.consecutive_wrong = 0
         else:
             state.consecutive_wrong = 0
             state.consecutive_correct += 1
-            growth = 1.2 + quality * 1.5
+            retrieval_effort = 1.0 + (1.0 - previous_retrievability) * 1.5
+            spacing_bonus = 1.0 + spacing_ratio * 0.15
+            learnability = 1.35 - 0.6 * state.difficulty
+            quality_strength = max(0.0, (quality - _FAIL_QUALITY) / (1.0 - _FAIL_QUALITY))
+            growth = 1.0 + quality_strength * learnability * retrieval_effort * spacing_bonus
             if quality >= 0.8 and state.consecutive_correct >= 2:
                 growth *= 1.15
-            state.stability = max(_MIN_STABILITY_DAYS, state.stability * growth)
+            state.stability = max(_MIN_STABILITY_DAYS, previous_stability * growth)
             state.retrievability = 1.0
             if state.consecutive_correct >= 2:
                 state.consecutive_correct = 0
@@ -321,8 +354,17 @@ class SpacedRepetitionScheduler:
 
 def _resolved_quality(evidence: LearningEvidence) -> float:
     if evidence.quality is not None:
-        return max(0.0, min(1.0, float(evidence.quality)))
-    return 1.0 if evidence.result == "correct" else 0.0
+        quality = float(evidence.quality)
+    elif evidence.result == "correct":
+        quality = 1.0
+    elif evidence.result == "partial":
+        quality = 0.4
+    else:
+        quality = 0.0
+    if evidence.quality is None:
+        quality -= min(0.25, evidence.hints_used * 0.08)
+        quality -= min(0.2, max(0, evidence.attempt_count - 1) * 0.05)
+    return max(0.0, min(1.0, quality))
 
 
 def _snap_interval_index(intervals: list[int], interval_days: float, max_index: int) -> int:

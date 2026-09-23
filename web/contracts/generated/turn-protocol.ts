@@ -19,6 +19,7 @@ export type ClientCommand =
   | PingCommand;
 export type Base64 = string | null;
 export type Filename = string | null;
+export type Id = string | null;
 export type MimeType = string | null;
 export type Type = string;
 export type Url = string | null;
@@ -231,7 +232,7 @@ export type TurnFailureCode =
   | "internal_error"
   | "rejected"
   | "server_shutdown";
-export type Id = string;
+export type Id1 = string;
 export type LastSeq = number;
 export type OwnerId1 = string;
 export type Retryable2 = boolean;
@@ -244,14 +245,14 @@ export type TurnStatus =
   "queued" | "running" | "waiting_input" | "completed" | "failed" | "cancelled";
 export type UpdatedAt = number | null;
 export type CreatedAt1 = number | null;
-export type Id1 = string;
+export type Id2 = string;
 export type Messages = {
   [k: string]: unknown;
 }[];
 export type Title = string;
 export type UpdatedAt1 = number | null;
 export type CreatedAt2 = number | null;
-export type Id2 = string;
+export type Id3 = string;
 export type Title1 = string;
 export type UpdatedAt2 = number | null;
 
@@ -324,6 +325,7 @@ export interface StartTurnCommand {
 export interface OutgoingAttachment {
   base64?: Base64;
   filename?: Filename;
+  id?: Id;
   mime_type?: MimeType;
   type: Type;
   url?: Url;
@@ -622,7 +624,7 @@ export interface ProtocolErrorEvent {
 export interface SessionDetail {
   active_turn?: TurnSummary | null;
   created_at?: CreatedAt1;
-  id: Id1;
+  id: Id2;
   messages?: Messages;
   preferences?: Preferences;
   title: Title;
@@ -637,7 +639,7 @@ export interface TurnSummary {
   created_at?: CreatedAt;
   error?: Error;
   error_code?: TurnFailureCode | null;
-  id: Id;
+  id: Id1;
   last_seq?: LastSeq;
   owner_id?: OwnerId1;
   query_state?: TurnQueryState | null;
@@ -656,7 +658,7 @@ export interface Preferences {
 export interface SessionSummary {
   active_turn?: TurnSummary | null;
   created_at?: CreatedAt2;
-  id: Id2;
+  id: Id3;
   title: Title1;
   updated_at?: UpdatedAt2;
 }

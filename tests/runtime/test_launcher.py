@@ -744,3 +744,57 @@ def test_ready_timeout_failure_names_the_override(monkeypatch) -> None:
         )
 
     assert launcher.BACKEND_READY_TIMEOUT_ENV in str(excinfo.value)
+
+
+def test_windows_children_and_console_tools_allocate_no_console(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Nothing the console-less detached worker starts may open a window.
+
+    Empty console windows flashed on the desktop for every probe, and the one
+    Windows gave the node child was a real hazard: closing it delivered
+    CTRL_C_EXIT to node, which the launcher read as its frontend exiting and
+    answered by stopping the backend — the whole app died from a window close
+    (#1501).
+    """
+    monkeypatch.setattr(launcher.os, "name", "nt")
+    monkeypatch.setattr(launcher.subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200, raising=False)
+    monkeypatch.setattr(launcher.subprocess, "CREATE_NO_WINDOW", 0x08000000, raising=False)
+    runs: list[dict[str, object]] = []
+    popens: list[dict[str, object]] = []
+
+    class _Completed:
+        returncode = 0
+        stdout = ""
+
+    def fake_run(command, **kwargs):
+        runs.append({"command": command, "kwargs": kwargs})
+        return _Completed()
+
+    class _Process:
+        pid = 4242
+        stdout = None
+
+    def fake_popen(command, **kwargs):
+        popens.append({"command": command, "kwargs": kwargs})
+        return _Process()
+
+    monkeypatch.setattr(launcher.subprocess, "run", fake_run)
+    monkeypatch.setattr(launcher.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(launcher.threading, "Thread", lambda **_kwargs: _NoopThread())
+    monkeypatch.setattr(launcher.shutil, "which", lambda name: name)
+
+    launcher._spawn(["node", "server.js"], cwd=tmp_path, env={}, name="frontend")
+    launcher._send_tree_signal(4242, None, launcher.KILL_SIGNAL)
+    launcher._port_listeners_windows(3782)
+    launcher._ensure_web_dependencies(tmp_path, "npm")
+
+    assert popens[0]["kwargs"]["creationflags"] == 0x200 | 0x08000000
+    assert [run["command"][0] for run in runs] == ["taskkill", "netstat", "npm"]
+    for run in runs:
+        assert run["kwargs"]["creationflags"] == 0x08000000, run["command"]
+
+
+class _NoopThread:
+    def start(self) -> None:
+        return None

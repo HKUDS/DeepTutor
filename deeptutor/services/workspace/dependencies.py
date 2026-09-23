@@ -274,8 +274,13 @@ def _question_sessions(paths, entry_ids=None) -> set[str]:
                     f"SELECT session_id FROM notebook_entries WHERE id IN ({placeholders})",  # nosec B608 - placeholders only
                     list(entry_ids),
                 )
+                if row[0]
             }
-        return {row[0] for row in conn.execute("SELECT DISTINCT session_id FROM notebook_entries")}
+        return {
+            row[0]
+            for row in conn.execute("SELECT DISTINCT session_id FROM notebook_entries")
+            if row[0]
+        }
 
 
 def _with_historical_references(paths, sessions: list[dict]) -> list[dict]:

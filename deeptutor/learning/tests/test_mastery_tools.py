@@ -1268,7 +1268,7 @@ async def test_assess_passes_concept(path_id):
     assert result["next"]["action"] == "complete"
     progress = LearningStore().load(path_id)
     assert progress is not None
-    assert progress.repetition_states[concept_kp].interval_index == 0
+    assert progress.repetition_states[concept_kp].review_count == 1
     assert [task.knowledge_point_id for task in progress.review_queue] == [mem_kp, concept_kp]
 
 
@@ -1331,7 +1331,11 @@ async def test_assess_syncs_qualitative_record_to_question_bank(path_id, session
     assert entry["quality"] == 1.0
     progress = LearningStore().load(path_id)
     assert progress is not None
-    assert progress.repetition_states[concept_kp].interval_index == 0
+    assert progress.repetition_states[concept_kp].review_count == 1
+    assert (
+        len([item for item in progress.learning_evidence if item.knowledge_point_id == concept_kp])
+        == 1
+    )
 
 
 # ── path switching: a conversation is not bound to one path ───────────────

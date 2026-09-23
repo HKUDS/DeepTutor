@@ -124,4 +124,8 @@ def test_quiz_attempt_does_not_create_a_synthetic_chat_session(tmp_path, monkeyp
     assert response.status_code == 200
     assert len(resolved.learning.saved) == 1
     assert asyncio.run(store.get_session("book_book-1")) is None
-    assert asyncio.run(store.list_notebook_entries(source="book"))["total"] == 0
+    entries = asyncio.run(store.list_notebook_entries(source="book"))
+    assert entries["total"] == 1
+    assert entries["items"][0]["session_id"] == ""
+    assert entries["items"][0]["origin_type"] == "document_analysis"
+    assert entries["items"][0]["origin_ref"] == "book:book-1"

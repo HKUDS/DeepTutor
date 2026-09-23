@@ -332,6 +332,30 @@ class TestRetentionBaseline:
         assert easy.stability > hard.stability
         assert easy.next_review_at > hard.next_review_at
 
+    def test_delayed_success_grows_stability_more_than_immediate_repetition(self, scheduler):
+        start = 1_700_000_000.0
+        immediate = scheduler.get_initial_state(KnowledgeType.CONCEPT, now=start)
+        delayed = scheduler.get_initial_state(KnowledgeType.CONCEPT, now=start)
+        first = _evidence(quality=1.0, ts=start)
+        scheduler.schedule_review(immediate, KnowledgeType.CONCEPT, first, now=start)
+        scheduler.schedule_review(delayed, KnowledgeType.CONCEPT, first, now=start)
+
+        scheduler.schedule_review(
+            immediate,
+            KnowledgeType.CONCEPT,
+            _evidence(quality=1.0, ts=start + 60),
+            now=start + 60,
+        )
+        scheduler.schedule_review(
+            delayed,
+            KnowledgeType.CONCEPT,
+            _evidence(quality=1.0, ts=start + 7 * 86400),
+            now=start + 7 * 86400,
+        )
+
+        assert delayed.stability > immediate.stability
+        assert delayed.difficulty < immediate.difficulty
+
     def test_replay_matches_stepwise_updates(self, scheduler):
         now = 1_700_000_000.0
         events = [

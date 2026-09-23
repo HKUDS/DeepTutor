@@ -25,6 +25,20 @@ async def test_migration_keeps_messages_branches_questions_and_source_backup(acc
         reply_id = await store.add_message(
             session["id"], "assistant", "answer", parent_message_id=user_id
         )
+        await store.upsert_notebook_entries(
+            session["id"],
+            [{"question_id": "question-one", "question": "Keep this question"}],
+        )
+        notebook_id = (await store.find_notebook_entry(session["id"], "question-one"))["id"]
+        await store.append_assessment_attempt(
+            session["id"],
+            notebook_id,
+            {
+                "attempt_id": "attempt-one",
+                "question_id": "question-one",
+                "result": "correct",
+            },
+        )
         paths = get_path_service()
         book = paths.get_book_dir() / "book_one"
         book.mkdir(parents=True)
@@ -52,9 +66,17 @@ async def test_migration_keeps_messages_branches_questions_and_source_backup(acc
         messages = await migrated.get_messages(session["id"])
         assert [row["id"] for row in messages] == [user_id, reply_id]
         assert messages[1]["parent_message_id"] == user_id
+        questions = await migrated.list_notebook_entries(session_id=session["id"])
+        assert questions["items"][0]["question"] == "Keep this question"
+        attempts = await migrated.list_assessment_attempts(
+            session["id"], question_id="question-one"
+        )
+        assert attempts[0]["attempt_id"] == "attempt-one"
         assert (get_path_service().get_book_dir() / "book_one" / "inputs.json").exists()
     with workspace_context():
         assert await store.get_session(session["id"]) is None
+        assert not (await store.list_notebook_entries(session_id=session["id"]))["items"]
+        assert not await store.list_assessment_attempts(session["id"], question_id="question-one")
         assert not book.exists()
 
 

@@ -784,7 +784,6 @@ class TurnRequestPreparer:
                 if turn_id:
                     previous_turn_id = turn_id
                     break
-            await self.store.delete_message(last_message["id"])
 
         preferences = session.get("preferences") or {}
         overrides = overrides or {}
@@ -863,7 +862,21 @@ class TurnRequestPreparer:
             "skills": skills,
             "mcp": mcp,
             "language": language,
-            "attachments": list(last_user.get("attachments") or []),
+            "attachments": [
+                {
+                    key: att.get(key)
+                    for key in ("type", "url", "base64", "filename", "mime_type", "id")
+                    if isinstance(att, dict) and key in att
+                }
+                for att in (last_user.get("attachments") or [])
+                if isinstance(att, dict)
+            ],
+            # The persisted message-row attachments carry upload-time extras
+            # (``id``, ``extracted_text``, ``extracted_chars``) that the wire
+            # contract ``OutgoingAttachment`` forbids; project to the allowed
+            # fields so start_turn's TurnRequest validation passes on retry
+            # (#1484 — otherwise the WS closed with no terminal event and the
+            # UI hung on "Thinking..." forever).
             "notebook_references": list(
                 overrides.get("notebook_references")
                 if overrides.get("notebook_references") is not None
@@ -934,4 +947,11 @@ class TurnRequestPreparer:
             payload["superseded_turn_id"] = previous_turn_id
         if llm_selection:
             payload["llm_selection"] = llm_selection
+
+        # Validate the complete replay request before removing the answer it
+        # supersedes. A malformed stored snapshot or override must leave the
+        # visible conversation intact so the learner can retry safely.
+        TurnRequest.model_validate(payload)
+        if last_message is not None and last_message.get("role") == "assistant":
+            await self.store.delete_message(last_message["id"])
         return await self.start_turn(payload)

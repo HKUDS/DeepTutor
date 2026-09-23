@@ -366,17 +366,17 @@ MAX_RECORD_FIELD = 2000
 
 def _record_question_id(question: str) -> str:
     """Stable content hash so re-recording the same mistake updates the row
-    (the store dedups on ``session_id + turn_id + question_id``) instead of
+    (the store dedups on origin + turn + question id) instead of
     piling up duplicates each time the learner revisits it."""
     normalized = " ".join(question.split()).casefold()
     return "pq_" + hashlib.sha1(normalized.encode("utf-8"), usedforsecurity=False).hexdigest()[:16]
 
 
-def _partner_record_session() -> tuple[str, str]:
-    """Stable ``(session_id, title)`` naming one partner pairing's mistakes.
+def _partner_record_origin() -> tuple[str, str]:
+    """Stable ``(origin_ref, title)`` naming one partner pairing's mistakes.
 
     Deterministic per partner + partner-of pairing so every recorded mistake
-    lands in the same notebook session the family can review as one list.
+    lands in the same external origin the family can review as one list.
     """
     partner_id = ""
     actor_id = ""
@@ -391,14 +391,14 @@ def _partner_record_session() -> tuple[str, str]:
         partner_id = str(getattr(context, "partner_id", "") or "")
         actor_id = str(getattr(context, "actor_id", "") or "")
         name = str(getattr(context, "partner_name", "") or "").strip()
-    session_id = f"partner-notebook:{partner_id or 'unknown'}:{actor_id or 'admin'}"
+    origin_ref = f"partner:{partner_id or 'unknown'}:{actor_id or 'admin'}"
     if name:
         title = f"{name} (Partner)"
     elif partner_id:
         title = f"Partner {partner_id} notebook"
     else:
         title = "Partner notebook"
-    return session_id, title
+    return origin_ref, title
 
 
 async def _record(
@@ -419,17 +419,10 @@ async def _record(
             action="record",
             error="`question` is required — the problem as the learner wrote or photographed it.",
         )
-    session_id, session_title = _partner_record_session()
-    try:
-        await store.ensure_notebook_session(session_id, session_title)
-    except Exception:
-        logger.warning("question_bank: could not ensure a notebook session", exc_info=True)
-        return QuestionBankOutcome(
-            ok=False,
-            action="record",
-            error="The question bank is not available in this conversation; nothing was recorded.",
-        )
+    origin_ref, origin_title = _partner_record_origin()
     item = {
+        "origin_type": "external_import",
+        "origin_ref": origin_ref,
         "question_id": _record_question_id(text),
         "question": text[:MAX_RECORD_QUESTION],
         "question_type": str(question_type or "").strip()[:100],
@@ -437,24 +430,29 @@ async def _record(
         "explanation": _truncate(explanation, MAX_RECORD_FIELD),
         "user_answer": _truncate(user_answer, MAX_RECORD_FIELD),
         "source": "partner_chat",
+        "material_title": origin_title,
         "is_correct": bool(is_correct),
     }
-    upserted = await store.upsert_notebook_entries(session_id, [item])
+    upserted = await store.upsert_notebook_entries(None, [item])
     if not upserted:
         return QuestionBankOutcome(
             ok=False,
             action="record",
             error="The bank rejected the entry; nothing was recorded.",
         )
-    parts = [f"Recorded 1 wrong question into the bank ({session_title})."]
+    parts = [f"Recorded 1 wrong question into the bank ({origin_title})."]
     summary: dict[str, Any] = {
-        "session_id": session_id,
+        "session_id": "",
+        "origin_type": "external_import",
+        "origin_ref": origin_ref,
         "question_id": item["question_id"],
         "source": "partner_chat",
     }
     name = (category or "").strip()[:MAX_CATEGORY_NAME]
     if name:
-        entry = await store.find_notebook_entry(session_id, item["question_id"])
+        entry = await store.find_notebook_entry_by_origin(
+            "external_import", origin_ref, item["question_id"]
+        )
         entry_id = int(entry["id"]) if entry and entry.get("id") is not None else None
         if entry_id is None:
             parts.append("Could not file it into a category (entry not found after recording).")

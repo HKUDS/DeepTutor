@@ -34,7 +34,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
     ref,
   ) {
     return (
-      <Tooltip label={label} side={tooltipSide} disabled={props.disabled}>
+      <Tooltip label={label} side={tooltipSide}>
         <button
           ref={ref}
           type={type}

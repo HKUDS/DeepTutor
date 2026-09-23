@@ -74,6 +74,7 @@ import { useSynchronizedScroll } from "@/features/co-writer/hooks/useSynchronize
 import { useDocumentLifecycle } from "@/features/co-writer/hooks/useDocumentLifecycle";
 import type { NotebookSavePayload } from "@/components/notebook/SaveToNotebookModal";
 import { CO_WRITER_SAMPLE_TEMPLATE } from "@/app/(workspace)/co-writer/sampleTemplate";
+import Tooltip from "@/shared/ui/Tooltip";
 
 const MarkdownRenderer = dynamic(
   () => import("@/components/common/MarkdownRenderer"),
@@ -2448,20 +2449,16 @@ function ToolbarIconBtn({
         : "hover:bg-[var(--muted)]/55 hover:text-[var(--foreground)]";
 
   return (
-    <button
-      type="button"
-      aria-label={title}
-      onClick={onClick}
-      disabled={disabled}
-      className={`group relative inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/35 disabled:opacity-50 ${toneClass}`}
-    >
-      {children}
-      <span
-        role="tooltip"
-        className="pointer-events-none absolute left-1/2 top-full z-30 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-1 text-[10px] font-medium text-[var(--foreground)] opacity-0 shadow-lg transition-opacity delay-[120ms] duration-100 group-hover:opacity-100 group-focus-visible:opacity-100 group-focus-visible:delay-0"
+    <Tooltip label={title} side="bottom">
+      <button
+        type="button"
+        aria-label={title}
+        onClick={onClick}
+        disabled={disabled}
+        className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/35 disabled:opacity-50 ${toneClass}`}
       >
-        {title}
-      </span>
-    </button>
+        {children}
+      </button>
+    </Tooltip>
   );
 }

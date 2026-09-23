@@ -56,7 +56,15 @@ beforeEach(() => {
   });
   fixtures.fetch
     .mockReset()
-    .mockResolvedValue({ ok: true, json: async () => ({ task_id: "task" }) });
+    .mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        task_id: "task",
+        fingerprint: "confirmed",
+        embedding: { model: "b", dimension: 2 },
+        indexing_policy: { policy: "defaults" },
+      }),
+    });
   fixtures.usage.mockReset();
   fixtures.lightRagConfig.mockReset().mockResolvedValue({});
   fixtures.llmOptions.mockReset().mockReturnValue({
@@ -94,13 +102,7 @@ it("lets a healthy KB explicitly re-index with another configured embedding mode
       index_versions: [],
     },
   } as unknown as KnowledgeBase;
-  render(
-    <KbIndexVersionsSection
-      kb={kb}
-      onReindex={onReindex}
-      onUpdatePendingIndexingPolicy={vi.fn()}
-    />,
-  );
+  render(<KbIndexVersionsSection kb={kb} onReindex={onReindex} />);
   fireEvent.click(screen.getByRole("button", { name: "Re-index" }));
   await waitFor(() =>
     expect(
@@ -132,7 +134,6 @@ it("lists affected knowledge bases and explains that deletion preserves their da
 
 it("lets an empty LightRAG KB replace a deleted embedding model before its first upload", async () => {
   const onReindex = vi.fn().mockResolvedValue(undefined);
-  const onUpdatePendingIndexingPolicy = vi.fn().mockResolvedValue(undefined);
   const llm = { profile_id: "chat", model_id: "chat-model" };
   fixtures.llmOptions.mockReturnValue({
     options: [
@@ -161,13 +162,7 @@ it("lets an empty LightRAG KB replace a deleted embedding model before its first
       index_versions: [],
     },
   } as unknown as KnowledgeBase;
-  render(
-    <KbIndexVersionsSection
-      kb={kb}
-      onReindex={onReindex}
-      onUpdatePendingIndexingPolicy={onUpdatePendingIndexingPolicy}
-    />,
-  );
+  render(<KbIndexVersionsSection kb={kb} onReindex={onReindex} />);
   fireEvent.click(screen.getByRole("button", { name: "Change model" }));
   const picker = await screen.findByRole("combobox", {
     name: "Embedding model",
@@ -181,14 +176,7 @@ it("lets an empty LightRAG KB replace a deleted embedding model before its first
     expect(screen.getByRole("button", { name: "Save model" })).toBeEnabled(),
   );
   fireEvent.click(screen.getByRole("button", { name: "Save model" }));
-  await waitFor(() =>
-    expect(onReindex).toHaveBeenCalledWith(expect.objectContaining(llm), b),
-  );
-  await waitFor(() =>
-    expect(onUpdatePendingIndexingPolicy).toHaveBeenCalledWith(
-      expect.objectContaining(llm),
-    ),
-  );
+  await waitFor(() => expect(onReindex).toHaveBeenCalledWith("confirmed", b));
 });
 
 it("sends model IDs on create and re-index without activating a global model", async () => {
@@ -207,7 +195,9 @@ it("sends model IDs on create and re-index without activating a global model", a
 });
 
 it("recovers usage after retry and clears the previous model's error", async () => {
-  fixtures.usage.mockRejectedValueOnce(new Error("unavailable")).mockResolvedValue([]);
+  fixtures.usage
+    .mockRejectedValueOnce(new Error("unavailable"))
+    .mockResolvedValue([]);
   const view = render(<EmbeddingModelUsage profileId="p" modelId="a" />);
   await screen.findByRole("alert");
   fireEvent.click(screen.getByRole("button", { name: "Retry" }));

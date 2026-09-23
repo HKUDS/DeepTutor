@@ -190,6 +190,13 @@ export default function QuestionCard({
   const badge = resultBadge(entry);
   const showReviewState =
     !!entry.practice?.is_mistake || mistakesOnly || result === "incorrect" || result === "partial";
+  const independentProvenance =
+    !entry.session_id &&
+    entry.source !== "book" &&
+    entry.source !== "immersive_reading" &&
+    entry.source !== "mastery_path"
+      ? entry.material_title || entry.section_title || entry.origin_ref || ""
+      : "";
 
   return (
     <li
@@ -462,7 +469,9 @@ export default function QuestionCard({
                 </button>
               </span>
             ))}
-            {entry.source !== "import" && !entry.session_id.startsWith("reading-notebook:") && (
+            {entry.session_id &&
+              entry.source !== "import" &&
+              !entry.session_id.startsWith("reading-notebook:") && (
               <Link
                 href={
                   entry.source === "mastery_path" && (entry.mastery_path_id || entry.material_id)
@@ -477,6 +486,11 @@ export default function QuestionCard({
                 <ExternalLink size={10} />
                 {entry.session_title || t("Original Session")}
               </Link>
+            )}
+            {independentProvenance && (
+              <span className="inline-flex items-center rounded-md border border-[var(--border)] bg-[var(--muted)]/40 px-2 py-0.5 text-[var(--muted-foreground)]">
+                {independentProvenance}
+              </span>
             )}
             {entry.source === "book" && entry.material_id && (
               <Link

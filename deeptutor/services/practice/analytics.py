@@ -43,7 +43,7 @@ def analytics(
         rows = conn.execute(
             f"""SELECT practice_day({timestamp}) AS day,
                 COALESCE(NULLIF(n.source, ''), 'deep_question') AS source, COUNT(*) AS count
-                FROM notebook_entries n JOIN sessions s ON s.id=n.session_id {join}
+                FROM notebook_entries n LEFT JOIN sessions s ON s.id=n.session_id {join}
                 WHERE {scope} {extra} AND {timestamp}>=? AND {timestamp}<=?
                 GROUP BY day, source""",  # nosec B608 - identifiers and scope are internal literals
             [*params, start, now],

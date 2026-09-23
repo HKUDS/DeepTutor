@@ -44,6 +44,7 @@ import {
   workspaceCardClass,
 } from "./WorkspaceShell";
 
+import { randomUuid } from "@/lib/random-uuid";
 type ModelPage = "llm" | "embedding" | "search" | "voice" | "multimodal";
 const PAGE_SERVICES: Record<ModelPage, ServiceName[]> = {
   llm: ["llm", "task"],
@@ -108,42 +109,50 @@ export function ModelsWorkspace({
   const selectedRow = rows.find((r) => r.key === selected);
   // Providers and models can be created together in the same draft.
   const sources = providerRegistry(draft);
-  const compatible = (service: ServiceName) =>
-    sources.filter((source) => {
-      if ("managed_by" in source.source && source.source.managed_by)
-        return false;
-      const adapterService = service === "task" ? "llm" : service;
-      const exact = providers[adapterService]?.some(
-        (option) =>
-          option.value === source.provider &&
-          option.value !== "none" &&
-          option.status !== "deprecated",
-      );
-      const mapped = connectionTargets.find(
-        (target) => target.provider === source.provider,
-      )?.services[adapterService];
-      return Boolean(
-        exact ||
-        mapped ||
-        (service !== "search" && source.service === service) ||
-        (service === "task" && source.service === "llm") ||
-        (service !== "search" && source.provider === "custom"),
-      );
-    });
+  /** Whether a built-in adapter is on record for this vendor and service. */
+  const declared = (source: ProviderSource, service: ServiceName) => {
+    const adapterService = service === "task" ? "llm" : service;
+    const exact = providers[adapterService]?.some(
+      (option) =>
+        option.value === source.provider &&
+        option.value !== "none" &&
+        option.status !== "deprecated",
+    );
+    const mapped = connectionTargets.find(
+      (target) => target.provider === source.provider,
+    )?.services[adapterService];
+    return Boolean(
+      exact ||
+      mapped ||
+      (service !== "search" && source.service === service) ||
+      (service === "task" && source.service === "llm") ||
+      (service !== "search" && source.provider === "custom"),
+    );
+  };
+  // Not being on record is not a veto for any service. Whether a vendor serves
+  // a given model type is not knowable from its registry entry — plenty of
+  // OpenAI-compatible endpoints serve embeddings or speech without appearing in
+  // that service's table — so every provider is selectable, the ones with no
+  // adapter on record are only grouped apart, and a wrong pick is reported by
+  // the model test rather than pre-empted here. Managed credentials stay out:
+  // that is not a capability judgement, their models arrive with them.
+  const selectable = sources.filter(
+    (source) => !("managed_by" in source.source && source.source.managed_by),
+  );
   const start = () => {
     setAdding(true);
     revealDetail();
     const preferred = new URLSearchParams(window.location.search).get(
       "provider",
     );
-    if (preferred && compatible(newService).some((p) => p.id === preferred))
+    if (preferred && selectable.some((p) => p.id === preferred))
       setNewProvider(preferred);
   };
   const create = () => {
-    const source = compatible(newService).find((p) => p.id === newProvider);
+    const source = selectable.find((p) => p.id === newProvider);
     if (!source) return;
-    const profileId = `${newService}-profile-${crypto.randomUUID()}`;
-    const modelId = `${newService}-model-${crypto.randomUUID()}`;
+    const profileId = `${newService}-profile-${randomUuid()}`;
+    const modelId = `${newService}-model-${randomUuid()}`;
     const ref = providerAdapter(
       source,
       newService,
@@ -352,7 +361,8 @@ export function ModelsWorkspace({
                 }}
                 provider={newProvider}
                 onProvider={setNewProvider}
-                sources={compatible(newService)}
+                sources={selectable}
+                declared={(source) => declared(source, newService)}
                 onCreate={create}
                 onCancel={() => setAdding(false)}
               />
@@ -360,7 +370,8 @@ export function ModelsWorkspace({
               <ModelEditor
                 key={selectedRow.key}
                 row={selectedRow}
-                sources={compatible(selectedRow.service)}
+                sources={selectable}
+                declared={(source) => declared(source, selectedRow.service)}
                 onRemoved={() => setSelected(null)}
               />
             ) : (
@@ -380,6 +391,41 @@ export function ModelsWorkspace({
 }
 
 /**
+ * Provider options for one service. Vendors with no adapter on record are
+ * offered rather than hidden — they are only separated out, so the list still
+ * says which ones are a known quantity without deciding for you.
+ */
+function ProviderOptions({
+  sources,
+  declared,
+}: {
+  sources: ProviderSource[];
+  declared: (source: ProviderSource) => boolean;
+}) {
+  const { t } = useTranslation();
+  const option = (p: ProviderSource) => (
+    <option key={p.id} value={p.id}>
+      {p.name}
+    </option>
+  );
+  const unverified = sources.filter((source) => !declared(source));
+  if (!unverified.length) return <>{sources.map(option)}</>;
+  const known = sources.filter(declared);
+  return (
+    <>
+      {known.length > 0 && (
+        <optgroup label={t("Supported for this model type")}>
+          {known.map(option)}
+        </optgroup>
+      )}
+      <optgroup label={t("Not on record — verify with the model test")}>
+        {unverified.map(option)}
+      </optgroup>
+    </>
+  );
+}
+
+/**
  * The add flow. It lives in the detail pane, opposite the list, because that is
  * the one place on the page that means "what you are configuring right now" —
  * and only one thing can be there at a time.
@@ -391,6 +437,7 @@ function AddModelPanel({
   provider,
   onProvider,
   sources,
+  declared,
   onCreate,
   onCancel,
 }: {
@@ -400,6 +447,7 @@ function AddModelPanel({
   provider: string;
   onProvider: (value: string) => void;
   sources: ProviderSource[];
+  declared: (source: ProviderSource) => boolean;
   onCreate: () => void;
   onCancel: () => void;
 }) {
@@ -444,26 +492,17 @@ function AddModelPanel({
             onChange={(e) => onProvider(e.target.value)}
           >
             <option value="">{t("Choose a provider")}</option>
-            {sources.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
+            <ProviderOptions sources={sources} declared={declared} />
           </select>
         </label>
       </div>
-      {(page === "voice" || page === "multimodal") && (
-        <p className="mt-3 text-xs leading-relaxed text-[var(--muted-foreground)]">
-          {t("Only providers with a supported API for this model type are listed. A provider offering a model does not mean its API is integrated here.")}
-        </p>
-      )}
-      {service === "search" && (
-        <p className="mt-3 text-xs leading-relaxed text-[var(--muted-foreground)]">
-          {t(
-            "Search uses providers with a supported search API. A language model listing alone does not confirm search support.",
-          )}
-        </p>
-      )}
+      <p className="mt-3 text-xs leading-relaxed text-[var(--muted-foreground)]">
+        {t(
+          service === "search"
+            ? "Every provider is selectable. Search has no generic adapter, so a provider without a search API of its own is rejected by the search test — that is where a wrong pick shows up."
+            : "Every provider is selectable. One with no adapter on record for this model type is called as an OpenAI-compatible endpoint derived from its provider URL — add the model, then run the model test to see whether it answers.",
+        )}
+      </p>
       <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-[color-mix(in_srgb,var(--border)_70%,transparent)] pt-4">
         <button
           type="button"
@@ -485,10 +524,12 @@ type ModelRow = ReturnType<typeof flattenModels>[number];
 function ModelEditor({
   row,
   sources,
+  declared,
   onRemoved,
 }: {
   row: ModelRow;
   sources: ProviderSource[];
+  declared: (source: ProviderSource) => boolean;
   onRemoved: () => void;
 }) {
   const { t } = useTranslation();
@@ -648,13 +689,20 @@ function ModelEditor({
                 {provider && !sources.some((p) => p.id === provider.id) && (
                   <option value={provider.id}>{provider.name}</option>
                 )}
-                {sources.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
+                <ProviderOptions sources={sources} declared={declared} />
               </select>
             </label>
+            {/* Why the test below matters more here: nothing vouches for this
+                pairing yet, so say what request it will actually make. */}
+            {provider && !declared(provider) && (
+              <p className="text-xs leading-relaxed text-[var(--muted-foreground)]">
+                {t(
+                  service === "search"
+                    ? "No search adapter is on record for this provider, and search has no OpenAI-compatible fallback. Run the test below — it will say so rather than search with the wrong engine."
+                    : "No adapter for this model type is on record for this provider. DeepTutor calls it as an OpenAI-compatible endpoint derived from the provider URL; run the model test below to confirm it answers.",
+                )}
+              </p>
+            )}
             <Link
               href={`/settings/connections${provider ? `?provider=${encodeURIComponent(provider.id)}` : ""}`}
               className="inline-block text-xs text-[var(--muted-foreground)] underline underline-offset-4 transition-colors hover:text-[var(--foreground)]"

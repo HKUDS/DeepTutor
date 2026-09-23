@@ -18,7 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import Tooltip from "@/components/common/Tooltip";
+import Tooltip from "@/shared/ui/Tooltip";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import NotebookRecordRow from "@/components/notebook/NotebookRecordRow";
 import { useNotebookLibrary } from "@/components/notebook/useNotebookLibrary";

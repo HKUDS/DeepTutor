@@ -69,6 +69,7 @@ export interface MapKnowledgePoint {
   mastery: number;
   mastery_source: "system" | "learner" | "";
   override_note: string;
+  deferred?: boolean;
 }
 
 export interface MapModule {

@@ -201,6 +201,9 @@ export interface NotebookEntry {
   id: number;
   session_id: string;
   session_title: string;
+  /** Present on servers with independent Question Bank provenance support. */
+  origin_type?: QuestionOriginType;
+  origin_ref?: string;
   turn_id: string;
   question_id: string;
   question: string;
@@ -258,6 +261,11 @@ export type AssessmentSource =
   | "book"
   | "partner_chat"
   | "import";
+
+export type QuestionOriginType =
+  | "conversation"
+  | "external_import"
+  | "document_analysis";
 
 export type AssessmentType = "quiz" | "focus_check" | "qualitative" | "review";
 
@@ -323,9 +331,10 @@ export interface NotebookEntryFilter {
   /**
    * Restrict to questions produced by one course's conversations.
    *
-   * Entries carry a session, not a course, so the server resolves this to the
-   * course's sessions. A course with no sessions yet correctly yields nothing
-   * rather than falling back to everything.
+   * The server resolves course membership through real conversation sessions;
+   * independent document/import origins stay outside that scope until they
+   * gain an explicit course association. A course with no sessions correctly
+   * yields nothing rather than falling back to everything.
    */
   course_id?: string;
 }
@@ -400,6 +409,26 @@ export async function lookupNotebookEntry(
   return expectJson<NotebookEntry>(response);
 }
 
+export async function lookupNotebookEntryByOrigin(
+  originType: Exclude<QuestionOriginType, "conversation">,
+  originRef: string,
+  questionId: string,
+  turnId?: string | null,
+): Promise<NotebookEntry | null> {
+  const params = new URLSearchParams({
+    origin_type: originType,
+    origin_ref: originRef,
+    question_id: questionId,
+    missing_ok: "true",
+  });
+  if (turnId) params.set("turn_id", turnId);
+  const response = await apiFetch(
+    apiUrl(`/api/question-notebook/entries/lookup/by-question?${params}`),
+  );
+  if (response.status === 204 || response.status === 404) return null;
+  return expectJson<NotebookEntry>(response);
+}
+
 export async function updateNotebookEntry(
   entryId: number,
   updates: {
@@ -431,7 +460,9 @@ export interface NotebookAnswerImageUpload {
 }
 
 export async function upsertNotebookEntry(data: {
-  session_id: string;
+  session_id?: string;
+  origin_type?: QuestionOriginType;
+  origin_ref?: string;
   turn_id?: string;
   question_id: string;
   question: string;

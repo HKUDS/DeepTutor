@@ -114,7 +114,10 @@ class PracticeStore:
 
     @staticmethod
     def _scope(session_ids: list[str] | None) -> tuple[str, list]:
-        sql = "s.deleted_at IS NULL"
+        # Independent imports/document questions have no chat to delete. They
+        # stay visible in the global bank, while an explicit course/session
+        # scope continues to select conversation-backed entries only.
+        sql = "(n.session_id IS NULL OR s.deleted_at IS NULL)"
         params: list = []
         if session_ids is not None:
             sql += " AND n.session_id IN (" + (",".join("?" for _ in session_ids) or "NULL") + ")"
@@ -135,7 +138,7 @@ class PracticeStore:
                     COALESCE(SUM({_DUE_AT_SQL} <= ?), 0) AS due,
                     COALESCE(SUM({_DUE_AT_SQL} <= ?), 0) AS overdue,
                     MIN({_DUE_AT_SQL}) AS next_due_at
-                FROM notebook_entries n JOIN sessions s ON s.id = n.session_id
+                FROM notebook_entries n LEFT JOIN sessions s ON s.id = n.session_id
                 LEFT JOIN practice_review_state r ON r.entry_id = n.id WHERE {scope}
             """,  # nosec B608 - fixed scope SQL; values bound
                 [now, start, *params],
@@ -143,7 +146,7 @@ class PracticeStore:
             completed = conn.execute(
                 f"""
                 SELECT COUNT(DISTINCT e.entry_id) FROM practice_review_events e
-                JOIN notebook_entries n ON n.id = e.entry_id JOIN sessions s ON s.id = n.session_id
+                JOIN notebook_entries n ON n.id = e.entry_id LEFT JOIN sessions s ON s.id = n.session_id
                 WHERE e.reviewed_at >= ? AND e.reviewed_at < ? AND {scope}
             """,  # nosec B608 - fixed scope SQL; values bound
                 [start, end, *params],
@@ -182,7 +185,7 @@ class PracticeStore:
         with self.connect() as conn:
             rows = conn.execute(
                 f"""
-                SELECT n.id FROM notebook_entries n JOIN sessions s ON s.id=n.session_id
+                SELECT n.id FROM notebook_entries n LEFT JOIN sessions s ON s.id=n.session_id
                 LEFT JOIN practice_review_state r ON r.entry_id=n.id
                 WHERE {_DUE_AT_SQL} <= ? AND {scope}
                 ORDER BY {_DUE_AT_SQL}, n.id LIMIT ?
@@ -213,8 +216,8 @@ class PracticeStore:
         with self.connect() as conn:
             return (
                 conn.execute(
-                    """SELECT 1 FROM notebook_entries n JOIN sessions s ON s.id=n.session_id
-                WHERE n.id=? AND s.deleted_at IS NULL""",
+                    """SELECT 1 FROM notebook_entries n LEFT JOIN sessions s ON s.id=n.session_id
+                WHERE n.id=? AND (n.session_id IS NULL OR s.deleted_at IS NULL)""",
                     (entry_id,),
                 ).fetchone()
                 is not None
@@ -249,8 +252,8 @@ class PracticeStore:
                     )
                 return json.loads(previous["outcome_json"])
             entry = conn.execute(
-                """SELECT n.* FROM notebook_entries n JOIN sessions s ON s.id=n.session_id
-                WHERE n.id=? AND s.deleted_at IS NULL""",
+                """SELECT n.* FROM notebook_entries n LEFT JOIN sessions s ON s.id=n.session_id
+                WHERE n.id=? AND (n.session_id IS NULL OR s.deleted_at IS NULL)""",
                 (entry_id,),
             ).fetchone()
             if not entry:
@@ -357,33 +360,23 @@ class PracticeStore:
                 raise ValueError("Import preview expired. Select the file again.")
             payload = json.loads(staged["payload_json"])
             questions = payload if isinstance(payload, list) else payload["questions"]
-            course_id = "" if isinstance(payload, list) else payload.get("course_id", "")
-            session_id = f"practice-imports:{course_id}" if course_id else "practice-imports"
-            conn.execute(
-                "INSERT OR IGNORE INTO sessions(id, title, created_at, updated_at, preferences_json) VALUES(?, ?, ?, ?, ?)",
-                (
-                    session_id,
-                    "Imported practice questions",
-                    now,
-                    now,
-                    json.dumps(
-                        {"course_id": course_id, "internal_notebook": True, "archived": True}
-                    ),
-                ),
-            )
-            # An import should be visible even if the old synthetic session was trashed.
-            conn.execute("UPDATE sessions SET deleted_at=NULL WHERE id=?", (session_id,))
+            # All practice-file imports share one durable origin namespace.
+            # ``question_id`` is a content hash, so re-importing the same
+            # question remains idempotent without tying ownership to an
+            # ephemeral preview receipt or a synthetic chat session.
+            origin_ref = "practice-import"
             created, skipped = 0, 0
             for question in questions:
                 cursor = conn.execute(
                     """
-                    INSERT OR IGNORE INTO notebook_entries(session_id, question_id, question, question_type,
+                    INSERT OR IGNORE INTO notebook_entries(
+                        session_id, origin_type, origin_ref, question_id, question, question_type,
                         options_json, correct_answer, explanation, difficulty, user_answer, source,
                         result, assessment_type, created_at, updated_at, material_title, material_id)
-                    VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, 'import', ?, 'quiz', ?, ?, ?, ?)
+                    VALUES(NULL, 'external_import', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'import', ?, 'quiz', ?, ?, ?, ?)
                 """,
                     (
-                        session_id,
+                        origin_ref,
                         question["question_id"],
                         question["question"],
                         question["question_type"],
@@ -402,8 +395,10 @@ class PracticeStore:
                 created += cursor.rowcount
                 skipped += 1 - cursor.rowcount
                 entry_id = conn.execute(
-                    "SELECT id FROM notebook_entries WHERE session_id=? AND question_id=? AND turn_id=''",
-                    (session_id, question["question_id"]),
+                    """SELECT id FROM notebook_entries
+                    WHERE origin_type='external_import' AND origin_ref=?
+                      AND question_id=? AND turn_id=''""",
+                    (origin_ref, question["question_id"]),
                 ).fetchone()[0]
                 if staged["target"] == "mistakes":
                     conn.execute(

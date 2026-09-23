@@ -3,7 +3,10 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AnimatePresence, motion, useReducedMotion, type Transition } from 'framer-motion'
+// `m`, not `motion`: the app renders inside a strict `LazyMotion`, which
+// rejects the full component outright — the learning dashboard crashed on its
+// first card instead of animating it (#1549).
+import { AnimatePresence, m as motion, useReducedMotion, type Transition } from 'framer-motion'
 import { ArrowUpRight, ArrowRight, Check, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 type LearningKind = LearningSurface['kind']

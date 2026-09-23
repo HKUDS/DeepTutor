@@ -74,6 +74,48 @@ _PROMISE_TAIL_CHARS = 160
 # more reliable than recognising the wording, which varies every turn.
 _DANGLING_LEAD_IN_CHARS = frozenset(":：")
 
+# Delivery claims can precede a long explanation, unlike the vague question
+# announcements above. Check clauses across the reply, but require both a
+# concrete card/question and a delivery verb rather than the word "card" alone.
+_CARD_DELIVERY_RE = re.compile(
+    r"(?:卡片|题卡|(?:这|那|一|下一)道题|题目)[^。！？\n，,；;]{0,24}"
+    r"(?:重开|开出来|(?:放|挂|贴|发)(?:上来|上去|出来|上了|好了)|"
+    r"(?:生成|展示)(?:了|好|出来)|(?:就)?在(?:下面|下方))|"
+    r"先探一题|"
+    r"\bI(?:['’]ve| have)? (?:just |now )?(?:posted|reopened|displayed) "
+    r"(?:the|a|this) (?:(?:question|quiz|answer) )?card\b|"
+    r"\b(?:the|this) (?:(?:question|quiz|answer) )?card "
+    r"(?:is|has been) (?:ready|posted|displayed|reopened|below)\b",
+    re.IGNORECASE,
+)
+_NON_DELIVERY_CLAUSE_RE = re.compile(
+    r"没有|没能|未能|尚未|还没|不会|不再|不要|不能|并未|无法|失败|"
+    r"上次|上一轮|刚才|之前|如果|假如|是否|你说|[吗？?]|^\s*等|"
+    r"\b(?:not|never|if|earlier|previously|yesterday)\b",
+    re.IGNORECASE,
+)
+_QUOTED_CARD_TEXT_RE = re.compile(
+    r"```.*?```|~~~.*?~~~|`[^`\n]*`|“[^”]*”|「[^」]*」|\"[^\"\n]*\"|^\s*>[^\n]*",
+    re.DOTALL | re.MULTILINE,
+)
+_CONDITIONAL_DELIVERY_RE = re.compile(
+    r"^\s*(?:等|如果|假如|(?:学|讲|看)完.{0,12}(?:以后|之后)|稍后|下一轮|"
+    r"if\b|when\b|after\b)",
+    re.IGNORECASE,
+)
+
+
+def _claims_card_delivery(text: str) -> bool:
+    """Recognise current delivery claims without treating quoted reports as actions."""
+    prose = _QUOTED_CARD_TEXT_RE.sub(" ", text)
+    for sentence in re.split(r"[。！\n]|(?<=[.!?])\s+", prose):
+        if _CONDITIONAL_DELIVERY_RE.search(sentence):
+            continue
+        for clause in re.split(r"[，,；;]", sentence):
+            if _CARD_DELIVERY_RE.search(clause) and not _NON_DELIVERY_CLAUSE_RE.search(clause):
+                return True
+    return False
+
 
 def _looks_like_plain_choice_quiz(text: str) -> bool:
     """Recognise a rendered A-D option list with high precision.
@@ -207,6 +249,7 @@ class MasteryLoopCapability:
         if tool_name in MASTERY_TOOL_NAMES:
             updated = dict(kwargs)
             if tool_name == "mastery_quiz":
+                state["quiz_requested"] = True
                 state["quiz_awaiting_grade"] = True
                 updated["_end_turn_on_card"] = _card_end_marker(context)
             elif tool_name == "mastery_grade":
@@ -247,11 +290,13 @@ class MasteryLoopCapability:
     def finish_instruction(self, context: UnifiedContext, final_text: str) -> str | None:
         """Catch a finish that leaves the learner with nothing to answer.
 
-        Only the *shape of the reply* can trigger this. Two states that read
-        like unfinished protocol are not:
+        A quiz selected in this turn must reach its success callback before
+        the turn can finish, regardless of reply wording or later grading.
+        Text heuristics are only a fallback for replies that never selected
+        the tool. Two other states are not an outstanding delivery:
 
-        ``mastery_quiz`` called without a grade no longer means the question
-        went unasked — that call now poses it on its own card — so a learner
+        A pending question from an earlier turn does not mean it went
+        unasked — it was already posed on its own card — so a learner
         who types a question instead of answering leaves the interaction open
         on purpose, and the tutor answering them is the right reply, not a
         skipped step.
@@ -272,7 +317,19 @@ class MasteryLoopCapability:
         if not self.is_active(context):
             return None
         state = context.extension("mastery")
-        if _announces_an_unposed_question(final_text):
+        if state.get("quiz_requested") and not state.get("card_posted"):
+            return (
+                "This turn selected mastery_quiz, but no question card was successfully "
+                "posted. Inspect the tool error and retry mastery_quiz with corrected "
+                "arguments. A prose reply or a grading call cannot complete the selected "
+                "question delivery. If delivery remains unsuccessful, this turn must "
+                "fail rather than report successful completion."
+            )
+        if not state.get("card_posted") and (
+            _announces_an_unposed_question(final_text) or _claims_card_delivery(final_text)
+        ):
+            # Argument binding sets quiz_awaiting_grade even when registration
+            # fails. Only the tool's success callback marks a card as posted.
             # "Let us see what you already know:" and then nothing. The learner
             # is left reading a promise with no card under it, and the turn is
             # over — this reply announced the question instead of posing it.

@@ -45,7 +45,7 @@ import {
   InlineFileCardProvider,
   mergeGeneratedFiles,
 } from "@/components/common/InlineFileCard";
-import Tooltip from "@/components/common/Tooltip";
+import Tooltip from "@/shared/ui/Tooltip";
 import type {
   MessageAttachment,
   MessageRequestSnapshot,

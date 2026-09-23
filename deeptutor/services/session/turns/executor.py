@@ -345,7 +345,58 @@ class TurnExecutor:
 
             from deeptutor.utils.document_extractor import extract_documents_from_records
 
+            # Keep the built-in extractor as a graceful fallback, then replace
+            # every PDF's result with the configured parser output. Running the
+            # configured parser regardless of a native text layer is what lets
+            # OCR/layout engines see scanned pages and figures.
             document_texts, attachment_records = extract_documents_from_records(attachment_records)
+            pdf_records = [
+                record
+                for record in attachment_records
+                if str(record.get("filename") or "").lower().endswith(".pdf")
+            ]
+            pdf_names = {
+                str(record.get("id") or ""): str(record.get("filename") or "PDF attachment")
+                for record in pdf_records
+            }
+            from deeptutor.services.session.attachment_parsing import parse_chat_pdf_attachments
+
+            loop = asyncio.get_running_loop()
+
+            def _attachment_progress(attachment_id: str, phase: str, message: str) -> None:
+                loop.call_soon_threadsafe(
+                    lambda: asyncio.create_task(
+                        self._publish_live_event(
+                            execution,
+                            StreamEvent(
+                                type=StreamEventType.PROGRESS,
+                                source="attachment_parsing",
+                                stage=phase,
+                                content=message,
+                                metadata={
+                                    "attachment_id": attachment_id,
+                                    "filename": pdf_names.get(attachment_id, "PDF attachment"),
+                                    "phase": phase,
+                                },
+                            ),
+                        )
+                    )
+                )
+
+            for record in pdf_records:
+                _attachment_progress(
+                    str(record.get("id") or ""),
+                    "received",
+                    "PDF uploaded to DeepTutor",
+                )
+
+            attachment_records, document_texts = await parse_chat_pdf_attachments(
+                attachment_records,
+                attachment_store=attachment_store,
+                session_id=session_id,
+                document_texts=document_texts,
+                on_progress=_attachment_progress,
+            )
             attachments = [
                 Attachment(
                     type=r.get("type", "file"),

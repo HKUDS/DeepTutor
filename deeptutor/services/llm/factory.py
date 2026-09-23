@@ -25,6 +25,7 @@ from .error_mapping import map_error
 from .multimodal import prepare_multimodal_messages
 from .provider_core.base import LLMProvider
 from .provider_factory import build_isolated_provider, get_runtime_provider
+from .types import StreamOutcome
 from .utils import is_local_llm_server
 
 DEFAULT_MAX_RETRIES = settings.retry.max_retries
@@ -528,8 +529,15 @@ async def stream(
     retry_delay: float = DEFAULT_RETRY_DELAY,
     exponential_backoff: bool = DEFAULT_EXPONENTIAL_BACKOFF,
     allow_image_fallback: bool | None = None,
+    outcome: StreamOutcome | None = None,
     **kwargs: Any,
 ) -> AsyncGenerator[str, None]:
+    """Stream a completion as text chunks.
+
+    ``outcome``, when given, is filled with the provider's terminal reason and
+    usage once the stream ends. A caller that parses the streamed text needs it
+    to tell a complete response from one cut off at ``max_tokens`` (#1545).
+    """
     caller_extra_headers = kwargs.pop("extra_headers", None)
     reasoning_effort = kwargs.pop("reasoning_effort", None)
     image_data = kwargs.pop("image_data", None)
@@ -611,6 +619,9 @@ async def stream(
                 allow_image_fallback=image_fallback_enabled,
                 **extra_kwargs,
             )
+            if outcome is not None:
+                outcome.finish_reason = str(response.finish_reason or "")
+                outcome.usage = dict(response.usage or {})
             if in_think_block:
                 in_think_block = False
                 await queue.put("</think>")
