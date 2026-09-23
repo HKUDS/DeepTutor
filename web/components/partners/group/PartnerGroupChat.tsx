@@ -9,6 +9,7 @@ import { TurnNavigator } from "@/components/chat/home/TurnNavigator";
 import {
   getPartnerGroupWhiteboard,
   type PartnerGroup,
+  type PartnerGroupMessage,
   type WhiteboardEntry,
 } from "@/lib/partner-groups-api";
 
@@ -36,6 +37,7 @@ export default function PartnerGroupChat({
   panelOpen,
   onOpenPanel,
   onClosePanel,
+  onMessagesChange,
   embedded = false,
   consultationActive = false,
 }: {
@@ -48,6 +50,8 @@ export default function PartnerGroupChat({
   panelOpen: boolean;
   onOpenPanel: () => void;
   onClosePanel: () => void;
+  /** Lift the settled transcript to page-level export controls. */
+  onMessagesChange?: (messages: PartnerGroupMessage[]) => void;
 }) {
   const { t } = useTranslation();
   const [quote, setQuote] = useState<QuotedSpeech | null>(null);
@@ -56,6 +60,7 @@ export default function PartnerGroupChat({
   const [traceFocus, setTraceFocus] = useState<TraceFocus | null>(null);
 
   const {
+    messages,
     rounds,
     reportConsultationActivity,
     running,
@@ -71,6 +76,13 @@ export default function PartnerGroupChat({
     summarizeRound,
     cancel,
   } = useGroupSession(group, sessionKey);
+
+  // Match direct Partner chat: export only persisted messages, never a
+  // token-by-token draft. Clear the lifted transcript while another thread
+  // is loading so the header cannot download the previous discussion.
+  useEffect(() => {
+    onMessagesChange?.(loading ? [] : messages);
+  }, [loading, messages, onMessagesChange]);
 
   const draftRef = useRef(false);
   const lastInteraction = useRef(0);

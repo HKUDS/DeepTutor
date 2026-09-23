@@ -555,6 +555,7 @@ export function useGroupSession(group: PartnerGroup, sessionKey: string) {
   }, [live, messages]);
 
   return {
+    messages,
     rounds,
     reportConsultationActivity,
     running: Boolean(live),

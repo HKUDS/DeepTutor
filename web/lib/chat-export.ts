@@ -12,6 +12,8 @@ export interface ExportableAttachment {
 export interface ExportableMessage {
   role: string;
   content: string;
+  /** Optional human-readable author for multi-speaker conversations. */
+  speaker?: string;
   capability?: string;
   attachments?: ExportableAttachment[];
 }
@@ -20,6 +22,13 @@ function roleHeading(role: string): string {
   if (role === "user") return "User";
   if (role === "assistant") return "Assistant";
   return "System";
+}
+
+function messageHeading(message: ExportableMessage): string {
+  // Keep an untrusted display name on one Markdown heading line. Markdown
+  // punctuation is harmless here, but line breaks could forge extra blocks.
+  const speaker = message.speaker?.trim().replace(/\s+/g, " ");
+  return speaker || roleHeading(message.role);
 }
 
 function formatAttachments(attachments?: ExportableAttachment[]): string {
@@ -47,7 +56,7 @@ export function buildChatMarkdown(
   const header = `# ${title}\n\n_Exported: ${exportedAt}_\n\n---\n\n`;
   const body = messages
     .map((msg) => {
-      const role = roleHeading(msg.role);
+      const role = messageHeading(msg);
       const cap = msg.capability ? ` _(${msg.capability})_` : "";
       const attachments = formatAttachments(msg.attachments);
       const content = (msg.content ?? "").trim();
