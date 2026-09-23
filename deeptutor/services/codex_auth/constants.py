@@ -1,10 +1,9 @@
 """Audited OpenAI Codex compatibility constants."""
 
 CODEX_UPSTREAM_COMMIT = "81da9deb065d7adb283816b19b40f89bcc484276"
-# Catalog compatibility: rust-v0.153.4, commit
-# 3d2ee51ca2d5db578f328aa75e20aa22c0197c9a. Older versions omit eligible models.
-# This request version is independent of the installed CLI and OAuth audit above.
-CODEX_CLIENT_VERSION = "0.153.4"
+# Last same-account verified catalog version when official package metadata is
+# unavailable. Explicit refresh normally discovers the current stable version.
+CODEX_CLIENT_VERSION = "0.156.1"
 CODEX_STABLE_VERSION_PATTERN = r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
 CODEX_NPM_LATEST_URL = "https://registry.npmjs.org/@openai%2Fcodex/latest"
 CODEX_VERSION_TIMEOUT_SECONDS = 3
