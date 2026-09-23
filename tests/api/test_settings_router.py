@@ -648,7 +648,7 @@ def test_media_and_voice_provider_choices_include_dashscope() -> None:
     )
     assert dashscope["tts"]["default_model"] == "qwen3-tts-flash"
     assert dashscope["tts"]["default_voice"] == "Cherry"
-    assert dashscope["stt"]["default_model"] == "paraformer-v2"
+    assert dashscope["stt"]["default_model"] == "paraformer-realtime-v2"
     assert dashscope["imagegen"]["default_model"] == "wanx2.1-t2i-turbo"
     assert dashscope["videogen"]["default_model"] == "wanx2.1-t2v-turbo"
 
