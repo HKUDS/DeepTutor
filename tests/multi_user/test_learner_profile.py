@@ -103,3 +103,116 @@ def test_admin_profile_api_is_learner_only_and_can_clear_profile(
     from deeptutor.services.auth import get_learner_profile
 
     assert get_learner_profile("learner") is None
+
+
+def test_non_admin_learner_accounts_can_manage_own_learner_profile(
+    mu_isolated_root, monkeypatch
+) -> None:
+    from deeptutor.api.routers import auth as auth_router
+    from deeptutor.multi_user.identity import save_user
+    from deeptutor.services.auth import TokenPayload, hash_password
+
+    # A non-empty store keeps save_user from bootstrapping the first account
+    # to admin, so "tess" actually lands as a teacher.
+    save_user("root", hash_password("root-password"), role="admin")
+    teacher = save_user(
+        "tess", hash_password("teacher-password"), role="teacher", preset="learner"
+    )
+    tokens = {
+        "teacher-token": TokenPayload(
+            username="tess", role="teacher", user_id=teacher["id"]
+        )
+    }
+    monkeypatch.setattr(auth_router, "AUTH_ENABLED", True)
+    monkeypatch.setattr(auth_router, "decode_token", lambda token: tokens.get(token))
+
+    app = FastAPI()
+    app.include_router(auth_router.router, prefix="/api/auth")
+    client = TestClient(app)
+    headers = {"Authorization": "Bearer teacher-token"}
+
+    updated = client.put(
+        "/api/auth/profile/learner-profile",
+        headers=headers,
+        json={"age": 9, "language": "zh-CN"},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["learner_profile"]["age"] == 9
+
+    fetched = client.get("/api/auth/profile/learner-profile", headers=headers)
+    assert fetched.status_code == 200
+    assert fetched.json()["learner_profile"]["age"] == 9
+
+
+def test_admin_managed_learner_profile_admits_non_admin_targets(
+    mu_isolated_root, monkeypatch
+) -> None:
+    from deeptutor.api.routers import auth as auth_router
+    from deeptutor.multi_user.identity import get_learner_profile, save_user
+    from deeptutor.services.auth import TokenPayload, hash_password
+
+    admin = save_user("root", hash_password("root-password"), role="admin")
+    save_user(
+        "tess", hash_password("teacher-password"), role="teacher", preset="learner"
+    )
+    tokens = {
+        "admin-token": TokenPayload(username="root", role="admin", user_id=admin["id"])
+    }
+    monkeypatch.setattr(auth_router, "AUTH_ENABLED", True)
+    monkeypatch.setattr(auth_router, "decode_token", lambda token: tokens.get(token))
+
+    app = FastAPI()
+    app.include_router(auth_router.router, prefix="/api/auth")
+    client = TestClient(app)
+    headers = {"Authorization": "Bearer admin-token"}
+
+    updated = client.put(
+        "/api/auth/users/tess/learner-profile",
+        headers=headers,
+        json={"age": 10, "language": "zh-CN"},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["learner_profile"]["age"] == 10
+
+    fetched = client.get("/api/auth/users/tess/learner-profile", headers=headers)
+    assert fetched.status_code == 200
+    assert fetched.json()["learner_profile"]["age"] == 10
+    assert get_learner_profile("tess")["age"] == 10
+
+
+def test_admin_accounts_still_excluded_from_learner_profile_paths(
+    mu_isolated_root, monkeypatch
+) -> None:
+    from deeptutor.api.routers import auth as auth_router
+    from deeptutor.multi_user.identity import save_user, set_learner_profile
+    from deeptutor.services.auth import TokenPayload, hash_password
+
+    admin = save_user(
+        "root", hash_password("root-password"), role="admin", preset="learner"
+    )
+    tokens = {
+        "admin-token": TokenPayload(username="root", role="admin", user_id=admin["id"])
+    }
+    monkeypatch.setattr(auth_router, "AUTH_ENABLED", True)
+    monkeypatch.setattr(auth_router, "decode_token", lambda token: tokens.get(token))
+
+    app = FastAPI()
+    app.include_router(auth_router.router, prefix="/api/auth")
+    client = TestClient(app)
+    headers = {"Authorization": "Bearer admin-token"}
+
+    assert (
+        client.get("/api/auth/profile/learner-profile", headers=headers).status_code
+        == 403
+    )
+    assert (
+        client.put(
+            "/api/auth/profile/learner-profile", headers=headers, json={"age": 8}
+        ).status_code
+        == 403
+    )
+    assert (
+        client.get("/api/auth/users/root/learner-profile", headers=headers).status_code
+        == 404
+    )
+    assert set_learner_profile("root", {"age": 8}) is None
