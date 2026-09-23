@@ -20,7 +20,10 @@ from deeptutor.services.videogen.config import VideogenConfig
 
 logger = logging.getLogger(__name__)
 
-_SUBMIT_PATH = "services/aigc/video-generation"
+# Same shape as the image adapter: the submit route is
+# ``video-generation/video-synthesis``. Without the trailing segment the
+# gateway answers 400 "task can not be null".
+_SUBMIT_PATH = "services/aigc/video-generation/video-synthesis"
 
 
 class DashScopeVideogenAdapter(BaseVideogenAdapter):

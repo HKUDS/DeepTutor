@@ -199,7 +199,9 @@ async def test_dashscope_imagegen_task_polls_and_downloads(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def post_router(url: str, _kwargs: Any) -> httpx.Response:
-        assert url == "https://dashscope.aliyuncs.com/api/v1/services/aigc/image-synthesis"
+        assert (
+            url == "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis"
+        )
         return httpx.Response(200, json={"output": {"task_id": "image-task"}})
 
     def get_router(url: str, _kwargs: Any) -> httpx.Response:
@@ -347,7 +349,10 @@ async def test_dashscope_videogen_task_polls_and_downloads(
         progress_messages.append(message)
 
     def post_router(url: str, kwargs: Any) -> httpx.Response:
-        assert url == "https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation"
+        assert (
+            url
+            == "https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis"
+        )
         assert kwargs["headers"]["X-DashScope-Async"] == "enable"
         assert kwargs["json"] == {
             "model": "wanx2.1-t2v-turbo",
