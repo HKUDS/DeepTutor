@@ -145,11 +145,34 @@ _LINK = re.compile(r"\[([^\]]+)\]\([^)]*\)")
 _HEADING = re.compile(r"^\s{0,3}#{1,6}\s*", re.MULTILINE)
 _BLOCKQUOTE = re.compile(r"^\s{0,3}>\s?", re.MULTILINE)
 _LIST_MARKER = re.compile(r"^\s{0,3}(?:[-*+]|\d+[.)])\s+", re.MULTILINE)
-_EMPHASIS = re.compile(r"(\*{1,3}|_{1,3}|~~)(\S.*?\S|\S)\1")
+_BOLD_STARS = re.compile(r"\*\*(.+?)\*\*", re.DOTALL)
+_BOLD_UNDERS = re.compile(r"__(.+?)__", re.DOTALL)
+_STRIKE = re.compile(r"~~(.+?)~~", re.DOTALL)
+_ITALIC_STARS = re.compile(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)", re.DOTALL)
+_ITALIC_UNDERS = re.compile(r"(?<!\w)_(?!_)(.+?)(?<!_)_(?!\w)", re.DOTALL)
 _HTML_TAG = re.compile(r"<[^>]+>")
 _TABLE_PIPE = re.compile(r"^\s*\|.*\|\s*$", re.MULTILINE)
 _WHITESPACE = re.compile(r"[ \t]+")
 _BLANK_LINES = re.compile(r"\n{3,}")
+
+
+def _unwrap_emphasis_for_speech(text: str) -> str:
+    """Turn Markdown bold/italic/strike into plain words.
+
+    Voice models otherwise speak ``*`` as "asterisk". Math must already have
+    been verbalized so TeX ``*`` / ``_`` inside ``$…$`` is not treated as
+    emphasis. Leftover unmatched ``**`` markers are dropped; a remaining
+    single ``*`` is turned into a space so "asterisk" is never read.
+    """
+    out = _BOLD_STARS.sub(r"\1", text)
+    out = _BOLD_UNDERS.sub(r"\1", out)
+    out = _STRIKE.sub(r"\1", out)
+    out = _ITALIC_STARS.sub(r"\1", out)
+    out = _ITALIC_UNDERS.sub(r"\1", out)
+    out = out.replace("**", "")
+    out = out.replace("__", "")
+    out = out.replace("*", " ")
+    return out
 
 
 def strip_markdown_for_speech(
@@ -180,7 +203,7 @@ def strip_markdown_for_speech(
     # the emphasis regex would otherwise pair a prose underscore with one
     # inside `$x_i$`.
     out = verbalize_latex_for_speech(out, math_speak=math_speak)
-    out = _EMPHASIS.sub(r"\2", out)
+    out = _unwrap_emphasis_for_speech(out)
     out = _WHITESPACE.sub(" ", out)
     out = _BLANK_LINES.sub("\n\n", out).strip()
     if max_chars and len(out) > max_chars:

@@ -51,6 +51,7 @@ import type {
   MessageRequestSnapshot,
 } from "@/features/chat/ChatStateAdapter";
 import { apiFetch, apiUrl } from "@/lib/api";
+import { notify } from "@/lib/notifications";
 import { docIconFor } from "@/lib/doc-attachments";
 import { useVoiceAutoplay } from "@/hooks/useVoiceAutoplay";
 import { extractMathAnimatorResult } from "@/lib/math-animator-types";
@@ -1285,10 +1286,24 @@ export function CopyActionButton({
   );
 }
 
-// Speaker button: synthesizes the reply via the configured TTS provider and
-// plays it. On the first manual play of a session it offers to auto-play the
-// rest; `autoPlayFresh` triggers playback automatically for a reply that just
-// finished generating when auto-play is on.
+// Speaker button: synthesizes this one reply and plays it. Auto-play of later
+// replies is a Settings preference (`autoPlayFresh`), not a first-click prompt.
+let stopActivePlayback: (() => void) | null = null;
+
+async function ttsErrorMessage(resp: Response): Promise<string> {
+  try {
+    const body = (await resp.json()) as { detail?: unknown };
+    if (typeof body.detail === "string" && body.detail.trim()) return body.detail;
+    if (Array.isArray(body.detail)) {
+      const first = body.detail[0] as { msg?: string } | undefined;
+      if (typeof first?.msg === "string" && first.msg.trim()) return first.msg;
+    }
+  } catch {
+    /* non-JSON error body */
+  }
+  return "";
+}
+
 export function PlayAudioButton({
   content,
   conversationKey,
@@ -1299,19 +1314,17 @@ export function PlayAudioButton({
   autoPlayFresh: boolean;
 }) {
   const { t } = useTranslation();
-  const {
-    autoplayEnabled,
-    enableForSession,
-    markPrompted,
-    shouldPromptOnFirstPlay,
-  } = useVoiceAutoplay(conversationKey);
+  const { autoplayEnabled } = useVoiceAutoplay(conversationKey);
   const [state, setState] = useState<"idle" | "loading" | "playing">("idle");
-  const [showPrompt, setShowPrompt] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const urlRef = useRef<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const genRef = useRef(0);
   const autoPlayedRef = useRef(false);
 
   const cleanup = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current = null;
@@ -1322,57 +1335,86 @@ export function PlayAudioButton({
     }
   }, []);
 
+  const stop = useCallback(() => {
+    genRef.current += 1;
+    cleanup();
+    setState("idle");
+    if (stopActivePlayback === stop) stopActivePlayback = null;
+  }, [cleanup]);
+
   const play = useCallback(async () => {
+    stopActivePlayback?.();
+    const gen = ++genRef.current;
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+    stopActivePlayback = stop;
     setState("loading");
     try {
       const resp = await apiFetch(apiUrl("/api/voice/tts"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: content }),
+        signal: ac.signal,
       });
+      if (gen !== genRef.current) return;
       if (!resp.ok) {
-        cleanup();
-        setState("idle");
+        const detail = await ttsErrorMessage(resp);
+        notify(
+          detail || t("Could not play this reply. Check Text-to-Speech in Settings."),
+          { tone: "error" },
+        );
+        stop();
         return;
       }
       const blob = await resp.blob();
-      cleanup();
+      if (gen !== genRef.current) return;
+      if (urlRef.current) {
+        URL.revokeObjectURL(urlRef.current);
+        urlRef.current = null;
+      }
       const url = URL.createObjectURL(blob);
       urlRef.current = url;
       const audio = new Audio(url);
       audioRef.current = audio;
       audio.onended = () => {
+        if (gen !== genRef.current) return;
         setState("idle");
         cleanup();
+        if (stopActivePlayback === stop) stopActivePlayback = null;
       };
       audio.onerror = () => {
-        setState("idle");
-        cleanup();
+        if (gen !== genRef.current) return;
+        notify(t("Could not play this reply. Check Text-to-Speech in Settings."), {
+          tone: "error",
+        });
+        stop();
       };
       await audio.play();
+      if (gen !== genRef.current) {
+        audio.pause();
+        return;
+      }
       setState("playing");
-    } catch {
-      cleanup();
-      setState("idle");
+    } catch (err) {
+      if (gen !== genRef.current) return;
+      if (err instanceof Error && err.name === "AbortError") return;
+      notify(t("Could not play this reply. Check Text-to-Speech in Settings."), {
+        tone: "error",
+      });
+      stop();
     }
-  }, [cleanup, content]);
+  }, [cleanup, content, stop, t]);
 
   const handleClick = useCallback(() => {
     if (state === "playing" || state === "loading") {
-      cleanup();
-      setState("idle");
+      stop();
       return;
     }
-    const willPrompt = shouldPromptOnFirstPlay();
     void play();
-    if (willPrompt) {
-      markPrompted();
-      setShowPrompt(true);
-    }
-  }, [cleanup, markPrompted, play, shouldPromptOnFirstPlay, state]);
+  }, [play, state, stop]);
 
-  // Auto-play a freshly-generated reply when enabled, exactly once. Deferred
-  // to a timer so synthesis (which sets state) starts off the effect body.
+  // Auto-play a freshly-generated reply when Settings auto-play is on.
   useEffect(() => {
     if (!autoPlayFresh || !autoplayEnabled) return;
     if (autoPlayedRef.current) return;
@@ -1409,32 +1451,6 @@ export function PlayAudioButton({
           )}
         </button>
       </Tooltip>
-      {showPrompt && (
-        <div className="absolute bottom-full left-0 z-30 mb-2 w-60 rounded-lg border border-[var(--border)] bg-[var(--card)] p-3 shadow-lg">
-          <p className="text-[12px] leading-relaxed text-[var(--foreground)]">
-            {t("Auto-play replies in this conversation?")}
-          </p>
-          <div className="mt-2.5 flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setShowPrompt(false)}
-              className="rounded-md px-2.5 py-1 text-[11.5px] text-[var(--muted-foreground)] hover:bg-[var(--muted)]/50 hover:text-[var(--foreground)]"
-            >
-              {t("Not now")}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                enableForSession();
-                setShowPrompt(false);
-              }}
-              className="rounded-md bg-[var(--primary)] px-2.5 py-1 text-[11.5px] font-medium text-[var(--primary-foreground)] hover:bg-[var(--primary)]/90"
-            >
-              {t("Turn on")}
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

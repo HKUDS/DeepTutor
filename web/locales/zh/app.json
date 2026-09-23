@@ -4937,6 +4937,7 @@
   "Subagent": "子智能体",
   "File": "文件",
   "Play aloud": "朗读",
+  "Could not play this reply. Check Text-to-Speech in Settings.": "无法朗读这条回复。请检查设置中的文本转语音。",
   "Auto-play replies in this conversation?": "自动朗读此对话中的回复？",
   "Turn on": "开启",
   "items": "项",
