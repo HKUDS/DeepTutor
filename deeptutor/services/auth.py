@@ -200,10 +200,12 @@ def set_role(username: str, role: str) -> bool:
     """
     Change the role for an existing user. Returns True on success.
 
-    Valid roles: 'admin', 'user'.
+    Valid roles are the entries of ``VALID_ROLES`` (currently 'admin', 'user').
     """
-    if role not in ("admin", "user"):
-        raise ValueError(f"Invalid role: {role!r}. Must be 'admin' or 'user'.")
+    from deeptutor.multi_user.models import VALID_ROLES
+
+    if role not in VALID_ROLES:
+        raise ValueError(f"Invalid role: {role!r}. Must be one of {sorted(VALID_ROLES)}.")
 
     from deeptutor.multi_user.identity import set_role as _set_role
 

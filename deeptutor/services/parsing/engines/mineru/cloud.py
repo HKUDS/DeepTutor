@@ -20,18 +20,23 @@ simplest correct choice (no nested event loop).
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 import io
+import json
 import logging
 from pathlib import Path
+import shutil
+import tempfile
 import time
 import zipfile
 
 import httpx
+from pypdf import PdfReader, PdfWriter
 
 from deeptutor.services.keypool import KeyPool
 
 from .config import MinerUConfig, MinerUError
-from .formats import MINERU_SUPPORTED_FORMATS
+from .formats import MINERU_PDF_FORMATS, MINERU_SUPPORTED_FORMATS
 
 logger = logging.getLogger(__name__)
 
@@ -91,22 +96,31 @@ def parse_cloud(
             logger.debug("on_progress callback failed", exc_info=True)
 
     with httpx.Client(base_url=base_url, headers={"Accept": "application/json"}) as client:
+        if source_path.suffix.lower() in MINERU_PDF_FORMATS:
+            page_count = _pdf_page_count(source_path)
+            if page_count is not None and page_count > config.max_pages_per_part:
+                return _parse_pdf_in_parts(
+                    client,
+                    source_path,
+                    output_base,
+                    config,
+                    key_pool,
+                    page_count=page_count,
+                    report=report,
+                    poll_interval=poll_interval,
+                    timeout=timeout,
+                )
+
         report(f"MinerU cloud: requesting upload slot for {source_path.name}")
-        batch_id, upload_url = _request_upload(client, source_path, config, key_pool)
-        size_mb = source_path.stat().st_size / (1024 * 1024)
-        report(f"MinerU cloud: uploading {source_path.name} ({size_mb:.1f} MB)")
-        _upload_file(source_path, upload_url)
-        zip_url = _poll_for_zip(
+        archive_bytes = _upload_and_fetch_archive(
             client,
-            batch_id,
-            source_path.name,
+            source_path,
+            config,
+            key_pool,
+            report=report,
             poll_interval=poll_interval,
             timeout=timeout,
-            on_progress=on_progress,
-            key_pool=key_pool,
         )
-        report("MinerU cloud: downloading parsed result archive")
-        archive_bytes = _download(zip_url)
 
     report("MinerU cloud: extracting archive")
     working_dir = output_base / source_path.stem
@@ -119,6 +133,229 @@ def parse_cloud(
 # ---------------------------------------------------------------------------
 # Steps
 # ---------------------------------------------------------------------------
+
+
+def _upload_and_fetch_archive(
+    client: httpx.Client,
+    part_path: Path,
+    config: MinerUConfig,
+    key_pool: KeyPool,
+    *,
+    report: Callable[[str], None],
+    poll_interval: float,
+    timeout: float,
+) -> bytes:
+    """Run the upload → poll → download trio for one input file and return the
+    result archive bytes. Shared by the single-file path and each slice of the
+    auto-split path."""
+    report(f"MinerU cloud: requesting upload slot for {part_path.name}")
+    batch_id, upload_url = _request_upload(client, part_path, config, key_pool)
+    size_mb = part_path.stat().st_size / (1024 * 1024)
+    report(f"MinerU cloud: uploading {part_path.name} ({size_mb:.1f} MB)")
+    _upload_file(part_path, upload_url)
+    zip_url = _poll_for_zip(
+        client,
+        batch_id,
+        part_path.name,
+        poll_interval=poll_interval,
+        timeout=timeout,
+        on_progress=report,
+        key_pool=key_pool,
+    )
+    report("MinerU cloud: downloading parsed result archive")
+    return _download(zip_url)
+
+
+def _parse_pdf_in_parts(
+    client: httpx.Client,
+    source_path: Path,
+    output_base: Path,
+    config: MinerUConfig,
+    key_pool: KeyPool,
+    *,
+    page_count: int,
+    report: Callable[[str], None],
+    poll_interval: float,
+    timeout: float,
+) -> Path:
+    """Slice an oversized PDF, parse each part through the normal cloud flow,
+    and merge the per-part artifacts into one working dir that is isomorphic to
+    the single-file output (one ``*.md`` + ``*_content_list.json`` + ``images/``)."""
+    working_dir = output_base / source_path.stem
+    _reset_dir(working_dir)
+    markdown_chunks: list[str] = []
+    content_items: list = []
+    has_content_list = False
+
+    with tempfile.TemporaryDirectory(prefix="mineru-slice-") as tmp:
+        parts = _split_pdf(source_path, config.max_pages_per_part, Path(tmp))
+        total = len(parts)
+        report(
+            f"MinerU cloud: {source_path.name} has {page_count} pages, exceeding the "
+            f"{config.max_pages_per_part}-page per-file limit; auto-splitting into "
+            f"{total} part(s)"
+        )
+        for index, part in enumerate(parts, start=1):
+            report(
+                f"MinerU cloud: parsing part {index}/{total} (pages {part.start + 1}-{part.end})"
+            )
+            archive_bytes = _upload_and_fetch_archive(
+                client,
+                part.path,
+                config,
+                key_pool,
+                report=report,
+                poll_interval=poll_interval,
+                timeout=timeout,
+            )
+            report(f"MinerU cloud: merging part {index}/{total} artifacts")
+            with tempfile.TemporaryDirectory(prefix="mineru-part-") as part_tmp:
+                part_dir = Path(part_tmp) / "out"
+                part_dir.mkdir()
+                _extract_archive(archive_bytes, part_dir)
+                _merge_part_artifacts(
+                    part_dir,
+                    working_dir,
+                    markdown_chunks=markdown_chunks,
+                    content_items=content_items,
+                    part_index=index,
+                )
+                has_content_list = True
+
+    merged_md = "".join(
+        chunk if chunk.endswith("\n") else chunk + "\n" for chunk in markdown_chunks
+    )
+    (working_dir / f"{source_path.stem}.md").write_text(merged_md, encoding="utf-8")
+    if has_content_list:
+        content_list_path = working_dir / f"{source_path.stem}_content_list.json"
+        content_list_path.write_text(
+            json.dumps(content_items, ensure_ascii=False), encoding="utf-8"
+        )
+    logger.info(
+        "MinerU cloud parse complete (%d parts): %s → %s", total, source_path.name, working_dir
+    )
+    return working_dir
+
+
+def _pdf_page_count(source_path: Path) -> int | None:
+    """Number of pages in a PDF, or ``None`` when pypdf cannot read it (e.g. a
+    truncated/encrypted file). ``None`` keeps the legacy single-file behaviour —
+    an unreadable PDF goes to MinerU as-is and fails there if it is truly broken."""
+    try:
+        with PdfReader(str(source_path)) as reader:
+            return len(reader.pages)
+    except Exception:
+        logger.warning("Could not count pages of %s; skipping auto-slicing", source_path.name)
+        return None
+
+
+def _split_pdf(source_path: Path, max_pages_per_part: int, work_dir: Path) -> list[_PdfPart]:
+    """Evenly cut ``source_path`` into parts of at most ``max_pages_per_part``
+    pages (the last part may be shorter) and write each part PDF into
+    ``work_dir``. 250 pages @180 → [180, 70]."""
+    try:
+        with PdfReader(str(source_path)) as reader:
+            total = len(reader.pages)
+            parts: list[_PdfPart] = []
+            for index, start in enumerate(range(0, total, max_pages_per_part), start=1):
+                end = min(start + max_pages_per_part, total)
+                part_path = work_dir / f"{source_path.stem}_part{index:02d}.pdf"
+                writer = PdfWriter()
+                for page_number in range(start, end):
+                    writer.add_page(reader.pages[page_number])
+                with open(part_path, "wb") as out:
+                    writer.write(out)
+                parts.append(_PdfPart(path=part_path, start=start, end=end))
+            return parts
+    except Exception as exc:
+        raise MinerUError(f"Failed to split PDF {source_path.name} into parts: {exc}") from exc
+
+
+def _merge_part_artifacts(
+    part_dir: Path,
+    working_dir: Path,
+    *,
+    markdown_chunks: list[str],
+    content_items: list,
+    part_index: int,
+) -> None:
+    """Accumulate one part's artifacts: markdown text, ``images/`` (renamed with
+    a part prefix so names stay globally unique) and ``content_list`` entries
+    (with ``img_path`` rewritten to match)."""
+    md_files = sorted(path for path in part_dir.rglob("*.md") if path.is_file())
+    if not md_files:
+        raise MinerUError(f"MinerU part {part_index} archive contains no markdown output.")
+    content_root = md_files[0].parent
+
+    rename_map = _copy_part_images(content_root / "images", working_dir / "images", part_index)
+
+    markdown = md_files[0].read_text(encoding="utf-8")
+    for original, unique in rename_map.items():
+        markdown = markdown.replace(f"images/{original}", f"images/{unique}")
+    markdown_chunks.append(markdown)
+
+    for content_list_path in sorted(content_root.glob("*_content_list.json")):
+        try:
+            payload = json.loads(content_list_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise MinerUError(
+                f"MinerU part {part_index} content list is unreadable: {exc}"
+            ) from exc
+        if isinstance(payload, list):
+            _rewrite_image_paths(payload, rename_map)
+            content_items.extend(payload)
+
+    # Keep the remaining artifacts (middle/model/layout files, origin PDF, …)
+    # on disk with a part prefix, mirroring the single-file layout as closely
+    # as their per-part nature allows.
+    for extra in sorted(content_root.iterdir()):
+        if not extra.is_file() or extra.suffix.lower() == ".md":
+            continue
+        if extra.name.endswith("_content_list.json"):
+            continue
+        shutil.copyfile(extra, working_dir / f"part{part_index:02d}_{extra.name}")
+
+
+def _copy_part_images(images_dir: Path, target_dir: Path, part_index: int) -> dict[str, str]:
+    """Copy one part's ``images/`` into the merged ``images/`` dir, prefixing
+    each name with the part index so names stay globally unique across parts.
+    Returns ``{original_name: unique_name}``."""
+    if not images_dir.is_dir():
+        return {}
+    target_dir.mkdir(parents=True, exist_ok=True)
+    rename_map: dict[str, str] = {}
+    for image in sorted(images_dir.iterdir()):
+        if not image.is_file():
+            continue
+        unique_name = f"part{part_index:02d}_{image.name}"
+        shutil.copyfile(image, target_dir / unique_name)
+        rename_map[image.name] = unique_name
+    return rename_map
+
+
+def _rewrite_image_paths(node: object, rename_map: dict[str, str]) -> None:
+    """Rewrite ``img_path``/``image_path`` values in a content-list tree to the
+    renamed (part-prefixed) image files."""
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key in ("img_path", "image_path") and isinstance(value, str):
+                name = value.rsplit("/", 1)[-1]
+                if name in rename_map:
+                    node[key] = value.replace(name, rename_map[name])
+            else:
+                _rewrite_image_paths(value, rename_map)
+    elif isinstance(node, list):
+        for item in node:
+            _rewrite_image_paths(item, rename_map)
+
+
+@dataclass(frozen=True)
+class _PdfPart:
+    """One slice of an oversized PDF: 0-based ``start``, exclusive ``end``."""
+
+    path: Path
+    start: int
+    end: int
 
 
 def _request_upload(

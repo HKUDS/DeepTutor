@@ -19,6 +19,12 @@ from deeptutor.services.config.runtime_settings import (
     load_mineru_settings,
 )
 
+# The MinerU cloud API rejects any single file above 200 pages, so the PDF
+# auto-slicer must never emit a part larger than that even if a setting asks
+# for it.
+MAX_PAGES_PER_PART_CEILING = 200
+DEFAULT_MAX_PAGES_PER_PART = 180
+
 
 class MinerUError(RuntimeError):
     """Raised when a MinerU parse fails (local CLI missing, cloud API error,
@@ -54,6 +60,17 @@ class MinerUConfig:
     # opts in explicitly (Settings → Document Parsing) or via the one-click
     # download button. Cloud mode ignores this (no local models).
     allow_local_model_download: bool = False
+    # Cloud-mode PDF auto-slicing. PDFs longer than this many pages are split
+    # into per-part PDFs, parsed one by one, and their artifacts merged back
+    # into a single working dir (see ``cloud.parse_cloud``). Values above the
+    # MinerU cloud ceiling are clamped in ``__post_init__``.
+    max_pages_per_part: int = DEFAULT_MAX_PAGES_PER_PART
+
+    def __post_init__(self) -> None:
+        if self.max_pages_per_part > MAX_PAGES_PER_PART_CEILING:
+            object.__setattr__(self, "max_pages_per_part", MAX_PAGES_PER_PART_CEILING)
+        elif self.max_pages_per_part < 1:
+            object.__setattr__(self, "max_pages_per_part", 1)
 
     @property
     def is_cloud(self) -> bool:
@@ -95,7 +112,18 @@ def resolve_mineru_config() -> MinerUConfig:
         enable_table=bool(settings.get("enable_table", True)),
         is_ocr=bool(settings.get("is_ocr", False)),
         allow_local_model_download=bool(settings.get("allow_local_model_download", False)),
+        max_pages_per_part=(
+            DEFAULT_MAX_PAGES_PER_PART
+            if settings.get("max_pages_per_part") is None
+            else int(settings.get("max_pages_per_part"))  # type: ignore[arg-type]
+        ),
     )
 
 
-__all__ = ["MinerUConfig", "MinerUError", "resolve_mineru_config"]
+__all__ = [
+    "DEFAULT_MAX_PAGES_PER_PART",
+    "MAX_PAGES_PER_PART_CEILING",
+    "MinerUConfig",
+    "MinerUError",
+    "resolve_mineru_config",
+]

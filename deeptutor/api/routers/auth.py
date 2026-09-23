@@ -164,8 +164,10 @@ class SetRoleRequest(BaseModel):
     @field_validator("role")
     @classmethod
     def role_valid(cls, v: str) -> str:
-        if v not in ("admin", "user"):
-            raise ValueError("Role must be 'admin' or 'user'")
+        from deeptutor.multi_user.models import VALID_ROLES
+
+        if v not in VALID_ROLES:
+            raise ValueError(f"Role must be one of {sorted(VALID_ROLES)}")
         return v
 
 
@@ -1080,7 +1082,7 @@ async def get_users(_: TokenPayload = Depends(require_admin)) -> list[UserInfo]:
 def _require_local_learner(current: TokenPayload) -> tuple[str, dict]:
     """Resolve a self-service profile request to its local learner account."""
 
-    if current.role != "user":
+    if current.role == "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Learner profile required"
         )
@@ -1135,7 +1137,7 @@ async def get_learner_profile(username: str, _: TokenPayload = Depends(require_a
     user = get_user(username)
     if (
         user is None
-        or str(user.get("role") or "user") != "user"
+        or str(user.get("role") or "user") == "admin"
         or str(user.get("preset") or "standard") != "learner"
     ):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
@@ -1154,7 +1156,7 @@ async def put_learner_profile(
     user = get_user(username)
     if (
         user is None
-        or str(user.get("role") or "user") != "user"
+        or str(user.get("role") or "user") == "admin"
         or str(user.get("preset") or "standard") != "learner"
     ):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")

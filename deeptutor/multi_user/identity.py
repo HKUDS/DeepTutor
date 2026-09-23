@@ -22,7 +22,7 @@ from .book_permission import (
     public_permission_dict,
 )
 from .learner_profile import normalize_profile
-from .models import AccountPreset, Role
+from .models import VALID_ROLES, AccountPreset, Role, normalize_role
 from .paths import PROJECT_ROOT, SYSTEM_ROOT, migrate_legacy_multi_user_tree
 
 logger = logging.getLogger(__name__)
@@ -69,9 +69,7 @@ def _canonical_record(
     hashed = str(value.get("hash") or value.get("password_hash") or "")
     if not hashed:
         return None
-    role = str(value.get("role") or default_role)
-    if role not in {"admin", "user"}:
-        role = default_role
+    role = normalize_role(str(value.get("role") or default_role), default_role)
     preset = str(value.get("preset") or "standard")
     if preset not in {"standard", "learner", "custom"}:
         preset = "standard"
@@ -112,8 +110,8 @@ def _migrate_legacy_users() -> dict[str, dict[str, Any]] | None:
     users: dict[str, dict[str, Any]] = {}
     for username, value in legacy.items():
         role: Role = "admin" if not users else "user"
-        if isinstance(value, dict) and str(value.get("role") or "") in {"admin", "user"}:
-            role = str(value.get("role"))  # type: ignore[assignment]
+        if isinstance(value, dict):
+            role = normalize_role(str(value.get("role") or ""), role)  # type: ignore[assignment]
         record = _canonical_record(username, value, default_role=role)
         if record is not None:
             users[str(username)] = record
@@ -194,8 +192,8 @@ def load_users(  # nosec B107 - empty defaults mean "no env fallback supplied".
     changed = False
     for index, (username, value) in enumerate(users.items()):
         role: Role = "admin" if index == 0 else "user"
-        if isinstance(value, dict) and str(value.get("role") or "") in {"admin", "user"}:
-            role = str(value.get("role"))  # type: ignore[assignment]
+        if isinstance(value, dict):
+            role = normalize_role(str(value.get("role") or ""), role)  # type: ignore[assignment]
         record = _canonical_record(str(username), value, default_role=role)
         if record is None:
             changed = True
@@ -310,7 +308,7 @@ def set_learner_profile(username: str, profile: dict[str, Any] | None) -> dict[s
         record = users.get(username)
         if (
             record is None
-            or str(record.get("role") or "user") != "user"
+            or str(record.get("role") or "user") == "admin"
             or str(record.get("preset") or "standard") != "learner"
         ):
             return None
@@ -461,8 +459,8 @@ def delete_avatar_file(user_id: str) -> None:
 
 
 def set_role(username: str, role: Role) -> bool:
-    if role not in {"admin", "user"}:
-        raise ValueError("role must be 'admin' or 'user'")
+    if role not in VALID_ROLES:
+        raise ValueError(f"role must be one of {sorted(VALID_ROLES)}")
     if not USERS_FILE.exists():
         return False
     users = load_users()
