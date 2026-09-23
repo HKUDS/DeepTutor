@@ -96,6 +96,19 @@ test("the build wrapper restores every generated checked-in input", () => {
   );
 });
 
+test("the build wrapper makes standalone output self-contained", () => {
+  const source = read("scripts", "build.mjs");
+  assert.match(source, /cpSync\(\s*path\.join\(distRoot, "static"\)/);
+  assert.match(source, /mkdirSync\(path\.join\(standaloneRoot, distDir\)/);
+  assert.match(source, /path\.join\(standaloneRoot, distDir, "static"\)/);
+  assert.match(source, /cpSync\(\s*path\.join\(webRoot, "public"\)/);
+  assert.match(source, /path\.join\(standaloneRoot, "public"\)/);
+  assert.match(
+    source,
+    /if \(status === 0\) completeStandaloneBundle\(distDir\)/,
+  );
+});
+
 test("the standalone bundle is rooted where the Python launcher expects it", () => {
   const source = read("next.config.js");
   assert.match(source, /output:\s*"standalone"/);
