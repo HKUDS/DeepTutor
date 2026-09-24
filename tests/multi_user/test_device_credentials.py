@@ -510,3 +510,47 @@ def _add_seconds(value: datetime, seconds: int) -> datetime:
     if value.tzinfo is None:
         value = value.replace(tzinfo=timezone.utc)
     return value + timedelta(seconds=seconds)
+
+
+def test_device_login_admits_non_admin_learner_accounts_and_still_rejects_admins(
+    mu_isolated_root, monkeypatch
+):
+    from deeptutor.multi_user.identity import save_user
+    from deeptutor.services.auth import hash_password
+
+    client, users = _client(mu_isolated_root, monkeypatch)
+    teacher = save_user(
+        "tess", hash_password("teacher-password"), role="teacher", preset="learner"
+    )
+    issued = client.post(
+        "/api/auth/devices",
+        headers=_auth(users["admin_token"]),
+        json={
+            "user_id": teacher["id"],
+            "device_name": "Teacher tablet",
+            "expires_in_days": 30,
+            "daily_limit_minutes": 30,
+        },
+    )
+    assert issued.status_code == 201, issued.text
+
+    login = client.post(
+        "/api/auth/device-login",
+        json={"pairing_code": issued.json()["pairing_code"], "pin": issued.json()["pin"]},
+    )
+    assert login.status_code == 200, login.text
+    assert login.json()["username"] == "tess"
+    assert login.json()["role"] == "teacher"
+
+    admin_issue = client.post(
+        "/api/auth/devices",
+        headers=_auth(users["admin_token"]),
+        json={
+            "user_id": users["admin"]["id"],
+            "device_name": "Admin tablet",
+            "expires_in_days": 30,
+            "daily_limit_minutes": 30,
+        },
+    )
+    assert admin_issue.status_code == 400
+    assert "active learner account" in admin_issue.json()["detail"]
