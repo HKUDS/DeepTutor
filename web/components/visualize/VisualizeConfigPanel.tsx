@@ -119,6 +119,7 @@ export default memo(function VisualizeConfigPanel({
               <option value="chartjs">{t("Chart.js")}</option>
               <option value="svg">{t("SVG")}</option>
               <option value="mermaid">{t("Mermaid")}</option>
+              <option value="mindmap">{t("Mind map")}</option>
               <option value="html">{t("HTML")}</option>
               <option value="manim_video">{t("Animation")}</option>
               <option value="manim_image">{t("Storyboard")}</option>

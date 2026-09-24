@@ -75,7 +75,7 @@ class CodeGeneratorAgent(BaseAgent):
 
         if analysis.render_type == "svg":
             lang_hint = "svg"
-        elif analysis.render_type == "mermaid":
+        elif analysis.render_type in ("mermaid", "mindmap"):
             lang_hint = "mermaid"
         elif analysis.render_type == "html":
             lang_hint = "html"

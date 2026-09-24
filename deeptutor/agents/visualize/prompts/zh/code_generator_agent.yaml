@@ -113,6 +113,13 @@ rules_mermaid: |
     Mermaid 会自动解决——不要在 SVG 里手画。
   - 标签简短可读；核对图表类型关键词与你描述的结构一致。
 
+rules_mindmap: |
+  渲染类型：Mermaid 思维导图。只输出有效的 Mermaid `mindmap` DSL：
+  - 第一个非空行必须是 `mindmap`。
+  - 只有一个根节点，层级缩进保持一致；至少包含一个子分支，不能出现多个根。
+  - 优先使用简短名词标签，层级不超过三层。不要输出 Markdown 围栏、流程图箭头
+    或其他 Mermaid 图表语法。
+
 rules_html: |
   渲染类型：HTML。输出一个完整、自包含的单文件 HTML 页面，用于交互式讲解、分步
   走读、UI 原型或可点击演示。
@@ -150,4 +157,5 @@ user_template: |
   - SVG 用：```svg ... ```
   - Chart.js 用：```javascript ... ```
   - Mermaid 用：```mermaid ... ```
+  - 思维导图用：```mermaid ... ```
   - HTML 用：```html ... ```
