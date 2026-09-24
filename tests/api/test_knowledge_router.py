@@ -53,6 +53,30 @@ def _build_app() -> FastAPI:
     return app
 
 
+_MATCH_SCOPE = {"type": "http", "method": "GET", "root_path": ""}
+
+
+def _iter_effective_routes(routes, prefix: str = ""):
+    """Flatten routes, recursing into lazy ``_IncludedRouter`` wrappers.
+
+    FastAPI >= 0.141 defers ``include_router``: ``app.router.routes`` holds
+    lazy wrapper objects without a ``path``. The real routes live on
+    ``original_router.routes`` (unprefixed) and the mount prefix on
+    ``include_context``, so the prefix must be re-attached here. Yields
+    ``(prefixed_path, route, prefix)`` in registration order; callers must
+    strip ``prefix`` from the URL before ``route.matches`` because inner
+    routes never see the mount prefix at runtime either.
+    """
+    for route in routes:
+        nested = getattr(route, "original_router", None)
+        if nested is None:
+            yield prefix + route.path, route, prefix
+            continue
+        context = getattr(route, "include_context", None)
+        nested_prefix = prefix + str(getattr(context, "prefix", "") or "")
+        yield from _iter_effective_routes(nested.routes, nested_prefix)
+
+
 @pytest.mark.parametrize(
     ("path", "route_path", "surface"),
     [
@@ -93,10 +117,14 @@ def test_learner_surface_uses_actual_kb_route_template(
     path: str, route_path: str, surface: str
 ) -> None:
     app = _build_app()
-    scope = {"type": "http", "method": "GET", "path": path, "root_path": ""}
-    matched = next(route for route in app.router.routes if route.matches(scope)[0] is Match.FULL)
-    assert matched.path == route_path
-    assert _learning_surface_for_path(path, "GET", route_path=matched.path) == surface
+    matched_path, matched = next(
+        (full_path, route)
+        for full_path, route, prefix in _iter_effective_routes(app.router.routes)
+        if path.startswith(prefix)
+        and route.matches({**_MATCH_SCOPE, "path": path[len(prefix) :] or "/"})[0] is Match.FULL
+    )
+    assert matched_path == route_path
+    assert _learning_surface_for_path(path, "GET", route_path=matched_path) == surface
 
 
 def test_knowledge_source_error_translation_is_consistent_and_sanitized() -> None:
