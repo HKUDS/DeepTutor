@@ -6,14 +6,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-Role = Literal["admin", "user"]
+Role = Literal["admin", "teacher", "student", "user"]
 AccountPreset = Literal["standard", "learner", "custom"]
 ScopeKind = Literal["admin", "user"]
 
 #: The single source of truth for valid role values. Every role-bearing
 #: store/validator must accept exactly this set; authorization itself stays
 #: least-privilege — only "admin" elevates.
-VALID_ROLES: frozenset[str] = frozenset({"admin", "user"})
+VALID_ROLES: frozenset[str] = frozenset({"admin", "teacher", "student", "user"})
 
 
 def normalize_role(value: str, default: str = "user") -> str:
