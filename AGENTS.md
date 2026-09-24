@@ -81,9 +81,9 @@ Multi-stage pipelines that own the turn:
 | `immersive_watching` | responding (timestamp-grounded video loop)         |
 
 All capabilities converge on `emit_capability_result()` in
-`deeptutor/capabilities/_shared.py` so every turn emits the same envelope
-(response payload + `cost_summary` from `UsageTracker`). Status copy and
-prompts are i18n'd via `capabilities/prompts/{en,zh}/<name>.yaml`.
+`deeptutor/agents/_shared/capability_result.py` so every turn emits the same
+envelope (response payload + `cost_summary` from `UsageTracker`). Status copy
+and prompts are i18n'd via `capabilities/prompts/{en,zh}/<name>.yaml`.
 
 ## CLI Usage
 
@@ -128,7 +128,7 @@ deeptutor start                   # backend + frontend together
 | `deeptutor/core/context.py`                | `UnifiedContext` dataclass            |
 | `deeptutor/tools/builtin/__init__.py`      | All built-in tool wrappers           |
 | `deeptutor/capabilities/`                  | Built-in capability implementations  |
-| `deeptutor/app.py`                         | `DeepTutorApp` — Python SDK facade    |
+| `deeptutor/app/facade.py`                  | `DeepTutorApp` — Python SDK facade    |
 | `deeptutor_cli/main.py`                    | Typer CLI entry point                |
 | `deeptutor/api/routers/unified_ws.py`      | Unified WebSocket endpoint           |
 
