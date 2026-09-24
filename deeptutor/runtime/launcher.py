@@ -211,7 +211,7 @@ def _clear_detached_runtime(paths: DetachedLauncherPaths, token: str) -> None:
         paths.stop.unlink(missing_ok=True)
 
 
-def _no_window_kwargs() -> dict[str, int]:
+def _no_window_kwargs() -> dict[str, Any]:
     """``Popen`` keywords that keep Windows from allocating a console window.
 
     The detached worker runs with ``DETACHED_PROCESS``, i.e. with no console of

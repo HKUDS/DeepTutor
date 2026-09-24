@@ -6,6 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
+from deeptutor.reading._grounding import evidence_key
 from deeptutor.reading._grounding import grounded_prompt as _prompt
 from deeptutor.reading.extensions import (
     ReadingAction,
@@ -71,8 +72,8 @@ def _quiz(data: Any, context: ReadingContext) -> _Quiz:
     except ValidationError as exc:
         raise ValueError("Reading quiz model returned an invalid shape.") from exc
 
-    normalized_context = _normalise(context.visible_text)
-    if any(_normalise(question.evidence) not in normalized_context for question in quiz.questions):
+    context_key = evidence_key(context.visible_text)
+    if any(evidence_key(question.evidence) not in context_key for question in quiz.questions):
         raise ValueError("Reading quiz evidence must come from the reading context.")
     return quiz
 

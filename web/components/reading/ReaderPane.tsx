@@ -38,6 +38,7 @@ import {
 } from "@/lib/reading-api";
 import { AnnotationList } from "./AnnotationList";
 import { AnnotationPopover, type PopoverAiAction } from "./AnnotationPopover";
+import { passagePrompts } from "@/lib/reading-passage-prompts";
 import { EpubDocumentView } from "./EpubDocumentView";
 import {
   PdfDocumentView,
@@ -164,7 +165,7 @@ export function ReaderPane({
   onLocatorChange,
   ownAnnotationList = true,
 }: ReaderPaneProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   // Document + annotations live in the provider (workspace layout), so they
   // survive the remount that sending the first message causes.
   const {
@@ -759,53 +760,73 @@ export function ReaderPane({
     [selection, material, saveMark, clearSelection],
   );
 
-  const askAboutSelection = useCallback(() => {
-    if (!selection || !material) return;
-    window.dispatchEvent(
-      new CustomEvent(READER_ASK_EVENT, {
-        detail: {
-          quote: selection.quote,
-          locator: selection.locator,
-          unit: material.unit,
-        },
-      }),
-    );
-    clearSelection();
-    window.getSelection()?.removeAllRanges();
-  }, [selection, material, clearSelection]);
+  // The text a question about the selection carries: the reading text where
+  // the view could tell it apart from the page furniture (margin line
+  // numbers), the raw selection otherwise. Marks keep the raw text, which is
+  // what re-anchors them on the page.
+  const selectionText = selection ? selection.text || selection.quote : "";
+
+  const askAboutSelection = useCallback(
+    (prompt?: string) => {
+      if (!selection || !material) return;
+      window.dispatchEvent(
+        new CustomEvent(READER_ASK_EVENT, {
+          detail: {
+            quote: selectionText,
+            locator: selection.locator,
+            unit: material.unit,
+            ...(prompt ? { prompt } : {}),
+          },
+        }),
+      );
+      clearSelection();
+      window.getSelection()?.removeAllRanges();
+    },
+    [selection, selectionText, material, clearSelection],
+  );
 
   // Inside a workspace the selection's AI actions sit on the popover, next to
-  // the text they act on, and answer in the companion column. They used to be
-  // a strip above the page that stayed greyed out until something was
-  // selected — by then the learner's eyes and pointer were on the page.
+  // the text they act on. Explain, translate and guide are messages in the
+  // reading conversation (see reading-passage-prompts); an installed
+  // extension's own selection actions follow them and answer as cards.
   const readingActions = useReadingActions();
   const aiActions = useMemo<PopoverAiAction[] | undefined>(() => {
     if (!readingActions || readingActions.ageMode !== "default") return undefined;
     if (!selection || !material) return undefined;
-    // One translate chip, pointed away from the passage's own language.
-    const skip = CJK_TEXT.test(selection.quote)
-      ? "translation:translate_zh"
-      : "translation:translate_en";
-    const target = { locator: selection.locator, selection: selection.quote };
-    return readingActions.actions
-      .filter((entry) => entry.needsSelection && entry.key !== skip)
-      .sort(
-        (left, right) =>
-          popoverActionRank(left.key) - popoverActionRank(right.key),
-      )
-      .map((entry: ReadingActionEntry) => ({
-        key: entry.key,
-        label: POPOVER_SHORT_LABELS[entry.key]
-          ? t(POPOVER_SHORT_LABELS[entry.key])
-          : entry.label,
-        title: entry.label,
-        onClick: () => {
-          void readingActions.run(entry, target);
-          clearSelection();
-          window.getSelection()?.removeAllRanges();
-        },
-      }));
-  }, [readingActions, selection, material, clearSelection, t]);
+    const target = { locator: selection.locator, selection: selectionText };
+    const prompts = passagePrompts(selectionText, i18n.language, t).map(
+      (prompt): PopoverAiAction => ({
+        key: prompt.key,
+        label: prompt.label,
+        title: prompt.message,
+        onClick: () => askAboutSelection(prompt.message),
+      }),
+    );
+    const extensions = readingActions.actions
+      .filter((entry) => entry.needsSelection)
+      .map(
+        (entry: ReadingActionEntry): PopoverAiAction => ({
+          key: entry.key,
+          label: entry.label,
+          title: entry.label,
+          onClick: () => {
+            void readingActions.run(entry, target);
+            clearSelection();
+            window.getSelection()?.removeAllRanges();
+          },
+        }),
+      );
+    return [...prompts, ...extensions];
+  }, [
+    readingActions,
+    selection,
+    selectionText,
+    material,
+    askAboutSelection,
+    clearSelection,
+    i18n.language,
+    t,
+  ]);
 
   // -- export --------------------------------------------------------------
 
@@ -1211,7 +1232,7 @@ export function ReaderPane({
           onUnderline={(color) => commitSelection("underline", color)}
           onNote={(note, color) => commitSelection("note", color, note)}
           onCitation={(color) => commitSelection("citation", color)}
-          onAsk={askAboutSelection}
+          onAsk={() => askAboutSelection()}
           aiActions={aiActions}
           // Closes the popover WITHOUT dropping the selection, so the
           // toolbar's selection-gated actions stay reachable.
@@ -1220,23 +1241,6 @@ export function ReaderPane({
       )}
     </div>
   );
-}
-
-const CJK_TEXT = /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/;
-
-const POPOVER_SHORT_LABELS: Record<string, string> = {
-  "vocabulary:explain": "Explain",
-  "translation:translate_en": "Translate",
-  "translation:translate_zh": "Translate",
-  "guided_learning:guide": "Guide me",
-};
-
-/** Built-ins first, in the order a reader reaches for them. */
-function popoverActionRank(key: string) {
-  if (key === "vocabulary:explain") return 0;
-  if (key.startsWith("translation:")) return 1;
-  if (key === "guided_learning:guide") return 2;
-  return 3;
 }
 
 function HeaderButton({

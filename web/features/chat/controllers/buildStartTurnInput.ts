@@ -117,6 +117,7 @@ export function buildStartTurnInput(input: StartTurnInput): StartTurnCommand {
     ...(input.consultPartnerId ? { consult_partner_id: input.consultPartnerId } : {}),
     ...(input.partnerDiscussionGroupId ? { partner_discussion_group_id: input.partnerDiscussionGroupId } : {}),
     auto_route: input.autoRoute ?? null,
+    ...(input.capabilityOnce ? { capability_once: true } : {}),
   });
 }
 

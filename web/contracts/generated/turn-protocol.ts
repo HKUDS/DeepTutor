@@ -29,6 +29,7 @@ export type BookId = string;
 export type PageIds = string[];
 export type BookReferences = BookReference[];
 export type Capability = string | null;
+export type CapabilityOnce = boolean;
 export type ConsultPartnerId = string | null;
 export type Content = string;
 export type CourseId = string | null;
@@ -277,6 +278,7 @@ export interface StartTurnCommand {
   auto_route?: AutoRoute;
   book_references?: BookReferences;
   capability?: Capability;
+  capability_once?: CapabilityOnce;
   config?: Config;
   consult_partner_id?: ConsultPartnerId;
   content: Content;

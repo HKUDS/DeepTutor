@@ -533,6 +533,7 @@ from deeptutor.api.routers import (
     co_writer,
     courses,
     dashboard,
+    file_preview,
     imports,
     knowledge,
     marginnote4,
@@ -582,6 +583,7 @@ app.include_router(
 # require_auth is a no-op when AUTH_ENABLED=false, so this is safe for local use.
 from deeptutor.api.routers.auth import (  # noqa: E402
     require_admin,
+    require_auth,
     require_learning_surface,
 )
 
@@ -599,6 +601,12 @@ app.include_router(
 )
 app.include_router(question.router, prefix="/api/question", tags=["question"], dependencies=_auth)
 app.include_router(knowledge.router, prefix="/api", tags=["knowledge-bases"], dependencies=_auth)
+app.include_router(
+    file_preview.router,
+    prefix="/api/file-preview",
+    tags=["file-preview"],
+    dependencies=[Depends(require_auth)],
+)
 app.include_router(imports.router, prefix="/api/imports", tags=["imports"], dependencies=_auth)
 app.include_router(
     dashboard.router, prefix="/api/dashboard", tags=["dashboard"], dependencies=_auth

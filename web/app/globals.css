@@ -923,9 +923,28 @@ body[data-picker-open] .dt-breathing-text {
    timing here MUST match FilePreviewDrawer's transform transition so the
    slide-in and the squeeze animate as one motion. Stays a no-op below
    the lg breakpoint, where the drawer overlays instead. */
+:root {
+  /* The side panels' slide and the chat column's squeeze are one motion:
+     they share this duration and curve, or the panel edge drifts off the
+     column edge mid-flight. */
+  --viewer-dur: 300ms;
+  --viewer-ease: cubic-bezier(0.32, 0.72, 0, 1);
+  /* Gap around the viewer panel once it floats as an inset sheet (md+). */
+  --viewer-inset: 0px;
+}
+@media (min-width: 768px) {
+  :root {
+    --viewer-inset: 8px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --viewer-dur: 0ms;
+  }
+}
 .chat-preview-shell {
   transition:
-    padding-right 220ms ease-out,
+    padding-right var(--viewer-dur) var(--viewer-ease),
     padding-left 240ms cubic-bezier(0.32, 0.72, 0, 1);
   padding-left: 0;
   padding-right: 0;
@@ -946,7 +965,54 @@ body[data-picker-open] .dt-breathing-text {
      both are open. Width is user-resizable, so the squeeze tracks the
      ``--viewer-width`` var the panel writes (falls back to 520px). */
   .chat-preview-shell[data-preview-open="false"][data-viewer-open="true"] {
-    padding-right: min(var(--viewer-width, 520px), 92vw);
+    padding-right: calc(
+      min(var(--viewer-width, 520px), 92vw) + var(--viewer-inset)
+    );
+  }
+}
+
+/* ----- Session viewer panel ----------------------------------------------
+   A full-screen sheet on phones; from md up an inset, rounded sheet that
+   floats a hair off the window edge. Closed, it parks just past the right
+   edge and turns hidden once the slide finishes — so its shadow never
+   bleeds back on screen and its contents drop out of the tab order. The
+   shadow is constant rather than toggled, so nothing pops at either end. */
+.dt-viewer-panel {
+  transform: translateX(calc(100% + var(--viewer-inset)));
+  visibility: hidden;
+  transition:
+    transform var(--viewer-dur) var(--viewer-ease),
+    visibility 0s linear var(--viewer-dur);
+}
+.dt-viewer-panel[data-open="true"] {
+  transform: translateX(0);
+  visibility: visible;
+  transition:
+    transform var(--viewer-dur) var(--viewer-ease),
+    visibility 0s;
+}
+@media (min-width: 768px) {
+  .dt-viewer-panel {
+    top: var(--viewer-inset);
+    right: var(--viewer-inset);
+    bottom: var(--viewer-inset);
+    height: auto;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+    border-radius: 16px;
+    /* md–lg: the sheet overlays the conversation, so it needs real lift. */
+    box-shadow:
+      0 1px 2px color-mix(in srgb, var(--foreground) 4%, transparent),
+      0 16px 40px -16px color-mix(in srgb, var(--foreground) 18%, transparent);
+  }
+}
+@media (min-width: 1024px) {
+  /* Docked beside the squeezed column it overlaps nothing — a whisper of
+     depth is enough to separate it from the page. */
+  .dt-viewer-panel {
+    box-shadow:
+      0 1px 2px color-mix(in srgb, var(--foreground) 3%, transparent),
+      0 6px 20px -12px color-mix(in srgb, var(--foreground) 10%, transparent);
   }
 }
 

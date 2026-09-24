@@ -11,6 +11,7 @@ import {
   isBackendPath,
   isCodexCallbackPath,
   isRetiredPagePath,
+  isWebSocketPath,
 } from "./lib/proxy-policy";
 
 // Backend base URL for `/api/*` and `/ws/*` rewrites. The container entrypoint
@@ -66,7 +67,10 @@ export function proxy(req: NextRequest): NextResponse {
   if (isBackendPath(pathname)) {
     return NextResponse.rewrite(new URL(pathname + search, API_BASE_URL), {
       request: {
-        headers: prepareBackendForwardHeaders(req.headers),
+        headers: prepareBackendForwardHeaders(req.headers, {
+          allowWebSocketUpgrade:
+            req.method === "GET" && isWebSocketPath(pathname),
+        }),
       },
     });
   }

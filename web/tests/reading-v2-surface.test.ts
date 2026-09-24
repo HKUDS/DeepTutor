@@ -142,7 +142,11 @@ test("narrow reading workspaces keep the source primary and use dismissible pane
   // two hold over the surface rather than over the shell — exactly the case
   // `workspaceSurface` exists for.
   assert.match(workspace, /xl:static xl:w-auto xl:shadow-none/);
-  assert.match(workspace, /aria-label=\{t\("Close reading companion"\)\}/);
+  // The companion sheet has no header of its own; it is dismissed by the
+  // scrim over the document or by its switch on the workspace bar, which
+  // stays above the sheet.
+  assert.match(page, /aria-label=\{t\("Close panels"\)\}/);
+  assert.match(page, /toggleCompanion\(!companionOpen\)/);
 });
 
 test("failed imports expose the durable retry endpoint in product UI", () => {

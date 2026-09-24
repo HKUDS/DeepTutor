@@ -253,3 +253,30 @@ def test_quiz_crosses_the_api_boundary_with_stored_text(monkeypatch, tmp_path):
         in prompt["surrounding_context"]
     )
     assert "forged phrase" not in prompt["surrounding_context"]
+
+
+@pytest.mark.asyncio
+async def test_evidence_matches_across_margin_line_numbers(monkeypatch):
+    """A review copy's line numbers sit on lines of their own in the unit text;
+    a model quoting the sentence leaves them out and rejoins the hyphenated
+    word, and that is still a quote from the page."""
+    context = ReadingContext(
+        material_id="material",
+        locator=1,
+        locale="en",
+        visible_text=(
+            "while existing RAG systems fall short in\n3\ndelivering personalized, "
+            "guided feedback. To bridge this gap, we present DeepTu-\n4\ntor, a fully "
+            "open-source agentic framework"
+        ),
+    )
+
+    async def complete(**_kwargs):
+        return _model_response(
+            evidence="fall short in delivering personalized, guided feedback. "
+            "To bridge this gap, we present DeepTutor"
+        )
+
+    monkeypatch.setattr("deeptutor.reading.quiz.complete", complete)
+    result = await ReadingQuizExtension().run_action("start", context)
+    assert len(result.payload["questions"]) == 3

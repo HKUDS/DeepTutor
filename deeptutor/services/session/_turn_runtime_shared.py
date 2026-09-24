@@ -914,6 +914,9 @@ def _request_snapshot_metadata(
             snapshot[snapshot_key] = payload[payload_key]
     workspace_mode = _workspace_mode(payload.get("workspace_mode"), capability=capability)
     snapshot["workspaceMode"] = workspace_mode
+    if payload.get("capability_once"):
+        # Kept so a regenerate runs in this mode again without adopting it.
+        snapshot["capabilityOnce"] = True
     if attachments:
         snapshot["attachments"] = attachments
     capability_route = payload.get("capability_route")
@@ -934,6 +937,15 @@ def _request_snapshot_metadata(
             snapshot["readingMaterialRevision"] = reading_material_revision
     reading_workspace_id = _reading_workspace_id(payload.get("reading_workspace_id"))
     snapshot["readingWorkspaceId"] = reading_workspace_id
+    # The passage the question was asked about. Without it the bubble shows a
+    # bare "Explain this" with nothing to say what "this" was, and a
+    # regenerate re-asks it about no passage at all.
+    viewport = _reading_viewport(payload.get("reading_viewport"))
+    if reading_material_id and viewport.get("selection"):
+        snapshot["readingSelection"] = {
+            "quote": viewport["selection"],
+            "locator": viewport.get("locator", 0),
+        }
     timed_media_id = _timed_media_id(payload.get("timed_media_id"))
     if timed_media_id:
         snapshot["timedMediaId"] = timed_media_id

@@ -55,6 +55,7 @@ from deeptutor.reading.models import (
     ReadingUpgradeConflict,
     TextPositionSelector,
     TextQuoteSelector,
+    TextSelector,
     UnitReference,
 )
 from deeptutor.services.file_io import atomic_write_text as _atomic_write
@@ -515,7 +516,7 @@ class ReadingStore:
                 media_dir.mkdir(parents=True, exist_ok=True)
                 for item in extraction.media:
                     (media_dir / item.name).write_bytes(item.data)
-                    row: dict[str, Any] = {
+                    media_row: dict[str, Any] = {
                         "name": item.name,
                         "locator": item.locator,
                         "mime": item.mime_type,
@@ -523,8 +524,8 @@ class ReadingStore:
                     }
                     caption = previous_captions.get(hashlib.sha256(item.data).hexdigest())
                     if caption:
-                        row["caption"] = caption
-                    media_rows.append(row)
+                        media_row["caption"] = caption
+                    media_rows.append(media_row)
                 _atomic_write(
                     stage_dir / MEDIA_INDEX_NAME,
                     json.dumps(media_rows, ensure_ascii=False),
@@ -1225,7 +1226,7 @@ class ReadingStore:
                     unit_text = new_unit_texts[locator]
                     canonical_exact = unit_text[start:end]
                     new_quote = dataclass_replace(quote_selector, exact=canonical_exact)
-                    new_selectors = []
+                    new_selectors: list[TextSelector] = []
                     for s in row.selectors:
                         if s is quote_selector:
                             new_selectors.append(new_quote)

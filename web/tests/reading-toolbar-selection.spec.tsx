@@ -115,7 +115,9 @@ vi.mock("@/context/ReadingContext", () => ({
   }),
 }));
 
-const { ReaderPane } = await import("@/components/reading/ReaderPane");
+const { READER_ASK_EVENT, ReaderPane } = await import(
+  "@/components/reading/ReaderPane"
+);
 const { ReadingActionsProvider } = await import(
   "@/components/reading/ReadingActionsProvider"
 );
@@ -207,12 +209,17 @@ describe("reading toolbar with a live selection", () => {
   });
 
   /**
-   * Inside a workspace the same action is on the selection popover, and the
-   * strip of chips above the page is gone: one place to start it, and the
-   * answer goes to the companion column rather than a band over the page.
+   * Inside a workspace the selection's verbs are on the popover, and they
+   * are messages in the reading conversation: the popover hands the passage
+   * and the words to the workspace instead of running an extension with its
+   * own model call and its own result card.
    */
-  it("runs selection actions from the popover inside a workspace", async () => {
+  it("sends selection actions to the reading conversation", async () => {
     const user = userEvent.setup();
+    const asks: Array<Record<string, unknown>> = [];
+    const onAsk = (event: Event) =>
+      asks.push((event as CustomEvent<Record<string, unknown>>).detail);
+    window.addEventListener(READER_ASK_EVENT, onAsk);
     render(
       <ReadingActionsProvider materialId="m1" locator={1}>
         <ReaderPane onClose={() => undefined} />
@@ -223,7 +230,9 @@ describe("reading toolbar with a live selection", () => {
     act(() =>
       view.select?.({
         locator: 4,
-        quote: "the slope of the line",
+        quote: "the slope of the 3 line",
+        // What the page view recovers once the margin line number is gone.
+        text: "the slope of the line",
         rects: [],
         anchor: { x: 100, y: 200 },
       }),
@@ -233,27 +242,30 @@ describe("reading toolbar with a live selection", () => {
       name: "Annotate selection",
     });
     const translate = await within(popover).findByRole("button", {
-      name: "Translate to Chinese",
+      name: "Translate this passage into Chinese",
     });
     expect(translate).toHaveTextContent("Translate");
     expect(
       within(popover).getByRole("button", { name: "Ask about this" }),
     ).toBeVisible();
+    // The extension the prompt replaced is not offered a second time.
+    expect(
+      within(popover).queryByRole("button", { name: "Translate to Chinese" }),
+    ).not.toBeInTheDocument();
     await user.click(translate);
 
-    await waitFor(() => expect(api.runReadingExtension).toHaveBeenCalled());
-    const [, extensionId, actionId, body] = api.runReadingExtension.mock.calls[0];
-    expect(extensionId).toBe("translation");
-    expect(actionId).toBe("translate_zh");
-    expect(body.selection).toBe("the slope of the line");
-    expect(body.locator).toBe(4);
-    // The popover closes once the action is on its way.
+    window.removeEventListener(READER_ASK_EVENT, onAsk);
+    expect(asks).toEqual([
+      expect.objectContaining({
+        quote: "the slope of the line",
+        locator: 4,
+        prompt: "Translate this passage into Chinese",
+      }),
+    ]);
+    expect(api.runReadingExtension).not.toHaveBeenCalled();
+    // The popover closes once the question is on its way.
     expect(
       screen.queryByRole("dialog", { name: "Annotate selection" }),
     ).not.toBeInTheDocument();
-    // …and the strip that used to carry the same button is not rendered.
-    expect(
-      screen.queryAllByRole("button", { name: "Translate to Chinese" }),
-    ).toHaveLength(0);
   });
 });

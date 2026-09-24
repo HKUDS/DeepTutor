@@ -398,31 +398,6 @@ export async function fetchReadingCollectionIndex(
   }
 }
 
-/**
- * Three things the learner could open this material with.
- *
- * Written against the material itself, so they name a claim it makes or a
- * section it has rather than being true of every document. An empty array
- * means the panel keeps its own generic lines — this is a nicety, and an
- * empty conversation must never be an empty panel.
- */
-export async function fetchReadingOpeners(
-  workspaceId: string,
-  locator?: number,
-  init?: RequestInit,
-): Promise<string[]> {
-  const suffix = locator && locator > 0 ? `?locator=${locator}` : "";
-  try {
-    const result = await json<{ suggestions?: string[] }>(
-      `/workspaces/${workspaceId}/openers${suffix}`,
-      init,
-    );
-    return Array.isArray(result.suggestions) ? result.suggestions : [];
-  } catch {
-    return [];
-  }
-}
-
 export async function listReadingConversations(
   workspaceId: string,
 ): Promise<ReadingConversation[]> {

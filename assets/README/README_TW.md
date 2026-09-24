@@ -10,8 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending&amp;theme=dark" /><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" /><img alt="GitHub Trending Repository of the Day" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" height="55" /></picture></a>&nbsp;
-  <a href="https://trendshift.io/repositories/17099?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-17099" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/17099/daily" alt="HKUDS/DeepTutor | Trendshift" width="250" height="55"/></a>
+<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending&amp;theme=dark"><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending"><img alt="GitHub Trending Repository of the Day" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" height="55"></picture></a>&#32;<a href="https://trendshift.io/repositories/17099"><img src="https://trendshift.io/api/badge/trendshift/repositories/17099/daily" alt="HKUDS/DeepTutor | Trendshift" width="250" height="55"></a>&#32;<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;theme=dark"><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor"><img alt="Star History Rank" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor" width="185" height="55"></picture></a>
 </p>
 
 <p align="center">
@@ -64,7 +63,7 @@ DeepTutor 是代理程式原生的學習工作區，在同一個可擴充系統�
 - **所有模式共用一套執行階段** — Chat、Ask Questions、Quiz、Research、Visualize、Solve、Course Study、Mastery Path、Immersive Reading 與 Immersive Watching 共用同一套能力執行階段與工作階段情境，同時保有針對各自用途設計的迴圈與管線。
 - **相互連結的學習情境** — 知識庫、書籍、Co-Writer 草稿、筆記本、題庫、角色設定與 Memory 可在支援這些內容的工作流程中重複使用，但仍受帳號授權與學習政策限制。
 - **沉浸式影片學習** — 貼上 YouTube 連結，即可使用隱私強化的原生播放、同步字幕、以時間戳為依據的教學，以及可續接的學習進度；管理員也能將播放切換至自架的 Invidious 執行個體，無須重新建立素材。
-- **子代理程式與 Partners** — 可從 Chat 諮詢即時代理程式執行框架（Claude Code、Codex、Antigravity、Kimi、opencode、MiMo、Hermes、OpenClaw 或 DeepSeek）或 Partner、匯入過往對話，並讓持續運作的 IM 夥伴共用同一套核心。
+- **子代理程式與 Partners** — 可從 Chat 諮詢即時代理程式執行框架（Claude Code、Codex、Grok CLI、Antigravity、Kimi、opencode、MiMo、Hermes、OpenClaw 或 DeepSeek）或 Partner、匯入過往對話，並讓持續運作的 IM 夥伴共用同一套核心。
 - **多引擎知識系統** — 透過 LlamaIndex、PageIndex、GraphRAG、LightRAG、遠端 LightRAG Server、自架 WeKnora 知識庫、Tencent IMA 或 MarginNote 4 知識庫，或連結的 Obsidian vault 建立版本化 RAG 知識庫，並支援可插拔的文件解析。請參閱[原生 LightRAG 角色模型](../../deeptutor/services/rag/pipelines/lightrag/README.md)，了解獨立的擷取、查詢與視覺設定、僅預設建立，以及確認後的重建。
 - **可擴充的工具與技能** — 內建工具、MCP 伺服器、CLI 應用程式、影像／影片／語音生成模型，以及可從 EduHub 安裝的社群技能。
 - **可檢視的記憶** — L1 軌跡、L2 介面摘要與 L3 綜整讓個人化內容透明且可編輯；Memory Graph 會將 L2 事實連結至 L1 證據，並將 L3 綜整連結至其貢獻來源介面。
@@ -418,7 +417,7 @@ Chat 是預設能力，也是大多數工作的起點。單一對話可以進行
 <img src="../../assets/figs/system/chat-agent-loop.png" alt="DeepTutor Chat 代理程式迴圈" width="900">
 </div>
 
-使用者可切換的工具包括 `brainstorm`、`web_search`、`paper_search`、`reason` 與 `geogebra_analysis`；設定對應的生成模型後，還會有 `imagegen` 與 `videogen`。`rag`、`kb_files`、`knowledge_frontier`、`read_source`、`read_memory`、`write_memory`、`read_skill`、`load_tools`、`exec`、`web_fetch`、`ask_user`、`list_notebook`、`write_note`、`question_bank`、`github`、`consult_subagent`、`workspace_list`、`workspace_read`、`workspace_search`、`workspace_present` 與 `workspace_export` 等情境式工具，會在回合具有相符情境時自動掛載。
+使用者可切換的工具包括 `brainstorm`、`web_search`、`paper_search`、`zotero_search`、`reason` 與 `geogebra_analysis`；設定對應的生成模型後，還會有 `imagegen` 與 `videogen`。`rag`、`kb_files`、`knowledge_frontier`、`read_source`、`read_memory`、`write_memory`、`read_skill`、`load_tools`、`exec`、`web_fetch`、`ask_user`、`list_notebook`、`write_note`、`question_bank`、`github`、`consult_subagent`、`workspace_list`、`workspace_read`、`workspace_search`、`workspace_present` 與 `workspace_export` 等情境式工具，會在回合具有相符情境時自動掛載。
 
 情境分成兩類：**固定的工作階段情境**（能力、工作區或課程、工具、知識庫、角色設定、模型，以及 Reading／Mastery 狀態）會延續到後續回合；**單次參照**（檔案、聊天記錄、書籍、閱讀章節、筆記本、題庫、匯入的代理程式）則從 `+` 選單加入，只用於單一回合。語音按鈕只會轉錄目前的訊息。
 
@@ -458,13 +457,19 @@ Partners 是持續運作的夥伴，各自擁有 soul、模型政策、知識庫
 <img src="../../assets/figs/web-1.4.6+/myagents/00-overview.png" alt="DeepTutor My Agents 工作區" width="900">
 </div>
 
-My Agents 會將其他代理程式變成 DeepTutor 的情境，並提供兩項不同功能。**連接即時代理程式** — 連接你電腦上的 Claude Code、Codex、Antigravity、Kimi、opencode、MiMo Code、Hermes Agent、OpenClaw 或 DeepSeek Harness、遠端 Hermes gateway，或你的一位 Partner，並從聊天回合內諮詢它。DeepTutor 會實際*執行*其他代理程式，再透過 `consult_subagent` 工具將其工作即時串流至 Activity 面板。使用 Agent chip 選取代理程式及其回合上限，或透過 `@` 篩選同一份已連接代理程式清單；這項選擇會保留在工作階段中。
+My Agents 會將其他代理程式變成 DeepTutor 的情境，並提供兩項不同功能。**連接即時代理程式** — 連接你電腦上的 Claude Code、Codex、Grok CLI、Antigravity、Kimi、opencode、MiMo Code、Hermes Agent、OpenClaw 或 DeepSeek Harness、遠端 Hermes gateway，或你的一位 Partner，並從聊天回合內諮詢它。DeepTutor 會實際*執行*其他代理程式，再透過 `consult_subagent` 工具將其工作即時串流至 Activity 面板。使用 Agent chip 選取代理程式及其回合上限，或透過 `@` 篩選同一份已連接代理程式清單；這項選擇會保留在工作階段中。
+
+**連接 Grok CLI。** 在執行 DeepTutor 後端的機器上安裝 xAI 的 Grok CLI，於該處執行 `grok login`，並確認 `grok --help` 有列出 `--output-format streaming-json`。接著開啟 **My Agents → Connect**，選擇 **Grok CLI**，並選定工作目錄。偵測步驟只會檢查執行檔的協定支援，並不會驗證登入狀態或模型存取權。此連接器已在 Grok CLI 1.0.3 上驗證過；同名但不相關的第三方 `grok` 指令不受支援。
+
+在 **Settings → Partners & Agents → Grok CLI** 中，將模型與推理強度留空即可使用 CLI 預設值，或輸入你帳號的 `grok models` 輸出所支援的值。系統指示會透過 `--rules` 傳入。預設的權限模式是 `dontAsk`：Grok 會使用自己既有的規則與內建的唯讀處理方式，並拒絕需要核准的操作。這是一種 CLI 權限政策，而不是檔案系統沙箱。可在設定中明確選擇更寬鬆的模式；進階 CLI 旗標仍可透過子代理程式設定 API 中的 `backends.grok.extra_args` 使用。
+
+Grok 使用自己的驗證與工作階段儲存機制，DeepTutor 不會複製其憑證。後續諮詢會在同一個工作目錄中續接該連線的工作階段。文字與工具活動會即時串流；私密的思考內容則會被省略。跨工作階段的 Grok 記憶預設為停用。此連接器支援文字問答與 CLI 工具，不支援影像轉發或匯入過往的 Grok 對話。在 Docker 中，請於後端容器內安裝並驗證 Grok；只安裝在瀏覽器所在電腦上的 CLI 無法被存取。
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/home/08-subagent%20demo%20with%20claude%20code.png" alt="即時諮詢 Claude Code 子代理程式" width="900">
 </div>
 
-**匯入過往對話** — 將現有的 Claude Code 與 Codex 記錄匯入為可命名、搜尋及繼續的代理程式。Claude 記錄依專案／工作目錄選取，Codex 記錄則依日曆日期選取；重新整理時會再次同步該範圍並拉取新對話。你可以在 Chat 回合中透過 `+` → My Agents 參照其中一段對話；DeepTutor 會將其讀作第三方逐字稿，保留為*對方*的對話，而不是 DeepTutor 自己的口吻。
+**匯入過往對話** — 將現有的 ChatGPT、Claude Code 與 Codex 記錄匯入為可搜尋、可繼續的對話。選取官方 ChatGPT 資料匯出中的 `conversations.json`，即可進行安全且具冪等性的快照匯入；Claude 記錄依專案／工作目錄選取，Codex 記錄則依日曆日期選取。以資料夾為基礎的代理程式仍可重新整理，讓其選定範圍拉取新對話。你可以在 Chat 回合中透過 `+` → My Agents 參照其中一段對話；DeepTutor 會將其讀作第三方逐字稿，保留為*對方*的對話，而不是 DeepTutor 自己的口吻。
 
 </details>
 
@@ -521,7 +526,7 @@ Book 會將選定來源轉換成互動式**活書**；它不是靜態 PDF，而�
 
 要遷移現有的 Obsidian、Hermes 或 Markdown 知識庫嗎？請參閱 [Knowledge 遷移指南](../../docs-for-user/KNOWLEDGE_MIGRATION.md)，了解連結 vault 與索引副本兩種方式。
 
-建立知識庫時，可以選擇**建立新的知識庫**（上傳文件並建立全新索引），或**連結現有知識庫**（重複使用在其他位置建立的索引、就地讀取且不重新建立索引）。知識庫也可以追蹤 **GitHub repositories**（repo、branch、glob）或**文件網站 URL**（限制爬取深度與頁面數量）；依需求同步時會以內容雜湊差異識別新增、變更與移除的內容，因此你所追蹤的文件能保持最新，無須重新上傳。重新建立索引時，系統會寫入新的扁平 `version-N` 目錄並保留先前版本，因此可用索引不會在重建途中遭到破壞。即使知識庫處於 **error** 狀態，也能移除單一文件；可直接刪除解析失敗的檔案，無須刪除並重建全部內容。文件解析方式（Text-only、MinerU、Docling、Tika、markitdown、PyMuPDF4LLM 或 LiteParse）可在 **Settings → Knowledge & documents** 選擇，預設不下載本機模型。Docling 也可以在**遠端（remote）**模式下運作，改連線至 Docling Serve 伺服器（無須本機安裝或下載模型），可在同一頁面（設定 `mode=remote`、伺服器基礎 URL 與選用的 API 金鑰）或 `DOCLING_MODE`／`DOCLING_API_BASE_URL`／`DOCLING_API_TOKEN` 環境變數進行設定。Tika 僅支援遠端模式，會連線至該頁面設定的 Apache Tika 伺服器。CLI 也提供對應的完整生命週期指令：`list/info/create/add/search/set-default/delete`、來源新增／移除指令、`list-sources` 與 `sync`。
+建立知識庫時，可以選擇**建立新的知識庫**（上傳文件並建立全新索引），或**連結現有知識庫**（重複使用在其他位置建立的索引、就地讀取且不重新建立索引）。知識庫也可以追蹤 **GitHub repositories**（repo、branch、glob）或**文件網站 URL**（限制爬取深度與頁面數量，預設每 24 小時重新同步一次）；同步時會以內容雜湊差異識別新增、變更與移除的內容，因此你所追蹤的文件能保持最新，無須重新上傳，**已連結的資料夾**也會在同步時取得新增或變更的本機檔案。重新建立索引時，系統會寫入新的扁平 `version-N` 目錄並保留先前版本，因此可用索引不會在重建途中遭到破壞。即使知識庫處於 **error** 狀態，也能移除單一文件；可直接刪除解析失敗的檔案，無須刪除並重建全部內容。文件解析方式（Text-only、MinerU、Docling、Tika、markitdown、PyMuPDF4LLM 或 LiteParse）可在 **Settings → Knowledge & documents** 選擇，預設不下載本機模型。Docling 也可以在**遠端（remote）**模式下運作，改連線至 Docling Serve 伺服器（無須本機安裝或下載模型），可在同一頁面（設定 `mode=remote`、伺服器基礎 URL 與選用的 API 金鑰）或 `DOCLING_MODE`／`DOCLING_API_BASE_URL`／`DOCLING_API_TOKEN` 環境變數進行設定。Tika 僅支援遠端模式，會連線至該頁面設定的 Apache Tika 伺服器。CLI 也提供對應的完整生命週期指令：`list/info/create/add/search/set-default/delete`、來源新增／移除指令、`list-sources` 與 `sync`。
 
 內建的 LightRAG 引擎可透過 `pip install 'deeptutor[rag-lightrag]'` 安裝；此額外套件包含明確支援的 LightRAG SDK，但不會安裝 MinerU。若需要結構化解析，請在 Document Parsing 中另行選擇 MinerU，並設定其雲端模式，或安裝目前的本機 CLI。MinerU 支援 PDF、常見點陣圖格式、DOCX、PPTX 與 XLSX；舊版 `magic-pdf` 仍僅支援 PDF。Text-only 與其他解析引擎不需要 MinerU。
 
@@ -570,7 +575,7 @@ Memory Graph 會呈現完整金字塔：L3 綜整位於中央、L2 位於中圈�
 <img src="../../assets/figs/web-1.4.6+/settings/00-setting%20overview.png" alt="DeepTutor Settings 中心" width="900">
 </div>
 
-Settings 是操作控制中心，開啟時會顯示用於設定介面與模型輸出語言的 **General** 頁面。可搜尋的導覽選單連結至各個獨立頁面：**Personal** 包含 Workspaces、Data migration、Appearance 與 Usage statistics；**Learning & conversation** 包含起始提示、附件、Video Learning、學習者與監護人控制，以及 Memory；**Models & services** 包含 Providers、Language models、Task models、Embedding、Search、Voice 與 Multimodal generation；**Features & integrations** 包含工具、能力參數、Partners & agents，以及 Knowledge & documents。**System** 包含 Network、Runtime status 與 About；**Archived chats** 可搜尋、還原或永久刪除已封存的對話。Runtime status 包含後端健康狀況、常駐記憶體，以及評估各項能力阻礙、警告與建議的 **Readiness** 矩陣。Workspaces 讓不同主題的檔案與學習狀態保持獨立，Data migration 則提供經驗證的遷移與匯出功能。**供應商（provider）**保存廠商位址與憑證，供其服務模型重複使用；模型頁面可選擇已儲存的供應商，並設定模型名稱與能力。**任務模型**可為命名對話、撰寫起始提示等背景工作指定小型快速模型；留空時則使用目前的預設模型。Voice 集合語音合成與轉錄；Multimodal generation 集合影像與影片模型。Partners & agents 可設定本機代理程式執行框架與遠端 Hermes gateway。
+Settings 是操作控制中心，開啟時會顯示用於設定介面與模型輸出語言的 **General** 頁面。可搜尋的導覽選單連結至各個獨立頁面：**Personal** 包含 Workspaces、Data migration、Appearance 與 Usage statistics；**Learning & conversation** 包含起始提示、附件、Video Learning、學習者與監護人控制、Learning progress，以及 Memory；**Models & services** 包含 Providers、Language models、Task models、Embedding、Search、Voice 與 Multimodal generation；**Features & integrations** 包含工具、能力參數、Partners & agents，以及 Knowledge & documents。**System** 包含 Network、Runtime status 與 About；**Archived chats** 可搜尋、還原或永久刪除已封存的對話。Runtime status 包含後端健康狀況、常駐記憶體，以及評估各項能力阻礙、警告與建議的 **Readiness** 矩陣。Workspaces 讓不同主題的檔案與學習狀態保持獨立，Data migration 則提供經驗證的遷移與匯出功能。**供應商（provider）**保存廠商位址與憑證，供其服務模型重複使用；模型頁面可選擇已儲存的供應商，並設定模型名稱與能力。**任務模型**可為命名對話、撰寫起始提示等背景工作指定小型快速模型；留空時則使用目前的預設模型。Voice 集合語音合成與轉錄；Multimodal generation 集合影像與影片模型。Partners & agents 可設定本機代理程式執行框架與遠端 Hermes gateway。
 
 **Video Learning** 位於 Settings → Learning & conversation，預設使用官方隱私強化版 YouTube IFrame Player。若要讓播放保持在本機，請設定由管理員管理的 Invidious API 來源（例如 `http://127.0.0.1:3000`）、進行測試、選擇 Invidious 並儲存。新開啟或重新開啟的影片會立即採用該供應商，同時保留相同的素材 ID 與進度。Invidious 媒體會透過 DeepTutor 的 byte-range proxy 串流；上游 URL 不會暴露給瀏覽器，也不會儲存在磁碟上。若該執行個體發生故障，在學習者明確選擇原生 YouTube 備援前，DeepTutor 將維持離線而不連線至 YouTube。公開字幕教學為選用功能：安裝 `.[video-learning]`；未安裝時仍可繼續播放，但以逐字稿為基礎的 **Explain here** 會停用並顯示原因。
 
@@ -581,6 +586,10 @@ Settings 是操作控制中心，開啟時會顯示用於設定介面與模型�
 大多數區段採用草稿後套用的流程，因此可先測試供應商再確認變更。你也可以直接在 Chat 中提出要求：助理會讀取目前設定、套用變更，並告知是否需要重新啟動或重新建立索引 — 在正式套用新模型前先行探測，因此不會把自己切換到無法連線的設定上。API key 絕不會經過模型，助理會改為替你開啟對應的表單。內建四種主題：Default、Cream、Dark 與 Glass。系統會刻意忽略專案根目錄的 `.env` 檔案；除非 `DEEPTUTOR_HOME` 或 `deeptutor start --home` 將應用程式指向其他位置，否則執行階段設定位於 `data/user/settings/*.json`。
 
 **OpenAI Codex OAuth（實驗性功能）。** 在 Settings → Providers 下新增 **OpenAI Codex** 後，會開啟瀏覽器登入自己的 ChatGPT 方案，因此不需要 `OPENAI_API_KEY`。Token 只會存放在 `data/system/user-secrets/<owner>/private/openai-codex/`；在多容器 Compose 部署中，此位置不屬於 exec 沙箱可觸及的任何目錄，而 DeepTutor 絕不會讀取或修改 `~/.codex` CLI 登入。模型清單來自該帳號的即時型錄；登入會發布設定檔，但只有在尚未設定 LLM 時，才會將其設為目前使用的模型。由於 token 授權的是個人方案，該設定檔不能透過使用者授權分享；每個帳號（包括一般使用者）都要自行登入。其登入卡片位於 Providers，產生的模型、型錄與登出狀態也只屬於該帳號。
+
+登入與按下 **Refresh models** 時，DeepTutor 會從官方 npm registry 讀取最新穩定版的 `@openai/codex`，並將其作為型錄請求的 `client_version`。這僅屬於中繼資料：並不會安裝、下載或升級 Codex CLI，且該 npm 請求不會夾帶任何 OAuth 憑證。探測動作設有三秒的時限與 64 KiB 的回應大小上限。若探測失敗，DeepTutor 會改用該帳號最近一次成功取得的版本；若尚無快取版本，則改用內建的備援版本。只有成功解析的即時型錄才會儲存新版本；驗證器絕不會跨版本或跨憑證世代重複使用。版本被拒絕或型錄結構不相容時，允許以先前版本重試一次；驗證失敗、達到速率限制與 TLS 失敗則不會被當成版本問題重試。手動重新整理失敗時會回報錯誤，而不是把舊的快取型錄當成已更新的結果呈現。
+
+同一帳號的 token 更新，以及型錄驗證錯誤，都不會影響先前已成功記錄的版本歷史；但這不會讓已失效的模型資料或 ETag 重新變得可用。登出會清除該帳號的本機快取，包括版本歷史。一般的狀態讀取與推理呼叫不會查詢 npm。新的型錄項目不會取代你已選用的模型，也不會重新啟動學習工作階段；出現在型錄中並不代表已完整相容於推理協定。目前沒有背景版本更新程式，也沒有使用者可設定的版本選項。
 
 預設本機 Docker 與 Podman 部署各自使用獨立的 loopback 網路，登入期間需要暫時橋接。請依照[暫時性本機 Codex OAuth 橋接指南](../../docs-for-user/CONTAINERIZATION.md#temporary-local-codex-oauth-bridge)，使用確切的 Docker、Compose、Podman 與拆除指令。
 
@@ -621,6 +630,8 @@ data/
 **第一位註冊的使用者會成為管理員**，並擁有模型型錄、供應商憑證、共享知識庫、技能、作為主版本的共享書籍與每位使用者的授權。管理員建立的本機使用者可選擇 Standard、Learner 或 Custom。Learner 會鎖定學習能力與教材政策、加入可調適的個人檔案，並支援可撤銷、具到期時間與每日上限的裝置憑證；已授權的 Guardians 可檢視報告、核准教材及重設憑證。其他使用者會取得隔離的工作區，以及範圍受限的模型、知識庫、技能、Partners 與共享書籍存取權，而不會收到原始 API key。如果 `auth.json` 已包含 `username` + `password_hash`，該帳號就是管理員：`/register` 會維持關閉，從 `/admin/users` 建立的帳號在升級前一律為 `role=user`。
 
 **啟用方式：** 在 `data/user/settings/auth.json` 開啟驗證、重新啟動 `deeptutor start`、到 `/register` 註冊第一位管理員，接著從 `/admin/users` 新增使用者，並透過授權指派模型、知識庫、技能、partners、工具／MCP／CLI app 政策與程式碼執行權限；再從每位使用者的 **Book access** 面板設定共享書籍。
+
+若要區分私有／公開的來源網域，可設定 `auth.private_login_hosts`（或 `AUTH_PRIVATE_LOGIN_HOSTS`）為可顯示密碼登入與註冊的私有前端 Host 清單。前端會將收到的 HTTP `Host` 轉送給後端，作為其前端 Host 的宣告依據。請確保反向代理會保留瀏覽器原始的 `Host`，並讓公開的對外入口拒絕帶有私有 Host 的請求；不要直接對外開放會接受任意 `Host` 值的原始 Next.js 連接埠。由於 HTTP `Host` 可由直接連線的客戶端偽造，私有 Host 的授權因此依賴這道入口邊界。後端預設只接受來自 loopback 的前端 Host 宣告。若 Web 前端是從另一個容器或主機連接，請在後端處理程序上設定 `AUTH_TRUSTED_FRONTEND_PROXY_IPS` 為該前端代理的確切 IP 位址（多個位址以逗號分隔）。請讓後端 API 只對前端代理保持私有，不要在此清單中加入一般客戶端網段。Loopback 一律允許；當清單非空時，位於私有來源網域上的已驗證使用者可開啟 **Profile → Public device sign-in**，建立一個短時效、綁定 Host 的配對連結，供 HTTPS 公開來源網域使用。公開的 `/handoff` 頁面會以 POST body 將該一次性代碼交換為同樣短時效的 JWE ticket，消耗該 ticket 一次，並取得一般的 HttpOnly 工作階段 cookie。
 
 > PocketBase 仍是單一使用者整合；除非已連接外部使用者儲存區，否則在多使用者部署中請將 `integrations.pocketbase_url` 留白。
 
@@ -679,7 +690,7 @@ repo 根目錄附有 [`SKILL.md`](../../SKILL.md)，這份約 200 行的交接�
 | `deeptutor stop [--home PATH]` | 停止以 `--detach` 啟動的 launcher |
 | `deeptutor serve [--port PORT]` | 只啟動 FastAPI 後端 |
 | `deeptutor workspace show/set/reset` | 檢視、選擇或還原每位使用者的內容工作區 |
-| `deeptutor run <capability> <message>` | 執行單一能力回合（`chat`、`ask_questions`、`deep_solve`、`deep_question`、`deep_research`、`visualize`、`math_animator`、`mastery_path`、`immersive_reading`、`course_study`、`immersive_watching`）；加上 `--format json` 可輸出 NDJSON |
+| `deeptutor run <capability> <message>` | 執行單一能力回合（`chat`、`ask_questions`、`deep_solve`、`deep_question`、`deep_research`、`visualize`、`math_animator`、`mastery_path`、`immersive_reading`、`course_study`、`immersive_watching`、`audio_overview`）；加上 `--format json` 可輸出 NDJSON |
 | `deeptutor chat` | 具備能力、工具、知識庫、筆記本與記錄控制的互動式 REPL |
 | `deeptutor partner list/create/start/stop` | 管理連接 IM 的 partners |
 | `deeptutor kb list/info/create/add/search/set-default/delete/list-sources/sync` | 管理知識庫，並同步已註冊的 GitHub／Web 來源（含來源新增／移除指令） |

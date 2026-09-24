@@ -29,10 +29,13 @@ export function isRetiredPagePath(pathname: string): boolean {
 export function isBackendPath(pathname: string): boolean {
   return (
     pathname.startsWith("/api/") ||
-    pathname === "/ws" ||
-    pathname.startsWith("/ws/") ||
+    isWebSocketPath(pathname) ||
     pathname.startsWith("/files/")
   );
+}
+
+export function isWebSocketPath(pathname: string): boolean {
+  return pathname === "/ws" || pathname.startsWith("/ws/");
 }
 
 // Static assets served straight out of `web/public` (logos, favicons, fonts,

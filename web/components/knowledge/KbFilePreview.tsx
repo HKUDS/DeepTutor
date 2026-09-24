@@ -69,6 +69,10 @@ const XlsxPreview = dynamic(
   () => import("@/components/chat/preview/previewers/XlsxPreview"),
   { loading: PreviewLoading, ssr: false },
 );
+const OfficePdfPreview = dynamic(
+  () => import("@/components/chat/preview/previewers/OfficePdfPreview"),
+  { loading: PreviewLoading, ssr: false },
+);
 const OfficeTextPreview = dynamic(
   () => import("@/components/chat/preview/previewers/OfficeTextPreview"),
   { loading: PreviewLoading, ssr: false },
@@ -300,18 +304,32 @@ export default function KbFilePreview({
             reason="legacy"
           />
         ) : kind === "office-text" ? (
-          <OfficeTextPreview
-            filename={source.filename}
-            extractedText={source.extractedText}
-            extractedTextUrl={extractedTextUrl}
+          <OfficePdfPreview
             url={previewUrl}
+            filename={source.filename}
+            fallback={
+              <OfficeTextPreview
+                filename={source.filename}
+                extractedText={source.extractedText}
+                extractedTextUrl={extractedTextUrl}
+                url={previewUrl}
+              />
+            }
           />
         ) : kind === "pdf" ? (
           <PdfPreview url={previewUrl} filename={source.filename} />
         ) : kind === "docx" ? (
-          <DocxPreview url={previewUrl} />
+          <OfficePdfPreview
+            url={previewUrl}
+            filename={source.filename}
+            fallback={<DocxPreview url={previewUrl} />}
+          />
         ) : kind === "xlsx" ? (
-          <XlsxPreview url={previewUrl} />
+          <OfficePdfPreview
+            url={previewUrl}
+            filename={source.filename}
+            fallback={<XlsxPreview url={previewUrl} />}
+          />
         ) : kind === "image" ? (
           <ImagePreview url={previewUrl} filename={source.filename} />
         ) : kind === "video" ? (

@@ -26,6 +26,7 @@ import {
   PanelRightClose,
   PanelRightOpen,
   Plus,
+  SquarePen,
   StickyNote,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -38,6 +39,11 @@ import { focusReadingComposer } from "@/components/reading/reading-actions-conte
 import { useChatStateAdapter } from "@/features/chat/ChatStateAdapter";
 import type { ReaderHeading } from "@/lib/reading-outline";
 import { setReadingViewport } from "@/lib/reading-turn-state";
+import { workspaceActionNeedsConfiguration } from "@/lib/workspace-mode";
+import {
+  PAGE_QUIZ_CAPABILITY,
+  PAGE_QUIZ_CONFIG,
+} from "@/lib/reading-passage-prompts";
 import { consumePendingPrompt } from "@/lib/pending-prompt";
 import {
   getMaterial,
@@ -74,7 +80,7 @@ import {
   WorkspaceValueDialog,
 } from "./dialogs";
 import { ReadingCompanion } from "./ReadingCompanion";
-import { ReadAloudButton } from "./ReadAloudButton";
+import { PageToolButtons, ReadAloudButton } from "./ReadAloudButton";
 import {
   WorkspaceMenuContext,
   type WorkspaceMenuItem,
@@ -113,6 +119,8 @@ interface ReaderAskDetail {
   quote?: string;
   locator?: number;
   unit?: string;
+  /** Send this about the passage now, instead of waiting for a question. */
+  prompt?: string;
 }
 
 export function ReadingWorkspacePage() {
@@ -206,6 +214,9 @@ export function ReadingWorkspacePage() {
   }, []);
   const [showSessions, setShowSessions] = useState(false);
   const [showLinker, setShowLinker] = useState(false);
+  // Stable: the companion hands it to the workspace ⋯ inside memoised items,
+  // and a fresh arrow every render re-registered them forever.
+  const openLinker = useCallback(() => setShowLinker(true), []);
   const [showNotebook, setShowNotebook] = useState(false);
   const [showAddSource, setShowAddSource] = useState(false);
   const { host: menuHost, sections: menuSections } = useWorkspaceMenuHost();
@@ -296,12 +307,31 @@ export function ReadingWorkspacePage() {
       const detail = (event as CustomEvent<ReaderAskDetail>).detail;
       const quote = String(detail?.quote ?? "").trim();
       if (!quote) return;
-      setSelection({ quote, locator: Number(detail.locator || activeLocator) });
-      setReadingViewport({
-        locator: Number(detail.locator || activeLocator),
-        selection: quote,
-      });
+      const locator = Number(detail.locator || activeLocator);
+      const prompt = String(detail?.prompt ?? "").trim();
       toggleCompanion(true);
+      // Explain / translate / guide: a message in this conversation, sent
+      // now, with the passage attached the same way a typed question gets it.
+      // A turn still streaming, or a mode that wants its settings confirmed
+      // first, gets the passage and the words in the box instead of a send
+      // that would be refused or would run the wrong mode.
+      if (
+        prompt &&
+        !state.isStreaming &&
+        !workspaceActionNeedsConfiguration(state.activeCapability)
+      ) {
+        setReadingViewport({ locator, selection: quote });
+        sendMessage(prompt, undefined, undefined, undefined, linkedSessionIds);
+        setSelection(null);
+        window.setTimeout(() => setReadingViewport({ selection: "" }), 0);
+        return;
+      }
+      setSelection({ quote, locator });
+      setReadingViewport({ locator, selection: quote });
+      if (prompt) {
+        window.requestAnimationFrame(() => prefillInputRef.current?.(prompt));
+        return;
+      }
       // Focus, not `prefillInputRef("")`: that one *sets* the text, and
       // "Ask about this" used to wipe whatever the learner had half-typed.
       // A frame later, because a closed companion is not mounted yet.
@@ -309,27 +339,38 @@ export function ReadingWorkspacePage() {
     };
     window.addEventListener(READER_ASK_EVENT, onAsk);
     return () => window.removeEventListener(READER_ASK_EVENT, onAsk);
-  }, [activeLocator, toggleCompanion]);
+  }, [
+    activeLocator,
+    linkedSessionIds,
+    sendMessage,
+    state.activeCapability,
+    state.isStreaming,
+    toggleCompanion,
+  ]);
 
-  // Guided one-click actions (quick-action row, empty-state suggestions,
-  // "organize notes") send immediately without ever touching the composer's
-  // own text — that box is reserved for what the learner types themselves.
-  const sendQuickPrompt = useCallback(
-    (prompt: string) => {
-      const content = prompt.trim();
-      if (!content || state.isStreaming) return;
-      if (selection) {
-        setReadingViewport({
-          locator: selection.locator,
-          selection: selection.quote,
-        });
-      }
-      sendMessage(content, undefined, undefined, undefined, linkedSessionIds);
-      setSelection(null);
-      window.setTimeout(() => setReadingViewport({ selection: "" }), 0);
-    },
-    [linkedSessionIds, selection, sendMessage, state.isStreaming],
-  );
+  // "Quiz me": a quiz turn in this conversation, run by the same engine as
+  // the composer's Quiz mode, with its settings chosen here instead of asked
+  // for. The conversation's own mode is left as it was.
+  const quizThisPage = useCallback(() => {
+    if (state.isStreaming) return;
+    toggleCompanion(true);
+    setReadingViewport({ locator: activeLocator, selection: "" });
+    sendMessage(
+      t("Quiz me on this page"),
+      undefined,
+      { ...PAGE_QUIZ_CONFIG },
+      undefined,
+      linkedSessionIds,
+      { capability: PAGE_QUIZ_CAPABILITY },
+    );
+  }, [
+    activeLocator,
+    linkedSessionIds,
+    sendMessage,
+    state.isStreaming,
+    t,
+    toggleCompanion,
+  ]);
 
   const startCompanionResize = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -491,6 +532,10 @@ export function ReadingWorkspacePage() {
             </span>
           )}
           <ReadAloudButton disabled={!materialReady} />
+          <PageToolButtons
+            disabled={!materialReady || state.isStreaming}
+            onQuiz={quizThisPage}
+          />
           {/* An icon, like every other control on this bar: as the only
               labelled button it read as the page's primary action. */}
           <button
@@ -515,6 +560,19 @@ export function ReadingWorkspacePage() {
             sections={menuSections}
             collection={collectionMenu}
           />
+          {/* Past conversations are in the app sidebar with every other one;
+              this bar only starts a fresh one. Beside the companion's switch,
+              since that is the column it clears. */}
+          <button
+            type="button"
+            onClick={newConversation}
+            disabled={!activeConversation}
+            className="flex size-7 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+            aria-label={t("New conversation")}
+            title={t("New conversation")}
+          >
+            <SquarePen size={14} />
+          </button>
           <button
             type="button"
             onClick={() => toggleCompanion(!companionOpen)}
@@ -688,11 +746,8 @@ export function ReadingWorkspacePage() {
             activeLocator={activeLocator}
             selection={selection}
             onClearSelection={() => setSelection(null)}
-            onOpenLinker={() => setShowLinker(true)}
-            onNewConversation={newConversation}
-            onQuickPrompt={sendQuickPrompt}
+            onOpenLinker={openLinker}
             prefillInputRef={prefillInputRef}
-            onClose={() => setCompanionOpen(false)}
           />
         )}
       </div>

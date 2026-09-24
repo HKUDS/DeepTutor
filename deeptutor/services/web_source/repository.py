@@ -301,7 +301,7 @@ class SQLiteWebSourceSyncRepository:
                    SET {set_sql}
                  WHERE owner_id=? AND kb_name=? AND source_id=?
                    AND state='running' AND runner_id=? AND lease_until_ms>?
-                """,
+                """,  # nosec B608 - SET names come from _update's internal keyword callers; every value is bound
                 (*values, *self.key(job), job.runner_id, self._now_ms()),
             )
             return int(cursor.rowcount or 0) == 1
