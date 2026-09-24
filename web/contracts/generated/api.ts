@@ -9518,6 +9518,66 @@ export interface paths {
     readonly patch?: never;
     readonly trace?: never;
   };
+  readonly "/api/task-board": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    /**
+     * Get Board
+     * @description Return active and archived cards in the current workspace.
+     */
+    readonly get: operations["get_board_api_task_board_get"];
+    readonly put?: never;
+    readonly post?: never;
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
+  readonly "/api/task-board/cards": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    readonly get?: never;
+    readonly put?: never;
+    /**
+     * Create Card
+     * @description Create a task in the To do column.
+     */
+    readonly post: operations["create_card_api_task_board_cards_post"];
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
+  readonly "/api/task-board/cards/{card_id}": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    readonly get?: never;
+    readonly put?: never;
+    readonly post?: never;
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    /**
+     * Update Card
+     * @description Edit, move, archive or restore an existing task.
+     */
+    readonly patch: operations["update_card_api_task_board_cards__card_id__patch"];
+    readonly trace?: never;
+  };
   readonly "/api/tools": {
     readonly parameters: {
       readonly query?: never;
@@ -11271,6 +11331,19 @@ export interface components {
        * @default
        */
       readonly user_intent: string;
+    };
+    /**
+     * CreateCard
+     * @description A learner-authored task; identifiers and timestamps are server-owned.
+     */
+    readonly CreateCard: {
+      /**
+       * Note
+       * @default
+       */
+      readonly note: string;
+      /** Title */
+      readonly title: string;
     };
     /** CreateCourseRequest */
     readonly CreateCourseRequest: {
@@ -14649,6 +14722,40 @@ export interface components {
       /** Updated */
       readonly updated: number;
     };
+    /**
+     * TaskBoard
+     * @description A consistent snapshot of the current workspace's board.
+     */
+    readonly TaskBoard: {
+      /** Cards */
+      readonly cards: readonly components["schemas"]["TaskCard"][];
+    };
+    /**
+     * TaskCard
+     * @description Persisted card returned to the board, including archived cards.
+     */
+    readonly TaskCard: {
+      /** Archived */
+      readonly archived: boolean;
+      /** Created At */
+      readonly created_at: string;
+      /** Id */
+      readonly id: string;
+      /**
+       * Note
+       * @default
+       */
+      readonly note: string;
+      /**
+       * Status
+       * @enum {string}
+       */
+      readonly status: "todo" | "doing" | "done";
+      /** Title */
+      readonly title: string;
+      /** Updated At */
+      readonly updated_at: string;
+    };
     /** TestResponse */
     readonly TestResponse: {
       /** Error */
@@ -15238,6 +15345,20 @@ export interface components {
       readonly expected_revision?: number | null;
       /** Page Id */
       readonly page_id: string;
+      /** Title */
+      readonly title?: string | null;
+    };
+    /**
+     * UpdateCard
+     * @description Only supplied fields change, preserving concurrent edits to other fields.
+     */
+    readonly UpdateCard: {
+      /** Archived */
+      readonly archived?: boolean | null;
+      /** Note */
+      readonly note?: string | null;
+      /** Status */
+      readonly status?: ("todo" | "doing" | "done") | null;
       /** Title */
       readonly title?: string | null;
     };
@@ -16023,6 +16144,7 @@ export type SchemaConnectWeKnoraRequest =
   components["schemas"]["ConnectWeKnoraRequest"];
 export type SchemaCreateBookRequest =
   components["schemas"]["CreateBookRequest"];
+export type SchemaCreateCard = components["schemas"]["CreateCard"];
 export type SchemaCreateCourseRequest =
   components["schemas"]["CreateCourseRequest"];
 export type SchemaCreateDocumentRequest =
@@ -16359,6 +16481,8 @@ export type SchemaSyncFolderResponse =
 export type SchemaSyncObjectIn = components["schemas"]["SyncObjectIn"];
 export type SchemaSyncRequest = components["schemas"]["SyncRequest"];
 export type SchemaSyncResponse = components["schemas"]["SyncResponse"];
+export type SchemaTaskBoard = components["schemas"]["TaskBoard"];
+export type SchemaTaskCard = components["schemas"]["TaskCard"];
 export type SchemaTestResponse = components["schemas"]["TestResponse"];
 export type SchemaTextPositionSelectorPayload =
   components["schemas"]["TextPositionSelectorPayload"];
@@ -16389,6 +16513,7 @@ export type SchemaUiSettingsUpdate = components["schemas"]["UISettingsUpdate"];
 export type SchemaUnitText = components["schemas"]["UnitText"];
 export type SchemaUpdateBlockRequest =
   components["schemas"]["UpdateBlockRequest"];
+export type SchemaUpdateCard = components["schemas"]["UpdateCard"];
 export type SchemaUpdateCourseRequest =
   components["schemas"]["UpdateCourseRequest"];
 export type SchemaUpdateDocumentRequest =
@@ -37627,6 +37752,115 @@ export interface operations {
           readonly "application/json": {
             readonly [key: string]: unknown;
           };
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly get_board_api_task_board_get: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path?: never;
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["TaskBoard"];
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly create_card_api_task_board_cards_post: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path?: never;
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody: {
+      readonly content: {
+        readonly "application/json": components["schemas"]["CreateCard"];
+      };
+    };
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 201: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["TaskBoard"];
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly update_card_api_task_board_cards__card_id__patch: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path: {
+        readonly card_id: string;
+      };
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody: {
+      readonly content: {
+        readonly "application/json": components["schemas"]["UpdateCard"];
+      };
+    };
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["TaskBoard"];
         };
       };
       /** @description Validation Error */
