@@ -388,10 +388,10 @@ DeepTutor 會將已安裝的程式碼、私有執行環境目錄與選用的內�
 如果回答遺漏先前限制、引用薄弱證據，或與所選素材不一致，請先將診斷資料收集到 [`REASONING_SAFETY_CHECKLIST.md`](../../docs-for-user/REASONING_SAFETY_CHECKLIST.md)，再建立 issue。
 
 <div align="center">
-<img src="../../assets/figs/web-1.6.5/OVERVIEW.png" alt="DeepTutor 首頁 — 側邊欄包含所有功能入口的 Chat 工作區" width="900">
+<img src="../../assets/figs/web-1.6.5/OVERVIEW.png" alt="DeepTutor 首頁 — Chat 工作區" width="900">
 </div>
 
-> **截圖狀態：** 總覽圖已更新到 v1.6.5。下方功能截圖仍是 v1.4.6 參考圖，正在分批替換。它們適合說明工作流，不代表目前精確導覽。
+> **截圖狀態：** 首頁、工作階段活動面板、Partners、My Agents、Co-Writer、書籍庫、Mastery Path、沉浸式閱讀、沉浸式觀看、知識中心、學習空間、Memory，以及設定（一般、執行狀態與就緒度、工作區、語言模型、外觀）都是目前介面的預設主題截圖。Partner 的 IM 設定、即時子代理程式軌跡、Co-Writer 編輯器、書籍內容區塊特寫、建立知識庫與 EduHub 匯入仍使用 v1.4.6 參考圖。這些舊圖用來說明流程，標籤與版面可能與目前介面不同。
 
 <details>
 <summary><b>🏗️ 系統架構</b></summary>
@@ -408,7 +408,7 @@ DeepTutor 會將已安裝的程式碼、私有執行環境目錄與選用的內�
 Chat 是預設能力，也是大多數工作的起點。單一對話可以進行一般交談、呼叫工具、根據選定的知識庫建立回答依據、讀取附件、生成影像、諮詢子代理程式、寫入筆記本紀錄，並在各回合之間沿用相同情境。
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/home/00-overview.png" alt="DeepTutor Chat 工作區" width="900">
+<img src="../../assets/figs/web-1.6.5/home/00-overview.png" alt="DeepTutor Chat 工作區" width="900">
 </div>
 
 這個迴圈刻意保持簡單：模型分輪思考、在有幫助時呼叫工具、觀察結果，最後以不含工具呼叫的訊息完成回合。`ask_user` 比較特殊；代理程式不必猜測，而是可以暫停回合、提出結構化的釐清問題，並在你回答後繼續。
@@ -423,13 +423,29 @@ Chat 是預設能力，也是大多數工作的起點。單一對話可以進行
 
 Home 讓 **Chat**、**Ask Questions**、**Quiz** 與 **Visualize** 一鍵可達；用於建立附引用報告的 **Research**、提供完整推理解題的 **Solve**，以及 **Immersive Watching**，則位於 *More Capabilities* 之下。**Personalized Learning** 集合 Book、**Mastery Path**、**Immersive Reading**、Watching 與 **Practice**。Reading 提供經驗證的引用、已儲存的筆記、以來源為依據的朗讀／學習指南／詞彙／測驗／翻譯動作，以及擷取至筆記本的功能；Course Study 則保有自己的課程情境。
 
+<div align="center">
+<img src="../../assets/figs/web-1.6.5/home/01-activity.png" alt="新對話中的工作階段活動面板" width="900">
+</div>
+
+<div align="center">
+<img src="../../assets/figs/web-1.6.5/mastery/00-overview.png" alt="Mastery Path" width="900">
+</div>
+
+<div align="center">
+<img src="../../assets/figs/web-1.6.5/reading/00-overview.png" alt="沉浸式閱讀" width="900">
+</div>
+
+<div align="center">
+<img src="../../assets/figs/web-1.6.5/watching/00-overview.png" alt="沉浸式觀看" width="900">
+</div>
+
 </details>
 
 <details>
 <summary><b>🤝 Partner — 共用同一套核心的持續型夥伴</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/partners/00-partners%20overview.png" alt="DeepTutor Partners 工作區" width="900">
+<img src="../../assets/figs/web-1.6.5/partners/00-overview.png" alt="DeepTutor Partners 工作區" width="900">
 </div>
 
 Partners 是持續運作的夥伴，各自擁有 soul、模型政策、知識庫、記憶與頻道。它們不是另一套 bot 引擎；每一則從 Web 或 IM 收到的訊息，都會在限定於該 partner 的工作區內成為一般的 `ChatOrchestrator` 回合。Partner 就像是「擁有個性與電話號碼的聊天」。
@@ -454,7 +470,7 @@ Partners 是持續運作的夥伴，各自擁有 soul、模型政策、知識庫
 <summary><b>🧑‍🚀 My Agents — 諮詢與匯入其他代理程式</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/myagents/00-overview.png" alt="DeepTutor My Agents 工作區" width="900">
+<img src="../../assets/figs/web-1.6.5/myagents/00-overview.png" alt="DeepTutor My Agents 工作區" width="900">
 </div>
 
 My Agents 會將其他代理程式變成 DeepTutor 的情境，並提供兩項不同功能。**連接即時代理程式** — 連接你電腦上的 Claude Code、Codex、Grok CLI、Antigravity、Kimi、opencode、MiMo Code、Hermes Agent、OpenClaw 或 DeepSeek Harness、遠端 Hermes gateway，或你的一位 Partner，並從聊天回合內諮詢它。DeepTutor 會實際*執行*其他代理程式，再透過 `consult_subagent` 工具將其工作即時串流至 Activity 面板。使用 Agent chip 選取代理程式及其回合上限，或透過 `@` 篩選同一份已連接代理程式清單；這項選擇會保留在工作階段中。
@@ -477,7 +493,7 @@ Grok 使用自己的驗證與工作階段儲存機制，DeepTutor 不會複製�
 <summary><b>✍️ Co-Writer — 能感知選取範圍的 Markdown 寫作</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/co-writer/00-overview.png" alt="DeepTutor Co-Writer 工作區" width="900">
+<img src="../../assets/figs/web-1.6.5/co-writer/00-overview.png" alt="DeepTutor Co-Writer 工作區" width="900">
 </div>
 
 Co-Writer 是用於報告、教學文章、筆記與長篇學習作品的分割檢視 Markdown 工作區。文件會自動儲存並呈現即時預覽（KaTeX 數學式、圖解 fences）；草稿成為可重複使用的情境後，也能存回筆記本。可匯入 `.docx` 開新草稿，也可將目前編輯器匯出為 Markdown 或 Word。
@@ -494,7 +510,7 @@ Co-Writer 是用於報告、教學文章、筆記與長篇學習作品的分割�
 <summary><b>📖 Book — 從你的素材建立活書</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/book/00-book_overview.png" alt="DeepTutor 書籍庫" width="900">
+<img src="../../assets/figs/web-1.6.5/book/00-book-overview.png" alt="DeepTutor 書籍庫" width="900">
 </div>
 
 Book 會將選定來源轉換成互動式**活書**；它不是靜態 PDF，而是由具型別區塊組成的閱讀環境。書籍可從知識庫、筆記本、題庫或聊天記錄建立；生成內容前，建立流程會先提出章節大綱，讓你審視整體架構，而非直接接受無從確認的單次輸出。
@@ -515,7 +531,7 @@ Book 會將選定來源轉換成互動式**活書**；它不是靜態 PDF，而�
 <summary><b>📚 Knowledge Center — 多引擎 RAG 知識庫</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/knowledge/00-overview.png" alt="DeepTutor Knowledge Center" width="900">
+<img src="../../assets/figs/web-1.6.5/knowledge/00-overview.png" alt="DeepTutor Knowledge Center" width="900">
 </div>
 
 知識庫是 RAG 背後的文件集合，可為 Chat 回合、Co-Writer 編輯、Book 生成與 Partner 對話提供依據。其特色在於可**選擇檢索引擎**：**LlamaIndex**（預設，混合 vector＋BM25，並可選用 cross-encoder reranking 與 exact-flat 或 HNSW FAISS 索引）、**PageIndex**（可推理的檢索並附頁面層級引用，支援託管式或自架 OSS）、**GraphRAG** 與 **LightRAG**（知識圖譜檢索）、**LightRAG Server**（透過 HTTP 連接的外部 LightRAG 執行個體負責檢索）、**WeKnora**（從自架部署中的知識庫檢索，無須建立本機索引或複製文件）、**Tencent IMA**（在 IMA 中整理的知識庫 — 透過其 OpenAPI 進行搜尋、瀏覽與寫回）、**MarginNote 4**（你的 MN4 學習資料 — 文件、摘錄、思維導圖卡片及彼此之間的連結 — 由該應用程式的 Add-on 推送匯入，並透過專用工具進行導覽），或讓導師就地讀寫的已連結 **Obsidian** vault。每個知識庫都會繫結至單一引擎。
@@ -538,7 +554,7 @@ Book 會將選定來源轉換成互動式**活書**；它不是靜態 PDF，而�
 <summary><b>🌐 Learning Space — 技能、角色設定與可重複使用的情境</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/learning-space/00-overview.png" alt="DeepTutor Learning Space 中心" width="900">
+<img src="../../assets/figs/web-1.6.5/learning-space/00-overview.png" alt="DeepTutor Learning Space 中心" width="900">
 </div>
 
 Learning Space 是資源庫、組織與個人化層。**Conversations & Materials** 包含 Chat History、支援搬移紀錄與匯出 Markdown 的筆記本，以及含答案與解說的題庫。Personalized Learning 中的 **Practice** 可將已儲存的題目轉為複習工作階段、錯題追蹤與定期複習。**Personalization** 包含角色設定、技能（`SKILL.md` 操作手冊）、一鍵安裝的 **MCP Services**，以及來自 [CLI-Anything](https://github.com/HKUDS/CLI-Anything) 型錄的 **CLI Apps**，每個應用程式的使用指南會按需載入。獨立的 **My Courses** 工作區會依科目歸納對話與導師討論串；每項資產只會出現在支援它的工作流程中。
@@ -555,13 +571,13 @@ Learning Space 是資源庫、組織與個人化層。**Conversations & Material
 <summary><b>🧠 Memory — 可檢視的個人化</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/memory/00-overview.png" alt="DeepTutor Memory 總覽" width="900">
+<img src="../../assets/figs/web-1.6.5/memory/00-overview.png" alt="DeepTutor Memory 總覽" width="900">
 </div>
 
 Memory 是以檔案為基礎、可讀取、整理及稽核的三層系統；它刻意*不使用*隱藏的向量儲存區。**L1** 是工作區鏡像與僅附加的事件軌跡（`trace/<surface>/<date>.jsonl`）；**L2** 是各介面整理後的事實（`L2/<surface>.md`），並附有對 L1 實體的參照；**L3** 是跨介面的綜整（`L3/<profile|recent|scope|preferences>.md`），會記錄其貢獻來源 L2 介面。
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/memory/01-3%20layer%20memory%20graph.png" alt="DeepTutor Memory Graph" width="900">
+<img src="../../assets/figs/web-1.6.5/memory/01-graph.png" alt="DeepTutor Memory Graph" width="900">
 </div>
 
 Memory Graph 會呈現完整金字塔：L3 綜整位於中央、L2 位於中圈、L1 軌跡則在外圈，並提供精確的 L2 → L1 證據邊與 L3 → 貢獻來源介面連結。Memory 會追蹤 `chat`、`notebook`、`quiz`、`kb`、`book`、partner 與 `cowriter` 等介面；綜整器的 Update／Audit／Dedup 預算可在 **Settings → Memory** 調整。
@@ -572,7 +588,7 @@ Memory Graph 會呈現完整金字塔：L3 綜整位於中央、L2 位於中圈�
 <summary><b>⚙️ Settings — 統一控制中心</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/settings/00-setting%20overview.png" alt="DeepTutor Settings 中心" width="900">
+<img src="../../assets/figs/web-1.6.5/settings/00-settings-overview.png" alt="DeepTutor Settings 中心" width="900">
 </div>
 
 Settings 是操作控制中心，開啟時會顯示用於設定介面與模型輸出語言的 **General** 頁面。可搜尋的導覽選單連結至各個獨立頁面：**Personal** 包含 Workspaces、Data migration、Appearance 與 Usage statistics；**Learning & conversation** 包含起始提示、附件、Video Learning、學習者與監護人控制、Learning progress，以及 Memory；**Models & services** 包含 Providers、Language models、Task models、Embedding、Search、Voice 與 Multimodal generation；**Features & integrations** 包含工具、能力參數、Partners & agents，以及 Knowledge & documents。**System** 包含 Network、Runtime status 與 About；**Archived chats** 可搜尋、還原或永久刪除已封存的對話。Runtime status 包含後端健康狀況、常駐記憶體，以及評估各項能力阻礙、警告與建議的 **Readiness** 矩陣。Workspaces 讓不同主題的檔案與學習狀態保持獨立，Data migration 則提供經驗證的遷移與匯出功能。**供應商（provider）**保存廠商位址與憑證，供其服務模型重複使用；模型頁面可選擇已儲存的供應商，並設定模型名稱與能力。**任務模型**可為命名對話、撰寫起始提示等背景工作指定小型快速模型；留空時則使用目前的預設模型。Voice 集合語音合成與轉錄；Multimodal generation 集合影像與影片模型。Partners & agents 可設定本機代理程式執行框架與遠端 Hermes gateway。
@@ -580,7 +596,19 @@ Settings 是操作控制中心，開啟時會顯示用於設定介面與模型�
 **Video Learning** 位於 Settings → Learning & conversation，預設使用官方隱私強化版 YouTube IFrame Player。若要讓播放保持在本機，請設定由管理員管理的 Invidious API 來源（例如 `http://127.0.0.1:3000`）、進行測試、選擇 Invidious 並儲存。新開啟或重新開啟的影片會立即採用該供應商，同時保留相同的素材 ID 與進度。Invidious 媒體會透過 DeepTutor 的 byte-range proxy 串流；上游 URL 不會暴露給瀏覽器，也不會儲存在磁碟上。若該執行個體發生故障，在學習者明確選擇原生 YouTube 備援前，DeepTutor 將維持離線而不連線至 YouTube。公開字幕教學為選用功能：安裝 `.[video-learning]`；未安裝時仍可繼續播放，但以逐字稿為基礎的 **Explain here** 會停用並顯示原因。
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="DeepTutor 外觀設定與主題" width="900">
+<img src="../../assets/figs/web-1.6.5/settings/01-settings-readiness.png" alt="設定中的執行狀態與就緒度矩陣" width="900">
+</div>
+
+<div align="center">
+<img src="../../assets/figs/web-1.6.5/settings/02-settings-workspace.png" alt="設定中的工作區" width="900">
+</div>
+
+<div align="center">
+<img src="../../assets/figs/web-1.6.5/settings/06-language-models.png" alt="設定中的語言模型" width="900">
+</div>
+
+<div align="center">
+<img src="../../assets/figs/web-1.6.5/settings/05-appearance.png" alt="DeepTutor 外觀設定與主題" width="900">
 </div>
 
 大多數區段採用草稿後套用的流程，因此可先測試供應商再確認變更。你也可以直接在 Chat 中提出要求：助理會讀取目前設定、套用變更，並告知是否需要重新啟動或重新建立索引 — 在正式套用新模型前先行探測，因此不會把自己切換到無法連線的設定上。API key 絕不會經過模型，助理會改為替你開啟對應的表單。內建四種主題：Default、Cream、Dark 與 Glass。系統會刻意忽略專案根目錄的 `.env` 檔案；除非 `DEEPTUTOR_HOME` 或 `deeptutor start --home` 將應用程式指向其他位置，否則執行階段設定位於 `data/user/settings/*.json`。

@@ -388,10 +388,10 @@ DeepTutorは、インストールされたコード、プライベートなラ�
 回答が以前の制約を失ったり、弱い根拠を引用したり、選択した資料と矛盾したりする場合は、Issueを開く前に[`REASONING_SAFETY_CHECKLIST.md`](../../docs-for-user/REASONING_SAFETY_CHECKLIST.md)に診断情報をまとめてください。
 
 <div align="center">
-<img src="../../assets/figs/web-1.6.5/OVERVIEW.png" alt="DeepTutorホーム — サイドバーにすべてのサーフェスを含むチャットワークスペース" width="900">
+<img src="../../assets/figs/web-1.6.5/OVERVIEW.png" alt="DeepTutorホーム — チャットワークスペース" width="900">
 </div>
 
-> **スクリーンショットの状態:** 全体表示は v1.6.5 向けに更新済みです。以下の画面スクリーンショットは、刷新中のため引き続き v1.4.6 の参考画像です。操作の流れの理解には使えますが、現在の正確なナビゲーションとしては扱わないでください。
+> **スクリーンショットの状態:** ホーム、セッションの Activity パネル、Partners、My Agents、Co-Writer、Book ライブラリ、Mastery Path、没入型リーディング、没入型ウォッチング、Knowledge Center、Learning Space、Memory、および Settings（一般、実行状態と Readiness、ワークスペース、言語モデル、外観）は、現在のインターフェースをデフォルトテーマで撮ったものです。Partner の IM 設定、実行中のサブエージェントのトレース、Co-Writer エディター、Book ブロックの拡大、ナレッジベースの作成、EduHub からのインポートは、引き続き v1.4.6 の参考画像です。古い画像は手順の理解用で、ラベルやレイアウトは現在の画面と異なることがあります。
 
 <details>
 <summary><b>🏗️ システムアーキテクチャ</b></summary>
@@ -408,7 +408,7 @@ DeepTutorは、インストールされたコード、プライベートなラ�
 Chatはデフォルト機能であり、ほとんどの作業が始まる場所です。1つのスレッドで通常の会話、ツールの呼び出し、選択した知識ベースへのグラウンディング、添付ファイルの読み取り、画像生成、サブエージェントとの相談、ノートブックレコードの書き込みが可能で、ターンをまたいで同じコンテキストを維持します。
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/home/00-overview.png" alt="DeepTutorチャットワークスペース" width="900">
+<img src="../../assets/figs/web-1.6.5/home/00-overview.png" alt="DeepTutorチャットワークスペース" width="900">
 </div>
 
 ループは意図的にシンプルです。モデルはラウンドで考え、役に立つときにツールを呼び出し、結果を観察し、ツールなしのメッセージで終了します。`ask_user`は特別で、推測する代わりに、エージェントはターンを一時停止し、構造化された明確化の質問をして、あなたが答えた後に再開できます。
@@ -423,13 +423,29 @@ Chatはデフォルト機能であり、ほとんどの作業が始まる場所�
 
 Homeでは**Chat**、**Ask Questions**、**Quiz**、**Visualize**にワンクリックでアクセスできます。引用付きレポートの**Research**、手順を追った推論の**Solve**、**Immersive Watching**は*その他の機能*の下にあります。**個別学習**にはBook、**Mastery Path**、**Immersive Reading**、Watching、**練習**がまとまっています。Readingには検証済みの引用、保存したノート、ソースに基づく読み上げ / 学習ガイダンス / 語彙 / クイズ / 翻訳アクション、ノートブックへの取り込みがあり、Course Studyはコースに紐づいたコンテキストを維持します。
 
+<div align="center">
+<img src="../../assets/figs/web-1.6.5/home/01-activity.png" alt="新しいチャットのセッション Activity パネル" width="900">
+</div>
+
+<div align="center">
+<img src="../../assets/figs/web-1.6.5/mastery/00-overview.png" alt="Mastery Path" width="900">
+</div>
+
+<div align="center">
+<img src="../../assets/figs/web-1.6.5/reading/00-overview.png" alt="没入型リーディング" width="900">
+</div>
+
+<div align="center">
+<img src="../../assets/figs/web-1.6.5/watching/00-overview.png" alt="没入型ウォッチング" width="900">
+</div>
+
 </details>
 
 <details>
 <summary><b>🤝 Partner — 同じブレインで動く永続コンパニオン</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/partners/00-partners%20overview.png" alt="DeepTutor Partnersワークスペース" width="900">
+<img src="../../assets/figs/web-1.6.5/partners/00-overview.png" alt="DeepTutor Partnersワークスペース" width="900">
 </div>
 
 Partnersは独自のソウル、モデルポリシー、ライブラリ、メモリ、チャンネルを持つ永続コンパニオンです。別個のボットエンジンではありません。ウェブまたはIMからの受信メッセージは、パートナースコープのワークスペース内の通常の`ChatOrchestrator`ターンになります。Partnerは「個性を持ったチャットであり、電話番号を持っている」存在です。
@@ -454,7 +470,7 @@ Partnersは独自のソウル、モデルポリシー、ライブラリ、メモ
 <summary><b>🧑‍🚀 My Agents — 他のエージェントと相談・インポート</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/myagents/00-overview.png" alt="DeepTutor My Agentsワークスペース" width="900">
+<img src="../../assets/figs/web-1.6.5/myagents/00-overview.png" alt="DeepTutor My Agentsワークスペース" width="900">
 </div>
 
 My Agentsは他のエージェントをDeepTutorのコンテキストにし、2つの異なることを行います。**ライブエージェントを接続** — マシン上のClaude Code、Codex、Grok CLI、Antigravity、Kimi、opencode、MiMo Code、Hermes Agent、OpenClaw、DeepSeek Harness、リモートのHermesゲートウェイ、または自分のPartnersのいずれか — してチャットターン内から相談できます。DeepTutorは実際に他のエージェントを*実行*し、`consult_subagent`ツールを介してその作業をActivityパネルにストリーミングします。Agentチップでエージェントとラウンド上限を選択するか、`@`で同じ接続済みエージェント一覧を絞り込め、選択内容はセッションに紐づいたまま保持されます。
@@ -477,7 +493,7 @@ Grokは自身の認証とセッションストレージを使用し、DeepTutor�
 <summary><b>✍️ Co-Writer — 選択対応Markdownドラフトツール</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/co-writer/00-overview.png" alt="DeepTutor Co-Writerワークスペース" width="900">
+<img src="../../assets/figs/web-1.6.5/co-writer/00-overview.png" alt="DeepTutor Co-Writerワークスペース" width="900">
 </div>
 
 Co-Writerはレポート、チュートリアル、メモ、長文学習コンテンツのための分割表示Markdownワークスペースです。ドキュメントは自動保存され、ライブプレビュー（KaTeXの数式、図表フェンス）を表示し、下書きが再利用可能なコンテキストになったときにノートブックに保存できます。`.docx` を取り込んで新しい下書きを始め、現在のエディタを Markdown または Word として書き出せます。
@@ -494,7 +510,7 @@ Co-Writerはレポート、チュートリアル、メモ、長文学習コン�
 <summary><b>📖 Book — 素材から生きている本を作成</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/book/00-book_overview.png" alt="DeepTutor Bookライブラリ" width="900">
+<img src="../../assets/figs/web-1.6.5/book/00-book-overview.png" alt="DeepTutor Bookライブラリ" width="900">
 </div>
 
 Bookは選択したソースをインタラクティブな**生きている本**に変換します。静的なPDFではなく、タイプ指定されたブロックから構築された読書環境です。知識ベース、ノートブック、問題バンク、チャット履歴から本を開始できます。作成フローではコンテンツが生成される前に章のアウトラインを提案するため、盲目的な一発生成を受け入れるのではなく、構造を確認できます。
@@ -515,7 +531,7 @@ Bookは選択したソースをインタラクティブな**生きている本**
 <summary><b>📚 Knowledge Center — マルチエンジンRAGライブラリ</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/knowledge/00-overview.png" alt="DeepTutor Knowledge Center" width="900">
+<img src="../../assets/figs/web-1.6.5/knowledge/00-overview.png" alt="DeepTutor Knowledge Center" width="900">
 </div>
 
 知識ベースはRAGの背後にあるドキュメントコレクションです — Chatターン、Co-Writerの編集、Book生成、Partnerの会話をグラウンドします。特徴的なのは**検索エンジンの選択**です：**LlamaIndex**（デフォルト、ハイブリッドなベクター + BM25。オプションでクロスエンコーダー再ランキングとexact-flatまたはHNSW FAISSインデックスを利用可能）、**PageIndex**（ページレベル引用付き推論検索、ホスト型またはセルフホストOSS）、**GraphRAG**と**LightRAG**（知識グラフ検索）、**LightRAG Server**（HTTP経由で接続する外部LightRAGインスタンスに検索をオフロード）、**WeKnora**（ローカルインデックスやドキュメントコピーを作らず、セルフホスト環境の知識ベースから検索）、**Tencent IMA**（IMAでキュレートするライブラリで、そのOpenAPI経由で検索・閲覧・書き戻しが可能）、**MarginNote 4**（あなたのMN4学習データ — ドキュメント、抜粋、マインドマップカード、およびそれらの間のリンク — がアプリのアドオンによって取り込まれ、専用ツールでナビゲートできます）、またはチューターがその場で読み書きするリンクされた**Obsidian**ボールト。各KBは1つのエンジンにバインドされます。
@@ -538,7 +554,7 @@ KBを作成する際は、**新規作成**（ドキュメントをアップロ�
 <summary><b>🌐 Learning Space — スキル、ペルソナ、再利用可能なコンテキスト</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/learning-space/00-overview.png" alt="DeepTutor Learning Spaceハブ" width="900">
+<img src="../../assets/figs/web-1.6.5/learning-space/00-overview.png" alt="DeepTutor Learning Spaceハブ" width="900">
 </div>
 
 Learning Spaceはライブラリ、整理、パーソナライゼーションの層です。**会話と素材**にはChat History、レコードの移動とMarkdownへのエクスポートに対応したノートブック、回答と解説を保存する問題バンクがあります。個別学習の**練習**では、保存した問題を復習セッション、間違いの記録、定期的な反復学習に活用できます。**パーソナライゼーション**にはペルソナ、スキル（`SKILL.md`プレイブック）、ワンクリックで導入できる**MCPサービス**、[CLI-Anything](https://github.com/HKUDS/CLI-Anything)カタログの**CLIアプリ**があり、各アプリの使用ガイドはオンデマンドで読み込まれます。独立した**My Courses**ワークスペースは科目ごとの会話とチュータースレッドをまとめ、各アセットはそれをサポートするワークフローでのみ提供されます。
@@ -555,13 +571,13 @@ Learning Spaceはライブラリ、整理、パーソナライゼーションの
 <summary><b>🧠 Memory — 検査可能なパーソナライゼーション</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/memory/00-overview.png" alt="DeepTutor Memoryの概要" width="900">
+<img src="../../assets/figs/web-1.6.5/memory/00-overview.png" alt="DeepTutor Memoryの概要" width="900">
 </div>
 
 Memoryはファイルバックの3層システムで、読み取り、キュレーション、監査が可能です — 意図的に隠されたベクターストアではありません。**L1**はワークスペースミラーに加えた追記のみのイベントトレース（`trace/<surface>/<date>.jsonl`）、**L2**はL1エンティティへの参照を持つサーフェスごとのキュレートされた事実（`L2/<surface>.md`）、**L3**は寄与したL2サーフェスを記録するクロスサーフェス合成（`L3/<profile|recent|scope|preferences>.md`）です。
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/memory/01-3%20layer%20memory%20graph.png" alt="DeepTutor Memoryグラフ" width="900">
+<img src="../../assets/figs/web-1.6.5/memory/01-graph.png" alt="DeepTutor Memoryグラフ" width="900">
 </div>
 
 Memory Graphはピラミッド全体を表示します — L3合成が中心、L2が中間リング、L1トレースが外側 — 正確なL2 → L1の証拠エッジと、L3 → 寄与サーフェスのリンクを確認できます。Memoryは`chat`、`notebook`、`quiz`、`kb`、`book`、partner、`cowriter`サーフェスで追跡されます。コンソリデーターのUpdate / Audit / Dedupバジェットは**Settings → Memory**で調整します。
@@ -572,7 +588,7 @@ Memory Graphはピラミッド全体を表示します — L3合成が中心、L
 <summary><b>⚙️ Settings — ワンコントロールプレーン</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/settings/00-setting%20overview.png" alt="DeepTutor Settingsハブ" width="900">
+<img src="../../assets/figs/web-1.6.5/settings/00-settings-overview.png" alt="DeepTutor Settingsハブ" width="900">
 </div>
 
 Settingsはオペレーションコントロールプレーンで、最初に表示される**一般**でインターフェースとモデル出力の言語を設定します。検索可能なナビゲーターから独立した各ページにアクセスできます。**個人**にはワークスペース、データ移行、外観、使用量統計、**学習と会話**にはスターティングポイント、添付ファイル、Video Learning、学習者と保護者の管理、Learning progress、Memory、**モデルとサービス**にはプロバイダー、言語モデル、タスクモデル、埋め込み、検索、音声、マルチモーダル生成、**機能と連携**にはツール、機能パラメーター、Partners & agents、Knowledge & documentsがあります。**システム**にはネットワーク、実行状態、Aboutがあり、**アーカイブ済みチャット**ではアーカイブした会話の検索、復元、完全削除ができます。実行状態にはバックエンドの健全性、常駐メモリ、機能の阻害要因・警告・提案を評価する**Readiness**マトリクスが表示されます。ワークスペースはトピックのファイルと学習状態を分離し、データ移行では検証付きの移行とエクスポートができます。**プロバイダー**はベンダーのアドレスと認証情報を保持し、そのサービスモデルで再利用します。モデルページでは保存済みプロバイダーを選び、モデル名と機能を設定します。**タスクモデル**は会話への命名やスターティングポイントの生成などのバックグラウンド作業に小さく高速なモデルを固定し、空欄の場合はアクティブなデフォルトを使用します。音声には音声合成と文字起こし、マルチモーダル生成には画像と動画のモデルがまとまっています。Partners & agentsではローカルハーネスとリモートのHermesゲートウェイを設定します。
@@ -580,7 +596,19 @@ Settingsはオペレーションコントロールプレーンで、最初に表
 Settings → Learning & conversationの**Video Learning**は、デフォルトで公式のプライバシー強化YouTube IFrame Playerを使用します。再生をローカルに保つには、管理者が管理するInvidious APIオリジン（例：`http://127.0.0.1:3000`）を設定してテストし、Invidiousを選択して保存します。新規または再度開いた動画には、同じ教材IDと進捗のままプロバイダーが直ちに反映されます。InvidiousメディアはDeepTutorのバイトレンジプロキシ経由でストリーミングされ、アップストリームURLがブラウザに公開されたりディスクに保存されたりすることはありません。インスタンスに障害が発生した場合、学習者がネイティブのYouTubeフォールバックを明示的に選択するまで、DeepTutorはYouTubeへ接続しないままです。公開字幕による個別指導はオプションです：`.[video-learning]`をインストールしてください。未インストールでも再生は続行しますが、文字起こしに基づく**Explain here**は理由とともに無効になります。
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="DeepTutor外観設定とテーマ" width="900">
+<img src="../../assets/figs/web-1.6.5/settings/01-settings-readiness.png" alt="設定の実行状態と Readiness マトリクス" width="900">
+</div>
+
+<div align="center">
+<img src="../../assets/figs/web-1.6.5/settings/02-settings-workspace.png" alt="設定のワークスペース" width="900">
+</div>
+
+<div align="center">
+<img src="../../assets/figs/web-1.6.5/settings/06-language-models.png" alt="設定の言語モデル" width="900">
+</div>
+
+<div align="center">
+<img src="../../assets/figs/web-1.6.5/settings/05-appearance.png" alt="DeepTutor外観設定とテーマ" width="900">
 </div>
 
 ほとんどのセクションはドラフトと適用フローを使用するため、コミットする前にプロバイダーをテストできます。Chatで直接依頼するだけでも構いません：アシスタントが現在の設定を読み取り、変更を適用し、再起動または再インデックスが必要かどうかを教えてくれます — コミットする前に新しいモデルをプローブするため、到達不能な設定に自分自身を切り替えてしまうことはありません。APIキーがモデルを経由することは決してなく、代わりに該当するフォームを開いてくれます。4つのテーマが箱に入っています：Default、Cream、Dark、Glass。プロジェクトルートの`.env`ファイルは意図的に無視されます。ランタイム設定は`DEEPTUTOR_HOME`または`deeptutor start --home`でアプリを別の場所に向けない限り、`data/user/settings/*.json`に保存されます。
