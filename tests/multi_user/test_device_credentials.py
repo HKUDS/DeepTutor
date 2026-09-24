@@ -519,9 +519,7 @@ def test_device_login_admits_non_admin_learner_accounts_and_still_rejects_admins
     from deeptutor.services.auth import hash_password
 
     client, users = _client(mu_isolated_root, monkeypatch)
-    teacher = save_user(
-        "tess", hash_password("teacher-password"), role="teacher", preset="learner"
-    )
+    teacher = save_user("tess", hash_password("teacher-password"), role="teacher", preset="learner")
     issued = client.post(
         "/api/auth/devices",
         headers=_auth(users["admin_token"]),
