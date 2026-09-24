@@ -30,9 +30,7 @@ def test_normalize_role_passes_legal_roles_through(legal):
     assert normalize_role(legal) == legal
 
 
-@pytest.mark.parametrize(
-    "bogus", ["", "superadmin", "Admin", "instructor", "parent", "root"]
-)
+@pytest.mark.parametrize("bogus", ["", "superadmin", "Admin", "instructor", "parent", "root"])
 def test_normalize_role_degrades_unknown_values_to_user(bogus):
     assert normalize_role(bogus) == "user"
 
@@ -119,9 +117,7 @@ def test_token_payload_degrades_unknown_roles_to_user():
 def test_new_roles_do_not_elevate(role):
     # Only "admin" elevates: the new roles carry strictly user-level
     # capabilities until a deployment explicitly grants more.
-    current = user_from_token_payload(
-        SimpleNamespace(user_id="u_n", username="n", role=role)
-    )
+    current = user_from_token_payload(SimpleNamespace(user_id="u_n", username="n", role=role))
     assert current.role == role
     assert current.is_admin is False
 
