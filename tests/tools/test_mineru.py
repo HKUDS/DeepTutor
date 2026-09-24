@@ -610,6 +610,68 @@ def test_parse_cloud_retries_429_with_next_token(
     assert seen_auth == ["Bearer tok-a", "Bearer tok-b"]
 
 
+def test_parse_cloud_retry_budget_follows_key_pool_size(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from types import SimpleNamespace
+
+    pdf = tmp_path / "exam.pdf"
+    pdf.write_bytes(b"%PDF-1.4 test")
+    seen_auth: list[str] = []
+
+    class FakeClient:
+        def __init__(self, *_args, **_kwargs):  # noqa: ANN002, ANN003
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):  # noqa: ANN002
+            return False
+
+        def post(self, _path, json=None, timeout=None, headers=None):  # noqa: A002, ANN001
+            seen_auth.append((headers or {}).get("Authorization", ""))
+            if len(seen_auth) <= 2:
+                return _Resp(status=429)
+            return _Resp({"code": 0, "data": {"batch_id": "B", "file_urls": ["https://up"]}})
+
+        def get(self, _path, timeout=None, headers=None):  # noqa: ANN001
+            return _Resp(
+                {
+                    "code": 0,
+                    "data": {
+                        "extract_result": [
+                            {
+                                "file_name": "exam.pdf",
+                                "state": "done",
+                                "full_zip_url": "https://zip",
+                            }
+                        ]
+                    },
+                }
+            )
+
+    fake_httpx = SimpleNamespace(
+        Client=FakeClient,
+        put=lambda *_args, **_kwargs: _Resp(status=200),
+        get=lambda *_args, **_kwargs: _Resp(content=_zip_bytes(), status=200),
+        HTTPError=real_httpx.HTTPError,
+        HTTPStatusError=real_httpx.HTTPStatusError,
+    )
+    monkeypatch.setattr(mineru_cloud, "httpx", fake_httpx)
+
+    workdir = mineru_cloud.parse_cloud(
+        pdf,
+        tmp_path / "out",
+        MinerUConfig(mode="cloud", api_token=["tok-a", "tok-b", "tok-c"]),
+        poll_interval=0,
+        timeout=10,
+    )
+
+    assert (workdir / "full.md").exists()
+    assert seen_auth == ["Bearer tok-a", "Bearer tok-b", "Bearer tok-c"]
+
+
 def test_parse_cloud_surfaces_api_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     pdf = tmp_path / "exam.pdf"
     pdf.write_bytes(b"%PDF-1.4")
