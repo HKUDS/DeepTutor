@@ -21,16 +21,45 @@ def _request(query: str = "") -> SimpleNamespace:
     return SimpleNamespace(query_params=QueryParams(query), headers={})
 
 
+def _file_preview_routes(app):
+    """Materialize lazily-included routers (new-fastapi ``_IncludedRouter``).
+
+    Recent FastAPI turns ``include_router`` into lazy wrappers carrying the
+    prefix and router-level dependencies in ``include_context``; flatten them
+    the same way ``tests/video_learning/test_router.py`` does.
+    """
+    flattened = []
+    for route in app.routes:
+        nested = getattr(route, "original_router", None)
+        if nested is None:
+            if getattr(route, "path", "") == "/api/file-preview/pdf":
+                flattened.append(SimpleNamespace(dependant=route.dependant))
+            continue
+        ctx = getattr(route, "include_context", None)
+        prefix = str(getattr(ctx, "prefix", "") or "")
+        router_deps = list(getattr(ctx, "dependencies", None) or [])
+        for inner in nested.routes:
+            if prefix + str(getattr(inner, "path", "")) != "/api/file-preview/pdf":
+                continue
+            deps = list(inner.dependant.dependencies) + router_deps
+            flattened.append(SimpleNamespace(dependencies=deps))
+    return flattened
+
+
 def test_preview_route_requires_authentication(monkeypatch) -> None:
     from deeptutor.api.main import app
     from deeptutor.api.routers import auth
 
-    routes = [
-        route for route in app.routes if getattr(route, "path", "") == "/api/file-preview/pdf"
-    ]
+    routes = _file_preview_routes(app)
     assert len(routes) == 2  # GET source and POST uploaded bytes
+
+    def _dep_call(dependency):
+        # Route-level deps are Dependant objects (.call); router-level deps
+        # coming from include_context are raw Depends (.dependency).
+        return getattr(dependency, "call", None) or getattr(dependency, "dependency", None)
+
     assert all(
-        any(dependency.call is auth.require_auth for dependency in route.dependant.dependencies)
+        any(_dep_call(dependency) is auth.require_auth for dependency in route.dependencies)
         for route in routes
     )
     monkeypatch.setattr(auth, "AUTH_ENABLED", True)
