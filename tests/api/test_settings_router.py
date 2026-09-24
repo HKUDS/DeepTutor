@@ -100,7 +100,7 @@ def test_ui_settings_update_rejects_unsupported_language() -> None:
     from pydantic import ValidationError
 
     with pytest.raises(ValidationError):
-        settings_router.UISettingsUpdate(language="de")
+        settings_router.UISettingsUpdate(language="xx")
     with pytest.raises(ValidationError):
         settings_router.UISettingsUpdate(response_language="xx")
 
