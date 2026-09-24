@@ -44,6 +44,7 @@ from deeptutor.capabilities.reading._tool_base import (
     _NoMaterial,
     _ReadingToolBase,
 )
+from deeptutor.capabilities.reading.figure_view import ViewFigureTool
 from deeptutor.capabilities.reading.media_notes import render_media_note as _media_note
 from deeptutor.core.tool_protocol import BaseTool, ToolDefinition, ToolParameter, ToolResult
 
@@ -55,6 +56,7 @@ READING_TOOL_NAMES: tuple[str, ...] = (
     "material_outline",
     "search_material",
     "read_material",
+    "view_figure",
     "reader_goto",
     "reader_annotate",
 )
@@ -656,6 +658,7 @@ READING_TOOL_TYPES: tuple[type[BaseTool], ...] = (
     MaterialOutlineTool,
     SearchMaterialTool,
     ReadMaterialTool,
+    ViewFigureTool,
     ReaderGotoTool,
     ReaderAnnotateTool,
 )
@@ -670,6 +673,7 @@ __all__ = [
     "ReadingListTabsTool",
     "ReadingSwitchTabTool",
     "ReadMaterialTool",
+    "ViewFigureTool",
     "ReaderAnnotateTool",
     "ReaderGotoTool",
     "SearchMaterialTool",

@@ -167,6 +167,7 @@ BUILTIN_TOOL_SPECS: tuple[BuiltinToolSpec, ...] = (
             ("material_outline", "MaterialOutlineTool"),
             ("search_material", "SearchMaterialTool"),
             ("read_material", "ReadMaterialTool"),
+            ("view_figure", "ViewFigureTool"),
             ("reader_goto", "ReaderGotoTool"),
             ("reader_annotate", "ReaderAnnotateTool"),
         ),
