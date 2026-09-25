@@ -138,6 +138,49 @@ class TestTurnExecution:
         ]
 
     @pytest.mark.asyncio
+    async def test_persists_presented_workspace_item_as_generated_attachment(
+        self, partners_root, fake_orchestrator
+    ):
+        workspace_item = {
+            "workspace_id": "ws_test",
+            "workspace_item_id": "wsi_test",
+            "relative_path": "outputs/chat/turn/report.md",
+            "filename": "report.md",
+            "url": "/files/workspace-items/ws_test/wsi_test",
+            "mime_type": "text/markdown",
+            "size_bytes": 42,
+            "generated": True,
+        }
+        fake_orchestrator.script = [
+            event(
+                StreamEventType.TOOL_RESULT,
+                metadata={"tool_metadata": {"workspace_items": [workspace_item]}},
+            ),
+            *finish("[Download](outputs/chat/turn/report.md)"),
+        ]
+
+        await _runner(partners_root).process_message(_msg())
+
+        assistant = _shared_store().messages("telegram:42")[1]
+        assert assistant["attachments"] == [
+            {
+                "type": "document",
+                "filename": "report.md",
+                "mime_type": "text/markdown",
+                "url": "/files/workspace-items/ws_test/wsi_test",
+                "size_bytes": 42,
+                "generated": True,
+                "origin": "workspace",
+                "workspace_id": "ws_test",
+                "workspace_item_id": "wsi_test",
+                "relative_path": "outputs/chat/turn/report.md",
+                "sha256": "",
+                "title": "",
+                "caption": "",
+            }
+        ]
+
+    @pytest.mark.asyncio
     async def test_a_group_conversation_records_where_it_happened(
         self, partners_root, fake_orchestrator
     ):
