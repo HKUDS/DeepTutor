@@ -8,6 +8,7 @@ from typing import Any
 from deeptutor.capabilities.partner_authoring.binding import (
     PARTNER_AUTHORING_CAPABILITY_NAME,
     is_partner_authoring_turn,
+    partner_authoring_trigger,
 )
 from deeptutor.capabilities.partner_authoring.tools import PARTNER_AUTHORING_TOOL_NAMES
 from deeptutor.capabilities.protocol import PromptBlock
@@ -50,6 +51,12 @@ class PartnerAuthoringCapability:
     def finish_instruction(self, context: UnifiedContext, final_text: str) -> str:
         _ = final_text
         if context.extension(self.name).get("draft_created"):
+            return ""
+        if partner_authoring_trigger(context) != "explicit":
+            # Returning an instruction makes the loop discard the answer already
+            # written this round, so only a request the user chose to make may
+            # pay that cost. A keyword match is a guess about their words, and
+            # guessing must never delete a response (#1587).
             return ""
         return (
             "The user asked to create a Partner, but no reviewable draft exists yet. "

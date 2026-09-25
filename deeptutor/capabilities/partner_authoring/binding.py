@@ -20,16 +20,31 @@ _OBJECT = re.compile(
 )
 
 
-def is_partner_authoring_turn(context: UnifiedContext) -> bool:
+def partner_authoring_trigger(context: UnifiedContext) -> str | None:
+    """Why this turn is in the authoring flow, or ``None`` when it is not.
+
+    ``explicit`` means the user selected the capability; ``heuristic`` means only
+    the keyword gate matched, which is a guess about the words they typed.
+    """
     # Home/product Chat owns the review card and confirmation flow. A Partner
     # (including one running inside a Group) must not create drafts inside its
     # synthetic workspace merely because someone talks about another Partner.
     if context.metadata.get("source") == "partner":
-        return False
+        return None
     if context.active_capability == PARTNER_AUTHORING_CAPABILITY_NAME:
-        return True
+        return "explicit"
     text = str(context.user_message or "")
-    return bool(_ACTION.search(text) and _OBJECT.search(text))
+    if _ACTION.search(text) and _OBJECT.search(text):
+        return "heuristic"
+    return None
 
 
-__all__ = ["PARTNER_AUTHORING_CAPABILITY_NAME", "is_partner_authoring_turn"]
+def is_partner_authoring_turn(context: UnifiedContext) -> bool:
+    return partner_authoring_trigger(context) is not None
+
+
+__all__ = [
+    "PARTNER_AUTHORING_CAPABILITY_NAME",
+    "is_partner_authoring_turn",
+    "partner_authoring_trigger",
+]

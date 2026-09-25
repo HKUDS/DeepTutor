@@ -26,12 +26,36 @@ def test_partner_authoring_activation_requires_action_and_partner_object() -> No
     assert not is_partner_authoring_turn(partner_context)
 
 
-def test_capability_forces_a_draft_before_finishing() -> None:
+def _selected_context(message: str) -> UnifiedContext:
+    context = _context(message)
+    context.active_capability = "partner_authoring"
+    return context
+
+
+def test_explicit_selection_forces_a_draft_before_finishing() -> None:
     capability = PartnerAuthoringCapability()
-    context = _context("创建一个伙伴")
+    context = _selected_context("创建一个伙伴")
     assert "propose_partner" in capability.finish_instruction(context, "好的")
     context.extension("partner_authoring")["draft_created"] = "draft"
     assert capability.finish_instruction(context, "完成") == ""
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        # Filing a report about the false trigger supplies one word from each
+        # list, so the bug report about the bug triggers the bug.
+        'I want to file an issue about this: Spurious "Create Partner" triggers hijack',
+        "Please add a companion-style tone to my summary",
+    ],
+)
+def test_a_keyword_match_never_discards_the_answer(message: str) -> None:
+    # A finish instruction makes the loop throw away the reply written this
+    # round, so it has to cost something the user actually asked for (#1587).
+    capability = PartnerAuthoringCapability()
+    context = _context(message)
+    assert is_partner_authoring_turn(context)
+    assert capability.finish_instruction(context, "A careful answer.") == ""
 
 
 @pytest.mark.asyncio
