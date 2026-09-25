@@ -26,6 +26,38 @@ def test_partner_authoring_activation_requires_action_and_partner_object() -> No
     assert not is_partner_authoring_turn(partner_context)
 
 
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Create a partner that quizzes me on French verbs",
+        "I want a patient math tutor",
+        "Can you make me a strict coach?",
+        "Set up a new study buddy for physics",
+        "我想要一个数学导师",
+        "来个学习搭子",
+    ],
+)
+def test_partner_authoring_activates_on_a_creation_request(message: str) -> None:
+    assert is_partner_authoring_turn(_context(message))
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "I want to file an issue about the Partner bug",
+        "I want to report that Partner creation keeps triggering",
+        "I need help understanding my tutor's feedback",
+        "Make sure my tutor sees this",
+        "Why can a flash-tier model answer well? The release notes mention Partner channels.",
+        "我想提交一个关于伙伴功能的 bug",
+        "生成的回答里提到了伙伴",
+        "我需要解释一下，为什么会触发伙伴创建",
+    ],
+)
+def test_partner_authoring_ignores_turns_that_only_mention_a_partner(message: str) -> None:
+    assert not is_partner_authoring_turn(_context(message))
+
+
 def test_capability_forces_a_draft_before_finishing() -> None:
     capability = PartnerAuthoringCapability()
     context = _context("创建一个伙伴")
