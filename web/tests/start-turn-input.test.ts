@@ -104,6 +104,21 @@ test("optional routing fields preserve omitted versus explicit null", () => {
   assert.equal(explicit.capability, null);
 });
 
+test("a draft's reply language selector is explicit and a normal turn preserves the session choice", () => {
+  const normal = buildStartTurnInput({ content: "Continue", sessionId: "session-1", language: "en" });
+  const fixed = buildStartTurnInput({
+    content: "用法语教我数学",
+    language: "zh",
+    replyLanguageOverride: "fr",
+  });
+  const cleared = buildStartTurnInput({ content: "Use default", replyLanguageOverride: null });
+
+  assert.equal("reply_language_override" in normal, false);
+  assert.equal(fixed.reply_language_override, "fr");
+  assert.equal(fixed.language, "zh");
+  assert.equal(cleared.reply_language_override, null);
+});
+
 test("the positional compatibility adapter produces object-shaped input", () => {
   const input = legacySendMessageInput(
     { content: "legacy", config: { difficulty: "hard" } },

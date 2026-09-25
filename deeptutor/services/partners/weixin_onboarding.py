@@ -100,9 +100,9 @@ def render_qr_svg(payload: str) -> str:
 
     SVG rather than PNG so no imaging library is pulled in, and server-side
     rather than in the browser so the web bundle needs no QR dependency at all.
-    ``qrcode`` ships with the ``partners`` extra — the same extra this channel
-    needs — but a deployment missing it should still get a usable page, so the
-    caller also receives the raw payload to fall back on.
+    ``qrcode`` is a core dependency, but a trimmed deployment may still lack
+    it — the page must stay usable, so the caller also receives the raw
+    payload to fall back on.
     """
     if not payload:
         return ""

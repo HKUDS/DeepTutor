@@ -29,6 +29,7 @@ export type BookId = string;
 export type PageIds = string[];
 export type BookReferences = BookReference[];
 export type Capability = string | null;
+export type CapabilityOnce = boolean;
 export type ConsultPartnerId = string | null;
 export type Content = string;
 export type CourseId = string | null;
@@ -60,6 +61,7 @@ export type PartnerGroupReferences = {
 }[];
 export type PersistUserMessage = boolean;
 export type Persona = string | null;
+export type PreserveSessionPreferences = boolean;
 export type ProtocolVersion = "2.0";
 export type QuestionNotebookReferences = number[];
 export type ReadingMaterialId = string | null;
@@ -72,7 +74,8 @@ export type Locator = number | null;
 export type Selection = string | null;
 export type ReadingWorkspaceId = string | null;
 export type Regenerate = boolean;
-export type RegeneratedFromMessageId = number | null;
+export type RegeneratedFromMessageId = number | string | null;
+export type ReplyLanguageOverride = string | null;
 export type SelectionTutorContext = {
   [k: string]: unknown;
 } | null;
@@ -275,6 +278,7 @@ export interface StartTurnCommand {
   auto_route?: AutoRoute;
   book_references?: BookReferences;
   capability?: Capability;
+  capability_once?: CapabilityOnce;
   config?: Config;
   consult_partner_id?: ConsultPartnerId;
   content: Content;
@@ -297,6 +301,7 @@ export interface StartTurnCommand {
   partner_group_references?: PartnerGroupReferences;
   persist_user_message?: PersistUserMessage;
   persona?: Persona;
+  preserve_session_preferences?: PreserveSessionPreferences;
   protocol_version: ProtocolVersion;
   question_notebook_references?: QuestionNotebookReferences;
   reading_material_id?: ReadingMaterialId;
@@ -306,6 +311,7 @@ export interface StartTurnCommand {
   reading_workspace_id?: ReadingWorkspaceId;
   regenerate?: Regenerate;
   regenerated_from_message_id?: RegeneratedFromMessageId;
+  reply_language_override?: ReplyLanguageOverride;
   selection_tutor_context?: SelectionTutorContext;
   session_id?: SessionId;
   skills?: Skills;

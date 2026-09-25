@@ -195,6 +195,56 @@ def test_repeat_submission_is_idempotent(store: SQLiteSessionStore) -> None:
     assert listing["total"] == 2
 
 
+def test_reading_submission_id_distinguishes_retry_from_new_attempt(
+    store: SQLiteSessionStore,
+) -> None:
+    asyncio.run(store.create_session(title="Reading", session_id="reading-session"))
+    asyncio.run(store.put_reading_quiz_pending(MATERIAL_ID, LOCATOR, _quiz_questions()))
+    payload = _payload(answers=_answers(("q_1", 1)), submission_id="click-1")
+    with TestClient(_build_app(store)) as client:
+        assert (
+            client.post(
+                f"/api/reading/materials/{MATERIAL_ID}/extensions/quiz/answers", json=payload
+            ).status_code
+            == 200
+        )
+        assert (
+            client.post(
+                f"/api/reading/materials/{MATERIAL_ID}/extensions/quiz/answers", json=payload
+            ).status_code
+            == 200
+        )
+        assert (
+            client.post(
+                f"/api/reading/materials/{MATERIAL_ID}/extensions/quiz/answers",
+                json={**payload, "submission_id": "click-2"},
+            ).status_code
+            == 200
+        )
+    attempts = asyncio.run(store.list_assessment_attempts("reading-session", question_id="q_1"))
+    assert len(attempts) == 2
+    assert [item["attempt_count"] for item in attempts] == [1, 2]
+
+
+def test_reading_submission_id_is_scoped_to_session(store: SQLiteSessionStore) -> None:
+    for session_id in ("reader-a", "reader-b"):
+        asyncio.run(store.create_session(title=session_id, session_id=session_id))
+    asyncio.run(store.put_reading_quiz_pending(MATERIAL_ID, LOCATOR, _quiz_questions()))
+    with TestClient(_build_app(store)) as client:
+        for session_id in ("reader-a", "reader-b"):
+            response = client.post(
+                f"/api/reading/materials/{MATERIAL_ID}/extensions/quiz/answers",
+                json=_payload(
+                    session_id=session_id,
+                    answers=_answers(("q_1", 1)),
+                    submission_id="same-browser-id",
+                ),
+            )
+            assert response.status_code == 200
+    assert len(asyncio.run(store.list_assessment_attempts("reader-a"))) == 1
+    assert len(asyncio.run(store.list_assessment_attempts("reader-b"))) == 1
+
+
 @pytest.mark.parametrize("selected_index", [-1, 2])
 def test_invalid_selection_does_not_save_any_part_of_batch(store, selected_index):
     asyncio.run(store.put_reading_quiz_pending(MATERIAL_ID, LOCATOR, _quiz_questions()))

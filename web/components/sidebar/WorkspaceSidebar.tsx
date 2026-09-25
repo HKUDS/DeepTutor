@@ -30,7 +30,8 @@ import {
   fetchMasteryTopicIndex,
   type MasteryTopicLabel,
 } from "@/lib/learning-api";
-import { sessionRoute } from "@/lib/mastery-session";
+import { readingWorkspaceIdOf, sessionRoute } from "@/lib/mastery-session";
+import { readingCollectionRoute } from "@/lib/learning-routes";
 import { subscribeSessionChanges } from "@/lib/session-events";
 
 export default function WorkspaceSidebar() {
@@ -183,14 +184,23 @@ export default function WorkspaceSidebar() {
   const handleDeleteSession = useCallback(
     async (sessionId: string) => {
       if (!window.confirm(t("Permanently delete this chat and its tutor threads? This cannot be undone."))) return;
-      await deleteSession(sessionId, sessionWorkspaceId(sessions.find(item => item.session_id === sessionId)));
+      const deleted = sessions.find(item => item.session_id === sessionId);
+      await deleteSession(sessionId, sessionWorkspaceId(deleted));
       setSessions((prev) =>
         prev.filter((session) => session.session_id !== sessionId),
       );
       if (selectedSessionId === sessionId) {
         cancelStreamingTurn();
         newSession({ workspaceId: null });
-        navigateTask("/chat", router.push);
+        // A reading conversation was open beside its material; deleting it
+        // should leave the reader on that material, not throw them to /chat.
+        const readingId = deleted ? readingWorkspaceIdOf(deleted) : "";
+        navigateTask(
+          readingId
+            ? readingCollectionRoute(readingId, sessionWorkspaceId(deleted))
+            : "/chat",
+          router.push,
+        );
       }
     },
     [cancelStreamingTurn, newSession, router, selectedSessionId, t, sessions],

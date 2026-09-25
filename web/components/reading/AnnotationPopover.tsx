@@ -5,6 +5,7 @@ import {
   BookmarkPlus,
   Highlighter,
   MessageSquareQuote,
+  MoreHorizontal,
   StickyNote,
   Underline,
 } from "lucide-react";
@@ -26,7 +27,24 @@ export interface AnnotationPopoverProps {
   onCitation: (color: AnnotationColor) => void;
   onAsk: () => void;
   onDismiss: () => void;
+  /**
+   * AI actions on the selection, shown as a second row under the marking
+   * tools. Without them the popover is the annotation toolbar it always was,
+   * with "Ask about this" as its last icon.
+   */
+  aiActions?: PopoverAiAction[];
 }
+
+export interface PopoverAiAction {
+  key: string;
+  /** Short chip text ("Explain"); `title` carries the full name. */
+  label: string;
+  title: string;
+  onClick: () => void;
+}
+
+/** Chips that fit on the row before the rest go behind ⋯. */
+const INLINE_AI_ACTIONS = 3;
 
 /**
  * Toolbar that appears over a selection.
@@ -49,12 +67,16 @@ export function AnnotationPopover({
   onCitation,
   onAsk,
   onDismiss,
+  aiActions,
 }: AnnotationPopoverProps) {
   const { t } = useTranslation();
   const ref = useRef<HTMLDivElement | null>(null);
   const [color, setColor] = useState<AnnotationColor>("yellow");
   const [noteOpen, setNoteOpen] = useState(false);
   const [note, setNote] = useState("");
+  const [overflowOpen, setOverflowOpen] = useState(false);
+  const inlineAi = aiActions?.slice(0, INLINE_AI_ACTIONS) ?? [];
+  const overflowAi = aiActions?.slice(INLINE_AI_ACTIONS) ?? [];
   const [position, setPosition] = useState({ left: anchor.x, top: anchor.y });
 
   useLayoutEffect(() => {
@@ -73,7 +95,7 @@ export function AnnotationPopover({
       left,
       top: Math.min(top, window.innerHeight - box.height - margin),
     });
-  }, [anchor.x, anchor.y, noteOpen]);
+  }, [anchor.x, anchor.y, noteOpen, overflowOpen]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -144,12 +166,56 @@ export function AnnotationPopover({
           label={t("Save citation")}
           onClick={() => onCitation(color)}
         />
-        <IconButton
-          icon={MessageSquareQuote}
-          label={t("Ask about this")}
-          onClick={onAsk}
-        />
+        {aiActions ? null : (
+          <IconButton
+            icon={MessageSquareQuote}
+            label={t("Ask about this")}
+            onClick={onAsk}
+          />
+        )}
       </div>
+
+      {aiActions && (
+        <div className="mt-1.5 flex items-center gap-1 border-t border-[var(--border)] pt-1.5">
+          <Tooltip label={t("Ask about this")} side="bottom">
+            <button
+              type="button"
+              aria-label={t("Ask about this")}
+              onClick={onAsk}
+              className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-[var(--primary)] px-2.5 text-[12px] font-medium text-[var(--primary-foreground)] transition hover:opacity-90"
+            >
+              <MessageSquareQuote size={13} />
+              {t("Ask")}
+            </button>
+          </Tooltip>
+          {inlineAi.map((action) => (
+            <AiChip key={action.key} action={action} />
+          ))}
+          {overflowAi.length > 0 && (
+            <IconButton
+              icon={MoreHorizontal}
+              label={t("More actions")}
+              active={overflowOpen}
+              onClick={() => setOverflowOpen((open) => !open)}
+            />
+          )}
+        </div>
+      )}
+
+      {overflowOpen && overflowAi.length > 0 && (
+        <div className="mt-1 grid gap-0.5 border-t border-[var(--border)] pt-1">
+          {overflowAi.map((action) => (
+            <button
+              key={action.key}
+              type="button"
+              onClick={action.onClick}
+              className="rounded-lg px-2 py-1.5 text-left text-[12px] text-[var(--foreground)] transition hover:bg-[var(--muted)]"
+            >
+              {action.title}
+            </button>
+          ))}
+        </div>
+      )}
 
       {noteOpen && (
         <div className="mt-1.5 border-t border-[var(--border)] pt-1.5">
@@ -216,6 +282,21 @@ function IconButton({
         }`}
       >
         <Icon size={14} />
+      </button>
+    </Tooltip>
+  );
+}
+
+function AiChip({ action }: { action: PopoverAiAction }) {
+  return (
+    <Tooltip label={action.title} side="bottom">
+      <button
+        type="button"
+        aria-label={action.title}
+        onClick={action.onClick}
+        className="inline-flex h-7 items-center rounded-lg px-2 text-[12px] font-medium text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+      >
+        {action.label}
       </button>
     </Tooltip>
   );

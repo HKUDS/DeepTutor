@@ -37,11 +37,18 @@ const state: ReadingTurnState = {
   timeSeconds: null,
 };
 
-/** Validate persisted/wire material ids before they become reader addresses. */
+/**
+ * Validate persisted/wire material ids before they become reader addresses.
+ * Content hashes and catalog-minted rm_ ids (a second copy of the same
+ * content gets its own catalog row) are both reader addresses; the store
+ * resolves both to the same content directory.
+ */
+const MATERIAL_ID_RE = /^(?:[0-9a-f]{8,64}|rm_[0-9a-f]{12})$/;
+
 export function normalizeReadingMaterialId(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const normalized = value.trim().toLowerCase();
-  return /^[0-9a-f]{8,64}$/.test(normalized) ? normalized : null;
+  return MATERIAL_ID_RE.test(normalized) ? normalized : null;
 }
 
 /** Normalize an immutable ReadingStore content revision from wire/storage. */

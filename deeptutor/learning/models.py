@@ -84,6 +84,11 @@ class KnowledgePoint(BaseModel):
     name: str
     type: KnowledgeType
     module_id: str
+    # Required objectives, not a presentation order. Empty on legacy paths.
+    prerequisite_ids: list[str] = Field(default_factory=list)
+    # Selected non-goal sources that justify this objective. They are curriculum
+    # provenance, not proof of factual correctness or retrieval permission.
+    topic_source_ids: list[str] = Field(default_factory=list)
 
 
 class LearningModule(BaseModel):
@@ -155,8 +160,9 @@ class ErrorRecord(BaseModel):
 class LearningEvidence(BaseModel):
     """One durable review/assessment event that can recompute retention state.
 
-    Mastery Path is the only writer in this phase. Quality is a normalized
-    0..1 review strength inferred from the outcome (not a learner self-rating).
+    Quality is a normalized 0..1 review strength inferred from the outcome
+    (not a learner self-rating). Trusted linked assessments may originate in
+    another learning surface.
     """
 
     model_config = ConfigDict(extra="ignore")
@@ -194,6 +200,11 @@ class RepetitionState(BaseModel):
     review_count: int = 0
     lapse_count: int = 0
     last_review_at: float | None = None
+    # The review (or initial schedule) that set ``next_review_at``. Practice
+    # inside one session updates ``last_review_at`` but keeps this anchor, so
+    # changing the target cannot silently postpone a previously due review.
+    last_scheduled_at: float | None = None
+    scheduled_after_failure: bool = False
 
 
 class ReviewTask(BaseModel):
@@ -207,6 +218,8 @@ class ReviewTask(BaseModel):
     state: RepetitionState
     forgetting_risk: float = 0.0
     reason: str = ""
+    evidence_source: str = ""
+    evidence_id: str = ""
 
 
 class PendingOption(BaseModel):
@@ -469,6 +482,50 @@ class LearnerProfile(BaseModel):
         )
 
 
+ReadingExtensionResultType = Literal[
+    "card",
+    "quiz",
+    "feedback",
+    "browser_speech",
+]
+
+
+class ReadingProgressRecord(BaseModel):
+    """One material's Reading progress in an account's learning records."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    material_id: str
+    latest_locator: int = Field(ge=1)
+    latest_percentage: float = Field(ge=0.0, le=1.0)
+    furthest_locator: int = Field(ge=1)
+    furthest_percentage: float = Field(ge=0.0, le=1.0)
+    updated_at: float = Field(default_factory=time.time)
+
+
+class ReadingActivityRecord(BaseModel):
+    """One successful Reading-extension action, without source content."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    activity_id: str
+    material_id: str
+    extension_id: str
+    action: str
+    locator: int = Field(ge=1)
+    result_type: ReadingExtensionResultType
+    created_at: float = Field(default_factory=time.time)
+
+
+class ReadingLearningRecords(BaseModel):
+    """Account-scoped Reading summary for reporting surfaces."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    progress: list[ReadingProgressRecord] = Field(default_factory=list)
+    activities: list[ReadingActivityRecord] = Field(default_factory=list)
+
+
 class LearningProgress(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -498,6 +555,9 @@ class LearningProgress(BaseModel):
     # Durable review history used to recompute retention. Distinct from
     # ``quiz_attempts`` (mastery evidence) so the two can evolve separately.
     learning_evidence: list[LearningEvidence] = Field(default_factory=list)
+    # One target per learning path; older aggregates load at the baseline 0.9.
+    # It is copied into each repetition state when that state is created.
+    desired_retention: float = Field(default=0.9, ge=0.7, le=0.99, allow_inf_nan=False)
     repetition_states: dict[str, RepetitionState] = Field(default_factory=dict)
     review_queue: list[ReviewTask] = Field(default_factory=list)
     # A learner may explicitly claim prior mastery.  Policy exposes this as a
@@ -544,5 +604,8 @@ __all__ = [
     "MasteryTopic",
     "LearnerMasteryOverride",
     "DeferredObjective",
+    "ReadingActivityRecord",
+    "ReadingLearningRecords",
+    "ReadingProgressRecord",
     "LearningProgress",
 ]

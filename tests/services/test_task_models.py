@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -259,7 +260,7 @@ def test_a_half_written_override_follows_the_global_model(tmp_path: Path) -> Non
                 "session_title": {"mode": "profiles", "active_profile_id": "task-1"},
                 "chat_starters": {"mode": "reference"},
                 "chat_ask_hint": {"mode": "global"},
-                "reading_openers": "gpt-5-nano",
+                "mastery_goal_name": "gpt-5-nano",
             },
         )
     )
@@ -268,7 +269,7 @@ def test_a_half_written_override_follows_the_global_model(tmp_path: Path) -> Non
         TaskKind.SESSION_TITLE,
         TaskKind.CHAT_STARTERS,
         TaskKind.CHAT_ASK_HINT,
-        TaskKind.READING_OPENERS,
+        TaskKind.MASTERY_GOAL_NAME,
     ):
         assert task_override(catalog, kind) is None
 
@@ -280,6 +281,36 @@ def test_overrides_survive_a_catalog_round_trip(tmp_path: Path) -> None:
     reloaded = ModelCatalogService(path=tmp_path / "model_catalog.json").load()
 
     assert reloaded["services"]["task"]["overrides"] == {"session_title": {"mode": "inherit"}}
+
+
+def test_a_pin_for_a_retired_kind_is_dropped(tmp_path: Path) -> None:
+    """Removing a TaskKind must not strand the model its old pin pointed at."""
+    from deeptutor.services.model_selection.tasks import TaskKind, catalog_for_task
+
+    path = tmp_path / "model_catalog.json"
+    service = ModelCatalogService(path=path)
+    pin = {"mode": "profiles", "active_profile_id": "task-1", "active_model_id": "task-nano"}
+    catalog = _with_task_model(service, overrides={"reading_openers": pin})
+    # Written as an older version left it, not through save(), which would prune.
+    path.write_text(json.dumps(catalog), encoding="utf-8")
+
+    reloaded = ModelCatalogService(path=path).load()
+
+    assert "overrides" not in reloaded["services"]["task"]
+    assert "overrides" not in json.loads(path.read_text(encoding="utf-8"))["services"]["task"]
+    assert catalog_for_task(reloaded, TaskKind.READING_ASK_HINT) is reloaded
+
+
+def test_pruning_retired_pins_keeps_the_live_ones(tmp_path: Path) -> None:
+    service = ModelCatalogService(path=tmp_path / "model_catalog.json")
+    live = {"mode": "inherit"}
+    catalog = service.save(
+        _with_task_model(
+            service, overrides={"session_title": live, "reading_openers": {"mode": "inherit"}}
+        )
+    )
+
+    assert catalog["services"]["task"]["overrides"] == {"session_title": live}
 
 
 def test_every_task_model_call_site_names_a_kind() -> None:

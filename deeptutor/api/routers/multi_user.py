@@ -29,7 +29,9 @@ from deeptutor.multi_user.grants import (
     learner_grant,
     load_grant,
     normalize_grant,
+    restore_grant_if_unchanged,
     save_grant,
+    save_grant_with_receipt,
     validate_grant,
 )
 from deeptutor.multi_user.guardians import (
@@ -45,6 +47,7 @@ from deeptutor.multi_user.identity import (
     list_user_info,
     set_book_permission,
     set_password,
+    set_preset,
 )
 from deeptutor.multi_user.knowledge_access import admin_kb_base_dir
 from deeptutor.multi_user.model_access import is_owner_bound
@@ -656,7 +659,7 @@ async def put_guardian_restrictions(
     payload: GuardianRestrictionsPayload,
     current: object = Depends(require_auth),
 ) -> dict[str, Any]:
-    _learner_username, learner_record, actor_user_id, is_admin = _require_guardian_access(
+    learner_username, learner_record, actor_user_id, is_admin = _require_guardian_access(
         current, learner_user_id, "manage_restrictions"
     )
     available_extensions = {
@@ -671,6 +674,12 @@ async def put_guardian_restrictions(
     grant = deepcopy(_restriction_grant(learner_user_id, learner_record))
     policy = grant.get("learning_policy")
     if not isinstance(policy, dict):
+        # Assigning guardian restrictions is what makes an account a learning
+        # account. Seed the default learning policy; the preset is switched
+        # only after the updated grant has passed validation and been saved.
+        grant = deepcopy(learner_grant(learner_user_id))
+        policy = grant.get("learning_policy")
+    if not isinstance(policy, dict):
         raise HTTPException(status_code=409, detail="Learner account has no learning policy")
     reading = policy.get("reading")
     if not isinstance(reading, dict):
@@ -680,13 +689,43 @@ async def put_guardian_restrictions(
     policy["allowed_surfaces"] = payload.allowed_surfaces
     reading["allow_upload"] = payload.allow_upload
     reading["extensions"] = payload.extensions
+    needs_preset_update = learner_record.get("preset") != "learner"
     try:
         grant = normalize_grant(learner_user_id, grant)
         validate_grant(grant)
         _validate_reading_policy(grant)
-        grant = save_grant(learner_user_id, grant)
+        if needs_preset_update:
+            grant, receipt = save_grant_with_receipt(learner_user_id, grant)
+        else:
+            grant = save_grant(learner_user_id, grant)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail="Learner grant could not be saved") from exc
+    if needs_preset_update:
+        preset_error: Exception | None = None
+        try:
+            preset_saved = set_preset(learner_username, "learner", expected_user_id=learner_user_id)
+        except Exception as exc:
+            preset_saved = False
+            preset_error = exc
+        if not preset_saved:
+            try:
+                restored = restore_grant_if_unchanged(learner_user_id, receipt)
+            except OSError as exc:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Learner preset update failed and the prior grant could not be restored",
+                ) from exc
+            if not restored:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Learner preset update failed; a later grant change was preserved",
+                ) from preset_error
+            raise HTTPException(
+                status_code=500 if preset_error is not None else 409,
+                detail="Learner preset update failed; the prior grant was restored",
+            ) from preset_error
     restrictions = _guardian_restrictions(grant)
     _log_supervisor_action(
         "guardian_restrictions_set",

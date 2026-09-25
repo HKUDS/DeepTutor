@@ -1,9 +1,15 @@
 """Auth router — login, logout, status, registration, profile, and user-management endpoints."""
 
 from contextvars import Token as _CtxToken
+import csv
 from datetime import datetime, timedelta, timezone
+import io
+import ipaddress
 import logging
+import os
 import re
+import secrets
+import time
 
 from fastapi import (
     APIRouter,
@@ -19,7 +25,7 @@ from fastapi import (
     status,
 )
 from fastapi.responses import FileResponse, HTMLResponse
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from deeptutor.services.config import load_auth_settings
 
@@ -46,6 +52,20 @@ from deeptutor.multi_user.identity import get_user_by_id
 from deeptutor.multi_user.learning_access import learning_policy_for_user
 from deeptutor.multi_user.models import AccountPreset
 from deeptutor.multi_user.paths import local_admin_user
+from deeptutor.multi_user.session_handoff import (
+    CODE_LIFETIME_SECONDS,
+    TICKET_LIFETIME_SECONDS,
+    HandoffError,
+    HandoffRateLimited,
+    HandoffRejected,
+    canonical_host,
+    decrypt_ticket_payload,
+    encrypt_ticket_payload,
+    get_session_handoff_store,
+    hash_secret,
+    is_loopback_host,
+    public_origin,
+)
 from deeptutor.services.auth import (
     AUTH_ENABLED,
     POCKETBASE_ENABLED,
@@ -78,6 +98,32 @@ router = APIRouter()
 
 _COOKIE_NAME = "dt_token"
 _COOKIE_MAX_AGE = TOKEN_EXPIRE_HOURS * 3600
+_USER_IMPORT_MAX_BYTES = 2 * 1024 * 1024
+_USER_IMPORT_MAX_ROWS = 500
+_USER_BATCH_MAX_ROWS = 500
+_FRONTEND_HOST_HEADER = "x-deeptutor-frontend-host"
+_AUTH_RUNTIME_SETTINGS = load_auth_settings()
+PRIVATE_LOGIN_HOSTS = frozenset(
+    str(host).lower().rstrip(".") for host in _AUTH_RUNTIME_SETTINGS.get("private_login_hosts", [])
+)
+
+
+# Only a frontend proxy on an explicitly trusted peer may assert the browser
+# host. Never derive this identity from Host or X-Forwarded-* on a direct API call.
+# The frontend's incoming Host is meaningful only when its public ingress
+# rejects forged private hosts and direct access to its raw listener.
+def _trusted_proxy_ips() -> frozenset[str]:
+    raw = os.environ.get("AUTH_TRUSTED_FRONTEND_PROXY_IPS", "127.0.0.1,::1")
+    trusted: set[str] = set()
+    for item in raw.split(","):
+        try:
+            trusted.add(str(ipaddress.ip_address(item.strip())))
+        except ValueError:
+            continue
+    return frozenset(trusted)
+
+
+TRUSTED_FRONTEND_PROXY_IPS = _trusted_proxy_ips()
 
 
 def _cookie_attrs() -> dict:
@@ -96,6 +142,42 @@ def _cookie_attrs() -> dict:
         "samesite": _SAMESITE,
         "secure": _SECURE,
     }
+
+
+def _request_frontend_host(request: Request) -> str:
+    peer = request.client.host if request.client else ""
+    try:
+        peer_ip = str(ipaddress.ip_address(peer))
+    except ValueError:
+        return ""
+    if peer_ip not in TRUSTED_FRONTEND_PROXY_IPS:
+        return ""
+    raw = request.headers.get(_FRONTEND_HOST_HEADER, "")
+    try:
+        return canonical_host(raw)
+    except HandoffError:
+        return ""
+
+
+def _require_private_frontend(request: Request) -> None:
+    """Restrict credential endpoints only when private hosts are configured."""
+
+    if not PRIVATE_LOGIN_HOSTS:
+        return
+    host = _request_frontend_host(request)
+    if is_loopback_host(host) or host in PRIVATE_LOGIN_HOSTS:
+        return
+    logger.warning(
+        "Credential endpoint refused for non-private frontend host policy",
+    )
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Sign-in is only available from a private DeepTutor origin",
+    )
+
+
+def _no_store(response: Response) -> None:
+    response.headers["Cache-Control"] = "no-store"
 
 
 # ---------------------------------------------------------------------------
@@ -156,6 +238,24 @@ class RegisterRequest(BaseModel):
         return v
 
 
+class SessionHandoffCreateRequest(BaseModel):
+    """Private request that starts a one-time public handoff."""
+
+    public_origin: str = Field(min_length=8, max_length=2048)
+
+
+class SessionHandoffExchangeRequest(BaseModel):
+    """Public request that trades a pairing code for a JWE ticket."""
+
+    code: str = Field(min_length=16, max_length=256)
+
+
+class SessionHandoffCompleteRequest(BaseModel):
+    """Public request that trades a JWE ticket for the normal cookie."""
+
+    ticket: str = Field(min_length=32, max_length=8192)
+
+
 class SetRoleRequest(BaseModel):
     """Payload for the PUT /users/{username}/role endpoint."""
 
@@ -164,8 +264,13 @@ class SetRoleRequest(BaseModel):
     @field_validator("role")
     @classmethod
     def role_valid(cls, v: str) -> str:
-        if v not in ("admin", "user"):
-            raise ValueError("Role must be 'admin' or 'user'")
+        # Validate against the same whitelist the identity store enforces so
+        # the API layer and the storage layer share a single source of truth;
+        # a hardcoded subset here would 422 roles the store itself accepts.
+        from deeptutor.multi_user.models import VALID_ROLES
+
+        if v not in VALID_ROLES:
+            raise ValueError(f"Role must be one of {sorted(VALID_ROLES)}")
         return v
 
 
@@ -176,6 +281,26 @@ class AdminCreateUserRequest(RegisterRequest):
     """
 
     preset: AccountPreset = "standard"
+
+
+class AdminBatchDeleteRequest(BaseModel):
+    """Usernames for an admin-initiated batch deletion."""
+
+    usernames: list[str] = Field(min_length=1, max_length=_USER_BATCH_MAX_ROWS)
+
+    @field_validator("usernames")
+    @classmethod
+    def usernames_valid(cls, value: list[str]) -> list[str]:
+        usernames: list[str] = []
+        for raw_username in value:
+            username = raw_username.strip()
+            if not username:
+                raise ValueError("Usernames cannot be empty")
+            if username not in usernames:
+                usernames.append(username)
+        if not usernames:
+            raise ValueError("At least one username is required")
+        return usernames
 
 
 class AuthStatusResponse(BaseModel):
@@ -469,7 +594,21 @@ async def require_admin(
     return payload
 
 
-def _learning_surface_for_path(path: str) -> str:
+_LEARNER_KB_READ_ROUTES = frozenset(
+    {
+        "/api/knowledge-bases",
+        "/api/knowledge-bases/{kb_name}",
+        "/api/knowledge-bases/{kb_name}/files",
+        "/api/knowledge-bases/{kb_name}/files/{filename:path}",
+        "/api/knowledge-bases/{kb_name}/file-preview-text/{filename:path}",
+        "/api/knowledge-bases/{kb_name}/progress",
+    }
+)
+
+
+def _learning_surface_for_path(
+    path: str, method: str = "GET", *, route_path: str | None = None
+) -> str:
     normalized = "/" + str(path or "").lstrip("/")
     for root, surface in (
         ("/api/reading", "reading"),
@@ -478,9 +617,21 @@ def _learning_surface_for_path(path: str) -> str:
         ("/api/question", "chat"),
         ("/api/question-notebook", "chat"),
         ("/api/sessions", "chat"),
+        # Mastery Path progress/topics are the learner's own per-user data;
+        # the router already scopes every record to the current account, so
+        # all methods (including progress PATCH/POST) belong to "chat".
+        ("/api/mastery-paths", "chat"),
     ):
         if normalized == root or normalized.startswith(f"{root}/"):
             return surface
+    # Match the resolved route template, not just the URL prefix: this keeps
+    # admin diagnostics and engine configuration GETs out of the learner shell.
+    if (
+        method.upper() == "GET"
+        and (normalized == "/api/knowledge-bases" or normalized.startswith("/api/knowledge-bases/"))
+        and route_path in _LEARNER_KB_READ_ROUTES
+    ):
+        return "reading"
     return ""
 
 
@@ -492,7 +643,14 @@ async def require_learning_surface(
     from deeptutor.multi_user.learning_access import assert_learning_surface
 
     try:
-        assert_learning_surface(_learning_surface_for_path(request.url.path))
+        route = request.scope.get("route")
+        assert_learning_surface(
+            _learning_surface_for_path(
+                request.url.path,
+                request.method,
+                route_path=getattr(route, "path", None),
+            )
+        )
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
 
@@ -585,6 +743,11 @@ async def auth_status(
             payload.user_id,
             is_admin=payload.role == "admin",
         )
+        # Guardians may attach a policy to a standard or custom account. That
+        # policy, not the stored label, is what the runtime must enforce and
+        # what clients need to render the scoped experience.
+        if learning_policy is not None and preset != "learner":
+            preset = "learner"
     return AuthStatusResponse(
         enabled=True,
         authenticated=payload is not None,
@@ -599,10 +762,13 @@ async def auth_status(
 
 
 @router.post("/login")
-async def login(body: LoginRequest, response: Response) -> dict:
+async def login(body: LoginRequest, request: Request, response: Response) -> dict:
     """Validate credentials and set a JWT cookie."""
     if not AUTH_ENABLED:
         return {"ok": True, "message": "Auth is disabled — no login required."}
+
+    _require_private_frontend(request)
+    _no_store(response)
 
     if POCKETBASE_ENABLED:
         # PocketBase mode: email = username field for backwards-compat with the
@@ -689,6 +855,178 @@ async def device_login(body: DeviceLoginRequest, response: Response) -> dict:
     }
 
 
+@router.post("/session-handoff")
+async def create_session_handoff(
+    body: SessionHandoffCreateRequest,
+    request: Request,
+    response: Response,
+    authorization: str | None = Header(default=None, alias="Authorization"),
+    dt_token: str | None = Cookie(default=None, alias=_COOKIE_NAME),
+    payload: TokenPayload | None = Depends(require_auth),
+) -> dict:
+    """Create a host-bound, one-time pairing code from the private origin."""
+
+    _no_store(response)
+    if not AUTH_ENABLED or payload is None or not PRIVATE_LOGIN_HOSTS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Session handoff requires authentication and configured private login hosts.",
+        )
+    _require_private_frontend(request)
+
+    try:
+        target_origin = public_origin(body.public_origin)
+        target_host = canonical_host(target_origin.removeprefix("https://"))
+        now = int(time.time())
+        ticket_claims: dict[str, object] = {
+            "nonce": secrets.token_urlsafe(24),
+            "host": target_host,
+            # Rotated at code exchange; this initial upper bound cannot expire
+            # before a valid pairing code is presented.
+            "exp": now + CODE_LIFETIME_SECONDS + TICKET_LIFETIME_SECONDS,
+        }
+        if POCKETBASE_ENABLED:
+            ticket_claims.update(
+                {"mode": "pocketbase", "token": _extract_token(authorization, dt_token)}
+            )
+        else:
+            ticket_claims.update(
+                {
+                    "mode": "builtin",
+                    "username": payload.username,
+                    "role": payload.role,
+                    "user_id": payload.user_id,
+                    "device_credential_id": payload.device_credential_id,
+                    "device_session_nonce": payload.device_session_nonce,
+                }
+            )
+        ticket = encrypt_ticket_payload(ticket_claims)
+        record = get_session_handoff_store().create(
+            encrypted_ticket=ticket,
+            ticket_hash=hash_secret(ticket),
+            public_host=target_host,
+            rate_key=payload.user_id or payload.username,
+        )
+    except HandoffRateLimited:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many handoff requests. Try again later.",
+        )
+    except HandoffError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Enter a valid HTTPS public origin",
+        )
+
+    logger.info(
+        "Created session handoff for user=%s target_host=%s",
+        payload.username,
+        target_host,
+    )
+    return {
+        "ok": True,
+        "code": record.code,
+        "handoff_url": f"{target_origin}/handoff?code={record.code}",
+        "expires_at": record.expires_at,
+        "expires_in": CODE_LIFETIME_SECONDS,
+    }
+
+
+@router.post("/session-handoff/exchange")
+async def exchange_session_handoff(
+    body: SessionHandoffExchangeRequest,
+    request: Request,
+    response: Response,
+) -> dict:
+    """Consume a pairing code and return a short-lived ticket in the response body."""
+
+    _no_store(response)
+    host = _request_frontend_host(request)
+    if not host:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Pairing request has no valid frontend host",
+        )
+    try:
+        ticket = get_session_handoff_store().exchange(
+            code=body.code,
+            public_host=host,
+        )
+    except HandoffRateLimited:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many handoff requests. Try again later.",
+        )
+    except HandoffError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Pairing code is invalid, expired, or already used",
+        )
+    logger.info("Exchanged session handoff code for host=%s", host)
+    return {"ok": True, "ticket": ticket}
+
+
+@router.post("/session-handoff/complete")
+async def complete_session_handoff(
+    body: SessionHandoffCompleteRequest,
+    request: Request,
+    response: Response,
+) -> dict:
+    """Consume a ticket once and issue the normal HttpOnly session cookie."""
+
+    _no_store(response)
+    host = _request_frontend_host(request)
+    if not host:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Handoff request has no valid frontend host",
+        )
+    try:
+        ticket = get_session_handoff_store().consume_ticket(
+            ticket=body.ticket,
+            public_host=host,
+        )
+        claims = decrypt_ticket_payload(ticket)
+        if str(claims.get("host")) != host:
+            raise HandoffRejected("Invalid handoff ticket")
+        try:
+            expires_at = int(claims.get("exp"))
+        except (TypeError, ValueError):
+            raise HandoffRejected("Invalid handoff ticket") from None
+        if expires_at <= int(time.time()):
+            raise HandoffRejected("Invalid handoff ticket")
+
+        mode = str(claims.get("mode"))
+        if mode == "pocketbase":
+            token = str(claims.get("token") or "")
+            if not token or decode_token(token) is None:
+                raise HandoffRejected("Invalid handoff ticket")
+        elif mode == "builtin":
+            token = create_token(
+                str(claims.get("username") or ""),
+                str(claims.get("role") or "user"),
+                str(claims.get("user_id") or ""),
+                device_credential_id=str(claims.get("device_credential_id") or ""),
+                device_session_nonce=str(claims.get("device_session_nonce") or ""),
+            )
+        else:
+            raise HandoffRejected("Invalid handoff ticket")
+    except HandoffRateLimited:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many handoff requests. Try again later.",
+        )
+    except HandoffError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Handoff ticket is invalid, expired, or already used",
+        )
+
+    response.set_cookie(value=token, max_age=_COOKIE_MAX_AGE, **_cookie_attrs())
+    logger.info("Completed session handoff for host=%s", host)
+    return {"ok": True}
+
+
 @router.post("/device/heartbeat")
 async def device_heartbeat(
     response: Response,
@@ -733,7 +1071,7 @@ async def logout(response: Response) -> dict:
 
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
-async def register(body: RegisterRequest) -> dict:
+async def register(body: RegisterRequest, request: Request, response: Response) -> dict:
     """
     Bootstrap-only registration.
 
@@ -748,6 +1086,9 @@ async def register(body: RegisterRequest) -> dict:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Auth is disabled — registration is not available.",
         )
+
+    _require_private_frontend(request)
+    _no_store(response)
 
     if POCKETBASE_ENABLED:
         # PocketBase deployments are documented as single-user. Keep registration
@@ -1174,22 +1515,20 @@ async def put_learner_profile(
     return {"learner_profile": updated}
 
 
-@router.post("/users", status_code=status.HTTP_201_CREATED)
-async def admin_create_user(
-    body: AdminCreateUserRequest,
-    current: TokenPayload = Depends(require_admin),
-) -> dict:
-    """Admin-only: create a new user account.
+def _validation_message(exc: ValidationError) -> str:
+    parts = []
+    for error in exc.errors():
+        location = ".".join(str(item) for item in error.get("loc", ()))
+        parts.append(f"{location or 'row'}: {error.get('msg', 'Invalid value')}")
+    return "; ".join(parts)
 
-    Replaces the public ``/register`` flow once the first admin exists. The
-    new account is always created with role=``user``; admins can promote
-    later via ``PUT /users/{username}/role``.
-    """
-    if not AUTH_ENABLED:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Auth is disabled — user creation is not available.",
-        )
+
+def _create_admin_user(
+    body: AdminCreateUserRequest,
+    current: TokenPayload | None,
+) -> dict:
+    """Create one ordinary account through the shared admin provision path."""
+    actor = current.username if current else "local"
 
     if POCKETBASE_ENABLED:
         if body.preset != "standard":
@@ -1203,10 +1542,7 @@ async def admin_create_user(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Failed to create user — username may already be taken.",
             )
-        logger.info(
-            f"Admin '{current.username if current else 'local'}' created PocketBase user "
-            f"'{body.username}'"
-        )
+        logger.info("Admin '%s' created PocketBase user '%s'", actor, body.username)
         return {
             "ok": True,
             "user_id": result.get("id", ""),
@@ -1216,23 +1552,25 @@ async def admin_create_user(
             "preset": "standard",
         }
 
-    existing = {u["username"] for u in list_users()}
-    if body.username in existing:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Username already taken",
-        )
+    if any(item.get("username") == body.username for item in list_users()):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already taken")
 
     add_user(body.username, body.password, preset=body.preset)
-    user_id = ""
-    role = "user"
-    preset = "standard"
-    for item in list_users():
-        if item.get("username") == body.username:
-            user_id = str(item.get("id") or "")
-            role = str(item.get("role") or "user")
-            preset = str(item.get("preset") or "standard")
-            break
+    created = next(
+        (item for item in list_users() if item.get("username") == body.username),
+        None,
+    )
+    user_id = str(created.get("id") or "") if created else ""
+    role = str(created.get("role") or "user") if created else "user"
+    preset = str(created.get("preset") or "standard") if created else "standard"
+
+    if role != "user":
+        delete_user(body.username)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Only non-admin users can be provisioned by this endpoint.",
+        )
+
     if preset == "learner":
         from deeptutor.multi_user.grants import learner_grant, save_grant
 
@@ -1256,18 +1594,179 @@ async def admin_create_user(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="The learner preset could not be initialized.",
             ) from exc
+
     logger.info(
-        f"Admin '{current.username if current else 'local'}' created user '{body.username}' "
-        f"(role={role!r}, preset={preset!r})"
+        "Admin '%s' created user '%s' (role=%r, preset=%r)",
+        actor,
+        body.username,
+        role,
+        preset,
     )
     return {
         "ok": True,
         "user_id": user_id,
         "username": body.username,
         "role": role,
-        "is_admin": role == "admin",
+        "is_admin": False,
         "preset": preset,
     }
+
+
+@router.post("/users", status_code=status.HTTP_201_CREATED)
+async def admin_create_user(
+    body: AdminCreateUserRequest,
+    current: TokenPayload = Depends(require_admin),
+) -> dict:
+    """Admin-only: create one ordinary user account."""
+    if not AUTH_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Auth is disabled — user creation is not available.",
+        )
+    return _create_admin_user(body, current)
+
+
+@router.post("/users/import")
+async def admin_import_users(
+    file: UploadFile = File(...),
+    current: TokenPayload = Depends(require_admin),
+) -> dict:
+    """Admin-only: provision ordinary users from a CSV file.
+
+    The response is row-oriented so one invalid record does not erase the
+    context of the valid records around it. Passwords are never returned.
+    """
+    if not AUTH_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Auth is disabled — user import is not available.",
+        )
+
+    content = await file.read(_USER_IMPORT_MAX_BYTES + 1)
+    await file.close()
+    if len(content) > _USER_IMPORT_MAX_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="User import file exceeds 2 MB.",
+        )
+    try:
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User import must be a UTF-8 CSV file.",
+        ) from exc
+
+    reader = csv.DictReader(io.StringIO(text, newline=""))
+    fieldnames = [str(name or "").strip().lower() for name in reader.fieldnames or []]
+    expected = ["username", "password", "preset"]
+    if fieldnames != expected:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="CSV header must be exactly: username,password,preset",
+        )
+    # DictReader keeps the original header spelling as dictionary keys.
+    reader.fieldnames = expected
+
+    parsed: list[tuple[int, AdminCreateUserRequest, str]] = []
+    results: list[dict] = []
+    rows = list(reader)
+    if not rows:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="User import file contains no user rows.",
+        )
+    if len(rows) > _USER_IMPORT_MAX_ROWS:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"User import cannot exceed {_USER_IMPORT_MAX_ROWS} rows.",
+        )
+    for row_number, row in enumerate(rows, start=2):
+        username = str(row.get("username") or "").strip()
+        if row.get(None):
+            results.append(
+                {
+                    "row": row_number,
+                    "username": username[:100],
+                    "ok": False,
+                    "error": "Row has more values than the CSV header.",
+                }
+            )
+            continue
+        try:
+            body = AdminCreateUserRequest(
+                username=username,
+                password=str(row.get("password") or ""),
+                preset=str(row.get("preset") or "").strip() or "standard",
+            )
+        except ValidationError as exc:
+            results.append(
+                {
+                    "row": row_number,
+                    "username": username[:100],
+                    "ok": False,
+                    "error": _validation_message(exc),
+                }
+            )
+            continue
+        parsed.append((row_number, body, username[:100]))
+
+    for row_number, body, username in parsed:
+        try:
+            created = _create_admin_user(body, current)
+        except HTTPException as exc:
+            detail = exc.detail if isinstance(exc.detail, str) else "Failed to create user"
+            results.append({"row": row_number, "username": username, "ok": False, "error": detail})
+        except Exception:
+            logger.exception("Admin user import failed for row %s", row_number)
+            results.append(
+                {
+                    "row": row_number,
+                    "username": username,
+                    "ok": False,
+                    "error": "Failed to create user.",
+                }
+            )
+        else:
+            results.append({"row": row_number, "username": username, "ok": True, "user": created})
+
+    results.sort(key=lambda result: result["row"])
+    created_count = sum(1 for result in results if result["ok"])
+    failed_count = len(results) - created_count
+    logger.info(
+        "Admin '%s' imported users: %s created, %s failed",
+        current.username if current else "local",
+        created_count,
+        failed_count,
+    )
+    return {
+        "ok": failed_count == 0,
+        "created_count": created_count,
+        "failed_count": failed_count,
+        "results": results,
+    }
+
+
+def _delete_admin_user(username: str, current: TokenPayload | None) -> tuple[int, str]:
+    if current and username == current.username:
+        return 400, "You cannot delete your own account"
+
+    # Capture the id before the record disappears so the avatar file can go too.
+    info = get_user_info(username)
+
+    removed = delete_user(username)
+    if not removed:
+        return 404, "User not found"
+
+    user_id = str(info.get("id") or "") if info else ""
+    if user_id and _USER_ID_RE.match(user_id):
+        from deeptutor.multi_user.identity import delete_avatar_file
+
+        delete_avatar_file(user_id)
+
+    actor = current.username if current else "local"
+    logger.info("Admin '%s' deleted user '%s'", actor, username)
+    return 200, ""
 
 
 @router.delete("/users/{username}", status_code=status.HTTP_200_OK)
@@ -1276,27 +1775,37 @@ async def remove_user(
     current: TokenPayload = Depends(require_admin),
 ) -> dict:
     """Delete a user. Admins cannot delete their own account."""
-    if current and username == current.username:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="You cannot delete your own account",
-        )
-
-    # Capture the id before the record disappears so the avatar file can go too.
-    info = get_user_info(username)
-
-    removed = delete_user(username)
-    if not removed:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-
-    user_id = str(info.get("id") or "") if info else ""
-    if user_id and _USER_ID_RE.match(user_id):
-        from deeptutor.multi_user.identity import delete_avatar_file
-
-        delete_avatar_file(user_id)
-
-    logger.info(f"Admin '{current.username if current else 'local'}' deleted user '{username}'")
+    status_code, detail = _delete_admin_user(username, current)
+    if status_code != 200:
+        raise HTTPException(status_code=status_code, detail=detail)
     return {"ok": True}
+
+
+@router.post("/users/batch-delete")
+async def batch_remove_users(
+    body: AdminBatchDeleteRequest,
+    current: TokenPayload = Depends(require_admin),
+) -> dict:
+    """Delete selected users and report each outcome separately."""
+    results: list[dict] = []
+    for username in body.usernames:
+        _status_code, detail = _delete_admin_user(username, current)
+        results.append({"username": username, "ok": not detail, "error": detail or None})
+
+    deleted_count = sum(1 for result in results if result["ok"])
+    failed_count = len(results) - deleted_count
+    logger.info(
+        "Admin '%s' batch-deleted users: %s deleted, %s failed",
+        current.username if current else "local",
+        deleted_count,
+        failed_count,
+    )
+    return {
+        "ok": failed_count == 0,
+        "deleted_count": deleted_count,
+        "failed_count": failed_count,
+        "results": results,
+    }
 
 
 @router.put("/users/{username}/role", status_code=status.HTTP_200_OK)

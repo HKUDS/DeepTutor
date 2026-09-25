@@ -14,11 +14,13 @@ import {
 } from "../lib/reading-display-preferences";
 
 const reader = readFileSync("components/reading/TextUnitView.tsx", "utf8");
+const controls = readFileSync("components/reading/ReaderDisplayControls.tsx", "utf8");
+const preferenceStore = readFileSync("lib/reading-display-preferences.ts", "utf8");
 const en = readFileSync("locales/en/app.json", "utf8");
 const zh = readFileSync("locales/zh/app.json", "utf8");
 
 test("text reader exposes persistent display preferences", () => {
-  assert.match(reader, /dt\.reader\.textPreferences/);
+  assert.match(preferenceStore, /dt\.reader\.textPreferences/);
   assert.deepEqual(
     [DEFAULT_FONT_SIZE, MIN_FONT_SIZE, MAX_FONT_SIZE],
     [17, 12, 28],
@@ -27,7 +29,8 @@ test("text reader exposes persistent display preferences", () => {
     [DEFAULT_LINE_WIDTH, MIN_LINE_WIDTH, MAX_LINE_WIDTH],
     [84, 48, 104],
   );
-  assert.match(reader, /browserStorage\.writeRaw\(\s*"local"/);
+  assert.match(preferenceStore, /browserStorage\.writeRaw\(\s*"local"/);
+  assert.match(reader, /saveReaderDisplayPreferences\(merged\)/);
 });
 
 test("reset includes typography and theme preferences", () => {
@@ -36,6 +39,7 @@ test("reset includes typography and theme preferences", () => {
     lineWidth: 84,
     serif: true,
     readerTheme: "auto",
+    spreadMode: "none",
   });
   assert.match(
     reader,
@@ -50,8 +54,15 @@ test("stored preferences are bounded and malformed values fall back", () => {
       lineWidth: 3,
       serif: false,
       readerTheme: "night",
+      spreadMode: "auto",
     }),
-    { fontSize: 28, lineWidth: 48, serif: false, readerTheme: "night" },
+    {
+      fontSize: 28,
+      lineWidth: 48,
+      serif: false,
+      readerTheme: "night",
+      spreadMode: "auto",
+    },
   );
   assert.deepEqual(
     normaliseReaderDisplayPreferences({ readerTheme: "invalid" }),
@@ -60,6 +71,7 @@ test("stored preferences are bounded and malformed values fall back", () => {
       lineWidth: 84,
       serif: true,
       readerTheme: "auto",
+      spreadMode: "none",
     },
   );
 });
@@ -102,6 +114,8 @@ test("reader display copy is translated", () => {
     "Use serif font",
     "Change line width ({{width}} characters)",
     "Change reading theme",
+    "Switch to two-page spread",
+    "Switch to single-page view",
   ]) {
     const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     assert.match(en, new RegExp(`"${escaped}": "`));
@@ -110,7 +124,7 @@ test("reader display copy is translated", () => {
 });
 
 test("the reader's state is spoken by the control that changes it", () => {
-  const view = reader;
+  const view = controls;
 
   // The size and width used to sit in silent spans beside their buttons —
   // visible to a sighted reader, announced to nobody, and reading like debug

@@ -66,6 +66,7 @@ import {
   selectOptionClass,
   stringifyExtraHeaders,
 } from "./shared";
+import type { AppLanguage } from "@/i18n/init";
 
 // The protocol an endpoint speaks. Labels and hints are keyed by the backend
 // value so the select never invents a format the registry does not know.
@@ -1322,9 +1323,13 @@ export function ServiceConfigEditor({
   );
 }
 
-function defaultModelLabel(language: "en" | "zh", index: number): string {
+function defaultModelLabel(language: AppLanguage, index: number): string {
   const safeIndex = index > 0 ? index : 1;
-  return language === "zh" ? `模型${safeIndex}` : `Model ${safeIndex}`;
+  return language === "zh"
+    ? `模型${safeIndex}`
+    : language === "fr"
+      ? `Modèle ${safeIndex}`
+      : `Model ${safeIndex}`;
 }
 
 function formatCompactTokens(value: string | number | undefined): string {

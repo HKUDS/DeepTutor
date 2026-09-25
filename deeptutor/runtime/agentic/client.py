@@ -188,7 +188,8 @@ class _KeyRotatingCompletions:
         self._clients = clients
 
     async def create(self, **kwargs: Any) -> Any:
-        for attempt in range(2):
+        attempts = max(2, len(self._key_pool))
+        for attempt in range(attempts):
             api_key = self._key_pool.next()
             try:
                 return await self._clients[api_key].chat.completions.create(**kwargs)
@@ -199,7 +200,7 @@ class _KeyRotatingCompletions:
                 if status != 429:
                     raise
                 self._key_pool.mark_429(api_key)
-                if attempt:
+                if attempt == attempts - 1:
                     raise
         raise RuntimeError("LLM key rotation exhausted")
 

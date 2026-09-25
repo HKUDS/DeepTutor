@@ -32,9 +32,13 @@ type BrowserView = 'feed' | 'playlists' | 'search' | 'playlist'
 export function WatchingBrowser({
   onDismiss,
   canDismiss,
+  selectionMode = false,
+  onSelectUrl,
 }: {
   onDismiss(): void
   canDismiss: boolean
+  selectionMode?: boolean
+  onSelectUrl?(url: string): void
 }) {
   const { t } = useTranslation()
   const router = useRouter()
@@ -173,7 +177,8 @@ export function WatchingBrowser({
   }
   function select(url: string) {
     remember(scroll.current?.scrollTop || 0)
-    router.push(scopedUrl(`${WATCHING_HOME}?video=${encodeURIComponent(url)}`))
+    if (onSelectUrl) onSelectUrl(url)
+    else router.push(scopedUrl(`${WATCHING_HOME}?video=${encodeURIComponent(url)}`))
     onDismiss()
   }
   return (
@@ -181,14 +186,14 @@ export function WatchingBrowser({
       <LearningShell
         scrollRef={scroll}
         onScroll={() => remember(scroll.current?.scrollTop || 0)}
-        title={t('Immersive Watching')}
-        subtitle={t('Your videos, with room to learn.')}
+        title={t(selectionMode ? 'Browse Invidious' : 'Immersive Watching')}
+        subtitle={t(selectionMode ? 'Choose a video to add to this collection.' : 'Your videos, with room to learn.')}
         action={
           <div className="flex items-center gap-2 text-sm">
             {canDismiss && (
               <button className="watching-browser-button" onClick={onDismiss}>
                 <ArrowLeft size={16} />
-                {t('Back to video')}
+                {t(selectionMode ? 'Close' : 'Back to video')}
               </button>
             )}
             <button

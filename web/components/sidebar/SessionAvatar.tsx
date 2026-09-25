@@ -36,8 +36,19 @@ const RING_RATIO = 0.58;
  * "working slowly", it is *not working* — a static mark says that outright,
  * and costs no rAF in a sidebar that can hold twenty of them.
  */
-function SettledMark({ size, mark }: { size: number; mark: SessionMark }) {
+function SettledMark({
+  size,
+  mark,
+  kind,
+}: {
+  size: number;
+  mark: SessionMark;
+  kind: SessionKind;
+}) {
   const filled = mark === "unread" || mark === "failed";
+  const shape = `transition-[fill] duration-300 ease-out ${
+    filled ? "fill-current" : "fill-transparent"
+  }`;
   // Ink rides on `currentColor` and alpha on `opacity-*` rather than a colour
   // modifier. `stroke-muted-foreground/45` does work now that the theme colours
   // go through `color-mix` (see tailwind.config.js), but it would need one class
@@ -56,16 +67,29 @@ function SettledMark({ size, mark }: { size: number; mark: SessionMark }) {
             : "text-[var(--muted-foreground)] opacity-45 group-hover/session:opacity-75"
       }`}
     >
-      <circle
-        cx="6"
-        cy="6"
-        r="5.1"
-        stroke="currentColor"
-        strokeWidth="1.25"
-        className={`transition-[fill] duration-300 ease-out ${
-          filled ? "fill-current" : "fill-transparent"
-        }`}
-      />
+      {kind === "reading" ? (
+        // A page: the ring stood on end with its corners let out. Same box,
+        // stroke and ink, so it reads as the same mark in another key.
+        <rect
+          x="1.9"
+          y="0.9"
+          width="8.2"
+          height="10.2"
+          rx="2.4"
+          stroke="currentColor"
+          strokeWidth="1.25"
+          className={shape}
+        />
+      ) : (
+        <circle
+          cx="6"
+          cy="6"
+          r="5.1"
+          stroke="currentColor"
+          strokeWidth="1.25"
+          className={shape}
+        />
+      )}
     </svg>
   );
 }
@@ -111,9 +135,28 @@ export function deriveSessionMark(
   return "idle";
 }
 
+/**
+ * Which surface a session belongs to, as far as the resting mark cares.
+ *
+ * Reading conversations sit in the same sidebar list as every other chat but
+ * open beside their material, so they rest as a page rather than a ring. Only
+ * the idle shape differs: running, unread and failed still say the same thing
+ * in the same colour, because state is what the column is for.
+ */
+export type SessionKind = "chat" | "reading";
+
+export function sessionKindOf(session: {
+  preferences?: { workspace_mode?: unknown } | null;
+}): SessionKind {
+  return session.preferences?.workspace_mode === "immersive_reading"
+    ? "reading"
+    : "chat";
+}
+
 interface SessionAvatarProps {
   sessionId: string;
   mark?: SessionMark;
+  kind?: SessionKind;
   size?: number;
   className?: string;
 }
@@ -136,6 +179,7 @@ interface SessionAvatarProps {
 export function SessionAvatar({
   sessionId: _sessionId,
   mark = "idle",
+  kind = "chat",
   size = 12,
   className = "",
 }: SessionAvatarProps) {
@@ -165,7 +209,7 @@ export function SessionAvatar({
           running ? "scale-[1.55] opacity-0" : "scale-100 opacity-100"
         }`}
       >
-        <SettledMark size={ring} mark={mark} />
+        <SettledMark size={ring} mark={mark} kind={kind} />
       </span>
     </span>
   );

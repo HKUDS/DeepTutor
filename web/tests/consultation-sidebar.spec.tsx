@@ -7,8 +7,15 @@ const fixture = vi.hoisted(() => ({
   send: vi.fn(() => true),
   frame: null as null | ((event: { data: string }) => void),
 }))
+const translate = vi.hoisted(() => (key: string) => key)
+const autoScroll = vi.hoisted(() => ({
+  containerRef: { current: null },
+  shouldAutoScrollRef: { current: true },
+  handleScroll: () => {},
+  scrollToBottom: () => {},
+}))
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key, i18n: { language: 'en' } }),
+  useTranslation: () => ({ t: translate, i18n: { language: 'en' } }),
 }))
 vi.mock('@/features/chat/trace', () => ({
   AssistantActivity: () => null,
@@ -24,12 +31,7 @@ vi.mock('next/dynamic', () => ({
 }))
 vi.mock('@/lib/api', () => ({ wsUrl: (path: string) => path }))
 vi.mock('@/hooks/useChatAutoScroll', () => ({
-  useChatAutoScroll: () => ({
-    containerRef: { current: null },
-    shouldAutoScrollRef: { current: true },
-    handleScroll: vi.fn(),
-    scrollToBottom: vi.fn(),
-  }),
+  useChatAutoScroll: () => autoScroll,
 }))
 vi.mock('@/components/chat/home/TurnNavigator', () => ({ TurnNavigator: () => null }))
 vi.mock('@/lib/reconnecting-websocket', () => ({
@@ -51,6 +53,12 @@ vi.mock('@/lib/reconnecting-websocket', () => ({
 vi.mock('@/lib/partners-api', () => ({
   getPartner: async () => ({ partner_id: 'frank', name: 'Frank', emoji: '🦊' }),
   getPartnerHistory: async () => [{ role: 'user', content: 'Earlier question' }, { role: 'assistant', content: 'Earlier answer' }],
+  getPartnerHistoryPage: async () => ({
+    messages: [{ role: 'user', content: 'Earlier question' }, { role: 'assistant', content: 'Earlier answer' }],
+    next_before: null,
+    start: 0,
+    total: 2,
+  }),
   getPartnerCommands: async () => [],
 }))
 vi.mock('@/lib/attachment-limits', () => ({ useAttachmentLimits: () => ({ maxBytes: 1000000, maxCount: 5 }) }))

@@ -21,6 +21,10 @@ KNOWN_LARGE_CONTEXT_MARKERS = (
     "deepseek",
     "moonshot",
     "kimi",
+    # xAI: grok-3/4+ all ship >=128k windows; without this, an un-annotated
+    # model entry falls back to 16_384 and the agentic loop snips every tool
+    # result (see context_window_guard in agents/loop/pipeline.py).
+    "grok",
 )
 
 

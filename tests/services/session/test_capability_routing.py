@@ -154,3 +154,85 @@ async def test_per_turn_flag_opts_in_when_global_default_is_off(
     assert turn["capability"] == "deep_question"
     assert captured["active_capability"] == "deep_question"
     assert session["preferences"]["capability"] == "chat"
+
+
+async def _run_turn(runtime: TurnRuntimeManager, payload: dict) -> tuple[dict, dict]:
+    session, turn = await runtime.start_turn(
+        {
+            "type": "start_turn",
+            "tools": [],
+            "knowledge_bases": [],
+            "attachments": [],
+            "language": "en",
+            **payload,
+        }
+    )
+    async for _event in runtime.subscribe_turn(turn["id"], after_seq=0):
+        pass
+    return session, turn
+
+
+@pytest.mark.asyncio
+async def test_a_one_turn_quiz_leaves_the_conversation_in_chat(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A reading "Quiz me" runs one turn in the quiz engine. The next message
+    is still chat, so the quiz settings card must not open under it."""
+    captured: dict = {"global_enabled": False}
+    _configure_runtime(monkeypatch, captured, tmp_path)
+    runtime = TurnRuntimeManager(SQLiteSessionStore(tmp_path / "once.db"))
+
+    session, _ = await _run_turn(
+        runtime, {"content": "hello", "session_id": None, "capability": "chat", "config": {}}
+    )
+    _, turn = await _run_turn(
+        runtime,
+        {
+            "content": "Quiz me on this page",
+            "session_id": session["id"],
+            "capability": "deep_question",
+            "capability_once": True,
+            "config": {"mode": "custom", "num_questions": 3},
+        },
+    )
+
+    assert turn["capability"] == "deep_question"
+    assert captured["active_capability"] == "deep_question"
+    detail = await runtime.store.get_session(session["id"])
+    assert detail is not None
+    assert detail["preferences"]["capability"] == "chat"
+    messages = await runtime.store.get_messages(session["id"])
+    quiz_request = [row for row in messages if row["role"] == "user"][-1]
+    # Recorded, so a regenerate runs as a quiz once again — and only once.
+    assert quiz_request["metadata"]["request_snapshot"]["capabilityOnce"] is True
+
+    _, again = await runtime.regenerate_last_turn(session["id"])
+    async for _event in runtime.subscribe_turn(again["id"], after_seq=0):
+        pass
+    assert again["capability"] == "deep_question"
+    detail = await runtime.store.get_session(session["id"])
+    assert detail is not None
+    assert detail["preferences"]["capability"] == "chat"
+
+
+@pytest.mark.asyncio
+async def test_choosing_quiz_mode_still_makes_it_the_conversations_mode(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: dict = {"global_enabled": False}
+    _configure_runtime(monkeypatch, captured, tmp_path)
+    runtime = TurnRuntimeManager(SQLiteSessionStore(tmp_path / "mode.db"))
+
+    session, _ = await _run_turn(
+        runtime,
+        {
+            "content": "Quiz me",
+            "session_id": None,
+            "capability": "deep_question",
+            "config": {"mode": "custom", "num_questions": 3},
+        },
+    )
+
+    detail = await runtime.store.get_session(session["id"])
+    assert detail is not None
+    assert detail["preferences"]["capability"] == "deep_question"

@@ -453,6 +453,10 @@ class LightRagPipeline:
                 kwargs.get("publish_embedding_binding") if outcome.complete else None,
             )
             self._clear_pending_policy(kb_name)
+            if outcome.complete and (indexed_file_callback := kwargs.get("indexed_file_callback")):
+                # Reconciliation confirmed every requested file as processed
+                # before publication, so these paths can be hashed (#1481).
+                indexed_file_callback(file_paths)
             return outcome.complete
         except asyncio.CancelledError:
             raise

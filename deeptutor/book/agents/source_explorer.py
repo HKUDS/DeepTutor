@@ -37,6 +37,7 @@ from deeptutor.agents.base_agent import BaseAgent
 from deeptutor.core.context import UnifiedContext
 from deeptutor.runtime.stream_bus import StreamBus
 from deeptutor.services.llm.structured_retry import json_with_reasoning_retry
+from deeptutor.services.llm.types import StreamOutcome
 
 from ..models import (
     BookInputs,
@@ -299,14 +300,18 @@ class SourceExplorer(BaseAgent):
 
         async def _run(reasoning_effort: str | None) -> str:
             chunks: list[str] = []
+            outcome = StreamOutcome()
             async for piece in self.stream_llm(
                 user_prompt=user_prompt,
                 system_prompt=system_prompt,
                 response_format={"type": "json_object"},
                 stage="explore_queries",
                 reasoning_effort=reasoning_effort,
+                outcome=outcome,
             ):
                 chunks.append(piece)
+            if outcome.truncated:
+                return ""
             return "".join(chunks)
 
         try:
@@ -701,14 +706,18 @@ class SourceExplorer(BaseAgent):
 
         async def _run(reasoning_effort: str | None) -> str:
             buf: list[str] = []
+            outcome = StreamOutcome()
             async for piece in self.stream_llm(
                 user_prompt=user_prompt,
                 system_prompt=system_prompt,
                 response_format={"type": "json_object"},
                 stage="explore_summary",
                 reasoning_effort=reasoning_effort,
+                outcome=outcome,
             ):
                 buf.append(piece)
+            if outcome.truncated:
+                return ""
             return "".join(buf)
 
         try:

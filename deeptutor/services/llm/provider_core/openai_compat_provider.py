@@ -231,7 +231,8 @@ class OpenAICompatProvider(LLMProvider):
         if not self._key_pool:
             return await create(**kwargs)
         api_key = self._key_pool.next()
-        for attempt in range(2):
+        attempts = max(2, len(self._key_pool))
+        for attempt in range(attempts):
             request = dict(kwargs)
             headers = dict(request.get("extra_headers") or {})
             headers["Authorization"] = f"Bearer {api_key}"
@@ -242,7 +243,7 @@ class OpenAICompatProvider(LLMProvider):
                 if self._status_code(exc) != 429:
                     raise
                 self._key_pool.mark_429(api_key)
-                if attempt:
+                if attempt == attempts - 1:
                     raise
                 api_key = self._key_pool.next()
         raise RuntimeError("LLM key rotation exhausted")
@@ -741,6 +742,11 @@ class OpenAICompatProvider(LLMProvider):
 
         if self._supports_temperature(model_name, reasoning_effort):
             body["temperature"] = temperature
+        for key, value in model_overrides_for(model_name, self._spec).items():
+            if value is None:
+                body.pop(key, None)
+            else:
+                body[key] = value
         if reasoning_effort and reasoning_effort.lower() != "none":
             body["reasoning"] = {"effort": reasoning_effort}
             body["include"] = ["reasoning.encrypted_content"]

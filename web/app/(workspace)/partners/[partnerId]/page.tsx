@@ -5,7 +5,7 @@
  * Header carries identity + run state; everything else lives in the tabs.
  */
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -27,6 +27,9 @@ import {
   archivePartnerSession,
   destroyPartner,
   getPartner,
+  getPartnerSessions,
+  getPartnerWebContinuity,
+  setPartnerWebContinuity,
   startPartner,
   stopPartner,
   type PartnerInfo,
@@ -37,7 +40,7 @@ import {
 } from "@/lib/chat-export";
 import {
   freshPartnerSessionKey,
-  loadPartnerSessionKey,
+  initializePartnerSessionKey,
   persistPartnerSessionKey,
 } from "@/lib/partner-session";
 import PartnerAvatar from "@/components/partners/PartnerAvatar";
@@ -50,6 +53,7 @@ import SaveToNotebookModal, {
   type NotebookSaveMessage,
   type NotebookSavePayload,
 } from "@/components/notebook/SaveToNotebookModal";
+import { useAuthStatus } from "@/hooks/useAuthStatus";
 
 type Tab = "chat" | "configure" | "channels" | "archive";
 
@@ -59,6 +63,7 @@ function PartnerDetail() {
   const router = useRouter();
   const { t } = useTranslation();
   const partnerId = params.partnerId;
+  const auth = useAuthStatus();
 
   const initialTab = (searchParams.get("tab") as Tab) || "chat";
   const [tab, setTab] = useState<Tab>(
@@ -89,16 +94,178 @@ function PartnerDetail() {
   // The active web session key lives here so the Archive tab's Resume can
   // point the (always-mounted) Chat tab at a different conversation.
   const [sessionKey, setSessionKey] = useState("");
+  const [localSessionKey, setLocalSessionKey] = useState("");
+  const [continuityEnabled, setContinuityEnabled] = useState(false);
+  const [continuityReady, setContinuityReady] = useState(false);
+  const [continuityBusy, setContinuityBusy] = useState(false);
+  const [continuityError, setContinuityError] = useState(false);
+  const [runtimeContinuityError, setRuntimeContinuityError] = useState(false);
+  const [continuityRetry, setContinuityRetry] = useState(0);
+  const [switchingSession, setSwitchingSession] = useState(false);
+  const [chatBusy, setChatBusy] = useState(false);
+  const selectionEpochRef = useRef(0);
+  const refreshInFlightRef = useRef(false);
+  const selectionMutationRef = useRef(false);
+  const accountId = auth.userId ?? (!auth.enabled && auth.statusAvailable ? "local-admin" : null);
+
   useEffect(() => {
-    setSessionKey(loadPartnerSessionKey(partnerId));
-  }, [partnerId]);
+    if (auth.loading) return;
+    if (!accountId) {
+      setContinuityError(true);
+      return;
+    }
+    let cancelled = false;
+    setContinuityReady(false);
+    setContinuityError(false);
+    setRuntimeContinuityError(false);
+    void (async () => {
+      const localKey = await initializePartnerSessionKey(
+        partnerId,
+        accountId,
+        {
+          enabled: auth.enabled,
+          isAdmin: auth.isAdmin,
+          statusAvailable: auth.statusAvailable,
+        },
+        async () => (await getPartnerSessions(partnerId)).map((item) => item.session_key),
+      );
+      const state = await getPartnerWebContinuity(partnerId);
+      if (cancelled) return;
+      setLocalSessionKey(localKey);
+      setContinuityEnabled(state.enabled);
+      setSessionKey(state.enabled && state.session_key ? state.session_key : localKey);
+      setContinuityReady(true);
+    })().catch(() => {
+      if (!cancelled) setContinuityError(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [partnerId, auth.loading, auth.enabled, auth.isAdmin, auth.statusAvailable, accountId, continuityRetry]);
+
+  const refreshAuthoritative = useCallback(async (required = false) => {
+    if (!required && (refreshInFlightRef.current || selectionMutationRef.current)) return;
+    refreshInFlightRef.current = true;
+    const epoch = selectionEpochRef.current;
+    try {
+      const state = await getPartnerWebContinuity(partnerId);
+      if (epoch !== selectionEpochRef.current) return;
+      setContinuityEnabled(state.enabled);
+      setSessionKey(state.enabled && state.session_key ? state.session_key : localSessionKey);
+      setRuntimeContinuityError(false);
+    } catch (error) {
+      if (required) {
+        setRuntimeContinuityError(true);
+        setToast(error instanceof Error ? error.message : t("Load failed"));
+      }
+    } finally {
+      refreshInFlightRef.current = false;
+    }
+  }, [partnerId, localSessionKey, t]);
+
+  // A second browser can change the selected conversation. Pick it up when
+  // this page becomes active, without moving a turn that is still streaming.
+  useEffect(() => {
+    if (!continuityReady) return;
+    const refresh = () => {
+      if (document.visibilityState !== "visible" || chatBusy || continuityBusy || switchingSession) return;
+      void refreshAuthoritative();
+    };
+    const timer = continuityEnabled ? window.setInterval(refresh, 15_000) : null;
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      if (timer !== null) window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [continuityReady, continuityEnabled, chatBusy, continuityBusy, switchingSession, refreshAuthoritative]);
+
+  const reconcileSelection = useCallback(async () => {
+    selectionEpochRef.current += 1;
+    selectionMutationRef.current = true;
+    setSwitchingSession(true);
+    try {
+      await refreshAuthoritative(true);
+    } finally {
+      selectionMutationRef.current = false;
+      setSwitchingSession(false);
+    }
+  }, [refreshAuthoritative]);
+  const handleSelectionStale = useCallback(() => reconcileSelection(), [reconcileSelection]);
+
   const changeSessionKey = useCallback(
-    (key: string) => {
-      persistPartnerSessionKey(partnerId, key);
+    async (key: string, alreadySaved = false) => {
+      selectionEpochRef.current += 1;
       setSessionKey(key);
+      if (continuityEnabled) {
+        if (alreadySaved) return;
+        selectionMutationRef.current = true;
+        setSwitchingSession(true);
+        try {
+          const state = await setPartnerWebContinuity(partnerId, {
+            enabled: true,
+            session_key: key,
+          });
+          if (state.session_key && state.session_key !== key) setSessionKey(state.session_key);
+        } catch (error) {
+          setToast(error instanceof Error ? error.message : t("Action failed"));
+          await reconcileSelection();
+        } finally {
+          selectionMutationRef.current = false;
+          setSwitchingSession(false);
+        }
+      } else {
+        if (accountId) persistPartnerSessionKey(partnerId, key, accountId);
+        setLocalSessionKey(key);
+      }
     },
-    [partnerId],
+    [partnerId, continuityEnabled, accountId, reconcileSelection, t],
   );
+
+  const toggleContinuity = useCallback(async () => {
+    if (!continuityReady || continuityBusy || switchingSession || runtimeContinuityError || chatBusy || !sessionKey) return;
+    selectionEpochRef.current += 1;
+    selectionMutationRef.current = true;
+    setContinuityBusy(true);
+    try {
+      if (continuityEnabled) {
+        await setPartnerWebContinuity(partnerId, {
+          enabled: false,
+          session_key: null,
+        });
+        const localKey = freshPartnerSessionKey();
+        if (accountId) persistPartnerSessionKey(partnerId, localKey, accountId);
+        setLocalSessionKey(localKey);
+        setSessionKey(localKey);
+        setContinuityEnabled(false);
+      } else {
+        await setPartnerWebContinuity(partnerId, {
+          enabled: true,
+          session_key: sessionKey,
+        });
+        setContinuityEnabled(true);
+      }
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : t("Action failed"));
+      await refreshAuthoritative(true);
+    } finally {
+      selectionMutationRef.current = false;
+      setContinuityBusy(false);
+    }
+  }, [
+    accountId,
+    chatBusy,
+    continuityBusy,
+    continuityEnabled,
+    continuityReady,
+    runtimeContinuityError,
+    switchingSession,
+    partnerId,
+    refreshAuthoritative,
+    sessionKey,
+    t,
+  ]);
 
   useEffect(() => {
     if (!toast) return;
@@ -163,9 +330,14 @@ function PartnerDetail() {
     if (!sessionKey || chatMessages.length === 0 || archiveBusy) return;
     setArchiveBusy(true);
     try {
-      await archivePartnerSession(partnerId, sessionKey);
+      const result = await archivePartnerSession(partnerId, sessionKey);
       setChatMessages([]);
-      changeSessionKey(freshPartnerSessionKey());
+      if (continuityEnabled) {
+        if (result.active_session_key) changeSessionKey(result.active_session_key, true);
+        else await reconcileSelection();
+      } else {
+        changeSessionKey(freshPartnerSessionKey());
+      }
       setToast(t("Archived conversation"));
     } catch (error) {
       setToast(error instanceof Error ? error.message : t("Action failed"));
@@ -176,7 +348,9 @@ function PartnerDetail() {
     archiveBusy,
     changeSessionKey,
     chatMessages.length,
+    continuityEnabled,
     partnerId,
+    reconcileSelection,
     sessionKey,
     t,
   ]);
@@ -234,7 +408,7 @@ function PartnerDetail() {
     }
   };
 
-  if (loading) {
+  if (loading || auth.loading || (!continuityReady && !continuityError)) {
     return (
       <div className="flex h-full items-center justify-center">
         <Loader2 className="h-5 w-5 animate-spin text-[var(--muted-foreground)]" />
@@ -258,6 +432,24 @@ function PartnerDetail() {
     );
   }
 
+  if (continuityError) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-3 text-[13px]">
+        <p className="text-[var(--muted-foreground)]">{t("Could not load browser sync state")}</p>
+        <button
+          type="button"
+          onClick={() => {
+            if (!accountId) window.location.reload();
+            else setContinuityRetry((value) => value + 1);
+          }}
+          className="rounded-md border border-[var(--border)] px-3 py-1.5 text-[var(--foreground)] hover:bg-[var(--muted)]"
+        >
+          {t("Retry")}
+        </button>
+      </div>
+    );
+  }
+
   const tabs: { key: Tab; label: string; icon: typeof MessageCircle }[] = [
     { key: "chat", label: t("Chat"), icon: MessageCircle },
     ...(canManage
@@ -266,7 +458,7 @@ function PartnerDetail() {
           { key: "channels", label: t("Channels"), icon: Radio },
         ] as const)
       : []),
-    { key: "archive", label: t("Archive"), icon: Archive },
+    { key: "archive", label: t("Conversations"), icon: Archive },
   ];
 
   return (
@@ -327,13 +519,29 @@ function PartnerDetail() {
         </nav>
 
         <div className="flex min-w-0 items-center justify-end gap-0.5">
+          <label
+            title={t("Share this conversation across browsers")}
+            className="mr-1 inline-flex cursor-pointer items-center gap-1.5 text-[11px] text-[var(--muted-foreground)]"
+          >
+            <input
+              type="checkbox"
+              aria-label={t("Sync browsers")}
+              checked={continuityEnabled}
+              disabled={continuityBusy || switchingSession || runtimeContinuityError || chatBusy}
+              onChange={() => void toggleContinuity()}
+              className="h-3.5 w-3.5 accent-[var(--primary)]"
+            />
+            <span className="hidden whitespace-nowrap xl:inline">
+              {t("Sync browsers")}
+            </span>
+          </label>
           {(activeTab === "chat" || activeTab === "archive") && (
             <>
               {activeTab === "chat" ? (
                 <button
                   type="button"
                   onClick={() => void handleArchiveConversation()}
-                  disabled={!chatMessages.length || archiveBusy}
+                  disabled={!chatMessages.length || archiveBusy || switchingSession || chatBusy}
                   title={t("Archive")}
                   aria-label={t("Archive")}
                   className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
@@ -414,6 +622,19 @@ function PartnerDetail() {
         />
       ) : null}
 
+      {runtimeContinuityError ? (
+        <div className="flex items-center justify-center gap-2 border-b border-[var(--border)] px-4 py-2 text-[12px] text-[var(--muted-foreground)]">
+          {t("Could not load browser sync state")}
+          <button
+            type="button"
+            onClick={() => void reconcileSelection()}
+            className="rounded-md border border-[var(--border)] px-2 py-1 text-[var(--foreground)] hover:bg-[var(--muted)]"
+          >
+            {t("Retry")}
+          </button>
+        </div>
+      ) : null}
+
       {/* Body. Chat stays mounted (hidden off-tab) so an in-progress turn —
           its WebSocket and live trace — survives switching to another tab. */}
       <div className="min-h-0 flex-1">
@@ -430,6 +651,10 @@ function PartnerDetail() {
               onToast={setToast}
               onMessagesChange={setChatMessages}
               onRuntimeReady={handleRuntimeReady}
+              onBusyChange={setChatBusy}
+              switchingSession={switchingSession || continuityBusy || archiveBusy || runtimeContinuityError}
+              sharedAcrossBrowsers={continuityEnabled}
+              onSelectionStale={handleSelectionStale}
             />
           </div>
         </div>
@@ -439,8 +664,21 @@ function PartnerDetail() {
               partnerId={partnerId}
               onToast={setToast}
               onMessagesChange={setArchiveMessages}
-              onResume={(key) => {
-                changeSessionKey(key);
+              onDeleted={(deletedKey, activeKey) => {
+                if (continuityEnabled) {
+                  if (activeKey) changeSessionKey(activeKey, true);
+                  else if (deletedKey === sessionKey) void reconcileSelection();
+                } else if (deletedKey === sessionKey) {
+                  changeSessionKey(freshPartnerSessionKey());
+                }
+              }}
+              onResume={(key, activeKey, didCallResume) => {
+                if (continuityEnabled && didCallResume) {
+                  if (activeKey) changeSessionKey(activeKey, true);
+                  else void reconcileSelection();
+                } else {
+                  changeSessionKey(key);
+                }
                 setTab("chat");
               }}
             />

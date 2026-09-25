@@ -2,18 +2,21 @@
   container: chat-composer / inline-size;
 }
 
-/* Use the actual composer width, including when a side panel is open. */
+/* The actions drop below the context only when the two don't fit side by
+   side. A width breakpoint split them on every narrow surface — a side
+   panel's composer showed a mode chip on one row and a lone send button on
+   the next, with room for both. */
 .toolbar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-areas: "context" "actions";
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 4px;
 }
 
 .context {
-  grid-area: context;
   display: flex;
+  flex: 1 1 auto;
   min-width: 0;
   flex-wrap: wrap;
   align-items: center;
@@ -26,8 +29,8 @@
 }
 
 .actions {
-  grid-area: actions;
   display: flex;
+  flex: 0 0 auto;
   min-width: 0;
   align-items: center;
   justify-content: flex-end;
@@ -37,13 +40,6 @@
 /* Animated selector names must not displace the microphone or send button. */
 .toolbar [data-toolbar-label] {
   display: none;
-}
-
-@container chat-composer (min-width: 420px) {
-  .toolbar {
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas: "context actions";
-  }
 }
 
 @container chat-composer (min-width: 600px) {

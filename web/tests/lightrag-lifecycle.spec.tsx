@@ -315,6 +315,9 @@ it.each(["header", "documents"])(
         history={[]}
         onCreate={vi.fn()}
         onUpload={vi.fn()}
+        onLinkFolder={vi.fn()}
+        onUnlinkFolder={vi.fn()}
+        onSyncFolder={vi.fn()}
         onReindex={reindex}
         onRetry={retry}
         onSetDefault={vi.fn()}

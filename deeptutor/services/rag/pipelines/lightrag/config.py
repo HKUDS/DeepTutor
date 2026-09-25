@@ -190,6 +190,7 @@ def constructor_kwargs_from_settings() -> dict:
         return {
             "llm_model_max_async": int(settings.get("llm_model_max_async", 4)),
             "entity_extract_max_gleaning": int(settings.get("entity_extract_max_gleaning", 1)),
+            "default_llm_timeout": int(settings.get("llm_timeout", 240)),
         }
     except Exception:
         return {}

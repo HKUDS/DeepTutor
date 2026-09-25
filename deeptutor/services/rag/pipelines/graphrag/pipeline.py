@@ -12,6 +12,7 @@ message when it is not installed instead of an opaque ``ImportError``.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from pathlib import Path
 import shutil
@@ -93,13 +94,21 @@ class GraphRagPipeline:
         )
         try:
             gr_config.write_settings(root_dir)
-            count = await ingestion.prepare_input(file_paths, root_dir)
+            source_for_input: dict[str, str] = {}
+            count = await ingestion.prepare_input(
+                file_paths, root_dir, source_for_input=source_for_input
+            )
             if count == 0:
                 self.logger.error("GraphRAG: no extractable documents for '%s'", kb_name)
                 self._cleanup_failed_version_dir(root_dir)
                 return False
             await self._build(root_dir, is_update=False)
             storage.write_meta(root_dir)
+            if indexed_file_callback := kwargs.get("indexed_file_callback"):
+                names = await asyncio.to_thread(storage.indexed_input_names, root_dir)
+                indexed_file_callback(
+                    sorted(source_for_input[name] for name in names if name in source_for_input)
+                )
             self.logger.info("KB '%s' initialized with GraphRAG (%d docs)", kb_name, count)
             return True
         except Exception as exc:

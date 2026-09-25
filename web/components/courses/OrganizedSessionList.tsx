@@ -22,6 +22,7 @@ import {
 import { useTranslation } from "react-i18next";
 import {
   deriveSessionMark,
+  sessionKindOf,
   SessionAvatar,
 } from "@/components/sidebar/SessionAvatar";
 import { useUnreadSessions } from "@/lib/session-unread";
@@ -315,8 +316,8 @@ export default function OrganizedSessionList({
             child ? "ml-4 border-l border-[var(--border)]/60 pl-2" : "pl-1.5"
           } ${
             active
-              ? "bg-[var(--background)]/60 text-[var(--foreground)]"
-              : "text-[var(--foreground)] hover:bg-[var(--background)]/40"
+              ? "bg-background/60 text-[var(--foreground)]"
+              : "text-[var(--foreground)] hover:bg-background/40"
           }`}
         >
           {children.length > 0 ? (
@@ -344,6 +345,7 @@ export default function OrganizedSessionList({
           <SessionAvatar
             sessionId={session.session_id}
             mark={deriveSessionMark(session, liveSessionIds, unread)}
+            kind={sessionKindOf(session)}
             size={child ? 11 : 12}
             className={child ? "opacity-65" : "opacity-80"}
           />
@@ -598,7 +600,7 @@ export default function OrganizedSessionList({
         style={style}
         className={`rounded-lg ${
           dragging
-            ? "bg-[var(--background)]/85 shadow-lg ring-1 ring-[var(--border)]/70"
+            ? "bg-background/85 shadow-lg ring-1 ring-border/70"
             : ""
         }`}
       >
@@ -639,7 +641,7 @@ export default function OrganizedSessionList({
         style={sortable ? style : undefined}
         className={`${recent ? "pt-5" : "pt-1.5"} first:pt-0 ${
           dragging
-            ? "rounded-lg bg-[var(--background)]/85 shadow-lg ring-1 ring-[var(--border)]/70"
+            ? "rounded-lg bg-background/85 shadow-lg ring-1 ring-border/70"
             : ""
         }`}
       >
@@ -660,7 +662,7 @@ export default function OrganizedSessionList({
           // had it a hair smaller than a caption and uppercase, which shouted
           // in a list of 12.5px rows and did nothing whatsoever to the CJK
           // titles most of these groups actually carry.
-          className="group/heading flex w-full min-w-0 items-center gap-1.5 rounded-lg px-1.5 py-1 text-left text-[12.5px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--background)]/40 hover:text-[var(--foreground)]"
+          className="group/heading flex w-full min-w-0 items-center gap-1.5 rounded-lg px-1.5 py-1 text-left text-[12.5px] font-medium text-[var(--foreground)] transition-colors hover:bg-background/40 hover:text-[var(--foreground)]"
         >
           {!recent && <GroupMark entry={entry} />}
           <span className="min-w-0 truncate">{recent ? t("Recent") : entry.label}</span>

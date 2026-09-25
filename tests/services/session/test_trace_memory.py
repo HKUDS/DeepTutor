@@ -45,6 +45,28 @@ def test_preview_prioritizes_the_terminal_tail() -> None:
     assert preview[-1]["type"] == "done"
 
 
+def test_preview_spends_its_byte_budget_on_the_result_first() -> None:
+    """A quiz that fetched web pages early in the turn: those tool results
+    alone exceed the byte budget. The result carrying the quiz comes after
+    them, and it is the one row the settled message cannot render without."""
+    page = "x" * 15_000
+    events = [
+        {"type": "tool_result", "seq": seq, "content": page, "metadata": {"tool": "web_fetch"}}
+        for seq in range(1, 11)
+    ]
+    events.append({"type": "result", "seq": 11, "metadata": {"summary": {"results": [1, 2, 3]}}})
+    events.append({"type": "done", "seq": 12, "metadata": {"status": "completed"}})
+
+    preview, truncated = compact_trace_preview(events, max_bytes=64 * 1024)
+
+    assert truncated is True
+    assert [event["type"] for event in preview][-2:] == ["result", "done"]
+    # Whatever tool rows still fit are the latest ones, in turn order.
+    seqs = [event["seq"] for event in preview]
+    assert seqs == sorted(seqs)
+    assert seqs[0] > 1
+
+
 def test_migration_backfills_assistant_message_link_from_legacy_done(tmp_path) -> None:
     path = tmp_path / "chat.db"
     store = SQLiteSessionStore(path)

@@ -9,7 +9,7 @@ import {
 } from "@/lib/knowledge-helpers";
 import { useTranslation } from "react-i18next";
 
-export type TaskKind = "create" | "upload" | "reindex" | "retry";
+export type TaskKind = "create" | "upload" | "sync" | "reindex" | "retry";
 
 export interface TaskState {
   taskId: string;
@@ -313,11 +313,13 @@ export function useKnowledgeProgress(options?: UseKnowledgeProgressOptions) {
           setTasksByKb((prev) => {
             const current = prev[kbName];
             if (!current || current.taskId !== taskId) return prev;
+            const logs = appendTaskLog(current.logs, payload.message);
+            if (logs === current.logs) return prev;
             return {
               ...prev,
               [kbName]: {
                 ...current,
-                logs: [...current.logs, payload.message!],
+                logs,
               },
             };
           });

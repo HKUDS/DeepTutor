@@ -451,9 +451,11 @@ def _append_repair_messages(
     provider rejects a history that lost it.
     """
     clipped = str(step.text or "").strip()
-    if clipped:
+    if clipped or step.reasoning_content or step.thinking_blocks:
         if len(clipped) > _REPAIR_PREVIEW_CHARS:
             clipped = clipped[:_REPAIR_PREVIEW_CHARS].rstrip() + "\n...[truncated]"
+        # A reasoning-only response has no visible draft, but it still
+        # produced an assistant turn whose provider state belongs in history.
         messages.append(
             assistant_message(
                 clipped,

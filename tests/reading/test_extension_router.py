@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 import pytest
 
 from deeptutor.api.routers import reading_extensions
+from deeptutor.learning.storage import LearningStore
 from deeptutor.reading import ReadingStore
 from deeptutor.reading.extensions import (
     ReadingAction,
@@ -78,6 +79,32 @@ def test_action_receives_only_server_verified_visible_text(material, monkeypatch
     assert response.status_code == 200, response.text
     assert captured["selection"] == ""
     assert captured["visible_text"] == "Visible passage with a verified phrase."
+    records = LearningStore().list_reading_records()
+    assert len(records.activities) == 1
+    assert records.activities[0].material_id == material.material_id
+    assert records.activities[0].extension_id == "sample"
+    assert records.activities[0].action == "open"
+    assert records.activities[0].locator == 1
+    assert records.activities[0].result_type == "card"
+    assert "visible_text" not in records.activities[0].model_dump()
+
+
+def test_action_succeeds_when_activity_store_fails(material, monkeypatch):
+    def fail_activity(*_args, **_kwargs):
+        raise OSError("activity database unavailable")
+
+    monkeypatch.setattr(reading_extensions, "_record_reading_activity", fail_activity)
+    client = _client(
+        monkeypatch,
+        _extension(lambda *_: ReadingExtensionResult(type="card", payload={"body": "ok"})),
+    )
+
+    response = client.post(
+        f"/api/reading/materials/{material.material_id}/extensions/sample/actions/open",
+        json={"locator": 1},
+    )
+    assert response.status_code == 200
+    assert response.json()["payload"]["body"] == "ok"
 
 
 def test_source_anchor_is_loaded_from_server_position(material, monkeypatch):
@@ -113,6 +140,43 @@ def test_selection_requirement_rejects_unverified_text(material, monkeypatch):
     assert response.status_code == 400
 
 
+def test_selection_matches_across_line_breaks_the_text_layer_dropped(monkeypatch, tmp_path):
+    # Margin line numbers: extracted onto their own lines, but the browser's
+    # selection glues each one to the word before it.
+    monkeypatch.setenv("DEEPTUTOR_HOME", str(tmp_path))
+    PathService.reset_instance()
+    source = tmp_path / "paper.txt"
+    source.write_text(
+        "applications for Large Language\n1\nModels (LLMs). However, current LLMs rely on "
+        "static pre-training knowledge\n2\nand lack adaptation.",
+        encoding="utf-8",
+    )
+    manifest = ReadingStore().ingest(source)
+    captured = {}
+
+    def run(_action, context):
+        captured.update(context.model_dump())
+        return ReadingExtensionResult(type="card", payload={"body": "ok"})
+
+    client = _client(monkeypatch, _extension(run, requires=("selection",)))
+    try:
+        response = client.post(
+            f"/api/reading/materials/{manifest.material_id}/extensions/sample/actions/open",
+            json={
+                "locator": 1,
+                "selection": "Large Language1 Models (LLMs). However, current LLMs rely on "
+                "static pre-training knowledge2 and lack",
+            },
+        )
+    finally:
+        PathService.reset_instance()
+    assert response.status_code == 200, response.text
+    assert captured["selection"] == (
+        "Large Language 1 Models (LLMs). However, current LLMs rely on "
+        "static pre-training knowledge 2 and lack"
+    )
+
+
 def test_oversized_unit_returns_protocol_error(material, monkeypatch):
     unit_path = ReadingStore().root / material.material_id / "units" / "0001.txt"
     unit_path.write_text("x" * 60_001, encoding="utf-8")
@@ -145,6 +209,7 @@ def test_extension_failures_are_isolated(material, monkeypatch, run_action):
     )
     assert response.status_code == 503
     assert response.json()["detail"]["recoverable"] is True
+    assert LearningStore().list_reading_records().activities == []
 
 
 def test_hanging_extension_action_times_out(material, monkeypatch):

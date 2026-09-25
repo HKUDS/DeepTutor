@@ -35,7 +35,8 @@ function normalizeEntry(value: unknown): ReadingLocationEntry | null {
     .trim()
     .toLowerCase();
   const locator = Number(row.locator);
-  if (!/^[0-9a-f]{8,64}$/.test(materialId)) return null;
+  // Same id shape the store accepts: content hashes and catalog rm_ ids.
+  if (!/^(?:[0-9a-f]{8,64}|rm_[0-9a-f]{12})$/.test(materialId)) return null;
   if (!Number.isInteger(locator) || locator < 1) return null;
   const rawSource =
     row.source && typeof row.source === "object"

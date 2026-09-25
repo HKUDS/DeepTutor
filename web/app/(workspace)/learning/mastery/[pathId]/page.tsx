@@ -49,6 +49,7 @@ import {
   redoProgress,
   renameProgress,
   setMasteryObjectiveOverride,
+  updateMasteryReviewSettings,
   type MasteryTopic,
   type BoardResult,
   type TopicSession,
@@ -110,6 +111,8 @@ export default function MasteryTopicPage() {
   const [boardError, setBoardError] = useState(false);
   const [boardRequestNonce, setBoardRequestNonce] = useState(0);
   const [mutationBusy, setMutationBusy] = useState(false);
+  const [retentionBusy, setRetentionBusy] = useState(false);
+  const [retentionError, setRetentionError] = useState<string | null>(null);
   const editorTriggerRef = useRef<HTMLElement | null>(null);
   const confirmTriggerRef = useRef<HTMLElement | null>(null);
   const activity = useMasteryPathActivity(pathId || null);
@@ -235,6 +238,20 @@ export default function MasteryTopicPage() {
       previous ? { ...previous, name: saved.name } : previous,
     );
     activity.refresh();
+  };
+
+  const handleRetentionChange = async (desiredRetention: number) => {
+    setRetentionBusy(true);
+    setRetentionError(null);
+    try {
+      const saved = await updateMasteryReviewSettings(pathId, desiredRetention);
+      setTopic(saved);
+      activity.refresh();
+    } catch {
+      setRetentionError(t("Could not save review target. Try again."));
+    } finally {
+      setRetentionBusy(false);
+    }
   };
 
   const handleReset = async () => {
@@ -608,6 +625,14 @@ export default function MasteryTopicPage() {
               </div>
               <ReviewTrail
                 reviews={topic.reviews}
+                desiredRetention={
+                  topic.review_settings?.desired_retention ??
+                  topic.reviews[0]?.desired_retention ??
+                  0.9
+                }
+                retentionBusy={retentionBusy}
+                retentionError={retentionError}
+                onRetentionChange={(value) => void handleRetentionChange(value)}
                 zh={zh}
                 onSelect={(objectiveId) => {
                   setSelectedId(objectiveId);

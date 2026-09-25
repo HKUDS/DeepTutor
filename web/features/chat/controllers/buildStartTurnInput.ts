@@ -75,6 +75,9 @@ export function buildStartTurnInput(input: StartTurnInput): StartTurnCommand {
     tools: input.tools ?? null,
     knowledge_bases: input.knowledgeBases ?? [],
     language: input.language ?? null,
+    ...(input.replyLanguageOverride !== undefined
+      ? { reply_language_override: input.replyLanguageOverride }
+      : {}),
     config: capabilityConfig(input),
     attachments: input.attachments ?? [],
     notebook_references: input.notebookReferences ?? [],
@@ -114,6 +117,7 @@ export function buildStartTurnInput(input: StartTurnInput): StartTurnCommand {
     ...(input.consultPartnerId ? { consult_partner_id: input.consultPartnerId } : {}),
     ...(input.partnerDiscussionGroupId ? { partner_discussion_group_id: input.partnerDiscussionGroupId } : {}),
     auto_route: input.autoRoute ?? null,
+    ...(input.capabilityOnce ? { capability_once: true } : {}),
   });
 }
 

@@ -3,36 +3,44 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { SettingRow, SettingSection, SettingsPageHeader } from "./shared";
-import { useUiSettings } from "@/features/settings/store";
+import { APP_LANGUAGES, isAppLanguage, type AppLanguage } from "@/i18n/init";
+import SettingsPresetsPanel from "@/components/settings/SettingsPresetsPanel";
+import {
+  SettingRow,
+  SettingSection,
+  SettingsPageHeader,
+  selectClass,
+  selectOptionClass,
+} from "./shared";
+import { RESPONSE_LANGUAGE_OPTIONS, useUiSettings } from "@/features/settings/store";
 import { useSettings } from "@/features/settings/store/SettingsStore";
 
-/** The en/zh segmented control both language rows use. */
-function LanguageToggle({
+function LanguageSelect({
+  label,
   value,
   onChange,
 }: {
+  label: string;
   value: string;
-  onChange: (next: "en" | "zh") => void;
+  onChange: (next: AppLanguage) => void;
 }) {
   const { t } = useTranslation();
   return (
-    <div className="flex gap-0.5 rounded-lg bg-[var(--muted)] p-0.5">
-      {(["en", "zh"] as const).map((option) => (
-        <button
-          key={option}
-          aria-pressed={value === option}
-          onClick={() => onChange(option)}
-          className={`rounded-md px-2.5 py-1 text-[12px] transition-all ${
-            value === option
-              ? "bg-[var(--card)] font-medium text-[var(--foreground)] shadow-sm"
-              : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-          }`}
-        >
-          {option === "en" ? t("language.english") : t("language.chinese")}
-        </button>
+    <select
+      aria-label={label}
+      className={`${selectClass} min-w-[200px]`}
+      value={value}
+      onChange={(event) => {
+        const next = event.currentTarget.value;
+        if (isAppLanguage(next)) onChange(next);
+      }}
+    >
+      {APP_LANGUAGES.map(({ code, labelKey }) => (
+        <option key={code} value={code} className={selectOptionClass}>
+          {t(labelKey)}
+        </option>
       ))}
-    </div>
+    </select>
   );
 }
 
@@ -56,7 +64,11 @@ export default function SettingsOverview() {
             "Controls navigation, settings, and status text only.",
           )}
           control={
-            <LanguageToggle value={language} onChange={updateLanguage} />
+            <LanguageSelect
+              label={t("Interface language")}
+              value={language}
+              onChange={updateLanguage}
+            />
           }
         />
         <SettingRow
@@ -65,13 +77,26 @@ export default function SettingsOverview() {
             "Sets the default language for chat and capability responses.",
           )}
           control={
-            <LanguageToggle
+            <select
+              aria-label={t("Model output language")}
               value={responseLanguage}
-              onChange={updateResponseLanguage}
-            />
+              onChange={(event) =>
+                void updateResponseLanguage(
+                  event.target.value as typeof responseLanguage,
+                )
+              }
+              className={`${selectClass} min-w-[200px] pr-8`}
+            >
+              {RESPONSE_LANGUAGE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           }
         />
       </SettingSection>
+      {catalogEditable === true && <SettingsPresetsPanel enabled={true} />}
       {catalogEditable && <SettingSection
         title={t("Set up chat first")}
         description={t("Connect a provider and choose a language model. Other services are optional.")}

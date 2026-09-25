@@ -1860,6 +1860,7 @@ class ResearchPipeline:
         last_reason = "empty response"
         for attempt in range(1, DEFAULT_REPORT_STEP_MAX_ATTEMPTS + 1):
             body = ""
+            step: LabeledStepResult | None = None
             try:
                 step = await self._run_labeled_step(
                     client=client,
@@ -1932,10 +1933,11 @@ class ResearchPipeline:
                 )
                 messages.extend(
                     [
-                        {
-                            "role": "assistant",
-                            "content": f"``{expected_label}``\n{body}" if body else "",
-                        },
+                        assistant_message(
+                            f"``{expected_label}``\n{body}" if body else "",
+                            reasoning_content=step.reasoning_content if step else None,
+                            thinking_blocks=list(step.thinking_blocks) if step else None,
+                        ),
                         {
                             "role": "user",
                             "content": self._t(

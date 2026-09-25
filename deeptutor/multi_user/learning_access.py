@@ -86,6 +86,15 @@ def assert_learning_material(material_id: str, *, upload: bool = False) -> None:
         raise PermissionError("This reading material is not assigned to this learning account.")
 
 
+def learning_material_allowed(material_id: str) -> bool:
+    """Check a material without exposing a revoked source in a prompt or list."""
+    try:
+        assert_learning_material(material_id)
+    except PermissionError:
+        return False
+    return True
+
+
 def assert_learning_material_mutation(material_id: str) -> None:
     """Protect administrator-assigned material from learner-side deletion."""
     policy = current_learning_policy()
@@ -114,5 +123,6 @@ __all__ = [
     "assert_learning_material_mutation",
     "assert_learning_surface",
     "current_learning_policy",
+    "learning_material_allowed",
     "learning_policy_for_user",
 ]

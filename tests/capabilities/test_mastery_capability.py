@@ -140,6 +140,28 @@ def test_announced_but_unposed_question_is_redirected():
 @pytest.mark.parametrize(
     "reply",
     [
+        "所以这条 KP 我要考的不是「README 该有哪些章节」——那部分你已经做对了。"
+        "是排序和取舍：给那个不跑项目的读者，第一样该补什么。四个选项，选一个。",
+        "Four options, choose one.",
+    ],
+)
+def test_unposted_choice_lead_in_requires_a_card(reply: str) -> None:
+    """#1508: naming unseen choices cannot finish a mastery turn successfully."""
+    instruction = MasteryLoopCapability().finish_instruction(_context(), reply)
+    assert instruction is not None
+    assert "mastery_quiz" in instruction
+
+
+def test_existing_question_can_remind_learner_to_choose() -> None:
+    """A card posted in an earlier turn is still available to answer."""
+    context = _context()
+    context.extension("mastery")["quiz_awaiting_grade"] = True
+    assert MasteryLoopCapability().finish_instruction(context, "四个选项，选一个。") is None
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
         "按老规矩先探一题：凭印象选就行——这题考的是它俩的区别。",
         "那就先把探底那道题放上来——凭印象选就好。",
         "这次的卡片我直接开出来——就是探底那道。",

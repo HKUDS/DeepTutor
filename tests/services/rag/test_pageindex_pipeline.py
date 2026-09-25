@@ -79,6 +79,30 @@ def test_initialize_submits_supported_and_skips_others(tmp_path) -> None:
     assert docs["a.pdf"]["doc_id"] == "pi-a.pdf"
 
 
+def test_initialize_receipt_includes_only_published_manifest_files(tmp_path: Path) -> None:
+    client = FakeClient()
+    first = tmp_path / "first" / "same.pdf"
+    second = tmp_path / "second" / "same.pdf"
+    skipped = tmp_path / "skipped.png"
+    first.parent.mkdir()
+    second.parent.mkdir()
+    first.write_text("first", encoding="utf-8")
+    second.write_text("second", encoding="utf-8")
+    skipped.write_text("image", encoding="utf-8")
+    receipts: list[list[str]] = []
+
+    assert asyncio.run(
+        _pipe(tmp_path, client).initialize(
+            "kb",
+            [str(first), str(second), str(skipped)],
+            indexed_file_callback=receipts.append,
+        )
+    )
+
+    assert receipts == [[str(second)]]
+    assert set(_manifest(tmp_path, "kb")["docs"]) == {"same.pdf"}
+
+
 def test_initialize_no_supported_returns_false(tmp_path) -> None:
     client = FakeClient()
     png = tmp_path / "c.png"

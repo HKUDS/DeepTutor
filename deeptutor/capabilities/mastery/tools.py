@@ -57,6 +57,12 @@ from deeptutor.learning.models import (
     KnowledgeType,
     LearningModule,
     PendingQuestion,
+    TopicSourceKind,
+)
+from deeptutor.learning.objective_relations import (
+    ObjectiveRelationError,
+    RelationRefs,
+    normalize_refs,
 )
 from deeptutor.learning.pending import public_pending_question
 from deeptutor.learning.policy import (
@@ -698,6 +704,16 @@ class MasteryStatusTool(BaseTool):
             "path_id": path_id,
             "path_name": path_display_name(progress) if progress is not None else "",
             "goal": str(getattr(getattr(topic, "metadata", None), "goal", "") or ""),
+            "sources": [
+                {
+                    "id": source.id,
+                    "kind": source.kind.value,
+                    "label": source.label,
+                    "available": source.available,
+                }
+                for source in getattr(topic, "sources", [])
+                if source.kind != TopicSourceKind.GOAL
+            ],
         }
         if progress is None or not any(module.knowledge_points for module in progress.modules):
             return _json_result(
@@ -1629,6 +1645,28 @@ class MasteryBuildTool(BaseTool):
                                             "type": "string",
                                             "enum": sorted(_ALLOWED_KP_TYPES),
                                         },
+                                        "client_ref": {
+                                            "type": "string",
+                                            "description": (
+                                                "Request-local alias for this new knowledge "
+                                                "point. Use it in prerequisite_refs."
+                                            ),
+                                        },
+                                        "prerequisite_refs": {
+                                            "type": "array",
+                                            "items": {"type": "string"},
+                                            "description": (
+                                                "Required objectives. In append mode use an "
+                                                "existing map id or a client_ref from this call."
+                                            ),
+                                        },
+                                        "topic_source_refs": {
+                                            "type": "array",
+                                            "items": {"type": "string"},
+                                            "description": (
+                                                "Non-goal source ids reported by mastery_status."
+                                            ),
+                                        },
                                     },
                                     "required": ["name"],
                                 },
@@ -1673,7 +1711,7 @@ class MasteryBuildTool(BaseTool):
             mode = "replace"
 
         service = _new_service()
-        new_modules, error = _parse_modules(
+        new_modules, relation_refs, error = _parse_modules_with_refs(
             kwargs.get("modules"),
             path_id,
             0,
@@ -1682,16 +1720,20 @@ class MasteryBuildTool(BaseTool):
         if error:
             return ToolResult(content=error, success=False)
 
-        progress = service.replace_modules_for_path(
-            path_id,
-            new_modules,
-            append=mode == "append",
-            name=str(kwargs.get("path_name") or ""),
-            event_type="path.built",
-            session_id=_resolve_session_id(kwargs),
-            turn_id=_resolve_turn_id(kwargs),
-            identity_mode="semantic" if mode != "append" else "explicit",
-        )
+        try:
+            progress = service.replace_modules_for_path(
+                path_id,
+                new_modules,
+                append=mode == "append",
+                name=str(kwargs.get("path_name") or ""),
+                event_type="path.built",
+                session_id=_resolve_session_id(kwargs),
+                turn_id=_resolve_turn_id(kwargs),
+                relation_refs=relation_refs,
+                identity_mode="semantic" if mode != "append" else "explicit",
+            )
+        except ObjectiveRelationError as exc:
+            return ToolResult(content=str(exc), success=False)
         kp_count = sum(len(m.knowledge_points) for m in new_modules)
         return _json_result(
             {
@@ -1974,6 +2016,18 @@ class MasteryReviseTool(BaseTool):
                             "knowledge_point_id": {"type": "string"},
                             "name": {"type": "string"},
                             "type": {"type": "string", "enum": sorted(_ALLOWED_KP_TYPES)},
+                            "prerequisite_ids": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": (
+                                    "Omit to inherit; [] explicitly clears required objectives."
+                                ),
+                            },
+                            "topic_source_ids": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Omit to inherit; [] explicitly clears sources.",
+                            },
                         },
                         "required": ["knowledge_point_id", "name"],
                     },
@@ -1988,6 +2042,8 @@ class MasteryReviseTool(BaseTool):
                         "properties": {
                             "name": {"type": "string"},
                             "type": {"type": "string", "enum": sorted(_ALLOWED_KP_TYPES)},
+                            "prerequisite_ids": {"type": "array", "items": {"type": "string"}},
+                            "topic_source_ids": {"type": "array", "items": {"type": "string"}},
                         },
                         "required": ["name"],
                     },
@@ -2024,7 +2080,26 @@ class MasteryReviseTool(BaseTool):
                 success=False,
             )
 
-        revised, error, reset_names = _revise_points(progress, target, kwargs)
+        removals = {
+            str(raw or "").strip() for raw in (kwargs.get("remove") or []) if str(raw or "").strip()
+        }
+        blocked_by = [
+            f"{point.name!r} ({point.id})"
+            for module in progress.modules
+            for point in module.knowledge_points
+            if point.id not in removals and any(ref in removals for ref in point.prerequisite_ids)
+        ]
+        if blocked_by:
+            return ToolResult(
+                content=(
+                    "Those knowledge points are still required by: "
+                    + ", ".join(blocked_by)
+                    + ". Remove or change those prerequisites first."
+                ),
+                success=False,
+            )
+
+        revised, error, reset_names, rewrite_ids = _revise_points(progress, target, kwargs)
         if error:
             return ToolResult(content=error, success=False)
 
@@ -2034,14 +2109,22 @@ class MasteryReviseTool(BaseTool):
             else module.model_copy(deep=True)
             for module in sorted(progress.modules, key=lambda m: m.order)
         ]
-        progress = service.replace_modules_for_path(
-            path_id,
-            applied,
-            event_type="path.module_revised",
-            session_id=_resolve_session_id(kwargs),
-            turn_id=_resolve_turn_id(kwargs),
-            identity_mode="explicit",
-        )
+        for module in applied:
+            for point in module.knowledge_points:
+                point.prerequisite_ids = [
+                    rewrite_ids.get(ref, ref) for ref in point.prerequisite_ids
+                ]
+        try:
+            progress = service.replace_modules_for_path(
+                path_id,
+                applied,
+                event_type="path.module_revised",
+                session_id=_resolve_session_id(kwargs),
+                turn_id=_resolve_turn_id(kwargs),
+                identity_mode="explicit",
+            )
+        except ObjectiveRelationError as exc:
+            return ToolResult(content=str(exc), success=False)
         return _json_result(
             {
                 "status": "revised",
@@ -2052,7 +2135,14 @@ class MasteryReviseTool(BaseTool):
                 # it was allowed to keep, not against its own recollection.
                 "module_objective": target.objective,
                 "knowledge_points": [
-                    {"id": kp.id, "name": kp.name, "type": kp.type.value} for kp in revised
+                    {
+                        "id": kp.id,
+                        "name": kp.name,
+                        "type": kp.type.value,
+                        "prerequisite_ids": kp.prerequisite_ids,
+                        "topic_source_ids": kp.topic_source_ids,
+                    }
+                    for kp in revised
                 ],
                 "progress_reset": reset_names,
                 "map": map_summary(progress),
@@ -2341,10 +2431,10 @@ def _revise_points(
     progress: LearningProgress,
     module: LearningModule,
     kwargs: dict[str, Any],
-) -> tuple[list[KnowledgePoint], str | None, list[str]]:
+) -> tuple[list[KnowledgePoint], str | None, list[str], dict[str, str]]:
     """Apply one module's rewrite / add / remove instructions.
 
-    Returns ``(points, error, reset_names)``. ``error`` is a sentence for the
+    Returns ``(points, error, reset_names, rewrite_ids)``. ``error`` is a sentence for the
     model — every rejection says what was wrong *and* what to do instead,
     because a tool that only says "no" is one the model retries verbatim.
     ``reset_names`` are the knowledge points whose progress this revision
@@ -2364,6 +2454,7 @@ def _revise_points(
             [],
             "mastery_revise needs at least one of rewrite, add or remove.",
             [],
+            {},
         )
 
     known = {kp.id for kp in module.knowledge_points}
@@ -2375,6 +2466,7 @@ def _revise_points(
             f"Module {module.id!r} has no knowledge point {unknown[0]!r}. Its "
             f"knowledge points are: {listed}.",
             [],
+            {},
         )
 
     protected = sorted(
@@ -2389,11 +2481,19 @@ def _revise_points(
             "removed — that would erase proof the learner has earned. Leave it "
             "in place and add a new knowledge point if they want to go further.",
             [],
+            {},
         )
 
     taken = {kp.id for m in progress.modules for kp in m.knowledge_points}
     points: list[KnowledgePoint] = []
     reset_names: list[str] = []
+    rewrite_ids: dict[str, str] = {}
+
+    def relation_values(raw: dict[str, Any], key: str, current: list[str]) -> list[str]:
+        if key not in raw or raw[key] is None:
+            return list(current)
+        return normalize_refs(raw[key], label=key)
+
     for kp in module.knowledge_points:
         if kp.id in removals:
             continue
@@ -2407,6 +2507,7 @@ def _revise_points(
                 [],
                 f"The rewrite for {kp.name!r} needs a 'name' of at least two characters.",
                 [],
+                {},
             )
         # An unrecognised type keeps the current one: a targeted edit that
         # silently retyped a waypoint would change which gate it has to clear.
@@ -2418,8 +2519,11 @@ def _revise_points(
                 name=name,
                 type=resolved,
                 module_id=module.id,
+                prerequisite_ids=relation_values(raw, "prerequisite_ids", kp.prerequisite_ids),
+                topic_source_ids=relation_values(raw, "topic_source_ids", kp.topic_source_ids),
             )
         )
+        rewrite_ids[kp.id] = points[-1].id
         reset_names.append(kp.name)
 
     for raw in additions:
@@ -2437,6 +2541,16 @@ def _revise_points(
                 name=name,
                 type=KnowledgeType(kp_type),
                 module_id=module.id,
+                prerequisite_ids=(
+                    normalize_refs(raw.get("prerequisite_ids"), label="prerequisite")
+                    if isinstance(raw, dict)
+                    else []
+                ),
+                topic_source_ids=(
+                    normalize_refs(raw.get("topic_source_ids"), label="topic source")
+                    if isinstance(raw, dict)
+                    else []
+                ),
             )
         )
 
@@ -2447,6 +2561,7 @@ def _revise_points(
             "module needs at least one; remove the module with mastery_build if "
             "the learner wants it gone entirely.",
             [],
+            {},
         )
     if len(points) > _MAX_POINTS_PER_MODULE:
         return (
@@ -2455,13 +2570,14 @@ def _revise_points(
             f"this revision would give {module.name!r} {len(points)}. Drop some, or "
             "split the material across modules with mastery_build.",
             [],
+            {},
         )
-    return points, None, reset_names
+    return points, None, reset_names, rewrite_ids
 
 
-def _parse_modules(
+def _parse_modules_with_refs(
     raw_modules: Any, path_id: str, offset: int, fallback_module_name: str = ""
-) -> tuple[list[LearningModule], str | None]:
+) -> tuple[list[LearningModule], dict[str, RelationRefs], str | None]:
     """Validate the model-designed module tree into engine models.
 
     Ids are generated server-side (``<path>_m<i>_kp<j>``) so the model never
@@ -2469,8 +2585,9 @@ def _parse_modules(
     """
     entries = _normalized_module_tree(raw_modules, fallback_module_name or "Objectives")
     if not entries:
-        return [], _BUILD_SHAPE_ERROR
+        return [], {}, _BUILD_SHAPE_ERROR
     modules: list[LearningModule] = []
+    relation_refs: dict[str, RelationRefs] = {}
     for i, (raw_name, raw_objective, raw_kps) in enumerate(entries):
         index = offset + len(modules)
         module_id = f"{path_id}_m{index}"
@@ -2481,10 +2598,20 @@ def _parse_modules(
             if len(kp_name) < 2:
                 continue
             kp_type = "concept"
+            prerequisite_refs: list[str] = []
+            topic_source_refs: list[str] = []
+            client_ref = ""
             if isinstance(raw_kp, dict):
                 kp_type = str(raw_kp.get("type") or "concept").strip().lower()
                 if kp_type not in _ALLOWED_KP_TYPES:
                     kp_type = "concept"
+                prerequisite_refs = normalize_refs(
+                    raw_kp.get("prerequisite_refs"), label="prerequisite"
+                )
+                topic_source_refs = normalize_refs(
+                    raw_kp.get("topic_source_refs"), label="topic source"
+                )
+                client_ref = str(raw_kp.get("client_ref") or "").strip()
             kps.append(
                 KnowledgePoint(
                     id=f"{module_id}_kp{len(kps)}",
@@ -2492,6 +2619,11 @@ def _parse_modules(
                     type=KnowledgeType(kp_type),
                     module_id=module_id,
                 )
+            )
+            relation_refs[kps[-1].id] = RelationRefs(
+                client_ref=client_ref,
+                prerequisite_refs=prerequisite_refs,
+                topic_source_refs=topic_source_refs,
             )
         if not kps:
             continue
@@ -2505,8 +2637,17 @@ def _parse_modules(
             )
         )
     if not modules:
-        return [], _BUILD_SHAPE_ERROR
-    return modules, None
+        return [], {}, _BUILD_SHAPE_ERROR
+    return modules, relation_refs, None
+
+
+def _parse_modules(
+    raw_modules: Any, path_id: str, offset: int, fallback_module_name: str = ""
+) -> tuple[list[LearningModule], str | None]:
+    modules, _relation_refs, error = _parse_modules_with_refs(
+        raw_modules, path_id, offset, fallback_module_name
+    )
+    return modules, error
 
 
 MASTERY_TOOL_TYPES: tuple[type[BaseTool], ...] = (

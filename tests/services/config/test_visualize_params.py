@@ -16,6 +16,7 @@ import yaml
 
 from deeptutor.services.config import capabilities_settings as module
 from deeptutor.services.config.capabilities_settings import get_visualize_params
+from deeptutor.services.setup.init import DEFAULT_AGENTS_SETTINGS
 
 
 def _settings_root(tmp_path: Path, content: dict[str, Any]) -> Path:
@@ -32,6 +33,14 @@ def test_visualize_defaults_match_the_previously_hardcoded_call(
     monkeypatch.setattr(module, "PROJECT_ROOT", _settings_root(tmp_path, {"capabilities": {}}))
 
     assert get_visualize_params() == {"temperature": 0.15, "max_tokens": 16000}
+
+
+def test_fresh_setup_keeps_the_visualize_runtime_default() -> None:
+    """Seeding agents.yaml must not change a fresh install's visualize budget."""
+    assert (
+        DEFAULT_AGENTS_SETTINGS["capabilities"]["visualize"]
+        == module._SIMPLE_LLM_DEFAULTS["visualize"]
+    )
 
 
 def test_visualize_budget_is_overridable_from_agents_yaml(

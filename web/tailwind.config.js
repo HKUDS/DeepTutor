@@ -22,6 +22,7 @@ module.exports = {
     './features/**/*.{js,ts,jsx,tsx,mdx}',
     './shared/**/*.{js,ts,jsx,tsx,mdx}',
     './app/**/*.{js,ts,jsx,tsx,mdx}',
+    './lib/reading-age-presentation.ts',
   ],
   theme: {
     extend: {

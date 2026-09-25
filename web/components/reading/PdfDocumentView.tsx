@@ -13,6 +13,7 @@ import { rawMaterialUrl } from "@/lib/reading-api";
 import { domRangeForQuote } from "@/lib/reading-quote-locator";
 import {
   cleanQuote,
+  selectionTextWithoutLineNumbers,
   locatorOfSelection,
   normaliseRects,
 } from "@/lib/reading-selection";
@@ -26,6 +27,11 @@ const PAGE_GAP = 16;
 export interface SelectionPayload {
   locator: number;
   quote: string;
+  /**
+   * The quote as reading text, when the page put something that is not text
+   * into it (margin line numbers). Questions carry this; marks keep `quote`.
+   */
+  text?: string;
   rects: NormalisedRect[];
   sourceAnchor?: string;
   selectors?: ReadingTextSelector[];
@@ -386,9 +392,11 @@ export function PdfDocumentView({
       return;
     }
     const last = clientRects[clientRects.length - 1];
+    const text = selectionTextWithoutLineNumbers(range);
     onSelection({
       locator,
       quote,
+      ...(text ? { text } : {}),
       rects,
       anchor: { x: last.left + last.width / 2, y: last.top },
     });

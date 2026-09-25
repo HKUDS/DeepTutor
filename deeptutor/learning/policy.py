@@ -335,6 +335,8 @@ def map_summary(progress: LearningProgress, *, now: float | None = None) -> dict
                     "id": kp.id,
                     "name": kp.name,
                     "type": kp.type.value,
+                    "prerequisite_ids": list(kp.prerequisite_ids),
+                    "topic_source_ids": list(kp.topic_source_ids),
                     "status": status,
                     "mastery": round(display_mastery(progress, kp), 3),
                     "mastery_source": mastery_source(progress, kp),

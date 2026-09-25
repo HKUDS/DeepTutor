@@ -145,6 +145,45 @@ async def test_report_step_retries_an_idle_truncated_response_before_streaming(
     assert "Complete section" in live_content
 
 
+async def test_report_retry_replays_reasoning_from_incomplete_attempt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pipeline = _make_pipeline(monkeypatch)
+    requests: list[list[dict]] = []
+
+    async def fake_run_labeled_step(self, **kwargs):
+        requests.append([dict(message) for message in kwargs["messages"]])
+        if len(requests) == 1:
+            return LabeledStepResult(
+                label=LABEL_SECTION,
+                text="## 2. Partial section",
+                finish_reason="length",
+                reasoning_content="Plan the missing evidence.",
+            )
+        return LabeledStepResult(
+            label=LABEL_SECTION,
+            text=_complete_section_body(2),
+            finish_reason="stop",
+        )
+
+    pipeline._run_labeled_step = types.MethodType(fake_run_labeled_step, pipeline)
+    await pipeline._stream_report_step(
+        system_prompt="system",
+        user_prompt="user",
+        protocol=_PROTOCOL_REPORT_SECTION,
+        stream=StreamBus(),
+        client=None,
+        label="Write section",
+        call_id_root="test-report-reasoning-replay",
+        max_tokens=1000,
+        expected_section_number=2,
+    )
+
+    assistant = next(message for message in requests[1] if message["role"] == "assistant")
+    assert assistant["content"] == "``SECTION``\n## 2. Partial section"
+    assert assistant["reasoning_content"] == "Plan the missing evidence."
+
+
 async def test_report_step_rejects_empty_success_after_all_retries(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -37,7 +37,8 @@ type BuiltinTool = {
   name: string;
   description: string;
   parameters: ToolParameter[];
-  hints: { en: ToolHints; zh: ToolHints };
+  // The API types this as a language-keyed map; only ``en`` is guaranteed.
+  hints: Partial<Record<string, ToolHints>> & { en: ToolHints };
   aliases: string[];
   toggleable: boolean;
   enabled: boolean;
@@ -76,6 +77,7 @@ const CAPABILITY_LABELS: Record<string, { zh: string; en: string }> = {
 export default function ToolsSettingsPage() {
   const { t } = useTranslation();
   const { language, draftRevision } = useSettings();
+  const hintLanguage = language === "zh" ? "zh" : "en";
   const [tools, setTools] = useState<BuiltinTool[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -183,8 +185,9 @@ export default function ToolsSettingsPage() {
       .map((section) => ({
         ...section,
         tools: section.tools.filter((tool) => {
-          const hints = tool.hints[language];
-          const alternateHints = tool.hints[language === "zh" ? "en" : "zh"];
+          const hints = tool.hints[hintLanguage] ?? tool.hints.en;
+          const alternateHints =
+            tool.hints[hintLanguage === "zh" ? "en" : "zh"] ?? tool.hints.en;
           const searchableText = [
             tool.name,
             tool.description,
@@ -218,7 +221,7 @@ export default function ToolsSettingsPage() {
         }),
       }))
       .filter((section) => section.tools.length > 0);
-  }, [language, query, sections]);
+  }, [hintLanguage, query, sections]);
 
   const toggleExpanded = (name: string) => {
     setExpanded((prev) => {
@@ -311,7 +314,7 @@ export default function ToolsSettingsPage() {
                 <div className="border-t border-[var(--border)]/60">
                   {list.map((tool, idx) => {
                     const isOpen = expanded.has(tool.name);
-                    const hints = tool.hints[language];
+                    const hints = tool.hints[hintLanguage] ?? tool.hints.en;
                     const isPending = pending.has(tool.name);
                     const isComingSoon = !!tool.coming_soon;
                     const isAvailable = tool.available !== false;

@@ -31,6 +31,7 @@ import {
   Activity,
   AlertCircle,
   ArrowRight,
+  ChevronRight,
   Compass,
   Download,
   ExternalLink,
@@ -41,6 +42,7 @@ import {
   MessageSquarePlus,
   NotebookPen,
   Paperclip,
+  Plus,
   X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -50,6 +52,9 @@ import {
   type FilePreviewSource,
 } from "@/components/chat/preview/previewerFor";
 import {
+  ACTIVITY_LABEL,
+  ACTIVITY_ROW_HOVER,
+  ACTIVITY_TILE,
   ActivityBody,
   type SessionActivity,
 } from "@/components/chat/home/SessionActivityPanel";
@@ -90,6 +95,9 @@ const DocxPreview = dynamic(
 const XlsxPreview = dynamic(
   () => import("@/components/chat/preview/previewers/XlsxPreview"),
 );
+const OfficePdfPreview = dynamic(
+  () => import("@/components/chat/preview/previewers/OfficePdfPreview"),
+);
 const OfficeTextPreview = dynamic(
   () => import("@/components/chat/preview/previewers/OfficeTextPreview"),
 );
@@ -104,15 +112,13 @@ const Geogebra = dynamic(() => import("@/components/Geogebra"), {
   ssr: false,
 });
 
-const ANIM_MS = 220;
-
 /* Resizable width — the panel overlays from the right and the chat shell
    reserves space for it via the ``--viewer-width`` CSS var (see globals.css).
    Both read the same var so the squeeze and the panel edge stay locked
    together while dragging. */
 const VIEWER_WIDTH_VAR = "--viewer-width";
 const VIEWER_WIDTH_KEY = "dt:viewer-width";
-const VIEWER_WIDTH_DEFAULT = 620;
+const VIEWER_WIDTH_DEFAULT = 520;
 const VIEWER_WIDTH_MIN = 400;
 const VIEWER_WIDTH_MAX = 960;
 
@@ -164,6 +170,7 @@ type ViewerTab =
       label: string;
       script: string;
     }
+  | { kind: "new"; id: string; label: string }
   | {
       kind: "subagent";
       id: string;
@@ -193,7 +200,7 @@ export interface SessionViewerPanelHandle {
   focusActivityHome(): void;
 }
 
-interface SessionViewerPanelProps {
+export interface SessionViewerPanelProps {
   open: boolean;
   sessionId: string | null;
   onClose: () => void;
@@ -213,6 +220,10 @@ function webTabIdFor(url: string): string {
 }
 
 const markdownNoteTabId = "markdown-note";
+
+/** One launcher tab at a time — a second "+" focuses it instead of piling
+ *  up blank tabs. */
+const newTabId = "new-tab";
 
 function quizFollowupTabIdFor(questionKey: string): string {
   return `quiz-followup:${questionKey}`;
@@ -292,11 +303,18 @@ function SessionViewerPanelInner(
     document.body.style.userSelect = "none";
     document.body.style.cursor = "col-resize";
 
+    // The panel's right edge sits ``--viewer-inset`` in from the window edge.
+    const inset =
+      parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue(
+          "--viewer-inset",
+        ),
+      ) || 0;
     let rafId = 0;
     let pendingX = e.clientX;
     const apply = () => {
       rafId = 0;
-      const w = clampViewerWidth(window.innerWidth - pendingX);
+      const w = clampViewerWidth(window.innerWidth - inset - pendingX);
       widthRef.current = w;
       document.documentElement.style.setProperty(VIEWER_WIDTH_VAR, `${w}px`);
     };
@@ -380,6 +398,22 @@ function SessionViewerPanelInner(
     },
     [onAutoOpen],
   );
+
+  const openNewTab = useCallback(() => {
+    setTabs((prev) =>
+      prev.some((tab) => tab.id === newTabId)
+        ? prev
+        : [...prev, { kind: "new", id: newTabId, label: t("New tab") }],
+    );
+    setActiveTabId(newTabId);
+  }, [t]);
+
+  /** The launcher tab becomes whatever it opens, browser-style: drop it,
+   *  then open (or focus) the target, which lands where it stood. */
+  const openFromNewTab = useCallback((openTarget: () => void) => {
+    setTabs((prev) => prev.filter((tab) => tab.id !== newTabId));
+    openTarget();
+  }, []);
 
   const openMarkdownNoteTab = useCallback(() => {
     setTabs((prev) => {
@@ -617,10 +651,25 @@ function SessionViewerPanelInner(
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
+  // The panel is lazy: it usually mounts *because* it was just opened, so its
+  // first render is already open and would pop in with no slide. Hold one
+  // closed frame after mount so the transition has a start state to run from.
+  const [entered, setEntered] = useState(false);
+  useEffect(() => {
+    let inner = 0;
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => setEntered(true));
+    });
+    return () => {
+      cancelAnimationFrame(outer);
+      cancelAnimationFrame(inner);
+    };
+  }, []);
+
   // The viewer is visible whenever it's open — even with no tabs. The
   // tabs.length === 0 case renders a "Landing" page where the user can
   // paste a URL or pick a local file to open as the first tab.
-  const visible = open;
+  const visible = open && entered;
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
 
   const openLocalFile = useCallback(
@@ -641,37 +690,32 @@ function SessionViewerPanelInner(
      wider than the phone it would overlay. That override lives in CSS
      (`max-md:!w-full`) rather than `useDevice()` so it is right on the first
      paint and follows an orientation change for free — the var-driven width
-     and its drag handle stay desktop-only machinery. */
+     and its drag handle stay desktop-only machinery. The slide, the inset
+     sheet shape, and the shadow live in `.dt-viewer-panel` (globals.css),
+     sharing one curve with the chat column's squeeze. */
   return (
     <div
       role="dialog"
       aria-hidden={!visible}
-      className={`fixed right-0 top-0 z-[30] flex h-dvh flex-col border-l border-[var(--border)] bg-[var(--card)] transition-transform ease-out max-md:!w-full md:max-w-[92vw] ${
-        // shadow-2xl only while visible — when closed, translate-x-full moves
-        // the box off-screen but its blurred shadow still bleeds ~38px back
-        // onto the viewport's right edge. Dropping the shadow off-screen kills
-        // that stray sliver.
-        visible ? "translate-x-0 shadow-2xl" : "translate-x-full"
-      }`}
+      data-open={visible ? "true" : "false"}
+      className="dt-viewer-panel fixed right-0 top-0 z-[30] flex h-dvh flex-col bg-[var(--card)] max-md:!w-full md:max-w-[92vw]"
       style={{
         // Constant string (not a state value) so SSR and the first client
         // render agree; the real width lives in the var, updated imperatively.
         width: `var(${VIEWER_WIDTH_VAR}, ${VIEWER_WIDTH_DEFAULT}px)`,
         willChange: "transform",
-        transitionDuration: `${ANIM_MS}ms`,
-        pointerEvents: visible ? "auto" : "none",
       }}
     >
-      {/* Left-edge resize handle. A wide invisible hit-area with a hairline
-          that tints on hover/drag — drag left/right to set the panel width. */}
+      {/* Left-edge resize handle. A narrow invisible hit-area whose grip pill
+          shows on hover — drag left/right to set the panel width. */}
       <div
         onPointerDown={startResize}
         role="separator"
         aria-orientation="vertical"
         aria-label={t("Resize viewer")}
-        className="group/resize absolute left-0 top-0 z-10 h-full w-2 -translate-x-1/2 cursor-col-resize max-md:hidden"
+        className="group/resize absolute inset-y-0 left-0 z-10 w-2 cursor-col-resize max-md:hidden"
       >
-        <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent transition-colors group-hover/resize:bg-[var(--primary)]/40" />
+        <span className="absolute left-[3px] top-1/2 h-10 w-[3px] -translate-y-1/2 rounded-full bg-transparent transition-colors group-hover/resize:bg-[color-mix(in_srgb,var(--muted-foreground)_35%,transparent)]" />
       </div>
       <TabBar
         tabs={tabs}
@@ -680,7 +724,13 @@ function SessionViewerPanelInner(
         onSelectHome={() => setActiveTabId(null)}
         onSelect={setActiveTabId}
         onCloseTab={closeTab}
+        onNewTab={openNewTab}
         onClosePanel={onClose}
+        actions={
+          activeTab?.kind === "file" ? (
+            <FileTabActions source={activeTab.source} />
+          ) : null
+        }
       />
       <div className="relative min-h-0 flex-1 overflow-hidden bg-[var(--card)]">
         {activeTab?.kind === "file" ? (
@@ -704,6 +754,17 @@ function SessionViewerPanelInner(
           />
         ) : activeTab?.kind === "geogebra" ? (
           <GeogebraTabBody key={activeTab.id} script={activeTab.script} />
+        ) : activeTab?.kind === "new" ? (
+          <div className="h-full overflow-y-auto px-3 pb-8 pt-1 sm:px-3.5">
+            <ActivityOpener
+              autoFocus
+              onOpenWebTab={(url) => openFromNewTab(() => openWebTab(url))}
+              onOpenLocalFile={(file) =>
+                openFromNewTab(() => openLocalFile(file))
+              }
+              onOpenMarkdownNote={() => openFromNewTab(openMarkdownNoteTab)}
+            />
+          </div>
         ) : activeTab?.kind === "subagent" ? (
           <ConsultationTabBody
             key={activeTab.id}
@@ -733,12 +794,22 @@ export default SessionViewerPanel;
 /* ------------------------------------------------------------------ */
 
 /**
- * Chrome-style tab bar. The strip itself is a muted band; the active tab
- * "lifts" out of it in the page-body colour with rounded top corners — so
- * the active tab and the body underneath read as one continuous surface,
- * exactly like a browser tab. No coloured top stripe; inactive tabs stay
- * transparent over the strip.
+ * Pill tab bar. No band behind it and no browser-tab chrome: the header is
+ * the panel's own surface, the focused tab is a soft filled pill and the
+ * rest are quiet text that tint on hover. The Activity home is always first
+ * and never closeable; a tab's close button stays visible on the focused tab
+ * and appears on hover for the others.
  */
+const TAB_PILL =
+  "inline-flex h-7 shrink-0 items-center rounded-lg text-[12.5px] font-medium transition-colors";
+const TAB_ACTIVE =
+  "bg-[color-mix(in_srgb,var(--muted)_85%,transparent)] text-[var(--foreground)]";
+const TAB_IDLE =
+  "text-[var(--muted-foreground)] hover:bg-[color-mix(in_srgb,var(--muted)_55%,transparent)] hover:text-[var(--foreground)]";
+const TAB_FOCUS =
+  "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--ring)]";
+const HEADER_ICON = `inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[color-mix(in_srgb,var(--muted)_70%,transparent)] hover:text-[var(--foreground)] disabled:pointer-events-none disabled:opacity-40 ${TAB_FOCUS}`;
+
 function TabBar({
   tabs,
   activeTabId,
@@ -746,7 +817,9 @@ function TabBar({
   onSelectHome,
   onSelect,
   onCloseTab,
+  onNewTab,
   onClosePanel,
+  actions,
 }: {
   tabs: ViewerTab[];
   activeTabId: string | null;
@@ -754,26 +827,24 @@ function TabBar({
   onSelectHome: () => void;
   onSelect: (id: string) => void;
   onCloseTab: (id: string) => void;
+  onNewTab: () => void;
   onClosePanel: () => void;
+  /** The focused tab's own actions (download, open in browser), kept in the
+   *  header so they don't cost the content a row of their own. */
+  actions?: ReactNode;
 }) {
   const { t } = useTranslation();
   return (
-    <div className="flex shrink-0 items-end gap-2 bg-[color-mix(in_srgb,var(--muted)_40%,var(--background))] px-2 pt-2 pb-0">
-      <div className="flex min-w-0 flex-1 items-end gap-[2px] overflow-x-auto">
-        {/* Persistent Activity home — always first, never closeable. It's the
-            session-activity landing; opening a file/web tab focuses that tab
-            and this recedes, browser-home-tab style. */}
+    <div className="flex h-12 shrink-0 items-center gap-1 pl-2.5 pr-2">
+      <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <button
           type="button"
           onClick={onSelectHome}
-          className={`inline-flex shrink-0 items-center gap-1.5 rounded-t-md py-1.5 pl-2.5 pr-3 text-[11.5px] font-medium transition-colors ${
-            homeActive
-              ? "bg-[var(--card)] text-[var(--foreground)]"
-              : "bg-transparent text-[var(--muted-foreground)] hover:bg-[color-mix(in_srgb,var(--card)_70%,transparent)] hover:text-[var(--foreground)]"
-          }`}
+          aria-pressed={homeActive}
+          className={`${TAB_PILL} ${TAB_FOCUS} gap-1.5 px-2.5 ${homeActive ? TAB_ACTIVE : TAB_IDLE}`}
           title={t("Activity")}
         >
-          <Activity size={11} strokeWidth={1.9} className="shrink-0" />
+          <Activity size={13} strokeWidth={1.8} className="shrink-0" />
           <span>{t("Activity")}</span>
         </button>
         {tabs.map((tab) => {
@@ -789,23 +860,22 @@ function TabBar({
                     ? MessageSquarePlus
                     : tab.kind === "geogebra"
                       ? Compass
-                      : Paperclip;
+                      : tab.kind === "new"
+                        ? Plus
+                        : Paperclip;
           return (
             <div
               key={tab.id}
-              className={`group inline-flex max-w-[180px] shrink-0 items-center rounded-t-md text-[11.5px] font-medium transition-colors ${
-                active
-                  ? "bg-[var(--card)] text-[var(--foreground)]"
-                  : "bg-transparent text-[var(--muted-foreground)] hover:bg-[color-mix(in_srgb,var(--card)_70%,transparent)] hover:text-[var(--foreground)]"
-              }`}
+              className={`group ${TAB_PILL} max-w-[190px] ${active ? TAB_ACTIVE : TAB_IDLE}`}
               title={tab.label}
             >
               <button
                 type="button"
                 onClick={() => onSelect(tab.id)}
-                className="inline-flex min-w-0 flex-1 items-center gap-1.5 py-1.5 pl-2.5 pr-1 text-left"
+                aria-pressed={active}
+                className={`inline-flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-lg pl-2.5 pr-1 text-left ${TAB_FOCUS}`}
               >
-                <Icon size={11} strokeWidth={1.9} className="shrink-0" />
+                <Icon size={13} strokeWidth={1.8} className="shrink-0" />
                 <span className="truncate">{tab.label}</span>
               </button>
               <button
@@ -814,23 +884,43 @@ function TabBar({
                   e.stopPropagation();
                   onCloseTab(tab.id);
                 }}
-                className="mr-1 rounded-sm p-[1px] text-[var(--muted-foreground)] opacity-60 transition-opacity hover:bg-[var(--muted)]/70 hover:text-[var(--foreground)] hover:opacity-100"
+                className={`mr-1 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-[opacity,background-color,color] hover:bg-[color-mix(in_srgb,var(--foreground)_8%,transparent)] hover:text-[var(--foreground)] focus-visible:opacity-100 ${TAB_FOCUS} ${
+                  active ? "opacity-70" : "opacity-0 group-hover:opacity-70"
+                }`}
                 aria-label={t("Close tab")}
               >
-                <X size={10} />
+                <X size={12} strokeWidth={2} />
               </button>
             </div>
           );
         })}
       </div>
+      {actions ? (
+        <>
+          {actions}
+          <span
+            aria-hidden="true"
+            className="mx-1 h-4 w-px shrink-0 bg-[color-mix(in_srgb,var(--border)_85%,transparent)]"
+          />
+        </>
+      ) : null}
+      <button
+        type="button"
+        onClick={onNewTab}
+        className={HEADER_ICON}
+        aria-label={t("New tab")}
+        title={t("New tab")}
+      >
+        <Plus size={16} strokeWidth={1.8} />
+      </button>
       <button
         type="button"
         onClick={onClosePanel}
-        className="mb-1 shrink-0 rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/45 hover:text-[var(--foreground)]"
+        className={HEADER_ICON}
         aria-label={t("Close viewer")}
         title={t("Close viewer")}
       >
-        <X size={14} />
+        <X size={15} strokeWidth={1.8} />
       </button>
     </div>
   );
@@ -862,7 +952,7 @@ function ActivityHome({
   onOpenLocalFile: (file: File) => void;
 }) {
   return (
-    <div className="h-full overflow-y-auto px-3 py-3">
+    <div className="h-full space-y-5 overflow-y-auto px-3 pb-8 pt-1 sm:px-3.5">
       <ActivityBody
         activity={activity}
         open={open}
@@ -877,13 +967,23 @@ function ActivityHome({
   );
 }
 
-/** Compact "open a URL or local file" footer for the Activity home. */
+// A URL is not translatable — and routed through t() its "https:" prefix
+// reads as an i18next namespace separator and is eaten ("//example.com").
+const URL_PLACEHOLDER = "https://example.com";
+
+/** Two quiet action rows for opening a URL or local file as a viewer tab. */
 function ActivityOpener({
   onOpenWebTab,
   onOpenLocalFile,
+  onOpenMarkdownNote,
+  autoFocus = false,
 }: {
   onOpenWebTab: (url: string) => void;
   onOpenLocalFile: (file: File) => void;
+  /** Offered on the "+" launcher tab; the Activity home has its own route to
+   *  the note (the chat header's note button). */
+  onOpenMarkdownNote?: () => void;
+  autoFocus?: boolean;
 }) {
   const { t } = useTranslation();
   const [urlInput, setUrlInput] = useState("");
@@ -907,46 +1007,61 @@ function ActivityOpener({
   );
 
   return (
-    <div className="mt-3 space-y-2 border-t border-[var(--border)]/40 pt-3">
-      <div className="px-1 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-[var(--muted-foreground)]/70">
-        {t("Open")}
-      </div>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          submitUrl();
-        }}
-        className="flex items-center gap-2 rounded-lg border border-[var(--border)]/55 bg-[var(--background)] px-2.5 py-1.5 transition-colors focus-within:border-[var(--primary)]/40"
-      >
-        <Globe
-          size={13}
-          strokeWidth={1.8}
-          className="shrink-0 text-[var(--muted-foreground)]"
-        />
-        <input
-          type="text"
-          value={urlInput}
-          onChange={(e) => setUrlInput(e.target.value)}
-          placeholder={t("https://example.com")}
-          className="min-w-0 flex-1 bg-transparent text-[12.5px] text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]/60"
-        />
-        <button
-          type="submit"
-          disabled={!urlInput.trim()}
-          className="inline-flex shrink-0 items-center gap-1 rounded-md bg-[var(--primary)] px-2 py-1 text-[11px] font-medium text-[var(--primary-foreground)] transition-opacity disabled:opacity-30"
-          aria-label={t("Open URL")}
+    <section>
+      <h2 className={ACTIVITY_LABEL}>{t("Open")}</h2>
+      <div className={`${ACTIVITY_TILE} p-1`}>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            submitUrl();
+          }}
+          className={`flex min-h-10 items-center gap-2.5 rounded-lg px-2.5 transition-colors ${ACTIVITY_ROW_HOVER} focus-within:bg-[var(--card)] focus-within:shadow-[0_0_0_1px_color-mix(in_srgb,var(--ring)_55%,transparent)]`}
         >
-          <ArrowRight size={11} strokeWidth={2.2} />
+          <Globe
+            size={15}
+            strokeWidth={1.7}
+            aria-hidden="true"
+            className="shrink-0 text-[var(--muted-foreground)]"
+          />
+          <input
+            type="text"
+            value={urlInput}
+            onChange={(e) => setUrlInput(e.target.value)}
+            aria-label={t("Open URL")}
+            placeholder={URL_PLACEHOLDER}
+            autoFocus={autoFocus}
+            className="min-w-0 flex-1 bg-transparent text-[12.5px] text-[var(--foreground)] outline-none placeholder:text-[color-mix(in_srgb,var(--muted-foreground)_75%,transparent)]"
+          />
+          <button
+            type="submit"
+            disabled={!urlInput.trim()}
+            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[var(--primary)] text-[var(--primary-foreground)] transition-[opacity,background-color] hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)] disabled:bg-transparent disabled:text-[var(--muted-foreground)] disabled:opacity-50"
+            aria-label={t("Open URL")}
+          >
+            <ArrowRight size={13} strokeWidth={2} />
+          </button>
+        </form>
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          className={`group flex min-h-10 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[12.5px] font-medium text-[var(--foreground)] transition-colors ${ACTIVITY_ROW_HOVER} focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--ring)]`}
+        >
+          <FileUp size={15} strokeWidth={1.7} aria-hidden="true" className="shrink-0 text-[var(--muted-foreground)]" />
+          <span className="min-w-0 flex-1 truncate">{t("Open a local file")}</span>
+          <ChevronRight size={14} strokeWidth={1.7} aria-hidden="true" className="shrink-0 text-[var(--muted-foreground)] opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
         </button>
-      </form>
-      <button
-        type="button"
-        onClick={() => fileInputRef.current?.click()}
-        className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--border)]/55 bg-[var(--background)] px-3 py-1.5 text-[12px] font-medium text-[var(--muted-foreground)] transition-colors hover:border-[var(--primary)]/35 hover:text-[var(--primary)]"
-      >
-        <FileUp size={13} strokeWidth={1.8} />
-        {t("Open a local file")}
-      </button>
+        {onOpenMarkdownNote ? (
+          <button
+            type="button"
+            onClick={onOpenMarkdownNote}
+            className={`group flex min-h-10 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[12.5px] font-medium text-[var(--foreground)] transition-colors ${ACTIVITY_ROW_HOVER} focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--ring)]`}
+          >
+            <NotebookPen size={15} strokeWidth={1.7} aria-hidden="true" className="shrink-0 text-[var(--muted-foreground)]" />
+            <span className="min-w-0 flex-1 truncate">{t("Markdown note")}</span>
+            <ChevronRight size={14} strokeWidth={1.7} aria-hidden="true" className="shrink-0 text-[var(--muted-foreground)] opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
+          </button>
+        ) : null}
+      </div>
       <input
         ref={fileInputRef}
         type="file"
@@ -955,7 +1070,7 @@ function ActivityOpener({
         aria-hidden="true"
         tabIndex={-1}
       />
-    </div>
+    </section>
   );
 }
 
@@ -963,55 +1078,60 @@ function ActivityOpener({
 /*  File tab body                                                      */
 /* ------------------------------------------------------------------ */
 
-function FileTabBody({ source }: { source: FilePreviewSource }) {
+/** Where a file tab's bytes can be fetched: the served URL, or a data URL
+ *  for a pending (un-sent) base64 attachment so download / open-in-browser
+ *  still work before it is uploaded. */
+function fileUrlFor(source: FilePreviewSource): string | null {
+  const previewUrl = resolveSourceUrl(source, apiUrl);
+  if (previewUrl) return previewUrl;
+  if (source.base64) {
+    const mime = source.mimeType || "application/octet-stream";
+    return `data:${mime};base64,${source.base64}`;
+  }
+  return null;
+}
+
+/** Download + open-in-browser for the focused file tab, shown in the tab
+ *  bar. The tab already names the file, so these are bare icons. */
+function FileTabActions({ source }: { source: FilePreviewSource }) {
   const { t } = useTranslation();
+  const fileUrl = useMemo(() => fileUrlFor(source), [source]);
+  const filename = source.filename || t("Attachment");
+  return (
+    <>
+      {fileUrl ? (
+        <a
+          href={fileUrl}
+          download={filename}
+          className={HEADER_ICON}
+          aria-label={t("Download")}
+          title={t("Download")}
+        >
+          <Download size={15} strokeWidth={1.8} />
+        </a>
+      ) : null}
+      <button
+        type="button"
+        onClick={() => {
+          if (fileUrl) window.open(fileUrl, "_blank", "noopener,noreferrer");
+        }}
+        disabled={!fileUrl}
+        className={HEADER_ICON}
+        aria-label={t("Open in browser")}
+        title={t("Open in browser")}
+      >
+        <ExternalLink size={14} strokeWidth={1.8} />
+      </button>
+    </>
+  );
+}
+
+function FileTabBody({ source }: { source: FilePreviewSource }) {
   const previewUrl = useMemo(() => resolveSourceUrl(source, apiUrl), [source]);
   const kind = previewKindFor(source);
-  const filename = source.filename || t("Attachment");
-
-  // Prefer the served URL; fall back to a data URL for pending (un-sent)
-  // base64 attachments so download / open-in-browser still work.
-  const fileUrl = useMemo(() => {
-    if (previewUrl) return previewUrl;
-    if (source.base64) {
-      const mime = source.mimeType || "application/octet-stream";
-      return `data:${mime};base64,${source.base64}`;
-    }
-    return null;
-  }, [previewUrl, source.base64, source.mimeType]);
-
-  const openInBrowser = useCallback(() => {
-    if (fileUrl) window.open(fileUrl, "_blank", "noopener,noreferrer");
-  }, [fileUrl]);
-
   return (
-    <div className="flex h-full flex-col">
-      {/* The tab already carries the filename + type, so this strip is just
-          a minimal action rail — no duplicated name/icon/label. */}
-      <div className="flex shrink-0 items-center justify-end gap-0.5 border-b border-[var(--border)]/40 bg-[var(--card)] px-2 py-1">
-        {fileUrl ? (
-          <a
-            href={fileUrl}
-            download={filename}
-            className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/45 hover:text-[var(--foreground)]"
-            title={t("Download")}
-          >
-            <Download size={13} strokeWidth={1.8} />
-          </a>
-        ) : null}
-        <button
-          type="button"
-          onClick={openInBrowser}
-          disabled={!fileUrl}
-          className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/45 hover:text-[var(--foreground)] disabled:opacity-40"
-        >
-          <ExternalLink size={11} strokeWidth={1.8} />
-          {t("Open in browser")}
-        </button>
-      </div>
-      <div className="relative flex-1 overflow-hidden">
-        <PreviewBody source={source} previewUrl={previewUrl} kind={kind} />
-      </div>
+    <div className="relative h-full overflow-hidden">
+      <PreviewBody source={source} previewUrl={previewUrl} kind={kind} />
     </div>
   );
 }
@@ -1028,13 +1148,19 @@ const PreviewBody = memo(function PreviewBody({
   const filename = source.filename;
 
   if (kind === "office-text") {
-    return (
+    const fallback = (
       <OfficeTextPreview
         filename={filename}
         extractedText={source.extractedText}
         url={previewUrl}
       />
     );
+    if (previewUrl) {
+      return (
+        <OfficePdfPreview url={previewUrl} filename={filename} fallback={fallback} />
+      );
+    }
+    return fallback;
   }
 
   if (!previewUrl) {
@@ -1045,9 +1171,21 @@ const PreviewBody = memo(function PreviewBody({
     case "pdf":
       return <PdfPreview url={previewUrl} filename={filename} />;
     case "docx":
-      return <DocxPreview url={previewUrl} />;
+      return (
+        <OfficePdfPreview
+          url={previewUrl}
+          filename={filename}
+          fallback={<DocxPreview url={previewUrl} />}
+        />
+      );
     case "xlsx":
-      return <XlsxPreview url={previewUrl} />;
+      return (
+        <OfficePdfPreview
+          url={previewUrl}
+          filename={filename}
+          fallback={<XlsxPreview url={previewUrl} />}
+        />
+      );
     case "image":
       return <ImagePreview url={previewUrl} filename={filename} />;
     case "video":
@@ -1111,8 +1249,8 @@ function WebTabBody({ url }: { url: string }) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border)]/40 bg-[var(--card)] px-4 py-2.5">
-        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[var(--muted)]/55">
+      <div className="flex shrink-0 items-center gap-2 border-b border-[color-mix(in_srgb,var(--border)_40%,transparent)] bg-[var(--card)] px-4 py-2.5">
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[color-mix(in_srgb,var(--muted)_55%,transparent)]">
           <Globe
             size={14}
             strokeWidth={1.7}
@@ -1132,8 +1270,8 @@ function WebTabBody({ url }: { url: string }) {
           onClick={openInBrowser}
           className={`inline-flex shrink-0 items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors ${
             blocked
-              ? "bg-[var(--primary)] text-[var(--primary-foreground)] hover:bg-[var(--primary)]/90"
-              : "border border-[var(--border)]/55 text-[var(--muted-foreground)] hover:border-[var(--primary)]/35 hover:text-[var(--primary)]"
+              ? "bg-[var(--primary)] text-[var(--primary-foreground)] hover:bg-[color-mix(in_srgb,var(--primary)_90%,transparent)]"
+              : "border border-[color-mix(in_srgb,var(--border)_55%,transparent)] text-[var(--muted-foreground)] hover:border-[color-mix(in_srgb,var(--primary)_35%,transparent)] hover:text-[var(--primary)]"
           }`}
         >
           <ExternalLink size={11} strokeWidth={1.9} />
@@ -1144,7 +1282,7 @@ function WebTabBody({ url }: { url: string }) {
       {/* Persistent info banner — explains the iframe limitation. Swaps to
           a louder warning once we suspect the site has refused to embed. */}
       <div
-        className={`flex shrink-0 items-start gap-2 border-b border-[var(--border)]/30 px-4 py-2 text-[11px] leading-snug ${
+        className={`flex shrink-0 items-start gap-2 border-b border-[color-mix(in_srgb,var(--border)_30%,transparent)] px-4 py-2 text-[11px] leading-snug ${
           blocked
             ? "bg-[color-mix(in_srgb,var(--primary)_8%,var(--card))] text-[var(--foreground)]"
             : "bg-[color-mix(in_srgb,var(--muted)_45%,var(--card))] text-[var(--muted-foreground)]"
@@ -1179,11 +1317,11 @@ function WebTabBody({ url }: { url: string }) {
           referrerPolicy="no-referrer"
         />
         {!loaded && !timedOut ? (
-          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[var(--card)]/70 text-[12px] text-[var(--muted-foreground)] backdrop-blur-sm">
+          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[color-mix(in_srgb,var(--card)_70%,transparent)] text-[12px] text-[var(--muted-foreground)] backdrop-blur-sm">
             <Loader2
               size={18}
               strokeWidth={1.7}
-              className="animate-spin text-[var(--primary)]/80"
+              className="animate-spin text-[color-mix(in_srgb,var(--primary)_80%,transparent)]"
             />
             <span>{t("Loading {{host}}…", { host })}</span>
           </div>

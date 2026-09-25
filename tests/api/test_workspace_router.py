@@ -24,10 +24,17 @@ pytestmark = pytest.mark.skipif(
 def workspace_api(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     module = importlib.import_module("deeptutor.api.routers.workspace")
     service_module = importlib.import_module("deeptutor.services.workspace.service")
+    paths_module = importlib.import_module("deeptutor.multi_user.paths")
+    migration_module = importlib.import_module("deeptutor.services.workspace.data_migration")
     paths = PathService(workspace_root=tmp_path / "runtime")
     paths.ensure_all_directories()
     service = ContentWorkspaceService()
     monkeypatch.setattr(service_module, "get_path_service", lambda: paths)
+    # The migration lease and recovery journal resolve the account root via
+    # separate imports. Keep both in this test's temporary workspace too.
+    monkeypatch.setattr(paths_module, "get_account_path_service", lambda: paths)
+    monkeypatch.setattr(migration_module, "get_account_path_service", lambda: paths)
+    monkeypatch.setattr(migration_module, "get_path_service", lambda: paths)
     monkeypatch.setattr(module, "get_content_workspace_service", lambda: service)
     monkeypatch.delenv("DEEPTUTOR_WORKSPACE_ROOT", raising=False)
     monkeypatch.delenv("DEEPTUTOR_WORKSPACE_ALLOWED_ROOTS", raising=False)
@@ -171,7 +178,8 @@ def test_workspace_migration_api_blocks_active_turns_and_keeps_bindings(
         "/api/settings/workspace/registrations/migrate-root", json={"path": str(destination)}
     )
     assert blocked.status_code == 409
-    assert "running conversations" in blocked.json()["detail"] or "busy" in blocked.json()["detail"]
+    assert "running conversations" in blocked.json()["detail"]
+    assert store.list_nonterminal_turns.await_count == 1
     assert service.describe_catalog()["migration"] is None
     assert not destination.exists()
     store.list_nonterminal_turns.return_value = []
@@ -179,6 +187,7 @@ def test_workspace_migration_api_blocks_active_turns_and_keeps_bindings(
         "/api/settings/workspace/registrations/migrate-root", json={"path": str(destination)}
     )
     assert moved.status_code == 200
+    assert store.list_nonterminal_turns.await_count == 2
     assert moved.json()["root"] == str(destination)
     binding = service.validate_chat_binding(row["workspace_id"])
     assert binding.root == destination / row["workspace_id"]

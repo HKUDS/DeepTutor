@@ -12,6 +12,7 @@ from uuid import uuid4
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from deeptutor.learning.storage import LearningStore
 from deeptutor.multi_user.learning_access import (
     allowed_reading_extensions,
     assert_learning_material,
@@ -69,6 +70,7 @@ class QuizAnswersPayload(BaseModel):
     section_title: str = Field(default="", max_length=500)
     session_id: str = ""
     turn_id: str = ""
+    submission_id: str = Field(default="", max_length=200)
     answers: list[QuizAnswerItem] = Field(min_length=1)
 
 
@@ -78,7 +80,27 @@ def _normal(value: str) -> str:
 
 def _verified_selection(candidate: str, unit_text: str) -> str:
     value = _normal(candidate)
-    return value if value and value in _normal(unit_text) else ""
+    if not value:
+        return ""
+    unit = _normal(unit_text)
+    if value in unit:
+        return value
+    # A PDF's text layer and its extracted text disagree about where the
+    # breaks go: margin line numbers the extractor put on their own lines
+    # ("Language\n1\nModels") reach the browser glued to the word before them
+    # ("Language1 Models"). Whitespace carries no content, so match without
+    # it, and hand the extension the material's own spelling of the span.
+    compact: list[str] = []
+    positions: list[int] = []
+    for index, character in enumerate(unit):
+        if not character.isspace():
+            compact.append(character)
+            positions.append(index)
+    needle = re.sub(r"\s+", "", value)
+    found = "".join(compact).find(needle)
+    if found < 0:
+        return ""
+    return unit[positions[found] : positions[found + len(needle) - 1] + 1]
 
 
 def _discard_late_worker_result(worker: asyncio.Future) -> None:
@@ -91,6 +113,23 @@ def _discard_late_worker_result(worker: asyncio.Future) -> None:
             value.close()
     except Exception:
         logger.exception("Reading extension worker failed after its request ended")
+
+
+def _record_reading_activity(
+    material_id: str,
+    *,
+    extension_id: str,
+    action: str,
+    locator: int,
+    result_type: str,
+) -> None:
+    LearningStore().record_reading_activity(
+        material_id,
+        extension_id=extension_id,
+        action=action,
+        locator=locator,
+        result_type=result_type,
+    )
 
 
 @router.get("/extensions")
@@ -187,7 +226,6 @@ async def run_extension_action(
         quiz_payload = dumped.get("payload")
         if dumped.get("type") == "quiz" and isinstance(quiz_payload, dict):
             await _persist_reading_quiz_pending(material_id, payload.locator, quiz_payload)
-        return dumped
     except TimeoutError as exc:
         logger.warning("Reading extension %s action %s timed out", extension_id, action)
         raise HTTPException(
@@ -219,6 +257,19 @@ async def run_extension_action(
             registry.mark_timed_out(extension_id)
             worker.add_done_callback(_discard_late_worker_result)
         registry.finish_action(extension_id)
+
+    try:
+        await asyncio.to_thread(
+            _record_reading_activity,
+            material_id,
+            extension_id=extension_id,
+            action=action,
+            locator=payload.locator,
+            result_type=result.type,
+        )
+    except Exception:
+        logger.exception("Reading action succeeded, but learning activity recording failed")
+    return dumped
 
 
 def _choice_map(choices: list[Any]) -> dict[str, str]:
@@ -315,6 +366,13 @@ async def submit_quiz_answers(material_id: str, payload: QuizAnswersPayload) -> 
             str(choices[item.selected_index]) if 0 <= item.selected_index < len(choices) else ""
         )
         correct_text = str(choices[correct_index]) if 0 <= correct_index < len(choices) else ""
+        submission_id = payload.submission_id.strip()
+        attempt_id = (
+            f"reading:{origin_type}:{origin_ref}:{turn_id}:"
+            f"{item.question_id.strip()}:{submission_id}"
+            if submission_id
+            else ""
+        )
         try:
             await record_assessment(
                 AssessmentRecord(
@@ -338,6 +396,7 @@ async def submit_quiz_answers(material_id: str, payload: QuizAnswersPayload) -> 
                     section_title=section_title,
                     mastery_path_id=str(question.get("mastery_path_id") or ""),
                     knowledge_point_id=str(question.get("knowledge_point_id") or ""),
+                    attempt_id=attempt_id,
                 )
             )
         except RecordAssessmentError as exc:

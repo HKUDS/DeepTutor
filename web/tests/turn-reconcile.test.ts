@@ -134,6 +134,18 @@ test("regenerate turns reconcile the assistant id only", () => {
   assert.equal(result.messages[0].id, 40);
 });
 
+test("failed turns reconcile a persisted user even without an assistant row", () => {
+  const result = reconcileTurnIds(optimisticTurn(), { "11": -2000 }, {
+    turnId: TURN,
+    userMessageId: 12,
+    assistantMessageId: null,
+  });
+  assert.equal(result.messages[2].id, 12);
+  assert.equal(result.messages[3].id, -2001);
+  assert.equal(result.messages[3].parentMessageId, 12);
+  assert.deepEqual(result.selectedBranches, { "11": 12 });
+});
+
 test("falls back to the last assistant bubble when turn id is missing", () => {
   const result = reconcileTurnIds(
     optimisticTurn(),

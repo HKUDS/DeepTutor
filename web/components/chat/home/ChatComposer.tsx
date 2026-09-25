@@ -7,6 +7,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type ReactNode,
   type RefObject,
 } from "react";
 import { saveWorkspaceDraft, readWorkspaceDraft } from "@/lib/workspace-drafts";
@@ -257,6 +258,11 @@ export default memo(function ChatComposer({
   onPersonaSelectionChange,
   personaSelectorOpen,
   onPersonaSelectorOpenChange,
+  replyLanguageOverride,
+  replyLanguageOptions,
+  replyLanguageDefaultLabel,
+  replyLanguageDisabled,
+  onReplyLanguageChange,
   resourceCatalog,
   resourceSelection,
   onResourceSelectionChange,
@@ -282,6 +288,7 @@ export default memo(function ChatComposer({
   prefillInputRef,
   inputPlaceholder,
   inputPlaceholderCompletion,
+  inputHeader,
   showCapabilityChip = true,
 }: {
   composerRef: RefObject<HTMLDivElement | null>;
@@ -384,13 +391,19 @@ export default memo(function ChatComposer({
   /**
    * Session-persona wiring (main chat only). When `onPersonaSelectionChange`
    * is provided, the toolbar shows a PersonaSelector chip and the composer
-   * accepts the `/persona` slash command. The quiz follow-up surface omits
-   * these and keeps its per-turn persona picker flow.
+   * accepts `/persona`. The quiz follow-up surface omits these and keeps its
+   * per-turn persona picker flow.
    */
   personaSelection?: string;
   onPersonaSelectionChange?: (persona: string) => void;
   personaSelectorOpen?: boolean;
   onPersonaSelectorOpenChange?: (open: boolean) => void;
+  /** Main chat's session-level reply language, selected via /language. */
+  replyLanguageOverride?: string | null;
+  replyLanguageOptions?: readonly { value: string; label: string }[];
+  replyLanguageDefaultLabel?: string;
+  replyLanguageDisabled?: boolean;
+  onReplyLanguageChange?: (value: string) => void;
   /**
    * Skill / MCP narrowing for this conversation. Supplied together: the
    * catalog is what may be picked (already clipped to what the workspace
@@ -432,6 +445,12 @@ export default memo(function ChatComposer({
   inputPlaceholder?: string;
   /** A line Tab accepts while the composer is empty. See ComposerInput. */
   inputPlaceholderCompletion?: string;
+  /**
+   * Surface-owned context shown inside the box, above the text — the reading
+   * companion's quoted passage. Inside rather than above, so it reads as part
+   * of the message being written instead of a card floating over it.
+   */
+  inputHeader?: ReactNode;
   /**
    * Hide the capability chip. A surface that only ever runs one capability
    * — and names it in its own chrome — gains nothing from a picker that
@@ -1010,6 +1029,7 @@ export default memo(function ChatComposer({
             tabIndex={-1}
           />
 
+          {inputHeader}
           <SelectedResources items={contextTreeItems}/>
           <AttachmentProcessingStatus items={attachmentProcessing} />
           <ComposerInput
@@ -1042,6 +1062,12 @@ export default memo(function ChatComposer({
                 ? () => onPersonaSelectorOpenChange(true)
                 : undefined
             }
+            replyLanguageOverride={replyLanguageOverride}
+            replyLanguageOptions={replyLanguageOptions}
+            replyLanguageDefaultLabel={replyLanguageDefaultLabel}
+            replyLanguageDisabled={replyLanguageDisabled}
+            onReplyLanguageChange={onReplyLanguageChange}
+            languagePickerBelow={!hasMessages}
             placeholder={inputPlaceholder}
             placeholderCompletion={inputPlaceholderCompletion}
             minHeight={hasMessages ? 28 : 64}

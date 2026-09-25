@@ -42,6 +42,41 @@ if TYPE_CHECKING:
     from deeptutor.services.session.protocol import SessionStoreProtocol
 
 
+# Request snapshots use the browser's display keys. Only these saved turn
+# inputs are restored by Resend; runtime bookkeeping and message identity are
+# always assembled from the persisted message and current session instead.
+_REPLAY_SNAPSHOT_FIELDS: dict[str, str] = {
+    "capability": "capability",
+    "tools": "enabledTools",
+    "knowledge_bases": "knowledgeBases",
+    "language": "language",
+    "config": "config",
+    "notebook_references": "notebookReferences",
+    "history_references": "historyReferences",
+    "partner_group_references": "partnerGroupReferences",
+    "question_notebook_references": "questionNotebookReferences",
+    "book_references": "bookReferences",
+    "reading_references": "readingReferences",
+    "memory_references": "memoryReferences",
+    "skills": "skills",
+    "mcp": "mcp",
+    "persona": "persona",
+    "llm_selection": "llmSelection",
+    "workspace_mode": "workspaceMode",
+    "workspace_id": "workspaceId",
+    "course_id": "courseId",
+    "mastery_path_id": "masteryPathId",
+    "mastery_session_mode": "masterySessionMode",
+    "reading_material_id": "readingMaterialId",
+    "reading_material_revision": "readingMaterialRevision",
+    "reading_workspace_id": "readingWorkspaceId",
+    "timed_media_id": "timedMediaId",
+    "consult_partner_id": "consultPartnerId",
+    "partner_discussion_group_id": "partnerDiscussionGroupId",
+    "auto_route": "autoRoute",
+}
+
+
 class TurnRequestPreparer:
     if TYPE_CHECKING:
         store: SessionStoreProtocol
@@ -93,7 +128,12 @@ class TurnRequestPreparer:
         async def _coordinate_execution(self, execution: _TurnExecution) -> None: ...
 
     @workspace_writer
-    async def start_turn(self, payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    async def start_turn(
+        self,
+        payload: dict[str, Any],
+        *,
+        replace_assistant_message_id: int | str | None = None,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         await self._ensure_accepting_turns()
         from deeptutor.services.workspace.context import get_workspace_scope
 
@@ -131,6 +171,17 @@ class TurnRequestPreparer:
             raise RuntimeError("Conversation not found in this workspace.")
         session = await self.store.ensure_session(payload.get("session_id"))
         preferences = session.get("preferences") or {}
+
+        # A conversation-level choice wins over the account default that the
+        # browser sends on every turn. Only the selector's explicit field may
+        # change or clear this durable override (#1511).
+        if "reply_language_override" in payload:
+            reply_language_override = payload["reply_language_override"]
+        else:
+            reply_language_override = preferences.get("reply_language_override")
+        if reply_language_override:
+            payload["language"] = reply_language_override
+        payload["_reply_language_fixed"] = bool(reply_language_override)
 
         # Freeze the content binding at admission, before scheduling the turn.
         # Existing conversations are moved through the organization endpoint;
@@ -274,6 +325,7 @@ class TurnRequestPreparer:
         reading_material_revision = _reading_material_revision(
             payload.get("reading_material_revision")
         )
+        reading_catalog = None
         if workspace_mode == WORKSPACE_MODE_READING and reading_workspace_id:
             from deeptutor.reading import ReadingCatalogStore
 
@@ -288,6 +340,18 @@ class TurnRequestPreparer:
                 tab.material.material_id for tab in reading_workspace.tabs
             }:
                 raise RuntimeError("The active material is not part of this reading workspace.")
+        # The workspace and saved session can still contain a material whose
+        # learner assignment has since been revoked. Authorize the resolved
+        # material, including a default chosen from the workspace, before
+        # attaching the session or admitting a replayed turn.
+        if reading_material_id:
+            from deeptutor.multi_user.learning_access import assert_learning_material
+
+            try:
+                assert_learning_material(reading_material_id)
+            except PermissionError as exc:
+                raise RuntimeError(str(exc)) from exc
+        if reading_catalog is not None:
             reading_catalog.attach_session(
                 reading_workspace_id,
                 session["id"],
@@ -501,6 +565,11 @@ class TurnRequestPreparer:
             "knowledge_bases": list(payload.get("knowledge_bases") or []),
             "language": str(payload.get("language") or "en"),
         }
+        if payload.get("capability_once"):
+            # One turn in another mode; the conversation keeps its own.
+            preference_update.pop("capability")
+        if "reply_language_override" in payload:
+            preference_update["reply_language_override"] = reply_language_override
         if content_workspace_enabled and "workspace_id" not in preferences:
             preference_update["workspace_id"] = content_workspace_id or None
         # Missing legacy chat fields should not manufacture an empty stored
@@ -602,7 +671,8 @@ class TurnRequestPreparer:
                     "reading_material_id": "",
                 }
             )
-        await self.store.update_session_preferences(session["id"], preference_update)
+        if not payload.get("preserve_session_preferences"):
+            await self.store.update_session_preferences(session["id"], preference_update)
         try:
             if lease is None:
                 turn = await self.store.create_turn(session["id"], capability=capability)
@@ -714,6 +784,14 @@ class TurnRequestPreparer:
                     metadata=session_metadata,
                 ),
             )
+            # Regenerate must remove the old answer before the new task reads
+            # conversation history. Do it only after the new turn has passed
+            # admission (including workspace, capability, and model access),
+            # while no execution task has been scheduled yet. A rejected replay
+            # must leave the original assistant row and its id intact.
+            if replace_assistant_message_id is not None:
+                if not await self.store.delete_message(replace_assistant_message_id):
+                    raise RuntimeError("Unable to replace the previous assistant message")
             async with self._lock:
                 from deeptutor.services.workspace.activity import acquire_activity
 
@@ -759,6 +837,11 @@ class TurnRequestPreparer:
         turn with ``persist_user_message=False`` and ``regenerate=True`` so
         the runtime knows not to duplicate the user row or refresh long-term
         memory a second time. The original user message stays in place.
+
+        ``overrides.replay_snapshot`` opts into restoring the saved per-turn
+        request for a persisted failed-turn Resend. Without it, Regenerate
+        retains its session-preference behavior. Explicit overrides win over
+        saved fields, including empty lists and strings.
         """
         session_id = str(session_id or "").strip()
         if not session_id:
@@ -786,7 +869,8 @@ class TurnRequestPreparer:
                     break
 
         preferences = session.get("preferences") or {}
-        overrides = overrides or {}
+        overrides = dict(overrides or {})
+        replay_snapshot = overrides.pop("replay_snapshot", False) is True
         snapshot = {}
         metadata = last_user.get("metadata") or {}
         if isinstance(metadata, dict):
@@ -855,6 +939,10 @@ class TurnRequestPreparer:
         payload: dict[str, Any] = {
             "session_id": session_id,
             "capability": capability,
+            # A turn asked in another mode once (a reading "Quiz me") is
+            # regenerated in it once, too — not adopted as the chat's mode.
+            "capability_once": "capability" not in overrides
+            and snapshot.get("capabilityOnce") is True,
             "workspace_mode": workspace_mode,
             "content": str(last_user.get("content", "") or ""),
             "tools": tools,
@@ -941,17 +1029,37 @@ class TurnRequestPreparer:
             **consultation_fields,
             "persist_user_message": False,
             "regenerate": True,
-            "regenerated_from_message_id": int(last_user["id"]),
+            "regenerated_from_message_id": last_user["id"],
         }
         if previous_turn_id:
             payload["superseded_turn_id"] = previous_turn_id
         if llm_selection:
             payload["llm_selection"] = llm_selection
 
+        if replay_snapshot:
+            payload["preserve_session_preferences"] = True
+            # The ordinary Regenerate path intentionally uses current session
+            # preferences for many fields. Resend instead repeats the failed
+            # message's saved request. Keys absent from an older snapshot keep
+            # the legacy fallback, while explicit overrides always take
+            # precedence, even when they clear a field.
+            for field, snapshot_key in _REPLAY_SNAPSHOT_FIELDS.items():
+                if field in overrides:
+                    payload[field] = overrides[field]
+                elif snapshot_key in snapshot:
+                    payload[field] = snapshot[snapshot_key]
+
         # Validate the complete replay request before removing the answer it
         # supersedes. A malformed stored snapshot or override must leave the
         # visible conversation intact so the learner can retry safely.
         TurnRequest.model_validate(payload)
-        if last_message is not None and last_message.get("role") == "assistant":
-            await self.store.delete_message(last_message["id"])
-        return await self.start_turn(payload)
+        replace_assistant_message_id = (
+            last_message["id"]
+            if last_message is not None and last_message.get("role") == "assistant"
+            else None
+        )
+        if replace_assistant_message_id is None:
+            return await self.start_turn(payload)
+        return await self.start_turn(
+            payload, replace_assistant_message_id=replace_assistant_message_id
+        )

@@ -9,6 +9,7 @@ from typing import Any
 from deeptutor.agents.base_agent import BaseAgent
 from deeptutor.core.trace import build_trace_metadata, new_call_id
 from deeptutor.services.llm import StreamOutcome
+from deeptutor.services.llm.reasoning_params import RETRY_REASONING_EFFORT
 
 from ..models import ConceptAnalysis, GeneratedCode, SceneDesign
 from ..utils import (
@@ -162,8 +163,8 @@ class CodeGeneratorAgent(BaseAgent):
         A retry is not a repeat.  The provider reports whether it stopped at the
         output cap, and a reasoning model that spent the whole budget on
         chain-of-thought fails that way every time on the same request (#1547),
-        so a truncated attempt is retried with a larger budget and a directive
-        to keep the reasoning short.  Whichever way the attempt failed, the
+        so a truncated attempt is retried with a larger budget and lower
+        reasoning effort. Whichever way the attempt failed, the
         reason reaches both the log and the raised error (#1545).
         """
 
@@ -185,6 +186,7 @@ class CodeGeneratorAgent(BaseAgent):
                 system_prompt=system_prompt,
                 response_format={"type": "json_object"},
                 max_tokens=max_tokens or None,
+                reasoning_effort=(RETRY_REASONING_EFFORT if structured_attempt else None),
                 stage=stage,
                 trace_meta=build_trace_metadata(
                     call_id=new_call_id(call_id_prefix),

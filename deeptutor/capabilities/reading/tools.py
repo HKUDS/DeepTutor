@@ -37,6 +37,7 @@ import asyncio
 import logging
 from typing import Any
 
+from deeptutor.capabilities.reading.media_notes import render_media_note as _media_note
 from deeptutor.core.tool_protocol import BaseTool, ToolDefinition, ToolParameter, ToolResult
 from deeptutor.tools.prompting import load_prompt_hints
 
@@ -76,6 +77,9 @@ class _ReadingToolBase(BaseTool):
         material_id = str(bound_id or kwargs.get(MATERIAL_KWARG) or "").strip()
         if not material_id:
             raise _NoMaterial()
+        from deeptutor.multi_user.learning_access import assert_learning_material
+
+        assert_learning_material(material_id)
         return material_id
 
     @staticmethod
@@ -114,6 +118,8 @@ def _guard(func):
             return self._failure(
                 "No reading material is open. Ask the user to open a document in the reader."
             )
+        except PermissionError as exc:
+            return self._failure(str(exc))
         except ReadingError as exc:
             return self._failure(str(exc))
         except Exception:  # pragma: no cover - defensive
@@ -147,9 +153,14 @@ class ReadingListTabsTool(_ReadingToolBase):
         workspace = await asyncio.to_thread(self._catalog().get_workspace, workspace_id)
         if workspace is None:
             return self._failure("The reading workspace is unavailable.")
-        lines = [f"Reading table “{workspace.title}” has {len(workspace.tabs)} material(s):"]
+        from deeptutor.multi_user.learning_access import learning_material_allowed
+
+        visible_tabs = [
+            tab for tab in workspace.tabs if learning_material_allowed(tab.material.material_id)
+        ]
+        lines = [f"Reading table “{workspace.title}” has {len(visible_tabs)} material(s):"]
         tabs: list[dict[str, Any]] = []
-        for tab in workspace.tabs:
+        for tab in visible_tabs:
             material = tab.material
             active = material.material_id == workspace.active_material_id
             lines.append(
@@ -200,6 +211,9 @@ class ReadingSwitchTabTool(_ReadingToolBase):
             return self._failure("No reading workspace is open.")
         if not material_id:
             return self._failure("reading_switch_tab needs a material id.")
+        from deeptutor.multi_user.learning_access import assert_learning_material
+
+        assert_learning_material(material_id)
         workspace = await asyncio.to_thread(
             self._catalog().set_active_material, workspace_id, material_id
         )
@@ -420,6 +434,9 @@ class ReadMaterialTool(_ReadingToolBase):
                 for locator in rendered.locators
                 if locator in stamps
             )
+        media_note = await asyncio.to_thread(
+            _media_note, store, material_id, manifest.unit, rendered.locators
+        )
         followup = (
             "\n\n→ Now call reader_goto with the verbatim sentence you are "
             "about to cite, so the user sees it highlighted, and cite it in "
@@ -430,7 +447,7 @@ class ReadMaterialTool(_ReadingToolBase):
             )
         )
         return ToolResult(
-            content=rendered.text + timing + followup,
+            content=rendered.text + timing + media_note + followup,
             sources=[
                 {
                     "type": "reading",

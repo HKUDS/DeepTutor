@@ -31,6 +31,10 @@ export function masterySessionRoute(pathId: string, sessionId: string, workspace
 export function readingCollectionRoute(workspaceId: string, contentWorkspaceId = activeWorkspaceId()): string {
   return inWorkspace(`${READING_HOME}/${segment(workspaceId)}`, contentWorkspaceId)
 }
+/** A collection seen as a folder: its files, its conversations, and the way into reading. */
+export function readingFolderRoute(workspaceId: string, contentWorkspaceId = activeWorkspaceId()): string {
+  return inWorkspace(`${READING_HOME}/folders/${segment(workspaceId)}`, contentWorkspaceId)
+}
 export function readingSessionRoute(workspaceId: string, sessionId: string, contentWorkspaceId = activeWorkspaceId()): string {
   return inWorkspace(`${readingCollectionRoute(workspaceId, "")}/sessions/${segment(sessionId)}`, contentWorkspaceId)
 }

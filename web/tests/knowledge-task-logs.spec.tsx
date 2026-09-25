@@ -51,6 +51,9 @@ const kb = {
 const actions = {
   onCreate: vi.fn(),
   onUpload: vi.fn(),
+  onLinkFolder: vi.fn(),
+  onUnlinkFolder: vi.fn(),
+  onSyncFolder: vi.fn(),
   onReindex: vi.fn(),
   onUpdatePendingIndexingPolicy: vi.fn(),
   onRetry: vi.fn(),

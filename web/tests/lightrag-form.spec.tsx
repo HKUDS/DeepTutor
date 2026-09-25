@@ -7,11 +7,15 @@ import {
   within,
 } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
-import { LightRagModelsForm } from "@/features/knowledge/components/engines/EngineDetail";
+import {
+  LightRagForm,
+  LightRagModelsForm,
+} from "@/features/knowledge/components/engines/EngineDetail";
 
 const fixture = vi.hoisted(() => ({
   version: 2,
   maxAsync: 4,
+  llmTimeout: 240,
   profileId: "",
   modelId: "",
   save: vi.fn(),
@@ -56,6 +60,7 @@ vi.mock("@/features/knowledge/api/engines", async (original) => ({
     response_type: "Multiple Paragraphs",
     max_concurrent_files: 1,
     llm_model_max_async: fixture.maxAsync,
+    llm_timeout: fixture.llmTimeout,
     entity_extract_max_gleaning: 1,
   }),
   updateLightRagConfig: async (value: unknown) => {
@@ -66,9 +71,28 @@ vi.mock("@/features/knowledge/api/engines", async (original) => ({
 beforeEach(() => {
   fixture.version = 2;
   fixture.maxAsync = 4;
+  fixture.llmTimeout = 240;
   fixture.profileId = "";
   fixture.modelId = "";
   fixture.save.mockClear();
+});
+
+it("shows and saves the LightRAG LLM timeout", async () => {
+  render(<LightRagForm onChanged={vi.fn()} onError={vi.fn()} />);
+  const timeout = await screen.findByRole("spinbutton", {
+    name: /^LLM timeout \(seconds\)/,
+  });
+  expect(timeout).toHaveValue(240);
+
+  fireEvent.change(timeout, { target: { value: "480" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+  await waitFor(() => expect(fixture.save).toHaveBeenCalledOnce());
+  expect(fixture.save.mock.calls[0][0]).toMatchObject({
+    llm_timeout: 480,
+    max_concurrent_files: 1,
+    entity_extract_max_gleaning: 1,
+  });
 });
 
 it.each([

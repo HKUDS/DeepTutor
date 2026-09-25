@@ -6,6 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
+from deeptutor.reading._grounding import evidence_key
 from deeptutor.reading._grounding import grounded_prompt as _prompt
 from deeptutor.reading.extensions import (
     ReadingAction,
@@ -14,8 +15,8 @@ from deeptutor.reading.extensions import (
     ReadingExtensionResult,
 )
 from deeptutor.services.llm import complete
+from deeptutor.services.llm.structured_retry import json_with_reasoning_retry
 from deeptutor.services.prompt.language import is_chinese as _is_zh
-from deeptutor.utils.json_parser import parse_json_response
 
 _SYSTEM_EN = """You write a short comprehension quiz from one verified reading context.
 
@@ -63,17 +64,16 @@ def _normalise(value: str) -> str:
     return " ".join(value.casefold().split())
 
 
-def _quiz(raw: str, context: ReadingContext) -> _Quiz:
-    data: Any = parse_json_response(raw, fallback=None)
-    if not isinstance(data, dict):
+def _quiz(data: Any, context: ReadingContext) -> _Quiz:
+    if not isinstance(data, dict) or not data:
         raise ValueError("Reading quiz model returned invalid JSON.")
     try:
         quiz = _Quiz.model_validate({"questions": data.get("questions")})
     except ValidationError as exc:
         raise ValueError("Reading quiz model returned an invalid shape.") from exc
 
-    normalized_context = _normalise(context.visible_text)
-    if any(_normalise(question.evidence) not in normalized_context for question in quiz.questions):
+    context_key = evidence_key(context.visible_text)
+    if any(evidence_key(question.evidence) not in context_key for question in quiz.questions):
         raise ValueError("Reading quiz evidence must come from the reading context.")
     return quiz
 
@@ -99,16 +99,23 @@ class ReadingQuizExtension:
 
         from deeptutor.services.model_selection.tasks import TaskKind, task_llm_scope
 
-        with task_llm_scope(TaskKind.READING_QUIZ):
-            raw = await complete(
+        async def _run(reasoning_effort: str | None) -> str:
+            return await complete(
                 prompt=_prompt(context),
                 system_prompt=_SYSTEM_ZH if _is_zh(context.locale) else _SYSTEM_EN,
                 temperature=0.3,
-                max_tokens=1000,
+                max_tokens=2_500,
                 max_retries=0,
                 response_format={"type": "json_object"},
+                reasoning_effort=reasoning_effort,
             )
-        quiz = _quiz(raw, context)
+
+        with task_llm_scope(TaskKind.READING_QUIZ):
+            data = await json_with_reasoning_retry(
+                _run,
+                expected_key="questions",
+            )
+        quiz = _quiz(data, context)
         return ReadingExtensionResult(
             type="quiz",
             title="阅读测验" if _is_zh(context.locale) else "Reading quiz",

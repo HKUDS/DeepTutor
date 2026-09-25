@@ -94,6 +94,10 @@ services:
     # Optional entries can be added to the environment list above.
     #   - DEEPTUTOR_EXTRAS=math-animator,partners
     #   - DEEPTUTOR_APT_PACKAGES=ffmpeg
+    # Unraid / NAS bind mounts: PUID/PGID remap the unprivileged deeptutor
+    # user to the host owner of ./data. Do not run the app as root.
+    #   - PUID=99
+    #   - PGID=100
 
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${DEEPTUTOR_DOCKER_BACKEND_PORT:-8001}/health/ready"]

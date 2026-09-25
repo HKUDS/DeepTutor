@@ -337,7 +337,8 @@ def test_record_qualitative_updates_existing_review_state(tmp_path, monkeypatch)
     service.record_qualitative(progress, "kp1", passed=True, scheduler=scheduler)
     immediate = progress.repetition_states["kp1"]
     assert immediate.review_count == 2
-    assert immediate.stability > first_stability
+    assert immediate.stability == first_stability
+    assert immediate.next_review_at == first_due
     immediate_stability = immediate.stability
 
     now[0] = immediate.next_review_at

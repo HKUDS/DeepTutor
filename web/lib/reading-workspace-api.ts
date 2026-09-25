@@ -81,6 +81,8 @@ export interface ReadingWorkspace extends LearningOrigin {
   workspace_id: string;
   title: string;
   description: string;
+  /** Folder tint: a palette key, or "" for the neutral default. */
+  color?: string;
   active_material_id: string | null;
   created_at: number;
   updated_at: number;
@@ -212,24 +214,33 @@ export async function getReadingWorkspace(workspaceId: string): Promise<{
   return json(`/workspaces/${workspaceId}`);
 }
 
-export async function createReadingWorkspace(payload: {
-  title: string;
-  description?: string;
-  material_ids?: string[];
-}): Promise<ReadingWorkspace> {
-  const result = await json<{ workspace: ReadingWorkspace }>("/workspaces", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+/**
+ * `contentWorkspaceId` is where the collection — its files and every
+ * conversation about them — is stored; it defaults to the page's workspace.
+ */
+export async function createReadingWorkspace(
+  payload: {
+    title: string;
+    description?: string;
+    color?: string;
+    material_ids?: string[];
+  },
+  contentWorkspaceId = activeWorkspaceId(),
+): Promise<ReadingWorkspace> {
+  const result = await json<{ workspace: ReadingWorkspace }>(
+    scopedUrl("/workspaces", contentWorkspaceId),
+    { method: "POST", body: JSON.stringify(payload) },
+  );
   return result.workspace;
 }
 
 export async function updateReadingWorkspace(
   workspaceId: string,
-  patch: { title?: string; description?: string },
+  patch: { title?: string; description?: string; color?: string },
+  contentWorkspaceId = activeWorkspaceId(),
 ): Promise<ReadingWorkspace> {
   const result = await json<{ workspace: ReadingWorkspace }>(
-    `/workspaces/${workspaceId}`,
+    scopedUrl(`/workspaces/${workspaceId}`, contentWorkspaceId),
     { method: "PATCH", body: JSON.stringify(patch) },
   );
   return result.workspace;
@@ -387,31 +398,6 @@ export async function fetchReadingCollectionIndex(
   }
 }
 
-/**
- * Three things the learner could open this material with.
- *
- * Written against the material itself, so they name a claim it makes or a
- * section it has rather than being true of every document. An empty array
- * means the panel keeps its own generic lines — this is a nicety, and an
- * empty conversation must never be an empty panel.
- */
-export async function fetchReadingOpeners(
-  workspaceId: string,
-  locator?: number,
-  init?: RequestInit,
-): Promise<string[]> {
-  const suffix = locator && locator > 0 ? `?locator=${locator}` : "";
-  try {
-    const result = await json<{ suggestions?: string[] }>(
-      `/workspaces/${workspaceId}/openers${suffix}`,
-      init,
-    );
-    return Array.isArray(result.suggestions) ? result.suggestions : [];
-  } catch {
-    return [];
-  }
-}
-
 export async function listReadingConversations(
   workspaceId: string,
 ): Promise<ReadingConversation[]> {
@@ -422,28 +408,6 @@ export async function listReadingConversations(
       )
     ).sessions ?? []
   );
-}
-
-export async function renameReadingConversation(
-  workspaceId: string,
-  sessionId: string,
-  title: string,
-): Promise<ReadingConversation> {
-  return (
-    await json<{ session: ReadingConversation }>(
-      `/workspaces/${workspaceId}/sessions/${sessionId}`,
-      { method: "PATCH", body: JSON.stringify({ title }) },
-    )
-  ).session;
-}
-
-export async function deleteReadingConversation(
-  workspaceId: string,
-  sessionId: string,
-): Promise<void> {
-  await json(`/workspaces/${workspaceId}/sessions/${sessionId}`, {
-    method: "DELETE",
-  });
 }
 
 export async function linkReadingConversation(

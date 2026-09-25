@@ -7,6 +7,7 @@
  */
 
 import { parseClaudeSession, scanClaude } from "./claude-code";
+export { parseChatGptExport, parseChatGptExportFile } from "./chatgpt";
 import { parseCodexSession, scanCodex } from "./codex";
 import { detectSource } from "./detect";
 import { projectLabel } from "./shared";

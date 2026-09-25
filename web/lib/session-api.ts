@@ -73,6 +73,8 @@ export interface SessionPreferences {
   tools?: string[];
   knowledge_bases?: string[];
   language?: string;
+  /** Null/absent follows the account default; a code fixes this conversation. */
+  reply_language_override?: string | null;
   llm_selection?: LLMSelection | null;
   /** Persistent mastery state associated with this conversation. */
   mastery_path_id?: string;
@@ -298,6 +300,24 @@ export async function updateSessionTitle(
     body: JSON.stringify({ title }),
   });
   const data = await expectJson<{ session: SessionDetail }>(response);
+  invalidateClientCache("sessions:");
+  return data.session;
+}
+
+export async function updateSessionReplyLanguage(
+  sessionId: string,
+  language: string | null,
+  workspaceId?: string,
+): Promise<{ preferences?: SessionPreferences }> {
+  const response = await apiFetch(
+    apiUrl(scopedUrl(`/api/sessions/${sessionId}/reply-language`, workspaceId)),
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ language }),
+    },
+  );
+  const data = await expectJson<{ session: { preferences?: SessionPreferences } }>(response);
   invalidateClientCache("sessions:");
   return data.session;
 }

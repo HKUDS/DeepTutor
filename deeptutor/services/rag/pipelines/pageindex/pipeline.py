@@ -115,12 +115,14 @@ class PageIndexPipeline:
         )
         try:
             manifest = storage._empty_manifest(self.provider)
+            submitted_by_name: dict[str, str] = {}
             count = await self._ingest(
                 file_paths,
                 manifest,
                 progress_callback,
                 storage_dir=storage_dir,
                 mode=self._processing_mode(kb_name),
+                submitted_by_name=submitted_by_name,
             )
             if count == 0:
                 self.logger.error("PageIndex: no supported documents to index for '%s'", kb_name)
@@ -128,6 +130,10 @@ class PageIndexPipeline:
                 return False
             storage.write_manifest(storage_dir, manifest)
             storage.write_meta(storage_dir, provider=self.provider)
+            if indexed_file_callback := kwargs.get("indexed_file_callback"):
+                # submit_document waits for processing, and the published
+                # manifest retains only the last file for each basename.
+                indexed_file_callback(sorted(submitted_by_name.values()))
             self.logger.info("KB '%s' initialized with PageIndex (%d docs)", kb_name, count)
             return True
         except Exception as exc:
@@ -177,6 +183,7 @@ class PageIndexPipeline:
         *,
         storage_dir: Path,
         mode: str | None,
+        submitted_by_name: dict[str, str] | None = None,
     ) -> int:
         supported = [fp for fp in file_paths if is_supported_file(fp, self.provider)]
         skipped = [fp for fp in file_paths if not is_supported_file(fp, self.provider)]
@@ -193,6 +200,8 @@ class PageIndexPipeline:
             doc_id = await client.submit_document(path, mode=mode)
             size = path.stat().st_size if path.exists() else None
             storage.upsert_doc(manifest, path.name, doc_id, size=size)
+            if submitted_by_name is not None:
+                submitted_by_name[path.name] = str(path)
             if progress_callback:
                 progress_callback(idx, total)
         return total

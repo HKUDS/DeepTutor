@@ -254,6 +254,20 @@ export default function NotebookRecordRow({
           {timestamp}
         </span>
 
+          <button
+            type="button"
+            disabled={busy}
+            aria-label={t("Edit record")}
+            title={t("Edit record")}
+            onClick={() => {
+              if (!expanded) onToggle();
+              startEditing();
+            }}
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[var(--muted-foreground)] opacity-60 transition-[background-color,color,opacity,transform] duration-150 active:scale-[0.97] hover:bg-[var(--muted)] hover:text-[var(--foreground)] hover:opacity-100 focus-visible:bg-[var(--muted)] focus-visible:text-[var(--foreground)] focus-visible:opacity-100 focus-visible:outline-none disabled:opacity-30"
+          >
+            <Pencil size={14} />
+          </button>
+
         <NotebookRecordActions
           targets={moveTargets}
           disabled={busy}

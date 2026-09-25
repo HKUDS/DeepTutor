@@ -9,6 +9,7 @@ from deeptutor.agents.math_animator.agents.code_generator_agent import (
     GeneratedCodeOutputError,
 )
 from deeptutor.agents.math_animator.models import ConceptAnalysis, SceneDesign
+from deeptutor.services.llm.reasoning_params import RETRY_REASONING_EFFORT
 
 
 def _agent(monkeypatch: pytest.MonkeyPatch, responses: list[str]) -> CodeGeneratorAgent:
@@ -124,6 +125,11 @@ async def test_truncated_generation_grows_the_budget_and_asks_for_less_reasoning
     # Each truncated attempt buys a larger budget, capped at twice the
     # configured one so the request stays inside the model's own output limit.
     assert [call["max_tokens"] for call in calls] == [8000, 12000, 16000]
+    assert [call["reasoning_effort"] for call in calls] == [
+        None,
+        RETRY_REASONING_EFFORT,
+        RETRY_REASONING_EFFORT,
+    ]
     assert "token limit" in str(calls[1]["user_prompt"])
     assert "token limit" not in str(calls[0]["user_prompt"])
     # The failure names the cause instead of "no usable code after 3 attempts".
@@ -131,6 +137,57 @@ async def test_truncated_generation_grows_the_budget_and_asks_for_less_reasoning
     assert "cut off at the 16000-token output cap" in message
     assert "chain-of-thought" in message
     assert "reasoning_tokens=7800" in message
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stage", ["generation", "repair"])
+async def test_truncated_reasoning_only_response_recovers_with_less_reasoning(
+    monkeypatch: pytest.MonkeyPatch,
+    stage: str,
+) -> None:
+    agent = _agent(monkeypatch, [])
+    monkeypatch.setattr(agent, "get_max_tokens", lambda: 8000)
+    calls: list[dict[str, object]] = []
+
+    async def fake_provider(**kwargs) -> AsyncIterator[str]:
+        calls.append(kwargs)
+        if len(calls) == 1:
+            kwargs["outcome"].finish_reason = "length"
+            kwargs["outcome"].usage = {"reasoning_tokens": 7900}
+            yield "<think>I need to plan every scene first.</think>"
+        else:
+            kwargs["outcome"].finish_reason = "stop"
+            yield '{"code":"from manim import Scene","rationale":"ok"}'
+
+    monkeypatch.setattr(agent, "stream_llm", fake_provider)
+    if stage == "generation":
+        generated = await agent.generate(
+            user_input="Animate a proof",
+            output_mode="video",
+            analysis=ConceptAnalysis(),
+            design=SceneDesign(),
+        )
+    else:
+        agent.prompts.update(
+            {
+                "retry_system": "Repair the script.",
+                "retry_user_template": (
+                    "{user_input} {output_mode} {attempt} {duration_requirement} "
+                    "{error_message} {current_code}"
+                ),
+            }
+        )
+        generated = await agent.repair(
+            user_input="Animate a proof",
+            output_mode="video",
+            current_code="broken code",
+            error_message="SyntaxError",
+            attempt=1,
+        )
+
+    assert generated.code == "from manim import Scene"
+    assert [call["reasoning_effort"] for call in calls] == [None, RETRY_REASONING_EFFORT]
+    assert [call["max_tokens"] for call in calls] == [8000, 12000]
 
 
 @pytest.mark.asyncio

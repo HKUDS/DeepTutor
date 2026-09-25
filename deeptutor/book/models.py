@@ -490,6 +490,7 @@ class QuizAttempt(BaseModel):
     # the reader, and folding "not graded" into "wrong" would both understate
     # their score and mark the chapter weak on nothing but a reveal.
     is_correct: bool | None = None
+    submission_id: str = ""
     timestamp: float = Field(default_factory=_now)
 
 

@@ -277,6 +277,20 @@ def _apply_linkage(record: AssessmentRecord, diagnostics: list[str]) -> tuple[st
     return "", ""
 
 
+def _is_trusted_linkage(path_id: str, knowledge_point_id: str) -> bool:
+    """Only a saved path's exact objective can consume cross-surface evidence."""
+    from deeptutor.learning.policy import find_knowledge_point
+
+    try:
+        progress = _get_learning_store().load(path_id)
+    except (OSError, ValueError):
+        return False
+    if progress is None or progress.book_id != path_id:
+        return False
+    kp, _, _ = find_knowledge_point(progress, knowledge_point_id)
+    return kp is not None
+
+
 def _get_learning_store():
     from deeptutor.learning.storage import LearningStore
 
@@ -292,7 +306,7 @@ def _apply_linked_retention(
     """Apply explicitly linked non-Mastery evidence to its objective once."""
     if (
         record.source == "mastery_path"
-        or result == "ungraded"
+        or result in {"ungraded", "voided"}
         or not record.mastery_path_id
         or not record.knowledge_point_id
     ):
@@ -331,12 +345,29 @@ def _apply_linked_retention(
                 f"Unknown linked objective {record.knowledge_point_id!r} "
                 f"on path {record.mastery_path_id!r}"
             )
+        prior_evidence = [
+            item for item in progress.learning_evidence if item.knowledge_point_id == kp.id
+        ]
         progress.learning_evidence.append(evidence)
-        state = progress.repetition_states.get(kp.id) or scheduler.get_initial_state(
-            kp.type, now=evidence.timestamp
-        )
-        progress.repetition_states[kp.id] = state
-        scheduler.schedule_review(state, kp.type, evidence, now=evidence.timestamp)
+        if any(item.timestamp > evidence.timestamp for item in prior_evidence):
+            # A saved event may be retried after a newer assessment. Rebuild
+            # this objective in evidence order instead of scheduling the old
+            # event as if it had just happened.
+            ordered = sorted(
+                [*prior_evidence, evidence],
+                key=lambda item: (item.timestamp, item.evidence_id),
+            )
+            progress.repetition_states[kp.id] = scheduler.replay(
+                kp.type, ordered, desired_retention=progress.desired_retention
+            )
+        else:
+            state = progress.repetition_states.get(kp.id) or scheduler.get_initial_state(
+                kp.type,
+                now=evidence.timestamp,
+                desired_retention=progress.desired_retention,
+            )
+            progress.repetition_states[kp.id] = state
+            scheduler.schedule_review(state, kp.type, evidence, now=evidence.timestamp)
         progress.review_queue = scheduler.build_review_queue(progress)
         tx.emit(
             "evidence.recorded",
@@ -400,19 +431,27 @@ async def record_assessment(record: AssessmentRecord) -> AssessmentOutcome:
         from deeptutor.services.session import get_sqlite_session_store
 
         store = get_sqlite_session_store()
-        upserted = await store.upsert_notebook_entries(record.session_id or None, [item])
-        entry = await store.find_notebook_entry_by_origin(
-            record.origin_type,
-            record.origin_ref,
-            record.question_id,
-            turn_id=record.turn_id,
-        )
-        entry_id = (
-            int(entry["id"]) if isinstance(entry, dict) and entry.get("id") is not None else None
-        )
-        attempt_recorded = await store.append_assessment_attempt(
+        existing_attempt = await store.get_assessment_attempt(attempt_id)
+        if existing_attempt is not None:
+            # An earlier submission may have had an untrusted mapping removed.
+            # Its immutable event owns the linkage on every retry.
+            item["mastery_path_id"] = str(existing_attempt.get("mastery_path_id") or "")
+            item["knowledge_point_id"] = str(existing_attempt.get("knowledge_point_id") or "")
+        if (
+            existing_attempt is None
+            and record.source != "mastery_path"
+            and item["mastery_path_id"]
+            and item["knowledge_point_id"]
+            and not await asyncio.to_thread(
+                _is_trusted_linkage, item["mastery_path_id"], item["knowledge_point_id"]
+            )
+        ):
+            item["mastery_path_id"] = ""
+            item["knowledge_point_id"] = ""
+            diagnostics.append("dropped_invalid_mastery_linkage")
+        entry_id, upserted, attempt_recorded = await store.record_assessment(
             record.session_id or None,
-            entry_id,
+            item,
             {
                 **record.model_dump(mode="json"),
                 "attempt_id": attempt_id,
@@ -433,15 +472,23 @@ async def record_assessment(record: AssessmentRecord) -> AssessmentOutcome:
         ) from exc
     if item["mastery_path_id"] and item["knowledge_point_id"]:
         try:
+            persisted = await store.get_assessment_attempt(attempt_id)
+            if persisted is None:
+                raise ValueError(f"Missing durable assessment attempt {attempt_id!r}")
+            linked_record = AssessmentRecord.model_validate(persisted)
             applied = await asyncio.to_thread(
                 _apply_linked_retention,
-                record,
-                result=item["result"],
+                linked_record,
+                result=build_grade_result(
+                    result=str(persisted.get("result") or ""),
+                    is_correct=persisted.get("is_correct"),
+                ),
                 attempt_id=attempt_id,
             )
+            await store.mark_assessment_link_applied(attempt_id)
             if applied:
                 diagnostics.append("linked_retention_updated")
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 "Assessment %s retained its linkage but could not update path %s objective %s",
                 attempt_id,
@@ -449,7 +496,9 @@ async def record_assessment(record: AssessmentRecord) -> AssessmentOutcome:
                 item["knowledge_point_id"],
                 exc_info=True,
             )
-            diagnostics.append("linked_retention_failed")
+            raise RecordAssessmentError(
+                f"Failed to update linked retention for assessment {attempt_id!r}"
+            ) from exc
     return AssessmentOutcome(
         entry_id=entry_id,
         upserted=bool(upserted),
@@ -457,6 +506,35 @@ async def record_assessment(record: AssessmentRecord) -> AssessmentOutcome:
         attempt_recorded=attempt_recorded,
         diagnostics=diagnostics,
     )
+
+
+async def reconcile_linked_assessments() -> tuple[int, int]:
+    """Replay durable cross-surface attempts left pending by an interrupted run."""
+    from deeptutor.services.session import get_sqlite_session_store
+
+    store = get_sqlite_session_store()
+    attempts = await store.pending_linked_assessments()
+    recovered = 0
+    failed = 0
+    for attempt in attempts:
+        attempt_id = str(attempt.get("attempt_id") or "")
+        try:
+            record = AssessmentRecord.model_validate(attempt)
+            await asyncio.to_thread(
+                _apply_linked_retention,
+                record,
+                result=build_grade_result(
+                    result=str(attempt.get("result") or ""),
+                    is_correct=attempt.get("is_correct"),
+                ),
+                attempt_id=attempt_id,
+            )
+            await store.mark_assessment_link_applied(attempt_id)
+            recovered += 1
+        except Exception:
+            failed += 1
+            logger.exception("Could not reconcile linked assessment %s", attempt_id)
+    return recovered, failed
 
 
 __all__ = [
@@ -473,6 +551,7 @@ __all__ = [
     "build_grade_result",
     "is_correct_to_result",
     "record_assessment",
+    "reconcile_linked_assessments",
     "result_to_is_correct",
     "to_notebook_item",
 ]

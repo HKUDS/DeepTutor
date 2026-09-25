@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import importlib
 import json
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from starlette.routing import Match
 
+from deeptutor.api.routers.auth import _learning_surface_for_path
 from deeptutor.multi_user.context import (
     get_current_user_or_none,
     reset_current_user,
@@ -48,6 +51,52 @@ def _build_app() -> FastAPI:
     app = FastAPI()
     app.include_router(router, prefix="/api")
     return app
+
+
+@pytest.mark.parametrize(
+    ("path", "route_path", "surface"),
+    [
+        ("/api/knowledge-bases", "/api/knowledge-bases", "reading"),
+        ("/api/knowledge-bases/demo", "/api/knowledge-bases/{kb_name}", "reading"),
+        ("/api/knowledge-bases/demo/files", "/api/knowledge-bases/{kb_name}/files", "reading"),
+        (
+            "/api/knowledge-bases/demo/files/a.pdf",
+            "/api/knowledge-bases/{kb_name}/files/{filename:path}",
+            "reading",
+        ),
+        (
+            "/api/knowledge-bases/demo/file-preview-text/a.pdf",
+            "/api/knowledge-bases/{kb_name}/file-preview-text/{filename:path}",
+            "reading",
+        ),
+        (
+            "/api/knowledge-bases/demo/progress",
+            "/api/knowledge-bases/{kb_name}/progress",
+            "reading",
+        ),
+        ("/api/knowledge-bases/health", "/api/knowledge-bases/health", ""),
+        ("/api/knowledge-bases/configs", "/api/knowledge-bases/configs", ""),
+        (
+            "/api/knowledge-bases/rag-pipelines/lightrag/config",
+            "/api/knowledge-bases/rag-pipelines/lightrag/config",
+            "",
+        ),
+        ("/api/knowledge-bases/demo/config", "/api/knowledge-bases/{kb_name}/config", ""),
+        (
+            "/api/knowledge-bases/demo/github-sources",
+            "/api/knowledge-bases/{kb_name}/github-sources",
+            "",
+        ),
+    ],
+)
+def test_learner_surface_uses_actual_kb_route_template(
+    path: str, route_path: str, surface: str
+) -> None:
+    app = _build_app()
+    scope = {"type": "http", "method": "GET", "path": path, "root_path": ""}
+    matched = next(route for route in app.router.routes if route.matches(scope)[0] is Match.FULL)
+    assert matched.path == route_path
+    assert _learning_surface_for_path(path, "GET", route_path=matched.path) == surface
 
 
 def test_knowledge_source_error_translation_is_consistent_and_sanitized() -> None:
@@ -990,6 +1039,65 @@ def test_upload_task_marks_provider_failures_as_error(monkeypatch, tmp_path: Pat
     assert entry["progress"]["indexed_count"] == 0
 
 
+def test_upload_task_bootstraps_empty_llamaindex_kb(monkeypatch, tmp_path: Path) -> None:
+    """An empty LlamaIndex KB (no version-N) must accept its first upload (#1481)."""
+    base_dir = tmp_path / "knowledge_bases"
+    kb_dir = base_dir / "kb"
+    raw_dir = kb_dir / "raw"
+    raw_dir.mkdir(parents=True)
+    (kb_dir / "metadata.json").write_text(
+        json.dumps({"rag_provider": "llamaindex", "needs_reindex": False}),
+        encoding="utf-8",
+    )
+    (base_dir / "kb_config.json").write_text(
+        json.dumps(
+            {
+                "knowledge_bases": {
+                    "kb": {
+                        "path": "kb",
+                        "rag_provider": "llamaindex",
+                        "status": "ready",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    source = tmp_path / "README.md"
+    source.write_text("hello", encoding="utf-8")
+
+    class _SuccessfulRagService:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        async def add_documents(self, *_args, **_kwargs) -> bool:
+            return True
+
+    monkeypatch.setattr(
+        "deeptutor.knowledge.add_documents.RAGService",
+        _SuccessfulRagService,
+    )
+
+    asyncio.run(
+        knowledge_router_module.run_upload_processing_task(
+            kb_name="kb",
+            base_dir=str(base_dir),
+            uploaded_file_paths=[str(source)],
+            task_id="upload-empty-kb-bootstrap",
+            rag_provider="llamaindex",
+        )
+    )
+
+    persisted = json.loads((base_dir / "kb_config.json").read_text(encoding="utf-8"))
+    entry = persisted["knowledge_bases"]["kb"]
+    assert entry["status"] == "ready"
+    assert "last_error" not in entry
+    assert entry.get("last_indexed_count") == 1
+    assert entry.get("last_indexed_action") == "upload"
+    metadata = json.loads((kb_dir / "metadata.json").read_text(encoding="utf-8"))
+    assert metadata.get("file_hashes")
+
+
 def test_upload_task_with_folder_root_preserves_subfolder_structure(
     monkeypatch, tmp_path: Path
 ) -> None:
@@ -1598,6 +1706,7 @@ def test_reindex_task_persists_completed_progress(
                 json.dumps({"fixture": {"status": "processed"}}), encoding="utf-8"
             )
             storage.write_meta(version)
+            kwargs["indexed_file_callback"]([str(raw_dir / "fixture.txt")])
             if embedding_changed:
                 embedding.model = "later-default"
             return True
@@ -1654,6 +1763,73 @@ def test_reindex_task_persists_completed_progress(
     assert entry["last_indexed_action"] == "reindex"
     assert bool(entry.get("needs_reindex")) is embedding_changed
     assert bool(entry.get("embedding_mismatch")) is embedding_changed
+    metadata = json.loads((base_dir / "kb" / "metadata.json").read_text(encoding="utf-8"))
+    assert metadata["file_hashes"] == {
+        "fixture.txt": hashlib.sha256(b"synthetic fixture").hexdigest()
+    }
+
+
+def test_reindex_records_only_files_confirmed_in_llamaindex(monkeypatch, tmp_path: Path) -> None:
+    """A reindexed file is a duplicate; one skipped by parsing remains retryable (#1481)."""
+    from deeptutor.knowledge.add_documents import DocumentAdder
+
+    base_dir = tmp_path / "knowledge_bases"
+    kb_dir = base_dir / "kb"
+    raw_dir = kb_dir / "raw"
+    raw_dir.mkdir(parents=True)
+    indexed = raw_dir / "indexed.txt"
+    skipped = raw_dir / "skipped.txt"
+    indexed.write_text("indexed content", encoding="utf-8")
+    skipped.write_text("parse failed", encoding="utf-8")
+    (kb_dir / "metadata.json").write_text(
+        json.dumps({"file_hashes": {"removed.txt": "stale"}}), encoding="utf-8"
+    )
+    (base_dir / "kb_config.json").write_text(
+        json.dumps(
+            {
+                "knowledge_bases": {
+                    "kb": {"path": "kb", "rag_provider": "llamaindex", "status": "processing"}
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class _SuccessfulRagService:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        async def initialize(self, *_args, **kwargs) -> bool:
+            kwargs["indexed_file_callback"]([str(indexed)])
+            _write_ready_llamaindex_version(kb_dir)
+            return True
+
+    rag_service_module = importlib.import_module("deeptutor.services.rag.service")
+    monkeypatch.setattr(rag_service_module, "RAGService", _SuccessfulRagService)
+
+    asyncio.run(
+        knowledge_router_module.run_reindex_task(
+            kb_name="kb",
+            base_dir=str(base_dir),
+            task_id="reindex-hashes-test",
+            signature_hash="sig",
+        )
+    )
+
+    metadata = json.loads((kb_dir / "metadata.json").read_text(encoding="utf-8"))
+    assert metadata["file_hashes"] == {
+        "indexed.txt": hashlib.sha256(b"indexed content").hexdigest()
+    }
+    assert metadata["last_indexed_count"] == 1
+    progress = json.loads((kb_dir / ".progress.json").read_text(encoding="utf-8"))
+    assert progress["indexed_count"] == 1
+    adder = DocumentAdder("kb", base_dir=str(base_dir), rag_provider="llamaindex")
+    duplicate = tmp_path / "indexed.txt"
+    duplicate.write_text("indexed content", encoding="utf-8")
+    retry = tmp_path / "skipped.txt"
+    retry.write_text("parse failed", encoding="utf-8")
+    assert adder.add_documents([str(duplicate)]) == []
+    assert adder.add_documents([str(retry)]) == [skipped]
 
 
 def test_reindex_task_preserves_prepublication_failure(monkeypatch, tmp_path: Path) -> None:

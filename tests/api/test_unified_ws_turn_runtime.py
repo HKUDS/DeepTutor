@@ -585,7 +585,12 @@ async def test_turn_runtime_session_persona_persists_falls_back_and_clears(
     await run_turn(session["id"], {"persona": ""})
     detail = await store.get_session_with_messages(session["id"])
     assert detail["preferences"]["persona"] == ""
-    assert "persona" not in detail["messages"][4]["metadata"]["request_snapshot"]
+    cleared_snapshot = detail["messages"][4]["metadata"]["request_snapshot"]
+    assert cleared_snapshot["persona"] == ""
+    assert cleared_snapshot["config"] == {}
+    assert cleared_snapshot["enabledTools"] == []
+    assert cleared_snapshot["knowledgeBases"] == []
+    assert cleared_snapshot["memoryReferences"] == []
 
 
 @pytest.mark.asyncio

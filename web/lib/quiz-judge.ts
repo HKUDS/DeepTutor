@@ -18,7 +18,7 @@ export interface QuizJudgeRequest {
   user_answer: string;
   /** Multi-image list — backend builds a multimodal user message from this. */
   user_answer_images: QuizJudgeImage[];
-  language: "zh" | "en";
+  language: string;
 }
 
 export interface QuizJudgeHandle {

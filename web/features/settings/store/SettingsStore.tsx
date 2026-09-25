@@ -21,6 +21,7 @@ import {
   writeStoredCodeBlockWrapLongLines,
   writeStoredLanguage,
   writeStoredResponseLanguage,
+  type ResponseLanguage,
 } from "@/context/app-shell-storage";
 import { useAppShell } from "@/context/AppShellContext";
 import { apiFetch, apiUrl } from "@/lib/api";
@@ -40,6 +41,7 @@ import {
   type RegistryEdit,
 } from "@/lib/provider-registry";
 import { browserStorage } from "@/shared/storage";
+import type { AppLanguage } from "@/i18n/init";
 
 import {
   CONNECTABLE_SERVICES,
@@ -86,12 +88,34 @@ export type {
 
 export type UiSettings = {
   theme: "light" | "dark" | "glass" | "snow";
-  language: "en" | "zh";
-  response_language: "en" | "zh";
+  language: AppLanguage;
+  response_language: ResponseLanguage;
   code_block_theme: string;
   code_block_show_line_numbers: boolean;
   code_block_wrap_long_lines: boolean;
 };
+
+export type ResponseLanguageOption = {
+  value: ResponseLanguage;
+  label: string;
+};
+
+export const RESPONSE_LANGUAGE_OPTIONS: readonly ResponseLanguageOption[] = [
+  { value: "en", label: "English" },
+  { value: "zh", label: "简体中文" },
+  { value: "zh-tw", label: "繁體中文" },
+  { value: "ja", label: "日本語" },
+  { value: "ko", label: "한국어" },
+  { value: "es", label: "Español" },
+  { value: "fr", label: "Français" },
+  { value: "de", label: "Deutsch" },
+  { value: "ru", label: "Русский" },
+  { value: "pt", label: "Português" },
+  { value: "it", label: "Italiano" },
+  { value: "ar", label: "العربية" },
+  { value: "pl", label: "Polski" },
+  { value: "uk", label: "Українська" },
+];
 
 type CodeBlockUiSettings = Pick<
   UiSettings,
@@ -543,6 +567,8 @@ export type SettingsContextValue = {
   saveRegistry: (edit: RegistryEdit) => Promise<boolean>;
   saveProvider: (service: ServiceName, profileId: string) => Promise<boolean>;
   discardDraft: () => Promise<void>;
+  /** Stage a named Settings preset as a reviewable draft. */
+  stagePreset: (presetId: string) => Promise<boolean>;
   /** A draft parked on the server, waiting to be applied. */
   storedDraft: StoredDraft | null;
   draftState: DraftState;
@@ -1775,6 +1801,60 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     }
   }, [catalog, draft, catalogEditable, clearPending, draftEnvelope, applyUi, t]);
 
+  /** Stage a named preset over the current draft without applying anything. */
+  const stagePreset = useCallback(
+    async (presetId: string): Promise<boolean> => {
+      setSaving(true);
+      try {
+        const response = await apiFetch(
+          apiUrl(`/api/settings/presets/${presetId}/draft`),
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(draftEnvelope()),
+          },
+        );
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = (await response.json()) as {
+          draft: StoredDraft | null;
+        };
+        const stored = payload.draft;
+        const pending = new Map(
+          Object.entries(stored?.extensions ?? {}),
+        );
+
+        pendingRef.current.clear();
+        for (const [key, value] of pending.entries()) {
+          pendingRef.current.set(key, value);
+        }
+        syncPendingKeys();
+        if (stored?.catalog) setDraft(cloneCatalog(stored.catalog));
+        setStoredDraft(stored);
+        // The server has the exact staged envelope; avoid the toolbar calling
+        // it unsaved while the new draft signature is still propagating.
+        setSavedSignature(
+          JSON.stringify({
+            catalog: catalogEditable ? (stored?.catalog ?? draft) : null,
+            extensions: JSON.stringify(Object.fromEntries(pending.entries())),
+          }),
+        );
+        setDraftRevision((value) => value + 1);
+        setToast(t("Preset loaded as a draft — review before applying"));
+        return true;
+      } catch (err) {
+        setToast(
+          t("Could not load the preset: {{message}}", {
+            message: err instanceof Error ? err.message : String(err),
+          }),
+        );
+        return false;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [catalogEditable, draft, draftEnvelope, syncPendingKeys, t],
+  );
+
   /** Throw the draft away and go back to what is actually live. */
   const discardDraft = useCallback(async () => {
     setApplying(true);
@@ -2124,6 +2204,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       saveRegistry,
       applyService,
       discardDraft,
+      stagePreset,
       storedDraft,
       draftState,
       draftRevision,
@@ -2155,6 +2236,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       saveRegistry,
       applyService,
       applying,
+      stagePreset,
       draftState,
       storedDraft,
       draftRevision,

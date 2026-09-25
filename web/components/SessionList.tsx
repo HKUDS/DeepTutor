@@ -7,6 +7,7 @@ import { type SessionSummary } from "@/lib/session-api";
 import { normalizeMessageContent, truncateText } from "@/lib/message-content";
 import {
   deriveSessionMark,
+  sessionKindOf,
   SessionAvatar,
 } from "@/components/sidebar/SessionAvatar";
 import { useUnreadSessions } from "@/lib/session-unread";
@@ -160,6 +161,7 @@ export default function SessionList({
               <SessionAvatar
                 sessionId={session.session_id}
                 mark={deriveSessionMark(session, undefined, unread)}
+                kind={sessionKindOf(session)}
                 className={
                   session.status === "running" ? "opacity-100" : "opacity-80"
                 }

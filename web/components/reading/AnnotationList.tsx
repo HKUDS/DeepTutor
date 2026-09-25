@@ -1,7 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Bookmark, Bot, Highlighter, Sparkles, Trash2 } from "lucide-react";
+import {
+  AlertCircle,
+  Bookmark,
+  Bot,
+  Highlighter,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   ANNOTATION_SWATCH,
@@ -155,6 +162,18 @@ export function AnnotationList({
                           <span className="inline-flex items-center gap-1 text-[10px] text-[var(--muted-foreground)]">
                             <Bookmark size={9} />
                             {t("Citation")}
+                          </span>
+                        )}
+                        {annotation.resolution === "unresolved" && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-[color-mix(in_srgb,var(--destructive)_8%,transparent)] px-1.5 py-[1px] text-[10px] font-medium text-[var(--destructive)]">
+                            <AlertCircle size={9} />
+                            {t("Not found")}
+                          </span>
+                        )}
+                        {annotation.resolution === "ambiguous" && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-[color-mix(in_srgb,var(--warning,oklch(0.78_0.16_70))_10%,transparent)] px-1.5 py-[1px] text-[10px] font-medium text-[var(--warning,oklch(0.62_0.16_45))]">
+                            <AlertCircle size={9} />
+                            {t("Ambiguous")}
                           </span>
                         )}
                       </div>

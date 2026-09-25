@@ -71,6 +71,28 @@ Open <http://127.0.0.1:3782>. The container creates
 from the Web Settings page. Config, API keys, logs, workspace files,
 memory, and knowledge bases persist in the `deeptutor-data` named volume.
 
+### Unraid / NAS bind mounts (PUID / PGID)
+
+Unraid and many NAS templates own appdata as a host user that is **not**
+UID 1000 (often `nobody:users` = 99:100, or a named share user). Those
+hosts also revert in-container `chown` on restart. The image still drops
+backend/frontend to the non-root `deeptutor` user; the entrypoint remaps
+that user's UID/GID to match the volume:
+
+```bash
+docker run --rm --name deeptutor \
+  -e PUID=99 -e PGID=100 \
+  -p 127.0.0.1:3782:3782 \
+  -v /mnt/user/appdata/deeptutor:/app/data \
+  ghcr.io/hkuds/deeptutor:latest
+```
+
+If the runtime user still cannot write `/app/data`, the entrypoint
+**exits** with an owner/mode message instead of starting and later
+reporting `Knowledge base not initialized (llamaindex)`. Rootless Podman
+skips the remap (`CAP_SETUID` is absent) and keeps the current user.
+`PUID=0` / `PGID=0` are rejected so the app never runs as root.
+
 ### Select a host Content Workspace
 
 The application data mount contains private settings, credentials, databases,
@@ -467,6 +489,12 @@ need).
 is the userns-mapped root problem; switch to a bind mount on a host
 directory you own, or use `:U` on the volume mount.
 
+**`Data directory is not writable` / `Knowledge base not initialized
+(llamaindex)` on Unraid.** The app runs as the non-root `deeptutor` user.
+Set `PUID`/`PGID` to the host owner of the bind mount (see [Unraid / NAS
+bind mounts](#unraid--nas-bind-mounts-puid--pgid)). Do not run the
+container as root to work around this.
+
 **`sed -i` errors on a fresh image.** There shouldn't be any — the
 runtime no longer mutates the bundle. The URL is forwarded at request
 time. If you see one, you are probably on an older image; pull
@@ -482,9 +510,11 @@ renormalized on save.
 
 ## Security notes
 
-- The image drops privileges to a non-root `deeptutor` user (UID 1000)
-  before starting `supervisord`. Anything that runs as root is the
-  entrypoint, the chown, and the env-var export.
+- The image drops privileges to a non-root `deeptutor` user (UID 1000
+  by default, or `PUID`/`PGID` under rootful Docker) before starting
+  `supervisord`. Anything that runs as root is the entrypoint, an
+  attempted chown of `/app/data`, and the env-var export. The app
+  processes themselves never stay root.
 - `read_only: true` plus `tmpfs:` for the expected writable system
   directories means the container's root filesystem is immutable at
   runtime. A process that tries to write outside the listed tmpfs

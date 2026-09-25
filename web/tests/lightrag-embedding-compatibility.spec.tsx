@@ -85,6 +85,9 @@ it("shows detail guidance while files and downloads remain accessible", async ()
       history={[]}
       onCreate={vi.fn()}
       onUpload={vi.fn()}
+      onLinkFolder={vi.fn()}
+      onUnlinkFolder={vi.fn()}
+      onSyncFolder={vi.fn()}
       onReindex={vi.fn()}
       onRetry={vi.fn()}
       onSetDefault={vi.fn()}

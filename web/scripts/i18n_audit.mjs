@@ -91,23 +91,65 @@ function translationKeys(file, content) {
   return keys;
 }
 
+const REQUIRED_LOCALES = ["en", "zh", "fr", "uk"];
+// French and Ukrainian are deliberately partial. i18next falls back to the
+// English resource per key; these floors make a coverage regression visible.
+const MIN_USED_COVERAGE = new Map([
+  ["fr", 0.65],
+  ["uk", 0.75],
+]);
+
+function hasTranslation(entries, pluralForms, key) {
+  if (Object.hasOwn(entries, key)) return true;
+  return pluralForms.every((form) => Object.hasOwn(entries, `${key}_${form}`));
+}
+
+function placeholders(value) {
+  if (typeof value !== "string") return new Set();
+  return new Set([...value.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)].map((match) => match[1].trim()));
+}
+
+function placeholderMismatches(english, localized) {
+  const mismatches = [];
+  for (const [key, translation] of Object.entries(localized)) {
+    if (!Object.hasOwn(english, key)) continue;
+    const expected = placeholders(english[key]);
+    const actual = placeholders(translation);
+    const missing = [...expected].filter((name) => !actual.has(name));
+    const extra = [...actual].filter(
+      (name) => !expected.has(name) && !(name === "count" && /_(zero|one|two|few|many|other)$/.test(key)),
+    );
+    if (missing.length || extra.length) mismatches.push({ key, missing, extra });
+  }
+  return mismatches;
+}
+
 function reportUntranslatedKeys() {
   const localeDir = path.join(webRoot, "locales");
-  if (!fs.existsSync(localeDir)) return;
-  const locales = fs
-    .readdirSync(localeDir, { withFileTypes: true })
-    .filter((ent) => ent.isDirectory())
-    .map((ent) => ent.name);
-  if (!locales.length) return;
+  if (!fs.existsSync(localeDir)) {
+    console.error("[i18n:audit] Missing locales directory");
+    process.exitCode = 1;
+    return;
+  }
+  const locales = new Set(REQUIRED_LOCALES);
+  for (const ent of fs.readdirSync(localeDir, { withFileTypes: true })) {
+    if (ent.isDirectory()) locales.add(ent.name);
+  }
 
   const known = new Map();
   for (const locale of locales) {
     const file = path.join(localeDir, locale, "app.json");
-    if (!fs.existsSync(file)) continue;
-    known.set(locale, new Set(Object.keys(JSON.parse(fs.readFileSync(file, "utf8")))));
+    if (!fs.existsSync(file)) {
+      console.error(`[i18n:audit] Missing ${locale}/app.json`);
+      process.exitCode = 1;
+      continue;
+    }
+    known.set(locale, JSON.parse(fs.readFileSync(file, "utf8")));
   }
+  const english = known.get("en");
+  if (!english) return;
 
-  const missing = new Map();
+  const usedKeys = new Set();
   const roots = ["app", "components", "features", "hooks", "lib", "shared"]
     .map((dir) => path.join(webRoot, dir))
     .filter((dir) => fs.existsSync(dir));
@@ -115,34 +157,57 @@ function reportUntranslatedKeys() {
     for (const file of listCodeFiles(dir)) {
       const content = fs.readFileSync(file, "utf8");
       for (const key of translationKeys(file, content)) {
-        if (!key) continue;
-        for (const [locale, keys] of known) {
-          const pluralForms = new Intl.PluralRules(locale).resolvedOptions().pluralCategories;
-          if (keys.has(key) || pluralForms.every((form) => keys.has(`${key}_${form}`))) continue;
-          if (!missing.has(locale)) missing.set(locale, new Set());
-          missing.get(locale).add(key);
-        }
+        if (key) usedKeys.add(key);
       }
     }
   }
 
-  const summary = [...missing.entries()]
-    .filter(([, keys]) => keys.size)
-    .map(([locale, keys]) => `${locale}: ${keys.size}`);
-  if (!summary.length) {
-    console.log("[i18n:audit] every t() literal has an entry in each locale");
-    return;
-  }
-  process.exitCode = 1;
-  console.log(
-    `[i18n:audit] t() literals with no locale entry — ${summary.join(", ")} ` +
-      `(they render as their English key). Run with --show-missing to list them.`,
-  );
-  if (!process.argv.includes("--show-missing")) return;
-  for (const [locale, keys] of missing) {
-    if (!keys.size) continue;
-    console.log(`\n- ${locale}`);
-    for (const key of [...keys].sort()) console.log(`  - ${JSON.stringify(key)}`);
+  const englishKeys = new Set(Object.keys(english));
+  for (const [locale, entries] of known) {
+    const pluralForms = new Intl.PluralRules(locale).resolvedOptions().pluralCategories;
+    const missing = [...usedKeys].filter((key) => !hasTranslation(entries, pluralForms, key));
+    const translated = usedKeys.size - missing.length;
+    const usedCoverage = usedKeys.size ? translated / usedKeys.size : 1;
+    const catalogTranslated = [...englishKeys].filter((key) => Object.hasOwn(entries, key)).length;
+    const catalogCoverage =
+      englishKeys.size
+        ? catalogTranslated / englishKeys.size
+        : 1;
+    const formatPercent = (ratio) => `${(ratio * 100).toFixed(1)}%`;
+    const floor = MIN_USED_COVERAGE.get(locale);
+
+    if (floor === undefined) {
+      console.log(`[i18n:audit] ${locale}: ${translated}/${usedKeys.size} used keys (${formatPercent(usedCoverage)}), strict`);
+      if (missing.length) {
+        console.error(`[i18n:audit] ${locale}: ${missing.length} t() literals lack a locale entry`);
+        process.exitCode = 1;
+      }
+    } else {
+      console.log(
+        `[i18n:audit] ${locale}: ${translated}/${usedKeys.size} used keys (${formatPercent(usedCoverage)}); ` +
+          `${catalogTranslated}/${englishKeys.size} English catalog keys (${formatPercent(catalogCoverage)}); ` +
+          `${missing.length} used keys fall back to English ` +
+          `(minimum ${formatPercent(floor)} used coverage)`,
+      );
+      if (usedCoverage < floor) {
+        console.error(`[i18n:audit] ${locale}: used-key coverage below ${formatPercent(floor)}`);
+        process.exitCode = 1;
+      }
+    }
+
+    if (process.argv.includes("--show-missing") && missing.length) {
+      console.log(`\n- ${locale} missing used keys`);
+      for (const key of missing.sort()) console.log(`  - ${JSON.stringify(key)}`);
+    }
+    if (locale === "en") continue;
+    const mismatches = placeholderMismatches(english, entries);
+    if (mismatches.length) {
+      process.exitCode = 1;
+      console.error(`[i18n:audit] ${locale}: ${mismatches.length} interpolation placeholder mismatches`);
+      for (const { key, missing: lost, extra } of mismatches.slice(0, 20)) {
+        console.error(`  ${JSON.stringify(key)}: missing [${lost.join(", ")}], extra [${extra.join(", ")}]`);
+      }
+    }
   }
 }
 

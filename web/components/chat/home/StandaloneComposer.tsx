@@ -27,8 +27,8 @@ import { useTranslation } from "react-i18next";
 
 import ChatComposer from "@/components/chat/home/ChatComposer";
 import type { ContextBudget } from "@/components/chat/home/ContextBudgetChip";
-import type { CapabilityDef } from "@/features/capabilities/presentation";
 import type { ResourceSelection } from "@/features/chat/ChatStateAdapter";
+import type { CapabilityDef } from "@/features/capabilities/presentation";
 import type { ComposerResourceCatalog } from "@/hooks/useComposerResources";
 import type { SelectedHistorySession } from "@/components/chat/HistorySessionPicker";
 import type { SelectedQuestionEntry } from "@/components/chat/QuestionBankPicker";
@@ -162,6 +162,8 @@ interface StandaloneComposerProps {
   inputPlaceholder?: string;
   /** A line Tab accepts while the composer is empty. See ComposerInput. */
   inputPlaceholderCompletion?: string;
+  /** Context shown inside the box above the text. See ChatComposer. */
+  inputHeader?: React.ReactNode;
   /**
    * Capability chip contents. Defaults to a locked "Chat" entry — pass a
    * one-entry list to relabel it, or several to make the chip a picker.
@@ -221,6 +223,7 @@ function StandaloneComposerImpl({
   awaitingUserReply = false,
   inputPlaceholder,
   inputPlaceholderCompletion,
+  inputHeader,
   capabilities,
   activeCapValue,
   onSelectCapability,
@@ -777,9 +780,16 @@ function StandaloneComposerImpl({
       if (!resourceReuse.policy.persona) setSelectedPersona(null);
       applyKnowledgeBases(retainedKnowledgeBases(selectedKnowledgeBases, agentNameSet, resourceReuse.policy));
       if (!resourceReuse.policy.memory) setSelectedMemoryFiles([]);
+      if (onResourceSelectionChange) {
+        const current = resourceSelection ?? { skills: [], mcp: [] };
+        onResourceSelectionChange({
+          skills: resourceReuse.policy.skills ? current.skills : [],
+          mcp: resourceReuse.policy.mcp ? current.mcp : [],
+        });
+      }
     },
     [
-      resourceReuse, applyKnowledgeBases, agentNameSet,
+      resourceReuse, applyKnowledgeBases, agentNameSet, onResourceSelectionChange, resourceSelection,
       attachments,
       awaitingUserReply,
       isStreaming,
@@ -956,6 +966,7 @@ function StandaloneComposerImpl({
         prefillInputRef={prefillInputRef}
         inputPlaceholder={inputPlaceholder}
         inputPlaceholderCompletion={inputPlaceholderCompletion}
+        inputHeader={inputHeader}
       />
 
       <NotebookRecordPicker

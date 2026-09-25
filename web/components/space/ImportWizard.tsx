@@ -1,10 +1,18 @@
 "use client";
 
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type ReactNode,
+} from "react";
 import {
   AlertTriangle,
   CheckCircle2,
   Eye,
+  FileJson,
   FolderInput,
   FolderOpen,
   Loader2,
@@ -13,12 +21,16 @@ import { useTranslation } from "react-i18next";
 import Modal from "@/components/common/Modal";
 import Button from "@/components/ui/Button";
 import ScopePicker from "@/components/space/ScopePicker";
-import { importChatHistory } from "@/lib/imports-api";
+import {
+  importChatHistory,
+  importChatHistoryInBatches,
+} from "@/lib/imports-api";
 import { newAgentId, saveAgent } from "@/lib/chat-import/agent-store";
 import {
   buildSelectGroups,
   ImportScanError,
   isFileSystemAccessSupported,
+  parseChatGptExportFile,
   parseSessions,
   pickAndScan,
   selectionUnit,
@@ -49,6 +61,7 @@ export default function ImportWizard({
   onImported,
 }: ImportWizardProps) {
   const { t, i18n } = useTranslation();
+  const chatGptFileRef = useRef<HTMLInputElement>(null);
   const [phase, setPhase] = useState<Phase>("intro");
   const [scan, setScan] = useState<ScanResult | null>(null);
   const [name, setName] = useState("");
@@ -97,6 +110,37 @@ export default function ImportWizard({
       setPhase("error");
     }
   }, []);
+
+  const runChatGptImport = useCallback(async (file: File) => {
+    setPhase("importing");
+    setProgress({ stage: "parsing", done: 0, total: 0 });
+    try {
+      const normalized = await parseChatGptExportFile(file, (done, total) =>
+        setProgress({ stage: "parsing", done, total }),
+      );
+      setProgress({ stage: "saving", done: 0, total: normalized.length });
+      const res = await importChatHistoryInBatches("chatgpt", normalized, {
+        onProgress: (done, total) =>
+          setProgress({ stage: "saving", done, total }),
+      });
+      setResult({ imported: res.imported, skipped: res.skipped });
+      setPhase("done");
+    } catch (err) {
+      setErrorCode(err instanceof ImportScanError ? err.code : "generic");
+      setPhase("error");
+    }
+  }, []);
+
+  const handleChatGptFile = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      // Selecting the same export again must still fire a change event after a
+      // failed or partial import.
+      event.target.value = "";
+      if (file) void runChatGptImport(file);
+    },
+    [runChatGptImport],
+  );
 
   const toggleKey = useCallback((key: string) => {
     setSelectedKeys((prev) => {
@@ -161,7 +205,7 @@ export default function ImportWizard({
     <Modal
       isOpen
       onClose={onClose}
-      title={t("Add agent")}
+      title={t("Import conversations")}
       titleIcon={titleIcon}
       width="xl"
       closeOnBackdrop={phase !== "importing"}
@@ -175,6 +219,7 @@ export default function ImportWizard({
           canImport={selectedRefs.length > 0}
           onCancel={onClose}
           onPick={runScan}
+          onPickChatGpt={() => chatGptFileRef.current?.click()}
           onImport={runImport}
           onDone={onImported}
           onRetry={() => setPhase("intro")}
@@ -182,6 +227,13 @@ export default function ImportWizard({
       }
     >
       <div className="px-5 py-5">
+        <input
+          ref={chatGptFileRef}
+          type="file"
+          accept=".json,application/json"
+          className="hidden"
+          onChange={handleChatGptFile}
+        />
         {phase === "intro" && <IntroView />}
         {phase === "scanning" && (
           <CenteredStatus
@@ -259,12 +311,12 @@ function IntroView() {
         <div className="min-w-0 space-y-1">
           <p className="text-[13px] leading-relaxed text-[var(--foreground)]">
             {t(
-              "Select your local .claude or .codex folder. DeepTutor reads it right here in your browser — nothing leaves your machine until you choose what to import.",
+              "Import a local Claude Code or Codex folder, or choose the conversations.json file from an official ChatGPT data export. DeepTutor parses it in your browser before saving the conversations you import.",
             )}
           </p>
           <p className="text-[12px] leading-relaxed text-[var(--muted-foreground)]">
             {t(
-              "It auto-detects the tool, groups conversations by project, and lets you pick exactly what to bring in.",
+              "Folder imports remain refreshable agents. ChatGPT exports are one-time snapshots that can be imported again safely without duplicating conversations.",
             )}
           </p>
         </div>
@@ -275,7 +327,7 @@ function IntroView() {
           <AlertTriangle className="mt-px h-4 w-4 shrink-0" />
           <span>
             {t(
-              "Your browser doesn't support folder access. Please use a Chromium-based browser (Chrome, Edge, Arc).",
+              "Your browser doesn't support folder access, but you can still import a ChatGPT JSON export.",
             )}
           </span>
         </div>
@@ -363,11 +415,15 @@ function ErrorView({ code }: { code: ImportScanErrorCode | "generic" }) {
       ? t(
           "This folder doesn't look like a .claude or .codex home. Please select the right folder.",
         )
-      : code === "unsupported_browser"
+      : code === "invalid_export"
         ? t(
-            "Your browser doesn't support folder access. Please use a Chromium-based browser.",
+            "This file doesn't contain readable ChatGPT conversations. Select the conversations.json file from an official ChatGPT data export.",
           )
-        : t("Something went wrong while importing. Please try again.");
+        : code === "unsupported_browser"
+          ? t(
+              "Your browser doesn't support folder access. Please use a Chromium-based browser.",
+            )
+          : t("Something went wrong while importing. Please try again.");
   return (
     <CenteredStatus
       icon={
@@ -414,6 +470,7 @@ function WizardFooter({
   canImport,
   onCancel,
   onPick,
+  onPickChatGpt,
   onImport,
   onDone,
   onRetry,
@@ -424,6 +481,7 @@ function WizardFooter({
   canImport: boolean;
   onCancel: () => void;
   onPick: () => void;
+  onPickChatGpt: () => void;
   onImport: () => void;
   onDone: () => void;
   onRetry: () => void;
@@ -432,7 +490,7 @@ function WizardFooter({
 
   if (phase === "intro") {
     return (
-      <div className="flex items-center justify-end gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-2">
         <Button variant="ghost" size="sm" onClick={onCancel}>
           {t("Cancel")}
         </Button>
@@ -444,6 +502,14 @@ function WizardFooter({
           disabled={!isFileSystemAccessSupported()}
         >
           {t("Select folder")}
+        </Button>
+        <Button
+          variant="primary"
+          size="sm"
+          icon={<FileJson className="h-4 w-4" />}
+          onClick={onPickChatGpt}
+        >
+          {t("Select ChatGPT export")}
         </Button>
       </div>
     );

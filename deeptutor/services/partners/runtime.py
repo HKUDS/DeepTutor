@@ -116,7 +116,12 @@ def _thread_delivery_meta(msg: InboundMessage) -> dict[str, Any]:
     """
     in_meta = msg.metadata or {}
     meta: dict[str, Any] = {}
-    for key in ("message_thread_id", "message_id"):
+    for key in (
+        "message_thread_id",
+        "message_id",
+        "_feishu_model_picker_message_id",
+        "_feishu_model_picker_id",
+    ):
         value = in_meta.get(key)
         if value is not None:
             meta[key] = value
@@ -313,6 +318,8 @@ class PartnerRunner:
                     save_config=self.save_config,
                 ).dispatch(msg)
                 if command is not None:
+                    if delivery_meta is not None and command.metadata:
+                        delivery_meta.update(command.metadata)
                     return command.content
 
             final, turn_events = await self._run_turn(
@@ -624,15 +631,17 @@ class PartnerRunner:
         # rounds after a crash) so channels can flush their edit buffers.
         for call_id in streamed_rounds:
             if call_id not in ended_rounds:
-                await self._publish_stream_end(msg, turn_id, call_id)
                 # The reply is "already delivered" only when the live-streamed
                 # text matches what the caller is about to send.
-                if (
+                is_final_stream = bool(
                     delivery_meta is not None
                     and final_text
                     and streamed_rounds[call_id].strip() == final_text
-                ):
+                )
+                await self._publish_stream_end(msg, turn_id, call_id, final_stream=is_final_stream)
+                if is_final_stream:
                     delivery_meta["_streamed"] = True
+                    delivery_meta["_stream_id"] = f"{turn_id}:{call_id}"
 
         return final_text, errors, turn_events
 
@@ -1090,7 +1099,14 @@ class PartnerRunner:
             )
         )
 
-    async def _publish_stream_end(self, msg: InboundMessage, turn_id: str, call_id: str) -> None:
+    async def _publish_stream_end(
+        self,
+        msg: InboundMessage,
+        turn_id: str,
+        call_id: str,
+        *,
+        final_stream: bool = False,
+    ) -> None:
         await self.bus.publish_outbound(
             OutboundMessage(
                 channel=msg.channel,
@@ -1099,6 +1115,7 @@ class PartnerRunner:
                 metadata={
                     "_stream_end": True,
                     "_stream_id": f"{turn_id}:{call_id}",
+                    **({"_stream_final": True} if final_stream else {}),
                     **_thread_delivery_meta(msg),
                 },
             )

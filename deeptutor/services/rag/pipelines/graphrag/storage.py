@@ -62,6 +62,34 @@ def has_output(root_dir: Path | None) -> bool:
     return any((out / f"{name}.parquet").exists() for name in OUTPUT_TABLES)
 
 
+def indexed_input_names(root_dir: Path) -> set[str]:
+    """Input filenames with persisted GraphRAG text units; empty on unknown output."""
+    documents = output_dir(root_dir) / "documents.parquet"
+    text_units = output_dir(root_dir) / "text_units.parquet"
+    if not documents.is_file() or not text_units.is_file():
+        return set()
+    try:
+        import pandas as pd
+
+        rows = pd.read_parquet(documents, columns=["title", "text_unit_ids"])
+        unit_ids = set(pd.read_parquet(text_units, columns=["id"])["id"])
+    except Exception as exc:
+        logger.warning("Could not inspect GraphRAG document receipts: %s", exc)
+        return set()
+
+    names: set[str] = set()
+    for title, text_unit_ids in rows.itertuples(index=False, name=None):
+        if not isinstance(title, str) or isinstance(text_unit_ids, (str, bytes)):
+            continue
+        try:
+            has_persisted_unit = any(unit_id in unit_ids for unit_id in text_unit_ids)
+        except TypeError:
+            has_persisted_unit = False
+        if has_persisted_unit:
+            names.add(Path(title).name)
+    return names
+
+
 def write_meta(root_dir: Path) -> None:
     """Write a flat-layout ``meta.json`` so the version is listed as ready.
 
@@ -94,5 +122,6 @@ __all__ = [
     "input_dir",
     "output_dir",
     "has_output",
+    "indexed_input_names",
     "write_meta",
 ]

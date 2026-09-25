@@ -5,17 +5,12 @@ import {
   Copy,
   Loader2,
   NotebookPen,
-  PenLine,
-  Plus,
   Send,
-  Trash2,
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { SessionAvatar } from "@/components/sidebar/SessionAvatar";
 import { type NotebookSummary, listNotebooks } from "@/lib/notebook-api";
-import { formatRelativeTime } from "@/lib/relative-time";
 import { copyText } from "@/lib/clipboard";
 import { notify } from "@/lib/notifications";
 import {
@@ -53,125 +48,6 @@ export function ModalShell({
           </button>
         </div>
         {children}
-      </div>
-    </div>
-  );
-}
-
-function ConversationRowAction({
-  icon: Icon,
-  label,
-  onClick,
-  danger = false,
-}: {
-  icon: typeof PenLine;
-  label: string;
-  onClick: () => void;
-  danger?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      title={label}
-      aria-label={label}
-      onClick={onClick}
-      className={`flex size-6 items-center justify-center rounded-lg transition-[background-color,color,transform] duration-150 active:scale-90 hover:bg-[var(--background)] ${
-        danger
-          ? "text-[var(--muted-foreground)] hover:text-[var(--destructive)]"
-          : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-      }`}
-    >
-      <Icon size={11} />
-    </button>
-  );
-}
-
-export function ConversationMenu({
-  conversations,
-  activeSessionId,
-  onSelect,
-  onNew,
-  onRename,
-  onDelete,
-}: {
-  conversations: ReadingConversation[];
-  activeSessionId: string | null;
-  onSelect: (id: string) => void;
-  onNew: () => void;
-  /** Rename this conversation. The backend has always allowed it. */
-  onRename: (conversation: ReadingConversation) => void;
-  /** Delete this conversation, after the caller confirms. */
-  onDelete: (conversation: ReadingConversation) => void;
-}) {
-  const { t, i18n } = useTranslation();
-  const renameLabel = t("Rename");
-  const deleteLabel = t("Delete");
-  return (
-    <div className="absolute right-2 top-10 z-50 w-72 rounded-2xl border border-[var(--border)] bg-[var(--card)] p-2.5 shadow-[0_20px_50px_rgba(0,0,0,.18)] dark:border-[var(--border)] dark:bg-[var(--popover)]">
-      <div className="mb-1.5 flex items-center justify-between px-1.5 py-1">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--muted-foreground)]">
-          {t("Reading conversations")}
-        </p>
-        <button
-          type="button"
-          onClick={onNew}
-          className="flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-semibold text-[var(--primary)] transition hover:bg-[color-mix(in_srgb,var(--primary)_10%,transparent)]"
-        >
-          <Plus size={10} /> {t("New")}
-        </button>
-      </div>
-      <div className="max-h-64 space-y-0.5 overflow-y-auto">
-        {conversations.map((row) => {
-          const active = row.session_id === activeSessionId;
-          return (
-            <div
-              key={row.session_id}
-              className={`group/row relative flex w-full items-center gap-1 overflow-hidden rounded-xl transition-colors ${
-                active ? "bg-[color-mix(in_srgb,var(--primary)_10%,transparent)]" : "hover:bg-[var(--muted)]"
-              }`}
-            >
-              {active && (
-                <span className="absolute left-0 top-1/2 h-4 w-[2.5px] -translate-y-1/2 rounded-r-full bg-[var(--primary)]" />
-              )}
-              <button
-                type="button"
-                onClick={() => onSelect(row.session_id)}
-                className="flex min-w-0 flex-1 items-center gap-2.5 py-2.5 pl-3 pr-1.5 text-left"
-              >
-                <SessionAvatar sessionId={row.session_id} size={13} />
-                <div className="min-w-0 flex-1">
-                  <p
-                    className={`truncate text-[11px] ${active ? "font-semibold text-[var(--foreground)]" : "font-medium text-[var(--foreground)]"}`}
-                  >
-                    {row.title}
-                  </p>
-                  <p className="mt-0.5 text-[9.5px] text-[var(--muted-foreground)]">
-                    {formatRelativeTime(row.updated_at, i18n.language)}
-                  </p>
-                </div>
-                {active && (
-                  <Check size={11} className="shrink-0 text-[var(--primary)]" />
-                )}
-              </button>
-              {/* Revealed on hover so a list of conversations still reads as a
-                  list. Keyboard users reach them by tabbing, which is why they
-                  are always in the DOM rather than conditionally rendered. */}
-              <span className="flex shrink-0 items-center pr-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover/row:opacity-100">
-                <ConversationRowAction
-                  icon={PenLine}
-                  label={renameLabel}
-                  onClick={() => onRename(row)}
-                />
-                <ConversationRowAction
-                  icon={Trash2}
-                  label={deleteLabel}
-                  danger
-                  onClick={() => onDelete(row)}
-                />
-              </span>
-            </div>
-          );
-        })}
       </div>
     </div>
   );

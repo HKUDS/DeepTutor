@@ -5,13 +5,16 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable, Iterable
 import logging
+import re
 from typing import Any
 
 from deeptutor.services.config.runtime_settings import get_chat_attachment_limits
 from deeptutor.services.parsing import get_parse_service
 from deeptutor.services.storage import AttachmentStore
+from deeptutor.utils.document_images import find_markers
 
 logger = logging.getLogger(__name__)
+_PDF_PAGE_HEADER = re.compile(r"--- Page (\d+) ---")
 
 
 async def parse_chat_pdf_attachments(
@@ -72,7 +75,20 @@ async def parse_chat_pdf_attachments(
                 error = str(exc)
         if text:
             cap = min(limits.max_chars_per_doc, limits.max_chars_total - total_chars)
-            if len(text) > cap:
+            image_locations = _pdf_image_locations(fallback_text, text)
+            if image_locations:
+                # Reserve room for the original page-to-image mapping even if
+                # the configured parser's Markdown fills the text quota.
+                note = "\n\n[Embedded image locations in original PDF]"
+                for location in image_locations:
+                    if len(note) + 1 + len(location) > cap:
+                        break
+                    note += "\n" + location
+                if note != "\n\n[Embedded image locations in original PDF]":
+                    text = text[: cap - len(note)] + note
+                else:
+                    text = text[:cap]
+            elif len(text) > cap:
                 text = text[:cap] + f"... (truncated, {len(text)} chars total; chat quota hit)"
             record["extracted_text"] = text
             record["extracted_chars"] = len(text)
@@ -110,6 +126,23 @@ async def parse_chat_pdf_attachments(
                 detail,
             )
     return updated, contexts
+
+
+def _pdf_image_locations(native_text: str, parsed_text: str) -> list[str]:
+    """Keep native PDF page markers for images omitted by configured parsers."""
+    page_number: str | None = None
+    locations: list[str] = []
+    for line in native_text.splitlines():
+        stripped = line.strip()
+        page = _PDF_PAGE_HEADER.fullmatch(stripped)
+        if page:
+            page_number = page.group(1)
+        elif page_number:
+            for index, name in find_markers(stripped):
+                location = f"--- Page {page_number} ---\n[图片 {index}: {name}]"
+                if location not in parsed_text and location not in locations:
+                    locations.append(location)
+    return locations
 
 
 def _replace_context(contexts: list[str], filename: str, text: str, error: str) -> None:

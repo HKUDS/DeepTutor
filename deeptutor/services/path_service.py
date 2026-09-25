@@ -166,6 +166,16 @@ class PathService:
         if parts[:3] == ("workspace", "co-writer", "audio"):
             return candidate
 
+        # Content-workspace runtimes write chat outputs beneath their selected
+        # workspace. Partner execution scopes therefore materialize the legacy
+        # chat shapes as ``workspace/outputs/chat/<session>/<turn>/<kind>/...``.
+        if (
+            len(parts) >= 6
+            and parts[:3] == ("workspace", "outputs", "chat")
+            and parts[5] in {"exec", "media", "cli"}
+        ):
+            return candidate
+
         if (
             len(parts) >= 5
             and parts[:3] == ("workspace", "chat", "deep_solve")

@@ -17,7 +17,8 @@ from deeptutor.reading.store import MAX_READ_CHARS, ReadingStore
 
 MAX_READING_REFERENCE_MATERIALS = 8
 MAX_READING_REFERENCE_UNITS = 24
-_MATERIAL_ID_RE = re.compile(r"^[0-9a-f]{8,64}$")
+# Same shape the store accepts: content hashes and catalog-minted rm_ ids.
+_MATERIAL_ID_RE = re.compile(r"^(?:[0-9a-f]{8,64}|rm_[0-9a-f]{12})$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,10 +88,16 @@ def resolve_reading_sources(
 ) -> list[ResolvedReadingSource]:
     """Resolve canonical references against the active user's reading store."""
 
+    from deeptutor.multi_user.learning_access import learning_material_allowed
+
     active_store = store or ReadingStore()
     resolved: list[ResolvedReadingSource] = []
     for reference in normalize_reading_references(value):
         material_id = reference["material_id"]
+        # A saved turn or historical source may outlive a learner's assignment.
+        # Check the current grant before even opening a stored revision.
+        if not learning_material_allowed(material_id):
+            continue
         revision = reference["revision"]
         try:
             current_manifest = active_store.manifest(material_id)

@@ -14,6 +14,7 @@ from deeptutor.services.llm.context_window import (
     coerce_positive_int,
     resolve_effective_context_window,
 )
+from deeptutor.services.prompt.language import language_label
 
 from .ask_user_trace import (
     extract_ask_user_clarification_blocks,
@@ -379,6 +380,12 @@ class ContextBuilder:
         # The instruction targets ~80% of the hard cap so the model's own
         # length control — not the max_tokens cut — is the binding limit.
         target_tokens = max(1, int(summary_budget * 0.8))
+        # The summary is replayed as a system row on every later turn, so the
+        # language it is written in keeps steering the answer long after the
+        # turns it condensed have scrolled out. Unstated, a summary of a
+        # foreign-language session comes back in the default language and the
+        # reply follows it — #1511's drift "after a few rounds".
+        summary_language = language_label(language)
         system_prompt = (
             "You maintain a running summary of a conversation so future turns can "
             "continue seamlessly. Rewrite the summary from the material provided, "
@@ -393,7 +400,8 @@ class ContextBuilder:
             "Carry forward still-relevant entries from the existing summary unchanged "
             "unless new information contradicts them; drop only what is obsolete. "
             "Prefer concrete details (numbers, identifiers, exact terms) over "
-            "abstract restatement. Never invent information."
+            "abstract restatement. Never invent information. "
+            f"Write the summary itself in {summary_language}."
         )
         if language.startswith("zh"):
             system_prompt = (
@@ -406,6 +414,7 @@ class ContextBuilder:
                 "- 待办事项：未回答的问题、未完成的任务、已知阻塞\n"
                 "已有摘要中仍然有效的条目应原样保留，仅在新信息与之矛盾时修改，只删除确已过时"
                 "的内容。优先保留具体细节（数字、标识符、确切措辞），不要抽象转述，绝不虚构。"
+                f"摘要正文本身请使用{summary_language}撰写。"
             )
         user_prompt = (
             f"Update the summary using the material below. "

@@ -1092,6 +1092,7 @@ export function LightRagForm({
         response_type: form.response_type,
         max_concurrent_files: form.max_concurrent_files,
         entity_extract_max_gleaning: form.entity_extract_max_gleaning,
+        llm_timeout: form.llm_timeout,
       });
       setLoaded(next);
       setForm(next);
@@ -1155,6 +1156,14 @@ export function LightRagForm({
             min={0}
             max={5}
             onChange={(v) => patch({ entity_extract_max_gleaning: v })}
+          />
+          <NumberField
+            label={t("LLM timeout (seconds)")}
+            hint={t("Maximum time per LightRAG LLM call")}
+            value={form.llm_timeout}
+            min={60}
+            max={3600}
+            onChange={(v) => patch({ llm_timeout: v })}
           />
         </div>
       </div>

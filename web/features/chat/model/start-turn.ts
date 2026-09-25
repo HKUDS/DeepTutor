@@ -19,6 +19,8 @@ export interface StartTurnInput {
   tools?: string[] | null;
   knowledgeBases?: string[];
   language?: string | null;
+  /** Omit to preserve the session's selector; null explicitly clears it. */
+  replyLanguageOverride?: string | null;
   capabilityConfig?: Record<string, unknown>;
   allowedCapabilityConfigKeys?: readonly string[];
   attachments?: OutgoingAttachment[];
@@ -57,6 +59,8 @@ export interface StartTurnInput {
   consultPartnerId?: string | null;
   partnerDiscussionGroupId?: string | null;
   autoRoute?: boolean | null;
+  /** Run `capability` for this turn only; the session keeps its own mode. */
+  capabilityOnce?: boolean;
 }
 
 export interface LegacySendMessageArguments {

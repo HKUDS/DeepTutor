@@ -851,6 +851,11 @@
           "default": "chat",
           "title": "Capability"
         },
+        "capability_once": {
+          "default": false,
+          "title": "Capability Once",
+          "type": "boolean"
+        },
         "config": {
           "additionalProperties": true,
           "title": "Config",
@@ -1062,6 +1067,11 @@
           "default": null,
           "title": "Persona"
         },
+        "preserve_session_preferences": {
+          "default": false,
+          "title": "Preserve Session Preferences",
+          "type": "boolean"
+        },
         "protocol_version": {
           "const": "2.0",
           "title": "Protocol Version",
@@ -1140,11 +1150,26 @@
               "type": "integer"
             },
             {
+              "type": "string"
+            },
+            {
               "type": "null"
             }
           ],
           "default": null,
           "title": "Regenerated From Message Id"
+        },
+        "reply_language_override": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reply Language Override"
         },
         "selection_tutor_context": {
           "anyOf": [

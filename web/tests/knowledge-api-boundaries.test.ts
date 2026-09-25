@@ -38,6 +38,7 @@ test("knowledge resources expose narrow public entry points", () => {
     "catalog.ts": ["listKnowledgeBases", "createKnowledgeBase"],
     "engines.ts": ["getEnginePreflight", "updateLlamaIndexConfig"],
     "files.ts": ["listKnowledgeBaseFiles", "knowledgeBaseFilePath"],
+    "folders.ts": ["listLinkedFolders", "syncLinkedFolder"],
     "sources.ts": ["listGitHubSources", "syncWebSources"],
   };
 

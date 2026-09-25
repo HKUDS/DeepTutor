@@ -17,6 +17,7 @@ from deeptutor.learning.assessment import (
     AssessmentRecord,
     RecordAssessmentError,
     is_correct_to_result,
+    reconcile_linked_assessments,
     record_assessment,
     result_to_is_correct,
     to_notebook_item,
@@ -231,6 +232,89 @@ def test_reanswer_keeps_immutable_attempts_and_updates_latest_projection(
     assert [attempt["result"] for attempt in attempts] == ["incorrect", "correct"]
 
 
+def test_old_submission_retry_cannot_overwrite_newer_answer(store: SQLiteSessionStore) -> None:
+    asyncio.run(store.create_session(title="S", session_id="session-1"))
+    wrong = _mastery_record(attempt_id="old", user_answer="3", result="incorrect")
+    right = _mastery_record(attempt_id="new", user_answer="4", result="correct", is_correct=True)
+    asyncio.run(record_assessment(wrong))
+    asyncio.run(record_assessment(right))
+    retried = asyncio.run(record_assessment(wrong))
+
+    latest = asyncio.run(store.find_notebook_entry("session-1", "q-1", turn_id="turn-1"))
+    attempts = asyncio.run(store.list_assessment_attempts("session-1", question_id="q-1"))
+    assert retried.attempt_recorded is False
+    assert retried.upserted is False
+    assert latest["user_answer"] == "4"
+    assert latest["result"] == "correct"
+    assert len(attempts) == 2
+
+
+def test_late_arriving_older_attempt_does_not_rewind_question_card(
+    store: SQLiteSessionStore,
+) -> None:
+    asyncio.run(store.create_session(title="S", session_id="session-1"))
+    newer = _mastery_record(
+        attempt_id="newer",
+        user_answer="4",
+        result="correct",
+        is_correct=True,
+        created_at=200.0,
+    )
+    older = _mastery_record(
+        attempt_id="older", user_answer="3", result="incorrect", created_at=100.0
+    )
+    asyncio.run(record_assessment(newer))
+    outcome = asyncio.run(record_assessment(older))
+
+    latest = asyncio.run(store.find_notebook_entry("session-1", "q-1", turn_id="turn-1"))
+    attempts = asyncio.run(store.list_assessment_attempts("session-1", question_id="q-1"))
+    assert outcome.attempt_recorded is True
+    assert outcome.upserted is False
+    assert latest["result"] == "correct"
+    assert [item["attempt_id"] for item in attempts] == ["older", "newer"]
+
+
+def test_submission_id_cannot_be_reused_for_different_answer(store: SQLiteSessionStore) -> None:
+    asyncio.run(store.create_session(title="S", session_id="session-1"))
+    asyncio.run(record_assessment(_mastery_record(attempt_id="same", user_answer="3")))
+    with pytest.raises(RecordAssessmentError):
+        asyncio.run(record_assessment(_mastery_record(attempt_id="same", user_answer="4")))
+    assert len(asyncio.run(store.list_assessment_attempts("session-1"))) == 1
+
+
+def test_projection_failure_rolls_back_event(
+    store: SQLiteSessionStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    asyncio.run(store.create_session(title="S", session_id="session-1"))
+
+    def fail_projection(*_args, **_kwargs):
+        raise RuntimeError("projection failed")
+
+    monkeypatch.setattr(store, "_upsert_notebook_entries_in_conn", fail_projection)
+    with pytest.raises(RecordAssessmentError):
+        asyncio.run(record_assessment(_mastery_record(attempt_id="will-rollback")))
+    assert asyncio.run(store.list_assessment_attempts("session-1")) == []
+    assert asyncio.run(store.list_notebook_entries(session_id="session-1"))["total"] == 0
+
+
+def test_unknown_cross_surface_objective_keeps_unlinked_attempt(store: SQLiteSessionStore) -> None:
+    asyncio.run(store.create_session(title="S", session_id="session-1"))
+    record = _mastery_record(
+        source="book",
+        mastery_path_id="nonexistent-path",
+        knowledge_point_id="nonexistent-kp",
+        attempt_id="unlinked",
+    )
+    outcome = asyncio.run(record_assessment(record))
+    retry = asyncio.run(record_assessment(record))
+    latest = asyncio.run(store.find_notebook_entry("session-1", "q-1", turn_id="turn-1"))
+    attempts = asyncio.run(store.list_assessment_attempts("session-1", question_id="q-1"))
+    assert "dropped_invalid_mastery_linkage" in outcome.diagnostics
+    assert retry.attempt_recorded is False
+    assert latest["mastery_path_id"] == ""
+    assert attempts[0]["mastery_path_id"] == ""
+
+
 def test_linked_book_assessment_updates_mastery_retention_once(
     store: SQLiteSessionStore,
     tmp_path: Path,
@@ -284,6 +368,99 @@ def test_linked_book_assessment_updates_mastery_retention_once(
     assert linked.learning_evidence[0].evidence_id == "book-attempt-1"
     assert linked.learning_evidence[0].source == "book"
     assert linked.repetition_states["kp-1"].review_count == 1
+
+
+def test_linked_evidence_retries_after_restart_in_event_order(
+    store: SQLiteSessionStore,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asyncio.run(store.create_session(title="S", session_id="session-1"))
+    learning_root = tmp_path / "learning"
+    initial_store = LearningStore(root=learning_root)
+    initial_store.save(
+        LearningProgress(
+            book_id="path-1",
+            modules=[
+                LearningModule(
+                    id="module-1",
+                    name="Module",
+                    order=0,
+                    knowledge_points=[
+                        KnowledgePoint(
+                            id="kp-1",
+                            name="Concept",
+                            type=KnowledgeType.CONCEPT,
+                            module_id="module-1",
+                        )
+                    ],
+                )
+            ],
+            knowledge_types={"kp-1": KnowledgeType.CONCEPT},
+        )
+    )
+    monkeypatch.setattr("deeptutor.learning.assessment._get_learning_store", lambda: initial_store)
+    import deeptutor.learning.assessment as assessment_module
+
+    apply_retention = assessment_module._apply_linked_retention
+
+    def interrupted(*_args, **_kwargs):
+        raise RuntimeError("interrupted after event commit")
+
+    monkeypatch.setattr(assessment_module, "_apply_linked_retention", interrupted)
+    old = AssessmentRecord(
+        session_id="session-1",
+        turn_id="book-turn",
+        question_id="book-q",
+        question="Explain the concept",
+        user_answer="wrong",
+        result="incorrect",
+        is_correct=False,
+        source="book",
+        assessment_type="focus_check",
+        mastery_path_id="path-1",
+        knowledge_point_id="kp-1",
+        attempt_id="book-old",
+        created_at=1_000_000.0,
+    )
+    with pytest.raises(RecordAssessmentError):
+        asyncio.run(record_assessment(old))
+    assert len(asyncio.run(store.list_assessment_attempts("session-1"))) == 1
+    assert initial_store.load("path-1").learning_evidence == []
+
+    restarted_sessions = SQLiteSessionStore(db_path=store.db_path)
+    restarted_learning = LearningStore(root=learning_root)
+    monkeypatch.setattr(
+        "deeptutor.services.session.get_sqlite_session_store", lambda: restarted_sessions
+    )
+    monkeypatch.setattr(
+        "deeptutor.learning.assessment._get_learning_store", lambda: restarted_learning
+    )
+    monkeypatch.setattr(assessment_module, "_apply_linked_retention", apply_retention)
+    newer = old.model_copy(
+        update={
+            "attempt_id": "book-new",
+            "user_answer": "right",
+            "result": "correct",
+            "is_correct": True,
+            "created_at": 1_100_000.0,
+        }
+    )
+    asyncio.run(record_assessment(newer))
+    assert asyncio.run(reconcile_linked_assessments()) == (1, 0)
+    retried_old = old.model_copy(update={"created_at": 1_200_000.0})
+    outcome = asyncio.run(record_assessment(retried_old))
+
+    linked = restarted_learning.load("path-1")
+    state = linked.repetition_states["kp-1"]
+    assert outcome.attempt_recorded is False
+    assert outcome.diagnostics == []
+    assert len(linked.learning_evidence) == 2
+    assert state.review_count == 2
+    assert state.last_review_at == newer.created_at
+    assert next(e for e in linked.learning_evidence if e.evidence_id == "book-old").timestamp == (
+        old.created_at
+    )
 
 
 def test_missing_session_raises_record_error() -> None:

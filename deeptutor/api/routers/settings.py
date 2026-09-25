@@ -51,6 +51,16 @@ from deeptutor.services.config.settings_draft import (
     merge_draft_secrets,
     redact_draft,
 )
+from deeptutor.services.config.settings_presets import (
+    SETTINGS_PRESETS_SCHEMA_VERSION,
+    get_settings_preset,
+    list_settings_presets,
+)
+from deeptutor.services.config.settings_profile import (
+    SettingsProfileError,
+    export_settings_profile,
+    review_settings_profile_import,
+)
 from deeptutor.services.llm.config import clear_llm_config_cache
 from deeptutor.services.model_selection import list_llm_options
 from deeptutor.services.path_service import get_path_service
@@ -59,6 +69,7 @@ from deeptutor.services.settings.interface_settings import (
     DEFAULT_UI_SETTINGS as INTERFACE_DEFAULTS,
 )
 from deeptutor.services.settings.interface_settings import (
+    UiLanguage,
     atomic_update,
     resolve_languages,
     sanitize_enabled_tools,
@@ -81,6 +92,24 @@ router = APIRouter()
 public_router = APIRouter()
 
 TOUR_CACHE = None
+
+# Reader-facing model output supports more languages than the interface.
+ResponseLanguage = Literal[
+    "en",
+    "zh",
+    "zh-tw",
+    "ja",
+    "ko",
+    "es",
+    "fr",
+    "de",
+    "ru",
+    "pt",
+    "it",
+    "ar",
+    "pl",
+    "uk",
+]
 
 
 def get_enabled_optional_tools() -> list[str]:
@@ -120,6 +149,9 @@ DEFAULT_UI_SETTINGS = {
     # preference (not catalog); the chat surface also keeps a per-session
     # override on top of this global default.
     "voice_autoplay": False,
+    # When true, TTS verbalizes LaTeX into spoken math. When false, formulas
+    # are unwrapped from $ / $$ only. Default true (matches INTERFACE_DEFAULTS).
+    "voice_math_speak": True,
     # Seconds the chat UI waits for any turn event before declaring the
     # connection timed out. Bumped from 60 → 180 so slow tools (image/video
     # generation) don't trip it; user-adjustable in Settings > Network.
@@ -139,8 +171,8 @@ class SidebarNavOrder(BaseModel):
 
 class UISettings(BaseModel):
     theme: Literal["light", "dark", "glass", "snow"] = "snow"
-    language: Literal["zh", "en"] = "en"
-    response_language: Literal["zh", "en"] = "en"
+    language: UiLanguage = "en"
+    response_language: ResponseLanguage = "en"
     sidebar_description: Optional[str] = None
     sidebar_nav_order: Optional[SidebarNavOrder] = None
     code_block_theme: Optional[str] = None
@@ -162,8 +194,8 @@ class UISettingsUpdate(BaseModel):
     # for exclude_unset partial merges, but an explicit value is still validated
     # so PUT /ui cannot persist a theme/language the app can't render.
     theme: Literal["light", "dark", "glass", "snow"] | None = None
-    language: Literal["zh", "en"] | None = None
-    response_language: Literal["zh", "en"] | None = None
+    language: UiLanguage | None = None
+    response_language: ResponseLanguage | None = None
     sidebar_description: str | None = None
     sidebar_nav_order: SidebarNavOrder | None = None
     code_block_theme: str | None = None
@@ -175,6 +207,10 @@ class VoiceAutoplayUpdate(BaseModel):
     voice_autoplay: bool
 
 
+class VoiceMathSpeakUpdate(BaseModel):
+    voice_math_speak: bool
+
+
 class ChatResponseTimeoutUpdate(BaseModel):
     chat_response_timeout: int = Field(ge=CHAT_RESPONSE_TIMEOUT_MIN, le=CHAT_RESPONSE_TIMEOUT_MAX)
 
@@ -184,7 +220,7 @@ class ThemeUpdate(BaseModel):
 
 
 class LanguageUpdate(BaseModel):
-    language: Literal["zh", "en"]
+    language: UiLanguage
 
 
 class SidebarDescriptionUpdate(BaseModel):
@@ -255,6 +291,17 @@ class SettingsDraftPayload(BaseModel):
     catalog: dict[str, Any] | None = None
     # Opaque per-page state, keyed by the string the page registers with.
     extensions: dict[str, Any] = Field(default_factory=dict)
+
+
+class SettingsProfileImportPayload(BaseModel):
+    """An exported value-free settings profile submitted for review only."""
+
+    schema_version: str
+    profile: dict[str, Any]
+
+
+class SettingsPresetDraftRequest(SettingsDraftPayload):
+    """The current draft envelope submitted alongside a named preset."""
 
 
 class CodexReasoningEffortUpdate(BaseModel):
@@ -378,6 +425,8 @@ class DocumentParsingUpdate(BaseModel):
 
     engine: Optional[str] = None
     engines: Optional[dict[str, dict]] = None
+    # Toggle for vision-model captions of embedded images (None = keep stored).
+    image_caption: Optional[bool] = None
 
 
 class DocumentParsingTest(BaseModel):
@@ -1141,6 +1190,7 @@ def _document_parsing_payload() -> dict[str, Any]:
     docling_slice = engines.get("docling", {})
     return {
         "engine": full.get("engine"),
+        "image_caption": bool(full.get("image_caption", False)),
         "engines": redacted,
         "available_engines": available,
         "readiness": readiness,
@@ -1213,6 +1263,83 @@ async def get_settings_readiness():
     return await build_settings_readiness()
 
 
+@router.get("/profile")
+async def get_settings_profile():
+    """Export effective settings with credentials and deployment values removed."""
+
+    _require_settings_admin()
+    return export_settings_profile()
+
+
+@router.post("/profile/diff")
+async def diff_settings_profile(payload: SettingsProfileImportPayload):
+    """Review an imported profile without changing effective settings."""
+
+    _require_settings_admin()
+    try:
+        return review_settings_profile_import(payload.model_dump())
+    except SettingsProfileError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from None
+
+
+@router.get("/presets")
+async def get_settings_presets():
+    """List value-free starting points for a reviewable draft."""
+
+    _require_settings_admin()
+    return {
+        "schema_version": SETTINGS_PRESETS_SCHEMA_VERSION,
+        "presets": list_settings_presets(),
+    }
+
+
+async def _stage_settings_preset(
+    preset_id: str,
+    payload: SettingsPresetDraftRequest,
+) -> dict[str, Any]:
+    """Merge one preset into the unapplied draft; never touch live settings."""
+
+    preset = get_settings_preset(preset_id)
+    if preset is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Unknown preset '{preset_id}'.")
+
+    draft_service = get_settings_draft_service()
+    stored = draft_service.load()
+    incoming = payload.model_dump()
+
+    # The browser sends its whole envelope, so unrelated unsaved edits survive.
+    # When a caller omits extensions, existing extension drafts must survive too.
+    extensions = deepcopy(stored.get("extensions") or {})
+    extensions.update(deepcopy(incoming.get("extensions") or {}))
+    incoming["extensions"] = extensions
+
+    merged = merge_draft_secrets(
+        incoming,
+        stored,
+        get_model_catalog_service().load(),
+    )
+    preset_draft = preset.draft_extensions()
+    tools = preset_draft["tools"]["enabled_tools"]
+    preset_draft["tools"]["enabled_tools"] = sanitize_enabled_tools(tools)
+    merged["extensions"].update(preset_draft)
+
+    return {
+        "preset": preset.public_dict(),
+        "draft": redact_draft(draft_service.save(merged)),
+    }
+
+
+@router.post("/presets/{preset_id}/draft")
+async def stage_settings_preset(
+    preset_id: str,
+    payload: SettingsPresetDraftRequest,
+) -> dict[str, Any]:
+    """Load a named preset into the existing draft for review."""
+
+    _require_settings_admin()
+    return await _stage_settings_preset(preset_id, payload)
+
+
 @router.put("/document-parsing")
 async def update_document_parsing_settings(payload: DocumentParsingUpdate):
     _require_settings_admin()
@@ -1232,7 +1359,18 @@ async def update_document_parsing_settings(payload: DocumentParsingUpdate):
         engines[name].update(merged)
 
     new_engine = payload.engine or full.get("engine")
-    service.save_document_parsing({"engine": new_engine, "engines": engines})
+    image_caption = (
+        payload.image_caption
+        if payload.image_caption is not None
+        else bool(full.get("image_caption", False))
+    )
+    service.save_document_parsing(
+        {
+            "engine": new_engine,
+            "image_caption": image_caption,
+            "engines": engines,
+        }
+    )
     return _document_parsing_payload()
 
 
@@ -1891,6 +2029,18 @@ async def update_voice_autoplay(update: VoiceAutoplayUpdate):
     """
     patch_ui_settings(voice_autoplay=update.voice_autoplay)
     return {"voice_autoplay": update.voice_autoplay}
+
+
+@router.put("/voice-math-speak")
+async def update_voice_math_speak(update: VoiceMathSpeakUpdate):
+    """Persist whether TTS verbalizes LaTeX as spoken math.
+
+    A personal UI preference (any authenticated user). The voice router reads
+    this on each synthesis call; chat does not send a per-request override.
+    Dollar-sign delimiters are stripped even when this is off.
+    """
+    patch_ui_settings(voice_math_speak=update.voice_math_speak)
+    return {"voice_math_speak": update.voice_math_speak}
 
 
 @router.put("/chat-response-timeout")

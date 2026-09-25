@@ -44,6 +44,7 @@ BUILTIN_CAPABILITY_CLASSES: dict[str, str] = {
     "immersive_reading": "deeptutor.capabilities.reading.mode:ImmersiveReadingCapability",
     "course_study": "deeptutor.capabilities.course_study.mode:CourseStudyCapability",
     "immersive_watching": "deeptutor.capabilities.watching.mode:ImmersiveWatchingCapability",
+    "audio_overview": ("deeptutor.capabilities.audio_overview.capability:AudioOverviewCapability"),
 }
 
 
@@ -58,6 +59,7 @@ BUILTIN_CAPABILITY_SPECS: dict[str, BuiltinCapabilitySpec] = {
                 "brainstorm",
                 "web_search",
                 "paper_search",
+                "zotero_search",
                 "reason",
                 "geogebra_analysis",
                 "imagegen",
@@ -232,6 +234,23 @@ BUILTIN_CAPABILITY_SPECS: dict[str, BuiltinCapabilitySpec] = {
             stages=["responding"],
             tools_used=["web_search", "exec", "reason"],
             cli_aliases=["watching", "watch"],
+        ),
+    ),
+    "audio_overview": BuiltinCapabilitySpec(
+        BUILTIN_CAPABILITY_CLASSES["audio_overview"],
+        _manifest(
+            "audio_overview",
+            "Create a grounded two-voice audio overview and transcript from a knowledge base.",
+            stages=["retrieving", "script_writing", "voice_generation", "publishing"],
+            tools_used=["rag"],
+            cli_aliases=["audio-overview", "overview"],
+            config_defaults={
+                "topic": "",
+                "target_minutes": 5,
+                "host_voice": None,
+                "expert_voice": None,
+                "max_context_chunks": 6,
+            },
         ),
     ),
 }

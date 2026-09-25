@@ -40,7 +40,11 @@ from deeptutor.api.routers.auth import require_admin
 from deeptutor.api.utils.progress_broadcaster import ProgressBroadcaster
 from deeptutor.api.utils.task_id_manager import TaskIDManager
 from deeptutor.api.utils.task_log_stream import capture_task_logs, get_task_stream_manager
-from deeptutor.knowledge.add_documents import DocumentAdder, remove_raw_document
+from deeptutor.knowledge.add_documents import (
+    DocumentAdder,
+    hashes_for_indexed_files,
+    remove_raw_document,
+)
 from deeptutor.knowledge.initializer import KnowledgeBaseInitializer
 from deeptutor.knowledge.kb_types import is_connected_kb, supports_local_raw_files
 from deeptutor.knowledge.manager import KnowledgeBaseManager
@@ -92,6 +96,7 @@ from deeptutor.services.rag.pipelines.ima.config import (
     ImaCredentials,
     get_account_credentials,
 )
+from deeptutor.services.web_source.scheduler import get_web_source_sync_scheduler
 from deeptutor.utils.document_extractor import (
     MAX_EXTRACTED_CHARS_PER_DOC,
     DocumentExtractionError,
@@ -199,6 +204,19 @@ class LinkedFolderInfo(BaseModel):
     path: str
     added_at: str
     file_count: int
+    last_sync: str | None = None
+
+
+class SyncFolderResponse(BaseModel):
+    """Response model for a linked-folder sync request."""
+
+    message: str
+    folder_path: str | None = None
+    files: list[str]
+    new_files: int
+    modified_files: int
+    file_count: int
+    task_id: str | None
 
 
 class SupportedFileTypesInfo(BaseModel):
@@ -1117,6 +1135,17 @@ async def run_upload_processing_task(
 
     with capture_task_logs(task_id):
         try:
+            # Snapshot before staging: changes made while indexing must still
+            # appear as modified on the next linked-folder sync.
+            source_mtimes = {}
+            if folder_id:
+                for source_path in uploaded_file_paths:
+                    try:
+                        source_mtimes[source_path] = datetime.fromtimestamp(
+                            Path(source_path).stat().st_mtime
+                        ).isoformat()
+                    except OSError:
+                        pass
             _task_log(task_id, f"Processing {len(uploaded_file_paths)} file(s) for KB '{kb_name}'")
             progress_tracker.update(
                 ProgressStage.PROCESSING_DOCUMENTS,
@@ -1156,6 +1185,19 @@ async def run_upload_processing_task(
 
             if not staged_files:
                 _task_log(task_id, "No new files to process (all duplicates or invalid)")
+                if folder_id:
+                    try:
+                        manager = get_kb_manager()
+                        manager.update_folder_sync_state(
+                            kb_name, folder_id, uploaded_file_paths, source_mtimes
+                        )
+                        _task_log(task_id, f"Updated folder sync state: {folder_id}")
+                    except Exception as sync_err:
+                        _task_log(
+                            task_id,
+                            f"Folder sync state update failed: {sync_err}",
+                            level="warning",
+                        )
                 progress_tracker.update(
                     ProgressStage.COMPLETED,
                     message_key="No new files to process (all duplicates or invalid)",
@@ -1169,7 +1211,6 @@ async def run_upload_processing_task(
                 return
 
             index_result = await adder.process_new_documents(staged_files)
-            processed_files = index_result.processed_files
             _task_log(task_id, f"Indexed {index_result.processed_count} file(s)")
 
             if index_result.has_failures:
@@ -1218,11 +1259,15 @@ async def run_upload_processing_task(
             )
             adder.update_metadata(index_result.processed_count)
 
-            if folder_id and processed_files:
+            if folder_id:
                 try:
                     manager = get_kb_manager()
+                    # Indexed paths are the staged copies under raw/.
+                    # Folder change detection keys state by the original
+                    # source paths, so persist the complete successful input
+                    # batch instead of the internal staging paths.
                     manager.update_folder_sync_state(
-                        kb_name, folder_id, [str(f) for f in processed_files]
+                        kb_name, folder_id, uploaded_file_paths, source_mtimes
                     )
                     _task_log(task_id, f"Updated folder sync state: {folder_id}")
                 except Exception as sync_err:
@@ -1557,6 +1602,7 @@ class LightRagConfigUpdate(BaseModel):
     max_concurrent_files: int | None = None
     llm_model_max_async: int | None = None
     entity_extract_max_gleaning: int | None = None
+    llm_timeout: int | None = None
     llm_profile_id: str | None = None
     llm_model_id: str | None = None
 
@@ -3502,6 +3548,22 @@ async def run_reindex_task(
             # that provider rather than forcing the default pipeline.
             rag_service = RAGService(kb_base_dir=str(base_path), provider=None)
 
+            # Only files represented in the completed index may receive a
+            # duplicate-detection hash. LlamaIndex may skip one malformed file
+            # while successfully indexing its siblings (#1481).
+            requested_files = {str(Path(path).resolve()) for path in file_paths}
+            indexed_files: set[str] | None = None
+            reindexed_hashes: dict[str, str] | None = None
+
+            def remember_indexed_files(paths: list[str]) -> None:
+                nonlocal indexed_files
+                confirmed: set[str] = set()
+                for path in paths:
+                    resolved = str(Path(path).resolve())
+                    if resolved in requested_files:
+                        confirmed.add(resolved)
+                indexed_files = (indexed_files or set()) | confirmed
+
             def _on_progress(batch_num: int, total_batches: int) -> None:
                 progress_tracker.update(
                     ProgressStage.PROCESSING_DOCUMENTS,
@@ -3517,6 +3579,9 @@ async def run_reindex_task(
             # return is reserved for "no documents to index" — surface that
             # specifically too.
             def persist_terminal_state(candidate_root=None):
+                completed_count = (
+                    len(indexed_files) if indexed_files is not None else len(file_paths)
+                )
                 if candidate_root is None:
                     completed_at = datetime.now().isoformat()
                     metadata_file = kb_dir / "metadata.json"
@@ -3529,8 +3594,10 @@ async def run_reindex_task(
                                 metadata = loaded_metadata
                         metadata["last_updated"] = completed_at
                         metadata["last_indexed_at"] = completed_at
-                        metadata["last_indexed_count"] = len(file_paths)
+                        metadata["last_indexed_count"] = completed_count
                         metadata["last_indexed_action"] = "reindex"
+                        if reindexed_hashes is not None:
+                            metadata["file_hashes"] = reindexed_hashes
                         atomic_write_json(metadata_file, metadata)
                     except Exception:
                         raise
@@ -3540,7 +3607,7 @@ async def run_reindex_task(
                     "Re-index complete",
                     current=len(file_paths),
                     total=len(file_paths),
-                    indexed_count=len(file_paths),
+                    indexed_count=completed_count,
                     index_changed=True,
                     index_action="reindex",
                     publication_version=candidate_root.name if candidate_root else None,
@@ -3558,7 +3625,7 @@ async def run_reindex_task(
                     "progress_percent": 100,
                     "current": len(file_paths),
                     "total": len(file_paths),
-                    "indexed_count": len(file_paths),
+                    "indexed_count": completed_count,
                     "index_changed": True,
                     "index_action": "reindex",
                 }
@@ -3598,6 +3665,7 @@ async def run_reindex_task(
                 file_paths=file_paths,
                 progress_callback=_on_progress,
                 indexing_snapshot=indexing_snapshot,
+                indexed_file_callback=remember_indexed_files,
                 before_publish=persist_terminal_state
                 if signature_hash == LIGHTRAG_PROVIDER
                 else None,
@@ -3614,7 +3682,19 @@ async def run_reindex_task(
                 raise RuntimeError(f"Re-index found no valid documents to index in '{kb_name}'.")
             index_published = signature_hash == LIGHTRAG_PROVIDER
 
+            if indexed_files is not None:
+                reindexed_hashes = await asyncio.to_thread(
+                    hashes_for_indexed_files, sorted(indexed_files), raw_dir
+                )
+
             persist_terminal_state()
+
+            if indexed_files is not None and len(indexed_files) < len(file_paths):
+                _task_log(
+                    task_id,
+                    f"Re-index skipped {len(file_paths) - len(indexed_files)} file(s); see parser logs.",
+                    level="warning",
+                )
 
             _task_log(task_id, f"Re-index of '{kb_name}' complete", level="success")
             task_manager.update_task_status(task_id, "completed")
@@ -4238,6 +4318,7 @@ async def unlink_folder(kb_name: str, folder_id: str):
     """Unlink a folder from a knowledge base."""
     try:
         manager, resolved_name, _ = _writable_kb(kb_name)
+        _assert_not_connected_kb(resolved_name, _load_kb_entry_or_404(manager, resolved_name))
         success = manager.unlink_folder(resolved_name, folder_id)
         if not success:
             raise HTTPException(status_code=404, detail=f"Folder '{folder_id}' not found")
@@ -4251,7 +4332,10 @@ async def unlink_folder(kb_name: str, folder_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/knowledge-bases/{kb_name}/sync-folder/{folder_id}")
+@router.post(
+    "/knowledge-bases/{kb_name}/sync-folder/{folder_id}",
+    response_model=SyncFolderResponse,
+)
 async def sync_folder(kb_name: str, folder_id: str, background_tasks: BackgroundTasks):
     """
     Sync files from a linked folder to the knowledge base.
@@ -4281,7 +4365,19 @@ async def sync_folder(kb_name: str, folder_id: str, background_tasks: Background
         files_to_process = changes["new_files"] + changes["modified_files"]
 
         if not files_to_process:
-            return {"message": "No new or modified files to sync", "files": [], "file_count": 0}
+            # A completed scan is a successful sync even when it found no work.
+            # Persisting this timestamp makes the UI's "last successful sync"
+            # truthful for empty and already-current folders as well.
+            manager.update_folder_sync_state(kb_name, folder_id, [])
+            return SyncFolderResponse(
+                message="No new or modified files to sync",
+                folder_path=folder_path,
+                files=[],
+                new_files=0,
+                modified_files=0,
+                file_count=0,
+                task_id=None,
+            )
 
         logger.info(
             f"Syncing {len(files_to_process)} files from folder '{folder_path}' to KB '{kb_name}'"
@@ -4315,14 +4411,15 @@ async def sync_folder(kb_name: str, folder_id: str, background_tasks: Background
             owner=get_current_user(),
         )
 
-        return {
-            "message": f"Syncing {len(files_to_process)} files from linked folder",
-            "folder_path": folder_path,
-            "new_files": changes["new_count"],
-            "modified_files": changes["modified_count"],
-            "file_count": len(files_to_process),
-            "task_id": task_id,
-        }
+        return SyncFolderResponse(
+            message=f"Syncing {len(files_to_process)} files from linked folder",
+            folder_path=folder_path,
+            files=files_to_process,
+            new_files=changes["new_count"],
+            modified_files=changes["modified_count"],
+            file_count=len(files_to_process),
+            task_id=task_id,
+        )
     except HTTPException:
         raise
     except ValueError:
@@ -4365,12 +4462,31 @@ class WebSourceInfo(BaseModel):
     max_depth: int = 3
     max_pages: int = 200
     enabled: bool = True
+    auto_sync_enabled: bool = True
+    sync_interval_hours: int = Field(default=24, ge=1, le=168)
     page_count: int = 0
     last_synced_at: str = ""
     last_sync_status: str = "pending"
     last_sync_error: str | None = None
     added_at: str = ""
     navigation: dict | None = None
+
+
+class WebSourceScheduleUpdate(BaseModel):
+    auto_sync_enabled: bool
+    sync_interval_hours: int = Field(default=24, ge=1, le=168)
+
+
+class WebSourceSyncJobInfo(BaseModel):
+    owner_id: str
+    kb_name: str
+    source_id: str
+    state: str
+    next_run_at: int
+    last_run_at: int | None = None
+    attempt: int = 0
+    error: str | None = None
+    cancel_requested: bool = False
 
 
 @contextmanager
@@ -4455,6 +4571,8 @@ async def add_web_source(kb_name: str, request: AddWebSourceRequest):
         info = manager.add_web_source(
             resolved_name, request.url, request.max_depth, request.max_pages
         )
+        scheduler = get_web_source_sync_scheduler()
+        scheduler.repo.ensure_source((get_current_user().id, resolved_name, str(info["id"])))
         return WebSourceInfo(**info)
 
 
@@ -4471,7 +4589,97 @@ async def remove_web_source(kb_name: str, source_id: str):
         manager, resolved_name, _ = _writable_kb(kb_name)
         if not manager.remove_web_source(resolved_name, source_id):
             raise HTTPException(status_code=404, detail=f"Source '{source_id}' not found")
+        await get_web_source_sync_scheduler().request_cancel(
+            get_current_user().id, resolved_name, source_id
+        )
+        get_web_source_sync_scheduler().repo.delete(
+            (get_current_user().id, resolved_name, source_id)
+        )
         return {"message": "Removed", "source_id": source_id}
+
+
+@router.get(
+    "/knowledge-bases/{kb_name}/web-source-sync",
+    response_model=list[WebSourceSyncJobInfo],
+)
+async def get_web_source_sync_jobs(kb_name: str):
+    with _knowledge_source_errors(kb_name):
+        manager, resolved_name, _ = _writable_kb(kb_name)
+        scheduler = get_web_source_sync_scheduler()
+        jobs = scheduler.repo.list_jobs(get_current_user().id, resolved_name)
+        return [WebSourceSyncJobInfo(**job.public_dict()) for job in jobs]
+
+
+@router.put(
+    "/knowledge-bases/{kb_name}/web-source/{source_id}/schedule",
+    response_model=WebSourceInfo,
+)
+async def update_web_source_schedule(
+    kb_name: str,
+    source_id: str,
+    request: WebSourceScheduleUpdate,
+):
+    with _knowledge_source_errors(kb_name, validation_status=400):
+        manager, resolved_name, _ = _writable_kb(kb_name)
+        info = manager.update_web_source_schedule(
+            resolved_name,
+            source_id,
+            auto_sync_enabled=request.auto_sync_enabled,
+            sync_interval_hours=request.sync_interval_hours,
+        )
+        scheduler = get_web_source_sync_scheduler()
+        job_key = (get_current_user().id, resolved_name, source_id)
+        if request.auto_sync_enabled:
+            scheduler.repo.ensure_source(job_key)
+        else:
+            await scheduler.request_cancel(*job_key)
+            scheduler.repo.delete(job_key)
+        return WebSourceInfo(**info)
+
+
+@router.post(
+    "/knowledge-bases/{kb_name}/web-source/{source_id}/cancel",
+)
+async def cancel_web_source_sync(kb_name: str, source_id: str):
+    with _knowledge_source_errors(kb_name):
+        manager, resolved_name, _ = _writable_kb(kb_name)
+        if not any(item.get("id") == source_id for item in manager.get_web_sources(resolved_name)):
+            raise HTTPException(status_code=404, detail=f"Source '{source_id}' not found")
+        cancelled = await get_web_source_sync_scheduler().request_cancel(
+            get_current_user().id, resolved_name, source_id
+        )
+        if not cancelled:
+            raise HTTPException(status_code=409, detail="Synchronization job cannot be cancelled")
+        return {"message": "Cancellation requested", "source_id": source_id}
+
+
+@router.post(
+    "/knowledge-bases/{kb_name}/web-source/{source_id}/retry",
+)
+async def retry_web_source_sync(kb_name: str, source_id: str):
+    with _knowledge_source_errors(kb_name):
+        manager, resolved_name, _ = _writable_kb(kb_name)
+        source = next(
+            (
+                item
+                for item in manager.get_web_sources(resolved_name)
+                if item.get("id") == source_id
+            ),
+            None,
+        )
+        if source is None:
+            raise HTTPException(status_code=404, detail=f"Source '{source_id}' not found")
+        if not source.get("enabled", True) or not source.get("auto_sync_enabled", True):
+            raise HTTPException(
+                status_code=409,
+                detail="Enable the source and automatic synchronization before retrying",
+            )
+        retried = await get_web_source_sync_scheduler().retry(
+            get_current_user().id, resolved_name, source_id
+        )
+        if not retried:
+            raise HTTPException(status_code=404, detail="Synchronization job not found")
+        return {"message": "Retry scheduled", "source_id": source_id}
 
 
 @router.post("/knowledge-bases/{kb_name}/sync-web")

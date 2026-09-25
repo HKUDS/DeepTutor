@@ -97,7 +97,8 @@ export default function KbDocumentsSection({
         )
       : undefined;
 
-  const isUploadingHere = task?.kind === "upload" && task.executing;
+  const isUploadingHere =
+    (task?.kind === "upload" || task?.kind === "sync") && task.executing;
   const isIndexingHere =
     (task?.kind === "reindex" || task?.kind === "retry") && task.executing;
   const isRetryingHere = task?.kind === "retry" && task.executing;
@@ -177,6 +178,11 @@ export default function KbDocumentsSection({
             providerUsesEmbeddingMetadata(provider)
               ? "Drop files here to add them to this knowledge base. New files use its bound embedding model."
               : "Drop files here",
+          )}
+        </p>
+        <p className="mt-1 text-[11px] leading-relaxed text-[var(--muted-foreground)]">
+          {t(
+            "Choosing a folder here is a one-time import. For a folder that stays in sync, use Linked folders.",
           )}
         </p>
       </div>

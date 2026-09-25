@@ -6,9 +6,9 @@ import json
 
 from deeptutor.agents.base_agent import BaseAgent
 from deeptutor.core.trace import build_trace_metadata, new_call_id
+from deeptutor.services.llm.structured_retry import json_with_reasoning_retry
 
 from ..models import ConceptAnalysis, SceneDesign
-from ..utils import extract_json_object
 
 
 class ConceptDesignAgent(BaseAgent):
@@ -47,21 +47,30 @@ class ConceptDesignAgent(BaseAgent):
             style_hint=style_hint.strip() or "(none)",
             analysis_json=json.dumps(analysis.model_dump(), ensure_ascii=False, indent=2),
         )
-        _chunks: list[str] = []
-        async for _c in self.stream_llm(
-            user_prompt=user_prompt,
-            system_prompt=system_prompt,
-            response_format={"type": "json_object"},
-            stage="concept_design",
-            trace_meta=build_trace_metadata(
-                call_id=new_call_id("math-design"),
-                phase="concept_design",
-                label="Concept design",
-                call_kind="math_concept_design",
-                trace_role="design",
-                trace_kind="llm_output",
-            ),
-        ):
-            _chunks.append(_c)
-        response = "".join(_chunks)
-        return SceneDesign.model_validate(extract_json_object(response))
+
+        async def _run(reasoning_effort: str | None) -> str:
+            chunks: list[str] = []
+            async for chunk in self.stream_llm(
+                user_prompt=user_prompt,
+                system_prompt=system_prompt,
+                response_format={"type": "json_object"},
+                reasoning_effort=reasoning_effort,
+                stage="concept_design",
+                trace_meta=build_trace_metadata(
+                    call_id=new_call_id("math-design"),
+                    phase="concept_design",
+                    label="Concept design",
+                    call_kind="math_concept_design",
+                    trace_role="design",
+                    trace_kind="llm_output",
+                ),
+            ):
+                chunks.append(chunk)
+            return "".join(chunks)
+
+        payload = await json_with_reasoning_retry(
+            _run, expected_key="scene_outline", logger_instance=self.logger
+        )
+        if not payload.get("scene_outline"):
+            raise ValueError("Math animator concept design returned no scene outline.")
+        return SceneDesign.model_validate(payload)

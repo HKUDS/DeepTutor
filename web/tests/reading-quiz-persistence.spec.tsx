@@ -61,6 +61,7 @@ it("waits for saving, uses the server verdict, and preserves the original locato
   expect(submitReadingQuizAnswers).toHaveBeenCalledWith("material-1", {
     locator: 4,
     session_id: "",
+    submission_id: expect.any(String),
     answers: [{ question_id: "quiz-1", selected_index: 1 }],
   });
   await act(async () => {
@@ -81,4 +82,13 @@ it("keeps a failed answer retryable without showing a successful grade", async (
   expect(screen.queryByText("Correct")).not.toBeInTheDocument();
   expect(answer).toHaveAttribute("aria-pressed", "false");
   expect(answer).not.toBeDisabled();
+  const firstSubmission = vi.mocked(submitReadingQuizAnswers).mock.calls[0][1].submission_id;
+  vi.mocked(submitReadingQuizAnswers).mockResolvedValueOnce([
+    { question_id: "quiz-1", is_correct: true, result: "correct" },
+  ]);
+  fireEvent.click(answer);
+  await waitFor(() => expect(submitReadingQuizAnswers).toHaveBeenCalledTimes(2));
+  expect(vi.mocked(submitReadingQuizAnswers).mock.calls[1][1].submission_id).toBe(
+    firstSubmission,
+  );
 });

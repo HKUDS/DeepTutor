@@ -13,6 +13,7 @@ from deeptutor.services.voice.config import (
     STTConfig,
     TTSConfig,
 )
+from deeptutor.services.voice.speech_text import verbalize_latex_for_speech
 
 logger = logging.getLogger(__name__)
 
@@ -151,12 +152,16 @@ _WHITESPACE = re.compile(r"[ \t]+")
 _BLANK_LINES = re.compile(r"\n{3,}")
 
 
-def strip_markdown_for_speech(text: str, *, max_chars: int = 0) -> str:
+def strip_markdown_for_speech(text: str, *, max_chars: int = 0, math_speak: bool = True) -> str:
     """Reduce Markdown to plain prose suitable for TTS.
 
     Drops code blocks and tables outright (they read terribly), unwraps links
-    and emphasis to their visible text, and removes structural markers. This is
+    and emphasis to their visible text, verbalizes LaTeX math so delimiters
+    and commands are not read aloud, and removes structural markers. This is
     deliberately lossy — the goal is natural speech, not faithful rendering.
+
+    ``math_speak=False`` still strips ``$`` wrappers but leaves inner TeX
+    (``\\frac``, ``^2``) for the voice model to handle itself.
     """
     if not text:
         return ""
@@ -168,8 +173,12 @@ def strip_markdown_for_speech(text: str, *, max_chars: int = 0) -> str:
     out = _HEADING.sub("", out)
     out = _BLOCKQUOTE.sub("", out)
     out = _LIST_MARKER.sub("", out)
-    out = _EMPHASIS.sub(r"\2", out)
     out = _HTML_TAG.sub("", out)
+    # Math before emphasis: TeX uses `_` / `*` as scripts and products, and
+    # the emphasis regex would otherwise pair a prose underscore with one
+    # inside `$x_i$`.
+    out = verbalize_latex_for_speech(out, math_speak=math_speak)
+    out = _EMPHASIS.sub(r"\2", out)
     out = _WHITESPACE.sub(" ", out)
     out = _BLANK_LINES.sub("\n\n", out).strip()
     if max_chars and len(out) > max_chars:

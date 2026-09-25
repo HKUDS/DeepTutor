@@ -933,7 +933,16 @@ def test_task_publishes_actual_frozen_embedding_after_defaults_change(
         )
 
     monkeypatch.setattr(pipeline, "_run_indexing", index)
-    assert asyncio.run(pipeline.initialize("kb", ["doc.md"], indexing_snapshot=accepted))
+    receipts: list[list[str]] = []
+    assert asyncio.run(
+        pipeline.initialize(
+            "kb",
+            ["doc.md"],
+            indexing_snapshot=accepted,
+            indexed_file_callback=receipts.append,
+        )
+    )
+    assert receipts == [["doc.md"]]
     published = storage.latest_published_root(kb)
     meta = json.loads((published / "meta.json").read_text())
     assert meta["embedding_model"] == "embed-one"

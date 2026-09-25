@@ -1853,6 +1853,7 @@ class KnowledgeBaseManager:
             "path": str(folder),
             "added_at": datetime.now().isoformat(),
             "file_count": len(files),
+            "last_sync": None,
         }
         metadata["linked_folders"].append(folder_info)
 
@@ -2002,7 +2003,13 @@ class KnowledgeBaseManager:
             "modified_count": len(modified_files),
         }
 
-    def update_folder_sync_state(self, kb_name: str, folder_id: str, synced_files: list[str]):
+    def update_folder_sync_state(
+        self,
+        kb_name: str,
+        folder_id: str,
+        synced_files: list[str],
+        source_mtimes: dict[str, str] | None = None,
+    ):
         """
         Update the sync state for a linked folder after successful sync.
 
@@ -2013,6 +2020,7 @@ class KnowledgeBaseManager:
             kb_name: Knowledge base name
             folder_id: Folder ID
             synced_files: List of file paths that were successfully synced
+            source_mtimes: Modification times captured before source staging.
         """
         if kb_name not in self.list_knowledge_bases():
             raise ValueError(f"Knowledge base not found: {kb_name}")
@@ -2040,10 +2048,14 @@ class KnowledgeBaseManager:
                 file_states = folder.get("synced_files", {})
                 for file_path in synced_files:
                     try:
-                        p = Path(file_path)
-                        if p.exists():
-                            mtime = datetime.fromtimestamp(p.stat().st_mtime)
-                            file_states[file_path] = mtime.isoformat()
+                        if source_mtimes is not None:
+                            if file_path in source_mtimes:
+                                file_states[file_path] = source_mtimes[file_path]
+                        else:
+                            p = Path(file_path)
+                            if p.exists():
+                                mtime = datetime.fromtimestamp(p.stat().st_mtime)
+                                file_states[file_path] = mtime.isoformat()
                     except Exception:
                         pass
 
@@ -2176,6 +2188,8 @@ class KnowledgeBaseManager:
             "max_depth": max_depth,
             "max_pages": max_pages,
             "enabled": True,
+            "auto_sync_enabled": True,
+            "sync_interval_hours": 24,
             "page_hashes": {},
             "page_count": 0,
             "last_synced_at": "",
@@ -2222,6 +2236,29 @@ class KnowledgeBaseManager:
                 source.update(fields)
                 atomic_write_json(metadata_file, metadata)
                 return
+
+    def update_web_source_schedule(
+        self,
+        kb_name: str,
+        source_id: str,
+        *,
+        auto_sync_enabled: bool,
+        sync_interval_hours: int,
+    ) -> dict:
+        """Persist the reviewable schedule fields for one web source."""
+        source = next(
+            (item for item in self.get_web_sources(kb_name) if item.get("id") == source_id),
+            None,
+        )
+        if source is None:
+            raise ValueError(f"Source '{source_id}' not found")
+        self.update_web_source_state(
+            kb_name,
+            source_id,
+            auto_sync_enabled=auto_sync_enabled,
+            sync_interval_hours=sync_interval_hours,
+        )
+        return next(item for item in self.get_web_sources(kb_name) if item.get("id") == source_id)
 
     def get_all_web_sources(self) -> list[tuple[str, dict]]:
         """Scan every KB and return (kb_name, source_dict) pairs."""

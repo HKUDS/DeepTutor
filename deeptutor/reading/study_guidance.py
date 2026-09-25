@@ -14,8 +14,8 @@ from deeptutor.reading.extensions import (
     ReadingExtensionResult,
 )
 from deeptutor.services.llm import complete
+from deeptutor.services.llm.structured_retry import json_with_reasoning_retry
 from deeptutor.services.prompt.language import is_chinese as _is_zh
-from deeptutor.utils.json_parser import parse_json_response
 
 _SYSTEM_EN = """You design the learner's next three study moves from one verified reading selection.
 
@@ -48,9 +48,8 @@ class _Guidance(BaseModel):
         return value
 
 
-def _guidance(raw: str) -> _Guidance:
-    data: Any = parse_json_response(raw, fallback=None)
-    if not isinstance(data, dict):
+def _guidance(data: Any) -> _Guidance:
+    if not isinstance(data, dict) or not data:
         raise ValueError("Study guidance model returned invalid JSON.")
     try:
         return _Guidance.model_validate({"focus": data.get("focus"), "steps": data.get("steps")})
@@ -79,16 +78,20 @@ class StudyGuidanceExtension:
 
         from deeptutor.services.model_selection.tasks import TaskKind, task_llm_scope
 
-        with task_llm_scope(TaskKind.READING_GUIDANCE):
-            raw = await complete(
+        async def _run(reasoning_effort: str | None) -> str:
+            return await complete(
                 prompt=_prompt(context),
                 system_prompt=_SYSTEM_ZH if _is_zh(context.locale) else _SYSTEM_EN,
                 temperature=0.2,
-                max_tokens=500,
+                max_tokens=2_000,
                 max_retries=0,
                 response_format={"type": "json_object"},
+                reasoning_effort=reasoning_effort,
             )
-        guidance = _guidance(raw)
+
+        with task_llm_scope(TaskKind.READING_GUIDANCE):
+            data = await json_with_reasoning_retry(_run, expected_key="steps")
+        guidance = _guidance(data)
         return ReadingExtensionResult(
             type="card",
             title="学习引导" if _is_zh(context.locale) else "Study guidance",

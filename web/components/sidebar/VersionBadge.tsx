@@ -64,6 +64,7 @@ export function VersionBadge({ onNavigate }: VersionBadgeProps) {
   return (
     <Link
       href="/settings/about"
+      prefetch={false}
       onClick={onNavigate}
       title={state.label as string}
       aria-label={state.label as string}

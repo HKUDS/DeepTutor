@@ -12,6 +12,8 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator
 
 from deeptutor.learning.storage import LearningStore
+from deeptutor.reading.catalog_store import ReadingCatalogStore
+from deeptutor.response_languages import validate_reply_language_override
 from deeptutor.services.session import get_session_store, get_sqlite_session_store
 from deeptutor.services.session.organization import (
     list_all_sessions_snapshot,
@@ -51,6 +53,15 @@ class SessionOrganizationRequest(BaseModel):
     session_kind: Literal["chat", "selection_tutor", "immersive_reading"] | None = None
     pinned: bool | None = None
     archived: bool | None = None
+
+
+class SessionReplyLanguageRequest(BaseModel):
+    language: str | None
+
+    @field_validator("language")
+    @classmethod
+    def _supported_language(cls, value: str | None) -> str | None:
+        return validate_reply_language_override(value)
 
 
 class QuizResultItem(BaseModel):
@@ -238,7 +249,28 @@ async def rename_session(session_id: str, payload: SessionRenameRequest):
     updated = await store.update_session_title(session_id, payload.title)
     if not updated:
         raise HTTPException(status_code=404, detail="Session not found")
+    # The reader keeps its own list of a collection's conversations; the
+    # sidebar is where they are renamed, so the list has to hear about it.
+    try:
+        await asyncio.to_thread(ReadingCatalogStore().retitle_session, session_id, payload.title)
+    except Exception:
+        logger.exception("failed to retitle reading conversation %s", session_id)
     session = await store.get_session(session_id)
+    return {"session": session}
+
+
+@router.patch("/{session_id}/reply-language")
+async def update_session_reply_language(session_id: str, payload: SessionReplyLanguageRequest):
+    """Fix this conversation's reply language, or return to the account default."""
+    store = get_session_store()
+    if await store.get_session(session_id) is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    updated = await store.update_session_preferences(
+        session_id, {"reply_language_override": payload.language}
+    )
+    session = await store.get_session(session_id)
+    if not updated or session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
     return {"session": session}
 
 
@@ -393,6 +425,10 @@ async def _cleanup_deleted_session(session_id: str) -> None:
         await get_attachment_store().delete_session(session_id)
     except Exception:
         logger.exception("failed to clean up attachments for session %s", session_id)
+    try:
+        await asyncio.to_thread(ReadingCatalogStore().forget_session, session_id)
+    except Exception:
+        logger.exception("failed to detach reading collections for session %s", session_id)
 
 
 @router.post("/{session_id}/restore")

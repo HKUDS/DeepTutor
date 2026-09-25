@@ -47,7 +47,11 @@ def test_native_constructor_receives_every_supported_knob(monkeypatch, tmp_path:
     monkeypatch.setattr(
         engine,
         "constructor_kwargs_from_settings",
-        lambda: {"llm_model_max_async": 8, "entity_extract_max_gleaning": 2},
+        lambda: {
+            "llm_model_max_async": 8,
+            "entity_extract_max_gleaning": 2,
+            "default_llm_timeout": 480,
+        },
     )
 
     rag = engine.build_rag(tmp_path)
@@ -60,6 +64,7 @@ def test_native_constructor_receives_every_supported_knob(monkeypatch, tmp_path:
     assert rag.kwargs["max_parallel_parse_native"] == 4
     assert rag.kwargs["llm_model_max_async"] == 8
     assert rag.kwargs["entity_extract_max_gleaning"] == 2
+    assert rag.kwargs["default_llm_timeout"] == 480
     assert rag.kwargs["vlm_process_enable"] is False
     assert rag.kwargs["llm_model_name"] == "query-fingerprint"
     assert set(rag.kwargs["role_llm_configs"]) == {"keyword", "query"}

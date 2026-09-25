@@ -113,6 +113,28 @@ it("subscribes without a task ID and tolerates opening a removed target", () => 
   expect(() => socket.onopen?.()).not.toThrow();
 });
 
+it("keeps one log line when process and structured progress interleave", () => {
+  const { result } = renderHook(() => useKnowledgeProgress());
+  act(() =>
+    result.current.resumeTask("papers", {
+      task_id: "kb_reindex_1478",
+      stage: "processing_documents",
+      message: "Embedding batches: 1/5",
+    }),
+  );
+  const stream = Stream.instances[0];
+  act(() => {
+    stream.emit("process_log", { message: "Embedding batches: 1/5" });
+    stream.emit("progress", {
+      task_id: "kb_reindex_1478",
+      stage: "processing_documents",
+      message: "Embedding batches: 1/5",
+    });
+    stream.emit("process_log", { message: "Embedding batches: 1/5" });
+  });
+  expect(result.current.tasksByKb.papers.logs).toEqual(["Embedding batches: 1/5"]);
+});
+
 it("restores the log stream when opening a processing KB, without clearing logs on refresh", async () => {
   const kbId = "workspace:study:kb:papers";
   fixture.list.mockResolvedValue([

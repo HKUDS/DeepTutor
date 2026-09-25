@@ -34,6 +34,15 @@ from pathlib import Path
 import re
 
 from deeptutor.reading.models import OutlineEntry, ReadingError, RenderMode, UnitKind, UnitReference
+from deeptutor.utils.document_images import (
+    EmbeddedImage,
+    build_marker,
+    extract_docx_rich,
+    extract_pdf_images,
+    extract_pptx_rich,
+    find_markers,
+    reading_image_budget,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +66,16 @@ RAW_VIEW_EXTENSIONS = frozenset({".pdf"})
 
 
 @dataclass(frozen=True, slots=True)
+class MediaItem:
+    """One embedded image pinned to the locator whose text references it."""
+
+    name: str
+    mime_type: str
+    data: bytes
+    locator: int
+
+
+@dataclass(frozen=True, slots=True)
 class Extraction:
     """The result of cutting one source file into units."""
 
@@ -71,18 +90,50 @@ class Extraction:
     outline: tuple[OutlineEntry, ...] = field(default_factory=tuple)
     render_mode: RenderMode = "text"
     unit_refs: tuple[UnitReference, ...] = field(default_factory=tuple)
+    # Embedded pictures (DOCX/PPTX) mapped to the unit that mentions them.
+    media: tuple[MediaItem, ...] = field(default_factory=tuple)
 
     @property
     def char_count(self) -> int:
         return sum(len(u) for u in self.units)
 
 
-def extract_material(path: str | Path) -> Extraction:
+def _media_for_units(
+    units: tuple[str, ...], images: tuple[EmbeddedImage, ...]
+) -> tuple[MediaItem, ...]:
+    """Map ``[图片 N]`` markers in unit texts to their image bytes.
+
+    A marker names the image it belongs to, so the mapping needs no position
+    bookkeeping: scan each unit, look the name up, and pin the image to that
+    locator. Repeated markers (the same figure floated into two sections) are
+    kept once per locator; unknown names are skipped silently — the text still
+    stands on its own.
+    """
+    by_name = {image.name: image for image in images}
+    if not by_name:
+        return ()
+    items: list[MediaItem] = []
+    seen: set[tuple[int, str]] = set()
+    for locator, unit in enumerate(units, start=1):
+        for _, name in find_markers(unit):
+            image = by_name.get(name)
+            if image is None or (locator, name) in seen:
+                continue
+            seen.add((locator, name))
+            items.append(
+                MediaItem(name=name, mime_type=image.mime_type, data=image.data, locator=locator)
+            )
+    return tuple(items)
+
+
+def extract_material(path: str | Path, *, data: bytes | None = None) -> Extraction:
     """Cut *path* into units, dispatching on its extension.
 
     Raises :class:`ReadingError` when the file cannot be read at all, or when
     it yields no text — an image-only scan, for instance, which the reader
-    would otherwise present as an empty document with no explanation.
+    would otherwise present as an empty document with no explanation. For an
+    EPUB, ``data`` may contain already-normalized archive bytes so callers can
+    extract and store exactly what they read.
     """
     source = Path(path)
     if not source.is_file():
@@ -92,7 +143,12 @@ def extract_material(path: str | Path) -> Extraction:
     if suffix == ".pdf":
         extraction = _extract_pdf(source)
     elif suffix == ".epub":
-        extraction = _extract_epub(source)
+        if data is None:
+            try:
+                data = source.read_bytes()
+            except OSError as exc:
+                raise ReadingError(f"{source.name}: could not be read ({exc})") from exc
+        extraction = _extract_epub(data, source.name)
     elif suffix == ".pptx":
         extraction = _extract_slides(source)
     else:
@@ -129,6 +185,12 @@ def _extract_pdf(source: Path) -> Extraction:
     except Exception as exc:
         raise ReadingError(f"{source.name}: failed to read PDF ({exc})") from exc
 
+    media: tuple[MediaItem, ...] = ()
+    # Every page's figures ride along as locator-pinned media so the reader can
+    # attach what the question is about. Mining them is best-effort: a quirk in
+    # one image must never turn a readable PDF into a failed ingest.
+    units, media = _pdf_pages_with_image_markers(units, source)
+
     return Extraction(
         units=units,
         unit="page",
@@ -137,17 +199,54 @@ def _extract_pdf(source: Path) -> Extraction:
         title=title,
         outline=outline,
         render_mode="pdf",
+        media=media,
     )
 
 
-def _extract_epub(source: Path) -> Extraction:
+def _pdf_pages_with_image_markers(
+    units: tuple[str, ...], source: Path
+) -> tuple[tuple[str, ...], tuple[MediaItem, ...]]:
+    """Append the page's ``[图片 N: name]`` markers to that page's text tail.
+
+    Markers are appended only at the very end of each unit so the character
+    offsets of the page's own prose never move — stored per-character
+    annotations resolve against quotes lifted from this text, and shifting them
+    would silently detach every highlight. The markers name the images, which
+    :func:`_media_for_units` then resolves back into locator-pinned media via
+    the same mapping DOCX/PPTX already use.
+
+    Best-effort by contract: any failure or empty result returns the units and
+    no media untouched, so an image quirk never turns a readable PDF into a
+    failed ingest.
+    """
+    try:
+        pdf_images = extract_pdf_images(source.read_bytes(), budget=reading_image_budget())
+    except Exception:
+        logger.warning("%s: PDF image extraction failed", source.name, exc_info=True)
+        return units, ()
+    if not pdf_images.collection.images:
+        return units, ()
+
+    marker_by_page: dict[int, list[str]] = {}
+    for page_number, indices in pdf_images.page_map:
+        marker_by_page[page_number] = [
+            build_marker(pdf_images.collection.images[index]) for index in indices
+        ]
+    targeted = tuple(
+        unit + ("\n" + "\n".join(marker_by_page[i]) if i in marker_by_page else "")
+        for i, unit in enumerate(units, 1)
+    )
+    return targeted, _media_for_units(targeted, pdf_images.collection.images)
+
+
+def _extract_epub(data: bytes, filename: str) -> Extraction:
     """Preserve EPUB spine order so browser and assistant locators agree."""
     from deeptutor.utils.document_extractor import DocumentExtractionError, extract_epub_spine
 
     try:
-        units, navigation = extract_epub_spine(source.read_bytes(), source.name)
+        units, navigation = extract_epub_spine(data, filename)
     except (OSError, DocumentExtractionError) as exc:
-        raise ReadingError(f"{source.name}: failed to read EPUB ({exc})") from exc
+        raise ReadingError(f"{filename}: failed to read EPUB ({exc})") from exc
 
     refs = tuple(
         UnitReference(locator=index, source_href=unit.href, title=unit.title)
@@ -208,14 +307,43 @@ def _pdf_outline(doc: object, *, page_count: int) -> tuple[OutlineEntry, ...]:
 
 
 def _extract_slides(source: Path) -> Extraction:
-    text = _shared_extract(source)
+    text, images = _slides_text_and_images(source)
     parts = [part.strip() for part in _SLIDE_SEPARATOR.split(text)]
     units = tuple(part for part in parts if part)
     if not units:
         # The extractor found text but no slide separators (legacy .ppt via the
         # raw-OOXML fallback). Treat it as flat text rather than losing it.
         return _sections_from_text(text, extractor="pptx-text")
-    return Extraction(units=units, unit="slide", extractor="pptx")
+    return Extraction(
+        units=units,
+        unit="slide",
+        extractor="pptx",
+        media=_media_for_units(units, images),
+    )
+
+
+def _slides_text_and_images(source: Path) -> tuple[str, tuple[EmbeddedImage, ...]]:
+    """Slide text with image markers, preferring the rich extraction.
+
+    Falls back to the shared extractor (text only) when the rich path cannot
+    read the deck, so ingest never fails on a picture quirk.
+    """
+    try:
+        rich = extract_pptx_rich(source.read_bytes())
+    except Exception:
+        rich = None
+    if rich is not None and any(slide.strip() for slide in rich.slides):
+        parts = [
+            f"--- Slide {index} ---\n{slide}".rstrip()
+            for index, slide in enumerate(rich.slides, 1)
+            if slide.strip()
+        ]
+        text = "\n\n".join(parts)
+        note = rich.collection.summary_note()
+        if note:
+            text += f"\n\n{note}"
+        return text, rich.collection.images
+    return _shared_extract(source), ()
 
 
 # ---------------------------------------------------------------------------
@@ -224,6 +352,30 @@ def _extract_slides(source: Path) -> Extraction:
 
 
 def _extract_sections(source: Path) -> Extraction:
+    """Flat-text formats, cut into sections on paragraph boundaries.
+
+    DOCX goes through the rich extraction first so embedded images survive
+    with their section mapping; every other format (and a failed rich parse)
+    uses the shared text-only extractor.
+    """
+    images: tuple[EmbeddedImage, ...] = ()
+    if source.suffix.lower() == ".docx":
+        try:
+            rich = extract_docx_rich(source.read_bytes())
+        except Exception:
+            rich = None
+        if rich is not None and any(paragraph.strip() for paragraph in rich.paragraphs):
+            text = "\n\n".join(rich.paragraphs)
+            note = rich.collection.summary_note()
+            if note:
+                text += f"\n\n{note}"
+            units = split_into_sections(text)
+            return Extraction(
+                units=units,
+                unit="section",
+                extractor="docx",
+                media=_media_for_units(units, rich.collection.images),
+            )
     return _sections_from_text(_shared_extract(source), extractor="text")
 
 

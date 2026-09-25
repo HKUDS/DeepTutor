@@ -2,8 +2,69 @@
 
 import { browserStorage } from "@/shared/storage";
 import { activeWorkspaceId } from "@/lib/workspace-scope";
+import {
+  normalizeLanguage as normalizeAppLanguage,
+  type AppLanguage,
+} from "@/i18n/languages";
 
-export type AppLanguage = "en" | "zh";
+export type { AppLanguage } from "@/i18n/languages";
+
+/** Model output can use more languages than the app UI locale supports. */
+export type ResponseLanguage =
+  | "en"
+  | "zh"
+  | "zh-tw"
+  | "ja"
+  | "ko"
+  | "es"
+  | "fr"
+  | "de"
+  | "ru"
+  | "pt"
+  | "it"
+  | "ar"
+  | "pl"
+  | "uk";
+
+const SUPPORTED_RESPONSE_LANGUAGE_CODES: readonly ResponseLanguage[] = [
+  "en",
+  "zh",
+  "zh-tw",
+  "ja",
+  "ko",
+  "es",
+  "fr",
+  "de",
+  "ru",
+  "pt",
+  "it",
+  "ar",
+  "pl",
+  "uk",
+];
+
+export function isResponseLanguage(value: unknown): value is ResponseLanguage {
+  return typeof value === "string" &&
+    (SUPPORTED_RESPONSE_LANGUAGE_CODES as readonly string[]).includes(value);
+}
+
+const RESPONSE_LANGUAGE_ALIASES: Record<string, ResponseLanguage> = {
+  "simplified chinese": "zh",
+  "traditional chinese": "zh-tw",
+  chinese: "zh",
+  japanese: "ja",
+  korean: "ko",
+  spanish: "es",
+  french: "fr",
+  german: "de",
+  russian: "ru",
+  portuguese: "pt",
+  italian: "it",
+  arabic: "ar",
+  polish: "pl",
+  ukrainian: "uk",
+  "zh-cn": "zh",
+};
 
 export const ACTIVE_SESSION_STORAGE_KEY = "deeptutor.activeSessionId.tab";
 export const LANGUAGE_STORAGE_KEY = "deeptutor-language";
@@ -71,16 +132,22 @@ export const CODE_BLOCK_SETTINGS_EVENT = "deeptutor:code-block-settings";
 export function normalizeLanguage(
   value: string | null | undefined,
 ): AppLanguage {
-  return value === "zh" ? "zh" : "en";
+  return normalizeAppLanguage(value);
 }
 
 export function resolveResponseLanguage(
   value: string | null | undefined,
   legacyLanguage: string | null | undefined = "en",
-): AppLanguage {
-  return value === "zh" || value === "en"
-    ? value
-    : normalizeLanguage(legacyLanguage);
+): ResponseLanguage {
+  const code = value?.trim().toLowerCase();
+  if ((SUPPORTED_RESPONSE_LANGUAGE_CODES as readonly string[]).includes(code ?? "")) {
+    return code as ResponseLanguage;
+  }
+  const base = code?.split("-", 1)[0];
+  if ((SUPPORTED_RESPONSE_LANGUAGE_CODES as readonly string[]).includes(base ?? "")) {
+    return base as ResponseLanguage;
+  }
+  return RESPONSE_LANGUAGE_ALIASES[code ?? ""] ?? normalizeLanguage(legacyLanguage);
 }
 
 export function readStoredLanguage(): AppLanguage {
@@ -143,7 +210,7 @@ export function hasStoredResponseLanguage(): boolean {
   }
 }
 
-export function readStoredResponseLanguage(): AppLanguage {
+export function readStoredResponseLanguage(): ResponseLanguage {
   if (typeof window === "undefined") return "en";
   try {
     return resolveResponseLanguage(
@@ -155,7 +222,7 @@ export function readStoredResponseLanguage(): AppLanguage {
   }
 }
 
-export function writeStoredResponseLanguage(language: AppLanguage): void {
+export function writeStoredResponseLanguage(language: ResponseLanguage): void {
   if (typeof window === "undefined") return;
   try {
     browserStorage.writeRaw("local", RESPONSE_LANGUAGE_STORAGE_KEY, language);

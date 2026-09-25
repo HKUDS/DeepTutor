@@ -8,9 +8,11 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
+import httpx
 import pytest
 
 from deeptutor.services.codex_auth import service as service_module
+from deeptutor.services.codex_auth.catalog import CodexModelCatalog
 from deeptutor.services.codex_auth.contracts import (
     CatalogSnapshot,
     CodexAuthError,
@@ -582,6 +584,7 @@ class FakeOAuthClient:
         }
         self.exchange_error: CodexAuthError | None = None
         self.revoke_error: CodexAuthError | None = None
+        self.refresh_error: CodexAuthError | None = None
         self.refresh_started: asyncio.Event | None = None
         self.refresh_release: asyncio.Event | None = None
         self.refresh_calls = 0
@@ -600,6 +603,8 @@ class FakeOAuthClient:
     async def refresh(self, refresh_token: str) -> dict[str, Any]:
         del refresh_token
         self.refresh_calls += 1
+        if self.refresh_error is not None:
+            raise self.refresh_error
         if self.refresh_started is not None:
             self.refresh_started.set()
         if self.refresh_release is not None:
@@ -1000,6 +1005,95 @@ async def test_successful_live_login_keeps_the_existing_model_selection(
         "redirect_uri",
         "ssh_forward_command",
     }
+
+
+@pytest.mark.asyncio
+async def test_dynamic_catalog_login_and_refresh_keep_selection_and_skip_npm_on_status(
+    tmp_path: Path,
+) -> None:
+    """Login/refresh discover versions; token/status reads never do or select a new model."""
+    npm_calls = 0
+    catalog_calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal npm_calls, catalog_calls
+        if request.url.host == "registry.npmjs.org":
+            npm_calls += 1
+            if npm_calls > 2:
+                return httpx.Response(503)
+            return httpx.Response(
+                200, json={"name": "@openai/codex", "version": f"1.0.{npm_calls}"}
+            )
+        catalog_calls += 1
+        assert request.url.params["client_version"] == ("1.0.1" if catalog_calls == 1 else "1.0.2")
+        if catalog_calls <= 3:
+            assert "if-none-match" not in request.headers
+        if catalog_calls == 4:
+            return httpx.Response(500)
+        if catalog_calls == 5:
+            return httpx.Response(401)
+        models = [{"slug": "chosen-model", "visibility": "list", "priority": 10}]
+        if catalog_calls >= 2:
+            models.append({"slug": "new-first-model", "visibility": "list", "priority": 0})
+        return httpx.Response(200, json={"models": models}, headers={"etag": '"catalog"'})
+
+    store = CodexCredentialStore(tmp_path / "secrets")
+    model_catalog, _ = _seeded_service(tmp_path)
+    original_selection = _selection(model_catalog.load())
+    callback = FakeCallback()
+
+    async def callback_factory(expected_state: str) -> FakeCallback:
+        callback.expected_state = expected_state
+        return callback
+
+    clock = [1_000]
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        service = CodexOAuthService(
+            store,
+            CodexModelCatalog(store, http=http, version_http=http, clock=lambda: clock[0]),
+            model_catalog,
+            oauth_client=FakeOAuthClient(),
+            callback_factory=callback_factory,
+            clock=lambda: clock[0],
+        )
+        started = await service.start_login()
+        callback.complete(started["authorize_url"])
+        # Real HTTP mocks need more loop turns than the existing fake catalog.
+        for _ in range(100):
+            if service.public_status()["operation_state"] in {"completed", "failed"}:
+                break
+            await asyncio.sleep(0.01)
+        assert service.public_status()["operation_state"] == "completed"
+        assert _selection(model_catalog.load()) == original_selection
+        assert store.load_catalog_cache()["client_version"] == "1.0.1"
+
+        selected = model_catalog.load()
+        selected["services"]["llm"]["active_profile_id"] = CODEX_PROFILE_ID
+        selected["services"]["llm"]["active_model_id"] = codex_model_id("chosen-model")
+        model_catalog.save(selected)
+        await service.refresh_models()
+        assert service.public_status()["active_model"] == "chosen-model"
+        assert npm_calls == catalog_calls == 2
+
+        # A normal token renewal keeps version history but not the old ETag.
+        clock[0] = store.load_credentials().expires_at - 100
+        await service.get_token()
+        service.public_status()
+        assert npm_calls == catalog_calls == 2
+        assert store.load_catalog_cache()["client_version"] == "1.0.2"
+        await service.refresh_models()
+        assert service.public_status()["active_model"] == "chosen-model"
+        assert store.load_catalog_cache()["client_version"] == "1.0.2"
+        before = model_catalog.load()
+        with pytest.raises(CodexAuthError):
+            await service.refresh_models()
+        assert model_catalog.load() == before
+        with pytest.raises(CodexAuthError) as error:
+            await service.refresh_models()
+        assert error.value.code == "catalog_unauthorized"
+        assert service.public_status()["catalog_source"] is None
+        assert store.load_catalog_cache()["models_valid"] is False
+        assert store.load_catalog_cache()["client_version"] == "1.0.2"
 
 
 @pytest.mark.asyncio
@@ -1595,6 +1689,120 @@ async def test_recover_after_unauthorized_forces_refresh_for_next_request(
 
     assert oauth.refresh_calls == 1
     assert store.load_credentials().access_token == "refreshed-access"  # type: ignore[union-attr]
+
+
+@pytest.mark.asyncio
+async def test_get_token_stops_refreshing_after_a_failed_refresh(tmp_path: Path) -> None:
+    """A refresh the provider rejects must not be retried on every get_token
+
+    When the stored credential no longer refreshes (a revoked session, an
+    account the provider no longer authorizes), every turn used to call the
+    token endpoint again, fail again, and surface a fresh reauth each message.
+    One failure is enough to hold the auth state for the cooldown window and
+    fail fast with a clear error instead of hammering the provider per turn.
+    """
+    clock = [1_000]
+    service, _callback, oauth, _catalog, store, _models = await _oauth_service(
+        tmp_path, clock=clock
+    )
+    store.commit_credentials(
+        _stored_credentials(expires_at=1_200),
+        expected_generation=0,
+    )
+    oauth.refresh_error = CodexAuthError(
+        "token_refresh_rejected",
+        "Codex authentication could not be refreshed.",
+        401,
+    )
+
+    with pytest.raises(CodexAuthError) as first:
+        await service.get_token()
+    assert first.value.code == "token_refresh_rejected"
+    assert oauth.refresh_calls == 1
+
+    # Same conversation, next turn, still inside the cooldown: no second trip
+    # to the provider, a clear terminal error instead.
+    with pytest.raises(CodexAuthError) as second:
+        await service.get_token()
+    assert second.value.code == "authentication_required"
+    assert oauth.refresh_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_get_token_retries_after_the_reauth_cooldown_elapses(tmp_path: Path) -> None:
+    """The cooldown is not a permanent lock: a transient failure can recover."""
+    clock = [1_000]
+    service, _callback, oauth, _catalog, store, _models = await _oauth_service(
+        tmp_path, clock=clock
+    )
+    store.commit_credentials(
+        _stored_credentials(expires_at=1_200),
+        expected_generation=0,
+    )
+    oauth.refresh_error = CodexAuthError("token_refresh_rejected", "boom", 401)
+
+    with pytest.raises(CodexAuthError):
+        await service.get_token()
+    assert oauth.refresh_calls == 1
+
+    # Let the cooldown elapse; the next call is allowed one fresh attempt.
+    clock[0] += 120
+    oauth.refresh_error = None
+    token = await service.get_token()
+    assert oauth.refresh_calls == 2
+    assert token.access_token == "refreshed-access"
+
+
+@pytest.mark.asyncio
+async def test_transient_refresh_failure_can_retry_next_turn(tmp_path: Path) -> None:
+    clock = [1_000]
+    service, _callback, oauth, _catalog, store, _models = await _oauth_service(
+        tmp_path, clock=clock
+    )
+    store.commit_credentials(_stored_credentials(expires_at=1_200), expected_generation=0)
+    oauth.refresh_error = CodexAuthError("token_refresh_failed", "Temporary failure", 502)
+
+    with pytest.raises(CodexAuthError) as failure:
+        await service.get_token()
+    assert failure.value.code == "token_refresh_failed"
+    oauth.refresh_error = None
+    token = await service.get_token()
+
+    assert oauth.refresh_calls == 2
+    assert token.access_token == "refreshed-access"
+
+
+@pytest.mark.asyncio
+async def test_failed_refresh_marks_reauth_required_until_next_login(
+    tmp_path: Path,
+) -> None:
+    """Once flagged, get_token stays terminal until a new sign-in succeeds."""
+    clock = [1_000]
+    service, _callback, oauth, _catalog, store, _models = await _oauth_service(
+        tmp_path, clock=clock
+    )
+    store.commit_credentials(
+        _stored_credentials(expires_at=1_200),
+        expected_generation=0,
+    )
+    oauth.refresh_error = CodexAuthError("token_refresh_rejected", "boom", 401)
+
+    with pytest.raises(CodexAuthError):
+        await service.get_token()
+
+    started = await service.start_login()
+    query = urlsplit(started["authorize_url"]).query
+    state = parse_qs(query)["state"][0]
+    await service.complete_login_with_callback_url(
+        f"{started['redirect_uri']}?code=authorization-code&state={state}"
+    )
+    await _wait_until_terminal(service)
+
+    oauth.refresh_error = None
+    token = await service.get_token()
+    # A successful sign-in cleared the terminal flag and replaced the
+    # credential; no refresh is triggered because the new token is fresh.
+    assert token.access_token == "new-access"
 
 
 _REDIRECT_URI = "http://localhost:1455/auth/callback"

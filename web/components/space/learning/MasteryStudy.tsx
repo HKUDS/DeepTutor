@@ -28,7 +28,7 @@ import { buildSessionActivity } from "@/components/chat/home/SessionActivityPane
 import { TurnNavigator } from "@/components/chat/home/TurnNavigator";
 import SessionViewerPanel, {
   type SessionViewerPanelHandle,
-} from "@/components/chat/home/SessionViewerPanel";
+} from "@/components/chat/home/LazySessionViewerPanel";
 import {
   type MessageAttachment,
   useChatStateAdapter,

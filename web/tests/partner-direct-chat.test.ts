@@ -18,7 +18,7 @@ const archiveSource = readFileSync(
 
 test("partner web chat waits for runtime readiness, not channel running state", () => {
   assert.match(chatSource, /data\.type === "ready"/);
-  assert.match(chatSource, /disabled=\{!connected\}/);
+  assert.match(chatSource, /disabled=\{!connected \|\| reconciling \|\| commandBusy \|\| switchingSession/);
   assert.doesNotMatch(chatSource, /if \(!running\)/);
   assert.doesNotMatch(chatSource, /disabled=\{!connected \|\| !running\}/);
 });
@@ -31,10 +31,10 @@ test("partner tabs use a stable centered header column", () => {
   assert.match(pageSource, /<nav className="flex justify-self-center/);
 });
 
-test("partner chat has a complete archive and resume surface", () => {
+test("partner chat keeps old active and archived conversations reachable", () => {
   assert.match(pageSource, /handleArchiveConversation/);
   assert.match(pageSource, /archivePartnerSession\(partnerId, sessionKey\)/);
-  assert.match(pageSource, /changeSessionKey\(freshPartnerSessionKey\(\)\)/);
-  assert.match(archiveSource, /\.filter\(\s*\(session\) => session\.archived,/);
+  assert.match(pageSource, /if \(result\.active_session_key\) changeSessionKey\(result\.active_session_key, true\)/);
+  assert.match(archiveSource, /const next = await getPartnerSessions\(partnerId\)/);
   assert.match(archiveSource, /resumePartnerSession/);
 });

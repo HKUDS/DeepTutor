@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { parseAuthEnabled } from "./lib/api";
 import { resolveBackendApiBase } from "./lib/backend-runtime-config";
+import { prepareBackendForwardHeaders } from "./lib/backend-forward";
 import {
   CODEX_CALLBACK_API_PATH,
   COOKIE_NAME,
@@ -10,6 +11,7 @@ import {
   isBackendPath,
   isCodexCallbackPath,
   isRetiredPagePath,
+  isWebSocketPath,
 } from "./lib/proxy-policy";
 
 // Backend base URL for `/api/*` and `/ws/*` rewrites. The container entrypoint
@@ -63,7 +65,14 @@ export function proxy(req: NextRequest): NextResponse {
   //    This keeps the URL knowledge in one place (the entrypoint + system.json)
   //    rather than baked into the frontend bundle.
   if (isBackendPath(pathname)) {
-    return NextResponse.rewrite(new URL(pathname + search, API_BASE_URL));
+    return NextResponse.rewrite(new URL(pathname + search, API_BASE_URL), {
+      request: {
+        headers: prepareBackendForwardHeaders(req.headers, {
+          allowWebSocketUpgrade:
+            req.method === "GET" && isWebSocketPath(pathname),
+        }),
+      },
+    });
   }
 
   // 2. Auth gate — multi-user mode only. Disabled by default, and never blocks

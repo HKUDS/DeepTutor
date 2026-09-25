@@ -66,7 +66,6 @@ class TaskKind(StrEnum):
     MASTERY_ASK_HINT = "mastery_ask_hint"
     MASTERY_GOAL_NAME = "mastery_goal_name"
     READING_ASK_HINT = "reading_ask_hint"
-    READING_OPENERS = "reading_openers"
     READING_QUIZ = "reading_quiz"
     READING_VOCABULARY = "reading_vocabulary"
     READING_TRANSLATION = "reading_translation"
@@ -90,7 +89,6 @@ TASK_KINDS: tuple[TaskKindSpec, ...] = (
     TaskKindSpec(TaskKind.MASTERY_GOAL_NAME, "mastery"),
     TaskKindSpec(TaskKind.MASTERY_ASK_HINT, "mastery"),
     TaskKindSpec(TaskKind.READING_ASK_HINT, "reading"),
-    TaskKindSpec(TaskKind.READING_OPENERS, "reading"),
     TaskKindSpec(TaskKind.READING_VOCABULARY, "reading"),
     TaskKindSpec(TaskKind.READING_TRANSLATION, "reading"),
     TaskKindSpec(TaskKind.READING_GUIDANCE, "reading"),

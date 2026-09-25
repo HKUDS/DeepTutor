@@ -5,7 +5,9 @@ from __future__ import annotations
 from typing import Any, Literal
 import warnings
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from deeptutor.core.response_languages import validate_reply_language_override
 
 _LEGACY_RUNTIME_CONFIG_KEYS: dict[str, str] = {
     "_persist_user_message": "persist_user_message",
@@ -124,6 +126,9 @@ class TurnRequest(BaseModel):
     tools: list[str] | None = None
     knowledge_bases: list[str] = Field(default_factory=list)
     language: str | None = None
+    # Only an explicit session selector sets this. Omitted means keep the
+    # conversation's override; null returns it to the account default.
+    reply_language_override: str | None = None
     config: dict[str, Any] = Field(default_factory=dict)
 
     notebook_references: list[NotebookReference] = Field(default_factory=list)
@@ -169,7 +174,15 @@ class TurnRequest(BaseModel):
     course_id: str | None = None
     persist_user_message: bool = True
     regenerate: bool = False
-    regenerated_from_message_id: int | None = None
+    # A saved failed-turn Resend repeats the old request without changing the
+    # conversation's current settings for future turns.
+    preserve_session_preferences: bool = False
+    # This turn runs in `capability` without making it the conversation's mode
+    # (a reading "Quiz me" asks the quiz engine once; the next message is chat).
+    capability_once: bool = False
+    # SQLite message rowids are integers; PocketBase message record ids are
+    # opaque strings. Preserve either form in the SESSION event for clients.
+    regenerated_from_message_id: int | str | None = None
     superseded_turn_id: str | None = None
     followup_question_context: dict[str, Any] | None = None
     selection_tutor_context: dict[str, Any] | None = None
@@ -177,6 +190,11 @@ class TurnRequest(BaseModel):
     consult_partner_id: str | None = None
     partner_discussion_group_id: str | None = None
     auto_route: bool | None = None
+
+    @field_validator("reply_language_override")
+    @classmethod
+    def _validate_reply_language_override(cls, value: str | None) -> str | None:
+        return validate_reply_language_override(value)
 
     @model_validator(mode="before")
     @classmethod

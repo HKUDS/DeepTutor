@@ -7,6 +7,7 @@
 // can be unit-tested in the node harness without booting the Next runtime.
 
 export const LOGIN_PATH = "/login";
+export const HANDOFF_PATH = "/handoff";
 export const COOKIE_NAME = "dt_token";
 export const CODEX_CALLBACK_PATH = "/auth/callback";
 export const CODEX_CALLBACK_API_PATH = "/api/auth/openai-codex/callback";
@@ -28,10 +29,13 @@ export function isRetiredPagePath(pathname: string): boolean {
 export function isBackendPath(pathname: string): boolean {
   return (
     pathname.startsWith("/api/") ||
-    pathname === "/ws" ||
-    pathname.startsWith("/ws/") ||
+    isWebSocketPath(pathname) ||
     pathname.startsWith("/files/")
   );
+}
+
+export function isWebSocketPath(pathname: string): boolean {
+  return pathname === "/ws" || pathname.startsWith("/ws/");
 }
 
 // Static assets served straight out of `web/public` (logos, favicons, fonts,
@@ -50,6 +54,7 @@ export function isAuthExempt(pathname: string): boolean {
   return (
     pathname.startsWith(LOGIN_PATH) ||
     pathname.startsWith("/register") ||
+    pathname === HANDOFF_PATH ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||
     STATIC_ASSET.test(pathname)

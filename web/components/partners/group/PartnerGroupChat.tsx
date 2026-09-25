@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 
 import { useChatAutoScroll } from "@/hooks/useChatAutoScroll";
 import { TurnNavigator } from "@/components/chat/home/TurnNavigator";
+import type { ExportableMessage } from "@/lib/chat-export";
 import {
   getPartnerGroupWhiteboard,
   type PartnerGroup,
@@ -36,6 +37,7 @@ export default function PartnerGroupChat({
   panelOpen,
   onOpenPanel,
   onClosePanel,
+  onExportMessagesChange,
   embedded = false,
   consultationActive = false,
 }: {
@@ -48,6 +50,7 @@ export default function PartnerGroupChat({
   panelOpen: boolean;
   onOpenPanel: () => void;
   onClosePanel: () => void;
+  onExportMessagesChange?: (messages: ExportableMessage[]) => void;
 }) {
   const { t } = useTranslation();
   const [quote, setQuote] = useState<QuotedSpeech | null>(null);
@@ -71,6 +74,30 @@ export default function PartnerGroupChat({
     summarizeRound,
     cancel,
   } = useGroupSession(group, sessionKey);
+
+  // Export the settled messages in the same round and seat order as the UI.
+  // A partially streamed answer is not part of the saved discussion yet.
+  useEffect(() => {
+    if (!onExportMessagesChange) return;
+    if (loading) {
+      onExportMessagesChange([]);
+      return;
+    }
+    onExportMessagesChange(
+      rounds.flatMap((round): ExportableMessage[] => [
+        ...(round.user ? [{ role: "user", content: round.user.content }] : []),
+        ...round.seats.flatMap((seat): ExportableMessage[] =>
+          seat.message
+            ? [{
+                role: "assistant",
+                content: seat.message.content,
+                capability: seat.message.author_name,
+              }]
+            : [],
+        ),
+      ]),
+    );
+  }, [loading, onExportMessagesChange, rounds]);
 
   const draftRef = useRef(false);
   const lastInteraction = useRef(0);

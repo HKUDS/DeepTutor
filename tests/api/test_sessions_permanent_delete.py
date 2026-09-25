@@ -20,6 +20,8 @@ async def test_delete_removes_conversation_descendants_and_messages(tmp_path, mo
     learning = SimpleNamespace(detach_session=Mock())
     monkeypatch.setattr(router, "get_attachment_store", lambda: attachments)
     monkeypatch.setattr(router, "LearningStore", lambda: learning)
+    reading = SimpleNamespace(forget_session=Mock())
+    monkeypatch.setattr(router, "ReadingCatalogStore", lambda: reading)
     runtime = SimpleNamespace(cancel_turn=AsyncMock())
     monkeypatch.setattr("deeptutor.services.session.get_turn_runtime_manager", lambda: runtime)
     monkeypatch.setattr(
@@ -35,6 +37,7 @@ async def test_delete_removes_conversation_descendants_and_messages(tmp_path, mo
         assert await store.restore_session(sid) is False
         attachments.delete_session.assert_any_await(sid)
         learning.detach_session.assert_any_call(sid)
+        reading.forget_session.assert_any_call(sid)
         runtime.cancel_turn.assert_any_await(f"turn-{sid}")
     assert await store.get_session("other") is not None
     assert len(await store.get_messages("other")) == 1

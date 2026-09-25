@@ -155,6 +155,8 @@ export interface LightRagConfig {
   llm_model_max_async: number;
   /** Extra extraction passes per chunk, to recover missed entities. */
   entity_extract_max_gleaning: number;
+  /** Per-call timeout for LightRAG's LLM requests, in seconds. */
+  llm_timeout: number;
   /** Query model and default indexing selection; empty uses the active chat model. */
   llm_profile_id: string;
   llm_model_id: string;
@@ -867,6 +869,24 @@ export interface LinkedFolderProbe {
   error: string | null;
 }
 
+export interface LinkedFolderInfo {
+  id: string;
+  path: string;
+  added_at: string;
+  file_count: number;
+  last_sync: string | null;
+}
+
+export interface SyncFolderResponse {
+  message: string;
+  folder_path?: string | null;
+  files: string[];
+  new_files: number;
+  modified_files: number;
+  file_count: number;
+  task_id: string | null;
+}
+
 export async function probeLinkedFolder(payload: {
   folderPath: string;
   provider: string;
@@ -916,6 +936,85 @@ export async function connectLinkedFolder(payload: {
     rag_provider: string;
     warnings: string[];
   };
+}
+
+// ── Linked document folders ──────────────────────────────────────────
+
+export async function listLinkedFolders(
+  kbName: string,
+  options?: { signal?: AbortSignal },
+): Promise<LinkedFolderInfo[]> {
+  const res = await apiFetch(
+    apiUrl(`/api/knowledge-bases/${encodeURIComponent(kbName)}/linked-folders`),
+    { signal: options?.signal },
+  );
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(
+        res,
+        `Failed to list linked folders (${res.status})`,
+      ),
+    );
+  }
+  return (await res.json()) as LinkedFolderInfo[];
+}
+
+export async function linkFolder(
+  kbName: string,
+  folderPath: string,
+): Promise<LinkedFolderInfo> {
+  const res = await apiFetch(
+    apiUrl(`/api/knowledge-bases/${encodeURIComponent(kbName)}/link-folder`),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ folder_path: folderPath }),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, `Failed to link folder (${res.status})`),
+    );
+  }
+  invalidateKnowledgeCaches();
+  return (await res.json()) as LinkedFolderInfo;
+}
+
+export async function unlinkFolder(
+  kbName: string,
+  folderId: string,
+): Promise<void> {
+  const res = await apiFetch(
+    apiUrl(
+      `/api/knowledge-bases/${encodeURIComponent(kbName)}/linked-folders/${encodeURIComponent(folderId)}`,
+    ),
+    { method: "DELETE" },
+  );
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, `Failed to unlink folder (${res.status})`),
+    );
+  }
+  invalidateKnowledgeCaches();
+}
+
+export async function syncLinkedFolder(
+  kbName: string,
+  folderId: string,
+): Promise<SyncFolderResponse> {
+  const res = await apiFetch(
+    apiUrl(
+      `/api/knowledge-bases/${encodeURIComponent(kbName)}/sync-folder/${encodeURIComponent(folderId)}`,
+    ),
+    { method: "POST" },
+  );
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, `Failed to sync linked folder (${res.status})`),
+    );
+  }
+  invalidateKnowledgeCaches();
+  return (await res.json()) as SyncFolderResponse;
 }
 
 export interface LightRagServerProbe {
@@ -1483,6 +1582,8 @@ export interface WebSource {
   max_depth: number;
   max_pages: number;
   enabled: boolean;
+  auto_sync_enabled: boolean;
+  sync_interval_hours: number;
   page_count: number;
   last_synced_at: string;
   last_sync_status: string;
@@ -1512,6 +1613,23 @@ export interface WebSyncResult {
   ok: boolean;
   message: string;
   results: WebSyncSourceResult[];
+}
+
+export interface WebSourceSyncJob {
+  owner_id: string;
+  kb_name: string;
+  source_id: string;
+  state: string;
+  next_run_at: number;
+  last_run_at?: number | null;
+  attempt: number;
+  error?: string | null;
+  cancel_requested: boolean;
+}
+
+export interface WebSourceSchedulePayload {
+  auto_sync_enabled: boolean;
+  sync_interval_hours: number;
 }
 
 export async function listWebSources(
@@ -1571,6 +1689,82 @@ export async function removeWebSource(
     );
   }
   invalidateKnowledgeCaches();
+}
+
+export async function listWebSourceSyncJobs(
+  kbName: string,
+  options?: { signal?: AbortSignal },
+): Promise<WebSourceSyncJob[]> {
+  const res = await apiFetch(
+    apiUrl(
+      `/api/knowledge-bases/${encodeURIComponent(kbName)}/web-source-sync`,
+    ),
+    { signal: options?.signal },
+  );
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, `Failed to list sync jobs (${res.status})`),
+    );
+  }
+  return (await res.json()) as WebSourceSyncJob[];
+}
+
+export async function updateWebSourceSchedule(
+  kbName: string,
+  sourceId: string,
+  payload: WebSourceSchedulePayload,
+): Promise<WebSource> {
+  const res = await apiFetch(
+    apiUrl(
+      `/api/knowledge-bases/${encodeURIComponent(kbName)}/web-source/${encodeURIComponent(sourceId)}/schedule`,
+    ),
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, `Failed to update sync schedule (${res.status})`),
+    );
+  }
+  invalidateKnowledgeCaches();
+  return (await res.json()) as WebSource;
+}
+
+export async function cancelWebSourceSync(
+  kbName: string,
+  sourceId: string,
+): Promise<void> {
+  const res = await apiFetch(
+    apiUrl(
+      `/api/knowledge-bases/${encodeURIComponent(kbName)}/web-source/${encodeURIComponent(sourceId)}/cancel`,
+    ),
+    { method: "POST" },
+  );
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, `Failed to cancel sync (${res.status})`),
+    );
+  }
+}
+
+export async function retryWebSourceSync(
+  kbName: string,
+  sourceId: string,
+): Promise<void> {
+  const res = await apiFetch(
+    apiUrl(
+      `/api/knowledge-bases/${encodeURIComponent(kbName)}/web-source/${encodeURIComponent(sourceId)}/retry`,
+    ),
+    { method: "POST" },
+  );
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, `Failed to retry sync (${res.status})`),
+    );
+  }
 }
 
 export async function syncWebSources(kbName: string): Promise<WebSyncResult> {

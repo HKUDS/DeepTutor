@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import builtins
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from threading import Thread
 from types import SimpleNamespace
 
 import pytest
@@ -23,6 +25,56 @@ class _AcceptedConnection:
 
     def __exit__(self, *_args: object) -> None:
         return None
+
+
+def test_loopback_health_checks_ignore_configured_proxy(monkeypatch) -> None:
+    """A proxy must not make healthy local backend/frontend probes fail."""
+
+    def serve(status: int) -> tuple[ThreadingHTTPServer, Thread]:
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:
+                self.send_response(status)
+                self.end_headers()
+
+            def log_message(self, *_args: object) -> None:
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        worker = Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        return server, worker
+
+    ready, ready_worker = serve(204)
+    proxy, proxy_worker = serve(502)
+    url = f"http://127.0.0.1:{ready.server_port}/health"
+    monkeypatch.setattr(
+        launcher.urlrequest,
+        "getproxies",
+        lambda: {"http": f"http://127.0.0.1:{proxy.server_port}"},
+    )
+    monkeypatch.setattr(launcher.urlrequest, "proxy_bypass", lambda _host: False)
+    monkeypatch.setattr(launcher.urlrequest, "_opener", None)
+    try:
+        # Prove this test environment really directs ordinary urllib traffic
+        # through the proxy; a false green here would miss the regression.
+        with pytest.raises(launcher.urlerror.HTTPError) as excinfo:
+            launcher.urlrequest.urlopen(url, timeout=1)
+        assert excinfo.value.code == 502
+
+        assert launcher._http_ready(url, timeout=1)
+        launcher._wait_for_http(
+            name="Backend",
+            url=url,
+            process=None,
+            timeout=2,
+            env_name=launcher.BACKEND_READY_TIMEOUT_ENV,
+            should_stop=lambda: False,
+        )
+    finally:
+        for server, worker in ((ready, ready_worker), (proxy, proxy_worker)):
+            server.shutdown()
+            server.server_close()
+            worker.join(timeout=1)
 
 
 def test_port_probe_detects_ipv6_only_loopback_listener(monkeypatch) -> None:
@@ -728,8 +780,8 @@ def test_ready_timeout_failure_names_the_override(monkeypatch) -> None:
     monkeypatch.setattr(launcher.time, "monotonic", lambda: next(clock))
     monkeypatch.setattr(launcher.time, "sleep", lambda _seconds: None)
     monkeypatch.setattr(
-        launcher.urlrequest,
-        "urlopen",
+        launcher._LOOPBACK_OPENER,
+        "open",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("refused")),
     )
 

@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from deeptutor.services.config.runtime_settings import ChatAttachmentLimits
 from deeptutor.services.parsing.types import ParsedDocument
 from deeptutor.services.session.attachment_parsing import parse_chat_pdf_attachments
 from deeptutor.services.storage.attachment_store import LocalDiskAttachmentStore
@@ -59,6 +60,75 @@ async def test_chat_pdf_always_uses_configured_parser(
 
     assert records[0]["extracted_text"] == "# Parsed layout\n\n![figure](image.png)"
     assert contexts == ["[File: notes.pdf]\n# Parsed layout\n\n![figure](image.png)"]
+
+
+@pytest.mark.asyncio
+async def test_configured_parser_keeps_native_image_page_markers(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    store = LocalDiskAttachmentStore(root=tmp_path / "attachments")
+    await store.put(session_id="session", attachment_id="pdf", filename="notes.pdf", data=b"pdf")
+
+    class Parser:
+        def parse(self, path: Path, **_: object) -> ParsedDocument:
+            return ParsedDocument(markdown="# Parsed layout")
+
+    monkeypatch.setattr(
+        "deeptutor.services.session.attachment_parsing.get_parse_service", lambda: Parser()
+    )
+    native = (
+        "--- Page 1 ---\nNative text\n[图片 1: image-01.png]"
+        "\n\n--- Page 2 ---\nMore text\n[图片 1: image-01.png]"
+    )
+    records, contexts = await parse_chat_pdf_attachments(
+        [{"id": "pdf", "filename": "notes.pdf", "extracted_text": native}],
+        attachment_store=store,
+        session_id="session",
+        document_texts=[f"[File: notes.pdf]\n{native}"],
+    )
+
+    extracted = records[0]["extracted_text"]
+    assert extracted.startswith("# Parsed layout")
+    assert "--- Page 1 ---\n[图片 1: image-01.png]" in extracted
+    assert "--- Page 2 ---\n[图片 1: image-01.png]" in extracted
+    assert contexts == [f"[File: notes.pdf]\n{extracted}"]
+
+
+@pytest.mark.asyncio
+async def test_image_page_markers_survive_parser_text_quota(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    store = LocalDiskAttachmentStore(root=tmp_path / "attachments")
+    await store.put(session_id="session", attachment_id="pdf", filename="notes.pdf", data=b"pdf")
+
+    class Parser:
+        def parse(self, path: Path, **_: object) -> ParsedDocument:
+            return ParsedDocument(markdown="P" * 500)
+
+    monkeypatch.setattr(
+        "deeptutor.services.session.attachment_parsing.get_parse_service", lambda: Parser()
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.session.attachment_parsing.get_chat_attachment_limits",
+        lambda: ChatAttachmentLimits(1000, 1000, 120, 120),
+    )
+    records, contexts = await parse_chat_pdf_attachments(
+        [
+            {
+                "id": "pdf",
+                "filename": "notes.pdf",
+                "extracted_text": "--- Page 1 ---\n[图片 1: image-01.png]",
+            }
+        ],
+        attachment_store=store,
+        session_id="session",
+        document_texts=[],
+    )
+
+    extracted = records[0]["extracted_text"]
+    assert len(extracted) == records[0]["extracted_chars"] == 120
+    assert extracted.endswith("--- Page 1 ---\n[图片 1: image-01.png]")
+    assert contexts == [f"[File: notes.pdf]\n{extracted}"]
 
 
 @pytest.mark.asyncio

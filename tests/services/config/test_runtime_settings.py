@@ -637,6 +637,20 @@ def test_operator_env_still_outranks_the_file_in_a_launcher_child(
     assert backend.load_system()["version_check_enabled"] is False
 
 
+def test_auth_private_login_hosts_process_env_override(tmp_path: Path) -> None:
+    service = RuntimeSettingsService(
+        tmp_path / "settings",
+        process_env={"AUTH_PRIVATE_LOGIN_HOSTS": "Private.Example;tailnet.example:8443"},
+    )
+    service.save_auth({"private_login_hosts": ["unused.example"]})
+
+    assert service.load_auth()["private_login_hosts"] == [
+        "private.example",
+        "tailnet.example:8443",
+    ]
+    assert _read_json(service.path_for("auth"))["private_login_hosts"] == ["unused.example"]
+
+
 def test_chat_attachment_limits_defaults_and_clamping(tmp_path: Path) -> None:
     service = RuntimeSettingsService(tmp_path / "settings", process_env={})
     system = service.load_system()

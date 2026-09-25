@@ -113,6 +113,7 @@ function BookPageInner() {
   const [view, setView] = useState<View>(requestedBookId ? 'opening' : requestedLearningCreation() ? 'creator' : 'list')
 
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null)
+  const selectionRequestRef = useRef(0)
   const [detail, setDetail] = useState<BookDetail | null>(null)
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null)
 
@@ -153,6 +154,7 @@ function BookPageInner() {
    * every single book, as the first thing generation ever said.
    */
   const revisionRef = useRef<number | undefined>(undefined)
+  const pendingQuizSubmissions = useRef(new Map<string, { answer: string; id: string }>())
 
   // ── Data loaders ───────────────────────────────────────────────────
 
@@ -205,10 +207,12 @@ function BookPageInner() {
    * content to draw a sidebar meant a multi-chapter book cost hundreds of
    * kilobytes per refresh. `hydratePage` fills in the one page that matters.
    */
-  const loadBookDetail = useCallback(async (id: string) => {
+  const loadBookDetail = useCallback(async (id: string, shouldApply: () => boolean = () => true) => {
     const data = await bookApi.get(id, { includeBlocks: false })
-    revisionRef.current = data.book.revision
-    setDetail(data)
+    if (shouldApply()) {
+      revisionRef.current = data.book.revision
+      setDetail(data)
+    }
     return data
   }, [])
 
@@ -400,6 +404,7 @@ function BookPageInner() {
 
   const handleSelectBook = useCallback(
     async (id: string | null, openPageId?: string | null) => {
+      const requestId = ++selectionRequestRef.current
       if (!id) {
         setSelectedBookId(null)
         setDetail(null)
@@ -412,7 +417,8 @@ function BookPageInner() {
         router.push(targetPath)
       }
       setSelectedBookId(id)
-      const data = await loadBookDetail(id)
+      const data = await loadBookDetail(id, () => selectionRequestRef.current === requestId)
+      if (selectionRequestRef.current !== requestId) return
       const hasReadableContent = data.pages.some(
         p => p.status !== 'pending' || (p.block_count ?? p.blocks.length) > 0
       )
@@ -447,6 +453,7 @@ function BookPageInner() {
   // Resource identity belongs in the path: /books/<book>[/pages/<page>].
   useEffect(() => {
     if (!requestedBookId) {
+      lastDeepLinkedBookId.current = null
       if (selectedBookId) void handleSelectBook(null)
       return
     }
@@ -457,6 +464,7 @@ function BookPageInner() {
     // to say so and hand the reader back; otherwise the shell is where they
     // stay. Selecting nothing returns to the library and to its URL.
     void handleSelectBook(requestedBookId, requestedPageId).catch(err => {
+      if (lastDeepLinkedBookId.current !== requestedBookId) return
       notify(
         t('{{action}} failed: {{reason}}', {
           action: t('Open book'),
@@ -866,6 +874,11 @@ function BookPageInner() {
     guard('Record answer', async () => {
       if (!detail || !selectedPage) return
       const bookId = detail.book.id
+      const key = `${bookId}:${selectedPage.id}:${block.id}:${args.questionId || ''}`
+      const answer = `${args.userAnswer || ''}:${String(args.isCorrect)}`
+      const pending = pendingQuizSubmissions.current.get(key)
+      const submissionId = pending?.answer === answer ? pending.id : crypto.randomUUID()
+      pendingQuizSubmissions.current.set(key, { answer, id: submissionId })
       const { progress } = await bookApi.recordQuizAttempt({
         book_id: bookId,
         page_id: selectedPage.id,
@@ -873,10 +886,14 @@ function BookPageInner() {
         question_id: args.questionId,
         user_answer: args.userAnswer,
         is_correct: args.isCorrect,
+        submission_id: submissionId,
       })
-      setDetail(current =>
-        current && current.book.id === bookId ? { ...current, progress } : current
-      )
+      if (pendingQuizSubmissions.current.get(key)?.id === submissionId) {
+        pendingQuizSubmissions.current.delete(key)
+        setDetail(current =>
+          current && current.book.id === bookId ? { ...current, progress } : current
+        )
+      }
     })
 
   /**
@@ -983,9 +1000,14 @@ function BookPageInner() {
 
   // ── Render ─────────────────────────────────────────────────────────
 
+  // A client-side route change may arrive before the next book's detail.
+  // Keep the previous reader, sidebar, and activity out of the new URL.
+  const displayView = requestedBookId && (selectedBookId !== requestedBookId || detail?.book.id !== requestedBookId)
+    ? 'opening' : view
+
   return (
     <div className="flex h-full w-full">
-      {view !== 'list' && view !== 'creator' && (
+      {displayView !== 'list' && displayView !== 'creator' && displayView !== 'opening' && (
         <BookSidebar
           book={detail?.book || pendingBook || null}
           onBackToLibrary={() => void handleSelectBook(null)}
@@ -1007,7 +1029,7 @@ function BookPageInner() {
             two readouts disagreed about what to show. Fixed slot above the
             view: it changes height only when the reader asks it to. */}
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          {view !== 'list' && (
+          {displayView !== 'list' && displayView !== 'opening' && (
             <BookGenerationActivity
               book={detail?.book || pendingBook || null}
               pages={detail?.pages || []}
@@ -1026,15 +1048,15 @@ function BookPageInner() {
             />
           )}
           <div className="min-h-0 flex-1 overflow-hidden">
-          {view === 'opening' && (
-            <div className="flex h-full w-full items-center justify-center gap-2 text-[12px] text-[var(--muted-foreground)]">
+          {displayView === 'opening' && (
+            <div role="status" aria-busy="true" className="flex h-full w-full items-center justify-center gap-2 text-[12px] text-[var(--muted-foreground)]">
               <Loader2 className="h-4 w-4 animate-spin" />
               <BookLoadingText />
             </div>
           )}
 
           {creation.dialog}
-          {view === 'list' && (
+          {displayView === 'list' && (
             <BookLibrary
               books={books}
               loading={loadingBooks}
@@ -1050,7 +1072,7 @@ function BookPageInner() {
             />
           )}
 
-          {view === 'creator' && (
+          {displayView === 'creator' && (
             <div className="h-full overflow-y-auto [scrollbar-gutter:stable]">
               <div className="mx-auto max-w-4xl px-6 pt-6">
                 <button type="button" onClick={() => void handleSelectBook(null)} className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"><ArrowLeft size={14} />{t('All books')}</button>
@@ -1066,7 +1088,7 @@ function BookPageInner() {
             </div>
           )}
 
-          {view === 'spine' && detail?.spine && (
+          {displayView === 'spine' && detail?.spine && (
             <div className="flex h-full flex-col overflow-hidden">
               <div className="flex-1 overflow-hidden">
                 <SpineEditor
@@ -1085,7 +1107,7 @@ function BookPageInner() {
             </div>
           )}
 
-          {view === 'reader' && (
+          {displayView === 'reader' && (
             // Column layout so banners push the reader down instead of
             // overflowing it — `PageReader` fills whatever height is left.
             <div className="flex h-full flex-col overflow-hidden">
@@ -1193,7 +1215,7 @@ function BookPageInner() {
             </div>
           )}
 
-          {view === 'spine' && !detail?.spine && (
+          {displayView === 'spine' && !detail?.spine && (
             <div className="flex h-full items-center justify-center text-[var(--muted-foreground)]">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('Loading spine…')}
             </div>
@@ -1201,7 +1223,7 @@ function BookPageInner() {
           </div>
         </div>
 
-        {view === 'reader' && !chatOpen && (
+        {displayView === 'reader' && !chatOpen && (
           <button
             onClick={() => setChatOpen(true)}
             className="absolute bottom-4 right-4 inline-flex items-center gap-2 rounded-full bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] shadow-lg hover:opacity-90"
@@ -1211,7 +1233,7 @@ function BookPageInner() {
           </button>
         )}
 
-        {view === 'reader' && chatOpen && (
+        {displayView === 'reader' && chatOpen && (
           <BookChatPanel
             book={detail?.book || null}
             page={selectedPage}

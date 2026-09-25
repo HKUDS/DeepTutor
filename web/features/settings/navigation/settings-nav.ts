@@ -24,6 +24,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
+  ChartNoAxesCombined,
   UserRound,
   Wrench,
   type LucideIcon,
@@ -34,6 +35,7 @@ import {
   CodexGlyph,
   DeepSeekGlyph,
   GeminiGlyph,
+  GrokGlyph,
   HermesGlyph,
   KimiGlyph,
   MimoGlyph,
@@ -327,6 +329,18 @@ const AGENT_CHILDREN: SettingsLeaf[] = [
     adminOnly: true,
   },
   {
+    key: "agent-grok",
+    href: "/settings#agent-grok",
+    label: { zh: "Grok CLI", en: "Grok CLI" },
+    blurb: {
+      zh: "DeepTutor 调用本机 Grok CLI 时的模型、推理强度与权限模式。",
+      en: "Model, reasoning effort, and permission mode for the local Grok CLI.",
+    },
+    icon: GrokGlyph as unknown as LucideIcon,
+    tile: "bg-zinc-500/10 text-zinc-700 dark:text-zinc-300",
+    adminOnly: true,
+  },
+  {
     // Gemini CLI's supported replacement.
     key: "agent-antigravity",
     href: "/settings#agent-antigravity",
@@ -494,6 +508,13 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
     children: AGENT_CHILDREN,
   },
   {
+    key: "progress",
+    label: { zh: "学习进度", en: "Learning progress" },
+    blurb: { zh: "查看自己的阅读与学习记录。", en: "Review your reading and learning activity." },
+    icon: ChartNoAxesCombined,
+    href: "/settings/progress",
+  },
+  {
     key: "learner-profile",
     learnerOnly: true,
     label: { zh: "学习档案", en: "Learner profile" },
@@ -606,6 +627,7 @@ const STORAGE_PATHS: Record<string, string> = {
   capabilities: "data/user/settings/main.yaml · agents.yaml",
   "agent-claude-code": "data/user/settings/subagent.json",
   "agent-codex": "data/user/settings/subagent.json",
+  "agent-grok": "data/user/settings/subagent.json",
   "agent-antigravity": "data/user/settings/subagent.json",
   "agent-kimi": "data/user/settings/subagent.json",
   "agent-opencode": "data/user/settings/subagent.json",

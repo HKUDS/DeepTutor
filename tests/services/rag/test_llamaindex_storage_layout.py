@@ -19,6 +19,44 @@ def _signature() -> EmbeddingSignature:
 
 
 @pytest.mark.asyncio
+async def test_reindex_receipt_excludes_a_file_skipped_by_parsing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from deeptutor.services.rag.pipelines.llamaindex import pipeline as pipeline_module
+    from deeptutor.services.rag.pipelines.llamaindex import storage as storage_module
+    from deeptutor.services.rag.pipelines.llamaindex.pipeline import LlamaIndexPipeline
+
+    raw_dir = tmp_path / "kb" / "raw"
+    raw_dir.mkdir(parents=True)
+    indexed = raw_dir / "indexed.txt"
+    skipped = raw_dir / "skipped.txt"
+    indexed.write_text("indexed content", encoding="utf-8")
+    skipped.write_text("   ", encoding="utf-8")
+
+    def create_index(documents, storage_dir: Path, *, show_progress: bool) -> None:
+        assert len(documents) == 1
+        storage_dir.mkdir(parents=True, exist_ok=True)
+        (storage_dir / "docstore.json").write_text("{}", encoding="utf-8")
+        (storage_dir / "index_store.json").write_text("{}", encoding="utf-8")
+
+    async def verify_embedding(_self) -> None:
+        return None
+
+    monkeypatch.setattr(LlamaIndexPipeline, "_configure_settings", lambda _self: None)
+    monkeypatch.setattr(LlamaIndexPipeline, "_verify_embedding_connectivity", verify_embedding)
+    monkeypatch.setattr(pipeline_module, "set_progress_callback", lambda _callback: None)
+    monkeypatch.setattr(storage_module, "create_index", create_index)
+    pipeline = LlamaIndexPipeline(kb_base_dir=str(tmp_path), signature_provider=_signature)
+    receipts: list[list[str]] = []
+
+    assert await pipeline.initialize(
+        "kb", [str(indexed), str(skipped)], indexed_file_callback=receipts.append
+    )
+
+    assert receipts == [[str(indexed)]]
+
+
+@pytest.mark.asyncio
 async def test_incremental_add_migrates_matching_legacy_index_to_flat_version(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -41,6 +41,7 @@ from .._turn_runtime_shared import (
     _reading_material_revision,
     _reading_references,
     _reading_viewport,
+    _reading_viewport_image_attachments,
     _reading_workspace_id,
     _repair_chinese_emphasis_for_persistence,
     _request_snapshot_metadata,
@@ -229,6 +230,13 @@ class TurnExecutor:
             )
         )
         try:
+            # A queued turn may start after a learner's material grant changes.
+            # Recheck before prompt construction and reading-tool execution.
+            material_id = _reading_material_id(payload.get("reading_material_id"))
+            if material_id:
+                from deeptutor.multi_user.learning_access import assert_learning_material
+
+                assert_learning_material(material_id)
             from deeptutor.agents.notebook import NotebookAnalysisAgent
             from deeptutor.book.context import build_book_context
             from deeptutor.core.context import Attachment, TurnRuntimeContext, UnifiedContext
@@ -397,6 +405,57 @@ class TurnExecutor:
                 document_texts=document_texts,
                 on_progress=_attachment_progress,
             )
+
+            # Immersive reading: the page the user is currently looking at
+            # rides along as image attachments, so a vision model sees what
+            # the question is about. A drawn page (vector diagram — common in
+            # slide-exported PDFs) leads with a full-page render, since its
+            # figures only exist as vectors and the embedded rasters alone
+            # would be meaningless fragments; the page's embedded figures
+            # follow. Total stays within READING_VIEWPORT_MAX_IMAGES (the
+            # render takes one slot). Keyed on the resolved workspace mode —
+            # the web composer sends capability "chat" with workspace_mode
+            # "immersive_reading", and the mode resolver falls back to the
+            # capability name for direct callers, so both shapes land here.
+            if workspace_mode == "immersive_reading":
+                attachment_records.extend(
+                    _reading_viewport_image_attachments(
+                        _reading_material_id(payload.get("reading_material_id")),
+                        _reading_viewport(payload.get("reading_viewport")),
+                    )
+                )
+
+            # Embedded images harvested out of office documents during
+            # extraction arrive with base64 and no URL — host them too so
+            # message previews survive the base64 pruning below and the
+            # reader pane can display them.
+            for record in attachment_records:
+                if record.get("url") or not record.get("base64"):
+                    continue
+                try:
+                    raw_bytes = _b64.b64decode(record["base64"], validate=False)
+                except Exception as exc:
+                    logger.warning(
+                        "skipping embedded-image upload for %r: invalid base64 (%s)",
+                        record.get("filename"),
+                        exc,
+                    )
+                    continue
+                try:
+                    record["url"] = await attachment_store.put(
+                        session_id=session_id,
+                        attachment_id=record.get("id") or _uuid.uuid4().hex[:12],
+                        filename=record.get("filename", "") or "image",
+                        data=raw_bytes,
+                        mime_type=record.get("mime_type", "") or "",
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "attachment store rejected embedded image %r: %s",
+                        record.get("filename"),
+                        exc,
+                    )
+
             attachments = [
                 Attachment(
                     type=r.get("type", "file"),
@@ -499,12 +558,14 @@ class TurnExecutor:
 
             # Persona: at most one behaviour preset per turn, eagerly
             # injected (a persona must shape the voice from the first
-            # token). Resolution: the user's own workspace first; non-admin
-            # users fall back to admin-authored presets (personas carry no
+            # token). Resolution: the user's own workspace first, then
+            # admin-authored presets for every role (personas carry no
             # privileged workflow, so no grant gate applies).
             from deeptutor.multi_user.context import get_current_user
-            from deeptutor.multi_user.paths import get_admin_path_service
-            from deeptutor.services.persona import PersonaService, get_persona_service
+            from deeptutor.services.persona import (
+                get_persona_service,
+                load_visible_for_context,
+            )
 
             current_user = get_current_user()
             learner_profile_prompt = ""
@@ -516,13 +577,14 @@ class TurnExecutor:
                 if account and str(account[1].get("preset") or "standard") == "learner":
                     learner_profile_prompt = prompt_block(account[1].get("learner_profile"))
             requested_persona = str(payload.get("persona") or "").strip()
-            persona_context = ""
-            if requested_persona:
-                persona_context = get_persona_service().load_for_context(requested_persona)
-                if not persona_context and not current_user.is_admin:
-                    persona_context = PersonaService(
-                        root=get_admin_path_service().get_workspace_dir() / "personas"
-                    ).load_for_context(requested_persona)
+            persona_context = (
+                load_visible_for_context(
+                    requested_persona,
+                    workspace=get_persona_service(),
+                )
+                if requested_persona
+                else ""
+            )
             active_persona = requested_persona if persona_context else ""
 
             from deeptutor.services.skill.runtime import skill_manifest
@@ -852,6 +914,7 @@ class TurnExecutor:
                     "conversation_context_text": conversation_context_text,
                     "history_token_count": history_result.token_count,
                     "history_budget": history_result.budget,
+                    "reply_language_fixed": bool(payload.get("_reply_language_fixed")),
                     "turn_id": turn_id,
                     "question_followup_context": followup_question_context or {},
                     "selection_tutor_context": selection_tutor_context or {},
