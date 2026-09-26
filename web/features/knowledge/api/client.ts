@@ -293,8 +293,8 @@ export async function listKnowledgeBases(options?: {
       const response = await apiFetch(
         apiUrl(
           options?.library
-            ? "/api/knowledge-bases?resource_library=true"
-            : "/api/knowledge-bases",
+            ? "/api/knowledge-bases/list?resource_library=true"
+            : "/api/knowledge-bases/list",
         ),
         {
           cache: "no-store",
