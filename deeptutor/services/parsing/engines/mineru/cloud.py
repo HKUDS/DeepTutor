@@ -262,7 +262,8 @@ def _request_json(
     key_pool: KeyPool,
     **kwargs,
 ) -> dict:
-    for attempt in range(2):
+    max_attempts = max(2, len(key_pool))
+    for attempt in range(max_attempts):
         api_key = key_pool.next()
         try:
             response = request(
@@ -276,7 +277,7 @@ def _request_json(
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 429:
                 key_pool.mark_429(api_key)
-                if attempt == 0:
+                if attempt < max_attempts - 1:
                     continue
             raise MinerUError(_http_error_message(exc)) from exc
         except httpx.HTTPError as exc:
