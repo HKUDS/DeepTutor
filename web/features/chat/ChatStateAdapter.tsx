@@ -4,6 +4,7 @@ import { activeWorkspaceId } from "@/lib/workspace-scope";
 import {
   clearFailedSubmission,
   readFailedSubmission,
+  serverContainsFailedSubmission,
   storeFailedSubmission,
 } from "@/lib/failed-submissions";
 
@@ -205,6 +206,8 @@ export interface ChatState {
    *  accepted (#1594). Drives the composer-adjacent error banner; the
    *  error must not render as an assistant reply. */
   submissionFailed: boolean;
+  /** The text was recovered without its attachments or other request context. */
+  submissionNeedsReview: boolean;
 }
 
 export interface SessionConfiguration {
@@ -307,6 +310,7 @@ export interface MessageItem {
   /** This submission never reached the server (#1594). Rendered with an
    *  "unsent" marker; its requestSnapshot drives the retry. */
   failedSubmission?: boolean;
+  failedSubmissionNeedsReview?: boolean;
 }
 
 interface SessionEntry extends Omit<ChatState, "sessionKey"> {
@@ -480,6 +484,7 @@ function createSessionEntry(
     selectedBranches: {},
     lastTurnFailed: false,
     submissionFailed: false,
+    submissionNeedsReview: false,
   };
 }
 
@@ -2291,20 +2296,15 @@ export function ChatStateAdapterProvider({
         readStoredChatResponseTimeout() * 1000,
       );
       // Restore a submission the server never accepted (#1594). The record
-      // only survives when no terminal evidence ever arrived, so its text
-      // is missing from the server transcript — reattach it as a clearly
-      // unsent row with a working retry. If the transcript's last user row
-      // already carries this text, the server (or another tab) accepted a
-      // retry and its view wins: drop the record instead.
+      // only survives when no terminal evidence ever arrived. Compare server
+      // row identities recorded before submission: a previous turn may have
+      // identical text, and must not erase this new unsent message.
       let restoredMessages = messages;
       let restoredStatus = loadedStatus;
       if (!options?.revalidate && loadedStatus !== "running") {
         const failedRecord = readFailedSubmission(key);
         if (failedRecord) {
-          const tailUser = [...messages]
-            .reverse()
-            .find((message) => message.role === "user");
-          if (tailUser && tailUser.content === failedRecord.content) {
+          if (serverContainsFailedSubmission(messages, failedRecord)) {
             clearFailedSubmission(key);
           } else {
             const stored = failedRecord.requestSnapshot;
@@ -2346,6 +2346,7 @@ export function ChatStateAdapterProvider({
                   : {}),
                 requestSnapshot: snapshot,
                 failedSubmission: true,
+                failedSubmissionNeedsReview: failedRecord.retryRequiresReview,
               },
             ];
             restoredStatus = "failed";
@@ -2781,6 +2782,15 @@ export function ChatStateAdapterProvider({
           content,
           capability: effectiveCapability,
           requestSnapshot,
+          priorMatchingUserIds: session.messages
+            .filter(
+              (message) =>
+                message.role === "user" &&
+                message.content === content &&
+                message.id != null &&
+                (typeof message.id === "string" || message.id > 0),
+            )
+            .map((message) => String(message.id)),
         });
       }
       return sendThroughRunner(
@@ -3134,6 +3144,10 @@ export function ChatStateAdapterProvider({
           tail?.role === "user" &&
           tail.failedSubmission === true
         );
+      })(),
+      submissionNeedsReview: (() => {
+        const tail = current.messages[current.messages.length - 1];
+        return tail?.role === "user" && tail.failedSubmissionNeedsReview === true;
       })(),
     };
   }, [state]);

@@ -2697,17 +2697,19 @@ export default function ChatWorkspace({
                       aria-hidden="true"
                     />
                     <span className="min-w-0 flex-1 text-[12px] leading-[1.5] text-[var(--foreground)]">
-                      {t(
-                        "Couldn't reach the server. Please check your connection and retry.",
-                      )}
+                      {state.submissionNeedsReview
+                        ? t("Message text was saved, but its attachments or settings could not be restored. Copy it and send again.")
+                        : t("Couldn't reach the server. Please check your connection and retry.")}
                     </span>
-                    <button
-                      type="button"
-                      onClick={handleResendMessage}
-                      className="shrink-0 rounded-md px-2 py-1 text-[11.5px] font-medium text-[var(--foreground)] hover:bg-[var(--muted)]"
-                    >
-                      {t("Resend")}
-                    </button>
+                    {!state.submissionNeedsReview ? (
+                      <button
+                        type="button"
+                        onClick={handleResendMessage}
+                        className="shrink-0 rounded-md px-2 py-1 text-[11.5px] font-medium text-[var(--foreground)] hover:bg-[var(--muted)]"
+                      >
+                        {t("Resend")}
+                      </button>
+                    ) : null}
                   </div>
                 </div>
               ) : null}

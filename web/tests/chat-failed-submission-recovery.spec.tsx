@@ -5,7 +5,7 @@ import {
   useChatStateAdapter,
 } from "@/features/chat/ChatStateAdapter";
 import { initI18n } from "@/i18n/init";
-import { storeFailedSubmission } from "@/lib/failed-submissions";
+import { readFailedSubmission, storeFailedSubmission } from "@/lib/failed-submissions";
 
 initI18n("en");
 
@@ -98,10 +98,11 @@ function completedServerSession() {
   };
 }
 
-function seedUnsentSubmission(content = "Hello offline") {
+function seedUnsentSubmission(content = "Hello offline", priorMatchingUserIds: string[] = []) {
   storeFailedSubmission("s1", {
     content,
     capability: "chat",
+    priorMatchingUserIds,
     requestSnapshot: {
       content,
       capability: "chat",
@@ -124,6 +125,7 @@ function Harness() {
         {String(state.submissionFailed)}
       </div>
       <div data-testid="lastTurnFailed">{String(state.lastTurnFailed)}</div>
+      <div data-testid="submissionNeedsReview">{String(state.submissionNeedsReview)}</div>
       <div data-testid="messages">
         {JSON.stringify(
           state.messages.map((message) => ({
@@ -291,4 +293,101 @@ it("drops the record when the server transcript already holds the submission", a
   expect(screen.getByTestId("submissionFailed").textContent).toBe("false");
   // …and the local record is cleared.
   expect(readStoredKeys()).toEqual([]);
+});
+
+it("keeps a new unsent submission when an older server turn has identical text", async () => {
+  vi.useFakeTimers();
+  try {
+    fixture.session = {
+      ...completedServerSession(),
+      messages: [
+        ...completedServerSession().messages,
+        {
+          id: 3,
+          session_id: "s1",
+          role: "user",
+          content: "Hello offline",
+          events: [],
+          attachments: [],
+          created_at: 3,
+          parent_message_id: 2,
+        },
+      ],
+    };
+    const firstView = render(
+      <ChatStateAdapterProvider>
+        <Harness />
+      </ChatStateAdapterProvider>,
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByText("Load"));
+    });
+    fireEvent.click(screen.getByText("Send"));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_400);
+    });
+    const saved = readFailedSubmission("s1");
+    expect(saved?.priorMatchingUserIds).toEqual(["3"]);
+    firstView.unmount();
+    render(
+      <ChatStateAdapterProvider>
+        <Harness />
+      </ChatStateAdapterProvider>,
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByText("Load"));
+    });
+    expect(readMessages().slice(-2)).toEqual([
+      { role: "user", content: "Hello offline", failed: false },
+      { role: "user", content: "Hello offline", failed: true },
+    ]);
+    expect(readStoredKeys()).toEqual(["s1"]);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("preserves text after storage quota errors without offering an incomplete resend", async () => {
+  const localSetItem = vi.spyOn(localStorage, "setItem").mockImplementation(() => {
+    throw new DOMException("Storage quota exceeded", "QuotaExceededError");
+  });
+  const sessionSetItem = sessionStorage.setItem.bind(sessionStorage);
+  vi.spyOn(sessionStorage, "setItem").mockImplementation((key, value) => {
+    if (value.length > 500) {
+      throw new DOMException("Storage quota exceeded", "QuotaExceededError");
+    }
+    sessionSetItem(key, value);
+  });
+  fixture.session = completedServerSession();
+  storeFailedSubmission("s1", {
+    content: "Text with attachment",
+    capability: "chat",
+    priorMatchingUserIds: [],
+    requestSnapshot: {
+      content: "Text with attachment",
+      capability: "chat",
+      language: "en",
+      attachments: [{ filename: "large.png", base64: "A".repeat(10_000) }],
+    },
+  });
+  const saved = readFailedSubmission("s1");
+  expect(saved?.content).toBe("Text with attachment");
+  expect(saved?.retryRequiresReview).toBe(true);
+  expect(JSON.stringify(saved?.requestSnapshot)).not.toContain("large.png");
+  expect(localSetItem).toHaveBeenCalled();
+  render(
+    <ChatStateAdapterProvider>
+      <Harness />
+    </ChatStateAdapterProvider>,
+  );
+  await act(async () => {
+    fireEvent.click(screen.getByText("Load"));
+  });
+  expect(readMessages().at(-1)).toEqual({
+    role: "user",
+    content: "Text with attachment",
+    failed: true,
+  });
+  expect(screen.getByTestId("submissionNeedsReview").textContent).toBe("true");
+  expect(screen.getByTestId("lastTurnFailed").textContent).toBe("false");
 });

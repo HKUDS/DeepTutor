@@ -7,6 +7,8 @@ interface ChatBranchMessage extends BranchMessage {
   /** Set when this submission never reached the server (#1594): the turn
    *  left no assistant row, so the unsent user row is the retry handle. */
   failedSubmission?: boolean;
+  /** A quota fallback kept the text but not enough context for safe resend. */
+  failedSubmissionNeedsReview?: boolean;
 }
 
 /** A failed turn can be retried only while its tail is on the visible branch:
@@ -22,7 +24,7 @@ export function isFailedTurnVisible<T extends ChatBranchMessage>(
   if (tail?.role === "assistant") {
     return buildVisiblePath(messages, selectedBranches).messages.at(-1) === tail;
   }
-  if (tail?.role === "user" && tail.failedSubmission) {
+  if (tail?.role === "user" && tail.failedSubmission && !tail.failedSubmissionNeedsReview) {
     return buildVisiblePath(messages, selectedBranches).messages.at(-1) === tail;
   }
   return false;

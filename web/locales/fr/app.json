@@ -458,6 +458,7 @@
   "Reference space": "Espace de référence",
   "Connection lost while generating. Please retry your message.": "Connexion perdue pendant la génération. Veuillez renvoyer votre message.",
   "Couldn't reach the server. Please check your connection and retry.": "Impossible de joindre le serveur. Vérifiez votre connexion et réessayez.",
+  "Message text was saved, but its attachments or settings could not be restored. Copy it and send again.": "Le texte du message a été enregistré, mais les pièces jointes ou les paramètres n’ont pas pu être restaurés. Copiez le texte et renvoyez-le.",
   "Today": "Aujourd'hui",
   "Yesterday": "Hier",
   "Last 7 days": "7 derniers jours",

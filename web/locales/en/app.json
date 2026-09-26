@@ -348,6 +348,7 @@
   "Reference space": "Reference space",
   "Connection lost while generating. Please retry your message.": "Connection lost while generating. Please retry your message.",
   "Couldn't reach the server. Please check your connection and retry.": "Couldn't reach the server. Please check your connection and retry.",
+  "Message text was saved, but its attachments or settings could not be restored. Copy it and send again.": "Message text was saved, but its attachments or settings could not be restored. Copy it and send again.",
   "Today": "Today",
   "Yesterday": "Yesterday",
   "Last 7 days": "Last 7 days",
