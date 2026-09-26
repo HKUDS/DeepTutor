@@ -617,6 +617,8 @@ def _learning_surface_for_path(
         ("/api/question", "chat"),
         ("/api/question-notebook", "chat"),
         ("/api/sessions", "chat"),
+        # Task cards are private to the learner's current content workspace.
+        ("/api/task-board", "chat"),
         # Mastery Path progress/topics are the learner's own per-user data;
         # the router already scopes every record to the current account, so
         # all methods (including progress PATCH/POST) belong to "chat".
