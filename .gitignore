@@ -76,6 +76,9 @@ venv.bak/
 # Node modules
 # No trailing slash: also ignore symlinked installs borrowed by worktrees.
 node_modules
+# pnpm metadata generated locally; this project tracks package-lock.json instead.
+web/pnpm-lock.yaml
+web/pnpm-workspace.yaml
 
 # Next.js build output
 .next/
