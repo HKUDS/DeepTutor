@@ -27,6 +27,15 @@ class DataVolumePermissionError(PermissionError):
     """The data volume cannot be written by the process that will run the app."""
 
 
+def current_process_ids() -> tuple[int, int]:
+    """Return effective UID/GID, or -1 where POSIX process ids are unavailable."""
+    get_euid = getattr(os, "geteuid", None)
+    get_egid = getattr(os, "getegid", None)
+    uid = int(get_euid()) if callable(get_euid) else -1
+    gid = int(get_egid()) if callable(get_egid) else -1
+    return uid, gid
+
+
 def parse_id(value: str | None, *, default: int, name: str) -> int:
     """Parse a PUID/PGID-style identifier, rejecting root and non-integers."""
     raw = (value or "").strip() or str(default)
@@ -52,8 +61,11 @@ def resolve_runtime_ids(
     try to ``setuid`` without ``CAP_SETUID``. Rootful Docker remaps to
     ``PUID``/``PGID`` (default 1000/1000).
     """
-    current_uid = os.geteuid() if euid is None else euid
-    current_gid = os.getegid() if egid is None else egid
+    current_uid, current_gid = current_process_ids()
+    if euid is not None:
+        current_uid = euid
+    if egid is not None:
+        current_gid = egid
     if current_uid != 0:
         return current_uid, current_gid
     return (
@@ -75,11 +87,16 @@ def describe_path_ownership(path: Path) -> str:
 def format_data_volume_permission_error(
     path: Path,
     *,
-    uid: int,
-    gid: int,
+    uid: int | None = None,
+    gid: int | None = None,
     cause: BaseException | None = None,
 ) -> str:
     """Explain a UID mismatch in terms operators can act on (PUID/PGID)."""
+    current_uid, current_gid = current_process_ids()
+    if uid is None:
+        uid = current_uid
+    if gid is None:
+        gid = current_gid
     owner = describe_path_ownership(path)
     cause_txt = f" ({cause})" if cause else ""
     return (
@@ -105,14 +122,19 @@ def ensure_data_volume_writable(
     (the FastAPI backend) probe as themselves.
     """
     target = Path(path)
-    probe_uid = os.geteuid() if uid is None else uid
-    probe_gid = os.getegid() if gid is None else gid
+    current_uid, current_gid = current_process_ids()
+    probe_uid = current_uid if uid is None else uid
+    probe_gid = current_gid if gid is None else gid
+    fork = getattr(os, "fork", None)
+    setuid = getattr(os, "setuid", None)
+    setgid = getattr(os, "setgid", None)
     drop_privs = (
-        os.geteuid() == 0
+        current_uid == 0
         and probe_uid != 0
-        and (probe_uid != os.geteuid() or probe_gid != os.getegid())
-        and hasattr(os, "fork")
-        and hasattr(os, "setuid")
+        and (probe_uid != current_uid or probe_gid != current_gid)
+        and callable(fork)
+        and callable(setuid)
+        and callable(setgid)
     )
     if drop_privs:
         _ensure_writable_as(target, probe_uid, probe_gid)
@@ -151,15 +173,25 @@ def _try_write_or_raise(path: Path, uid: int, gid: int) -> None:
 
 def _ensure_writable_as(path: Path, uid: int, gid: int) -> None:
     """Fork, drop to *uid*/*gid*, and probe. Parent raises on child failure."""
-    pid = os.fork()
+    fork = getattr(os, "fork", None)
+    setgid = getattr(os, "setgid", None)
+    setuid = getattr(os, "setuid", None)
+    waitpid = getattr(os, "waitpid", None)
+    wifexited = getattr(os, "WIFEXITED", None)
+    wexitstatus = getattr(os, "WEXITSTATUS", None)
+
+    if not all(callable(func) for func in (fork, setgid, setuid, waitpid, wifexited, wexitstatus)):
+        raise RuntimeError("POSIX privilege-drop APIs are unavailable on this platform")
+
+    pid = fork()
     if pid == 0:  # pragma: no cover - child process
         try:
-            os.setgid(gid)
-            os.setuid(uid)
+            setgid(gid)
+            setuid(uid)
             _try_write_or_raise(path, uid, gid)
             os._exit(0)
         except OSError:
             os._exit(1)
-    _, status = os.waitpid(pid, 0)
-    if not os.WIFEXITED(status) or os.WEXITSTATUS(status) != 0:
+    _, status = waitpid(pid, 0)
+    if not wifexited(status) or wexitstatus(status) != 0:
         raise DataVolumePermissionError(format_data_volume_permission_error(path, uid=uid, gid=gid))

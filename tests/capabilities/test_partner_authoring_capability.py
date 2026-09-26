@@ -5,8 +5,12 @@ from pathlib import Path
 import pytest
 
 from deeptutor.capabilities.partner_authoring import PartnerAuthoringCapability
-from deeptutor.capabilities.partner_authoring.binding import is_partner_authoring_turn
+from deeptutor.capabilities.partner_authoring.binding import (
+    is_partner_authoring_turn,
+    partner_authoring_trigger,
+)
 from deeptutor.capabilities.partner_authoring.tools import ProposePartnerTool
+from deeptutor.capabilities.registry import active_loop_capabilities
 from deeptutor.core.context import UnifiedContext
 from deeptutor.multi_user.models import CurrentUser, UserScope
 from deeptutor.multi_user.paths import user_context
@@ -26,36 +30,98 @@ def test_partner_authoring_activation_requires_action_and_partner_object() -> No
     assert not is_partner_authoring_turn(partner_context)
 
 
-def _selected_context(message: str) -> UnifiedContext:
-    context = _context(message)
-    context.active_capability = "partner_authoring"
-    return context
-
-
-def test_explicit_selection_forces_a_draft_before_finishing() -> None:
-    capability = PartnerAuthoringCapability()
-    context = _selected_context("创建一个伙伴")
-    assert "propose_partner" in capability.finish_instruction(context, "好的")
-    context.extension("partner_authoring")["draft_created"] = "draft"
-    assert capability.finish_instruction(context, "完成") == ""
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Create a partner that quizzes me on French verbs",
+        "I want a patient math tutor",
+        "Can you make me a strict coach?",
+        "Set up a new study buddy for physics",
+        "我想要一个数学导师",
+        "来个学习搭子",
+        'Create a tutor named "Ada"',
+        "I don't want a coach; create a tutor instead",
+        "请不要创建一个伙伴，请帮我创建一个数学导师",
+    ],
+)
+def test_partner_authoring_activates_on_a_creation_request(message: str) -> None:
+    assert is_partner_authoring_turn(_context(message))
 
 
 @pytest.mark.parametrize(
     "message",
     [
-        # Filing a report about the false trigger supplies one word from each
-        # list, so the bug report about the bug triggers the bug.
-        'I want to file an issue about this: Spurious "Create Partner" triggers hijack',
+        "I want to file an issue about the Partner bug",
+        "I want to report that Partner creation keeps triggering",
+        "I need help understanding my tutor's feedback",
+        "Make sure my tutor sees this",
+        "Why can a flash-tier model answer well? The release notes mention Partner channels.",
+        "我想提交一个关于伙伴功能的 bug",
+        "生成的回答里提到了伙伴",
+        "我需要解释一下，为什么会触发伙伴创建",
+        "I don't want a tutor",
+        "I do not need a partner",
+        "Please don't create a partner",
+        "I don't want you to create a tutor",
+        "我不想要一个伙伴",
+        "请不要创建一个伙伴",
+        "我不想让你创建一个伙伴",
+        'Why does "create a Partner" trigger here?',
+        "The issue title is 'create a Partner'",
+        "请解释“创建一个伙伴”为什么会误触发",
+        "```text\ncreate a Partner\n```",
+        "> create a Partner\nWhy did this trigger?",
         "Please add a companion-style tone to my summary",
+        "Why does create a Partner trigger here?",
+        "Create a Partner issue for me",
+        "Can you make a partner checklist?",
+        "请解释为什么创建一个伙伴会触发",
+        "帮我创建一个伙伴功能的说明",
     ],
 )
-def test_a_keyword_match_never_discards_the_answer(message: str) -> None:
-    # A finish instruction makes the loop throw away the reply written this
-    # round, so it has to cost something the user actually asked for (#1587).
-    capability = PartnerAuthoringCapability()
+def test_partner_authoring_ignores_turns_that_only_mention_a_partner(message: str) -> None:
     context = _context(message)
+    assert not is_partner_authoring_turn(context)
+    assert "partner_authoring" not in {
+        capability.name for capability in active_loop_capabilities(context)
+    }
+
+
+def test_explicit_partner_authoring_selection_still_routes_the_turn() -> None:
+    context = _context("I don't want a tutor")
+    context.active_capability = "partner_authoring"
     assert is_partner_authoring_turn(context)
-    assert capability.finish_instruction(context, "A careful answer.") == ""
+
+
+def test_capability_forces_a_draft_before_finishing() -> None:
+    capability = PartnerAuthoringCapability()
+    context = _context("创建一个伙伴")
+    context.active_capability = "partner_authoring"
+    assert "propose_partner" in capability.finish_instruction(context, "好的")
+    context.extension("partner_authoring")["draft_created"] = "draft"
+    assert capability.finish_instruction(context, "完成") == ""
+
+
+def test_heuristic_match_never_discards_a_written_answer() -> None:
+    capability = PartnerAuthoringCapability()
+    context = _context("Create a partner that quizzes me on French verbs")
+    assert partner_authoring_trigger(context) == "heuristic"
+    assert capability.finish_instruction(context, "A complete answer") == ""
+    prompt = capability.system_block(context, language="en", prompts={})
+    assert prompt is not None
+    assert "First decide from the full request" in prompt.content
+    assert "If they are asking about an existing Partner" in prompt.content
+
+
+def test_explicit_selection_keeps_the_authoring_instruction() -> None:
+    capability = PartnerAuthoringCapability()
+    context = _context("Create a partner")
+    context.active_capability = "partner_authoring"
+    assert partner_authoring_trigger(context) == "explicit"
+    prompt = capability.system_block(context, language="en", prompts={})
+    assert prompt is not None
+    assert "call `propose_partner` exactly once" in prompt.content
+    assert "propose_partner" in capability.finish_instruction(context, "A description only")
 
 
 @pytest.mark.asyncio

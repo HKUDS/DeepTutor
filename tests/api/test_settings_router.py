@@ -100,7 +100,7 @@ def test_ui_settings_update_rejects_unsupported_language() -> None:
     from pydantic import ValidationError
 
     with pytest.raises(ValidationError):
-        settings_router.UISettingsUpdate(language="de")
+        settings_router.UISettingsUpdate(language="xx")
     with pytest.raises(ValidationError):
         settings_router.UISettingsUpdate(response_language="xx")
 
@@ -668,6 +668,13 @@ def test_llm_provider_choices_include_unifically() -> None:
 
     assert llm["unifically"]["label"] == "Unifically"
     assert llm["unifically"]["base_url"] == "https://api.unifically.com/v1"
+
+
+def test_llm_provider_choices_include_cheaperinference() -> None:
+    llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
+
+    assert llm["cheaperinference"]["label"] == "Cheaper Inference"
+    assert llm["cheaperinference"]["base_url"] == "https://api.cheaperinference.com/v1"
 
 
 def test_llm_provider_choices_include_novita() -> None:
