@@ -670,6 +670,13 @@ def test_llm_provider_choices_include_unifically() -> None:
     assert llm["unifically"]["base_url"] == "https://api.unifically.com/v1"
 
 
+def test_llm_provider_choices_include_cheaperinference() -> None:
+    llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
+
+    assert llm["cheaperinference"]["label"] == "Cheaper Inference"
+    assert llm["cheaperinference"]["base_url"] == "https://api.cheaperinference.com/v1"
+
+
 def test_llm_provider_choices_include_novita() -> None:
     llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
 
