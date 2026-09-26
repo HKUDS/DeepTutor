@@ -159,7 +159,11 @@ class PathService:
 
         if not candidate.is_file():
             return None
-        if candidate.suffix.lower() in self._PRIVATE_SUFFIXES:
+        # Markdown is a valid generated artifact (for example, an exec tool
+        # may write a report.md). Keep the private-suffix guard for settings,
+        # source, and runtime files, but let the explicit public-output
+        # allowlist below decide whether a .md artifact is readable.
+        if candidate.suffix.lower() in self._PRIVATE_SUFFIXES - {".md"}:
             return None
 
         parts = relative.parts

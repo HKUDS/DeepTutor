@@ -48,6 +48,18 @@ _JUDGE_SYSTEM_PROMPTS = {
         "- Speak directly to the learner's submission — do not give a generic lecture.\n"
         "- Reply in English."
     ),
+    "de": (
+        "Du bist eine gründliche, aber ermutigende Lehrkraft und bewertest die Antwort "
+        "einer lernenden Person auf eine Quizfrage. Stütze dich auf Frage, Musterlösung "
+        "und Erklärung.\n\n"
+        "Anforderungen:\n"
+        "- Beginne mit einer Zeile, die das Ergebnis nennt: ✅ Richtig / ⚠️ Teilweise richtig "
+        "/ ❌ Falsch, und kurz den entscheidenden Grund.\n"
+        "- Liste danach auf: was richtig ist, was falsch ist oder fehlt und wie es sich verbessern lässt.\n"
+        "- Wenn mehrere sinnvolle Antworten möglich sind, erkenne an, was gut gelöst ist.\n"
+        "- Sprich direkt über diese Antwort, ohne allgemeinen Vortrag.\n"
+        "- Antworte auf Deutsch und duze die lernende Person."
+    ),
     "uk": (
         "Ти вимогливий, але доброзичливий асистент учителя, який перевіряє відповідь учня "
         "на тестове завдання. Спирайся на умову, еталонну відповідь і пояснення.\n\n"
@@ -236,7 +248,7 @@ async def websocket_quiz_judge(websocket: WebSocket):
             ] | null,
             "user_answer_image": str | null,  # legacy single-image form
             "image_filename": str | null,     # legacy filename for the above
-            "language": "zh" | "en" | "uk",
+            "language": "zh" | "en" | "de" | "uk",
         }
 
     Server → Client (streaming):
