@@ -3105,7 +3105,7 @@ class _RephraseLoopHost:
         return outcome
 
     async def resolve_pause(self, dispatch: DispatchOutcome) -> bool:
-        from deeptutor.agents.chat.agentic_pipeline import (
+        from deeptutor.agents.loop.pipeline import (
             _format_user_reply_body,
             _normalise_user_reply,
         )

@@ -16,6 +16,7 @@ import pytest
 
 from deeptutor.agents.research.pipeline import ResearchPipeline, _RephraseLoopHost
 from deeptutor.core.context import UnifiedContext
+from deeptutor.runtime.agentic.tool_dispatch import DispatchOutcome
 from deeptutor.runtime.stream_bus import StreamBus
 
 
@@ -119,3 +120,44 @@ async def test_rephrase_force_finalize_returns_empty_text(
     assert text == ""
     assert completed is False
     assert calls == 0
+
+
+async def _canned_user_reply():
+    return {"text": "focus on transformer architectures"}
+
+
+@pytest.mark.asyncio
+async def test_resolve_pause_substitutes_user_reply(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A user reply resolves the pending ``ask_user`` pause in place.
+
+    Regression (HKUDS/DeepTutor#1600): ``resolve_pause`` lazily imported
+    the reply helpers from ``deeptutor.agents.chat.agentic_pipeline``, but
+    they had moved to ``deeptutor.agents.loop.pipeline``. The stale import
+    raised at reply time and the rephrase loop crashed into its fallback,
+    so the outline ran even though the ``ask_user`` card was showing."""
+    pipeline = _make_pipeline(monkeypatch)
+    host = _make_host(pipeline, max_rounds=3)
+    host._context.runtime.wait_for_user_reply = _canned_user_reply
+
+    dispatch = DispatchOutcome(
+        tool_messages=[
+            {
+                "role": "tool",
+                "tool_call_id": "call_ask",
+                "name": "ask_user",
+                "content": "ask_user pause",
+            },
+        ],
+        pause=True,
+        pause_payload={"ask_user": {"questions": [{"id": "q1", "prompt": "Which focus?"}]}},
+        pause_tool_call_id="call_ask",
+    )
+
+    resolved = await host.resolve_pause(dispatch)
+
+    assert resolved is True
+    content = dispatch.tool_messages[0]["content"]
+    assert "focus on transformer architectures" in content
+    assert "ask_user resolved" in content
