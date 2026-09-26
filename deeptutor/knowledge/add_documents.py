@@ -31,6 +31,8 @@ from deeptutor.services.rag.provider_binding import resolve_bound_provider
 from deeptutor.services.rag.service import RAGService
 from deeptutor.services.setup.data_volume import (
     DataVolumePermissionError,
+    effective_gid,
+    effective_uid,
     ensure_data_volume_writable,
     format_data_volume_permission_error,
 )
@@ -416,7 +418,7 @@ class DocumentAdder:
                 logger.exception("Permission denied while indexing %s: %s", doc_file.name, e)
                 raise DataVolumePermissionError(
                     format_data_volume_permission_error(
-                        self.kb_dir, uid=os.geteuid(), gid=os.getegid(), cause=e
+                        self.kb_dir, uid=effective_uid(), gid=effective_gid(), cause=e
                     )
                 ) from e
             except Exception as e:
