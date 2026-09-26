@@ -168,6 +168,83 @@ def test_load_migrates_only_legacy_dashscope_stt_model(tmp_path: Path):
     assert json.loads(catalog_path.read_text(encoding="utf-8")) == loaded
 
 
+def test_load_migrates_legacy_stt_for_effective_provider_refs(tmp_path: Path):
+    catalog_path = tmp_path / "model_catalog.json"
+    catalog_path.write_text(
+        json.dumps(
+            {
+                "connections": [
+                    {"id": "dashscope", "provider": "dashscope"},
+                    {"id": "openai", "provider": "openai"},
+                ],
+                "services": {
+                    "stt": {
+                        "profiles": [
+                            {
+                                "id": "source",
+                                "binding": "dashscope",
+                                "models": [
+                                    {"id": "source-model", "model": "paraformer-realtime-v2"}
+                                ],
+                            },
+                            {
+                                "id": "profile-ref",
+                                "binding": "custom",
+                                "provider_ref": {"connection_id": "dashscope"},
+                                "models": [{"id": "profile-model", "model": "paraformer-v2"}],
+                            },
+                            {
+                                "id": "model-ref",
+                                "binding": "openai",
+                                "models": [
+                                    {
+                                        "id": "model-ref-model",
+                                        "model": "paraformer-v2",
+                                        "provider_ref": {"service": "stt", "profile_id": "source"},
+                                    }
+                                ],
+                            },
+                            {
+                                "id": "model-override",
+                                "binding": "dashscope",
+                                "provider_ref": {"connection_id": "dashscope"},
+                                "models": [
+                                    {
+                                        "id": "other-model",
+                                        "model": "paraformer-v2",
+                                        "provider_ref": {"connection_id": "openai"},
+                                    }
+                                ],
+                            },
+                            {
+                                "id": "profile-override",
+                                "binding": "dashscope",
+                                "provider_ref": {"connection_id": "openai"},
+                                "models": [{"id": "other-profile-model", "model": "paraformer-v2"}],
+                            },
+                        ]
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = ModelCatalogService(path=catalog_path).load()
+    models = {
+        profile["id"]: profile["models"][0]["model"]
+        for profile in loaded["services"]["stt"]["profiles"]
+    }
+    assert models == {
+        "source": "paraformer-realtime-v2",
+        "profile-ref": "paraformer-realtime-v2",
+        "model-ref": "paraformer-realtime-v2",
+        "model-override": "paraformer-v2",
+        "profile-override": "paraformer-v2",
+    }
+    assert json.loads(catalog_path.read_text(encoding="utf-8")) == loaded
+
+
 def test_load_normalizes_wire_api_to_supported_profile_backends(tmp_path: Path):
     catalog_path = tmp_path / "model_catalog.json"
     catalog_path.write_text(
