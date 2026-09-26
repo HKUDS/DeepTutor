@@ -58,6 +58,46 @@ def test_authentication_is_required_for_reads_and_writes(client):
         ).status_code == 401
 
 
+def test_learning_policy_allows_board_reads_and_writes_only_with_chat_surface(client, monkeypatch):
+    from deeptutor.multi_user.grants import learner_grant, save_grant
+    from deeptutor.multi_user.identity import save_user
+
+    save_user("admin", "placeholder", role="admin")
+    learner = save_user("alice", "placeholder", preset="learner")
+    monkeypatch.setattr(
+        auth,
+        "decode_token",
+        lambda token: (
+            TokenPayload(username="alice", role="user", user_id=learner["id"])
+            if token == "alice"
+            else None
+        ),
+    )
+
+    grant = learner_grant(learner["id"])
+    save_grant(learner["id"], grant)
+
+    assert client.get("/api/task-board", headers=headers()).status_code == 200
+    created = client.post("/api/task-board/cards", json={"title": "Practice"}, headers=headers())
+    assert created.status_code == 201
+    card_id = created.json()["cards"][0]["id"]
+    updated = client.patch(
+        f"/api/task-board/cards/{card_id}", json={"status": "doing"}, headers=headers()
+    )
+    assert updated.status_code == 200
+    assert updated.json()["cards"][0]["status"] == "doing"
+
+    grant["learning_policy"]["allowed_surfaces"] = ["reading"]
+    save_grant(learner["id"], grant)
+    assert client.get("/api/task-board", headers=headers()).status_code == 403
+    assert (
+        client.post("/api/task-board/cards", json={"title": "Hidden"}, headers=headers())
+    ).status_code == 403
+    assert (
+        client.patch(f"/api/task-board/cards/{card_id}", json={"status": "done"}, headers=headers())
+    ).status_code == 403
+
+
 def test_create_edit_move_archive_restore_and_reload(client):
     assert client.get("/api/task-board", headers=headers()).json() == {"cards": []}
     response = client.post(
