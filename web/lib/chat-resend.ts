@@ -4,9 +4,13 @@ type MessageId = number | string;
 
 interface ChatBranchMessage extends BranchMessage {
   role: "user" | "assistant" | "system";
+  /** Set when this submission never reached the server (#1594): the turn
+   *  left no assistant row, so the unsent user row is the retry handle. */
+  failedSubmission?: boolean;
 }
 
-/** A failed turn can be retried only while its assistant is on the visible branch. */
+/** A failed turn can be retried only while its tail is on the visible branch:
+ *  either the failed assistant reply, or a user row flagged as never sent. */
 export function isFailedTurnVisible<T extends ChatBranchMessage>(
   messages: T[],
   selectedBranches: Record<string, number>,
@@ -15,8 +19,13 @@ export function isFailedTurnVisible<T extends ChatBranchMessage>(
 ): boolean {
   if (isStreaming || (status !== "failed" && status !== "rejected")) return false;
   const tail = messages[messages.length - 1];
-  if (tail?.role !== "assistant") return false;
-  return buildVisiblePath(messages, selectedBranches).messages.at(-1) === tail;
+  if (tail?.role === "assistant") {
+    return buildVisiblePath(messages, selectedBranches).messages.at(-1) === tail;
+  }
+  if (tail?.role === "user" && tail.failedSubmission) {
+    return buildVisiblePath(messages, selectedBranches).messages.at(-1) === tail;
+  }
+  return false;
 }
 
 interface LocalMessage {

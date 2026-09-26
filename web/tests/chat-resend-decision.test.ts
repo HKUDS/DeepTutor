@@ -56,3 +56,19 @@ test("resend is unavailable when the failed tail is hidden by branch selection",
   assert.equal(isFailedTurnVisible([root, older, newer], { "1": 2 }, "failed", false), false);
   assert.equal(isFailedTurnVisible([root, older, newer], { "1": 3 }, "failed", false), true);
 });
+
+test("an unsent submission tail is retryable without an assistant row (#1594)", () => {
+  const root = { id: 1, role: "user" as const, parentMessageId: null };
+  const reply = { id: 2, role: "assistant" as const, parentMessageId: 1 };
+  const unsent = { id: -3, role: "user" as const, parentMessageId: 2, failedSubmission: true };
+  // A submission the server never received leaves the flagged user row as
+  // the tail — that row is the retry handle.
+  assert.equal(isFailedTurnVisible([root, reply, unsent], {}, "failed", false), true);
+  // Without the flag (ordinary optimistic row mid-submit) or while streaming,
+  // no retry affordance is derived from it.
+  assert.equal(
+    isFailedTurnVisible([root, reply, { ...unsent, failedSubmission: false }], {}, "failed", false),
+    false,
+  );
+  assert.equal(isFailedTurnVisible([root, reply, unsent], {}, "failed", true), false);
+});

@@ -4283,6 +4283,7 @@
   "Interrupted": "Interrompu",
   "Cancelling…": "Annulation…",
   "Resend": "Renvoyer",
+  "Not sent": "Non envoyé",
   "Or upload a folder (one-time import)": "Ou importer un dossier (importation unique)",
   "Choosing a folder here is a one-time import. For a folder that stays in sync, use Linked folders.": "Choisir un dossier ici lance une importation unique. Pour garder un dossier synchronisé, utilisez les dossiers liés.",
   "Linked folders": "Dossiers liés",
