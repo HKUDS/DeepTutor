@@ -33,7 +33,9 @@ print(summary)
 
 const RichCodeBlockPreview = dynamic(
   () => import("@/components/common/RichCodeBlock"),
-  { ssr: false },
+  {
+    ssr: false,
+  },
 );
 
 export default function AppearanceSettingsPage() {

@@ -1,13 +1,8 @@
-import type { AppLanguage } from "@/i18n/languages";
+import { localeForLanguage, type AppLanguage } from "@/i18n/languages";
 
 export type Language = AppLanguage;
 
-export function getLocale(lang: Language): string {
-  if (lang === "zh") return "zh-CN";
-  if (lang === "fr") return "fr-FR";
-  if (lang === "uk") return "uk-UA";
-  return "en-US";
-}
+export const getLocale = localeForLanguage;
 
 export function formatDate(
   date: Date,

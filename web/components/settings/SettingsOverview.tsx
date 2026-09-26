@@ -1,9 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, ChevronDown, Languages } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { APP_LANGUAGES, isAppLanguage, type AppLanguage } from "@/i18n/init";
 import SettingsPresetsPanel from "@/components/settings/SettingsPresetsPanel";
 import {
   SettingRow,
@@ -14,33 +13,45 @@ import {
 } from "./shared";
 import { RESPONSE_LANGUAGE_OPTIONS, useUiSettings } from "@/features/settings/store";
 import { useSettings } from "@/features/settings/store/SettingsStore";
+import { APP_LANGUAGE_DEFINITIONS, isAppLanguage } from "@/i18n/languages";
+import type { AppLanguage } from "@/i18n/languages";
 
+/** A compact selector that remains usable as the language list grows. */
 function LanguageSelect({
-  label,
   value,
+  label,
   onChange,
 }: {
+  value: AppLanguage;
   label: string;
-  value: string;
   onChange: (next: AppLanguage) => void;
 }) {
-  const { t } = useTranslation();
   return (
-    <select
-      aria-label={label}
-      className={`${selectClass} min-w-[200px]`}
-      value={value}
-      onChange={(event) => {
-        const next = event.currentTarget.value;
-        if (isAppLanguage(next)) onChange(next);
-      }}
-    >
-      {APP_LANGUAGES.map(({ code, labelKey }) => (
-        <option key={code} value={code} className={selectOptionClass}>
-          {t(labelKey)}
-        </option>
-      ))}
-    </select>
+    <div className="relative w-[180px] sm:w-[220px]">
+      <Languages
+        aria-hidden="true"
+        className="pointer-events-none absolute left-3 top-1/2 z-10 size-4 -translate-y-1/2 text-[var(--muted-foreground)]"
+      />
+      <select
+        aria-label={label}
+        value={value}
+        onChange={(event) => {
+          const next = event.currentTarget.value;
+          if (isAppLanguage(next)) onChange(next);
+        }}
+        className={`${selectClass} h-9 py-0 pl-9 pr-9 text-[13px] font-medium shadow-sm hover:border-[var(--muted-foreground)]/60`}
+      >
+        {APP_LANGUAGE_DEFINITIONS.map(({ code, nativeLabel }) => (
+          <option key={code} value={code} className={selectOptionClass}>
+            {nativeLabel}
+          </option>
+        ))}
+      </select>
+      <ChevronDown
+        aria-hidden="true"
+        className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-[var(--muted-foreground)]"
+      />
+    </div>
   );
 }
 

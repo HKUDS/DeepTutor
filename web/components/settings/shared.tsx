@@ -4,8 +4,7 @@ import type {
   CatalogProfile,
   ServiceName,
 } from "@/features/settings/store/SettingsStore";
-import type { AppLanguage } from "@/i18n/init";
-import { getLocale } from "@/lib/datetime";
+import { localeForLanguage, type AppLanguage } from "@/i18n/languages";
 
 // Tailwind 3 silently drops `<color>-[var(--token)]/NN`: our tokens are hex
 // literals, so it cannot split them into channels and emits no rule at all.
@@ -92,7 +91,7 @@ export function formatContextWindowUpdatedAt(
   if (!value) return "";
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleString(getLocale(language), {
+  return parsed.toLocaleString(localeForLanguage(language), {
     dateStyle: "medium",
     timeStyle: "short",
   });

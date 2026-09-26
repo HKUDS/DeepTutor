@@ -20,6 +20,7 @@ import { useTranslation } from "react-i18next";
 
 import ProviderIcon from "@/components/common/ProviderIcon";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import type { AppLanguage } from "@/i18n/languages";
 import { apiFetch, apiUrl } from "@/lib/api";
 import {
   reasoningEffortOptions,
@@ -66,7 +67,6 @@ import {
   selectOptionClass,
   stringifyExtraHeaders,
 } from "./shared";
-import type { AppLanguage } from "@/i18n/init";
 
 // The protocol an endpoint speaks. Labels and hints are keyed by the backend
 // value so the select never invents a format the registry does not know.

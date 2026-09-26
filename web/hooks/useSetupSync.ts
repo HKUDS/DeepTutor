@@ -66,13 +66,14 @@ export function useSetupSync(
         };
         if (cancelled) return;
         if (isAppLanguage(payload.language)) {
-          writeStoredLanguage(payload.language);
+          const language = payload.language;
+          writeStoredLanguage(language);
           writeStoredResponseLanguage(
             resolveResponseLanguage(
               typeof payload.response_language === "string"
                 ? payload.response_language
                 : null,
-              payload.language,
+              language,
             ),
           );
         }

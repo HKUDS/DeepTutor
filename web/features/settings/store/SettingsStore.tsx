@@ -24,6 +24,7 @@ import {
   type ResponseLanguage,
 } from "@/context/app-shell-storage";
 import { useAppShell } from "@/context/AppShellContext";
+import type { AppLanguage } from "@/i18n/languages";
 import { apiFetch, apiUrl } from "@/lib/api";
 import { invalidateLLMOptionsCache } from "@/lib/llm-options";
 import { setModelReasoningEffort } from "@/lib/reasoning-effort";
@@ -41,7 +42,6 @@ import {
   type RegistryEdit,
 } from "@/lib/provider-registry";
 import { browserStorage } from "@/shared/storage";
-import type { AppLanguage } from "@/i18n/init";
 
 import {
   CONNECTABLE_SERVICES,
