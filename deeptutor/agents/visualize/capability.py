@@ -45,7 +45,13 @@ _NO_PAYLOAD_TOOL_CALLING_DISABLED = (
     "Settings → Models → LLM → Capabilities → Tool calling → Supported, "
     "then run the visualization again."
 )
-_NO_PAYLOAD = "The visualization agent finished without a valid canvas payload."
+_NO_PAYLOAD = (
+    "The visualization agent finished without a valid canvas payload. A "
+    "reasoning model can spend most of its output budget on internal "
+    "thinking before the submit_visualization call is even written, which "
+    "cuts the call off mid-argument. If this repeats, raise Max tokens for "
+    "Visualize in Settings → Capabilities → Visualize."
+)
 
 # Stages exposed in the manifest. The first three cover the text-emitting
 # path (svg/chartjs/mermaid/html); the rest cover the manim subprocess

@@ -42,6 +42,8 @@ class _PipelineWithoutSubmission:
 
 async def _run_visualize(
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    language: str = "en",
 ) -> tuple[list[StreamEvent], str]:
     """Run one visualize turn whose loop commits nothing.
 
@@ -53,7 +55,7 @@ async def _run_visualize(
         user_message="visualize a binary search",
         active_capability="visualize",
         config_overrides={"render_mode": "html"},
-        language="en",
+        language=language,
     )
 
     bus = StreamBus()
@@ -116,13 +118,34 @@ async def test_local_provider_is_warned_up_front_and_diagnosed_on_failure(
 async def test_tool_capable_provider_keeps_the_generic_diagnosis(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """With tools attached, a missing payload is the model's own doing."""
+    """With tools attached, a missing payload is the model's own doing.
+
+    A reasoning model that spends its budget on chain-of-thought before
+    finishing ``submit_visualization`` looks identical to this from the
+    capability's side (#1546), so the message must point at the concrete
+    remedy — the Settings knob that actually reaches this call — not just
+    describe the symptom.
+    """
     _use_llm_config(monkeypatch, "openai", "gpt-4o")
 
     events, error = await _run_visualize(monkeypatch)
 
     assert _warnings(events) == []
-    assert error == "The visualization agent finished without a valid canvas payload."
+    assert error.startswith("The visualization agent finished without a valid canvas payload.")
+    assert "Settings → Capabilities → Visualize" in error
+
+
+@pytest.mark.asyncio
+async def test_chinese_no_payload_diagnosis_names_the_localized_setting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _use_llm_config(monkeypatch, "openai", "gpt-4o")
+
+    _, error = await _run_visualize(monkeypatch, language="zh")
+
+    assert "设置 → 能力 → 可视化" in error
+    assert "最大 token 数" in error
+    assert "Max tokens" not in error
 
 
 @pytest.mark.asyncio
@@ -142,7 +165,7 @@ async def test_declaring_tool_support_clears_the_warning(
         set_catalog_capability_overrides([])
 
     assert _warnings(events) == []
-    assert error == "The visualization agent finished without a valid canvas payload."
+    assert error.startswith("The visualization agent finished without a valid canvas payload.")
 
 
 @pytest.mark.asyncio
@@ -159,4 +182,4 @@ async def test_probe_failure_leaves_the_turn_alone(
     events, error = await _run_visualize(monkeypatch)
 
     assert _warnings(events) == []
-    assert error == "The visualization agent finished without a valid canvas payload."
+    assert error.startswith("The visualization agent finished without a valid canvas payload.")
