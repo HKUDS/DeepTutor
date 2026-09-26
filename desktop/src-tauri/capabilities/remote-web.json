@@ -1,10 +1,26 @@
 {
   "$schema": "../gen/schemas/remote-schema.json",
   "identifier": "deeptutor-web-remote",
-  "description": "Lets the loopback-served DeepTutor UI call the desktop shell (notifications, dialogs, updater in later phases).",
+  "description": "Exactly what the loopback-served DeepTutor UI may ask the desktop shell for. The window is a remote origin as far as Tauri is concerned, so this list is a privilege boundary: a page served by any other loopback port (reachable through an in-app link) inherits it, which is why the first-run wizard's commands and the native pickers are not here.",
   "windows": ["main"],
   "remote": {
     "urls": ["http://127.0.0.1:*", "http://localhost:*"]
   },
-  "permissions": ["core:default", "deeptutor:default"]
+  "permissions": [
+    "core:event:default",
+    "deeptutor:allow-desktop-status",
+    "deeptutor:allow-restart-service",
+    "deeptutor:allow-shell-settings",
+    "deeptutor:allow-update-shell-settings",
+    "deeptutor:allow-note-ui-ready",
+    "deeptutor:allow-notify-round-complete",
+    "deeptutor:allow-take-notification-target",
+    "deeptutor:allow-take-open-request",
+    "deeptutor:allow-check-updates",
+    "deeptutor:allow-install-shell-update",
+    "deeptutor:allow-log-event",
+    "deeptutor:allow-reveal-in-folder",
+    "deeptutor:allow-read-local-file",
+    "deeptutor:allow-restart-app"
+  ]
 }

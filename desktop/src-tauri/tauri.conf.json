@@ -24,6 +24,7 @@
         "https://github.com/st01cs/DeepTutor/releases/latest/download/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEU1Qzg2RURBMTY4MEI1NTQKUldSVXRZQVcybTdJNVhRZDdHd1dHbzRwcml1U1kzNHRUM2FxRFptaVdRN1NZV3VzTFdZV2ZCTjcK",
+      "requireSignedVersion": true,
       "windows": {
         "installMode": "passive"
       }

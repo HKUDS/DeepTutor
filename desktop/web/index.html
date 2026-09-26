@@ -169,9 +169,12 @@
           <h2 id="done-heading"></h2>
           <p class="hint" id="done-hint"></p>
           <p><button type="button" id="wizard-later" hidden></button></p>
-          <p class="error" id="wizard-error" hidden></p>
         </section>
       </div>
+      <!-- Outside the steps on purpose: "could not read that folder" is a
+           `step-data` failure, and an error node inside a hidden step is a
+           failure the user never sees. -->
+      <p class="error" id="wizard-error" hidden></p>
       <div class="footer">
         <button type="button" id="wizard-back"></button>
         <span class="spacer"></span>
@@ -186,7 +189,12 @@
       const splashEl = document.getElementById("splash");
       const wizardEl = document.getElementById("wizard");
 
-      // Called from Rust through WebviewWindow::eval.
+      // Called from Rust through WebviewWindow::eval. This is the *splash*
+      // error surface; the wizard has its own (`showWizardError`) because a
+      // wizard failure belongs inside the wizard card, not on the hidden
+      // splash behind it. Keeping them separate is load-bearing: a plain
+      // `function showError` here would be shadowed by the assignment above
+      // (the assignment runs last) and every wizard error would go nowhere.
       window.setStatus = (text) => {
         statusEl.textContent = text;
       };
@@ -331,13 +339,23 @@
         document.getElementById("opt-notify").checked = state.notifications;
       }
 
-      function showError(text) {
+      // Deliberately *not* named `showError`: that name belongs to the splash
+      // surface Rust drives through `eval`, and reusing it here would be
+      // silently overwritten at script-evaluation time.
+      function showWizardError(text) {
         const error = document.getElementById("wizard-error");
         error.hidden = false;
         error.textContent = text;
       }
 
+      function clearWizardError() {
+        const error = document.getElementById("wizard-error");
+        error.hidden = true;
+        error.textContent = "";
+      }
+
       async function apply() {
+        clearWizardError();
         try {
           const outcome = await invoke("apply_first_run", {
             choices: {
@@ -358,7 +376,7 @@
           }
           enterSplash();
         } catch (error) {
-          showError(String(error));
+          showWizardError(String(error));
         }
       }
 
@@ -368,6 +386,7 @@
       }
 
       document.getElementById("pick-dir").addEventListener("click", async () => {
+        clearWizardError();
         try {
           const picked = await invoke("pick_folder", {
             options: { title: copy().dataHeading },
@@ -375,7 +394,7 @@
           if (picked) state.dataDir = picked;
           render();
         } catch (error) {
-          showError(String(error));
+          showWizardError(String(error));
         }
       });
 

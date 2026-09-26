@@ -716,8 +716,10 @@ dependencies = [
 name = "deeptutor-desktop"
 version = "1.6.10"
 dependencies = [
+ "base64 0.22.1",
  "flate2",
  "libc",
+ "minisign-verify",
  "serde",
  "serde_json",
  "sha2",

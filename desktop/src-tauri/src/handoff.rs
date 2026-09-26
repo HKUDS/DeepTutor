@@ -6,6 +6,7 @@
 //! a webview that may still be showing the splash.
 
 use std::collections::VecDeque;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Instant;
 
@@ -17,6 +18,9 @@ use crate::deeplink::{classify_args, classify_url, OpenRequest};
 /// A double-clicked selection of files can be long; past this, the queue keeps
 /// the most recent hand-offs and drops the rest rather than growing forever.
 const MAX_QUEUED: usize = 8;
+/// Same reasoning for the read allowances: enough for a hand-off or a
+/// multi-select, small enough that it cannot grow without bound.
+const MAX_READABLE: usize = 32;
 
 struct Queued {
     request: OpenRequest,
@@ -29,6 +33,15 @@ struct Queued {
 #[derive(Default)]
 pub struct OpenQueue {
     pending: Mutex<VecDeque<Queued>>,
+    /// Paths the shell itself handed over, i.e. the only ones the webview is
+    /// allowed to read back.
+    ///
+    /// `plugin:deeptutor|read_local_file` used to accept any absolute path,
+    /// which made one script inside the loopback-served UI enough to exfiltrate
+    /// any readable file on the machine. An allowance is granted when the shell
+    /// queues a file hand-off (Dock drop, file association, "Open with") or when
+    /// the user picks a file in the native panel, and the read consumes it.
+    readable: Mutex<VecDeque<PathBuf>>,
 }
 
 impl OpenQueue {
@@ -72,6 +85,12 @@ impl OpenQueue {
     }
 
     pub fn push(&self, request: OpenRequest, source: &'static str, raw: &str) {
+        // A file hand-off is also the permission to read that one file back:
+        // the webview cannot see real paths, so this queue is where the path
+        // and the trust to open it come from together.
+        if let OpenRequest::File { path } = &request {
+            self.grant_read(path);
+        }
         let mut pending = self.pending.lock().expect("handoff lock poisoned");
         if pending.len() >= MAX_QUEUED {
             pending.pop_front();
@@ -82,6 +101,30 @@ impl OpenQueue {
             raw: raw.to_string(),
             at: Instant::now(),
         });
+    }
+
+    /// Allow one read of `path` through the shell's IPC bridge.
+    ///
+    /// Grants stack (up to [`MAX_READABLE`]): handing the same file over twice
+    /// has to allow two reads, because the UI claims and reads them one by one.
+    pub fn grant_read(&self, path: &Path) {
+        let mut readable = self.readable.lock().expect("handoff lock poisoned");
+        if readable.len() >= MAX_READABLE {
+            readable.pop_front();
+        }
+        readable.push_back(path.to_path_buf());
+    }
+
+    /// Consume the allowance for `path`; false when it was never granted.
+    pub fn take_read_grant(&self, path: &Path) -> bool {
+        let mut readable = self.readable.lock().expect("handoff lock poisoned");
+        match readable.iter().position(|granted| granted == path) {
+            Some(index) => {
+                readable.remove(index);
+                true
+            }
+            None => false,
+        }
     }
 
     pub fn take(&self) -> Option<OpenRequestPayload> {
@@ -179,5 +222,42 @@ mod tests {
         let file = queue.take().expect("file");
         assert_eq!(file.path.as_deref(), Some("/tmp/notes.md"));
         assert_eq!(file.source, "argv");
+    }
+
+    /// The webview may only read files the shell handed it (or the user picked),
+    /// and each allowance is good for exactly one read.
+    #[test]
+    fn only_handed_over_paths_may_be_read_back() {
+        let queue = OpenQueue::new();
+        assert!(!queue.take_read_grant(Path::new("/etc/passwd")));
+
+        queue.push_args(
+            vec!["argv0".to_string(), "/tmp/paper.pdf".to_string()],
+            "argv",
+        );
+        // The path is readable even after `take` drained the queue: the read
+        // happens after the UI has claimed the hand-off.
+        let request = queue.take().expect("file request");
+        assert_eq!(request.path.as_deref(), Some("/tmp/paper.pdf"));
+        assert!(queue.take_read_grant(Path::new("/tmp/paper.pdf")));
+        assert!(!queue.take_read_grant(Path::new("/tmp/paper.pdf")));
+        assert!(!queue.take_read_grant(Path::new("/tmp/other.pdf")));
+
+        // Picker results are granted explicitly, one read per grant.
+        queue.grant_read(Path::new("/tmp/picked.pdf"));
+        queue.grant_read(Path::new("/tmp/picked.pdf"));
+        assert!(queue.take_read_grant(Path::new("/tmp/picked.pdf")));
+        assert!(queue.take_read_grant(Path::new("/tmp/picked.pdf")));
+        assert!(!queue.take_read_grant(Path::new("/tmp/picked.pdf")));
+    }
+
+    #[test]
+    fn the_read_allowance_stays_bounded() {
+        let queue = OpenQueue::new();
+        for index in 0..MAX_READABLE + 5 {
+            queue.grant_read(Path::new(&format!("/tmp/file-{index}")));
+        }
+        assert!(!queue.take_read_grant(Path::new("/tmp/file-0")));
+        assert!(queue.take_read_grant(Path::new(&format!("/tmp/file-{}", MAX_READABLE + 4))));
     }
 }

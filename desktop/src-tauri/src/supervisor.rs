@@ -20,14 +20,15 @@ use tauri_plugin_deeptutor::{
     RuntimeSnapshot, RuntimeUpdateReport, SettingsPatch, ShellSettingsSnapshot, StartupTimings,
     WindowGeometry,
 };
-use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use tauri_plugin_notification::NotificationExt;
 
 use crate::handoff::OpenQueue;
 use crate::notify::NotificationCenter;
 use crate::runtime_info::{RuntimeInfo, SUPPORTED_SCHEMA_VERSION};
-use crate::runtime_pack::{InstalledPack, PackInstaller};
+use crate::runtime_pack::{InstalledPack, PackInstaller, PackRelease};
 use crate::settings::{Bootstrap, ShellSettings};
+use crate::strings::{tr, tr_code, Locale};
 
 /// The launcher can spend minutes on a first production frontend build; this
 /// timeout only exists so a wedged child does not leave a splash forever.
@@ -52,6 +53,20 @@ pub struct ShellConfig {
     pub python_override: Option<PathBuf>,
     pub state_path: PathBuf,
     pub logs_dir: PathBuf,
+    /// Run the loopback IPC self-test once the window is handed over.
+    ///
+    /// Off by default: the probe exists to prove Tauri's remote-origin ACL still
+    /// reaches the shell, and leaving it on in a shipped build means every
+    /// launch evals a script into the live UI and (when the restart leg existed)
+    /// bounced the local service seconds after the user saw it. `--remote-ipc-probe`
+    /// or `DEEPTUTOR_DESKTOP_PROBE=1` turns it on for a diagnostic run.
+    pub probe_remote_ipc: bool,
+    /// minisign public key for the runtime-pack catalog, from the environment.
+    ///
+    /// The windowed shell prefers the updater key from `tauri.conf.json` when
+    /// this is unset (see `Supervisor::catalog_pubkey`); the headless gates have
+    /// no app handle and use this.
+    pub catalog_pubkey: Option<String>,
 }
 
 impl ShellConfig {
@@ -83,6 +98,10 @@ impl ShellConfig {
             state_path: home.join("desktop").join("runtime.json"),
             logs_dir: home.join("desktop").join("logs"),
             python_override: env("DEEPTUTOR_DESKTOP_PYTHON"),
+            probe_remote_ipc: env_flag(read_env, "DEEPTUTOR_DESKTOP_PROBE"),
+            catalog_pubkey: read_env("DEEPTUTOR_DESKTOP_PACK_CATALOG_PUBKEY")
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty()),
             default_home,
             home,
             workdir,
@@ -189,6 +208,14 @@ fn env_path_from(raw: Option<String>) -> Option<PathBuf> {
     Some(PathBuf::from(trimmed))
 }
 
+/// A boolean-ish environment variable: only explicit truthy values count.
+fn env_flag(read_env: &dyn Fn(&str) -> Option<String>, key: &str) -> bool {
+    matches!(
+        read_env(key).as_deref().map(str::trim),
+        Some("1") | Some("true") | Some("yes") | Some("on")
+    )
+}
+
 /// `DEEPTUTOR_HOME` wins so a developer can point the shell at a checkout.
 fn resolve_home_with(env: &dyn Fn(&str) -> Option<PathBuf>) -> PathBuf {
     if let Some(explicit) = env("DEEPTUTOR_HOME") {
@@ -283,10 +310,12 @@ pub struct Supervisor {
     generation: AtomicU64,
     launch_count: AtomicU64,
     restarts: AtomicU64,
-    /// How many times the remote-IPC self test has run; only the first round
-    /// exercises `restart_service` (otherwise every navigation would restart
-    /// the service again, forever).
-    probe_rounds: AtomicU64,
+    /// The port the window was last handed over to.
+    ///
+    /// The navigation policy needs it *after* a restart deletes the launcher's
+    /// state file (and while the replacement is still starting), so it is kept
+    /// here rather than re-read every time.
+    frontend_port: Mutex<Option<u16>>,
     restart_lock: Mutex<()>,
     /// Set once by `new_shared`; lets a `&self` method (the IPC restart path)
     /// spawn the next supervisor thread.
@@ -319,7 +348,7 @@ impl Supervisor {
             generation: AtomicU64::new(0),
             launch_count: AtomicU64::new(0),
             restarts: AtomicU64::new(0),
-            probe_rounds: AtomicU64::new(0),
+            frontend_port: Mutex::new(None),
             restart_lock: Mutex::new(()),
             self_ref: OnceLock::new(),
             app: OnceLock::new(),
@@ -362,6 +391,7 @@ impl Supervisor {
     }
 
     fn run(&self, generation: u64) {
+        let locale = self.locale();
         let mut crashes = 0u32;
         // The first-run wizard runs in the splash (app origin). Nothing is
         // spawned until it has been answered: the launcher's `--home` depends on
@@ -401,7 +431,11 @@ impl Supervisor {
                     if !self.sleep_interruptible(backoff, generation) {
                         return;
                     }
-                    self.set_status("正在重启本地服务 ...");
+                    self.set_status(&tr(
+                        locale,
+                        "正在重启本地服务 ...",
+                        "Restarting the local service ...",
+                    ));
                 }
             }
         }
@@ -409,10 +443,15 @@ impl Supervisor {
 
     /// Block the launch until the wizard has been answered (or the app quits).
     fn await_first_run(&self, generation: u64) -> bool {
+        let locale = self.locale();
         if !self.needs_first_run() {
             return true;
         }
-        self.set_status("首次启动：请在下方完成设置 ...");
+        self.set_status(&tr(
+            locale,
+            "首次启动：请在下方完成设置 ...",
+            "First launch: finish the setup below ...",
+        ));
         // Without this line, "the app opened but nothing ever started" has no
         // trace at all: the gate deliberately spawns no process to inspect.
         self.append_shell_log("waiting for the first-run wizard to be completed");
@@ -430,10 +469,24 @@ impl Supervisor {
             if !announced && started.elapsed() > Duration::from_secs(120) {
                 announced = true;
                 self.append_shell_log("still waiting for the first-run wizard to be completed");
-                self.set_status("仍在等待完成首次设置（可在托盘菜单退出）...");
+                self.set_status(&tr(
+                    locale,
+                    "仍在等待完成首次设置（可在托盘菜单退出）...",
+                    "Still waiting for the first-run setup (you can quit from the tray menu) ...",
+                ));
             }
             std::thread::sleep(POLL_INTERVAL);
         }
+    }
+
+    /// The language the shell's own surfaces speak.
+    pub fn locale(&self) -> Locale {
+        let setting = self
+            .settings
+            .lock()
+            .map(|settings| settings.locale.clone())
+            .unwrap_or_default();
+        Locale::resolve(&setting, &default_locale())
     }
 
     fn needs_first_run(&self) -> bool {
@@ -445,7 +498,12 @@ impl Supervisor {
 
     /// Spawn the launcher and wait for its ready handshake.
     fn handshake(&self, generation: u64) -> Handshake {
-        self.set_status("正在启动本地服务 ...");
+        let locale = self.locale();
+        self.set_status(&tr(
+            locale,
+            "正在启动本地服务 ...",
+            "Starting the local service ...",
+        ));
         if let Err(error) = self.spawn_launcher() {
             return Handshake::Failed(error);
         }
@@ -466,9 +524,16 @@ impl Supervisor {
                     continue;
                 }
                 if info.schema_version != SUPPORTED_SCHEMA_VERSION {
-                    return Handshake::Failed(format!(
-                        "运行时状态文件版本不受支持 ({})，请更新桌面应用。",
-                        info.schema_version
+                    return Handshake::Failed(tr(
+                        locale,
+                        format!(
+                            "运行时状态文件版本不受支持 ({})，请更新桌面应用。",
+                            info.schema_version
+                        ),
+                        format!(
+                            "The runtime state file version ({}) is not supported; update the desktop app.",
+                            info.schema_version
+                        ),
                     ));
                 }
                 match info.status.as_str() {
@@ -483,12 +548,16 @@ impl Supervisor {
                                 Handshake::Ready
                             }
                             None => Handshake::Failed(
-                                "运行时状态缺少 frontend_url，无法打开界面。".into(),
+                                tr(locale, "运行时状态缺少 frontend_url，无法打开界面。", "The runtime state has no frontend_url, so the window cannot be opened."),
                             ),
                         };
                     }
                     "stopped" => {
-                        return Handshake::Failed("本地服务在就绪前退出，请查看日志。".into())
+                        return Handshake::Failed(tr(
+                            locale,
+                            "本地服务在就绪前退出，请查看日志。",
+                            "The local service exited before it was ready; check the logs.",
+                        ))
                     }
                     _ => {}
                 }
@@ -505,7 +574,14 @@ impl Supervisor {
                 return Handshake::Failed(message);
             }
             if Instant::now() >= deadline {
-                return Handshake::Failed("本地服务启动超时，请查看日志。".to_string());
+                return Handshake::Failed(
+                    tr(
+                        locale,
+                        "本地服务启动超时，请查看日志。",
+                        "The local service did not start in time; check the logs.",
+                    )
+                    .to_string(),
+                );
             }
             std::thread::sleep(POLL_INTERVAL);
         }
@@ -538,8 +614,13 @@ impl Supervisor {
     }
 
     fn spawn_launcher(&self) -> Result<(), String> {
+        let locale = self.locale();
         if let Err(error) = fs::create_dir_all(&self.config.logs_dir) {
-            return Err(format!("无法创建日志目录: {error}"));
+            return Err(tr(
+                locale,
+                format!("无法创建日志目录: {error}"),
+                format!("Could not create the log directory: {error}"),
+            ));
         }
         let interpreter = self.config.resolve_interpreter()?;
         self.append_shell_log(&format!(
@@ -558,10 +639,20 @@ impl Supervisor {
             .create(true)
             .append(true)
             .open(self.config.logs_dir.join("launcher.log"))
-            .map_err(|error| format!("无法打开日志文件: {error}"))?;
-        let stderr = stdout
-            .try_clone()
-            .map_err(|error| format!("无法复用日志句柄: {error}"))?;
+            .map_err(|error| {
+                tr(
+                    locale,
+                    format!("无法打开日志文件: {error}"),
+                    format!("Could not open the log file: {error}"),
+                )
+            })?;
+        let stderr = stdout.try_clone().map_err(|error| {
+            tr(
+                locale,
+                format!("无法复用日志句柄: {error}"),
+                format!("Could not duplicate the log handle: {error}"),
+            )
+        })?;
 
         let mut command = Command::new(&interpreter.path);
         command
@@ -619,9 +710,16 @@ impl Supervisor {
         }
 
         let child = command.spawn().map_err(|error| {
-            format!(
-                "无法启动 Python launcher ({})：{error}",
-                interpreter.path.display()
+            tr(
+                locale,
+                format!(
+                    "无法启动 Python launcher ({})：{error}",
+                    interpreter.path.display()
+                ),
+                format!(
+                    "Could not start the Python launcher ({}): {error}",
+                    interpreter.path.display()
+                ),
             )
         })?;
         *self.child.lock().expect("child lock poisoned") = Some(child);
@@ -631,6 +729,26 @@ impl Supervisor {
             Ordering::SeqCst,
         );
         Ok(())
+    }
+
+    /// The installer every catalog read goes through.
+    fn installer(&self) -> PackInstaller {
+        PackInstaller::new(&self.config.home).with_catalog_pubkey(self.catalog_pubkey())
+    }
+
+    /// The minisign key the runtime catalog must be signed with.
+    ///
+    /// An environment override wins (headless runs, CI, support), otherwise the
+    /// key the shell plane already trusts from `tauri.conf.json` is reused: one
+    /// keypair for both planes, and nothing the webview can reach can weaken it.
+    pub fn catalog_pubkey(&self) -> Option<String> {
+        if let Some(explicit) = self.config.catalog_pubkey.clone() {
+            return Some(explicit);
+        }
+        let app = self.app.get()?;
+        let updater = app.config().plugins.0.get("updater")?.clone();
+        let pubkey = updater.get("pubkey")?.as_str()?.trim().to_string();
+        (!pubkey.is_empty()).then_some(pubkey)
     }
 
     fn take_exit_code(&self) -> Option<i32> {
@@ -660,6 +778,7 @@ impl Supervisor {
     }
 
     fn open(&self, url: &str) {
+        let locale = self.locale();
         self.set_status(&format!("已就绪：{url}"));
         let parsed = match tauri::Url::parse(url) {
             Ok(parsed) => parsed,
@@ -668,11 +787,22 @@ impl Supervisor {
                 return;
             }
         };
+        // Remember where the UI lives before navigating: from here on the
+        // navigation policy treats exactly this port as "ours" and everything
+        // else on loopback as somebody else's page.
+        if let Ok(mut guard) = self.frontend_port.lock() {
+            *guard = parsed.port_or_known_default();
+        }
         let result = {
             let guard = self.window.lock().expect("window lock poisoned");
             match guard.as_ref() {
                 Some(window) => window.navigate(parsed).map_err(|error| error.to_string()),
-                None => Err("窗口尚未创建".to_string()),
+                None => Err(tr(
+                    locale,
+                    "窗口尚未创建",
+                    "The window has not been created yet",
+                )
+                .to_string()),
             }
         };
         if let Err(error) = result {
@@ -682,7 +812,23 @@ impl Supervisor {
         self.verify_remote_ipc();
     }
 
-    /// Probe IPC from *inside* the loopback page.
+    /// The port the window is (or is about to be) serving the UI from.
+    ///
+    /// Remembered from the last hand-over; before the first one, read from the
+    /// launcher's state file. `None` means "not yet known", and the navigation
+    /// policy treats an unknown port as not ours rather than trusting all of
+    /// loopback.
+    pub fn frontend_port(&self) -> Option<u16> {
+        if let Ok(guard) = self.frontend_port.lock() {
+            if let Some(port) = *guard {
+                return Some(port);
+            }
+        }
+        let url = RuntimeInfo::read(&self.config.state_path)?.frontend_url?;
+        tauri::Url::parse(&url).ok()?.port_or_known_default()
+    }
+
+    /// Probe IPC from *inside* the loopback page, when asked to.
     ///
     /// The splash runs on the app origin, where IPC needs no `remote` grant, so
     /// a successful call there proves nothing about the capability the real UI
@@ -691,14 +837,17 @@ impl Supervisor {
     /// missing or rejected", which IPC itself cannot report.
     ///
     /// Verified 2026-09-24 (Phase 0): core/plugin commands reach the shell from
-    /// the loopback origin and the `http://127.0.0.1:*` grant works, but
-    /// application commands do not — hence `plugin:deeptutor|desktop_status`.
+    /// the loopback origin and the remote grant works, but application commands
+    /// do not — hence `plugin:deeptutor|desktop_status`.
+    ///
+    /// Diagnostic only (`--remote-ipc-probe`): it evals into the live UI, and it
+    /// used to call `restart_service` on its first round, which bounced the
+    /// local service seconds after every launch.
     fn verify_remote_ipc(&self) {
-        let round = self.probe_rounds.fetch_add(1, Ordering::SeqCst) + 1;
-        let allow_restart = if round == 1 { "true" } else { "false" };
-        // The flag has to travel with the probe: a separate eval lands on the
-        // outgoing document while the navigation is still in flight.
-        let script = format!("window.__deeptutorAllowRestart = {allow_restart};{PROBE_SCRIPT}");
+        if !self.config.probe_remote_ipc {
+            return;
+        }
+        let script = PROBE_SCRIPT;
         for attempt in 1..=3 {
             std::thread::sleep(Duration::from_secs(3));
             self.append_shell_log(&format!("remote-ipc probe dispatched (attempt {attempt})"));
@@ -707,7 +856,7 @@ impl Supervisor {
                 let Some(window) = guard.as_ref() else {
                     return;
                 };
-                if window.eval(&script).is_err() {
+                if window.eval(script).is_err() {
                     self.append_shell_log("remote-ipc probe eval failed");
                     return;
                 }
@@ -755,6 +904,7 @@ impl Supervisor {
 
     /// Surface a fatal shell error and make sure nothing keeps running behind it.
     pub fn fail(&self, message: &str) {
+        let locale = self.locale();
         self.append_shell_log(message);
         if let Ok(mut status) = self.last_status.lock() {
             *status = message.to_string();
@@ -773,7 +923,11 @@ impl Supervisor {
             let _ = app
                 .dialog()
                 .message(message.to_string())
-                .title("DeepTutor 启动失败")
+                .title(tr(
+                    locale,
+                    "DeepTutor 启动失败",
+                    "DeepTutor failed to start",
+                ))
                 .kind(MessageDialogKind::Error)
                 .blocking_show();
         }
@@ -859,12 +1013,17 @@ impl Supervisor {
 
     /// Manual restart from the UI or the menu.
     pub fn restart(&self) -> Result<(), String> {
-        let _guard = self
-            .restart_lock
-            .lock()
-            .map_err(|_| "重启锁不可用".to_string())?;
+        let locale = self.locale();
+        let _guard = self.restart_lock.lock().map_err(|_| {
+            tr(locale, "重启锁不可用", "The restart lock is unavailable").to_string()
+        })?;
         if self.stopping.load(Ordering::SeqCst) {
-            return Err("应用正在退出，无法重启".to_string());
+            return Err(tr(
+                locale,
+                "应用正在退出，无法重启",
+                "The app is quitting, so it cannot restart the service",
+            )
+            .to_string());
         }
         // A user-initiated restart also clears a previous "stopped" flag, so a
         // restart after a failed handshake genuinely retries.
@@ -875,7 +1034,11 @@ impl Supervisor {
         self.stopping.store(false, Ordering::SeqCst);
         self.terminate_child();
         let _ = fs::remove_file(&self.config.state_path);
-        self.set_status("正在重新启动本地服务 ...");
+        self.set_status(&tr(
+            locale,
+            "正在重新启动本地服务 ...",
+            "Restarting the local service ...",
+        ));
         self.append_shell_log("manual restart requested");
         self.spawn_thread(generation);
         Ok(())
@@ -975,6 +1138,18 @@ impl DesktopBackend for Supervisor {
         self.handoffs.take()
     }
 
+    fn locale(&self) -> String {
+        Supervisor::locale(self).code().to_string()
+    }
+
+    fn allow_local_read(&self, path: &Path) {
+        self.handoffs.grant_read(path);
+    }
+
+    fn take_local_read_permission(&self, path: &Path) -> bool {
+        self.handoffs.take_read_grant(path)
+    }
+
     fn first_run(&self) -> FirstRunState {
         Supervisor::first_run_state(self)
     }
@@ -983,8 +1158,12 @@ impl DesktopBackend for Supervisor {
         Supervisor::apply_first_run(self, choices)
     }
 
-    fn check_runtime_updates(&self) -> RuntimeUpdateReport {
-        Supervisor::check_runtime_updates(self)
+    fn preview_updates(&self) -> RuntimeUpdateReport {
+        Supervisor::preview_runtime_updates(self, None)
+    }
+
+    fn confirm_and_install_runtime_update(&self) -> RuntimeUpdateReport {
+        Supervisor::confirm_and_install_runtime_update(self)
     }
 }
 
@@ -1015,10 +1194,15 @@ impl Supervisor {
         &self,
         patch: SettingsPatch,
     ) -> Result<ShellSettingsSnapshot, String> {
-        let mut guard = self
-            .settings
-            .lock()
-            .map_err(|_| "设置不可用（锁已损坏）".to_string())?;
+        let locale = self.locale();
+        let mut guard = self.settings.lock().map_err(|_| {
+            tr(
+                locale,
+                "设置不可用（锁已损坏）",
+                "Settings are unavailable (the lock is poisoned)",
+            )
+            .to_string()
+        })?;
         if let Some(value) = patch.close_to_tray {
             guard.close_to_tray = value;
         }
@@ -1028,7 +1212,11 @@ impl Supervisor {
         if let Some(value) = patch.locale {
             let value = value.trim().to_string();
             if !value.is_empty() && value != "zh-CN" && value != "en" {
-                return Err(format!("不支持的语言：{value}"));
+                return Err(tr(
+                    locale,
+                    format!("不支持的语言：{value}"),
+                    format!("Unsupported language: {value}"),
+                ));
             }
             guard.locale = value;
         }
@@ -1037,13 +1225,25 @@ impl Supervisor {
         }
         if let Some(value) = patch.pack_catalog {
             let value = value.trim().to_string();
-            guard.pack_catalog = if value.is_empty() { None } else { Some(value) };
+            guard.pack_catalog = if value.is_empty() {
+                None
+            } else {
+                Some(validate_update_source(&value, locale)?)
+            };
         }
         guard.save(&self.config.home)?;
         // The notification preference is read on the hot path, so mirror it
         // instead of taking the settings lock for every round that finishes.
         self.notifications.set_enabled(guard.notifications);
+        let language_changed = Locale::resolve(&guard.locale, &default_locale()) != locale;
         drop(guard);
+        // The menu bar and the tray are native chrome built once at startup;
+        // without this a language change would only take effect on relaunch.
+        if language_changed {
+            if let Some(app) = self.app.get() {
+                let _ = crate::app::refresh_chrome(app);
+            }
+        }
         Ok(self.shell_settings())
     }
 
@@ -1052,6 +1252,8 @@ impl Supervisor {
         &self,
         request: NotificationRequest,
     ) -> Result<NotificationOutcome, String> {
+        let locale = self.locale();
+        validate_notification(&request, locale)?;
         if !self.notifications.is_enabled() {
             // A preference flipped off must not leave an old "come back to this
             // session" pointer armed for the next focus change.
@@ -1059,14 +1261,24 @@ impl Supervisor {
             return Ok(NotificationOutcome {
                 delivered: false,
                 permission: "disabled".to_string(),
-                detail: Some("桌面通知已在设置中关闭".to_string()),
+                detail: Some(
+                    tr(
+                        locale,
+                        "桌面通知已在设置中关闭",
+                        "Desktop notifications are switched off in settings",
+                    )
+                    .to_string(),
+                ),
             });
         }
-        let app = self
-            .app
-            .get()
-            .cloned()
-            .ok_or_else(|| "应用句柄尚未就绪".to_string())?;
+        let app = self.app.get().cloned().ok_or_else(|| {
+            tr(
+                locale,
+                "应用句柄尚未就绪",
+                "The app handle is not ready yet",
+            )
+            .to_string()
+        })?;
         match app
             .notification()
             .builder()
@@ -1113,11 +1325,18 @@ impl Supervisor {
     /// Persist the wizard's answers; the waiting supervisor thread picks the
     /// `first_run_completed` flag up on its next poll and launches.
     pub fn apply_first_run(&self, choices: FirstRunChoices) -> Result<FirstRunOutcome, String> {
+        let ui_locale = self.locale();
         let locale = match choices.locale.trim() {
             "" => self.shell_settings().locale,
             "en" => "en".to_string(),
             "zh" | "zh-CN" | "zh-Hans" => "zh-CN".to_string(),
-            other => return Err(format!("不支持的语言：{other}")),
+            other => {
+                return Err(tr_code(
+                    other,
+                    format!("不支持的语言：{other}"),
+                    format!("Unsupported language: {other}"),
+                ))
+            }
         };
 
         let requested = choices
@@ -1131,10 +1350,23 @@ impl Supervisor {
         match requested {
             Some(target) => {
                 if !target.is_absolute() {
-                    return Err("数据目录必须是绝对路径".to_string());
+                    return Err(tr(
+                        ui_locale,
+                        "数据目录必须是绝对路径",
+                        "The data directory must be an absolute path",
+                    )
+                    .to_string());
                 }
-                fs::create_dir_all(&target)
-                    .map_err(|error| format!("无法创建数据目录 {}：{error}", target.display()))?;
+                fs::create_dir_all(&target).map_err(|error| {
+                    tr(
+                        ui_locale,
+                        format!("无法创建数据目录 {}：{error}", target.display()),
+                        format!(
+                            "Could not create the data directory {}: {error}",
+                            target.display()
+                        ),
+                    )
+                })?;
                 if target != self.config.home {
                     Bootstrap::write_home(&self.config.default_home, &target)?;
                     restart_required = true;
@@ -1165,7 +1397,14 @@ impl Supervisor {
             let settings = self
                 .settings
                 .lock()
-                .map_err(|_| "设置不可用（锁已损坏）".to_string())?
+                .map_err(|_| {
+                    tr(
+                        ui_locale,
+                        "设置不可用（锁已损坏）",
+                        "Settings are unavailable (the lock is poisoned)",
+                    )
+                    .to_string()
+                })?
                 .clone();
             settings.save(&home)?;
         }
@@ -1243,7 +1482,8 @@ impl Supervisor {
     /// `tauri-plugin-deeptutor`, which owns the updater plugin, and the caller
     /// combines both into one [`UpdateReport`].
     pub fn check_runtime_updates(&self) -> RuntimeUpdateReport {
-        let installer = PackInstaller::new(&self.config.home);
+        let locale = self.locale();
+        let installer = self.installer();
         let source = self.update_source();
 
         match source {
@@ -1253,6 +1493,7 @@ impl Supervisor {
                     checked: false,
                     source: None,
                     updated: false,
+                    error: None,
                     app_version: state
                         .active_pack
                         .as_ref()
@@ -1260,7 +1501,7 @@ impl Supervisor {
                         .map(|pack| pack.manifest.app_version),
                     active_pack: state.active_pack,
                     previous_pack: state.previous_pack,
-                    detail: "未配置运行时更新源：在 desktop/shell.json 写入 pack_catalog，或设置 DEEPTUTOR_DESKTOP_PACK_CATALOG。".to_string(),
+                    detail: tr(locale, "未配置运行时更新源：在 desktop/shell.json 写入 pack_catalog，或设置 DEEPTUTOR_DESKTOP_PACK_CATALOG。", "No runtime update source configured: set pack_catalog in desktop/shell.json, or DEEPTUTOR_DESKTOP_PACK_CATALOG.").to_string(),
                 }
             }
             Some(source) => match installer.update_from_catalog(&source) {
@@ -1274,6 +1515,7 @@ impl Supervisor {
                         checked: true,
                         source: Some(source),
                         updated: true,
+                        error: None,
                         app_version: Some(pack.manifest.app_version.clone()),
                         active_pack: state.active_pack,
                         previous_pack: state.previous_pack,
@@ -1295,6 +1537,7 @@ impl Supervisor {
                         checked: true,
                         source: Some(source),
                         updated: false,
+                        error: None,
                         app_version: state
                             .active_pack
                             .as_ref()
@@ -1302,7 +1545,8 @@ impl Supervisor {
                             .map(|pack| pack.manifest.app_version),
                         active_pack: state.active_pack,
                         previous_pack: state.previous_pack,
-                        detail: "运行时包已是最新".to_string(),
+                        detail: tr(locale, "运行时包已是最新", "The runtime pack is up to date")
+                            .to_string(),
                     }
                 }
                 Err(error) => {
@@ -1314,7 +1558,12 @@ impl Supervisor {
                         app_version: None,
                         active_pack: state.active_pack,
                         previous_pack: state.previous_pack,
-                        detail: format!("检查运行时包失败：{error}"),
+                        error: Some(error.to_string()),
+                        detail: tr(
+                            locale,
+                            format!("检查运行时包失败：{error}"),
+                            format!("Could not read the runtime pack catalog: {error}"),
+                        ),
                     }
                 }
             },
@@ -1337,84 +1586,229 @@ impl Supervisor {
     /// (`--check-updates`) must do, and what the tray dialog could report
     /// before spending 250 MB of somebody's bandwidth.
     pub fn preview_runtime_updates(&self, source: Option<String>) -> RuntimeUpdateReport {
-        let installer = PackInstaller::new(&self.config.home);
+        self.runtime_update_plan(source).0
+    }
+
+    /// The read-only answer plus the release it is about, when there is one.
+    ///
+    /// The installing path needs the release itself (to name the version and the
+    /// download size in the confirmation), and "is there an update" is not
+    /// something the report carries: its `detail` is prose.
+    fn runtime_update_plan(
+        &self,
+        source: Option<String>,
+    ) -> (RuntimeUpdateReport, Option<PackRelease>) {
+        let locale = self.locale();
+        let installer = self.installer();
         let source = source.or_else(|| self.update_source());
         let state = installer.state();
+        let active_version = state
+            .active_pack
+            .as_ref()
+            .and_then(|pack_id| installer.load(pack_id).ok())
+            .map(|pack| pack.manifest.app_version);
         match source {
-            None => RuntimeUpdateReport {
-                checked: false,
-                source: None,
-                updated: false,
-                app_version: state
-                    .active_pack
-                    .as_ref()
-                    .and_then(|pack_id| installer.load(pack_id).ok())
-                    .map(|pack| pack.manifest.app_version),
-                active_pack: state.active_pack,
-                previous_pack: state.previous_pack,
-                detail: "未配置运行时更新源：在 desktop/shell.json 写入 pack_catalog，或设置 DEEPTUTOR_DESKTOP_PACK_CATALOG。".to_string(),
-            },
+            None => (
+                RuntimeUpdateReport {
+                    checked: false,
+                    source: None,
+                    updated: false,
+                    error: None,
+                    app_version: active_version,
+                    active_pack: state.active_pack,
+                    previous_pack: state.previous_pack,
+                    detail: tr(locale, "未配置运行时更新源：在 desktop/shell.json 写入 pack_catalog，或设置 DEEPTUTOR_DESKTOP_PACK_CATALOG。", "No runtime update source configured: set pack_catalog in desktop/shell.json, or DEEPTUTOR_DESKTOP_PACK_CATALOG.").to_string(),
+                },
+                None,
+            ),
             Some(source) => match installer.outdated_from_catalog(&source) {
                 Ok(Some(release)) => {
                     // Say which download the user is actually signing up for.
                     let incremental = installer.delta_applies(&release);
-                    let bytes = if incremental {
-                        release.delta.as_ref().map(|delta| delta.size).unwrap_or(0)
-                    } else {
-                        release.size
-                    };
-                    RuntimeUpdateReport {
+                    let report = RuntimeUpdateReport {
                         checked: true,
                         source: Some(source),
                         updated: false,
-                        app_version: state
-                            .active_pack
-                            .as_ref()
-                            .and_then(|pack_id| installer.load(pack_id).ok())
-                            .map(|pack| pack.manifest.app_version),
+                        error: None,
+                        app_version: active_version,
                         active_pack: state.active_pack,
                         previous_pack: state.previous_pack,
                         detail: format!(
                             "有新版本 {} 可用（{} MB{}）",
                             release.app_version,
-                            bytes / (1024 * 1024),
+                            download_size(&release, incremental) / (1024 * 1024),
                             if incremental {
                                 "，增量更新"
                             } else {
                                 "，完整包"
                             }
                         ),
-                    }
+                    };
+                    (report, Some(release))
                 }
-                Ok(None) => RuntimeUpdateReport {
-                    checked: true,
-                    source: Some(source),
-                    updated: false,
-                    app_version: state
-                        .active_pack
-                        .as_ref()
-                        .and_then(|pack_id| installer.load(pack_id).ok())
-                        .map(|pack| pack.manifest.app_version),
-                    active_pack: state.active_pack,
-                    previous_pack: state.previous_pack,
-                    detail: "运行时包已是最新".to_string(),
-                },
-                Err(error) => RuntimeUpdateReport {
-                    checked: true,
-                    source: Some(source),
-                    updated: false,
-                    app_version: None,
-                    active_pack: state.active_pack,
-                    previous_pack: state.previous_pack,
-                    detail: format!("检查运行时包失败：{error}"),
-                },
+                Ok(None) => (
+                    RuntimeUpdateReport {
+                        checked: true,
+                        source: Some(source),
+                        updated: false,
+                        error: None,
+                        app_version: active_version,
+                        active_pack: state.active_pack,
+                        previous_pack: state.previous_pack,
+                        detail: tr(locale, "运行时包已是最新", "The runtime pack is up to date").to_string(),
+                    },
+                    None,
+                ),
+                Err(error) => (
+                    RuntimeUpdateReport {
+                        checked: true,
+                        source: Some(source),
+                        updated: false,
+                        app_version: None,
+                        active_pack: state.active_pack,
+                        previous_pack: state.previous_pack,
+                        error: Some(error.to_string()),
+                        detail: tr(locale, format!("检查运行时包失败：{error}"), format!("Could not read the runtime pack catalog: {error}")),
+                    },
+                    None,
+                ),
             },
         }
     }
+
+    /// Preview, ask the user, and only then install.
+    ///
+    /// The command is reachable from the loopback-served UI, so downloading and
+    /// executing a pack needs an explicit yes from a native dialog rather than
+    /// an IPC call. A declined prompt reports "nothing happened", not an error.
+    pub fn confirm_and_install_runtime_update(&self) -> RuntimeUpdateReport {
+        let locale = self.locale();
+        let (report, release) = self.runtime_update_plan(None);
+        let Some(release) = release else {
+            return report;
+        };
+        if !self.confirm_pack_install(&release) {
+            self.append_shell_log(&format!(
+                "runtime pack update to {} declined by the user",
+                release.app_version
+            ));
+            return RuntimeUpdateReport {
+                detail: tr(
+                    locale,
+                    "已取消运行时包更新",
+                    "Runtime pack update cancelled",
+                )
+                .to_string(),
+                ..report
+            };
+        }
+        self.check_runtime_updates()
+    }
+
+    /// The authorization boundary for a runtime-pack install.
+    ///
+    /// Runs on a worker thread (the update-check thread or the command's
+    /// blocking pool), never on the window's own thread, which is what makes a
+    /// blocking native dialog safe here.
+    fn confirm_pack_install(&self, release: &PackRelease) -> bool {
+        let locale = self.locale();
+        let Some(app) = self.app.get() else {
+            return false;
+        };
+        let incremental = self.installer().delta_applies(release);
+        app.dialog()
+            .message(format!(
+                "运行时包有新版本 {}（约 {} MB{}）。\n\n下载并安装后本地服务会重启，期间界面会短暂断开。",
+                release.app_version,
+                download_size(release, incremental) / (1024 * 1024),
+                if incremental {
+                    "，增量更新"
+                } else {
+                    "，完整包"
+                }
+            ))
+            .title(tr(locale, "DeepTutor 运行时更新", "DeepTutor runtime update"))
+            .buttons(MessageDialogButtons::OkCancelCustom(
+                tr(locale, "下载并安装", "Download and install").to_string(),
+                tr(locale, "稍后", "Later").to_string(),
+            ))
+            .blocking_show()
+    }
+}
+
+/// How many bytes an update to `release` would download.
+fn download_size(release: &PackRelease, incremental: bool) -> u64 {
+    if incremental {
+        release.delta.as_ref().map(|delta| delta.size).unwrap_or(0)
+    } else {
+        release.size
+    }
+}
+
+/// A configured runtime-pack source must not be plaintext.
+///
+/// The catalog names the archive *and* the sha256 that authenticates it, so an
+/// http catalog is a man-in-the-middle away from handing this shell a pack it
+/// will execute. A local path is fine: only the machine's owner can write the
+/// settings (and CI/headless runs pass their own catalogs explicitly).
+fn validate_update_source(value: &str, locale: Locale) -> Result<String, String> {
+    if value.starts_with("http://") {
+        return Err(tr(
+            locale,
+            "运行时更新源必须是 https（或本地路径）",
+            "The runtime update source must be https (or a local path)",
+        )
+        .to_string());
+    }
+    Ok(value.to_string())
+}
+
+/// Bounds for what the webview may ask the shell to display.
+///
+/// A system notification is drawn outside the app and its route is handed back
+/// to the UI to navigate to, so neither is an unbounded string a page gets to
+/// choose. The web app's own limits (60/180 characters) sit well inside these.
+const MAX_NOTIFICATION_TITLE: usize = 200;
+const MAX_NOTIFICATION_BODY: usize = 500;
+const MAX_NOTIFICATION_ROUTE: usize = 512;
+
+fn validate_notification(request: &NotificationRequest, locale: Locale) -> Result<(), String> {
+    let route = request.route.trim();
+    if route.is_empty()
+        || !route.starts_with('/')
+        || route.starts_with("//")
+        || route.chars().count() > MAX_NOTIFICATION_ROUTE
+    {
+        return Err(tr(
+            locale,
+            format!("通知的路由必须是应用内路径：{}", request.route),
+            format!(
+                "A notification route must be an in-app path: {}",
+                request.route
+            ),
+        ));
+    }
+    if request.title.chars().count() > MAX_NOTIFICATION_TITLE {
+        return Err(tr(
+            locale,
+            format!("通知标题过长（上限 {MAX_NOTIFICATION_TITLE} 字符）"),
+            format!(
+                "The notification title is too long (limit {MAX_NOTIFICATION_TITLE} characters)"
+            ),
+        ));
+    }
+    if request.body.chars().count() > MAX_NOTIFICATION_BODY {
+        return Err(tr(
+            locale,
+            format!("通知正文过长（上限 {MAX_NOTIFICATION_BODY} 字符）"),
+            format!("The notification body is too long (limit {MAX_NOTIFICATION_BODY} characters)"),
+        ));
+    }
+    Ok(())
 }
 
 /// Language the wizard preselects, from the OS locale.
-fn default_locale() -> String {
+pub fn default_locale() -> String {
     for key in ["LANG", "LC_ALL", "LC_MESSAGES"] {
         if let Ok(value) = std::env::var(key) {
             if value.to_ascii_lowercase().starts_with("zh") {
@@ -1512,11 +1906,13 @@ fn json_string(value: &str) -> String {
     serde_json::to_string(value).unwrap_or_else(|_| "\"\"".to_string())
 }
 
-/// Self-test evaluated inside the loopback page.
+/// Self-test evaluated inside the loopback page, on demand.
 ///
 /// Reports through `location.hash` because the interesting failure is "the
 /// bridge is missing or the permission was refused", which IPC itself cannot
-/// describe. `__deeptutorAllowRestart` is set by the caller in the same eval.
+/// describe. It only *reads*: an earlier version also invoked `restart_service`
+/// to prove the command was reachable, which meant every launch restarted the
+/// local service a few seconds after the window appeared.
 const PROBE_SCRIPT: &str = concat!(
     "(function () {",
     " var report = function (text) {",
@@ -1524,7 +1920,7 @@ const PROBE_SCRIPT: &str = concat!(
     " };",
     " if (!window.__TAURI__ || !window.__TAURI__.core) { report('no-bridge'); return; }",
     " var parts = [];",
-    " var expect = window.__deeptutorAllowRestart ? 4 : 3;",
+    " var expect = 3;",
     " var done = function () { if (parts.length >= expect) { report(parts.join(' ; ')); } };",
     " var push = function (label, value) { parts.push(label + '=' + value); done(); };",
     " var invoke = window.__TAURI__.core.invoke;",
@@ -1540,11 +1936,6 @@ const PROBE_SCRIPT: &str = concat!(
     " invoke('plugin:deeptutor|shell_settings').then(",
     "  function (value) { push('shell-settings-ok', value && (value.close_to_tray + '/' + value.notifications + '/' + (value.locale || 'auto'))); },",
     "  function (error) { push('shell-settings-error', error); });",
-    " if (window.__deeptutorAllowRestart) {",
-    "  invoke('plugin:deeptutor|restart_service').then(",
-    "   function () { push('restart', 'ok'); },",
-    "   function (error) { push('restart-error', error); });",
-    " }",
     "})();"
 );
 
@@ -1666,6 +2057,53 @@ mod tests {
         assert!(candidates[0].must_exist);
     }
 
+    /// The loopback IPC self-test evals into the live UI, so it must never run
+    /// unless a diagnostic run asked for it.
+    #[test]
+    fn the_remote_ipc_probe_is_off_unless_asked_for() {
+        assert!(!config_with(&[("DEEPTUTOR_HOME", "/tmp/deeptutor")]).probe_remote_ipc);
+        for value in ["0", "false", "off", "", "  "] {
+            let config = config_with(&[
+                ("DEEPTUTOR_HOME", "/tmp/deeptutor"),
+                ("DEEPTUTOR_DESKTOP_PROBE", value),
+            ]);
+            assert!(!config.probe_remote_ipc, "{value:?} must not enable it");
+        }
+        for value in ["1", "true", "yes", "on", " 1 "] {
+            let config = config_with(&[
+                ("DEEPTUTOR_HOME", "/tmp/deeptutor"),
+                ("DEEPTUTOR_DESKTOP_PROBE", value),
+            ]);
+            assert!(config.probe_remote_ipc, "{value:?} must enable it");
+        }
+    }
+
+    /// The navigation policy trusts exactly one loopback port, and learns it
+    /// from the launcher's state file until the window has been handed over.
+    #[test]
+    fn the_expected_frontend_port_comes_from_the_launcher_state_file() {
+        let home = temp_home("frontend-port");
+        let config = ShellConfig::resolve_full(
+            &|key| (key == "DEEPTUTOR_HOME").then(|| home.to_string_lossy().into_owned()),
+            &|_| None,
+        );
+        let supervisor = Supervisor::new_shared(config);
+        assert_eq!(supervisor.frontend_port(), None);
+
+        fs::create_dir_all(home.join("desktop")).unwrap();
+        fs::write(
+            home.join("desktop").join("runtime.json"),
+            r#"{"schema_version":1,"status":"ready","frontend_url":"http://127.0.0.1:4123"}"#,
+        )
+        .unwrap();
+        assert_eq!(supervisor.frontend_port(), Some(4123));
+
+        // Half-written or absent state stays "unknown" instead of guessing.
+        fs::write(home.join("desktop").join("runtime.json"), "{ not json").unwrap();
+        assert_eq!(supervisor.frontend_port(), None);
+        let _ = fs::remove_dir_all(&home);
+    }
+
     fn temp_home(name: &str) -> PathBuf {
         let home = std::env::temp_dir().join(format!(
             "deeptutor-supervisor-test-{name}-{}",
@@ -1742,6 +2180,94 @@ mod tests {
                 ..SettingsPatch::default()
             })
             .is_err());
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    /// The shell's own surfaces (dialogs, menu bar, the `detail` lines the
+    /// settings page prints) follow the saved preference, so an English UI no
+    /// longer gets Chinese dialogs.
+    #[test]
+    fn the_shell_language_follows_the_saved_preference() {
+        let home = temp_home("locale");
+        let config = ShellConfig::resolve_full(
+            &|key| (key == "DEEPTUTOR_HOME").then(|| home.to_string_lossy().into_owned()),
+            &|_| None,
+        );
+        let supervisor = Supervisor::new_shared(config);
+
+        supervisor
+            .apply_settings_patch(SettingsPatch {
+                locale: Some("en".to_string()),
+                ..SettingsPatch::default()
+            })
+            .expect("english");
+        assert_eq!(supervisor.locale(), Locale::En);
+        assert_eq!(supervisor.shell_settings().locale, "en");
+
+        supervisor
+            .apply_settings_patch(SettingsPatch {
+                locale: Some("zh-CN".to_string()),
+                ..SettingsPatch::default()
+            })
+            .expect("chinese");
+        assert_eq!(supervisor.locale(), Locale::Zh);
+
+        assert!(supervisor
+            .apply_settings_patch(SettingsPatch {
+                locale: Some("fr".to_string()),
+                ..SettingsPatch::default()
+            })
+            .is_err());
+        assert_eq!(
+            supervisor.locale(),
+            Locale::Zh,
+            "a rejected value changes nothing"
+        );
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    /// The notification command is reachable from the loopback page, so the
+    /// shell bounds what it will draw and where it will navigate to.
+    #[test]
+    fn a_notification_request_is_validated_before_anything_is_posted() {
+        let home = temp_home("notification");
+        let config = ShellConfig::resolve_full(
+            &|key| (key == "DEEPTUTOR_HOME").then(|| home.to_string_lossy().into_owned()),
+            &|_| None,
+        );
+        let supervisor = Supervisor::new_shared(config);
+        let request = |route: &str, title: &str, body: &str| NotificationRequest {
+            title: title.to_string(),
+            body: body.to_string(),
+            route: route.to_string(),
+            session_id: Some("s-1".to_string()),
+            kind: Some("round_complete".to_string()),
+        };
+
+        for route in ["//evil.example", "https://evil.example", "chat/1", ""] {
+            let error = supervisor
+                .notify_round(request(route, "title", "body"))
+                .expect_err(route);
+            assert!(error.contains("应用内路径"), "{route}: {error}");
+        }
+        let long_title = "x".repeat(MAX_NOTIFICATION_TITLE + 1);
+        assert!(supervisor
+            .notify_round(request("/chat/1", &long_title, "body"))
+            .is_err());
+        assert!(supervisor
+            .notify_round(request(
+                "/chat/1",
+                "title",
+                &"y".repeat(MAX_NOTIFICATION_BODY + 1)
+            ))
+            .is_err());
+
+        // A valid request gets past validation and only then fails for the
+        // reason that matters here: there is no window in a unit test.
+        let error = supervisor
+            .notify_round(request("/chat/1", "title", "body"))
+            .expect_err("no app handle");
+        assert!(error.contains("应用句柄"), "{error}");
         let _ = fs::remove_dir_all(&home);
     }
 

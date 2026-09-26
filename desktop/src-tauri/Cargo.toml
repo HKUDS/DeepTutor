@@ -5,7 +5,7 @@ name = "deeptutor-desktop"
 version = "1.6.10"
 edition = "2021"
 rust-version = "1.77"
-description = "DeepTutor desktop shell (Tauri v2) — Phase 0 skeleton"
+description = "DeepTutor desktop shell (Tauri v2)"
 license = "Apache-2.0"
 
 [build-dependencies]
@@ -34,6 +34,12 @@ flate2 = "1"
 sha2 = "0.10"
 tar = "0.4"
 ureq = "2"
+# Verifies the runtime-pack catalog's minisign signature. Deliberately the same
+# crate (and the same keypair) the updater plugin uses, so the shell plane and
+# the runtime plane have one trust anchor rather than two.
+minisign-verify = "0.2"
+# Decoding the base64 shapes a minisign public key arrives in.
+base64 = "0.22"
 
 [target.'cfg(unix)'.dependencies]
 # Process-group signalling for the orphan guard: the launcher owns two children

@@ -48,15 +48,17 @@ pub fn create_main_window(app: &App) -> tauri::Result<WebviewWindow> {
         .resizable(true)
         .center()
         .disable_drag_drop_handler()
-        .on_navigation(move |url| match classify_navigation(url) {
-            NavAction::Allow => true,
-            NavAction::External => {
-                open_external(url);
-                false
-            }
-            NavAction::Handoff => {
-                navigation_owner.push_open_urls(std::iter::once(url), "webview-link");
-                false
+        .on_navigation(move |url| {
+            match classify_navigation(url, navigation_owner.frontend_port()) {
+                NavAction::Allow => true,
+                NavAction::External => {
+                    open_external(url);
+                    false
+                }
+                NavAction::Handoff => {
+                    navigation_owner.push_open_urls(std::iter::once(url), "webview-link");
+                    false
+                }
             }
         })
         .on_download(move |webview, event| match event {
@@ -85,14 +87,20 @@ pub fn create_main_window(app: &App) -> tauri::Result<WebviewWindow> {
 
 /// In-app navigation policy. Pure, so the rules are unit-tested rather than
 /// discovered by clicking around a running app.
-pub fn classify_navigation(url: &tauri::Url) -> NavAction {
+///
+/// `frontend_port` is the port the launcher said it is serving the UI from
+/// (`Supervisor::frontend_port`). Loopback alone is *not* ours: any local
+/// service is reachable from the webview, and the window carries the shell's IPC
+/// grant, so a page on another port must open in the user's browser instead of
+/// replacing the app.
+pub fn classify_navigation(url: &tauri::Url, frontend_port: Option<u16>) -> NavAction {
     match url.scheme() {
         // The splash and any bundled asset.
         "tauri" | "asset" => NavAction::Allow,
         // Links the UI builds for itself (`deeptutor://settings`, say).
         "deeptutor" => NavAction::Handoff,
         "http" | "https" => {
-            if is_loopback(url) {
+            if is_our_frontend(url, frontend_port) {
                 NavAction::Allow
             } else {
                 NavAction::External
@@ -100,6 +108,18 @@ pub fn classify_navigation(url: &tauri::Url) -> NavAction {
         }
         // `about:blank`, `data:`, `blob:` are produced by the page itself.
         _ => NavAction::Allow,
+    }
+}
+
+/// Is this the launcher's own UI, on the port it reported for this run?
+///
+/// The loopback spelling is not compared (`127.0.0.1` and `localhost` are the
+/// same server), but the port is: an unknown port — including "the launcher has
+/// not reported one yet" — is not ours.
+fn is_our_frontend(url: &tauri::Url, frontend_port: Option<u16>) -> bool {
+    match (frontend_port, url.port_or_known_default()) {
+        (Some(expected), Some(actual)) => expected == actual && is_loopback(url),
+        _ => false,
     }
 }
 
@@ -219,16 +239,22 @@ mod tests {
 
     #[test]
     fn the_loopback_ui_stays_inside_the_window() {
+        // The port the launcher reported this run.
         assert_eq!(
-            classify_navigation(&url("http://127.0.0.1:3782/chat/s-1")),
+            classify_navigation(&url("http://127.0.0.1:3782/chat/s-1"), Some(3782)),
+            NavAction::Allow
+        );
+        // The same server under its other loopback spelling is still ours.
+        assert_eq!(
+            classify_navigation(&url("http://localhost:3782/settings"), Some(3782)),
             NavAction::Allow
         );
         assert_eq!(
-            classify_navigation(&url("http://localhost:3782/settings")),
+            classify_navigation(&url("http://[::1]:3782/settings"), Some(3782)),
             NavAction::Allow
         );
         assert_eq!(
-            classify_navigation(&url("tauri://localhost/index.html")),
+            classify_navigation(&url("tauri://localhost/index.html"), Some(3782)),
             NavAction::Allow
         );
     }
@@ -236,24 +262,45 @@ mod tests {
     #[test]
     fn external_links_leave_the_app() {
         assert_eq!(
-            classify_navigation(&url("https://github.com/HKUDS/DeepTutor")),
+            classify_navigation(&url("https://github.com/HKUDS/DeepTutor"), Some(3782)),
             NavAction::External
         );
         assert_eq!(
-            classify_navigation(&url("https://accounts.google.com/o/oauth2/auth?x=1")),
+            classify_navigation(
+                &url("https://accounts.google.com/o/oauth2/auth?x=1"),
+                Some(3782)
+            ),
             NavAction::External
         );
-        // A loopback URL on some *other* service is not ours to navigate to.
+    }
+
+    /// Another local service is not the app: it would inherit the window's IPC
+    /// grant, so it opens in the user's browser. An unknown port (the launcher
+    /// has not reported one, or has never been reached) fails closed too.
+    #[test]
+    fn another_loopback_service_is_not_navigated_to() {
         assert_eq!(
-            classify_navigation(&url("http://127.0.0.1:9/health")),
-            NavAction::Allow
+            classify_navigation(&url("http://127.0.0.1:9/health"), Some(3782)),
+            NavAction::External
+        );
+        assert_eq!(
+            classify_navigation(&url("http://localhost:8001/api/status"), Some(3782)),
+            NavAction::External
+        );
+        assert_eq!(
+            classify_navigation(&url("http://127.0.0.1:3782/chat"), None),
+            NavAction::External
+        );
+        assert_eq!(
+            classify_navigation(&url("http://127.0.0.1:3782/chat"), Some(8001)),
+            NavAction::External
         );
     }
 
     #[test]
     fn in_page_deep_links_are_queued_instead_of_navigated() {
         assert_eq!(
-            classify_navigation(&url("deeptutor://chat/abc")),
+            classify_navigation(&url("deeptutor://chat/abc"), Some(3782)),
             NavAction::Handoff
         );
     }

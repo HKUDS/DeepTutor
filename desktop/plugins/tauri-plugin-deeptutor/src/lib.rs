@@ -12,7 +12,7 @@
 //! pickers, "reveal in folder" and the first-run choices all arrive as plugin
 //! commands instead of application commands.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use base64::Engine as _;
@@ -22,6 +22,19 @@ use tauri::{Manager, Runtime, State};
 use tauri_plugin_dialog::DialogExt as _;
 
 mod updater;
+
+/// The shell's own language, as a code (`zh-CN` / `en`).
+///
+/// The plugin cannot import the shell crate, so this is the only shared
+/// vocabulary: the shell owns the setting, the plugin asks for its code and
+/// formats its own messages with it.
+pub fn tr(locale: &str, zh: impl Into<String>, en: impl Into<String>) -> String {
+    if locale.trim().to_ascii_lowercase().starts_with("en") {
+        en.into()
+    } else {
+        zh.into()
+    }
+}
 
 pub use updater::check as check_shell_update_async;
 pub use updater::install as install_shell_update_async;
@@ -61,15 +74,24 @@ pub trait DesktopBackend: Send + Sync + 'static {
     fn take_notification_target(&self) -> Option<NotificationTarget>;
     /// Claim a pending `deeptutor://` / file-association handoff.
     fn take_open_request(&self) -> Option<OpenRequestPayload>;
+    /// The language the shell's own messages should be written in.
+    fn locale(&self) -> String;
+    /// Allow the webview to read one path back (a handoff, or a picker result).
+    fn allow_local_read(&self, path: &Path);
+    /// Consume that allowance; false when the path was never handed over.
+    fn take_local_read_permission(&self, path: &Path) -> bool;
     /// What the first-run wizard needs to render itself.
     fn first_run(&self) -> FirstRunState;
     /// Persist the wizard's answers. May ask the shell to restart.
     fn apply_first_run(&self, choices: FirstRunChoices) -> Result<FirstRunOutcome, String>;
-    /// Check the **runtime pack** catalog.
+    /// Read-only: what the runtime-pack catalog would offer, without downloading.
+    fn preview_updates(&self) -> RuntimeUpdateReport;
+    /// Preview, ask the user in a native dialog, then install.
     ///
-    /// The shell plane is the plugin's own business (see `updater.rs`): it is a
-    /// plugin-native capability, available wherever the Tauri app handle is.
-    fn check_runtime_updates(&self) -> RuntimeUpdateReport;
+    /// The installing half is deliberately *not* a plain "check" command: the
+    /// catalog URL and the archive it names decide what gets executed, and this
+    /// command is reachable from the loopback-served UI.
+    fn confirm_and_install_runtime_update(&self) -> RuntimeUpdateReport;
 }
 
 /// Serialisable status payload. Field names are snake_case on purpose: the same
@@ -255,6 +277,11 @@ pub struct RuntimeUpdateReport {
     pub checked: bool,
     pub source: Option<String>,
     pub updated: bool,
+    /// Why the check/install failed, when it did.
+    ///
+    /// Structured so a caller never has to match prose — the `detail` line is
+    /// translated, this is not.
+    pub error: Option<String>,
     pub active_pack: Option<String>,
     pub previous_pack: Option<String>,
     pub app_version: Option<String>,
@@ -285,9 +312,17 @@ pub struct PickFilter {
     pub extensions: Vec<String>,
 }
 
+/// Options for the native panels. Every field is optional in practice.
+///
+/// `filters` needs its `#[serde(default)]` as much as `multiple` does: both the
+/// first-run wizard and the UI send `{options: {title}}`, and a required `Vec`
+/// makes that call fail with "missing field `filters`" — which the wizard then
+/// reported nowhere (its error node was inside a hidden step), so "Choose
+/// folder …" simply did nothing.
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct PickOptions {
     pub title: Option<String>,
+    #[serde(default)]
     pub filters: Vec<PickFilter>,
     #[serde(default)]
     pub multiple: bool,
@@ -331,12 +366,36 @@ fn shell_settings(backend: State<'_, BackendState>) -> ShellSettingsSnapshot {
     backend.0.settings()
 }
 
+/// The window may change its own preferences, but not where updates come from.
+///
+/// The window is served from loopback, so any script running in it can call this
+/// command. Letting that script choose the runtime-pack catalog would turn a
+/// cross-site scripting bug into remote code execution — the pack is downloaded,
+/// extracted and *executed*. The source therefore only lives in
+/// `desktop/shell.json` and `DEEPTUTOR_DESKTOP_PACK_CATALOG`, which the machine's
+/// owner writes; the snapshot still reports the value so the settings page can
+/// show it.
+fn remote_settings_patch(mut patch: SettingsPatch, locale: &str) -> Result<SettingsPatch, String> {
+    if patch.pack_catalog.is_some() {
+        return Err(tr(
+            locale,
+            "运行时更新源只能在 desktop/shell.json 或 DEEPTUTOR_DESKTOP_PACK_CATALOG 中配置",
+            "The runtime update source can only be set in desktop/shell.json or DEEPTUTOR_DESKTOP_PACK_CATALOG",
+        ));
+    }
+    patch.pack_catalog = None;
+    Ok(patch)
+}
+
 #[tauri::command]
 fn update_shell_settings(
     patch: SettingsPatch,
     backend: State<'_, BackendState>,
 ) -> Result<ShellSettingsSnapshot, String> {
-    backend.0.update_settings(patch)
+    let locale = backend.0.locale();
+    backend
+        .0
+        .update_settings(remote_settings_patch(patch, &locale)?)
 }
 
 /// The UI's own "I have painted" call.
@@ -385,16 +444,27 @@ fn apply_first_run(
 #[tauri::command]
 async fn check_updates<R: Runtime>(
     app: tauri::AppHandle<R>,
+    install: Option<bool>,
     backend: State<'_, BackendState>,
 ) -> Result<UpdateReport, String> {
-    // The catalog check may download a pack; never on the command thread.
+    // Read-only by default. An install is still gated by a native confirmation
+    // dialog inside the shell (`confirm_and_install_runtime_update`), because
+    // this command is reachable from the loopback-served UI.
+    let locale = backend.0.locale();
     let backend = Arc::clone(&backend.0);
-    let runtime = tauri::async_runtime::spawn_blocking(move || backend.check_runtime_updates())
-        .await
-        .map_err(|error| error.to_string())?;
+    let install = install.unwrap_or(false);
+    let runtime = tauri::async_runtime::spawn_blocking(move || {
+        if install {
+            backend.confirm_and_install_runtime_update()
+        } else {
+            backend.preview_updates()
+        }
+    })
+    .await
+    .map_err(|error| error.to_string())?;
     // The shell plane is async natively, so it is awaited instead of blocking a
     // pool thread — and it must never download, only answer.
-    let shell = updater::check(&app).await;
+    let shell = updater::check(&app, &locale).await;
     Ok(UpdateReport { runtime, shell })
 }
 
@@ -403,23 +473,31 @@ async fn check_updates<R: Runtime>(
 #[tauri::command]
 async fn install_shell_update<R: Runtime>(
     app: tauri::AppHandle<R>,
+    backend: State<'_, BackendState>,
 ) -> Result<ShellUpdateInstall, String> {
-    updater::install(&app).await
+    let locale = backend.0.locale();
+    updater::install(&app, &locale).await
 }
+
+/// Longest UI log line the shell keeps; the rest is dropped rather than
+/// letting the loopback page grow `shell.log` without bound.
+const MAX_LOG_EVENT_CHARS: usize = 2000;
 
 /// Shell-side log line. The UI uses this for things the webview cannot report
 /// (native dialogs it opened, file handoffs it handled).
 #[tauri::command]
 fn log_event(message: String, backend: State<'_, BackendState>) {
+    let message: String = message.chars().take(MAX_LOG_EVENT_CHARS).collect();
     backend.0.note_caller(&format!("ui: {message}"));
 }
 
-/// Native open panel. Returns absolute paths; the caller decides how to ingest
-/// them (`read_local_file` for the byte-level upload path).
+/// Native open panel. Returns absolute paths; the caller ingests them with
+/// `read_local_file`, which is why each picked path is granted a read here.
 #[tauri::command]
 async fn pick_files<R: Runtime>(
     window: tauri::WebviewWindow<R>,
     options: Option<PickOptions>,
+    backend: State<'_, BackendState>,
 ) -> Result<Vec<String>, String> {
     let options = options.unwrap_or_default();
     let mut builder = window.dialog().file();
@@ -438,8 +516,18 @@ async fn pick_files<R: Runtime>(
     let mut paths = Vec::new();
     for path in picked.unwrap_or_default() {
         match path.into_path() {
-            Ok(path) => paths.push(path.to_string_lossy().into_owned()),
-            Err(error) => return Err(format!("无法解析所选路径: {error}")),
+            Ok(path) => {
+                backend.0.allow_local_read(&path);
+                paths.push(path.to_string_lossy().into_owned());
+            }
+            Err(error) => {
+                let locale = backend.0.locale();
+                return Err(tr(
+                    &locale,
+                    format!("无法解析所选路径: {error}"),
+                    format!("Could not resolve the selected path: {error}"),
+                ));
+            }
         }
     }
     Ok(paths)
@@ -447,9 +535,15 @@ async fn pick_files<R: Runtime>(
 
 /// Hand a path to the OS file manager with the item selected.
 #[tauri::command]
-fn reveal_in_folder(path: String) -> Result<(), String> {
-    tauri_plugin_opener::reveal_item_in_dir(PathBuf::from(&path))
-        .map_err(|error| format!("无法在文件管理器中显示 {path}: {error}"))
+fn reveal_in_folder(path: String, backend: State<'_, BackendState>) -> Result<(), String> {
+    tauri_plugin_opener::reveal_item_in_dir(PathBuf::from(&path)).map_err(|error| {
+        let locale = backend.0.locale();
+        tr(
+            &locale,
+            format!("无法在文件管理器中显示 {path}: {error}"),
+            format!("Could not reveal {path} in the file manager: {error}"),
+        )
+    })
 }
 
 /// Native "choose a folder" panel — the first-run wizard's data directory.
@@ -460,6 +554,7 @@ fn reveal_in_folder(path: String) -> Result<(), String> {
 async fn pick_folder<R: Runtime>(
     window: tauri::WebviewWindow<R>,
     options: Option<PickOptions>,
+    backend: State<'_, BackendState>,
 ) -> Result<String, String> {
     let options = options.unwrap_or_default();
     let mut builder = window.dialog().file();
@@ -470,24 +565,67 @@ async fn pick_folder<R: Runtime>(
         Some(folder) => folder
             .into_path()
             .map(|path| path.to_string_lossy().into_owned())
-            .map_err(|error| format!("无法解析所选目录: {error}")),
+            .map_err(|error| {
+                let locale = backend.0.locale();
+                tr(
+                    &locale,
+                    format!("无法解析所选目录: {error}"),
+                    format!("Could not resolve the selected folder: {error}"),
+                )
+            }),
         None => Ok(String::new()),
     }
 }
 
 /// Read a local file into the webview so it can travel the normal upload path.
+///
+/// Only paths the shell itself handed over (a Dock drop, a file association, an
+/// "Open with") or the user picked in the native panel are readable. Accepting
+/// arbitrary absolute paths would make any script in the loopback-served UI
+/// enough to exfiltrate every readable file on the machine, so the allowance is
+/// granted where the path enters the app and consumed here.
 #[tauri::command]
-fn read_local_file(path: String) -> Result<LocalFilePayload, String> {
+fn read_local_file(
+    path: String,
+    backend: State<'_, BackendState>,
+) -> Result<LocalFilePayload, String> {
     let path = PathBuf::from(&path);
+    if !backend.0.take_local_read_permission(&path) {
+        let locale = backend.0.locale();
+        return Err(tr(
+            &locale,
+            format!(
+                "{} 不是 DeepTutor 移交的文件；请使用应用内的上传入口或拖放",
+                path.display()
+            ),
+            format!(
+                "{} was not handed over by DeepTutor; use the in-app upload entry point or drag and drop",
+                path.display()
+            ),
+        ));
+    }
     let metadata = std::fs::metadata(&path)
         .map_err(|error| format!("无法读取 {}: {error}", path.display()))?;
     if !metadata.is_file() {
-        return Err(format!("{} 不是文件", path.display()));
+        let locale = backend.0.locale();
+        return Err(tr(
+            &locale,
+            format!("{} 不是文件", path.display()),
+            format!("{} is not a file", path.display()),
+        ));
     }
     if metadata.len() > MAX_LOCAL_FILE_BYTES {
-        return Err(format!(
-            "文件过大（{} MB），请使用应用内的上传入口",
-            metadata.len() / (1024 * 1024)
+        let locale = backend.0.locale();
+        return Err(tr(
+            &locale,
+            format!(
+                "文件过大（{} MB），请使用应用内的上传入口",
+                metadata.len() / (1024 * 1024)
+            ),
+            format!(
+                "The file is too large ({} MB); use the in-app upload entry point",
+                metadata.len() / (1024 * 1024)
+            ),
         ));
     }
     let bytes =
@@ -495,7 +633,14 @@ fn read_local_file(path: String) -> Result<LocalFilePayload, String> {
     let name = path
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
-        .ok_or_else(|| format!("{} 没有文件名", path.display()))?;
+        .ok_or_else(|| {
+            let locale = backend.0.locale();
+            tr(
+                &locale,
+                format!("{} 没有文件名", path.display()),
+                format!("{} has no file name", path.display()),
+            )
+        })?;
     Ok(LocalFilePayload {
         path: path.to_string_lossy().into_owned(),
         name,
@@ -564,4 +709,74 @@ pub fn init<R: Runtime>(backend: Arc<dyn DesktopBackend>) -> TauriPlugin<R> {
             Ok(())
         })
         .build()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The wizard and the UI both ask for a folder with `{options: {title}}` and
+    /// nothing else. A required `Vec` field made that call fail with
+    /// "missing field `filters`" before it ever reached the native panel.
+    #[test]
+    fn picker_options_without_filters_are_valid() {
+        let titled: PickOptions =
+            serde_json::from_str(r#"{"title":"选择文件夹"}"#).expect("title only");
+        assert_eq!(titled.title.as_deref(), Some("选择文件夹"));
+        assert!(titled.filters.is_empty());
+        assert!(!titled.multiple);
+
+        let bare: PickOptions = serde_json::from_str("{}").expect("empty options");
+        assert!(bare.filters.is_empty());
+
+        // Filters still deserialize when a caller does provide them.
+        let filtered: PickOptions = serde_json::from_str(
+            r#"{"filters":[{"name":"Documents","extensions":["pdf","epub"]}],"multiple":true}"#,
+        )
+        .expect("filters");
+        assert_eq!(filtered.filters.len(), 1);
+        assert_eq!(filtered.filters[0].name, "Documents");
+        assert_eq!(filtered.filters[0].extensions, vec!["pdf", "epub"]);
+        assert!(filtered.multiple);
+    }
+
+    /// The window is loopback-served and therefore only as trustworthy as a
+    /// script tag: it may flip its own preferences, never the update source.
+    #[test]
+    fn the_remote_origin_cannot_choose_the_update_source() {
+        let error = remote_settings_patch(
+            SettingsPatch {
+                pack_catalog: Some("https://attacker.example/runtime-packs.json".to_string()),
+                ..SettingsPatch::default()
+            },
+            "zh-CN",
+        )
+        .unwrap_err();
+        assert!(error.contains("shell.json"), "{error}");
+
+        // An empty string means "clear it", which is equally out of bounds.
+        assert!(remote_settings_patch(
+            SettingsPatch {
+                pack_catalog: Some(String::new()),
+                ..SettingsPatch::default()
+            },
+            "en",
+        )
+        .is_err());
+
+        let patch = remote_settings_patch(
+            SettingsPatch {
+                close_to_tray: Some(false),
+                notifications: Some(true),
+                locale: Some("en".to_string()),
+                first_run_completed: None,
+                pack_catalog: None,
+            },
+            "en",
+        )
+        .expect("ordinary preferences stay settable");
+        assert_eq!(patch.locale.as_deref(), Some("en"));
+        assert_eq!(patch.close_to_tray, Some(false));
+        assert!(patch.pack_catalog.is_none());
+    }
 }

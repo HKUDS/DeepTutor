@@ -197,9 +197,17 @@ fn sha256_file(path: &Path) -> Result<String, String> {
 /// Copy a tree without duplicating bytes where the filesystem can avoid it.
 ///
 /// Hard links make the base half of an incremental update free: no copy, no
-/// extra space. Every path the delta replaces is unlinked first, which breaks
-/// the link for that entry only — the base pack keeps its own copy, so a failed
-/// or rolled-back update cannot have damaged it.
+/// extra space. Two rules keep the base pack safe from its own clone:
+///
+/// * every path the delta replaces is unlinked first, which breaks the link for
+///   that entry only;
+/// * every write the installer makes into a cloned tree goes through a
+///   temporary file and a rename (`runtime_pack::replace_file_contents`), so
+///   rehydration replaces the entry instead of editing the shared inode.
+///
+/// Without the second rule a failed delta could damage the pack that is
+/// currently in use — the staging directory is deleted on the error path, and
+/// `pyvenv.cfg` would already have been rewritten to point into it.
 pub fn clone_tree(source: &Path, destination: &Path) -> Result<(), String> {
     fs::create_dir_all(destination).map_err(|error| error.to_string())?;
     for entry in fs::read_dir(source)

@@ -19,6 +19,7 @@ mod pack_tree;
 mod runtime_info;
 mod runtime_pack;
 mod settings;
+mod strings;
 mod supervisor;
 mod window;
 
@@ -186,15 +187,27 @@ fn headless_app() -> Option<tauri::App> {
         .ok()
 }
 
+/// The language the headless gates write their messages in.
+fn shell_locale(config: &ShellConfig) -> strings::Locale {
+    let setting = settings::ShellSettings::load(&config.home).locale;
+    strings::Locale::resolve(&setting, &supervisor::default_locale())
+}
+
 /// The shell plane of the update check, for headless runs.
-fn headless_shell_update_report() -> tauri_plugin_deeptutor::ShellUpdateReport {
+fn headless_shell_update_report(
+    locale: &strings::Locale,
+) -> tauri_plugin_deeptutor::ShellUpdateReport {
     match headless_app() {
         Some(app) => tauri::async_runtime::block_on(
-            tauri_plugin_deeptutor::check_shell_update_async(app.handle()),
+            tauri_plugin_deeptutor::check_shell_update_async(app.handle(), locale.code()),
         ),
         None => tauri_plugin_deeptutor::ShellUpdateReport {
             status: "error".to_string(),
-            detail: "无法初始化更新通道（无窗口应用构建失败）".to_string(),
+            detail: strings::tr(
+                *locale,
+                "无法初始化更新通道（无窗口应用构建失败）",
+                "Could not initialise the update channel (the headless app failed to build)",
+            ),
             available_version: None,
             current_version: env!("CARGO_PKG_VERSION").to_string(),
         },
@@ -302,12 +315,13 @@ fn run_headless(mode: Headless) -> i32 {
             if let Some(catalog) = catalog {
                 std::env::set_var("DEEPTUTOR_DESKTOP_PACK_CATALOG", catalog);
             }
+            let locale = shell_locale(&config);
             let supervisor = Supervisor::new_shared(config);
             // Read-only on purpose: this gate must never download a pack, and
             // it must never restart a service from a process about to exit.
             let runtime = supervisor.preview_runtime_updates(None);
-            let shell = headless_shell_update_report();
-            let failed = runtime.detail.starts_with("检查运行时包失败") || shell.status == "error";
+            let shell = headless_shell_update_report(&locale);
+            let failed = runtime.error.is_some() || shell.status == "error";
             print_json(&serde_json::json!({
                 "shell": "deeptutor-desktop",
                 "mode": "check-updates",
@@ -324,8 +338,9 @@ fn run_headless(mode: Headless) -> i32 {
                 eprintln!("无法初始化更新通道（无窗口应用构建失败）");
                 return 1;
             };
+            let locale = shell_locale(&config);
             match tauri::async_runtime::block_on(
-                tauri_plugin_deeptutor::verify_shell_update_download(app.handle()),
+                tauri_plugin_deeptutor::verify_shell_update_download(app.handle(), locale.code()),
             ) {
                 Ok(result) => {
                     print_json(&serde_json::json!({
@@ -349,8 +364,9 @@ fn run_headless(mode: Headless) -> i32 {
                 eprintln!("无法初始化更新通道（无窗口应用构建失败）");
                 return 1;
             };
+            let locale = shell_locale(&config);
             match tauri::async_runtime::block_on(
-                tauri_plugin_deeptutor::install_shell_update_async(app.handle()),
+                tauri_plugin_deeptutor::install_shell_update_async(app.handle(), locale.code()),
             ) {
                 Ok(result) => {
                     print_json(&serde_json::json!({
@@ -400,13 +416,16 @@ fn run_headless(mode: Headless) -> i32 {
                 "python_ok": python_ok,
                 "python_error": resolved.as_ref().err(),
                 "python_candidates": candidates,
+                "remote_ipc_probe": config.probe_remote_ipc,
+                "catalog_pubkey_configured": config.catalog_pubkey.is_some(),
             }));
             // `--require-python` turns the diagnostic into a gate.
             i32::from(!python_ok && require_python)
         }
 
         Headless::PackStatus => {
-            let installer = PackInstaller::new(&config.home);
+            let installer =
+                PackInstaller::new(&config.home).with_catalog_pubkey(config.catalog_pubkey.clone());
             let state = installer.state();
             let installed: Vec<serde_json::Value> = installer
                 .installed()
@@ -427,7 +446,8 @@ fn run_headless(mode: Headless) -> i32 {
         }
 
         Headless::PackCatalog { source } => {
-            let installer = PackInstaller::new(&config.home);
+            let installer =
+                PackInstaller::new(&config.home).with_catalog_pubkey(config.catalog_pubkey.clone());
             match installer.catalog(&source) {
                 Ok(catalog) => {
                     let host = runtime_pack::host_platform();
@@ -466,7 +486,8 @@ fn run_headless(mode: Headless) -> i32 {
                 eprintln!("--update-pack 需要 --catalog <url|path>");
                 return 2;
             }
-            let installer = PackInstaller::new(&config.home);
+            let installer =
+                PackInstaller::new(&config.home).with_catalog_pubkey(config.catalog_pubkey.clone());
             match installer.update_from_catalog(&source) {
                 Ok(Some(pack)) => {
                     let state = installer.state();
@@ -497,10 +518,11 @@ fn run_headless(mode: Headless) -> i32 {
         }
 
         Headless::InstallPack { source, sha256 } => {
-            let installer = PackInstaller::new(&config.home);
+            let installer =
+                PackInstaller::new(&config.home).with_catalog_pubkey(config.catalog_pubkey.clone());
             let result = if source.starts_with("http://") || source.starts_with("https://") {
                 match sha256.as_deref() {
-                    Some(expected) => installer.install_from_url(&source, expected),
+                    Some(expected) => installer.install_from_url(&source, expected, None),
                     None => Err("从 URL 安装必须提供 --sha256".to_string()),
                 }
             } else {
@@ -525,7 +547,8 @@ fn run_headless(mode: Headless) -> i32 {
         }
 
         Headless::RollbackPack => {
-            let installer = PackInstaller::new(&config.home);
+            let installer =
+                PackInstaller::new(&config.home).with_catalog_pubkey(config.catalog_pubkey.clone());
             match installer.rollback() {
                 Ok(pack) => {
                     print_json(&serde_json::json!({
@@ -544,10 +567,11 @@ fn run_headless(mode: Headless) -> i32 {
         }
 
         Headless::ApplyDelta { source, sha256 } => {
-            let installer = PackInstaller::new(&config.home);
+            let installer =
+                PackInstaller::new(&config.home).with_catalog_pubkey(config.catalog_pubkey.clone());
             let result = if source.starts_with("http://") || source.starts_with("https://") {
                 match sha256.as_deref() {
-                    Some(expected) => installer.install_delta_from_url(&source, expected),
+                    Some(expected) => installer.install_delta_from_url(&source, expected, None),
                     None => Err("从 URL 应用增量必须提供 --sha256".to_string()),
                 }
             } else {
@@ -574,8 +598,26 @@ fn run_headless(mode: Headless) -> i32 {
     }
 }
 
+/// Flags that exist only to fill in an environment variable `ShellConfig` reads.
+///
+/// Done before anything resolves its config, so they work for the headless
+/// gates as well as for a windowed run.
+fn apply_env_flags(args: &[String]) {
+    if args.iter().any(|arg| arg == "--remote-ipc-probe") {
+        // The loopback IPC self-test is diagnostic and off by default; this flag
+        // is how a support run turns it on.
+        std::env::set_var("DEEPTUTOR_DESKTOP_PROBE", "1");
+    }
+    if let Some(index) = args.iter().position(|arg| arg == "--catalog-pubkey") {
+        if let Some(value) = args.get(index + 1) {
+            std::env::set_var("DEEPTUTOR_DESKTOP_PACK_CATALOG_PUBKEY", value);
+        }
+    }
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    apply_env_flags(&args);
     if let Some(mode) = headless_mode(&args) {
         std::process::exit(run_headless(mode));
     }
