@@ -2697,7 +2697,9 @@ export default function ChatWorkspace({
                       aria-hidden="true"
                     />
                     <span className="min-w-0 flex-1 text-[12px] leading-[1.5] text-[var(--foreground)]">
-                      {state.submissionNeedsReview
+                      {state.submissionNotSaved
+                        ? t("This unsent message could not be saved in your browser. Copy it before leaving this page.")
+                        : state.submissionNeedsReview
                         ? t("Message text was saved, but its attachments or settings could not be restored. Copy it and send again.")
                         : t("Couldn't reach the server. Please check your connection and retry.")}
                     </span>

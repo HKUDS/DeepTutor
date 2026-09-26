@@ -5248,5 +5248,7 @@
   "kanban.showArchived": "Показати архівні",
   "kanban.showActive": "Показати активні",
   "kanban.restore": "Відновити",
-  "kanban.emptyArchive": "Немає архівних завдань"
+  "kanban.emptyArchive": "Немає архівних завдань",
+  "This unsent message could not be saved in your browser. Copy it before leaving this page.": "Не вдалося зберегти це ненадіслане повідомлення у браузері. Скопіюйте його, перш ніж залишити цю сторінку.",
+  "Some unsent messages could not be moved into this conversation. Open a new chat to recover them.": "Деякі ненадіслані повідомлення не вдалося перенести до цієї розмови. Відкрийте новий чат, щоб відновити їх."
 }

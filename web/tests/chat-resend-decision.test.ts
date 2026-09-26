@@ -49,6 +49,52 @@ test("a failed user persisted during socket loss is reconciled before regenerate
   );
 });
 
+test("an identical user row from another tab cannot claim an unsent submission", () => {
+  const lastUser = {
+    id: -3,
+    parentMessageId: 2,
+    failedSubmissionId: "my-submission",
+    requestSnapshot: { content: "same text" },
+  };
+  const remote = {
+    status: "failed",
+    messages: [
+      { id: 1, role: "user" as const, content: "old" },
+      { id: 2, role: "assistant" as const, content: "done" },
+      {
+        id: 3, role: "user" as const, content: "same text",
+        parent_message_id: 2,
+        metadata: { client_submission_id: "other-tab" },
+      },
+    ],
+  };
+  assert.deepEqual(decideFailedTurnReplay(
+    [{ id: 1 }, { id: 2 }, lastUser], lastUser, remote,
+  ), { kind: "resend" });
+  assert.deepEqual(decideFailedTurnReplay(
+    [{ id: 1 }, { id: 2 }, lastUser], lastUser,
+    { ...remote, messages: [...remote.messages.slice(0, 2), {
+      ...remote.messages[2], metadata: { client_submission_id: "my-submission" },
+    }] },
+  ), { kind: "reconcile_regenerate", userId: 3 });
+});
+
+test("a newer user turn prevents regenerating the wrong persisted submission", () => {
+  const lastUser = {
+    id: -3, parentMessageId: 2, failedSubmissionId: "my-submission",
+    requestSnapshot: { content: "my text" },
+  };
+  assert.deepEqual(decideFailedTurnReplay(
+    [{ id: 1 }, { id: 2 }, lastUser], lastUser,
+    { status: "failed", messages: [
+      { id: 3, role: "user", content: "my text", parent_message_id: 2,
+        metadata: { client_submission_id: "my-submission" } },
+      { id: 4, role: "user", content: "later turn", parent_message_id: 3,
+        metadata: { client_submission_id: "other-tab" } },
+    ] },
+  ), { kind: "refresh" });
+});
+
 test("resend is unavailable when the failed tail is hidden by branch selection", () => {
   const root = { id: 1, role: "user" as const, parentMessageId: null };
   const older = { id: 2, role: "assistant" as const, parentMessageId: 1 };

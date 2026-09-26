@@ -5232,5 +5232,7 @@
   "kanban.showArchived": "Show archived",
   "kanban.showActive": "Show active",
   "kanban.restore": "Restore",
-  "kanban.emptyArchive": "No archived tasks"
+  "kanban.emptyArchive": "No archived tasks",
+  "This unsent message could not be saved in your browser. Copy it before leaving this page.": "This unsent message could not be saved in your browser. Copy it before leaving this page.",
+  "Some unsent messages could not be moved into this conversation. Open a new chat to recover them.": "Some unsent messages could not be moved into this conversation. Open a new chat to recover them."
 }

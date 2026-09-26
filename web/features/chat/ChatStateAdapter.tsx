@@ -3,6 +3,7 @@
 import { activeWorkspaceId } from "@/lib/workspace-scope";
 import {
   clearFailedSubmission,
+  moveFailedSubmissions,
   readFailedSubmissions,
   serverContainsFailedSubmission,
   storeFailedSubmission,
@@ -212,6 +213,8 @@ export interface ChatState {
   submissionFailed: boolean;
   /** The text was recovered without its attachments or other request context. */
   submissionNeedsReview: boolean;
+  /** No browser storage accepted even the text. Copy before leaving this tab. */
+  submissionNotSaved: boolean;
 }
 
 export interface SessionConfiguration {
@@ -266,6 +269,9 @@ export interface MessageRequestSnapshot {
   content: string;
   capability?: string | null;
   workspaceMode?: WorkspaceMode | null;
+  workspaceId?: string | null;
+  courseId?: string | null;
+  replyLanguageOverride?: string | null;
   enabledTools: string[];
   knowledgeBases: string[];
   language: string;
@@ -288,6 +294,9 @@ export interface MessageRequestSnapshot {
   readingMaterialRevision?: number;
   /** The passage the question was asked about, and the unit it came from. */
   readingSelection?: ReadingSelectionSnapshot;
+  /** Complete wire context captured at first send for deterministic retry. */
+  readingTurnFields?: ReturnType<typeof readingTurnFields>;
+  watchingTurnFields?: ReturnType<typeof watchingTurnFields>;
   /** `capability` ran for this turn only (see SendMessageOptions.capability). */
   capabilityOnce?: boolean;
 }
@@ -315,6 +324,7 @@ export interface MessageItem {
    *  "unsent" marker; its requestSnapshot drives the retry. */
   failedSubmission?: boolean;
   failedSubmissionNeedsReview?: boolean;
+  failedSubmissionNotSaved?: boolean;
   failedSubmissionId?: string;
 }
 
@@ -387,6 +397,7 @@ type Action =
       parentMessageId?: number | null;
       failedSubmissionId?: string;
     }
+  | { type: "SET_SUBMISSION_PERSISTENCE"; key: string; submissionId: string; saved: boolean }
   | { type: "POP_LAST_ASSISTANT"; key: string }
   | { type: "RESTORE_ASSISTANT"; key: string; message: MessageItem }
   | { type: "STREAM_START"; key: string; startedAt: number }
@@ -491,6 +502,7 @@ function createSessionEntry(
     lastTurnFailed: false,
     submissionFailed: false,
     submissionNeedsReview: false,
+    submissionNotSaved: false,
   };
 }
 
@@ -758,6 +770,23 @@ function reducer(state: ProviderState, action: Action): ProviderState {
               userId,
             ),
             updatedAt: Date.now(),
+          },
+        },
+      };
+    }
+    case "SET_SUBMISSION_PERSISTENCE": {
+      const session = state.sessions[action.key];
+      if (!session) return state;
+      return {
+        ...state,
+        sessions: {
+          ...state.sessions,
+          [action.key]: {
+            ...session,
+            messages: session.messages.map((message) =>
+              message.failedSubmissionId === action.submissionId
+                ? { ...message, failedSubmissionNotSaved: !action.saved }
+                : message),
           },
         },
       };
@@ -1388,15 +1417,18 @@ function reducer(state: ProviderState, action: Action): ProviderState {
         },
       };
     }
-    // Idempotent variant of NEW_SESSION: guarantees there is *a* selected
-    // session without discarding one a page already selected and configured.
-    // The check belongs here rather than in the caller because a mount effect
-    // only ever sees the state of the render that created it, which is stale
-    // the moment anything else has dispatched.
+    // A chat page's child effect can create and configure a draft before this
+    // provider's mount effect runs. Hydrate that empty draft in place; never
+    // replace its configuration or a URL-selected server session. Repeated
+    // mount effects are harmless once the failed rows have been attached.
     case "ENSURE_DRAFT_SESSION": {
-      if (state.selectedKey && state.sessions[state.selectedKey]) return state;
-      const fresh = selectFreshDraft(state, action.key);
-      if (!action.failedRecords?.length) return fresh;
+      const fresh = state.selectedKey && state.sessions[state.selectedKey]
+        ? state
+        : selectFreshDraft(state, action.key);
+      const selectedKey = fresh.selectedKey;
+      if (!selectedKey || !action.failedRecords?.length) return fresh;
+      const selected = fresh.sessions[selectedKey];
+      if (selected.sessionId || selected.messages.length) return fresh;
       const messages: MessageItem[] = [];
       for (const record of action.failedRecords) {
         messages.push(restoredFailedMessage(record, messages.at(-1)?.id ?? null));
@@ -1405,8 +1437,8 @@ function reducer(state: ProviderState, action: Action): ProviderState {
         ...fresh,
         sessions: {
           ...fresh.sessions,
-          [action.key]: {
-            ...fresh.sessions[action.key],
+          [selectedKey]: {
+            ...selected,
             messages,
             status: "failed",
           },
@@ -1758,7 +1790,7 @@ export function ChatStateAdapterProvider({
   const pendingRegenerateRef = useRef<Map<string, MessageItem>>(new Map());
   const pendingResendRef = useRef<Map<string, MessageItem>>(new Map());
   const pendingSubmissionIdsRef = useRef<
-    Map<string, { storageKey: string; submissionId: string }>
+    Map<string, { storageKey: string; sourceStorageKey?: string; submissionId: string; visibleSubmissionIds: string[] }>
   >(new Map());
   const resolvingResendRef = useRef<Set<string>>(new Set());
   const traceCacheRef = useRef<TraceCache>(new TraceCache());
@@ -1889,9 +1921,29 @@ export function ChatStateAdapterProvider({
           null;
         if (sessionId) {
           const pendingSubmission = pendingSubmissionIdsRef.current.get(effectiveKey);
+          const draftSession = stateRef.current.sessions[effectiveKey];
+          const movedIds = pendingSubmission && !draftSession?.sessionId
+            ? moveFailedSubmissions(
+                pendingSubmission.storageKey,
+                sessionId,
+                pendingSubmission.visibleSubmissionIds,
+              )
+            : [];
+          if (pendingSubmission && !draftSession?.sessionId &&
+              movedIds.length < new Set(pendingSubmission.visibleSubmissionIds).size) {
+            notify(i18n.t(
+              "Some unsent messages could not be moved into this conversation. Open a new chat to recover them.",
+            ), { tone: "error", durationMs: 10_000 });
+          }
           if (pendingSubmission) {
             pendingSubmissionIdsRef.current.delete(effectiveKey);
-            pendingSubmissionIdsRef.current.set(sessionId, pendingSubmission);
+            pendingSubmissionIdsRef.current.set(sessionId, movedIds.includes(pendingSubmission.submissionId)
+              ? {
+                  ...pendingSubmission,
+                  sourceStorageKey: pendingSubmission.storageKey,
+                  storageKey: sessionId,
+                }
+              : pendingSubmission);
           }
           dispatch({
             type: "BIND_SERVER_SESSION",
@@ -1961,6 +2013,9 @@ export function ChatStateAdapterProvider({
         } | undefined)?.user_message_id;
         if (pendingSubmission && doneUserMessageId != null) {
           clearFailedSubmission(pendingSubmission.storageKey, pendingSubmission.submissionId);
+          if (pendingSubmission.sourceStorageKey) {
+            clearFailedSubmission(pendingSubmission.sourceStorageKey, pendingSubmission.submissionId);
+          }
         }
         pendingSubmissionIdsRef.current.delete(effectiveKey);
         dispatch({
@@ -2609,7 +2664,9 @@ export function ChatStateAdapterProvider({
       }
       const session = currentState.sessions[key] ?? createSessionEntry(key);
       const replaySnapshot = options?.requestSnapshotOverride;
+      const exactReplay = Boolean(options?.retrySubmissionId && replaySnapshot);
       const effectiveCapability =
+        exactReplay ? (replaySnapshot?.capability ?? null) :
         replaySnapshot?.capability ??
         options?.capability ??
         session.activeCapability;
@@ -2617,18 +2674,22 @@ export function ChatStateAdapterProvider({
         ? replaySnapshot.capabilityOnce === true
         : Boolean(options?.capability);
       const effectiveWorkspaceMode =
+        exactReplay ? (replaySnapshot?.workspaceMode ?? null) :
         replaySnapshot?.workspaceMode ?? session.workspaceMode;
       const effectiveTools =
         replaySnapshot?.enabledTools ?? session.enabledTools;
       const effectiveKnowledgeBases =
         replaySnapshot?.knowledgeBases ?? session.knowledgeBases;
       const effectiveLLMSelection =
+        exactReplay ? (replaySnapshot?.llmSelection ?? null) :
         replaySnapshot && "llmSelection" in replaySnapshot
           ? (replaySnapshot.llmSelection ?? null)
           : session.llmSelection;
       const effectiveMasteryPathId =
+        exactReplay ? (replaySnapshot?.masteryPathId ?? null) :
         replaySnapshot?.masteryPathId ?? session.masteryPathId;
       const effectiveMasterySessionMode =
+        exactReplay ? (replaySnapshot?.masterySessionMode ?? null) :
         replaySnapshot?.masterySessionMode ?? session.masterySessionMode;
       const effectiveLanguage =
         replaySnapshot?.language ??
@@ -2638,15 +2699,20 @@ export function ChatStateAdapterProvider({
       // persona (quiz follow-up surface); then the session-level preference.
       // Always a string — "" means Default / no persona.
       const effectivePersona =
+        exactReplay ? (replaySnapshot?.persona ?? "") :
         replaySnapshot?.persona ?? persona ?? session.personaSelection ?? "";
       // Replays retain the original resource selection, including one-turn choices.
       const effectiveResources =
+        exactReplay ? (replaySnapshot?.resourceSelection ?? emptyResourceSelection()) :
         replaySnapshot?.resourceSelection ?? session.resourceSelection ?? emptyResourceSelection();
       const effectiveMemoryReferences =
+        exactReplay ? replaySnapshot?.memoryReferences :
         replaySnapshot?.memoryReferences ?? memoryReferences;
       const effectiveBookReferences =
+        exactReplay ? replaySnapshot?.bookReferences :
         replaySnapshot?.bookReferences ?? options?.bookReferences;
       const effectiveReadingReferences =
+        exactReplay ? replaySnapshot?.readingReferences :
         replaySnapshot?.readingReferences ?? options?.readingReferences;
       const effectiveAttachments =
         replaySnapshot?.attachments?.map((a) => ({
@@ -2655,18 +2721,34 @@ export function ChatStateAdapterProvider({
           base64: a.base64,
           url: a.url,
           mime_type: a.mime_type,
-        })) ?? msgAttachments;
-      const effectiveConfig = config ?? replaySnapshot?.config;
+        })) ?? (exactReplay ? undefined : msgAttachments);
+      const effectiveConfig = exactReplay ? replaySnapshot?.config : config ?? replaySnapshot?.config;
       const effectiveNotebookReferences =
+        exactReplay ? replaySnapshot?.notebookReferences :
         replaySnapshot?.notebookReferences ?? notebookReferences;
       const effectiveHistoryReferences =
+        exactReplay ? replaySnapshot?.historyReferences :
         replaySnapshot?.historyReferences ?? historyReferences;
       const effectiveQuestionNotebookReferences =
+        exactReplay ? replaySnapshot?.questionNotebookReferences :
         replaySnapshot?.questionNotebookReferences ??
         questionNotebookReferences;
-      const liveReadingFields = readingTurnFields(effectiveWorkspaceMode);
+      const liveReadingFields = exactReplay ? {} : readingTurnFields(effectiveWorkspaceMode);
       const replaySelection = replaySnapshot?.readingSelection;
-      const effectiveReadingTurnFields = replaySnapshot?.readingMaterialId
+      const effectiveReadingTurnFields = exactReplay
+        ? (replaySnapshot?.readingTurnFields ?? (replaySnapshot?.readingMaterialId
+          ? {
+              reading_material_id: replaySnapshot.readingMaterialId,
+              ...(replaySnapshot.readingMaterialRevision
+                ? { reading_material_revision: replaySnapshot.readingMaterialRevision }
+                : {}),
+              ...(replaySelection
+                ? { reading_viewport: { selection: replaySelection.quote,
+                    locator: replaySelection.locator } }
+                : {}),
+            }
+          : {}))
+        : replaySnapshot?.readingMaterialId
         ? {
             reading_material_id: replaySnapshot.readingMaterialId,
             ...(replaySnapshot.readingMaterialRevision
@@ -2702,8 +2784,12 @@ export function ChatStateAdapterProvider({
         effectiveReadingTurnFields.reading_material_id;
       const effectiveReadingMaterialRevision =
         effectiveReadingTurnFields.reading_material_revision;
-      const liveWatchingFields = watchingTurnFields(effectiveCapability);
-      const effectiveWatchingTurnFields = replaySnapshot?.timedMediaId
+      const liveWatchingFields = exactReplay ? {} : watchingTurnFields(effectiveCapability);
+      const effectiveWatchingTurnFields = exactReplay
+        ? (replaySnapshot?.watchingTurnFields ?? (replaySnapshot?.timedMediaId
+          ? { timed_media_id: replaySnapshot.timedMediaId }
+          : {}))
+        : replaySnapshot?.timedMediaId
         ? { timed_media_id: replaySnapshot.timedMediaId }
         : liveWatchingFields;
       const effectiveTimedMediaId =
@@ -2713,6 +2799,9 @@ export function ChatStateAdapterProvider({
         content,
         capability: effectiveCapability,
         workspaceMode: effectiveWorkspaceMode,
+        workspaceId: session.workspaceId ?? null,
+        courseId: session.courseId.trim() || null,
+        replyLanguageOverride: session.replyLanguageOverride ?? null,
         enabledTools: [...effectiveTools],
         knowledgeBases: [...effectiveKnowledgeBases],
         language: effectiveLanguage,
@@ -2763,9 +2852,15 @@ export function ChatStateAdapterProvider({
         ...(effectiveReadingSelection
           ? { readingSelection: effectiveReadingSelection }
           : {}),
+        ...(Object.keys(effectiveReadingTurnFields).length
+          ? { readingTurnFields: effectiveReadingTurnFields }
+          : {}),
         ...(capabilityOnce ? { capabilityOnce: true } : {}),
         ...(effectiveTimedMediaId
           ? { timedMediaId: effectiveTimedMediaId }
+          : {}),
+        ...(Object.keys(effectiveWatchingTurnFields).length
+          ? { watchingTurnFields: effectiveWatchingTurnFields }
           : {}),
       };
       // Default the new message's parent to the tip of the currently-
@@ -2796,6 +2891,8 @@ export function ChatStateAdapterProvider({
         content.trim() !== "";
       const submissionId = options?.retrySubmissionId ??
         (trackNewSubmission ? randomUuid() : undefined);
+      const persistSubmission = Boolean(submissionId) &&
+        (trackNewSubmission || Boolean(options?.retrySubmissionId));
       if (options?.displayUserMessage !== false) {
         dispatch({
           type: "ADD_USER_MSG",
@@ -2828,18 +2925,33 @@ export function ChatStateAdapterProvider({
       // Persist before attempting the socket, including a first turn that
       // has no server session yet. Replays reuse their original identity.
       const submissionStorageKey = session.sessionId ?? draftFailedSubmissionKey();
-      if (trackNewSubmission && submissionId) {
-        storeFailedSubmission(submissionStorageKey, {
+      if (persistSubmission && submissionId) {
+        const saved = storeFailedSubmission(submissionStorageKey, {
           content,
           capability: effectiveCapability,
           requestSnapshot,
           submissionId,
         });
+        dispatch({
+          type: "SET_SUBMISSION_PERSISTENCE", key, submissionId,
+          saved: saved !== null,
+        });
+        if (!saved) {
+          notify(i18n.t(
+            "This unsent message could not be saved in your browser. Copy it before leaving this page.",
+          ), { tone: "error", durationMs: 10_000 });
+        }
       }
       if (submissionId) {
         pendingSubmissionIdsRef.current.set(key, {
           storageKey: submissionStorageKey,
           submissionId,
+          visibleSubmissionIds: [
+            ...session.messages
+              .map((message) => message.failedSubmissionId)
+              .filter((id): id is string => Boolean(id)),
+            submissionId,
+          ],
         });
       }
       return sendThroughRunner(
@@ -2855,8 +2967,14 @@ export function ChatStateAdapterProvider({
         mcp: effectiveResources.mcp,
         sessionId: session.sessionId,
         // Existing sessions inherit server ownership; new drafts declare it once.
-        ...(!session.sessionId ? { workspaceId: session.workspaceId ?? null } : {}),
-        courseId: session.courseId.trim() || null,
+        ...(!session.sessionId ? {
+          workspaceId: exactReplay
+            ? (replaySnapshot?.workspaceId ?? null)
+            : (session.workspaceId ?? null),
+        } : {}),
+        courseId: exactReplay
+          ? (replaySnapshot?.courseId ?? null)
+          : (session.courseId.trim() || null),
         persistUserMessage,
         followupQuestionContext:
           followupQuestionContext && typeof followupQuestionContext === "object"
@@ -2878,8 +2996,12 @@ export function ChatStateAdapterProvider({
         language: effectiveLanguage,
         // A draft has no session to PATCH yet. Persist its selector with the
         // first turn; existing sessions use their server-side preference.
-        ...(!session.sessionId && session.replyLanguageOverride
-          ? { replyLanguageOverride: session.replyLanguageOverride }
+        ...(!session.sessionId && (exactReplay
+          ? replaySnapshot?.replyLanguageOverride
+          : session.replyLanguageOverride)
+          ? { replyLanguageOverride: exactReplay
+              ? replaySnapshot?.replyLanguageOverride
+              : session.replyLanguageOverride }
           : {}),
         notebookReferences: effectiveNotebookReferences,
         historyReferences: effectiveHistoryReferences,
@@ -2942,14 +3064,17 @@ export function ChatStateAdapterProvider({
       runnersRef.current.delete(key);
     }
     if (session.isStreaming) {
-      // The user aborted on purpose — do not resurrect this submission as
-      // "unsent" after the next reload (#1594).
+      // Stop is not proof that the server accepted the user row. In
+      // particular, before a turn ID exists another tab may have stored a
+      // newer attempt with this same logical submission ID. Keep the record
+      // until a server transcript or DONE proves acceptance.
       const pendingSubmission = pendingSubmissionIdsRef.current.get(key);
-      if (pendingSubmission) {
-        clearFailedSubmission(pendingSubmission.storageKey, pendingSubmission.submissionId);
-        pendingSubmissionIdsRef.current.delete(key);
-      }
-      dispatch({ type: "STREAM_END", key, status: "cancelled" });
+      if (pendingSubmission) pendingSubmissionIdsRef.current.delete(key);
+      dispatch({
+        type: "STREAM_END", key,
+        status: pendingSubmission && !turnId ? "failed" : "cancelled",
+        submissionFailed: Boolean(pendingSubmission && !turnId),
+      });
     }
   }, []);
 
@@ -3204,6 +3329,10 @@ export function ChatStateAdapterProvider({
         const tail = current.messages[current.messages.length - 1];
         return tail?.role === "user" && tail.failedSubmissionNeedsReview === true;
       })(),
+      submissionNotSaved: (() => {
+        const tail = current.messages[current.messages.length - 1];
+        return tail?.role === "user" && tail.failedSubmissionNotSaved === true;
+      })(),
     };
   }, [state]);
 
@@ -3312,6 +3441,13 @@ export function ChatStateAdapterProvider({
     (configuration?: SessionConfiguration) => {
       const key = makeDraftKey();
       dispatch({ type: "NEW_SESSION", key, configuration });
+      // The provider stays mounted while /chat pages come and go. Restore
+      // unsent first turns every time a page creates a fresh draft, too.
+      dispatch({
+        type: "ENSURE_DRAFT_SESSION",
+        key,
+        failedRecords: readFailedSubmissions(draftFailedSubmissionKey()),
+      });
       return key;
     },
     [makeDraftKey],

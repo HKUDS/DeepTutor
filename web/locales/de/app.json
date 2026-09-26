@@ -5232,5 +5232,7 @@
   "kanban.showArchived": "Archivierte anzeigen",
   "kanban.showActive": "Aktive anzeigen",
   "kanban.restore": "Wiederherstellen",
-  "kanban.emptyArchive": "Keine archivierten Aufgaben"
+  "kanban.emptyArchive": "Keine archivierten Aufgaben",
+  "This unsent message could not be saved in your browser. Copy it before leaving this page.": "Diese nicht gesendete Nachricht konnte nicht im Browser gespeichert werden. Kopiere sie, bevor du diese Seite verlässt.",
+  "Some unsent messages could not be moved into this conversation. Open a new chat to recover them.": "Einige nicht gesendete Nachrichten konnten nicht in diese Unterhaltung übernommen werden. Öffne einen neuen Chat, um sie wiederherzustellen."
 }

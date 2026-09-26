@@ -5676,5 +5676,7 @@
   "kanban.showArchived": "Afficher les archives",
   "kanban.showActive": "Afficher les tâches actives",
   "kanban.restore": "Restaurer",
-  "kanban.emptyArchive": "Aucune tâche archivée"
+  "kanban.emptyArchive": "Aucune tâche archivée",
+  "This unsent message could not be saved in your browser. Copy it before leaving this page.": "Ce message non envoyé n’a pas pu être enregistré dans votre navigateur. Copiez-le avant de quitter cette page.",
+  "Some unsent messages could not be moved into this conversation. Open a new chat to recover them.": "Certains messages non envoyés n’ont pas pu être transférés dans cette conversation. Ouvrez une nouvelle discussion pour les récupérer."
 }

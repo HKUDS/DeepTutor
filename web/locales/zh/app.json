@@ -5232,5 +5232,7 @@
   "kanban.showArchived": "显示已归档",
   "kanban.showActive": "显示未归档",
   "kanban.restore": "恢复",
-  "kanban.emptyArchive": "没有已归档任务"
+  "kanban.emptyArchive": "没有已归档任务",
+  "This unsent message could not be saved in your browser. Copy it before leaving this page.": "这条未发送的消息无法保存到浏览器。离开此页面前请先复制。",
+  "Some unsent messages could not be moved into this conversation. Open a new chat to recover them.": "部分未发送的消息无法转入此对话。请打开新对话找回。"
 }

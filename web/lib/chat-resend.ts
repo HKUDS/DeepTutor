@@ -33,6 +33,7 @@ export function isFailedTurnVisible<T extends ChatBranchMessage>(
 interface LocalMessage {
   id?: MessageId;
   parentMessageId?: MessageId | null;
+  failedSubmissionId?: string;
 }
 
 interface RemoteMessage {
@@ -40,6 +41,7 @@ interface RemoteMessage {
   role: "user" | "assistant" | "system";
   content: string;
   parent_message_id?: MessageId | null;
+  metadata?: { client_submission_id?: unknown };
 }
 
 interface RemoteSession {
@@ -81,6 +83,25 @@ export function decideFailedTurnReplay(
     return newRows.length > 0 || remote.status === "completed"
       ? { kind: "refresh" }
       : { kind: "regenerate" };
+  }
+
+  if (lastUser.failedSubmissionId) {
+    const rows = remote.messages ?? [];
+    const ownRowIndex = rows.findIndex(
+      (message) => message.role === "user" &&
+        message.metadata?.client_submission_id === lastUser.failedSubmissionId,
+    );
+    if (ownRowIndex < 0) return { kind: "resend" };
+    const ownRow = rows[ownRowIndex];
+    // Regenerate operates on the server's latest user turn. Another tab may
+    // have submitted a newer turn after this one's row was persisted.
+    if (rows.slice(ownRowIndex + 1).some((message) => message.role === "user")) {
+      return { kind: "refresh" };
+    }
+    return ["failed", "rejected", "cancelled"].includes(remote.status ?? "") &&
+      sameParent(ownRow.parent_message_id, lastUser.parentMessageId)
+      ? { kind: "reconcile_regenerate", userId: ownRow.id }
+      : { kind: "refresh" };
   }
 
   const persistedUser = [...newRows].reverse().find((message) => message.role === "user");
