@@ -105,6 +105,11 @@ deeptutor-desktop --install-shell-update
 判据：`--check-updates` 的 `shell_update.status` 为 `available` / `up_to_date`；`--verify-shell-update`
 失败即说明签名与 `pubkey` 不匹配（产物坏了，或换了公钥却没重新签名）。
 
+`tauri.conf.json` 里开着 `requireSignedVersion`：更新清单里的版本号必须被签名覆盖，否则拒绝——
+这挡住了"用新版本号配旧产物签名"的降级玩法。`tauri build` 会自动把版本写进签名；**手工签名
+（`tauri signer sign`）时必须传 `--app-version <版本>`**，否则新版外壳在启用该开关后会被自己的
+更新通道拒绝。CI 的 `validate` 作业会检查这个开关没被关掉。
+
 两个实测发现的坑，写下来省下一次排查：
 
 - **macOS 更新器拒绝符号链接路径**：`/tmp` 在 macOS 上是 `/private/tmp` 的符号链接，从
@@ -113,3 +118,35 @@ deeptutor-desktop --install-shell-update
 - **`.sig` 是 base64 包着 minisign**：`latest.json` 里的 `signature` 就是 `.sig` 文件的内容，
   而该文件本身是 base64 编码的 minisign 文本。`desktop/scripts/assemble_updater_manifest.py`
   会解码回来校验结构，粘一份未编码的 minisign 文本会被拒。
+
+## 6. 运行时包清单的签名
+
+外壳平面用 `plugins.updater.pubkey` 验签；运行时平面（`runtime-packs.json` + 它列出的包）用
+**同一把 minisign 密钥**，所以只需要维护一个密钥对：
+
+- 发布侧：`desktop-release.yml` 的 `catalog` 作业在合并出 `runtime-packs.json` 之后调用
+  `tauri signer sign runtime-packs.json -k "$TAURI_SIGNING_PRIVATE_KEY" -p …`，产出
+  `runtime-packs.json.sig`（`publish` 作业会自动带上它，因为它在 `*.sig` 的白名单里）。
+  没有私钥时该步骤只打一条 `::warning`，清单不带签名发布。
+- 安装侧：`PackInstaller` 读到清单时会去找 `<catalog>.sig`，再找 `<catalog>.minisig`。
+  **配了公钥就必须验签通过**：没有签名、签名来自别的密钥、或清单在签名后被改过，一律拒绝
+  （fail closed），错误信息会说明找过哪些路径。公钥解析顺序：环境变量
+  `DEEPTUTOR_DESKTOP_PACK_CATALOG_PUBKEY`（或无头模式的 `--catalog-pubkey`）→ 没有则用
+  `tauri.conf.json` 里 `plugins.updater.pubkey`（Tauri 存的是整个 `.pub` 文件的 base64，
+  解析器接受这种形态、`.pub` 文件文本、以及裸的 key base64 三种写法）。
+- 包归档本身不需要单独签名：它们的 sha256 写在被签名的清单里。
+
+为什么值得：清单同时给出**包的 URL 与 sha256**，所以"签名清单"等于"发布密钥批准了这批字节"。
+没有它，运行时更新只依赖 TLS + 用户手写的 catalog URL，一个中间人或被篡改的镜像就能让外壳
+下载并执行一个包。
+
+自检（本地，任何平台）：
+
+```bash
+# 无头模式下显式指定公钥（等价于设置 DEEPTUTOR_DESKTOP_PACK_CATALOG_PUBKEY）
+deeptutor-desktop --catalog-pubkey <base64> --check-updates --catalog <url|path>
+deeptutor-desktop --check-updates --catalog <url|path>          # 不配公钥 → 只告警，不验签
+```
+
+判据：清单有签名且公钥匹配时输出 `runtime catalog signature ok`；否则报"验签失败"或
+"清单没有签名，已拒绝使用"。
