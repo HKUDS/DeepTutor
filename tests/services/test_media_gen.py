@@ -396,6 +396,8 @@ async def test_dashscope_videogen_task_polls_and_downloads(
     [
         ("wanx2.1-t2v-turbo", "9:16", "480p", "480*832"),
         ("wanx2.1-t2v-turbo", "1:1", "", "960*960"),
+        ("wan2.2-t2v-plus", "16:9", "480p", "832*480"),
+        ("wan2.2-t2v-plus", "4:3", "1080p", "1632*1248"),
         ("wan2.6-t2v", "4:3", "1080p", "1632*1248"),
         ("wan2.6-t2v", "", "1280*720", "1280*720"),
     ],
@@ -413,6 +415,8 @@ def test_dashscope_videogen_uses_concrete_size(
     ("model", "ratio", "resolution", "message"),
     [
         ("wanx2.1-t2v-plus", "16:9", "480p", "does not support 480p"),
+        ("wan2.2-t2v-plus", "16:9", "720p", "does not support 720p"),
+        ("wan2.2-t2v-plus", "", "1280*720", "does not support 720p"),
         ("wanx2.1-t2v-turbo", "4:3", "480p", "Unsupported DashScope"),
         ("wanx2.1-t2v-turbo", "9:16", "1280*720", "conflicts with aspect ratio"),
     ],
