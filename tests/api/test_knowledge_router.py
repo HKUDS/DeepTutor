@@ -53,6 +53,36 @@ def _build_app() -> FastAPI:
     return app
 
 
+def _materialized_routes(app: "FastAPI"):
+    """Flatten app routes, materializing new-fastapi lazy ``_IncludedRouter``.
+
+    Recent FastAPI (>=0.130) turns ``include_router`` into lazy wrappers whose
+    ``original_router``/``include_context`` carry the prefix; ``app.routes``
+    only exposes real routes after mounting. Same flatten pattern as
+    ``tests/video_learning/test_router.py``. Method matching is not modelled —
+    every surface checked here is a GET reading route.
+    """
+    from starlette.routing import compile_path
+
+    for route in app.router.routes:
+        nested = getattr(route, "original_router", None)
+        if nested is None:
+            yield route
+            continue
+        ctx = getattr(route, "include_context", None)
+        prefix = str(getattr(ctx, "prefix", "") or "")
+        for inner in nested.routes:
+            template = prefix + str(getattr(inner, "path", ""))
+            path_regex, _, _ = compile_path(template)
+
+            def _matches(scope, _rx=path_regex):
+                if _rx.match(scope.get("path", "")):
+                    return (Match.FULL, {})
+                return (Match.NONE, None)
+
+            yield SimpleNamespace(path=template, matches=_matches)
+
+
 @pytest.mark.parametrize(
     ("path", "route_path", "surface"),
     [
@@ -94,7 +124,9 @@ def test_learner_surface_uses_actual_kb_route_template(
 ) -> None:
     app = _build_app()
     scope = {"type": "http", "method": "GET", "path": path, "root_path": ""}
-    matched = next(route for route in app.router.routes if route.matches(scope)[0] is Match.FULL)
+    matched = next(
+        route for route in _materialized_routes(app) if route.matches(scope)[0] is Match.FULL
+    )
     assert matched.path == route_path
     assert _learning_surface_for_path(path, "GET", route_path=matched.path) == surface
 
