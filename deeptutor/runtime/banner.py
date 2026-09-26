@@ -335,7 +335,7 @@ LABELS: dict[str, dict[str, str]] = {
         "start.detached_started": "DeepTutor startet im Hintergrund (Launcher-PID {pid}).",
         "start.detached_already_running": "Ein DeepTutor-Launcher läuft bereits im Hintergrund (PID {pid}). Log: {log}",
         "start.detached_log": "Log: {path}",
-        "start.detached_stop_hint": "Beenden mit `deeptutor stop --home \"{home}\"`.",
+        "start.detached_stop_hint": 'Beenden mit `deeptutor stop --home "{home}"`.',
         "start.starting_backend": "Backend wird gestartet ...",
         "start.starting_frontend": "Frontend wird gestartet ...",
         "start.reusing_frontend": "Vorhandenes Frontend unter {url} wird weiterverwendet (PID {pid}).",
