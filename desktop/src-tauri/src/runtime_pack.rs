@@ -166,12 +166,36 @@ pub fn verify_minisign(
     signature_text: &str,
 ) -> Result<(), String> {
     let key = parse_minisign_public_key(public_key)?;
-    let signature = minisign_verify::Signature::decode(signature_text)
-        .map_err(|error| format!("签名文件无法解析: {error}"))?;
+    let signature = parse_minisign_signature(signature_text)?;
     // `true` accepts the classic (non-prehashed) form, which is what minisign
     // and `tauri signer sign` produce for a file this size.
     key.verify(message, &signature, true)
         .map_err(|error| format!("签名校验不通过: {error}"))
+}
+
+/// Parse a detached signature in either shape a release can carry.
+///
+/// `minisign -S` writes the four-line text; `tauri signer sign` — the CLI the
+/// release pipeline uses, and the shape `latest.json` carries — base64-wraps
+/// that same text into a single line. Both are accepted: a verifier that only
+/// understood one of them would reject the release, and the error would look
+/// like a corrupt signature rather than a decoding mismatch.
+fn parse_minisign_signature(text: &str) -> Result<minisign_verify::Signature, String> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return Err("签名文件为空".to_string());
+    }
+    if let Ok(signature) = minisign_verify::Signature::decode(trimmed) {
+        return Ok(signature);
+    }
+    if let Some(decoded) = base64_decode(trimmed) {
+        if let Ok(inner) = String::from_utf8(decoded) {
+            if let Ok(signature) = minisign_verify::Signature::decode(inner.trim()) {
+                return Ok(signature);
+            }
+        }
+    }
+    Err("签名文件无法解析：既不是 minisign 文本，也不是它的 base64".to_string())
 }
 
 /// Which pack is active, and what to fall back to.
@@ -2010,6 +2034,24 @@ mod tests {
         for broken in ["", "   ", "not base64 at all!!", "AAAA"] {
             assert!(parse_minisign_public_key(broken).is_err(), "{broken:?}");
         }
+    }
+
+    /// The release pipeline signs with `tauri signer sign`, which base64-wraps
+    /// the minisign text; a plain `minisign -S` writes the text itself. Missing
+    /// either shape would have refused every real release.
+    #[test]
+    fn the_signature_is_accepted_in_both_shapes_a_release_can_ship() {
+        use base64::Engine as _;
+        let wrapped = base64::engine::general_purpose::STANDARD.encode(TEST_SIGNATURE);
+
+        assert!(verify_minisign(TEST_PUBKEY_FILE, TEST_CATALOG.as_bytes(), TEST_SIGNATURE).is_ok());
+        assert!(verify_minisign(TEST_PUBKEY_BARE, TEST_CATALOG.as_bytes(), &wrapped).is_ok());
+        // A wrapped signature over different bytes still fails, and so does junk.
+        let tampered = TEST_CATALOG.replace("\"packs\": []", "\"packs\": [1]");
+        assert!(verify_minisign(TEST_PUBKEY_BARE, tampered.as_bytes(), &wrapped).is_err());
+        assert!(
+            verify_minisign(TEST_PUBKEY_BARE, TEST_CATALOG.as_bytes(), "not a signature").is_err()
+        );
     }
 
     #[test]
