@@ -10,7 +10,7 @@ const BUILD_MANIFEST_PATH = path.join(NEXT_OUTPUT_DIR, "build-manifest.json");
 const NEXT_BIN = path.join(WEB_ROOT, "node_modules", "next", "dist", "bin", "next");
 
 const ROUTE_TARGETS = [
-  { route: "/", requestPath: "/", budgetKb: 300 },
+  { route: "/chat", requestPath: "/chat", budgetKb: 1_020 },
   { route: "/chat/[sessionId]", requestPath: "/chat/perf-budget", budgetKb: 1_020 },
   { route: "/settings", requestPath: "/settings", budgetKb: 840 },
   { route: "/knowledge-bases", requestPath: "/knowledge-bases", budgetKb: 550 },
@@ -19,8 +19,7 @@ const ROUTE_TARGETS = [
   {
     route: "/learning/reading/[workspaceId]/sessions/[sessionId]",
     requestPath: "/learning/reading/perf-budget/sessions/perf-session",
-    // v1.6.10 dependency upgrades pushed the measured raw JS to ~1126KB;
-    // re-base the budget instead of leaving a permanently red gate.
+    // v1.6.10 dependency upgrades moved the measured raw JS above 1120KB.
     budgetKb: 1_160,
   },
   {
@@ -109,11 +108,24 @@ function scriptChunks(html, baseUrl) {
 }
 
 async function loadRouteChunks(baseUrl, requestPath) {
-  const response = await fetch(`${baseUrl}${requestPath}`);
+  const response = await fetch(`${baseUrl}${requestPath}`, { redirect: "manual" });
   if (!response.ok) {
     throw new Error(`${requestPath} returned HTTP ${response.status} during route measurement`);
   }
   return scriptChunks(await response.text(), baseUrl);
+}
+
+async function assertRootRedirect(baseUrl) {
+  const response = await fetch(`${baseUrl}/`, { redirect: "manual" });
+  const location = response.headers.get("location");
+  const destination = location ? new URL(location, baseUrl) : null;
+  if (
+    ![307, 308].includes(response.status) ||
+    destination?.origin !== baseUrl ||
+    destination.pathname !== "/chat"
+  ) {
+    throw new Error(`/ must redirect to /chat, got HTTP ${response.status} to ${location || "(none)"}`);
+  }
 }
 
 function intersection(sets) {
@@ -163,6 +175,7 @@ async function main() {
   const server = await startBuildServer();
 
   try {
+    await assertRootRedirect(server.baseUrl);
     const rows = [];
     for (const target of ROUTE_TARGETS) {
       rows.push({ ...target, chunks: await loadRouteChunks(server.baseUrl, target.requestPath) });
