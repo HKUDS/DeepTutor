@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useMemo, type ReactNode } from "react";
+import { fromMarkdown } from "mdast-util-from-markdown";
 
 import type { MessageAttachment } from "@/features/chat/ChatStateAdapter";
 import { docIconFor } from "@/lib/doc-attachments";
@@ -255,6 +256,16 @@ export function makeFileLinkRemarkPlugin(files: MessageAttachment[]) {
   ): string | undefined => {
     const url = typeof node.url === "string" ? node.url : "";
     if (url.startsWith(ATTACHMENT_HREF_PREFIX)) return undefined; // already ours
+    // Only model-written relative paths may be repaired by a filename or
+    // label. An external URL can share a basename with a generated file.
+    if (/^[a-z][a-z\d+.-]*:/i.test(url) || url.startsWith("//")) {
+      return undefined;
+    }
+    if (url.startsWith("#") || url.startsWith("?")) return undefined;
+    if (url.startsWith("/")) {
+      const file = files.find((item) => item.url === decode(url));
+      return file?.origin === "workspace" ? file.relative_path : file?.filename;
+    }
     return (
       lookupSurface(decode(url)) ??
       lookupSurface(decode(baseName(url))) ??
@@ -324,6 +335,39 @@ export function makeFileLinkRemarkPlugin(files: MessageAttachment[]) {
   };
 
   return () => (tree: Record<string, unknown>) => visit(tree);
+}
+
+/** Files with no visible inline link in the rendered Markdown. Reuse the
+ * renderer's remark transform so code examples never hide a download card. */
+export function unlinkedGeneratedFiles(
+  content: string,
+  files: MessageAttachment[],
+): MessageAttachment[] {
+  if (!files.length) return [];
+  const tree = fromMarkdown(content) as unknown as Record<string, unknown>;
+  makeFileLinkRemarkPlugin(files)?.()(tree);
+  const linked = new Set<string>();
+  const visit = (node: Record<string, unknown>): void => {
+    if (node.type === "link" || node.type === "image") {
+      const name = parseAttachmentHref(node.url as string | undefined);
+      if (name) {
+        const matching = files.filter(
+          (file) =>
+            (file.origin === "workspace" ? file.relative_path : file.filename) ===
+            name,
+        );
+        if (matching.length === 1 && matching[0].url) {
+          linked.add(matching[0].url);
+        }
+      }
+      return;
+    }
+    for (const child of (node.children as Record<string, unknown>[] | undefined) ?? []) {
+      visit(child);
+    }
+  };
+  visit(tree);
+  return files.filter((file) => !file.url || !linked.has(file.url));
 }
 
 // ---------------------------------------------------------------------------

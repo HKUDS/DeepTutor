@@ -37,6 +37,7 @@ import {
   InlineFileCard,
   InlineFileCardProvider,
   mergeGeneratedFiles,
+  unlinkedGeneratedFiles,
 } from "@/components/common/InlineFileCard";
 import {
   isRetractionMarker,
@@ -190,34 +191,7 @@ function PartnerGeneratedFiles({
   content: string;
 }) {
   const files = mergeGeneratedFiles(workspaceAttachments(attachments), events);
-  // The response renderer turns a model-written Markdown link into an inline
-  // file button. Show a separate card only for files the response did not link.
-  const linked = new Set<string>();
-  for (const match of content.matchAll(
-    /\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g,
-  )) {
-    const label = match[1];
-    let target = match[2];
-    try {
-      target = decodeURIComponent(target);
-    } catch {
-      // Keep the literal Markdown target when it is not percent encoded.
-    }
-    const path = target.replace(/^\.\//, "");
-    const filename = path.split(/[\\/]/).pop();
-    const candidates = [
-      files.filter((file) => file.relative_path === path || file.url === path),
-      files.filter((file) => file.filename === filename),
-      files.filter((file) => file.title === label),
-    ];
-    const resolved = candidates.find((matches) => matches.length === 1)?.[0];
-    if (resolved?.url) linked.add(resolved.url);
-  }
-  const unlinked = files.filter(
-    (file) =>
-      !linked.has(file.url || "") &&
-      !(file.relative_path && content.includes(file.relative_path)),
-  );
+  const unlinked = unlinkedGeneratedFiles(content, files);
   if (!unlinked.length) return null;
   return (
     <div className="mt-2 flex flex-wrap gap-1.5">
