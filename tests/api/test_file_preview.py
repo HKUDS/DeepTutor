@@ -33,7 +33,7 @@ def _file_preview_routes(app):
         nested = getattr(route, "original_router", None)
         if nested is None:
             if getattr(route, "path", "") == "/api/file-preview/pdf":
-                flattened.append(SimpleNamespace(dependant=route.dependant))
+                flattened.append(SimpleNamespace(dependencies=list(route.dependant.dependencies)))
             continue
         ctx = getattr(route, "include_context", None)
         prefix = str(getattr(ctx, "prefix", "") or "")
@@ -44,6 +44,36 @@ def _file_preview_routes(app):
             deps = list(inner.dependant.dependencies) + router_deps
             flattened.append(SimpleNamespace(dependencies=deps))
     return flattened
+
+
+@pytest.mark.parametrize("lazy", [False, True])
+def test_file_preview_route_normalizer_keeps_auth_dependency(lazy: bool) -> None:
+    from fastapi import Depends
+
+    from deeptutor.api.routers.auth import require_auth
+
+    eager_dependency = SimpleNamespace(call=require_auth)
+    if lazy:
+        inner = SimpleNamespace(path="/pdf", dependant=SimpleNamespace(dependencies=[]))
+        route = SimpleNamespace(
+            original_router=SimpleNamespace(routes=[inner]),
+            include_context=SimpleNamespace(
+                prefix="/api/file-preview", dependencies=[Depends(require_auth)]
+            ),
+        )
+    else:
+        route = SimpleNamespace(
+            path="/api/file-preview/pdf",
+            dependant=SimpleNamespace(dependencies=[eager_dependency]),
+        )
+
+    normalized = _file_preview_routes(SimpleNamespace(routes=[route]))
+    assert len(normalized) == 1
+    assert any(
+        (getattr(dependency, "call", None) or getattr(dependency, "dependency", None))
+        is require_auth
+        for dependency in normalized[0].dependencies
+    )
 
 
 def test_preview_route_requires_authentication(monkeypatch) -> None:
