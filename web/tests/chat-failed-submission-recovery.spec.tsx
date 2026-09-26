@@ -434,6 +434,11 @@ it("restores a failed first message in a draft and can retry after reload", asyn
     });
     await act(async () => {
       fixture.emit?.({
+        type: "session", source: "chat", stage: "", content: "",
+        turn_id: "draft-retry", seq: 0, timestamp: Date.now() / 1000,
+        metadata: { session_id: "new-session", turn_id: "draft-retry" },
+      });
+      fixture.emit?.({
         type: "done", source: "chat", stage: "responding", content: "",
         turn_id: "draft-retry", seq: 1, timestamp: Date.now() / 1000,
         metadata: { status: "completed", user_message_id: 1, assistant_message_id: 2 },
@@ -490,6 +495,33 @@ it("keeps both unsent messages when a second direct send fails", async () => {
     expect(readMessages().slice(-2)).toEqual([
       { role: "user", content: "Hello offline", failed: true },
       { role: "user", content: "Second offline", failed: true },
+    ]);
+    expect(screen.getByTestId("lastTurnFailed").textContent).toBe("true");
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("a later successful send clears only its own record", async () => {
+  vi.useFakeTimers();
+  try {
+    fixture.session = completedServerSession();
+    render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+    await act(async () => { fireEvent.click(screen.getByText("Load")); });
+    fireEvent.click(screen.getByText("Send"));
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_400); });
+    fixture.connected = true;
+    fireEvent.click(screen.getByText("Send another"));
+    expect(readFailedSubmissions("s1")).toHaveLength(2);
+    await act(async () => {
+      fixture.emit?.({
+        type: "done", source: "chat", stage: "responding", content: "",
+        turn_id: "second-turn", seq: 2, timestamp: Date.now() / 1000,
+        metadata: { status: "completed", user_message_id: 3, assistant_message_id: 4 },
+      });
+    });
+    expect(readFailedSubmissions("s1").map((record) => record.content)).toEqual([
+      "Hello offline",
     ]);
   } finally {
     vi.useRealTimers();
