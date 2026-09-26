@@ -122,8 +122,10 @@ class ConfigTestRunner:
                     model=model,
                 )
 
-            if service in {"llm", "task"}:
+            if service == "llm":
                 asyncio.run(self._test_llm(run, catalog))
+            elif service == "task":
+                asyncio.run(self._test_task(run, catalog))
             elif service == "embedding":
                 asyncio.run(self._test_embedding(run, model or {}, catalog))
             elif service == "search":
@@ -291,6 +293,52 @@ class ConfigTestRunner:
         run.emit(
             "info",
             "Context window detection is available in Settings and was not written automatically.",
+        )
+
+    async def _test_task(self, run: TestRun, catalog: dict[str, Any]) -> None:
+        from deeptutor.services.model_selection.tasks import task_service_configured
+
+        if not task_service_configured(catalog):
+            run.status = "completed"
+            run.emit(
+                "completed",
+                "No global task model is configured; background tasks inherit the main LLM.",
+            )
+            return
+
+        from deeptutor.services.llm.config import get_token_limit_kwargs
+        from deeptutor.services.llm.factory import complete_with_config
+        from deeptutor.services.model_selection.runtime import llm_config_from_resolved
+
+        run.emit("info", "Loading task model config from the active catalog selection.")
+        resolved = resolve_llm_runtime_config(catalog=catalog, service_name="task")
+        llm_config = llm_config_from_resolved(resolved)
+        run.emit(
+            "info",
+            f"Resolved task model `{llm_config.model}` with binding `{llm_config.binding}`.",
+        )
+        run.emit("info", f"Request target: {llm_config.base_url}")
+        # Mirror the production calls (conversation titles, composer starting
+        # points): short prompt, tiny token budget, no context-window probe.
+        run.emit("info", "Generating a title-style probe response (short, bounded).")
+        token_kwargs = get_token_limit_kwargs(llm_config.model, max_tokens=80)
+        response = await complete_with_config(
+            llm_config,
+            prompt=(
+                "Write a title of at most four words for a conversation about: "
+                '"DeepTutor configuration health check".'
+            ),
+            system_prompt="You write very short conversation titles.",
+            **token_kwargs,
+        )
+        snippet = (response or "").strip()
+        run.emit("response", "Received task model response.", snippet=snippet[:400])
+        if not snippet:
+            raise ValueError("Task model returned an empty response.")
+        run.emit(
+            "info",
+            "Task model completion succeeded. Conversation titles and composer "
+            "starting points use this same path at runtime.",
         )
 
     async def _test_embedding(
