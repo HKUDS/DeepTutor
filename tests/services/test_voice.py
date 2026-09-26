@@ -31,12 +31,14 @@ from deeptutor.services.voice.adapters.openai_compat import (
     OpenRouterTTSAdapter,
 )
 from deeptutor.services.voice.base import (
+    VoiceProviderError,
     build_auth_headers,
     join_audio_path,
     normalize_stt_content_type,
     strip_markdown_for_speech,
 )
 from deeptutor.services.voice.config import STTConfig, TTSConfig
+from deeptutor.services.voice.options import voice_options
 
 
 def _capture_post(monkeypatch: pytest.MonkeyPatch, response: httpx.Response) -> dict[str, Any]:
@@ -486,6 +488,18 @@ def test_dashscope_stt_url_and_errors() -> None:
         "wss://dashscope.aliyuncs.com/api-ws/v1/inference"
     )
     assert adapter._sentence_texts({"sentence": {"text": "single"}}) == ["single"]
+
+
+def test_dashscope_stt_options_only_offer_supported_sample_rate() -> None:
+    models = voice_options("dashscope", "stt")["models"]
+    assert [model["id"] for model in models] == ["paraformer-realtime-v2"]
+
+
+@pytest.mark.asyncio
+async def test_dashscope_stt_rejects_8k_model_before_audio_conversion() -> None:
+    config = STTConfig(model="paraformer-realtime-8k-v2", api_key="dash-key")
+    with pytest.raises(VoiceProviderError, match="require 8000 Hz audio"):
+        await DashScopeSTTAdapter().transcribe(b"audio", config)
 
 
 @pytest.mark.asyncio

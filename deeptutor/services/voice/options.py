@@ -201,7 +201,7 @@ def voice_options(provider: str, service: str) -> dict:
             "openrouter": ["openai/whisper-large-v3"],
             "groq": ["whisper-large-v3-turbo", "whisper-large-v3"],
             "siliconflow": ["FunAudioLLM/SenseVoiceSmall"],
-            "dashscope": ["paraformer-realtime-v2", "paraformer-realtime-8k-v2"],
+            "dashscope": ["paraformer-realtime-v2"],
             "volcengine_speech": ["bigmodel"],
         }.get(provider, [])
         languages = VOLC_LANGUAGES if provider == "volcengine_speech" else ISO_LANGUAGES
