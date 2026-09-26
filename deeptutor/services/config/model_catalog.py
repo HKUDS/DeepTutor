@@ -193,6 +193,8 @@ LLM_SHAPED_SERVICES: tuple[str, ...] = ("llm", "task")
 # built-in tables decide"; only explicit booleans are kept.
 MODEL_CAPABILITY_KEYS: tuple[str, ...] = ("tools", "vision", "json_output", "reasoning")
 
+_DASHSCOPE_VOICE_BINDINGS = {"dashscope", "aliyun", "bailian"}
+
 
 def _normalize_model_capabilities(model: dict[str, Any]) -> bool:
     raw = model.get("capabilities")
@@ -479,6 +481,18 @@ class ModelCatalogService:
                         model.setdefault("id", f"{service_name}-model-{uuid4().hex[:8]}")
                         model.setdefault("name", model.get("model") or "Untitled Model")
                         model.setdefault("model", "")
+                        if (
+                            service_name == "stt"
+                            and str(profile.get("binding") or "").lower()
+                            in _DASHSCOPE_VOICE_BINDINGS
+                            and model["model"] == "paraformer-v2"
+                        ):
+                            # The old default was a batch API model, but this
+                            # profile's adapter always uses the real-time WebSocket.
+                            model["model"] = "paraformer-realtime-v2"
+                            if model["name"] == "paraformer-v2":
+                                model["name"] = "paraformer-realtime-v2"
+                            changed = True
                         if service_name in LLM_SHAPED_SERVICES and _normalize_model_capabilities(
                             model
                         ):

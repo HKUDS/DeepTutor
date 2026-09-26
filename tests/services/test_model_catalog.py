@@ -113,6 +113,61 @@ def test_load_recovers_invalid_catalog_with_defaults(tmp_path: Path):
     assert set(saved["services"]) == expected_services
 
 
+def test_load_migrates_only_legacy_dashscope_stt_model(tmp_path: Path):
+    catalog_path = tmp_path / "model_catalog.json"
+    catalog_path.write_text(
+        json.dumps(
+            {
+                "services": {
+                    "stt": {
+                        "active_profile_id": "dashscope-profile",
+                        "active_model_id": "dashscope-model",
+                        "profiles": [
+                            {
+                                "id": "dashscope-profile",
+                                "binding": "bailian",
+                                "models": [
+                                    {
+                                        "id": "dashscope-model",
+                                        "name": "paraformer-v2",
+                                        "model": "paraformer-v2",
+                                    },
+                                    {
+                                        "id": "custom-name",
+                                        "name": "My speech model",
+                                        "model": "paraformer-v2",
+                                    },
+                                ],
+                            },
+                            {
+                                "id": "other-profile",
+                                "binding": "openai",
+                                "models": [
+                                    {
+                                        "id": "other-model",
+                                        "name": "paraformer-v2",
+                                        "model": "paraformer-v2",
+                                    }
+                                ],
+                            },
+                        ],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = ModelCatalogService(path=catalog_path).load()
+    models = loaded["services"]["stt"]["profiles"]
+    assert models[0]["models"][0]["model"] == "paraformer-realtime-v2"
+    assert models[0]["models"][0]["name"] == "paraformer-realtime-v2"
+    assert models[0]["models"][1]["model"] == "paraformer-realtime-v2"
+    assert models[0]["models"][1]["name"] == "My speech model"
+    assert models[1]["models"][0]["model"] == "paraformer-v2"
+    assert json.loads(catalog_path.read_text(encoding="utf-8")) == loaded
+
+
 def test_load_normalizes_wire_api_to_supported_profile_backends(tmp_path: Path):
     catalog_path = tmp_path / "model_catalog.json"
     catalog_path.write_text(
