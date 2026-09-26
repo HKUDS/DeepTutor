@@ -35,6 +35,9 @@ def test_partner_authoring_activation_requires_action_and_partner_object() -> No
         "Set up a new study buddy for physics",
         "我想要一个数学导师",
         "来个学习搭子",
+        'Create a tutor named "Ada"',
+        "I don't want a coach; create a tutor instead",
+        "请不要创建一个伙伴，请帮我创建一个数学导师",
     ],
 )
 def test_partner_authoring_activates_on_a_creation_request(message: str) -> None:
@@ -52,10 +55,28 @@ def test_partner_authoring_activates_on_a_creation_request(message: str) -> None
         "我想提交一个关于伙伴功能的 bug",
         "生成的回答里提到了伙伴",
         "我需要解释一下，为什么会触发伙伴创建",
+        "I don't want a tutor",
+        "I do not need a partner",
+        "Please don't create a partner",
+        "I don't want you to create a tutor",
+        "我不想要一个伙伴",
+        "请不要创建一个伙伴",
+        "我不想让你创建一个伙伴",
+        'Why does "create a Partner" trigger here?',
+        "The issue title is 'create a Partner'",
+        "请解释“创建一个伙伴”为什么会误触发",
+        "```text\ncreate a Partner\n```",
+        "> create a Partner\nWhy did this trigger?",
     ],
 )
 def test_partner_authoring_ignores_turns_that_only_mention_a_partner(message: str) -> None:
     assert not is_partner_authoring_turn(_context(message))
+
+
+def test_explicit_partner_authoring_selection_still_routes_the_turn() -> None:
+    context = _context("I don't want a tutor")
+    context.active_capability = "partner_authoring"
+    assert is_partner_authoring_turn(context)
 
 
 def test_capability_forces_a_draft_before_finishing() -> None:

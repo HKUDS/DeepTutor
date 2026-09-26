@@ -30,6 +30,18 @@ _AUTHORING_REQUEST = re.compile(
     rf"{_ZH_ACTION}{_ZH_GAP}{_ZH_OBJECT}|{_EN_ACTION}{_EN_DETERMINER}{_EN_GAP}{_EN_OBJECT}",
     re.IGNORECASE,
 )
+_QUOTED_OR_CODE = re.compile(
+    r"```[\s\S]*?```|~~~[\s\S]*?~~~"
+    r"|(?m:^>[^\n]*)|`[^`\n]*`"
+    r'|"[^"\n]*"|“[^”\n]*”|「[^」\n]*」|『[^』\n]*』'
+    r"|(?<!\w)'[^'\n]+'(?!\w)"
+)
+_CLAUSE_END = re.compile(r"[。！？!?；;，,\n]")
+_NEGATED_ACTION = re.compile(
+    r"(?:\b(?:don't|do\s+not|never|not|can't|cannot)\s*(?:want|need)?(?:\s+(?:you\s+)?to)?\s*"
+    r"|(?:不|别|不要|不用|无需|不必|不想(?:让你)?|不需要)\s*)$",
+    re.IGNORECASE,
+)
 
 
 def is_partner_authoring_turn(context: UnifiedContext) -> bool:
@@ -41,7 +53,20 @@ def is_partner_authoring_turn(context: UnifiedContext) -> bool:
     if context.active_capability == PARTNER_AUTHORING_CAPABILITY_NAME:
         return True
     text = str(context.user_message or "")
-    return _AUTHORING_REQUEST.search(text) is not None
+    quoted = [match.span() for match in _QUOTED_OR_CODE.finditer(text)]
+    for match in _AUTHORING_REQUEST.finditer(text):
+        # Mentioning a request inside a quotation or code sample is not an
+        # instruction. The action may still be outside quotes around a name.
+        if any(start <= match.start() and match.end() <= end for start, end in quoted):
+            continue
+        clause_start = max(
+            (boundary.end() for boundary in _CLAUSE_END.finditer(text, 0, match.start())),
+            default=0,
+        )
+        if _NEGATED_ACTION.search(text[clause_start : match.start()]):
+            continue
+        return True
+    return False
 
 
 __all__ = ["PARTNER_AUTHORING_CAPABILITY_NAME", "is_partner_authoring_turn"]
