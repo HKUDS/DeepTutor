@@ -25,6 +25,33 @@ logger = logging.getLogger(__name__)
 # gateway answers 400 "task can not be null".
 _SUBMIT_PATH = "services/aigc/video-generation/video-synthesis"
 
+_SIZES_BY_TIER = {
+    "480p": {"16:9": "832*480", "9:16": "480*832", "1:1": "624*624"},
+    "720p": {
+        "16:9": "1280*720",
+        "9:16": "720*1280",
+        "1:1": "960*960",
+        "4:3": "1088*832",
+        "3:4": "832*1088",
+    },
+    "1080p": {
+        "16:9": "1920*1080",
+        "9:16": "1080*1920",
+        "1:1": "1440*1440",
+        "4:3": "1632*1248",
+        "3:4": "1248*1632",
+    },
+}
+
+_MODEL_TIERS = {
+    "wanx2.1-t2v-turbo": ("720p", {"480p", "720p"}),
+    "wanx2.1-t2v-plus": ("720p", {"720p"}),
+    "wan2.2-t2v-plus": ("1080p", {"480p", "720p", "1080p"}),
+    "wan2.5-t2v-preview": ("1080p", {"480p", "720p", "1080p"}),
+    "wan2.6-t2v": ("1080p", {"720p", "1080p"}),
+}
+_FIXED_FIVE_SECOND_MODELS = {"wanx2.1-t2v-turbo", "wanx2.1-t2v-plus", "wan2.2-t2v-plus"}
+
 
 class DashScopeVideogenAdapter(BaseVideogenAdapter):
     """Run a DashScope video-generation task and download the rendered file."""
@@ -81,22 +108,68 @@ class DashScopeVideogenAdapter(BaseVideogenAdapter):
     @staticmethod
     def _payload(prompt: str, config: VideogenConfig) -> dict[str, Any]:
         parameters: dict[str, Any] = {}
-        if config.aspect_ratio:
-            parameters["ratio"] = config.aspect_ratio
+        size = DashScopeVideogenAdapter._size(config)
+        if size:
+            parameters["size"] = size
         if config.duration:
             try:
-                parameters["duration"] = int(config.duration)
+                duration = int(config.duration)
             except ValueError as exc:
                 raise GenerationProviderError(
                     f"Invalid DashScope video duration: {config.duration!r}"
                 ) from exc
-        if config.resolution:
-            parameters["resolution"] = config.resolution
+            if config.model in _FIXED_FIVE_SECOND_MODELS:
+                if duration != 5:
+                    raise GenerationProviderError(
+                        f"DashScope model {config.model} only supports a 5-second video."
+                    )
+            else:
+                parameters["duration"] = duration
         return {
             "model": config.model,
             "input": {"prompt": prompt},
             "parameters": parameters,
         }
+
+    @staticmethod
+    def _size(config: VideogenConfig) -> str:
+        if not config.resolution and not config.aspect_ratio:
+            return ""
+
+        model_sizes = _MODEL_TIERS.get(config.model)
+        resolution = config.resolution.strip().lower()
+        ratio = config.aspect_ratio.strip() or "16:9"
+
+        # Settings has a shared resolution field: accept either its usual tier
+        # ("720p") or DashScope's exact width*height form.
+        for tier, sizes in _SIZES_BY_TIER.items():
+            if resolution in sizes.values():
+                if config.aspect_ratio and sizes.get(ratio) != resolution:
+                    raise GenerationProviderError(
+                        f"DashScope video size {resolution!r} conflicts with aspect ratio {ratio!r}."
+                    )
+                selected_tier = tier
+                selected_size = resolution
+                break
+        else:
+            selected_tier = resolution or (model_sizes[0] if model_sizes else "")
+            if not selected_tier:
+                raise GenerationProviderError(
+                    f"Set a video resolution when using aspect ratio with DashScope model {config.model}."
+                )
+            sizes = _SIZES_BY_TIER.get(selected_tier)
+            if sizes is None or ratio not in sizes:
+                raise GenerationProviderError(
+                    f"Unsupported DashScope video resolution/aspect ratio: "
+                    f"{selected_tier!r}, {ratio!r}."
+                )
+            selected_size = sizes[ratio]
+
+        if model_sizes and selected_tier not in model_sizes[1]:
+            raise GenerationProviderError(
+                f"DashScope model {config.model} does not support {selected_tier} video."
+            )
+        return selected_size
 
     @staticmethod
     def _raise_dashscope_error(data: dict[str, Any], action: str) -> None:
