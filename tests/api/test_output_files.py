@@ -159,6 +159,18 @@ def test_workspace_output_chat_kinds_are_public(tmp_path: Path, kind: str) -> No
     assert service.resolve_public_output_path(output) == output
 
 
+def test_workspace_markdown_output_is_public(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace"
+    service = PathService(workspace_root=workspace_root)
+    output = _write_output(
+        workspace_root,
+        "workspace/outputs/chat/session-1/turn-1/exec/report.md",
+        b"# generated report",
+    )
+
+    assert service.resolve_public_output_path(output) == output
+
+
 def test_arbitrary_workspace_output_file_is_not_public(tmp_path: Path) -> None:
     workspace_root = tmp_path / "workspace"
     service = PathService(workspace_root=workspace_root)
