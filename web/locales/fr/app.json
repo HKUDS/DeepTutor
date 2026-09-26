@@ -420,6 +420,8 @@
   "No records in this notebook": "Aucune fiche dans ce carnet",
   "Chat Session": "Session de conversation",
   "User": "Utilisateur",
+  "Teacher": "Enseignant",
+  "Student": "Élève",
   "Assistant": "Assistant",
   "Multi-agent reasoning": "Raisonnement multi-agents",
   "Auto-validated quizzes": "Quiz à validation automatique",

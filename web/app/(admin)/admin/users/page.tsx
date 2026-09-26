@@ -22,6 +22,7 @@ import { GuardianRelationshipsEditor } from "@/features/multi-user/components/Gu
 import { UserAvatar } from "@/components/UserAvatar";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { filterUsersByQuery } from "@/lib/admin-users";
+import { accountRoleLabelKey } from "@/lib/account-role";
 import {
   Search,
   Shield,
@@ -562,7 +563,7 @@ export default function AdminUsersPage() {
                             {isAdmin && (
                               <ShieldCheck size={11} strokeWidth={2} />
                             )}
-                            {isAdmin ? t("Admin") : t("User")}
+                            {t(accountRoleLabelKey(user.role))}
                           </span>
                           {!isAdmin && user.preset && (
                             <span className="mt-1 block text-[11px] text-[var(--muted-foreground)]">
@@ -725,10 +726,7 @@ export default function AdminUsersPage() {
                 </p>
                 <p className="text-xs text-[var(--muted-foreground)]">
                   {t("{{role}} · joined {{date}}", {
-                    role:
-                      confirmTarget.user.role === "admin"
-                        ? t("Admin")
-                        : t("User"),
+                    role: t(accountRoleLabelKey(confirmTarget.user.role)),
                     date: formatDate(confirmTarget.user.created_at, lang),
                   })}
                 </p>
