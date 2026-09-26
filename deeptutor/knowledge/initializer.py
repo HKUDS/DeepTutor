@@ -26,6 +26,8 @@ from deeptutor.services.rag.file_routing import FileTypeRouter
 from deeptutor.services.rag.service import RAGService
 from deeptutor.services.setup.data_volume import (
     DataVolumePermissionError,
+    effective_gid,
+    effective_uid,
     ensure_data_volume_writable,
     format_data_volume_permission_error,
 )
@@ -272,7 +274,7 @@ class KnowledgeBaseInitializer:
                 )
         except PermissionError as e:
             error_msg = format_data_volume_permission_error(
-                self.kb_dir, uid=os.geteuid(), gid=os.getegid(), cause=e
+                self.kb_dir, uid=effective_uid(), gid=effective_gid(), cause=e
             )
             logger.error("Error processing documents: %s", error_msg)
             self.progress_tracker.update(

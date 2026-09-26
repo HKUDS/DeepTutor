@@ -220,6 +220,7 @@ $RECYCLE.BIN/
 
 # Local scripts
 启动 DeepTutor.bat
+.local-bin/
 
 # ============================================
 # Testing and Coverage

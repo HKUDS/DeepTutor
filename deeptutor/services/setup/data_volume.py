@@ -23,6 +23,23 @@ DEFAULT_RUNTIME_GID: Final[int] = 1000
 _PROBE_PREFIX: Final[str] = ".deeptutor-write-probe"
 
 
+def effective_uid() -> int:
+    """Return the effective UID when the platform exposes Unix identities.
+
+    Windows has no ``geteuid`` API.  The numeric value is only used for
+    container ownership diagnostics and root checks, so a non-root sentinel
+    keeps native Windows execution on the normal current-process path.
+    """
+    getter = getattr(os, "geteuid", None)
+    return int(getter()) if getter is not None else 1
+
+
+def effective_gid() -> int:
+    """Return the effective GID, with a non-root Windows fallback."""
+    getter = getattr(os, "getegid", None)
+    return int(getter()) if getter is not None else 1
+
+
 class DataVolumePermissionError(PermissionError):
     """The data volume cannot be written by the process that will run the app."""
 
@@ -52,8 +69,8 @@ def resolve_runtime_ids(
     try to ``setuid`` without ``CAP_SETUID``. Rootful Docker remaps to
     ``PUID``/``PGID`` (default 1000/1000).
     """
-    current_uid = os.geteuid() if euid is None else euid
-    current_gid = os.getegid() if egid is None else egid
+    current_uid = effective_uid() if euid is None else euid
+    current_gid = effective_gid() if egid is None else egid
     if current_uid != 0:
         return current_uid, current_gid
     return (
@@ -105,12 +122,12 @@ def ensure_data_volume_writable(
     (the FastAPI backend) probe as themselves.
     """
     target = Path(path)
-    probe_uid = os.geteuid() if uid is None else uid
-    probe_gid = os.getegid() if gid is None else gid
+    probe_uid = effective_uid() if uid is None else uid
+    probe_gid = effective_gid() if gid is None else gid
     drop_privs = (
-        os.geteuid() == 0
+        effective_uid() == 0
         and probe_uid != 0
-        and (probe_uid != os.geteuid() or probe_gid != os.getegid())
+        and (probe_uid != effective_uid() or probe_gid != effective_gid())
         and hasattr(os, "fork")
         and hasattr(os, "setuid")
     )

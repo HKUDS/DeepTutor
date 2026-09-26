@@ -60,6 +60,8 @@ def test_ensure_writable_succeeds_on_owned_directory(tmp_path: Path) -> None:
 def test_root_probe_defers_mkdir_until_after_identity_drop(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    if not hasattr(os, "geteuid"):
+        pytest.skip("UID dropping is Unix-only")
     target = tmp_path / "mounted" / "knowledge_bases"
     monkeypatch.setattr("deeptutor.services.setup.data_volume.os.geteuid", lambda: 0)
 
@@ -76,6 +78,8 @@ def test_root_probe_defers_mkdir_until_after_identity_drop(
 
 
 def test_ensure_unwritable_directory_fail_fasts(tmp_path: Path) -> None:
+    if os.name == "nt":
+        pytest.skip("POSIX mode bits are not authoritative on Windows")
     if hasattr(os, "geteuid") and os.geteuid() == 0:
         pytest.skip("root bypasses directory mode bits")
     target = tmp_path / "locked"
