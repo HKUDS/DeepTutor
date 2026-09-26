@@ -20,7 +20,10 @@ from deeptutor.services.imagegen.config import ImagegenConfig
 
 logger = logging.getLogger(__name__)
 
-_SUBMIT_PATH = "services/aigc/image-synthesis"
+# The prompt-style image API lives under the ``text2image`` namespace; dropping
+# that segment falls through to a generic async route that answers
+# 400 "task can not be null" for every model.
+_SUBMIT_PATH = "services/aigc/text2image/image-synthesis"
 
 
 class DashScopeImagegenAdapter(BaseImagegenAdapter):

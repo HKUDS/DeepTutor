@@ -1815,6 +1815,28 @@ async def test_inline_think_is_never_answer_content(
 
 
 @pytest.mark.asyncio
+async def test_partner_wording_request_keeps_its_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A Partner keyword in another task cannot redirect or discard a turn."""
+    client = _ScriptedChatClient([[_llm_chunk(content="Use a warmer tone.")]])
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = _Registry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: [])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    events = await _run(
+        pipeline,
+        UnifiedContext(
+            session_id="s1",
+            user_message="Please add a companion-style tone to my summary",
+        ),
+    )
+
+    assert _answer_text(events) == "Use a warmer tone."
+
+
+@pytest.mark.asyncio
 async def test_mastery_teaching_prose_streams_chunk_by_chunk(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

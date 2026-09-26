@@ -198,6 +198,7 @@ BUILTIN_CAPABILITY_SPECS: dict[str, BuiltinCapabilitySpec] = {
                 "material_outline",
                 "search_material",
                 "read_material",
+                "view_figure",
                 "reader_goto",
                 "reader_annotate",
                 "web_search",

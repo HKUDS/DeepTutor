@@ -168,7 +168,7 @@ def test_pdf_without_bookmarks_does_not_invent_contents(tmp_path: Path) -> None:
 
 def test_text_file_is_cut_into_sections_on_paragraph_boundaries(tmp_path: Path) -> None:
     paragraph = "Dense prose about attention mechanisms. " * 30  # ~1.2k chars
-    path = tmp_path / "notes.md"
+    path = tmp_path / "notes.txt"
     path.write_text("\n\n".join([paragraph] * 8), encoding="utf-8")
 
     extraction = extract_material(path)
@@ -178,6 +178,54 @@ def test_text_file_is_cut_into_sections_on_paragraph_boundaries(tmp_path: Path) 
     assert len(extraction.units) > 1
     # Cuts land on paragraph boundaries, so no unit starts mid-sentence.
     assert all(unit.startswith("Dense prose") for unit in extraction.units)
+
+
+@pytest.mark.parametrize("suffix", [".md", ".markdown"])
+def test_uploaded_markdown_uses_headings_for_stored_outline(
+    store: ReadingStore, tmp_path: Path, suffix: str
+) -> None:
+    prose = "Ordinary prose at a section boundary. " * 95
+    path = tmp_path / f"notes{suffix}"
+    path.write_text(
+        "# Opening\n\nIntroduction.\n\n"
+        "## Long section\n\n" + prose + "\n\n```md\n# Not a heading\n```\n\n"
+        "### Finish\n\nConclusion.",
+        encoding="utf-8",
+    )
+
+    manifest = store.ingest(path)
+    outline = store.outline(manifest.material_id)
+
+    assert manifest.unit == "section"
+    assert [row.title for row in outline] == [
+        "Opening",
+        "Long section",
+        "Long section",
+        "Finish",
+    ]
+    assert [row.level for row in outline] == [1, 2, 2, 3]
+    assert [row.locator for row in outline] == [1, 2, 3, 4]
+    assert all(row.synthesised is False for row in outline)
+    assert all("Ordinary prose" not in row.title for row in outline)
+    assert all(len(store.unit_text(manifest.material_id, row.locator)) <= 4200 for row in outline)
+    assert "# Not a heading" in "\n".join(
+        store.unit_text(manifest.material_id, row.locator) for row in outline
+    )
+
+
+@pytest.mark.parametrize("markdown", ["No headings.\n\nMore prose.", "# Only\n\nMore prose."])
+def test_uploaded_markdown_with_fewer_than_two_headings_keeps_flat_fallback(
+    store: ReadingStore, tmp_path: Path, markdown: str
+) -> None:
+    path = tmp_path / "flat.md"
+    path.write_text(markdown, encoding="utf-8")
+
+    extraction = extract_material(path)
+    manifest = store.ingest(path)
+
+    assert extraction.units == split_into_sections(markdown)
+    assert extraction.outline == ()
+    assert all(row.synthesised is True for row in store.outline(manifest.material_id))
 
 
 def test_epub_preserves_spine_units_source_hrefs_and_nested_outline(tmp_path: Path) -> None:

@@ -24,7 +24,9 @@ _EN_ACTION = (
 )
 _EN_DETERMINER = r"\s+(?:a|an|another|one|my\s+own|our\s+own|a\s+new|new)\b"
 _EN_GAP = r"(?:\s+(?!(?:about|with|for|of|from|in|on|to|that|which)\b)[\w'-]+){0,3}?"
-_EN_OBJECT = r"\s+(?:partners?|companions?|tutors?|mentors?|coach(?:es)?|study\s+budd(?:y|ies))\b"
+_EN_OBJECT = (
+    r"\s+(?:partners?|companions?|tutors?|mentors?|coach(?:es)?|study\s+budd(?:y|ies))(?![\w-])"
+)
 
 _AUTHORING_REQUEST = re.compile(
     rf"{_ZH_ACTION}{_ZH_GAP}{_ZH_OBJECT}|{_EN_ACTION}{_EN_DETERMINER}{_EN_GAP}{_EN_OBJECT}",
@@ -42,16 +44,30 @@ _NEGATED_ACTION = re.compile(
     r"|(?:不|别|不要|不用|无需|不必|不想(?:让你)?|不需要)\s*)$",
     re.IGNORECASE,
 )
+_MENTION_QUESTION = re.compile(
+    r"^\s*(?:(?:explain\s+)?(?:why|how|what)\b|(?:请)?(?:解释)?(?:为什么|为何|怎么|如何))",
+    re.IGNORECASE,
+)
+_NON_PARTNER_TARGET = re.compile(
+    r"^\s+(?:issue|bug|report|checklist|style|tone|feature|setting|ticket)\b"
+    r"|^(?:功能|问题|报告|文档|风格|语气|清单|按钮|页面)",
+    re.IGNORECASE,
+)
 
 
-def is_partner_authoring_turn(context: UnifiedContext) -> bool:
+def partner_authoring_trigger(context: UnifiedContext) -> str | None:
+    """Why this turn is in the authoring flow, or ``None`` when it is not.
+
+    ``explicit`` means the user selected the capability; ``heuristic`` means only
+    the keyword gate matched, which is a guess about the words they typed.
+    """
     # Home/product Chat owns the review card and confirmation flow. A Partner
     # (including one running inside a Group) must not create drafts inside its
     # synthetic workspace merely because someone talks about another Partner.
     if context.metadata.get("source") == "partner":
-        return False
+        return None
     if context.active_capability == PARTNER_AUTHORING_CAPABILITY_NAME:
-        return True
+        return "explicit"
     text = str(context.user_message or "")
     quoted = [match.span() for match in _QUOTED_OR_CODE.finditer(text)]
     for match in _AUTHORING_REQUEST.finditer(text):
@@ -65,8 +81,20 @@ def is_partner_authoring_turn(context: UnifiedContext) -> bool:
         )
         if _NEGATED_ACTION.search(text[clause_start : match.start()]):
             continue
-        return True
-    return False
+        if _MENTION_QUESTION.search(text[clause_start : match.start()]):
+            continue
+        if _NON_PARTNER_TARGET.match(text[match.end() :]):
+            continue
+        return "heuristic"
+    return None
 
 
-__all__ = ["PARTNER_AUTHORING_CAPABILITY_NAME", "is_partner_authoring_turn"]
+def is_partner_authoring_turn(context: UnifiedContext) -> bool:
+    return partner_authoring_trigger(context) is not None
+
+
+__all__ = [
+    "PARTNER_AUTHORING_CAPABILITY_NAME",
+    "is_partner_authoring_turn",
+    "partner_authoring_trigger",
+]
