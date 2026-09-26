@@ -42,6 +42,8 @@ class _PipelineWithoutSubmission:
 
 async def _run_visualize(
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    language: str = "en",
 ) -> tuple[list[StreamEvent], str]:
     """Run one visualize turn whose loop commits nothing.
 
@@ -53,7 +55,7 @@ async def _run_visualize(
         user_message="visualize a binary search",
         active_capability="visualize",
         config_overrides={"render_mode": "html"},
-        language="en",
+        language=language,
     )
 
     bus = StreamBus()
@@ -131,6 +133,19 @@ async def test_tool_capable_provider_keeps_the_generic_diagnosis(
     assert _warnings(events) == []
     assert error.startswith("The visualization agent finished without a valid canvas payload.")
     assert "Settings → Capabilities → Visualize" in error
+
+
+@pytest.mark.asyncio
+async def test_chinese_no_payload_diagnosis_names_the_localized_setting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _use_llm_config(monkeypatch, "openai", "gpt-4o")
+
+    _, error = await _run_visualize(monkeypatch, language="zh")
+
+    assert "设置 → 能力 → 可视化" in error
+    assert "最大 token 数" in error
+    assert "Max tokens" not in error
 
 
 @pytest.mark.asyncio
