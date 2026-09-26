@@ -34,8 +34,8 @@ class ViewFigureTool(_ReadingToolBase):
     The chat turn only carries the images on the page the user has open, so any
     other figure is invisible to a text model. This tool closes that gap by
     resolving the named image on disk, asking a vision model about it, and
-    returning the *text* — the only channel a tool result has. The pixels never
-    travel; the answer does.
+    returning the *text* — the only channel a tool result has. The pixels go to
+    the selected vision model; only its answer enters the reading turn.
     """
 
     name = "view_figure"
