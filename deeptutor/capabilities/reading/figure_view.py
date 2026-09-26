@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from deeptutor.capabilities.reading._tool_base import _ReadingToolBase, _guard
+from deeptutor.capabilities.reading._tool_base import _guard, _ReadingToolBase
 from deeptutor.core.tool_protocol import ToolDefinition, ToolParameter, ToolResult
 
 # A missing-name failure lists the figures the model could have asked for, capped
@@ -99,9 +99,29 @@ class ViewFigureTool(_ReadingToolBase):
 
         caption = str(row.get("caption") or "").strip()
         locator = row.get("locator")
+        manifest = await asyncio.to_thread(store.manifest, material_id)
+        if type(locator) is not int or not 1 <= locator <= manifest.unit_count:
+            return self._failure(f"The image “{name}” has no valid document locator.")
+        source = {
+            "type": "reading",
+            "material_id": material_id,
+            "material_revision": manifest.revision,
+            "title": manifest.filename,
+            "page": locator,
+        }
+        metadata = {
+            "material_id": material_id,
+            "material_revision": manifest.revision,
+            "image": name,
+            "locator": locator,
+            "caption": caption,
+        }
         path = await asyncio.to_thread(store.media_path, material_id, name)
         if path is None:
-            return self._failure(f"The image “{name}” is missing on disk and cannot be viewed.")
+            return self._failure(
+                f"The image “{name}” on {manifest.unit} {locator} is missing on disk "
+                "and cannot be viewed."
+            )
         size = await asyncio.to_thread(lambda: path.stat().st_size)
         if size > MAX_IMAGE_BYTES:
             return self._failure(
@@ -119,19 +139,16 @@ class ViewFigureTool(_ReadingToolBase):
             # Never answer with silence: hand back the caption if there is one,
             # and say plainly that the pixels were not read.
             content = (
-                f"Vision parsing is unavailable for this model, so “{name}” could "
+                f"{manifest.unit} {locator}: Vision parsing is unavailable for this model, "
+                f"so “{name}” could "
                 "not be read."
             )
             if caption:
                 content += f"\nCaption on record: {caption}"
             return ToolResult(
                 content=content,
-                metadata={
-                    "material_id": material_id,
-                    "image": name,
-                    "locator": locator,
-                    "caption": caption,
-                },
+                sources=[source],
+                metadata=metadata,
             )
 
         mime = str(row.get("mime") or "") or (
@@ -157,11 +174,7 @@ class ViewFigureTool(_ReadingToolBase):
                 f"record is: {caption or '(none)'}"
             )
         return ToolResult(
-            content=answer,
-            metadata={
-                "material_id": material_id,
-                "image": name,
-                "locator": locator,
-                "caption": caption,
-            },
+            content=f"{manifest.unit} {locator} ({name}): {answer}",
+            sources=[source],
+            metadata=metadata,
         )

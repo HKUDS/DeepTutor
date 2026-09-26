@@ -41,7 +41,6 @@ from deeptutor.capabilities.reading._tool_base import (
     MATERIAL_KWARG,
     WORKSPACE_KWARG,
     _guard,
-    _NoMaterial,
     _ReadingToolBase,
 )
 from deeptutor.capabilities.reading.figure_view import ViewFigureTool
