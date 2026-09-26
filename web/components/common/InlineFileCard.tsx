@@ -192,13 +192,25 @@ export function makeFileLinkRemarkPlugin(files: MessageAttachment[]) {
   // Prefer the most specific (longest) needle when several could match.
   entries.sort((a, b) => b.needle.length - a.needle.length);
 
-  // Surface → real filename, for resolving a link the model wrote itself
-  // (e.g. `[Agentic_RAG_Guide.pdf](Agentic_RAG_Guide.pdf)`): match the link's
-  // url basename or its label against a known filename.
-  const surfaceToName = new Map<string, string>();
-  const addSurface = (surface: string, name: string) => {
-    for (const key of [surface.trim(), surface.trim().toLowerCase()]) {
-      if (key && !surfaceToName.has(key)) surfaceToName.set(key, name);
+  // Resolve model-written links against published attachments. Full paths win;
+  // filenames and presentation titles are accepted only when unique within
+  // this message. The model may mistype a directory even when the file was
+  // published correctly, so never navigate to that untrusted relative path.
+  const exactPaths = new Map<string, string>();
+  const aliases = new Map<string, string | null>();
+  const surfaceKeys = (surface: string) =>
+    new Set([surface.trim(), surface.trim().toLowerCase()]);
+  const addExactPath = (surface: string, name: string) => {
+    for (const key of surfaceKeys(surface)) {
+      if (key) exactPaths.set(key, name);
+    }
+  };
+  const addAlias = (surface: string, name: string) => {
+    for (const key of surfaceKeys(surface)) {
+      if (!key) continue;
+      const previous = aliases.get(key);
+      if (previous === undefined) aliases.set(key, name);
+      else if (previous !== name) aliases.set(key, null);
     }
   };
   const baseName = (s: string) => s.split(/[\\/]/).pop() ?? s;
@@ -206,17 +218,21 @@ export function makeFileLinkRemarkPlugin(files: MessageAttachment[]) {
     const target =
       file.origin === "workspace" ? file.relative_path : file.filename;
     if (!target) continue;
-    addSurface(target, target);
-    addSurface(`./${target}`, target);
-    if (file.origin !== "workspace") {
-      addSurface(target.replace(/[_-]+/g, " "), target);
-      addSurface(baseName(target), target);
+    addExactPath(target, target);
+    addExactPath(`./${target}`, target);
+    addAlias(baseName(target), target);
+    if (file.origin === "workspace") {
+      if (file.title) addAlias(file.title, target);
+    } else {
+      addAlias(target.replace(/[_-]+/g, " "), target);
     }
   }
   const lookupSurface = (s: string): string | undefined =>
-    surfaceToName.get(s) ??
-    surfaceToName.get(s.trim()) ??
-    surfaceToName.get(s.trim().toLowerCase());
+    exactPaths.get(s.trim()) ??
+    exactPaths.get(s.trim().toLowerCase()) ??
+    aliases.get(s.trim()) ??
+    aliases.get(s.trim().toLowerCase()) ??
+    undefined;
 
   const linkLabel = (node: Record<string, unknown>): string => {
     const parts: string[] = [];

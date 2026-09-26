@@ -33,7 +33,11 @@ import type { ExportableMessage } from "@/lib/chat-export";
 import type { StreamEvent } from "@/features/chat/model/protocol";
 import type { MessageAttachment } from "@/features/chat/ChatStateAdapter";
 import { docIconFor, formatBytes, isSvgFilename } from "@/lib/doc-attachments";
-import { InlineFileCardProvider } from "@/components/common/InlineFileCard";
+import {
+  InlineFileCard,
+  InlineFileCardProvider,
+  mergeGeneratedFiles,
+} from "@/components/common/InlineFileCard";
 import {
   isRetractionMarker,
   recomputeAnswerContent,
@@ -174,6 +178,61 @@ function workspaceAttachments(
     title: attachment.title,
     caption: attachment.caption,
   }));
+}
+
+function PartnerGeneratedFiles({
+  attachments,
+  events,
+  content,
+}: {
+  attachments?: PartnerMessageAttachment[];
+  events?: StreamEvent[];
+  content: string;
+}) {
+  const files = mergeGeneratedFiles(workspaceAttachments(attachments), events);
+  // The response renderer turns a model-written Markdown link into an inline
+  // file button. Show a separate card only for files the response did not link.
+  const linked = new Set<string>();
+  for (const match of content.matchAll(
+    /\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g,
+  )) {
+    const label = match[1];
+    let target = match[2];
+    try {
+      target = decodeURIComponent(target);
+    } catch {
+      // Keep the literal Markdown target when it is not percent encoded.
+    }
+    const path = target.replace(/^\.\//, "");
+    const filename = path.split(/[\\/]/).pop();
+    const candidates = [
+      files.filter((file) => file.relative_path === path || file.url === path),
+      files.filter((file) => file.filename === filename),
+      files.filter((file) => file.title === label),
+    ];
+    const resolved = candidates.find((matches) => matches.length === 1)?.[0];
+    if (resolved?.url) linked.add(resolved.url);
+  }
+  const unlinked = files.filter(
+    (file) =>
+      !linked.has(file.url || "") &&
+      !(file.relative_path && content.includes(file.relative_path)),
+  );
+  if (!unlinked.length) return null;
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {unlinked.map((file) => (
+        <InlineFileCard
+          key={file.url || file.relative_path || file.filename}
+          name={
+            file.origin === "workspace"
+              ? file.relative_path || ""
+              : file.filename || ""
+          }
+        />
+      ))}
+    </div>
+  );
 }
 
 function normalizeHistoryMessages(history: PartnerHistoryMessage[]): ChatMsg[] {
@@ -1237,6 +1296,11 @@ export default function PartnerChat({
                         onOpen={downloadGeneratedAttachment}
                       >
                         <AssistantResponse content={msg.content} />
+                        <PartnerGeneratedFiles
+                          attachments={msg.attachments}
+                          events={msg.events}
+                          content={msg.content}
+                        />
                       </InlineFileCardProvider>
                     )}
                   </div>
@@ -1269,6 +1333,10 @@ export default function PartnerChat({
                       onOpen={downloadGeneratedAttachment}
                     >
                       <AssistantResponse content={draft.content} />
+                      <PartnerGeneratedFiles
+                        events={draft.events}
+                        content={draft.content}
+                      />
                     </InlineFileCardProvider>
                   ) : null}
                 </div>
@@ -1303,6 +1371,10 @@ export default function PartnerChat({
                       onOpen={downloadGeneratedAttachment}
                     >
                       <AssistantResponse content={externalDraft.content} />
+                      <PartnerGeneratedFiles
+                        events={externalDraft.events}
+                        content={externalDraft.content}
+                      />
                     </InlineFileCardProvider>
                   ) : null}
                 </div>
