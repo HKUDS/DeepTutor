@@ -1,11 +1,11 @@
 """
-Import chat histories from external coding CLIs (Claude Code, Codex) into the
-user's learning space as normal, re-openable sessions.
+Import chat histories from ChatGPT exports and external coding CLIs (Claude
+Code, Codex) into the user's learning space as normal, re-openable sessions.
 
-Reading the user's local ``~/.claude`` / ``~/.codex`` happens in the browser
-(File System Access API) — those files live on the user's machine, not the
-server. The browser normalizes each conversation to the small JSON shape below
-and POSTs it here; this router only validates and persists. Imported sessions
+Reading the user's local ``~/.claude`` / ``~/.codex`` or ChatGPT export happens
+in the browser — those files live on the user's machine, not the server. The
+browser normalizes each conversation to the small JSON shape below and POSTs
+it here; this router only validates and persists. Imported sessions
 share the session tables with native chats (so the chat loop can re-open and
 continue them) but carry an ``imported_`` id prefix that keeps them in their
 own Space category. Re-importing the same folder is idempotent (dedup by id).
@@ -30,7 +30,7 @@ router = APIRouter()
 
 # Browser adapters only emit these; reject anything else so a malformed payload
 # can never seed an unsupported provider category.
-_ALLOWED_SOURCES = {"claude_code", "codex"}
+_ALLOWED_SOURCES = {"chatgpt", "claude_code", "codex"}
 
 # Defensive ceilings — a single import request should never grow unbounded.
 _MAX_SESSIONS_PER_REQUEST = 1000

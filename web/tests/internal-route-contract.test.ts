@@ -88,14 +88,14 @@ test("session URLs accept zero or one session id, never extra segments", () => {
   for (const [indexPath, sessionPath, invalidPath] of [
     ["/chat", "/chat/session-1", "/chat/session-1/extra"],
     [
-      "/mastery/path-1/sessions",
-      "/mastery/path-1/sessions/session-1",
-      "/mastery/path-1/sessions/session-1/extra",
+      "/learning/mastery/path-1/sessions",
+      "/learning/mastery/path-1/sessions/session-1",
+      "/learning/mastery/path-1/sessions/session-1/extra",
     ],
     [
-      "/reading/workspace-1/sessions",
-      "/reading/workspace-1/sessions/session-1",
-      "/reading/workspace-1/sessions/session-1/extra",
+      "/learning/reading/workspace-1/sessions",
+      "/learning/reading/workspace-1/sessions/session-1",
+      "/learning/reading/workspace-1/sessions/session-1/extra",
     ],
   ]) {
     assert.equal(isPagePath(indexPath), true, indexPath);

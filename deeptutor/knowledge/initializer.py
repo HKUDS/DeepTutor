@@ -8,13 +8,14 @@ import asyncio
 from datetime import datetime
 import json
 import logging
+import os
 from pathlib import Path
 import shutil
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from deeptutor.multi_user.models import CurrentUser
-    from deeptutor.services.rag.pipelines.lightrag.indexing_policy import IndexingLLMSnapshot
+    from deeptutor.services.rag.pipelines.lightrag.indexing_policy import IndexingPolicySnapshot
 
 from deeptutor.knowledge.naming import validate_knowledge_base_name
 from deeptutor.knowledge.progress_tracker import ProgressStage, ProgressTracker
@@ -23,6 +24,11 @@ from deeptutor.services.file_io import atomic_write_json
 from deeptutor.services.rag.factory import normalize_provider_name
 from deeptutor.services.rag.file_routing import FileTypeRouter
 from deeptutor.services.rag.service import RAGService
+from deeptutor.services.setup.data_volume import (
+    DataVolumePermissionError,
+    ensure_data_volume_writable,
+    format_data_volume_permission_error,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +44,7 @@ class KnowledgeBaseInitializer:
         base_url: str | None = None,
         progress_tracker: ProgressTracker | None = None,
         rag_provider: str | None = None,
-        indexing_snapshot: IndexingLLMSnapshot | None = None,
+        indexing_snapshot: IndexingPolicySnapshot | None = None,
         owner: CurrentUser | None = None,
     ):
         self.kb_name = validate_knowledge_base_name(kb_name)
@@ -118,6 +124,7 @@ class KnowledgeBaseInitializer:
     def create_directory_structure(self) -> None:
         """Create KB directory structure."""
         logger.info(f"Creating directory structure for knowledge base: {self.kb_name}")
+        ensure_data_volume_writable(self.base_dir)
 
         for dir_path in [
             self.raw_dir,
@@ -208,6 +215,26 @@ class KnowledgeBaseInitializer:
                 total=total,
             )
 
+        def _prepare_publication(candidate_root: Path) -> None:
+            self._update_metadata_with_provider(provider)
+            self.progress_tracker.update(
+                ProgressStage.COMPLETED,
+                message_key="Knowledge base initialization complete!",
+                current=1,
+                total=1,
+                indexed_count=len(doc_files),
+                index_changed=True,
+                index_action="create",
+                publication_version=candidate_root.name,
+            )
+            self.progress_tracker.verify_terminal(
+                current=1,
+                total=1,
+                indexed_count=len(doc_files),
+                index_action="create",
+                publication_version=candidate_root.name,
+            )
+
         try:
             success = await rag_service.initialize(
                 kb_name=self.kb_name,
@@ -215,6 +242,7 @@ class KnowledgeBaseInitializer:
                 progress_callback=_on_progress,
                 image_progress_callback=_on_image_progress,
                 indexing_snapshot=self.indexing_snapshot,
+                before_publish=_prepare_publication if provider == "lightrag" else None,
             )
             if not success:
                 self.progress_tracker.update(
@@ -226,13 +254,14 @@ class KnowledgeBaseInitializer:
 
             self.index_published = provider == "lightrag"
             try:
-                self._update_metadata_with_provider(provider)
-                self.progress_tracker.update(
-                    ProgressStage.PROCESSING_DOCUMENTS,
-                    message_key="Documents processed successfully",
-                    current=len(doc_files),
-                    total=len(doc_files),
-                )
+                if provider != "lightrag":
+                    self._update_metadata_with_provider(provider)
+                    self.progress_tracker.update(
+                        ProgressStage.PROCESSING_DOCUMENTS,
+                        message_key="Documents processed successfully",
+                        current=len(doc_files),
+                        total=len(doc_files),
+                    )
             except Exception:
                 if not self.index_published:
                     raise
@@ -241,6 +270,17 @@ class KnowledgeBaseInitializer:
                     self.kb_name,
                     exc_info=True,
                 )
+        except PermissionError as e:
+            error_msg = format_data_volume_permission_error(
+                self.kb_dir, uid=os.geteuid(), gid=os.getegid(), cause=e
+            )
+            logger.error("Error processing documents: %s", error_msg)
+            self.progress_tracker.update(
+                ProgressStage.ERROR,
+                message_key="Failed to process documents",
+                error=error_msg,
+            )
+            raise DataVolumePermissionError(error_msg) from e
         except Exception as e:
             error_msg = str(e)
             logger.error(f"Error processing documents: {error_msg}")

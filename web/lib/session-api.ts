@@ -1,3 +1,5 @@
+import { scopedUrl } from "@/lib/workspace-scope";
+import { notifySessionsChanged } from "@/lib/session-events";
 import { apiFetch, apiUrl } from "@/lib/api";
 import { invalidateClientCache, withClientCache } from "@/lib/client-cache";
 import type { LLMSelection, StreamEvent } from "@/features/chat/model/protocol";
@@ -62,6 +64,7 @@ export interface MessageTracePage {
 }
 
 export interface SessionPreferences {
+  workspace_id?: string | null;
   capability?: string;
   timed_media_id?: string;
   /** Stable learning surface, independent of the action used for a turn. */
@@ -70,6 +73,8 @@ export interface SessionPreferences {
   tools?: string[];
   knowledge_bases?: string[];
   language?: string;
+  /** Null/absent follows the account default; a code fixes this conversation. */
+  reply_language_override?: string | null;
   llm_selection?: LLMSelection | null;
   /** Persistent mastery state associated with this conversation. */
   mastery_path_id?: string;
@@ -77,6 +82,10 @@ export interface SessionPreferences {
   mastery_session_mode?: string;
   /** Session-level persona preference; "" / absent = Default (no persona). */
   persona?: string;
+  /** What this conversation narrowed its skill / MCP reach to. Absent or empty
+   *  means it inherits everything its workspace allows. */
+  skills?: string[];
+  mcp?: string[];
   /** Edit-branching: maps a parent_message_id → the child id currently
    *  shown at that branch point. Missing keys default to the latest
    *  sibling (most recently created child). */
@@ -95,6 +104,8 @@ export interface SessionPreferences {
 }
 
 export interface SessionSummary {
+  /** Authoritative storage scope, supplied by the account navigation index. */
+  content_workspace_id?: string;
   id: string;
   session_id: string;
   title: string;
@@ -177,14 +188,16 @@ async function expectJson<T>(response: Response): Promise<T> {
 export async function listSessions(
   limit = 50,
   offset = 0,
-  options?: { force?: boolean },
+  options?: { force?: boolean; workspaceId?: string; allWorkspaces?: boolean },
 ): Promise<SessionSummary[]> {
   const qs = new URLSearchParams({
     limit: String(limit),
     offset: String(offset),
   });
+  if (options?.allWorkspaces) qs.set("all_workspaces", "true");
+  if (options?.workspaceId !== undefined) qs.set("dt_workspace", options.workspaceId);
   return withClientCache<SessionSummary[]>(
-    `sessions:${limit}:${offset}`,
+    `sessions:${limit}:${offset}:${options?.allWorkspaces ? "account" : "scope"}${options?.workspaceId !== undefined ? `:workspace:${options.workspaceId}` : ""}`,
     async () => {
       const response = await apiFetch(
         apiUrl(`/api/sessions?${qs.toString()}`),
@@ -205,12 +218,19 @@ export async function listSessions(
 /** Fetch the complete session index in bounded pages for course organization. */
 export async function listAllSessions(options?: {
   force?: boolean;
+  allWorkspaces?: boolean;
 }): Promise<SessionSummary[]> {
   const pageSize = 200;
   const sessions: SessionSummary[] = [];
+  const seen = new Set<string>();
   for (let offset = 0; ; offset += pageSize) {
     const page = await listSessions(pageSize, offset, options);
-    sessions.push(...page);
+    // Updates can move a row between offset pages while the index is loading.
+    // Scope is part of identity: migration/imports can reuse a session id.
+    for (const session of page) {
+      const key = `${sessionWorkspaceId(session)}:${session.session_id}`;
+      if (!seen.has(key)) { seen.add(key); sessions.push(session); }
+    }
     if (page.length < pageSize) return sessions;
   }
 }
@@ -272,13 +292,32 @@ export async function fetchSessionAskHint(
 export async function updateSessionTitle(
   sessionId: string,
   title: string,
+  workspaceId?: string,
 ): Promise<SessionDetail> {
-  const response = await apiFetch(apiUrl(`/api/sessions/${sessionId}`), {
+  const response = await apiFetch(apiUrl(scopedUrl(`/api/sessions/${sessionId}`, workspaceId)), {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ title }),
   });
   const data = await expectJson<{ session: SessionDetail }>(response);
+  invalidateClientCache("sessions:");
+  return data.session;
+}
+
+export async function updateSessionReplyLanguage(
+  sessionId: string,
+  language: string | null,
+  workspaceId?: string,
+): Promise<{ preferences?: SessionPreferences }> {
+  const response = await apiFetch(
+    apiUrl(scopedUrl(`/api/sessions/${sessionId}/reply-language`, workspaceId)),
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ language }),
+    },
+  );
+  const data = await expectJson<{ session: { preferences?: SessionPreferences } }>(response);
   invalidateClientCache("sessions:");
   return data.session;
 }
@@ -299,6 +338,7 @@ export async function getMessageTrace(
 }
 
 export type SessionOrganizationPatch = Partial<{
+  workspace_id: string | null;
   course_id: string;
   parent_session_id: string;
   session_kind: "chat" | "selection_tutor";
@@ -309,9 +349,10 @@ export type SessionOrganizationPatch = Partial<{
 export async function updateSessionOrganization(
   sessionId: string,
   patch: SessionOrganizationPatch,
+  workspaceId?: string,
 ): Promise<SessionDetail> {
   const response = await apiFetch(
-    apiUrl(`/api/sessions/${sessionId}/organization`),
+    apiUrl(scopedUrl(`/api/sessions/${sessionId}/organization`, workspaceId)),
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -320,44 +361,17 @@ export async function updateSessionOrganization(
   );
   const data = await expectJson<{ session: SessionDetail }>(response);
   invalidateClientCache("sessions:");
+  notifySessionsChanged();
   return data.session;
 }
 
-export async function deleteSession(sessionId: string): Promise<void> {
-  const response = await apiFetch(apiUrl(`/api/sessions/${sessionId}`), {
+export async function deleteSession(sessionId: string, workspaceId?: string): Promise<void> {
+  const response = await apiFetch(apiUrl(scopedUrl(`/api/sessions/${sessionId}`, workspaceId)), {
     method: "DELETE",
   });
   await expectJson<{ deleted: boolean }>(response);
   invalidateClientCache("sessions:");
-}
-
-export async function listRecycleBin(
-  limit = 50,
-  offset = 0,
-): Promise<SessionSummary[]> {
-  const response = await apiFetch(
-    apiUrl(`/api/sessions/recycle-bin?limit=${limit}&offset=${offset}`),
-  );
-  const data = await expectJson<{ sessions: SessionSummary[] }>(response);
-  return data.sessions ?? [];
-}
-
-export async function restoreSession(sessionId: string): Promise<void> {
-  const response = await apiFetch(
-    apiUrl(`/api/sessions/${sessionId}/restore`),
-    { method: "POST" },
-  );
-  await expectJson<{ restored: boolean }>(response);
-  invalidateClientCache("sessions:");
-}
-
-export async function purgeSession(sessionId: string): Promise<void> {
-  const response = await apiFetch(
-    apiUrl(`/api/sessions/${sessionId}/purge`),
-    { method: "DELETE" },
-  );
-  await expectJson<{ purged: boolean }>(response);
-  invalidateClientCache("sessions:");
+  notifySessionsChanged();
 }
 
 export async function recordQuizResults(
@@ -402,4 +416,8 @@ export async function updateBranchSelection(
     },
   );
   await expectJson<{ selected_branches: Record<string, number> }>(response);
+}
+
+export function sessionWorkspaceId(session?: SessionSummary): string {
+  return session?.content_workspace_id ?? session?.preferences?.workspace_id ?? '';
 }

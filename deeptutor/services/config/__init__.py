@@ -27,6 +27,7 @@ from .model_catalog import (
 )
 from .runtime_settings import (
     HTTP_KEEP_ALIVE_TIMEOUT,
+    SETTINGS_DERIVED_ENV_KEYS,
     ChatAttachmentLimits,
     RuntimeSettingsService,
     ensure_runtime_settings_files,
@@ -92,6 +93,7 @@ __all__ = [
     "TestRun",
     "get_config_test_runner",
     "HTTP_KEEP_ALIVE_TIMEOUT",
+    "SETTINGS_DERIVED_ENV_KEYS",
     "ChatAttachmentLimits",
     "RuntimeSettingsService",
     "ensure_runtime_settings_files",

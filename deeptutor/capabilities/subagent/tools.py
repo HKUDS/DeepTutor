@@ -28,6 +28,7 @@ from deeptutor.core.tool_protocol import BaseTool, ToolDefinition, ToolParameter
 
 if TYPE_CHECKING:  # avoid importing the services package at module-load time (cycle)
     from deeptutor.services.subagent import SubagentEvent
+    from deeptutor.services.subagent.base import SubagentBackend
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,7 @@ class ConsultSubagentTool(BaseTool):
             name="consult_subagent",
             description=(
                 "Ask the connected external agent (a local agent CLI on the user's "
-                "machine — Claude Code, Codex, Antigravity CLI, Kimi CLI, opencode, "
+                "machine — Claude Code, Codex, Grok CLI, Antigravity CLI, Kimi CLI, opencode, "
                 "MiMo Code, Hermes Agent, OpenClaw, or DeepSeek Harness — or one of "
                 "their partners) a focused question and get its "
                 "answer. A local agent runs on the user's machine with access to their "
@@ -81,7 +82,7 @@ class ConsultSubagentTool(BaseTool):
                 content="No subagent is connected on this turn; consult_subagent is unavailable.",
                 success=False,
             )
-        question = str(kwargs.get("question") or "").strip()
+        question = str(spec.get("original_question") or kwargs.get("question") or "").strip()
         if not question:
             return ToolResult(
                 content="consult_subagent needs a non-empty 'question'.", success=False
@@ -102,7 +103,17 @@ class ConsultSubagentTool(BaseTool):
 
         from deeptutor.services.subagent import get_backend
 
-        backend = get_backend(str(spec.get("kind") or ""))
+        backend: SubagentBackend | None
+        if spec.get("kind") == "partner_group":
+            from deeptutor.services.subagent.partner_group import PartnerGroupBackend
+
+            backend = PartnerGroupBackend()
+        elif spec.get("kind") == "partner":
+            from deeptutor.services.subagent.partner import PartnerBackend
+
+            backend = PartnerBackend()
+        else:
+            backend = get_backend(str(spec.get("kind") or ""))
         if backend is None:
             return ToolResult(
                 content=f"Unknown subagent backend: {spec.get('kind')!r}", success=False
@@ -121,6 +132,16 @@ class ConsultSubagentTool(BaseTool):
                 "subagent_channel": channel,
                 "consult_index": consult_index,
             }
+            for key in (
+                "partner_group_id",
+                "partner_group_session_key",
+                "partner_id",
+                "partner_session_key",
+                "partner_group_consultation_status",
+                "partner_group_idle_seconds",
+            ):
+                if key in (extra or {}):
+                    metadata[key] = extra[key]
             # ``merge_id`` correlates a backend's start/finish (a web search) or
             # streaming deltas (the answer typing out) into one evolving row.
             # Namespace it by consult round so ids stay unique across the turn's
@@ -154,6 +175,7 @@ class ConsultSubagentTool(BaseTool):
             )
         except Exception as exc:  # pragma: no cover - defensive: surface, don't crash the turn
             logger.warning("consult_subagent failed: %s", exc, exc_info=True)
+            await _stream("error", str(exc))
             return ToolResult(content=f"The subagent run failed: {exc}", success=False)
         finally:
             if image_dir is not None:
@@ -185,6 +207,7 @@ class ConsultSubagentTool(BaseTool):
         }
         if not result.final_text:
             detail = result.error or "the agent produced no final answer text"
+            await _stream("error", detail)
             return ToolResult(
                 content=f"[The agent returned no answer: {detail}]",
                 success=False,

@@ -103,9 +103,14 @@ export interface IndexVersion {
   legacy?: boolean;
   failure_summary?: string;
   indexing_policy?: LightRagIndexingPolicy;
+  embedding_model?: string;
+  embedding_dim?: number;
 }
 
 export interface LightRagIndexingPolicy {
+  schema_version?: number;
+  extract?: LightRagIndexingPolicy;
+  vlm?: { mode: "disabled" | "enabled"; snapshot?: LightRagIndexingPolicy };
   policy: "pending_pinned" | "pinned" | "legacy_unpinned" | string;
   selection?: {
     profile_id: string;
@@ -124,11 +129,7 @@ export interface LightRagIndexingPolicy {
 }
 
 export type LightRagVersionDisplayState =
-  | "published"
-  | "building"
-  | "failed"
-  | "legacy"
-  | "inactive";
+  "published" | "building" | "failed" | "legacy" | "inactive";
 
 export function currentLightRagBuildCandidate(
   versions: IndexVersion[],
@@ -170,8 +171,15 @@ export interface KnowledgeBase {
     rag_provider?: string;
     needs_reindex?: boolean;
     embedding_model?: string;
+    embedding_selection?: { profile_id: string; model_id: string };
+    embedding_status?: "ready" | "missing" | "changed" | "unconfigured" | "legacy";
     embedding_dim?: number;
+    indexed_version?: string;
     embedding_mismatch?: boolean;
+    indexed_embedding_model?: string;
+    indexed_embedding_dim?: number;
+    current_embedding_model?: string;
+    current_embedding_dim?: number;
     /** Connected-source kind (e.g. "obsidian", "subagent"); absent for ordinary indexed KBs. */
     type?: string;
     /** Absolute path of a connected Obsidian vault (when type === "obsidian"). */
@@ -183,6 +191,7 @@ export interface KnowledgeBase {
     /** Bound partner id when agent_kind === "partner". */
     partner_id?: string;
     indexing_policy?: LightRagIndexingPolicy;
+    indexing_model_unavailable?: boolean;
   };
   progress?: ProgressInfo;
   statistics?: {
@@ -318,6 +327,7 @@ export const isMarginNoteKb = (kb: KnowledgeBase): boolean =>
 export const KB_DETAIL_SECTIONS = [
   "files",
   "add",
+  "folders",
   "github",
   "web",
   "versions",
@@ -337,7 +347,13 @@ export type KbDetailSection = (typeof KB_DETAIL_SECTIONS)[number];
 export const kbDetailSections = (kb: KnowledgeBase): KbDetailSection[] =>
   isMarginNoteKb(kb)
     ? ["devices", "settings"]
-    : KB_DETAIL_SECTIONS.filter((section) => section !== "devices");
+    : KB_DETAIL_SECTIONS.filter(
+        (section) => section !== "devices" && (section !== "folders" || !kb.metadata?.type),
+      );
+
+/** Local source folders belong to ordinary, DeepTutor-managed indexed KBs. */
+export const kbSupportsLinkedFolders = (kb: KnowledgeBase): boolean =>
+  !isMarginNoteKb(kb) && !kb.metadata?.type;
 
 /** The retrieval engine a KB is bound to. Connected vaults badge by source. */
 export const kbProvider = (kb: KnowledgeBase): string => {
@@ -388,6 +404,8 @@ export const resolveKnowledgeIndexFailure = (
   ]);
   const completionConfigurationCodes = new Set([
     "graphrag_model_incompatible",
+    "indexing_model_unavailable",
+    "reindex_required",
     "graphrag_provider_unsupported",
     "graphrag_model_authentication_failed",
     "graphrag_model_endpoint_failed",
@@ -421,11 +439,14 @@ export const kbRequiresLightRagRebuildBeforeAppend = (
   kb: KnowledgeBase,
 ): boolean =>
   kbProvider(kb) === "lightrag" &&
-  kb.metadata?.indexing_policy?.policy === "legacy_unpinned";
+  (kb.metadata?.indexing_policy?.policy === "legacy_unpinned" ||
+    Boolean(kb.metadata?.embedding_mismatch));
 
 export const kbIsUploadable = (kb: KnowledgeBase): boolean =>
   resolveKbStatus(kb) === "ready" &&
+  !kbEmbeddingUnavailable(kb) &&
   !kbNeedsReindex(kb) &&
+  !kb.metadata?.indexing_model_unavailable &&
   !kbRequiresLightRagRebuildBeforeAppend(kb);
 
 export const kbCanUploadDocuments = (
@@ -434,7 +455,9 @@ export const kbCanUploadDocuments = (
 ): boolean =>
   kbIsUploadable(kb) ||
   (resolveKbStatus(kb) === "error" &&
+    !kbEmbeddingUnavailable(kb) &&
     !indexingActive &&
+    !kb.metadata?.indexing_model_unavailable &&
     !kbRequiresLightRagRebuildBeforeAppend(kb));
 
 export const kbCanReindex = (kb: KnowledgeBase): boolean => {
@@ -446,12 +469,15 @@ export const kbCanReindex = (kb: KnowledgeBase): boolean => {
       : true;
   if (!hasSourceFiles) return false;
   if (status === "error") return true;
-  if (kbProvider(kb) === "lightrag") return !kbHasLiveProgress(kb);
+  if (["llamaindex", "lightrag", "graphrag"].includes(kbProvider(kb))) return !kbHasLiveProgress(kb);
   return (
     Boolean(kb.statistics?.needs_reindex) ||
     kb.statistics?.active_match === false
   );
 };
+
+export const kbEmbeddingUnavailable = (kb: KnowledgeBase): boolean =>
+  ["missing", "changed", "unconfigured"].includes(kb.metadata?.embedding_status || "");
 
 const LIVE_PROGRESS_STAGES = new Set([
   "initializing",
@@ -522,4 +548,9 @@ export function validateFiles(
     invalidFiles: items.filter((item) => !item.valid),
     totalBytes: files.reduce((total, file) => total + file.size, 0),
   };
+}
+
+/** Resource identity is distinct from its display name across workspace catalogs. */
+export function knowledgeBaseRef(kb: { id?: string; name: string; assigned?: boolean }): string {
+  return kb.assigned && kb.id ? kb.id : kb.id?.startsWith('account:kb:') || kb.id?.startsWith('workspace:') ? kb.id : kb.name;
 }

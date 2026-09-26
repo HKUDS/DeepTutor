@@ -21,10 +21,12 @@ import type { MasteryTopicLabel } from "@/lib/learning-api";
 import { masteryPathIdOf, readingWorkspaceIdOf } from "@/lib/mastery-session";
 import type { ReadingCollectionLabel } from "@/lib/reading-workspace-api";
 import type { SessionSummary } from "@/lib/session-api";
+import { sessionWorkspaceId } from "@/lib/session-api";
+import type { ChatWorkspaceRegistration } from "@/lib/workspaces-api";
 import { applyManualOrder } from "@/lib/sidebar-layout";
 
 /** Which surface a group entry stands for. Decides only its mark. */
-export type SidebarGroupKind = "mastery" | "reading" | "course";
+export type SidebarGroupKind = "mastery" | "reading" | "course" | "workspace" | "recent";
 
 export interface SidebarSessionEntry {
   kind: "session";
@@ -43,6 +45,7 @@ export interface SidebarGroupEntry {
   color?: string;
   /** The conversations inside, newest first. */
   rows: SessionSummary[];
+  workspaceId?: string;
 }
 
 export type SidebarEntry = SidebarSessionEntry | SidebarGroupEntry;
@@ -51,6 +54,7 @@ export interface SidebarEntriesInput {
   /** Root conversations, already in the order they should be listed. */
   roots: readonly SessionSummary[];
   courses?: readonly StudyCourse[];
+  workspaces?: readonly ChatWorkspaceRegistration[];
   /** Topics whose study conversations get their own entry. Omit for none. */
   masteryTopics?: readonly MasteryTopicLabel[];
   /** Collections whose reading conversations get their own entry. */
@@ -64,6 +68,7 @@ interface Container {
   group: SidebarGroupKind;
   label: string;
   color?: string;
+  workspaceId?: string;
 }
 
 /**
@@ -86,8 +91,17 @@ function containerOf(
     topics: ReadonlyMap<string, MasteryTopicLabel>;
     collections: ReadonlyMap<string, ReadingCollectionLabel>;
     courses: ReadonlyMap<string, StudyCourse>;
+    workspaces?: ReadonlyMap<string, ChatWorkspaceRegistration>;
   },
 ): Container | null {
+  const workspaceId = sessionWorkspaceId(session);
+  if (workspaceId && labels.workspaces) {
+    const workspace = labels.workspaces.get(workspaceId);
+    return { id: `workspace:${workspaceId}`, group: "workspace", workspaceId, label: workspace?.display_name || workspaceId };
+  }
+  if (labels.workspaces) {
+    return { id: "recent:unassigned", group: "recent", label: "Recent" };
+  }
   const topicId = masteryPathIdOf(session);
   if (topicId) {
     const topic = labels.topics.get(topicId);
@@ -126,11 +140,13 @@ function containerOf(
 export function buildSidebarEntries({
   roots,
   courses = [],
+  workspaces,
   masteryTopics = [],
   readingCollections = [],
   manualOrder = [],
 }: SidebarEntriesInput): SidebarEntry[] {
   const labels = {
+    workspaces: workspaces ? new Map(workspaces.map(workspace => [workspace.workspace_id, workspace])) : undefined,
     topics: new Map(masteryTopics.map((topic) => [topic.path_id, topic])),
     collections: new Map(
       readingCollections.map((collection) => [
@@ -163,5 +179,21 @@ export function buildSidebarEntries({
     entries.push(entry);
   }
 
-  return applyManualOrder(entries, (entry) => entry.id, manualOrder);
+  for (const workspace of workspaces ?? []) {
+    const id = `workspace:${workspace.workspace_id}`;
+    if (workspace.kind === "workspace" && !workspace.archived && !openGroups.has(id)) {
+      entries.push({ kind: "group", id, group: "workspace", workspaceId: workspace.workspace_id,
+        label: workspace.display_name, rows: [] });
+    }
+  }
+  const ordered = applyManualOrder(entries, (entry) => entry.id, manualOrder);
+  // Account history has peer workspace sections followed by unassigned chats.
+  // Saved orders from the old mixed list must not interleave these sections.
+  if (workspaces) {
+    return [
+      ...ordered.filter(entry => entry.kind === "group" && entry.group === "workspace"),
+      ...ordered.filter(entry => entry.kind === "group" && entry.group === "recent"),
+    ];
+  }
+  return ordered;
 }

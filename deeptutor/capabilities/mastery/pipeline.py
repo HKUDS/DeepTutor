@@ -73,7 +73,22 @@ class MasteryLoopPipeline(AgenticLoopPipeline):
         # Tells MasteryLoopCapability that the playbook is already the
         # foundation of this prompt, so it does not contribute a second copy.
         context.metadata[NATIVE_LOOP_FLAG] = True
-        return await super().run(context, stream)
+        import asyncio
+
+        from deeptutor.learning.storage import LearningStore
+        from deeptutor.services.workspace.knowledge import learning_source_access
+
+        path_id = str(context.metadata.get("mastery_path_id") or "")
+        topic = await asyncio.to_thread(LearningStore().get_topic, path_id) if path_id else None
+        refs = []
+        for source in topic.sources if topic else []:
+            if source.kind.value == "knowledge_base":
+                refs.append(source.source_id)
+            elif source.kind.value == "file" and source.metadata.get("kb_name"):
+                refs.append(source.metadata["kb_name"])
+        context.knowledge_bases = list(dict.fromkeys([*context.knowledge_bases, *refs]))
+        with learning_source_access(refs):
+            return await super().run(context, stream)
 
 
 __all__ = ["MasteryLoopPipeline", "MasteryPromptAssembler"]

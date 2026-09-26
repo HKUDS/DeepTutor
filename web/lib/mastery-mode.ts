@@ -1,3 +1,4 @@
+import { masterySessionsRoute } from "@/lib/learning-routes";
 /**
  * What a mastery conversation is doing right now — the client's half of
  * ``deeptutor/capabilities/mastery/mode.py``.
@@ -55,12 +56,12 @@ export function masterySessionRoute(
   pathId: string,
   mode: MasteryMode,
   courseId = "",
+  workspaceId?: string,
 ): string {
   const params = new URLSearchParams();
   if (mode !== DEFAULT_MASTERY_MODE) params.set("mode", mode);
   if (courseId) params.set("course", courseId);
-  const query = params.toString();
-  return `/mastery/${encodeURIComponent(pathId)}/sessions${query ? `?${query}` : ""}`;
+  return masterySessionsRoute(pathId, params, workspaceId);
 }
 
 /**

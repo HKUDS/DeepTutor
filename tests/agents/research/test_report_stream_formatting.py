@@ -13,7 +13,7 @@ from deeptutor.agents.research.pipeline import (
     ResearchPipeline,
 )
 from deeptutor.agents.research.utils.citation_manager import CitationManager
-from deeptutor.runtime.agentic import LabeledStepResult
+from deeptutor.runtime.agentic import LABEL_UNKNOWN, LabeledStepResult
 from deeptutor.runtime.stream_bus import StreamBus
 
 pytestmark = pytest.mark.asyncio
@@ -145,6 +145,45 @@ async def test_report_step_retries_an_idle_truncated_response_before_streaming(
     assert "Complete section" in live_content
 
 
+async def test_report_retry_replays_reasoning_from_incomplete_attempt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pipeline = _make_pipeline(monkeypatch)
+    requests: list[list[dict]] = []
+
+    async def fake_run_labeled_step(self, **kwargs):
+        requests.append([dict(message) for message in kwargs["messages"]])
+        if len(requests) == 1:
+            return LabeledStepResult(
+                label=LABEL_SECTION,
+                text="## 2. Partial section",
+                finish_reason="length",
+                reasoning_content="Plan the missing evidence.",
+            )
+        return LabeledStepResult(
+            label=LABEL_SECTION,
+            text=_complete_section_body(2),
+            finish_reason="stop",
+        )
+
+    pipeline._run_labeled_step = types.MethodType(fake_run_labeled_step, pipeline)
+    await pipeline._stream_report_step(
+        system_prompt="system",
+        user_prompt="user",
+        protocol=_PROTOCOL_REPORT_SECTION,
+        stream=StreamBus(),
+        client=None,
+        label="Write section",
+        call_id_root="test-report-reasoning-replay",
+        max_tokens=1000,
+        expected_section_number=2,
+    )
+
+    assistant = next(message for message in requests[1] if message["role"] == "assistant")
+    assert assistant["content"] == "``SECTION``\n## 2. Partial section"
+    assert assistant["reasoning_content"] == "Plan the missing evidence."
+
+
 async def test_report_step_rejects_empty_success_after_all_retries(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -169,3 +208,136 @@ async def test_report_step_rejects_empty_success_after_all_retries(
         )
 
     assert not [event for event in stream._history if event.type.value == "content"]
+
+
+def _complete_section_body(number: int, title: str = "Complete section") -> str:
+    return (
+        f"## {number}. {title}\n\n"
+        "This replacement is long enough to be a real report section, "
+        "and it ends with a complete sentence."
+    )
+
+
+async def test_report_step_recovers_unclosed_section_fence_on_finished_reply(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pipeline = _make_pipeline(monkeypatch)
+    stream = StreamBus()
+    body = _complete_section_body(4)
+
+    async def fake_run_labeled_step(self, **_kwargs):
+        return LabeledStepResult(
+            label=LABEL_UNKNOWN,
+            text=f"```SECTION\n{body}",
+            finish_reason="stop",
+        )
+
+    pipeline._run_labeled_step = types.MethodType(fake_run_labeled_step, pipeline)
+
+    result = await pipeline._stream_report_step(
+        system_prompt="system",
+        user_prompt="user",
+        protocol=_PROTOCOL_REPORT_SECTION,
+        stream=stream,
+        client=None,
+        label="Write section",
+        call_id_root="test-unclosed-section",
+        max_tokens=1000,
+        expected_section_number=4,
+    )
+
+    live_content = "".join(
+        event.content for event in stream._history if event.type.value == "content"
+    )
+    assert result == live_content == body
+    assert not result.startswith("`")
+
+
+async def test_report_step_recovers_missing_label_when_heading_number_matches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pipeline = _make_pipeline(monkeypatch)
+    stream = StreamBus()
+    body = _complete_section_body(4)
+
+    async def fake_run_labeled_step(self, **_kwargs):
+        return LabeledStepResult(label=LABEL_UNKNOWN, text=body, finish_reason="stop")
+
+    pipeline._run_labeled_step = types.MethodType(fake_run_labeled_step, pipeline)
+
+    result = await pipeline._stream_report_step(
+        system_prompt="system",
+        user_prompt="user",
+        protocol=_PROTOCOL_REPORT_SECTION,
+        stream=stream,
+        client=None,
+        label="Write section",
+        call_id_root="test-heading-label",
+        max_tokens=1000,
+        expected_section_number=4,
+    )
+
+    assert result == body
+
+
+async def test_report_step_rejects_missing_label_for_a_different_section_heading(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pipeline = _make_pipeline(monkeypatch)
+    stream = StreamBus()
+
+    async def fake_run_labeled_step(self, **_kwargs):
+        return LabeledStepResult(
+            label=LABEL_UNKNOWN,
+            text=_complete_section_body(3),
+            finish_reason="stop",
+        )
+
+    pipeline._run_labeled_step = types.MethodType(fake_run_labeled_step, pipeline)
+
+    with pytest.raises(RuntimeError, match="expected SECTION label, got UNKNOWN"):
+        await pipeline._stream_report_step(
+            system_prompt="system",
+            user_prompt="user",
+            protocol=_PROTOCOL_REPORT_SECTION,
+            stream=stream,
+            client=None,
+            label="Write section",
+            call_id_root="test-wrong-heading",
+            max_tokens=1000,
+            expected_section_number=4,
+        )
+
+    assert not [event for event in stream._history if event.type.value == "content"]
+
+
+async def test_report_step_turns_reasoning_off_for_prose(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pipeline = _make_pipeline(monkeypatch)
+    stream = StreamBus()
+    seen: dict[str, object] = {}
+
+    async def fake_run_labeled_step(self, **kwargs):
+        seen["reasoning_effort"] = kwargs.get("reasoning_effort")
+        return LabeledStepResult(
+            label=LABEL_SECTION,
+            text=_complete_section_body(2),
+            finish_reason="stop",
+        )
+
+    pipeline._run_labeled_step = types.MethodType(fake_run_labeled_step, pipeline)
+
+    await pipeline._stream_report_step(
+        system_prompt="system",
+        user_prompt="user",
+        protocol=_PROTOCOL_REPORT_SECTION,
+        stream=stream,
+        client=None,
+        label="Write section",
+        call_id_root="test-reasoning-off",
+        max_tokens=1000,
+        expected_section_number=2,
+    )
+
+    assert seen["reasoning_effort"] == "none"

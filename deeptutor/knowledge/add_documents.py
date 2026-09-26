@@ -11,6 +11,7 @@ import hashlib
 import itertools
 import json
 import logging
+import os
 from pathlib import Path
 import shutil
 from typing import TYPE_CHECKING, List, Optional
@@ -24,9 +25,15 @@ from deeptutor.services.rag.factory import (
     normalize_provider_name,
 )
 from deeptutor.services.rag.file_routing import FileTypeRouter
+from deeptutor.services.rag.index_probe import provider_failure_summary
 from deeptutor.services.rag.index_versioning import list_kb_versions
 from deeptutor.services.rag.provider_binding import resolve_bound_provider
 from deeptutor.services.rag.service import RAGService
+from deeptutor.services.setup.data_volume import (
+    DataVolumePermissionError,
+    ensure_data_volume_writable,
+    format_data_volume_permission_error,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +123,22 @@ def _raw_hash_key(file_path: Path, raw_dir: Path) -> str:
         return file_path.name
 
 
+def _file_hash(file_path: Path) -> str:
+    sha256_hash = hashlib.sha256()
+    with open(file_path, "rb") as handle:
+        for block in iter(lambda: handle.read(65536), b""):
+            sha256_hash.update(block)
+    return sha256_hash.hexdigest()
+
+
+def hashes_for_indexed_files(file_paths: list[str], raw_dir: Path) -> dict[str, str]:
+    """Hash source files already confirmed in an index, keyed by their raw path."""
+    return {
+        _raw_hash_key(Path(file_path), raw_dir): _file_hash(Path(file_path))
+        for file_path in file_paths
+    }
+
+
 def remove_raw_document(kb_dir: Path, file_path: Path) -> RawDocumentRemoval:
     """Delete one staged raw file and drop its indexed-hash record.
 
@@ -158,6 +181,7 @@ class DocumentAdder:
         base_url: str | None = None,
         progress_tracker=None,
         rag_provider: str | None = None,
+        accepted_indexing_snapshot=None,
     ):
         self.kb_name = kb_name
         self.base_dir = Path(base_dir)
@@ -170,6 +194,10 @@ class DocumentAdder:
         self.llamaindex_storage_dir = self.kb_dir / "llamaindex_storage"
         self.legacy_rag_storage_dir = self.kb_dir / "rag_storage"
         self.metadata_file = self.kb_dir / "metadata.json"
+
+        # Fail on UID-mismatched / unwritable volumes before the "not initialized"
+        # check, which otherwise hides Unraid bind-mount permission errors.
+        ensure_data_volume_writable(self.kb_dir)
 
         # Incremental adds must use the engine DeepTutor has bound to this KB. An
         # explicit rag_provider (from the API, already matched against the KB)
@@ -190,11 +218,39 @@ class DocumentAdder:
                 f"Knowledge base '{kb_name}' uses legacy index format and requires reindex before incremental add"
             )
 
-        allows_lightrag_bootstrap = self.rag_provider == LIGHTRAG_PROVIDER and not list_kb_versions(
-            self.kb_dir
+        # Both pipelines create their first index on add; existing broken versions
+        # still require reindex instead of being silently replaced (#1458).
+        versions = list_kb_versions(self.kb_dir)
+        allows_bootstrap = (
+            self.rag_provider
+            in {
+                DEFAULT_PROVIDER,
+                LIGHTRAG_PROVIDER,
+            }
+            and not versions
         )
-        if not has_provider_index and not allows_lightrag_bootstrap:
+        if not has_provider_index and not allows_bootstrap:
+            if versions:
+                summary = provider_failure_summary(self.kb_dir, self.rag_provider)
+                raise ValueError(
+                    f"Knowledge base has no ready {self.rag_provider} index; reindex required: "
+                    f"{summary or 'stored index version is incomplete'}"
+                )
             raise ValueError(f"Knowledge base not initialized ({self.rag_provider}): {kb_name}")
+
+        self.accepted_indexing_snapshot = accepted_indexing_snapshot
+        if self.rag_provider == LIGHTRAG_PROVIDER and self.accepted_indexing_snapshot is None:
+            from deeptutor.services.rag.pipelines.lightrag.indexing_policy import (
+                bind_target,
+                resolve_write_snapshot,
+            )
+
+            self.accepted_indexing_snapshot = bind_target(
+                resolve_write_snapshot(
+                    self.kb_dir, base_dir=str(self.base_dir), kb_name=self.kb_name
+                ),
+                self.kb_dir,
+            )
 
         self.api_key = api_key
         self.base_url = base_url
@@ -206,11 +262,7 @@ class DocumentAdder:
         return resolve_bound_provider(self.base_dir, self.kb_name)
 
     def _get_file_hash(self, file_path: Path) -> str:
-        sha256_hash = hashlib.sha256()
-        with open(file_path, "rb") as f:
-            for byte_block in iter(lambda: f.read(65536), b""):
-                sha256_hash.update(byte_block)
-        return sha256_hash.hexdigest()
+        return _file_hash(file_path)
 
     def get_ingested_hashes(self) -> dict[str, str]:
         if self.metadata_file.exists():
@@ -308,6 +360,9 @@ class DocumentAdder:
         if not new_files:
             return DocumentIndexResult(processed_files=[], failures=[])
 
+        if self.rag_provider == LIGHTRAG_PROVIDER:
+            return await self._process_lightrag_batch(new_files)
+
         rag_service = RAGService(kb_base_dir=str(self.base_dir), provider=self.rag_provider)
         processed_files: list[Path] = []
         failures: list[DocumentIndexFailure] = []
@@ -357,11 +412,72 @@ class DocumentAdder:
                     error = "Provider returned failure without details."
                     failures.append(DocumentIndexFailure(doc_file, error))
                     logger.error(f"Failed to index: {doc_file.name}")
+            except PermissionError as e:
+                logger.exception("Permission denied while indexing %s: %s", doc_file.name, e)
+                raise DataVolumePermissionError(
+                    format_data_volume_permission_error(
+                        self.kb_dir, uid=os.geteuid(), gid=os.getegid(), cause=e
+                    )
+                ) from e
             except Exception as e:
                 logger.exception(f"Failed {doc_file.name}: {e}")
                 failures.append(DocumentIndexFailure(doc_file, str(e)))
 
         return DocumentIndexResult(processed_files=processed_files, failures=failures)
+
+    async def _process_lightrag_batch(self, files: List[Path]) -> DocumentIndexResult:
+        """Hold native write ownership across the entire accepted batch."""
+        from deeptutor.services.rag.pipelines.lightrag.pipeline import LightRagBatchError
+
+        def prepare_publication(root: Path) -> None:
+            from deeptutor.knowledge.progress_tracker import ProgressStage, ProgressTracker
+
+            tracker = self.progress_tracker or ProgressTracker(self.kb_name, self.base_dir)
+            tracker.update(
+                ProgressStage.COMPLETED,
+                message="Document indexing complete",
+                current=len(files),
+                total=len(files),
+                indexed_count=len(files),
+                index_changed=True,
+                index_action="upload",
+                publication_version=root.name,
+            )
+            tracker.verify_terminal(
+                current=len(files),
+                total=len(files),
+                indexed_count=len(files),
+                index_action="upload",
+                publication_version=root.name,
+            )
+
+        service = RAGService(kb_base_dir=str(self.base_dir), provider=LIGHTRAG_PROVIDER)
+        try:
+            success = await service.add_documents(
+                self.kb_name,
+                [str(path) for path in files],
+                accepted_indexing_snapshot=self.accepted_indexing_snapshot,
+                before_publish=prepare_publication,
+            )
+            if not success:
+                raise RuntimeError("LightRAG returned failure without details.")
+            processed = files
+            failures = []
+        except LightRagBatchError as exc:
+            processed = [path for path in files if path.name in exc.outcome.processed]
+            failures = [
+                DocumentIndexFailure(path, str(exc)) for path in files if path not in processed
+            ]
+        except Exception as exc:
+            return DocumentIndexResult([], [DocumentIndexFailure(path, str(exc)) for path in files])
+        for path in processed:
+            try:
+                await asyncio.to_thread(self._record_successful_hash, path)
+            except Exception:
+                logger.warning(
+                    "Indexed document hash could not be recorded: %s", path.name, exc_info=True
+                )
+        return DocumentIndexResult(processed, failures)
 
     def _record_successful_hash(self, file_path: Path) -> None:
         file_hash = self._get_file_hash(file_path)
@@ -422,25 +538,34 @@ async def _bootstrap_index_from_files(
     raw_dir = kb_dir / "raw"
     metadata_file = kb_dir / "metadata.json"
 
-    success = await rag_service.initialize(kb_name=kb_name, file_paths=source_files)
+    requested = {str(Path(path).resolve()): str(Path(path)) for path in source_files}
+    confirmed: set[str] = set()
+
+    def on_indexed_file(paths: list[str]) -> None:
+        for path in paths:
+            canonical = str(Path(path).resolve())
+            if canonical in requested:
+                confirmed.add(canonical)
+
+    success = await rag_service.initialize(
+        kb_name=kb_name,
+        file_paths=source_files,
+        indexed_file_callback=on_indexed_file,
+    )
     if not success:
         raise RuntimeError(
             f"Failed to initialize index for KB '{kb_name}' from {len(source_files)} file(s)"
         )
 
-    indexed = len(source_files)
+    indexed_files = [requested[path] for path in sorted(confirmed)]
+    indexed = len(indexed_files)
     provider = rag_service._resolve_provider(kb_name)
     try:
         # Record hashes so future syncs detect unchanged files.
         metadata = _read_metadata(metadata_file)
-        hashes = metadata.setdefault("file_hashes", {})
-        for fpath_str in source_files:
-            fpath = Path(fpath_str)
-            sha = hashlib.sha256()
-            with open(fpath, "rb") as fh:
-                for block in iter(lambda: fh.read(65536), b""):
-                    sha.update(block)
-            hashes[_raw_hash_key(fpath, raw_dir)] = sha.hexdigest()
+        metadata.setdefault("file_hashes", {}).update(
+            hashes_for_indexed_files(indexed_files, raw_dir)
+        )
         metadata["rag_provider"] = provider
         metadata["needs_reindex"] = False
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -486,6 +611,7 @@ async def add_documents(
     api_key: Optional[str] = None,
     base_url: Optional[str] = None,
     allow_duplicates: bool = False,
+    accepted_indexing_snapshot=None,
 ) -> int:
     """Convenience function used by CLI wrappers."""
     from deeptutor.knowledge.manager import KnowledgeBaseManager
@@ -514,6 +640,7 @@ async def add_documents(
                 base_dir=base_dir,
                 api_key=api_key,
                 base_url=base_url,
+                accepted_indexing_snapshot=accepted_indexing_snapshot,
             )
         except ValueError as exc:
             if "not initialized" not in str(exc).lower() or not source_files:

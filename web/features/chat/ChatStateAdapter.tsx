@@ -1,5 +1,7 @@
 "use client";
 
+import { activeWorkspaceId } from "@/lib/workspace-scope";
+
 import React, {
   createContext,
   useCallback,
@@ -14,9 +16,10 @@ import type { ClientCommand } from "@/contracts/generated/turn-protocol";
 import {
   RESPONSE_LANGUAGE_EVENT,
   RESPONSE_LANGUAGE_STORAGE_KEY,
-  normalizeLanguage,
+  isResponseLanguage,
   readStoredChatResponseTimeout,
   readStoredResponseLanguage,
+  resolveResponseLanguage,
   writeStoredActiveSessionId,
 } from "@/context/app-shell-storage";
 import type {
@@ -32,6 +35,7 @@ import {
   deleteMessage,
   updateBranchSelection,
   updateSessionTitle,
+  updateSessionReplyLanguage,
   type MessageTracePage,
   type SessionMessage,
 } from "@/lib/session-api";
@@ -39,6 +43,7 @@ import {
   TraceCache,
   compactTracePreview,
   settleMessageTrace,
+  traceSettleAction,
   type MessageTraceMetadata,
 } from "@/features/chat/trace/memory";
 import {
@@ -55,8 +60,9 @@ import {
 } from "@/lib/message-branches";
 import { nextOptimisticId, resolvePersistedMessage } from "@/lib/optimistic-id";
 import { reconcileTurnIds } from "@/lib/turn-reconcile";
+import { decideFailedTurnReplay, isFailedTurnVisible } from "@/lib/chat-resend";
 import {
-  isNarrationMarker,
+  isRetractionMarker,
   recomputeAnswerContent,
   shouldAppendEventContent,
 } from "@/lib/stream";
@@ -129,9 +135,27 @@ export interface SendMessageOptions {
    *  first ``mastery_status`` — otherwise the next ``mastery_quiz`` simply
    *  re-presents the question they just declined. */
   masterySkip?: { question_id: string } | null;
+  /** Run this one turn in another mode (a reading "Quiz me" asks the quiz
+   *  engine) without switching the conversation's own mode. Recorded in the
+   *  turn's snapshot, so a regenerate runs in it again. */
+  capability?: string;
+}
+
+/** Per-conversation narrowing of the workspace's skill and MCP selections.
+ *  Both lists are intersected with what the workspace allows, never added to
+ *  it, so a conversation can only ever reach less than its workspace. */
+export interface ResourceSelection {
+  skills: string[];
+  mcp: string[];
+}
+
+export function emptyResourceSelection(): ResourceSelection {
+  return { skills: [], mcp: [] };
 }
 
 export interface ChatState {
+  /** Local identity, available before the backend assigns a session ID. */
+  sessionKey: string;
   sessionId: string | null;
   sessionTitle: string;
   enabledTools: string[];
@@ -151,17 +175,27 @@ export interface ChatState {
   /** Study course this conversation belongs to; "" = unclassified.
    *  Read by the composer's course pill and sent with every turn, so Course
    *  Study senses the same course the learner can see it is bound to. */
+  workspaceId: string | null;
   courseId: string;
   /** Session-level persona preference; "" = Default (no persona). Applies
    *  to every following message until changed (persisted on the session). */
   personaSelection: string;
+  /** Skills and MCP servers this conversation narrowed itself to. Empty means
+   *  inherit — everything the workspace allows — which is what a conversation
+   *  that never opened the pickers keeps sending. */
+  resourceSelection: ResourceSelection;
   messages: MessageItem[];
   isStreaming: boolean;
   currentStage: string;
   language: string;
+  /** Explicit conversation choice; null follows the account reply language. */
+  replyLanguageOverride: string | null;
   /** Edit-branching: keyed by stringified parent_message_id (or "null"
    *  for the root). Empty means "default to latest sibling everywhere". */
   selectedBranches: Record<string, number>;
+  /** True when the last turn ended in a failure (not a user cancel) and
+   *  the session is no longer streaming. Drives the Resend affordance. */
+  lastTurnFailed: boolean;
 }
 
 export interface SessionConfiguration {
@@ -171,6 +205,7 @@ export interface SessionConfiguration {
   knowledgeBases?: string[];
   masteryPathId?: string | null;
   masterySessionMode?: string | null;
+  workspaceId?: string | null;
   courseId?: string;
   enabledTools?: string[];
 }
@@ -211,6 +246,7 @@ export interface MessageAttachment {
 }
 
 export interface MessageRequestSnapshot {
+  resourceSelection?: ResourceSelection;
   content: string;
   capability?: string | null;
   workspaceMode?: WorkspaceMode | null;
@@ -234,6 +270,15 @@ export interface MessageRequestSnapshot {
   readingMaterialId?: string;
   /** Immutable content revision open when the turn was submitted. */
   readingMaterialRevision?: number;
+  /** The passage the question was asked about, and the unit it came from. */
+  readingSelection?: ReadingSelectionSnapshot;
+  /** `capability` ran for this turn only (see SendMessageOptions.capability). */
+  capabilityOnce?: boolean;
+}
+
+export interface ReadingSelectionSnapshot {
+  quote: string;
+  locator: number;
 }
 
 export interface MessageItem {
@@ -252,7 +297,7 @@ export interface MessageItem {
   parentMessageId?: number | null;
 }
 
-interface SessionEntry extends ChatState {
+interface SessionEntry extends Omit<ChatState, "sessionKey"> {
   key: string;
   status: SessionRuntimeStatus;
   activeTurnId: string | null;
@@ -287,9 +332,12 @@ interface SessionSnapshot {
   llmSelection?: LLMSelection | null;
   masteryPathId?: string | null;
   masterySessionMode?: string | null;
+  workspaceId?: string | null;
   courseId?: string;
   personaSelection?: string;
+  resourceSelection?: ResourceSelection;
   language?: string;
+  replyLanguageOverride?: string | null;
   selectedBranches?: Record<string, number>;
 }
 
@@ -305,7 +353,9 @@ type Action =
   | { type: "SET_MASTERY_SESSION_MODE"; mode: string | null; key?: string }
   | { type: "SET_COURSE_ID"; courseId: string }
   | { type: "SET_PERSONA_SELECTION"; persona: string }
+  | { type: "SET_RESOURCE_SELECTION"; selection: ResourceSelection }
   | { type: "SET_LANGUAGE"; lang: string }
+  | { type: "SET_REPLY_LANGUAGE_OVERRIDE"; key: string; language: string | null }
   | {
       type: "ADD_USER_MSG";
       key: string;
@@ -317,13 +367,14 @@ type Action =
     }
   | { type: "POP_LAST_ASSISTANT"; key: string }
   | { type: "RESTORE_ASSISTANT"; key: string; message: MessageItem }
-  | { type: "STREAM_START"; key: string }
+  | { type: "STREAM_START"; key: string; startedAt: number }
   | { type: "STREAM_TOUCH"; key: string }
   | { type: "STREAM_EVENT"; key: string; event: StreamEvent }
   | {
       type: "STREAM_END";
       key: string;
       status?: SessionRuntimeStatus;
+      errorMessage?: string;
       turnId?: string | null;
     }
   | {
@@ -397,18 +448,22 @@ function createSessionEntry(
     llmSelection: null,
     masteryPathId: null,
     masterySessionMode: null,
+    workspaceId: activeWorkspaceId() || null,
     courseId: "",
     personaSelection: "",
+    resourceSelection: emptyResourceSelection(),
     messages: [],
     isStreaming: false,
     currentStage: "",
     language:
       typeof window === "undefined" ? "en" : readStoredResponseLanguage(),
+    replyLanguageOverride: null,
     status: "idle",
     activeTurnId: null,
     lastSeq: 0,
     updatedAt: Date.now(),
     selectedBranches: {},
+    lastTurnFailed: false,
   };
 }
 
@@ -467,6 +522,7 @@ function applySessionConfiguration(
       configuration.masterySessionMode !== undefined
         ? configuration.masterySessionMode
         : session.masterySessionMode,
+    workspaceId: configuration.workspaceId !== undefined ? configuration.workspaceId : session.workspaceId,
     courseId:
       configuration.courseId !== undefined
         ? configuration.courseId
@@ -579,11 +635,31 @@ function reducer(state: ProviderState, action: Action): ProviderState {
         ...session,
         personaSelection: action.persona,
       }));
+    case "SET_RESOURCE_SELECTION":
+      return updateSelectedSession(state, (session) => ({
+        ...session,
+        resourceSelection: action.selection,
+      }));
     case "SET_LANGUAGE":
       return updateSelectedSession(state, (session) => ({
         ...session,
-        language: action.lang,
+        language: session.replyLanguageOverride ?? action.lang,
       }));
+    case "SET_REPLY_LANGUAGE_OVERRIDE": {
+      const session = state.sessions[action.key];
+      if (!session) return state;
+      return {
+        ...state,
+        sessions: {
+          ...state.sessions,
+          [action.key]: {
+            ...session,
+            replyLanguageOverride: action.language,
+            language: action.language ?? readStoredResponseLanguage(),
+          },
+        },
+      };
+    }
     case "ADD_USER_MSG": {
       const session =
         state.sessions[action.key] ?? createSessionEntry(action.key);
@@ -646,12 +722,14 @@ function reducer(state: ProviderState, action: Action): ProviderState {
       const session = state.sessions[action.key];
       if (!session) return state;
       const messages = [...session.messages];
-      // Drop any placeholder STREAM_START assistant bubble before restoring.
-      while (
-        messages.length > 0 &&
-        messages[messages.length - 1].role === "assistant" &&
-        (messages[messages.length - 1].content ?? "") === "" &&
-        (messages[messages.length - 1].events?.length ?? 0) === 0
+      // Admission and transport failures can attach an error to the
+      // optimistic placeholder before rollback. It is still the retry's
+      // bubble, so discard it rather than leaving two assistant rows.
+      const placeholder = messages[messages.length - 1];
+      if (
+        placeholder?.role === "assistant" &&
+        typeof placeholder.id === "number" &&
+        placeholder.id < 0
       ) {
         messages.pop();
       }
@@ -684,6 +762,11 @@ function reducer(state: ProviderState, action: Action): ProviderState {
             ...session,
             isStreaming: true,
             status: "running",
+            // Sequence numbers belong to one turn, not the conversation.
+            // Reusing the previous turn's cursor when answering ask_user
+            // makes the transport drop the new turn's reply and done frames.
+            activeTurnId: null,
+            lastSeq: 0,
             messages: [
               ...existing,
               {
@@ -692,6 +775,8 @@ function reducer(state: ProviderState, action: Action): ProviderState {
                 content: "",
                 rawContent: "",
                 events: [],
+                // Include connection and provider latency before the first frame (#1435).
+                trace: { started_at: action.startedAt },
                 capability: session.activeCapability || "",
                 parentMessageId: tip?.id ?? null,
               },
@@ -745,10 +830,10 @@ function reducer(state: ProviderState, action: Action): ProviderState {
       const language = session.language;
       let rawContent = last?.rawContent ?? last?.content ?? "";
       let content = last?.content ?? "";
-      if (isNarrationMarker(action.event)) {
-        // A round just resolved as narration (preamble before a tool call):
-        // drop its already-streamed text from the answer — it stays in the
-        // trace. Recompute from immutable event content, never from display text.
+      if (isRetractionMarker(action.event)) {
+        // A capability rejected this round after it had already streamed:
+        // drop its text from the answer — it stays in the trace. Recompute
+        // from immutable event content, never from display text.
         rawContent = recomputeAnswerContent(events);
         content = repairChineseEmphasis(rawContent, language);
       } else if (shouldAppendEventContent(action.event)) {
@@ -782,7 +867,11 @@ function reducer(state: ProviderState, action: Action): ProviderState {
                   ? ""
                   : session.currentStage,
             activeTurnId: action.event.turn_id || session.activeTurnId,
-            lastSeq: Math.max(session.lastSeq, action.event.seq || 0),
+            lastSeq:
+              action.event.turn_id &&
+              action.event.turn_id !== session.activeTurnId
+                ? action.event.seq || 0
+                : Math.max(session.lastSeq, action.event.seq || 0),
             updatedAt: Date.now(),
           },
         },
@@ -799,8 +888,26 @@ function reducer(state: ProviderState, action: Action): ProviderState {
         if (last?.role !== "assistant") return messages;
         const raw = last.rawContent ?? last.content ?? "";
         const repaired = repairChineseEmphasis(raw, ending.language);
-        if (repaired === last.content) return messages;
-        messages[messages.length - 1] = { ...last, content: repaired };
+        const trace =
+          ending.isStreaming && last.trace?.started_at != null
+            ? { ...last.trace, ended_at: Date.now() / 1000 }
+            : last.trace;
+        let events = last.events ?? [];
+        if (
+          ["cancelled", "failed", "rejected"].includes(action.status ?? "") &&
+          !events.some((event) => event.type === "error" && event.metadata?.turn_terminal)
+        ) {
+          events = [...events, {
+            type: "error",
+            source: "transport",
+            stage: "",
+            content: action.errorMessage ?? [...events].reverse().find((event) => event.type === "error")?.content ?? "",
+            timestamp: Date.now() / 1000,
+            metadata: { turn_terminal: true, status: action.status, retryable: action.status !== "cancelled" },
+          }];
+        }
+        if (repaired === last.content && trace === last.trace && events === last.events) return messages;
+        messages[messages.length - 1] = { ...last, content: repaired, trace, events };
         return messages;
       })();
       const endedTurnId = action.turnId || ending?.activeTurnId || null;
@@ -844,6 +951,10 @@ function reducer(state: ProviderState, action: Action): ProviderState {
         sessionId: action.sessionId,
         sessionTitle: current.sessionTitle || existing?.sessionTitle || "",
         activeTurnId: action.turnId || current.activeTurnId,
+        lastSeq:
+          action.turnId && action.turnId !== current.activeTurnId
+            ? 0
+            : current.lastSeq,
         status: current.isStreaming ? "running" : current.status,
         updatedAt: Date.now(),
       };
@@ -913,6 +1024,11 @@ function reducer(state: ProviderState, action: Action): ProviderState {
               action.masteryPathId !== undefined
                 ? action.masteryPathId
                 : existing.masteryPathId,
+            masterySessionMode:
+              action.masterySessionMode !== undefined
+                ? action.masterySessionMode
+                : existing.masterySessionMode,
+            workspaceId: action.workspaceId !== undefined ? action.workspaceId : existing.workspaceId,
             courseId:
               action.courseId !== undefined
                 ? action.courseId
@@ -921,12 +1037,23 @@ function reducer(state: ProviderState, action: Action): ProviderState {
               action.personaSelection !== undefined
                 ? action.personaSelection
                 : existing.personaSelection,
+            resourceSelection:
+              action.resourceSelection !== undefined
+                ? action.resourceSelection
+                : existing.resourceSelection,
             messages: action.messages,
             isStreaming: (action.status || "idle") === "running",
             currentStage: "",
             activeTurnId: action.activeTurnId || null,
+            // Loaded messages contain only a trace preview. Replay the live
+            // turn from the start rather than trusting a cached cursor.
+            lastSeq: 0,
             status: action.status || "idle",
             language: action.language ?? existing.language,
+            replyLanguageOverride:
+              action.replyLanguageOverride !== undefined
+                ? action.replyLanguageOverride
+                : existing.replyLanguageOverride,
             selectedBranches:
               action.selectedBranches ?? existing.selectedBranches,
             updatedAt: Date.now(),
@@ -1006,15 +1133,41 @@ function reducer(state: ProviderState, action: Action): ProviderState {
       // settled the message on a trace without its card.
       const session = state.sessions[action.key];
       if (!session) return state;
+      //
+      // The compaction is deferred by one turn. The turn that just finished is
+      // the one the reader is most likely to open, and trading its events for
+      // a preview means the rows they were watching a second ago have to come
+      // back from the server: the reasoning vanishes from the trace, the fetch
+      // lands, and the whole block jumps. Keeping the newest turn whole costs
+      // one turn's events and makes opening it instant; the turn before it is
+      // compacted now instead, which is what bounds the memory.
       let changed = false;
       const messages = session.messages.map((message) => {
-        if (message.id !== action.messageId || message.role !== "assistant") {
-          return message;
-        }
+        const settleAction = traceSettleAction(message, action.messageId);
+        if (settleAction === "skip") return message;
         changed = true;
+        if (settleAction === "keep") {
+          const settled = settleMessageTrace(
+            message.events ?? [],
+            action.turnId,
+            message.trace,
+          );
+          return {
+            ...message,
+            // Measured now, over the full stream, exactly as before — only the
+            // events are kept. ``truncated`` describes the preview that was
+            // not taken, so leaving it set would send the reader on a fetch
+            // for rows already in hand.
+            trace: { ...settled.trace, truncated: false },
+          };
+        }
         return {
           ...message,
-          ...settleMessageTrace(message.events ?? [], action.turnId),
+          ...settleMessageTrace(
+            message.events ?? [],
+            message.trace?.turn_id ?? "",
+            message.trace,
+          ),
         };
       });
       if (!changed) return state;
@@ -1168,7 +1321,9 @@ interface ChatContextValue {
   setMasterySessionMode: (mode: string | null) => void;
   setCourseId: (courseId: string) => void;
   setPersonaSelection: (persona: string) => void;
+  setResourceSelection: (selection: ResourceSelection) => void;
   setLanguage: (lang: string) => void;
+  setReplyLanguageOverride: (language: string | null) => Promise<void>;
   sendMessage: (
     content: string,
     attachments?: OutgoingAttachment[],
@@ -1206,6 +1361,10 @@ interface ChatContextValue {
         },
   ) => Promise<boolean>;
   regenerateLastMessage: () => void;
+  /** Re-send the last user message after a failed turn, preserving the
+   *  original request snapshot (attachments, capability, tools, KB, etc.)
+   *  so the new turn runs with the same context as the failed one. */
+  resendLastMessage: () => void;
   deleteTurn: (messageId: number) => Promise<void>;
   /** Re-send a user message under a new branch (sibling of the original).
    *  Uses the composer's current capability / refs — only the text is
@@ -1215,7 +1374,7 @@ interface ChatContextValue {
   /** Switch which sibling is currently visible at a branch point. */
   switchBranch: (parentMessageId: number | null, childId: number) => void;
   renameSessionTitle: (title: string) => Promise<void>;
-  newSession: (configuration?: SessionConfiguration) => void;
+  newSession: (configuration?: SessionConfiguration) => string;
   /** Apply route-owned preferences to an explicit loaded session (or the
    * selected draft). Dispatching by key keeps this safe immediately after
    * LOAD_SESSION, before React has committed a new context render. */
@@ -1361,7 +1520,11 @@ function hydrateRequestSnapshot(
     ...(attachments.length ? { attachments } : {}),
   };
 
-  const config = asRecord(stored.config);
+  const config = {
+    ...(asRecord(stored.config) ?? {}),
+    ...(typeof stored.consultPartnerId === "string" ? { consult_partner_id: stored.consultPartnerId } : {}),
+    ...(typeof stored.partnerDiscussionGroupId === "string" ? { partner_discussion_group_id: stored.partnerDiscussionGroupId } : {}),
+  };
   const notebookReferences = asNotebookReferences(stored.notebookReferences);
   const historyReferences = asStringArray(stored.historyReferences);
   const questionNotebookReferences = asQuestionReferences(
@@ -1391,6 +1554,7 @@ function hydrateRequestSnapshot(
     typeof (stored.timedMediaId ?? stored.timed_media_id) === "string"
       ? String(stored.timedMediaId ?? stored.timed_media_id).trim()
       : "";
+  const readingSelection = asReadingSelection(stored.readingSelection);
 
   if (config && Object.keys(config).length) snapshot.config = config;
   if (notebookReferences.length)
@@ -1414,7 +1578,22 @@ function hydrateRequestSnapshot(
     }
   }
   if (timedMediaId) snapshot.timedMediaId = timedMediaId;
+  if (readingSelection) snapshot.readingSelection = readingSelection;
+  if (stored.capabilityOnce === true) snapshot.capabilityOnce = true;
   return snapshot;
+}
+
+function asReadingSelection(
+  value: unknown,
+): ReadingSelectionSnapshot | undefined {
+  const record = asRecord(value);
+  const quote = typeof record?.quote === "string" ? record.quote.trim() : "";
+  if (!quote) return undefined;
+  const locator = Number(record?.locator);
+  return {
+    quote,
+    locator: Number.isSafeInteger(locator) && locator > 0 ? locator : 0,
+  };
 }
 
 export function ChatStateAdapterProvider({
@@ -1424,6 +1603,7 @@ export function ChatStateAdapterProvider({
 }) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const stateRef = useRef(initialState);
+  const runtimeGeneration = useRef(0);
   const runnersRef = useRef<
     Map<
       string,
@@ -1439,6 +1619,8 @@ export function ChatStateAdapterProvider({
   // assistant message if the server rejects the request (e.g. ``regenerate_busy``
   // or ``nothing_to_regenerate``). Keyed by session entry key.
   const pendingRegenerateRef = useRef<Map<string, MessageItem>>(new Map());
+  const pendingResendRef = useRef<Map<string, MessageItem>>(new Map());
+  const resolvingResendRef = useRef<Set<string>>(new Set());
   const traceCacheRef = useRef<TraceCache>(new TraceCache());
   const traceRequestsRef = useRef<Map<string, AbortController>>(new Map());
   // Forward-declared so ``handleRunnerEvent`` (created above
@@ -1474,6 +1656,7 @@ export function ChatStateAdapterProvider({
 
   useEffect(
     () => () => {
+      runtimeGeneration.current += 1;
       runnersRef.current.forEach(({ client }) => client.disconnect());
       runnersRef.current.clear();
       retryTimersRef.current.forEach((id) => clearTimeout(id));
@@ -1632,6 +1815,7 @@ export function ChatStateAdapterProvider({
           turnId: event.turn_id || null,
         });
         pendingRegenerateRef.current.delete(effectiveKey);
+        pendingResendRef.current.delete(effectiveKey);
         const runner = runnersRef.current.get(effectiveKey);
         // Hold the WS open briefly so post-turn ``session_meta`` events
         // (e.g. the LLM-generated title for the first user/assistant
@@ -1660,39 +1844,41 @@ export function ChatStateAdapterProvider({
         // (the previous approach) re-downloaded, re-normalized, and
         // re-rendered the entire transcript after every turn, freezing
         // the tab for seconds on long conversations.
-        if (status === "completed") {
-          const doneMeta = event.metadata as {
-            user_message_id?: number;
-            assistant_message_id?: number;
-          } | null;
-          const assistantMessageId = doneMeta?.assistant_message_id ?? null;
+        const doneMeta = event.metadata as {
+          user_message_id?: number;
+          assistant_message_id?: number;
+        } | null;
+        const userMessageId = doneMeta?.user_message_id ?? null;
+        const assistantMessageId = doneMeta?.assistant_message_id ?? null;
+        // A failed turn can still have persisted its user row. Reconcile its
+        // id too, or Resend would treat it as an unsaved optimistic row and
+        // submit a duplicate user message on the next attempt.
+        if (assistantMessageId != null || userMessageId != null) {
+          dispatch({
+            type: "RECONCILE_TURN",
+            key: effectiveKey,
+            turnId: event.turn_id || null,
+            userMessageId,
+            assistantMessageId,
+          });
           if (assistantMessageId != null) {
-            dispatch({
-              type: "RECONCILE_TURN",
-              key: effectiveKey,
-              turnId: event.turn_id || null,
-              userMessageId: doneMeta?.user_message_id ?? null,
-              assistantMessageId,
-            });
-            // Compact the finished message's trace inside the reducer — never
-            // from ``stateRef``, which still lacks whatever arrived in the
-            // same burst as this ``done``.
+            // Compact the trace from the reducer, which sees the just-arrived
+            // events that stateRef has not observed yet.
             dispatch({
               type: "SETTLE_MESSAGE_TRACE",
               key: effectiveKey,
               messageId: assistantMessageId,
               turnId: event.turn_id || null,
             });
-          } else {
-            // Older backend without ids on ``done`` — fall back to the
-            // full session refetch.
-            const finishedSession = stateRef.current.sessions[effectiveKey];
-            const sessionId = finishedSession?.sessionId;
-            if (sessionId) {
-              loadSessionRef.current?.(sessionId).catch(() => {
-                /* non-fatal — local state remains usable */
-              });
-            }
+          }
+        } else if (status === "completed") {
+          // Older backend without ids on ``done`` — fall back to a refetch.
+          const finishedSession = stateRef.current.sessions[effectiveKey];
+          const sessionId = finishedSession?.sessionId;
+          if (sessionId) {
+            loadSessionRef.current?.(sessionId).catch(() => {
+              /* non-fatal — local state remains usable */
+            });
           }
         }
         return;
@@ -1713,9 +1899,12 @@ export function ChatStateAdapterProvider({
         // to keep the transcript in sync with the server.
         if (
           reason === "regenerate_busy" ||
-          reason === "nothing_to_regenerate"
+          reason === "nothing_to_regenerate" ||
+          reason === "start_turn_rejected"
         ) {
-          const stash = pendingRegenerateRef.current.get(effectiveKey);
+          const stash =
+            pendingRegenerateRef.current.get(effectiveKey) ??
+            pendingResendRef.current.get(effectiveKey);
           if (stash) {
             dispatch({
               type: "RESTORE_ASSISTANT",
@@ -1725,6 +1914,7 @@ export function ChatStateAdapterProvider({
           }
         }
         pendingRegenerateRef.current.delete(effectiveKey);
+        pendingResendRef.current.delete(effectiveKey);
         const status = String(
           (event.metadata as { status?: string } | undefined)?.status ||
             "failed",
@@ -1770,6 +1960,7 @@ export function ChatStateAdapterProvider({
                 type: "STREAM_END",
                 key: record.key,
                 status: "failed",
+                errorMessage: i18n.t("Connection lost while generating. Please retry your message."),
               });
               // Surface the disconnect to the user. The WS client already
               // logs to console — we add a toast so non-debugging users
@@ -1805,11 +1996,14 @@ export function ChatStateAdapterProvider({
       options: { awaitAck?: boolean; attempt?: number } = {},
     ): Promise<boolean> {
       const attempt = options.attempt ?? 0;
+      if (attempt > 0 && !stateRef.current.sessions[key]?.isStreaming) {
+        return Promise.resolve(false);
+      }
       const runner = ensureRunner(key);
       if (!runner.client.connected) {
         if (attempt >= 10) {
           console.error("WebSocket failed to connect after retries");
-          dispatch({ type: "STREAM_END", key, status: "failed" });
+          dispatch({ type: "STREAM_END", key, status: "failed", errorMessage: i18n.t("Couldn't reach the server. Please check your connection and retry.") });
           // Surfaces the dead-after-N-retries case (different code path
           // from the close-while-streaming handler above). Same user
           // mental model, so same toast copy.
@@ -1881,6 +2075,15 @@ export function ChatStateAdapterProvider({
         (item) => item.id === messageId && item.role === "assistant",
       );
       if (!message?.trace?.turn_id) return;
+      // Already holding the whole thing — the turn that just finished keeps
+      // its events. Fetching would replace them with an identical list and
+      // repaint the trace for nothing.
+      if (
+        !message.trace.truncated &&
+        (message.events?.length ?? 0) >= (message.trace.total ?? 0)
+      ) {
+        return;
+      }
 
       const controller = new AbortController();
       traceRequestsRef.current.set(key, controller);
@@ -1895,6 +2098,7 @@ export function ChatStateAdapterProvider({
             afterSeq,
             controller.signal,
           );
+          if (controller.signal.aborted) return;
           events.push(...page.events);
           if (page.complete || page.next_seq == null) break;
           if (page.next_seq <= afterSeq) return;
@@ -1906,6 +2110,16 @@ export function ChatStateAdapterProvider({
           total: page.total,
           last_seq: page.last_seq,
           truncated: false,
+          // The turn's span is measured over the whole stream and the trace
+          // pages do not carry it, so dropping it here left the duration to be
+          // re-derived from whatever events came back — and a turn that read
+          // "11s" while collapsed read "12s" the moment it was opened.
+          ...(typeof message.trace.started_at === "number"
+            ? { started_at: message.trace.started_at }
+            : {}),
+          ...(typeof message.trace.ended_at === "number"
+            ? { ended_at: message.trace.ended_at }
+            : {}),
         };
         const preview = compactTracePreview(message.events ?? []);
         const evicted = traceCacheRef.current.retain(key, {
@@ -1947,7 +2161,9 @@ export function ChatStateAdapterProvider({
       sessionId: string,
       options?: { signal?: AbortSignal; revalidate?: boolean },
     ) => {
+      const generation = runtimeGeneration.current;
       const session = await getSession(sessionId, options?.signal);
+      if (options?.signal?.aborted || generation !== runtimeGeneration.current) return;
       const key = session.session_id || session.id;
       const activeTurn = Array.isArray(session.active_turns)
         ? session.active_turns[0]
@@ -1967,6 +2183,11 @@ export function ChatStateAdapterProvider({
         session.preferences?.workspace_mode,
         session.preferences?.capability,
       );
+      const replyLanguageOverride = isResponseLanguage(
+        session.preferences?.reply_language_override,
+      )
+        ? session.preferences.reply_language_override
+        : null;
       // A stored `running` is only believable while it is recent — see
       // `resolveLoadedRunStatus`. A turn the backend never got to close out
       // (crash, restart) would otherwise open the conversation into a
@@ -2021,6 +2242,7 @@ export function ChatStateAdapterProvider({
         // The server is the truth for which course a conversation belongs to:
         // it is set from the launch URL, from the composer's pill, and from the
         // sidebar's "move to course", and every one of those writes here.
+        workspaceId: session.preferences?.workspace_id || null,
         courseId:
           typeof session.preferences?.course_id === "string"
             ? session.preferences.course_id
@@ -2029,10 +2251,14 @@ export function ChatStateAdapterProvider({
           typeof session.preferences?.persona === "string"
             ? session.preferences.persona
             : "",
-        // Model output language is account-level state. Historical sessions
-        // may have stale persisted preferences, so new turns follow the
-        // current response-language setting rather than their original value.
-        language: readStoredResponseLanguage(),
+        resourceSelection: {
+          skills: asStringArray(session.preferences?.skills),
+          mcp: asStringArray(session.preferences?.mcp),
+        },
+        // Historical `preferences.language` is only the last turn's account
+        // default. The dedicated selector is the durable conversation choice.
+        language: replyLanguageOverride ?? readStoredResponseLanguage(),
+        replyLanguageOverride,
         selectedBranches: normalizeSelectedBranches(
           session.preferences?.selected_branches,
         ),
@@ -2070,7 +2296,10 @@ export function ChatStateAdapterProvider({
     if (typeof window === "undefined") return;
 
     const syncLanguage = (language: string | null | undefined) => {
-      dispatch({ type: "SET_LANGUAGE", lang: normalizeLanguage(language) });
+      dispatch({
+        type: "SET_LANGUAGE",
+        lang: resolveResponseLanguage(language, readStoredResponseLanguage()),
+      });
     };
     const onResponseLanguage = (event: Event) => {
       const detail = (event as CustomEvent<{ language?: string }>).detail;
@@ -2176,7 +2405,12 @@ export function ChatStateAdapterProvider({
       const session = currentState.sessions[key] ?? createSessionEntry(key);
       const replaySnapshot = options?.requestSnapshotOverride;
       const effectiveCapability =
-        replaySnapshot?.capability ?? session.activeCapability;
+        replaySnapshot?.capability ??
+        options?.capability ??
+        session.activeCapability;
+      const capabilityOnce = replaySnapshot
+        ? replaySnapshot.capabilityOnce === true
+        : Boolean(options?.capability);
       const effectiveWorkspaceMode =
         replaySnapshot?.workspaceMode ?? session.workspaceMode;
       const effectiveTools =
@@ -2192,12 +2426,17 @@ export function ChatStateAdapterProvider({
       const effectiveMasterySessionMode =
         replaySnapshot?.masterySessionMode ?? session.masterySessionMode;
       const effectiveLanguage =
-        replaySnapshot?.language ?? readStoredResponseLanguage();
+        replaySnapshot?.language ??
+        session.replyLanguageOverride ??
+        readStoredResponseLanguage();
       // Persona resolution: replay snapshot wins; then an explicit per-call
       // persona (quiz follow-up surface); then the session-level preference.
       // Always a string — "" means Default / no persona.
       const effectivePersona =
         replaySnapshot?.persona ?? persona ?? session.personaSelection ?? "";
+      // Replays retain the original resource selection, including one-turn choices.
+      const effectiveResources =
+        replaySnapshot?.resourceSelection ?? session.resourceSelection ?? emptyResourceSelection();
       const effectiveMemoryReferences =
         replaySnapshot?.memoryReferences ?? memoryReferences;
       const effectiveBookReferences =
@@ -2221,6 +2460,7 @@ export function ChatStateAdapterProvider({
         replaySnapshot?.questionNotebookReferences ??
         questionNotebookReferences;
       const liveReadingFields = readingTurnFields(effectiveWorkspaceMode);
+      const replaySelection = replaySnapshot?.readingSelection;
       const effectiveReadingTurnFields = replaySnapshot?.readingMaterialId
         ? {
             reading_material_id: replaySnapshot.readingMaterialId,
@@ -2230,8 +2470,29 @@ export function ChatStateAdapterProvider({
                     replaySnapshot.readingMaterialRevision,
                 }
               : {}),
+            // A regenerate answers the same passage, not whatever the reader
+            // happens to have selected now.
+            ...(replaySelection
+              ? {
+                  reading_viewport: {
+                    selection: replaySelection.quote,
+                    ...(replaySelection.locator
+                      ? { locator: replaySelection.locator }
+                      : {}),
+                  },
+                }
+              : {}),
           }
         : liveReadingFields;
+      const liveViewport = liveReadingFields.reading_viewport;
+      const effectiveReadingSelection: ReadingSelectionSnapshot | undefined =
+        replaySelection ??
+        (liveReadingFields.reading_material_id && liveViewport?.selection
+          ? {
+              quote: liveViewport.selection,
+              locator: liveViewport.locator ?? 0,
+            }
+          : undefined);
       const effectiveReadingMaterialId =
         effectiveReadingTurnFields.reading_material_id;
       const effectiveReadingMaterialRevision =
@@ -2243,6 +2504,7 @@ export function ChatStateAdapterProvider({
       const effectiveTimedMediaId =
         effectiveWatchingTurnFields.timed_media_id;
       const requestSnapshot: MessageRequestSnapshot = replaySnapshot ?? {
+        resourceSelection: {skills:[...effectiveResources.skills],mcp:[...effectiveResources.mcp]},
         content,
         capability: effectiveCapability,
         workspaceMode: effectiveWorkspaceMode,
@@ -2293,6 +2555,10 @@ export function ChatStateAdapterProvider({
         ...(effectiveReadingMaterialId && effectiveReadingMaterialRevision
           ? { readingMaterialRevision: effectiveReadingMaterialRevision }
           : {}),
+        ...(effectiveReadingSelection
+          ? { readingSelection: effectiveReadingSelection }
+          : {}),
+        ...(capabilityOnce ? { capabilityOnce: true } : {}),
         ...(effectiveTimedMediaId
           ? { timedMediaId: effectiveTimedMediaId }
           : {}),
@@ -2329,13 +2595,15 @@ export function ChatStateAdapterProvider({
           parentMessageId: localParentId,
         });
       }
-      dispatch({ type: "STREAM_START", key });
+      dispatch({ type: "STREAM_START", key, startedAt: Date.now() / 1000 });
       const {
         _persist_user_message: legacyPersistUserMessage,
         _course_id: _legacyCourseId,
         followup_question_context: followupQuestionContext,
         selection_tutor_context: selectionTutorContext,
         subagent_consult_budget: subagentConsultBudget,
+        consult_partner_id: consultPartnerId,
+        partner_discussion_group_id: partnerDiscussionGroupId,
         auto_route: autoRoute,
         ...finalTurnConfig
       } = effectiveConfig ?? {};
@@ -2344,7 +2612,7 @@ export function ChatStateAdapterProvider({
         legacyPersistUserMessage === false
           ? false
           : undefined;
-      sendThroughRunner(
+      return sendThroughRunner(
         key,
         buildStartTurnInput({
         content,
@@ -2352,7 +2620,11 @@ export function ChatStateAdapterProvider({
         capability: effectiveCapability,
         workspaceMode: effectiveWorkspaceMode ?? "",
         knowledgeBases: effectiveKnowledgeBases,
+        skills: effectiveResources.skills,
+        mcp: effectiveResources.mcp,
         sessionId: session.sessionId,
+        // Existing sessions inherit server ownership; new drafts declare it once.
+        ...(!session.sessionId ? { workspaceId: session.workspaceId ?? null } : {}),
         courseId: session.courseId.trim() || null,
         persistUserMessage,
         followupQuestionContext:
@@ -2363,19 +2635,28 @@ export function ChatStateAdapterProvider({
           selectionTutorContext && typeof selectionTutorContext === "object"
             ? (selectionTutorContext as Record<string, unknown>)
             : null,
+        consultPartnerId: typeof consultPartnerId === "string" ? consultPartnerId : null,
+        partnerDiscussionGroupId: typeof partnerDiscussionGroupId === "string" ? partnerDiscussionGroupId : null,
         subagentConsultBudget:
           typeof subagentConsultBudget === "number"
             ? subagentConsultBudget
             : null,
         autoRoute: typeof autoRoute === "boolean" ? autoRoute : null,
+        capabilityOnce,
         attachments: effectiveAttachments,
         language: effectiveLanguage,
+        // A draft has no session to PATCH yet. Persist its selector with the
+        // first turn; existing sessions use their server-side preference.
+        ...(!session.sessionId && session.replyLanguageOverride
+          ? { replyLanguageOverride: session.replyLanguageOverride }
+          : {}),
         notebookReferences: effectiveNotebookReferences,
         historyReferences: effectiveHistoryReferences,
         questionNotebookReferences: effectiveQuestionNotebookReferences,
         bookReferences: effectiveBookReferences,
         readingReferences: effectiveReadingReferences,
         masteryPathId: effectiveMasteryPathId || null,
+        masterySessionMode: effectiveMasterySessionMode || null,
         masteryAnswer: options?.masteryAnswer ?? null,
         masterySkip: options?.masterySkip ?? null,
         // Immersive reading. Gated on the stable workspace mode as well as on
@@ -2422,8 +2703,8 @@ export function ChatStateAdapterProvider({
     if (!session) return;
     const turnId = session.activeTurnId;
     const runner = runnersRef.current.get(key);
-    if (runner?.client.connected) {
-      if (turnId) {
+    if (runner) {
+      if (runner.client.connected && turnId) {
         runner.client.send({ type: "cancel_turn", turn_id: turnId });
       }
       runner.client.disconnect();
@@ -2473,7 +2754,7 @@ export function ChatStateAdapterProvider({
     [sendThroughRunner],
   );
 
-  const regenerateLastMessage = useCallback(() => {
+  const regenerateLastMessage = useCallback((replaySnapshot = false) => {
     const currentState = stateRef.current;
     const key = currentState.selectedKey;
     if (!key) return;
@@ -2494,19 +2775,125 @@ export function ChatStateAdapterProvider({
       pendingRegenerateRef.current.delete(key);
     }
     dispatch({ type: "POP_LAST_ASSISTANT", key });
-    dispatch({ type: "STREAM_START", key });
+    dispatch({ type: "STREAM_START", key, startedAt: Date.now() / 1000 });
     sendThroughRunner(key, {
       type: "regenerate",
       session_id: session.sessionId,
-      overrides: {
-        language: readStoredResponseLanguage(),
-      },
+      overrides: replaySnapshot
+        ? { replay_snapshot: true }
+        : { language: readStoredResponseLanguage() },
     });
   }, [sendThroughRunner]);
+
+  const resendLastMessage = useCallback(async () => {
+    const currentState = stateRef.current;
+    const key = currentState.selectedKey;
+    if (!key) return;
+    const session = currentState.sessions[key];
+    if (!session || !session.sessionId) return;
+    if (!isFailedTurnVisible(
+      session.messages,
+      session.selectedBranches,
+      session.status,
+      session.isStreaming,
+    )) return;
+    const lastUser = [...session.messages]
+      .reverse()
+      .find((m) => m.role === "user" && m.requestSnapshot);
+    if (!lastUser?.requestSnapshot) return;
+    // A dropped socket can hide a successfully persisted user row before its
+    // DONE ids reach this tab. Query the server before deciding whether this
+    // is a regenerate or a genuinely unsaved first attempt.
+    if (resolvingResendRef.current.has(key)) return;
+    resolvingResendRef.current.add(key);
+    let remote: Awaited<ReturnType<typeof getSession>>;
+    try {
+      remote = await getSession(session.sessionId);
+    } catch {
+      notify(i18n.t("Couldn't reach the server. Please check your connection and retry."), {
+        tone: "error",
+      });
+      return;
+    } finally {
+      resolvingResendRef.current.delete(key);
+    }
+    const live = stateRef.current;
+    const liveSession = live.sessions[key];
+    if (
+      live.selectedKey !== key ||
+      !liveSession ||
+      !isFailedTurnVisible(
+        liveSession.messages,
+        liveSession.selectedBranches,
+        liveSession.status,
+        liveSession.isStreaming,
+      )
+    ) return;
+    const liveLastUser = [...liveSession.messages]
+      .reverse()
+      .find((message) => message.role === "user" && message.requestSnapshot);
+    if (!liveLastUser?.requestSnapshot) return;
+    const decision = decideFailedTurnReplay(
+      liveSession.messages,
+      { ...liveLastUser, requestSnapshot: liveLastUser.requestSnapshot },
+      remote,
+    );
+    if (decision.kind === "refresh") {
+      void loadSessionRef.current?.(session.sessionId);
+      return;
+    }
+    if (decision.kind === "reconcile_regenerate") {
+      dispatch({
+        type: "RECONCILE_TURN",
+        key,
+        turnId: null,
+        // Runtime storage can return PocketBase string IDs; the existing
+        // reconciliation path preserves them despite its numeric legacy type.
+        userMessageId: decision.userId as number,
+        assistantMessageId: null,
+      });
+    }
+    if (decision.kind === "regenerate" || decision.kind === "reconcile_regenerate") {
+      regenerateLastMessage(true);
+      return;
+    }
+    // The first attempt failed before the user row reached storage. Retry it
+    // as a new turn, keeping the existing optimistic row visible.
+    const lastMessage = liveSession.messages[liveSession.messages.length - 1];
+    if (lastMessage?.role === "assistant") {
+      pendingResendRef.current.set(key, { ...lastMessage });
+    }
+    // Remove the trailing failed assistant bubble so the new turn's
+    // STREAM_START placeholder replaces it rather than stacking below.
+    dispatch({ type: "POP_LAST_ASSISTANT", key });
+    const snapshot = liveLastUser.requestSnapshot;
+    void sendMessage(
+      snapshot.content,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        displayUserMessage: false,
+        requestSnapshotOverride: snapshot,
+        parentMessageId:
+          typeof liveLastUser.parentMessageId === "number" &&
+          liveLastUser.parentMessageId <= 0
+            ? undefined
+            : liveLastUser.parentMessageId,
+      },
+    ).then((sent) => {
+      if (sent) return;
+      const stash = pendingResendRef.current.get(key);
+      pendingResendRef.current.delete(key);
+      if (stash) dispatch({ type: "RESTORE_ASSISTANT", key, message: stash });
+    });
+  }, [regenerateLastMessage, sendMessage]);
 
   const derivedState = useMemo<ChatState>(() => {
     const current = ensureSelectedSession(state);
     return {
+      sessionKey: current.key,
       sessionId: current.sessionId,
       sessionTitle: current.sessionTitle,
       enabledTools: current.enabledTools,
@@ -2517,13 +2904,22 @@ export function ChatStateAdapterProvider({
       llmSelection: current.llmSelection,
       masteryPathId: current.masteryPathId,
       masterySessionMode: current.masterySessionMode,
+      workspaceId: current.workspaceId,
       courseId: current.courseId,
       personaSelection: current.personaSelection,
+      resourceSelection: current.resourceSelection,
       messages: current.messages,
       isStreaming: current.isStreaming,
       currentStage: current.currentStage,
       language: current.language,
+      replyLanguageOverride: current.replyLanguageOverride,
       selectedBranches: current.selectedBranches,
+      lastTurnFailed: isFailedTurnVisible(
+        current.messages,
+        current.selectedBranches,
+        current.status,
+        current.isStreaming,
+      ),
     };
   }, [state]);
 
@@ -2577,8 +2973,38 @@ export function ChatStateAdapterProvider({
     dispatch({ type: "SET_PERSONA_SELECTION", persona });
   }, []);
 
+  const setResourceSelection = useCallback((selection: ResourceSelection) => {
+    dispatch({ type: "SET_RESOURCE_SELECTION", selection });
+  }, []);
+
   const setLanguage = useCallback((lang: string) => {
     dispatch({ type: "SET_LANGUAGE", lang });
+  }, []);
+
+  const setReplyLanguageOverride = useCallback(async (language: string | null) => {
+    if (language !== null && !isResponseLanguage(language)) {
+      throw new Error("Unsupported reply language");
+    }
+    const currentState = stateRef.current;
+    const key = currentState.selectedKey;
+    if (!key) return;
+    const session = currentState.sessions[key];
+    if (!session) return;
+    if (!session.sessionId) {
+      dispatch({ type: "SET_REPLY_LANGUAGE_OVERRIDE", key, language });
+      return;
+    }
+    const updated = await updateSessionReplyLanguage(
+      session.sessionId,
+      language,
+      session.workspaceId ?? undefined,
+    );
+    const saved = updated.preferences?.reply_language_override;
+    dispatch({
+      type: "SET_REPLY_LANGUAGE_OVERRIDE",
+      key,
+      language: isResponseLanguage(saved) ? saved : null,
+    });
   }, []);
 
   const renameSessionTitle = useCallback(async (title: string) => {
@@ -2600,7 +3026,9 @@ export function ChatStateAdapterProvider({
 
   const newSession = useCallback(
     (configuration?: SessionConfiguration) => {
-      dispatch({ type: "NEW_SESSION", key: makeDraftKey(), configuration });
+      const key = makeDraftKey();
+      dispatch({ type: "NEW_SESSION", key, configuration });
+      return key;
     },
     [makeDraftKey],
   );
@@ -2618,6 +3046,7 @@ export function ChatStateAdapterProvider({
 
   const editMessage = useCallback(
     async (messageId: number, newContent: string) => {
+      const generation = runtimeGeneration.current;
       const trimmed = newContent.trim();
       if (!trimmed) return;
       const currentState = stateRef.current;
@@ -2643,7 +3072,7 @@ export function ChatStateAdapterProvider({
       } catch {
         return;
       }
-      if (!original) return;
+      if (!original || generation !== runtimeGeneration.current) return;
       const parentId = original.parentMessageId ?? null;
       sendMessage(
         trimmed,
@@ -2693,6 +3122,7 @@ export function ChatStateAdapterProvider({
 
   const deleteTurn = useCallback(
     async (messageId: number) => {
+      const generation = runtimeGeneration.current;
       const currentState = stateRef.current;
       const key = currentState.selectedKey;
       if (!key) return;
@@ -2716,7 +3146,7 @@ export function ChatStateAdapterProvider({
       } catch {
         return;
       }
-      if (!target || typeof target.id !== "number" || target.id < 0) return;
+      if (!target || typeof target.id !== "number" || target.id < 0 || generation !== runtimeGeneration.current) return;
       const effectiveId = target.id;
       try {
         await deleteMessage(session.sessionId, effectiveId);
@@ -2746,11 +3176,14 @@ export function ChatStateAdapterProvider({
       setMasterySessionMode,
       setCourseId,
       setPersonaSelection,
+      setResourceSelection,
       setLanguage,
+      setReplyLanguageOverride,
       sendMessage,
       cancelStreamingTurn,
       submitUserReply,
       regenerateLastMessage,
+      resendLastMessage,
       deleteTurn,
       editMessage,
       switchBranch,
@@ -2775,11 +3208,14 @@ export function ChatStateAdapterProvider({
       setMasterySessionMode,
       setCourseId,
       setPersonaSelection,
+      setResourceSelection,
       setLanguage,
+      setReplyLanguageOverride,
       sendMessage,
       cancelStreamingTurn,
       submitUserReply,
       regenerateLastMessage,
+      resendLastMessage,
       deleteTurn,
       editMessage,
       switchBranch,

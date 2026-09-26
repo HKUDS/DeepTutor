@@ -1,10 +1,7 @@
 "use client";
-
 import { useTranslation } from "react-i18next";
-
-import { TaskModelsEditor } from "@/components/settings/TaskModelsEditor";
+import { TaskModelsWorkspace } from "@/components/settings/TaskModelsWorkspace";
 import { SettingsPageHeader } from "@/components/settings/shared";
-
 export default function TaskModelsSettingsPage() {
   const { t } = useTranslation();
   return (
@@ -12,10 +9,10 @@ export default function TaskModelsSettingsPage() {
       <SettingsPageHeader
         title={t("Task models")}
         description={t(
-          "Conversation titles and home screen starting points. Configured like the LLM — pick a provider, then a model. Left empty, both use the LLM.",
+          "The model behind the calls DeepTutor makes on its own — titles, suggestions, lookups. Set one for all of them, or give a task its own.",
         )}
       />
-      <TaskModelsEditor />
+      <TaskModelsWorkspace />
     </div>
   );
 }

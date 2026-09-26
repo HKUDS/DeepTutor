@@ -17,10 +17,10 @@ export function shouldAppendEventContent(event: StreamEvent): boolean {
   if (event.type !== "content") return false;
   const meta = eventMeta(event);
   if (!meta.call_id) return true;
-  // The chat agent loop streams every round's text as `content`. The
-  // tool-less finish round (and the forced-finish round) are the
-  // user-facing answer; trace-only narration rounds are filtered back out via
-  // their call_role marker (see collectNarrationCallIds).
+  // The chat agent loop streams every round's text as `content`, and all of
+  // it is the answer — the commentary a round wrote before calling a tool
+  // included. Only a round the backend retracts is filtered back out (see
+  // collectRetractedCallIds).
   return (
     meta.call_kind === "llm_final_response" ||
     meta.call_kind === "agent_loop_round"
@@ -28,21 +28,22 @@ export function shouldAppendEventContent(event: StreamEvent): boolean {
 }
 
 /**
- * call_ids whose round resolved as "narration" — a short preamble the chat
- * loop streamed alongside a tool call. That text belongs to the trace, not
- * the answer, so it is excluded once the round's call_status marker arrives.
- * Interactive rounds can explicitly preserve learner-facing prose that
- * surrounded a call with `answer_visible`.
+ * call_ids whose round was taken back out of the answer.
+ *
+ * A round that called tools still wrote answer text: the reader watched that
+ * sentence arrive above the tool's own row, so it stays where they saw it.
+ * The one exception is a round a capability's finish guard rejected — the
+ * backend republishes that round's marker with `answer_visible: false`, and
+ * the text moves into the trace.
  */
-export function collectNarrationCallIds(events: StreamEvent[]): Set<string> {
+export function collectRetractedCallIds(events: StreamEvent[]): Set<string> {
   const ids = new Set<string>();
   for (const event of events) {
     const meta = eventMeta(event);
     if (
       meta.trace_kind === "call_status" &&
       meta.call_state === "complete" &&
-      meta.call_role === "narration" &&
-      meta.answer_visible !== true &&
+      meta.answer_visible === false &&
       meta.call_id
     ) {
       ids.add(meta.call_id);
@@ -51,29 +52,28 @@ export function collectNarrationCallIds(events: StreamEvent[]): Set<string> {
   return ids;
 }
 
-/** True for a per-round marker that demotes its content to narration. */
-export function isNarrationMarker(event: StreamEvent): boolean {
+/** True for a per-round marker that takes its content back out of the answer. */
+export function isRetractionMarker(event: StreamEvent): boolean {
   const meta = eventMeta(event);
   return (
     meta.trace_kind === "call_status" &&
     meta.call_state === "complete" &&
-    meta.call_role === "narration" &&
-    meta.answer_visible !== true
+    meta.answer_visible === false
   );
 }
 
 /**
  * Recompute the answer text from a turn's events: appended content minus any
- * narration rounds. Cheap to call only when a narration marker arrives (a
- * handful of times per turn) rather than per streamed chunk.
+ * retracted round. Cheap to call only when a retraction arrives (rare — most
+ * turns never have one) rather than per streamed chunk.
  */
 export function recomputeAnswerContent(events: StreamEvent[]): string {
-  const narration = collectNarrationCallIds(events);
+  const retracted = collectRetractedCallIds(events);
   let content = "";
   for (const event of events) {
     if (!shouldAppendEventContent(event)) continue;
     const callId = eventMeta(event).call_id;
-    if (callId && narration.has(callId)) continue;
+    if (callId && retracted.has(callId)) continue;
     content += event.content;
   }
   return content;

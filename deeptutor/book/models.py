@@ -178,6 +178,8 @@ class BookInputs(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
+    source_refs: list[dict[str, Any]] = Field(default_factory=list)
+    source_context: str = ""
     user_intent: str = ""
     chat_session_id: str = ""  # legacy single-session shorthand
     chat_selections: list[ChatSelection] = Field(default_factory=list)
@@ -488,6 +490,7 @@ class QuizAttempt(BaseModel):
     # the reader, and folding "not graded" into "wrong" would both understate
     # their score and mark the chapter weak on nothing but a reveal.
     is_correct: bool | None = None
+    submission_id: str = ""
     timestamp: float = Field(default_factory=_now)
 
 

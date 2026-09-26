@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Archive,
   Clock3,
@@ -14,7 +14,7 @@ import {
 import { useTranslation } from "react-i18next";
 import {
   deletePartnerSession,
-  getPartnerHistory,
+  getPartnerHistoryPage,
   getPartnerSessions,
   resumePartnerSession,
   type PartnerSessionInfo,
@@ -46,6 +46,7 @@ export default function PartnerArchives({
   onToast,
   onMessagesChange,
   onResume,
+  onDeleted,
 }: {
   partnerId: string;
   onToast: (message: string) => void;
@@ -53,14 +54,21 @@ export default function PartnerArchives({
    *  Empty array when nothing is selected (or while loading). */
   onMessagesChange?: (messages: ExportableMessage[]) => void;
   /** Continue a conversation in the Chat tab (un-archives it first). */
-  onResume?: (sessionKey: string) => void;
+  onResume?: (sessionKey: string, activeKey: string | null, didCallResume: boolean) => void;
+  /** The page owns both its local key and its shared selection. */
+  onDeleted?: (sessionKey: string, activeKey: string | null) => void;
 }) {
   const { t } = useTranslation();
   const [sessions, setSessions] = useState<PartnerSessionInfo[]>([]);
   const [selectedKey, setSelectedKey] = useState("");
   const [messages, setMessages] = useState<HistoryMessage[]>([]);
+  const [olderBefore, setOlderBefore] = useState<number | null>(null);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const messageScrollRef = useRef<HTMLDivElement>(null);
+  const selectedKeyRef = useRef(selectedKey);
+  selectedKeyRef.current = selectedKey;
 
   const selected = useMemo(
     () =>
@@ -71,9 +79,7 @@ export default function PartnerArchives({
   const loadSessions = useCallback(async () => {
     setLoadingSessions(true);
     try {
-      const next = (await getPartnerSessions(partnerId)).filter(
-        (session) => session.archived,
-      );
+      const next = await getPartnerSessions(partnerId);
       setSessions(next);
       setSelectedKey((current) => {
         if (
@@ -98,10 +104,10 @@ export default function PartnerArchives({
   const handleResume = useCallback(
     async (session: PartnerSessionInfo) => {
       try {
-        if (session.archived) {
-          await resumePartnerSession(partnerId, session.session_key);
-        }
-        onResume?.(session.session_key);
+        const result = session.archived
+          ? await resumePartnerSession(partnerId, session.session_key)
+          : null;
+        onResume?.(session.session_key, result?.active_session_key ?? null, result !== null);
       } catch (e) {
         onToast(e instanceof Error ? e.message : t("Load failed"));
       }
@@ -112,7 +118,8 @@ export default function PartnerArchives({
   const handleDelete = useCallback(
     async (session: PartnerSessionInfo) => {
       try {
-        await deletePartnerSession(partnerId, session.session_key);
+        const result = await deletePartnerSession(partnerId, session.session_key);
+        onDeleted?.(session.session_key, result.active_session_key);
         if (selectedKey === session.session_key) setSelectedKey("");
         onToast(t("Conversation deleted"));
         await loadSessions();
@@ -120,19 +127,26 @@ export default function PartnerArchives({
         onToast(e instanceof Error ? e.message : t("Delete failed"));
       }
     },
-    [partnerId, selectedKey, loadSessions, onToast, t],
+    [partnerId, selectedKey, loadSessions, onToast, onDeleted, t],
   );
 
   useEffect(() => {
     if (!selectedKey) {
       setMessages([]);
+      setOlderBefore(null);
       return;
     }
     let cancelled = false;
     setLoadingMessages(true);
-    void getPartnerHistory(partnerId, { sessionKey: selectedKey, limit: 200 })
-      .then((history) => {
-        if (!cancelled) setMessages(history);
+    setLoadingOlder(false);
+    setMessages([]);
+    setOlderBefore(null);
+    void getPartnerHistoryPage(partnerId, selectedKey, { limit: 100 })
+      .then((page) => {
+        if (!cancelled) {
+          setMessages(page.messages);
+          setOlderBefore(page.next_before);
+        }
       })
       .catch((e) => {
         if (!cancelled) {
@@ -147,6 +161,32 @@ export default function PartnerArchives({
       cancelled = true;
     };
   }, [partnerId, selectedKey, onToast, t]);
+
+  const loadOlder = useCallback(async () => {
+    if (!selectedKey || olderBefore === null || loadingOlder) return;
+    const container = messageScrollRef.current;
+    const previousHeight = container?.scrollHeight ?? 0;
+    const previousTop = container?.scrollTop ?? 0;
+    setLoadingOlder(true);
+    try {
+      const page = await getPartnerHistoryPage(partnerId, selectedKey, {
+        before: olderBefore,
+        limit: 100,
+      });
+      if (selectedKeyRef.current !== selectedKey) return;
+      setMessages((current) => [...page.messages, ...current]);
+      setOlderBefore(page.next_before);
+      requestAnimationFrame(() => {
+        if (selectedKeyRef.current === selectedKey && container) {
+          container.scrollTop = previousTop + container.scrollHeight - previousHeight;
+        }
+      });
+    } catch (error) {
+      onToast(error instanceof Error ? error.message : t("Load failed"));
+    } finally {
+      if (selectedKeyRef.current === selectedKey) setLoadingOlder(false);
+    }
+  }, [selectedKey, olderBefore, loadingOlder, partnerId, onToast, t]);
 
   // Report the selected conversation up for header export controls.
   useEffect(() => {
@@ -168,7 +208,7 @@ export default function PartnerArchives({
         <div className="mb-3 flex items-center justify-between gap-2">
           <div>
             <h2 className="text-[13px] font-medium text-[var(--foreground)]">
-              {t("Archived conversations")}
+              {t("Conversations")}
             </h2>
             <p className="text-[11.5px] text-[var(--muted-foreground)]">
               {sessions.length
@@ -256,7 +296,7 @@ export default function PartnerArchives({
         </div>
       </div>
 
-      <div className="min-h-0 overflow-y-auto">
+      <div ref={messageScrollRef} className="min-h-0 overflow-y-auto">
         {selected ? (
           <div className="mx-auto max-w-2xl pb-4">
             <div className="sticky top-0 z-10 border-b border-[var(--border)] bg-[var(--background)] py-2">
@@ -301,6 +341,16 @@ export default function PartnerArchives({
             </div>
 
             <div className="space-y-4 py-4">
+              {olderBefore !== null && !loadingMessages ? (
+                <button
+                  type="button"
+                  onClick={() => void loadOlder()}
+                  disabled={loadingOlder}
+                  className="mx-auto block rounded-md border border-[var(--border)] px-3 py-1.5 text-[12px] text-[var(--muted-foreground)] hover:bg-[var(--muted)] disabled:opacity-50"
+                >
+                  {loadingOlder ? t("Loading...") : t("Load older messages")}
+                </button>
+              ) : null}
               {loadingMessages ? (
                 <p className="text-[12px] text-[var(--muted-foreground)]">
                   {t("Loading...")}

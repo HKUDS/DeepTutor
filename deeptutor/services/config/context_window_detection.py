@@ -15,6 +15,7 @@ from deeptutor.services.llm.config import LLMConfig
 from deeptutor.services.llm.context_window import (
     coerce_positive_int,
     default_context_window_for_model,
+    known_context_window,
 )
 from deeptutor.services.llm.openai_http_client import disable_ssl_verify_enabled
 from deeptutor.services.llm.utils import build_auth_headers
@@ -27,18 +28,10 @@ _CONTEXT_WINDOW_KEYS = (
     "context_length",
     "context_size",
     "max_context_tokens",
-    "max_input_tokens",
-    "input_token_limit",
-    "max_prompt_tokens",
+    "max_context_length",
     "max_model_len",
     "max_sequence_length",
     "n_ctx",
-)
-
-_KNOWN_CONTEXT_WINDOWS: tuple[tuple[str, int], ...] = (
-    ("deepseek-v4", 1_000_000),
-    ("minimax-m3", 1_000_000),
-    ("minimax-m2.7", 204_800),
 )
 
 
@@ -59,8 +52,6 @@ def _model_aliases(model: str) -> set[str]:
     aliases = {value}
     if "/" in value:
         aliases.add(value.split("/", 1)[1])
-    if ":" in value:
-        aliases.add(value.split(":", 1)[1])
     return {item for item in aliases if item}
 
 
@@ -71,24 +62,15 @@ def _record_identities(item: Mapping[str, Any]) -> set[str]:
     return aliases
 
 
-def _known_context_window(model: str) -> int | None:
-    normalized = (model or "").strip().lower()
-    if not normalized:
-        return None
-    for pattern, context_window in _KNOWN_CONTEXT_WINDOWS:
-        if pattern in normalized:
-            return context_window
-    return None
-
-
 def _recursive_context_window(value: Any) -> int | None:
     if isinstance(value, Mapping):
         for key in _CONTEXT_WINDOW_KEYS:
             parsed = coerce_positive_int(value.get(key))
             if parsed is not None:
                 return parsed
-        for nested in value.values():
-            parsed = _recursive_context_window(nested)
+        # Search metadata containers only, never unrelated models/endpoints.
+        for key in ("meta", "metadata", "limits", "capabilities", "model_info"):
+            parsed = _recursive_context_window(value.get(key))
             if parsed is not None:
                 return parsed
     elif isinstance(value, list):
@@ -107,6 +89,8 @@ def _iter_model_records(payload: Any) -> Iterable[Mapping[str, Any]]:
         return
     if not isinstance(payload, Mapping):
         return
+    if _record_identities(payload):
+        yield payload
     for key in ("data", "models", "result", "items"):
         items = payload.get(key)
         if isinstance(items, list):
@@ -120,27 +104,21 @@ def _extract_context_window_from_payload(payload: Any, model: str) -> int | None
     if not target_aliases:
         return None
 
-    exact_matches: list[Mapping[str, Any]] = []
-    partial_matches: list[Mapping[str, Any]] = []
-    for item in _iter_model_records(payload):
-        identities = _record_identities(item)
-        if not identities:
-            continue
-        if identities & target_aliases:
-            exact_matches.append(item)
-            continue
+    records = list(_iter_model_records(payload))
+    # Exact full IDs win over namespace-stripped aliases. Ambiguous aliases
+    # must not select whichever provider/quantization happened to sort first.
+    exact = [
+        item
+        for item in records
         if any(
-            item_identity.endswith(f"/{alias}") or alias.endswith(f"/{item_identity}")
-            for item_identity in identities
-            for alias in target_aliases
-        ):
-            partial_matches.append(item)
-
-    for item in [*exact_matches, *partial_matches]:
-        parsed = _recursive_context_window(item)
-        if parsed is not None:
-            return parsed
-    return None
+            str(item.get(key, "")).strip().lower() == model.strip().lower()
+            for key in ("id", "model", "name")
+        )
+    ]
+    candidates = exact or [item for item in records if _record_identities(item) & target_aliases]
+    windows = {_recursive_context_window(item) for item in candidates}
+    windows.discard(None)
+    return windows.pop() if len(windows) == 1 else None
 
 
 async def _detect_from_models_endpoint(
@@ -197,12 +175,12 @@ async def detect_context_window(
             detected_at=detected_at,
         )
 
-    known_window = _known_context_window(llm_config.model)
+    known_window = known_context_window(llm_config.model)
     if known_window is not None:
         return ContextWindowDetectionResult(
             context_window=known_window,
             source="known_model",
-            detail="Matched built-in context-window metadata for this model family.",
+            detail="Matched exact model context capacity from models.dev (snapshot 2026-09-17).",
             detected_at=detected_at,
         )
 
@@ -213,7 +191,7 @@ async def detect_context_window(
     return ContextWindowDetectionResult(
         context_window=fallback,
         source="default",
-        detail="Provider metadata did not expose a window; using the runtime fallback.",
+        detail="Context capacity is unknown. This is a conservative runtime budget, not a detected model limit.",
         detected_at=detected_at,
     )
 

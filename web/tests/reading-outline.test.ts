@@ -172,7 +172,7 @@ test("page headings are searchable from the workspace navigator", () => {
   assert.match(reader, /headingJump=\{headingJump\}/);
   assert.match(workspace, /onHeadingsChange=\{setPageHeadings\}/);
   assert.match(navigator, /filterReaderHeadings/);
-  assert.match(navigator, /aria-label=\{t\("On this page"\)\}/);
+  assert.match(navigator, /visibleHeadings\.map/);
   assert.match(navigator, /onNavigateHeading\(heading\)/);
   assert.match(epubReader, /h1,h2,h3,h4,h5,h6/);
   assert.match(epubReader, /extractEpubHeadings/);

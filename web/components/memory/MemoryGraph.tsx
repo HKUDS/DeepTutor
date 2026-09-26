@@ -24,6 +24,7 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import Tooltip from "@/shared/ui/Tooltip";
 
 import {
   buildGraph,
@@ -862,14 +863,16 @@ function IconButton({
   children: React.ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
-      className="grid h-8 w-8 place-items-center text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-    >
-      {children}
-    </button>
+    <Tooltip label={title} side="bottom">
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={title}
+        className="grid h-8 w-8 place-items-center text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+      >
+        {children}
+      </button>
+    </Tooltip>
   );
 }
 

@@ -262,13 +262,24 @@ async def migrate_all_legacy_chat_scopes(*, dry_run: bool = False) -> list[dict[
             continue
         seen_scopes.add(user.scope.cache_key)
         with user_context(user):
-            paths = get_path_service()
-            migrator = LegacyChatSessionMigrator(
-                get_session_store(),
-                paths.get_session_file("chat"),
-                paths.get_user_root() / "archive" / "legacy-chat",
-            )
-            reports.append((await migrator.migrate(dry_run=dry_run)).to_dict())
+            from deeptutor.services.workspace.activity import acquire_activity
+            from deeptutor.services.workspace.models import WorkspaceError
+
+            try:
+                activity = acquire_activity()
+            except WorkspaceError as exc:
+                reports.append({"user_id": user.id, "skipped": str(exc)})
+                continue
+            try:
+                paths = get_path_service()
+                migrator = LegacyChatSessionMigrator(
+                    get_session_store(),
+                    paths.get_session_file("chat"),
+                    paths.get_user_root() / "archive" / "legacy-chat",
+                )
+                reports.append((await migrator.migrate(dry_run=dry_run)).to_dict())
+            finally:
+                activity.close()
     return reports
 
 

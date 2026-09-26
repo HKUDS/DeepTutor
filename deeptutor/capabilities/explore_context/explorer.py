@@ -32,6 +32,7 @@ from typing import Any, Callable
 from deeptutor.core.context import UnifiedContext
 from deeptutor.core.trace import build_trace_metadata, merge_trace_metadata, new_call_id
 from deeptutor.runtime.agentic import (
+    MAX_PARALLEL_TOOL_CALLS,
     LLMClientConfig,
     build_completion_kwargs,
     build_openai_client,
@@ -182,7 +183,7 @@ class ContextExplorer:
         source_index: dict[str, str],
         usage: Any | None,
     ) -> str:
-        system_prompt = self._t("loop.system")
+        system_prompt = self._t("loop.system").format(tool_call_limit=MAX_PARALLEL_TOOL_CALLS)
         user_template = self._t("loop.user_template")
         if not system_prompt or not user_template:
             logger.warning("explore_context loop prompts missing; using single pass")

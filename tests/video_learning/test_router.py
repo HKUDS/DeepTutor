@@ -58,7 +58,13 @@ def _material(*, duration: int = 100) -> dict[str, object]:
         "metadata": {"duration_seconds": duration},
         "transcript": {
             "status": "ready",
-            "cues": [{"start": 1.25, "end": 3.5, "text": "one\n<script>two</script>"}],
+            "cues": [
+                {
+                    "start": 1.25,
+                    "end": 3.5,
+                    "text": "one&nbsp;&nbsp;&amp;\n<script>two</script>",
+                }
+            ],
         },
         "learning": {"last_position": 0},
         "provider_cache": {
@@ -284,7 +290,8 @@ def test_subtitles_are_valid_vtt_and_escape_markup(client: TestClient) -> None:
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/vtt")
     assert "00:00:01.250 --> 00:00:03.500" in response.text
-    assert "one &lt;script&gt;two&lt;/script&gt;" in response.text
+    assert "one &amp; &lt;script&gt;two&lt;/script&gt;" in response.text
+    assert "&nbsp;" not in response.text
     assert "\n<script>" not in response.text
 
 

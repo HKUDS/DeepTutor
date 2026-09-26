@@ -1,10 +1,12 @@
 export {
+  getEmbeddingUsage,
   connectLightRagServer,
   getEngineModelOptions,
   getEnginePreflight,
   getGraphRagConfig,
   getImaConfig,
   getLightRagConfig,
+  getLightRagModelOptions,
   getLightRagServerConfig,
   getLlamaIndexConfig,
   getPageIndexConfig,

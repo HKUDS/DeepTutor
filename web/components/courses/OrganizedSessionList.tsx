@@ -8,27 +8,33 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  Folder,
+  FolderOpen,
   GraduationCap,
   MoreHorizontal,
   Pencil,
   Pin,
   PinOff,
+  Plus,
   RotateCcw,
   Trash2,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   deriveSessionMark,
+  sessionKindOf,
   SessionAvatar,
 } from "@/components/sidebar/SessionAvatar";
 import { useUnreadSessions } from "@/lib/session-unread";
 import type { StudyCourse } from "@/lib/courses-api";
+import type { ChatWorkspaceRegistration } from "@/lib/workspaces-api";
 import type { MasteryTopicLabel } from "@/lib/learning-api";
 import type { ReadingCollectionLabel } from "@/lib/reading-workspace-api";
 import type {
   SessionOrganizationPatch,
   SessionSummary,
 } from "@/lib/session-api";
+import { sessionWorkspaceId } from "@/lib/session-api";
 import { organizeSessionTree } from "@/lib/session-organization";
 import {
   displaySessionTitle,
@@ -48,6 +54,15 @@ import {
 interface OrganizedSessionListProps {
   sessions: SessionSummary[];
   courses: StudyCourse[];
+  /**
+   * Workspaces a conversation can be filed into from its row menu. Omit where
+   * there is nothing to move between (the course page, the space history) and
+   * the menu keeps the block out.
+   */
+  workspaces?: ChatWorkspaceRegistration[];
+  /** Account sidebar only; scoped lists already live within a workspace. */
+  groupWorkspaces?: boolean;
+  onNewWorkspaceChat?: (workspaceId: string) => void;
   /** Topics whose study conversations get their own group. Omit for none. */
   masteryTopics?: MasteryTopicLabel[];
   /** Collections whose reading conversations get their own group. */
@@ -89,6 +104,9 @@ const MENU_WIDTH = 240;
 export default function OrganizedSessionList({
   sessions,
   courses,
+  workspaces = [],
+  groupWorkspaces = false,
+  onNewWorkspaceChat,
   masteryTopics = [],
   readingCollections = [],
   activeSessionId,
@@ -110,6 +128,21 @@ export default function OrganizedSessionList({
   // Backend writes the English sentinel "New conversation" until the LLM
   // title lands; mirror SessionList by showing a localized, breathing label.
   const placeholderLabel = t("New chat");
+  const [workspaceMoveError, setWorkspaceMoveError] = useState("");
+  const [movingWorkspace, setMovingWorkspace] = useState(false);
+  const [groupLimits, setGroupLimits] = useState<Record<string, number>>({});
+  const moveToWorkspace = async (sessionId: string, workspaceId: string | null) => {
+    if (movingWorkspace) return;
+    setMovingWorkspace(true);
+    setWorkspaceMoveError("");
+    try {
+      await onOrganize(sessionId, { workspace_id: workspaceId });
+    } catch (err) {
+      setWorkspaceMoveError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setMovingWorkspace(false);
+    }
+  };
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -153,11 +186,12 @@ export default function OrganizedSessionList({
       buildSidebarEntries({
         roots,
         courses,
+        workspaces: groupWorkspaces ? workspaces : undefined,
         masteryTopics,
         readingCollections,
         manualOrder,
       }),
-    [courses, manualOrder, masteryTopics, readingCollections, roots],
+    [courses, workspaces, groupWorkspaces, manualOrder, masteryTopics, readingCollections, roots],
   );
 
   const entryIds = useMemo(() => entries.map((entry) => entry.id), [entries]);
@@ -248,7 +282,7 @@ export default function OrganizedSessionList({
     });
   };
 
-  if (roots.length === 0) {
+  if (entries.length === 0) {
     return (
       <div className="px-3 py-2 text-[11px] text-[var(--muted-foreground)]/65">
         {emptyLabel ?? t("No conversations yet")}
@@ -282,8 +316,8 @@ export default function OrganizedSessionList({
             child ? "ml-4 border-l border-[var(--border)]/60 pl-2" : "pl-1.5"
           } ${
             active
-              ? "bg-[var(--background)]/60 text-[var(--foreground)]"
-              : "text-[var(--muted-foreground)] hover:bg-[var(--background)]/40 hover:text-[var(--foreground)]"
+              ? "bg-background/60 text-[var(--foreground)]"
+              : "text-[var(--foreground)] hover:bg-background/40"
           }`}
         >
           {children.length > 0 ? (
@@ -311,6 +345,7 @@ export default function OrganizedSessionList({
           <SessionAvatar
             sessionId={session.session_id}
             mark={deriveSessionMark(session, liveSessionIds, unread)}
+            kind={sessionKindOf(session)}
             size={child ? 11 : 12}
             className={child ? "opacity-65" : "opacity-80"}
           />
@@ -337,7 +372,7 @@ export default function OrganizedSessionList({
             />
           ) : isPlaceholderSessionTitle(session.title) ? (
             <span
-              className="dt-breathing-text min-w-0 flex-1 truncate text-[12.5px] italic text-[var(--muted-foreground)]"
+              className="dt-breathing-text min-w-0 flex-1 truncate text-[12.5px] italic text-[var(--foreground)]"
               title={placeholderLabel}
             >
               {displaySessionTitle(session.title, placeholderLabel)}
@@ -469,6 +504,54 @@ export default function OrganizedSessionList({
                     </div>
                   </>
                 ) : null}
+                {/* Filing a conversation from the list it is filed in.
+                    Archived workspaces are left out: they keep the
+                    conversations they have and stop taking new ones. */}
+                {(sessionWorkspaceId(session) || workspaces.some((workspace) => workspace.kind === "workspace" && !workspace.archived)) ? (
+                  <>
+                    <div className="my-1 border-t border-[var(--border)]/70" />
+                    <div className="px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]/65">
+                      {t("Move to workspace")}
+                    </div>
+                    <MenuButton
+                      icon={FolderOpen}
+                      label={t("No workspace")}
+                      disabled={movingWorkspace || session.status === "running" || liveSessionIds?.has(session.session_id)}
+                      checked={!sessionWorkspaceId(session)}
+                      onClick={() => {
+                        void moveToWorkspace(session.session_id, null);
+                        setOpenMenuId(null);
+                        setMenuPosition(null);
+                      }}
+                    />
+                    <div>
+                      {workspaces
+                        .filter(
+                          (workspace) =>
+                            workspace.kind === "workspace" && (!workspace.archived ||
+                            workspace.workspace_id ===
+                              sessionWorkspaceId(session)),
+                        )
+                        .map((workspace) => (
+                          <MenuButton
+                            key={workspace.workspace_id}
+                            icon={Folder}
+                            label={workspace.display_name}
+                            disabled={movingWorkspace || workspace.archived || workspace.status !== "ready" || session.status === "running" || liveSessionIds?.has(session.session_id)}
+                            checked={
+                              sessionWorkspaceId(session) ===
+                              workspace.workspace_id
+                            }
+                            onClick={() => {
+                              void moveToWorkspace(session.session_id, workspace.workspace_id);
+                              setOpenMenuId(null);
+                              setMenuPosition(null);
+                            }}
+                          />
+                        ))}
+                    </div>
+                  </>
+                ) : null}
                 {onResetOrder && (manualOrder?.length ?? 0) > 0 ? (
                   <>
                     <div className="my-1 border-t border-[var(--border)]/70" />
@@ -517,7 +600,7 @@ export default function OrganizedSessionList({
         style={style}
         className={`rounded-lg ${
           dragging
-            ? "bg-[var(--background)]/85 shadow-lg ring-1 ring-[var(--border)]/70"
+            ? "bg-background/85 shadow-lg ring-1 ring-border/70"
             : ""
         }`}
       >
@@ -539,6 +622,14 @@ export default function OrganizedSessionList({
    */
   const renderGroup = (entry: SidebarGroupEntry) => {
     const collapsed = collapsedCourses.has(entry.id);
+    const recent = entry.group === "recent";
+    const limit = entry.group === "workspace" || recent ? groupLimits[entry.id] ?? 5 : entry.rows.length;
+    // Keep the active conversation visible, including older deep links.
+    const activeIndex = entry.rows.findIndex(row => row.session_id === activeSessionId);
+    const visibleRows = entry.rows.slice(0, limit);
+    if (activeIndex >= limit && visibleRows.length) {
+      visibleRows[visibleRows.length - 1] = entry.rows[activeIndex];
+    }
     const sortable = Boolean(onReorder);
     const { style, ...handlers } = drag.getItemProps(entry.id);
     const dragging = drag.draggingId === entry.id;
@@ -548,12 +639,13 @@ export default function OrganizedSessionList({
         data-group-id={entry.id}
         ref={sortable ? handlers.ref : undefined}
         style={sortable ? style : undefined}
-        className={`pt-1.5 first:pt-0 ${
+        className={`${recent ? "pt-5" : "pt-1.5"} first:pt-0 ${
           dragging
-            ? "rounded-lg bg-[var(--background)]/85 shadow-lg ring-1 ring-[var(--border)]/70"
+            ? "rounded-lg bg-background/85 shadow-lg ring-1 ring-border/70"
             : ""
         }`}
       >
+        <div className="group/workspace-heading flex items-center">
         <button
           type="button"
           onPointerDown={sortable ? handlers.onPointerDown : undefined}
@@ -570,10 +662,10 @@ export default function OrganizedSessionList({
           // had it a hair smaller than a caption and uppercase, which shouted
           // in a list of 12.5px rows and did nothing whatsoever to the CJK
           // titles most of these groups actually carry.
-          className="group/heading flex w-full min-w-0 items-center gap-1.5 rounded-lg px-1.5 py-1 text-left text-[12.5px] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--background)]/40 hover:text-[var(--foreground)]"
+          className="group/heading flex w-full min-w-0 items-center gap-1.5 rounded-lg px-1.5 py-1 text-left text-[12.5px] font-medium text-[var(--foreground)] transition-colors hover:bg-background/40 hover:text-[var(--foreground)]"
         >
-          <GroupMark entry={entry} />
-          <span className="min-w-0 truncate">{entry.label}</span>
+          {!recent && <GroupMark entry={entry} />}
+          <span className="min-w-0 truncate">{recent ? t("Recent") : entry.label}</span>
           {/* The caret follows the words rather than introducing them — a
               title that can be folded, instead of a row of controls with a
               label attached. */}
@@ -593,30 +685,38 @@ export default function OrganizedSessionList({
             </span>
           ) : null}
         </button>
+        {entry.workspaceId && onNewWorkspaceChat && workspaces.some(workspace =>
+          workspace.workspace_id === entry.workspaceId && !workspace.archived && workspace.status === "ready") && (
+          <button type="button" className="shrink-0 rounded p-1 text-[var(--muted-foreground)] hover:text-[var(--foreground)] sm:opacity-0 group-hover/workspace-heading:opacity-100 focus-visible:opacity-100"
+            aria-label={t("New chat in {{name}}", { name: entry.label })}
+            onClick={() => onNewWorkspaceChat(entry.workspaceId!)}><Plus size={13} /></button>
+        )}
+        </div>
         {collapsed ? null : (
-          <div className="ml-1.5 border-l border-[var(--border)]/40 pl-1">
-            {entry.rows.map((session) => renderRow(session))}
+          <div className={recent ? "" : "ml-1.5 border-l border-[var(--border)]/40 pl-1"}>
+            {visibleRows.map((session) => renderRow(session))}
+            {entry.rows.length > limit && (
+              <button type="button" className="px-2 py-1 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                onClick={() => setGroupLimits(previous => ({ ...previous, [entry.id]: limit + 5 }))}>
+                {t("Show more")}
+              </button>
+            )}
           </div>
         )}
       </div>
     );
   };
 
-  /* One list, no heading over the conversations.
-   *
-   * The home conversations used to sit under a "Chat" heading of their own, on
-   * the reasoning that chat is one surface among several and all three should
-   * carry equal weight. In use it read as the opposite: the conversation you
-   * were in the middle of was two clicks and a fold away, and the heading it
-   * hid behind never told you anything its rows did not. Conversations are the
-   * thing this region is for, so they are the region. */
+  // Workspace sections and unassigned Recent chats share the same list level.
   return (
     <div className="py-0.5">
+      {workspaceMoveError && <p role="alert" className="px-2 py-1 text-xs text-[var(--destructive)]">{workspaceMoveError}</p>}
       {entries.map((entry) =>
         entry.kind === "group"
           ? renderGroup(entry)
           : renderSortableRow(entry.session),
       )}
+
     </div>
   );
 }
@@ -642,6 +742,7 @@ export default function OrganizedSessionList({
 function GroupMark({ entry }: { entry: SidebarGroupEntry }) {
   return (
     <span className="flex w-3 shrink-0 items-center justify-center">
+      {entry.group === "workspace" ? <FolderOpen size={12} aria-hidden /> : null}
       {entry.group === "course" ? (
         <span
           aria-hidden
@@ -659,6 +760,7 @@ function MenuButton({
   color,
   checked = false,
   danger = false,
+  disabled = false,
   onClick,
 }: {
   icon?: typeof Pencil;
@@ -666,14 +768,16 @@ function MenuButton({
   color?: string;
   checked?: boolean;
   danger?: boolean;
+  disabled?: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
       role="menuitem"
+      disabled={disabled}
       onClick={onClick}
-      className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-[var(--muted)] ${
+      className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-[var(--muted)] disabled:opacity-50 ${
         danger ? "text-[var(--destructive)]" : "text-[var(--foreground)]"
       }`}
     >

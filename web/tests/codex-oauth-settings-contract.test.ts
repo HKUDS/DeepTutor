@@ -66,7 +66,7 @@ test("managed Codex profiles expose only provider-supported reasoning effort", (
   const source = readFileSync(EDITOR, "utf8");
 
   assert.match(source, /isManagedCodexProfile\(/);
-  assert.match(source, /disabled=\{isManagedCodex\}/);
+  assert.match(source, /disabled=\{isManagedCodex \|\| Boolean\(linkedConnection\)\}/);
   assert.match(source, /!isCodexOAuth/);
   assert.match(source, /activeModel\.codex_supported_reasoning_levels/);
   assert.match(source, /!isCodexOAuth \|\| isBoundManagedCodex/);
@@ -85,7 +85,7 @@ test("ordinary users can edit only their owner-scoped Codex reasoning overrides"
   );
   assert.match(
     card,
-    /setCodexReasoningEffort\(\s*model\.model,\s*value \|\| null,?\s*\)/,
+    /useStagedSettings\("codex-reasoning"/,
   );
 });
 

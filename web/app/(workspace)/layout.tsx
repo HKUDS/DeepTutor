@@ -5,6 +5,8 @@ import CapabilityGate from "@/components/access/CapabilityGate";
 import { ChatRuntimeProvider } from "@/features/chat";
 import { ReadingProvider } from "@/context/ReadingContext";
 import { WatchingProvider } from "@/context/WatchingContext";
+import { Suspense } from "react";
+import { WorkspaceRuntimeBoundary } from "@/components/workspaces/WorkspaceRuntimeBoundary";
 
 export default function WorkspaceLayout({
   children,
@@ -13,6 +15,8 @@ export default function WorkspaceLayout({
 }>) {
   return (
     <CapabilityAccessProvider>
+      <Suspense>
+      <WorkspaceRuntimeBoundary>
       <ChatRuntimeProvider>
         {/* Above the page on purpose: sending the first message navigates
             /chat → /chat/<id>, which remounts the page. The open document
@@ -25,6 +29,8 @@ export default function WorkspaceLayout({
           </WatchingProvider>
         </ReadingProvider>
       </ChatRuntimeProvider>
+      </WorkspaceRuntimeBoundary>
+      </Suspense>
     </CapabilityAccessProvider>
   );
 }

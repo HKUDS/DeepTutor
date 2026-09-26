@@ -1026,8 +1026,24 @@ def render_skills_manifest(entries: list[SkillSummaryEntry]) -> str:
 _instances: dict[str, SkillService] = {}
 
 
+def get_admin_skill_service() -> SkillService:
+    """Resolve the shared admin skill catalog, including storage migrations."""
+    from deeptutor.multi_user.paths import local_admin_user, user_context
+
+    with user_context(local_admin_user()):
+        return get_skill_service()
+
+
 def get_skill_service() -> SkillService:
-    root = (get_path_service().get_workspace_dir() / "skills").resolve()
+    from deeptutor.multi_user.context import get_current_user
+    from deeptutor.services.partners.scope import is_partner_user_id
+    from deeptutor.services.workspace import get_content_workspace_service
+
+    root = (
+        get_path_service().get_workspace_dir() / "skills"
+        if is_partner_user_id(get_current_user().id)
+        else get_content_workspace_service().system_binding().root / "skills"
+    ).resolve()
     key = str(root)
     if key not in _instances:
         _instances[key] = SkillService(root=root)
@@ -1051,5 +1067,6 @@ __all__ = [
     "TagExistsError",
     "TagNotFoundError",
     "get_skill_service",
+    "get_admin_skill_service",
     "render_skills_manifest",
 ]

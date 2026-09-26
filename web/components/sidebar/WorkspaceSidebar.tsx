@@ -1,10 +1,13 @@
 "use client";
 
+import { navigateTask, selectWorkspace } from "@/lib/workspace-scope";
+import { sessionWorkspaceId } from "@/lib/session-api";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { workspaceChatHref } from "@/lib/workspaces-api";
+
 import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import { SidebarShell } from "@/components/sidebar/SidebarShell";
-import { RecycleBinSection } from "@/components/sidebar/RecycleBinSection";
 import { reconcileUnread } from "@/lib/session-unread";
 import { LogoutButton } from "@/components/auth/LogoutButton";
 import { AdminLink } from "@/components/auth/AdminLink";
@@ -12,7 +15,7 @@ import { ProfileLink } from "@/components/auth/ProfileLink";
 import { useChatStateAdapter } from "@/features/chat/ChatStateAdapter";
 import {
   deleteSession,
-  listSessions,
+  listAllSessions,
   updateSessionOrganization,
   updateSessionTitle,
   type SessionOrganizationPatch,
@@ -27,7 +30,8 @@ import {
   fetchMasteryTopicIndex,
   type MasteryTopicLabel,
 } from "@/lib/learning-api";
-import { sessionRoute } from "@/lib/mastery-session";
+import { readingWorkspaceIdOf, sessionRoute } from "@/lib/mastery-session";
+import { readingCollectionRoute } from "@/lib/learning-routes";
 import { subscribeSessionChanges } from "@/lib/session-events";
 
 export default function WorkspaceSidebar() {
@@ -35,6 +39,7 @@ export default function WorkspaceSidebar() {
   const router = useRouter();
   const {
     newSession,
+    configureSession,
     cancelStreamingTurn,
     selectedSessionId,
     sessionStatuses,
@@ -59,10 +64,10 @@ export default function WorkspaceSidebar() {
       // as ungrouped rather than as missing.
       const [nextSessions, nextCourses, nextTopics, nextCollections] =
         await Promise.all([
-          listSessions(50, 0, { force: true }),
-          listCourses({ force: true }),
+          listAllSessions({ force: true, allWorkspaces: true }),
+          listCourses({ force: true }).catch(() => [] as StudyCourse[]),
           fetchMasteryTopicIndex().catch(() => [] as MasteryTopicLabel[]),
-          fetchReadingCollectionIndex(),
+          fetchReadingCollectionIndex().catch(() => [] as ReadingCollectionLabel[]),
         ]);
       setSessions(nextSessions);
       setCourses(nextCourses);
@@ -143,8 +148,8 @@ export default function WorkspaceSidebar() {
   // sessions whose status is `running`, which is the architecture stating
   // outright that background conversations are meant to keep going.
   const handleNewChat = useCallback(() => {
-    newSession();
-    router.push("/chat");
+    newSession({ workspaceId: null });
+    navigateTask("/chat", router.push);
   }, [newSession, router]);
 
   // A study conversation opens on its own path, not in the main chat: the
@@ -153,14 +158,14 @@ export default function WorkspaceSidebar() {
   const handleSelectSession = useCallback(
     async (sessionId: string) => {
       const session = sessions.find((item) => item.session_id === sessionId);
-      router.push(session ? sessionRoute(session) : `/chat/${sessionId}`);
+      navigateTask(session ? sessionRoute(session) : `/chat/${sessionId}`, router.push);
     },
     [router, sessions],
   );
 
   const handleRenameSession = useCallback(
     async (sessionId: string, title: string) => {
-      const updated = await updateSessionTitle(sessionId, title);
+      const updated = await updateSessionTitle(sessionId, title, sessionWorkspaceId(sessions.find(item => item.session_id === sessionId)));
       setSessions((prev) =>
         prev.map((session) =>
           session.session_id === sessionId
@@ -173,28 +178,44 @@ export default function WorkspaceSidebar() {
         ),
       );
     },
-    [],
+    [sessions],
   );
 
   const handleDeleteSession = useCallback(
     async (sessionId: string) => {
-      if (!window.confirm(t("Delete this chat history?"))) return;
-      await deleteSession(sessionId);
+      if (!window.confirm(t("Permanently delete this chat and its tutor threads? This cannot be undone."))) return;
+      const deleted = sessions.find(item => item.session_id === sessionId);
+      await deleteSession(sessionId, sessionWorkspaceId(deleted));
       setSessions((prev) =>
         prev.filter((session) => session.session_id !== sessionId),
       );
       if (selectedSessionId === sessionId) {
         cancelStreamingTurn();
-        newSession();
-        router.push("/chat");
+        newSession({ workspaceId: null });
+        // A reading conversation was open beside its material; deleting it
+        // should leave the reader on that material, not throw them to /chat.
+        const readingId = deleted ? readingWorkspaceIdOf(deleted) : "";
+        navigateTask(
+          readingId
+            ? readingCollectionRoute(readingId, sessionWorkspaceId(deleted))
+            : "/chat",
+          router.push,
+        );
       }
     },
-    [cancelStreamingTurn, newSession, router, selectedSessionId, t],
+    [cancelStreamingTurn, newSession, router, selectedSessionId, t, sessions],
   );
 
   const handleOrganizeSession = useCallback(
     async (sessionId: string, patch: SessionOrganizationPatch) => {
-      const updated = await updateSessionOrganization(sessionId, patch);
+      const updated = await updateSessionOrganization(sessionId, patch, sessionWorkspaceId(sessions.find(item => item.session_id === sessionId)));
+      if ("workspace_id" in patch) {
+        configureSession({ workspaceId: updated.preferences?.workspace_id ?? null }, sessionId);
+        if (selectedSessionId === sessionId) {
+          navigateTask(sessionRoute({ ...sessions.find(row => row.session_id === sessionId)!,
+            preferences: updated.preferences, content_workspace_id: updated.preferences?.workspace_id || "" }), router.push);
+        }
+      }
       setSessions((previous) =>
         previous.map((session) =>
           session.session_id === sessionId
@@ -202,12 +223,13 @@ export default function WorkspaceSidebar() {
                 ...session,
                 updated_at: updated.updated_at,
                 preferences: updated.preferences,
+                content_workspace_id: "workspace_id" in patch ? updated.preferences?.workspace_id || "" : session.content_workspace_id,
               }
             : session,
         ),
       );
     },
-    [],
+    [configureSession, sessions, selectedSessionId, router],
   );
 
   return (
@@ -221,11 +243,12 @@ export default function WorkspaceSidebar() {
       activeSessionId={selectedSessionId}
       loadingSessions={loadingSessions}
       onNewChat={handleNewChat}
+      workspaceRefreshToken={sidebarRefreshToken}
+      onNewWorkspaceChat={(workspaceId) => { void selectWorkspace(workspaceId, workspaceChatHref(workspaceId)); }}
       onSelectSession={handleSelectSession}
       onRenameSession={handleRenameSession}
       onDeleteSession={handleDeleteSession}
       onOrganizeSession={handleOrganizeSession}
-      recycleBinSlot={<RecycleBinSection />}
       footerSlot={(collapsed) => (
         <>
           <ProfileLink collapsed={collapsed} />

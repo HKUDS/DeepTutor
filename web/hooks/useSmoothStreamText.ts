@@ -16,11 +16,69 @@ interface SmoothStreamOptions {
   /** Larger = slower reveal relative to backlog. ~5 feels natural. */
   catchUpDivisor?: number;
   /**
+   * Characters of message per millisecond of enforced gap between reveals.
+   *
+   * Every reveal re-renders the consumer, and a markdown consumer re-parses
+   * the *entire* document when it does — so a turn costs (reveals × length).
+   * Revealing on every frame therefore makes a long answer quadratic in its
+   * own length, which is the exact shape of "it streams fine at first and
+   * gets choppier the longer it runs".
+   *
+   * The cap cannot be expressed in characters: a model that sends three
+   * characters at a time sets the pace, and there is no text to reveal ahead
+   * of it. So the gap is in time. At this default a 1KB reply still reveals on
+   * every frame, a 5KB one drops to 20fps and a 12KB one to the cap — all of
+   * which still read as continuous text arriving, because what the eye follows
+   * here is words appearing, not motion.
+   */
+  revealGapCharsPerMs?: number;
+  /** Longest gap the rate cap will impose, however long the message runs. */
+  maxRevealGapMs?: number;
+  /**
    * When ``false``, the hook is a pass-through: the smoother is disabled
    * and ``displayContent`` always equals ``content``. Useful so callers
    * can keep the same render path for both streaming and idle messages.
    */
   enabled?: boolean;
+}
+
+/**
+ * How many characters the next reveal advances by.
+ *
+ * Pure, and exported, because the pacing is the whole behaviour of this hook
+ * and is the part worth pinning down without a renderer.
+ */
+export function revealStep(
+  current: number,
+  target: number,
+  {
+    maxCharsPerFrame = 120,
+    minCharsPerFrame = 2,
+    catchUpDivisor = 5,
+  }: SmoothStreamOptions = {},
+): number {
+  const backlog = target - current;
+  if (backlog <= 0) return 0;
+  return Math.min(
+    maxCharsPerFrame,
+    Math.max(minCharsPerFrame, Math.ceil(backlog / catchUpDivisor)),
+  );
+}
+
+/**
+ * The shortest time allowed between two reveals of a message this long.
+ *
+ * Zero for anything short enough that re-parsing it is free; rising with
+ * length so the work per second stays flat instead of growing with the
+ * answer. See ``revealGapCharsPerMs``.
+ */
+export function revealGapMs(
+  length: number,
+  { revealGapCharsPerMs = 100, maxRevealGapMs = 120 }: SmoothStreamOptions = {},
+): number {
+  const gap = Math.floor(length / revealGapCharsPerMs);
+  // Below a frame it is not a cap at all — rAF is already the floor.
+  return gap <= 16 ? 0 : Math.min(maxRevealGapMs, gap);
 }
 
 /**
@@ -32,6 +90,8 @@ interface SmoothStreamOptions {
  *   - While ``isStreaming`` is true and the incoming ``content`` is
  *     longer than what we've shown, a single ``requestAnimationFrame``
  *     loop advances the cursor towards ``content.length``.
+ *   - Frames are skipped once the message is long enough that re-rendering it
+ *     on every one costs more than it shows — see ``revealGapCharsPerMs``.
  *   - When ``isStreaming`` flips false, we snap to the full ``content``
  *     on the next frame so the finished message lands instantly. This
  *     also handles short messages where the smoother would otherwise
@@ -53,12 +113,17 @@ export function useSmoothStreamText(
     maxCharsPerFrame = 120,
     minCharsPerFrame = 2,
     catchUpDivisor = 5,
+    revealGapCharsPerMs = 100,
+    maxRevealGapMs = 120,
     enabled = true,
   } = options;
 
   const [shown, setShown] = useState<string>(content);
   const shownLenRef = useRef<number>(content.length);
   const rafRef = useRef<number>(0);
+  // Survives the cancel/re-arm that every delta puts the rAF chain through,
+  // so the rate cap is a property of the message rather than of one chain.
+  const lastRevealRef = useRef<number>(0);
 
   useEffect(() => {
     if (!enabled) {
@@ -97,18 +162,26 @@ export function useSmoothStreamText(
       return;
     }
 
-    const step = () => {
+    const step = (now: number) => {
       rafRef.current = 0;
       const target = content.length;
       const current = shownLenRef.current;
       if (current >= target) return;
-      const backlog = target - current;
-      const advance = Math.min(
+      const gap = revealGapMs(target, { revealGapCharsPerMs, maxRevealGapMs });
+      if (gap > 0 && now - lastRevealRef.current < gap) {
+        // Too soon to pay for another full re-parse. Keep waiting rather than
+        // rendering; the text arriving meanwhile rides on the next reveal.
+        rafRef.current = requestAnimationFrame(step);
+        return;
+      }
+      const advance = revealStep(current, target, {
         maxCharsPerFrame,
-        Math.max(minCharsPerFrame, Math.ceil(backlog / catchUpDivisor)),
-      );
+        minCharsPerFrame,
+        catchUpDivisor,
+      });
       const next = Math.min(target, current + advance);
       shownLenRef.current = next;
+      lastRevealRef.current = now;
       setShown(content.slice(0, next));
       if (next < target) {
         rafRef.current = requestAnimationFrame(step);
@@ -135,6 +208,8 @@ export function useSmoothStreamText(
     maxCharsPerFrame,
     minCharsPerFrame,
     catchUpDivisor,
+    revealGapCharsPerMs,
+    maxRevealGapMs,
   ]);
 
   return shown;

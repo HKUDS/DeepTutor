@@ -60,7 +60,7 @@ export default function BankSelectionBar({
 
       <CategoryMenu
         categories={categories}
-        label={t("Add to category")}
+        label={t("Add tag")}
         align="left"
         direction="up"
         variant="outlined"
@@ -75,7 +75,7 @@ export default function BankSelectionBar({
           className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-2 py-1.5 text-[11.5px] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]"
         >
           <FolderMinus className="h-3.5 w-3.5" />
-          {t("Remove from category")}
+          {t("Remove tag")}
         </button>
       )}
 

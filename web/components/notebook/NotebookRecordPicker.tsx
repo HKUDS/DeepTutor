@@ -53,6 +53,7 @@ export default function NotebookRecordPicker({
     >
       <div className="surface-card w-full max-w-4xl overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)] text-[var(--card-foreground)] shadow-[0_22px_70px_rgba(0,0,0,0.18)]">
         <PickerHeader
+          resourceKind="notebooks"
           icon={Layers}
           titleId="notebook-picker-title"
           title={t("Select Notebook Records")}

@@ -74,6 +74,13 @@ DETACHED_WORKER_ENV = "DEEPTUTOR_DETACHED_WORKER"
 DETACHED_TOKEN_ENV = "DEEPTUTOR_DETACHED_TOKEN"
 DETACHED_RUNTIME_DIR = Path("data") / "user" / "runtime"
 
+#: Health checks only ever target loopback URLs, but plain ``urlopen`` still
+#: routes them through a configured proxy (``http_proxy`` env var or system
+#: proxy settings). A dead or strict proxy then makes every probe fail and the
+#: supervisor kills a healthy service. Build one proxy-free opener and reuse
+#: it for all local health checks.
+_LOOPBACK_OPENER = urlrequest.build_opener(urlrequest.ProxyHandler({}))
+
 
 def _apply_single_user_allocator_env(env: dict[str, str]) -> None:
     """Reduce glibc arena fragmentation without overriding operator tuning."""
@@ -204,6 +211,25 @@ def _clear_detached_runtime(paths: DetachedLauncherPaths, token: str) -> None:
         paths.stop.unlink(missing_ok=True)
 
 
+def _no_window_kwargs() -> dict[str, Any]:
+    """``Popen`` keywords that keep Windows from allocating a console window.
+
+    The detached worker runs with ``DETACHED_PROCESS``, i.e. with no console of
+    its own, so every console program it starts — taskkill, netstat, tasklist,
+    npm, the node dev server — makes Windows create a brand-new one: empty
+    windows flash on the desktop, and closing the one that ends up hosting node
+    delivered CTRL_C_EXIT to it, which the launcher read as "my frontend
+    exited" and answered by stopping the backend as well (#1501).
+
+    Stdout and stderr handles are inherited independently of console
+    allocation, so a foreground launch still prints exactly as before. Off
+    Windows there is nothing to suppress and this is empty.
+    """
+    if os.name != "nt":
+        return {}
+    return {"creationflags": subprocess.CREATE_NO_WINDOW}  # type: ignore[attr-defined]
+
+
 def _send_tree_signal(pid: int | None, pgid: int | None, sig: signal.Signals | int) -> None:
     if pid is None:
         return
@@ -211,7 +237,13 @@ def _send_tree_signal(pid: int | None, pgid: int | None, sig: signal.Signals | i
         cmd = ["taskkill", "/PID", str(pid), "/T"]
         if sig == KILL_SIGNAL:
             cmd.append("/F")
-        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        subprocess.run(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            **_no_window_kwargs(),
+        )
         return
     if os.name != "nt" and pgid is not None:
         os.killpg(pgid, sig)
@@ -276,7 +308,10 @@ def _spawn(command: list[str], *, cwd: Path, env: dict[str, str], name: str) -> 
         "errors": "replace",
     }
     if os.name == "nt":
-        kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
+        kwargs["creationflags"] = (
+            subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
+            | subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]
+        )
     else:
         kwargs["start_new_session"] = True
     process = subprocess.Popen(command, **kwargs)  # type: ignore[arg-type,call-overload]
@@ -338,6 +373,7 @@ def _port_listeners_windows(port: int) -> list[tuple[int, str]]:
             capture_output=True,
             text=True,
             timeout=5,
+            **_no_window_kwargs(),
         )
     except Exception:
         return []
@@ -366,6 +402,7 @@ def _port_listeners_windows(port: int) -> list[tuple[int, str]]:
                     capture_output=True,
                     text=True,
                     timeout=3,
+                    **_no_window_kwargs(),
                 )
                 first = result.stdout.strip().splitlines()[:1]
                 if first and first[0].startswith('"'):
@@ -545,7 +582,7 @@ def _wait_for_http(
         if process is not None and process.process.poll() is not None:
             raise RuntimeError(_t("start.exited", name=name, code=process.process.returncode))
         try:
-            with urlrequest.urlopen(url, timeout=1):  # noqa: S310  # nosec B310 - http(s) health-check URL constructed by caller
+            with _LOOPBACK_OPENER.open(url, timeout=1):  # noqa: S310  # nosec B310 - loopback health-check URL constructed by caller
                 _log(_t("start.ready", name=name))
                 return
         except (urlerror.URLError, TimeoutError, OSError):
@@ -555,7 +592,7 @@ def _wait_for_http(
 
 def _http_ready(url: str, *, timeout: float) -> bool:
     try:
-        with urlrequest.urlopen(url, timeout=timeout):  # noqa: S310  # nosec B310 - launcher health check
+        with _LOOPBACK_OPENER.open(url, timeout=timeout):  # noqa: S310  # nosec B310 - loopback health check
             return True
     except (urlerror.URLError, TimeoutError, OSError):
         return False
@@ -662,7 +699,7 @@ def _ensure_web_dependencies(source: Path, npm: str) -> None:
         return
     action = "ci" if (source / "package-lock.json").exists() else "install"
     _log(f"web/node_modules not found — running `npm {action}` in {source} ...")
-    result = subprocess.run([npm, action], cwd=source)
+    result = subprocess.run([npm, action], cwd=source, **_no_window_kwargs())
     if result.returncode != 0:
         raise SystemExit(
             f"`npm {action}` failed (exit {result.returncode}). "
@@ -758,7 +795,7 @@ def _ensure_source_production_build(
     generated_config = [source / "next-env.d.ts", source / "tsconfig.json"]
     snapshots = {path: path.read_bytes() if path.is_file() else None for path in generated_config}
     try:
-        result = subprocess.run([npm, "run", "build"], cwd=source, env=env)
+        result = subprocess.run([npm, "run", "build"], cwd=source, env=env, **_no_window_kwargs())
     finally:
         for path, original in snapshots.items():
             if original is None:
@@ -1257,8 +1294,10 @@ def start(
 
     from deeptutor.services.config import (
         HTTP_KEEP_ALIVE_TIMEOUT,
+        SETTINGS_DERIVED_ENV_KEYS,
         ensure_runtime_settings_files,
         export_runtime_settings_to_env,
+        get_runtime_settings_service,
         get_ws_max_size,
         load_auth_settings,
         load_launch_settings,
@@ -1375,6 +1414,17 @@ def start(
     # ``__NEXT_PRIVATE_STANDALONE_CONFIG``, so neither long-running child needs
     # this variable after the build has completed.
     common_env.pop("DEEPTUTOR_NEXT_DIST_DIR", None)
+    # Name the variables the children should read as "the launcher rendered this
+    # out of the settings files", so the backend does not mistake our own export
+    # for a deployment override and answer forever with the value it started with
+    # — that is how the update-check toggle wrote system.json while the live API
+    # kept reporting the old state (#1536). A key we then overwrote with a
+    # resolved value (a port moved after a conflict, the browser-facing API base)
+    # is deliberately left off: there the environment is the newer truth.
+    derived_keys = get_runtime_settings_service().settings_derived_keys()
+    common_env[SETTINGS_DERIVED_ENV_KEYS] = ",".join(
+        sorted(key for key in derived_keys if common_env.get(key) == runtime_env.get(key))
+    )
 
     backend_cmd = [
         sys.executable,

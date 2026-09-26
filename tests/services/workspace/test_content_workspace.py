@@ -62,7 +62,8 @@ def test_custom_workspace_is_saved_and_turn_output_is_scoped(
 
     assert service.current_binding().workspace_id == binding.workspace_id
     assert context.root == str(custom.resolve())
-    assert context.logical_output_dir == "outputs/deep_research/session_one/turn_1"
+    assert context.logical_output_dir.startswith("outputs/deep_research/session_one_")
+    assert context.logical_output_dir.endswith("/turn_1")
     assert Path(context.output_dir).is_dir()
 
 

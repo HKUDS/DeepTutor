@@ -12,7 +12,7 @@ test("Watching links retain their owning workspace, including legacy sessions", 
   ]) {
     assert.equal(
       sessionRoute({ session_id: "lesson 1", preferences } as SessionSummary),
-      "/watching/lesson%201",
+      "/learning/watching/lesson%201?dt_workspace=",
     );
   }
   assert.equal(
@@ -20,12 +20,12 @@ test("Watching links retain their owning workspace, including legacy sessions", 
       session_id: "chat",
       preferences: { timed_media_id: "stale" },
     } as SessionSummary),
-    "/chat/chat",
+    "/chat/chat?dt_workspace=",
   );
   assert.equal(
     normalizeWorkspaceMode("", "immersive_watching"),
     "immersive_watching",
   );
-  assert.equal(capabilityForPath("/watching/lesson"), "llm");
+  assert.equal(capabilityForPath("/learning/watching/lesson"), "llm");
   assert.equal(capabilityForPath("/watching-other"), null);
 });

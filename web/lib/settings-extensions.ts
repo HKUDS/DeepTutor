@@ -14,6 +14,14 @@ import { apiFetch, apiUrl } from "@/lib/api";
  * two paths cannot drift apart.
  */
 export const EXTENSION_ENDPOINTS = {
+  ui: "/api/settings/ui",
+  tools: "/api/settings/enabled-tools",
+  workspace: "/api/settings/workspace",
+  "video-learning": "/api/settings/video-learning",
+  "learner-profile": "/api/auth/profile/learner-profile",
+  "document-parsing": "/api/settings/document-parsing",
+  mineru: "/api/settings/mineru",
+  "update-checks": "/api/system/update/settings",
   "chat-starters": "/api/settings/chat-starters",
   "chat-attachments": "/api/settings/chat-attachments",
   "chat-timeout": "/api/settings/chat-response-timeout",
@@ -33,13 +41,41 @@ export async function applyExtensionPayload(
   key: string,
   payload: unknown,
 ): Promise<void> {
-  if (!isExtensionKey(key) || payload == null) return;
-  const response = await apiFetch(apiUrl(EXTENSION_ENDPOINTS[key]), {
+  if (payload == null) throw new Error(`Missing settings payload: ${key}`);
+  if (key === "codex-reasoning") {
+    const { setCodexReasoningEffort } = await import("@/lib/codex-oauth");
+    for (const [model, effort] of Object.entries(payload as Record<string, string | null>)) {
+      await setCodexReasoningEffort(model, effort);
+    }
+    return;
+  }
+  if (key.startsWith("subagent:")) {
+    const { updateSubagentSettings } = await import("@/lib/subagents-api");
+    await updateSubagentSettings({ backends: { [key.slice(9)]: payload } });
+    return;
+  }
+  const guardian = /^guardian:(materials|restrictions):(.+)$/.exec(key);
+  const endpoint = guardian
+    ? `/api/multi-user/learners/${encodeURIComponent(guardian[2])}/${guardian[1]}`
+    : isExtensionKey(key) ? EXTENSION_ENDPOINTS[key] : null;
+  if (!endpoint) throw new Error(`Unknown settings section: ${key}`);
+  let body = guardian?.[1] === "materials" ? { book_ids: payload } : payload;
+  if (key === "document-parsing") {
+    const { engine, engines } = payload as { engine: string; engines: Record<string, unknown> };
+    // MinerU has its own draft; never overwrite it with this page's snapshot.
+    body = { engine, engines: Object.fromEntries(Object.entries(engines).filter(([name]) => name !== "mineru")) };
+  }
+  const response = await apiFetch(apiUrl(endpoint), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
   });
   if (!response.ok) {
-    throw new Error(`${key}: HTTP ${response.status}`);
+    const error = await response.json().catch(() => ({}));
+    throw new Error(`${key}: ${typeof error.detail === "string" ? error.detail : `HTTP ${response.status}`}`);
+  }
+  if (key === "tools") {
+    const { invalidateEnabledOptionalToolsCache } = await import("@/lib/tools-settings");
+    invalidateEnabledOptionalToolsCache();
   }
 }

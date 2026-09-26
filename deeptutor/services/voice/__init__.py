@@ -19,6 +19,16 @@ from deeptutor.services.voice.base import (
 from deeptutor.services.voice.config import STTConfig, TTSConfig
 
 
+def _math_speak_from_settings() -> bool:
+    """Read the Math Speak UI preference; default on if settings are unavailable."""
+    try:
+        from deeptutor.services.settings.interface_settings import get_ui_settings
+
+        return bool(get_ui_settings().get("voice_math_speak", True))
+    except Exception:
+        return True
+
+
 async def synthesize_speech(
     text: str,
     *,
@@ -26,11 +36,13 @@ async def synthesize_speech(
     voice: str | None = None,
     response_format: str | None = None,
     strip_markdown: bool = True,
+    math_speak: bool | None = None,
 ) -> tuple[bytes, str]:
     """Synthesize ``text`` using the active TTS catalog selection.
 
     Returns ``(audio_bytes, content_type)``. ``voice`` / ``response_format``
-    override the catalog defaults for this call.
+    override the catalog defaults for this call. ``math_speak`` defaults to
+    the Settings › Text-to-Speech preference (on).
     """
     from deeptutor.services.config.provider_runtime import resolve_tts_runtime_config
 
@@ -39,8 +51,9 @@ async def synthesize_speech(
         config.voice = voice
     if response_format:
         config.response_format = response_format
+    speak_math = _math_speak_from_settings() if math_speak is None else math_speak
     prepared = (
-        strip_markdown_for_speech(text, max_chars=config.max_input_chars)
+        strip_markdown_for_speech(text, max_chars=config.max_input_chars, math_speak=speak_math)
         if strip_markdown
         else text.strip()
     )

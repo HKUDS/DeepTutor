@@ -17,10 +17,9 @@ interface SheetModel {
 }
 
 /**
- * XLSX preview via ``exceljs`` (lazy-loaded). Each worksheet is rendered as a
- * lightweight HTML table with a sticky header row; a tab strip switches
- * between sheets. Cell display text only — formulas resolve to their cached
- * value, formatting is dropped (this is a quick look, not an editor).
+ * Browser fallback when server-side PDF conversion is unavailable. Each
+ * worksheet is rendered via exceljs as a lightweight table with a sheet tab
+ * strip. It shows cached cell text but not the workbook's visual formatting.
  */
 export default function XlsxPreview({ url }: { url: string }) {
   const { t } = useTranslation();

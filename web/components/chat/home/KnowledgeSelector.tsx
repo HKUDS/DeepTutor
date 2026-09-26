@@ -1,5 +1,6 @@
 "use client";
 
+import { knowledgeBaseRef } from "@/lib/knowledge-helpers";
 import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, Database } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -26,15 +27,27 @@ export default function KnowledgeSelector({
   selected,
   onToggle,
   placement = "top",
+  pinned = false,
+  embedded = false,
 }: {
-  knowledgeBases: { name: string }[];
+  knowledgeBases: { id?: string; name: string; provenance_label?: string }[];
   selected: string[];
   onToggle: (name: string) => void;
   placement?: "top" | "bottom";
+  /** Keep the label visible instead of collapsing to the icon at rest.
+   *  Set by the composer rail, where there is room for it. */
+  pinned?: boolean;
+  /** Render the picker contents inside a shared resource panel. */
+  embedded?: boolean;
 }) {
   const { t } = useTranslation();
-  const [open, setOpenState] = useState(false);
-  const { expanded, linger, triggerProps: lingerProps } = useLingerExpand(open);
+  const [openState, setOpenState] = useState(false);
+  const open = embedded || openState;
+  const {
+    expanded,
+    linger,
+    triggerProps: lingerProps,
+  } = useLingerExpand(open, 1200, pinned);
   const setOpen = (next: boolean) => {
     setOpenState(next);
     // Keep the label expanded for a beat after close so a just-made
@@ -42,6 +55,7 @@ export default function KnowledgeSelector({
     if (!next) linger();
   };
   const rootRef = useRef<HTMLDivElement>(null);
+  const [query, setQuery] = useState("");
 
   // Close on outside click.
   useOutsideClick(rootRef, open, () => setOpen(false));
@@ -51,7 +65,8 @@ export default function KnowledgeSelector({
     count === 0
       ? t("Knowledge")
       : count === 1
-        ? selected[0]
+        ? (knowledgeBases.find((kb) => knowledgeBaseRef(kb) === selected[0])
+            ?.name ?? selected[0])
         : `${count} ${t("knowledge bases")}`;
   const menuPlacementClass =
     placement === "bottom" ? "top-full mt-1.5" : "bottom-full mb-1.5";
@@ -62,81 +77,109 @@ export default function KnowledgeSelector({
           the menu) slides the scope label out and lingers ~1.2s after
           leave/selection before collapsing. A non-empty scope tints the
           icon primary. */}
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        aria-label={t("Select knowledge bases")}
-        aria-expanded={open}
-        {...lingerProps}
-        className={`inline-flex h-8 shrink-0 items-center rounded-lg px-2 text-[14px] font-medium transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
-          open
-            ? "bg-[var(--muted)] text-[var(--foreground)]"
-            : count > 0
-              ? "text-[var(--primary)] hover:bg-[var(--primary)]/[0.07]"
-              : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/55 hover:text-[var(--foreground)]"
-        }`}
-      >
-        <Database size={16} strokeWidth={1.7} className="shrink-0" />
-        <span
-          className={`flex min-w-0 items-center gap-1 overflow-hidden whitespace-nowrap transition-[max-width,opacity,margin-left] duration-300 ease-out ${
-            expanded
-              ? "ml-1.5 max-w-[160px] opacity-100"
-              : "ml-0 max-w-0 opacity-0"
+      {!embedded && (
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          aria-label={t("Select knowledge bases")}
+          aria-expanded={open}
+          {...lingerProps}
+          className={`inline-flex h-8 shrink-0 items-center rounded-lg px-2 text-[14px] font-medium transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
+            open
+              ? "bg-[var(--muted)] text-[var(--foreground)]"
+              : count > 0
+                ? "text-[var(--primary)] hover:bg-[var(--primary)]/[0.07]"
+                : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/55 hover:text-[var(--foreground)]"
           }`}
         >
-          <span className="min-w-0 truncate">{label}</span>
-          <ChevronDown
-            size={13}
-            className={`shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
-          />
-        </span>
-      </button>
+          <Database size={16} strokeWidth={1.7} className="shrink-0" />
+          <span
+            className={`flex min-w-0 items-center gap-1 overflow-hidden whitespace-nowrap transition-[max-width,opacity,margin-left] duration-300 ease-out ${
+              expanded
+                ? "ml-1.5 max-w-[160px] opacity-100"
+                : "ml-0 max-w-0 opacity-0"
+            }`}
+          >
+            <span className="min-w-0 truncate">{label}</span>
+            <ChevronDown
+              size={13}
+              className={`shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
+            />
+          </span>
+        </button>
+      )}
 
       {open && (
         <div
-          className={`dt-popup-up absolute right-0 z-50 ${menuPlacementClass} w-[min(280px,calc(100vw-32px))] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--popover)] shadow-lg backdrop-blur-md`}
+          className={
+            embedded
+              ? "w-full"
+              : `dt-popup-up absolute right-0 z-50 ${menuPlacementClass} w-[min(280px,calc(100vw-32px))] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--popover)] shadow-lg backdrop-blur-md`
+          }
         >
+          {embedded && (
+            <div className="border-b border-[var(--border)] px-3 py-2">
+              <input
+                aria-label={t("Search")}
+                placeholder={t("Search")}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className="w-full rounded-lg bg-[var(--muted)]/50 px-2 py-2 text-[13px] outline-none focus-visible:ring-1 focus-visible:ring-[var(--primary)]"
+              />
+            </div>
+          )}
+
           {knowledgeBases.length === 0 ? (
             <div className="px-3 py-4 text-center text-[12px] text-[var(--muted-foreground)]">
               {t("No knowledge bases available")}
             </div>
           ) : (
             <div className="max-h-[280px] overflow-y-auto py-1">
-              {knowledgeBases.map((kb) => {
-                const active = selected.includes(kb.name);
-                return (
-                  <button
-                    key={kb.name}
-                    type="button"
-                    onClick={() => onToggle(kb.name)}
-                    className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-left transition-colors active:bg-[var(--muted)]/70 ${
-                      active
-                        ? "bg-[var(--primary)]/[0.06]"
-                        : "hover:bg-[var(--muted)]/45"
-                    }`}
-                  >
-                    <Database
-                      size={15}
-                      strokeWidth={1.7}
-                      className={`shrink-0 ${
+              {knowledgeBases
+                .filter((kb) =>
+                  kb.name.toLowerCase().includes(query.toLowerCase().trim()),
+                )
+                .map((kb) => {
+                  const active = selected.includes(knowledgeBaseRef(kb));
+                  return (
+                    <button
+                      key={knowledgeBaseRef(kb)}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => onToggle(knowledgeBaseRef(kb))}
+                      className={`flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors active:bg-[var(--muted)]/70 ${
                         active
-                          ? "text-[var(--primary)]"
-                          : "text-[var(--muted-foreground)]"
+                          ? "bg-[var(--primary)]/[0.06]"
+                          : "hover:bg-[var(--muted)]/45"
                       }`}
-                    />
-                    <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-[var(--foreground)]">
-                      {kb.name}
-                    </span>
-                    {active && (
-                      <Check
-                        size={14}
-                        strokeWidth={2}
-                        className="shrink-0 text-[var(--primary)]"
+                    >
+                      <Database
+                        size={15}
+                        strokeWidth={1.7}
+                        className={`shrink-0 ${
+                          active
+                            ? "text-[var(--primary)]"
+                            : "text-[var(--muted-foreground)]"
+                        }`}
                       />
-                    )}
-                  </button>
-                );
-              })}
+                      <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-[var(--foreground)]">
+                        {kb.name}
+                        {kb.provenance_label && (
+                          <span className="ml-2 opacity-60">
+                            {kb.provenance_label}
+                          </span>
+                        )}
+                      </span>
+                      {active && (
+                        <Check
+                          size={14}
+                          strokeWidth={2}
+                          className="shrink-0 text-[var(--primary)]"
+                        />
+                      )}
+                    </button>
+                  );
+                })}
             </div>
           )}
         </div>

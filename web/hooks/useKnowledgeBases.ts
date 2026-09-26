@@ -1,5 +1,8 @@
 "use client";
 
+import { knowledgeBaseRef } from "@/lib/knowledge-helpers";
+import type { EmbeddingModelSelection } from "@/features/knowledge/model/types";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   connectImaKnowledgeBase as connectImaApi,
@@ -15,15 +18,22 @@ import {
   listRagProviders,
   reindexKnowledgeBase as reindexKbApi,
   retryKnowledgeBase as retryKbApi,
-  updatePendingIndexingPolicy as updatePendingIndexingPolicyApi,
   setDefaultKnowledgeBase as setDefaultKbApi,
   type KnowledgeTaskResponse,
-  type IndexingLLMSelection,
   type KnowledgeUploadPolicy,
   type RagProviderSummary,
 } from "@/features/knowledge/api/catalog";
 import { connectLightRagServer as connectLightRagServerApi } from "@/features/knowledge/api/engines";
 import { uploadKnowledgeBaseFiles as uploadKbApi } from "@/features/knowledge/api/files";
+import {
+  linkFolder as linkFolderApi,
+  syncLinkedFolder as syncLinkedFolderApi,
+  unlinkFolder as unlinkFolderApi,
+} from "@/features/knowledge/api/folders";
+import type {
+  LinkedFolderInfo,
+  SyncFolderResponse,
+} from "@/features/knowledge/model/types";
 import {
   DEFAULT_UPLOAD_POLICY,
   type KnowledgeBase,
@@ -113,15 +123,20 @@ export function useKnowledgeBases() {
           const status = kb.status ?? kb.statistics?.status;
           const kbProgress = kb.progress ?? kb.statistics?.progress;
           if (status === "error" && kbProgress) {
-            progress.setProgress(kb.name, kbProgress as ProgressInfo);
+            progress.setProgress(
+              knowledgeBaseRef(kb),
+              kbProgress as ProgressInfo,
+            );
             continue;
           }
           if (
             kbHasLiveProgress({ ...kb, progress: kbProgress as ProgressInfo })
           ) {
-            progress.setProgress(kb.name, (kbProgress as ProgressInfo) ?? {});
-            const taskId = (kbProgress as ProgressInfo | undefined)?.task_id;
-            progress.subscribeWs(kb.name, taskId || undefined);
+            progress.resumeTask(
+              knowledgeBaseRef(kb),
+              (kbProgress as ProgressInfo) ?? {},
+              kb.name,
+            );
           }
         }
       } catch (err) {
@@ -150,7 +165,7 @@ export function useKnowledgeBases() {
         ...kb,
         status: kb.status ?? kb.statistics?.status,
         progress:
-          progress.progressByKb[kb.name] ||
+          progress.progressByKb[knowledgeBaseRef(kb)] ||
           kb.progress ||
           kb.statistics?.progress,
       })),
@@ -182,7 +197,7 @@ export function useKnowledgeBases() {
       files: File[];
       pageindexMode?: "flash" | "standard";
       searchMode?: string;
-      indexingLLM?: IndexingLLMSelection;
+      embeddingModel?: EmbeddingModelSelection;
     }): Promise<KnowledgeTaskResponse> => {
       const result = await createKbApi(params);
       invalidateKnowledgeCaches();
@@ -260,9 +275,14 @@ export function useKnowledgeBases() {
   const reindex = useCallback(
     async (
       kbName: string,
-      indexingLLM?: IndexingLLMSelection,
+      configFingerprint?: string,
+      embeddingModel?: EmbeddingModelSelection,
     ): Promise<KnowledgeTaskResponse> => {
-      const result = await reindexKbApi(kbName, indexingLLM);
+      const result = await reindexKbApi(
+        kbName,
+        configFingerprint,
+        embeddingModel,
+      );
       if (result.noop) {
         await load({ force: true, showSpinner: false });
         return result;
@@ -283,14 +303,6 @@ export function useKnowledgeBases() {
       return result;
     },
     [load, progress],
-  );
-
-  const updatePendingIndexingPolicy = useCallback(
-    async (kbName: string, indexingLLM: IndexingLLMSelection) => {
-      await updatePendingIndexingPolicyApi(kbName, indexingLLM);
-      await load({ force: true, showSpinner: false });
-    },
-    [load],
   );
 
   const retry = useCallback(
@@ -342,6 +354,54 @@ export function useKnowledgeBases() {
       await load({ force: true, showSpinner: false });
     },
     [load],
+  );
+
+  const linkFolder = useCallback(
+    async (kbName: string, folderPath: string): Promise<LinkedFolderInfo> => {
+      const result = await linkFolderApi(kbName, folderPath);
+      invalidateKnowledgeCaches();
+      await load({ force: true, showSpinner: false });
+      return result;
+    },
+    [load],
+  );
+
+  const unlinkFolder = useCallback(
+    async (kbName: string, folderId: string): Promise<void> => {
+      await unlinkFolderApi(kbName, folderId);
+      invalidateKnowledgeCaches();
+      await load({ force: true, showSpinner: false });
+    },
+    [load],
+  );
+
+  const syncLinkedFolder = useCallback(
+    async (kbName: string, folderId: string): Promise<SyncFolderResponse> => {
+      const result = await syncLinkedFolderApi(kbName, folderId);
+      if (result.task_id) {
+        progress.startTask({
+          kbName,
+          taskId: result.task_id,
+          kind: "sync",
+          label: "Sync linked folder",
+          initialLogs: [
+            "Queued linked-folder sync.",
+            "Waiting for backend indexing logs...",
+          ],
+          seed: {
+            stage: "starting",
+            message: result.message,
+            current: 0,
+            total: result.file_count,
+            progress_percent: 0,
+          },
+        });
+      }
+      invalidateKnowledgeCaches();
+      await load({ force: true, showSpinner: false });
+      return result;
+    },
+    [load, progress],
   );
 
   const connectLightRagServer = useCallback(
@@ -413,11 +473,13 @@ export function useKnowledgeBases() {
     uploadFiles,
     setDefault,
     reindex,
-    updatePendingIndexingPolicy,
     retry,
     deleteKb,
     connectObsidian,
     connectLinkedFolder,
+    linkFolder,
+    unlinkFolder,
+    syncLinkedFolder,
     connectLightRagServer,
     connectWeKnora,
     connectMarginNote4,

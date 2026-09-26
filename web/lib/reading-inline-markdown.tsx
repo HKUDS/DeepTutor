@@ -37,6 +37,28 @@ function HiddenMark({ text }: { text: string }) {
 const INLINE_PATTERN =
   /(\*\*|__)([^\n]+?)\1|`([^`\n]+)`|\[([^\]\n]+)\]\(([^)\s]+)\)|(\*|_)([^\s*_][^\n]*?)\6(?!\w)/g;
 
+/**
+ * An embedded-picture ingest marker line — ``[图片 3: image-03.png]``, the
+ * exact fixed format the extractor emits. Matching the whole line keeps the
+ * figure at the picture's original position between paragraphs; anything
+ * else falls back to literal text.
+ */
+const IMAGE_MARKER_PATTERN = /^\s{0,3}\[图片 \d+: ([^\]\s]+)\]\s*$/;
+
+/**
+ * Names of embedded pictures whose marker lines appear in *text*, so a caller
+ * can tell which media items the inline renderer claimed and which still need
+ * the fallback strip below the article.
+ */
+export function imageMarkerNames(text: string): Set<string> {
+  const names = new Set<string>();
+  for (const line of text.split("\n")) {
+    const match = IMAGE_MARKER_PATTERN.exec(line);
+    if (match) names.add(match[1]);
+  }
+  return names;
+}
+
 /** Bold, italic, inline code, and links within one line of plain text. */
 export function InlineMarkdown({ text }: { text: string }): ReactNode {
   const nodes: ReactNode[] = [];
@@ -114,9 +136,24 @@ const BULLET_PATTERN = /^(\s{0,3}[-*+]\s+)(\S[\s\S]*)$/;
 /**
  * One rendered line of body text: block-level markers first (a line is at
  * most one of rule / blockquote / bullet), then inline formatting on
- * whatever text remains.
+ * whatever text remains. An embedded-picture marker line goes to
+ * *renderImage* first — returning null keeps the literal marker text.
  */
-export function MarkdownLine({ text }: { text: string }): ReactNode {
+export function MarkdownLine({
+  text,
+  renderImage,
+}: {
+  text: string;
+  renderImage?: (name: string, markerText: string) => ReactNode | null;
+}): ReactNode {
+  if (renderImage) {
+    const image = IMAGE_MARKER_PATTERN.exec(text);
+    if (image) {
+      const figure = renderImage(image[1], text);
+      if (figure !== null && figure !== undefined) return figure;
+    }
+  }
+
   if (RULE_PATTERN.test(text) && text.trim().length >= 3) {
     return (
       <>

@@ -1,3 +1,4 @@
+import type { LearningOrigin } from "@/lib/learning-library";
 import { apiUrl, apiFetch } from "./api";
 
 export interface ModuleInit {
@@ -7,9 +8,14 @@ export interface ModuleInit {
   pass_threshold?: number;
   knowledge_points: {
     id: string;
+    client_ref?: string;
     name: string;
     type: string;
     module_id: string;
+    prerequisite_ids?: string[];
+    prerequisite_refs?: string[];
+    topic_source_ids?: string[];
+    topic_source_refs?: string[];
   }[];
 }
 
@@ -64,10 +70,13 @@ export interface MapKnowledgePoint {
   id: string;
   name: string;
   type: string;
+  prerequisite_ids: string[];
+  topic_source_ids: string[];
   status: ObjectiveStatus;
   mastery: number;
   mastery_source: "system" | "learner" | "";
   override_note: string;
+  deferred?: boolean;
 }
 
 export interface MapModule {
@@ -104,6 +113,7 @@ export interface NextStep {
   mastery: number;
   threshold: number;
   reason: string;
+  forgetting_risk: number;
   /** The outstanding question's text, when `action` is `answer_pending`. */
   pending_prompt: string;
   /** Session that owns an outstanding question; empty for non-pending steps. */
@@ -236,6 +246,28 @@ export interface ObjectiveReview {
   interval_index: number;
   consecutive_correct: number;
   consecutive_wrong: number;
+  stability: number;
+  retrievability: number;
+  desired_retention: number;
+  lapse_count: number;
+  forgetting_risk: number;
+  reason: string;
+  recent_failure?: boolean;
+}
+
+export interface LearningEvidence {
+  knowledge_point_id: string;
+  timestamp: number;
+  source: string;
+  assessment_type: "quiz" | "qualitative" | "review";
+  result: "correct" | "incorrect" | "partial";
+  quality: number | null;
+  hints_used: number;
+  attempt_count: number;
+  confidence: number | null;
+  response_time: number | null;
+  session_id: string;
+  turn_id: string;
 }
 
 export interface ObjectiveErrorRecord {
@@ -264,6 +296,11 @@ export interface ObjectiveReport {
   correct_count: number;
   explanation: string;
   review: ObjectiveReview | null;
+  // These fields were added after the initial objective report contract.
+  // Keep them optional so older API responses and embedded consumers remain
+  // readable while the current server includes both values.
+  evidence?: LearningEvidence[];
+  evidence_count?: number;
   errors: ObjectiveErrorRecord[];
 }
 
@@ -399,6 +436,7 @@ export interface TopicSource {
 
 export interface TopicSourceInput {
   id?: string;
+  client_ref?: string;
   kind: TopicSourceKind;
   source_id?: string;
   label: string;
@@ -426,9 +464,23 @@ export interface TopicReview {
   due_at: number;
   priority: number;
   due: boolean;
+  forgetting_risk: number;
+  reason: string;
+  stability: number;
+  retrievability: number;
+  desired_retention: number;
+  lapse_count: number;
+  recent_failure: boolean;
+  evidence_source?: string;
+  evidence_id?: string;
 }
 
-export interface MasteryTopic {
+export interface MasteryReviewSettings {
+  desired_retention: number;
+  scope: "path";
+}
+
+export interface MasteryTopic extends LearningOrigin {
   path_id: string;
   name: string;
   metadata: TopicMetadata;
@@ -437,6 +489,7 @@ export interface MasteryTopic {
   next: NextStep;
   map: MasteryMap;
   reviews: TopicReview[];
+  review_settings?: MasteryReviewSettings;
   /** Null until the tutor has asked the learner about themselves. */
   learner_profile: LearnerProfile | null;
   session_count: number;
@@ -601,6 +654,21 @@ export function fetchMasteryTopic(
     `/api/mastery-paths/topics/${encodeURIComponent(pathId)}`,
     init,
     "load topic",
+  );
+}
+
+export function updateMasteryReviewSettings(
+  pathId: string,
+  desiredRetention: number,
+): Promise<MasteryTopic> {
+  return masteryJson(
+    `/api/mastery-paths/topics/${encodeURIComponent(pathId)}/review-settings`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ desired_retention: desiredRetention }),
+    },
+    "update review target",
   );
 }
 

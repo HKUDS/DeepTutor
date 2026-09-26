@@ -1,11 +1,12 @@
 "use client";
 
+import { useSettings } from "@/features/settings/store/SettingsStore";
+import { useStagedSettings } from "@/features/settings/store/useStagedSettings";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import {
   getOwnLearnerProfile,
-  setOwnLearnerProfile,
   type LearnerProfile,
 } from "@/lib/profile-api";
 
@@ -20,7 +21,9 @@ const fields: Array<[keyof LearnerProfile, string]> = [
 
 export default function LearnerProfileSettingsPage() {
   const { t } = useTranslation();
-  const [profile, setProfile] = useState<LearnerProfile>({});
+  const { draftRevision } = useSettings();
+  const [live, setLive] = useState<LearnerProfile>({});
+  const [profile, setProfile] = useStagedSettings("learner-profile", live, setLive);
   const [status, setStatus] = useState<"idle" | "loading" | "saved" | "error">(
     "loading",
   );
@@ -28,11 +31,11 @@ export default function LearnerProfileSettingsPage() {
   useEffect(() => {
     void getOwnLearnerProfile()
       .then((value) => {
-        setProfile(value ?? {});
+        setLive(value ?? {});
         setStatus("idle");
       })
       .catch(() => setStatus("error"));
-  }, []);
+  }, [draftRevision]);
 
   const update = (key: keyof LearnerProfile, value: string) => {
     setProfile((current) => ({
@@ -46,16 +49,6 @@ export default function LearnerProfileSettingsPage() {
     }));
   };
 
-  const save = async () => {
-    setStatus("loading");
-    try {
-      setProfile((await setOwnLearnerProfile(profile)) ?? {});
-      setStatus("saved");
-    } catch {
-      setStatus("error");
-    }
-  };
-
   return (
     <main className="mx-auto max-w-2xl px-6 py-8">
       <h1 className="text-xl font-semibold">{t("Learner profile")}</h1>
@@ -67,6 +60,7 @@ export default function LearnerProfileSettingsPage() {
           <label key={key} className="grid gap-1 text-sm">
             <span>{t(label)}</span>
             <input
+              disabled={status === "loading"}
               type={key === "age" ? "number" : "text"}
               min={key === "age" ? 3 : undefined}
               max={key === "age" ? 120 : undefined}
@@ -78,15 +72,6 @@ export default function LearnerProfileSettingsPage() {
         ))}
       </div>
       <div className="mt-6 flex items-center gap-3">
-        <button
-          type="button"
-          onClick={() => void save()}
-          disabled={status === "loading"}
-          className="rounded-md bg-[var(--primary)] px-4 py-2 text-sm text-[var(--primary-foreground)] disabled:opacity-60"
-        >
-          {t("Save profile")}
-        </button>
-        {status === "saved" && <span className="text-sm">{t("Saved")}</span>}
         {status === "error" && (
           <span className="text-sm text-red-600">
             {t("Unable to save profile")}

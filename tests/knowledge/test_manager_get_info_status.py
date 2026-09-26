@@ -95,6 +95,16 @@ def test_processing_with_ready_index_promotes_to_ready(
     assert info["statistics"]["rag_initialized"] is True
 
 
+def test_fresh_empty_kb_stays_ready_without_an_index_version(tmp_path: Path) -> None:
+    manager = KnowledgeBaseManager(base_dir=str(tmp_path))
+    manager.update_kb_status(name="empty", status="ready", progress=None)
+
+    info = manager.get_info("empty")
+
+    assert info["status"] == "ready"
+    assert info["statistics"]["rag_initialized"] is False
+
+
 def test_processing_with_completed_progress_and_ready_index_promotes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

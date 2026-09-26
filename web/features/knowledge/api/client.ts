@@ -1,8 +1,41 @@
-import { apiFetch, apiUrl } from "@/lib/api";
+import { apiFetch, apiUrl as baseApiUrl } from "@/lib/api";
 import { invalidateClientCache, withClientCache } from "@/lib/client-cache";
 import type { ImaKnowledgeBaseOption } from "@/lib/ima-connection";
 
+function inKnowledgeLibrary(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    /^\/knowledge-bases(?:\/|$)/.test(window.location.pathname)
+  );
+}
+
+function apiUrl(path: string): string {
+  const url = baseApiUrl(path);
+  return inKnowledgeLibrary() &&
+    path.startsWith("/api/knowledge-bases") &&
+    !path.includes("resource_library=")
+    ? `${url}${url.includes("?") ? "&" : "?"}resource_library=true`
+    : url;
+}
+
 const KNOWLEDGE_CACHE_PREFIX = "knowledge:";
+
+export type EmbeddingModelSelection = { profile_id: string; model_id: string };
+export type EmbeddingUsage = EmbeddingModelSelection & {
+  name: string;
+  workspace_name: string;
+};
+
+export async function getEmbeddingUsage(): Promise<EmbeddingUsage[]> {
+  const res = await apiFetch(apiUrl("/api/knowledge-bases/embedding-usage"), {
+    cache: "no-store",
+  });
+  if (!res.ok)
+    throw new Error(
+      await readErrorDetail(res, "Failed to load embedding model usage"),
+    );
+  return (await res.json()).knowledge_bases;
+}
 
 export interface IndexingLLMSelection {
   profile_id: string;
@@ -90,7 +123,29 @@ export interface GraphRagConfig {
   dynamic_community_selection: boolean;
 }
 
+export interface LightRagRoleModel {
+  mode: "inherit" | "model" | "disabled";
+  selection?: IndexingLLMSelection | null;
+  reasoning_effort?: string | null;
+  max_async: number;
+  timeout: number;
+}
+
+export interface LightRagRoleModels {
+  base: IndexingLLMSelection;
+  extract: LightRagRoleModel;
+  keyword: LightRagRoleModel;
+  query: LightRagRoleModel;
+  vlm: LightRagRoleModel;
+}
+
+export interface LightRagIndexingSelection {
+  extract: IndexingLLMSelection;
+  vlm: { mode: "disabled" | "enabled"; selection?: IndexingLLMSelection };
+}
+
 export interface LightRagConfig {
+  role_models?: LightRagRoleModels;
   version: number;
   top_k: number;
   response_type: string;
@@ -100,6 +155,8 @@ export interface LightRagConfig {
   llm_model_max_async: number;
   /** Extra extraction passes per chunk, to recover missed entities. */
   entity_extract_max_gleaning: number;
+  /** Per-call timeout for LightRAG's LLM requests, in seconds. */
+  llm_timeout: number;
   /** Query model and default indexing selection; empty uses the active chat model. */
   llm_profile_id: string;
   llm_model_id: string;
@@ -226,13 +283,23 @@ function normalizeUploadPolicy(data: unknown): KnowledgeUploadPolicy {
   };
 }
 
-export async function listKnowledgeBases(options?: { force?: boolean }) {
+export async function listKnowledgeBases(options?: {
+  force?: boolean;
+  library?: boolean;
+}) {
   return withClientCache<KnowledgeBaseSummary[]>(
-    `${KNOWLEDGE_CACHE_PREFIX}list`,
+    `${KNOWLEDGE_CACHE_PREFIX}list:${options?.library || inKnowledgeLibrary() ? "library" : "workspace"}`,
     async () => {
-      const response = await apiFetch(apiUrl("/api/knowledge-bases"), {
-        cache: "no-store",
-      });
+      const response = await apiFetch(
+        apiUrl(
+          options?.library
+            ? "/api/knowledge-bases?resource_library=true"
+            : "/api/knowledge-bases",
+        ),
+        {
+          cache: "no-store",
+        },
+      );
       if (!response.ok) {
         throw new Error(
           await readErrorDetail(response, "Failed to list knowledge bases"),
@@ -477,6 +544,22 @@ export const updateGraphRagConfig = (
   payload: Partial<Omit<GraphRagConfig, "version">>,
 ) => updateEngineConfig<GraphRagConfig>("graphrag", payload);
 
+export async function getLightRagModelOptions(): Promise<
+  import("@/lib/llm-options").LLMOptionsResponse
+> {
+  const res = await apiFetch(
+    apiUrl("/api/knowledge-bases/rag-pipelines/lightrag/model-options"),
+    {
+      cache: "no-store",
+    },
+  );
+  if (!res.ok)
+    throw new Error(
+      await readErrorDetail(res, "Failed to load LightRAG models"),
+    );
+  return res.json();
+}
+
 export const getLightRagConfig = (options?: { force?: boolean }) =>
   getEngineConfig<LightRagConfig>("lightrag", "lightrag-config", options);
 export const updateLightRagConfig = (
@@ -640,7 +723,7 @@ export function knowledgeBaseFilePath(
   return `/api/knowledge-bases/${encodeURIComponent(kbName)}/files/${filename
     .split("/")
     .map(encodeURIComponent)
-    .join("/")}`;
+    .join("/")}${inKnowledgeLibrary() ? "?resource_library=true" : ""}`;
 }
 
 /** Build the `/api/...` path for extracted plain-text preview of a raw KB file. */
@@ -651,7 +734,7 @@ export function knowledgeBaseFilePreviewTextPath(
   return `/api/knowledge-bases/${encodeURIComponent(kbName)}/file-preview-text/${filename
     .split("/")
     .map(encodeURIComponent)
-    .join("/")}`;
+    .join("/")}${inKnowledgeLibrary() ? "?resource_library=true" : ""}`;
 }
 
 export interface KnowledgeTaskResponse {
@@ -689,7 +772,7 @@ export async function createKnowledgeBase(payload: {
   files: File[];
   pageindexMode?: "flash" | "standard";
   searchMode?: string;
-  indexingLLM?: IndexingLLMSelection;
+  embeddingModel?: EmbeddingModelSelection;
 }): Promise<KnowledgeTaskResponse> {
   const form = new FormData();
   form.append("name", payload.name);
@@ -698,9 +781,8 @@ export async function createKnowledgeBase(payload: {
     form.append("pageindex_mode", payload.pageindexMode);
   }
   if (payload.searchMode) form.append("search_mode", payload.searchMode);
-  if (payload.indexingLLM) {
-    form.append("indexing_llm", JSON.stringify(payload.indexingLLM));
-  }
+  if (payload.embeddingModel)
+    form.append("embedding_model", JSON.stringify(payload.embeddingModel));
   appendFilesWithPaths(form, payload.files);
 
   const res = await apiFetch(apiUrl("/api/knowledge-bases"), {
@@ -787,6 +869,24 @@ export interface LinkedFolderProbe {
   error: string | null;
 }
 
+export interface LinkedFolderInfo {
+  id: string;
+  path: string;
+  added_at: string;
+  file_count: number;
+  last_sync: string | null;
+}
+
+export interface SyncFolderResponse {
+  message: string;
+  folder_path?: string | null;
+  files: string[];
+  new_files: number;
+  modified_files: number;
+  file_count: number;
+  task_id: string | null;
+}
+
 export async function probeLinkedFolder(payload: {
   folderPath: string;
   provider: string;
@@ -836,6 +936,85 @@ export async function connectLinkedFolder(payload: {
     rag_provider: string;
     warnings: string[];
   };
+}
+
+// ── Linked document folders ──────────────────────────────────────────
+
+export async function listLinkedFolders(
+  kbName: string,
+  options?: { signal?: AbortSignal },
+): Promise<LinkedFolderInfo[]> {
+  const res = await apiFetch(
+    apiUrl(`/api/knowledge-bases/${encodeURIComponent(kbName)}/linked-folders`),
+    { signal: options?.signal },
+  );
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(
+        res,
+        `Failed to list linked folders (${res.status})`,
+      ),
+    );
+  }
+  return (await res.json()) as LinkedFolderInfo[];
+}
+
+export async function linkFolder(
+  kbName: string,
+  folderPath: string,
+): Promise<LinkedFolderInfo> {
+  const res = await apiFetch(
+    apiUrl(`/api/knowledge-bases/${encodeURIComponent(kbName)}/link-folder`),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ folder_path: folderPath }),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, `Failed to link folder (${res.status})`),
+    );
+  }
+  invalidateKnowledgeCaches();
+  return (await res.json()) as LinkedFolderInfo;
+}
+
+export async function unlinkFolder(
+  kbName: string,
+  folderId: string,
+): Promise<void> {
+  const res = await apiFetch(
+    apiUrl(
+      `/api/knowledge-bases/${encodeURIComponent(kbName)}/linked-folders/${encodeURIComponent(folderId)}`,
+    ),
+    { method: "DELETE" },
+  );
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, `Failed to unlink folder (${res.status})`),
+    );
+  }
+  invalidateKnowledgeCaches();
+}
+
+export async function syncLinkedFolder(
+  kbName: string,
+  folderId: string,
+): Promise<SyncFolderResponse> {
+  const res = await apiFetch(
+    apiUrl(
+      `/api/knowledge-bases/${encodeURIComponent(kbName)}/sync-folder/${encodeURIComponent(folderId)}`,
+    ),
+    { method: "POST" },
+  );
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, `Failed to sync linked folder (${res.status})`),
+    );
+  }
+  invalidateKnowledgeCaches();
+  return (await res.json()) as SyncFolderResponse;
 }
 
 export interface LightRagServerProbe {
@@ -1181,14 +1360,44 @@ export async function setDefaultKnowledgeBase(name: string): Promise<void> {
   invalidateKnowledgeCaches();
 }
 
+export interface LightRagRebuildConfig {
+  fingerprint: string;
+  indexing_policy: import("@/lib/knowledge-helpers").LightRagIndexingPolicy;
+  embedding: { model: string; dimension: number };
+  embedding_selection?: EmbeddingModelSelection | null;
+}
+
+export async function getReindexConfig(
+  name: string,
+  embeddingModel?: EmbeddingModelSelection,
+): Promise<LightRagRebuildConfig> {
+  const query = embeddingModel
+    ? `?${new URLSearchParams({ embedding_model: JSON.stringify(embeddingModel) })}`
+    : "";
+  const res = await apiFetch(
+    apiUrl(
+      `/api/knowledge-bases/${encodeURIComponent(name)}/reindex-config${query}`,
+    ),
+    { cache: "no-store" },
+  );
+  if (!res.ok)
+    throw new Error(
+      await readErrorDetail(res, "Failed to load rebuild configuration"),
+    );
+  return (await res.json()) as LightRagRebuildConfig;
+}
+
 export async function reindexKnowledgeBase(
   name: string,
-  indexingLLM?: IndexingLLMSelection,
+  configFingerprint?: string,
+  embeddingModel?: EmbeddingModelSelection,
 ): Promise<KnowledgeTaskResponse> {
   const request: RequestInit = { method: "POST" };
-  if (indexingLLM) {
+  if (configFingerprint || embeddingModel) {
     const form = new FormData();
-    form.append("indexing_llm", JSON.stringify(indexingLLM));
+    if (configFingerprint) form.append("config_fingerprint", configFingerprint);
+    if (embeddingModel)
+      form.append("embedding_model", JSON.stringify(embeddingModel));
     request.body = form;
   }
   const res = await apiFetch(
@@ -1206,30 +1415,6 @@ export async function reindexKnowledgeBase(
   }
   invalidateKnowledgeCaches();
   return (await res.json()) as KnowledgeTaskResponse;
-}
-
-export async function updatePendingIndexingPolicy(
-  name: string,
-  indexingLLM: IndexingLLMSelection,
-): Promise<{ indexing_policy: Record<string, unknown> }> {
-  const res = await apiFetch(
-    apiUrl(`/api/knowledge-bases/${encodeURIComponent(name)}/indexing-policy`),
-    {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(indexingLLM),
-    },
-  );
-  if (!res.ok) {
-    throw new Error(
-      await readErrorDetail(
-        res,
-        `Failed to update indexing model (${res.status})`,
-      ),
-    );
-  }
-  invalidateKnowledgeCaches();
-  return (await res.json()) as { indexing_policy: Record<string, unknown> };
 }
 
 export async function retryKnowledgeBase(
@@ -1397,6 +1582,8 @@ export interface WebSource {
   max_depth: number;
   max_pages: number;
   enabled: boolean;
+  auto_sync_enabled: boolean;
+  sync_interval_hours: number;
   page_count: number;
   last_synced_at: string;
   last_sync_status: string;
@@ -1426,6 +1613,23 @@ export interface WebSyncResult {
   ok: boolean;
   message: string;
   results: WebSyncSourceResult[];
+}
+
+export interface WebSourceSyncJob {
+  owner_id: string;
+  kb_name: string;
+  source_id: string;
+  state: string;
+  next_run_at: number;
+  last_run_at?: number | null;
+  attempt: number;
+  error?: string | null;
+  cancel_requested: boolean;
+}
+
+export interface WebSourceSchedulePayload {
+  auto_sync_enabled: boolean;
+  sync_interval_hours: number;
 }
 
 export async function listWebSources(
@@ -1485,6 +1689,82 @@ export async function removeWebSource(
     );
   }
   invalidateKnowledgeCaches();
+}
+
+export async function listWebSourceSyncJobs(
+  kbName: string,
+  options?: { signal?: AbortSignal },
+): Promise<WebSourceSyncJob[]> {
+  const res = await apiFetch(
+    apiUrl(
+      `/api/knowledge-bases/${encodeURIComponent(kbName)}/web-source-sync`,
+    ),
+    { signal: options?.signal },
+  );
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, `Failed to list sync jobs (${res.status})`),
+    );
+  }
+  return (await res.json()) as WebSourceSyncJob[];
+}
+
+export async function updateWebSourceSchedule(
+  kbName: string,
+  sourceId: string,
+  payload: WebSourceSchedulePayload,
+): Promise<WebSource> {
+  const res = await apiFetch(
+    apiUrl(
+      `/api/knowledge-bases/${encodeURIComponent(kbName)}/web-source/${encodeURIComponent(sourceId)}/schedule`,
+    ),
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, `Failed to update sync schedule (${res.status})`),
+    );
+  }
+  invalidateKnowledgeCaches();
+  return (await res.json()) as WebSource;
+}
+
+export async function cancelWebSourceSync(
+  kbName: string,
+  sourceId: string,
+): Promise<void> {
+  const res = await apiFetch(
+    apiUrl(
+      `/api/knowledge-bases/${encodeURIComponent(kbName)}/web-source/${encodeURIComponent(sourceId)}/cancel`,
+    ),
+    { method: "POST" },
+  );
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, `Failed to cancel sync (${res.status})`),
+    );
+  }
+}
+
+export async function retryWebSourceSync(
+  kbName: string,
+  sourceId: string,
+): Promise<void> {
+  const res = await apiFetch(
+    apiUrl(
+      `/api/knowledge-bases/${encodeURIComponent(kbName)}/web-source/${encodeURIComponent(sourceId)}/retry`,
+    ),
+    { method: "POST" },
+  );
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, `Failed to retry sync (${res.status})`),
+    );
+  }
 }
 
 export async function syncWebSources(kbName: string): Promise<WebSyncResult> {

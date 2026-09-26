@@ -294,12 +294,20 @@ class FileTypeRouter:
         for encoding in cls.TEXT_DECODING_CANDIDATES:
             try:
                 with open(file_path, "r", encoding=encoding) as f:
-                    return f.read()
+                    text = f.read()
+                break
             except UnicodeDecodeError:
                 continue
 
-        with open(file_path, "rb") as f:
-            return f.read().decode("utf-8", errors="replace")
+        else:
+            with open(file_path, "rb") as f:
+                text = f.read().decode("utf-8", errors="replace")
+
+        if Path(file_path).suffix.lower() == ".bib":
+            from deeptutor.utils.bibtex_converter import bibtex_to_markdown
+
+            return bibtex_to_markdown(text, Path(file_path).stem)
+        return text
 
     @classmethod
     def needs_parser(cls, file_path: str) -> bool:

@@ -13,7 +13,7 @@ function source(file: string): string {
  * reachability check is the only kind of test that would have caught it.
  */
 test("a learner can rename a path from the topic detail page", () => {
-  const page = source("app/(utility)/mastery/[pathId]/page.tsx");
+  const page = source("app/(workspace)/learning/mastery/[pathId]/page.tsx");
   const title = source("components/space/learning/PathTitle.tsx");
 
   assert.match(page, /import \{ PathTitle \}/);

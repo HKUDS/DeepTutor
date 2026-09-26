@@ -50,8 +50,8 @@ test("guardian actions follow each relationship permission", () => {
   assert.match(page, /can\("manage_restrictions"\)/);
   assert.match(page, /can\("reset_credentials"\)/);
   assert.match(page, /revokeMyGuardianRelationship/);
-  assert.match(page, /saveGuardianMaterials/);
-  assert.match(page, /saveGuardianRestrictions/);
+  assert.match(page, /guardian:materials:/);
+  assert.match(page, /guardian:restrictions:/);
   assert.match(page, /<ConfirmDialog/);
 });
 
@@ -64,28 +64,32 @@ test("administrators can create, review, revoke, and reset guardian access", () 
   assert.match(adminEditor, /PERMISSIONS/);
 });
 
-test("settings visibility is shared by the navigator and continuous document", () => {
+test("settings visibility is shared by the navigator and independent pages", () => {
   const nav = readWebFile("components", "settings", "SettingsNav.tsx");
-  const settingsPage = readWebFile("app", "(utility)", "settings", "page.tsx");
-  const layout = readWebFile("app", "(utility)", "settings", "layout.tsx");
+  const settingsPage = readWebFile(
+    "components",
+    "settings",
+    "SettingsPageContent.tsx",
+  );
+  const layout = readWebFile("app", "(settings)", "settings", "layout.tsx");
 
   assert.match(nav, /useSettingsAccess/);
-  assert.match(nav, /isSettingsCategoryVisible/);
+  assert.match(nav, /visibleSettingsPages/);
   assert.match(settingsPage, /useSettingsAccess/);
-  assert.match(settingsPage, /isSettingsCategoryVisible/);
+  assert.match(settingsPage, /visibleSettingsPages/);
   assert.match(settingsPage, /if \(!access\.resolved\)/);
   assert.match(layout, /<SettingsAccessProvider>/);
 });
 
 test("learner and guardian sections follow the resolved account type", () => {
   const learner = SETTINGS_CATEGORIES.find(
-    (category) => category.key === "learner-profile",
+    category => category.key === "learner-profile",
   )!;
   const guardian = SETTINGS_CATEGORIES.find(
-    (category) => category.key === "guardian",
+    category => category.key === "guardian",
   )!;
   const agents = SETTINGS_CATEGORIES.find(
-    (category) => category.key === "agents",
+    category => category.key === "agents",
   )!;
 
   assert.equal(

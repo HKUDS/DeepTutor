@@ -58,6 +58,15 @@ class _Collection:
 
     def _matches(self, record: _Record, query_params: dict | None) -> bool:
         flt = (query_params or {}).get("filter") or ""
+        workspace = re.search(r'preferences_json\.workspace_id=("(?:\\.|[^"\\])*"|null)', flt)
+        if workspace:
+            expected = json.loads(workspace.group(1)) or ""
+            prefs = getattr(record, "preferences_json", {}) or {}
+            if isinstance(prefs, str):
+                prefs = json.loads(prefs)
+            if (prefs.get("workspace_id") or "") != expected:
+                return False
+            flt = re.sub(r'preferences_json\.workspace_id=("(?:\\.|[^"\\])*"|null)', "", flt)
         role_pair = '(role="user" || role="assistant")'
         if role_pair in flt:
             if str(getattr(record, "role", "")) not in {"user", "assistant"}:
@@ -103,6 +112,9 @@ class _Collection:
         for key, value in data.items():
             setattr(record, key, value)
         return record
+
+    def get_one(self, pb_id: str) -> _Record:
+        return next(row for row in self._rows if row.id == pb_id)
 
     def delete(self, pb_id: str) -> None:
         self._rows = [r for r in self._rows if r.id != pb_id]
@@ -272,3 +284,47 @@ async def test_create_turn_rejects_foreign_session(fake_pb) -> None:
     with as_user("alice"):
         turn = await store.create_turn("s_t")
     assert turn["session_id"] == "s_t"
+
+
+async def test_permanent_delete_removes_owned_transcript_and_trace(fake_pb) -> None:
+    store = PocketBaseSessionStore()
+    for uid in ("alice", "bob"):
+        with as_user(uid):
+            await store.create_session(session_id=f"s_{uid}")
+            await store.add_message(f"s_{uid}", "user", f"{uid} private message")
+            for name in ("turns", "turn_events"):
+                fake_pb.collection(name).create({"session_id": f"s_{uid}"})
+    with as_user("bob"):
+        assert not await store.delete_session("s_alice")
+    with as_user("alice"):
+        assert await store.delete_session("s_alice")
+    for name in ("messages", "turns", "turn_events"):
+        rows = fake_pb.collection(name).get_full_list()
+        assert len(rows) == 1
+        assert rows[0].session_id == "s_bob"
+
+
+async def test_legacy_deleted_archive_migration_is_owner_scoped(fake_pb) -> None:
+    store = PocketBaseSessionStore()
+    for uid in ("alice", "bob"):
+        with as_user(uid):
+            await store.create_session(session_id=f"s_{uid}")
+            await store.soft_delete_session(f"s_{uid}")
+    with as_user("alice"):
+        await store.migrate_workspace_preferences()
+        rows = await store.list_sessions()
+        assert rows[0]["preferences"]["archived"] is True
+        assert await store.list_deleted_sessions() == []
+        assert await store.migrate_workspace_preferences() == 0
+    with as_user("bob"):
+        assert len(await store.list_deleted_sessions()) == 1
+
+
+async def test_session_pagination_handles_offsets_between_pages(fake_pb) -> None:
+    store = PocketBaseSessionStore()
+    with as_user("alice"):
+        for i in range(14):
+            await store.ensure_session(f"pagination-{i:02}")
+        full = await store.list_sessions(limit=20)
+        page = await store.list_sessions(limit=5, offset=7)
+        assert [row["session_id"] for row in page] == [row["session_id"] for row in full[7:12]]

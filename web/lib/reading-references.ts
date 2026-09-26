@@ -60,7 +60,8 @@ export function normalizeReadingReferences(
       typeof record.material_id === "string"
         ? record.material_id.trim().toLowerCase()
         : "";
-    if (!/^[0-9a-f]{8,64}$/.test(materialId)) continue;
+    // Same id shape the store accepts: content hashes and catalog rm_ ids.
+    if (!/^(?:[0-9a-f]{8,64}|rm_[0-9a-f]{12})$/.test(materialId)) continue;
     const revision = record.revision;
     if (
       typeof revision !== "number" ||

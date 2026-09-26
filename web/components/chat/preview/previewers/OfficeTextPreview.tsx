@@ -6,10 +6,8 @@ import FallbackPreview from "./FallbackPreview";
 import { useTextSource } from "./useTextSource";
 
 /**
- * DOCX / XLSX / PPTX preview using the backend-extracted plain text. Browsers
- * cannot natively render OOXML and we choose not to ship mammoth.js / sheetjs
- * to keep the bundle slim. Showing the extracted text doubles as "see what
- * the LLM read", which is itself useful in a study tool.
+ * Fallback for PowerPoint and legacy Office files when PDF conversion is
+ * unavailable. Showing extracted text also reveals what the assistant read.
  */
 export default function OfficeTextPreview({
   filename,

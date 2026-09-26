@@ -152,6 +152,15 @@ async def lifespan(app: FastAPI):
             len(migration_reports["workspace_preferences"]),
         )
 
+    try:
+        from deeptutor.learning.assessment import reconcile_linked_assessments
+
+        recovered, failed = await reconcile_linked_assessments()
+        if recovered or failed:
+            logger.info("Linked assessment recovery: recovered=%s failed=%s", recovered, failed)
+    except Exception:
+        logger.exception("Failed to reconcile linked assessments at startup")
+
     # Initialize LLM client early so OPENAI_* env vars are available before
     # any downstream provider integrations start.
     try:
@@ -202,6 +211,20 @@ async def lifespan(app: FastAPI):
         from deeptutor.services.github_source.sync_service import get_sync_service
 
         await get_sync_service().stop()
+
+    async def _start_web_source_sync() -> None:
+        from deeptutor.services.web_source.scheduler import (
+            start_web_source_sync_scheduler,
+        )
+
+        await start_web_source_sync_scheduler()
+
+    async def _stop_web_source_sync() -> None:
+        from deeptutor.services.web_source.scheduler import (
+            stop_web_source_sync_scheduler,
+        )
+
+        await stop_web_source_sync_scheduler()
 
     from deeptutor.runtime.coordination import BackgroundCommandKind
 
@@ -268,8 +291,18 @@ async def lifespan(app: FastAPI):
     background_supervisor = BackgroundLeaderSupervisor(
         application_container.coordinator,
         application_container.worker_id,
-        start_callbacks=[_start_partners, _start_cron, _start_github_sync],
-        stop_callbacks=[_stop_partners, _stop_cron, _stop_github_sync],
+        start_callbacks=[
+            _start_partners,
+            _start_cron,
+            _start_github_sync,
+            _start_web_source_sync,
+        ],
+        stop_callbacks=[
+            _stop_partners,
+            _stop_cron,
+            _stop_github_sync,
+            _stop_web_source_sync,
+        ],
         recovery_callback=application_container.recover_once,
         control_callback=_handle_background_command,
         renew_interval_seconds=application_container.settings.renew_interval_seconds,
@@ -366,6 +399,8 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Failed to stop EventBus: {e}")
 
 
+from deeptutor.services.workspace.activity import WorkspaceActivityMiddleware
+
 app = FastAPI(
     title="DeepTutor API",
     version="1.0.0",
@@ -376,6 +411,7 @@ app = FastAPI(
     # See: https://github.com/HKUDS/DeepTutor/issues/112
     redirect_slashes=False,
 )
+app.add_middleware(WorkspaceActivityMiddleware)
 
 
 @app.middleware("http")
@@ -497,6 +533,7 @@ from deeptutor.api.routers import (
     co_writer,
     courses,
     dashboard,
+    file_preview,
     imports,
     knowledge,
     marginnote4,
@@ -508,6 +545,7 @@ from deeptutor.api.routers import (
     partner_groups,
     partners,
     personas,
+    practice,
     question,
     question_notebook,
     quiz_judge,
@@ -545,6 +583,7 @@ app.include_router(
 # require_auth is a no-op when AUTH_ENABLED=false, so this is safe for local use.
 from deeptutor.api.routers.auth import (  # noqa: E402
     require_admin,
+    require_auth,
     require_learning_surface,
 )
 
@@ -562,6 +601,12 @@ app.include_router(
 )
 app.include_router(question.router, prefix="/api/question", tags=["question"], dependencies=_auth)
 app.include_router(knowledge.router, prefix="/api", tags=["knowledge-bases"], dependencies=_auth)
+app.include_router(
+    file_preview.router,
+    prefix="/api/file-preview",
+    tags=["file-preview"],
+    dependencies=[Depends(require_auth)],
+)
 app.include_router(imports.router, prefix="/api/imports", tags=["imports"], dependencies=_auth)
 app.include_router(
     dashboard.router, prefix="/api/dashboard", tags=["dashboard"], dependencies=_auth
@@ -618,6 +663,12 @@ app.include_router(
     question_notebook.router,
     prefix="/api/question-notebook",
     tags=["question-notebook"],
+    dependencies=_auth,
+)
+app.include_router(
+    practice.router,
+    prefix="/api/question-notebook/practice",
+    tags=["practice"],
     dependencies=_auth,
 )
 # Public UI-settings read (auth pages bootstrap the interface language

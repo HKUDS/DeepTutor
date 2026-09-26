@@ -13,14 +13,12 @@ import {
   kbRequiresLightRagRebuildBeforeAppend,
   providerUsesEmbeddingMetadata,
   resolveKbStatus,
-  resolveProgressPercent,
   uploadPolicyForProvider,
   validateFiles,
   type KnowledgeBase,
 } from "@/lib/knowledge-helpers";
 import type { TaskState } from "@/hooks/useKnowledgeProgress";
 import type { HistoryEntry } from "@/hooks/useKnowledgeHistory";
-import ProcessLogs from "@/components/common/ProcessLogs";
 import FileDropZone from "./FileDropZone";
 import KbIndexFailureBanner from "./KbIndexFailureBanner";
 import KbUpdateHistory from "./KbUpdateHistory";
@@ -91,11 +89,16 @@ export default function KbDocumentsSection({
   const publishedLightRagVersion =
     provider === "lightrag"
       ? kb.statistics?.index_versions?.find(
-          (version) => version.provider === "lightrag" && version.ready,
+          (version) =>
+            version.provider === "lightrag" &&
+            version.ready &&
+            (!kb.metadata?.embedding_selection ||
+              version.version === kb.metadata.indexed_version),
         )
       : undefined;
 
-  const isUploadingHere = task?.kind === "upload" && task.executing;
+  const isUploadingHere =
+    (task?.kind === "upload" || task?.kind === "sync") && task.executing;
   const isIndexingHere =
     (task?.kind === "reindex" || task?.kind === "retry") && task.executing;
   const isRetryingHere = task?.kind === "retry" && task.executing;
@@ -108,22 +111,30 @@ export default function KbDocumentsSection({
 
   const blockedReason = canUpload
     ? null
-    : requiresLightRagRebuild
+    : kb.metadata?.indexing_model_unavailable
       ? t(
-          "This legacy LightRAG index remains queryable, but it must be fully rebuilt before incremental uploads.",
+          "Restore access to the pinned indexing models in Settings before adding documents.",
         )
-      : needsReindex
-        ? t(
-            "This knowledge base is in legacy index format and needs reindex before upload.",
-          )
-        : status !== "ready"
+      : requiresLightRagRebuild
+        ? kb.metadata?.embedding_mismatch
           ? t(
-              "This knowledge base is currently {{status}} and cannot accept uploads yet.",
-              {
-                status: status.replaceAll("_", " "),
-              },
+              "The current embedding configuration does not match this index. Restore the original configuration or rebuild with the current embedding before querying or adding documents.",
             )
-          : null;
+          : t(
+              "This legacy LightRAG index remains queryable, but it must be fully rebuilt before incremental uploads.",
+            )
+        : needsReindex
+          ? t(
+              "This knowledge base is in legacy index format and needs reindex before upload.",
+            )
+          : status !== "ready"
+            ? t(
+                "This knowledge base is currently {{status}} and cannot accept uploads yet.",
+                {
+                  status: status.replaceAll("_", " "),
+                },
+              )
+            : null;
 
   const selection = validateFiles(files, policyForProvider, t);
   const canRetry = Boolean(onRetry) && isError && !isIndexingHere;
@@ -156,21 +167,6 @@ export default function KbDocumentsSection({
     }
   };
 
-  const percent = resolveProgressPercent(kb.progress);
-  const showTaskLogs =
-    task?.kind === "upload" ||
-    task?.kind === "create" ||
-    task?.kind === "reindex" ||
-    task?.kind === "retry";
-  const taskLogTitle =
-    task?.kind === "create"
-      ? t("Create Process")
-      : task?.kind === "retry"
-        ? t("Retry Process")
-        : task?.kind === "reindex"
-          ? t("Re-index Process")
-          : t("Upload Process");
-
   return (
     <div className="space-y-5">
       <div>
@@ -180,13 +176,18 @@ export default function KbDocumentsSection({
         <p className="mt-0.5 text-[11.5px] text-[var(--muted-foreground)]">
           {t(
             providerUsesEmbeddingMetadata(provider)
-              ? "Drop files here to add them to this knowledge base. New files are indexed against the active embedding model."
+              ? "Drop files here to add them to this knowledge base. New files use its bound embedding model."
               : "Drop files here",
+          )}
+        </p>
+        <p className="mt-1 text-[11px] leading-relaxed text-[var(--muted-foreground)]">
+          {t(
+            "Choosing a folder here is a one-time import. For a folder that stays in sync, use Linked folders.",
           )}
         </p>
       </div>
 
-      {provider === "lightrag" && (
+      {provider === "lightrag" && publishedLightRagVersion && (
         <LightRagIndexingProvenance
           policy={kb.metadata?.indexing_policy}
           version={publishedLightRagVersion}
@@ -218,7 +219,11 @@ export default function KbDocumentsSection({
                 )}
                 {retrySubmitting || isRetryingHere
                   ? t("Retrying…")
-                  : t("Retry indexing")}
+                  : t(
+                      provider === "lightrag"
+                        ? "Review rebuild"
+                        : "Retry indexing",
+                    )}
               </button>
             ) : undefined
           }
@@ -267,44 +272,6 @@ export default function KbDocumentsSection({
           {t("Upload")}
         </button>
       </div>
-
-      {showTaskLogs &&
-        task &&
-        (task.taskId || task.logs.length > 0 || task.executing) && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-[11px] text-[var(--muted-foreground)]">
-              <span>
-                {task.label}
-                {task.taskId ? ` · ${task.taskId}` : ""}
-              </span>
-              {task.executing && percent > 0 && (
-                <span className="font-medium text-[var(--foreground)]">
-                  {percent}%
-                </span>
-              )}
-            </div>
-            <ProcessLogs
-              logs={task.logs}
-              executing={task.executing}
-              title={taskLogTitle}
-            />
-            {task.executing && (
-              <div className="h-1.5 overflow-hidden rounded-full bg-[var(--border)]/70">
-                <div
-                  className="h-full rounded-full bg-[var(--primary)] transition-all duration-300"
-                  style={{ width: `${Math.max(percent, 4)}%` }}
-                />
-              </div>
-            )}
-            {task.error && (
-              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
-                <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed">
-                  {task.error}
-                </pre>
-              </div>
-            )}
-          </div>
-        )}
 
       <KbUpdateHistory entries={history} onClear={onClearHistory} />
     </div>

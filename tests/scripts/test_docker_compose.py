@@ -147,13 +147,13 @@ def test_container_docs_use_temporary_codex_oauth_bridge() -> None:
     """README links to the canonical guide, which owns the exact commands."""
     root = Path(__file__).resolve().parents[2]
     readme = (root / "README.md").read_text(encoding="utf-8")
-    guide = (root / "CONTAINERIZATION.md").read_text(encoding="utf-8")
+    guide = (root / "docs-for-user" / "CONTAINERIZATION.md").read_text(encoding="utf-8")
     heading = "### Temporary local Codex OAuth bridge"
     assert heading in guide, f"{heading} was renamed; update this test with it"
     section = guide.split(heading, 1)[1].split("\n### ", 1)[0]
     normalized_section = " ".join(section.replace("\\\n", " ").split())
 
-    assert "CONTAINERIZATION.md#temporary-local-codex-oauth-bridge" in readme
+    assert "docs-for-user/CONTAINERIZATION.md#temporary-local-codex-oauth-bridge" in readme
     assert "127.0.0.1:1455:3782" in section
     assert "127.0.0.1:1457:3782" in section
     for base_file in ("docker-compose.yml", "docker-compose.ghcr.yml"):
@@ -211,6 +211,23 @@ def test_supervisord_runs_as_root_with_unprivileged_children() -> None:
         assert "user=deeptutor" in section, (
             f"supervisord program '{name}' must run as deeptutor (user=deeptutor)"
         )
+
+
+def test_entrypoint_fail_fasts_on_unwritable_data_volume_without_root_app() -> None:
+    """Unraid bind mounts owned by a non-1000 host user must not start the app
+    as root, and chown failure must not be swallowed into a later misleading
+    'Knowledge base not initialized' error (#1458).
+    """
+    root = Path(__file__).resolve().parents[2]
+    content = (root / "Dockerfile").read_text(encoding="utf-8")
+
+    assert "chown -R deeptutor:deeptutor /app/data 2>/dev/null || true" not in content
+    assert "check_container_data_volume" in content
+    assert 'PUID="${PUID:-${DEEPTUTOR_PUID:-1000}}"' in content
+    assert "skipping PUID remap" in content
+    assert "PUID/PGID must be non-root" in content
+    assert "gosu deeptutor /usr/bin/supervisord" not in content
+    assert "user=deeptutor" in content
 
 
 def test_frontend_api_is_url_agnostic_passthrough() -> None:

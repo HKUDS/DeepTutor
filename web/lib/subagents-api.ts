@@ -17,36 +17,9 @@ export interface SubagentConnection {
   name: string;
   agent_kind: string;
   cwd: string;
-  /** Set for a partner connection (`agent_kind === "partner"`): the bound partner. */
-  partner_id?: string;
   description?: string;
   created_at?: string;
   updated_at?: string | null;
-}
-
-/**
- * A partner the current user may connect & consult. Admins get every partner;
- * non-admins get only the partners an admin has assigned to them. Identity-only
- * (no channel wiring / model selection) — that's what the connect flow needs.
- */
-export interface ConnectablePartner {
-  partner_id: string;
-  name: string;
-  description?: string;
-  emoji?: string;
-  color?: string;
-  avatar?: string;
-  language?: string;
-  running?: boolean;
-}
-
-export async function listConnectablePartners(): Promise<ConnectablePartner[]> {
-  const res = await apiFetch(apiUrl("/api/subagents/partners"), {
-    cache: "no-store",
-  });
-  if (!res.ok) throw new Error(`Request failed: ${res.status}`);
-  const data = (await res.json()) as { partners: ConnectablePartner[] };
-  return data.partners ?? [];
 }
 
 export async function detectSubagents(): Promise<SubagentBackendInfo[]> {
@@ -71,8 +44,6 @@ export async function connectSubagent(payload: {
   name: string;
   agent_kind: string;
   cwd?: string;
-  /** Required when `agent_kind === "partner"`: which partner to consult. */
-  partner_id?: string;
 }): Promise<SubagentConnection> {
   const res = await apiFetch(apiUrl("/api/subagents/connections"), {
     method: "POST",

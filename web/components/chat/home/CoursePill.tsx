@@ -35,14 +35,12 @@ export function CoursePill({
   courseId,
   onSelect,
   needsCourse,
-  compact = false,
 }: {
   courses: StudyCourse[];
   courseId: string;
   onSelect: (courseId: string) => void;
   /** True in Course Study, where an unbound conversation cannot do anything. */
   needsCourse: boolean;
-  compact?: boolean;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -109,11 +107,9 @@ export function CoursePill({
         ) : (
           <School size={15} strokeWidth={1.7} className="shrink-0" />
         )}
-        {compact && !unbound ? null : (
-          <span className="max-w-[150px] truncate">
-            {active?.name ?? t("Pick a course")}
-          </span>
-        )}
+        <span className="max-w-[150px] truncate">
+          {active?.name ?? t("Pick a course")}
+        </span>
         <ChevronDown
           size={12}
           strokeWidth={2}

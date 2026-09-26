@@ -38,7 +38,7 @@ describe("Invidious callback feedback", () => {
     expect(screen.getByRole("status")).toHaveTextContent(
       "Invidious account connected",
     );
-    expect(history).toHaveBeenCalledWith(null, "", "/watching");
+    expect(history).toHaveBeenCalledWith(null, "", "/learning/watching?dt_workspace=");
     history.mockRestore();
   });
 });

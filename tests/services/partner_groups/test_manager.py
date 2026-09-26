@@ -829,7 +829,7 @@ async def test_partner_trace_is_owner_visible_but_excluded_from_public_context(
 
 
 @pytest.mark.asyncio
-async def test_invoke_other_requires_approval_then_adds_one_public_followup(
+async def test_each_followup_can_propose_another_exchange_requiring_approval(
     group_runtime, monkeypatch
 ) -> None:
     manager, partners, group = group_runtime
@@ -856,19 +856,18 @@ async def test_invoke_other_requires_approval_then_adds_one_public_followup(
                     "question": "Which assumption would you test first?",
                 },
             )
-        assert kwargs["allow_invoke_other"] is False
+        assert kwargs["allow_invoke_other"] is True
         assert "My formal answer" in kwargs["public_context"]
         assert "source private trace" not in kwargs["public_context"]
         await kwargs["on_event"](target_trace)
         return PartnerGroupTurnResponse(
             content="I would test the boundary case.",
             events=[target_trace.to_dict()],
-            # Even a compromised/misbehaving invoked runner cannot make the
-            # orchestrator persist a second hop.
+            # A second hop is a new pending proposal, never automatic.
             invocation={
                 "target_partner_id": "socrates",
                 "target_partner_name": "Socrates",
-                "question": "This chained proposal must be ignored.",
+                "question": "Can you challenge this boundary case?",
             },
         )
 
@@ -911,8 +910,20 @@ async def test_invoke_other_requires_approval_then_adds_one_public_followup(
     assert history[-1]["content"] == "I would test the boundary case."
     assert history[-3]["invocation"]["status"] == "completed"
     invocations = manager.invocations(group.group_id, "invoke-session")
-    assert len(invocations) == 1
-    assert invocations[0]["question"] == "Which assumption would you test first?"
+    assert len(invocations) == 2
+    pending = next(item for item in invocations if item["status"] == "pending")
+    assert pending["question"] == "Can you challenge this boundary case?"
+    assert history[-1]["invocation_id"] == pending["invocation_id"]
+    assert pending["parent_turn_id"] == history[-1]["turn_id"]
+    assert len(calls) == 2, "the second hop also waits for explicit approval"
+    await manager.approve_invocation(
+        group.group_id, pending["invocation_id"], session_key="invoke-session"
+    )
+    assert len(calls) == 3
+    assert any(
+        item["status"] == "pending"
+        for item in manager.invocations(group.group_id, "invoke-session")
+    )
     assert manager.whiteboard(group.group_id) == []
 
 
@@ -1164,7 +1175,7 @@ async def test_user_created_invocation_uses_existing_approval_flow(
     async def send_group_message(partner_id, content, **kwargs):
         assert partner_id == "feynman"
         assert "Socrates asks you directly" in content
-        assert kwargs["allow_invoke_other"] is False
+        assert kwargs["allow_invoke_other"] is True
         return "The boundary case is zero."
 
     monkeypatch.setattr(partners, "send_group_message", send_group_message)
@@ -1260,3 +1271,147 @@ async def test_debate_clash_round_cannot_propose_peer_questions(group_runtime, m
 
     assert {flag for phase, flag in seen if phase == "opening"} == {True}
     assert {flag for phase, flag in seen if phase == "clash"} == {False}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("decision", ["approve", "reject"])
+async def test_chat_consult_waits_for_native_group_approval(group_runtime, monkeypatch, decision):
+    from deeptutor.services.partner_groups import consultation
+    import deeptutor.services.partner_groups.manager as module
+    from deeptutor.services.subagent.partner_group import PartnerGroupBackend
+
+    monkeypatch.setattr(consultation, "IDLE_SECONDS", 0.05)
+    manager, partners, group = group_runtime
+    monkeypatch.setattr(module, "get_partner_group_manager", lambda: manager)
+    followup_entered = asyncio.Event()
+    release_followup = asyncio.Event()
+
+    async def send(partner_id, content, **kwargs):
+        if "asks you directly" in content:
+            followup_entered.set()
+            await release_followup.wait()
+            return PartnerGroupTurnResponse(content="Approved follow-up conclusion")
+        return PartnerGroupTurnResponse(
+            content=f"Initial answer by {partner_id}",
+            invocation={"target_partner_id": "feynman", "question": "Check the boundary"}
+            if partner_id == "socrates"
+            else None,
+        )
+
+    monkeypatch.setattr(partners, "send_group_message", send)
+    events = []
+
+    async def on_event(event):
+        events.append(event)
+
+    task = asyncio.create_task(
+        PartnerGroupBackend().consult(
+            "Explain entropy",
+            on_event=on_event,
+            partner_id=group.group_id,
+            session_id="chat-test",
+        )
+    )
+    async with asyncio.timeout(3):
+        while not manager.invocations(group.group_id, "chat-test"):
+            await asyncio.sleep(0.01)
+    assert not task.done()
+    assert events[0].meta["partner_group_session_key"] == "chat-test"
+    invocation = manager.invocations(group.group_id, "chat-test")[0]
+    if decision == "approve":
+        live = manager.start_live_invocation(
+            group.group_id, invocation_id=invocation["invocation_id"], session_key="chat-test"
+        )
+        await asyncio.wait_for(followup_entered.wait(), 3)
+        assert not task.done()
+        release_followup.set()
+        await live.task
+    else:
+        manager.reject_invocation(
+            group.group_id, invocation["invocation_id"], session_key="chat-test"
+        )
+    result = await asyncio.wait_for(task, 3)
+    assert result.success
+    assert "Initial answer by socrates" in result.final_text
+    assert ("Approved follow-up conclusion" in result.final_text) == (decision == "approve")
+    assert ("completed" if decision == "approve" else "rejected") in result.final_text
+
+
+@pytest.mark.asyncio
+async def test_chat_consult_cancel_stops_group_generation(group_runtime, monkeypatch):
+    import deeptutor.services.partner_groups.manager as module
+    from deeptutor.services.subagent.partner_group import PartnerGroupBackend
+
+    manager, partners, group = group_runtime
+    monkeypatch.setattr(module, "get_partner_group_manager", lambda: manager)
+    started = asyncio.Event()
+    cancelled = asyncio.Event()
+
+    async def send(*args, **kwargs):
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.set()
+
+    monkeypatch.setattr(partners, "send_group_message", send)
+
+    async def on_event(event):
+        pass
+
+    task = asyncio.create_task(
+        PartnerGroupBackend().consult(
+            "Question",
+            on_event=on_event,
+            partner_id=group.group_id,
+        )
+    )
+    await asyncio.wait_for(started.wait(), 3)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert cancelled.is_set()
+
+
+@pytest.mark.asyncio
+async def test_chat_consult_includes_sidebar_questions_before_idle_boundary(
+    group_runtime, monkeypatch
+):
+    from deeptutor.services.partner_groups import consultation
+    import deeptutor.services.partner_groups.manager as module
+    from deeptutor.services.subagent.partner_group import PartnerGroupBackend
+
+    manager, partners, group = group_runtime
+    monkeypatch.setattr(module, "get_partner_group_manager", lambda: manager)
+    monkeypatch.setattr(consultation, "IDLE_SECONDS", 0.1)
+
+    async def send(partner_id, content, **kwargs):
+        return PartnerGroupTurnResponse(content=f"{partner_id} responds to {content}")
+
+    monkeypatch.setattr(partners, "send_group_message", send)
+    extra = None
+
+    async def on_event(event):
+        nonlocal extra
+        if event.meta.get("partner_group_idle_seconds") and extra is None:
+            manager.consultation_activity(group.group_id, "idle-test", "client", has_draft=True)
+            extra = manager.start_live_turn(
+                group.group_id, content="My follow-up", session_key="idle-test"
+            )
+            await extra.task
+            manager.consultation_activity(group.group_id, "idle-test", "client", has_draft=False)
+
+    result = await asyncio.wait_for(
+        PartnerGroupBackend().consult(
+            "Original question",
+            on_event=on_event,
+            partner_id=group.group_id,
+            session_id="idle-test",
+        ),
+        3,
+    )
+    assert result.success
+    assert "Original question" in result.final_text
+    assert "My follow-up" in result.final_text
+    assert "feynman responds to My follow-up" in result.final_text
+    assert not manager._consultations

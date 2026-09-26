@@ -1,5 +1,6 @@
 "use client";
 
+import { knowledgeBaseRef } from "@/lib/knowledge-helpers";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -37,6 +38,7 @@ export default function KbMarginNoteDevicesSection({
 }: {
   kb: KnowledgeBase;
 }) {
+  const kbRef = knowledgeBaseRef(kb);
   const { t } = useTranslation();
   const [devices, setDevices] = useState<MarginNoteDevice[] | null>(null);
   const [status, setStatus] = useState<MarginNoteLibraryStatus | null>(null);
@@ -49,8 +51,8 @@ export default function KbMarginNoteDevicesSection({
   const load = useCallback(async () => {
     try {
       const [list, summary] = await Promise.all([
-        listMarginNote4Devices(kb.name),
-        getMarginNote4Status(kb.name),
+        listMarginNote4Devices(kbRef),
+        getMarginNote4Status(kbRef),
       ]);
       setDevices(list);
       setStatus(summary);
@@ -62,7 +64,7 @@ export default function KbMarginNoteDevicesSection({
       setStatus(null);
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, [kb.name]);
+  }, [kbRef]);
 
   useEffect(() => {
     void load();
@@ -74,7 +76,7 @@ export default function KbMarginNoteDevicesSection({
     setError(null);
     try {
       const result = await pairMarginNote4Device({
-        kbName: kb.name,
+        kbName: kbRef,
         deviceName: deviceName.trim(),
       });
       setIssued(result);
@@ -91,7 +93,7 @@ export default function KbMarginNoteDevicesSection({
   const handleRevoke = async (deviceId: string) => {
     setError(null);
     try {
-      await revokeMarginNote4Device({ kbName: kb.name, deviceId });
+      await revokeMarginNote4Device({ kbName: kbRef, deviceId });
       if (issued?.device_id === deviceId) setIssued(null);
       await load();
     } catch (err) {

@@ -2,6 +2,19 @@
 
 import { apiFetch, apiUrl } from "@/lib/api";
 import type { LLMSelection } from "@/features/chat/model/protocol";
+import type { ChatWorkspaceRegistration } from "@/lib/workspaces-api";
+
+export async function getPartnerWorkspaces(
+  partnerId: string,
+): Promise<ChatWorkspaceRegistration[]> {
+  const response = await apiFetch(
+    apiUrl(`/api/partners/${encodeURIComponent(partnerId)}/workspaces`),
+  );
+  const result = await json<{ workspaces: ChatWorkspaceRegistration[] }>(
+    response,
+  );
+  return result.workspaces;
+}
 
 export interface PartnerInfo {
   partner_id: string;
@@ -9,6 +22,7 @@ export interface PartnerInfo {
   description: string;
   /** Account that created the partner; empty for admin-managed ones. */
   owner_id?: string;
+  workspace_id?: string;
   /**
    * Whether the signed-in user may configure this partner (its owner, or an
    * admin). False for a partner merely assigned to them, whose response is
@@ -91,6 +105,31 @@ export interface PartnerSessionInfo {
   scope?: string;
 }
 
+export interface PartnerWebContinuity {
+  enabled: boolean;
+  session_key: string | null;
+}
+
+export interface PartnerHistoryMessage {
+  role: string;
+  content: string;
+  timestamp?: string;
+  channel?: string;
+  sender_id?: string;
+  metadata?: Record<string, unknown>;
+  attachments?: Record<string, unknown>[];
+  /** Persisted turn trace (assistant rows only) for rehydrating activity. */
+  events?: Record<string, unknown>[];
+}
+
+export interface PartnerHistoryPage {
+  messages: PartnerHistoryMessage[];
+  next_before: number | null;
+  /** Index of the first record returned, and current record count. */
+  start: number;
+  total: number;
+}
+
 export interface PartnerCommandInfo {
   command: string;
   description: string;
@@ -104,6 +143,7 @@ export interface SoulSpec {
 }
 
 export interface CreatePartnerPayload {
+  workspace_id?: string;
   partner_id?: string;
   name: string;
   description?: string;
@@ -485,19 +525,7 @@ export async function getChannelSchemas(): Promise<ChannelsSchemaResponse> {
 export async function getPartnerHistory(
   partnerId: string,
   options?: { sessionKey?: string; sessionId?: string; limit?: number },
-): Promise<
-  {
-    role: string;
-    content: string;
-    timestamp?: string;
-    channel?: string;
-    sender_id?: string;
-    metadata?: Record<string, unknown>;
-    attachments?: Record<string, unknown>[];
-    /** Persisted turn trace (assistant rows only) for rehydrating activity. */
-    events?: Record<string, unknown>[];
-  }[]
-> {
+): Promise<PartnerHistoryMessage[]> {
   const params = new URLSearchParams();
   if (options?.sessionKey) params.set("session_key", options.sessionKey);
   if (options?.sessionId) params.set("session_id", options.sessionId);
@@ -506,6 +534,51 @@ export async function getPartnerHistory(
   return json(
     await apiFetch(
       apiUrl(`/api/partners/${encodeURIComponent(partnerId)}/history${query}`),
+    ),
+  );
+}
+
+export async function getPartnerHistoryPage(
+  partnerId: string,
+  sessionKey: string,
+  options?: { before?: number; limit?: number },
+): Promise<PartnerHistoryPage> {
+  const params = new URLSearchParams({ session_key: sessionKey });
+  if (options?.before !== undefined) params.set("before", String(options.before));
+  if (options?.limit !== undefined) params.set("limit", String(options.limit));
+  return json(
+    await apiFetch(
+      apiUrl(
+        `/api/partners/${encodeURIComponent(partnerId)}/history/page?${params.toString()}`,
+      ),
+      { cache: "no-store" },
+    ),
+  );
+}
+
+export async function getPartnerWebContinuity(
+  partnerId: string,
+): Promise<PartnerWebContinuity> {
+  return json(
+    await apiFetch(
+      apiUrl(`/api/partners/${encodeURIComponent(partnerId)}/web-continuity`),
+      { cache: "no-store" },
+    ),
+  );
+}
+
+export async function setPartnerWebContinuity(
+  partnerId: string,
+  state: PartnerWebContinuity,
+): Promise<PartnerWebContinuity> {
+  return json(
+    await apiFetch(
+      apiUrl(`/api/partners/${encodeURIComponent(partnerId)}/web-continuity`),
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(state),
+      },
     ),
   );
 }
@@ -525,8 +598,8 @@ async function postSessionAction(
   partnerId: string,
   action: "archive" | "resume" | "delete",
   sessionKey: string,
-): Promise<void> {
-  await json(
+): Promise<{ active_session_key: string | null }> {
+  return json(
     await apiFetch(
       apiUrl(
         `/api/partners/${encodeURIComponent(partnerId)}/sessions/${action}`,
@@ -556,7 +629,7 @@ export async function branchPartnerSession(
   partnerId: string,
   sourceKey: string,
   newKey: string,
-): Promise<{ session: PartnerSessionInfo }> {
+): Promise<{ session: PartnerSessionInfo; active_session_key: string | null }> {
   return json(
     await apiFetch(
       apiUrl(`/api/partners/${encodeURIComponent(partnerId)}/sessions/branch`),
@@ -672,4 +745,10 @@ export async function pollWeixinQr(
       { cache: "no-store" },
     ),
   );
+}
+
+/** Resolve older saved consultations which did not yet carry native session IDs. */
+export async function getPartnerConsultationSession(chatSessionId: string, partnerName: string): Promise<{ partner_id: string; session_key: string } | null> {
+  const query = new URLSearchParams({ chat_session_id: chatSessionId, partner_name: partnerName });
+  return json(await apiFetch(apiUrl(`/api/partners/consultation-session?${query}`)));
 }

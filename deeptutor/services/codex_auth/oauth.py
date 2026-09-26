@@ -342,6 +342,20 @@ class CodexOAuthClient:
                 data=data,
                 json=json_payload,
             )
+            if error_code == "token_refresh_failed" and response.status_code in {400, 401}:
+                try:
+                    rejection = response.json()
+                except ValueError:
+                    rejection = None
+                if isinstance(rejection, dict) and rejection.get("error") in {
+                    "invalid_grant",
+                    "invalid_token",
+                }:
+                    raise CodexAuthError(
+                        "token_refresh_rejected",
+                        "Codex sign-in could not be renewed. Sign in to Codex again.",
+                        401,
+                    )
             response.raise_for_status()
             payload = response.json()
             if not isinstance(payload, dict):

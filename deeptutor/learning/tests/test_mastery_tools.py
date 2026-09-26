@@ -487,6 +487,10 @@ async def test_grade_syncs_mastery_attempt_to_question_bank(path_id, session_sto
     assert entry["material_id"] == path_id
     assert entry["section_id"] == kp_id
     assert entry["section_title"] == "Truth tables"
+    assert entry["assessment_type"] == "quiz"
+    assert entry["result"] == "incorrect"
+    assert entry["mastery_path_id"] == path_id
+    assert entry["knowledge_point_id"] == kp_id
 
     # An idempotent retry with a changed model argument must not overwrite the
     # committed learner answer in the auxiliary question bank.
@@ -1264,7 +1268,7 @@ async def test_assess_passes_concept(path_id):
     assert result["next"]["action"] == "complete"
     progress = LearningStore().load(path_id)
     assert progress is not None
-    assert progress.repetition_states[concept_kp].interval_index == 0
+    assert progress.repetition_states[concept_kp].review_count == 1
     assert [task.knowledge_point_id for task in progress.review_queue] == [mem_kp, concept_kp]
 
 
@@ -1277,6 +1281,61 @@ async def test_assess_rejects_quantitative_type(path_id):
         _mastery_path_id=path_id, knowledge_point_id=mem_kp, passed=True
     )
     assert result.success is False
+
+
+@pytest.mark.asyncio
+async def test_assess_syncs_qualitative_record_to_question_bank(path_id, session_store):
+    session = await session_store.create_session(title="Qualitative Session")
+    await _build_basic(path_id)
+    status = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
+    mem_kp = status["next"]["knowledge_point_id"]
+    for _ in range(3):
+        await MasteryQuizTool().execute(
+            _mastery_path_id=path_id, knowledge_point_id=mem_kp, question="q", expected_answer="a"
+        )
+        await MasteryGradeTool().execute(
+            _mastery_path_id=path_id,
+            _session_id=session["id"],
+            _turn_id="turn_mem",
+            answer="a",
+        )
+
+    status2 = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
+    concept_kp = status2["next"]["knowledge_point_id"]
+    await MasteryAssessTool().execute(
+        _mastery_path_id=path_id,
+        _session_id=session["id"],
+        _turn_id="turn_qual",
+        knowledge_point_id=concept_kp,
+        passed=True,
+        feedback="XOR is exclusive or.",
+    )
+    await MasteryAssessTool().execute(
+        _mastery_path_id=path_id,
+        _session_id=session["id"],
+        _turn_id="turn_qual",
+        knowledge_point_id=concept_kp,
+        passed=True,
+        feedback="XOR is exclusive or.",
+    )
+
+    qualitative = await session_store.list_notebook_entries(assessment_type="qualitative")
+    assert qualitative["total"] == 1
+    entry = qualitative["items"][0]
+    assert entry["source"] == "mastery_path"
+    assert entry["result"] == "correct"
+    assert entry["mastery_path_id"] == path_id
+    assert entry["knowledge_point_id"] == concept_kp
+    assert entry["question_id"] == f"qual:{concept_kp}"
+    assert entry["user_answer"] == "XOR is exclusive or."
+    assert entry["quality"] == 1.0
+    progress = LearningStore().load(path_id)
+    assert progress is not None
+    assert progress.repetition_states[concept_kp].review_count == 1
+    assert (
+        len([item for item in progress.learning_evidence if item.knowledge_point_id == concept_kp])
+        == 1
+    )
 
 
 # ── path switching: a conversation is not bound to one path ───────────────
@@ -1598,6 +1657,160 @@ async def test_revise_rewrites_a_waypoint_and_resets_only_its_progress(path_id):
     assert payload["progress_reset"] == ["XOR 的意义"]
     # The untouched waypoint keeps its identity, and so its evidence.
     assert payload["knowledge_points"][0]["id"] == module["knowledge_points"][0]["id"]
+
+
+@pytest.mark.asyncio
+async def test_build_append_resolves_client_refs_to_final_map_ids(path_id):
+    from deeptutor.tools.mastery_tool import MasteryBuildTool
+
+    await MasteryBuildTool().execute(
+        _mastery_path_id=path_id,
+        modules=[{"name": "Foundations", "knowledge_points": [{"name": "Vectors"}]}],
+    )
+
+    built = await MasteryBuildTool().execute(
+        _mastery_path_id=path_id,
+        mode="append",
+        modules=[
+            {
+                "name": "Products",
+                "knowledge_points": [
+                    {
+                        "client_ref": "dot-product",
+                        "name": "Dot product",
+                        "prerequisite_refs": ["test_path_m0_kp0"],
+                    }
+                ],
+            }
+        ],
+    )
+
+    assert built.success, built.content
+    payload = json.loads(built.content)
+    modules = payload["map"]["modules"]
+    appended = modules[1]["knowledge_points"][0]
+    assert appended["id"] == "test_path_m1_kp0"
+    assert appended["prerequisite_ids"] == [modules[0]["knowledge_points"][0]["id"]]
+
+
+@pytest.mark.asyncio
+async def test_revise_rewrites_edges_across_modules(path_id):
+    from deeptutor.tools.mastery_tool import MasteryBuildTool, MasteryReviseTool
+
+    await MasteryBuildTool().execute(
+        _mastery_path_id=path_id,
+        modules=[
+            {"name": "Foundations", "knowledge_points": [{"name": "Sets"}]},
+            {"name": "Relations", "knowledge_points": [{"name": "Functions"}]},
+        ],
+    )
+    await MasteryBuildTool().execute(
+        _mastery_path_id=path_id,
+        mode="append",
+        modules=[
+            {
+                "name": "Applications",
+                "knowledge_points": [
+                    {
+                        "name": "Composition",
+                        "prerequisite_refs": ["test_path_m0_kp0"],
+                    }
+                ],
+            }
+        ],
+    )
+
+    revised = await MasteryReviseTool().execute(
+        _mastery_path_id=path_id,
+        module_id="test_path_m0",
+        rewrite=[{"knowledge_point_id": "test_path_m0_kp0", "name": "Sets and subsets"}],
+    )
+
+    payload = json.loads(revised.content)
+    rewritten = payload["map"]["modules"][0]["knowledge_points"][0]
+    dependent = payload["map"]["modules"][2]["knowledge_points"][0]
+    assert rewritten["id"] != "test_path_m0_kp0"
+    assert dependent["prerequisite_ids"] == [rewritten["id"]]
+
+
+@pytest.mark.asyncio
+async def test_revise_remove_reports_every_dependent_across_modules(path_id):
+    from deeptutor.tools.mastery_tool import MasteryBuildTool, MasteryReviseTool
+
+    await MasteryBuildTool().execute(
+        _mastery_path_id=path_id,
+        modules=[
+            {"name": "Foundations", "knowledge_points": [{"name": "Sets"}]},
+            {"name": "Relations", "knowledge_points": [{"name": "Functions"}]},
+        ],
+    )
+    await MasteryBuildTool().execute(
+        _mastery_path_id=path_id,
+        mode="append",
+        modules=[
+            {
+                "name": "Applications",
+                "knowledge_points": [
+                    {"name": "Composition", "prerequisite_refs": ["test_path_m0_kp0"]},
+                    {"name": "Inverses", "prerequisite_refs": ["test_path_m0_kp0"]},
+                ],
+            }
+        ],
+    )
+
+    refused = await MasteryReviseTool().execute(
+        _mastery_path_id=path_id,
+        module_id="test_path_m0",
+        remove=["test_path_m0_kp0"],
+    )
+
+    assert refused.success is False
+    assert "Composition" in refused.content
+    assert "Inverses" in refused.content
+    assert "Remove or change" in refused.content
+
+
+@pytest.mark.asyncio
+async def test_revise_relation_omission_inherits_and_empty_clears(path_id):
+    from deeptutor.tools.mastery_tool import MasteryBuildTool, MasteryReviseTool
+
+    await MasteryBuildTool().execute(
+        _mastery_path_id=path_id,
+        modules=[
+            {
+                "name": "Logic",
+                "knowledge_points": [
+                    {"client_ref": "truth-tables", "name": "Truth tables"},
+                    {
+                        "name": "Equivalence",
+                        "prerequisite_refs": ["truth-tables"],
+                    },
+                ],
+            }
+        ],
+    )
+    inherited = await MasteryReviseTool().execute(
+        _mastery_path_id=path_id,
+        module_id="test_path_m0",
+        rewrite=[{"knowledge_point_id": "test_path_m0_kp1", "name": "Logical equivalence"}],
+    )
+    assert inherited.success, inherited.content
+    inherited_point = json.loads(inherited.content)["knowledge_points"][1]
+    assert inherited_point["prerequisite_ids"] == ["test_path_m0_kp0"]
+
+    cleared = await MasteryReviseTool().execute(
+        _mastery_path_id=path_id,
+        module_id="test_path_m0",
+        rewrite=[
+            {
+                "knowledge_point_id": inherited_point["id"],
+                "name": "Logical equivalence without a required prerequisite",
+                "prerequisite_ids": [],
+            }
+        ],
+    )
+    cleared_point = json.loads(cleared.content)["knowledge_points"][1]
+    assert cleared_point["prerequisite_ids"] == []
 
 
 @pytest.mark.asyncio

@@ -73,10 +73,17 @@ def _rag_sources(result: dict[str, Any], *, query: str, kb_name: str) -> list[di
     LightRAG-server pipelines). Forward those so a grounded claim is traceable
     to the chunk / entity / report behind it; without this the tool reported
     only an echo of its own query (issue #694). ``type``/``kb_name`` are kept on
-    every entry so consumers that key on them still work, and an engine that
-    surfaces no provenance still yields the echo rather than nothing.
+    every entry so consumers that key on them still work. Only a successful
+    non-empty answer may use the query echo as a fallback; an empty or failed
+    search has no source to cite (issue #1500).
     """
     retrieved = [item for item in (result.get("sources") or []) if isinstance(item, dict)]
+    if not retrieved and (
+        result.get("error_type")
+        or result.get("needs_reindex")
+        or not (result.get("answer") or result.get("content"))
+    ):
+        return []
     if not retrieved:
         return [{"type": "rag", "query": query, "kb_name": kb_name}]
     return [{"type": "rag", "kb_name": kb_name, **item} for item in retrieved]
@@ -124,10 +131,21 @@ class RAGTool(_PromptHintsMixin, BaseTool):
             **extra_kwargs,
         )
         content = result.get("answer") or result.get("content", "")
+        failed = bool(result.get("error_type") or result.get("needs_reindex"))
+        if not content and result.get("error_type"):
+            content = f"Knowledge base '{kb_name}' search failed ({result['error_type']})."
+        elif not content and result.get("needs_reindex"):
+            content = f"Knowledge base '{kb_name}' needs reindexing before it can be searched."
+        elif not content and not result.get("sources"):
+            content = (
+                f"No matching content was found in knowledge base '{kb_name}'. "
+                "The search completed successfully."
+            )
         return ToolResult(
             content=content,
             sources=_rag_sources(result, query=query, kb_name=kb_name),
             metadata=result,
+            success=not failed,
         )
 
 
@@ -465,6 +483,129 @@ class PaperSearchToolWrapper(_PromptHintsMixin, BaseTool):
                 for paper in papers
             ],
             metadata={"provider": "arxiv", "papers": papers},
+        )
+
+
+class ZoteroSearchToolWrapper(_PromptHintsMixin, BaseTool):
+    """Search the user-supplied Zotero library through the public Web API."""
+
+    _ERROR_MESSAGES = {
+        "invalid_api_key": "The Zotero API key is invalid or cannot access this private library.",
+        "library_not_found": "No Zotero library was found for that user ID.",
+        "rate_limited": "Zotero rate-limited the search. Please try again later.",
+        "network_unavailable": "Zotero is temporarily unavailable. Check the network and try again.",
+        "invalid_response": "Zotero returned an unexpected response.",
+    }
+
+    def get_definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name="zotero_search",
+            description=(
+                "Search a Zotero user library by title, creator, or year. Requires the "
+                "numeric Zotero user ID; an API key is needed only for private libraries."
+            ),
+            parameters=[
+                ToolParameter(name="query", type="string", description="Search query."),
+                ToolParameter(
+                    name="user_id",
+                    type="string",
+                    description="Numeric Zotero user ID from the Zotero account settings page.",
+                ),
+                ToolParameter(
+                    name="api_key",
+                    type="string",
+                    description="Zotero API key, required only for a private library.",
+                    required=False,
+                    default="",
+                    sensitive=True,
+                ),
+                ToolParameter(
+                    name="max_results",
+                    type="integer",
+                    description="Maximum references to return (1-25).",
+                    required=False,
+                    default=5,
+                ),
+            ],
+        )
+
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        from deeptutor.tools.zotero_search import ZoteroSearchClient, ZoteroSearchError
+
+        query = str(kwargs.get("query") or "").strip()
+        user_id = str(kwargs.get("user_id") or "").strip()
+        if not query:
+            return ToolResult(content="Error: query is required.", success=False)
+        if not user_id:
+            return ToolResult(
+                content="Error: user_id is required. It is available in Zotero account settings.",
+                success=False,
+            )
+
+        try:
+            items = await ZoteroSearchClient().search(
+                query=query,
+                user_id=user_id,
+                api_key=str(kwargs.get("api_key") or ""),
+                max_results=kwargs.get("max_results", 5),
+            )
+        except ZoteroSearchError as exc:
+            message = self._ERROR_MESSAGES.get(
+                exc.code, "Zotero search failed. Check the user ID and try again."
+            )
+            return ToolResult(
+                content=message,
+                sources=[],
+                metadata={
+                    "provider": "zotero",
+                    "items": [],
+                    "error": exc.code,
+                    "status_code": exc.status_code,
+                },
+                success=False,
+            )
+        except ValueError:
+            return ToolResult(
+                content="Error: Zotero user_id and max_results are invalid.",
+                success=False,
+                metadata={"provider": "zotero", "items": []},
+            )
+
+        if not items:
+            return ToolResult(
+                content="No Zotero references matched this query.",
+                sources=[],
+                metadata={"provider": "zotero", "items": []},
+            )
+
+        lines: list[str] = []
+        for item in items:
+            year = item.get("year") or "undated"
+            lines.append(f"**{item['title']}** ({year})")
+            if item.get("authors"):
+                lines.append(f"Authors: {', '.join(item['authors'])}")
+            if item.get("doi"):
+                lines.append(f"DOI: {item['doi']}")
+            if item.get("url"):
+                lines.append(f"URL: {item['url']}")
+            if item.get("abstract"):
+                lines.append(f"Abstract: {item['abstract'][:400]}")
+            lines.append("")
+
+        return ToolResult(
+            content="\n".join(lines),
+            sources=[
+                {
+                    "type": "reference",
+                    "provider": "zotero",
+                    "title": item.get("title", ""),
+                    "url": item.get("zotero_url") or item.get("url", ""),
+                    "doi": item.get("doi", ""),
+                    "zotero_key": item.get("zotero_key", ""),
+                }
+                for item in items
+            ],
+            metadata={"provider": "zotero", "items": items},
         )
 
 
@@ -936,13 +1077,17 @@ class QuestionBankTool(_PromptHintsMixin, BaseTool):
         return ToolDefinition(
             name="question_bank",
             description=(
-                "Read and organise the learner's question bank — the graded "
-                "quiz questions saved under Learning Space → Question Bank. "
-                "This is where wrong answers and quiz history live; it is NOT "
-                "the notebook (`write_note`). Use it whenever the learner asks "
-                "to review, group, file, or tidy their questions or mistakes. "
+                "Read, organise, and record the learner's question bank — the "
+                "graded quiz questions saved under Learning Space → Question "
+                "Bank. This is where wrong answers and quiz history live; it is "
+                "NOT the notebook (`write_note`). Use it whenever the learner "
+                "asks to review, group, file, or tidy their questions or "
+                "mistakes, or when they own up to a mistake worth keeping. "
                 "action='overview' for counts + existing categories; "
                 "action='list' to see entries (each prefixed with its id); "
+                "action='record' to save one wrong question from this "
+                "conversation into the bank the learner reviews (add "
+                "`category` to file it in the same call); "
                 "action='organize' to file entry_ids into a category by name "
                 "(the category is created if it does not exist); "
                 "action='unfile' to remove them; "
@@ -954,9 +1099,51 @@ class QuestionBankTool(_PromptHintsMixin, BaseTool):
                     type="string",
                     description=(
                         "'overview' (counts + categories, needs nothing else), "
-                        "'list', 'organize', 'unfile', or 'bookmark'."
+                        "'list', 'record', 'organize', 'unfile', or 'bookmark'."
                     ),
                     enum=list(QB_ACTIONS),
+                ),
+                ToolParameter(
+                    name="question",
+                    type="string",
+                    description=(
+                        "For action='record'. The problem itself, as close to "
+                        "the learner's wording or photo as possible. Recording "
+                        "the same question again updates the existing entry."
+                    ),
+                    required=False,
+                ),
+                ToolParameter(
+                    name="user_answer",
+                    type="string",
+                    description=(
+                        "For action='record'. What the learner answered, if they attempted it."
+                    ),
+                    required=False,
+                ),
+                ToolParameter(
+                    name="correct_answer",
+                    type="string",
+                    description="For action='record'. The correct answer, if known.",
+                    required=False,
+                ),
+                ToolParameter(
+                    name="explanation",
+                    type="string",
+                    description=(
+                        "For action='record'. Why the correct answer is right — "
+                        "the coaching the learner just received, condensed."
+                    ),
+                    required=False,
+                ),
+                ToolParameter(
+                    name="is_correct",
+                    type="boolean",
+                    description=(
+                        "For action='record'. Whether the learner answered "
+                        "correctly. Default false — a recorded mistake."
+                    ),
+                    required=False,
                 ),
                 ToolParameter(
                     name="filter",
@@ -974,8 +1161,10 @@ class QuestionBankTool(_PromptHintsMixin, BaseTool):
                     type="string",
                     description=(
                         "Category name. Required for 'organize' / 'unfile'; "
-                        "optional on 'list' to look inside one category. "
-                        "'organize' creates the category when it is new."
+                        "optional on 'list' to look inside one category and on "
+                        "'record' to file the new entry in the same call. "
+                        "'organize' and 'record' create the category when it "
+                        "is new."
                     ),
                     required=False,
                 ),
@@ -1021,6 +1210,11 @@ class QuestionBankTool(_PromptHintsMixin, BaseTool):
             category=str(kwargs.get("category") or ""),
             search=str(kwargs.get("search") or ""),
             entry_ids=kwargs.get("entry_ids"),
+            question=str(kwargs.get("question") or ""),
+            user_answer=str(kwargs.get("user_answer") or ""),
+            correct_answer=str(kwargs.get("correct_answer") or ""),
+            explanation=str(kwargs.get("explanation") or ""),
+            is_correct=bool(kwargs.get("is_correct", False)),
             bookmarked=bool(kwargs.get("bookmarked", True)),
             limit=int(kwargs.get("limit") or 20),
         )
@@ -1403,34 +1597,22 @@ class ReadSkillTool(_PromptHintsMixin, BaseTool):
         )
 
     async def execute(self, **kwargs: Any) -> ToolResult:
-        from deeptutor.services.skill import get_skill_service
         from deeptutor.services.skill.service import (
             InvalidSkillNameError,
             InvalidSkillPathError,
             SkillFileNotFoundError,
             SkillNotFoundError,
-            SkillService,
         )
 
-        name = str(kwargs.get("name") or "").strip()
+        name = str(kwargs.get("name") or "").strip().lower()
         rel_path = str(kwargs.get("file") or "SKILL.md").strip() or "SKILL.md"
         if not name:
             raise ValueError("read_skill requires a skill name.")
 
-        services: list[SkillService] = [get_skill_service()]
-        try:
-            from deeptutor.multi_user.context import get_current_user
-            from deeptutor.multi_user.paths import get_admin_path_service
-            from deeptutor.multi_user.skill_access import assigned_skill_ids
+        from deeptutor.services.skill.runtime import runtime_skills
 
-            user = get_current_user()
-            if not user.is_admin and name in assigned_skill_ids(user.id):
-                services.append(
-                    SkillService(root=get_admin_path_service().get_workspace_dir() / "skills")
-                )
-        except Exception:
-            logger.debug("read_skill: assigned-skill scope unavailable", exc_info=True)
-
+        visible = runtime_skills()
+        services = [visible[name]] if name in visible else []
         for service in services:
             try:
                 content = service.read_skill_file(name, rel_path)
@@ -1459,9 +1641,7 @@ class ReadSkillTool(_PromptHintsMixin, BaseTool):
                 content=content,
                 metadata={"skill": name, "file": rel_path, "char_count": len(content)},
             )
-        available_names: set[str] = set()
-        for service in services:
-            available_names.update(skill.name for skill in service.list_skills())
+        available_names = set(visible)
         available_skills = ", ".join(sorted(available_names))
         available_hint = f". Available skills: {available_skills}" if available_skills else ""
         return ToolResult(
@@ -1653,6 +1833,7 @@ USER_TOGGLEABLE_TOOL_NAMES: tuple[str, ...] = (
     "brainstorm",
     "web_search",
     "paper_search",
+    "zotero_search",
     "reason",
     "geogebra_analysis",
     "imagegen",
@@ -1740,6 +1921,7 @@ __all__ = [
     "ListNotebookTool",
     "PaperSearchToolWrapper",
     "QuestionBankTool",
+    "ZoteroSearchToolWrapper",
     "PartnerMemorizeTool",
     "PartnerReadTool",
     "PartnerSearchTool",

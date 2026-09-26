@@ -5,12 +5,15 @@ import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import { fetchAuthStatus } from "@/lib/auth";
 import {
+  deleteUsers,
   listUsers,
   deleteUser,
   setUserRole,
   createUser,
+  importUsers,
   type UserRecord,
   type AccountPreset,
+  type UserImportResult,
 } from "@/lib/admin-api";
 import { GrantEditor } from "@/features/multi-user/components/GrantEditor";
 import { BookPermissionEditor } from "@/features/multi-user/components/BookPermissionEditor";
@@ -28,6 +31,7 @@ import {
   RefreshCw,
   ArrowLeft,
   SlidersHorizontal,
+  Upload,
   UserPlus,
   Users,
   X,
@@ -58,7 +62,11 @@ export default function AdminUsersPage() {
   const [actionError, setActionError] = useState("");
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showImportDialog, setShowImportDialog] = useState(false);
   const [query, setQuery] = useState("");
+  const [selectedUsernames, setSelectedUsernames] = useState<string[]>([]);
+  const [showBatchDeleteConfirm, setShowBatchDeleteConfirm] = useState(false);
+  const [batchDeleteBusy, setBatchDeleteBusy] = useState(false);
   const [confirmTarget, setConfirmTarget] = useState<{
     kind: "delete" | "promote" | "demote";
     user: UserRecord;
@@ -69,6 +77,10 @@ export default function AdminUsersPage() {
   const [createPreset, setCreatePreset] = useState<AccountPreset>("standard");
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [createError, setCreateError] = useState("");
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importSubmitting, setImportSubmitting] = useState(false);
+  const [importError, setImportError] = useState("");
+  const [importResult, setImportResult] = useState<UserImportResult | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -104,6 +116,19 @@ export default function AdminUsersPage() {
     setCreatePreset("standard");
     setCreateError("");
     setShowCreateDialog(true);
+  }
+
+  function openImportDialog() {
+    setImportFile(null);
+    setImportError("");
+    setImportResult(null);
+    setImportSubmitting(false);
+    setShowImportDialog(true);
+  }
+
+  function closeImportDialog() {
+    if (importSubmitting) return;
+    setShowImportDialog(false);
   }
 
   function closeCreateDialog() {
@@ -176,6 +201,70 @@ export default function AdminUsersPage() {
     }
   }
 
+  async function handleImportSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    if (importSubmitting) return;
+    if (!importFile) {
+      setImportError(t("Select a CSV file."));
+      return;
+    }
+    setImportSubmitting(true);
+    setImportError("");
+    try {
+      const result = await importUsers(importFile);
+      setImportResult(result);
+      await load();
+    } catch (e) {
+      setImportError(
+        e instanceof Error ? e.message : t("Failed to import users"),
+      );
+    } finally {
+      setImportSubmitting(false);
+    }
+  }
+
+  function toggleSelectedUsername(username: string) {
+    setSelectedUsernames((current) =>
+      current.includes(username)
+        ? current.filter((item) => item !== username)
+        : [...current, username],
+    );
+  }
+
+  async function handleBatchDeleteConfirm() {
+    if (batchDeleteBusy || selectedUsernames.length === 0) return;
+    setBatchDeleteBusy(true);
+    setActionError("");
+    try {
+      const result = await deleteUsers(selectedUsernames);
+      const failed = new Set(
+        result.results
+          .filter((item) => !item.ok)
+          .map((item) => item.username),
+      );
+      setSelectedUsernames((current) =>
+        current.filter((username) => failed.has(username)),
+      );
+      setShowBatchDeleteConfirm(false);
+      await load();
+      if (failed.size > 0) {
+        setActionError(
+          t("{{count}} users could not be deleted: {{users}}", {
+            count: failed.size,
+            users: [...failed].join(", "),
+          }),
+        );
+      }
+    } catch (e) {
+      setShowBatchDeleteConfirm(false);
+      setActionError(
+        e instanceof Error ? e.message : t("Failed to delete users"),
+      );
+    } finally {
+      setBatchDeleteBusy(false);
+    }
+  }
+
   useEffect(() => {
     if (!expandedUserId) return;
     const expanded = users.find((user) => user.id === expandedUserId);
@@ -184,8 +273,26 @@ export default function AdminUsersPage() {
     }
   }, [expandedUserId, users]);
 
+  useEffect(() => {
+    if (selectedUsernames.length === 0) return;
+    const usernames = new Set(users.map((user) => user.username));
+    setSelectedUsernames((current) => {
+      const retained = current.filter((username) => usernames.has(username));
+      return retained.length === current.length ? current : retained;
+    });
+  }, [users, selectedUsernames]);
+
   const normalizedQuery = query.trim().toLowerCase();
   const filteredUsers = filterUsersByQuery(users, query);
+  const selectableFilteredUsers = filteredUsers.filter(
+    (user) => user.username !== currentUser,
+  );
+  const selectedUsernameSet = new Set(selectedUsernames);
+  const allFilteredSelected =
+    selectableFilteredUsers.length > 0 &&
+    selectableFilteredUsers.every((user) =>
+      selectedUsernameSet.has(user.username),
+    );
 
   return (
     <div className="h-screen overflow-y-auto bg-[var(--background)] px-4 py-10 [scrollbar-gutter:stable]">
@@ -217,6 +324,15 @@ export default function AdminUsersPage() {
               >
                 <UserPlus size={14} />
                 {t("Add user")}
+              </button>
+              <button
+                onClick={openImportDialog}
+                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm
+                           border border-[var(--border)] text-[var(--foreground)]
+                           hover:bg-[var(--card)] transition-colors"
+              >
+                <Upload size={14} />
+                {t("Import users")}
               </button>
               <button
                 onClick={load}
@@ -270,6 +386,29 @@ export default function AdminUsersPage() {
                     count: users.length,
                   })}
             </span>
+          </div>
+        )}
+
+        {!loading && !error && selectedUsernames.length > 0 && (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-3">
+            <span className="text-sm text-[var(--muted-foreground)]">
+              {t("{{count}} users selected", { count: selectedUsernames.length })}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setSelectedUsernames([])}
+                className="rounded-lg px-3 py-1.5 text-sm text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors"
+              >
+                {t("Clear selection")}
+              </button>
+              <button
+                onClick={() => setShowBatchDeleteConfirm(true)}
+                className="flex items-center gap-1.5 rounded-lg border border-red-500/40 px-3 py-1.5 text-sm text-red-600 hover:bg-red-500/10 transition-colors dark:text-red-400"
+              >
+                <Trash2 size={14} />
+                {t("Delete selected")}
+              </button>
+            </div>
           </div>
         )}
 
@@ -340,6 +479,30 @@ export default function AdminUsersPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--border)] text-left text-xs text-[var(--muted-foreground)] uppercase tracking-wider">
+                  <th className="w-12 px-5 py-3">
+                    <input
+                      type="checkbox"
+                      checked={allFilteredSelected}
+                      disabled={selectableFilteredUsers.length === 0}
+                      onChange={() => {
+                        const displayed = new Set(
+                          selectableFilteredUsers.map((user) => user.username),
+                        );
+                        setSelectedUsernames((current) =>
+                          allFilteredSelected
+                            ? current.filter((username) => !displayed.has(username))
+                            : [
+                                ...current,
+                                ...selectableFilteredUsers
+                                  .map((user) => user.username)
+                                  .filter((username) => !current.includes(username)),
+                              ],
+                        );
+                      }}
+                      aria-label={t("Select displayed users")}
+                      className="h-4 w-4 rounded border-[var(--border)] accent-[var(--foreground)]"
+                    />
+                  </th>
                   <th className="px-5 py-3 font-medium">{t("Username")}</th>
                   <th className="px-5 py-3 font-medium">{t("Role")}</th>
                   <th className="px-5 py-3 font-medium">{t("Joined")}</th>
@@ -356,6 +519,18 @@ export default function AdminUsersPage() {
                   return (
                     <Fragment key={user.username}>
                       <tr className="group hover:bg-[var(--background)]/50 transition-colors">
+                        <td className="px-5 py-3.5">
+                          <input
+                            type="checkbox"
+                            checked={selectedUsernameSet.has(user.username)}
+                            disabled={isSelf}
+                            onChange={() => toggleSelectedUsername(user.username)}
+                            aria-label={t("Select {{username}}", {
+                              username: user.username,
+                            })}
+                            className="h-4 w-4 rounded border-[var(--border)] accent-[var(--foreground)] disabled:opacity-30"
+                          />
+                        </td>
                         <td className="px-5 py-3">
                           <div className="flex items-center gap-3">
                             <UserAvatar
@@ -471,7 +646,7 @@ export default function AdminUsersPage() {
                       </tr>
                       {canManageAssignments && expandedUserId === user.id && (
                         <tr>
-                          <td colSpan={4} className="p-0">
+                          <td colSpan={5} className="p-0">
                             <GrantEditor
                               key={user.id}
                               userId={user.id}
@@ -574,6 +749,31 @@ export default function AdminUsersPage() {
             </p>
           </>
         )}
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={showBatchDeleteConfirm}
+        title={t("Delete users")}
+        tone="danger"
+        confirmLabel={t("Delete users")}
+        busyLabel={t("Deleting…")}
+        busy={batchDeleteBusy}
+        onConfirm={handleBatchDeleteConfirm}
+        onCancel={() => setShowBatchDeleteConfirm(false)}
+      >
+        <p>
+          {t(
+            "This permanently removes {{count}} accounts and their assignments. This cannot be undone.",
+            { count: selectedUsernames.length },
+          )}
+        </p>
+        <ul className="mt-3 max-h-40 space-y-1 overflow-y-auto text-sm text-[var(--muted-foreground)]">
+          {selectedUsernames.map((username) => (
+            <li key={username} className="truncate">
+              {username}
+            </li>
+          ))}
+        </ul>
       </ConfirmDialog>
 
       {showCreateDialog && (
@@ -694,6 +894,111 @@ export default function AdminUsersPage() {
                 className="rounded-lg bg-[var(--foreground)] px-3 py-1.5 text-sm font-medium text-[var(--background)] hover:opacity-90 disabled:opacity-40"
               >
                 {createSubmitting ? t("Creating…") : t("Create")}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {showImportDialog && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] px-4"
+          role="dialog"
+          aria-modal="true"
+          onClick={closeImportDialog}
+        >
+          <form
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={handleImportSubmit}
+            className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl border border-[var(--border)] bg-[var(--card)] p-5 shadow-xl"
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-base font-semibold text-[var(--foreground)]">
+                {t("Import users")}
+              </h2>
+              <button
+                type="button"
+                onClick={closeImportDialog}
+                disabled={importSubmitting}
+                className="rounded-md p-1 text-[var(--muted-foreground)] hover:bg-[var(--background)] hover:text-[var(--foreground)] disabled:opacity-40"
+                aria-label={t("Close")}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <label className="mb-3 block text-xs text-[var(--muted-foreground)]">
+              {t("CSV file")}
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                onChange={(e) => {
+                  setImportFile(e.target.files?.[0] ?? null);
+                  setImportResult(null);
+                  setImportError("");
+                }}
+                disabled={importSubmitting}
+                autoFocus
+                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
+              />
+            </label>
+
+            <p className="mb-3 text-[11px] leading-relaxed text-[var(--muted-foreground)]">
+              {t("Header: username,password,preset. Only ordinary user accounts can be imported.")}
+            </p>
+
+            {importError && (
+              <p className="mb-3 text-xs text-red-500">{importError}</p>
+            )}
+
+            {importResult && (
+              <div className="mb-4">
+                <p className="text-sm font-medium text-[var(--foreground)]">
+                  {t("{{created}} created, {{failed}} failed", {
+                    created: importResult.created_count,
+                    failed: importResult.failed_count,
+                  })}
+                </p>
+                <ul className="mt-2 max-h-44 space-y-1 overflow-y-auto text-xs text-[var(--muted-foreground)]">
+                  {importResult.results.map((result) => (
+                    <li
+                      key={`${result.row}-${result.username}`}
+                      className="flex items-start justify-between gap-3"
+                    >
+                      <span className="min-w-0 truncate">
+                        {t("Row {{row}}", { row: result.row })} · {result.username}
+                      </span>
+                      <span
+                        className={
+                          result.ok
+                            ? "shrink-0 text-emerald-600 dark:text-emerald-400"
+                            : "shrink-0 text-red-500"
+                        }
+                      >
+                        {result.ok ? t("Created") : result.error}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeImportDialog}
+                disabled={importSubmitting}
+                className="rounded-lg px-3 py-1.5 text-sm text-[var(--muted-foreground)] hover:text-[var(--foreground)] disabled:opacity-40"
+              >
+                {t("Close")}
+              </button>
+              <button
+                type="submit"
+                disabled={importSubmitting || !importFile}
+                className="flex items-center gap-1.5 rounded-lg bg-[var(--foreground)] px-3 py-1.5 text-sm font-medium text-[var(--background)] hover:opacity-90 disabled:opacity-40"
+              >
+                <Upload size={14} />
+                {importSubmitting ? t("Importing…") : t("Import")}
               </button>
             </div>
           </form>

@@ -19,7 +19,6 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from deeptutor.multi_user.context import get_current_user
 from deeptutor.multi_user.paths import get_admin_path_service
 from deeptutor.services.i18n import t
 from deeptutor.services.persona import (
@@ -49,16 +48,33 @@ def _admin_persona_service() -> PersonaService:
     return PersonaService(root=get_admin_path_service().get_workspace_dir() / "personas")
 
 
+def _persona_presets(service: PersonaService) -> PersonaService | None:
+    """The read-only deployment presets, unless ``service`` already holds them.
+
+    ``None`` means the caller is reading the very directory the presets live in
+    — the admin on their account-level workspace — where merging would only
+    duplicate every row. Deciding that on ``user.is_admin`` instead took "the
+    caller is an admin" to mean "the caller is reading the preset directory",
+    which stopped being true once each workspace got its own personas
+    directory: inside an explicit workspace an admin saw nothing but Default
+    while a non-admin on the same workspace saw every preset (#1534).
+    """
+    presets = _admin_persona_service()
+    if presets.root.resolve() == service.root.resolve():
+        return None
+    return presets
+
+
 @router.get("/personas")
 async def list_personas() -> dict[str, list[dict[str, object]]]:
     service = get_persona_service()
     own = [info.to_dict() for info in service.list_personas()]
-    user = get_current_user()
-    if user.is_admin:
+    presets = _persona_presets(service)
+    if presets is None:
         return {"personas": own}
     own_names = {item["name"] for item in own}
     merged = list(own)
-    for preset in _admin_persona_service().list_personas():
+    for preset in presets.list_personas():
         if preset.name in own_names:
             continue
         entry = preset.to_dict()
@@ -77,10 +93,10 @@ async def get_persona(name: str) -> dict[str, object]:
     except InvalidPersonaNameError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    user = get_current_user()
-    if not user.is_admin:
+    presets = _persona_presets(service)
+    if presets is not None:
         try:
-            detail = _admin_persona_service().get_detail(name).to_dict()
+            detail = presets.get_detail(name).to_dict()
             detail.update({"source": "admin", "read_only": True})
             return detail
         except (PersonaNotFoundError, InvalidPersonaNameError):

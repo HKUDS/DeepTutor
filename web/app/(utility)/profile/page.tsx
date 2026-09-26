@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createElement } from "react";
-import { ArrowLeft, ImageUp, LogOut, ShieldCheck, Trash2 } from "lucide-react";
+import { ArrowLeft, ImageUp, KeyRound, LogOut, ShieldCheck, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { fetchAuthStatus, logout } from "@/lib/auth";
 import {
@@ -272,6 +272,13 @@ export default function ProfilePage() {
                   )}
                 </div>
               </div>
+              <Link
+                href="/session-handoff"
+                className="mt-5 inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 text-sm text-[var(--foreground)] transition-colors hover:bg-[var(--background)]/60"
+              >
+                <KeyRound size={14} />
+                {t("Public device sign-in")}
+              </Link>
             </div>
 
             {/* Avatar card */}

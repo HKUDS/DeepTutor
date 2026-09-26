@@ -3,6 +3,8 @@
 import {
   cloneElement,
   isValidElement,
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useId,
@@ -10,84 +12,156 @@ import {
   useState,
   type ReactElement,
 } from "react";
-import { cn } from "./styles";
+import type { TooltipSide } from "./tooltip-position";
+
+const loadTooltipLayer = () => import("./TooltipLayer");
+const TooltipLayer = lazy(loadTooltipLayer);
 
 export interface TooltipProps {
   label: string;
+  description?: string;
   children: ReactElement<{ "aria-describedby"?: string }>;
-  side?: "top" | "right" | "bottom" | "left";
+  side?: TooltipSide;
   delay?: number;
-  disabled?: boolean;
+  /** Suppress a tooltip while its trigger owns an open popover or menu. */
+  suppressed?: boolean;
 }
-
-const positions = {
-  top: "bottom-full left-1/2 mb-2 -translate-x-1/2",
-  right: "left-full top-1/2 ml-2 -translate-y-1/2",
-  bottom: "left-1/2 top-full mt-2 -translate-x-1/2",
-  left: "right-full top-1/2 mr-2 -translate-y-1/2",
-};
 
 export function Tooltip({
   label,
+  description,
   children,
   side = "bottom",
   delay = 180,
-  disabled = false,
+  suppressed = false,
 }: TooltipProps) {
   const id = useId();
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wrapperRef = useRef<HTMLSpanElement>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hoverRef = useRef(false);
+  const keyboardFocusRef = useRef(false);
+  const pointerFocusRef = useRef(false);
+  const touchRef = useRef(false);
   const [visible, setVisible] = useState(false);
+  const [layerMounted, setLayerMounted] = useState(false);
+  const renderedVisible = visible && !suppressed;
+  const markLayerMounted = useCallback(() => setLayerMounted(true), []);
 
-  const clear = useCallback(() => {
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = null;
+  const clearTimer = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = null;
   }, []);
-  const show = useCallback(
-    (immediate = false) => {
-      clear();
-      if (disabled) return;
-      if (immediate) setVisible(true);
-      else timer.current = setTimeout(() => setVisible(true), delay);
-    },
-    [clear, delay, disabled],
-  );
   const hide = useCallback(() => {
-    clear();
+    clearTimer();
+    touchRef.current = false;
     setVisible(false);
-  }, [clear]);
+  }, [clearTimer]);
+  const show = useCallback(
+    (immediate: boolean) => {
+      clearTimer();
+      if (suppressed) return;
+      void loadTooltipLayer();
+      if (immediate) setVisible(true);
+      else timerRef.current = setTimeout(() => setVisible(true), delay);
+    },
+    [clearTimer, delay, suppressed],
+  );
 
-  useEffect(() => clear, [clear]);
+  useEffect(() => {
+    if (!suppressed) return;
+    const timeout = window.setTimeout(hide, 0);
+    return () => window.clearTimeout(timeout);
+  }, [hide, suppressed]);
+  useEffect(() => clearTimer, [clearTimer]);
+
+  useEffect(() => {
+    if (!renderedVisible) return;
+    const dismissTouch = (event: PointerEvent) => {
+      if (
+        touchRef.current &&
+        wrapperRef.current &&
+        !wrapperRef.current.contains(event.target as Node)
+      ) {
+        hide();
+      }
+    };
+    document.addEventListener("pointerdown", dismissTouch, true);
+    return () => document.removeEventListener("pointerdown", dismissTouch, true);
+  }, [hide, renderedVisible]);
 
   if (!isValidElement(children)) return children;
+  const describedBy = [children.props["aria-describedby"], id]
+    .filter(Boolean)
+    .join(" ");
+  const tooltipText = description ? `${label}. ${description}` : label;
 
   return (
     <span
-      className="relative inline-flex"
-      onMouseEnter={() => show(false)}
-      onMouseLeave={hide}
-      onFocusCapture={() => show(true)}
-      onBlurCapture={hide}
+      ref={wrapperRef}
+      className="inline-flex"
+      onPointerEnter={(event) => {
+        if (event.pointerType === "touch") return;
+        hoverRef.current = true;
+        show(false);
+      }}
+      onPointerLeave={(event) => {
+        if (event.pointerType === "touch") return;
+        hoverRef.current = false;
+        if (!keyboardFocusRef.current) hide();
+      }}
+      onPointerDown={(event) => {
+        pointerFocusRef.current = true;
+        if (event.pointerType !== "touch") return;
+        touchRef.current = true;
+        if (renderedVisible) hide();
+        else {
+          show(true);
+          timerRef.current = setTimeout(hide, 3000);
+        }
+      }}
+      onPointerUp={() => {
+        queueMicrotask(() => {
+          pointerFocusRef.current = false;
+        });
+      }}
+      onFocusCapture={() => {
+        if (pointerFocusRef.current) return;
+        keyboardFocusRef.current = true;
+        show(true);
+      }}
+      onBlurCapture={(event) => {
+        if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+        keyboardFocusRef.current = false;
+        if (!hoverRef.current) hide();
+      }}
       onKeyDown={(event) => {
         if (event.key === "Escape") hide();
       }}
     >
-      {cloneElement(children, {
-        "aria-describedby": visible ? id : children.props["aria-describedby"],
-      })}
-      {visible ? (
-        <span
-          id={id}
-          role="tooltip"
-          className={cn(
-            "pointer-events-none absolute z-[90] max-w-64 whitespace-nowrap rounded-lg bg-foreground px-2.5 py-1.5 text-xs font-medium text-background shadow-lg",
-            positions[side],
-          )}
-        >
-          {label}
+      {cloneElement(children, { "aria-describedby": describedBy })}
+      {!renderedVisible || !layerMounted ? (
+        <span id={id} role="tooltip" className="sr-only">
+          {tooltipText}
         </span>
       ) : null}
+      {renderedVisible && typeof document !== "undefined"
+        ? (
+            <Suspense fallback={null}>
+              <TooltipLayer
+                anchorRef={wrapperRef}
+                id={id}
+                label={label}
+                description={description}
+                side={side}
+                onMount={markLayerMounted}
+              />
+            </Suspense>
+          )
+        : null}
     </span>
   );
 }
+
+export { placeTooltip, type TooltipSide } from "./tooltip-position";
 
 export default Tooltip;

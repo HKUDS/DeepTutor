@@ -6,9 +6,9 @@ import json
 
 from deeptutor.agents.base_agent import BaseAgent
 from deeptutor.core.trace import build_trace_metadata, new_call_id
+from deeptutor.services.llm.structured_retry import json_with_reasoning_retry
 
 from ..models import ConceptAnalysis, RenderResult, SceneDesign, SummaryPayload
-from ..utils import extract_json_object
 
 
 class SummaryAgent(BaseAgent):
@@ -49,21 +49,30 @@ class SummaryAgent(BaseAgent):
             design_json=json.dumps(design.model_dump(), ensure_ascii=False, indent=2),
             render_json=json.dumps(render_result.model_dump(), ensure_ascii=False, indent=2),
         )
-        _chunks: list[str] = []
-        async for _c in self.stream_llm(
-            user_prompt=user_prompt,
-            system_prompt=system_prompt,
-            response_format={"type": "json_object"},
-            stage="summary",
-            trace_meta=build_trace_metadata(
-                call_id=new_call_id("math-summary"),
-                phase="summary",
-                label="Summarize result",
-                call_kind="math_summary",
-                trace_role="summarize",
-                trace_kind="llm_output",
-            ),
-        ):
-            _chunks.append(_c)
-        response = "".join(_chunks)
-        return SummaryPayload.model_validate(extract_json_object(response))
+
+        async def _run(reasoning_effort: str | None) -> str:
+            chunks: list[str] = []
+            async for chunk in self.stream_llm(
+                user_prompt=user_prompt,
+                system_prompt=system_prompt,
+                response_format={"type": "json_object"},
+                reasoning_effort=reasoning_effort,
+                stage="summary",
+                trace_meta=build_trace_metadata(
+                    call_id=new_call_id("math-summary"),
+                    phase="summary",
+                    label="Summarize result",
+                    call_kind="math_summary",
+                    trace_role="summarize",
+                    trace_kind="llm_output",
+                ),
+            ):
+                chunks.append(chunk)
+            return "".join(chunks)
+
+        payload = await json_with_reasoning_retry(
+            _run, expected_key="summary_text", logger_instance=self.logger
+        )
+        # Rendering has already succeeded. Keep returning its artifacts if the
+        # summary remains empty after the low-effort retry.
+        return SummaryPayload.model_validate(payload)

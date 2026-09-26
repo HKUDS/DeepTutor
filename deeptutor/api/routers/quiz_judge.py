@@ -48,7 +48,24 @@ _JUDGE_SYSTEM_PROMPTS = {
         "- Speak directly to the learner's submission — do not give a generic lecture.\n"
         "- Reply in English."
     ),
+    "uk": (
+        "Ти вимогливий, але доброзичливий асистент учителя, який перевіряє відповідь учня "
+        "на тестове завдання. Спирайся на умову, еталонну відповідь і пояснення.\n\n"
+        "Вимоги до відповіді:\n"
+        "- Почни одним рядком із вердиктом: ✅ Правильно / ⚠️ Частково правильно / ❌ Неправильно "
+        "і коротко назви головну підставу.\n"
+        "- Далі по пунктах: що учень зробив правильно, де помилка або чого бракує, як це виправити.\n"
+        "- Якщо можливі кілька слушних відповідей, визнай те, що учень зробив добре.\n"
+        "- Звертайся саме до цієї відповіді, без загальних лекцій.\n"
+        "- Відповідай українською."
+    ),
 }
+
+# The set of languages the judge can speak IS the set of system prompts it has.
+# Deriving it here means adding a language is one edit (add a prompt), not three
+# — the previous ("zh", "en") literals were repeated in the whitelist, the
+# fallback and the frontend, and a Ukrainian UI silently got English feedback.
+SUPPORTED_JUDGE_LANGUAGES: frozenset[str] = frozenset(_JUDGE_SYSTEM_PROMPTS)
 
 
 def _build_judge_user_prompt(
@@ -219,7 +236,7 @@ async def websocket_quiz_judge(websocket: WebSocket):
             ] | null,
             "user_answer_image": str | null,  # legacy single-image form
             "image_filename": str | null,     # legacy filename for the above
-            "language": "zh" | "en",
+            "language": "zh" | "en" | "uk",
         }
 
     Server → Client (streaming):
@@ -276,11 +293,11 @@ async def websocket_quiz_judge(websocket: WebSocket):
         return
 
     requested_language = (data.get("language") or "").strip().lower()
-    if requested_language not in ("zh", "en"):
+    if requested_language not in SUPPORTED_JUDGE_LANGUAGES:
         requested_language = get_response_language(
             default=_config.get("system", {}).get("language", "en")
         )
-        if requested_language not in ("zh", "en"):
+        if requested_language not in SUPPORTED_JUDGE_LANGUAGES:
             requested_language = "en"
 
     user_answer = data.get("user_answer") or ""

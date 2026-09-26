@@ -29,9 +29,10 @@ MemoryReference = Literal["recent", "profile", "scope", "preferences", "summary"
 
 
 # Content call_kinds that make up the persisted answer. The chat agent loop
-# streams every round's text as ``content`` with ``agent_loop_round``; the
-# finish round (and forced-finish) are the answer, narration rounds are
-# filtered back out via their ``call_role`` marker (see _narration_marker_call_id).
+# streams every round's text as ``content`` with ``agent_loop_round``, and all
+# of it is the answer — the commentary a round wrote before calling a tool
+# included. Only a round a capability retracted is filtered back out (see
+# _retracted_round_call_id).
 _ANSWER_CONTENT_CALL_KINDS = frozenset({"llm_final_response", "agent_loop_round"})
 _FINAL_TURN_STATUSES = frozenset({"completed", "failed", "cancelled"})
 
@@ -99,21 +100,20 @@ def _resolve_turn_failure_metadata(
     return "", False
 
 
-def _narration_marker_call_id(event: StreamEvent) -> str | None:
-    """call_id of a chat-loop round that resolved as narration (a short
-    preamble streamed alongside a tool call). Its text belongs to the trace,
-    not the persisted answer, so it is excluded when assembling content.
+def _retracted_round_call_id(event: StreamEvent) -> str | None:
+    """call_id of a chat-loop round whose prose was taken back out of the answer.
 
-    A round may explicitly keep learner-facing prose surrounding a call via
-    ``answer_visible`` (for example DSML or mastery tutoring); that narrow
-    exception remains part of the persisted answer.
+    Commentary a round wrote before calling a tool is answer content — the
+    reader was shown it as the work happened, and the persisted answer keeps it
+    so a reloaded turn reads the way it did live. The single exception is a
+    round a capability's finish guard rejected, which republishes its marker
+    with ``answer_visible: False``; that text belongs to the trace only.
     """
     metadata = event.metadata or {}
     if (
         metadata.get("trace_kind") == "call_status"
         and metadata.get("call_state") == "complete"
-        and metadata.get("call_role") == "narration"
-        and metadata.get("answer_visible") is not True
+        and metadata.get("answer_visible") is False
     ):
         call_id = metadata.get("call_id")
         return str(call_id) if call_id else None
@@ -122,14 +122,14 @@ def _narration_marker_call_id(event: StreamEvent) -> str | None:
 
 def _assemble_persisted_answer(
     content_segments: Sequence[tuple[str | None, str]],
-    narration_call_ids: set[str],
+    retracted_call_ids: set[str],
 ) -> str:
-    """Replay visible content bytes, excluding trace-only narration rounds."""
+    """Replay visible content bytes, excluding rounds a capability retracted."""
     return clean_thinking_tags(
         "".join(
             text
             for call_id, text in content_segments
-            if not (call_id and call_id in narration_call_ids)
+            if not (call_id and call_id in retracted_call_ids)
         )
     )
 
@@ -278,13 +278,29 @@ def _repair_chinese_emphasis_for_persistence(content: str, language: str) -> str
     )
 
 
-def _stamp_ask_user_content_offset(
+def _stamp_content_offset(
     payload_event: dict[str, Any],
     assistant_content: str,
 ) -> None:
-    """Attach the replay boundary to a persisted ask_user resolution event."""
+    """Attach the replay boundary to an event the answer must be laid out around.
+
+    A settled turn is reloaded from an event *preview* that carries no
+    ``content`` events (see the web client's ``compactTracePreview``), so the
+    body has to be rebuilt from the persisted answer string. Without a mark
+    saying how much of that answer had been written when a row appeared, every
+    tool call and card would pile up at one end and the reload would not
+    resemble what the reader watched.
+
+    Two kinds of event carry the mark: a resolved ``ask_user`` card, and the
+    start of a tool call. Both are rendered between runs of answer text.
+    """
     metadata = payload_event.get("metadata")
-    if isinstance(metadata, dict) and metadata.get("ask_user_resolved"):
+    if not isinstance(metadata, dict):
+        return
+    anchors_layout = bool(metadata.get("ask_user_resolved")) or (
+        payload_event.get("type") == StreamEventType.TOOL_CALL.value
+    )
+    if anchors_layout:
         metadata.setdefault("assistant_content_offset", len(assistant_content))
 
 
@@ -571,9 +587,11 @@ def _mastery_action_context(
     return "\n\n".join(lines)
 
 
-# Reading material ids are content hashes; anything else is a client bug or an
+# Reading material ids are content hashes or catalog-minted rm_ ids (a second
+# copy of the same content gets its own catalog row, and the store resolves
+# both to the same content directory); anything else is a client bug or an
 # injection attempt, so the shape is enforced here rather than deeper in.
-_READING_ID_RE = re.compile(r"^[0-9a-f]{8,64}$")
+_READING_ID_RE = re.compile(r"^(?:[0-9a-f]{8,64}|rm_[0-9a-f]{12})$")
 _READING_WORKSPACE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 # A selection is quoted back into the prompt, so it is bounded here — the
 # reader has no reason to send more, and a runaway selection must not eat the
@@ -624,6 +642,85 @@ def _reading_viewport(value: Any) -> dict[str, Any]:
     if selection:
         viewport["selection"] = selection[:READING_SELECTION_MAX_CHARS]
     return viewport
+
+
+# Images attached per reading turn when the open page has embedded figures.
+READING_VIEWPORT_MAX_IMAGES = 4
+
+
+def _reading_viewport_page_render(material_id: str, locator: int) -> dict | None:
+    """Thin wrapper over :func:`deeptutor.reading.page_render.page_render_record`.
+
+    The rendering rules (DPI, drawing gate, record shape) live in the reading
+    layer so the capability's viewport narration shares them; this name stays
+    for the session's attachment path.
+    """
+    try:
+        from deeptutor.reading.page_render import page_render_record
+
+        return page_render_record(material_id, locator)
+    except Exception:
+        logger.warning("reading viewport page render failed", exc_info=True)
+        return None
+
+
+def _reading_viewport_image_attachments(material_id: str, viewport: dict[str, Any]) -> list[dict]:
+    """Attachments for the open page: its render first, embedded figures after.
+
+    A drawn page leads with the whole-page raster (the only way a vision model
+    sees a vector diagram); embedded rasters follow. The render consumes one of
+    the ``READING_VIEWPORT_MAX_IMAGES`` slots, and the total is capped there.
+    Pages that do not qualify fall back to the embedded-image records alone.
+    """
+    viewport = viewport if isinstance(viewport, dict) else {}
+    embedded = _reading_viewport_image_records(material_id, viewport)
+    try:
+        locator = int(viewport.get("locator") or 0)
+    except (TypeError, ValueError):
+        locator = 0
+    if not material_id or locator <= 0:
+        return embedded[:READING_VIEWPORT_MAX_IMAGES]
+    rendered = _reading_viewport_page_render(material_id, locator)
+    if rendered is None:
+        return embedded[:READING_VIEWPORT_MAX_IMAGES]
+    return [rendered, *embedded[: READING_VIEWPORT_MAX_IMAGES - 1]]
+
+
+def _reading_viewport_image_records(material_id: str, viewport: dict[str, Any]) -> list[dict]:
+    """Image attachment records for the figures on the currently open page."""
+    try:
+        locator = int(viewport.get("locator") or 0)
+    except (TypeError, ValueError):
+        locator = 0
+    if not material_id or locator <= 0:
+        return []
+    try:
+        import base64
+
+        from deeptutor.reading import ReadingStore
+
+        store = ReadingStore()
+        rows = store.media_items_at(material_id, locator)
+        records: list[dict] = []
+        for index, row in enumerate(rows[:READING_VIEWPORT_MAX_IMAGES], start=1):
+            path = store.media_path(material_id, str(row.get("name") or ""))
+            if path is None:
+                continue
+            records.append(
+                {
+                    "type": "image",
+                    "url": "",
+                    "base64": base64.b64encode(path.read_bytes()).decode("ascii"),
+                    "filename": str(row.get("name") or f"image-{index}.png"),
+                    "mime_type": str(row.get("mime") or "image/png"),
+                    "id": f"rv-{material_id[:12]}-{locator}-{index}",
+                    "embedded": True,
+                }
+            )
+        return records
+    except Exception:
+        logger.warning("reading viewport image lookup failed", exc_info=True)
+        return []
 
 
 def _course_field(value: Any, key: str, default: Any = "") -> Any:
@@ -786,32 +883,47 @@ def _request_snapshot_metadata(
         "enabledTools": _string_list(payload.get("tools")),
         "knowledgeBases": _string_list(payload.get("knowledge_bases")),
         "language": str(payload.get("language", "en") or "en"),
+        # Keep empty values too. A failed turn can be resent after the
+        # conversation preferences have changed; absence would otherwise
+        # cause the retry to pick up the newer tools, sources, or persona.
+        "config": dict(config),
+        "notebookReferences": list(notebook_references),
+        "historyReferences": list(history_references),
+        "partnerGroupReferences": list(partner_group_references),
+        "questionNotebookReferences": list(question_notebook_references),
+        "bookReferences": list(book_references),
+        "readingReferences": list(reading_references),
+        "memoryReferences": list(memory_references),
+        "skills": _string_list(payload.get("skills")),
+        "mcp": _string_list(payload.get("mcp")),
+        "persona": persona,
     }
+    for payload_key, snapshot_key in (
+        ("workspace_id", "workspaceId"),
+        ("course_id", "courseId"),
+        ("mastery_session_mode", "masterySessionMode"),
+        ("auto_route", "autoRoute"),
+    ):
+        if payload_key in payload:
+            snapshot[snapshot_key] = payload[payload_key]
+    for payload_key, snapshot_key in (
+        ("consult_partner_id", "consultPartnerId"),
+        ("partner_discussion_group_id", "partnerDiscussionGroupId"),
+    ):
+        if payload_key in payload:
+            snapshot[snapshot_key] = payload[payload_key]
     workspace_mode = _workspace_mode(payload.get("workspace_mode"), capability=capability)
-    if workspace_mode:
-        snapshot["workspaceMode"] = workspace_mode
+    snapshot["workspaceMode"] = workspace_mode
+    if payload.get("capability_once"):
+        # Kept so a regenerate runs in this mode again without adopting it.
+        snapshot["capabilityOnce"] = True
     if attachments:
         snapshot["attachments"] = attachments
-    if config:
-        snapshot["config"] = dict(config)
     capability_route = payload.get("capability_route")
     if isinstance(capability_route, dict):
         snapshot["capabilityRoute"] = dict(capability_route)
-    if notebook_references:
-        snapshot["notebookReferences"] = notebook_references
-    if history_references:
-        snapshot["historyReferences"] = history_references
-    if partner_group_references:
-        snapshot["partnerGroupReferences"] = partner_group_references
-    if question_notebook_references:
-        snapshot["questionNotebookReferences"] = question_notebook_references
-    if book_references:
-        snapshot["bookReferences"] = book_references
-    if reading_references:
-        snapshot["readingReferences"] = list(reading_references)
     mastery_path_id = _mastery_path_id(payload.get("mastery_path_id"))
-    if mastery_path_id:
-        snapshot["masteryPathId"] = mastery_path_id
+    snapshot["masteryPathId"] = mastery_path_id
     # Persisted so a regenerate re-runs with the same document open. Without it
     # the reading capability would be inactive on the retry and the answer would
     # silently lose its grounding.
@@ -824,15 +936,19 @@ def _request_snapshot_metadata(
         if reading_material_revision is not None:
             snapshot["readingMaterialRevision"] = reading_material_revision
     reading_workspace_id = _reading_workspace_id(payload.get("reading_workspace_id"))
-    if reading_workspace_id:
-        snapshot["readingWorkspaceId"] = reading_workspace_id
+    snapshot["readingWorkspaceId"] = reading_workspace_id
+    # The passage the question was asked about. Without it the bubble shows a
+    # bare "Explain this" with nothing to say what "this" was, and a
+    # regenerate re-asks it about no passage at all.
+    viewport = _reading_viewport(payload.get("reading_viewport"))
+    if reading_material_id and viewport.get("selection"):
+        snapshot["readingSelection"] = {
+            "quote": viewport["selection"],
+            "locator": viewport.get("locator", 0),
+        }
     timed_media_id = _timed_media_id(payload.get("timed_media_id"))
     if timed_media_id:
         snapshot["timedMediaId"] = timed_media_id
-    if persona:
-        snapshot["persona"] = persona
-    if memory_references:
-        snapshot["memoryReferences"] = memory_references
     if llm_selection:
         snapshot["llmSelection"] = llm_selection
     return {"request_snapshot": snapshot}

@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import html
 import logging
 from pathlib import Path
@@ -77,6 +77,7 @@ from deeptutor.runtime.agentic import (
     can_use_native_tool_calling,
     classify_label,
     dispatch_tool_calls,
+    recover_finished_label,
     run_agentic_loop,
     run_labeled_step,
 )
@@ -89,7 +90,11 @@ from deeptutor.runtime.registry.tool_registry import get_tool_registry
 from deeptutor.runtime.stream_bus import StreamBus
 from deeptutor.services.config import parse_language
 from deeptutor.services.config.loader import get_capability_params
-from deeptutor.services.llm import get_llm_config, prepare_multimodal_messages
+from deeptutor.services.llm import (
+    finish_was_truncated,
+    get_llm_config,
+    prepare_multimodal_messages,
+)
 from deeptutor.services.llm.structured_retry import payload_with_reasoning_retry
 from deeptutor.services.prompt import get_prompt_manager
 from deeptutor.services.prompt.language import append_language_directive
@@ -1712,6 +1717,7 @@ class ResearchPipeline:
             label=self._t("labels.report_intro", default="Introduction"),
             call_id_root="research-report-intro",
             max_tokens=self._budgets["report_intro"]["max_tokens"],
+            expected_section_number=1,
             extra_meta={
                 "research_status_key": "report_intro",
                 "report_part": "intro",
@@ -1755,6 +1761,7 @@ class ResearchPipeline:
             label=(f"{self._t('labels.report_section', default='Section')}: {section.title}"),
             call_id_root=f"research-report-section-{section.id}",
             max_tokens=self._budgets["report_section"]["max_tokens"],
+            expected_section_number=section_number,
             extra_meta={
                 "research_status_key": "report_section",
                 "report_part": "section",
@@ -1799,6 +1806,7 @@ class ResearchPipeline:
             label=self._t("labels.report_conclusion", default="Conclusion"),
             call_id_root="research-report-conclusion",
             max_tokens=self._budgets["report_conclusion"]["max_tokens"],
+            expected_section_number=section_number,
             extra_meta={
                 "research_status_key": "report_conclusion",
                 "report_part": "conclusion",
@@ -1817,6 +1825,7 @@ class ResearchPipeline:
         call_id_root: str,
         max_tokens: int,
         extra_meta: dict[str, Any] | None = None,
+        expected_section_number: int | None = None,
     ) -> str:
         """Run and validate one report sub-phase, retrying partial streams.
 
@@ -1851,6 +1860,7 @@ class ResearchPipeline:
         last_reason = "empty response"
         for attempt in range(1, DEFAULT_REPORT_STEP_MAX_ATTEMPTS + 1):
             body = ""
+            step: LabeledStepResult | None = None
             try:
                 step = await self._run_labeled_step(
                     client=client,
@@ -1861,12 +1871,22 @@ class ResearchPipeline:
                     stage="reporting",
                     iter_meta=iter_meta,
                     max_tokens=max_tokens,
+                    # Report prose is the reader-facing body; thinking on a
+                    # reasoning model comes out of the same max_tokens budget
+                    # and is the usual cause of first-attempt truncation.
+                    reasoning_effort="none",
                     # Buffer body text until validation succeeds. Passing
                     # ``final_meta`` here would stream a failed attempt and
                     # make a clean retry impossible without duplicated prose.
                     final_meta=None,
                 )
-                body = (step.text or "").strip()
+                resolved_label, body = _recover_report_step_reply(
+                    step,
+                    expected_label=expected_label,
+                    expected_section_number=expected_section_number,
+                )
+                if resolved_label != step.label or body != (step.text or "").strip():
+                    step = replace(step, label=resolved_label, text=body)
                 last_reason = _report_step_incomplete_reason(
                     step,
                     expected_label=expected_label,
@@ -1913,10 +1933,11 @@ class ResearchPipeline:
                 )
                 messages.extend(
                     [
-                        {
-                            "role": "assistant",
-                            "content": f"``{expected_label}``\n{body}" if body else "",
-                        },
+                        assistant_message(
+                            f"``{expected_label}``\n{body}" if body else "",
+                            reasoning_content=step.reasoning_content if step else None,
+                            thinking_blocks=list(step.thinking_blocks) if step else None,
+                        ),
                         {
                             "role": "user",
                             "content": self._t(
@@ -2268,7 +2289,43 @@ class ResearchPipeline:
 # ---------------------------------------------------------------------------
 
 _REPORT_TOKEN_RE = re.compile(r"[^\W_]+", re.UNICODE)
-_REPORT_SECTION_HEADING_RE = re.compile(r"\A##\s+\d+\.\s*\S")
+_REPORT_SECTION_HEADING_RE = re.compile(r"\A##\s+(\d+)\.\s*\S")
+
+
+def _report_heading_number(body: str) -> int | None:
+    match = _REPORT_SECTION_HEADING_RE.match(body)
+    if match is None:
+        return None
+    return int(match.group(1))
+
+
+def _recover_report_step_reply(
+    step: LabeledStepResult,
+    *,
+    expected_label: str,
+    expected_section_number: int | None,
+) -> tuple[str, str]:
+    """Recover a protocol label from a finished report reply.
+
+    The streaming 64-char probe stays strict. Once the full reply is in
+    hand, accept an unclosed/over-wide fence around the expected label, or
+    a missing label whose body opens with ``## {n}.`` for *this* section.
+    """
+    raw = step.text or ""
+    body = raw.strip()
+    if step.label == expected_label:
+        return expected_label, body
+
+    recovered = recover_finished_label(raw, allowed_labels=(expected_label,))
+    if recovered is not None and recovered[0] == expected_label:
+        return expected_label, recovered[1].strip()
+
+    if (
+        expected_section_number is not None
+        and _report_heading_number(body) == expected_section_number
+    ):
+        return expected_label, body
+    return step.label, body
 
 
 def _report_step_incomplete_reason(
@@ -2290,7 +2347,7 @@ def _report_step_incomplete_reason(
     if step.stream_idle_timeout:
         return "provider stream went idle before an explicit finish"
     finish_reason = (step.finish_reason or "").strip().lower()
-    if finish_reason in {"length", "max_tokens", "max_output_tokens"}:
+    if finish_was_truncated(finish_reason):
         return f"provider stopped at its output limit ({finish_reason})"
     if len(body) < 80:
         return f"body is too short ({len(body)} characters)"

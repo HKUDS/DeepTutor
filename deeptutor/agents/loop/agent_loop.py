@@ -5,12 +5,13 @@ One chat turn = ONE agent loop over a single growing conversation:
 * each round is one LLM call; its text streams to the user as a ``content``
   block, and its tool calls are dispatched with their ``role=tool`` results
   appended back into the conversation;
-* a round that DOES call tools is "narration" by default — its text is a
-  preamble to the tool work — and the loop continues; modes that intentionally
-  combine learner-facing prose with a tool call mark that prose answer-visible;
-* a round that calls NO tools is the ``finish``: its text IS the final
-  user-facing answer and the loop ends (the model deciding it is done; a
-  first round without tool calls is the "no exploration needed" fast path);
+* every round's text is part of the answer, in the order it was written. A
+  round that DOES call tools has written *commentary* — what it is about to do
+  and why — and the loop continues; the reader keeps that text, with the tool
+  work rendered inline beneath it, the way a terminal agent reads;
+* a round that calls NO tools is the ``finish``: its text closes the answer and
+  the loop ends (the model deciding it is done; a first round without tool
+  calls is the "no exploration needed" fast path);
 * if the exploration budget runs out while work is still in protocol, a
   small bounded settlement phase keeps tools available for already-started
   follow-up (including user input); one final tool-less round is forced only
@@ -19,10 +20,13 @@ One chat turn = ONE agent loop over a single growing conversation:
 ``ask_user`` pauses the turn for a reply and resumes in-protocol; an
 unresolved pause (or a terminator tool) halts the turn.
 
-There is no separate respond pass and no text destination has to be guessed
-mid-stream: every round's text streams to the user as it is generated, and a
-``call_role`` (``narration`` vs ``finish``) emitted when the round completes
-tells the frontend how to render that round's text.
+There is no separate respond pass and no text destination has to be guessed:
+every round's text streams to the user as it is generated and stays there. The
+``call_status`` marker a completed round emits carries two independent facts —
+``call_role`` (``narration`` = more work follows, ``finish`` = terminal) says
+where the turn is, while ``answer_visible`` says whether the text counts as
+answer content. It is ``True`` for every ordinary round; only a capability
+retracting a rejected round sets it ``False``.
 """
 
 from __future__ import annotations
@@ -54,9 +58,11 @@ from deeptutor.services.llm import (
     clean_thinking_tags,
     supports_streaming,
 )
+from deeptutor.services.llm import finish_was_truncated as _finish_was_truncated
 from deeptutor.services.llm.capabilities import threads_session_id
 from deeptutor.services.llm.multimodal import should_degrade_to_text, strip_image_parts_inplace
 from deeptutor.services.llm.request_compat import (
+    is_forced_tool_choice_unsupported,
     is_image_input_unsupported,
     is_stream_options_unsupported,
     is_tool_schema_unsupported,
@@ -87,17 +93,11 @@ MAX_SETTLEMENT_ROUNDS = 3
 # forced tool-less finish instead of spending the full exploration budget on
 # the same failure.
 MAX_REASONING_ONLY_RECOVERIES = 2
-_TRUNCATED_FINISH_REASONS = frozenset({"length", "max_tokens", "max_output_tokens"})
 # The SDK already retries failures that happen before response headers. These
 # short outer retries also cover SSE connections that fail before yielding any
 # user-visible output. Once output is visible, replay is unsafe because it can
 # duplicate prose or tool calls.
 _PROVIDER_RETRY_DELAYS = (0.5, 1.5)
-
-
-def _finish_was_truncated(reason: str | None) -> bool:
-    """Return whether a provider ended generation because output hit a cap."""
-    return str(reason or "").strip().lower() in _TRUNCATED_FINISH_REASONS
 
 
 def _reasoning_budget_exhausted(result: "LLMCallResult", max_tokens: int) -> bool:
@@ -272,6 +272,10 @@ class AgentLoop:
         # the declared parameter types to decode string-marked containers.
         self._tool_schema_catalog = tool_schemas
         self._last_request: LLMRequestSnapshot | None = None
+        self._request_tools: list[dict[str, Any]] | None = tool_schemas
+        self._request_fingerprint = (context.runtime.previous_model_turn or {}).get(
+            "request_fingerprint"
+        )
         self.source = pipeline.event_source
         self.stage = pipeline.event_stage
 
@@ -301,11 +305,38 @@ class AgentLoop:
                 kb_seed=seed_block,
                 include_tool_manifest=bool(self.tool_schemas),
             )
-            outcome = await self._run_loop(
-                messages=messages,
-                state=state,
-                checkpoint_boundary=len(messages),
-            )
+            try:
+                outcome = await self._run_loop(
+                    messages=messages,
+                    state=state,
+                    checkpoint_boundary=len(messages),
+                )
+                if outcome.final_text and (
+                    messages[-1].get("role") != "assistant" or not messages[-1].get("content")
+                ):
+                    # Terminator tools and capability overrides can produce the
+                    # visible answer without a final model message.
+                    messages.append({"role": "assistant", "content": outcome.final_text})
+            finally:
+                from deeptutor.services.session.model_history import (
+                    complete_tool_results,
+                    normalize_model_turn,
+                )
+
+                # Keep the prepared input (including attachments and briefings)
+                # and every model/tool message, independently of display repair.
+                self.context.runtime.model_turn = normalize_model_turn(
+                    {
+                        "version": 1,
+                        "messages": complete_tool_results(
+                            messages[self.pipeline._model_turn_start :]
+                        ),
+                        "system": messages[0]["content"],
+                        "tools": self._request_tools,
+                        "route": {"provider": self.pipeline.binding, "model": self.pipeline.model},
+                        "request_fingerprint": self._request_fingerprint,
+                    }
+                )
         if outcome.provider_response_state is not None:
             self.context.runtime.provider_response_state = outcome.provider_response_state
 
@@ -578,19 +609,7 @@ class AgentLoop:
                             messages.append(_assistant_round_message(result))
                         self._append_loop_instruction(messages, finish_redirect)
                         continue
-                    await self.stream.progress(
-                        self.pipeline._t(
-                            "notices.capability_finish_rejected",
-                            default=(
-                                "The model did not complete the required interactive step. "
-                                "Please retry the turn."
-                            ),
-                        ),
-                        source=self.source,
-                        stage=self.stage,
-                        metadata={"trace_kind": "warning"},
-                    )
-                    return LoopOutcome(final_text="", completed=False)
+                    return await self._reject_capability_finish()
                 final_override = self.pipeline._capability_final_text_override(
                     self.context, final_text
                 )
@@ -608,6 +627,7 @@ class AgentLoop:
                     )
                 await self._release_deferred_output(result)
                 # Finish: the text streamed live this round IS the answer.
+                messages.append(_assistant_round_message(result))
                 return await self._finalize_finish(
                     final_text,
                     visible_text=result.visible_text,
@@ -620,6 +640,28 @@ class AgentLoop:
                 )
 
             tool_names = tuple(str(call.get("name") or "") for call in result.tool_calls)
+            if _finish_was_truncated(result.finish_reason):
+                # A round that hits the cap *while writing a tool call* never
+                # reaches the continuation branch above, so the only thing the
+                # reader used to see was the arg guard's "missing <arg>" — which
+                # reads as a model that forgot a field, not one whose JSON was
+                # cut off mid-argument. That is how a truncated
+                # ``submit_visualization`` became an empty canvas with nothing
+                # on screen explaining why (#1546).
+                await self.stream.progress(
+                    self.pipeline._t(
+                        "notices.tool_call_truncated",
+                        default=(
+                            "The model reached its output token limit while writing a "
+                            "tool call, so the call may be incomplete. If this repeats, "
+                            "raise this capability's max tokens or pick a model that "
+                            "reasons less."
+                        ),
+                    ),
+                    source=self.source,
+                    stage=self.stage,
+                    metadata={"trace_kind": "warning"},
+                )
             output_policy = self.pipeline._capability_tool_round_output_policy(
                 self.context,
                 self._clean(result.text),
@@ -628,8 +670,10 @@ class AgentLoop:
             if output_policy == "discard":
                 await self._discard_deferred_output(result)
             else:
-                if output_policy == "publish" and result.deferred_completion_metadata is not None:
-                    result.deferred_completion_metadata["answer_visible"] = True
+                # ``publish`` needs no marker any more: a tool round's prose is
+                # answer content by default. The hook is still consulted because
+                # capabilities act on it (partner_group saves the formal answer
+                # from the very round it classifies).
                 await self._release_deferred_output(result)
             assistant = assistant_message_with_tool_calls(
                 result.text,
@@ -746,6 +790,22 @@ class AgentLoop:
         messages[:] = prefix
         return len(messages)
 
+    async def _reject_capability_finish(self) -> LoopOutcome:
+        """Fail a turn whose required interaction could not be completed."""
+        await self.stream.progress(
+            self.pipeline._t(
+                "notices.capability_finish_rejected",
+                default=(
+                    "The model did not complete the required interactive step. "
+                    "Please retry the turn."
+                ),
+            ),
+            source=self.source,
+            stage=self.stage,
+            metadata={"trace_kind": "warning"},
+        )
+        return LoopOutcome(final_text="", completed=False)
+
     async def _forced_finish(
         self,
         messages: list[dict[str, Any]],
@@ -755,6 +815,11 @@ class AgentLoop:
         error: str = "",
         continued_answer_parts: list[str] | None = None,
     ) -> LoopOutcome:
+        # A tool-free salvage reply cannot satisfy an outstanding interaction.
+        # Empty text asks capabilities about state, without inventing prose to
+        # validate or giving the model another chance to claim completion.
+        if self.pipeline._capability_finish_instruction(self.context, ""):
+            return await self._reject_capability_finish()
         if reason == "error":
             # The caller has the exception and logs it; without it here the
             # reader is told a step failed and never which one or why — the
@@ -830,6 +895,7 @@ class AgentLoop:
         reasoning_without_answer = bool(result.reasoning_content) or bool(
             result.text.strip() and not self._clean(result.text)
         )
+        messages.append(_assistant_round_message(result))
         return await self._finalize_finish(
             result.text,
             visible_text=result.visible_text,
@@ -908,13 +974,16 @@ class AgentLoop:
     async def _discard_deferred_output(self, result: LLMCallResult) -> None:
         """Take a rejected round's prose back out of the answer.
 
-        Two shapes reach here. A *buffered* round is simply never published:
-        closing its trace as ``narration`` is the whole retraction. A round
+        Two shapes reach here. A *buffered* round is simply never published,
+        so closing its trace as retracted is the whole retraction. A round
         that already **streamed** — the ordinary case now that only protocol
-        capabilities buffer — was published optimistically and closed as
-        ``finish``, so its retraction has to be a correction: the same
-        ``call_id``, re-marked ``narration``, which is what moves that text out
-        of the answer and into the collapsed trace on the reader's side.
+        capabilities buffer — was published optimistically, so its retraction
+        has to be a correction: the same ``call_id`` re-marked
+        ``answer_visible: False``, which is what moves that text out of the
+        answer and into the collapsed trace on the reader's side.
+
+        This is the ONLY way prose leaves the answer. Ordinary commentary
+        written before a tool call stays where the reader saw it.
 
         Emitting nothing in that second case was what left rejected prose
         sitting in the answer as though it had been accepted.
@@ -923,7 +992,7 @@ class AgentLoop:
         if metadata is not None:
             metadata = dict(metadata)
             metadata["call_role"] = "narration"
-            metadata.pop("answer_visible", None)
+            metadata["answer_visible"] = False
             metadata["finish_rejected"] = True
             await self.stream.progress(
                 "",
@@ -973,7 +1042,10 @@ class AgentLoop:
 
         kwargs: dict[str, Any] = {
             "model": self.pipeline.model,
-            "messages": messages,
+            "messages": [
+                {key: value for key, value in message.items() if key != "_context_snapshot"}
+                for message in messages
+            ],
             "stream": True,
             **self.pipeline._completion_kwargs(max_tokens=max_tokens),
         }
@@ -997,6 +1069,22 @@ class AgentLoop:
                 else "auto"
             )
         forced_tool_choice = isinstance(kwargs.get("tool_choice"), dict)
+        self._request_tools = tool_schemas
+        from deeptutor.services.llm.request_cache import compare_requests, fingerprint_request
+
+        fingerprint = fingerprint_request(
+            kwargs["messages"],
+            kwargs.get("tools"),
+            {
+                "provider": self.pipeline.binding,
+                "model": self.pipeline.model,
+                "base_url": getattr(self.pipeline.llm_config, "base_url", None),
+                "wire_api": getattr(self.pipeline.llm_config, "wire_api", None),
+            },
+        )
+        request_cache = compare_requests(self._request_fingerprint, fingerprint)
+        self._request_fingerprint = fingerprint
+        trace_meta = merge_trace_metadata(trace_meta, {"request_cache": request_cache})
         # What this request actually carried, pinned now: the loop keeps
         # appending to ``messages`` and the deferred loader keeps appending to
         # ``tool_schemas``, so the turn's context budget is read off the last
@@ -1051,12 +1139,11 @@ class AgentLoop:
             # DeepSeek's Anthropic-compatible endpoint can interleave
             # user-facing prose and DSML calls in one content stream.
             dsml_filter = DSMLStreamFilter()
-            answer_content_emitted = False
             visible_text_parts: list[str] = []
             output_emitted = False
 
             async def _emit_segments(segments: list[tuple[str, str]]) -> None:
-                nonlocal action_started, answer_content_emitted, content_chars, output_emitted
+                nonlocal action_started, content_chars, output_emitted
                 nonlocal reasoning_chars
                 for kind, segment in segments:
                     if kind == "thinking":
@@ -1082,8 +1169,6 @@ class AgentLoop:
                         continue
                     output_emitted = True
                     visible_text_parts.append(segment)
-                    if segment.strip():
-                        answer_content_emitted = True
                     if not defer_visible_output:
                         await self.stream.content(
                             segment, source=self.source, stage=stage, metadata=chunk_meta
@@ -1143,6 +1228,11 @@ class AgentLoop:
             response_stream = None
             try:
                 response_stream = await self._create_response_stream(kwargs, trace_meta, stage)
+                # A provider's image fallback can replace content in the wire
+                # copy. Retain that accepted representation for later rounds.
+                for original, accepted in zip(messages, kwargs["messages"]):
+                    if "content" in accepted:
+                        original["content"] = accepted["content"]
                 async for chunk in response_stream:
                     usage = getattr(chunk, "usage", None)
                     if usage is not None:
@@ -1264,8 +1354,30 @@ class AgentLoop:
                                     tool_name=str(part.get("name") or ""),
                                     arguments=str(part.get("arguments") or ""),
                                 )
+            except asyncio.CancelledError:
+                if text_parts or reasoning_parts:
+                    messages.append(
+                        _assistant_round_message(
+                            LLMCallResult(
+                                text="".join(text_parts),
+                                reasoning_content="".join(reasoning_parts),
+                                thinking_blocks=thinking_blocks,
+                            )
+                        )
+                    )
+                raise
             except Exception as exc:
                 if not is_transient_transport_error(exc):
+                    if text_parts or reasoning_parts:
+                        messages.append(
+                            _assistant_round_message(
+                                LLMCallResult(
+                                    text="".join(text_parts),
+                                    reasoning_content="".join(reasoning_parts),
+                                    thinking_blocks=thinking_blocks,
+                                )
+                            )
+                        )
                     raise
                 can_retry = not output_emitted and attempt < len(_PROVIDER_RETRY_DELAYS)
                 if can_retry:
@@ -1295,6 +1407,16 @@ class AgentLoop:
                     continue
 
                 partial_response = output_emitted
+                if text_parts or reasoning_parts:
+                    messages.append(
+                        _assistant_round_message(
+                            LLMCallResult(
+                                text="".join(text_parts),
+                                reasoning_content="".join(reasoning_parts),
+                                thinking_blocks=thinking_blocks,
+                            )
+                        )
+                    )
                 await self.stream.progress(
                     "",
                     source=self.source,
@@ -1443,10 +1565,17 @@ class AgentLoop:
         completion_metadata: dict[str, Any] = {
             "trace_kind": "call_status",
             "call_state": "complete",
-            # A round with tool calls is narration; a tool-less round is the
-            # finish whose text is the user-facing answer. Token-truncated
-            # output remains visible but is not terminal: the loop continues.
+            # ``call_role`` states this round's PHASE, not whether its text is
+            # shown: ``narration`` is mid-turn commentary (more work follows),
+            # ``finish`` is the terminal round. Token-truncated output is
+            # visible but not terminal, so it stays ``narration``.
             "call_role": "narration" if tool_calls or truncated_round else "finish",
+            # Every round's prose belongs to the answer, in the order it was
+            # written. Commentary written before a tool call is what the reader
+            # is told while the work happens, not an internal preamble to hide,
+            # so the only text that ever leaves the answer is text a capability
+            # explicitly retracts (see ``_discard_deferred_output``).
+            "answer_visible": True,
             "finish_reason": finish_reason or "stop",
             "requested_max_tokens": int(max_tokens),
             "usage_reported": bool(usage_details),
@@ -1489,16 +1618,6 @@ class AgentLoop:
             logger.warning(log_line, *log_args)
         else:
             logger.info(log_line, *log_args)
-        mastery_tool_round = bool(tool_calls) and bool(self.context.metadata.get("mastery_mode"))
-        if (dsml_calls or truncated_round or mastery_tool_round) and answer_content_emitted:
-            # DSML providers may intentionally combine tutor feedback and an
-            # ask_user/tool call in the same round. Preserve only that cleaned
-            # surrounding prose in the answer surfaces. Truncated rounds also
-            # keep their partial answer visible while retaining a truthful
-            # non-terminal ``narration`` role. Mastery rounds likewise combine
-            # learner-facing teaching with state/quiz tools; that teaching is
-            # answer content, not an internal tool preamble.
-            completion_metadata["answer_visible"] = True
 
         completion_event_metadata = merge_trace_metadata(trace_meta, completion_metadata)
         if forced_tool_choice and not tool_calls and text:
@@ -1567,6 +1686,15 @@ class AgentLoop:
         try:
             return await self.client.chat.completions.create(**kwargs)
         except Exception as exc:
+            if (
+                kwargs.get("tools")
+                and kwargs.get("tool_choice") != "auto"
+                and is_forced_tool_choice_unsupported(exc)
+            ):
+                # Some thinking models reject a forced choice while supporting
+                # the schemas themselves. Keep the tool surface and its cache.
+                retry_kwargs = {**kwargs, "tool_choice": "auto"}
+                return await self._create_response_stream(retry_kwargs, trace_meta, stage)
             if kwargs.get("tools") and is_tool_schema_unsupported(exc):
                 # Capture the provider's raw rejection body. Without it there is
                 # no way to tell *which* parameter/shape a new model family
@@ -1595,6 +1723,7 @@ class AgentLoop:
                 retry_kwargs.pop("tools", None)
                 retry_kwargs.pop("tool_choice", None)
                 self.tool_schemas = None
+                self._request_tools = None
                 return await self.client.chat.completions.create(**retry_kwargs)
             if "stream_options" in kwargs and is_stream_options_unsupported(exc):
                 retry_kwargs = dict(kwargs)

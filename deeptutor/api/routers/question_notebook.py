@@ -5,22 +5,22 @@ Question Notebook API — persists quiz questions, bookmarks, and categories.
 from __future__ import annotations
 
 import base64 as _b64
+from hashlib import sha256 as _sha256
 import logging
 from typing import Any, Literal
 import uuid as _uuid
 
 from fastapi import APIRouter, HTTPException, Query, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
+from deeptutor.core.assessment import AssessmentResult, AssessmentSource, QuestionOriginType
 from deeptutor.services.session import get_sqlite_session_store
 from deeptutor.services.storage import get_attachment_store
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-AssessmentSource = Literal["deep_question", "mastery_path", "immersive_reading", "book"]
 ScoreTrend = Literal["new", "improved", "declined", "unchanged"]
-
 
 # ── Models ────────────────────────────────────────────────────────
 
@@ -47,8 +47,10 @@ class CategoryItem(BaseModel):
 
 class NotebookEntryItem(BaseModel):
     id: int
-    session_id: str
+    session_id: str = ""
     session_title: str = ""
+    origin_type: QuestionOriginType = "conversation"
+    origin_ref: str = ""
     turn_id: str = ""
     question_id: str = ""
     question: str
@@ -65,6 +67,15 @@ class NotebookEntryItem(BaseModel):
     section_id: str = ""
     section_title: str = ""
     score_trend: ScoreTrend = "new"
+    assessment_type: str = ""
+    result: AssessmentResult | str = ""
+    mastery_path_id: str = ""
+    knowledge_point_id: str = ""
+    attempt_count: int = 1
+    hints_used: int = 0
+    confidence: float | None = None
+    response_time: float | None = None
+    quality: float | None = None
     is_correct: bool = False
     resolved: bool = False
     bookmarked: bool = False
@@ -73,6 +84,7 @@ class NotebookEntryItem(BaseModel):
     created_at: float
     updated_at: float
     categories: list[CategoryItem] | None = None
+    practice: dict[str, Any] | None = None
 
 
 class NotebookEntryListResponse(BaseModel):
@@ -144,7 +156,9 @@ class AnswerImageUpload(BaseModel):
 
 
 class UpsertEntryRequest(BaseModel):
-    session_id: str
+    session_id: str = ""
+    origin_type: QuestionOriginType = "conversation"
+    origin_ref: str = ""
     turn_id: str = ""
     question_id: str
     question: str
@@ -164,13 +178,48 @@ class UpsertEntryRequest(BaseModel):
     section_id: str = ""
     section_title: str = ""
     is_correct: bool = False
+    assessment_type: str = ""
+    result: str = ""
+    mastery_path_id: str = ""
+    knowledge_point_id: str = ""
+    attempt_count: int = 1
+    hints_used: int = 0
+    confidence: float | None = None
+    response_time: float | None = None
+    quality: float | None = None
+
+    @model_validator(mode="after")
+    def _validate_origin(self) -> "UpsertEntryRequest":
+        self.session_id = self.session_id.strip()
+        self.origin_ref = self.origin_ref.strip()
+        if self.origin_type == "conversation":
+            if not self.session_id:
+                raise ValueError("conversation entries require session_id")
+            if self.origin_ref and self.origin_ref != self.session_id:
+                raise ValueError("conversation origin_ref must match session_id")
+            self.origin_ref = self.session_id
+        elif not self.origin_ref:
+            raise ValueError(f"{self.origin_type} entries require origin_ref")
+        return self
 
 
 # ── Entry endpoints ──────────────────────────────────────────────
 
 
+def _answer_image_owner(
+    session_id: str,
+    origin_type: str,
+    origin_ref: str,
+) -> str:
+    """Stable AttachmentStore owner for conversation and independent entries."""
+    if session_id:
+        return session_id
+    digest = _sha256(f"{origin_type}:{origin_ref}".encode()).hexdigest()[:24]
+    return f"question-notebook-{digest}"
+
+
 async def _persist_answer_images(
-    session_id: str, images: list[AnswerImageUpload] | None
+    owner_id: str, images: list[AnswerImageUpload] | None
 ) -> list[dict[str, str]] | None:
     """Materialise base64 image uploads into the AttachmentStore.
 
@@ -199,7 +248,7 @@ async def _persist_answer_images(
                 continue
             try:
                 url = await attachment_store.put(
-                    session_id=session_id,
+                    session_id=owner_id,
                     attachment_id=record_id,
                     filename=filename,
                     data=raw_bytes,
@@ -226,7 +275,18 @@ async def _persist_answer_images(
 @router.post("/entries/upsert")
 async def upsert_single_entry(payload: UpsertEntryRequest):
     store = get_sqlite_session_store()
-    images_records = await _persist_answer_images(payload.session_id, payload.user_answer_images)
+    existing = await store.find_notebook_entry_by_origin(
+        payload.origin_type,
+        payload.origin_ref,
+        payload.question_id,
+        turn_id=payload.turn_id,
+    )
+    owner_id = _answer_image_owner(
+        payload.session_id,
+        payload.origin_type,
+        payload.origin_ref,
+    )
+    images_records = await _persist_answer_images(owner_id, payload.user_answer_images)
     item = payload.model_dump()
     # The store expects ``user_answer_images`` as a plain list of dicts
     # (or absent to mean "leave the stored images alone"). Strip the
@@ -235,24 +295,40 @@ async def upsert_single_entry(payload: UpsertEntryRequest):
     if images_records is not None:
         item["user_answer_images"] = images_records
     try:
-        await store.upsert_notebook_entries(payload.session_id, [item])
+        await store.upsert_notebook_entries(payload.session_id or None, [item])
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    entry = await store.find_notebook_entry(
-        payload.session_id, payload.question_id, turn_id=payload.turn_id
+    entry = await store.find_notebook_entry_by_origin(
+        payload.origin_type,
+        payload.origin_ref,
+        payload.question_id,
+        turn_id=payload.turn_id,
     )
     if entry is None:
         raise HTTPException(status_code=500, detail="Upsert failed")
+    if images_records is not None and existing is not None:
+        retained = {str(image.get("id") or "") for image in images_records}
+        old_owner = _answer_image_owner(
+            str(existing.get("session_id") or ""),
+            str(existing.get("origin_type") or "conversation"),
+            str(existing.get("origin_ref") or ""),
+        )
+        attachment_store = get_attachment_store()
+        for image in existing.get("user_answer_images") or []:
+            image_id = str(image.get("id") or "")
+            if image_id and image_id not in retained:
+                await attachment_store.delete_attachment(old_owner, image_id)
     return entry
 
 
 async def _course_session_ids(store: Any, course_id: str) -> list[str] | None:
     """Resolve a course to the sessions whose questions belong to it.
 
-    Entries carry a session, never a course, so "this course's questions" is
-    always this indirection. Returns ``None`` for no course (do not scope) and
-    ``[]`` for a course with no conversations yet — which must scope to nothing
-    rather than quietly fall back to the whole library.
+    Course membership remains conversation-derived until Question Bank entries
+    gain an explicit course association. Independent origins are intentionally
+    excluded. Returns ``None`` for no course (do not scope) and ``[]`` for a
+    course with no conversations yet — which must scope to nothing rather than
+    quietly fall back to the whole library.
     """
     if not course_id:
         return None
@@ -275,6 +351,7 @@ async def _course_session_ids(store: Any, course_id: str) -> list[str] | None:
 @router.get("/entries", response_model=NotebookEntryListResponse)
 async def list_entries(
     category_id: int | None = Query(default=None),
+    mistakes_only: bool = Query(default=False),
     uncategorized: bool = Query(
         default=False,
         description="Only entries filed under no category — the triage inbox. "
@@ -283,11 +360,13 @@ async def list_entries(
     bookmarked: bool | None = Query(default=None),
     is_correct: bool | None = Query(default=None),
     course_id: str = Query(default=""),
-    source: str = Query(
-        default="", pattern="^(deep_question|mastery_path|immersive_reading|book)?$"
-    ),
+    source: AssessmentSource | Literal[""] = Query(default=""),
     material_id: str = Query(default="", max_length=500),
     section_id: str = Query(default="", max_length=500),
+    assessment_type: str = Query(default="", pattern="^(quiz|focus_check|qualitative|review)?$"),
+    result: str = Query(default="", pattern="^(correct|incorrect|partial|ungraded)?$"),
+    mastery_path_id: str = Query(default="", max_length=500),
+    knowledge_point_id: str = Query(default="", max_length=500),
     resolved: bool | None = Query(default=None),
     score_trend: str = Query(default="", pattern="^(new|improved|declined|unchanged)?$"),
     search: str = Query(default="", max_length=200),
@@ -297,8 +376,9 @@ async def list_entries(
 ) -> NotebookEntryListResponse:
     store = get_sqlite_session_store()
     session_ids = await _course_session_ids(store, course_id)
-    result = await store.list_notebook_entries(
+    listing = await store.list_notebook_entries(
         category_id=category_id,
+        mistakes_only=mistakes_only,
         uncategorized=uncategorized,
         bookmarked=bookmarked,
         is_correct=is_correct,
@@ -306,6 +386,10 @@ async def list_entries(
         source=source,
         material_id=material_id,
         section_id=section_id,
+        assessment_type=assessment_type,
+        result=result,
+        mastery_path_id=mastery_path_id,
+        knowledge_point_id=knowledge_point_id,
         resolved=resolved,
         score_trend=score_trend,
         search=search,
@@ -314,14 +398,16 @@ async def list_entries(
         offset=offset,
     )
     return NotebookEntryListResponse(
-        items=[NotebookEntryItem(**item) for item in result["items"]],
-        total=result["total"],
+        items=[NotebookEntryItem(**item) for item in listing["items"]],
+        total=listing["total"],
     )
 
 
 @router.get("/entries/lookup/by-question")
 async def lookup_entry(
-    session_id: str = Query(...),
+    session_id: str = Query(default=""),
+    origin_type: QuestionOriginType = Query(default="conversation"),
+    origin_ref: str = Query(default=""),
     question_id: str = Query(...),
     turn_id: str | None = Query(default=None),
     missing_ok: bool = Query(
@@ -332,7 +418,20 @@ async def lookup_entry(
     ),
 ):
     store = get_sqlite_session_store()
-    entry = await store.find_notebook_entry(session_id, question_id, turn_id=turn_id)
+    resolved_ref = origin_ref.strip() or session_id.strip()
+    if not resolved_ref:
+        raise HTTPException(status_code=400, detail="session_id or origin_ref is required")
+    if origin_type == "conversation" and session_id.strip() and resolved_ref != session_id.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="conversation origin_ref must match session_id",
+        )
+    entry = await store.find_notebook_entry_by_origin(
+        origin_type,
+        resolved_ref,
+        question_id,
+        turn_id=turn_id,
+    )
     if entry is None:
         if missing_ok:
             return Response(status_code=204)
@@ -364,9 +463,22 @@ async def update_entry(entry_id: int, payload: EntryUpdateRequest):
 @router.delete("/entries/{entry_id}")
 async def delete_entry(entry_id: int):
     store = get_sqlite_session_store()
+    entry = await store.get_notebook_entry(entry_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Entry not found")
     deleted = await store.delete_notebook_entry(entry_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Entry not found")
+    owner_id = _answer_image_owner(
+        str(entry.get("session_id") or ""),
+        str(entry.get("origin_type") or "conversation"),
+        str(entry.get("origin_ref") or ""),
+    )
+    attachment_store = get_attachment_store()
+    for image in entry.get("user_answer_images") or []:
+        image_id = str(image.get("id") or "")
+        if image_id:
+            await attachment_store.delete_attachment(owner_id, image_id)
     return {"deleted": True, "id": entry_id}
 
 

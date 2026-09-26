@@ -1,5 +1,7 @@
 "use client";
 
+import { useSettings } from "@/features/settings/store/SettingsStore";
+import { useStagedSettings } from "@/features/settings/store/useStagedSettings";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle2, Download, Loader2, XCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -68,10 +70,11 @@ const ENGINE_DESCRIPTION_KEYS: Record<string, string> = {
 
 export default function DocumentParsingSettingsPage() {
   const { t } = useTranslation();
-  const [data, setData] = useState<DocumentParsingPayload | null>(null);
+  const [liveData, setLiveData] = useState<DocumentParsingPayload | null>(null);
+  const [data, setData] = useStagedSettings("document-parsing", liveData, setLiveData);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const { applying: busy, draftRevision } = useSettings();
 
   const load = useCallback(async () => {
     setError(null);
@@ -87,7 +90,7 @@ export default function DocumentParsingSettingsPage() {
             : t("Failed to load document parsing settings."),
         );
       }
-      setData(payload as DocumentParsingPayload);
+      setLiveData(payload as DocumentParsingPayload);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -97,42 +100,19 @@ export default function DocumentParsingSettingsPage() {
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, draftRevision]);
 
-  const putDocumentParsing = useCallback(
-    async (body: Record<string, unknown>) => {
-      setBusy(true);
-      setError(null);
-      try {
-        const response = await apiFetch(
-          apiUrl("/api/settings/document-parsing"),
-          {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-          },
-        );
-        const payload = (await response.json().catch(() => ({}))) as
-          | DocumentParsingPayload
-          | { detail?: string };
-        if (!response.ok) {
-          throw new Error(
-            "detail" in payload && payload.detail
-              ? payload.detail
-              : t("Failed to save document parsing settings."),
-          );
-        }
-        setData(payload as DocumentParsingPayload);
-        return true;
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-        return false;
-      } finally {
-        setBusy(false);
+  const putDocumentParsing = async (body: Record<string, unknown>) => {
+    setData((current) => {
+      if (!current) return current;
+      const engines = { ...current.engines };
+      for (const [name, patch] of Object.entries((body.engines ?? {}) as Record<string, Record<string, unknown>>)) {
+        engines[name] = { ...engines[name], ...patch };
       }
-    },
-    [t],
-  );
+      return { ...current, ...body, engines } as DocumentParsingPayload;
+    });
+    return true;
+  };
 
   return (
     <div>
@@ -398,41 +378,14 @@ function DoclingPanel({
   const doTables = slice.do_table_structure !== false;
   const allowDownload = Boolean(slice.allow_local_model_download);
 
-  // Remote server URL + API key are edited as a draft and saved together so a
-  // half-typed URL is never used mid-parse. Token is write-only.
-  const [remoteDraft, setRemoteDraft] = useState({
-    url: (typeof slice.api_base_url === "string" && slice.api_base_url) || "",
-  });
-  const [tokenDraft, setTokenDraft] = useState("");
-  const [tokenTouched, setTokenTouched] = useState(false);
-  const [savingRemote, setSavingRemote] = useState(false);
+  const remoteDraft = { url: String(slice.api_base_url ?? "") };
+  const tokenDraft = String(slice.api_token ?? "");
+  const tokenTouched = slice.api_token !== undefined;
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{
     ok: boolean;
     message: string;
   } | null>(null);
-  const [remoteMsg, setRemoteMsg] = useState("");
-
-  async function saveRemote() {
-    setSavingRemote(true);
-    setRemoteMsg("");
-    setTestResult(null);
-    const patch: Record<string, unknown> = {
-      mode: "remote",
-      api_base_url: remoteDraft.url.trim() || DEFAULT_DOCLING_URL,
-    };
-    if (tokenTouched) patch.api_token = tokenDraft;
-    try {
-      const saved = await onSave(patch);
-      if (saved) {
-        setRemoteMsg(t("Remote Docling settings saved."));
-        setTokenDraft("");
-        setTokenTouched(false);
-      }
-    } finally {
-      setSavingRemote(false);
-    }
-  }
 
   async function testConnection() {
     setTesting(true);
@@ -541,7 +494,7 @@ function DoclingPanel({
                 placeholder={DEFAULT_DOCLING_URL}
                 value={remoteDraft.url}
                 onChange={(e) => {
-                  setRemoteDraft({ url: e.target.value });
+                  void onSave({ api_base_url: e.target.value });
                   setTestResult(null);
                 }}
               />
@@ -565,8 +518,7 @@ function DoclingPanel({
                 placeholder={tokenSet ? TOKEN_MASK : t("Optional API key")}
                 value={tokenDraft}
                 onChange={(e) => {
-                  setTokenDraft(e.target.value);
-                  setTokenTouched(true);
+                  void onSave({ api_token: e.target.value });
                 }}
               />
             }
@@ -595,29 +547,20 @@ function DoclingPanel({
                 <button
                   type="button"
                   onClick={testConnection}
-                  disabled={testing || savingRemote || busy}
+                  disabled={testing || busy}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 text-[12px] font-medium text-[var(--foreground)] transition-opacity hover:opacity-80 disabled:opacity-40"
                 >
                   {testing && <Loader2 className="h-3 w-3 animate-spin" />}
                   {t("Test")}
                 </button>
-                <button
-                  type="button"
-                  onClick={saveRemote}
-                  disabled={savingRemote || busy}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--foreground)] px-3 py-1.5 text-[12px] font-medium text-[var(--background)] transition-opacity hover:opacity-80 disabled:opacity-40"
-                >
-                  {savingRemote && <Loader2 className="h-3 w-3 animate-spin" />}
-                  {t("Save remote server")}
-                </button>
+
               </div>
             }
           />
           <div className="px-1 pb-4">
             <span className="text-[12px] text-[var(--muted-foreground)]">
-              {remoteMsg ||
-                t(
-                  "Settings are written to data/user/settings/document_parsing.json.",
+              {t(
+                  "Apply pending settings using the bar below.",
                 )}
             </span>
           </div>
@@ -730,25 +673,13 @@ function TikaPanel({
   onSave: (patch: Record<string, unknown>) => Promise<boolean>;
 }) {
   const { t } = useTranslation();
-  const [draftUrl, setDraftUrl] = useState(
-    (typeof slice.server_url === "string" && slice.server_url) || "",
-  );
-  const [saving, setSaving] = useState(false);
+  const draftUrl = String(slice.server_url ?? "");
+  const setDraftUrl = (server_url: string) => { void onSave({ server_url }); };
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{
     ok: boolean;
     message: string;
   } | null>(null);
-
-  async function save() {
-    setSaving(true);
-    setTestResult(null);
-    try {
-      await onSave({ server_url: draftUrl.trim() || DEFAULT_TIKA_URL });
-    } finally {
-      setSaving(false);
-    }
-  }
 
   async function testConnection() {
     setTesting(true);
@@ -838,28 +769,20 @@ function TikaPanel({
             <button
               type="button"
               onClick={testConnection}
-              disabled={testing || saving || busy}
+              disabled={testing || busy}
               className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 text-[12px] font-medium text-[var(--foreground)] transition-opacity hover:opacity-80 disabled:opacity-40"
             >
               {testing && <Loader2 className="h-3 w-3 animate-spin" />}
               {t("Test")}
             </button>
-            <button
-              type="button"
-              onClick={save}
-              disabled={saving || busy}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--foreground)] px-3 py-1.5 text-[12px] font-medium text-[var(--background)] transition-opacity hover:opacity-80 disabled:opacity-40"
-            >
-              {saving && <Loader2 className="h-3 w-3 animate-spin" />}
-              {t("Save Tika server")}
-            </button>
+
           </div>
         }
       />
       <div className="px-1 pb-4">
         <span className="text-[12px] text-[var(--muted-foreground)]">
           {t(
-            "Settings are written to data/user/settings/document_parsing.json.",
+            "Apply pending settings using the bar below.",
           )}
         </span>
       </div>

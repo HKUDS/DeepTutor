@@ -38,6 +38,7 @@ export default function GroupComposer({
   onClearQuote,
   onSend,
   onCancel,
+  onDraftChange,
 }: {
   members: PartnerGroupMember[];
   running: boolean;
@@ -46,6 +47,7 @@ export default function GroupComposer({
   onClearQuote: () => void;
   onSend: (content: string, mentions: string[] | null) => boolean;
   onCancel: () => void;
+  onDraftChange?: (hasDraft: boolean) => void;
 }) {
   const { t } = useTranslation();
   const [input, setInput] = useState("");
@@ -54,6 +56,10 @@ export default function GroupComposer({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const { isComposingRef, onCompositionStart, onCompositionEnd } =
     useImeComposing();
+
+  useEffect(() => {
+    onDraftChange?.(input.length > 0 || quote !== null);
+  }, [input, quote, onDraftChange]);
 
   const query = activeMentionQuery(input);
   const suggestions = useMemo(

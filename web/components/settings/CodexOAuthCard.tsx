@@ -1,5 +1,6 @@
 "use client";
 
+import { useStagedSettings } from "@/features/settings/store/useStagedSettings";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ExternalLink, RefreshCw, ShieldCheck, Unplug } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -21,7 +22,6 @@ import {
   refreshCodexModels,
   shouldPollCodexStatus,
   startCodexLogin,
-  setCodexReasoningEffort,
   type CodexLoginStart,
   type CodexOAuthStatus,
   type CodexReasoningModel,
@@ -33,6 +33,8 @@ export function CodexOAuthCard() {
   const { t } = useTranslation();
   const { catalogEditable, reloadSettings, hasUnsavedChanges, setToast } =
     useSettings();
+  const [liveEfforts, setLiveEfforts] = useState<Record<string, string | null>>({});
+  const [efforts, setEfforts] = useStagedSettings("codex-reasoning", liveEfforts, setLiveEfforts);
   const [status, setStatus] = useState<CodexOAuthStatus | null>(null);
   const [pending, setPending] = useState(false);
   const [errorKey, setErrorKey] = useState<string | null>(null);
@@ -49,6 +51,7 @@ export function CodexOAuthCard() {
 
   const recordStatus = useCallback((nextStatus: CodexOAuthStatus) => {
     setStatus(nextStatus);
+    setLiveEfforts(Object.fromEntries(nextStatus.models.map((model) => [model.model, model.reasoning_effort || null])));
     const terminalOperation =
       nextStatus.operation_state === "completed" ||
       nextStatus.operation_state === "cancelled" ||
@@ -286,30 +289,9 @@ export function CodexOAuthCard() {
     }
   };
 
-  const updateReasoningEffort = async (
-    model: CodexReasoningModel,
-    value: string,
-  ) => {
-    invalidateStatusRequests();
-    setPending(true);
-    try {
-      const nextStatus = await setCodexReasoningEffort(
-        model.model,
-        value || null,
-      );
-      invalidateStatusRequests();
-      recordStatus(nextStatus);
-      setErrorKey(null);
-      setToast(t("codex.oauth.reasoningSaved"));
-    } catch (error) {
-      setErrorKey(
-        codexErrorMessageKey(
-          error instanceof CodexOAuthApiError ? error.code : null,
-        ),
-      );
-    } finally {
-      setPending(false);
-    }
+  const updateReasoningEffort = (model: CodexReasoningModel, value: string) => {
+    setEfforts((current) => ({ ...current, [model.model]: value || null }));
+
   };
 
   const submitCallbackUrl = async () => {
@@ -398,7 +380,7 @@ export function CodexOAuthCard() {
                         </span>
                         <select
                           className="h-9 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-60"
-                          value={model.reasoning_effort || ""}
+                          value={model.model in efforts ? efforts[model.model] || "" : model.reasoning_effort || ""}
                           disabled={pending}
                           onChange={(event) =>
                             void updateReasoningEffort(

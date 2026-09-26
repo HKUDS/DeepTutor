@@ -69,6 +69,7 @@ def test_source_validation_rejects_unknown() -> None:
 
 def test_source_is_normalized_lowercase() -> None:
     assert ChatHistoryImportRequest(source="Claude_Code", sessions=[]).source == ("claude_code")
+    assert ChatHistoryImportRequest(source="ChatGPT", sessions=[]).source == "chatgpt"
 
 
 def test_import_endpoint_persists_and_dedups(store: SQLiteSessionStore) -> None:

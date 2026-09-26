@@ -1,18 +1,11 @@
 "use client";
 
+import { BOOKS_HOME } from "@/lib/learning-routes";
+
 /**
- * SessionActivityPanel — right-side column of *floating cards* recording
- * the conversation's tools, knowledge bases, Space refs, and attachments.
- *
- * Design notes
- * ────────────
- * • The panel itself has **no background** — cards float over the page so
- *   the chat surface still bleeds through. Each card carries its own border
- *   + faint shadow so it reads as a discrete block.
- * • Clicking an attachment row fires `onOpenAttachment(att)` upward; the
- *   parent routes it into the SessionViewerPanel as a new file tab.
- * • Section content is suppressed entirely when empty — no skeleton cards
- *   for tools/KBs/Space/attachments that never showed up in this session.
+ * The Activity home lists the conversation's tools, references, and files.
+ * Clicking a file opens it as a tab in SessionViewerPanel. Empty groups are
+ * omitted, so the panel remains a short index as a conversation grows.
  */
 
 import { useEffect, useState, type ReactNode } from "react";
@@ -21,6 +14,7 @@ import {
   AtSign,
   BookOpen,
   Brain,
+  ChevronRight,
   ClipboardList,
   Database,
   ExternalLink,
@@ -156,7 +150,7 @@ const SPACE_CATEGORIES: Record<string, SpaceCategoryDef> = {
   },
   books: {
     key: "books",
-    href: "/books",
+    href: BOOKS_HOME,
     label: "Books",
     icon: BookOpen,
   },
@@ -185,6 +179,18 @@ const SPACE_CATEGORIES: Record<string, SpaceCategoryDef> = {
     icon: Brain,
   },
 };
+
+/* Activity home surface, shared with SessionViewerPanel's Open section.
+   Groups are soft filled tiles under a small label — no border, no shadow —
+   so they sit inside the viewer sheet without drawing a frame within a frame.
+   (color-mix rather than `bg-[var(--x)]/NN`: Tailwind 3 emits nothing for an
+   opacity modifier on a hex CSS variable.) */
+export const ACTIVITY_LABEL =
+  "px-1.5 pb-1.5 text-[12px] font-medium text-[var(--muted-foreground)]";
+export const ACTIVITY_TILE =
+  "rounded-xl bg-[color-mix(in_srgb,var(--muted)_45%,transparent)]";
+export const ACTIVITY_ROW_HOVER =
+  "hover:bg-[color-mix(in_srgb,var(--muted)_95%,transparent)]";
 
 export function ActivityBody({
   activity,
@@ -294,97 +300,113 @@ export function ActivityBody({
 
   if (activity.isEmpty && !configSection) {
     return (
-      <SectionCard icon={Wrench} title={t("Session activity")}>
-        <div className="px-3.5 py-5 text-center text-[12px] italic text-[var(--muted-foreground)]/80">
-          {t(
-            "As you chat, the tools and references you use — and the files the tutor generates — will appear here.",
-          )}
+      <section>
+        <h2 className={ACTIVITY_LABEL}>{t("Session activity")}</h2>
+        <div className={`${ACTIVITY_TILE} flex items-start gap-3 px-3.5 py-3`}>
+          <Wrench
+            size={15}
+            strokeWidth={1.7}
+            aria-hidden="true"
+            className="mt-[3px] shrink-0 text-[var(--muted-foreground)]"
+          />
+          <p className="min-w-0 text-[12.5px] leading-[1.65] text-[var(--muted-foreground)]">
+            {t(
+              "As you chat, the tools and references you use — and the files the tutor generates — will appear here.",
+            )}
+          </p>
         </div>
-      </SectionCard>
+      </section>
     );
   }
 
   return (
-    <div className="space-y-2.5">
-      {tools.length > 0 ? (
-        <SectionCard icon={Wrench} title={t("Tools used")} count={tools.length}>
-          <ul className="space-y-0.5 p-1.5">
-            {tools.map((tool) => (
-              <li
-                key={tool.name}
-                className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-[12px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]/35"
-              >
-                <span className="truncate font-medium">{tool.name}</span>
-                <span className="shrink-0 rounded-full bg-[var(--muted)]/55 px-1.5 py-[1px] text-[10px] font-semibold text-[var(--muted-foreground)]">
-                  ×{tool.count}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </SectionCard>
-      ) : null}
+    <div className="space-y-5">
+      {!activity.isEmpty ? (
+        <section>
+        <h2 className={ACTIVITY_LABEL}>{t("Session activity")}</h2>
+        <div className={`${ACTIVITY_TILE} divide-y divide-[color-mix(in_srgb,var(--border)_55%,transparent)] overflow-hidden`}>
+        {tools.length > 0 ? (
+          <SectionCard icon={Wrench} title={t("Tools used")} count={tools.length}>
+            <ul className="px-2 pb-2">
+              {tools.map((tool) => (
+                <li
+                  key={tool.name}
+                  className="flex min-h-8 items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-[12px] text-[var(--foreground)]"
+                >
+                  <span className="truncate font-medium">{tool.name}</span>
+                  <span className="shrink-0 text-[11px] tabular-nums text-[var(--muted-foreground)]">
+                    ×{tool.count}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </SectionCard>
+        ) : null}
 
-      {knowledgeBases.length > 0 ? (
-        <SectionCard
-          icon={Database}
-          title={t("Knowledge bases")}
-          count={knowledgeBases.length}
-        >
-          <ul className="space-y-0.5 p-1.5">
-            {knowledgeBases.map((kb) => (
-              <li
-                key={kb}
-                className="truncate rounded-md px-2 py-1.5 text-[12px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]/35"
-              >
-                {kb}
-              </li>
-            ))}
-          </ul>
-        </SectionCard>
-      ) : null}
+        {knowledgeBases.length > 0 ? (
+          <SectionCard
+            icon={Database}
+            title={t("Knowledge bases")}
+            count={knowledgeBases.length}
+          >
+            <ul className="px-2 pb-2">
+              {knowledgeBases.map((kb) => (
+                <li
+                  key={kb}
+                  className="min-h-8 truncate rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-[var(--foreground)]"
+                >
+                  {kb}
+                </li>
+              ))}
+            </ul>
+          </SectionCard>
+        ) : null}
 
-      {spaceSubsections.length > 0 ? (
-        <SectionCard icon={AtSign} title={t("Space")}>
-          <div className="space-y-1.5 p-1.5">{spaceSubsections}</div>
-        </SectionCard>
-      ) : null}
+        {spaceSubsections.length > 0 ? (
+          <SectionCard icon={AtSign} title={t("Space")}>
+            <div className="space-y-1 px-2 pb-2">{spaceSubsections}</div>
+          </SectionCard>
+        ) : null}
 
-      {/* Above Attachments: what this conversation produced is what you come
-          back for, more often than a file you uploaded and already have. */}
-      {artifacts.length > 0 ? (
-        <SectionCard
-          icon={Sparkles}
-          title={t("Generated files")}
-          count={artifacts.length}
-        >
-          <ul className="space-y-0.5 p-1.5">
-            {artifacts.map(({ attachment, messageIndex }, i) => (
-              <AttachmentRow
-                key={`${attachment.id ?? attachment.filename ?? i}-${messageIndex}`}
-                attachment={attachment}
-                onOpen={() => onOpenAttachment(attachment)}
-              />
-            ))}
-          </ul>
-        </SectionCard>
-      ) : null}
+        {/* Above Attachments: what this conversation produced is what you come
+            back for, more often than a file you uploaded and already have. */}
+        {artifacts.length > 0 ? (
+          <SectionCard
+            icon={Sparkles}
+            title={t("Generated files")}
+            count={artifacts.length}
+          >
+            <ul className="px-2 pb-2">
+              {artifacts.map(({ attachment, messageIndex }, i) => (
+                <AttachmentRow
+                  key={`${attachment.id ?? attachment.filename ?? i}-${messageIndex}`}
+                  attachment={attachment}
+                  onOpen={() => onOpenAttachment(attachment)}
+                />
+              ))}
+            </ul>
+          </SectionCard>
+        ) : null}
 
-      {attachments.length > 0 ? (
-        <SectionCard
-          icon={Paperclip}
-          title={t("Attachments")}
-          count={attachments.length}
-        >
-          <ul className="space-y-0.5 p-1.5">
-            {attachments.map(({ attachment, messageIndex }, i) => (
-              <AttachmentRow
-                key={`${attachment.id ?? attachment.filename ?? i}-${messageIndex}`}
-                attachment={attachment}
-                onOpen={() => onOpenAttachment(attachment)}
-              />
-            ))}
-          </ul>
-        </SectionCard>
+        {attachments.length > 0 ? (
+          <SectionCard
+            icon={Paperclip}
+            title={t("Attachments")}
+            count={attachments.length}
+          >
+            <ul className="px-2 pb-2">
+              {attachments.map(({ attachment, messageIndex }, i) => (
+                <AttachmentRow
+                  key={`${attachment.id ?? attachment.filename ?? i}-${messageIndex}`}
+                  attachment={attachment}
+                  onOpen={() => onOpenAttachment(attachment)}
+                />
+              ))}
+            </ul>
+          </SectionCard>
+        ) : null}
+        </div>
+        </section>
       ) : null}
 
       {configSection}
@@ -393,7 +415,7 @@ export function ActivityBody({
 }
 
 /* ------------------------------------------------------------------ */
-/*  Card primitives                                                    */
+/*  Compact section primitives                                         */
 /* ------------------------------------------------------------------ */
 
 function SectionCard({
@@ -408,18 +430,18 @@ function SectionCard({
   children: ReactNode;
 }) {
   return (
-    <section className="overflow-hidden rounded-xl border border-[var(--border)]/55 bg-[var(--card)] shadow-[0_1px_2px_color-mix(in_srgb,var(--foreground)_5%,transparent),0_4px_14px_color-mix(in_srgb,var(--foreground)_5%,transparent)]">
-      <header className="flex items-center gap-2 border-b border-[var(--border)]/35 px-3.5 py-2.5">
+    <section>
+      <header className="flex items-center gap-2.5 px-3.5 pb-1 pt-3">
         <Icon
-          size={13}
+          size={14}
           strokeWidth={1.8}
           className="shrink-0 text-[var(--muted-foreground)]"
         />
-        <span className="flex-1 text-[12px] font-semibold tracking-[0.005em] text-[var(--foreground)]">
+        <h3 className="flex-1 text-[12.5px] font-semibold text-[var(--foreground)]">
           {title}
-        </span>
+        </h3>
         {count !== undefined && count > 0 ? (
-          <span className="shrink-0 rounded-full bg-[var(--muted)]/55 px-1.5 py-[1px] text-[10px] font-semibold text-[var(--muted-foreground)]">
+          <span className="shrink-0 text-[11px] tabular-nums text-[var(--muted-foreground)]">
             {count}
           </span>
         ) : null}
@@ -439,30 +461,32 @@ function SpaceSubsection({
   children: ReactNode;
 }) {
   const Icon = category.icon;
+  const { t } = useTranslation();
   return (
     <div>
       <Link
         href={category.href}
-        className="group flex items-center gap-2 rounded-md px-2 py-1 transition-colors hover:bg-[var(--muted)]/40"
+        className={`group flex min-h-8 items-center gap-2 rounded-lg px-2.5 py-1 transition-colors ${ACTIVITY_ROW_HOVER} focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--ring)]`}
       >
         <Icon
           size={12}
           strokeWidth={1.8}
           className="shrink-0 text-[var(--muted-foreground)]"
         />
-        <span className="flex-1 truncate text-[10.5px] font-semibold uppercase tracking-[0.06em] text-[var(--muted-foreground)] transition-colors group-hover:text-[var(--primary)]">
-          {category.label}
+        <span className="flex-1 truncate text-[11.5px] font-medium text-[var(--foreground)] transition-colors group-hover:text-[var(--primary)]">
+          {t(category.label)}
         </span>
-        <span className="rounded-full bg-[var(--muted)]/55 px-1.5 py-[1px] text-[10px] font-semibold text-[var(--muted-foreground)]">
+        <span className="text-[11px] tabular-nums text-[var(--muted-foreground)]">
           {count}
         </span>
         <ExternalLink
           size={10}
           strokeWidth={2}
+          aria-hidden="true"
           className="shrink-0 text-[var(--muted-foreground)] opacity-0 transition-opacity group-hover:opacity-100"
         />
       </Link>
-      <ul className="mt-0.5 space-y-px pl-5">{children}</ul>
+      <ul className="ml-[21px] border-l border-[color-mix(in_srgb,var(--border)_70%,transparent)] pl-2">{children}</ul>
     </div>
   );
 }
@@ -475,7 +499,7 @@ function SpaceItemRow({
   subtitle?: string;
 }) {
   return (
-    <li className="flex items-center gap-2 rounded-md px-2 py-1 text-[12px] transition-colors hover:bg-[var(--muted)]/35">
+    <li className="flex min-h-7 items-center gap-2 rounded-md px-2 py-1 text-[11.5px]">
       <span className="block min-w-0 flex-1 truncate font-medium text-[var(--foreground)]">
         {title}
       </span>
@@ -516,9 +540,9 @@ function AttachmentRow({
         type="button"
         onClick={onOpen}
         title={diskPath ?? undefined}
-        className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-[var(--muted)]/35"
+        className={`group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors ${ACTIVITY_ROW_HOVER} focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--ring)]`}
       >
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[var(--muted)]/55">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--card)]">
           <Icon
             size={13}
             strokeWidth={1.6}
@@ -529,10 +553,16 @@ function AttachmentRow({
           <span className="block truncate text-[12px] font-medium text-[var(--foreground)]">
             {filename}
           </span>
-          <span className="block truncate text-[10px] uppercase tracking-wide text-[var(--muted-foreground)]">
+          <span className="block truncate text-[10.5px] text-[var(--muted-foreground)]">
             {detail}
           </span>
         </span>
+        <ChevronRight
+          size={14}
+          strokeWidth={1.7}
+          aria-hidden="true"
+          className="shrink-0 text-[var(--muted-foreground)]/65 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+        />
       </button>
     </li>
   );

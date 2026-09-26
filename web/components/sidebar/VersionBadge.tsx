@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
+import { useEffect, useState, type MouseEventHandler } from "react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -10,20 +9,13 @@ import {
   subscribeAppUpdateStatus,
   type AppUpdateStatus,
 } from "@/lib/app-update";
-import { normalizeVersionTag } from "@/lib/version";
-import {
-  requestSettingsSection,
-  scrollToSettingsSection,
-} from "@/features/settings/navigation/settings-scroll";
 
 interface VersionBadgeProps {
-  /** Render the compact variant for the collapsed sidebar (currently hidden). */
-  collapsed?: boolean;
+  onNavigate?: MouseEventHandler<HTMLAnchorElement>;
 }
 
-export function VersionBadge({ collapsed = false }: VersionBadgeProps) {
+export function VersionBadge({ onNavigate }: VersionBadgeProps) {
   const { t } = useTranslation();
-  const pathname = usePathname();
   const [status, setStatus] = useState<AppUpdateStatus | null>(null);
   const [error, setError] = useState("");
 
@@ -50,51 +42,38 @@ export function VersionBadge({ collapsed = false }: VersionBadgeProps) {
     };
   }, []);
 
-  // Keep the collapsed sidebar entirely free of version chrome.
-  if (collapsed) return null;
-
-  const tag =
-    normalizeVersionTag(status?.current_version) ??
-    normalizeVersionTag(process.env.NEXT_PUBLIC_APP_VERSION || "");
-  const displayTag = tag ?? "—";
   const state = error
     ? { dot: "bg-red-500", label: t("Status check failed") }
     : status?.update_available
       ? { dot: "bg-amber-500", label: t("Update available") }
       : status?.release
-        ? { dot: "bg-emerald-500", label: t("Up to date") }
+        ? {
+            dot: "bg-[color-mix(in_srgb,var(--muted-foreground)_35%,transparent)]",
+            label: t("Up to date"),
+          }
         : status && !status.check_enabled
           ? {
-              dot: "bg-[var(--muted-foreground)]/35",
+              dot: "bg-[color-mix(in_srgb,var(--muted-foreground)_35%,transparent)]",
               label: t("Version checks are disabled."),
             }
           : {
-              dot: "bg-[var(--muted-foreground)]/35",
+              dot: "bg-[color-mix(in_srgb,var(--muted-foreground)_35%,transparent)]",
               label: status ? t("Not checked yet") : t("Checking..."),
             };
 
   return (
     <Link
-      href="/settings#about"
-      scroll={false}
-      onClick={(event) => {
-        if (pathname !== "/settings") return;
-        event.preventDefault();
-        window.history.replaceState(null, "", "/settings#about");
-        scrollToSettingsSection("about", "auto");
-        requestSettingsSection("about");
-      }}
-      title={`${displayTag} · ${state.label}`}
-      aria-label={`${displayTag} · ${state.label}`}
-      className="group/ver flex min-w-0 flex-1 items-center gap-2 rounded-lg px-3 py-1.5 font-serif text-[14px] font-semibold tabular-nums tracking-[-0.025em] text-[var(--foreground)]/80 transition-colors hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]"
+      href="/settings/about"
+      prefetch={false}
+      onClick={onNavigate}
+      title={state.label as string}
+      aria-label={state.label as string}
+      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-background/50 hover:text-[var(--foreground)]"
     >
       <span
         aria-hidden="true"
-        className={`h-1.5 w-1.5 shrink-0 rounded-full transition-colors ${state.dot}`}
+        className={`h-1.5 w-1.5 rounded-full transition-colors ${state.dot}`}
       />
-      <span className="truncate leading-none decoration-[var(--muted-foreground)]/40 decoration-dotted underline-offset-[3px] group-hover/ver:underline">
-        {displayTag}
-      </span>
     </Link>
   );
 }

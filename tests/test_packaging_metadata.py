@@ -138,6 +138,17 @@ def test_requirements_mirror_the_core_mcp_client() -> None:
     assert "mcp>=" not in partners_text
 
 
+def test_cli_qrcode_dependency_matches_every_install_surface() -> None:
+    """Plain CLI installs include the QR renderer used by partner onboarding."""
+    expected = "qrcode>=7.4.0,<9.0.0"
+    root = _project(REPOSITORY_ROOT / "pyproject.toml")
+    cli_package = _project(REPOSITORY_ROOT / "packaging" / "deeptutor-cli" / "pyproject.toml")
+
+    assert root["dependencies"].count(expected) == 1
+    assert cli_package["dependencies"].count(expected) == 1
+    assert _cli_requirement_lines().count(expected) == 1
+
+
 def test_full_app_cron_dependency_matches_every_server_install_surface() -> None:
     expected = "croniter>=6.0.0,<7.0.0"
     with (REPOSITORY_ROOT / "pyproject.toml").open("rb") as file:

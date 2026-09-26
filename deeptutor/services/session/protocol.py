@@ -52,7 +52,9 @@ class SessionRepository(Protocol):
         messages: list[dict[str, Any]],
     ) -> dict[str, Any]: ...
 
-    async def list_sessions(self, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]: ...
+    async def list_sessions(
+        self, limit: int = 50, offset: int = 0, *, workspace_id: str | None = None
+    ) -> list[dict[str, Any]]: ...
 
     async def search_sessions(
         self, query: str, limit: int = 50, offset: int = 0
@@ -118,6 +120,8 @@ class TurnRepository(Protocol):
 
 @runtime_checkable
 class MessageRepository(Protocol):
+    async def usage_records(self, start_at: float, end_at: float) -> list[dict[str, Any]]: ...
+
     async def add_message(
         self,
         session_id: str,
@@ -216,6 +220,8 @@ class SessionStoreProtocol(SessionRepository, TurnRepository, MessageRepository,
         self,
         limit: int = 50,
         offset: int = 0,
+        *,
+        workspace_id: str | None = None,
     ) -> list[dict[str, Any]]: ...
 
     async def search_sessions(

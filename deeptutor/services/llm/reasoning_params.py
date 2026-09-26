@@ -149,6 +149,9 @@ def build_openai_compatible_reasoning_kwargs(
     ``custom`` bindings need model-family inference because their endpoint is
     user supplied and therefore cannot be identified by provider name alone.
     """
+    if reasoning_effort == "":
+        return {}
+
     provider_name = _spec_name(spec, binding)
     model_name = model or ""
     thinking_style = str(getattr(spec, "thinking_style", "") or "")

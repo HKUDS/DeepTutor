@@ -1,21 +1,18 @@
 "use client";
-
 import { useTranslation } from "react-i18next";
-
-import { ServiceConfigEditor } from "@/components/settings/ServiceConfigEditor";
+import { ModelsWorkspace } from "@/components/settings/ModelsWorkspace";
 import { SettingsPageHeader } from "@/components/settings/shared";
-
 export default function SttSettingsPage() {
   const { t } = useTranslation();
   return (
     <div>
       <SettingsPageHeader
-        title={t("Speech-to-Text")}
+        title={t("Voice")}
         description={t(
-          "Transcribe the chat composer's microphone recordings. Works with any OpenAI-compatible audio API — OpenAI, Groq, SiliconFlow, Azure, or a local server.",
+          "Manage speech synthesis and transcription models using saved providers.",
         )}
       />
-      <ServiceConfigEditor service="stt" />
+      <ModelsWorkspace page="voice" initialService="stt" />
     </div>
   );
 }

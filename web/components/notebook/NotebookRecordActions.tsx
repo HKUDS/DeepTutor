@@ -10,7 +10,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import Tooltip from "@/components/common/Tooltip";
+import Tooltip from "@/shared/ui/Tooltip";
 import type { NotebookSummary } from "@/lib/notebook-api";
 
 type Panel = "root" | "move" | "copy";
@@ -106,7 +106,7 @@ export default function NotebookRecordActions({
             <div className="p-1">
               <MenuItem
                 icon={Pencil}
-                label={t("Edit")}
+                label={t("Edit record")}
                 onClick={() => {
                   close();
                   onEdit();

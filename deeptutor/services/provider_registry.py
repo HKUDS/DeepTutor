@@ -169,6 +169,19 @@ def canonical_provider_name(name: str | None) -> str | None:
     return PROVIDER_ALIASES.get(key, key)
 
 
+# These Claude families reject explicit temperature and use adaptive thinking.
+# Keep one family list for direct Anthropic calls and OpenAI-compatible gateways.
+# Older Opus/Sonnet families still accept temperature and budget-token thinking.
+ANTHROPIC_EFFORT_BASED_FAMILIES: tuple[str, ...] = (
+    "claude-opus-4-7",
+    "claude-opus-4-8",
+    "claude-opus-5",
+    "claude-sonnet-5",
+    "claude-fable-5",
+    "claude-mythos-5",
+)
+
+
 # ---------------------------------------------------------------------------
 # PROVIDERS — the registry.  Order = priority.
 # ---------------------------------------------------------------------------
@@ -276,6 +289,16 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         default_api_base="https://api.atlascloud.ai/v1",
     ),
     ProviderSpec(
+        name="unifically",
+        keywords=("unifically",),
+        env_key="UNIFICALLY_API_KEY",
+        display_name="Unifically",
+        backend="openai_compat",
+        is_gateway=True,
+        detect_by_base_keyword="unifically",
+        default_api_base="https://api.unifically.com/v1",
+    ),
+    ProviderSpec(
         name="volcengine",
         keywords=("volcengine", "volces", "ark"),
         env_key="OPENAI_API_KEY",
@@ -329,6 +352,11 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         backend="anthropic",
         default_api_base="https://api.anthropic.com/v1",
         supports_prompt_caching=True,
+        # This model rule also applies when Claude is reached through a
+        # generic OpenAI-compatible binding or gateway.
+        model_overrides=tuple(
+            (family, {"temperature": None}) for family in ANTHROPIC_EFFORT_BASED_FAMILIES
+        ),
     ),
     ProviderSpec(
         name="openai",

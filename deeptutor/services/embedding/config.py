@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar
+from copy import deepcopy
 from dataclasses import dataclass
 
 from deeptutor.services.config import resolve_embedding_runtime_config
@@ -27,9 +30,57 @@ class EmbeddingConfig:
     batch_delay: float = 0.0
 
 
-def get_embedding_config() -> EmbeddingConfig:
+_scoped_config: ContextVar[EmbeddingConfig | None] = ContextVar("embedding_config", default=None)
+
+
+def scoped_embedding_config() -> EmbeddingConfig | None:
+    return _scoped_config.get()
+
+
+@contextmanager
+def embedding_config_scope(config: EmbeddingConfig):
+    """Bind one operation, including its worker threads, to a resolved model."""
+    token = _scoped_config.set(config)
+    try:
+        yield
+    finally:
+        _scoped_config.reset(token)
+
+
+def get_embedding_config(
+    selection: dict | None = None, *, catalog: dict | None = None
+) -> EmbeddingConfig:
     """Load embedding config from provider runtime resolver."""
-    resolved = resolve_embedding_runtime_config()
+    if selection is None and catalog is None and _scoped_config.get() is not None:
+        return _scoped_config.get()
+    if selection is not None:
+        from deeptutor.services.config import get_model_catalog_service
+
+        catalog = deepcopy(catalog if catalog is not None else get_model_catalog_service().load())
+        service = catalog.get("services", {}).get("embedding", {})
+        profile = next(
+            (p for p in service.get("profiles", []) if p.get("id") == selection.get("profile_id")),
+            None,
+        )
+        model = next(
+            (
+                m
+                for m in (profile or {}).get("models", [])
+                if m.get("id") == selection.get("model_id")
+            ),
+            None,
+        )
+        if profile is None or model is None:
+            raise ValueError(
+                "The embedding model bound to this knowledge base was deleted. Select another embedding model to re-index it."
+            )
+        service["active_profile_id"] = profile["id"]
+        service["active_model_id"] = model["id"]
+    resolved = (
+        resolve_embedding_runtime_config(catalog=catalog)
+        if catalog is not None
+        else resolve_embedding_runtime_config()
+    )
 
     if not resolved.model:
         raise ValueError("Embedding model not set. Please configure it in Settings > Catalog.")

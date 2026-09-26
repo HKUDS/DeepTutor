@@ -31,6 +31,7 @@ from deeptutor.agents._shared.tool_composition import (
     ToolMountFlags,
     compose_enabled_tools,
     default_optional_tools,
+    partner_can_record_questions,
     user_has_mastery_topics,
     user_has_memory,
     user_has_notebooks,
@@ -85,7 +86,7 @@ from deeptutor.services.llm import (
     supports_tools,  # noqa: F401  (re-exported for tests)
 )
 from deeptutor.services.llm.context_window import resolve_effective_context_window
-from deeptutor.services.prompt import get_prompt_manager
+from deeptutor.services.prompt import get_prompt_manager, normalize_language
 from deeptutor.services.prompt.lookup import prompt_text as _prompt_text
 from deeptutor.tools.builtin import PARTNER_BUILTIN_TOOL_NAMES
 
@@ -235,7 +236,9 @@ class AgenticLoopPipeline:
         event_stage: str = "responding",
         emit_result: bool = True,
     ) -> None:
-        self.language = "zh" if language.lower().startswith("zh") else "en"
+        # Prompt resources fall back to English; the requested output language
+        # must still reach the assembler's final language directive.
+        self.language = normalize_language(language)
         self.llm_config = get_llm_config()
         self.binding = getattr(self.llm_config, "binding", None) or "openai"
         self.model = getattr(self.llm_config, "model", None)
@@ -407,6 +410,12 @@ class AgenticLoopPipeline:
         )
         if tool_schemas is not None and self._tool_view is not None:
             self._tool_view.attach(tool_schemas)
+        if tool_schemas:
+            # Reuse the last admitted order, including deferred tools loaded
+            # during that turn. Removed/unauthorized tools stay removed.
+            prior = (context.runtime.previous_model_turn or {}).get("tools") or []
+            order = {item["function"]["name"]: i for i, item in enumerate(prior)}
+            tool_schemas.sort(key=lambda item: order.get(item["function"]["name"], len(order)))
 
         loop = AgentLoop(
             pipeline=self,
@@ -443,7 +452,13 @@ class AgenticLoopPipeline:
             capability_blocks=self._capability_system_blocks(context),
             include_tool_manifest=include_tool_manifest,
         )
-        return self._prompt_assembler.render(self._last_prompt_blocks)
+        stable_blocks, self._runtime_snapshots = self._prompt_assembler.split_for_replay(
+            self._last_prompt_blocks
+        )
+        return self._prompt_assembler.render(
+            stable_blocks,
+            allow_user_override=not bool(context.metadata.get("reply_language_fixed")),
+        )
 
     def _build_loop_messages(
         self,
@@ -470,7 +485,12 @@ class AgenticLoopPipeline:
             kb_seed=kb_seed,
         )
         messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
-        for item in context.conversation_history:
+        history = context.runtime.model_history
+        if history is not None:
+            from copy import deepcopy
+
+            messages.extend(deepcopy(history))
+        for item in context.conversation_history if history is None else []:
             role = item.get("role")
             content = item.get("content")
             if role in {"user", "assistant"} and isinstance(content, (str, list)):
@@ -488,6 +508,20 @@ class AgenticLoopPipeline:
                     "[Conversation summary]",
                 )
                 messages.append({"role": "system", "content": f"{header}\n{content}"})
+        self._model_turn_start = len(messages)
+        previous_snapshots = {
+            item["_context_snapshot"]: item.get("content")
+            for item in messages
+            if isinstance(item.get("_context_snapshot"), str)
+        }
+        snapshots = dict(self._runtime_snapshots)
+        for name in sorted(previous_snapshots.keys() - snapshots.keys()):
+            snapshots[name] = (
+                f"[Runtime context: {name}]\nThis section is now empty; earlier values no longer apply."
+            )
+        for name, snapshot in snapshots.items():
+            if previous_snapshots.get(name) != snapshot:
+                messages.append({"role": "user", "content": snapshot, "_context_snapshot": name})
         messages.append({"role": "user", "content": user_content})
         return self._prepare_messages_with_attachments(messages, context)
 
@@ -601,9 +635,13 @@ class AgenticLoopPipeline:
 
     def _tool_scope(self, context: UnifiedContext) -> ToolScope:
         """Per-turn policy inputs for the provider layer."""
+        from deeptutor.services.workspace.resources import current_resources
+
+        selected_mcp = current_resources().mcp
         raw_filter = context.metadata.get("mcp_tools_filter")
         return ToolScope(
             owner_id=self._current_owner_id(),
+            workspace_mcp=frozenset(selected_mcp) if selected_mcp is not None else None,
             is_partner=self._is_partner_turn(context),
             session_id=context.session_id,
             caller_whitelist=(
@@ -701,7 +739,11 @@ class AgenticLoopPipeline:
                 has_sources=False,
                 has_memory=user_has_memory(),
                 has_notebooks=user_has_notebooks(),
-                has_question_bank=user_has_question_bank(),
+                # A partner turn mounts the bank even when it is still empty:
+                # the tool's record action must be available to file the FIRST
+                # wrong question the learner owns up to (#1244). Product chat
+                # keeps the entries-exist gate.
+                has_question_bank=user_has_question_bank() or partner_can_record_questions(),
                 has_skills=bool(context.skills_manifest),
                 has_deferred_tools=getattr(self, "_deferred_loader", None) is not None,
                 has_exec=getattr(self, "_exec_enabled", False),
@@ -949,8 +991,6 @@ class AgenticLoopPipeline:
         context: UnifiedContext,
     ) -> list[dict[str, Any]]:
         schemas = self.tool_lookup.build_openai_schemas(enabled_tools)
-        kb_choices = self._coexisting_rag_kbs(context)
-        notebook_choices = self._notebook_choices()
         for schema in schemas:
             function = schema.get("function") if isinstance(schema, dict) else None
             if not isinstance(function, dict):
@@ -962,25 +1002,11 @@ class AgenticLoopPipeline:
             if function.get("name") == "rag" and isinstance(properties, dict):
                 if isinstance(properties.get("query"), dict):
                     properties["query"].setdefault("minLength", 1)
-                if isinstance(properties.get("kb_name"), dict):
-                    properties["kb_name"]["enum"] = kb_choices
             if function.get("name") == "geogebra_analysis" and isinstance(properties, dict):
                 properties.pop("image_base64", None)
                 required = parameters.get("required")
                 if isinstance(required, list):
                     parameters["required"] = [n for n in required if n != "image_base64"]
-            if (
-                function.get("name") in {"list_notebook", "write_note"}
-                and isinstance(properties, dict)
-                and notebook_choices
-                and isinstance(properties.get("notebook_id"), dict)
-            ):
-                nb_schema = properties["notebook_id"]
-                nb_schema["enum"] = [choice["id"] for choice in notebook_choices]
-                rendered = "; ".join(f"{c['id']} = {c['name']}" for c in notebook_choices)
-                nb_schema["description"] = (
-                    f"{nb_schema.get('description', '').rstrip(' .')}. Available: {rendered}."
-                )
             parameters["additionalProperties"] = False
         return schemas
 
@@ -1755,8 +1781,8 @@ class AgenticLoopPipeline:
         returns say nothing about the size of the collection they came from. The
         inventory is read here instead (off the event loop: a directory walk per
         local KB, and a cached browse call for a connected library that exposes
-        one) and rendered into the system prompt, which keeps the prompt
-        byte-stable for the whole turn and makes counts answerable without a tool
+        one) and rendered into a runtime snapshot, which is appended again only
+        when its contents change and makes counts answerable without a tool
         round-trip.
 
         PageIndex KBs are excluded: ``_pageindex_system_note`` already lists
@@ -1797,8 +1823,8 @@ class AgenticLoopPipeline:
     def _pageindex_system_note(self) -> str:
         """Retrieval instructions for attached PageIndex KBs.
 
-        Populated by ``_prepare_deferred_tools`` once per turn, so the system
-        prompt stays byte-stable for the whole turn (KB cache prefix).
+        Populated by ``_prepare_deferred_tools`` once per turn and included in
+        the independently updated tool-context snapshot.
         """
         providers = getattr(self, "_pageindex_providers", None) or set()
         if not providers:

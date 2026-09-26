@@ -1,4 +1,4 @@
-"""Transactional persistence for Mastery Path aggregates.
+"""Transactional persistence for Mastery Path and Reading learning records.
 
 The original implementation rewrote one JSON file per path.  A process-local
 lock made each individual replace atomic, but two sessions could still load
@@ -24,16 +24,21 @@ import sqlite3
 import threading
 import time
 from typing import Any, TypeVar
+import uuid
 
 from pydantic import ValidationError
 
 from deeptutor.learning.models import (
     InteractionStatus,
+    LearningEvidence,
     LearningProgress,
     MasteryEvent,
     MasteryInteraction,
     MasteryPathLease,
     MasteryTopic,
+    ReadingActivityRecord,
+    ReadingLearningRecords,
+    ReadingProgressRecord,
     TopicMetadata,
     TopicSource,
 )
@@ -314,6 +319,31 @@ class LearningTransaction:
             {"source_count": len(sources), "status": metadata.status},
         )
 
+    def topic_sources(self) -> list[TopicSource]:
+        """Read this path's source set on the transaction connection."""
+
+        rows = self._conn.execute(
+            """
+            SELECT * FROM mastery_topic_sources
+            WHERE path_id = ? ORDER BY position ASC, created_at ASC
+            """,
+            (self.progress.book_id,),
+        ).fetchall()
+        return [
+            TopicSource(
+                id=row["source_id"],
+                kind=row["kind"],
+                source_id=row["external_id"] or "",
+                label=row["label"],
+                excerpt=row["excerpt"] or "",
+                position=int(row["position"]),
+                available=bool(row["available"]),
+                metadata=json.loads(row["metadata_json"] or "{}"),
+                created_at=float(row["created_at"]),
+            )
+            for row in rows
+        ]
+
 
 class LearningStore:
     """Workspace-scoped transactional store for Mastery Path state."""
@@ -427,6 +457,28 @@ class LearningStore:
                     CREATE INDEX IF NOT EXISTS idx_mastery_events_path_revision
                         ON mastery_events(path_id, revision, id);
 
+                    CREATE TABLE IF NOT EXISTS mastery_learning_evidence (
+                        path_id TEXT NOT NULL REFERENCES mastery_paths(path_id) ON DELETE CASCADE,
+                        ordinal INTEGER NOT NULL,
+                        knowledge_point_id TEXT NOT NULL,
+                        timestamp REAL NOT NULL,
+                        source TEXT NOT NULL,
+                        assessment_type TEXT NOT NULL,
+                        result TEXT NOT NULL,
+                        quality REAL,
+                        session_id TEXT NOT NULL DEFAULT '',
+                        turn_id TEXT NOT NULL DEFAULT '',
+                        evidence_json TEXT NOT NULL,
+                        PRIMARY KEY(path_id, ordinal)
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_mastery_evidence_kp_time
+                        ON mastery_learning_evidence(path_id, knowledge_point_id, timestamp DESC);
+
+                    CREATE TABLE IF NOT EXISTS mastery_schema_migrations (
+                        name TEXT PRIMARY KEY,
+                        applied_at REAL NOT NULL
+                    );
+
                     CREATE TABLE IF NOT EXISTS mastery_path_leases (
                         path_id TEXT PRIMARY KEY REFERENCES mastery_paths(path_id) ON DELETE CASCADE,
                         session_id TEXT NOT NULL,
@@ -459,6 +511,29 @@ class LearningStore:
                     );
                     CREATE INDEX IF NOT EXISTS idx_mastery_topic_sources_path
                         ON mastery_topic_sources(path_id, position);
+
+                    CREATE TABLE IF NOT EXISTS reading_progress (
+                        material_id TEXT PRIMARY KEY,
+                        latest_locator INTEGER NOT NULL,
+                        latest_percentage REAL NOT NULL,
+                        furthest_locator INTEGER NOT NULL,
+                        furthest_percentage REAL NOT NULL,
+                        updated_at REAL NOT NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_reading_progress_updated
+                        ON reading_progress(updated_at DESC);
+
+                    CREATE TABLE IF NOT EXISTS reading_activities (
+                        activity_id TEXT PRIMARY KEY,
+                        material_id TEXT NOT NULL,
+                        extension_id TEXT NOT NULL,
+                        action TEXT NOT NULL,
+                        locator INTEGER NOT NULL,
+                        result_type TEXT NOT NULL,
+                        created_at REAL NOT NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_reading_activities_recent
+                        ON reading_activities(created_at DESC, activity_id DESC);
                     """
                 )
                 self._converge_single_membership(conn)
@@ -488,6 +563,27 @@ class LearningStore:
                             float(row["created_at"]),
                             float(row["updated_at"]),
                         ),
+                    )
+                migration = "learning_evidence_projection_v1"
+                already_applied = conn.execute(
+                    "SELECT 1 FROM mastery_schema_migrations WHERE name = ?",
+                    (migration,),
+                ).fetchone()
+                if already_applied is None:
+                    for row in conn.execute(
+                        "SELECT path_id, state_json, revision FROM mastery_paths"
+                    ).fetchall():
+                        try:
+                            progress = self._progress_from_row(row)
+                        except (TypeError, ValueError, ValidationError, json.JSONDecodeError):
+                            logger.warning(
+                                "Skipping evidence projection for invalid path %s", row["path_id"]
+                            )
+                            continue
+                        self._sync_evidence_projection(conn, str(row["path_id"]), progress)
+                    conn.execute(
+                        "INSERT INTO mastery_schema_migrations(name, applied_at) VALUES (?, ?)",
+                        (migration, time.time()),
                     )
                 conn.commit()
             self._initialized = True
@@ -578,6 +674,102 @@ class LearningStore:
         persisted.version = revision
         persisted.updated_at = updated_at
         return json.dumps(persisted.model_dump(mode="json"), ensure_ascii=False)
+
+    @staticmethod
+    def _sync_evidence_projection(
+        conn: sqlite3.Connection,
+        path_id: str,
+        progress: LearningProgress,
+        *,
+        previous_evidence: list[dict[str, Any]] | None = None,
+    ) -> None:
+        """Mirror aggregate evidence into the query/index table.
+
+        This helper is always called inside the caller's write transaction, so
+        a projection failure rolls back the aggregate and its public events.
+        The ordinal is deliberately stable within the aggregate and avoids
+        inventing a second evidence identity. Ordinary appends update only
+        new rows; shrinking or repairing history removes only the stale tail.
+        """
+        # Ordinary writes already loaded the previous aggregate. Compare that
+        # in-memory snapshot, not a second SELECT of every projection row on
+        # every unrelated path edit. Migration/explicit repair passes None and
+        # reconciles against the projection itself.
+        existing = (
+            {
+                int(row["ordinal"]): str(row["evidence_json"])
+                for row in conn.execute(
+                    "SELECT ordinal, evidence_json FROM mastery_learning_evidence WHERE path_id = ?",
+                    (path_id,),
+                ).fetchall()
+            }
+            if previous_evidence is None
+            else None
+        )
+        for ordinal, evidence in enumerate(progress.learning_evidence):
+            payload = evidence.model_dump(mode="json")
+            if previous_evidence is not None and ordinal < len(previous_evidence):
+                if previous_evidence[ordinal] == payload:
+                    continue
+            encoded = json.dumps(payload, ensure_ascii=False)
+            if existing is not None and existing.get(ordinal) == encoded:
+                continue
+            conn.execute(
+                """
+                INSERT INTO mastery_learning_evidence (
+                    path_id, ordinal, knowledge_point_id, timestamp, source,
+                    assessment_type, result, quality, session_id, turn_id,
+                    evidence_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(path_id, ordinal) DO UPDATE SET
+                    knowledge_point_id = excluded.knowledge_point_id,
+                    timestamp = excluded.timestamp,
+                    source = excluded.source,
+                    assessment_type = excluded.assessment_type,
+                    result = excluded.result,
+                    quality = excluded.quality,
+                    session_id = excluded.session_id,
+                    turn_id = excluded.turn_id,
+                    evidence_json = excluded.evidence_json
+                """,
+                (
+                    path_id,
+                    ordinal,
+                    evidence.knowledge_point_id,
+                    evidence.timestamp,
+                    evidence.source,
+                    evidence.assessment_type,
+                    evidence.result,
+                    evidence.quality,
+                    evidence.session_id,
+                    evidence.turn_id,
+                    encoded,
+                ),
+            )
+        previous_length = len(previous_evidence) if previous_evidence is not None else len(existing)
+        if previous_length > len(progress.learning_evidence):
+            conn.execute(
+                "DELETE FROM mastery_learning_evidence WHERE path_id = ? AND ordinal >= ?",
+                (path_id, len(progress.learning_evidence)),
+            )
+
+    def rebuild_learning_evidence_projection(self, book_id: str) -> None:
+        """Explicitly reconcile a path's query index from its durable aggregate."""
+        path_id = self._validate_id(book_id)
+        self._import_legacy_if_needed(path_id)
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                row = conn.execute(
+                    "SELECT state_json, revision FROM mastery_paths WHERE path_id = ?", (path_id,)
+                ).fetchone()
+                if row is None:
+                    raise KeyError(path_id)
+                self._sync_evidence_projection(conn, path_id, self._progress_from_row(row))
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
 
     def _archive_legacy(self, path: Path) -> None:
         if not path.exists():
@@ -695,6 +887,7 @@ class LearningStore:
                 )
                 if conn.execute("SELECT changes()").fetchone()[0]:
                     inserted = True
+                    self._sync_evidence_projection(conn, path_id, progress)
                     conn.execute(
                         """
                         INSERT INTO mastery_events (
@@ -724,6 +917,88 @@ class LearningStore:
             ).fetchone()
         return self._progress_from_row(row) if row is not None else None
 
+    def list_learning_evidence(
+        self,
+        book_id: str,
+        knowledge_point_id: str | None = None,
+        *,
+        limit: int | None = None,
+    ) -> list[LearningEvidence]:
+        """Read the indexed evidence projection without mutating progress."""
+        path_id = self._validate_id(book_id)
+        self._import_legacy_if_needed(path_id)
+        clauses = ["path_id = ?"]
+        params: list[Any] = [path_id]
+        if knowledge_point_id:
+            clauses.append("knowledge_point_id = ?")
+            params.append(str(knowledge_point_id))
+        bounded_limit = None if limit is None else max(1, min(int(limit), 1000))
+        limit_sql = " LIMIT ?" if bounded_limit is not None else ""
+        if bounded_limit is not None:
+            params.append(bounded_limit)
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT evidence_json FROM mastery_learning_evidence "  # nosec B608 - fixed clauses; values bound
+                f"WHERE {' AND '.join(clauses)} ORDER BY ordinal DESC{limit_sql}",
+                tuple(params),
+            ).fetchall()
+        return [LearningEvidence.model_validate(json.loads(row["evidence_json"])) for row in rows]
+
+    def load_with_learning_evidence(
+        self,
+        book_id: str,
+        knowledge_point_id: str,
+        *,
+        limit: int = 20,
+    ) -> tuple[LearningProgress | None, list[LearningEvidence], int]:
+        """Read an aggregate and its evidence from one SQLite snapshot."""
+        path_id = self._validate_id(book_id)
+        self._import_legacy_if_needed(path_id)
+        bounded_limit = max(1, min(int(limit), 1000))
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM mastery_paths WHERE path_id = ?", (path_id,)
+            ).fetchone()
+            if row is None:
+                return None, [], 0
+            evidence_rows = conn.execute(
+                """
+                SELECT evidence_json FROM mastery_learning_evidence
+                WHERE path_id = ? AND knowledge_point_id = ?
+                ORDER BY ordinal DESC LIMIT ?
+                """,
+                (path_id, str(knowledge_point_id), bounded_limit),
+            ).fetchall()
+            count_row = conn.execute(
+                """
+                SELECT COUNT(*) AS count FROM mastery_learning_evidence
+                WHERE path_id = ? AND knowledge_point_id = ?
+                """,
+                (path_id, str(knowledge_point_id)),
+            ).fetchone()
+        return (
+            self._progress_from_row(row),
+            [
+                LearningEvidence.model_validate(json.loads(item["evidence_json"]))
+                for item in evidence_rows
+            ],
+            int(count_row["count"] if count_row else 0),
+        )
+
+    def count_learning_evidence(self, book_id: str, knowledge_point_id: str | None = None) -> int:
+        path_id = self._validate_id(book_id)
+        self._import_legacy_if_needed(path_id)
+        args: tuple[str, ...]
+        if knowledge_point_id:
+            query = "SELECT COUNT(*) AS count FROM mastery_learning_evidence WHERE path_id = ? AND knowledge_point_id = ?"
+            args = (path_id, str(knowledge_point_id))
+        else:
+            query = "SELECT COUNT(*) AS count FROM mastery_learning_evidence WHERE path_id = ?"
+            args = (path_id,)
+        with self._connect() as conn:
+            row = conn.execute(query, args).fetchone()
+        return int(row["count"] if row else 0)
+
     def save(self, progress: LearningProgress) -> None:
         path_id = self._validate_id(progress.book_id)
         self._import_legacy_if_needed(path_id)
@@ -732,7 +1007,7 @@ class LearningStore:
             conn.execute("BEGIN IMMEDIATE")
             try:
                 row = conn.execute(
-                    "SELECT revision, created_at FROM mastery_paths WHERE path_id = ?",
+                    "SELECT revision, created_at, state_json FROM mastery_paths WHERE path_id = ?",
                     (path_id,),
                 ).fetchone()
                 if row is None:
@@ -782,6 +1057,14 @@ class LearningStore:
                             path_id, expected, int(current["revision"]) if current else 0
                         )
                     event_type = "path.saved"
+                previous_evidence = (
+                    json.loads(row["state_json"]).get("learning_evidence", [])
+                    if row is not None
+                    else []
+                )
+                self._sync_evidence_projection(
+                    conn, path_id, progress, previous_evidence=previous_evidence
+                )
                 conn.execute(
                     """
                     INSERT INTO mastery_events (
@@ -877,6 +1160,14 @@ class LearningStore:
                             tx.base_revision,
                             int(current["revision"]) if current else 0,
                         )
+                    previous_evidence = (
+                        json.loads(row["state_json"]).get("learning_evidence", [])
+                        if row is not None
+                        else []
+                    )
+                    self._sync_evidence_projection(
+                        conn, path_id, tx.progress, previous_evidence=previous_evidence
+                    )
                     for event_type, payload, session_id, turn_id in tx.events:
                         conn.execute(
                             """
@@ -971,6 +1262,183 @@ class LearningStore:
             path.stem for path in Path(self._root).glob("*.json") if not path.name.startswith(".")
         }
         return sorted(stored | legacy)
+
+    # ---- account Reading learning records --------------------------------
+
+    @staticmethod
+    def _reading_progress_from_row(row: sqlite3.Row) -> ReadingProgressRecord:
+        return ReadingProgressRecord(
+            material_id=str(row["material_id"]),
+            latest_locator=int(row["latest_locator"]),
+            latest_percentage=float(row["latest_percentage"]),
+            furthest_locator=int(row["furthest_locator"]),
+            furthest_percentage=float(row["furthest_percentage"]),
+            updated_at=float(row["updated_at"]),
+        )
+
+    @staticmethod
+    def _reading_activity_from_row(row: sqlite3.Row) -> ReadingActivityRecord:
+        return ReadingActivityRecord(
+            activity_id=str(row["activity_id"]),
+            material_id=str(row["material_id"]),
+            extension_id=str(row["extension_id"]),
+            action=str(row["action"]),
+            locator=int(row["locator"]),
+            result_type=str(row["result_type"]),
+            created_at=float(row["created_at"]),
+        )
+
+    def record_reading_position(
+        self,
+        material_id: str,
+        *,
+        locator: int,
+        percentage: float,
+    ) -> ReadingProgressRecord:
+        """Persist the latest viewport while preserving the furthest progress."""
+
+        material_id = self._validate_id(material_id)
+        locator = int(locator)
+        percentage = float(percentage)
+        record = ReadingProgressRecord(
+            material_id=material_id,
+            latest_locator=locator,
+            latest_percentage=percentage,
+            furthest_locator=locator,
+            furthest_percentage=percentage,
+        )
+        now = time.time()
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                row = conn.execute(
+                    """
+                    SELECT furthest_locator, furthest_percentage
+                    FROM reading_progress WHERE material_id = ?
+                    """,
+                    (material_id,),
+                ).fetchone()
+                if row is None:
+                    conn.execute(
+                        """
+                        INSERT INTO reading_progress (
+                            material_id, latest_locator, latest_percentage,
+                            furthest_locator, furthest_percentage, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            material_id,
+                            record.latest_locator,
+                            record.latest_percentage,
+                            record.furthest_locator,
+                            record.furthest_percentage,
+                            now,
+                        ),
+                    )
+                else:
+                    record.furthest_locator = max(
+                        record.furthest_locator, int(row["furthest_locator"])
+                    )
+                    record.furthest_percentage = max(
+                        record.furthest_percentage,
+                        float(row["furthest_percentage"]),
+                    )
+                    conn.execute(
+                        """
+                        UPDATE reading_progress
+                        SET latest_locator = ?, latest_percentage = ?,
+                            furthest_locator = ?, furthest_percentage = ?,
+                            updated_at = ?
+                        WHERE material_id = ?
+                        """,
+                        (
+                            record.latest_locator,
+                            record.latest_percentage,
+                            record.furthest_locator,
+                            record.furthest_percentage,
+                            now,
+                            material_id,
+                        ),
+                    )
+                record.updated_at = now
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+        return record
+
+    def record_reading_activity(
+        self,
+        material_id: str,
+        *,
+        extension_id: str,
+        action: str,
+        locator: int,
+        result_type: str,
+    ) -> ReadingActivityRecord:
+        """Record one successful Reading-extension action without source content."""
+
+        material_id = self._validate_id(material_id)
+        extension_id = str(extension_id or "").strip()
+        action = str(action or "").strip()
+        if not extension_id or len(extension_id) > 64:
+            raise ValueError("extension_id must contain 1 to 64 characters")
+        if not action or len(action) > 64:
+            raise ValueError("action must contain 1 to 64 characters")
+        record = ReadingActivityRecord(
+            activity_id=f"racc_{uuid.uuid4().hex}",
+            material_id=material_id,
+            extension_id=extension_id,
+            action=action,
+            locator=int(locator),
+            result_type=result_type,
+        )
+        now = time.time()
+        record.created_at = now
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO reading_activities (
+                    activity_id, material_id, extension_id, action, locator,
+                    result_type, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    record.activity_id,
+                    record.material_id,
+                    record.extension_id,
+                    record.action,
+                    record.locator,
+                    record.result_type,
+                    now,
+                ),
+            )
+            conn.commit()
+        return record
+
+    def list_reading_records(self, *, activity_limit: int = 200) -> ReadingLearningRecords:
+        """Return this workspace's Reading progress and recent activity."""
+
+        limit = max(1, min(int(activity_limit), 500))
+        with self._connect() as conn:
+            progress_rows = conn.execute(
+                """
+                SELECT * FROM reading_progress
+                ORDER BY updated_at DESC, material_id ASC
+                """
+            ).fetchall()
+            activity_rows = conn.execute(
+                """
+                SELECT * FROM reading_activities
+                ORDER BY created_at DESC, activity_id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return ReadingLearningRecords(
+            progress=[self._reading_progress_from_row(row) for row in progress_rows],
+            activities=[self._reading_activity_from_row(row) for row in activity_rows],
+        )
 
     # ---- product topic metadata -----------------------------------------
 

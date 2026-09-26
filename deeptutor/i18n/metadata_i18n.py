@@ -54,6 +54,10 @@ _TOOL_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "en": "Search arXiv preprints and return paper metadata.",
         "zh": "搜索 arXiv 预印本并返回论文元数据。",
     },
+    "zotero_search": {
+        "en": "Search a user-supplied Zotero library for references.",
+        "zh": "搜索用户提供的 Zotero 文献库。",
+    },
     "reason": {
         "en": "Use a dedicated reasoning model call for hard reasoning tasks.",
         "zh": "调用专门的推理模型处理高难度推理任务。",

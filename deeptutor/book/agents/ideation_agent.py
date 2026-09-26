@@ -12,6 +12,7 @@ from typing import Any
 
 from deeptutor.agents.base_agent import BaseAgent
 from deeptutor.services.llm.structured_retry import json_with_reasoning_retry
+from deeptutor.services.llm.types import StreamOutcome
 
 from ..inputs import IdeationContext
 from ..models import BookProposal
@@ -56,14 +57,18 @@ class IdeationAgent(BaseAgent):
 
         async def _run(reasoning_effort: str | None) -> str:
             chunks: list[str] = []
+            outcome = StreamOutcome()
             async for chunk in self.stream_llm(
                 user_prompt=user_prompt,
                 system_prompt=system_prompt,
                 response_format={"type": "json_object"},
                 stage="ideation",
                 reasoning_effort=reasoning_effort,
+                outcome=outcome,
             ):
                 chunks.append(chunk)
+            if outcome.truncated:
+                return ""
             return "".join(chunks)
 
         # ``title`` is the one field the proposal cannot be rebuilt without, so

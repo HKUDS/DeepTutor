@@ -137,6 +137,7 @@ export default function AttachmentSettingsPage() {
       setDraft(normalizeDraft(next));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      throw err;
     }
   }, [t]);
 
@@ -177,7 +178,7 @@ export default function AttachmentSettingsPage() {
           <SettingSection
             title={t("Size limits")}
             description={t(
-              "Caps are enforced when a file is picked and again server-side on every message. Lower limits apply immediately; raising them needs a backend restart so larger uploads fit through the WebSocket transport.",
+              "After applying changes, lower limits take effect immediately. Raising limits needs a backend restart so larger uploads fit through the WebSocket transport.",
             )}
           >
             <SettingRow

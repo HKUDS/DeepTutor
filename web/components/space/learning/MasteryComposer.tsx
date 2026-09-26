@@ -6,10 +6,11 @@
  *
  * A mastery session is a chat session, so the learner gets the whole
  * composer: attachments, `@`-space references, the knowledge picker, the
- * model selector, dictation. Two of those controls are session-scoped
- * rather than per-turn — the knowledge bases in play and the pinned model —
- * so both are driven straight off the session state instead of a second
- * copy inside the composer.
+ * model selector, dictation, and the Skills/MCP narrowing Chat uses. Those
+ * last controls are session-scoped rather than per-turn — knowledge bases,
+ * the pinned model, and the resource selection — so they are driven
+ * straight off the session state instead of a second copy inside the
+ * composer.
  *
  * What it does NOT get is the action menu. This screen runs one loop — the
  * tutor — and it used to open on "Chat" instead, which reached the same tutor
@@ -26,6 +27,8 @@ import StandaloneComposer, {
 } from "@/components/chat/home/StandaloneComposer";
 import { MASTERY_CAPABILITY_VALUE } from "@/features/capabilities/presentation";
 import { useChatStateAdapter } from "@/features/chat/ChatStateAdapter";
+import { useChatWorkspaces } from "@/hooks/useChatWorkspaces";
+import { useComposerResources } from "@/hooks/useComposerResources";
 import { useContextBudget } from "@/hooks/useContextBudget";
 import { useWorkspaceChatActions } from "@/hooks/useWorkspaceChatActions";
 import {
@@ -56,7 +59,14 @@ export function MasteryComposer({
     setKBs,
     setLLMSelection,
     setPersonaSelection,
+    setResourceSelection,
   } = useChatStateAdapter();
+  // A mastery session is a chat session in a workspace, so the same skills and
+  // MCP servers are on offer here. Without the catalog the composer had no
+  // Skills entry at all, and a learner whose workspace allows a skill could
+  // only reach it by opening the chat page instead (#1534).
+  const { workspaces } = useChatWorkspaces();
+  const resourceCatalog = useComposerResources(state.workspaceId, workspaces);
   // Pins the turn to the tutor loop; returns no capabilities to offer.
   useWorkspaceChatActions({ pinnedCapability: MASTERY_CAPABILITY_VALUE });
   const contextBudget = useContextBudget(state.messages);
@@ -127,6 +137,9 @@ export function MasteryComposer({
       onLLMSelectionChange={setLLMSelection}
       personaSelection={state.personaSelection}
       onPersonaSelectionChange={setPersonaSelection}
+      resourceCatalog={resourceCatalog}
+      resourceSelection={state.resourceSelection}
+      onResourceSelectionChange={setResourceSelection}
       onSubmit={handleSubmit}
       onCancelStreaming={cancelStreamingTurn}
       // The suggested question *is* the placeholder once there is one: naming

@@ -1,5 +1,6 @@
 import { ApiError, type AppError, type AppErrorScope } from "./errors";
 import { browserReturnPath, loginHref } from "../auth/return-url";
+import { scopedUrl } from "@/lib/workspace-scope";
 
 export interface RequestOptions extends RequestInit {
   scope?: AppErrorScope;
@@ -9,11 +10,11 @@ export interface RequestOptions extends RequestInit {
 let runtimeAuthEnabled = false;
 
 export function apiUrl(path: string): string {
-  return path;
+  return scopedUrl(path);
 }
 
 export function wsUrl(path: string): string {
-  return path;
+  return scopedUrl(path);
 }
 
 export function parseAuthEnabled(raw: string | undefined): boolean {
@@ -29,7 +30,10 @@ export async function apiFetch(
   init?: RequestInit & { skipAuthRedirect?: boolean },
 ): Promise<Response> {
   const { skipAuthRedirect, ...fetchInit } = init ?? {};
-  const response = await fetch(input, { credentials: "include", ...fetchInit });
+  const scopedInput = typeof input === "string" ? scopedUrl(input)
+    : input instanceof URL ? new URL(scopedUrl(input.toString()))
+    : new Request(scopedUrl(input.url), input);
+  const response = await fetch(scopedInput, { credentials: "include", ...fetchInit });
 
   if (
     response.status === 401 &&

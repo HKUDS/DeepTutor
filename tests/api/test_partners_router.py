@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -67,6 +68,7 @@ def client(isolated_root, monkeypatch) -> TestClient:
 
     app = FastAPI()
     app.include_router(partners_router_mod.router, prefix="/api/partners")
+    app.include_router(partners_router_mod.ws_router, prefix="/ws/partners")
     try:
         yield TestClient(app)
     finally:
@@ -85,6 +87,48 @@ def _create(client: TestClient, **overrides):
 
 
 class TestCreate:
+    def test_workspace_binding_is_persisted_and_can_be_cleared(self, client):
+        from deeptutor.services.workspace import get_content_workspace_service
+
+        workspace = get_content_workspace_service().create_workspace("Partner research")
+        workspace_id = workspace["workspace_id"]
+        result = _create(client, workspace_id=workspace_id)
+        assert result.status_code == 200
+        assert result.json()["workspace_id"] == workspace_id
+        assert client.get("/api/partners/ada").json()["workspace_id"] == workspace_id
+        choices = client.get("/api/partners/ada/workspaces")
+        assert choices.status_code == 200
+        assert workspace_id in {row["workspace_id"] for row in choices.json()["workspaces"]}
+        assert client.post("/api/partners/ada/assets", json={"skills": ["pdf"]}).status_code == 400
+        assert (
+            client.patch("/api/partners/ada", json={"description": "Updated"}).json()[
+                "workspace_id"
+            ]
+            == workspace_id
+        )
+        result = client.patch("/api/partners/ada", json={"workspace_id": ""})
+        assert result.status_code == 200
+        assert result.json()["workspace_id"] == ""
+        assert client.get("/api/partners/ada").json()["workspace_id"] == ""
+
+    def test_rejects_unavailable_system_and_archived_workspaces_before_creation(self, client):
+        from deeptutor.services.workspace import get_content_workspace_service
+
+        service = get_content_workspace_service()
+        archived = service.create_workspace("Archived")
+        service.update_workspace(archived["workspace_id"], archived=True)
+        for workspace_id in ("ws_missing", service._builtin_id("system"), archived["workspace_id"]):
+            assert _create(client, workspace_id=workspace_id).status_code == 400
+            assert client.get("/api/partners/ada").status_code == 404
+
+    def test_rejects_assets_that_would_be_unused_by_shared_workspace(self, client):
+        from deeptutor.services.workspace import get_content_workspace_service
+
+        row = get_content_workspace_service().create_workspace("Shared")
+        result = _create(client, workspace_id=row["workspace_id"], assets={"skills": ["pdf"]})
+        assert result.status_code == 400
+        assert client.get("/api/partners/ada").status_code == 404
+
     def test_create_returns_masked_config(self, client):
         res = _create(
             client,
@@ -668,6 +712,272 @@ class TestHistory:
             client.post("/api/partners/ada/sessions/delete", json={"session_key": "web-a"})
         ).status_code == 404
 
+    def test_history_pages_reach_the_beginning_with_stable_cursor(self, client):
+        from deeptutor.api.routers import partners as router_mod
+
+        _create(client)
+        store = router_mod.get_partner_manager().session_store("ada")
+        for index in range(135):
+            store.append("web-long", "user", f"message {index}")
+
+        first = client.get("/api/partners/ada/history/page?session_key=web-long&limit=60")
+        assert first.status_code == 200
+        assert [row["content"] for row in first.json()["messages"]] == [
+            f"message {index}" for index in range(75, 135)
+        ]
+        assert first.json()["next_before"] == 75
+
+        # A new turn does not move the absolute older-page cursor.
+        store.append("web-long", "assistant", "late reply")
+        second = client.get(
+            "/api/partners/ada/history/page?session_key=web-long&limit=60&before=75"
+        )
+        third = client.get("/api/partners/ada/history/page?session_key=web-long&limit=60&before=15")
+        assert [row["content"] for row in second.json()["messages"]] == [
+            f"message {index}" for index in range(15, 75)
+        ]
+        assert [row["content"] for row in third.json()["messages"]] == [
+            f"message {index}" for index in range(15)
+        ]
+        assert third.json()["next_before"] is None
+        assert client.get("/api/partners/ada/history/page?session_key=other").json() == {
+            "messages": [],
+            "next_before": None,
+            "start": 0,
+            "total": 0,
+        }
+        assert (
+            client.get("/api/partners/ada/history/page?session_key=web-long&limit=201").status_code
+            == 422
+        )
+
+
+class TestWebContinuity:
+    def test_websocket_admission_and_stale_selection_frames(self, client, monkeypatch):
+        from deeptutor.api.routers import partners as router_mod
+        from deeptutor.multi_user.models import LOCAL_ADMIN_ID
+        from deeptutor.services.partners.web_continuity import set_web_continuity
+
+        with client:
+            _create(client, start=False)
+            manager = router_mod.get_partner_manager()
+
+            async def reply(_partner_id, _content, **_kwargs):
+                return "answer"
+
+            monkeypatch.setattr(manager, "send_message", reply)
+            # Auth-disabled sockets install the runtime's local-admin identity.
+            set_web_continuity("ada", LOCAL_ADMIN_ID, enabled=True, session_key="web-current")
+            with client.websocket_connect("/ws/partners/ada") as socket:
+                assert socket.receive_json()["type"] == "ready"
+                socket.send_json({"action": "attach", "session_key": "web-current"})
+                assert socket.receive_json() == {
+                    "type": "attach_idle",
+                    "session_key": "web-current",
+                }
+                socket.send_json({"content": "stale", "session_key": "web-old"})
+                stale = socket.receive_json()
+                assert stale["type"] == "stale_session"
+                assert stale["active_session_key"] == "web-current"
+                socket.send_json({"content": "valid", "session_key": "web-current"})
+                assert socket.receive_json() == {
+                    "type": "accepted",
+                    "session_key": "web-current",
+                }
+                assert socket.receive_json() == {"type": "content", "content": "answer"}
+                assert socket.receive_json() == {"type": "done"}
+
+    def test_http_send_rejects_stale_selected_key(self, client, monkeypatch):
+        from deeptutor.api.routers import partners as router_mod
+
+        seen: list[str] = []
+        with client:
+            _create(client, start=False)
+            manager = router_mod.get_partner_manager()
+
+            async def reply(_partner_id, content, **_kwargs):
+                seen.append(content)
+                return "answer"
+
+            monkeypatch.setattr(manager, "send_message", reply)
+            client.put(
+                "/api/partners/ada/web-continuity",
+                json={"enabled": True, "session_key": "web-current"},
+            )
+            stale = client.post(
+                "/api/partners/ada/chat",
+                json={"content": "must not persist", "session_key": "web-old"},
+            )
+            assert stale.status_code == 409
+            assert stale.json()["detail"]["active_session_key"] == "web-current"
+            accepted = client.post(
+                "/api/partners/ada/chat",
+                json={"content": "valid", "session_key": "web-current"},
+            )
+            assert accepted.status_code == 200
+        assert seen == ["valid"]
+
+    def test_legacy_colon_key_is_canonical_across_pointer_and_session_list(self, client):
+        from deeptutor.api.routers import partners as router_mod
+
+        _create(client)
+        store = router_mod.get_partner_manager().session_store("ada")
+        store.append("web:abc", "user", "legacy conversation")
+        assert (
+            client.put(
+                "/api/partners/ada/web-continuity",
+                json={"enabled": True, "session_key": "web:abc"},
+            ).json()["session_key"]
+            == "web_abc"
+        )
+        assert [row["session_key"] for row in client.get("/api/partners/ada/sessions").json()] == [
+            "web_abc"
+        ]
+        deleted = client.post("/api/partners/ada/sessions/delete", json={"session_key": "web_abc"})
+        assert deleted.status_code == 200
+        assert deleted.json()["active_session_key"] not in {None, "web_abc"}
+
+    def test_busy_turn_prevents_lifecycle_and_pointer_move(self, client):
+        from deeptutor.api.routers import partners as router_mod
+
+        _create(client)
+        mgr = router_mod.get_partner_manager()
+        store = mgr.session_store("ada")
+        store.append("web-active", "user", "being answered")
+        store.append("web-other", "user", "older")
+        client.put(
+            "/api/partners/ada/web-continuity",
+            json={"enabled": True, "session_key": "web-active"},
+        )
+        with mgr.web_session_idle_lock("ada", "web-active"):
+            assert (
+                client.put(
+                    "/api/partners/ada/web-continuity",
+                    json={"enabled": True, "session_key": "web-other"},
+                ).status_code
+                == 409
+            )
+            for action, body in (
+                ("archive", {"session_key": "web-active"}),
+                ("delete", {"session_key": "web-active"}),
+                ("branch", {"source_key": "web-active", "new_key": "web-copy"}),
+            ):
+                assert (
+                    client.post(f"/api/partners/ada/sessions/{action}", json=body).status_code
+                    == 409
+                )
+            # Resume targets a different file, but cannot move the selected
+            # pointer away from the in-flight conversation either.
+            assert (
+                client.post(
+                    "/api/partners/ada/sessions/resume", json={"session_key": "web-other"}
+                ).status_code
+                == 409
+            )
+        assert client.get("/api/partners/ada/web-continuity").json()["session_key"] == "web-active"
+
+    def test_invalid_branch_target_does_not_archive_source(self, client):
+        from deeptutor.api.routers import partners as router_mod
+
+        _create(client)
+        store = router_mod.get_partner_manager().session_store("ada")
+        store.append("web-original", "user", "keep this")
+        result = client.post(
+            "/api/partners/ada/sessions/branch",
+            json={"source_key": "web-original", "new_key": "../bad"},
+        )
+        assert result.status_code == 422
+        summary = next(s for s in store.list_sessions() if s["session_key"] == "web-original")
+        assert summary["archived"] is False
+
+    def test_opt_in_is_per_account_even_for_admins(self, client, monkeypatch):
+        from deeptutor.api.routers import partners as router_mod
+
+        _create(client)
+        assert client.get("/api/partners/ada/web-continuity").json() == {
+            "enabled": False,
+            "session_key": None,
+        }
+        assert client.put(
+            "/api/partners/ada/web-continuity",
+            json={"enabled": True, "session_key": "web-first"},
+        ).json() == {"enabled": True, "session_key": "web-first"}
+
+        with monkeypatch.context() as patcher:
+            patcher.setattr(
+                router_mod, "get_current_user", lambda: SimpleNamespace(id="other-admin")
+            )
+            assert client.get("/api/partners/ada/web-continuity").json() == {
+                "enabled": False,
+                "session_key": None,
+            }
+            client.put(
+                "/api/partners/ada/web-continuity",
+                json={"enabled": True, "session_key": "web-second"},
+            )
+            assert (
+                client.get("/api/partners/ada/web-continuity").json()["session_key"] == "web-second"
+            )
+        assert client.get("/api/partners/ada/web-continuity").json()["session_key"] == "web-first"
+
+        invalid = client.put(
+            "/api/partners/ada/web-continuity",
+            json={"enabled": True, "session_key": "../web-other"},
+        )
+        assert invalid.status_code == 422
+        assert client.put("/api/partners/ada/web-continuity", json={"enabled": False}).json() == {
+            "enabled": False,
+            "session_key": None,
+        }
+
+    def test_lifecycle_keeps_enabled_selection_valid(self, client):
+        from deeptutor.api.routers import partners as router_mod
+
+        _create(client)
+        store = router_mod.get_partner_manager().session_store("ada")
+        store.append("web-original", "user", "hello")
+        store.append("web-other", "user", "separate browser")
+        client.put(
+            "/api/partners/ada/web-continuity",
+            json={"enabled": True, "session_key": "web-original"},
+        )
+
+        branched = client.post(
+            "/api/partners/ada/sessions/branch",
+            json={"source_key": "web-original", "new_key": "web-branch"},
+        )
+        assert branched.status_code == 200
+        assert branched.json()["active_session_key"] == "web-branch"
+        assert client.get("/api/partners/ada/web-continuity").json()["session_key"] == "web-branch"
+
+        resumed = client.post(
+            "/api/partners/ada/sessions/resume", json={"session_key": "web-original"}
+        )
+        assert resumed.json()["active_session_key"] == "web-original"
+        archived = client.post(
+            "/api/partners/ada/sessions/archive", json={"session_key": "web-original"}
+        )
+        replacement = archived.json()["active_session_key"]
+        assert replacement.startswith("web-") and replacement != "web-original"
+        assert client.get("/api/partners/ada/web-continuity").json()["session_key"] == replacement
+
+        # Deleting an unrelated legacy session leaves the selected key alone.
+        unrelated = client.post(
+            "/api/partners/ada/sessions/delete", json={"session_key": "web-other"}
+        )
+        assert unrelated.json()["active_session_key"] is None
+        assert client.get("/api/partners/ada/web-continuity").json()["session_key"] == replacement
+
+        store.append(replacement, "user", "new shared conversation")
+        deleted = client.post(
+            "/api/partners/ada/sessions/delete", json={"session_key": replacement}
+        )
+        assert deleted.json()["active_session_key"] not in {None, replacement}
+        assert (
+            client.get("/api/partners/ada/web-continuity").json()["session_key"]
+            == deleted.json()["active_session_key"]
+        )
+
 
 class TestChatAttachments:
     def test_web_chat_lazily_starts_partner_without_enabling_boot_start(
@@ -750,3 +1060,30 @@ class TestChatAttachments:
         assert path.read_bytes() == b"hello"
         assert path.name.endswith("_notes.txt")
         assert path.parent == isolated_root / "partners" / "ada" / "media" / "web"
+
+
+@pytest.mark.asyncio
+async def test_legacy_consultation_lookup_requires_unique_visible_registry_match(monkeypatch):
+    from deeptutor.api.routers import partners as router
+    from deeptutor.services.subagent import sessions
+
+    monkeypatch.setattr(
+        router, "visible_partners", lambda: [{"partner_id": "frank", "name": "Frank"}]
+    )
+    monkeypatch.setattr(
+        sessions, "get_session", lambda key: "dt-native" if key == "chat::partner:frank" else None
+    )
+    assert await router.get_partner_consultation_session("chat", "Frank") == {
+        "partner_id": "frank",
+        "session_key": "dt-native",
+    }
+    assert await router.get_partner_consultation_session("other-chat", "Frank") is None
+    monkeypatch.setattr(router, "visible_partners", lambda: [])
+    assert await router.get_partner_consultation_session("chat", "Frank") is None
+    monkeypatch.setattr(
+        router,
+        "visible_partners",
+        lambda: [{"partner_id": "one", "name": "Frank"}, {"partner_id": "two", "name": "Frank"}],
+    )
+    monkeypatch.setattr(sessions, "get_session", lambda key: "dt-native")
+    assert await router.get_partner_consultation_session("chat", "Frank") is None

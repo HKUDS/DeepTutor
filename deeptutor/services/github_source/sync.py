@@ -75,6 +75,37 @@ def _record_sync_failure(kb_name: str, source: dict, base_dir: str, error: str) 
         logger.warning("Could not persist GitHub sync failure status for '%s'", kb_name)
 
 
+def _record_sync_success(
+    kb_name: str,
+    source: dict,
+    base_dir: str,
+    *,
+    sha: str,
+    files_synced: int | None = None,
+) -> None:
+    """Persist "GitHub was checked and the source is current".
+
+    A same-SHA check is a successful sync that had nothing to transfer, so it
+    owes the same freshness stamp as one that did: without it the hourly
+    service read the source as stale forever and re-queried GitHub every
+    cycle, and an error left by an earlier transient failure stayed on the
+    source after a later check had confirmed it current (#1489). ``files_synced``
+    is omitted on that path so the last real transfer's count survives.
+    """
+    from deeptutor.knowledge.manager import KnowledgeBaseManager
+
+    fields: dict = {} if files_synced is None else {"files_synced": files_synced}
+    KnowledgeBaseManager(base_dir=base_dir).update_github_source_state(
+        kb_name=kb_name,
+        source_id=source["id"],
+        last_synced_sha=sha,
+        last_synced_at=_utcnow_iso(),
+        last_sync_status="success",
+        last_sync_error=None,
+        **fields,
+    )
+
+
 def _is_markdown(path: str) -> bool:
     return path.lower().endswith(MARKDOWN_EXTENSIONS)
 
@@ -135,6 +166,29 @@ def _filter_markdown_entries(entries, path_prefix, glob):
 
 
 async def sync_source(kb_name, source, *, base_dir=DEFAULT_BASE_DIR, client=None):
+    from deeptutor.services.rag.provider_binding import resolve_bound_provider
+
+    accepted_indexing_snapshot = None
+    if resolve_bound_provider(base_dir, kb_name) == "lightrag":
+        from deeptutor.services.rag.pipelines.lightrag.indexing_policy import (
+            bind_target,
+            resolve_write_snapshot,
+        )
+
+        kb_dir = Path(base_dir) / kb_name
+        try:
+            accepted_indexing_snapshot = bind_target(
+                resolve_write_snapshot(kb_dir, base_dir=str(base_dir), kb_name=kb_name), kb_dir
+            )
+        except Exception as exc:
+            error = redact_sync_error(exc)
+            _record_sync_failure(kb_name, source, base_dir, error)
+            return SyncResult(ok=False, error=error)
+    indexing_options = (
+        {"accepted_indexing_snapshot": accepted_indexing_snapshot}
+        if accepted_indexing_snapshot is not None
+        else {}
+    )
     client = client or GitHubClient()
     kb_dir = Path(base_dir) / kb_name
     raw_dir = kb_dir / "raw"
@@ -158,12 +212,22 @@ async def sync_source(kb_name, source, *, base_dir=DEFAULT_BASE_DIR, client=None
         return SyncResult(ok=False, error=error)
 
     if old_sha and old_sha == latest_sha:
+        _record_sync_success(kb_name, source, base_dir, sha=latest_sha)
         return SyncResult(ok=True, skipped=True)
 
     try:
         if not old_sha:
             result = await _full_sync(
-                client, kb_name, raw_dir, repo, branch, path_prefix, glob, latest_sha, base_dir
+                client,
+                kb_name,
+                raw_dir,
+                repo,
+                branch,
+                path_prefix,
+                glob,
+                latest_sha,
+                base_dir,
+                **indexing_options,
             )
         else:
             result = await _incremental_sync(
@@ -177,6 +241,7 @@ async def sync_source(kb_name, source, *, base_dir=DEFAULT_BASE_DIR, client=None
                 old_sha,
                 latest_sha,
                 base_dir,
+                **indexing_options,
             )
     except GitHubAPIError as exc:
         error = redact_sync_error(exc)
@@ -191,23 +256,28 @@ async def sync_source(kb_name, source, *, base_dir=DEFAULT_BASE_DIR, client=None
         _record_sync_failure(kb_name, source, base_dir, result.error)
         return result
 
-    from deeptutor.knowledge.manager import KnowledgeBaseManager
-
-    manager = KnowledgeBaseManager(base_dir=base_dir)
-    manager.update_github_source_state(
-        kb_name=kb_name,
-        source_id=source["id"],
-        last_synced_sha=latest_sha,
-        last_synced_at=_utcnow_iso(),
-        last_sync_status="success",
-        last_sync_error=None,
+    _record_sync_success(
+        kb_name,
+        source,
+        base_dir,
+        sha=latest_sha,
         files_synced=result.files_added + result.files_updated,
     )
     return result
 
 
 async def _full_sync(
-    client, kb_name, raw_dir, repo, branch, path_prefix, glob, latest_sha, base_dir
+    client,
+    kb_name,
+    raw_dir,
+    repo,
+    branch,
+    path_prefix,
+    glob,
+    latest_sha,
+    base_dir,
+    *,
+    accepted_indexing_snapshot=None,
 ):
     tree = await client.get_tree(repo, branch, path_prefix=path_prefix, glob=glob)
     entries = _filter_markdown_entries(tree, path_prefix, glob)
@@ -222,12 +292,32 @@ async def _full_sync(
         dest.write_bytes(content)
         downloaded.append(str(dest))
     if downloaded:
-        await _index_files(kb_name, downloaded, base_dir)
+        await _index_files(
+            kb_name,
+            downloaded,
+            base_dir,
+            **(
+                {"accepted_indexing_snapshot": accepted_indexing_snapshot}
+                if accepted_indexing_snapshot is not None
+                else {}
+            ),
+        )
     return SyncResult(ok=True, files_added=len(downloaded))
 
 
 async def _incremental_sync(
-    client, kb_name, raw_dir, repo, branch, path_prefix, glob, old_sha, new_sha, base_dir
+    client,
+    kb_name,
+    raw_dir,
+    repo,
+    branch,
+    path_prefix,
+    glob,
+    old_sha,
+    new_sha,
+    base_dir,
+    *,
+    accepted_indexing_snapshot=None,
 ):
     all_changes = await client.compare_commits(repo, old_sha, new_sha)
     changes = _filter_markdown_changes(all_changes, path_prefix, glob)
@@ -250,7 +340,16 @@ async def _incremental_sync(
         dest.write_bytes(content)
         downloaded.append(str(dest))
     if downloaded:
-        await _index_files(kb_name, downloaded, base_dir)
+        await _index_files(
+            kb_name,
+            downloaded,
+            base_dir,
+            **(
+                {"accepted_indexing_snapshot": accepted_indexing_snapshot}
+                if accepted_indexing_snapshot is not None
+                else {}
+            ),
+        )
     removed_count = 0
     for rel in removed:
         target = _contained_dest(raw_dir, rel)
@@ -266,12 +365,20 @@ async def _incremental_sync(
     return SyncResult(ok=True, files_added=len(downloaded), files_removed=removed_count)
 
 
-async def _index_files(kb_name, file_paths, base_dir):
+async def _index_files(kb_name, file_paths, base_dir, *, accepted_indexing_snapshot=None):
     if not file_paths:
         return 0
     from deeptutor.knowledge.add_documents import add_documents
 
     count = await add_documents(
-        kb_name=kb_name, source_files=file_paths, base_dir=base_dir, allow_duplicates=False
+        kb_name=kb_name,
+        source_files=file_paths,
+        base_dir=base_dir,
+        allow_duplicates=False,
+        **(
+            {"accepted_indexing_snapshot": accepted_indexing_snapshot}
+            if accepted_indexing_snapshot is not None
+            else {}
+        ),
     )
     return count or 0

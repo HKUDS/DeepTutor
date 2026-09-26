@@ -27,6 +27,7 @@ import {
 import AssetPicker, {
   type AssetSelection,
 } from "@/components/partners/AssetPicker";
+import PartnerWorkspacePicker from "@/components/partners/PartnerWorkspacePicker";
 import ToolPicker from "@/components/partners/ToolPicker";
 import FaceEditor, { type FaceValue } from "@/components/partners/FaceEditor";
 import SoulEditor from "@/components/partners/SoulEditor";
@@ -111,6 +112,8 @@ export default function PartnerConfigure({
   const [mcpTools, setMcpTools] = useState<string[]>([]);
   const [savingTools, setSavingTools] = useState(false);
 
+  const [savingWorkspace, setSavingWorkspace] = useState(false);
+
   // Assets
   const [assets, setAssets] = useState<PartnerAssets | null>(null);
   const [showAssetPicker, setShowAssetPicker] = useState(false);
@@ -161,6 +164,19 @@ export default function PartnerConfigure({
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [partnerId]);
+
+  const saveWorkspace = async (workspaceId: string) => {
+    setSavingWorkspace(true);
+    try {
+      await updatePartner(partnerId, { workspace_id: workspaceId });
+      onToast(t("Workspace updated — applies from the next message"));
+      onUpdated();
+    } catch (e) {
+      onToast(e instanceof Error ? e.message : t("Save failed"));
+    } finally {
+      setSavingWorkspace(false);
+    }
+  };
 
   const saveIdentity = async () => {
     setSavingIdentity(true);
@@ -454,87 +470,98 @@ export default function PartnerConfigure({
         />
       </Section>
 
-      <Section
-        title={t("Library")}
-        description={t(
-          "Knowledge bases, skills, and notebooks copied into this partner's workspace.",
-        )}
-        action={
-          <button
-            type="button"
-            onClick={() => setShowAssetPicker((v) => !v)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 text-[12px] font-medium text-[var(--foreground)] hover:border-[var(--ring)]"
-          >
-            {showAssetPicker ? (
-              <X className="h-3.5 w-3.5" />
-            ) : (
-              <Plus className="h-3.5 w-3.5" />
-            )}
-            {showAssetPicker ? t("Cancel") : t("Add")}
-          </button>
-        }
-      >
-        {showAssetPicker && (
-          <div className="mb-4 rounded-xl border border-dashed border-[var(--border)] p-3.5">
-            <AssetPicker
-              value={pendingAssets}
-              onChange={setPendingAssets}
-              excluded={{
-                knowledge_bases:
-                  assets?.knowledge_bases.map((kb) => kb.name) ?? [],
-                skills: assets?.skills.map((skill) => skill.name) ?? [],
-                notebooks: assets?.notebooks.map((nb) => nb.id) ?? [],
-              }}
-            />
+      <Section title={t("Workspace")}>
+        <PartnerWorkspacePicker
+          partnerId={partnerId}
+          value={partner.workspace_id ?? ""}
+          onChange={(id) => void saveWorkspace(id)}
+          disabled={savingWorkspace}
+        />
+      </Section>
+
+      {!partner.workspace_id && (
+        <Section
+          title={t("Library")}
+          description={t(
+            "Knowledge bases, skills, and notebooks copied into this partner's workspace.",
+          )}
+          action={
             <button
               type="button"
-              onClick={() => void submitAssets()}
-              disabled={addingAssets || pendingCount === 0}
-              className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-[12px] font-medium text-[var(--primary-foreground)] disabled:opacity-40"
+              onClick={() => setShowAssetPicker((v) => !v)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 text-[12px] font-medium text-[var(--foreground)] hover:border-[var(--ring)]"
             >
-              {addingAssets ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              {showAssetPicker ? (
+                <X className="h-3.5 w-3.5" />
               ) : (
                 <Plus className="h-3.5 w-3.5" />
               )}
-              {t("Copy into workspace")}
-              {pendingCount > 0 ? ` (${pendingCount})` : ""}
+              {showAssetPicker ? t("Cancel") : t("Add")}
             </button>
-          </div>
-        )}
-
-        {assetRows.length === 0 ? (
-          <p className="text-[12.5px] text-[var(--muted-foreground)]">
-            {t(
-              "Nothing assigned yet — this partner only knows what you tell it.",
-            )}
-          </p>
-        ) : (
-          <ul className="divide-y divide-[var(--border)]">
-            {assetRows.map((row) => (
-              <li
-                key={`${row.type}:${row.id}`}
-                className="flex items-center justify-between py-1.5"
+          }
+        >
+          {showAssetPicker && (
+            <div className="mb-4 rounded-xl border border-dashed border-[var(--border)] p-3.5">
+              <AssetPicker
+                value={pendingAssets}
+                onChange={setPendingAssets}
+                excluded={{
+                  knowledge_bases:
+                    assets?.knowledge_bases.map((kb) => kb.name) ?? [],
+                  skills: assets?.skills.map((skill) => skill.name) ?? [],
+                  notebooks: assets?.notebooks.map((nb) => nb.id) ?? [],
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => void submitAssets()}
+                disabled={addingAssets || pendingCount === 0}
+                className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-[12px] font-medium text-[var(--primary-foreground)] disabled:opacity-40"
               >
-                <span className="min-w-0 truncate text-[13px] text-[var(--foreground)]">
-                  {row.label}
-                  <span className="ml-2 text-[11px] text-[var(--muted-foreground)]">
-                    {row.kind}
-                  </span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => void removeAsset(row.type, row.id)}
-                  className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-red-500"
-                  aria-label={t("Remove")}
+                {addingAssets ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Plus className="h-3.5 w-3.5" />
+                )}
+                {t("Copy into workspace")}
+                {pendingCount > 0 ? ` (${pendingCount})` : ""}
+              </button>
+            </div>
+          )}
+
+          {assetRows.length === 0 ? (
+            <p className="text-[12.5px] text-[var(--muted-foreground)]">
+              {t(
+                "Nothing assigned yet — this partner only knows what you tell it.",
+              )}
+            </p>
+          ) : (
+            <ul className="divide-y divide-[var(--border)]">
+              {assetRows.map((row) => (
+                <li
+                  key={`${row.type}:${row.id}`}
+                  className="flex items-center justify-between py-1.5"
                 >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Section>
+                  <span className="min-w-0 truncate text-[13px] text-[var(--foreground)]">
+                    {row.label}
+                    <span className="ml-2 text-[11px] text-[var(--muted-foreground)]">
+                      {row.kind}
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void removeAsset(row.type, row.id)}
+                    className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-red-500"
+                    aria-label={t("Remove")}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Section>
+      )}
     </div>
   );
 }

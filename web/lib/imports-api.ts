@@ -45,6 +45,36 @@ export async function importChatHistory(
   return data;
 }
 
+/**
+ * Upload a large static export without crossing the backend's per-request
+ * session ceiling. Re-imports are idempotent, so a retry after a partial
+ * network failure safely skips batches that already landed.
+ */
+export async function importChatHistoryInBatches(
+  source: ImportSource,
+  sessions: NormalizedSession[],
+  options?: {
+    batchSize?: number;
+    onProgress?: (done: number, total: number) => void;
+  },
+): Promise<ImportResult> {
+  if (sessions.length === 0) throw new Error("No sessions to import");
+  const batchSize = Math.max(1, Math.min(1000, options?.batchSize ?? 100));
+  const combined: ImportResult = { imported: 0, skipped: 0, sessions: [] };
+  for (let start = 0; start < sessions.length; start += batchSize) {
+    const batch = sessions.slice(start, start + batchSize);
+    const result = await importChatHistory(source, batch);
+    combined.imported += result.imported;
+    combined.skipped += result.skipped;
+    combined.sessions.push(...result.sessions);
+    options?.onProgress?.(
+      Math.min(start + batch.length, sessions.length),
+      sessions.length,
+    );
+  }
+  return combined;
+}
+
 export async function listImportedSessions(
   limit = 200,
   offset = 0,

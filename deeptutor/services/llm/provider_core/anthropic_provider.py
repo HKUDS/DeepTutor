@@ -16,26 +16,12 @@ from typing import Any
 import json_repair
 
 from deeptutor.services.llm.provider_core.base import LLMProvider, LLMResponse, ToolCallRequest
+from deeptutor.services.provider_registry import ANTHROPIC_EFFORT_BASED_FAMILIES
 from deeptutor.services.session.provider_response_state import (
     normalize_provider_response_state,
 )
 
 _ALNUM = string.ascii_letters + string.digits
-
-# Effort-based model families from Opus 4.7 onward. These REJECT both the
-# `temperature` parameter and `thinking: {type: "enabled", budget_tokens: N}`
-# with a 400 — adaptive is their only thinking on-mode. Opus 4.6 and
-# Sonnet 4.6 still ACCEPT both older forms; adding them here would silently
-# drop the user's settings. Extend as new families ship (a capability lookup
-# is the longer-term fix).
-_EFFORT_BASED_FAMILIES: tuple[str, ...] = (
-    "opus-4-7",
-    "opus-4-8",
-    "opus-5",
-    "sonnet-5",
-    "fable-5",
-    "mythos-5",
-)
 
 # reasoning_effort values that mean "thinking off" (see services/config
 # reasoning_params). On effort-based families the correct off/default
@@ -354,19 +340,23 @@ class AnthropicProvider(LLMProvider):
             budget -= 1
 
         new_msgs = list(messages)
-        if len(new_msgs) >= 3:
-            m = new_msgs[-2]
+        if new_msgs:
+            m = new_msgs[-1]
             c = m.get("content")
-            if isinstance(c, str):
-                new_msgs[-2] = {
+            if isinstance(c, str) and c:
+                new_msgs[-1] = {
                     **m,
                     "content": [{"type": "text", "text": c, "cache_control": marker}],
                 }
                 budget -= 1
-            elif isinstance(c, list) and c:
+            elif (
+                isinstance(c, list)
+                and c
+                and c[-1].get("type") not in {"thinking", "redacted_thinking"}
+            ):
                 nc = list(c)
                 nc[-1] = {**nc[-1], "cache_control": marker}
-                new_msgs[-2] = {**m, "content": nc}
+                new_msgs[-1] = {**m, "content": nc}
                 budget -= 1
 
         new_tools = tools
@@ -409,7 +399,9 @@ class AnthropicProvider(LLMProvider):
         # value as the default budget, so a plain `bool(reasoning_effort)`
         # turned `none` into thinking ON with 4096 tokens.
         thinking_enabled = bool(effort) and effort not in _THINKING_OFF_EFFORTS
-        effort_based = any(family in model_name for family in _EFFORT_BASED_FAMILIES)
+        effort_based = any(
+            family in model_name.lower() for family in ANTHROPIC_EFFORT_BASED_FAMILIES
+        )
 
         kwargs: dict[str, Any] = {
             "model": model_name,
@@ -490,6 +482,8 @@ class AnthropicProvider(LLMProvider):
             total_prompt = input_tokens + cache_creation + cache_read
             usage = {
                 "prompt_tokens": total_prompt,
+                "cache_read_input_tokens": cache_read,
+                "cache_creation_input_tokens": cache_creation,
                 "completion_tokens": response.usage.output_tokens,
                 "total_tokens": total_prompt + response.usage.output_tokens,
             }

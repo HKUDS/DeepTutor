@@ -1,5 +1,8 @@
 "use client";
 
+import { scopedUrl } from "@/lib/workspace-scope";
+import { WATCHING_HOME } from "@/lib/learning-routes";
+
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams, useParams } from "next/navigation";
 import { invidiousAccountResultMessage } from "@/lib/invidious-account-result";
@@ -73,7 +76,7 @@ export function WatchingSurface() {
   const accountMessage = invidiousAccountResultMessage(accountResult);
   useEffect(() => {
     if (params.has("account"))
-      window.history.replaceState(null, "", "/watching");
+      window.history.replaceState(null, "", scopedUrl(WATCHING_HOME));
   }, [params]);
   const showBrowser = browsing && !params.get("video");
   const [view, setView] = useState<"video" | "chat">("video");
@@ -113,7 +116,7 @@ export function WatchingSurface() {
         <button
           className="watching-browse-toggle watching-browser-button"
           onClick={() => {
-            window.history.replaceState(null, "", window.location.pathname);
+            window.history.replaceState(null, "", scopedUrl(window.location.pathname));
             setBrowsing(true);
           }}
         >

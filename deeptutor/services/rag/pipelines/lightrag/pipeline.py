@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import asyncio
+from copy import deepcopy
 from dataclasses import dataclass, field, replace
 import logging
 from pathlib import Path
 import shutil
 import traceback
-from typing import Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
+
+if TYPE_CHECKING:
+    from deeptutor.services.embedding.config import EmbeddingConfig
 
 from deeptutor.runtime.home import get_runtime_data_root
 from deeptutor.services.rag.index_versioning import (
@@ -20,9 +24,8 @@ from deeptutor.services.rag.kb_paths import resolve_kb_dir
 from . import block_policy, engine, indexing_policy, ingress, storage
 from . import config as lr_config
 from .indexing_policy import (
-    IndexingLLMSnapshot,
     IndexingPolicyError,
-    effective_policy,
+    IndexingPolicySnapshot,
     freeze_default_snapshot,
     resolve_write_snapshot,
 )
@@ -279,17 +282,23 @@ class LightRagPipeline:
         working_dir: Path,
         file_paths: List[str],
         progress_callback: Callable[[int, int], Any] | None,
-        snapshot: IndexingLLMSnapshot | None = None,
+        snapshot: IndexingPolicySnapshot | None = None,
+        *,
+        embedding_config: EmbeddingConfig | None = None,
     ) -> BatchOutcome:
         if snapshot is None:
             snapshot = freeze_default_snapshot()
+        if embedding_config is None:
+            from deeptutor.services.embedding import get_embedding_config
+
+            embedding_config = deepcopy(get_embedding_config())
 
         async def job(io_bridge: OwnerLoopBridge) -> BatchOutcome:
             io_bridge.raise_if_cancelled()
             staged, preflight_failed = self._stage_documents(
                 working_dir,
                 file_paths,
-                vision_available=snapshot.vision_available,
+                vision_available=snapshot.vision_available and snapshot.image_analysis is not False,
             )
             if not staged:
                 raise LightRagBatchError(
@@ -301,6 +310,7 @@ class LightRagPipeline:
                     io_bridge=io_bridge,
                     enable_vlm=any("i" in item.process_options for item in staged),
                     indexing_snapshot=snapshot,
+                    embedding_config=embedding_config,
                 )
             except BaseException:
                 for item in staged:
@@ -356,7 +366,10 @@ class LightRagPipeline:
                         ingress.remove_unaccepted(item)
 
         outcome = await run_in_worker_loop(job)
-        return replace(outcome, indexing_policy=snapshot.persisted_policy())
+        published_policy = snapshot.persisted_policy()
+        if published_policy.get("policy") == "pending_pinned":
+            published_policy["policy"] = "pinned"
+        return replace(outcome, indexing_policy=published_policy)
 
     def _remove_zero_accepted_candidate(self, root_dir: Path) -> None:
         if not root_dir.is_dir() or storage.has_any_doc_status(root_dir):
@@ -367,30 +380,83 @@ class LightRagPipeline:
         shutil.rmtree(root_dir)
 
     async def initialize(self, kb_name: str, file_paths: List[str], **kwargs) -> bool:
-        self._ensure_available()
+        from .write_lock import write_ownership
+
         kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
-        snapshot = kwargs.get("indexing_snapshot")
+        with write_ownership(kb_dir):
+            if validate_binding := kwargs.pop("validate_embedding_binding", None):
+                validate_binding()
+            snapshot = kwargs.get("indexing_snapshot") or kwargs.get("accepted_indexing_snapshot")
+            if snapshot is not None:
+                indexing_policy.validate_target(snapshot, kb_dir)
+                fresh = indexing_policy.revalidate_snapshot(snapshot)
+                key = (
+                    "indexing_snapshot"
+                    if kwargs.get("indexing_snapshot") is not None
+                    else "accepted_indexing_snapshot"
+                )
+                kwargs[key] = fresh
+            return await self._initialize_owned(kb_name, file_paths, **kwargs)
+
+    def _publish_new_version(
+        self,
+        root_dir: Path,
+        policy: dict[str, Any],
+        embedding_config: Any,
+        publish_binding: Callable[[], None] | None,
+    ) -> None:
+        storage.write_meta(root_dir, indexing_policy=policy, embedding_config=embedding_config)
+        try:
+            if publish_binding is not None:
+                publish_binding()
+        except BaseException:
+            # A same-embedding rebuild would otherwise become the newest
+            # compatible version even though its binding publication failed.
+            # Withdraw only this new candidate's publication marker; retain
+            # its data and the previous version for recovery.
+            (root_dir / "meta.json").unlink()
+            raise
+
+    async def _initialize_owned(self, kb_name: str, file_paths: List[str], **kwargs) -> bool:
+        self._ensure_available()
+        from deeptutor.services.embedding import get_embedding_config
+
+        embedding_config = deepcopy(get_embedding_config())
+        kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
+        snapshot = kwargs.get("indexing_snapshot") or kwargs.get("accepted_indexing_snapshot")
         if snapshot is None:
-            policy = effective_policy(
-                kb_dir,
-                base_dir=self.kb_base_dir,
-                kb_name=kb_name,
-            )
-            if policy is not None and policy.get("policy") == "pending_pinned":
-                snapshot = indexing_policy.snapshot_from_persisted(policy)
-            else:
-                snapshot = freeze_default_snapshot()
+            snapshot = freeze_default_snapshot()
+        snapshot = indexing_policy.with_embedding(snapshot)
+        embedding_config = snapshot.embedding_config
+        if "image_analysis" in kwargs:
+            snapshot = indexing_policy.with_image_analysis(snapshot, kwargs["image_analysis"])
         root_dir = resolve_storage_dir_for_rebuild(kb_dir, None)
         try:
             outcome = await self._run_indexing(
-                root_dir, file_paths, kwargs.get("progress_callback"), snapshot
+                root_dir,
+                file_paths,
+                kwargs.get("progress_callback"),
+                snapshot,
+                embedding_config=embedding_config,
             )
             if not storage.has_output(root_dir):
                 raise RuntimeError(f"LightRAG did not produce a ready index for {kb_name!r}")
             policy = dict(outcome.indexing_policy)
             policy["vlm_used"] = outcome.vlm_used
-            storage.write_meta(root_dir, indexing_policy=policy)
+            before_publish = kwargs.get("before_publish")
+            if before_publish is not None:
+                before_publish(root_dir)
+            self._publish_new_version(
+                root_dir,
+                policy,
+                snapshot.embedding_config,
+                kwargs.get("publish_embedding_binding") if outcome.complete else None,
+            )
             self._clear_pending_policy(kb_name)
+            if outcome.complete and (indexed_file_callback := kwargs.get("indexed_file_callback")):
+                # Reconciliation confirmed every requested file as processed
+                # before publication, so these paths can be hashed (#1481).
+                indexed_file_callback(file_paths)
             return outcome.complete
         except asyncio.CancelledError:
             raise
@@ -403,27 +469,62 @@ class LightRagPipeline:
             raise
 
     async def add_documents(self, kb_name: str, file_paths: List[str], **kwargs) -> bool:
+        from .write_lock import write_ownership
+
+        kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
+        with write_ownership(kb_dir):
+            if validate_binding := kwargs.pop("validate_embedding_binding", None):
+                validate_binding()
+            if kwargs.get("indexing_snapshot") is not None and (
+                storage.latest_published_root(kb_dir) is not None or list_kb_versions(kb_dir)
+            ):
+                raise IndexingPolicyError(
+                    "An explicit LightRAG indexing model cannot override an existing index; "
+                    "run a full re-index."
+                )
+            snapshot = kwargs.get("indexing_snapshot") or kwargs.get("accepted_indexing_snapshot")
+            if snapshot is not None:
+                indexing_policy.validate_target(snapshot, kb_dir)
+                fresh = indexing_policy.revalidate_snapshot(snapshot)
+                key = (
+                    "indexing_snapshot"
+                    if kwargs.get("indexing_snapshot") is not None
+                    else "accepted_indexing_snapshot"
+                )
+                kwargs[key] = fresh
+            return await self._add_documents_owned(kb_name, file_paths, **kwargs)
+
+    async def _add_documents_owned(self, kb_name: str, file_paths: List[str], **kwargs) -> bool:
         self._ensure_available()
+        from deeptutor.services.embedding import get_embedding_config
+
+        embedding_config = deepcopy(get_embedding_config())
         kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
         existing = storage.latest_published_root(kb_dir)
+        from deeptutor.services.rag.embedding_binding import bound_graph_storage_root
+
+        existing = bound_graph_storage_root(kb_dir, storage.PROVIDER, existing)
         versions = list_kb_versions(kb_dir)
         explicit = kwargs.get("indexing_snapshot")
-        if explicit is not None and (existing is not None or versions):
-            raise IndexingPolicyError(
-                "An explicit LightRAG indexing model cannot override an existing index; "
-                "run a full re-index."
-            )
         if existing is None and versions:
             raise LightRagNeedsReindexError(
                 "This LightRAG index is legacy, unpublished, or corrupt and must be rebuilt "
                 "before appending."
             )
-        snapshot = resolve_write_snapshot(
+        accepted_snapshot = kwargs.get("accepted_indexing_snapshot")
+        compatibility_config = getattr(accepted_snapshot, "embedding_config", None)
+        if existing is not None:
+            storage.require_compatible_embedding(existing, compatibility_config or embedding_config)
+        snapshot = accepted_snapshot or resolve_write_snapshot(
             kb_dir,
             base_dir=self.kb_base_dir,
             kb_name=kb_name,
             explicit=explicit,
         )
+        snapshot = indexing_policy.with_embedding(snapshot)
+        embedding_config = snapshot.embedding_config
+        if "image_analysis" in kwargs:
+            snapshot = indexing_policy.with_image_analysis(snapshot, kwargs["image_analysis"])
         if existing is not None:
             root_dir = existing
             is_update = True
@@ -432,18 +533,33 @@ class LightRagPipeline:
             is_update = False
         try:
             outcome = await self._run_indexing(
-                root_dir, file_paths, kwargs.get("progress_callback"), snapshot
+                root_dir,
+                file_paths,
+                kwargs.get("progress_callback"),
+                snapshot,
+                embedding_config=embedding_config,
             )
             if not storage.has_output(root_dir):
                 raise RuntimeError(f"LightRAG did not produce a ready index for {kb_name!r}")
             policy = dict(outcome.indexing_policy)
-            policy["vlm_used"] = outcome.vlm_used
+            previous_policy = storage.read_published_policy(existing) or {}
+            policy["vlm_used"] = outcome.vlm_used or previous_policy.get("vlm_used") is True
             if not is_update:
-                storage.write_meta(root_dir, indexing_policy=policy)
+                before_publish = kwargs.get("before_publish")
+                if before_publish is not None:
+                    before_publish(root_dir)
+                self._publish_new_version(
+                    root_dir,
+                    policy,
+                    snapshot.embedding_config,
+                    kwargs.get("publish_embedding_binding") if outcome.complete else None,
+                )
                 self._clear_pending_policy(kb_name)
             else:
                 try:
-                    storage.write_meta(root_dir, indexing_policy=policy)
+                    storage.write_meta(
+                        root_dir, indexing_policy=policy, embedding_config=snapshot.embedding_config
+                    )
                     self._clear_pending_policy(kb_name)
                 except Exception:
                     self.logger.warning(
@@ -451,6 +567,10 @@ class LightRagPipeline:
                         "existing published policy",
                         exc_info=True,
                     )
+                if outcome.complete and (
+                    publish_binding := kwargs.get("publish_embedding_binding")
+                ):
+                    publish_binding()
             return outcome.complete
         except LightRagBatchError as exc:
             if not is_update and exc.outcome.accepted == 0:
@@ -481,6 +601,9 @@ class LightRagPipeline:
     async def search(self, query: str, kb_name: str, **kwargs) -> Dict[str, Any]:
         kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
         root_dir = storage.latest_published_root(kb_dir)
+        from deeptutor.services.rag.embedding_binding import bound_graph_storage_root
+
+        root_dir = bound_graph_storage_root(kb_dir, storage.PROVIDER, root_dir)
         if root_dir is None:
             return {
                 "query": query,
@@ -493,9 +616,21 @@ class LightRagPipeline:
         mode = self._resolve_mode(kb_name, kwargs)
         try:
             self._ensure_available()
+            from deeptutor.services.embedding import get_embedding_config
 
-            async def job(io_bridge: OwnerLoopBridge):
-                rag = engine.build_rag(root_dir, io_bridge=io_bridge)
+            from .roles import resolve_query_roles
+
+            embedding_config = deepcopy(get_embedding_config())
+            storage.require_compatible_embedding(root_dir, embedding_config)
+            query_roles = resolve_query_roles()
+
+            async def job(io_bridge: OwnerLoopBridge) -> Any:
+                rag = engine.build_rag(
+                    root_dir,
+                    io_bridge=io_bridge,
+                    query_roles=query_roles,
+                    embedding_config=embedding_config,
+                )
                 failed = True
                 try:
                     await engine.initialize(rag)
@@ -508,6 +643,8 @@ class LightRagPipeline:
             answer, sources = await run_in_worker_loop(job)
         except lr_config.LightRagNotAvailableError as exc:
             return self._error_result(query, exc, error_type="not_configured")
+        except indexing_policy.EmbeddingMismatchError as exc:
+            return self._error_result(query, exc, error_type=exc.code)
         except Exception as exc:
             self.logger.error("LightRAG search failed: %s", exc)
             self.logger.error(traceback.format_exc())

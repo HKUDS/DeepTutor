@@ -201,6 +201,9 @@ export interface NotebookEntry {
   id: number;
   session_id: string;
   session_title: string;
+  /** Present on servers with independent Question Bank provenance support. */
+  origin_type?: QuestionOriginType;
+  origin_ref?: string;
   turn_id: string;
   question_id: string;
   question: string;
@@ -217,6 +220,15 @@ export interface NotebookEntry {
   section_id: string;
   section_title: string;
   score_trend: ScoreTrend;
+  assessment_type?: AssessmentType | "";
+  result?: AssessmentResult;
+  mastery_path_id?: string;
+  knowledge_point_id?: string;
+  attempt_count?: number;
+  hints_used?: number;
+  confidence?: number | null;
+  response_time?: number | null;
+  quality?: number | null;
   is_correct: boolean;
   resolved: boolean;
   bookmarked: boolean;
@@ -226,6 +238,13 @@ export interface NotebookEntry {
   created_at: number;
   updated_at: number;
   categories?: NotebookCategory[];
+  practice?: {
+    is_mistake: boolean | number;
+    due_at: number;
+    review_count: number;
+    last_answer: string | null;
+    last_rating: "again" | "hard" | "good" | "easy" | null;
+  } | null;
 }
 
 export interface NotebookCategory {
@@ -239,7 +258,22 @@ export type AssessmentSource =
   | "deep_question"
   | "mastery_path"
   | "immersive_reading"
-  | "book";
+  | "book"
+  | "partner_chat"
+  | "import";
+
+export type QuestionOriginType =
+  | "conversation"
+  | "external_import"
+  | "document_analysis";
+
+export type AssessmentType = "quiz" | "focus_check" | "qualitative" | "review";
+
+export type AssessmentResult =
+  | "correct"
+  | "incorrect"
+  | "partial"
+  | "ungraded";
 
 export type ScoreTrend = "new" | "improved" | "declined" | "unchanged";
 
@@ -275,6 +309,7 @@ async function expectJson<T>(response: Response): Promise<T> {
 // ── Entries ──────────────────────────────────────────────────────
 
 export interface NotebookEntryFilter {
+  mistakes_only?: boolean;
   category_id?: number;
   /** Only entries in no category at all — the triage inbox. */
   uncategorized?: boolean;
@@ -283,6 +318,10 @@ export interface NotebookEntryFilter {
   source?: AssessmentSource;
   material_id?: string;
   section_id?: string;
+  assessment_type?: AssessmentType;
+  result?: AssessmentResult;
+  mastery_path_id?: string;
+  knowledge_point_id?: string;
   resolved?: boolean;
   score_trend?: ScoreTrend;
   search?: string;
@@ -292,9 +331,10 @@ export interface NotebookEntryFilter {
   /**
    * Restrict to questions produced by one course's conversations.
    *
-   * Entries carry a session, not a course, so the server resolves this to the
-   * course's sessions. A course with no sessions yet correctly yields nothing
-   * rather than falling back to everything.
+   * The server resolves course membership through real conversation sessions;
+   * independent document/import origins stay outside that scope until they
+   * gain an explicit course association. A course with no sessions correctly
+   * yields nothing rather than falling back to everything.
    */
   course_id?: string;
 }
@@ -303,6 +343,7 @@ export async function listNotebookEntries(
   filter: NotebookEntryFilter = {},
 ): Promise<NotebookEntryListResponse> {
   const params = new URLSearchParams();
+  if (filter.mistakes_only) params.set("mistakes_only", "true");
   if (filter.category_id !== undefined)
     params.set("category_id", String(filter.category_id));
   if (filter.uncategorized) params.set("uncategorized", "true");
@@ -313,6 +354,12 @@ export async function listNotebookEntries(
   if (filter.source) params.set("source", filter.source);
   if (filter.material_id) params.set("material_id", filter.material_id);
   if (filter.section_id) params.set("section_id", filter.section_id);
+  if (filter.assessment_type) params.set("assessment_type", filter.assessment_type);
+  if (filter.result) params.set("result", filter.result);
+  if (filter.mastery_path_id)
+    params.set("mastery_path_id", filter.mastery_path_id);
+  if (filter.knowledge_point_id)
+    params.set("knowledge_point_id", filter.knowledge_point_id);
   if (filter.resolved !== undefined)
     params.set("resolved", String(filter.resolved));
   if (filter.score_trend) params.set("score_trend", filter.score_trend);
@@ -362,6 +409,26 @@ export async function lookupNotebookEntry(
   return expectJson<NotebookEntry>(response);
 }
 
+export async function lookupNotebookEntryByOrigin(
+  originType: Exclude<QuestionOriginType, "conversation">,
+  originRef: string,
+  questionId: string,
+  turnId?: string | null,
+): Promise<NotebookEntry | null> {
+  const params = new URLSearchParams({
+    origin_type: originType,
+    origin_ref: originRef,
+    question_id: questionId,
+    missing_ok: "true",
+  });
+  if (turnId) params.set("turn_id", turnId);
+  const response = await apiFetch(
+    apiUrl(`/api/question-notebook/entries/lookup/by-question?${params}`),
+  );
+  if (response.status === 204 || response.status === 404) return null;
+  return expectJson<NotebookEntry>(response);
+}
+
 export async function updateNotebookEntry(
   entryId: number,
   updates: {
@@ -393,7 +460,9 @@ export interface NotebookAnswerImageUpload {
 }
 
 export async function upsertNotebookEntry(data: {
-  session_id: string;
+  session_id?: string;
+  origin_type?: QuestionOriginType;
+  origin_ref?: string;
   turn_id?: string;
   question_id: string;
   question: string;
@@ -414,6 +483,15 @@ export async function upsertNotebookEntry(data: {
   material_title?: string;
   section_id?: string;
   section_title?: string;
+  assessment_type?: AssessmentType | "";
+  result?: AssessmentResult;
+  mastery_path_id?: string;
+  knowledge_point_id?: string;
+  attempt_count?: number;
+  hints_used?: number;
+  confidence?: number | null;
+  response_time?: number | null;
+  quality?: number | null;
 }): Promise<NotebookEntry> {
   const response = await apiFetch(
     apiUrl("/api/question-notebook/entries/upsert"),

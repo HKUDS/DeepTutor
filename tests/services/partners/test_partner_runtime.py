@@ -36,7 +36,46 @@ def _msg(content: str = "hello", channel: str = "telegram") -> InboundMessage:
     return InboundMessage(channel=channel, sender_id="42", chat_id="42", content=content)
 
 
+def _muted_progress_config() -> PartnerConfig:
+    """A partner whose telegram channel carries no live progress messages."""
+    return PartnerConfig(name="Ada", channels={"telegram": {"sendProgress": False}})
+
+
 class TestTurnExecution:
+    @pytest.mark.asyncio
+    async def test_model_history_and_request_header_survive_partner_turns(
+        self, partners_root, fake_orchestrator, monkeypatch
+    ):
+        from tests.services.session.test_model_history import turn_record
+
+        record = turn_record()
+        record["route"] = {"provider": "openai", "model": "test-model"}
+        original = fake_orchestrator.handle
+
+        async def handle(instance, context):
+            context.runtime.model_turn = record
+            async for item in original(instance, context):
+                yield item
+
+        monkeypatch.setattr(fake_orchestrator, "handle", handle)
+        fake_orchestrator.script = finish("Displayed answer")
+        runner = _runner(partners_root)
+        await runner.process_message(_msg("Question"))
+        await runner.process_message(_msg("Follow up"))
+
+        restored = fake_orchestrator.seen_contexts[-1].runtime
+        assert restored.model_history == record["messages"]
+        assert restored.previous_model_turn == record
+        public_rows = _shared_store().messages("telegram:42")
+        assert all("model_turn" not in row.get("metadata", {}) for row in public_rows)
+        custom = runner._build_context(
+            _msg(),
+            store=_shared_store(),
+            options=PartnerTurnOptions(conversation_history=[]),
+        )
+        assert custom.runtime.model_history is None
+        assert custom.runtime.previous_model_turn is None
+
     @pytest.mark.asyncio
     @pytest.mark.parametrize("channel", ["weixin", "telegram"])
     async def test_all_im_channels_mirror_user_trace_and_answer_to_web_activity(
@@ -177,11 +216,35 @@ class TestTurnExecution:
         assert progress.metadata["_tool_hint"] is False
 
     @pytest.mark.asyncio
-    async def test_answer_visible_narration_stays_in_reply(self, partners_root, fake_orchestrator):
+    async def test_commentary_reaches_a_progress_channel_live_not_twice(
+        self, partners_root, fake_orchestrator
+    ):
+        """Commentary is the reader's either way — once, by the fastest route.
+
+        A channel that carries progress shows each round as it lands, so the
+        closing reply must not repeat it.
+        """
         fake_orchestrator.script = answer_visible_narration(
             "c1", "Great job on that answer."
         ) + finish("Choose the next topic.")
         runner = _runner(partners_root)
+
+        final = await runner.process_message(_msg())
+
+        progress = await runner.bus.outbound.get()
+        assert progress.content == "Great job on that answer."
+        assert progress.metadata["_progress"] is True
+        assert final == "Choose the next topic."
+
+    @pytest.mark.asyncio
+    async def test_commentary_rides_the_reply_when_no_channel_carries_it(
+        self, partners_root, fake_orchestrator
+    ):
+        """With progress muted, the reply is the only route left — so it carries it."""
+        fake_orchestrator.script = answer_visible_narration(
+            "c1", "Great job on that answer."
+        ) + finish("Choose the next topic.")
+        runner = _runner(partners_root, _muted_progress_config())
 
         final = await runner.process_message(_msg())
 
@@ -208,7 +271,7 @@ class TestTurnExecution:
                 metadata={"response": "Part one. Part two."},
             ),
         ]
-        runner = _runner(partners_root)
+        runner = _runner(partners_root, _muted_progress_config())
 
         final = await runner.process_message(_msg())
 
@@ -424,10 +487,12 @@ class TestTurnExecution:
         attempted: list[Any] = []
 
         def _activate(selection):
+            from types import SimpleNamespace
+
             attempted.append(selection)
             if selection == primary:
                 raise LLMConfigError("primary profile is gone")
-            return (None, None)
+            return (SimpleNamespace(binding="openai", model="test-model"), None)
 
         monkeypatch.setattr(selection_runtime, "activate_llm_selection", _activate)
         fake_orchestrator.script = finish("backup answer")
@@ -459,6 +524,146 @@ class TestTurnExecution:
         assert out.channel == "telegram"
         assert out.chat_id == "42"
         assert out.content == "reply text"
+
+
+class TestOutboundThreadRouting:
+    """#1461: Telegram forum-topic replies must echo the inbound thread id.
+
+    ``TelegramChannel.send()`` already routes on ``metadata["message_thread_id"]``
+    (falling back to a ``message_id`` reply-cache lookup); the runner must copy
+    both keys from the inbound message onto every outbound message it publishes
+    for that turn, not just the final reply.
+    """
+
+    @pytest.mark.asyncio
+    async def test_final_reply_echoes_inbound_thread_and_message_id(
+        self, partners_root, fake_orchestrator
+    ):
+        fake_orchestrator.script = finish("reply text")
+        runner = _runner(partners_root)
+        msg = InboundMessage(
+            channel="telegram",
+            sender_id="42",
+            chat_id="42",
+            content="hi from a topic",
+            metadata={"message_thread_id": 55, "message_id": 999},
+        )
+
+        await runner._handle_inbound(msg)
+        out = await runner.bus.outbound.get()
+        assert out.metadata["message_thread_id"] == 55
+        assert out.metadata["message_id"] == 999
+
+    @pytest.mark.asyncio
+    async def test_progress_hint_echoes_inbound_thread_id(self, partners_root, fake_orchestrator):
+        fake_orchestrator.script = narration_round("c1", "exploring…") + finish("done")
+        runner = _runner(partners_root)
+        msg = InboundMessage(
+            channel="telegram",
+            sender_id="42",
+            chat_id="42",
+            content="hi",
+            metadata={"message_thread_id": 55, "message_id": 999},
+        )
+
+        await runner.process_message(msg)
+        progress = await runner.bus.outbound.get()
+        assert progress.metadata["_progress"] is True
+        assert progress.metadata["message_thread_id"] == 55
+        assert progress.metadata["message_id"] == 999
+
+    @pytest.mark.asyncio
+    async def test_tool_hint_echoes_inbound_thread_id(self, partners_root, fake_orchestrator):
+        fake_orchestrator.script = [
+            event(
+                StreamEventType.TOOL_CALL,
+                content="rag",
+                metadata={"args": {"query": "hello"}},
+            ),
+            *finish("done"),
+        ]
+        runner = _runner(partners_root)
+        msg = InboundMessage(
+            channel="telegram",
+            sender_id="42",
+            chat_id="42",
+            content="hi",
+            metadata={"message_thread_id": 55, "message_id": 999},
+        )
+
+        await runner.process_message(msg)
+        hint = await runner.bus.outbound.get()
+        assert hint.metadata["_tool_hint"] is True
+        assert hint.metadata["message_thread_id"] == 55
+        assert hint.metadata["message_id"] == 999
+
+    @pytest.mark.asyncio
+    async def test_stream_delta_and_end_echo_inbound_thread_id(
+        self, partners_root, fake_orchestrator
+    ):
+        fake_orchestrator.script = narration_round("c1", "streamed text") + finish("done")
+        runner = _runner(partners_root)
+        msg = InboundMessage(
+            channel="telegram",
+            sender_id="42",
+            chat_id="42",
+            content="hi",
+            metadata={"message_thread_id": 55, "message_id": 999, "_wants_stream": True},
+        )
+
+        await runner.process_message(msg)
+        published = []
+        while not runner.bus.outbound.empty():
+            published.append(await runner.bus.outbound.get())
+
+        streamed = [
+            out
+            for out in published
+            if out.metadata.get("_stream_delta") or out.metadata.get("_stream_end")
+        ]
+        assert streamed, "expected at least one streamed delta/end message"
+        for out in streamed:
+            assert out.metadata["message_thread_id"] == 55
+            assert out.metadata["message_id"] == 999
+
+    @pytest.mark.asyncio
+    async def test_only_answer_stream_end_marks_confirmable_final_delivery(
+        self, partners_root, fake_orchestrator
+    ):
+        fake_orchestrator.script = narration_round("intro", "Checking") + finish("Answer")
+        runner = _runner(partners_root)
+        msg = InboundMessage(
+            channel="feishu",
+            sender_id="ou_user",
+            chat_id="oc_group",
+            content="Question",
+            metadata={"message_id": "om_user", "_wants_stream": True},
+        )
+        delivery_meta: dict[str, Any] = {}
+
+        assert await runner.process_message(msg, delivery_meta=delivery_meta) == "Answer"
+        ends = []
+        while not runner.bus.outbound.empty():
+            outbound = await runner.bus.outbound.get()
+            if outbound.metadata.get("_stream_end"):
+                ends.append(outbound)
+
+        assert len(ends) == 2
+        assert ends[0].metadata.get("_stream_final") is None
+        assert ends[1].metadata["_stream_final"] is True
+        assert ends[1].metadata["message_id"] == "om_user"
+        assert delivery_meta["_streamed"] is True
+        assert delivery_meta["_stream_id"] == ends[1].metadata["_stream_id"]
+
+    @pytest.mark.asyncio
+    async def test_missing_thread_metadata_is_not_injected(self, partners_root, fake_orchestrator):
+        fake_orchestrator.script = finish("reply text")
+        runner = _runner(partners_root)
+
+        await runner._handle_inbound(_msg())
+        out = await runner.bus.outbound.get()
+        assert "message_thread_id" not in out.metadata
+        assert "message_id" not in out.metadata
 
 
 class TestContextAssembly:
@@ -977,6 +1182,85 @@ class TestLiveTurn:
             assert mgr.subscribe_web_turn("ada", "web-x") is None
             # The completed turn persisted to the session store.
             assert mgr.session_store("ada").messages("web-x")[-1]["content"] == "done!"
+        finally:
+            await mgr.stop_partner("ada")
+
+    @pytest.mark.asyncio
+    async def test_second_browser_cannot_replace_an_active_web_turn(
+        self, partners_root, fake_orchestrator, monkeypatch
+    ):
+        from deeptutor.services.partners.manager import PartnerManager, PartnerTurnBusyError
+
+        mgr = PartnerManager()
+        mgr.save_config("ada", PartnerConfig(name="Ada"), auto_start=True)
+        await mgr.start_partner("ada")
+        release = asyncio.Event()
+        seen: list[str] = []
+
+        async def reply(_partner_id, content, **_kwargs):
+            seen.append(content)
+            await release.wait()
+            return f"answer to {content}"
+
+        monkeypatch.setattr(mgr, "send_message", reply)
+        try:
+            first = mgr.start_web_turn("ada", "web-shared", "first browser")
+            await asyncio.sleep(0)
+            with pytest.raises(PartnerTurnBusyError, match="already replying"):
+                mgr.start_web_turn("ada", "web-shared", "second browser")
+            assert mgr.subscribe_web_turn("ada", "web-shared") is first
+            assert mgr.web_session_is_busy("ada", "web-shared") is True
+            # A different worker's manager has no in-memory LiveTurn, but the
+            # file lease still rejects mutation of the same actor-scoped key.
+            other_manager = PartnerManager()
+            assert other_manager.subscribe_web_turn("ada", "web-shared") is None
+            assert other_manager.web_session_is_busy("ada", "web-shared") is True
+            assert seen == ["first browser"]
+
+            release.set()
+            await asyncio.wait_for(first.task, timeout=1)
+            assert first.done
+            assert mgr.web_session_is_busy("ada", "web-shared") is False
+            second = mgr.start_web_turn("ada", "web-shared", "second browser")
+            await asyncio.wait_for(second.task, timeout=1)
+            assert seen == ["first browser", "second browser"]
+        finally:
+            release.set()
+            await mgr.stop_partner("ada")
+
+    @pytest.mark.asyncio
+    async def test_stale_browser_send_does_not_append_to_old_shared_session(
+        self, partners_root, fake_orchestrator, monkeypatch
+    ):
+        from deeptutor.services.partners.manager import (
+            PartnerManager,
+            PartnerStaleSessionError,
+        )
+        from deeptutor.services.partners.web_continuity import set_web_continuity
+
+        mgr = PartnerManager()
+        mgr.save_config("ada", PartnerConfig(name="Ada"), auto_start=True)
+        await mgr.start_partner("ada")
+        set_web_continuity("ada", "account-a", enabled=True, session_key="web-current")
+        seen: list[str] = []
+
+        async def reply(_partner_id, content, **_kwargs):
+            seen.append(content)
+            return "reply"
+
+        monkeypatch.setattr(mgr, "send_message", reply)
+        try:
+            with pytest.raises(PartnerStaleSessionError) as stale:
+                mgr.start_web_turn(
+                    "ada", "web-old", "question from stale browser", account_id="account-a"
+                )
+            assert stale.value.active_session_key == "web-current"
+            assert seen == []
+            turn = mgr.start_web_turn(
+                "ada", "web-current", "question on current thread", account_id="account-a"
+            )
+            await asyncio.wait_for(turn.task, timeout=1)
+            assert seen == ["question on current thread"]
         finally:
             await mgr.stop_partner("ada")
 

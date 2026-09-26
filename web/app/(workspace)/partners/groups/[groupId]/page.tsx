@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft,
+  Download,
   Loader2,
   PanelRight,
   Pencil,
@@ -29,6 +30,7 @@ import {
   type PartnerGroup,
 } from "@/lib/partner-groups-api";
 import { listPartners, type PartnerInfo } from "@/lib/partners-api";
+import { downloadChatMarkdown, type ExportableMessage } from "@/lib/chat-export";
 
 export default function PartnerGroupPage() {
   const { t } = useTranslation();
@@ -42,6 +44,7 @@ export default function PartnerGroupPage() {
   const [editing, setEditing] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
   const [sessionKey, setSessionKey] = useState("");
+  const [exportMessages, setExportMessages] = useState<ExportableMessage[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -133,14 +136,27 @@ export default function PartnerGroupPage() {
               groupId={groupId}
               sessionKey={sessionKey}
               onSelect={(key) => {
+                setExportMessages([]);
                 setPartnerGroupSessionKey(groupId, key);
                 setSessionKey(key);
               }}
-              onCreate={() =>
-                setSessionKey(createPartnerGroupSessionKey(groupId))
-              }
+              onCreate={() => {
+                setExportMessages([]);
+                setSessionKey(createPartnerGroupSessionKey(groupId));
+              }}
             />
           ) : null}
+          <button
+            type="button"
+            onClick={() => downloadChatMarkdown(exportMessages, { title: group.name })}
+            disabled={exportMessages.length === 0}
+            aria-label={t("Download")}
+            title={t("Download")}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--border)] px-2.5 text-[11px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Download size={12} />
+            {t("Download")}
+          </button>
           <button
             type="button"
             onClick={() => setPanelOpen((value) => !value)}
@@ -170,6 +186,7 @@ export default function PartnerGroupPage() {
         panelOpen={panelOpen}
         onOpenPanel={() => setPanelOpen(true)}
         onClosePanel={() => setPanelOpen(false)}
+        onExportMessagesChange={setExportMessages}
       />
 
       {editing ? (

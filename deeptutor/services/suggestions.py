@@ -70,6 +70,7 @@ _TTL_SECONDS = 6 * 3600
 # meaningfully change that fast.
 _PROBE_INTERVAL_SECONDS = 60.0
 _LLM_TIMEOUT = 25.0
+_REFRESH_TIMEOUT = 35.0
 # How far back a trace can be and still count as "what they are working on".
 # A month rather than a week: labels are deduplicated and the list is cut to
 # ``trace_count``, so a longer window means depth, not length — it means a
@@ -118,6 +119,7 @@ _inflight: dict[str, asyncio.Task[Any]] = {}
 # Last time a scope's material was checked, for the throttle above. In-process
 # only: losing it on restart costs one extra walk.
 _last_probe: dict[str, float] = {}
+_failures: dict[str, str] = {}
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,6 +141,7 @@ class SuggestionSet:
     language: str
     generated_at: float
     fingerprint: str
+    status: str = "ready"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -146,6 +149,7 @@ class SuggestionSet:
             "language": self.language,
             "generated_at": self.generated_at,
             "fingerprint": self.fingerprint,
+            "status": self.status,
         }
 
 
@@ -190,6 +194,7 @@ def _load() -> SuggestionSet | None:
             language=str(raw.get("language") or "en"),
             generated_at=float(raw.get("generated_at") or 0.0),
             fingerprint=str(raw.get("fingerprint") or ""),
+            status="ready" if items else "no-material",
         )
     except Exception:
         logger.debug("suggestions cache unreadable", exc_info=True)
@@ -524,6 +529,7 @@ async def _generate(language: str, material: _Material) -> SuggestionSet:
         language=language,
         generated_at=time.time(),
         fingerprint=fingerprint,
+        status="error" if material else "no-material",
     )
     if not material:
         # Nothing to ground a suggestion in. Say so instead of asking a model
@@ -549,17 +555,20 @@ async def _generate(language: str, material: _Material) -> SuggestionSet:
 
     try:
         from deeptutor.services.llm import complete
-        from deeptutor.services.model_selection.tasks import task_llm_scope
+        from deeptutor.services.model_selection.tasks import TaskKind, task_llm_scope
 
         # Runs on the task model when one is configured, and on the active
         # default otherwise — which is what this always did.
-        with task_llm_scope():
+        with task_llm_scope(TaskKind.CHAT_STARTERS):
             raw = await asyncio.wait_for(
                 complete(
                     prompt=user_prompt,
                     system_prompt=_SYSTEM_ZH if zh else _SYSTEM_EN,
                     temperature=0.8,  # suggestions may vary; these are not facts
                     max_tokens=500,
+                    # This bounded UI task needs a short answer. Reasoning
+                    # models can otherwise spend all 500 tokens privately.
+                    reasoning_effort="none",
                 ),
                 timeout=_LLM_TIMEOUT,
             )
@@ -570,11 +579,13 @@ async def _generate(language: str, material: _Material) -> SuggestionSet:
         logger.debug("suggestions LLM call failed", exc_info=True)
         return empty
 
+    items = _sanitize(raw, language)
     return SuggestionSet(
-        suggestions=_sanitize(raw, language),
+        suggestions=items,
         language=language,
         generated_at=time.time(),
         fingerprint=fingerprint,
+        status="ready" if items else "error",
     )
 
 
@@ -601,18 +612,58 @@ async def _generate_and_cache(language: str, material: _Material) -> SuggestionS
     the next visit tries again.
     """
     value = await _generate(language, material)
+    if value.status == "error":
+        _failures[_scope_key()] = language
+    else:
+        _failures.pop(_scope_key(), None)
     if value.suggestions or not material:
         _save(value)
     return value
 
 
 async def refresh_suggestions() -> SuggestionSet:
-    """Generate a new set now and cache it. For the manual reroll."""
-    language = _output_language()
-    return await _generate_and_cache(language, _collect_material(_trace_count()))
+    """One bounded generation per store, shared with automatic refreshes."""
+    key = _scope_key()
+    pending = _inflight.get(key)
+    if pending is not None and not pending.done():
+        value = await asyncio.shield(pending)
+        if isinstance(value, SuggestionSet):
+            return value
+        cached = _load()
+        if cached and cached.language == _output_language():
+            return cached
+
+    async def generate():
+        language = _output_language()
+        material = await asyncio.to_thread(_collect_material, _trace_count())
+        return await _generate_and_cache(language, material)
+
+    task = asyncio.create_task(_bounded_generation(generate))
+    _inflight[key] = task
+    _last_probe[key] = time.monotonic()
+    try:
+        return await asyncio.shield(task)
+    finally:
+        # Shielding lets an HTTP disconnect leave the bounded job available
+        # to other callers; its completion callback owns final cleanup.
+        def clear(done):
+            if _inflight.get(key) is done:
+                _inflight.pop(key, None)
+
+        task.add_done_callback(clear)
 
 
-async def _regenerate_if_due() -> None:
+async def _bounded_generation(generate) -> SuggestionSet | None:
+    try:
+        return await asyncio.wait_for(generate(), timeout=_REFRESH_TIMEOUT)
+    except Exception:
+        language = _output_language()
+        _failures[_scope_key()] = language
+        logger.warning("Suggestion refresh failed or timed out", exc_info=True)
+        return SuggestionSet((), language, time.time(), "", status="error")
+
+
+async def _regenerate_if_due() -> SuggestionSet:
     """The background pass: work out whether anything is due, then do it.
 
     Reading memory to fingerprint the material happens here rather than on the
@@ -621,12 +672,12 @@ async def _regenerate_if_due() -> None:
     means.
     """
     language = _output_language()
-    material = _collect_material(_trace_count())
+    material = await asyncio.to_thread(_collect_material, _trace_count())
     fingerprint = _fingerprint(material, language)
     cached = _load()
     if _is_fresh(cached, language, now=time.time()) and cached.fingerprint == fingerprint:
-        return
-    await _generate_and_cache(language, material)
+        return cached
+    return await _generate_and_cache(language, material)
 
 
 def _schedule_probe(*, force: bool = False) -> None:
@@ -651,9 +702,9 @@ def _schedule_probe(*, force: bool = False) -> None:
         return
     _last_probe[key] = now
 
-    async def _go() -> None:
+    async def _go() -> SuggestionSet | None:
         try:
-            await _regenerate_if_due()
+            return await _bounded_generation(_regenerate_if_due)
         except Exception:
             logger.debug("background suggestion refresh failed", exc_info=True)
         finally:
@@ -685,13 +736,18 @@ async def get_suggestions() -> dict[str, Any]:
     _schedule_probe(force=cached is not None and cached.language != language)
 
     if cached is not None and cached.language == language:
-        return {**cached.to_dict(), "stale": not fresh}
+        return {
+            **cached.to_dict(),
+            "stale": not fresh,
+            "refresh_failed": _failures.get(_scope_key()) == language,
+        }
     return {
         "suggestions": [],
         "language": language,
         "generated_at": 0.0,
         "fingerprint": "",
-        "stale": True,
+        "stale": bool(_inflight.get(_scope_key())),
+        "status": ("working" if _inflight.get(_scope_key()) else "error"),
     }
 
 

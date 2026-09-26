@@ -132,6 +132,8 @@ class OpenAICompatTTSAdapter(BaseTTSAdapter):
             payload["voice"] = config.voice
         if config.speed is not None:
             payload["speed"] = config.speed
+        if config.instructions:
+            payload["instructions"] = config.instructions
 
         logger.debug(
             "TTS synthesize url=%s model=%s voice=%s fmt=%s chars=%d",
@@ -207,7 +209,14 @@ class OpenRouterTTSAdapter(BaseTTSAdapter):
         audio_format = _chat_audio_format(config.response_format)
         payload: dict[str, Any] = {
             "model": config.model,
-            "messages": [{"role": "user", "content": text}],
+            "messages": [
+                *(
+                    [{"role": "system", "content": config.instructions}]
+                    if config.instructions
+                    else []
+                ),
+                {"role": "user", "content": text},
+            ],
             "modalities": ["text", "audio"],
             "audio": {
                 "voice": config.voice or "alloy",

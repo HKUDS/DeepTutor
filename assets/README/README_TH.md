@@ -10,9 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://trendshift.io/repositories/17099?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-17099" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/17099" alt="HKUDS%2FDeepTutor | Trendshift" width="250" height="55"/></a>&nbsp;
-  <a href="https://trendshift.io/repositories/17099?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-17099" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/17099/daily" alt="HKUDS%2FDeepTutor | Trendshift" width="250" height="55"/></a>&nbsp;
-  <a href="https://trendshift.io/repositories/17099?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-17099" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/17099/weekly?language=Python" alt="HKUDS%2FDeepTutor | Trendshift" width="250" height="55"/></a>
+<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending&amp;theme=dark"><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending"><img alt="GitHub Trending Repository of the Day" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" height="55"></picture></a>&#32;<a href="https://trendshift.io/repositories/17099"><img src="https://trendshift.io/api/badge/trendshift/repositories/17099/daily" alt="HKUDS/DeepTutor | Trendshift" width="250" height="55"></a>&#32;<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;theme=dark"><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor"><img alt="Star History Rank" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor" width="185" height="55"></picture></a>
 </p>
 
 <p align="center">
@@ -50,6 +48,7 @@
 
 ### 📰 ข่าวสาร
 
+- **2026-09-20** 🎉 ถึง 40k stars ใน 9 เดือน! เราจะขยายระบบนิเวศการเรียนรู้ของ DeepTutor ต่อไป
 - **2026-05-22** 🌐 เว็บไซต์เอกสารอย่างเป็นทางการเปิดตัวแล้วที่ [**deeptutor.info**](https://deeptutor.info/) — คู่มือ การอ้างอิง และ capability tours ทั้งหมดในที่เดียว
 - **2026-04-19** 🎉 ถึง 20k stars ใน 111 วัน! ขอบคุณสำหรับการสนับสนุนที่มุ่งสู่การสอนพิเศษที่เป็นส่วนตัวและชาญฉลาดอย่างแท้จริง
 - **2026-04-10** 📄 บทความของเราตอนนี้มีบน arXiv แล้ว! อ่าน [preprint](https://arxiv.org/abs/2604.26962) เพื่อเรียนรู้เกี่ยวกับการออกแบบและแนวคิดที่อยู่เบื้องหลัง DeepTutor
@@ -64,8 +63,8 @@ DeepTutor คือ workspace การเรียนรู้แบบ agent-n
 - **รันไทม์เดียวสำหรับทุกโหมด** — Chat, Ask Questions, Quiz, Research, Visualize, Solve, Course Study, Mastery Path, Immersive Reading และ Immersive Watching ใช้ capability runtime และบริบท session ชุดเดียวกัน โดยยังคงลูปและ pipeline ที่ออกแบบมาเฉพาะสำหรับแต่ละวัตถุประสงค์
 - **บริบทการเรียนรู้ที่เชื่อมต่อกัน** — ฐานความรู้, หนังสือ, ร่าง Co-Writer, สมุดบันทึก, คลังคำถาม, บุคลิกภาพ และ Memory สามารถนำมาใช้ซ้ำในเวิร์กโฟลว์ที่รองรับ โดยอยู่ภายใต้สิทธิ์ของบัญชีและนโยบายการเรียนรู้
 - **การเรียนรู้ผ่านวิดีโออย่างดื่มด่ำ** — วางลิงก์ YouTube เพื่อเล่นวิดีโอแบบ native ที่เพิ่มความเป็นส่วนตัว พร้อมคำบรรยายที่ซิงค์กัน, การสอนพิเศษที่อ้างอิง timestamp และความคืบหน้าที่กลับมาเรียนต่อได้; ผู้ดูแลระบบสามารถเปลี่ยนการเล่นเป็น Invidious instance ที่ self-hosted ได้โดยไม่ต้องสร้างสื่อขึ้นใหม่
-- **ซับเอเจนต์และ Partners** — จาก Chat คุณสามารถปรึกษา agent harness แบบสด (Claude Code, Codex, Antigravity, Kimi, opencode, MiMo, Hermes, OpenClaw หรือ DeepSeek) หรือ Partner, นำเข้าบทสนทนาในอดีต และรันเพื่อนถาวรบน IM ด้วยสมองเดียวกัน
-- **ความรู้หลายเอ็นจิน** — ไลบรารี RAG แบบเวอร์ชันผ่าน LlamaIndex, PageIndex, GraphRAG, LightRAG, LightRAG Server ระยะไกล, WeKnora deployment แบบ self-hosted, ไลบรารี Tencent IMA หรือ MarginNote 4 หรือ Obsidian vault ที่เชื่อมโยง พร้อมการแยกวิเคราะห์เอกสารแบบ pluggable
+- **ซับเอเจนต์และ Partners** — จาก Chat คุณสามารถปรึกษา agent harness แบบสด (Claude Code, Codex, Grok CLI, Antigravity, Kimi, opencode, MiMo, Hermes, OpenClaw หรือ DeepSeek) หรือ Partner, นำเข้าบทสนทนาในอดีต และรันเพื่อนถาวรบน IM ด้วยสมองเดียวกัน
+- **ความรู้หลายเอ็นจิน** — ไลบรารี RAG แบบเวอร์ชันผ่าน LlamaIndex, PageIndex, GraphRAG, LightRAG, LightRAG Server ระยะไกล, WeKnora deployment แบบ self-hosted, ไลบรารี Tencent IMA หรือ MarginNote 4 หรือ Obsidian vault ที่เชื่อมโยง พร้อมการแยกวิเคราะห์เอกสารแบบ pluggable ดู [native LightRAG role models](../../deeptutor/services/rag/pipelines/lightrag/README.md) สำหรับการตั้งค่า extraction, query และ vision ที่เป็นอิสระจากกัน, การสร้างแบบใช้ค่าเริ่มต้นเท่านั้น และการสร้างใหม่ที่ต้องมีการยืนยัน
 - **เครื่องมือและทักษะที่ขยายได้** — เครื่องมือในตัว, เซิร์ฟเวอร์ MCP, แอป CLI, โมเดลสร้างรูปภาพ/วิดีโอ/เสียง และทักษะชุมชนที่ติดตั้งได้จาก EduHub
 - **หน่วยความจำที่ตรวจสอบได้** — การติดตาม L1, สรุปพื้นผิว L2 และการสังเคราะห์ L3 ทำให้การปรับแต่งส่วนบุคคลมองเห็นได้และแก้ไขได้; Memory Graph เชื่อมข้อเท็จจริง L2 กับหลักฐาน L1 และการสังเคราะห์ L3 กับพื้นผิวที่มีส่วนร่วม
 
@@ -77,15 +76,9 @@ DeepTutor มีเส้นทางการติดตั้งสี่เ�
 
 ### Content Workspace
 
-**Content Workspace** แยกออกจาก runtime home ส่วนตัวของ DeepTutor เป็นโฟลเดอร์ที่ agent
-อ่านได้ และเป็นที่ที่ไฟล์ที่ agent สร้างขึ้น, การดาวน์โหลด, การรันโค้ด, cache และ asset ที่ render
-ทุกอย่างจะถูกวางไว้ภายใต้ไดเร็กทอรีที่ผูกกับ turn คือ
-`outputs/<capability>/<session>/<turn>/` การตั้งค่า, API keys,
-ฐานข้อมูล, Memory และ internal application state ยังคงอยู่นอกโฟลเดอร์นี้
+**Content Workspace** แยกออกจาก runtime home ส่วนตัวของ DeepTutor เป็นโฟลเดอร์ที่ agent อ่านได้ โดยไฟล์ที่สร้างจะอยู่ใต้ `outputs/<capability>/<session>/<turn>/` workspace แบบกำหนดเองแยกบทสนทนา สื่อการเรียน ความคืบหน้า และ cache ไว้ในโครงสร้างส่วนตัว `.deeptutor/data/` ที่เครื่องมือไฟล์ไม่สามารถเรียกดูได้ การตั้งค่า credentials และ Memory ยังคงแชร์กันในระดับบัญชี
 
-หากไม่ได้กำหนดค่า content workspace จะเป็น
-`<runtime-home>/data/user/workspace` การติดตั้งแบบ local PyPI, CLI และ source
-สามารถเลือกโฟลเดอร์ที่อ่าน/เขียนได้ที่มีอยู่แล้วใน **Settings → Workspace** หรือ:
+หากไม่ได้กำหนดค่า content workspace จะเป็น `<runtime-home>/data/user/workspace` การติดตั้งแบบ local PyPI, CLI และ source สามารถเลือกโฟลเดอร์ใน **Settings → Workspaces** และตั้งค่าโฟลเดอร์เริ่มต้นด้วย:
 
 ```bash
 deeptutor workspace show
@@ -93,10 +86,9 @@ deeptutor workspace set /absolute/path/to/my-folder
 deeptutor workspace reset
 ```
 
-ทุกความสามารถสามารถตรวจสอบโฟลเดอร์เดียวกันนี้ผ่านเครื่องมือ workspace
-ในตัว model จะได้รับเฉพาะ relative path เช่น `outputs/...`; เมื่อ model
-ใช้ `workspace_present` UI จะ render snapshot ที่ authenticated และเปิดได้
-relative path เดียวกันเป๊ะนี้ยังใช้ได้ในลิงก์หรือรูปภาพ Markdown ปกติ การเปลี่ยนไฟล์ต้นทางในภายหลังจะไม่เปลี่ยน snapshot ที่นำเสนอไปแล้ว
+แต่ละความสามารถตรวจสอบ workspace ที่เลือกผ่านเครื่องมือ workspace ในตัว model จะได้รับเฉพาะ relative path เช่น `outputs/...`; เมื่อ model ใช้ `workspace_present` UI จะ render snapshot ที่ authenticated และเปิดได้ relative path เดียวกันเป๊ะนี้ยังใช้ได้ในลิงก์หรือรูปภาพ Markdown ปกติ การเปลี่ยนไฟล์ต้นทางในภายหลังจะไม่เปลี่ยน snapshot ที่นำเสนอไปแล้ว
+
+Learning Space จัดการไลบรารีทรัพยากร ใน **Settings → Workspaces** ให้กำหนด Skills, บริการ MCP และ knowledge bases ให้แต่ละ workspace หรือคงกฎการเข้าถึงเดิมไว้ workspace ที่มีอยู่จะคงสิทธิ์การเข้าถึงปัจจุบันจนกว่าจะบันทึกการเลือก การกำหนดทรัพยากรจะอ้างอิงต้นฉบับโดยไม่คัดลอก credentials หรือดัชนีความรู้ และ skills เฉพาะ workspace สามารถแทนที่เวอร์ชันที่แชร์ได้ ดู[การกำหนดทรัพยากรให้ workspace](../../docs-for-user/workspaces.md)
 
 การรันโค้ดเป็นแบบ read-only นอก `outputs/` การคัดลอกไฟล์ที่สร้างขึ้นไปยังที่อื่น
 ใน content workspace ต้องมีการยืนยัน **Allow once** อย่างชัดเจนสำหรับ
@@ -197,7 +189,7 @@ Container เดียวสำหรับแอป Web แบบเต็ม�
 - `ghcr.io/hkuds/deeptutor:latest` — รุ่นเสถียรล่าสุด
 - `ghcr.io/hkuds/deeptutor:<version>` — รุ่นที่ระบุแบบตรงตัวโดยไม่มี `v` นำหน้า (เช่น `:1.6.3`); รุ่นก่อนเผยแพร่จะได้รับเฉพาะแท็กเวอร์ชันของตน
 
-> ดู [CONTAINERIZATION.md](../../CONTAINERIZATION.md) สำหรับการปรับใช้ podman/rootless/read-only-rootfs และคู่มือต่อการติดตั้งแบบครบถ้วน
+> ดู [CONTAINERIZATION.md](../../docs-for-user/CONTAINERIZATION.md) สำหรับการปรับใช้ podman/rootless/read-only-rootfs และคู่มือต่อการติดตั้งแบบครบถ้วน
 
 ```bash
 docker run --rm --name deeptutor \
@@ -271,7 +263,7 @@ docker run --rm --name deeptutor \
 
 Docker Desktop (macOS/Windows) มักจะ resolve `host.docker.internal` ได้โดยไม่ต้องใช้ `--add-host` บน Linux ตัวเลือกนี้คือวิธีที่ portable ในการสร้าง hostname บน Docker Engine สมัยใหม่
 
-**ทางเลือกบน Linux — host networking:** เพิ่ม `--network=host` และลบ flags `-p` ออก Container จะแชร์ network ของ host โดยตรง เปิด [http://127.0.0.1:3782](http://127.0.0.1:3782) (หรือ `frontend_port` ใน `system.json`) และ services ของ host สามารถเข้าถึงได้ด้วย localhost URLs ปกติ เช่น `http://127.0.0.1:11434/v1` โปรดทราบว่า host networking จะเปิดเผยพอร์ต container โดยตรงบน host และอาจขัดแย้งกับ services ที่มีอยู่ — หากต้องการเก็บไว้บน loopback ให้ตั้ง `BACKEND_HOST=127.0.0.1` และ `FRONTEND_HOST=127.0.0.1` (ดู [CONTAINERIZATION.md](../../CONTAINERIZATION.md))
+**ทางเลือกบน Linux — host networking:** เพิ่ม `--network=host` และลบ flags `-p` ออก Container จะแชร์ network ของ host โดยตรง เปิด [http://127.0.0.1:3782](http://127.0.0.1:3782) (หรือ `frontend_port` ใน `system.json`) และ services ของ host สามารถเข้าถึงได้ด้วย localhost URLs ปกติ เช่น `http://127.0.0.1:11434/v1` โปรดทราบว่า host networking จะเปิดเผยพอร์ต container โดยตรงบน host และอาจขัดแย้งกับ services ที่มีอยู่ — หากต้องการเก็บไว้บน loopback ให้ตั้ง `BACKEND_HOST=127.0.0.1` และ `FRONTEND_HOST=127.0.0.1` (ดู [CONTAINERIZATION.md](../../docs-for-user/CONTAINERIZATION.md))
 
 </details>
 
@@ -333,7 +325,7 @@ office skills ที่ติดตั้งมา — **docx / pdf / pptx / xls
 <details>
 <summary><b>เอกสารอ้างอิงการตั้งค่า</b> — ไฟล์การกำหนดค่าภายใต้ <code>data/user/settings/</code> (JSON/YAML)</summary>
 
-ทุกอย่างภายใต้ `data/user/settings/` เป็น JSON/YAML ธรรมดา หน้า **Settings** ในเบราว์เซอร์คือโปรแกรมแก้ไขที่แนะนำ
+ทุกอย่างภายใต้ `data/user/settings/` เป็น JSON/YAML ธรรมดา หน้า **Settings** คือโปรแกรมแก้ไขที่แนะนำ ส่วนรายการลงทะเบียน workspace แยกเก็บใน `data/user/.runtime/workspaces.sqlite3`
 
 | ไฟล์ | วัตถุประสงค์ |
 |:---|:---|
@@ -342,7 +334,7 @@ office skills ที่ติดตั้งมา — **docx / pdf / pptx / xls
 | `auth.json` | สวิตช์ auth แบบเสริม, ชื่อผู้ใช้, password hash, การตั้งค่า token/cookie |
 | `integrations.json` | การตั้งค่า PocketBase แบบเสริมและการรวม sidecar |
 | `interface.json` | ความชอบภาษา UI และภาษา output ของ model / ธีม / แถบด้านข้างของ UI |
-| `content_workspace.json` | การผูกโฟลเดอร์ Content Workspace และการเลือก workspace ที่ใช้งานอยู่ |
+| `document_parsing.json` | การเลือกเอ็นจินแยกวิเคราะห์, remote endpoints และตัวเลือกเฉพาะเอ็นจิน |
 | `video_learning.json` | provider การเล่น YouTube/Invidious เริ่มต้น, ต้นทาง Invidious และ transcript adapter แบบเสริม |
 | `main.yaml` | ค่าเริ่มต้นพฤติกรรม runtime และการ inject path |
 | `agents.yaml` | การตั้งค่า temperature และ token ของ capability/tool |
@@ -401,13 +393,13 @@ DeepTutor แยกโค้ดที่ติดตั้ง, runtime home ส�
 
 เริ่มต้นด้วยพื้นผิวหลักที่คุณจะใช้ทุกวัน: Chat, Partners, My Agents, Co-Writer, Book, Knowledge Center, Learning Space, Memory และ Settings จากนั้นจะครอบคลุมการปรับใช้ Multi-User สำหรับ workspace แบบแชร์และแยกส่วน
 
-หากคำตอบทำข้อกำหนดก่อนหน้าหลุดหาย, อ้างหลักฐานที่อ่อน หรือไม่สอดคล้องกับสื่อที่เลือก ให้รวบรวมข้อมูลวินิจฉัยตาม [`REASONING_SAFETY_CHECKLIST.md`](../../REASONING_SAFETY_CHECKLIST.md) ก่อนเปิด issue
+หากคำตอบทำข้อกำหนดก่อนหน้าหลุดหาย, อ้างหลักฐานที่อ่อน หรือไม่สอดคล้องกับสื่อที่เลือก ให้รวบรวมข้อมูลวินิจฉัยตาม [`REASONING_SAFETY_CHECKLIST.md`](../../docs-for-user/REASONING_SAFETY_CHECKLIST.md) ก่อนเปิด issue
 
 <div align="center">
 <img src="../../assets/figs/web-1.6.5/OVERVIEW.png" alt="หน้าแรก DeepTutor — workspace Chat พร้อมทุกส่วนในแถบด้านข้าง" width="900">
 </div>
 
-> **สถานะภาพหน้าจอ:** ภาพภาพรวมเป็นเวอร์ชัน v1.6.5 ส่วนภาพหน้าจอรายการด้านล่างยังเป็นข้อมูลอ้างอิง v1.4.6 ระหว่างการอัปเดต ดู [รายการภาพหน้าจอ](../../UI_SCREENSHOT_REFRESH.md) ใช้เพื่อทำความเข้าใจขั้นตอนการใช้งาน ไม่ใช่การนำทางปัจจุบันแบบเป๊ะ
+> **สถานะภาพหน้าจอ:** ภาพภาพรวมเป็นเวอร์ชัน v1.6.5 ส่วนภาพหน้าจอรายการด้านล่างยังเป็นข้อมูลอ้างอิง v1.4.6 ระหว่างการอัปเดต ใช้เพื่อทำความเข้าใจขั้นตอนการใช้งาน ไม่ใช่การนำทางปัจจุบันแบบเป๊ะ
 
 <details>
 <summary><b>🏗️ สถาปัตยกรรมระบบ</b></summary>
@@ -433,11 +425,11 @@ Chat คือความสามารถเริ่มต้นและส
 <img src="../../assets/figs/system/chat-agent-loop.png" alt="ลูป agent ของ Chat ใน DeepTutor" width="900">
 </div>
 
-เครื่องมือที่ผู้ใช้สลับได้ ได้แก่ `brainstorm`, `web_search`, `paper_search`, `reason`, และ `geogebra_analysis` — รวมถึง `imagegen` และ `videogen` เมื่อคุณกำหนดค่าโมเดลสร้างที่ตรงกัน เครื่องมือตามบริบทเช่น `rag`, `kb_files`, `knowledge_frontier`, `read_source`, `read_memory`, `write_memory`, `read_skill`, `load_tools`, `exec`, `web_fetch`, `ask_user`, `list_notebook`, `write_note`, `question_bank`, `github`, `consult_subagent`, `workspace_list`, `workspace_read`, `workspace_search`, `workspace_present` และ `workspace_export` จะ mount อัตโนมัติเมื่อ turn มีบริบทที่ถูกต้อง
+เครื่องมือที่ผู้ใช้สลับได้ ได้แก่ `brainstorm`, `web_search`, `paper_search`, `zotero_search`, `reason`, และ `geogebra_analysis` — รวมถึง `imagegen` และ `videogen` เมื่อคุณกำหนดค่าโมเดลสร้างที่ตรงกัน เครื่องมือตามบริบทเช่น `rag`, `kb_files`, `knowledge_frontier`, `read_source`, `read_memory`, `write_memory`, `read_skill`, `load_tools`, `exec`, `web_fetch`, `ask_user`, `list_notebook`, `write_note`, `question_bank`, `github`, `consult_subagent`, `workspace_list`, `workspace_read`, `workspace_search`, `workspace_present` และ `workspace_export` จะ mount อัตโนมัติเมื่อ turn มีบริบทที่ถูกต้อง
 
 บริบทมีสองประเภท: **sticky session context** (capability, workspace หรือ course, tools, knowledge bases, persona, model และสถานะ Reading / Mastery) คงอยู่ตลอด turns; **one-time references** (ไฟล์, ประวัติ chat, หนังสือ, ส่วนการอ่าน, notebooks, question bank, imported agents) มาจากเมนู `+` สำหรับ turn เดียว ปุ่ม voice ทำหน้าที่ถอดเสียงเฉพาะข้อความปัจจุบัน
 
-Home ทำให้ **Chat**, **Ask Questions**, **Quiz** และ **Visualize** อยู่ห่างเพียงคลิกเดียว; **Research** สำหรับรายงานที่มีการอ้างอิง, **Solve** สำหรับการให้เหตุผลแบบละเอียด และ **Immersive Watching** อยู่ภายใต้ *More Capabilities* **Mastery Path** และ **Immersive Reading** เป็น workspace เฉพาะในแถบด้านข้าง; Reading เพิ่ม citations ที่ตรวจสอบแล้วและคลิกได้, citations และ notes ที่บันทึกไว้, การอ่านออกเสียง / คำแนะนำการเรียน / คำศัพท์ / quiz / การแปลที่อ้างอิง source และการบันทึกลง notebook ขณะที่ Course Study มีบริบทที่ผูกกับ course ของตัวเอง
+Home ทำให้ **Chat**, **Ask Questions**, **Quiz** และ **Visualize** อยู่ห่างเพียงคลิกเดียว; **Research** สำหรับรายงานที่มีการอ้างอิง, **Solve** สำหรับการให้เหตุผลแบบละเอียด และ **Immersive Watching** อยู่ภายใต้ *More Capabilities* **Personalized Learning** รวม Book, **Mastery Path**, **Immersive Reading**, Watching และ **Practice**; Reading เพิ่ม citations ที่ตรวจสอบแล้ว, notes ที่บันทึกไว้, การอ่านออกเสียง / คำแนะนำการเรียน / คำศัพท์ / quiz / การแปลที่อ้างอิง source และการบันทึกลง notebook ขณะที่ Course Study มีบริบทที่ผูกกับ course ของตัวเอง
 
 </details>
 
@@ -454,7 +446,7 @@ Partners คือเพื่อนถาวรที่มี soul, นโย�
 <img src="../../assets/figs/system/partners-architecture.png" alt="สถาปัตยกรรม Partners ของ DeepTutor" width="900">
 </div>
 
-แต่ละ partner มี `SOUL.md`, การเลือก model, ช่องทาง, นโยบายเครื่องมือ และห้องสมุดที่กำหนด Knowledge bases, skills และ notebooks ถูกคัดลอกไปยัง `data/partners/<id>/workspace/` ดังนั้น RAG, skill, notebook และเครื่องมือ memory เดิมทำงานได้โดยไม่มีกรณีพิเศษ ผู้ใช้ที่ผ่านการยืนยันตัวตนและไม่ใช่ admin จะมี Partner sessions และ relationship memory แบบส่วนตัว ขณะที่ Partner อ่าน personal memory ของพวกเขาแบบ read-only; traffic ของ admin, group และที่ไม่ผูกบัญชีจะใช้ shared Partner scope
+แต่ละ partner มี `SOUL.md`, การเลือก model, ช่องทาง, นโยบายเครื่องมือ และไลบรารีที่กำหนด ไลบรารีสามารถคัดลอก knowledge bases, skills และ notebooks ไปยัง `data/partners/<id>/workspace/` หรือคงการเชื่อมโยงกับไฟล์และทรัพยากรของ workspace ที่มีอยู่ โดย soul, บทสนทนา และ Partner memory ยังคงแยกจากกัน ผู้ใช้ที่ผ่านการยืนยันตัวตนและไม่ใช่ admin จะมี Partner sessions และ relationship memory แบบส่วนตัว ขณะที่ Partner อ่าน personal memory ของพวกเขาแบบ read-only; traffic ของ admin, group และที่ไม่ผูกบัญชีจะใช้ shared Partner scope
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/partners/02-IM%20config%20for%20each%20partner.png" alt="การกำหนดค่าช่องทาง IM ต่อ partner" width="900">
@@ -473,13 +465,39 @@ Partners คือเพื่อนถาวรที่มี soul, นโย�
 <img src="../../assets/figs/web-1.4.6+/myagents/00-overview.png" alt="workspace My Agents ของ DeepTutor" width="900">
 </div>
 
-My Agents เปลี่ยน agent อื่น ๆ ให้กลายเป็นบริบทสำหรับ DeepTutor และทำสองสิ่งที่แตกต่างกัน **เชื่อมต่อ agent แบบสด** — Claude Code, Codex, Antigravity, Kimi, opencode, MiMo Code, Hermes Agent, OpenClaw หรือ DeepSeek Harness บนเครื่องของคุณ หรือหนึ่งใน Partners ของคุณ — และปรึกษามันจากภายใน chat turn: DeepTutor จริง ๆ *รัน* agent อื่นและ stream งานเข้าสู่แผง Activity ผ่านเครื่องมือ `consult_subagent` เลือก agent และขีดจำกัดจำนวนรอบด้วย Agent chip หรือใช้ `@` กรองรายการ agent ที่เชื่อมต่อชุดเดียวกัน; การเลือกนี้จะผูกติดกับ session
+My Agents เปลี่ยน agent อื่น ๆ ให้กลายเป็นบริบทสำหรับ DeepTutor และทำสองสิ่งที่แตกต่างกัน **เชื่อมต่อ agent แบบสด** — Claude Code, Codex, Grok CLI, Antigravity, Kimi, opencode, MiMo Code, Hermes Agent, OpenClaw หรือ DeepSeek Harness บนเครื่องของคุณ, Hermes gateway ระยะไกล หรือหนึ่งใน Partners ของคุณ — และปรึกษามันจากภายใน chat turn: DeepTutor จริง ๆ *รัน* agent อื่นและ stream งานเข้าสู่แผง Activity ผ่านเครื่องมือ `consult_subagent` เลือก agent และขีดจำกัดจำนวนรอบด้วย Agent chip หรือใช้ `@` กรองรายการ agent ที่เชื่อมต่อชุดเดียวกัน; การเลือกนี้จะผูกติดกับ session
+
+**เชื่อมต่อ Grok CLI** ติดตั้ง Grok CLI ของ xAI บนเครื่องที่รัน backend ของ
+DeepTutor, รัน `grok login` ที่นั่น และตรวจสอบว่า `grok --help` แสดงรายการ
+`--output-format streaming-json` จากนั้นเปิด **My Agents → Connect** เลือก
+**Grok CLI** และเลือก working directory การตรวจจับจะตรวจสอบเฉพาะการรองรับ
+protocol ของ executable เท่านั้น ไม่ตรวจสอบการล็อกอินหรือการเข้าถึง model
+connector นี้ผ่านการทดสอบกับ Grok CLI 1.0.3; คำสั่งของบุคคลที่สามอื่น ๆ ที่ใช้
+ชื่อ `grok` เช่นกันแต่ไม่เกี่ยวข้องกันจะไม่ได้รับการรองรับ
+
+ใน **Settings → Partners & Agents → Grok CLI** ให้เว้น model และ reasoning
+effort ว่างไว้เพื่อใช้ค่าเริ่มต้นของ CLI หรือกรอกค่าที่รองรับตาม output ของ
+`grok models` ในบัญชีของคุณ System instructions จะถูกส่งผ่าน `--rules`
+permission mode เริ่มต้นคือ `dontAsk`: Grok จะใช้กฎที่มีอยู่และการจัดการ
+read-only ในตัว และปฏิเสธการดำเนินการที่ต้องอนุมัติ นี่คือ permission
+policy ระดับ CLI ไม่ใช่ filesystem sandbox โหมดที่กว้างกว่านี้สามารถเลือก
+ได้อย่างชัดเจนใน settings; advanced CLI flags ยังใช้งานได้ผ่าน
+`backends.grok.extra_args` ใน subagent settings API
+
+Grok ใช้ authentication และ session storage ของตัวเอง; DeepTutor ไม่คัดลอก
+credentials ของมัน การปรึกษาครั้งต่อไปจะดำเนินต่อ session ของการเชื่อมต่อนั้น
+ใน working directory เดียวกัน ข้อความและ tool activity จะ stream แบบสด;
+private thought payloads จะถูกละเว้น Cross-session memory ของ Grok ปิดอยู่
+โดยค่าเริ่มต้น connector นี้รองรับคำถามแบบข้อความและ CLI tools ไม่รองรับ
+การส่งต่อรูปภาพหรือการนำเข้าบทสนทนา Grok ในอดีต ใน Docker ให้ติดตั้งและ
+ยืนยันตัวตน Grok ภายใน backend container; CLI ที่ติดตั้งอยู่เฉพาะบนเครื่อง
+ของเบราว์เซอร์จะเข้าไม่ถึง
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/home/08-subagent%20demo%20with%20claude%20code.png" alt="การปรึกษา subagent Claude Code แบบสด" width="900">
 </div>
 
-**นำเข้าบทสนทนาในอดีต** — นำประวัติ Claude Code และ Codex ที่มีอยู่ของคุณมาเป็น agent ที่มีชื่อ, ค้นหาได้ และสามารถดำเนินการต่อได้ เลือกประวัติ Claude ตาม project / working directory และประวัติ Codex ตามวันที่ในปฏิทิน; การรีเฟรชจะ re-sync ขอบเขตนั้นและดึงบทสนทนาใหม่เข้ามา อ้างอิงรายการหนึ่งจาก Chat turn ผ่าน `+` → My Agents และ DeepTutor จะอ่านมันเป็น transcript ของบุคคลที่สาม — มันยังคงเป็นบทสนทนา *ของพวกเขา* ไม่ใช่เสียงของ DeepTutor เอง
+**นำเข้าบทสนทนาในอดีต** — นำประวัติ ChatGPT, Claude Code และ Codex ที่มีอยู่ของคุณมาเป็นบทสนทนาที่ค้นหาได้และสามารถดำเนินการต่อได้ เลือก `conversations.json` จาก official ChatGPT data export เพื่อทำ snapshot import ที่ปลอดภัยและ idempotent, เลือกประวัติ Claude ตาม project / working directory หรือเลือกประวัติ Codex ตามวันที่ในปฏิทิน agent แบบโฟลเดอร์ยังคงรีเฟรชได้ ทำให้ขอบเขตที่เลือกไว้ดึงบทสนทนาใหม่เข้ามาได้ อ้างอิงรายการหนึ่งจาก Chat turn ผ่าน `+` → My Agents และ DeepTutor จะอ่านมันเป็น transcript ของบุคคลที่สาม — มันยังคงเป็นบทสนทนา *ของพวกเขา* ไม่ใช่เสียงของ DeepTutor เอง
 
 </details>
 
@@ -534,11 +552,13 @@ Knowledge bases คือคอลเลกชันเอกสารที่�
 <img src="../../assets/figs/web-1.4.6+/knowledge/01-create%20knowledge%20base.png" alt="สร้าง knowledge base" width="900">
 </div>
 
-กำลังย้ายไลบรารี Obsidian, Hermes หรือ Markdown ที่มีอยู่ใช่ไหม ดู [คู่มือการย้ายข้อมูล Knowledge](../../KNOWLEDGE_MIGRATION.md) สำหรับเส้นทางแบบ connected-vault และ indexed-copy
+กำลังย้ายไลบรารี Obsidian, Hermes หรือ Markdown ที่มีอยู่ใช่ไหม ดู [คู่มือการย้ายข้อมูล Knowledge](../../docs-for-user/KNOWLEDGE_MIGRATION.md) สำหรับเส้นทางแบบ connected-vault และ indexed-copy
 
-เมื่อสร้าง KB คุณ **สร้างใหม่** (อัพโหลดเอกสารและสร้าง index ใหม่) หรือ **เชื่อมโยงที่มีอยู่** (นำ index ที่สร้างไว้มาใช้ซ้ำ อ่านในที่โดยไม่ต้อง re-index) KB ยังสามารถติดตาม **GitHub repositories** (repo, branch, glob) หรือ **URL ของเว็บไซต์เอกสาร** (จำกัดความลึกในการ crawl และจำนวนหน้า) ได้; การ sync ตามต้องการจะเปรียบเทียบ hash ของเนื้อหาที่เพิ่ม เปลี่ยนแปลง และลบ เพื่อให้เอกสารที่ติดตามทันสมัยอยู่เสมอโดยไม่ต้องอัพโหลดใหม่ การ re-indexing จะเขียน directory `version-N` ใหม่และเก็บอันก่อนหน้าไว้ ดังนั้น index ที่ทำงานอยู่จะไม่ถูกทำลายระหว่างการสร้างใหม่ สามารถลบเอกสารหนึ่งรายการได้แม้ KB จะอยู่ในสถานะ **error** — ตัดไฟล์ที่แยกวิเคราะห์ไม่สำเร็จออกโดยไม่ต้องลบและสร้างใหม่ทั้งหมด การแยกวิเคราะห์เอกสาร — Text-only, MinerU, Docling, Tika, markitdown, PyMuPDF4LLM หรือ LiteParse — ถูกเลือกใน **Settings → Knowledge Base** โดยการดาวน์โหลด local model ปิดโดยค่าเริ่มต้น Docling ยังสามารถรันในโหมด **remote** กับเซิร์ฟเวอร์ Docling Serve ได้ (ไม่ต้องติดตั้ง local หรือใช้ model ใด ๆ) โดยถูกกำหนดค่าผ่าน **Settings → Document Parsing** (`mode=remote`, server base URL และ API key ที่เป็นทางเลือก) หรือผ่าน environment variables `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` Tika ทำงานในโหมด remote เท่านั้นและชี้ไปยังเซิร์ฟเวอร์ Apache Tika ที่กำหนดค่าไว้ในหน้านั้น CLI ครอบคลุม lifecycle ด้วย `list/info/create/add/search/set-default/delete`, คำสั่งเพิ่ม/ลบ source, `list-sources` และ `sync`
+เมื่อสร้าง KB คุณ **สร้างใหม่** (อัพโหลดเอกสารและสร้าง index ใหม่) หรือ **เชื่อมโยงที่มีอยู่** (นำ index ที่สร้างไว้มาใช้ซ้ำ อ่านในที่โดยไม่ต้อง re-index) KB ยังสามารถติดตาม **GitHub repositories** (repo, branch, glob) หรือ **URL ของเว็บไซต์เอกสาร** (จำกัดความลึกในการ crawl และจำนวนหน้า โดย re-sync ทุก 24 ชั่วโมงเป็นค่าเริ่มต้น) ได้; การ sync จะเปรียบเทียบ hash ของเนื้อหาที่เพิ่ม เปลี่ยนแปลง และลบ เพื่อให้เอกสารที่ติดตามทันสมัยอยู่เสมอโดยไม่ต้องอัพโหลดใหม่ และ **linked folders** จะดึงไฟล์ local ที่เพิ่มหรือเปลี่ยนแปลงเข้ามาเมื่อ sync การ re-indexing จะเขียน directory `version-N` ใหม่และเก็บอันก่อนหน้าไว้ ดังนั้น index ที่ทำงานอยู่จะไม่ถูกทำลายระหว่างการสร้างใหม่ สามารถลบเอกสารหนึ่งรายการได้แม้ KB จะอยู่ในสถานะ **error** — ตัดไฟล์ที่แยกวิเคราะห์ไม่สำเร็จออกโดยไม่ต้องลบและสร้างใหม่ทั้งหมด การแยกวิเคราะห์เอกสาร — Text-only, MinerU, Docling, Tika, markitdown, PyMuPDF4LLM หรือ LiteParse — ถูกเลือกใน **Settings → Knowledge & documents** โดยการดาวน์โหลด local model ปิดโดยค่าเริ่มต้น Docling ยังสามารถรันในโหมด **remote** กับเซิร์ฟเวอร์ Docling Serve ได้ (ไม่ต้องติดตั้ง local หรือใช้ model ใด ๆ) โดยกำหนดค่าในหน้านั้น (`mode=remote`, server base URL และ API key ที่เป็นทางเลือก) หรือผ่าน environment variables `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` Tika ทำงานในโหมด remote เท่านั้นและชี้ไปยังเซิร์ฟเวอร์ Apache Tika ที่กำหนดค่าไว้ในหน้านั้น CLI ครอบคลุม lifecycle ด้วย `list/info/create/add/search/set-default/delete`, คำสั่งเพิ่ม/ลบ source, `list-sources` และ `sync`
 
 เอ็นจิน LightRAG ในตัวติดตั้งด้วย `pip install 'deeptutor[rag-lightrag]'` ส่วนเสริมนั้นมี SDK LightRAG ที่รองรับอยู่ แต่ไม่ได้ติดตั้ง MinerU เลือก MinerU แยกต่างหากใน Document Parsing แล้วกำหนดค่าโหมด cloud ของมันหรือติดตั้ง local CLI เวอร์ชันปัจจุบันเมื่อต้องการการแยกวิเคราะห์แบบมีโครงสร้าง MinerU รองรับ PDF, รูปภาพ raster ทั่วไป, DOCX, PPTX และ XLSX; คำสั่ง `magic-pdf` แบบ legacy ยังคงรองรับเฉพาะ PDF เท่านั้น Text-only และเอ็นจินแยกวิเคราะห์อื่น ๆ ไม่จำเป็นต้องใช้ MinerU
+
+การ query และการทำ indexing แบบ incremental ของ LightRAG แบบ native ต้องใช้การตั้งค่า embedding ที่บันทึกไว้โดย index ที่เผยแพร่แล้ว ซึ่งรวมถึง model, dimension และ endpoint identity หากมีการเปลี่ยนแปลง ให้คืนค่าการตั้งค่าเดิมหรือสร้างใหม่ด้วย embedding ปัจจุบัน; index ที่ไม่มีการบันทึก embedding identity ไว้จำเป็นต้องสร้างใหม่ หน้ารายละเอียด knowledge base และหน้า index version จะแสดงคำแนะนำในการกู้คืน ในขณะที่ไฟล์ยังคงเปิดดูและดาวน์โหลดได้อยู่
 
 </details>
 
@@ -549,7 +569,7 @@ Knowledge bases คือคอลเลกชันเอกสารที่�
 <img src="../../assets/figs/web-1.4.6+/learning-space/00-overview.png" alt="ศูนย์กลาง Learning Space ของ DeepTutor" width="900">
 </div>
 
-Learning Space คือชั้น library, organization และ personalization **Conversations & Materials** เก็บ Chat History, notebooks — ซึ่ง records สามารถย้ายหรือคัดลอกระหว่าง notebooks และ export เป็น Markdown ได้ — รวมถึง question bank ที่เก็บคำตอบของคุณ, คำตอบอ้างอิง และคำอธิบาย **Personalization** เก็บ personas, skills (`SKILL.md` playbooks), **MCP Services** แบบคลิกเดียว และ **CLI Apps** จาก catalog [CLI-Anything](https://github.com/HKUDS/CLI-Anything) โดยแต่ละรายการมีคู่มือการใช้งานที่โหลดตามต้องการ workspace **My Courses** ที่แยกออกมาจะจัดกลุ่มบทสนทนาตามวิชาและ tutor threads; asset แต่ละรายการจะแสดงเฉพาะในเวิร์กโฟลว์ที่รองรับเท่านั้น
+Learning Space คือชั้น library, organization และ personalization **Conversations & Materials** เก็บ Chat History, notebooks ที่ย้าย records และ export เป็น Markdown ได้ และ question bank พร้อมคำตอบและคำอธิบาย **Practice** ใน Personalized Learning เปลี่ยนคำถามที่บันทึกไว้เป็น session ทบทวน การติดตามข้อผิดพลาด และการทบทวนซ้ำตามกำหนด **Personalization** เก็บ personas, skills (`SKILL.md` playbooks), **MCP Services** แบบคลิกเดียว และ **CLI Apps** จาก catalog [CLI-Anything](https://github.com/HKUDS/CLI-Anything) โดยแต่ละรายการมีคู่มือการใช้งานที่โหลดตามต้องการ workspace **My Courses** ที่แยกออกมาจะจัดกลุ่มบทสนทนาตามวิชาและ tutor threads; asset แต่ละรายการจะแสดงเฉพาะในเวิร์กโฟลว์ที่รองรับเท่านั้น
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/learning-space/07-%20download%20skills%20from%20eduhub.png" alt="นำเข้า skills จาก EduHub" width="900">
@@ -583,9 +603,9 @@ Memory Graph แสดงพีระมิดทั้งหมด — กา�
 <img src="../../assets/figs/web-1.4.6+/settings/00-setting%20overview.png" alt="ศูนย์กลาง Settings ของ DeepTutor" width="900">
 </div>
 
-Settings คือ control plane การดำเนินงาน เปิดมาพร้อม live status strip (สถานะ Backend และ resident memory ที่ใช้งานอยู่), ภาษา UI และภาษา output ของ model และเมทริกซ์ **Readiness** ที่ให้เกรดทุกความสามารถเป็น blocker, warning หรือ suggestion — ตามด้วยตัวนำทางแบบค้นหาได้ที่คงอยู่ตลอด เข้าถึงหน้าใดก็ได้ในคลิกเดียว: **Appearance** (ธีม, การจัดรูปแบบ code block), **Network** (API base, ports, CORS), **Workspace** (โฟลเดอร์ที่ agent อ่านได้และ `outputs/` ที่แชร์ร่วมกัน), **Models** (Connections, LLM, Task models, Embedding, Search, Text-to-Speech, Speech-to-Text, Image Generation, Video Generation), **Knowledge Base** (เอ็นจินการแยกวิเคราะห์เอกสาร), **Chat** (Video Learning, เครื่องมือที่ค้นหาได้, พารามิเตอร์ต่อความสามารถ, จุดเริ่มต้น, ขีดจำกัดไฟล์แนบ), **Partners & Agents** (agent harness ในเครื่องเก้ารายการ), **Learner profile** (อายุ, ระดับชั้น, หลักสูตร, ภาษา, ระดับการอ่าน, รูปแบบการอธิบาย), **Guardian** (ผู้เรียนที่ได้รับอนุญาต, สื่อ, รายงาน, การรีเซ็ต credentials), **Memory** (งบประมาณของ consolidator) และ **About** (การตรวจสอบเวอร์ชันและการอัปเดตอย่างปลอดภัย) **connection** หนึ่งรายการเก็บ credential ของ vendor เดียวและ mirror มันเข้าสู่ทุกบริการที่ vendor นั้นให้บริการได้ ดังนั้นคุณกรอก key เพียงครั้งเดียวแทนที่จะต้องวางซ้ำในห้าหน้า; **task models** ปักหมุด model ที่เล็กและเร็วสำหรับงานที่ไม่มีใครร้องขอ — ตั้งชื่อบทสนทนา, เขียนจุดเริ่มต้นของ composer — และจะ resolve กลับไปเป็นค่าเริ่มต้นที่ใช้งานอยู่เมื่อปล่อยว่างไว้
+Settings คือศูนย์ควบคุมการทำงาน โดยเปิดที่หน้า **General** สำหรับภาษา UI และภาษา output ของ model ตัวนำทางที่ค้นหาได้เชื่อมไปยังหน้าแยกกัน: **Personal** ครอบคลุม Workspaces, Data migration, Appearance และ Usage statistics; **Learning & conversation** ครอบคลุมจุดเริ่มต้น ไฟล์แนบ Video Learning การควบคุมผู้เรียนและผู้ปกครอง Learning progress และ Memory; **Models & services** ครอบคลุม Providers, Language models, Task models, Embedding, Search, Voice และ Multimodal generation; **Features & integrations** ครอบคลุมเครื่องมือ พารามิเตอร์ความสามารถ Partners & agents และ Knowledge & documents **System** มี Network, Runtime status และ About; **Archived chats** ใช้ค้นหา กู้คืน หรือลบบทสนทนาที่เก็บถาวรอย่างถาวร Runtime status แสดงสถานะ backend, resident memory และเมทริกซ์ **Readiness** ที่ประเมินปัญหาที่ขัดขวาง คำเตือน และข้อเสนอแนะของความสามารถ Workspaces แยกไฟล์แต่ละหัวข้อและสถานะการเรียน โดยมีการย้ายข้อมูลที่ตรวจสอบแล้วและการส่งออกใน Data migration **provider** เก็บที่อยู่และ credential ของผู้ให้บริการเพื่อให้ model ของบริการนั้นใช้ซ้ำได้ หน้า model เลือก provider ที่บันทึกไว้และกำหนดชื่อและความสามารถของ model **Task models** กำหนด model ขนาดเล็กที่รวดเร็วสำหรับงานเบื้องหลัง เช่น การตั้งชื่อบทสนทนาและเขียนจุดเริ่มต้น และใช้ model เริ่มต้นที่ใช้งานอยู่เมื่อปล่อยว่าง Voice รวมการสังเคราะห์เสียงพูดและการถอดเสียง ส่วน Multimodal generation รวม model ภาพและวิดีโอ Partners & agents กำหนดค่า harness ในเครื่องและ Hermes gateway ระยะไกล
 
-**Video Learning** ภายใต้ Settings → Chat ใช้ YouTube IFrame Player อย่างเป็นทางการที่เพิ่มความเป็นส่วนตัวเป็นค่าเริ่มต้น หากต้องการให้การเล่นอยู่ในระบบ local ให้ตั้งค่า Invidious API origin ที่ผู้ดูแลระบบจัดการ (ตัวอย่างเช่น `http://127.0.0.1:3000`), ทดสอบ, เลือก Invidious แล้วบันทึก วิดีโอใหม่หรือวิดีโอที่เปิดอีกครั้งจะใช้ provider ทันทีโดยมี material ID และความคืบหน้าเดิม สื่อ Invidious จะ stream ผ่าน byte-range proxy ของ DeepTutor; upstream URLs จะไม่ถูกเปิดเผยต่อเบราว์เซอร์หรือเก็บไว้บนดิสก์ หาก instance ล้มเหลว DeepTutor จะยังคงออฟไลน์จาก YouTube จนกว่าผู้เรียนจะเลือก fallback ไปยัง native YouTube อย่างชัดเจน การสอนพิเศษจากคำบรรยายสาธารณะเป็นทางเลือก: ติดตั้ง `.[video-learning]`; การเล่นยังคงทำงานได้หากไม่มี ส่วน **Explain here** ที่อิง transcript จะถูกปิดใช้งานพร้อมระบุเหตุผล
+**Video Learning** ภายใต้ Settings → Learning & conversation ใช้ YouTube IFrame Player อย่างเป็นทางการที่เพิ่มความเป็นส่วนตัวเป็นค่าเริ่มต้น หากต้องการให้การเล่นอยู่ในระบบ local ให้ตั้งค่า Invidious API origin ที่ผู้ดูแลระบบจัดการ (ตัวอย่างเช่น `http://127.0.0.1:3000`), ทดสอบ, เลือก Invidious แล้วบันทึก วิดีโอใหม่หรือวิดีโอที่เปิดอีกครั้งจะใช้ provider ทันทีโดยมี material ID และความคืบหน้าเดิม สื่อ Invidious จะ stream ผ่าน byte-range proxy ของ DeepTutor; upstream URLs จะไม่ถูกเปิดเผยต่อเบราว์เซอร์หรือเก็บไว้บนดิสก์ หาก instance ล้มเหลว DeepTutor จะยังคงออฟไลน์จาก YouTube จนกว่าผู้เรียนจะเลือก fallback ไปยัง native YouTube อย่างชัดเจน การสอนพิเศษจากคำบรรยายสาธารณะเป็นทางเลือก: ติดตั้ง `.[video-learning]`; การเล่นยังคงทำงานได้หากไม่มี ส่วน **Explain here** ที่อิง transcript จะถูกปิดใช้งานพร้อมระบุเหตุผล
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="การตั้งค่ารูปลักษณ์และธีมของ DeepTutor" width="900">
@@ -593,9 +613,13 @@ Settings คือ control plane การดำเนินงาน เปิ�
 
 ส่วนส่วนใหญ่ใช้ draft-and-apply flow เพื่อให้คุณทดสอบ provider ก่อนยืนยัน คุณยังสามารถแค่ถามใน Chat ได้เช่นกัน: ผู้ช่วยจะอ่านการกำหนดค่าปัจจุบัน, ใช้การเปลี่ยนแปลง และบอกว่าจำเป็นต้องรีสตาร์ทหรือ re-index หรือไม่ — โดยทดสอบ model ใหม่ก่อนที่จะยืนยัน จึงไม่สามารถเปลี่ยนตัวเองไปยังสิ่งที่เข้าถึงไม่ได้ API keys จะไม่ผ่านเข้าไปใน model เลย ซึ่งจะเปิดฟอร์มที่ตรงกันให้คุณแทน ธีมสี่แบบมาในกล่อง — Default, Cream, Dark และ Glass ไฟล์ `.env` ที่ root ของโปรเจกต์ถูกเพิกเฉยโดยเจตนา; การกำหนดค่า runtime อยู่ใน `data/user/settings/*.json` เว้นแต่ `DEEPTUTOR_HOME` หรือ `deeptutor start --home` จะชี้แอปไปที่อื่น
 
-**OpenAI Codex OAuth (ทดลอง)** การเลือก **OpenAI Codex** ภายใต้ **Models → LLM** จะแทนที่ช่อง API key ด้วยการลงชื่อเข้าใช้ผ่านเบราว์เซอร์ที่รันกับแผน ChatGPT ของคุณเอง จึงไม่จำเป็นต้องใช้ `OPENAI_API_KEY` Tokens อยู่เฉพาะใน `data/system/user-secrets/<owner>/private/openai-codex/` — ในการปรับใช้แบบ multi-container ด้วย Compose จะอยู่นอกเหนือทุก tree ที่ exec sandbox สามารถเข้าถึงได้ — และ DeepTutor จะไม่อ่านหรือแก้ไข `~/.codex` CLI login ของคุณเลย รายการ model มาจาก catalog แบบสดของบัญชีนั้น; การลงชื่อเข้าใช้จะเผยแพร่โปรไฟล์ แต่จะกลายเป็น model ที่ใช้งานอยู่ก็ต่อเมื่อยังไม่มีการกำหนดค่า LLM ใด ๆ เท่านั้น จึงไม่มีทางเปลี่ยนทิศทางของการปรับใช้โดยที่คุณไม่รู้ตัว เนื่องจาก token อนุญาตให้ใช้แผนของคนคนเดียว โปรไฟล์นี้จึงไม่สามารถแชร์ผ่าน per-user grants ได้ — แต่ละบัญชีต้องลงชื่อเข้าใช้ด้วยตัวเอง รวมถึงผู้ใช้ทั่วไปด้วย: การ์ดของพวกเขาจะอยู่ภายใต้ **Models → LLM** และ models, catalog และการลงชื่อออกที่ได้จะเป็นส่วนตัวเฉพาะบัญชีนั้นเท่านั้น
+**OpenAI Codex OAuth (ทดลอง)** การเพิ่ม **OpenAI Codex** ภายใต้ **Settings → Providers** จะเปิดการลงชื่อเข้าใช้ผ่านเบราว์เซอร์ที่รันกับแผน ChatGPT ของคุณเอง จึงไม่จำเป็นต้องใช้ `OPENAI_API_KEY` Tokens อยู่เฉพาะใน `data/system/user-secrets/<owner>/private/openai-codex/` — ในการปรับใช้แบบ multi-container ด้วย Compose จะอยู่นอกเหนือทุก tree ที่ exec sandbox สามารถเข้าถึงได้ — และ DeepTutor จะไม่อ่านหรือแก้ไข `~/.codex` CLI login ของคุณเลย รายการ model มาจาก catalog แบบสดของบัญชีนั้น; การลงชื่อเข้าใช้จะเผยแพร่โปรไฟล์ แต่จะกลายเป็น model ที่ใช้งานอยู่ก็ต่อเมื่อยังไม่มีการกำหนดค่า LLM ใด ๆ เท่านั้น จึงไม่มีทางเปลี่ยนทิศทางของการปรับใช้โดยที่คุณไม่รู้ตัว เนื่องจาก token อนุญาตให้ใช้แผนของคนคนเดียว โปรไฟล์นี้จึงไม่สามารถแชร์ผ่าน per-user grants ได้ — แต่ละบัญชีต้องลงชื่อเข้าใช้ด้วยตัวเอง รวมถึงผู้ใช้ทั่วไปด้วย: การ์ดลงชื่อเข้าใช้ของพวกเขาจะอยู่ภายใต้ **Providers** และ models, catalog และการลงชื่อออกที่ได้จะเป็นส่วนตัวเฉพาะบัญชีนั้นเท่านั้น
 
-การปรับใช้ Docker และ Podman บนเครื่อง local แบบเริ่มต้นใช้ loopback network แยกจากกัน และต้องการสะพานเชื่อมชั่วคราวระหว่างการลงชื่อเข้าใช้ ทำตาม [คู่มือสะพานเชื่อม Codex OAuth ชั่วคราวสำหรับเครื่อง local](../../CONTAINERIZATION.md#temporary-local-codex-oauth-bridge) สำหรับคำสั่ง Docker, Compose, Podman และ teardown ที่แน่นอน
+เมื่อลงชื่อเข้าใช้และตอน **Refresh models** DeepTutor จะอ่านเวอร์ชันเสถียรล่าสุดของ `@openai/codex` จาก official npm registry และใช้เป็น `client_version` ของ catalog request นี่เป็นเพียง metadata: จะไม่ติดตั้ง ดาวน์โหลด หรืออัพเกรด Codex CLI และ npm request จะไม่พก OAuth credentials ไปด้วย การค้นหานี้มี deadline สามวินาทีและขีดจำกัดขนาด response 64 KiB หากล้มเหลว DeepTutor จะใช้เวอร์ชันที่สำเร็จล่าสุดของบัญชีนั้น หรือ fallback ที่มีอยู่ในตัวเมื่อไม่มีอะไรถูก cache ไว้ จะบันทึกเวอร์ชันใหม่ก็ต่อเมื่อ catalog แบบสดถูก parse สำเร็จเท่านั้น; validators จะไม่ถูกนำมาใช้ซ้ำข้ามเวอร์ชันหรือข้าม credential generation การถูกปฏิเสธเวอร์ชันหรือโครงสร้าง catalog ที่เข้ากันไม่ได้จะอนุญาตให้ retry หนึ่งครั้งด้วยเวอร์ชันก่อนหน้า; ความล้มเหลวด้าน authentication, rate-limit และ TLS จะไม่ถูก retry ในฐานะปัญหาเรื่องเวอร์ชัน การรีเฟรชแบบ manual ที่ล้มเหลวจะรายงาน error แทนที่จะนำ catalog ที่ cache ไว้เดิมมาแสดงว่าถูกรีเฟรชแล้ว
+
+ประวัติเวอร์ชันที่สำเร็จจะยังอยู่รอดผ่านการ renew token ของบัญชีเดิมและข้อผิดพลาด authentication ของ catalog โดยไม่ทำให้ model data หรือ ETags ที่ invalidate แล้วกลับมาใช้ได้อีก การลงชื่อออกจะล้าง local cache ของบัญชีนั้น รวมถึงประวัติเวอร์ชันด้วย การอ่านสถานะปกติและ inference จะไม่ query npm รายการ catalog ใหม่จะไม่แทนที่ model ที่คุณเลือกไว้แล้วหรือรีสตาร์ท learning session; การปรากฏใน catalog ไม่ได้เป็นการยืนยันความเข้ากันได้ของ inference protocol แบบสมบูรณ์ ไม่มี background version updater หรือ user version setting
+
+การปรับใช้ Docker และ Podman บนเครื่อง local แบบเริ่มต้นใช้ loopback network แยกจากกัน และต้องการสะพานเชื่อมชั่วคราวระหว่างการลงชื่อเข้าใช้ ทำตาม [คู่มือสะพานเชื่อม Codex OAuth ชั่วคราวสำหรับเครื่อง local](../../docs-for-user/CONTAINERIZATION.md#temporary-local-codex-oauth-bridge) สำหรับคำสั่ง Docker, Compose, Podman และ teardown ที่แน่นอน
 
 สำหรับการปรับใช้แบบ remote `localhost` ของเบราว์เซอร์และ `localhost` ของเซิร์ฟเวอร์คือคนละเครื่องกัน ดังนั้น reverse proxy ธรรมดาเพียงอย่างเดียวไม่สามารถส่ง callback แบบ localhost ของเบราว์เซอร์ไปถึงเซิร์ฟเวอร์ได้ ให้ใช้ SSH tunnel เป็นสะพานเชื่อม callback ตัว tunnel จะไปถึงพอร์ต Web ที่เผยแพร่อยู่แล้ว; Next.js จะ rewrite เฉพาะ callback path ที่ตรงเป๊ะไปยัง public callback broker เท่านั้น และ broker จะตรวจสอบ `state` ก่อนที่จะ route ไปยัง OAuth operation ต้นทาง callback listener ยังคงอยู่ที่ backend loopback พอร์ต `1455` และ `1457` จะไม่ถูกเผยแพร่ และเส้นทางนี้รองรับ Docker bridge network เริ่มต้น
 
@@ -635,6 +659,8 @@ data/
 
 **เปิดใช้งาน:** เปิด auth ใน `data/user/settings/auth.json`, รีสตาร์ท `deeptutor start`, ลงทะเบียน admin คนแรกที่ `/register` จากนั้นเพิ่มผู้ใช้จาก `/admin/users` และกำหนด models, KBs, skills, Partners, นโยบาย tool/MCP/CLI-app และสิทธิ์การรันโค้ดผ่าน grants; กำหนดค่าหนังสือที่แชร์ในแผง **Book access** ของผู้ใช้แต่ละคน
 
+สำหรับ origin ส่วนตัว/สาธารณะที่แยกจากกัน ให้ตั้งค่า `auth.private_login_hosts` (หรือ `AUTH_PRIVATE_LOGIN_HOSTS`) เป็น frontend host ส่วนตัวที่อาจแสดงการลงชื่อเข้าใช้ด้วย password และการลงทะเบียน frontend จะส่งต่อ `Host` ของ HTTP ที่เข้ามาไปยัง backend เป็น frontend-host assertion ของมัน คงค่า `Host` ของเบราว์เซอร์ไว้ตลอดผ่าน reverse proxy ของคุณ และทำให้ public ingress ปฏิเสธ request ที่ระบุ private host; อย่าเปิดเผยพอร์ต Next.js แบบ raw ที่ยอมรับค่า `Host` ใด ๆ ก็ได้ HTTP `Host` สามารถถูกปลอมแปลงโดย client โดยตรงได้ ดังนั้นการอนุญาต private-host จึงขึ้นอยู่กับขอบเขตของ ingress นั้น โดยค่าเริ่มต้น backend จะยอมรับ frontend-host assertions จาก loopback เท่านั้น หาก Web frontend เชื่อมต่อมาจาก container หรือเครื่องอื่น ให้ตั้งค่า `AUTH_TRUSTED_FRONTEND_PROXY_IPS` เป็น IP ที่ตรงเป๊ะของ frontend proxy นั้นบน backend process (คั่นด้วยจุลภาคหากมีมากกว่าหนึ่ง) เก็บ backend API ให้เป็นส่วนตัวสำหรับ frontend proxy เท่านั้น และไม่ควรรวม client network ทั่วไปไว้ในรายการนี้ loopback ได้รับอนุญาตเสมอ; เมื่อรายการนี้ไม่ว่าง ผู้ใช้ที่ผ่านการยืนยันตัวตนบน private origin จะเปิด **Profile → Public device sign-in** และสร้างลิงก์ pairing แบบผูกกับ host และมีอายุสั้นสำหรับ HTTPS public origin ได้ หน้า public `/handoff` จะแลก one-time code เป็น JWE ticket ที่มีอายุสั้นเท่ากันใน POST body, ใช้ ticket นั้นครั้งเดียว และได้รับ session cookie แบบ HttpOnly ตามปกติ
+
 > PocketBase ยังคงเป็น integration สำหรับผู้ใช้คนเดียว — เว้น `integrations.pocketbase_url` ว่างสำหรับการปรับใช้ multi-user เว้นแต่คุณจะเชื่อมต่อ user store ภายนอก
 
 </details>
@@ -646,7 +672,7 @@ binary `deeptutor` เดียว, สองวิธีเข้า: **REPL** 
 <details>
 <summary><b>ขับเคลื่อนด้วยตัวเอง</b></summary>
 
-`deeptutor chat` เปิด interactive REPL และเลือกโหมดด้วย `--capability`; `deeptutor run <capability> "<message>"` รับ capability เป็น positional argument แรกแล้วออกหลังจากหนึ่ง turn ทั้งสองรองรับ `--tool`, `--kb` และ `--config`
+`deeptutor chat` เปิด interactive REPL และเลือกโหมดด้วย `--capability`; `deeptutor run <capability> "<message>"` รับ capability เป็น positional argument แรกแล้วออกหลังจากหนึ่ง turn ทั้งสองรองรับ `--tool`, `--kb`, `--config` และ `--workspace` เพื่อเลือก workspace ที่ลงทะเบียนไว้
 
 ```bash
 deeptutor chat                                              # interactive REPL
@@ -692,7 +718,7 @@ repo มี root [`SKILL.md`](../../SKILL.md) — เอกสาร handover ~2
 | `deeptutor stop [--home PATH]` | หยุด launcher ที่เริ่มด้วย `--detach` |
 | `deeptutor serve [--port PORT]` | เริ่มเฉพาะ FastAPI backend |
 | `deeptutor workspace show/set/reset` | ตรวจสอบ, เลือก หรือคืนค่า Content Workspace ต่อผู้ใช้ |
-| `deeptutor run <capability> <message>` | รัน capability turn เดียว (`chat`, `ask_questions`, `deep_solve`, `deep_question`, `deep_research`, `visualize`, `math_animator`, `mastery_path`, `immersive_reading`, `course_study`, `immersive_watching`); เพิ่ม `--format json` สำหรับ NDJSON output |
+| `deeptutor run <capability> <message>` | รัน capability turn เดียว (`chat`, `ask_questions`, `deep_solve`, `deep_question`, `deep_research`, `visualize`, `math_animator`, `mastery_path`, `immersive_reading`, `course_study`, `immersive_watching`, `audio_overview`); เพิ่ม `--format json` สำหรับ NDJSON output |
 | `deeptutor chat` | Interactive REPL พร้อม capability, tool, KB, notebook และ history controls |
 | `deeptutor partner list/create/start/stop` | จัดการ partners ที่เชื่อมต่อผ่าน IM |
 | `deeptutor kb list/info/create/add/search/set-default/delete/list-sources/sync` | จัดการ knowledge bases และ sync GitHub/web sources ที่ลงทะเบียนไว้ (พร้อมคำสั่งเพิ่ม/ลบ source) |

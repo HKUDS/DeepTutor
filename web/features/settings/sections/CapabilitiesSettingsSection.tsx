@@ -61,6 +61,7 @@ interface CapabilitiesSettingsDTO {
   co_writer: SimpleLLMBlock;
   vision_solver: SimpleLLMBlock;
   math_animator: SimpleLLMBlock;
+  visualize: SimpleLLMBlock;
 }
 
 function isValidCapabilitiesDTO(
@@ -79,7 +80,8 @@ function isValidCapabilitiesDTO(
     typeof solve.max_rounds === "number" &&
     typeof solve.max_replans === "number" &&
     !!v.research &&
-    !!v.question
+    !!v.question &&
+    !!v.visualize
   );
 }
 
@@ -195,7 +197,12 @@ export default function CapabilitiesSettingsPage() {
   }
 
   function patchSimple(
-    cap: "solve" | "co_writer" | "vision_solver" | "math_animator",
+    cap:
+      | "solve"
+      | "co_writer"
+      | "vision_solver"
+      | "math_animator"
+      | "visualize",
     value: Partial<SimpleLLMBlock>,
   ) {
     if (!settings) return;
@@ -494,6 +501,32 @@ export default function CapabilitiesSettingsPage() {
           label={t("Max tokens")}
           value={settings.math_animator.max_tokens}
           onChange={(n) => patchSimple("math_animator", { max_tokens: n })}
+          min={256}
+          max={200000}
+          step={100}
+        />
+      </SettingSection>
+
+      <SettingSection
+        title={t("Visualize")}
+        description={t("SVG / chart / diagram generation loop.")}
+      >
+        <NumberRow
+          label={t("Temperature")}
+          value={settings.visualize.temperature}
+          onChange={(n) => patchSimple("visualize", { temperature: n })}
+          min={0}
+          max={2}
+          step={0.05}
+          isFloat
+        />
+        <NumberRow
+          label={t("Max tokens")}
+          help={t(
+            "A reasoning model can spend most of this on internal reasoning; raise it if a canvas comes back empty.",
+          )}
+          value={settings.visualize.max_tokens}
+          onChange={(n) => patchSimple("visualize", { max_tokens: n })}
           min={256}
           max={200000}
           step={100}

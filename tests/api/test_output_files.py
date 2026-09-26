@@ -123,7 +123,7 @@ def test_auth_disabled_reads_local_admin_output(output_app) -> None:
 
 
 def test_authenticated_user_downloads_visible_partner_output(output_app, monkeypatch) -> None:
-    relative_path = "workspace/chat/chat/session-1/code_runs/chart.png"
+    relative_path = "workspace/outputs/chat/session-1/turn-1/media/chart.png"
     alice = TokenPayload(username="alice", role="user", user_id="u_alice")
     client, admin_root, _users_root = output_app({"alice-token": alice})
 
@@ -144,6 +144,31 @@ def test_authenticated_user_downloads_visible_partner_output(output_app, monkeyp
     assert response.status_code == 200
     assert response.content.startswith(b"\x89PNG\r\n\x1a\n")
     assert response.headers["content-type"] == "image/png"
+
+
+@pytest.mark.parametrize("kind", ["exec", "media", "cli"])
+def test_workspace_output_chat_kinds_are_public(tmp_path: Path, kind: str) -> None:
+    workspace_root = tmp_path / "workspace"
+    service = PathService(workspace_root=workspace_root)
+    output = _write_output(
+        workspace_root,
+        f"workspace/outputs/chat/session-1/turn-1/{kind}/report.pdf",
+        b"generated output",
+    )
+
+    assert service.resolve_public_output_path(output) == output
+
+
+def test_arbitrary_workspace_output_file_is_not_public(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace"
+    service = PathService(workspace_root=workspace_root)
+    output = _write_output(
+        workspace_root,
+        "workspace/outputs/chat/session-1/turn-1/other/report.pdf",
+        b"private workspace file",
+    )
+
+    assert service.resolve_public_output_path(output) is None
 
 
 def test_private_suffix_is_rejected(output_app) -> None:

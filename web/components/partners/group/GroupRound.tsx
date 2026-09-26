@@ -108,8 +108,8 @@ export default function GroupRound(props: RoundProps) {
 /**
  * The follow-up exchange, collapsible and titled by who asked whom.
  *
- * No invocation card is rendered here: the question already appears as this
- * round's first bubble, and repeating it under the answer was pure duplication.
+ * The approved question already appears as the first bubble. Only NEW
+ * proposals made in this round render approval cards beneath the answer.
  */
 function FollowupRound(props: RoundProps) {
   const { round, members } = props;
@@ -185,7 +185,7 @@ function SeatList({
               // A summary closes the round; inviting a reply to it would
               // reopen what it just closed.
               seat.status === "done" &&
-              !round.followup &&
+              seat.message?.kind !== "invocation_question" &&
               seat.message?.kind !== "round_summary"
                 ? members.filter((item) => item.partner_id !== seat.partnerId)
                 : undefined
@@ -210,8 +210,8 @@ function SeatList({
                 : undefined
             }
           />
-          {!hideInvocations &&
-          seat.message?.invocation &&
+          {seat.message?.invocation &&
+          (!hideInvocations || seat.message.invocation.parent_turn_id === round.turnId) &&
           seat.message.invocation.status !== "completed" ? (
             <div className="mt-1 sm:pl-[38px]">
               <InvocationCard

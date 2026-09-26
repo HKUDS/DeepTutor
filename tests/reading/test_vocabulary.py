@@ -12,6 +12,7 @@ from deeptutor.api.routers import reading_extensions
 from deeptutor.reading import ReadingStore
 from deeptutor.reading.extensions import ReadingContext, ReadingExtensionRegistry
 from deeptutor.reading.vocabulary import VocabularyExtension
+from deeptutor.services.llm.reasoning_params import RETRY_REASONING_EFFORT
 from deeptutor.services.path_service import PathService
 
 
@@ -64,6 +65,41 @@ async def test_vocabulary_returns_a_bounded_card(monkeypatch):
     assert prompt["selection"] == "verified phrase"
     assert "Before context" in prompt["surrounding_context"]
     assert calls[0]["response_format"] == {"type": "json_object"}
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_vocabulary_retries_an_empty_model_answer_with_lower_reasoning(monkeypatch):
+    calls = []
+
+    async def complete(**kwargs):
+        calls.append(kwargs)
+        return "" if len(calls) == 1 else _model_response()
+
+    monkeypatch.setattr("deeptutor.reading.vocabulary.complete", complete)
+    result = await VocabularyExtension().run_action("explain", _context())
+
+    assert result.payload["terms"][0]["term"] == "verified"
+    assert [call["reasoning_effort"] for call in calls] == [
+        None,
+        RETRY_REASONING_EFFORT,
+    ]
+    assert calls[0]["prompt"] == calls[1]["prompt"]
+
+
+@pytest.mark.asyncio
+async def test_vocabulary_stops_after_two_empty_model_answers(monkeypatch):
+    calls = []
+
+    async def complete(**kwargs):
+        calls.append(kwargs)
+        return ""
+
+    monkeypatch.setattr("deeptutor.reading.vocabulary.complete", complete)
+    with pytest.raises(ValueError, match="invalid JSON"):
+        await VocabularyExtension().run_action("explain", _context())
+
+    assert len(calls) == 2
 
 
 @pytest.mark.asyncio

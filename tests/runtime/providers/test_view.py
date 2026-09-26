@@ -156,7 +156,8 @@ async def test_a_failing_provider_degrades_instead_of_killing_the_turn(
     view = await build_tool_view(base_registry=registry, scope=ToolScope(session_id="s"))
     assert view.loader is None
     assert view.pool == ()
-    assert view.registry is registry
+    assert isinstance(view.registry, ScopedToolRegistry)
+    assert not (await view.registry.execute("mcp_gh_search")).success
 
 
 @pytest.mark.asyncio
@@ -283,3 +284,48 @@ async def test_a_slow_personal_server_costs_only_its_own_tools(
     assert not any(t.name == "mcp_slow_thing" for t in view.pool)
     # The deployment's tools still made it — the turn is not degraded further.
     assert {t.name for t in view.pool} == {"mcp_gh_search", "mcp_pageindex_search"}
+
+
+@pytest.mark.asyncio
+async def test_workspace_selection_blocks_cached_loading_and_execution(registry, monkeypatch):
+    monkeypatch.setattr(
+        "deeptutor.services.mcp.load_loaded_tools",
+        lambda _: {"mcp_gh_search", "mcp_pageindex_search"},
+    )
+    view = await build_tool_view(
+        base_registry=registry,
+        scope=ToolScope(session_id="s", workspace_mcp=frozenset({"deployment:gh"})),
+    )
+    assert {tool.name for tool in view.pool} == {"mcp_gh_search"}
+    assert {s["function"]["name"] for s in view.loader.initial_schemas()} == {"mcp_gh_search"}
+    assert view.loader.load(["mcp_pageindex_search"])["unknown"] == ["mcp_pageindex_search"]
+    assert not (await view.registry.execute("mcp_pageindex_search")).success
+    assert (await view.registry.execute("mcp_gh_search")).success
+
+
+@pytest.mark.asyncio
+async def test_workspace_selection_cannot_expand_account_grant(registry, monkeypatch):
+    _grant(monkeypatch, set())
+    view = await build_tool_view(
+        base_registry=registry, scope=ToolScope(workspace_mcp=frozenset({"deployment:gh"}))
+    )
+    assert not view.pool
+    assert not (await view.registry.execute("mcp_gh_search")).success
+
+
+@pytest.mark.asyncio
+async def test_workspace_can_disable_owned_mcp_without_grant_escalation(registry, _stub_providers):
+    own = _McpTool("mcp_owned_search", "owned")
+    own.owner = "alice"
+    _stub_providers.scopes["alice"] = [own]
+    view = await build_tool_view(
+        base_registry=registry,
+        scope=ToolScope(owner_id="alice", workspace_mcp=frozenset({"account:owned"})),
+    )
+    assert {tool.name for tool in view.pool} == {"mcp_owned_search"}
+    assert not (await view.registry.execute("mcp_gh_search")).success
+    disabled = await build_tool_view(
+        base_registry=registry, scope=ToolScope(owner_id="alice", workspace_mcp=frozenset())
+    )
+    assert not disabled.pool
+    assert not (await disabled.registry.execute("mcp_gh_search")).success

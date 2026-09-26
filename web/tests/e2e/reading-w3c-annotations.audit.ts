@@ -82,6 +82,7 @@ test.beforeEach(async ({ page }) => {
     const json = (payload: unknown, status = 200) =>
       route.fulfill({ status, json: payload });
 
+    if (path === "/api/partners" || path === "/api/partner-groups") return json([]);
     if (path === "/api/auth/status") {
       return json({
         enabled: false,
@@ -147,7 +148,7 @@ test.beforeEach(async ({ page }) => {
 test("a rich text annotation reflows and activates its sidebar entry", async ({
   page,
 }) => {
-  await page.goto(`/reading/${WORKSPACE_ID}`);
+  await page.goto(`/learning/reading/${WORKSPACE_ID}`, { waitUntil: "domcontentloaded" });
 
   const highlight = page.locator(".r6o-annotation").first();
   await expect(highlight).toBeVisible();
@@ -169,7 +170,7 @@ test("a rich text annotation reflows and activates its sidebar entry", async ({
     .filter({ hasText: "Wave behavior" });
   await expect(sidebarEntry).toBeVisible();
   await page.getByRole("button", { name: "Close reading companion" }).click();
-  await page.getByRole("button", { name: "Collapse contents" }).first().click();
+  await expect(page.getByRole("button", { name: "Expand contents", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Close panels" })).toBeHidden();
   const article = page.locator("article.r6o-annotatable");
   const articleBox = await article.boundingBox();

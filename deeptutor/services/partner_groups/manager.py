@@ -7,7 +7,7 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 import re
 import time
-from typing import Any, Awaitable, Callable
+from typing import TYPE_CHECKING, Any, Awaitable, Callable
 from uuid import uuid4
 
 from deeptutor.core.stream import StreamEventType
@@ -32,6 +32,9 @@ from deeptutor.services.partners import (
     get_partner_manager,
     slugify_partner_id,
 )
+
+if TYPE_CHECKING:
+    from .consultation import ConsultationWindow
 
 GroupEmitter = Callable[[dict[str, Any]], Awaitable[None]]
 
@@ -129,8 +132,31 @@ class MentionResolution:
 class PartnerGroupManager:
     def __init__(self) -> None:
         self.store = PartnerGroupStore()
+        self._consultations: dict[tuple[str, str, str, str], ConsultationWindow] = {}
         self._live_turns: dict[tuple[str, str, str, str], LiveGroupTurn] = {}
         self._completed_turns: OrderedDict[tuple[str, str, str, str], LiveGroupTurn] = OrderedDict()
+
+    def begin_consultation(self, group_id: str, session_key: str):
+        from .consultation import ConsultationWindow
+
+        window = ConsultationWindow()
+        self._consultations[self._live_key(group_id, session_key, "consultation")] = window
+        return window
+
+    def consultation_activity(self, group_id, session_key, client, *, has_draft=False, active=True):
+        window = self._consultations.get(self._live_key(group_id, session_key, "consultation"))
+        if window is not None:
+            window.activity(client, has_draft=has_draft, active=active)
+
+    def disconnect_consultation(self, group_id, session_key, client):
+        window = self._consultations.get(self._live_key(group_id, session_key, "consultation"))
+        if window is not None:
+            window.disconnect(client)
+
+    def end_consultation(self, group_id: str, session_key: str, window) -> None:
+        key = self._live_key(group_id, session_key, "consultation")
+        if self._consultations.get(key) is window:
+            self._consultations.pop(key, None)
 
     def list_groups(self) -> list[dict[str, Any]]:
         return [self.describe_group(group) for group in self.store.list()]
@@ -610,7 +636,7 @@ class PartnerGroupManager:
         session_key: str,
         emit: GroupEmitter = _noop_emit,
     ) -> GroupMessage:
-        """Publish the approved question and run one non-chainable target turn."""
+        """Publish the approved question and run its target; new proposals need approval."""
         group = self._require(group_id)
         session_key = _normalize_session_key(session_key)
         group_dir = self.store.group_dir(group.group_id)
@@ -722,12 +748,22 @@ class PartnerGroupManager:
                 group_members=[dict(member) for member in member_snapshot.members],
                 public_context=public_context,
                 actor=get_current_user(),
-                # One hop only: an invoked answer cannot propose another call.
-                allow_invoke_other=False,
+                # A follow-up may propose another exchange; every hop still
+                # requires its own explicit user approval.
+                allow_invoke_other=True,
                 on_event=forward_trace,
             )
             if isinstance(turn, str):
                 turn = PartnerGroupTurnResponse(content=turn)
+            next_invocation = self._create_invocation(
+                invocations,
+                group=group,
+                session_key=session_key,
+                turn_id=followup_turn_id,
+                requester_partner_id=target_id,
+                proposal=turn.invocation,
+                members=member_snapshot.members,
+            )
             reply = GroupMessage(
                 event_id=uuid4().hex,
                 turn_id=followup_turn_id,
@@ -739,7 +775,10 @@ class PartnerGroupManager:
                 created_at=utc_now(),
                 kind="invocation_reply",
                 events=turn.events,
-                invocation_id=invocation.invocation_id,
+                invocation_id=next_invocation.invocation_id
+                if next_invocation
+                else invocation.invocation_id,
+                invocation=next_invocation.to_dict() if next_invocation else None,
             )
         except asyncio.CancelledError:
             cancelled = invocations.transition(
@@ -876,7 +915,7 @@ class PartnerGroupManager:
         invocation_id: str,
         session_key: str,
     ) -> LiveGroupTurn:
-        """Start or reattach to an approved one-hop collaboration turn."""
+        """Start or reattach to one approved collaboration turn."""
         group = self._require(group_id)
         group_id = group.group_id
         session_key = _normalize_session_key(session_key)

@@ -68,6 +68,7 @@ def _book_paused_http(exc: BookPausedError) -> HTTPException:
 
 
 class CreateBookRequest(BaseModel):
+    source_refs: list[dict[str, Any]] = Field(default_factory=list, max_length=32)
     user_intent: str = Field(default="")
     chat_session_id: str = Field(default="")
     chat_selections: list[dict[str, Any]] = Field(default_factory=list)
@@ -161,6 +162,7 @@ class QuizAttemptRequest(BaseModel):
     # ``None`` = revealed but not graded (a written answer the reader skipped
     # self-assessing). Distinct from ``False``, which means they got it wrong.
     is_correct: bool | None = None
+    submission_id: str = Field(default="", max_length=200)
 
 
 def _focus_check_question(
@@ -178,6 +180,30 @@ def _focus_check_question(
     if requested_id:
         return requested_id, {}
     return None
+
+
+def _verified_choice_grade(question: dict[str, Any], user_answer: str) -> bool | None:
+    """A linked Book answer is trusted only when the stored key can grade it."""
+    question_type = str(question.get("question_type") or "").strip().lower().replace(" ", "_")
+    if question_type not in {"choice", "multiple_choice", "multiple-choice", "mcq"}:
+        return None
+    options = question.get("options")
+    if not isinstance(options, dict):
+        return None
+    answer = user_answer.strip().upper()
+    keys = {str(key).strip().upper(): str(label).strip() for key, label in options.items()}
+    correct_text = str(question.get("correct_answer") or "").strip()
+    correct = correct_text.upper()
+    if correct not in keys:
+        matching = [
+            key for key, label in keys.items() if label.casefold() == correct_text.casefold()
+        ]
+        if len(matching) != 1:
+            return None
+        correct = matching[0]
+    if answer not in keys:
+        return None
+    return answer == correct
 
 
 class UpdateBlockRequest(BaseModel):
@@ -792,6 +818,7 @@ async def create_book(req: CreateBookRequest) -> dict[str, Any]:
     try:
         book, proposal = await engine.create_book(
             user_intent=req.user_intent,
+            source_refs=req.source_refs,
             chat_session_id=req.chat_session_id,
             chat_selections=req.chat_selections,
             notebook_refs=req.notebook_refs,
@@ -1086,22 +1113,31 @@ async def quiz_attempt(req: QuizAttemptRequest) -> dict[str, Any]:
         else []
     )
     resolved_question = _focus_check_question(questions, req.question_id, req.block_id)
-    progress = progress_ops.record_attempt(
-        resolved.load_progress(req.book_id),
-        page_id=req.page_id,
-        block_id=req.block_id,
-        question_id=req.question_id,
-        user_answer=req.user_answer,
-        is_correct=req.is_correct,
-        page_to_chapter={
-            page.id: page.chapter_id
-            for page in resolved.engine.list_pages(req.book_id)
-            if page.chapter_id
-        },
-    )
-    resolved.learning.save_progress(progress)
+    current_progress = resolved.load_progress(req.book_id)
+    previous_attempts = len(current_progress.quiz_attempts)
+    try:
+        progress = progress_ops.record_attempt(
+            current_progress,
+            page_id=req.page_id,
+            block_id=req.block_id,
+            question_id=req.question_id,
+            user_answer=req.user_answer,
+            is_correct=req.is_correct,
+            page_to_chapter={
+                page.id: page.chapter_id
+                for page in resolved.engine.list_pages(req.book_id)
+                if page.chapter_id
+            },
+            submission_id=req.submission_id.strip(),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if len(progress.quiz_attempts) != previous_attempts:
+        resolved.learning.save_progress(progress)
     if req.is_correct is not None and resolved_question is not None and book is not None:
         question_id, question = resolved_question
+        verified_grade = _verified_choice_grade(question, req.user_answer)
+        trusted_linkage = verified_grade is not None and verified_grade == req.is_correct
         try:
             from deeptutor.services.session import get_sqlite_session_store
 
@@ -1113,43 +1149,72 @@ async def quiz_attempt(req: QuizAttemptRequest) -> dict[str, Any]:
                 or book.chat_session_id
                 or ""
             ).strip()
-            # Notebook entries belong to real conversations. Creating a hidden
-            # ``book_<id>`` chat solely to satisfy the FK polluted history and
-            # made a Book Focus Check look like Immersive Reading. If the page
-            # has no conversation yet, progress still persists and the optional
-            # review sync waits for a later attempt after chat exists.
-            if session_id and await store.get_session(session_id) is not None:
-                await store.upsert_notebook_entries(
-                    session_id,
-                    [
-                        {
-                            "turn_id": req.block_id,
-                            "question_id": question_id,
-                            "question": str(
-                                question.get("question") or block.title or "Focus check"
-                            ),
-                            "question_type": str(question.get("question_type") or ""),
-                            "options": question.get("options") or {},
-                            "correct_answer": str(question.get("correct_answer") or ""),
-                            "explanation": str(question.get("explanation") or ""),
-                            "difficulty": str(question.get("difficulty") or ""),
-                            "user_answer": req.user_answer,
-                            "is_correct": bool(req.is_correct),
-                            "source": "book",
-                            "material_id": req.book_id,
-                            "material_title": book.title,
-                            "section_id": req.page_id,
-                            "section_title": page.title if page is not None else "",
-                        }
-                    ],
+            has_session = bool(session_id and await store.get_session(session_id) is not None)
+            from deeptutor.learning.assessment import (
+                AssessmentRecord,
+                is_correct_to_result,
+                record_assessment,
+            )
+
+            matching_attempts = [
+                attempt
+                for attempt in progress.quiz_attempts
+                if attempt.block_id == req.block_id and attempt.question_id == req.question_id
+            ]
+            latest_attempt = next(
+                (
+                    attempt
+                    for attempt in matching_attempts
+                    if req.submission_id and attempt.submission_id == req.submission_id
+                ),
+                matching_attempts[-1],
+            )
+            attempt_count = matching_attempts.index(latest_attempt) + 1
+            await record_assessment(
+                AssessmentRecord(
+                    session_id=session_id if has_session else "",
+                    origin_type="conversation" if has_session else "document_analysis",
+                    origin_ref=session_id if has_session else f"book:{req.book_id}",
+                    turn_id=req.block_id,
+                    question_id=question_id,
+                    question=str(question.get("question") or block.title or "Focus check"),
+                    question_type=str(question.get("question_type") or ""),
+                    options=question.get("options") or {},
+                    correct_answer=str(question.get("correct_answer") or ""),
+                    explanation=str(question.get("explanation") or ""),
+                    difficulty=str(question.get("difficulty") or ""),
+                    user_answer=req.user_answer,
+                    is_correct=bool(req.is_correct),
+                    result=is_correct_to_result(bool(req.is_correct)),
+                    source="book",
+                    assessment_type="focus_check",
+                    material_id=req.book_id,
+                    material_title=book.title,
+                    section_id=req.page_id,
+                    section_title=page.title if page is not None else "",
+                    mastery_path_id=(
+                        str(question.get("mastery_path_id") or "") if trusted_linkage else ""
+                    ),
+                    knowledge_point_id=(
+                        str(question.get("knowledge_point_id") or "") if trusted_linkage else ""
+                    ),
+                    attempt_count=attempt_count,
+                    attempt_id=(
+                        f"book:{req.book_id}:{req.block_id}:{question_id}:"
+                        f"{latest_attempt.submission_id or f'{latest_attempt.timestamp:.9f}'}"
+                    ),
                 )
-        except Exception:
+            )
+        except Exception as exc:
             logger.warning(
                 "Failed to sync Focus-Check %s to question bank for book %s",
                 req.question_id,
                 req.book_id,
                 exc_info=True,
             )
+            raise HTTPException(
+                status_code=500, detail="Failed to save Focus-Check evidence"
+            ) from exc
     return {"progress": progress.model_dump(mode="json")}
 
 
@@ -1526,7 +1591,21 @@ async def book_websocket(ws: WebSocket) -> None:
                     await send({"type": "error", "content": f"Book not found: {book_id}"})
                     continue
 
+            activity = None
             try:
+                from deeptutor.services.workspace.activity import acquire_activity
+                from deeptutor.services.workspace.context import (
+                    current_workspace_id,
+                    resolve_workspace_scope,
+                )
+                from deeptutor.services.workspace.models import WorkspaceError
+
+                activity = acquire_activity()
+                if (
+                    msg_type != "subscribe"
+                    and resolve_workspace_scope(current_workspace_id()).archived
+                ):
+                    raise WorkspaceError("Restore this workspace before changing its data.")
                 if msg_type == "subscribe":
                     if not book_id:
                         await send({"type": "error", "content": "subscribe requires book_id"})
@@ -1557,6 +1636,7 @@ async def book_websocket(ws: WebSocket) -> None:
                     engine = get_book_engine()
                     book, proposal = await engine.create_book(
                         user_intent=str(data.get("user_intent") or ""),
+                        source_refs=data.get("source_refs") or [],
                         chat_session_id=str(data.get("chat_session_id") or ""),
                         chat_selections=data.get("chat_selections") or [],
                         notebook_refs=data.get("notebook_refs") or [],
@@ -1725,6 +1805,9 @@ async def book_websocket(ws: WebSocket) -> None:
             except Exception as exc:
                 logger.error(f"book ws action {msg_type} failed: {exc}", exc_info=True)
                 await send({"type": "error", "content": str(exc)})
+            finally:
+                if activity is not None:
+                    activity.close()
 
     except WebSocketDisconnect:
         pass

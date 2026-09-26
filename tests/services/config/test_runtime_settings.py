@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
+
+import pytest
 
 from deeptutor.services.config.model_catalog import SERVICE_NAMES
 from deeptutor.services.config.runtime_settings import (
+    SETTINGS_DERIVED_ENV_KEYS,
     RuntimeSettingsService,
     ensure_runtime_settings_files,
 )
@@ -564,6 +568,87 @@ def test_runtime_settings_can_ignore_process_overrides(tmp_path: Path) -> None:
 
     assert service.load_system()["backend_port"] == 8001
     assert service.load_auth()["enabled"] is False
+
+
+def test_update_check_toggle_takes_effect_while_the_launcher_managed_backend_runs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Saving the toggle must change what the live backend reports (#1536).
+
+    ``deeptutor start`` renders system.json into the backend child's
+    environment, so ``DEEPTUTOR_VERSION_CHECK_ENABLED`` used to reach it
+    indistinguishable from an operator-set deployment override — and an
+    override outranks the file forever. Turning "check for updates" off wrote
+    the file while the live API kept answering with the startup value
+    (``AFTER_FALSE LIVE=True FILE=False``).
+    """
+    # ``deeptutor start`` exports with ``overwrite=True`` into its own process
+    # environment; the dict keeps this test's export out of the real one.
+    monkeypatch.setattr(os, "environ", {})
+    launcher = RuntimeSettingsService(tmp_path / "settings", process_env={})
+    launcher.save_system({"version_check_enabled": True, "backend_port": 8001})
+    rendered = launcher.export_environment(overwrite=True)
+
+    # What the launcher hands its children: the rendered settings, plus the port
+    # it resolved after a conflict, plus the list of keys that really did come
+    # out of the files.
+    child_env = {**rendered, "BACKEND_PORT": "8100"}
+    child_env[SETTINGS_DERIVED_ENV_KEYS] = ",".join(
+        sorted(
+            key
+            for key in launcher.settings_derived_keys()
+            if child_env.get(key) == rendered.get(key)
+        )
+    )
+    backend = RuntimeSettingsService(tmp_path / "settings", process_env=child_env)
+
+    assert backend.load_system()["version_check_enabled"] is True
+    backend.save_system({**backend.load_system(), "version_check_enabled": False})
+    assert backend.load_system()["version_check_enabled"] is False
+    assert _read_json(backend.path_for("system"))["version_check_enabled"] is False
+    backend.save_system({**backend.load_system(), "version_check_enabled": True})
+    assert backend.load_system()["version_check_enabled"] is True
+
+    # The port the launcher resolved is not a settings-derived value, so the
+    # environment still outranks the file for it.
+    assert backend.load_system()["backend_port"] == 8100
+
+
+def test_operator_env_still_outranks_the_file_in_a_launcher_child(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A variable the operator set is passed through, not relabelled (#1536)."""
+    operator_env = {"DEEPTUTOR_VERSION_CHECK_ENABLED": "false"}
+    monkeypatch.setattr(os, "environ", dict(operator_env))
+    launcher = RuntimeSettingsService(tmp_path / "settings", process_env=operator_env)
+    launcher.save_system({"version_check_enabled": True})
+
+    launcher.export_environment(overwrite=True)
+    assert "DEEPTUTOR_VERSION_CHECK_ENABLED" not in launcher.settings_derived_keys()
+
+    backend = RuntimeSettingsService(
+        tmp_path / "settings",
+        process_env={
+            **operator_env,
+            SETTINGS_DERIVED_ENV_KEYS: ",".join(sorted(launcher.settings_derived_keys())),
+        },
+    )
+    assert backend.load_system()["version_check_enabled"] is False
+
+
+def test_auth_private_login_hosts_process_env_override(tmp_path: Path) -> None:
+    service = RuntimeSettingsService(
+        tmp_path / "settings",
+        process_env={"AUTH_PRIVATE_LOGIN_HOSTS": "Private.Example;tailnet.example:8443"},
+    )
+    service.save_auth({"private_login_hosts": ["unused.example"]})
+
+    assert service.load_auth()["private_login_hosts"] == [
+        "private.example",
+        "tailnet.example:8443",
+    ]
+    assert _read_json(service.path_for("auth"))["private_login_hosts"] == ["unused.example"]
 
 
 def test_chat_attachment_limits_defaults_and_clamping(tmp_path: Path) -> None:

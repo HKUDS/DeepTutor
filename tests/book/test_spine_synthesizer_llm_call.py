@@ -1,8 +1,8 @@
 """The spine synthesizer must reach the LLM through its own agent seam.
 
-``_call_json`` is blocking on purpose — nothing consumes a partial spine, and a
-reasoning model's ``<think>`` prelude never reaches the parser this way (#707).
-But it has to stay on ``BaseAgent.call_llm``: calling the factory directly drops
+``_call_json`` collects the whole stream before parsing so a capped partial
+spine cannot masquerade as a usable JSON payload. It stays on
+``BaseAgent.stream_llm``: calling the factory directly drops
 the trace event the Book Activity panel renders and the per-agent
 api_key / base_url / binding routing.
 """
@@ -19,16 +19,16 @@ from deeptutor.book.agents.spine_synthesizer import SpineSynthesizer
 
 
 @pytest.mark.asyncio
-async def test_call_json_goes_through_call_llm_with_its_stage(
+async def test_call_json_goes_through_stream_llm_with_its_stage(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     recorded: dict[str, Any] = {}
 
-    async def _call_llm(self: BaseAgent, **kwargs: Any) -> str:
+    async def _stream_llm(self: BaseAgent, **kwargs: Any):
         recorded.update(kwargs)
-        return json.dumps({"chapters": [{"title": "Vectors"}]})
+        yield json.dumps({"chapters": [{"title": "Vectors"}]})
 
-    monkeypatch.setattr(BaseAgent, "call_llm", _call_llm)
+    monkeypatch.setattr(BaseAgent, "stream_llm", _stream_llm)
 
     payload = await SpineSynthesizer(language="ja")._call_json(
         system_prompt="Design a spine.",
@@ -39,6 +39,7 @@ async def test_call_json_goes_through_call_llm_with_its_stage(
     assert payload == {"chapters": [{"title": "Vectors"}]}
     assert recorded["stage"] == "spine_draft"
     assert recorded["response_format"] == {"type": "json_object"}
+    assert recorded["outcome"] is not None
     # The language directive rides on the system prompt, so a non-en/zh book
     # still tells the model which language to write in (#712).
     assert "日本語" in recorded["system_prompt"]
@@ -48,10 +49,11 @@ async def test_call_json_goes_through_call_llm_with_its_stage(
 async def test_call_json_returns_an_empty_payload_when_the_call_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def _boom(self: BaseAgent, **_kwargs: Any) -> str:
+    async def _boom(self: BaseAgent, **_kwargs: Any):
+        yield ""
         raise RuntimeError("provider down")
 
-    monkeypatch.setattr(BaseAgent, "call_llm", _boom)
+    monkeypatch.setattr(BaseAgent, "stream_llm", _boom)
 
     payload = await SpineSynthesizer()._call_json(
         system_prompt="Design a spine.",
@@ -76,13 +78,14 @@ async def test_call_json_retries_at_low_effort_when_reasoning_ate_the_budget(
     """
     efforts: list[str | None] = []
 
-    async def _call_llm(self: BaseAgent, **kwargs: Any) -> str:
+    async def _stream_llm(self: BaseAgent, **kwargs: Any):
         efforts.append(kwargs.get("reasoning_effort"))
         if len(efforts) == 1:
-            return ""
-        return json.dumps({"chapters": [{"title": "Vectors"}, {"title": "Matrices"}]})
+            yield ""
+        else:
+            yield json.dumps({"chapters": [{"title": "Vectors"}, {"title": "Matrices"}]})
 
-    monkeypatch.setattr(BaseAgent, "call_llm", _call_llm)
+    monkeypatch.setattr(BaseAgent, "stream_llm", _stream_llm)
 
     payload = await SpineSynthesizer()._call_json(
         system_prompt="Design a spine.",
@@ -108,13 +111,14 @@ async def test_call_json_retries_when_the_payload_lost_its_chapters(
     """
     calls: list[str | None] = []
 
-    async def _call_llm(self: BaseAgent, **kwargs: Any) -> str:
+    async def _stream_llm(self: BaseAgent, **kwargs: Any):
         calls.append(kwargs.get("reasoning_effort"))
         if len(calls) == 1:
-            return json.dumps({"concept_graph": {"nodes": [], "edges": []}})
-        return json.dumps({"chapters": [{"title": "Vectors"}]})
+            yield json.dumps({"concept_graph": {"nodes": [], "edges": []}})
+        else:
+            yield json.dumps({"chapters": [{"title": "Vectors"}]})
 
-    monkeypatch.setattr(BaseAgent, "call_llm", _call_llm)
+    monkeypatch.setattr(BaseAgent, "stream_llm", _stream_llm)
 
     payload = await SpineSynthesizer()._call_json(
         system_prompt="Design a spine.",
@@ -133,11 +137,11 @@ async def test_call_json_does_not_retry_a_good_first_answer(
 ) -> None:
     calls: list[str | None] = []
 
-    async def _call_llm(self: BaseAgent, **kwargs: Any) -> str:
+    async def _stream_llm(self: BaseAgent, **kwargs: Any):
         calls.append(kwargs.get("reasoning_effort"))
-        return json.dumps({"chapters": [{"title": "Vectors"}]})
+        yield json.dumps({"chapters": [{"title": "Vectors"}]})
 
-    monkeypatch.setattr(BaseAgent, "call_llm", _call_llm)
+    monkeypatch.setattr(BaseAgent, "stream_llm", _stream_llm)
 
     await SpineSynthesizer()._call_json(
         system_prompt="Design a spine.",

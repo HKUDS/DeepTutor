@@ -44,19 +44,36 @@ export const PartnerComposer = memo(function PartnerComposer({
   disabled,
   streaming,
   placeholder,
+  restoreDraft,
 }: {
-  /** Returns true when sending starts an asynchronous streamed response. */
-  onSend: (content: string, attachments: PartnerPendingAttachment[]) => boolean;
+  /** True starts a turn, "handled" consumes a client command, false keeps the draft. */
+  onSend: (content: string, attachments: PartnerPendingAttachment[]) => boolean | "handled";
   onStop?: () => void;
   disabled?: boolean;
   streaming?: boolean;
   placeholder?: string;
+  /** A rejected cross-browser send restores the cleared text and attachments. */
+  restoreDraft?: {
+    id: number;
+    content: string;
+    attachments: PartnerPendingAttachment[];
+  };
 }) {
   const { t } = useTranslation();
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<PartnerPendingAttachment[]>(
     [],
   );
+  useEffect(() => {
+    if (!restoreDraft) return;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setInput(restoreDraft.content);
+      setAttachments(restoreDraft.attachments);
+    });
+    return () => { cancelled = true; };
+  }, [restoreDraft]);
   const attachmentLimits = useAttachmentLimits();
   const [dragging, setDragging] = useState(false);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
@@ -241,10 +258,14 @@ export const PartnerComposer = memo(function PartnerComposer({
   const submit = useCallback(() => {
     const content = input.trim();
     if ((!content && attachments.length === 0) || disabled) return;
-    const awaitsResponse = onSend(content, attachments);
+    const result = onSend(content, attachments);
+    if (result === false) {
+      focusTextarea();
+      return;
+    }
     setInput("");
     setAttachments([]);
-    if (awaitsResponse) {
+    if (result === true) {
       restoreFocusAfterSendRef.current = true;
     } else {
       focusTextarea();

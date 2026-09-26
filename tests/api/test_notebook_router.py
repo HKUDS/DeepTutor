@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+from hashlib import sha256
 import importlib
 from pathlib import Path
 
@@ -141,7 +142,8 @@ def test_upsert_entry_persists_base64_answer_image(
     assert response.json()["user_answer_images"] == [
         {
             "id": "answer-image-1",
-            "url": (f"/files/attachments/{session['id']}/answer-image-1/answer.png"),
+            # Pinned to the originating data scope; default workspace = empty id.
+            "url": (f"/files/attachments/{session['id']}/answer-image-1/answer.png?dt_workspace="),
             "filename": "answer.png",
             "mime_type": "image/png",
         }
@@ -153,6 +155,55 @@ def test_upsert_entry_persists_base64_answer_image(
     )
     assert stored_path is not None
     assert stored_path.read_bytes() == b"image-bytes"
+
+
+def test_independent_entry_uses_stable_answer_image_owner_and_cleans_up(
+    store: SQLiteSessionStore, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    attachment_store = LocalDiskAttachmentStore(root=tmp_path / "attachments")
+    monkeypatch.setattr(
+        "deeptutor.api.routers.question_notebook.get_attachment_store",
+        lambda: attachment_store,
+    )
+    origin_ref = "document:guide.pdf:page-4"
+    owner = (
+        "question-notebook-" + sha256(f"document_analysis:{origin_ref}".encode()).hexdigest()[:24]
+    )
+
+    with TestClient(_build_app(store)) as client:
+        response = client.post(
+            "/api/question-notebook/entries/upsert",
+            json={
+                "origin_type": "document_analysis",
+                "origin_ref": origin_ref,
+                "question_id": "image-question",
+                "question": "Identify the diagram.",
+                "user_answer_images": [
+                    {
+                        "id": "answer-image-1",
+                        "base64": base64.b64encode(b"image-bytes").decode("ascii"),
+                        "filename": "answer.png",
+                        "mime_type": "image/png",
+                    }
+                ],
+            },
+        )
+        assert response.status_code == 200
+        entry_id = response.json()["id"]
+        assert response.json()["user_answer_images"][0]["url"].startswith(
+            f"/files/attachments/{owner}/answer-image-1/"
+        )
+        stored_path = attachment_store.resolve_path(
+            session_id=owner,
+            attachment_id="answer-image-1",
+            filename="answer.png",
+        )
+        assert stored_path is not None and stored_path.read_bytes() == b"image-bytes"
+
+        deleted = client.delete(f"/api/question-notebook/entries/{entry_id}")
+        assert deleted.status_code == 200
+
+    assert not stored_path.exists()
 
 
 def test_list_entries_filters_by_course_and_total(
@@ -542,3 +593,95 @@ def test_lookup_missing_entry_returns_204_when_missing_ok(store: SQLiteSessionSt
         )
         assert resp.status_code == 204
         assert resp.content == b""
+
+
+def test_assessment_v2_fields_round_trip_and_filters(store: SQLiteSessionStore) -> None:
+    session = asyncio.run(store.create_session(title="Review"))
+    asyncio.run(
+        store.upsert_notebook_entries(
+            session["id"],
+            [
+                {
+                    "question_id": "graded-wrong",
+                    "question": "Wrong?",
+                    "is_correct": False,
+                    "result": "incorrect",
+                    "assessment_type": "quiz",
+                    "source": "mastery_path",
+                    "mastery_path_id": "path-1",
+                    "knowledge_point_id": "kp-1",
+                },
+                {
+                    "question_id": "ungraded",
+                    "question": "Pending?",
+                    "is_correct": False,
+                    "result": "ungraded",
+                    "assessment_type": "review",
+                },
+                {
+                    "question_id": "book-old",
+                    "question": "Chapter?",
+                    "is_correct": False,
+                    "source": "book",
+                    "material_id": "book-1",
+                },
+            ],
+        )
+    )
+
+    with TestClient(_build_app(store)) as client:
+        all_rows = client.get("/api/question-notebook/entries").json()
+        assert all_rows["total"] == 3
+        ungraded = next(item for item in all_rows["items"] if item["question_id"] == "ungraded")
+        assert ungraded["result"] == "ungraded"
+        old_book = next(item for item in all_rows["items"] if item["question_id"] == "book-old")
+        assert old_book["source"] == "book"
+        assert old_book["result"] == "incorrect"
+
+        wrong = client.get("/api/question-notebook/entries", params={"is_correct": "false"}).json()
+        assert {item["question_id"] for item in wrong["items"]} == {"graded-wrong", "book-old"}
+
+        by_type = client.get(
+            "/api/question-notebook/entries", params={"assessment_type": "quiz"}
+        ).json()
+        assert {item["question_id"] for item in by_type["items"]} == {"graded-wrong"}
+
+        by_result = client.get(
+            "/api/question-notebook/entries", params={"result": "ungraded"}
+        ).json()
+        assert {item["question_id"] for item in by_result["items"]} == {"ungraded"}
+
+        by_link = client.get(
+            "/api/question-notebook/entries",
+            params={"mastery_path_id": "path-1", "knowledge_point_id": "kp-1"},
+        ).json()
+        assert {item["question_id"] for item in by_link["items"]} == {"graded-wrong"}
+
+        eid = next(
+            item["id"] for item in all_rows["items"] if item["question_id"] == "graded-wrong"
+        )
+        client.patch(f"/api/question-notebook/entries/{eid}", json={"resolved": True})
+        resolved = client.get("/api/question-notebook/entries", params={"resolved": "true"}).json()
+        assert eid in {item["id"] for item in resolved["items"]}
+        client.patch(f"/api/question-notebook/entries/{eid}", json={"resolved": False})
+        unresolved = client.get(
+            "/api/question-notebook/entries", params={"resolved": "false", "is_correct": "false"}
+        ).json()
+        assert eid in {item["id"] for item in unresolved["items"]}
+
+        client.post(
+            "/api/question-notebook/entries/upsert",
+            json={
+                "session_id": session["id"],
+                "question_id": "graded-wrong",
+                "question": "Wrong?",
+                "is_correct": False,
+                "result": "incorrect",
+                "assessment_type": "quiz",
+                "source": "mastery_path",
+                "mastery_path_id": "path-1",
+                "knowledge_point_id": "kp-1",
+            },
+        )
+        after = client.get("/api/question-notebook/entries").json()
+        assert after["total"] == 3

@@ -11,6 +11,7 @@ from deeptutor.services.persona.service import (
     PersonaExistsError,
     PersonaNotFoundError,
     PersonaService,
+    load_visible_for_context,
 )
 
 
@@ -131,3 +132,31 @@ def test_seed_presets_is_idempotent_and_non_destructive(service: PersonaService)
     service.update("peer", content="---\nname: peer\ndescription: mine\n---\n\nCustom body.")
     assert service.seed_presets() == []  # nothing re-seeded
     assert "Custom body." in service.get_detail("peer").content
+
+
+def test_load_visible_for_context_falls_back_to_admin_presets(
+    tmp_path: Path,
+) -> None:
+    # Admin in an explicit workspace: local dir empty, presets live on the
+    # account-level admin tree. Selecting one must still inject the body.
+    workspace = PersonaService(root=tmp_path / "workspace" / "personas")
+    admin = PersonaService(root=tmp_path / "admin" / "personas")
+    admin.seed_presets()
+
+    rendered = load_visible_for_context("teacher", workspace=workspace, admin=admin)
+    assert "## Active Persona" in rendered
+    assert "### Persona: teacher" in rendered
+    assert workspace.load_for_context("teacher") == ""
+
+
+def test_load_visible_for_context_prefers_workspace_shadow(
+    tmp_path: Path,
+) -> None:
+    workspace = PersonaService(root=tmp_path / "workspace" / "personas")
+    admin = PersonaService(root=tmp_path / "admin" / "personas")
+    admin.seed_presets()
+    workspace.create("teacher", "Mine", "Local voice.")
+
+    rendered = load_visible_for_context("teacher", workspace=workspace, admin=admin)
+    assert "Local voice." in rendered
+    assert "Teacher Mode" not in rendered

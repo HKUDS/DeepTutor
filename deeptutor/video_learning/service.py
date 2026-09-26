@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
+import html
 import ipaddress
 import json
 import os
@@ -187,6 +189,11 @@ def save_video_learning_settings(payload: Any) -> dict[str, Any]:
     return normalized
 
 
+def clean_transcript_text(value: Any) -> str:
+    """Decode caption-source entities into the text readers should see."""
+    return re.sub(r"\s+", " ", html.unescape(str(value or ""))).strip()
+
+
 def normalize_cues(rows: Any) -> list[dict[str, Any]]:
     if not isinstance(rows, (list, tuple)):
         return []
@@ -201,7 +208,7 @@ def normalize_cues(rows: Any) -> list[dict[str, Any]]:
                 "duration": getattr(row, "duration", 0),
                 "text": getattr(row, "text", ""),
             }
-        text = str(merged.get("text") or merged.get("content") or "").strip()
+        text = clean_transcript_text(merged.get("text") or merged.get("content") or "")
         if not text:
             continue
         encoded = text.encode("utf-8")
@@ -276,8 +283,9 @@ def parse_webvtt(text: str) -> list[dict[str, Any]]:
             body_lines.append(line)
             index += 1
 
-        body = re.sub(r"<[^>]+>", "", "\n".join(body_lines))
-        body = re.sub(r"\s+", " ", body).strip()
+        # Entity decoding belongs to normalize_cues. Parsing and normalizing
+        # the same source must not turn nested &amp;lt; into a literal tag.
+        body = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", "\n".join(body_lines))).strip()
         if body:
             result.append(
                 {
@@ -310,7 +318,7 @@ class TimedMediaStore:
             raise TimedMediaNotFound("Timed media material was not found.")
         return self.root / f"{material_id}.json"
 
-    def get(self, material_id: str) -> dict[str, Any]:
+    def _load(self, material_id: str) -> dict[str, Any]:
         try:
             payload = json.loads(self._path(material_id).read_text(encoding="utf-8"))
         except (FileNotFoundError, OSError, json.JSONDecodeError) as exc:
@@ -318,6 +326,39 @@ class TimedMediaStore:
         if not isinstance(payload, dict) or payload.get("type") != "timed_media":
             raise TimedMediaNotFound("Timed media material was not found.")
         return payload
+
+    @staticmethod
+    def _repair_transcript_text(material: dict[str, Any]) -> bool:
+        """Repair legacy machine-generated captions without touching user content."""
+        if material.get("_caption_text_version") == 1:
+            return False
+        transcript = material.get("transcript")
+        if not isinstance(transcript, dict):
+            return False
+        for key in ("cues", "segments"):
+            rows = material.get(key) if key == "segments" else transcript.get(key)
+            if not isinstance(rows, list):
+                continue
+            for row in rows:
+                if not isinstance(row, dict) or not isinstance(row.get("text"), str):
+                    continue
+                text = clean_transcript_text(row["text"])
+                if text != row["text"]:
+                    row["text"] = text
+        material["_caption_text_version"] = 1
+        return True
+
+    def get(self, material_id: str, *, lock_held: bool = False) -> dict[str, Any]:
+        payload = self._load(material_id)
+        if not self._repair_transcript_text(payload):
+            return payload
+        if lock_held:
+            return self.save(payload)
+        with self.lock(material_id):
+            latest = self._load(material_id)
+            if self._repair_transcript_text(latest):
+                return self.save(latest)
+            return latest
 
     def save(self, material: dict[str, Any]) -> dict[str, Any]:
         payload = dict(material)
@@ -367,8 +408,14 @@ def material_id_for(video_id: str) -> str:
     return hashlib.sha256(f"youtube-resolve-{video_id}".encode()).hexdigest()[:32]
 
 
+def _language_preferences(language: str | Sequence[str]) -> list[str]:
+    if isinstance(language, str):
+        return [language] if language else ["zh-CN", "zh-Hans", "zh", "en"]
+    return [value for value in (str(row).strip() for row in language) if value]
+
+
 async def _youtube_transcript(
-    video_id: str, language: str
+    video_id: str, language: str | Sequence[str]
 ) -> tuple[list[dict[str, Any]], str, str]:
     settings = load_video_learning_settings()
     if settings["youtube"]["transcript_provider"] == "none":
@@ -379,14 +426,14 @@ async def _youtube_transcript(
         return [], "", "dependency_missing"
 
     def fetch() -> tuple[list[dict[str, Any]], str]:
-        languages = [language] if language else ["zh-CN", "zh-Hans", "zh", "en"]
+        languages = _language_preferences(language)
         api = YouTubeTranscriptApi()
         if hasattr(api, "fetch"):
             response = api.fetch(video_id, languages=languages)
             return normalize_cues(list(response)), str(getattr(response, "language_code", "") or "")
         return normalize_cues(
             YouTubeTranscriptApi.get_transcript(video_id, languages=languages)
-        ), language
+        ), languages[0] if languages else ""
 
     try:
         cues, resolved_language = await asyncio.to_thread(fetch)
@@ -410,9 +457,9 @@ async def _youtube_metadata(request: YouTubeRequest) -> dict[str, Any]:
         return {}
 
 
-def _caption_choice(rows: Any, language: str) -> dict[str, Any] | None:
+def _caption_choice(rows: Any, language: str | Sequence[str]) -> dict[str, Any] | None:
     captions = [row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
-    priorities = [language] if language else ["zh-CN", "zh-Hans", "zh", "en"]
+    priorities = _language_preferences(language)
     for preferred in priorities:
         found = next(
             (
@@ -430,7 +477,9 @@ def _caption_choice(rows: Any, language: str) -> dict[str, Any] | None:
     ) or (captions[0] if captions else None)
 
 
-async def _youtube_resolution(request: YouTubeRequest, language: str) -> ProviderResolution:
+async def _youtube_resolution(
+    request: YouTubeRequest, language: str | Sequence[str]
+) -> ProviderResolution:
     metadata = await _youtube_metadata(request)
     cues, transcript_language, transcript_source = await _youtube_transcript(
         request.video_id, language
@@ -458,7 +507,7 @@ async def _invidious_transcript(
     base: str,
     video_id: str,
     captions: Any,
-    language: str,
+    language: str | Sequence[str],
     *,
     raise_on_failure: bool = False,
 ) -> tuple[list[dict[str, Any]], str, str]:
@@ -467,8 +516,10 @@ async def _invidious_transcript(
         return [], "", "unavailable"
 
     label = str(caption.get("label") or "")
+    priorities = _language_preferences(language)
+    fallback_language = priorities[0] if priorities else ""
     transcript_language = str(
-        caption.get("languageCode") or caption.get("language_code") or language
+        caption.get("languageCode") or caption.get("language_code") or fallback_language
     )
     caption_response = await client.get(
         f"{base}/api/v1/captions/{video_id}",
@@ -489,7 +540,9 @@ async def _invidious_transcript(
     return cues, transcript_language, "invidious" if cues else "unavailable"
 
 
-async def _invidious_resolution(request: YouTubeRequest, language: str) -> ProviderResolution:
+async def _invidious_resolution(
+    request: YouTubeRequest, language: str | Sequence[str]
+) -> ProviderResolution:
     settings = load_video_learning_settings()
     base = settings["invidious"]["api_base_url"]
     if not base:
@@ -527,11 +580,30 @@ async def _invidious_resolution(request: YouTubeRequest, language: str) -> Provi
 
 PROVIDER_RESOLVERS: dict[
     ProviderName,
-    Callable[[YouTubeRequest, str], Awaitable[ProviderResolution]],
+    Callable[[YouTubeRequest, str | Sequence[str]], Awaitable[ProviderResolution]],
 ] = {
     "youtube": lambda request, language: _youtube_resolution(request, language),
     "invidious": lambda request, language: _invidious_resolution(request, language),
 }
+
+
+async def resolve_youtube_captions(
+    url: str,
+    language: str | Sequence[str] = ("zh-CN", "zh-Hans", "zh", "en"),
+) -> ProviderResolution:
+    """Resolve captions through the configured provider without requiring playback."""
+
+    request = parse_youtube_url(url)
+    settings = load_video_learning_settings()
+    if settings["default_provider"] == "invidious":
+        base = settings["invidious"]["api_base_url"]
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=False) as client:
+            metadata = await _invidious_metadata(client, base, request.video_id)
+            cues, transcript_language, transcript_source = await _invidious_transcript(
+                client, base, request.video_id, metadata.get("captions"), language
+            )
+        return ProviderResolution(metadata, cues, transcript_language, transcript_source, [])
+    return await _youtube_resolution(request, language)
 
 
 async def resolve_material(
@@ -603,12 +675,13 @@ async def resolve_material(
         "segments": build_segments(cues),
         "learning": learning,
         "provider_cache": {"invidious_formats": formats} if formats else {},
+        "_caption_text_version": 1,
     }
     with store.lock(material_id):
         # Network resolution happens outside the file lock. Re-read only the
         # mutable learning state so a concurrent progress save cannot be lost.
         try:
-            latest = store.get(material_id)
+            latest = store.get(material_id, lock_held=True)
         except TimedMediaNotFound:
             latest = {}
         if isinstance(latest.get("learning"), dict):
@@ -696,7 +769,7 @@ async def refresh_invidious_transcript(material_id: str) -> dict[str, Any]:
         "cues": cues,
     }
     with store.lock(material_id):
-        latest = store.get(material_id)
+        latest = store.get(material_id, lock_held=True)
         latest["transcript"] = refreshed_transcript
         latest["segments"] = build_segments(cues)
         saved = store.save(latest)
@@ -704,7 +777,11 @@ async def refresh_invidious_transcript(material_id: str) -> dict[str, Any]:
 
 
 def public_material(material: dict[str, Any], *, provider: str) -> dict[str, Any]:
-    payload = {key: value for key, value in material.items() if key != "provider_cache"}
+    payload = {
+        key: value
+        for key, value in material.items()
+        if key not in {"provider_cache", "_caption_text_version"}
+    }
     source = payload.get("source") if isinstance(payload.get("source"), dict) else {}
     learning = payload.get("learning") if isinstance(payload.get("learning"), dict) else {}
     start = float(learning.get("last_position") or source.get("entry_time_seconds") or 0)
@@ -713,6 +790,8 @@ def public_material(material: dict[str, Any], *, provider: str) -> dict[str, Any
         formats = material.get("provider_cache", {}).get("invidious_formats") or []
         best = formats[0] if formats else {}
         revision = str(material.get("updated_at") or "")
+        from deeptutor.services.workspace.context import workspace_url
+
         subtitles_url = f"/api/video-learning/materials/{payload['material_id']}/subtitles.vtt"
         if revision:
             subtitles_url = f"{subtitles_url}?{urlencode({'revision': revision})}"
@@ -721,8 +800,10 @@ def public_material(material: dict[str, Any], *, provider: str) -> dict[str, Any
             "kind": "html5",
             "format_id": str(best.get("format_id") or ""),
             "mime_type": str(best.get("mime_type") or "video/mp4"),
-            "stream_url": f"/api/video-learning/materials/{payload['material_id']}/stream/{best.get('format_id', '')}",
-            "subtitles_url": subtitles_url,
+            "stream_url": workspace_url(
+                f"/api/video-learning/materials/{payload['material_id']}/stream/{best.get('format_id', '')}"
+            ),
+            "subtitles_url": workspace_url(subtitles_url),
             "start_seconds": start,
         }
     else:
@@ -767,6 +848,7 @@ __all__ = [
     "public_material",
     "refresh_invidious_transcript",
     "resolve_material",
+    "resolve_youtube_captions",
     "save_video_learning_settings",
     "test_invidious_connection",
 ]

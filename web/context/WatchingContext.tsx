@@ -3,6 +3,7 @@
 import {
   createContext,
   useCallback,
+  useEffect,
   useContext,
   useRef,
   useMemo,
@@ -53,6 +54,7 @@ export function WatchingProvider({ children }: { children: ReactNode }) {
   const [lastUrl, setLastUrl] = useState("");
   const [active, setActive] = useState(false);
   const generation = useRef(0);
+  useEffect(() => () => { generation.current += 1; }, []);
 
   const accept = useCallback((next: TimedMediaMaterial) => {
     setMaterial(next);

@@ -48,6 +48,7 @@ from .model_catalog import (
     ModelCatalogService,
     get_model_catalog_service,
 )
+from .provider_links import resolve_profile_provider
 
 
 @dataclass(frozen=True)
@@ -309,8 +310,15 @@ class VoiceProviderSpec:
 
 
 # Voice providers either use the shared OpenAI-compatible adapter or a native
-# protocol adapter registered by name (currently DashScope TTS/STT).
+# protocol adapter registered by name (DashScope and Volcengine Speech TTS/STT).
 TTS_PROVIDERS: dict[str, VoiceProviderSpec] = {
+    "volcengine_speech": VoiceProviderSpec(
+        label="Volcengine Speech (Doubao)",
+        default_api_base="https://openspeech.bytedance.com/api/v3",
+        adapter="volcengine",
+        default_model="seed-tts-2.0",
+        default_voice="zh_female_vv_uranus_bigtts",
+    ),
     "dashscope": VoiceProviderSpec(
         label="Aliyun DashScope",
         default_api_base="https://dashscope.aliyuncs.com/api/v1",
@@ -366,6 +374,12 @@ TTS_PROVIDERS: dict[str, VoiceProviderSpec] = {
 }
 
 STT_PROVIDERS: dict[str, VoiceProviderSpec] = {
+    "volcengine_speech": VoiceProviderSpec(
+        label="Volcengine Speech (Doubao)",
+        default_api_base="https://openspeech.bytedance.com/api/v3",
+        adapter="volcengine",
+        default_model="bigmodel",
+    ),
     "dashscope": VoiceProviderSpec(
         label="Aliyun DashScope",
         default_api_base="https://dashscope.aliyuncs.com/api/v1",
@@ -414,6 +428,8 @@ STT_PROVIDERS: dict[str, VoiceProviderSpec] = {
 
 # Provider-name aliases accepted from older/loose catalog values.
 VOICE_PROVIDER_ALIASES = {
+    "volcengine": "volcengine_speech",
+    "doubao": "volcengine_speech",
     "aliyun": "dashscope",
     "bailian": "dashscope",
     "azure": "azure_openai",
@@ -713,6 +729,8 @@ def _register_catalog_capabilities(catalog: dict[str, Any]) -> None:
             for model in profile.get("models", []) or []:
                 if not isinstance(model, dict):
                     continue
+                effective = resolve_profile_provider(catalog, service_name, profile, model)
+                binding = canonical_provider_name(_as_str(effective.get("binding"))) or ""
                 overrides = _model_capabilities(model)
                 if overrides:
                     entries.append((binding, _as_str(model.get("model")), overrides))
@@ -732,7 +750,10 @@ def _active_profile_and_model(
 def _collect_provider_pool(catalog: dict[str, Any]) -> dict[str, NormalizedProviderConfig]:
     providers: dict[str, NormalizedProviderConfig] = {}
     llm_profiles = catalog.get("services", {}).get("llm", {}).get("profiles", [])
-    for profile in llm_profiles:
+    for raw in llm_profiles:
+        profile = resolve_profile_provider(
+            catalog, "llm", raw, next(iter(raw.get("models", [])), None)
+        )
         name = canonical_provider_name(_as_str(profile.get("binding")))
         if not name:
             continue
@@ -817,6 +838,15 @@ def resolve_llm_runtime_config(
     # Parse the payload once: ``apply_llm_selection_to_catalog`` would otherwise
     # re-parse it, so a malformed selection would be validated (and rejected)
     # from two places. ``from_payload`` is idempotent on an already-parsed value.
+    if service_name == "task" and llm_selection is None:
+        task = loaded.get("services", {}).get("task", {})
+        if task.get("mode") == "reference":
+            llm_selection = task.get("selection")
+            if not llm_selection:
+                raise ValueError("Choose a task model from a configured provider.")
+            service_name = "llm"
+        elif task.get("mode") == "inherit":
+            service_name = "llm"
     selection = LLMSelection.from_payload(llm_selection)
     loaded = apply_llm_selection_to_catalog(loaded, selection)
 
@@ -843,6 +873,11 @@ def resolve_llm_runtime_config(
     if context_window is None:
         context_window = _coerce_optional_int((model or {}).get("context_window_tokens"))
 
+    # Old diagnostics allowed users to adopt a guessed budget as model capacity.
+    # Preserve manual/provider values, but retire those explicitly marked fallback.
+    if (model or {}).get("context_window_source") == "default":
+        context_window = None
+
     provider_pool = _collect_provider_pool(loaded)
     spec = _choose_resolved_provider(
         hint=binding_hint,
@@ -852,7 +887,11 @@ def resolve_llm_runtime_config(
         provider_pool=provider_pool,
     )
 
-    mapped = provider_pool.get(spec.name)
+    mapped = (
+        None
+        if (profile or {}).get("provider_ref") or (model or {}).get("provider_ref")
+        else provider_pool.get(spec.name)
+    )
     api_key = active_api_key or (mapped.api_key if mapped else "")
     api_base = active_api_base or ((mapped.api_base or "") if mapped else "")
     api_version = active_api_version or ((mapped.api_version or "") if mapped else "")
@@ -908,7 +947,10 @@ def _collect_embedding_provider_pool(
 ) -> dict[str, NormalizedProviderConfig]:
     providers: dict[str, NormalizedProviderConfig] = {}
     embedding_profiles = catalog.get("services", {}).get("embedding", {}).get("profiles", [])
-    for profile in embedding_profiles:
+    for raw in embedding_profiles:
+        profile = resolve_profile_provider(
+            catalog, "embedding", raw, next(iter(raw.get("models", [])), None)
+        )
         name = _canonical_embedding_provider_name(_as_str(profile.get("binding")))
         if not name:
             continue
@@ -1043,7 +1085,11 @@ def resolve_embedding_runtime_config(
         provider_pool=provider_pool,
     )
     spec = EMBEDDING_PROVIDERS[provider_name]
-    mapped = provider_pool.get(provider_name)
+    mapped = (
+        None
+        if (profile or {}).get("provider_ref") or (model or {}).get("provider_ref")
+        else provider_pool.get(provider_name)
+    )
 
     api_key = active_api_key or (mapped.api_key if mapped else "")
     api_base = active_api_base or ((mapped.api_base or "") if mapped else "")
@@ -1115,8 +1161,20 @@ def resolve_tts_runtime_config(
     api_key = _as_str((profile or {}).get("api_key"))
     if not api_key and spec.is_local:
         api_key = "sk-no-key-required"
-    voice = _as_str((model or {}).get("voice")) or spec.default_voice
-    response_format = _as_str((model or {}).get("response_format")) or "mp3"
+    from deeptutor.services.voice.options import voice_model_options
+
+    options = voice_model_options(provider, "tts", resolved_model)
+    voice = _as_str((model or {}).get("voice")) or (
+        options["voices"][0]["id"] if options["voices"] else spec.default_voice
+    )
+    response_format = _as_str((model or {}).get("response_format")) or options["formats"][0]
+    raw_speed = (model or {}).get("speed")
+    speed = _coerce_optional_float(raw_speed)
+    if raw_speed not in (None, "") and speed is None:
+        raise ValueError("Speech speed must be a positive number.")
+    limits = options.get("speed")
+    if speed is not None and limits and not limits["min"] <= speed <= limits["max"]:
+        raise ValueError(f"Speech speed must be between {limits['min']} and {limits['max']}.")
 
     return TTSConfig(
         model=resolved_model,
@@ -1124,12 +1182,18 @@ def resolve_tts_runtime_config(
         adapter=spec.adapter,
         auth_style=spec.auth_style,
         api_key=api_key,
+        app_id=_as_str((profile or {}).get("app_id")),
+        resource_id=_as_str((model or {}).get("resource_id")),
         base_url=api_base,
         api_version=_as_str((profile or {}).get("api_version")) or None,
         extra_headers=_to_headers((profile or {}).get("extra_headers")),
         voice=voice,
         response_format=response_format,
-        speed=_coerce_optional_float((model or {}).get("speed")),
+        speed=speed,
+        language=_as_str((model or {}).get("language")) or None,
+        sample_rate=int((model or {}).get("sample_rate") or 24000),
+        instructions=_as_str((model or {}).get("instructions")),
+        max_input_chars=options.get("max_input_chars", 4096),
     )
 
 
@@ -1160,6 +1224,8 @@ def resolve_stt_runtime_config(
         request_style=spec.request_style,
         auth_style=spec.auth_style,
         api_key=api_key,
+        app_id=_as_str((profile or {}).get("app_id")),
+        resource_id=_as_str((model or {}).get("resource_id")),
         base_url=api_base,
         api_version=_as_str((profile or {}).get("api_version")) or None,
         extra_headers=_to_headers((profile or {}).get("extra_headers")),
@@ -1285,7 +1351,11 @@ def _resolve_search_max_results(catalog: dict[str, Any], default: int = 5) -> in
 
 def _search_profiles(catalog: dict[str, Any]) -> list[dict[str, Any]]:
     profiles = catalog.get("services", {}).get("search", {}).get("profiles", [])
-    return [profile for profile in profiles if isinstance(profile, dict)]
+    return [
+        resolve_profile_provider(catalog, "search", profile)
+        for profile in profiles
+        if isinstance(profile, dict) and not profile.get("provider_only")
+    ]
 
 
 def search_provider_credentials(

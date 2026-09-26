@@ -5,6 +5,7 @@ import { AlertCircle, Bot, Check, ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useLingerExpand } from "@/hooks/use-linger-expand";
 import { useOutsideClick } from "@/hooks/use-outside-click";
+import ToolbarLabel from "./ToolbarLabel";
 import ProviderIcon from "@/components/common/ProviderIcon";
 import type { LLMSelection } from "@/features/chat/model/protocol";
 import {
@@ -113,6 +114,7 @@ export default function ModelSelector({
   systemDefaultDetail,
   helperText,
   placement = "top",
+  pinned = false,
   onChange,
   onRefresh,
 }: {
@@ -126,13 +128,19 @@ export default function ModelSelector({
   systemDefaultDetail?: string;
   helperText?: string;
   placement?: "top" | "bottom";
+  /** Optional always-visible label for surfaces outside the composer. */
+  pinned?: boolean;
   onChange: (selection: LLMSelection | null) => void;
   onRefresh?: () => void;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
-  const { expanded, linger, triggerProps: lingerProps } = useLingerExpand(open);
+  const {
+    expanded,
+    linger,
+    triggerProps: lingerProps,
+  } = useLingerExpand(open, 1200, pinned);
 
   const selectedSelection = allowSystemDefault
     ? value
@@ -165,8 +173,7 @@ export default function ModelSelector({
         : t("Models unavailable")
       : allowSystemDefault && !selectedSelection
         ? defaultLabel
-        : // Official model ID, consistent with the dropdown rows.
-          selectedOption?.model ||
+        : selectedOption?.model ||
           selectedOption?.model_name ||
           t("Select model");
   const menuPlacementClass =
@@ -174,10 +181,7 @@ export default function ModelSelector({
 
   return (
     <div ref={rootRef} className="relative">
-      {/* Same resting/expanded treatment as PersonaSelector: the brand
-          icon is the whole control at rest; hovering (or opening) slides
-          the model name out with a max-width animation and lingers ~1.2s
-          after leave/selection before collapsing. */}
+      {/* The model name shares the composer selectors' spring and hover delay. */}
       <button
         type="button"
         disabled={disabled}
@@ -190,7 +194,7 @@ export default function ModelSelector({
           setOpen((current) => !current);
         }}
         aria-label={canRefresh ? t("Refresh models") : t("Select model")}
-        title={canRefresh ? t("Refresh models") : undefined}
+        title={canRefresh ? t("Refresh models") : label}
         aria-expanded={open}
         {...lingerProps}
         className={`inline-flex h-8 shrink-0 items-center rounded-lg px-2 text-[14px] font-medium transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
@@ -206,19 +210,13 @@ export default function ModelSelector({
         ) : (
           <ProviderIcon provider={selectedOption?.provider} size={16} />
         )}
-        <span
-          className={`flex min-w-0 items-center gap-1 overflow-hidden whitespace-nowrap transition-[max-width,opacity,margin-left] duration-300 ease-out ${
-            expanded
-              ? "ml-1.5 max-w-[180px] opacity-100"
-              : "ml-0 max-w-0 opacity-0"
-          }`}
-        >
-          <span className="min-w-0 truncate">{label}</span>
+        <ToolbarLabel expanded={expanded} fullWidth>
+          <span className="min-w-0">{label}</span>
           <ChevronDown
             size={13}
             className={`shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
           />
-        </span>
+        </ToolbarLabel>
       </button>
 
       {open && !disabled && (

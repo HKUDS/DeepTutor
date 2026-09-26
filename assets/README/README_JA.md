@@ -10,9 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://trendshift.io/repositories/17099?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-17099" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/17099" alt="HKUDS%2FDeepTutor | Trendshift" width="250" height="55"/></a>&nbsp;
-  <a href="https://trendshift.io/repositories/17099?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-17099" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/17099/daily" alt="HKUDS%2FDeepTutor | Trendshift" width="250" height="55"/></a>&nbsp;
-  <a href="https://trendshift.io/repositories/17099?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-17099" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/17099/weekly?language=Python" alt="HKUDS%2FDeepTutor | Trendshift" width="250" height="55"/></a>
+<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending&amp;theme=dark"><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending"><img alt="GitHub Trending Repository of the Day" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" height="55"></picture></a>&#32;<a href="https://trendshift.io/repositories/17099"><img src="https://trendshift.io/api/badge/trendshift/repositories/17099/daily" alt="HKUDS/DeepTutor | Trendshift" width="250" height="55"></a>&#32;<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;theme=dark"><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor"><img alt="Star History Rank" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor" width="185" height="55"></picture></a>
 </p>
 
 <p align="center">
@@ -50,6 +48,7 @@
 
 ### 📰 ニュース
 
+- **2026-09-20** 🎉 9か月で40kスター達成！これからもDeepTutorの学習エコシステムを広げていきます。
 - **2026-05-22** 🌐 公式ドキュメントサイトが [**deeptutor.info**](https://deeptutor.info/) で公開 — ガイド、リファレンス、機能ツアーを一か所に。
 - **2026-04-19** 🎉 111日間で20kスター達成！真にパーソナライズされたインテリジェント個別指導に向けた支援に感謝します。
 - **2026-04-10** 📄 arXivに論文を公開 — DeepTutorの設計とアイデアについては[プレプリント](https://arxiv.org/abs/2604.26962)をご覧ください。
@@ -64,8 +63,8 @@ DeepTutorは、個別指導、問題解決、クイズ生成、研究、ビジ�
 - **すべてのモードで1つのランタイム** — Chat、Ask Questions、Quiz、Research、Visualize、Solve、Course Study、Mastery Path、Immersive Reading、Immersive Watchingは、同じ機能ランタイムとセッションコンテキストを共有しながら、用途別に設計されたループとパイプラインを維持します。
 - **接続された学習コンテキスト** — 知識ベース、本、Co-Writerの下書き、ノートブック、問題バンク、ペルソナ、Memoryは、アカウントのグラントと学習ポリシーに従い、それらをサポートするワークフロー間で再利用できます。
 - **没入型動画学習** — YouTubeリンクを貼り付けるだけで、プライバシー強化ネイティブ再生、同期字幕、タイムスタンプに基づく個別指導、再開可能な進捗を利用できます。管理者は教材を再構築せずに、再生をセルフホストのInvidiousインスタンスへ切り替えられます。
-- **サブエージェントとPartners** — Chatからライブエージェントハーネス（Claude Code、Codex、Antigravity、Kimi、opencode、MiMo、Hermes、OpenClaw、DeepSeek）またはPartnerに相談し、過去の会話をインポートし、同じブレインで永続的なIMコンパニオンを実行できます。
-- **マルチエンジン知識** — LlamaIndex、PageIndex、GraphRAG、LightRAG、リモートのLightRAG Server、セルフホストのWeKnora知識ベース、Tencent IMAまたはMarginNote 4ライブラリ、あるいはリンクされたObsidianボールトにまたがるバージョン管理されたRAGライブラリ（プラグ可能なドキュメント解析付き）。
+- **サブエージェントとPartners** — Chatからライブエージェントハーネス（Claude Code、Codex、Grok CLI、Antigravity、Kimi、opencode、MiMo、Hermes、OpenClaw、DeepSeek）またはPartnerに相談し、過去の会話をインポートし、同じブレインで永続的なIMコンパニオンを実行できます。
+- **マルチエンジン知識** — LlamaIndex、PageIndex、GraphRAG、LightRAG、リモートのLightRAG Server、セルフホストのWeKnora知識ベース、Tencent IMAまたはMarginNote 4ライブラリ、あるいはリンクされたObsidianボールトにまたがるバージョン管理されたRAGライブラリ（プラグ可能なドキュメント解析付き）。独立した抽出・クエリ・ビジョン設定、デフォルトのみの作成、確認付き再構築については[ネイティブLightRAGロールモデル](../../deeptutor/services/rag/pipelines/lightrag/README.md)を参照してください。
 - **拡張可能なツールとスキル** — 組み込みツール、MCPサーバー、CLIアプリ、画像/ビデオ/音声生成モデル、EduHubからインストール可能なコミュニティスキル。
 - **検査可能なメモリ** — L1トレース、L2サーフェスサマリー、L3合成によりパーソナライズが可視化・編集可能となります。Memory GraphはL2の事実をL1の証拠に、L3の合成を寄与したサーフェスに結び付けます。
 
@@ -77,9 +76,9 @@ DeepTutorは4つのインストールパスを提供しています。どれも�
 
 ### コンテンツワークスペース
 
-**コンテンツワークスペース**は、DeepTutorのプライベートなランタイムホームとは別のものです。これはエージェントが読み取れるフォルダで、エージェントが作成するすべてのファイル、ダウンロード、コード実行、キャッシュ、レンダリングされたアセットが、ターン単位の`outputs/<capability>/<session>/<turn>/`ディレクトリの下に置かれます。Settings、APIキー、データベース、Memory、内部アプリケーション状態はその外側にとどまります。
+**コンテンツワークスペース**は、DeepTutorのプライベートなランタイムホームとは別のものです。エージェントが読み取れるフォルダで、生成ファイルは`outputs/<capability>/<session>/<turn>/`に置かれます。カスタムワークスペースでは、会話、学習教材、進捗、キャッシュが、ファイルツールから参照できないプライベートな`.deeptutor/data/`ツリーに分離されます。設定、認証情報、Memoryは引き続きアカウント単位で共有されます。
 
-設定しない場合、コンテンツワークスペースは`<runtime-home>/data/user/workspace`になります。ローカルのPyPI、CLI、ソースインストールでは、**Settings → Workspace**、または次のコマンドで、既存の読み書き可能な任意のフォルダを選択できます。
+設定しない場合、コンテンツワークスペースは`<runtime-home>/data/user/workspace`になります。ローカルのPyPI、CLI、ソースインストールでは、**Settings → Workspaces**でフォルダを選択できます。デフォルトのフォルダは次のコマンドで設定します。
 
 ```bash
 deeptutor workspace show
@@ -87,7 +86,9 @@ deeptutor workspace set /absolute/path/to/my-folder
 deeptutor workspace reset
 ```
 
-すべての機能は、組み込みのワークスペースツールを通じて同じフォルダを検査できます。モデルが受け取るのは`outputs/...`のような相対パスのみです。`workspace_present`を使用すると、UIは認証済みの開けるスナップショットをレンダリングします。同じ正確な相対パスは、通常のMarkdownリンクや画像でもそのまま機能します。後で元のファイルを変更しても、すでに提示されたスナップショットは変わりません。
+各機能は、組み込みのワークスペースツールを通じて選択されたワークスペースを検査します。モデルが受け取るのは`outputs/...`のような相対パスのみです。`workspace_present`を使用すると、UIは認証済みの開けるスナップショットをレンダリングします。同じ正確な相対パスは、通常のMarkdownリンクや画像でもそのまま機能します。後で元のファイルを変更しても、すでに提示されたスナップショットは変わりません。
+
+Learning Spaceはリソースライブラリを管理します。**Settings → Workspaces**で各ワークスペースにSkills、MCPサービス、知識ベースを割り当てるか、既存のアクセスルールを維持できます。既存のワークスペースは、選択を保存するまで現在のアクセス権を保持します。割り当ては元のリソースを参照し、認証情報や知識インデックスをコピーしません。ワークスペース固有のスキルは共有版を上書きできます。[ワークスペースのリソース割り当て](../../docs-for-user/workspaces.md)を参照してください。
 
 実行は`outputs/`の外では読み取り専用です。生成されたファイルをコンテンツワークスペース内の別の場所にコピーするには、その正確なコピー元とコピー先について明示的な**Allow once**の確認が必要です。利用可能な場合はシステムサンドボックスまたはDocker runnerがこの境界を強制します。ローカルの制限付きサブプロセスフォールバックは、Workspace設定で**best effort**として表示されます。
 
@@ -184,7 +185,7 @@ deeptutor start --dev
 - `ghcr.io/hkuds/deeptutor:latest` — 最新の安定版リリース
 - `ghcr.io/hkuds/deeptutor:<version>` — 先頭の`v`を除いた正確なリリース（例：`:1.6.3`）。プレリリースにはそのバージョンタグのみが付与されます
 
-> ポッドマン/rootless/読み取り専用rootfsデプロイメントと完全なインストール別ガイドについては [CONTAINERIZATION.md](../../CONTAINERIZATION.md) を参照してください。
+> ポッドマン/rootless/読み取り専用rootfsデプロイメントと完全なインストール別ガイドについては [CONTAINERIZATION.md](../../docs-for-user/CONTAINERIZATION.md) を参照してください。
 
 ```bash
 docker run --rm --name deeptutor \
@@ -254,7 +255,7 @@ docker run --rm --name deeptutor \
 
 Docker Desktop（macOS/Windows）は通常`--add-host`なしで`host.docker.internal`を解決します。Linuxでは、このフラグが最新のDocker Engineでそのホスト名を作成するポータブルな方法です。
 
-**Linuxの代替 — ホストネットワーキング：** `--network=host`を追加して`-p`フラグを削除します。コンテナはホストネットワークを直接共有するため、[http://127.0.0.1:3782](http://127.0.0.1:3782)（または`system.json`の`frontend_port`）を開き、ホストサービスには`http://127.0.0.1:11434/v1`のような通常のlocalhostのURLでアクセスできます。ホストネットワーキングはコンテナのポートをホスト上に直接公開し、既存のサービスと競合する可能性があります — それらをループバックに保つには`BACKEND_HOST=127.0.0.1`と`FRONTEND_HOST=127.0.0.1`を設定してください（[CONTAINERIZATION.md](../../CONTAINERIZATION.md)参照）。
+**Linuxの代替 — ホストネットワーキング：** `--network=host`を追加して`-p`フラグを削除します。コンテナはホストネットワークを直接共有するため、[http://127.0.0.1:3782](http://127.0.0.1:3782)（または`system.json`の`frontend_port`）を開き、ホストサービスには`http://127.0.0.1:11434/v1`のような通常のlocalhostのURLでアクセスできます。ホストネットワーキングはコンテナのポートをホスト上に直接公開し、既存のサービスと競合する可能性があります — それらをループバックに保つには`BACKEND_HOST=127.0.0.1`と`FRONTEND_HOST=127.0.0.1`を設定してください（[CONTAINERIZATION.md](../../docs-for-user/CONTAINERIZATION.md)参照）。
 
 </details>
 
@@ -316,7 +317,7 @@ deeptutor config show
 <details>
 <summary><b>設定リファレンス</b> — <code>data/user/settings/</code>下の設定ファイル（JSON/YAML）</summary>
 
-`data/user/settings/`以下のものはすべてプレーンなJSON/YAMLです。ブラウザの**Settings**ページが推奨エディターです。
+`data/user/settings/`以下のものはすべてプレーンなJSON/YAMLです。**Settings**ページが推奨エディターです。ワークスペースの登録情報は別途`data/user/.runtime/workspaces.sqlite3`に保存されます。
 
 | ファイル | 目的 |
 |:---|:---|
@@ -325,7 +326,7 @@ deeptutor config show
 | `auth.json` | オプション認証トグル、ユーザー名、パスワードハッシュ、トークン/クッキー設定 |
 | `integrations.json` | オプションのPocketBaseとサイドカー統合設定 |
 | `interface.json` | UIの言語とモデル出力言語/テーマ/サイドバー設定 |
-| `content_workspace.json` | Content Workspaceフォルダのバインディングとアクティブなワークスペース選択 |
+| `document_parsing.json` | 解析エンジンの選択、リモートエンドポイント、エンジン固有のオプション |
 | `video_learning.json` | デフォルトのYouTube/Invidious再生プロバイダー、Invidiousオリジン、オプションの文字起こしアダプター |
 | `main.yaml` | ランタイム動作のデフォルトとパス注入 |
 | `agents.yaml` | 機能/ツールのtemperatureとトークン設定 |
@@ -384,13 +385,13 @@ DeepTutorは、インストールされたコード、プライベートなラ�
 
 日常的に使用するメインサーフェスから始めましょう：Chat、Partners、My Agents、Co-Writer、Book、Knowledge Center、Learning Space、Memory、Settings。ツアーの最後はマルチユーザーデプロイメントとして共有・分離ワークスペースをカバーします。
 
-回答が以前の制約を失ったり、弱い根拠を引用したり、選択した資料と矛盾したりする場合は、Issueを開く前に[`REASONING_SAFETY_CHECKLIST.md`](../../REASONING_SAFETY_CHECKLIST.md)に診断情報をまとめてください。
+回答が以前の制約を失ったり、弱い根拠を引用したり、選択した資料と矛盾したりする場合は、Issueを開く前に[`REASONING_SAFETY_CHECKLIST.md`](../../docs-for-user/REASONING_SAFETY_CHECKLIST.md)に診断情報をまとめてください。
 
 <div align="center">
 <img src="../../assets/figs/web-1.6.5/OVERVIEW.png" alt="DeepTutorホーム — サイドバーにすべてのサーフェスを含むチャットワークスペース" width="900">
 </div>
 
-> **スクリーンショットの状態:** 全体表示は v1.6.5 向けに更新済みです。以下の画面スクリーンショットは、刷新中のため引き続き v1.4.6 の参考画像です。[スクリーンショット一覧](../../UI_SCREENSHOT_REFRESH.md)を参照してください。操作の流れの理解には使えますが、現在の正確なナビゲーションとしては扱わないでください。
+> **スクリーンショットの状態:** 全体表示は v1.6.5 向けに更新済みです。以下の画面スクリーンショットは、刷新中のため引き続き v1.4.6 の参考画像です。操作の流れの理解には使えますが、現在の正確なナビゲーションとしては扱わないでください。
 
 <details>
 <summary><b>🏗️ システムアーキテクチャ</b></summary>
@@ -416,11 +417,11 @@ Chatはデフォルト機能であり、ほとんどの作業が始まる場所�
 <img src="../../assets/figs/system/chat-agent-loop.png" alt="DeepTutorチャットエージェントループ" width="900">
 </div>
 
-ユーザーが切り替えられるツールは`brainstorm`、`web_search`、`paper_search`、`reason`、`geogebra_analysis` — 加えて、対応する生成モデルを設定すれば`imagegen`と`videogen`も利用できます。`rag`、`kb_files`、`knowledge_frontier`、`read_source`、`read_memory`、`write_memory`、`read_skill`、`load_tools`、`exec`、`web_fetch`、`ask_user`、`list_notebook`、`write_note`、`question_bank`、`github`、`consult_subagent`、`workspace_list`、`workspace_read`、`workspace_search`、`workspace_present`、`workspace_export`などのコンテキスト依存ツールは、ターンに適切なコンテキストがある場合に自動的にマウントされます。
+ユーザーが切り替えられるツールは`brainstorm`、`web_search`、`paper_search`、`zotero_search`、`reason`、`geogebra_analysis` — 加えて、対応する生成モデルを設定すれば`imagegen`と`videogen`も利用できます。`rag`、`kb_files`、`knowledge_frontier`、`read_source`、`read_memory`、`write_memory`、`read_skill`、`load_tools`、`exec`、`web_fetch`、`ask_user`、`list_notebook`、`write_note`、`question_bank`、`github`、`consult_subagent`、`workspace_list`、`workspace_read`、`workspace_search`、`workspace_present`、`workspace_export`などのコンテキスト依存ツールは、ターンに適切なコンテキストがある場合に自動的にマウントされます。
 
 コンテキストには2種類あります：**スティッキーセッションコンテキスト**（機能、ワークスペースまたはコース、ツール、知識ベース、ペルソナ、モデル、Reading / Masteryの状態）はターンをまたいで持続します。**ワンタイム参照**（ファイル、チャット履歴、本、読書セクション、ノートブック、問題バンク、インポートしたエージェント）は単一のターンのために`+`メニューから追加します。音声ボタンが文字起こしするのは現在のメッセージだけです。
 
-Homeでは**Chat**、**Ask Questions**、**Quiz**、**Visualize**にワンクリックでアクセスできます。引用付きレポートの**Research**、手順を追った推論の**Solve**、**Immersive Watching**は*その他の機能*の下にあります。**Mastery Path**と**Immersive Reading**は専用のサイドバーワークスペースです。Readingには検証済みのクリック可能な引用、保存した引用とノート、ソースに基づく読み上げ / 学習ガイダンス / 語彙 / クイズ / 翻訳アクション、ノートブックへの取り込みが追加され、Course Studyはコースに紐づいた独自のコンテキストを維持します。
+Homeでは**Chat**、**Ask Questions**、**Quiz**、**Visualize**にワンクリックでアクセスできます。引用付きレポートの**Research**、手順を追った推論の**Solve**、**Immersive Watching**は*その他の機能*の下にあります。**個別学習**にはBook、**Mastery Path**、**Immersive Reading**、Watching、**練習**がまとまっています。Readingには検証済みの引用、保存したノート、ソースに基づく読み上げ / 学習ガイダンス / 語彙 / クイズ / 翻訳アクション、ノートブックへの取り込みがあり、Course Studyはコースに紐づいたコンテキストを維持します。
 
 </details>
 
@@ -437,7 +438,7 @@ Partnersは独自のソウル、モデルポリシー、ライブラリ、メモ
 <img src="../../assets/figs/system/partners-architecture.png" alt="DeepTutor Partnersアーキテクチャ" width="900">
 </div>
 
-各Partnerには`SOUL.md`、モデル選択、チャンネル、ツールポリシー、割り当てられたライブラリがあります。知識ベース、スキル、ノートブックは`data/partners/<id>/workspace/`にコピーされるため、同じRAG、スキル、ノートブック、メモリツールが特別なケースなしに機能します。認証済みの非管理者ユーザーは、非公開のPartnerセッションと関係メモリを維持し、Partnerはそのユーザーの個人メモリを読み取り専用で参照します。管理者、グループ、未バインドのトラフィックは共有Partnerスコープを使用します。
+各Partnerには`SOUL.md`、モデル選択、チャンネル、ツールポリシー、割り当てられたライブラリがあります。ライブラリは知識ベース、スキル、ノートブックを`data/partners/<id>/workspace/`にコピーするか、既存のワークスペースのファイルとリソースにリンクしたまま利用できます。ソウル、会話、Partnerのメモリは独立したままです。認証済みの非管理者ユーザーは、非公開のPartnerセッションと関係メモリを維持し、Partnerはそのユーザーの個人メモリを読み取り専用で参照します。管理者、グループ、未バインドのトラフィックは共有Partnerスコープを使用します。
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/partners/02-IM%20config%20for%20each%20partner.png" alt="Partner ごとのIMチャンネル設定" width="900">
@@ -456,13 +457,19 @@ Partnersは独自のソウル、モデルポリシー、ライブラリ、メモ
 <img src="../../assets/figs/web-1.4.6+/myagents/00-overview.png" alt="DeepTutor My Agentsワークスペース" width="900">
 </div>
 
-My Agentsは他のエージェントをDeepTutorのコンテキストにし、2つの異なることを行います。**ライブエージェントを接続** — マシン上のClaude Code、Codex、Antigravity、Kimi、opencode、MiMo Code、Hermes Agent、OpenClaw、DeepSeek Harness、または自分のPartnersのいずれか — してチャットターン内から相談できます。DeepTutorは実際に他のエージェントを*実行*し、`consult_subagent`ツールを介してその作業をActivityパネルにストリーミングします。Agentチップでエージェントとラウンド上限を選択するか、`@`で同じ接続済みエージェント一覧を絞り込め、選択内容はセッションに紐づいたまま保持されます。
+My Agentsは他のエージェントをDeepTutorのコンテキストにし、2つの異なることを行います。**ライブエージェントを接続** — マシン上のClaude Code、Codex、Grok CLI、Antigravity、Kimi、opencode、MiMo Code、Hermes Agent、OpenClaw、DeepSeek Harness、リモートのHermesゲートウェイ、または自分のPartnersのいずれか — してチャットターン内から相談できます。DeepTutorは実際に他のエージェントを*実行*し、`consult_subagent`ツールを介してその作業をActivityパネルにストリーミングします。Agentチップでエージェントとラウンド上限を選択するか、`@`で同じ接続済みエージェント一覧を絞り込め、選択内容はセッションに紐づいたまま保持されます。
+
+**Grok CLIを接続する。** DeepTutorバックエンドを実行しているマシンにxAIのGrok CLIをインストールし、そこで`grok login`を実行して、`grok --help`が`--output-format streaming-json`を一覧に含むことを確認してください。続いて**My Agents → Connect**を開き、**Grok CLI**を選択して、作業ディレクトリを選びます。検出処理は実行ファイルのプロトコル対応をチェックするだけで、ログインやモデルへのアクセス権を検証するものではありません。このコネクタはGrok CLI 1.0.3で検証済みです。同名`grok`の無関係なサードパーティ製コマンドはサポートされません。
+
+**Settings → Partners & Agents → Grok CLI**では、モデルと推論努力度を空欄のままにするとCLIのデフォルトが使われます。値を入力する場合は、お使いのアカウントの`grok models`出力がサポートするものを指定してください。システム指示は`--rules`を通じて渡されます。デフォルトの権限モードは`dontAsk`です：Grokは既存のルールと組み込みの読み取り専用処理を使用し、承認が必要な操作は拒否します。これはCLIの権限ポリシーであり、ファイルシステムのサンドボックスではありません。より広いモードは設定で明示的に選択できます。高度なCLIフラグはサブエージェント設定APIの`backends.grok.extra_args`から引き続き利用できます。
+
+Grokは自身の認証とセッションストレージを使用し、DeepTutorはその認証情報をコピーしません。追加の相談は同じ作業ディレクトリでその接続のセッションを再開します。テキストとツールのアクティビティはライブでストリーミングされますが、非公開の思考ペイロードは省略されます。クロスセッションのGrokメモリはデフォルトで無効です。このコネクタはテキストによる質問とCLIツールをサポートしますが、画像の転送や過去のGrok会話のインポートはサポートしません。Dockerでは、Grokはバックエンドコンテナ内にインストールして認証してください — ブラウザ側のマシンにのみインストールされたCLIには到達できません。
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/home/08-subagent%20demo%20with%20claude%20code.png" alt="Claude Codeサブエージェントをライブで相談" width="900">
 </div>
 
-**過去の会話をインポート** — 既存のClaude CodeやCodexの履歴を名前付き、検索可能、再開可能なエージェントとして取り込みます。Claudeの履歴はプロジェクト / 作業ディレクトリ単位、Codexの履歴はカレンダーの日付単位で選択します。更新するとそのスコープが再同期され、新しい会話が取り込まれます。Chatターンから`+` → My Agentsで会話を参照でき、DeepTutorはそれをサードパーティのトランスクリプトとして読み取ります — それはDeepTutor自身の声ではなく、*相手の*会話として保持されます。
+**過去の会話をインポート** — 既存のChatGPT、Claude Code、Codexの履歴を検索可能、再開可能な会話として取り込みます。安全でべき等なスナップショットインポートを行うには、公式のChatGPTデータエクスポートから`conversations.json`を選択します。Claudeの履歴はプロジェクト / 作業ディレクトリ単位、Codexの履歴はカレンダーの日付単位で選択します。フォルダベースのエージェントは引き続き更新可能で、選択したスコープに新しい会話を取り込めます。Chatターンから`+` → My Agentsで会話を参照でき、DeepTutorはそれをサードパーティのトランスクリプトとして読み取ります — それはDeepTutor自身の声ではなく、*相手の*会話として保持されます。
 
 </details>
 
@@ -517,11 +524,13 @@ Bookは選択したソースをインタラクティブな**生きている本**
 <img src="../../assets/figs/web-1.4.6+/knowledge/01-create%20knowledge%20base.png" alt="知識ベースの作成" width="900">
 </div>
 
-既存のObsidian、Hermes、Markdownライブラリを移行する場合は、接続ボールトとインデックス付きコピーの手順を[Knowledge migration guide](../../KNOWLEDGE_MIGRATION.md)で確認してください。
+既存のObsidian、Hermes、Markdownライブラリを移行する場合は、接続ボールトとインデックス付きコピーの手順を[Knowledge migration guide](../../docs-for-user/KNOWLEDGE_MIGRATION.md)で確認してください。
 
-KBを作成する際は、**新規作成**（ドキュメントをアップロードして新しいインデックスを構築）または**既存をリンク**（再インデックスなしで既に構築されたインデックスを再利用）を選択します。KBは**GitHubリポジトリ**（リポジトリ、ブランチ、glob）または**ドキュメントサイトのURL**（クロール深度とページ数に上限あり）も追跡できます。オンデマンド同期ではコンテンツのハッシュ差分から追加・変更・削除を検出するため、フォローしているドキュメントを再アップロードなしで最新の状態に保てます。再インデックスは新しいフラットな`version-N`ディレクトリを書き込み、以前のものを保持するため、再構築中に作業中のインデックスが破壊されることはありません。解析に失敗したファイルを完全な削除・再構築なしで取り除けるよう、**error**状態のベースからでも単一のドキュメントを削除できます。ドキュメント解析（Text-only、MinerU、Docling、Tika、markitdown、PyMuPDF4LLM、LiteParse）は**Settings → Knowledge Base**で選択し、ローカルモデルのダウンロードはデフォルトでオフです。Docling は、Docling Serve サーバーに対して**remote**モードで実行することもできます（ローカルインストールやモデルは不要）。この設定は**Settings → Document Parsing**（`mode=remote`、サーバーのベースURL、オプションのAPIキー）または `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` 環境変数で行います。Tikaはリモート専用で、そのページに設定したApache Tikaサーバーを参照します。CLIは`list/info/create/add/search/set-default/delete`、ソースの追加/削除コマンド、`list-sources`、`sync`でライフサイクルをミラーします。
+KBを作成する際は、**新規作成**（ドキュメントをアップロードして新しいインデックスを構築）または**既存をリンク**（再インデックスなしで既に構築されたインデックスを再利用）を選択します。KBは**GitHubリポジトリ**（リポジトリ、ブランチ、glob）または**ドキュメントサイトのURL**（クロール深度とページ数に上限あり、デフォルトで24時間ごとに再同期）も追跡できます。同期はコンテンツのハッシュ差分から追加・変更・削除を検出するため、フォローしているドキュメントを再アップロードなしで最新の状態に保てます。**リンクされたフォルダ**は同期時にローカルの新規・変更ファイルを取り込みます。再インデックスは新しいフラットな`version-N`ディレクトリを書き込み、以前のものを保持するため、再構築中に作業中のインデックスが破壊されることはありません。解析に失敗したファイルを完全な削除・再構築なしで取り除けるよう、**error**状態のベースからでも単一のドキュメントを削除できます。ドキュメント解析（Text-only、MinerU、Docling、Tika、markitdown、PyMuPDF4LLM、LiteParse）は**Settings → Knowledge & documents**で選択し、ローカルモデルのダウンロードはデフォルトでオフです。Docling は、Docling Serve サーバーに対して**remote**モードで実行することもできます（ローカルインストールやモデルは不要）。この設定は同じページ（`mode=remote`、サーバーのベースURL、オプションのAPIキー）または `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` 環境変数で行います。Tikaはリモート専用で、そのページに設定したApache Tikaサーバーを参照します。CLIは`list/info/create/add/search/set-default/delete`、ソースの追加/削除コマンド、`list-sources`、`sync`でライフサイクルをミラーします。
 
 組み込みLightRAGエンジンは`pip install 'deeptutor[rag-lightrag]'`でインストールします。このエクストラにはサポート対象のLightRAG SDKが含まれますが、MinerUはインストールしません。構造化解析が必要な場合は、Document ParsingでMinerUを個別に選択し、クラウドモードを設定するか、現在のローカルCLIをインストールしてください。MinerUはPDF、一般的なラスター画像、DOCX、PPTX、XLSXを受け付けます。従来の`magic-pdf`コマンドは引き続きPDFのみです。テキストのみおよびその他の解析エンジンはMinerUを必要としません。
+
+ネイティブLightRAGのクエリとインクリメンタルインデックス作成には、モデル、次元、エンドポイントの識別情報を含む、公開されたインデックスに記録された埋め込み設定が必要です。これが変更された場合は、元の設定を復元するか、現在の埋め込みで再構築してください。埋め込みの識別情報が記録されていないインデックスは再構築が必要です。知識ベース詳細ビューとインデックスバージョンビューには復旧ガイダンスが表示され、ファイルは引き続き閲覧・ダウンロードできます。
 
 </details>
 
@@ -532,7 +541,7 @@ KBを作成する際は、**新規作成**（ドキュメントをアップロ�
 <img src="../../assets/figs/web-1.4.6+/learning-space/00-overview.png" alt="DeepTutor Learning Spaceハブ" width="900">
 </div>
 
-Learning Spaceはライブラリ、整理、パーソナライゼーションの層です。**会話と素材**にはChat History、ノートブック — レコードをノートブック間で移動・コピーでき、Markdownへのエクスポートも可能です — と、あなたの回答、参照回答、説明を保存する問題バンクがあります。**パーソナライゼーション**にはペルソナ、スキル（`SKILL.md`プレイブック）、ワンクリックで導入できる**MCPサービス**、[CLI-Anything](https://github.com/HKUDS/CLI-Anything)カタログの**CLIアプリ**があり、各アプリの使用ガイドはオンデマンドで読み込まれます。独立した**My Courses**ワークスペースは科目ごとの会話とチュータースレッドをまとめ、各アセットはそれをサポートするワークフローでのみ提供されます。
+Learning Spaceはライブラリ、整理、パーソナライゼーションの層です。**会話と素材**にはChat History、レコードの移動とMarkdownへのエクスポートに対応したノートブック、回答と解説を保存する問題バンクがあります。個別学習の**練習**では、保存した問題を復習セッション、間違いの記録、定期的な反復学習に活用できます。**パーソナライゼーション**にはペルソナ、スキル（`SKILL.md`プレイブック）、ワンクリックで導入できる**MCPサービス**、[CLI-Anything](https://github.com/HKUDS/CLI-Anything)カタログの**CLIアプリ**があり、各アプリの使用ガイドはオンデマンドで読み込まれます。独立した**My Courses**ワークスペースは科目ごとの会話とチュータースレッドをまとめ、各アセットはそれをサポートするワークフローでのみ提供されます。
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/learning-space/07-%20download%20skills%20from%20eduhub.png" alt="EduHubからスキルをインポート" width="900">
@@ -566,9 +575,9 @@ Memory Graphはピラミッド全体を表示します — L3合成が中心、L
 <img src="../../assets/figs/web-1.4.6+/settings/00-setting%20overview.png" alt="DeepTutor Settingsハブ" width="900">
 </div>
 
-Settingsはオペレーションコントロールプレーンです。冒頭にはライブステータスストリップ（バックエンドの健全性と常駐メモリ使用量）、インターフェースおよびモデル出力言語、そしてすべての機能をblocker・warning・suggestionとして採点する**Readiness**マトリクスが並び、続いてどのページにもワンクリックで到達できる常駐の検索可能なナビゲーターがあります：**外観**（テーマ、コードブロックスタイル）、**ネットワーク**（APIベース、ポート、CORS）、**Workspace**（エージェントが読み取れるフォルダと共有される`outputs/`）、**モデル**（接続、LLM、タスクモデル、埋め込み、検索、TTS、STT、画像生成、動画生成）、**Knowledge Base**（ドキュメント解析エンジン）、**Chat**（Video Learning、検索可能なツール、機能ごとのパラメーター、スターティングポイント、添付ファイル上限）、**Partners & Agents**（9つのローカルハーネス）、**Learner profile**（年齢、学年、カリキュラム、言語、読解レベル、説明スタイル）、**Guardian**（認可された学習者、教材、レポート、認証情報のリセット）、**Memory**（コンソリデーターのバジェット）、**About**（バージョン確認と安全なアップデート）。**接続**は1つのベンダー認証情報を保持し、そのベンダーが提供できるすべてのサービスにミラーするため、キーを5つのページに貼り付けるのではなく1回だけ入力すれば済みます。**タスクモデル**は誰も明示的に依頼していない作業 — 会話への命名、コンポーザーのスターティングポイントの生成 — のために小さく高速なモデルを固定し、空欄の場合はアクティブなデフォルトに解決されます。
+Settingsはオペレーションコントロールプレーンで、最初に表示される**一般**でインターフェースとモデル出力の言語を設定します。検索可能なナビゲーターから独立した各ページにアクセスできます。**個人**にはワークスペース、データ移行、外観、使用量統計、**学習と会話**にはスターティングポイント、添付ファイル、Video Learning、学習者と保護者の管理、Learning progress、Memory、**モデルとサービス**にはプロバイダー、言語モデル、タスクモデル、埋め込み、検索、音声、マルチモーダル生成、**機能と連携**にはツール、機能パラメーター、Partners & agents、Knowledge & documentsがあります。**システム**にはネットワーク、実行状態、Aboutがあり、**アーカイブ済みチャット**ではアーカイブした会話の検索、復元、完全削除ができます。実行状態にはバックエンドの健全性、常駐メモリ、機能の阻害要因・警告・提案を評価する**Readiness**マトリクスが表示されます。ワークスペースはトピックのファイルと学習状態を分離し、データ移行では検証付きの移行とエクスポートができます。**プロバイダー**はベンダーのアドレスと認証情報を保持し、そのサービスモデルで再利用します。モデルページでは保存済みプロバイダーを選び、モデル名と機能を設定します。**タスクモデル**は会話への命名やスターティングポイントの生成などのバックグラウンド作業に小さく高速なモデルを固定し、空欄の場合はアクティブなデフォルトを使用します。音声には音声合成と文字起こし、マルチモーダル生成には画像と動画のモデルがまとまっています。Partners & agentsではローカルハーネスとリモートのHermesゲートウェイを設定します。
 
-Settings → Chatの**Video Learning**は、デフォルトで公式のプライバシー強化YouTube IFrame Playerを使用します。再生をローカルに保つには、管理者が管理するInvidious APIオリジン（例：`http://127.0.0.1:3000`）を設定してテストし、Invidiousを選択して保存します。新規または再度開いた動画には、同じ教材IDと進捗のままプロバイダーが直ちに反映されます。InvidiousメディアはDeepTutorのバイトレンジプロキシ経由でストリーミングされ、アップストリームURLがブラウザに公開されたりディスクに保存されたりすることはありません。インスタンスに障害が発生した場合、学習者がネイティブのYouTubeフォールバックを明示的に選択するまで、DeepTutorはYouTubeへ接続しないままです。公開字幕による個別指導はオプションです：`.[video-learning]`をインストールしてください。未インストールでも再生は続行しますが、文字起こしに基づく**Explain here**は理由とともに無効になります。
+Settings → Learning & conversationの**Video Learning**は、デフォルトで公式のプライバシー強化YouTube IFrame Playerを使用します。再生をローカルに保つには、管理者が管理するInvidious APIオリジン（例：`http://127.0.0.1:3000`）を設定してテストし、Invidiousを選択して保存します。新規または再度開いた動画には、同じ教材IDと進捗のままプロバイダーが直ちに反映されます。InvidiousメディアはDeepTutorのバイトレンジプロキシ経由でストリーミングされ、アップストリームURLがブラウザに公開されたりディスクに保存されたりすることはありません。インスタンスに障害が発生した場合、学習者がネイティブのYouTubeフォールバックを明示的に選択するまで、DeepTutorはYouTubeへ接続しないままです。公開字幕による個別指導はオプションです：`.[video-learning]`をインストールしてください。未インストールでも再生は続行しますが、文字起こしに基づく**Explain here**は理由とともに無効になります。
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="DeepTutor外観設定とテーマ" width="900">
@@ -576,9 +585,13 @@ Settings → Chatの**Video Learning**は、デフォルトで公式のプライ
 
 ほとんどのセクションはドラフトと適用フローを使用するため、コミットする前にプロバイダーをテストできます。Chatで直接依頼するだけでも構いません：アシスタントが現在の設定を読み取り、変更を適用し、再起動または再インデックスが必要かどうかを教えてくれます — コミットする前に新しいモデルをプローブするため、到達不能な設定に自分自身を切り替えてしまうことはありません。APIキーがモデルを経由することは決してなく、代わりに該当するフォームを開いてくれます。4つのテーマが箱に入っています：Default、Cream、Dark、Glass。プロジェクトルートの`.env`ファイルは意図的に無視されます。ランタイム設定は`DEEPTUTOR_HOME`または`deeptutor start --home`でアプリを別の場所に向けない限り、`data/user/settings/*.json`に保存されます。
 
-**OpenAI Codex OAuth（実験的）。** Models → LLMで**OpenAI Codex**を選択すると、APIキー欄があなた自身のChatGPTプランに対するブラウザサインインに置き換わるため、`OPENAI_API_KEY`は不要です。トークンは`data/system/user-secrets/<owner>/private/openai-codex/`にのみ保存されます。マルチコンテナComposeデプロイメントではexecサンドボックスが到達できるどのツリーの外にも置かれ、DeepTutorが`~/.codex` CLIログインを読み取ったり変更したりすることはありません。モデル一覧はそのアカウントのライブカタログから取得され、サインインでプロフィールは公開されますが、LLMがまだ設定されていない場合にのみアクティブモデルになります。トークンは1人のプランを認可するため、プロフィールをユーザーグラントで共有することはできません。一般ユーザーも含め各アカウントが自分でサインインし、そのカードはModels → LLMに表示され、結果のモデル、カタログ、サインアウトはそのアカウントだけに閉じます。
+**OpenAI Codex OAuth（実験的）。** Settings → Providersで**OpenAI Codex**を追加すると、あなた自身のChatGPTプランを使うブラウザサインインが開くため、`OPENAI_API_KEY`は不要です。トークンは`data/system/user-secrets/<owner>/private/openai-codex/`にのみ保存されます。マルチコンテナComposeデプロイメントではexecサンドボックスが到達できるどのツリーの外にも置かれ、DeepTutorが`~/.codex` CLIログインを読み取ったり変更したりすることはありません。モデル一覧はそのアカウントのライブカタログから取得され、サインインでプロフィールは公開されますが、LLMがまだ設定されていない場合にのみアクティブモデルになります。トークンは1人のプランを認可するため、プロフィールをユーザーグラントで共有することはできません。一般ユーザーも含め各アカウントが自分でサインインし、そのサインインカードはProvidersに表示され、結果のモデル、カタログ、サインアウトはそのアカウントだけに閉じます。
 
-デフォルトのローカルDockerおよびPodmanデプロイメントは別々のループバックネットワークを使用するため、サインイン中に一時的なブリッジが必要です。正確なDocker、Compose、Podman、および後片付け用のコマンドについては、[一時的なローカルCodex OAuthブリッジガイド](../../CONTAINERIZATION.md#temporary-local-codex-oauth-bridge)を参照してください。
+サインイン時と**Refresh models**の実行時に、DeepTutorは公式のnpmレジストリから最新の安定版`@openai/codex`バージョンを読み取り、カタログリクエストの`client_version`として使用します。これはメタデータのみの処理です：Codex CLI自体をインストール、ダウンロード、アップグレードすることはなく、npmリクエストにOAuth認証情報が含まれることもありません。この検出には3秒のタイムアウトと64KiBのレスポンスサイズ上限があります。失敗した場合、DeepTutorはそのアカウントで最後に成功したバージョンを使用し、キャッシュがない場合は組み込みのフォールバックを使用します。ライブカタログの解析に成功した場合のみ新しいバージョンが保存され、バリデーターはバージョンや認証情報の世代をまたいで再利用されることはありません。バージョンの拒否または非互換なカタログ構造が発生した場合は、以前のバージョンで1回だけ再試行が許可されます。認証エラー、レート制限、TLS障害はバージョンの問題として再試行されません。手動更新が失敗した場合はエラーが報告され、古いキャッシュ済みカタログを更新済みとして提示することはありません。
+
+成功したバージョン履歴は、同一アカウントのトークン更新やカタログ認証エラーをまたいで保持されますが、無効化されたモデルデータやETagが再び使用可能になることはありません。サインアウトすると、バージョン履歴を含むそのアカウントのローカルキャッシュがクリアされます。通常のステータス読み取りと推論はnpmに問い合わせません。新しいカタログエントリは、すでに選択済みのモデルを置き換えたり学習セッションを再起動させたりしません。カタログに登場することは、完全な推論プロトコル互換性を保証するものではありません。バックグラウンドのバージョン更新機能やユーザー向けのバージョン設定はありません。
+
+デフォルトのローカルDockerおよびPodmanデプロイメントは別々のループバックネットワークを使用するため、サインイン中に一時的なブリッジが必要です。正確なDocker、Compose、Podman、および後片付け用のコマンドについては、[一時的なローカルCodex OAuthブリッジガイド](../../docs-for-user/CONTAINERIZATION.md#temporary-local-codex-oauth-bridge)を参照してください。
 
 リモートデプロイメントでは、ブラウザ側の`localhost`とサーバー側の`localhost`は別のマシンであるため、通常のリバースプロキシだけではブラウザのlocalhostコールバックをサーバーまで運べません。コールバックの橋渡しとしてSSHトンネルを使用してください。トンネルは既に公開されているWebポートに到達します。Next.jsは正確なコールバックパスのみを公開コールバックブローカーに書き換え、ブローカーは元のOAuth操作にルーティングする前に`state`を検証します。コールバックリスナーはバックエンドのループバックに留まり、ポート`1455`と`1457`は公開されず、このパスはデフォルトのDockerブリッジネットワークをサポートします。
 
@@ -618,6 +631,8 @@ data/
 
 **有効化：** `data/user/settings/auth.json`で認証をオンにし、`deeptutor start`を再起動し、`/register`で最初の管理者を登録し、`/admin/users`からユーザーを追加し、グラントを通じてモデル、KB、スキル、Partner、ツール/MCP/CLIアプリポリシー、コード実行アクセスを割り当てます。各ユーザーの**Book access**パネルで共有Bookを設定してください。
 
+プライベート/パブリックのオリジンを分離する場合は、パスワードサインインと登録を表示してよいプライベートなフロントエンドホストを`auth.private_login_hosts`（または`AUTH_PRIVATE_LOGIN_HOSTS`）に設定します。フロントエンドは受信したHTTPの`Host`をフロントエンドホストのアサーションとしてバックエンドに転送します。リバースプロキシを通してブラウザの`Host`を保持し、公開側のイングレスがプライベートホストを名乗るリクエストを拒否するようにしてください。任意の`Host`値を受け付ける生のNext.jsポートを公開してはいけません。HTTPの`Host`は直接のクライアントによって偽装できるため、プライベートホストの認可はそのイングレス境界に依存します。バックエンドはデフォルトでループバックからのフロントエンドホストアサーションのみを受け付けます。Webフロントエンドが別のコンテナまたはホストから接続する場合は、そのフロントエンドプロキシの正確なIPアドレスをバックエンドプロセスの`AUTH_TRUSTED_FRONTEND_PROXY_IPS`に設定してください（複数ある場合はコンマ区切り）。バックエンドAPIはフロントエンドプロキシのみに対して非公開のままにし、このリストに一般的なクライアントネットワークを含めないでください。ループバックは常に許可されます。リストが空でない場合、プライベートオリジン上の認証済みユーザーは**Profile → Public device sign-in**を開き、HTTPSパブリックオリジン向けの短命でホストに紐づいたペアリングリンクを作成できます。公開の`/handoff`ページはワンタイムコードをPOSTボディ内の同様に短命な`JWE`チケットと交換し、そのチケットを一度だけ消費して、通常の`HttpOnly`セッションクッキーを受け取ります。
+
 > PocketBaseはシングルユーザー統合のままです — 外部ユーザーストアを組み込まない限り、マルチユーザーデプロイメントでは`integrations.pocketbase_url`を空白にしてください。
 
 </details>
@@ -629,7 +644,7 @@ data/
 <details>
 <summary><b>自分で操作する</b></summary>
 
-`deeptutor chat`はインタラクティブなREPLを開き、`--capability`でモードを選択します。`deeptutor run <capability> "<message>"`は機能を最初の位置引数として受け取り、1回のターン後に終了します。どちらも`--tool`、`--kb`、`--config`を受け付けます。
+`deeptutor chat`はインタラクティブなREPLを開き、`--capability`でモードを選択します。`deeptutor run <capability> "<message>"`は機能を最初の位置引数として受け取り、1回のターン後に終了します。どちらも`--tool`、`--kb`、`--config`と、登録済みワークスペースを選択する`--workspace`を受け付けます。
 
 ```bash
 deeptutor chat                                              # interactive REPL
@@ -675,7 +690,7 @@ deeptutor run deep_question "Quiz me on that survey" --session "$SID" --format j
 | `deeptutor stop [--home PATH]` | `--detach`で起動したランチャーを停止 |
 | `deeptutor serve [--port PORT]` | FastAPIバックエンドのみ起動 |
 | `deeptutor workspace show/set/reset` | ユーザーごとのContent Workspaceを検査、選択、または復元 |
-| `deeptutor run <capability> <message>` | 単一機能ターンを実行（`chat`、`ask_questions`、`deep_solve`、`deep_question`、`deep_research`、`visualize`、`math_animator`、`mastery_path`、`immersive_reading`、`course_study`、`immersive_watching`）；`--format json`でNDJSON出力 |
+| `deeptutor run <capability> <message>` | 単一機能ターンを実行（`chat`、`ask_questions`、`deep_solve`、`deep_question`、`deep_research`、`visualize`、`math_animator`、`mastery_path`、`immersive_reading`、`course_study`、`immersive_watching`、`audio_overview`）；`--format json`でNDJSON出力 |
 | `deeptutor chat` | 機能、ツール、KB、ノートブック、履歴コントロール付きインタラクティブREPL |
 | `deeptutor partner list/create/start/stop` | IM接続Partnersを管理 |
 | `deeptutor kb list/info/create/add/search/set-default/delete/list-sources/sync` | 知識ベースを管理し、登録済みGitHub/Webソースを同期（ソースの追加/削除コマンドを含む） |

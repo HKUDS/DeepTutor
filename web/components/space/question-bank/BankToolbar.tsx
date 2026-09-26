@@ -101,6 +101,8 @@ export default function BankToolbar({
         <option value="mastery_path">{t("Mastery Path")}</option>
         <option value="immersive_reading">{t("Immersive Reading")}</option>
         <option value="book">{t("Book")}</option>
+        <option value="partner_chat">{t("Partner Chat")}</option>
+        <option value="import">{t("Imported")}</option>
       </select>
 
       <select
@@ -146,7 +148,7 @@ export default function BankToolbar({
       <button
         type="button"
         onClick={onToggleManager}
-        title={t("Manage Categories")}
+        title={t("Manage tags")}
         className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] transition-colors ${
           managerOpen
             ? "border-[var(--primary)]/40 bg-[var(--primary)]/10 text-[var(--primary)]"
@@ -154,7 +156,7 @@ export default function BankToolbar({
         }`}
       >
         <Settings2 className="h-3.5 w-3.5" />
-        {t("Manage Categories")}
+        {t("Manage tags")}
       </button>
     </div>
   );

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Loader2, Sparkles } from "lucide-react";
+import { activeWorkspaceId, scopedUrl } from "@/lib/workspace-scope";
 import { apiFetch, apiUrl } from "@/lib/api";
 
 interface Suggestion {
@@ -16,6 +17,7 @@ interface SuggestionPayload {
   suggestions: Suggestion[];
   /** True when the backend is regenerating this set behind the request. */
   stale: boolean;
+  status?: "ready" | "working" | "no-material" | "error";
 }
 
 /**
@@ -29,22 +31,16 @@ interface SuggestionPayload {
  * arrives, and after the last one the manual control takes over.
  */
 const RESETTLE_MS = 3500;
-const RESETTLE_ATTEMPTS = 4;
+const RESETTLE_ATTEMPTS = 10;
+const REQUEST_TIMEOUT_MS = 8000;
+const REFRESH_TIMEOUT_MS = 40000;
 
-/**
- * What the slot is showing.
- *
- * ``idle`` is the important one: it is reached from a cold cache, a generation
- * that produced nothing, a failed request, and a set of re-reads that timed
- * out — every way this can fail to have lines. All of them render the same
- * explicit control, so the answer to "why is there nothing there" is always a
- * button rather than an empty space.
- */
+/** Empty material and failed generation are different, actionable states. */
 type View =
   | { kind: "loading" }
   | { kind: "ready"; items: Suggestion[] }
   | { kind: "working" }
-  | { kind: "idle"; note?: "no-material" };
+  | { kind: "idle"; note?: "no-material" | "error" };
 
 /**
  * The three things worth exploring next, under the home composer.
@@ -71,10 +67,12 @@ type View =
 export default function StarterSuggestions({
   onPick,
   disabled = false,
+  workspaceId = activeWorkspaceId(),
 }: {
   /** Send this text as the learner's message, starting the session. */
   onPick: (prompt: string) => void;
   disabled?: boolean;
+  workspaceId?: string;
 }) {
   const { t } = useTranslation();
   // Everything generated here is already in the learner's chosen output
@@ -83,13 +81,15 @@ export default function StarterSuggestions({
   // be silently replaced by an unrelated translation. Only this component's
   // own chrome is translated.
   const [view, setView] = useState<View>({ kind: "loading" });
+  const refreshRef = useRef<AbortController | null>(null);
+  const generationRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(
     async (signal?: AbortSignal): Promise<SuggestionPayload | null> => {
       try {
-        const response = await apiFetch(apiUrl("/api/dashboard/suggestions"), {
-          signal,
+        const response = await apiFetch(apiUrl(scopedUrl("/api/dashboard/suggestions", workspaceId)), {
+          signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]) : AbortSignal.timeout(REQUEST_TIMEOUT_MS),
           cache: "no-store",
         });
         if (!response.ok) return null;
@@ -98,72 +98,82 @@ export default function StarterSuggestions({
         return null;
       }
     },
-    [],
+    [workspaceId],
   );
 
   useEffect(() => {
+    const generation = ++generationRef.current;
     const controller = new AbortController();
+    setView({ kind: "loading" });
+    const deadline = setTimeout(() => {
+      if (generation !== generationRef.current) return;
+      controller.abort();
+      if (timerRef.current) clearTimeout(timerRef.current);
+      setView(current => current.kind === "ready" || current.kind === "idle" ? current : { kind: "idle", note: "error" });
+    }, REFRESH_TIMEOUT_MS);
     void (async () => {
       const payload = await load(controller.signal);
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || generation !== generationRef.current) return;
       if (payload?.suggestions.length) {
         setView({ kind: "ready", items: payload.suggestions });
         return;
       }
       // Nothing yet. If the backend says a set is on its way, wait for it and
       // show that something is happening; otherwise hand over the control.
-      if (!payload?.stale) {
-        setView({ kind: "idle", note: payload ? "no-material" : undefined });
+      if (!payload?.stale || payload.status === "error" || payload.status === "no-material") {
+        setView({ kind: "idle", note: payload?.status === "no-material" ? "no-material" : "error" });
         return;
       }
       setView({ kind: "working" });
       let attempt = 0;
       const collect = () => {
         void load(controller.signal).then((next) => {
-          if (controller.signal.aborted) return;
+          if (controller.signal.aborted || generation !== generationRef.current) return;
           if (next?.suggestions.length) {
             setView({ kind: "ready", items: next.suggestions });
             return;
           }
-          if (++attempt < RESETTLE_ATTEMPTS) {
+          if (next?.stale && next.status !== "error" && next.status !== "no-material" && ++attempt < RESETTLE_ATTEMPTS) {
             timerRef.current = setTimeout(collect, RESETTLE_MS);
             return;
           }
           // Gave it long enough. Stop spinning and let the learner decide.
-          setView({ kind: "idle" });
+          setView({ kind: "idle", note: next?.status === "no-material" ? "no-material" : "error" });
         });
       };
       timerRef.current = setTimeout(collect, RESETTLE_MS);
     })();
     return () => {
       controller.abort();
+      clearTimeout(deadline);
+      refreshRef.current?.abort();
       if (timerRef.current) clearTimeout(timerRef.current);
     };
   }, [load]);
 
   const generate = useCallback(async () => {
     if (timerRef.current) clearTimeout(timerRef.current);
+    const generation = ++generationRef.current;
+    refreshRef.current?.abort();
+    const controller = new AbortController();
+    refreshRef.current = controller;
     setView({ kind: "working" });
     try {
       const response = await apiFetch(
-        apiUrl("/api/dashboard/suggestions/refresh"),
-        { method: "POST" },
+        apiUrl(scopedUrl("/api/dashboard/suggestions/refresh", workspaceId)),
+        { method: "POST", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(REFRESH_TIMEOUT_MS)]) },
       );
-      if (!response.ok) {
-        setView({ kind: "idle" });
-        return;
-      }
+      if (!response.ok) throw new Error('Suggestion refresh failed');
       const payload = (await response.json()) as SuggestionPayload;
-      setView(
-        payload.suggestions.length
-          ? { kind: "ready", items: payload.suggestions }
-          : { kind: "idle", note: "no-material" },
-      );
+      if (controller.signal.aborted || generation !== generationRef.current) return;
+      setView(payload.suggestions.length
+        ? { kind: "ready", items: payload.suggestions }
+        : { kind: "idle", note: payload.status === "no-material" ? "no-material" : "error" });
     } catch {
-      // A failed generation is not worth an error banner; the control stays.
-      setView({ kind: "idle" });
+      if (!controller.signal.aborted && generation === generationRef.current)
+        setView({ kind: "idle", note: "error" });
     }
-  }, []);
+  }, [workspaceId]);
 
   // Only the very first read renders nothing: lines appearing a beat late is
   // calmer than a control that flashes and is immediately replaced.
@@ -226,6 +236,11 @@ export default function StarterSuggestions({
               : t("Suggest what to explore next")}
         </button>
 
+        {view.kind === "idle" && view.note === "error" && (
+          <span role="status" className="text-[11.5px] text-[var(--muted-foreground)]">
+            {t("Suggestions could not be generated. Please try again.")}
+          </span>
+        )}
         {view.kind === "idle" && view.note === "no-material" && (
           <span className="text-[11.5px] text-[color-mix(in_srgb,var(--muted-foreground)_70%,transparent)]">
             {t("Not enough history yet — have a conversation first.")}

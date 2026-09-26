@@ -45,7 +45,7 @@ from deeptutor.services.llm.request_compat import (
     is_forced_tool_choice_unsupported,
     is_response_format_unsupported,
 )
-from deeptutor.services.llm.usage_frame import token_counts
+from deeptutor.services.llm.usage_frame import usage_breakdown
 from deeptutor.services.provider_registry import model_overrides_for, normalize_wire_api
 from deeptutor.services.session.provider_response_state import (
     normalize_provider_response_state,
@@ -231,7 +231,8 @@ class OpenAICompatProvider(LLMProvider):
         if not self._key_pool:
             return await create(**kwargs)
         api_key = self._key_pool.next()
-        for attempt in range(2):
+        attempts = max(2, len(self._key_pool))
+        for attempt in range(attempts):
             request = dict(kwargs)
             headers = dict(request.get("extra_headers") or {})
             headers["Authorization"] = f"Bearer {api_key}"
@@ -242,7 +243,7 @@ class OpenAICompatProvider(LLMProvider):
                 if self._status_code(exc) != 429:
                     raise
                 self._key_pool.mark_429(api_key)
-                if attempt:
+                if attempt == attempts - 1:
                     raise
                 api_key = self._key_pool.next()
         raise RuntimeError("LLM key rotation exhausted")
@@ -276,6 +277,7 @@ class OpenAICompatProvider(LLMProvider):
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]] | None]:
         cache_marker = {"type": "ephemeral"}
         new_messages = list(messages)
+        budget = 4
 
         def _mark(msg: dict[str, Any]) -> dict[str, Any]:
             content = msg.get("content")
@@ -294,13 +296,15 @@ class OpenAICompatProvider(LLMProvider):
 
         if new_messages and new_messages[0].get("role") == "system":
             new_messages[0] = _mark(new_messages[0])
-        if len(new_messages) >= 3:
-            new_messages[-2] = _mark(new_messages[-2])
+            budget -= 1
+        if len(new_messages) >= 2:
+            new_messages[-1] = _mark(new_messages[-1])
+            budget -= 1
 
         new_tools = tools
         if tools:
             new_tools = list(tools)
-            for idx in cls._tool_cache_marker_indices(new_tools):
+            for idx in cls._tool_cache_marker_indices(new_tools)[:budget]:
                 new_tools[idx] = {**new_tools[idx], "cache_control": cache_marker}
         return new_messages, new_tools
 
@@ -738,6 +742,11 @@ class OpenAICompatProvider(LLMProvider):
 
         if self._supports_temperature(model_name, reasoning_effort):
             body["temperature"] = temperature
+        for key, value in model_overrides_for(model_name, self._spec).items():
+            if value is None:
+                body.pop(key, None)
+            else:
+                body[key] = value
         if reasoning_effort and reasoning_effort.lower() != "none":
             body["reasoning"] = {"effort": reasoning_effort}
             body["include"] = ["reasoning.encrypted_content"]
@@ -797,7 +806,7 @@ class OpenAICompatProvider(LLMProvider):
             usage_obj = response_map.get("usage")
         else:
             usage_obj = getattr(response, "usage", None)
-        return token_counts(usage_obj)
+        return usage_breakdown(usage_obj)
 
     def _parse(self, response: Any) -> LLMResponse:
         if isinstance(response, str):

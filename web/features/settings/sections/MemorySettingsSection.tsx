@@ -38,6 +38,7 @@ export default function MemorySettingsPage() {
   const { t } = useTranslation();
   const { registerExtension, pendingExtensionPayload, draftRevision } =
     useSettings();
+  const [error, setError] = useState<string | null>(null);
   const [settings, setSettings] = useState<MemorySettingsDTO | null>(null);
   const [serverSnapshot, setServerSnapshot] =
     useState<MemorySettingsDTO | null>(null);
@@ -45,16 +46,23 @@ export default function MemorySettingsPage() {
   useEffect(() => {
     let cancelled = false;
     void apiFetch(apiUrl(EXTENSION_ENDPOINTS.memory))
-      .then((res) => res.json() as Promise<MemorySettingsDTO>)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json() as Promise<MemorySettingsDTO>;
+      })
       .then((data) => {
         if (cancelled) return;
         // A pending edit outlives the page it was made on; the server value is
         // the baseline dirtiness is measured against either way.
         const pending = pendingExtensionPayload("memory") as
-          | MemorySettingsDTO
-          | undefined;
+          MemorySettingsDTO | undefined;
         setSettings(pending ?? data);
         setServerSnapshot(data);
+        setError(null);
+      })
+      .catch((err) => {
+        if (!cancelled)
+          setError(err instanceof Error ? err.message : String(err));
       });
     return () => {
       cancelled = true;
@@ -80,6 +88,7 @@ export default function MemorySettingsPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(current),
     });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = (await res.json()) as MemorySettingsDTO;
     setSettings(data);
     setServerSnapshot(data);
@@ -97,6 +106,13 @@ export default function MemorySettingsPage() {
     if (!settings) return;
     setSettings({ ...settings, [key]: { ...settings[key], ...value } });
   }
+
+  if (error)
+    return (
+      <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+        {t("Failed to load settings.")} {error}
+      </p>
+    );
 
   if (!settings) {
     return (

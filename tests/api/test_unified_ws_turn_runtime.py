@@ -22,6 +22,16 @@ def _fake_skill_service() -> SimpleNamespace:
     )
 
 
+@pytest.fixture(autouse=True)
+def _isolate_runtime_skills(monkeypatch):
+    # Runtime now resolves multiple skill libraries; these turn tests use an
+    # empty catalog and must not inspect the developer's real skill folders.
+    monkeypatch.setattr(
+        "deeptutor.services.skill.runtime.skill_sources",
+        lambda **kwargs: [(_fake_skill_service(), None, "account")],
+    )
+
+
 def _fake_persona_service() -> SimpleNamespace:
     # Non-empty render so the resolved persona is recorded in the snapshot.
     return SimpleNamespace(
@@ -73,10 +83,22 @@ def _model_catalog() -> dict:
     }
 
 
+@pytest.mark.parametrize(
+    "consultation",
+    [
+        {},
+        {"config": {"consult_partner_id": None, "partner_discussion_group_id": None}},
+        {"consult_partner_id": "partner-1"},
+        {"partner_discussion_group_id": "group-1"},
+        {"config": {"consult_partner_id": "partner-1", "partner_discussion_group_id": None}},
+        {"config": {"consult_partner_id": None, "partner_discussion_group_id": "group-1"}},
+    ],
+)
 @pytest.mark.asyncio
 async def test_turn_runtime_replays_events_and_materializes_messages(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
+    consultation,
 ) -> None:
     store = SQLiteSessionStore(tmp_path / "chat_history.db")
     runtime = TurnRuntimeManager(store)
@@ -123,6 +145,10 @@ async def test_turn_runtime_replays_events_and_materializes_messages(
 
     class FakeOrchestrator:
         async def handle(self, context):
+            captured["consult_partner_id"] = context.runtime.consult_partner_id
+            captured["partner_discussion_group_id"] = context.runtime.partner_discussion_group_id
+            assert "consult_partner_id" not in context.config_overrides
+            assert "partner_discussion_group_id" not in context.config_overrides
             captured["user_message"] = context.user_message
             captured["metadata"] = context.metadata
             captured["source_manifest"] = context.source_manifest
@@ -179,6 +205,7 @@ async def test_turn_runtime_replays_events_and_materializes_messages(
             "book_references": [{"book_id": "book-1", "page_ids": ["page-1"]}],
             "mastery_path_id": "path-1",
             "config": {},
+            **consultation,
         }
     )
 
@@ -195,6 +222,10 @@ async def test_turn_runtime_replays_events_and_materializes_messages(
     ]
     done_event = next(e for e in events if e["type"] == "done")
     assert done_event["metadata"]["status"] == "completed"
+    requested = consultation.get("config", consultation)
+    assert captured["consult_partner_id"] == requested.get("consult_partner_id")
+    assert captured["partner_discussion_group_id"] == requested.get("partner_discussion_group_id")
+
     assert captured["turn_status_when_done_published"] == "completed"
     assert captured["title_started_after_done"] is True
 
@@ -212,6 +243,10 @@ async def test_turn_runtime_replays_events_and_materializes_messages(
         {"book_id": "book-1", "page_ids": ["page-1"]}
     ]
     assert detail["messages"][0]["metadata"]["request_snapshot"]["masteryPathId"] == "path-1"
+    snapshot = detail["messages"][0]["metadata"]["request_snapshot"]
+    assert snapshot.get("consultPartnerId") == requested.get("consult_partner_id")
+    assert snapshot.get("partnerDiscussionGroupId") == requested.get("partner_discussion_group_id")
+
     # Chat capability now routes attached sources through the manifest +
     # ``read_source`` tool instead of inlining ``[Book Context]`` into the
     # user message. The raw user message stays raw; the book payload
@@ -240,6 +275,7 @@ async def test_turn_runtime_replays_events_and_materializes_messages(
         # preference (survives reloads; later turns fall back to it).
         "persona": "socratic",
         "mastery_path_id": "path-1",
+        "workspace_id": None,
         # No mode is persisted here: this turn never recorded one, and an
         # unrecorded mode has to stay unrecorded — the tools read its absence
         # as "enforce nothing", which is what keeps every conversation that
@@ -253,6 +289,17 @@ async def test_turn_runtime_replays_events_and_materializes_messages(
     persisted_done = next(event for event in persisted_events if event["type"] == "done")
     assert persisted_done["seq"] > 0
     assert persisted_done["metadata"]["assistant_message_id"] == assistant_row["id"]
+
+    if requested.get("consult_partner_id") or requested.get("partner_discussion_group_id"):
+        captured.pop("consult_partner_id", None)
+        captured.pop("partner_discussion_group_id", None)
+        _, retried = await runtime.regenerate_last_turn(session["id"])
+        retry_events = [event async for event in runtime.subscribe_turn(retried["id"], after_seq=0)]
+        assert not [event for event in retry_events if event["type"] == "error"]
+        assert captured["consult_partner_id"] == requested.get("consult_partner_id")
+        assert captured["partner_discussion_group_id"] == requested.get(
+            "partner_discussion_group_id"
+        )
 
     # A fresh runtime (the reconnect/restart shape) replays the committed DONE
     # instead of synthesizing a metadata-poor terminal event.
@@ -290,6 +337,13 @@ async def test_turn_runtime_persists_private_provider_response_state(
         async def handle(self, context):
             captured["metadata"] = context.metadata
             context.runtime.provider_response_state = state
+            context.runtime.model_turn = {
+                "version": 1,
+                "messages": [
+                    {"role": "user", "content": "prepared input"},
+                    {"role": "assistant", "content": "raw model answer"},
+                ],
+            }
             yield StreamEvent(
                 type=StreamEventType.CONTENT,
                 source="chat",
@@ -340,9 +394,11 @@ async def test_turn_runtime_persists_private_provider_response_state(
     context_messages = await store.get_messages_for_context(session["id"])
     assistant = context_messages[-1]
     assert assistant["metadata"]["provider_response_state"] == state
+    assert assistant["metadata"]["model_turn"]["messages"][0]["content"] == "prepared input"
     detail = await store.get_session_with_messages(session["id"])
     assert detail is not None
     assert "provider_response_state" not in detail["messages"][-1]["metadata"]
+    assert "model_turn" not in detail["messages"][-1]["metadata"]
     metadata = captured["metadata"]
     assert isinstance(metadata, dict)
     assert "_provider_response_state" not in metadata
@@ -529,7 +585,12 @@ async def test_turn_runtime_session_persona_persists_falls_back_and_clears(
     await run_turn(session["id"], {"persona": ""})
     detail = await store.get_session_with_messages(session["id"])
     assert detail["preferences"]["persona"] == ""
-    assert "persona" not in detail["messages"][4]["metadata"]["request_snapshot"]
+    cleared_snapshot = detail["messages"][4]["metadata"]["request_snapshot"]
+    assert cleared_snapshot["persona"] == ""
+    assert cleared_snapshot["config"] == {}
+    assert cleared_snapshot["enabledTools"] == []
+    assert cleared_snapshot["knowledgeBases"] == []
+    assert cleared_snapshot["memoryReferences"] == []
 
 
 @pytest.mark.asyncio

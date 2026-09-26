@@ -26,6 +26,8 @@ export default function AgentSelector({
   budget = null,
   onBudgetChange,
   placement = "top",
+  pinned = false,
+  embedded = false,
 }: {
   agents: { name: string; kind?: string }[];
   selected: string | null;
@@ -34,15 +36,26 @@ export default function AgentSelector({
   budget?: number | null;
   onBudgetChange?: (budget: number) => void;
   placement?: "top" | "bottom";
+  /** Keep the label visible instead of collapsing to the icon at rest — the
+   *  composer passes this while it is wide enough for three labels. */
+  pinned?: boolean;
+  /** Render the picker contents inside a shared resource panel. */
+  embedded?: boolean;
 }) {
   const { t } = useTranslation();
-  const [open, setOpenState] = useState(false);
-  const { expanded, linger, triggerProps: lingerProps } = useLingerExpand(open);
+  const [openState, setOpenState] = useState(false);
+  const open = embedded || openState;
+  const {
+    expanded,
+    linger,
+    triggerProps: lingerProps,
+  } = useLingerExpand(open, 1200, pinned);
   const setOpen = (next: boolean) => {
     setOpenState(next);
     if (!next) linger();
   };
   const rootRef = useRef<HTMLDivElement>(null);
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -66,76 +79,99 @@ export default function AgentSelector({
 
   return (
     <div ref={rootRef} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        aria-label={t("Select a connected agent")}
-        aria-expanded={open}
-        {...lingerProps}
-        className={`inline-flex h-8 shrink-0 items-center rounded-lg px-2 text-[14px] font-medium transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
-          open
-            ? "bg-[var(--muted)] text-[var(--foreground)]"
-            : selected
-              ? "text-[var(--primary)] hover:bg-[var(--primary)]/[0.07]"
-              : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/55 hover:text-[var(--foreground)]"
-        }`}
-      >
-        {SelectedGlyph ? (
-          <SelectedGlyph size={16} className="shrink-0" />
-        ) : (
-          <Bot size={16} strokeWidth={1.7} className="shrink-0" />
-        )}
-        <span
-          className={`flex min-w-0 items-center gap-1 overflow-hidden whitespace-nowrap transition-[max-width,opacity,margin-left] duration-300 ease-out ${
-            expanded
-              ? "ml-1.5 max-w-[160px] opacity-100"
-              : "ml-0 max-w-0 opacity-0"
+      {!embedded && (
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          aria-label={t("Select a connected agent")}
+          aria-expanded={open}
+          {...lingerProps}
+          className={`inline-flex h-8 shrink-0 items-center rounded-lg px-2 text-[14px] font-medium transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
+            open
+              ? "bg-[var(--muted)] text-[var(--foreground)]"
+              : selected
+                ? "text-[var(--primary)] hover:bg-[var(--primary)]/[0.07]"
+                : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/55 hover:text-[var(--foreground)]"
           }`}
         >
-          <span className="min-w-0 truncate">{label}</span>
-          <ChevronDown
-            size={13}
-            className={`shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
-          />
-        </span>
-      </button>
+          {SelectedGlyph ? (
+            <SelectedGlyph size={16} className="shrink-0" />
+          ) : (
+            <Bot size={16} strokeWidth={1.7} className="shrink-0" />
+          )}
+          <span
+            className={`flex min-w-0 items-center gap-1 overflow-hidden whitespace-nowrap transition-[max-width,opacity,margin-left] duration-300 ease-out ${
+              expanded
+                ? "ml-1.5 max-w-[160px] opacity-100"
+                : "ml-0 max-w-0 opacity-0"
+            }`}
+          >
+            <span className="min-w-0 truncate">{label}</span>
+            <ChevronDown
+              size={13}
+              className={`shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
+            />
+          </span>
+        </button>
+      )}
 
       {open && (
         <div
-          className={`dt-popup-up absolute right-0 z-50 ${menuPlacementClass} w-[min(280px,calc(100vw-32px))] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--popover)] shadow-lg backdrop-blur-md`}
+          className={
+            embedded
+              ? "w-full"
+              : `dt-popup-up absolute right-0 z-50 ${menuPlacementClass} w-[min(280px,calc(100vw-32px))] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--popover)] shadow-lg backdrop-blur-md`
+          }
         >
+          {embedded && (
+            <div className="border-b border-[var(--border)] px-3 py-2">
+              <input
+                aria-label={t("Search")}
+                placeholder={t("Search")}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className="w-full rounded-lg bg-[var(--muted)]/50 px-2 py-2 text-[13px] outline-none focus-visible:ring-1 focus-visible:ring-[var(--primary)]"
+              />
+            </div>
+          )}
+
           <div className="max-h-[280px] overflow-y-auto py-1">
-            {agents.map((agent) => {
-              const active = selected === agent.name;
-              const RowGlyph = agentGlyph(agent.kind) ?? Bot;
-              return (
-                <button
-                  key={agent.name}
-                  type="button"
-                  onClick={() => {
-                    onSelect(active ? null : agent.name);
-                    setOpen(false);
-                  }}
-                  className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-left transition-colors active:bg-[var(--muted)]/70 ${
-                    active
-                      ? "bg-[var(--primary)]/[0.06]"
-                      : "hover:bg-[var(--muted)]/45"
-                  }`}
-                >
-                  <RowGlyph size={15} className="shrink-0" />
-                  <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-[var(--foreground)]">
-                    {agent.name}
-                  </span>
-                  {active && (
-                    <Check
-                      size={14}
-                      strokeWidth={2}
-                      className="shrink-0 text-[var(--primary)]"
-                    />
-                  )}
-                </button>
-              );
-            })}
+            {agents
+              .filter((agent) =>
+                agent.name.toLowerCase().includes(query.toLowerCase().trim()),
+              )
+              .map((agent) => {
+                const active = selected === agent.name;
+                const RowGlyph = agentGlyph(agent.kind) ?? Bot;
+                return (
+                  <button
+                    key={agent.name}
+                    aria-pressed={active}
+                    type="button"
+                    onClick={() => {
+                      onSelect(active ? null : agent.name);
+                      setOpen(false);
+                    }}
+                    className={`flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors active:bg-[var(--muted)]/70 ${
+                      active
+                        ? "bg-[var(--primary)]/[0.06]"
+                        : "hover:bg-[var(--muted)]/45"
+                    }`}
+                  >
+                    <RowGlyph size={15} className="shrink-0" />
+                    <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-[var(--foreground)]">
+                      {agent.name}
+                    </span>
+                    {active && (
+                      <Check
+                        size={14}
+                        strokeWidth={2}
+                        className="shrink-0 text-[var(--primary)]"
+                      />
+                    )}
+                  </button>
+                );
+              })}
           </div>
 
           {onBudgetChange && (

@@ -12,12 +12,15 @@ import type {
 } from "@/contracts/generated/turn-protocol";
 
 export interface StartTurnInput {
+  workspaceId?: string | null;
   content: string;
   capability?: string | null;
   sessionId?: string | null;
   tools?: string[] | null;
   knowledgeBases?: string[];
   language?: string | null;
+  /** Omit to preserve the session's selector; null explicitly clears it. */
+  replyLanguageOverride?: string | null;
   capabilityConfig?: Record<string, unknown>;
   allowedCapabilityConfigKeys?: readonly string[];
   attachments?: OutgoingAttachment[];
@@ -29,6 +32,7 @@ export interface StartTurnInput {
   readingReferences?: ReadingReference[];
   memoryReferences?: MemoryReferences;
   skills?: string[];
+  mcp?: string[];
   persona?: string | null;
   llmSelection?: LLMSelection | null;
   workspaceMode?: string | null;
@@ -52,7 +56,11 @@ export interface StartTurnInput {
   followupQuestionContext?: Record<string, unknown> | null;
   selectionTutorContext?: Record<string, unknown> | null;
   subagentConsultBudget?: number | null;
+  consultPartnerId?: string | null;
+  partnerDiscussionGroupId?: string | null;
   autoRoute?: boolean | null;
+  /** Run `capability` for this turn only; the session keeps its own mode. */
+  capabilityOnce?: boolean;
 }
 
 export interface LegacySendMessageArguments {

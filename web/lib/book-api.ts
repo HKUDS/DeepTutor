@@ -1,3 +1,4 @@
+import { activeWorkspaceId, scopedUrl } from "@/lib/workspace-scope";
 import { apiFetch, apiUrl, wsUrl } from "@/lib/api";
 import {
   BookSocketOperationError,
@@ -91,6 +92,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export interface CreateBookPayload {
+  source_refs?: import("@/lib/learning-api").TopicSourceInput[];
   user_intent: string;
   chat_session_id?: string;
   chat_selections?: Array<{ session_id: string; message_ids: number[] }>;
@@ -135,9 +137,9 @@ export const bookApi = {
       `/books/${encodeURIComponent(book_id)}` +
         (options?.includeBlocks === false ? "?include_blocks=false" : ""),
     ),
-  delete: (book_id: string) =>
+  delete: (book_id: string, workspaceId = activeWorkspaceId()) =>
     request<{ deleted: boolean; book_id: string }>(
-      `/books/${encodeURIComponent(book_id)}`,
+      scopedUrl(`/books/${encodeURIComponent(book_id)}`, workspaceId),
       {
         method: "DELETE",
       },
@@ -359,6 +361,7 @@ export const bookApi = {
     user_answer?: string;
     /** Omit for a written answer the reader revealed but didn't self-grade. */
     is_correct?: boolean;
+    submission_id?: string;
   }) =>
     request<{ progress: Progress }>("/books/quiz-attempt", {
       method: "POST",

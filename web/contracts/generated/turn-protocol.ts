@@ -19,6 +19,7 @@ export type ClientCommand =
   | PingCommand;
 export type Base64 = string | null;
 export type Filename = string | null;
+export type Id = string | null;
 export type MimeType = string | null;
 export type Type = string;
 export type Url = string | null;
@@ -28,6 +29,8 @@ export type BookId = string;
 export type PageIds = string[];
 export type BookReferences = BookReference[];
 export type Capability = string | null;
+export type CapabilityOnce = boolean;
+export type ConsultPartnerId = string | null;
 export type Content = string;
 export type CourseId = string | null;
 export type FollowupQuestionContext = {
@@ -44,6 +47,7 @@ export type MasteryPathId = string | null;
 export type MasteryPathLeaseManaged = boolean;
 export type MasterySessionMode = string | null;
 export type QuestionId1 = string;
+export type Mcp = string[];
 export type MemoryReferences = (
   "recent" | "profile" | "scope" | "preferences" | "summary"
 )[];
@@ -51,11 +55,13 @@ export type NotebookId = string;
 export type RecordIds = string[];
 export type NotebookReferences = NotebookReference[];
 export type ParentMessageId = number | null;
+export type PartnerDiscussionGroupId = string | null;
 export type PartnerGroupReferences = {
   [k: string]: unknown;
 }[];
 export type PersistUserMessage = boolean;
 export type Persona = string | null;
+export type PreserveSessionPreferences = boolean;
 export type ProtocolVersion = "2.0";
 export type QuestionNotebookReferences = number[];
 export type ReadingMaterialId = string | null;
@@ -68,7 +74,8 @@ export type Locator = number | null;
 export type Selection = string | null;
 export type ReadingWorkspaceId = string | null;
 export type Regenerate = boolean;
-export type RegeneratedFromMessageId = number | null;
+export type RegeneratedFromMessageId = number | string | null;
+export type ReplyLanguageOverride = string | null;
 export type SelectionTutorContext = {
   [k: string]: unknown;
 } | null;
@@ -80,6 +87,7 @@ export type TimedMediaId = string | null;
 export type TimeSeconds = number;
 export type Tools = string[] | null;
 export type Type1 = "message" | "start_turn";
+export type WorkspaceId = string | null;
 export type WorkspaceMode = string | null;
 export type AfterSeq = number;
 export type ProtocolVersion1 = "2.0";
@@ -227,7 +235,7 @@ export type TurnFailureCode =
   | "internal_error"
   | "rejected"
   | "server_shutdown";
-export type Id = string;
+export type Id1 = string;
 export type LastSeq = number;
 export type OwnerId1 = string;
 export type Retryable2 = boolean;
@@ -240,14 +248,14 @@ export type TurnStatus =
   "queued" | "running" | "waiting_input" | "completed" | "failed" | "cancelled";
 export type UpdatedAt = number | null;
 export type CreatedAt1 = number | null;
-export type Id1 = string;
+export type Id2 = string;
 export type Messages = {
   [k: string]: unknown;
 }[];
 export type Title = string;
 export type UpdatedAt1 = number | null;
 export type CreatedAt2 = number | null;
-export type Id2 = string;
+export type Id3 = string;
 export type Title1 = string;
 export type UpdatedAt2 = number | null;
 
@@ -270,7 +278,9 @@ export interface StartTurnCommand {
   auto_route?: AutoRoute;
   book_references?: BookReferences;
   capability?: Capability;
+  capability_once?: CapabilityOnce;
   config?: Config;
+  consult_partner_id?: ConsultPartnerId;
   content: Content;
   course_id?: CourseId;
   followup_question_context?: FollowupQuestionContext;
@@ -283,12 +293,15 @@ export interface StartTurnCommand {
   mastery_path_lease_managed?: MasteryPathLeaseManaged;
   mastery_session_mode?: MasterySessionMode;
   mastery_skip?: MasteryCardSkip | null;
+  mcp?: Mcp;
   memory_references?: MemoryReferences;
   notebook_references?: NotebookReferences;
   parent_message_id?: ParentMessageId;
+  partner_discussion_group_id?: PartnerDiscussionGroupId;
   partner_group_references?: PartnerGroupReferences;
   persist_user_message?: PersistUserMessage;
   persona?: Persona;
+  preserve_session_preferences?: PreserveSessionPreferences;
   protocol_version: ProtocolVersion;
   question_notebook_references?: QuestionNotebookReferences;
   reading_material_id?: ReadingMaterialId;
@@ -298,6 +311,7 @@ export interface StartTurnCommand {
   reading_workspace_id?: ReadingWorkspaceId;
   regenerate?: Regenerate;
   regenerated_from_message_id?: RegeneratedFromMessageId;
+  reply_language_override?: ReplyLanguageOverride;
   selection_tutor_context?: SelectionTutorContext;
   session_id?: SessionId;
   skills?: Skills;
@@ -307,6 +321,7 @@ export interface StartTurnCommand {
   timed_media_viewport?: TimedMediaViewport | null;
   tools?: Tools;
   type?: Type1;
+  workspace_id?: WorkspaceId;
   workspace_mode?: WorkspaceMode;
 }
 /**
@@ -316,6 +331,7 @@ export interface StartTurnCommand {
 export interface OutgoingAttachment {
   base64?: Base64;
   filename?: Filename;
+  id?: Id;
   mime_type?: MimeType;
   type: Type;
   url?: Url;
@@ -614,7 +630,7 @@ export interface ProtocolErrorEvent {
 export interface SessionDetail {
   active_turn?: TurnSummary | null;
   created_at?: CreatedAt1;
-  id: Id1;
+  id: Id2;
   messages?: Messages;
   preferences?: Preferences;
   title: Title;
@@ -629,7 +645,7 @@ export interface TurnSummary {
   created_at?: CreatedAt;
   error?: Error;
   error_code?: TurnFailureCode | null;
-  id: Id;
+  id: Id1;
   last_seq?: LastSeq;
   owner_id?: OwnerId1;
   query_state?: TurnQueryState | null;
@@ -648,7 +664,7 @@ export interface Preferences {
 export interface SessionSummary {
   active_turn?: TurnSummary | null;
   created_at?: CreatedAt2;
-  id: Id2;
+  id: Id3;
   title: Title1;
   updated_at?: UpdatedAt2;
 }

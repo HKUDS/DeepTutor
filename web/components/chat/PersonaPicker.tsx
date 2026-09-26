@@ -78,6 +78,7 @@ export default function PersonaPicker({
     >
       <div className="surface-card w-full max-w-3xl overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)] text-[var(--card-foreground)] shadow-[0_22px_70px_rgba(0,0,0,0.18)]">
         <PickerHeader
+          resourceKind="persona"
           icon={UserRound}
           titleId="persona-picker-title"
           title={t("Select Persona")}

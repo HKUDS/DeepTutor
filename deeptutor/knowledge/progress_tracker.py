@@ -47,6 +47,27 @@ class ProgressStage(Enum):
     ERROR = "error"  # Error
 
 
+def visible_progress(progress: dict, kb_dir: Path) -> dict:
+    """A prepared native terminal record is visible only after publication."""
+    version = progress.get("publication_version")
+    if progress.get("stage") != "completed" or not version:
+        return progress
+    from deeptutor.services.rag.pipelines.lightrag.storage import meta_is_native_published
+
+    if isinstance(version, str) and Path(version).name == version and version not in {".", ".."}:
+        if meta_is_native_published(kb_dir / version):
+            return progress
+    return {
+        **progress,
+        "stage": "processing_documents",
+        "message": "Finalizing index publication",
+        "message_key": "Finalizing index publication",
+        "message_params": {},
+        "progress_percent": 99,
+        "index_changed": False,
+    }
+
+
 class ProgressTracker:
     """Progress tracker"""
 
@@ -93,12 +114,14 @@ class ProgressTracker:
     def _save_progress(self, progress: dict):
         """Save progress to kb_config.json and local .progress.json file"""
         # Save to kb_config.json (centralized config)
+        stored_progress = progress
         try:
             from deeptutor.knowledge.manager import KnowledgeBaseManager
 
             manager = KnowledgeBaseManager(base_dir=str(self.base_dir))
 
-            # Determine status based on stage
+            # A prepared completion remains processing until its version is published.
+            progress = visible_progress(progress, self.kb_dir)
             stage = progress.get("stage", "")
             if stage == "completed":
                 status = "ready"
@@ -144,7 +167,7 @@ class ProgressTracker:
         # Persist the last seen progress snapshot so websocket subscribers and
         # page reloads can recover the live state without relying on in-memory callbacks.
         try:
-            atomic_write_json(self.progress_file, progress)
+            atomic_write_json(self.progress_file, stored_progress)
         except Exception as e:
             _logger_instance().warning(
                 "Failed to persist progress snapshot for '%s': %s", self.kb_name, e
@@ -165,6 +188,7 @@ class ProgressTracker:
         index_action: str | None = None,
         message_key: str | None = None,
         message_params: dict[str, object] | None = None,
+        publication_version: str | None = None,
     ):
         """Update progress.
 
@@ -205,6 +229,12 @@ class ProgressTracker:
         if retryable is not None:
             progress["retryable"] = retryable
 
+        if publication_version is not None:
+            progress["publication_version"] = publication_version
+        persisted_progress = progress
+        progress = visible_progress(progress, self.kb_dir)
+        message = str(progress["message"])
+
         # Output to logger (terminal and log file)
         try:
             logger = _logger_instance()
@@ -238,7 +268,7 @@ class ProgressTracker:
             if error:
                 fallback_logger.error("%s [ProgressTracker] Error: %s", prefix, error)
 
-        self._save_progress(progress)
+        self._save_progress(persisted_progress)
 
         if self.task_id:
             try:
@@ -250,12 +280,53 @@ class ProgressTracker:
 
         self._notify(progress)
 
+    def verify_terminal(
+        self,
+        *,
+        current: int,
+        total: int,
+        indexed_count: int,
+        index_action: str,
+        publication_version: str | None = None,
+    ) -> None:
+        """Fail publication if either required terminal persistence write was lost."""
+        expected = {
+            "stage": "completed",
+            "task_id": self.task_id,
+            "current": current,
+            "total": total,
+            "indexed_count": indexed_count,
+            "index_changed": True,
+            "index_action": index_action,
+            "progress_percent": 100,
+        }
+        if publication_version is not None:
+            expected["publication_version"] = publication_version
+        try:
+            with self.progress_file.open(encoding="utf-8") as handle:
+                persisted = json.load(handle)
+            if not isinstance(persisted, dict) or any(
+                persisted.get(key) != value for key, value in expected.items()
+            ):
+                raise ValueError("Terminal progress does not match this task.")
+            from deeptutor.knowledge.manager import KnowledgeBaseManager
+
+            manager = KnowledgeBaseManager(base_dir=str(self.base_dir))
+            entry = manager.get_kb_entry(self.kb_name) or {}
+            expected_status = "processing" if publication_version else "ready"
+            if entry.get("status") != expected_status:
+                raise ValueError("Knowledge-base status was not persisted.")
+            if publication_version and (entry.get("progress") or {}).get("task_id") != self.task_id:
+                raise ValueError("Knowledge-base progress belongs to another task.")
+        except Exception as exc:
+            raise RuntimeError("Index terminal state was not persisted.") from exc
+
     def get_progress(self) -> dict | None:
         """Get current progress"""
         if self.progress_file.exists():
             try:
                 with open(self.progress_file, encoding="utf-8") as f:
-                    return json.load(f)
+                    return visible_progress(json.load(f), self.kb_dir)
             except Exception as e:
                 _logger_instance().debug(f"Failed to read progress file for '{self.kb_name}': {e}")
 
