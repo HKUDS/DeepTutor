@@ -135,6 +135,11 @@ class DashScopeSTTAdapter(BaseSTTAdapter):
     ) -> str:
         if not audio:
             raise VoiceProviderError("No audio data to transcribe.")
+        if config.model in {"paraformer-realtime-8k-v1", "paraformer-realtime-8k-v2"}:
+            raise VoiceProviderError(
+                "DashScope 8k realtime models require 8000 Hz audio; "
+                "select paraformer-realtime-v2 for the 16000 Hz voice adapter."
+            )
         wav_audio = await self._prepare_wav(audio, filename, content_type)
         if not wav_audio:
             raise VoiceProviderError("Audio conversion returned an empty file.")

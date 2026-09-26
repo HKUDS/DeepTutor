@@ -380,11 +380,14 @@ STT_PROVIDERS: dict[str, VoiceProviderSpec] = {
         adapter="volcengine",
         default_model="bigmodel",
     ),
+    # DashScope's native adapter speaks the Paraformer real-time WebSocket API,
+    # which only accepts `paraformer-realtime-*` ids. `paraformer-v2` is a batch
+    # transcription id and the handshake fails with "Model not found".
     "dashscope": VoiceProviderSpec(
         label="Aliyun DashScope",
         default_api_base="https://dashscope.aliyuncs.com/api/v1",
         adapter="dashscope",
-        default_model="paraformer-v2",
+        default_model="paraformer-realtime-v2",
     ),
     "openai": VoiceProviderSpec(
         label="OpenAI",

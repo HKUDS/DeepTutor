@@ -31,12 +31,14 @@ from deeptutor.services.voice.adapters.openai_compat import (
     OpenRouterTTSAdapter,
 )
 from deeptutor.services.voice.base import (
+    VoiceProviderError,
     build_auth_headers,
     join_audio_path,
     normalize_stt_content_type,
     strip_markdown_for_speech,
 )
 from deeptutor.services.voice.config import STTConfig, TTSConfig
+from deeptutor.services.voice.options import voice_options
 
 
 def _capture_post(monkeypatch: pytest.MonkeyPatch, response: httpx.Response) -> dict[str, Any]:
@@ -472,7 +474,7 @@ async def test_dashscope_stt_recognition_websocket_shape() -> None:
 
     websocket.send_str = record_start  # type: ignore[method-assign]
     config = STTConfig(
-        model="paraformer-v2",
+        model="paraformer-realtime-v2",
         provider_name="dashscope",
         adapter="dashscope",
         base_url="https://dashscope.aliyuncs.com/api/v1",
@@ -483,7 +485,7 @@ async def test_dashscope_stt_recognition_websocket_shape() -> None:
 
     assert text == "hello world"
     start = json.loads(websocket.strings[0])
-    assert start["payload"]["model"] == "paraformer-v2"
+    assert start["payload"]["model"] == "paraformer-realtime-v2"
     assert start["payload"]["parameters"] == {"format": "wav", "sample_rate": 16000}
     assert websocket.chunks == [b"RIFFxxxx"]
     assert json.loads(websocket.strings[-1])["header"]["action"] == "finish-task"
@@ -495,6 +497,18 @@ def test_dashscope_stt_url_and_errors() -> None:
         "wss://dashscope.aliyuncs.com/api-ws/v1/inference"
     )
     assert adapter._sentence_texts({"sentence": {"text": "single"}}) == ["single"]
+
+
+def test_dashscope_stt_options_only_offer_supported_sample_rate() -> None:
+    models = voice_options("dashscope", "stt")["models"]
+    assert [model["id"] for model in models] == ["paraformer-realtime-v2"]
+
+
+@pytest.mark.asyncio
+async def test_dashscope_stt_rejects_8k_model_before_audio_conversion() -> None:
+    config = STTConfig(model="paraformer-realtime-8k-v2", api_key="dash-key")
+    with pytest.raises(VoiceProviderError, match="require 8000 Hz audio"):
+        await DashScopeSTTAdapter().transcribe(b"audio", config)
 
 
 @pytest.mark.asyncio
@@ -587,7 +601,7 @@ def test_resolve_dashscope_voice_configs() -> None:
         "voice": "",
     }
     catalog["services"]["stt"]["profiles"][0]["binding"] = "bailian"
-    catalog["services"]["stt"]["profiles"][0]["models"][0]["model"] = "paraformer-v2"
+    catalog["services"]["stt"]["profiles"][0]["models"][0]["model"] = "paraformer-realtime-v2"
 
     tts = resolve_tts_runtime_config(catalog=catalog)
     stt = resolve_stt_runtime_config(catalog=catalog)
@@ -599,7 +613,7 @@ def test_resolve_dashscope_voice_configs() -> None:
     assert tts.base_url == "https://dashscope.aliyuncs.com/api/v1"
     assert stt.provider_name == "dashscope"
     assert stt.adapter == "dashscope"
-    assert stt.model == "paraformer-v2"
+    assert stt.model == "paraformer-realtime-v2"
     assert stt.base_url == tts.base_url
 
 
