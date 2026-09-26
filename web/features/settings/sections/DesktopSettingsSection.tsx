@@ -263,6 +263,26 @@ export default function DesktopSettingsPage() {
           >
             <RefreshCw size={14} /> {t("Check for updates")}
           </button>
+          {/*
+            The runtime plane is a separate, explicit action: the shell asks for
+            a native confirmation and only then downloads and installs the pack,
+            so the "check" button above never installs anything by itself.
+          */}
+          <button
+            type="button"
+            className="ml-2 inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-2 text-xs disabled:opacity-50"
+            disabled={busy !== null}
+            onClick={() =>
+              void run("runtime", async () => {
+                const report = await checkUpdates({ install: true });
+                setShellUpdate(report.shell);
+                setMessage(report.runtime.detail);
+                await refresh();
+              })
+            }
+          >
+            <Download size={14} /> {t("Install runtime update")}
+          </button>
           {shellUpdate?.status === "available" && (
             <button
               type="button"

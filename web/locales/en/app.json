@@ -5030,5 +5030,6 @@
   "Update settings": "Update settings",
   "Round finished": "Round finished",
   "DeepTutor": "DeepTutor",
-  "Download and install {{version}}": "Download and install {{version}}"
+  "Download and install {{version}}": "Download and install {{version}}",
+  "Install runtime update": "Install runtime update"
 }

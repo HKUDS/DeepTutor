@@ -138,3 +138,22 @@ describe("file hand-off payloads", () => {
     expect(file.type).toBe("application/octet-stream");
   });
 });
+
+describe("update checks", () => {
+  it("checks without installing unless the caller asks to install", async () => {
+    const calls: Array<unknown> = [];
+    installShell(async (command, args) => {
+      calls.push({ command, args });
+      return { runtime: {}, shell: {} };
+    });
+
+    const { checkUpdates } = await import("@/lib/desktop-shell");
+    await checkUpdates();
+    await checkUpdates({ install: true });
+
+    expect(calls).toEqual([
+      { command: "plugin:deeptutor|check_updates", args: { install: false } },
+      { command: "plugin:deeptutor|check_updates", args: { install: true } },
+    ]);
+  });
+});

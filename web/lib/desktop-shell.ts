@@ -70,8 +70,9 @@ export interface ShellSettingsPatch {
   close_to_tray?: boolean;
   notifications?: boolean;
   locale?: string;
-  /** Empty string clears the catalog URL. */
-  pack_catalog?: string;
+  // No `pack_catalog`: the window is loopback-served, so the shell refuses to
+  // let it choose where updates come from (see `remote_settings_patch` in
+  // `plugins/tauri-plugin-deeptutor`). The snapshot still reports the value.
 }
 
 export interface NotificationRequest {
@@ -132,6 +133,8 @@ export interface UpdateReport {
     checked: boolean;
     source: string | null;
     updated: boolean;
+    /** Why the check/install failed, when it did (the `detail` line is prose). */
+    error?: string | null;
     active_pack: string | null;
     previous_pack: string | null;
     app_version: string | null;
@@ -153,34 +156,16 @@ export interface ShellUpdateInstall {
   detail: string;
 }
 
-/** Events the shell broadcasts; the `deeptutor://` prefix is the shell's. */
-export const SHELL_EVENTS = {
-  openRequest: "deeptutor://open-request",
-  notificationTarget: "deeptutor://notification-target",
-  shellSettings: "deeptutor://shell-settings",
-  updateReport: "deeptutor://update-report",
-  downloadStarted: "deeptutor://download-started",
-  downloadFinished: "deeptutor://download-finished",
-} as const;
-
 /**
- * DOM event the bridge re-broadcasts when a hand-off produced files.
- *
- * The chat composer already knows how to take `File` objects (that is what a
- * drag-and-drop or a paste gives it), so the shell's path-based hand-off is
- * converted into the same currency instead of growing a second upload path.
+ * Event names, the attach event and its payload shape live in their own module
+ * so a route that only listens for a hand-off does not import the IPC bridge.
+ * Re-exported here to keep this module the one place callers import from.
  */
-export const DESKTOP_ATTACH_EVENT = "deeptutor:desktop-attach-files";
-
-export interface DesktopAttachDetail {
-  files: File[];
-  source: string;
-  /**
-   * Set by whichever composer takes the batch, so the bridge knows the files
-   * landed instead of leaving them queued forever.
-   */
-  acknowledged?: boolean;
-}
+export {
+  DESKTOP_ATTACH_EVENT,
+  SHELL_EVENTS,
+  type DesktopAttachDetail,
+} from "@/lib/desktop-events";
 
 interface TauriGlobal {
   core?: { invoke?: (command: string, args?: unknown) => Promise<unknown> };
@@ -300,8 +285,19 @@ export function pickFolder(options?: { title?: string }): Promise<string> {
   return desktopInvoke<string>("pick_folder", { options: options ?? {} });
 }
 
-export function checkUpdates(): Promise<UpdateReport> {
-  return desktopInvoke<UpdateReport>("check_updates");
+/**
+ * Ask about both update planes.
+ *
+ * Read-only by default. `install` only covers the **runtime pack** plane, and
+ * even then the shell asks for a native confirmation before it downloads and
+ * executes anything — the caller cannot install by passing a flag alone.
+ */
+export function checkUpdates(options?: {
+  install?: boolean;
+}): Promise<UpdateReport> {
+  return desktopInvoke<UpdateReport>("check_updates", {
+    install: options?.install ?? false,
+  });
 }
 
 /**

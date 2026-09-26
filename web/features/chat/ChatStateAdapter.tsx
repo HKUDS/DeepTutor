@@ -77,7 +77,6 @@ import {
   resolveLoadedRunStatus,
 } from "@/lib/chat-idle-recovery";
 import i18n from "i18next";
-import { notifyDesktopRoundComplete } from "@/features/desktop/round-notification";
 import {
   normalizeBookReferences,
   type BookReferencePayload,
@@ -1783,18 +1782,32 @@ export function ChatStateAdapterProvider({
           // Desktop shell only: a round that finishes while the app is in the
           // background posts a system notification whose target is this
           // session. Browser/CLI mode is a no-op inside the helper.
-          const finished = stateRef.current.sessions[effectiveKey];
-          const lastAssistant = [...(finished?.messages ?? [])]
-            .reverse()
-            .find((message) => message.role === "assistant");
-          notifyDesktopRoundComplete({
-            sessionId: finished?.sessionId ?? null,
-            sessionTitle: finished?.sessionTitle ?? null,
-            content: lastAssistant?.rawContent ?? lastAssistant?.content ?? null,
-            backgrounded:
-              typeof document !== "undefined" &&
-              (document.hidden || !document.hasFocus()),
-          });
+          //
+          // Imported lazily on purpose: the bridge is dead weight in a browser
+          // (where it returns immediately) and the chat route sits right on its
+          // own bundle budget, so it must not be part of the first paint.
+          if (
+            typeof document !== "undefined" &&
+            (document.hidden || !document.hasFocus())
+          ) {
+            const finished = stateRef.current.sessions[effectiveKey];
+            const lastAssistant = [...(finished?.messages ?? [])]
+              .reverse()
+              .find((message) => message.role === "assistant");
+            void import("@/features/desktop/round-notification")
+              .then(({ notifyDesktopRoundComplete }) => {
+                notifyDesktopRoundComplete({
+                  sessionId: finished?.sessionId ?? null,
+                  sessionTitle: finished?.sessionTitle ?? null,
+                  content:
+                    lastAssistant?.rawContent ?? lastAssistant?.content ?? null,
+                  backgrounded: true,
+                });
+              })
+              .catch(() => {
+                /* a missing banner is not worth surfacing */
+              });
+          }
           const assistantMessageId = doneMeta?.assistant_message_id ?? null;
           if (assistantMessageId != null) {
             dispatch({

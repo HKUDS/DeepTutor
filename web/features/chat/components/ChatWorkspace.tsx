@@ -5,10 +5,13 @@ import { retainedKnowledgeBases } from "@/lib/resource-reuse";
 import { knowledgeBaseRef } from "@/lib/knowledge-helpers";
 import { scopedUrl } from "@/lib/workspace-scope";
 import { WATCHING_HOME, watchingRoute } from "@/lib/learning-routes";
+// From `desktop-events`, not `desktop-shell`: this component only needs the
+// event name, and the IPC bridge belongs in the root shell, not in the chat
+// route's first paint.
 import {
   DESKTOP_ATTACH_EVENT,
   type DesktopAttachDetail,
-} from "@/lib/desktop-shell";
+} from "@/lib/desktop-events";
 
 import {
   WatchingSessionBridge,

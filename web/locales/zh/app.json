@@ -5030,5 +5030,6 @@
   "Update settings": "更新设置",
   "Round finished": "回合完成",
   "DeepTutor": "DeepTutor",
-  "Download and install {{version}}": "下载并安装 {{version}}"
+  "Download and install {{version}}": "下载并安装 {{version}}",
+  "Install runtime update": "安装运行时更新"
 }

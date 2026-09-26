@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import i18n from "i18next";
 
 import {
   DESKTOP_ATTACH_EVENT,
@@ -12,10 +13,14 @@ import {
   onShellEvent,
   readLocalFile,
   shellLog,
+  shellSettings,
   takeNotificationTarget,
   takeOpenRequest,
+  updateShellSettings,
   type DesktopAttachDetail,
+  type NotificationTarget,
 } from "@/lib/desktop-shell";
+import { safeRoute } from "@/lib/in-app-route";
 
 /** How often the queues are re-checked when the event channel is unavailable. */
 const POLL_INTERVAL_MS = 5000;
@@ -82,7 +87,8 @@ export default function DesktopBridge() {
       const request = await takeOpenRequest();
       if (!request) return;
       if (request.kind === "route" && request.route) {
-        go(request.route);
+        const route = safeRoute(request.route);
+        if (route) go(route);
         continue;
       }
       if (request.kind !== "file" || !request.path) continue;
@@ -103,7 +109,8 @@ export default function DesktopBridge() {
 
   const drainNotificationTarget = useCallback(async () => {
     const target = await takeNotificationTarget();
-    if (target?.route) go(target.route);
+    const route = safeRoute(target?.route);
+    if (route) go(route);
   }, [go]);
 
   const drainAll = useCallback(async () => {
@@ -134,7 +141,18 @@ export default function DesktopBridge() {
 
     const unsubscribe: Array<() => void> = [
       onShellEvent(SHELL_EVENTS.openRequest, () => void drainAll()),
-      onShellEvent(SHELL_EVENTS.notificationTarget, () => void drainAll()),
+      // The shell *claims* the target before announcing it (`take` is
+      // destructive) and puts it in the payload, so navigating has to use the
+      // payload: draining again would find an empty queue and silently drop
+      // the "come back to that session" hand-off.
+      onShellEvent<NotificationTarget | null>(
+        SHELL_EVENTS.notificationTarget,
+        (target) => {
+          const route = safeRoute(target?.route);
+          if (route) go(route);
+          else void drainAll();
+        },
+      ),
       // Settings changed from the menu bar: re-broadcast for the open settings
       // page, which would otherwise show a stale toggle.
       onShellEvent(SHELL_EVENTS.shellSettings, (payload) => {
@@ -183,6 +201,38 @@ export default function DesktopBridge() {
     if (!pathnameRef.current?.startsWith(CHAT_ROUTE)) go(CHAT_ROUTE);
     flushFiles();
   }, [flushFiles, go, pathname]);
+
+  /**
+   * Keep the shell's own language in step with the app's.
+   *
+   * The shell writes the surfaces the web app cannot reach — native dialogs, the
+   * menu bar, the `detail` lines this page prints verbatim — in the language it
+   * was configured with. The web app is the side that knows what the user is
+   * actually reading, so it pushes its language up once at startup and again on
+   * every language change, and only when the two actually disagree.
+   */
+  useEffect(() => {
+    if (!isDesktopShell()) return;
+    const knownShellLocale = { current: null as string | null };
+    const sync = () => {
+      const code = i18n.language?.toLowerCase().startsWith("zh") ? "zh-CN" : "en";
+      if (knownShellLocale.current === code) return;
+      knownShellLocale.current = code;
+      void updateShellSettings({ locale: code }).catch((error: unknown) => {
+        void shellLog(`could not sync the shell language: ${String(error)}`);
+      });
+    };
+    void shellSettings()
+      .then((settings) => {
+        knownShellLocale.current = settings.locale;
+        sync();
+      })
+      .catch(() => sync());
+    i18n.on("languageChanged", sync);
+    return () => {
+      i18n.off("languageChanged", sync);
+    };
+  }, []);
 
   return null;
 }
