@@ -30,6 +30,7 @@ export type PageIds = string[];
 export type BookReferences = BookReference[];
 export type Capability = string | null;
 export type CapabilityOnce = boolean;
+export type ClientSubmissionId = string | null;
 export type ConsultPartnerId = string | null;
 export type Content = string;
 export type CourseId = string | null;
@@ -279,6 +280,7 @@ export interface StartTurnCommand {
   book_references?: BookReferences;
   capability?: Capability;
   capability_once?: CapabilityOnce;
+  client_submission_id?: ClientSubmissionId;
   config?: Config;
   consult_partner_id?: ConsultPartnerId;
   content: Content;

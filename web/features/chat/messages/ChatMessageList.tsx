@@ -142,6 +142,9 @@ interface ChatMessageItem {
   attachments?: MessageAttachment[];
   requestSnapshot?: MessageRequestSnapshot;
   parentMessageId?: number | null;
+  /** The server never accepted this submission (#1594) — rendered as an
+   *  unsent message, not an ordinary sent one. */
+  failedSubmission?: boolean;
 }
 
 interface NotebookReferenceGroup {
@@ -1784,6 +1787,18 @@ export const UserMessage = memo(function UserMessage({
             <div className="whitespace-pre-wrap">{msg.content}</div>
           </div>
         )}
+        {/* Unsent marker (#1594): this text never reached the server, so the
+            bubble must not read as an ordinary sent message. The error and
+            retry live next to the composer, not on an assistant bubble. */}
+        {!editing && msg.failedSubmission ? (
+          <div
+            data-unsent="true"
+            className="flex items-center gap-1 pr-1 text-[11px] font-medium text-[var(--destructive)]"
+          >
+            <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />
+            {t("Not sent")}
+          </div>
+        ) : null}
         {!editing && refTreeItems.length > 0 && (
           <div className="pr-1">
             <ContextReferenceTree

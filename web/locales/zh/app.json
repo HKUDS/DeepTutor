@@ -349,6 +349,7 @@
   "Reference space": "引用空间",
   "Connection lost while generating. Please retry your message.": "生成过程中连接已断开，请重新发送消息。",
   "Couldn't reach the server. Please check your connection and retry.": "无法连接到服务器，请检查网络后重试。",
+  "Message text was saved, but its attachments or settings could not be restored. Copy it and send again.": "消息文字已保存，但附件或设置无法恢复。请复制文字并重新发送。",
   "Today": "今天",
   "Yesterday": "昨天",
   "Last 7 days": "最近 7 天",
@@ -911,6 +912,7 @@
   "No deleted chats": "没有已删除的对话",
   "Permanently delete this session?": "确定要彻底删除此对话吗？",
   "Resend": "重新发送",
+  "Not sent": "未发送",
   "Up to date": "已最新",
   "Update available": "有新版本",
   "Run Tour": "运行引导",
@@ -5230,5 +5232,7 @@
   "kanban.showArchived": "显示已归档",
   "kanban.showActive": "显示未归档",
   "kanban.restore": "恢复",
-  "kanban.emptyArchive": "没有已归档任务"
+  "kanban.emptyArchive": "没有已归档任务",
+  "This unsent message could not be saved in your browser. Copy it before leaving this page.": "这条未发送的消息无法保存到浏览器。离开此页面前请先复制。",
+  "Some unsent messages could not be moved into this conversation. Open a new chat to recover them.": "部分未发送的消息无法转入此对话。请打开新对话找回。"
 }

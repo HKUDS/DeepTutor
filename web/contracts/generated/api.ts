@@ -15094,6 +15094,11 @@ export interface components {
        * @default false
        */
       readonly capability_once: boolean;
+      /**
+       * Client Submission Id
+       * @default null
+       */
+      readonly client_submission_id: string | null;
       /** Config */
       readonly config?: {
         readonly [key: string]: unknown;

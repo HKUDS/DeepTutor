@@ -335,6 +335,7 @@
   "Reference space": "Простір посилань",
   "Connection lost while generating. Please retry your message.": "З'єднання втрачено під час генерації. Будь ласка, повторіть повідомлення.",
   "Couldn't reach the server. Please check your connection and retry.": "Не вдалося з'єднатися з сервером. Перевірте підключення та повторіть спробу.",
+  "Message text was saved, but its attachments or settings could not be restored. Copy it and send again.": "Текст повідомлення збережено, але вкладення або налаштування не вдалося відновити. Скопіюйте текст і надішліть його знову.",
   "Today": "Сьогодні",
   "Yesterday": "Вчора",
   "Last 7 days": "Останні 7 днів",
@@ -4062,6 +4063,7 @@
   "No deleted chats": "Немає видалених чатів",
   "Permanently delete this session?": "Назавжди видалити цей сеанс?",
   "Resend": "Надіслати повторно",
+  "Not sent": "Не надіслано",
   "Ready · {{count}} doc": "Готово · {{count}} документ",
   "Ready · {{count}} docs": "Готово · {{count}} документів",
   "MCP": "MCP",
@@ -5246,5 +5248,7 @@
   "kanban.showArchived": "Показати архівні",
   "kanban.showActive": "Показати активні",
   "kanban.restore": "Відновити",
-  "kanban.emptyArchive": "Немає архівних завдань"
+  "kanban.emptyArchive": "Немає архівних завдань",
+  "This unsent message could not be saved in your browser. Copy it before leaving this page.": "Не вдалося зберегти це ненадіслане повідомлення у браузері. Скопіюйте його, перш ніж залишити цю сторінку.",
+  "Some unsent messages could not be moved into this conversation. Open a new chat to recover them.": "Деякі ненадіслані повідомлення не вдалося перенести до цієї розмови. Відкрийте новий чат, щоб відновити їх."
 }

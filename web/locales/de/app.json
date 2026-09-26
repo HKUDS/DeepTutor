@@ -349,6 +349,7 @@
   "Reference space": "Referenzbereich",
   "Connection lost while generating. Please retry your message.": "Verbindung während der Erstellung verloren. Bitte sende deine Nachricht erneut.",
   "Couldn't reach the server. Please check your connection and retry.": "Der Server war nicht erreichbar. Prüf deine Verbindung und versuch es noch einmal.",
+  "Message text was saved, but its attachments or settings could not be restored. Copy it and send again.": "Der Nachrichtentext wurde gespeichert, aber Anhänge oder Einstellungen konnten nicht wiederhergestellt werden. Kopiere den Text und sende ihn erneut.",
   "Today": "Heute",
   "Yesterday": "Gestern",
   "Last 7 days": "Letzte 7 Tage",
@@ -882,6 +883,7 @@
   "No deleted chats": "Keine gelöschten Chats",
   "Permanently delete this session?": "Diese Session endgültig löschen?",
   "Resend": "Erneut senden",
+  "Not sent": "Nicht gesendet",
   "Up to date": "Auf dem neuesten Stand",
   "Update available": "Update verfügbar",
   "Run Tour": "Tour starten",
@@ -5230,5 +5232,7 @@
   "kanban.showArchived": "Archivierte anzeigen",
   "kanban.showActive": "Aktive anzeigen",
   "kanban.restore": "Wiederherstellen",
-  "kanban.emptyArchive": "Keine archivierten Aufgaben"
+  "kanban.emptyArchive": "Keine archivierten Aufgaben",
+  "This unsent message could not be saved in your browser. Copy it before leaving this page.": "Diese nicht gesendete Nachricht konnte nicht im Browser gespeichert werden. Kopiere sie, bevor du diese Seite verlässt.",
+  "Some unsent messages could not be moved into this conversation. Open a new chat to recover them.": "Einige nicht gesendete Nachrichten konnten nicht in diese Unterhaltung übernommen werden. Öffne einen neuen Chat, um sie wiederherzustellen."
 }

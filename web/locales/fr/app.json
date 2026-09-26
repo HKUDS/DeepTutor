@@ -459,6 +459,7 @@
   "Reference space": "Espace de référence",
   "Connection lost while generating. Please retry your message.": "Connexion perdue pendant la génération. Veuillez renvoyer votre message.",
   "Couldn't reach the server. Please check your connection and retry.": "Impossible de joindre le serveur. Vérifiez votre connexion et réessayez.",
+  "Message text was saved, but its attachments or settings could not be restored. Copy it and send again.": "Le texte du message a été enregistré, mais les pièces jointes ou les paramètres n’ont pas pu être restaurés. Copiez le texte et renvoyez-le.",
   "Today": "Aujourd'hui",
   "Yesterday": "Hier",
   "Last 7 days": "7 derniers jours",
@@ -4285,6 +4286,7 @@
   "Interrupted": "Interrompu",
   "Cancelling…": "Annulation…",
   "Resend": "Renvoyer",
+  "Not sent": "Non envoyé",
   "Or upload a folder (one-time import)": "Ou importer un dossier (importation unique)",
   "Choosing a folder here is a one-time import. For a folder that stays in sync, use Linked folders.": "Choisir un dossier ici lance une importation unique. Pour garder un dossier synchronisé, utilisez les dossiers liés.",
   "Linked folders": "Dossiers liés",
@@ -5674,5 +5676,7 @@
   "kanban.showArchived": "Afficher les archives",
   "kanban.showActive": "Afficher les tâches actives",
   "kanban.restore": "Restaurer",
-  "kanban.emptyArchive": "Aucune tâche archivée"
+  "kanban.emptyArchive": "Aucune tâche archivée",
+  "This unsent message could not be saved in your browser. Copy it before leaving this page.": "Ce message non envoyé n’a pas pu être enregistré dans votre navigateur. Copiez-le avant de quitter cette page.",
+  "Some unsent messages could not be moved into this conversation. Open a new chat to recover them.": "Certains messages non envoyés n’ont pas pu être transférés dans cette conversation. Ouvrez une nouvelle discussion pour les récupérer."
 }

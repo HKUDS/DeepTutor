@@ -35,3 +35,22 @@ test("Resend translations exist in en and zh", () => {
   assert.equal(en.Resend, "Resend");
   assert.equal(zh.Resend, "重新发送");
 });
+
+test("failed submissions stay visibly unsent and recoverable (#1594)", () => {
+  const adapter = source("features/chat/ChatStateAdapter.tsx");
+  assert.match(adapter, /storeFailedSubmission/);
+  assert.match(adapter, /readFailedSubmission/);
+  assert.match(adapter, /clearFailedSubmission/);
+  assert.match(adapter, /submissionFailed: true/);
+  const list = source("features/chat/messages/ChatMessageList.tsx");
+  assert.match(list, /failedSubmission/);
+  assert.match(list, /data-unsent="true"/);
+  assert.match(list, /Not sent/);
+  const workspace = source("features/chat/components/ChatWorkspace.tsx");
+  assert.match(workspace, /state\.submissionFailed/);
+  assert.match(workspace, /data-submission-error="true"/);
+  const en = JSON.parse(source("locales/en/app.json"));
+  const zh = JSON.parse(source("locales/zh/app.json"));
+  assert.equal(en["Not sent"], "Not sent");
+  assert.equal(zh["Not sent"], "未发送");
+});

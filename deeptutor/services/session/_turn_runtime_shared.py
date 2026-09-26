@@ -951,7 +951,11 @@ def _request_snapshot_metadata(
         snapshot["timedMediaId"] = timed_media_id
     if llm_selection:
         snapshot["llmSelection"] = llm_selection
-    return {"request_snapshot": snapshot}
+    metadata: dict[str, Any] = {"request_snapshot": snapshot}
+    client_submission_id = payload.get("client_submission_id")
+    if isinstance(client_submission_id, str) and client_submission_id:
+        metadata["client_submission_id"] = client_submission_id
+    return metadata
 
 
 def _format_question_bank_entry(entry: dict[str, Any]) -> str:

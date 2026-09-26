@@ -49,10 +49,72 @@ test("a failed user persisted during socket loss is reconciled before regenerate
   );
 });
 
+test("an identical user row from another tab cannot claim an unsent submission", () => {
+  const lastUser = {
+    id: -3,
+    parentMessageId: 2,
+    failedSubmissionId: "my-submission",
+    requestSnapshot: { content: "same text" },
+  };
+  const remote = {
+    status: "failed",
+    messages: [
+      { id: 1, role: "user" as const, content: "old" },
+      { id: 2, role: "assistant" as const, content: "done" },
+      {
+        id: 3, role: "user" as const, content: "same text",
+        parent_message_id: 2,
+        metadata: { client_submission_id: "other-tab" },
+      },
+    ],
+  };
+  assert.deepEqual(decideFailedTurnReplay(
+    [{ id: 1 }, { id: 2 }, lastUser], lastUser, remote,
+  ), { kind: "resend" });
+  assert.deepEqual(decideFailedTurnReplay(
+    [{ id: 1 }, { id: 2 }, lastUser], lastUser,
+    { ...remote, messages: [...remote.messages.slice(0, 2), {
+      ...remote.messages[2], metadata: { client_submission_id: "my-submission" },
+    }] },
+  ), { kind: "reconcile_regenerate", userId: 3 });
+});
+
+test("a newer user turn prevents regenerating the wrong persisted submission", () => {
+  const lastUser = {
+    id: -3, parentMessageId: 2, failedSubmissionId: "my-submission",
+    requestSnapshot: { content: "my text" },
+  };
+  assert.deepEqual(decideFailedTurnReplay(
+    [{ id: 1 }, { id: 2 }, lastUser], lastUser,
+    { status: "failed", messages: [
+      { id: 3, role: "user", content: "my text", parent_message_id: 2,
+        metadata: { client_submission_id: "my-submission" } },
+      { id: 4, role: "user", content: "later turn", parent_message_id: 3,
+        metadata: { client_submission_id: "other-tab" } },
+    ] },
+  ), { kind: "refresh" });
+});
+
 test("resend is unavailable when the failed tail is hidden by branch selection", () => {
   const root = { id: 1, role: "user" as const, parentMessageId: null };
   const older = { id: 2, role: "assistant" as const, parentMessageId: 1 };
   const newer = { id: 3, role: "assistant" as const, parentMessageId: 1 };
   assert.equal(isFailedTurnVisible([root, older, newer], { "1": 2 }, "failed", false), false);
   assert.equal(isFailedTurnVisible([root, older, newer], { "1": 3 }, "failed", false), true);
+});
+
+test("an unsent submission tail is retryable without an assistant row (#1594)", () => {
+  const root = { id: 1, role: "user" as const, parentMessageId: null };
+  const reply = { id: 2, role: "assistant" as const, parentMessageId: 1 };
+  const unsent = { id: -3, role: "user" as const, parentMessageId: 2, failedSubmission: true };
+  // A submission the server never received leaves the flagged user row as
+  // the tail — that row is the retry handle.
+  assert.equal(isFailedTurnVisible([root, reply, unsent], {}, "failed", false), true);
+  // Without the flag (ordinary optimistic row mid-submit) or while streaming,
+  // no retry affordance is derived from it.
+  assert.equal(
+    isFailedTurnVisible([root, reply, { ...unsent, failedSubmission: false }], {}, "failed", false),
+    false,
+  );
+  assert.equal(isFailedTurnVisible([root, reply, unsent], {}, "failed", true), false);
 });

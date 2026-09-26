@@ -28,6 +28,7 @@ import { useChatRouteSession } from "@/features/chat/controllers/useChatRouteSes
 import { waitForReplyLanguageSave } from "@/features/chat/controllers/reply-language-save";
 
 import {
+  AlertCircle,
   GraduationCap,
   NotebookPen,
   PenLine,
@@ -2680,6 +2681,40 @@ export default function ChatWorkspace({
                 </div>
               )}
 
+              {/* Submission failure banner (#1594): the server never received
+                 the message, so the error belongs next to the composer — not
+                 rendered as an assistant reply — with the message's text kept
+                 above, marked unsent, and retryable. */}
+              {state.submissionFailed ? (
+                <div
+                  role="alert"
+                  data-submission-error="true"
+                  className="mx-auto w-full max-w-[960px] px-6 pb-1"
+                >
+                  <div className="flex w-full items-center gap-2 rounded-xl border border-[var(--destructive)]/30 bg-[var(--destructive)]/5 px-3 py-2">
+                    <AlertCircle
+                      className="h-4 w-4 shrink-0 text-[var(--destructive)]"
+                      aria-hidden="true"
+                    />
+                    <span className="min-w-0 flex-1 text-[12px] leading-[1.5] text-[var(--foreground)]">
+                      {state.submissionNotSaved
+                        ? t("This unsent message could not be saved in your browser. Copy it before leaving this page.")
+                        : state.submissionNeedsReview
+                        ? t("Message text was saved, but its attachments or settings could not be restored. Copy it and send again.")
+                        : t("Couldn't reach the server. Please check your connection and retry.")}
+                    </span>
+                    {!state.submissionNeedsReview ? (
+                      <button
+                        type="button"
+                        onClick={handleResendMessage}
+                        className="shrink-0 rounded-md px-2 py-1 text-[11.5px] font-medium text-[var(--foreground)] hover:bg-[var(--muted)]"
+                      >
+                        {t("Resend")}
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
               <ChatComposer
                 composerRef={composerRef}
                 capMenuRef={capMenuRef}
