@@ -3,10 +3,12 @@
 import { activeWorkspaceId } from "@/lib/workspace-scope";
 import {
   clearFailedSubmission,
-  readFailedSubmission,
+  readFailedSubmissions,
   serverContainsFailedSubmission,
   storeFailedSubmission,
+  type FailedSubmissionRecord,
 } from "@/lib/failed-submissions";
+import { randomUuid } from "@/lib/random-uuid";
 
 import React, {
   createContext,
@@ -125,6 +127,8 @@ export interface SendMessageOptions {
   displayUserMessage?: boolean;
   persistUserMessage?: boolean;
   requestSnapshotOverride?: MessageRequestSnapshot;
+  /** Internal resend identity: reuse the original server correlation token. */
+  retrySubmissionId?: string;
   bookReferences?: BookReferencePayload[];
   readingReferences?: ReadingReferencePayload[];
   /** Edit-branching: when set, the new user message is inserted as a
@@ -311,6 +315,7 @@ export interface MessageItem {
    *  "unsent" marker; its requestSnapshot drives the retry. */
   failedSubmission?: boolean;
   failedSubmissionNeedsReview?: boolean;
+  failedSubmissionId?: string;
 }
 
 interface SessionEntry extends Omit<ChatState, "sessionKey"> {
@@ -380,6 +385,7 @@ type Action =
       attachments?: MessageAttachment[];
       requestSnapshot?: MessageRequestSnapshot;
       parentMessageId?: number | null;
+      failedSubmissionId?: string;
     }
   | { type: "POP_LAST_ASSISTANT"; key: string }
   | { type: "RESTORE_ASSISTANT"; key: string; message: MessageItem }
@@ -437,7 +443,7 @@ type Action =
       key?: string;
       configuration: SessionConfiguration;
     }
-  | { type: "ENSURE_DRAFT_SESSION"; key: string }
+  | { type: "ENSURE_DRAFT_SESSION"; key: string; failedRecords?: FailedSubmissionRecord[] }
   | {
       type: "SET_SELECTED_BRANCH";
       key: string;
@@ -485,6 +491,40 @@ function createSessionEntry(
     lastTurnFailed: false,
     submissionFailed: false,
     submissionNeedsReview: false,
+  };
+}
+
+function draftFailedSubmissionKey(): string {
+  return `draft:${activeWorkspaceId() || "general"}`;
+}
+
+function restoredFailedMessage(
+  record: FailedSubmissionRecord,
+  parentMessageId: number | null,
+): MessageItem {
+  const stored = record.requestSnapshot;
+  const base: Record<string, unknown> =
+    typeof stored === "object" && stored !== null
+      ? (stored as Record<string, unknown>)
+      : {};
+  const snapshot = {
+    ...base,
+    content: record.content,
+    enabledTools: Array.isArray(base.enabledTools) ? base.enabledTools : [],
+    knowledgeBases: Array.isArray(base.knowledgeBases) ? base.knowledgeBases : [],
+    language: typeof base.language === "string" ? base.language : "en",
+  } as MessageRequestSnapshot;
+  return {
+    id: nextOptimisticId(),
+    role: "user",
+    content: record.content,
+    capability: record.capability,
+    parentMessageId,
+    ...(snapshot.attachments?.length ? { attachments: snapshot.attachments } : {}),
+    requestSnapshot: snapshot,
+    failedSubmission: true,
+    failedSubmissionNeedsReview: record.retryRequiresReview,
+    failedSubmissionId: record.submissionId,
   };
 }
 
@@ -706,6 +746,9 @@ function reducer(state: ProviderState, action: Action): ProviderState {
                   : {}),
                 ...(action.requestSnapshot
                   ? { requestSnapshot: action.requestSnapshot }
+                  : {}),
+                ...(action.failedSubmissionId
+                  ? { failedSubmissionId: action.failedSubmissionId }
                   : {}),
               },
             ],
@@ -1350,9 +1393,26 @@ function reducer(state: ProviderState, action: Action): ProviderState {
     // The check belongs here rather than in the caller because a mount effect
     // only ever sees the state of the render that created it, which is stale
     // the moment anything else has dispatched.
-    case "ENSURE_DRAFT_SESSION":
+    case "ENSURE_DRAFT_SESSION": {
       if (state.selectedKey && state.sessions[state.selectedKey]) return state;
-      return selectFreshDraft(state, action.key);
+      const fresh = selectFreshDraft(state, action.key);
+      if (!action.failedRecords?.length) return fresh;
+      const messages: MessageItem[] = [];
+      for (const record of action.failedRecords) {
+        messages.push(restoredFailedMessage(record, messages.at(-1)?.id ?? null));
+      }
+      return {
+        ...fresh,
+        sessions: {
+          ...fresh.sessions,
+          [action.key]: {
+            ...fresh.sessions[action.key],
+            messages,
+            status: "failed",
+          },
+        },
+      };
+    }
     default:
       return state;
   }
@@ -1697,6 +1757,9 @@ export function ChatStateAdapterProvider({
   // or ``nothing_to_regenerate``). Keyed by session entry key.
   const pendingRegenerateRef = useRef<Map<string, MessageItem>>(new Map());
   const pendingResendRef = useRef<Map<string, MessageItem>>(new Map());
+  const pendingSubmissionIdsRef = useRef<
+    Map<string, { storageKey: string; submissionId: string }>
+  >(new Map());
   const resolvingResendRef = useRef<Set<string>>(new Set());
   const traceCacheRef = useRef<TraceCache>(new TraceCache());
   const traceRequestsRef = useRef<Map<string, AbortController>>(new Map());
@@ -1825,6 +1888,11 @@ export function ChatStateAdapterProvider({
           event.turn_id ||
           null;
         if (sessionId) {
+          const pendingSubmission = pendingSubmissionIdsRef.current.get(effectiveKey);
+          if (pendingSubmission) {
+            pendingSubmissionIdsRef.current.delete(effectiveKey);
+            pendingSubmissionIdsRef.current.set(sessionId, pendingSubmission);
+          }
           dispatch({
             type: "BIND_SERVER_SESSION",
             key: effectiveKey,
@@ -1885,9 +1953,16 @@ export function ChatStateAdapterProvider({
           (event.metadata as { status?: string } | undefined)?.status ||
             "completed",
         );
-        // The server finished this turn, so it owns the transcript from
-        // here — any locally stored "unproven submission" for it is stale.
-        clearFailedSubmission(effectiveKey);
+        // DONE identifies a persisted user row. Clear only this submission;
+        // earlier failed sends in the same conversation remain recoverable.
+        const pendingSubmission = pendingSubmissionIdsRef.current.get(effectiveKey);
+        const doneUserMessageId = (event.metadata as {
+          user_message_id?: number | string | null;
+        } | undefined)?.user_message_id;
+        if (pendingSubmission && doneUserMessageId != null) {
+          clearFailedSubmission(pendingSubmission.storageKey, pendingSubmission.submissionId);
+        }
+        pendingSubmissionIdsRef.current.delete(effectiveKey);
         dispatch({
           type: "STREAM_END",
           key: effectiveKey,
@@ -1963,22 +2038,27 @@ export function ChatStateAdapterProvider({
         }
         return;
       }
-      dispatch({ type: "STREAM_EVENT", key: effectiveKey, event });
-      if (
-        event.type === "error" &&
-        Boolean(
-          (event.metadata as { turn_terminal?: boolean } | undefined)
-            ?.turn_terminal,
-        )
-      ) {
-        const reason = String(
-          (event.metadata as { reason?: string } | undefined)?.reason || "",
-        );
+      const terminalError = event.type === "error" &&
+        Boolean((event.metadata as { turn_terminal?: boolean } | undefined)?.turn_terminal);
+      const reason = terminalError
+        ? String((event.metadata as { reason?: string } | undefined)?.reason || "")
+        : "";
+      const submissionRejected = new Set([
+        "start_turn_rejected", "invalid_command", "invalid_json",
+        "unsupported_protocol_version", "unknown_message_type",
+      ]).has(reason);
+      // An admission rejection is not an assistant reply. Keep the
+      // placeholder empty so STREAM_END can flag the optimistic user row.
+      if (!submissionRejected) {
+        dispatch({ type: "STREAM_EVENT", key: effectiveKey, event });
+      }
+      if (terminalError) {
         // Pre-flight regenerate rejections never mutate server state, so we
         // roll back the optimistic POP_LAST_ASSISTANT/STREAM_START placeholder
         // to keep the transcript in sync with the server.
         if (
           reason === "regenerate_busy" ||
+          reason === "regenerate_rejected" ||
           reason === "nothing_to_regenerate" ||
           reason === "start_turn_rejected"
         ) {
@@ -1995,10 +2075,11 @@ export function ChatStateAdapterProvider({
         }
         pendingRegenerateRef.current.delete(effectiveKey);
         pendingResendRef.current.delete(effectiveKey);
-        // A terminal error is server-generated: the turn was accepted, so
-        // the stored submission record (if any) must not resurrect the text
-        // as "unsent" after a reload (#1594).
-        clearFailedSubmission(effectiveKey);
+        // start_turn_rejected happens before the server creates a turn or
+        // user row. Other terminal errors are not causal proof that the user
+        // row was persisted either; transcript reconciliation uses the
+        // client_submission_id stored on that row.
+        pendingSubmissionIdsRef.current.delete(effectiveKey);
         const status = String(
           (event.metadata as { status?: string } | undefined)?.status ||
             "failed",
@@ -2008,6 +2089,7 @@ export function ChatStateAdapterProvider({
           key: effectiveKey,
           status: status as SessionRuntimeStatus,
           turnId: event.turn_id || null,
+          submissionFailed: submissionRejected,
         });
       }
     },
@@ -2295,59 +2377,25 @@ export function ChatStateAdapterProvider({
         Date.now(),
         readStoredChatResponseTimeout() * 1000,
       );
-      // Restore a submission the server never accepted (#1594). The record
-      // only survives when no terminal evidence ever arrived. Compare server
-      // row identities recorded before submission: a previous turn may have
-      // identical text, and must not erase this new unsent message.
+      // Restore every pending submission. A matching client_submission_id on
+      // a persisted user row is the only evidence that this particular send
+      // was accepted; equal text from another tab is not enough.
       let restoredMessages = messages;
       let restoredStatus = loadedStatus;
       if (!options?.revalidate && loadedStatus !== "running") {
-        const failedRecord = readFailedSubmission(key);
-        if (failedRecord) {
-          if (serverContainsFailedSubmission(messages, failedRecord)) {
-            clearFailedSubmission(key);
+        for (const failedRecord of readFailedSubmissions(key)) {
+          if (serverContainsFailedSubmission(session.messages ?? [], failedRecord)) {
+            clearFailedSubmission(key, failedRecord.submissionId);
           } else {
-            const stored = failedRecord.requestSnapshot;
-            const base: Record<string, unknown> =
-              typeof stored === "object" && stored !== null
-                ? (stored as Record<string, unknown>)
-                : {};
-            // The resend path replays this snapshot verbatim, so restore
-            // the fields it requires even if the stored record predates
-            // them; ``content`` is authoritative from the record itself.
-            const snapshot = {
-              ...base,
-              content: failedRecord.content,
-              enabledTools: Array.isArray(base.enabledTools)
-                ? base.enabledTools
-                : [],
-              knowledgeBases: Array.isArray(base.knowledgeBases)
-                ? base.knowledgeBases
-                : [],
-              language: typeof base.language === "string" ? base.language : "en",
-            } as MessageRequestSnapshot;
             restoredMessages = [
-              ...messages,
-              {
-                id: nextOptimisticId(),
-                role: "user" as const,
-                content: failedRecord.content,
-                capability: failedRecord.capability,
-                parentMessageId: tipMessageId(
-                  buildVisiblePath(
-                    messages,
-                    normalizeSelectedBranches(
-                      session.preferences?.selected_branches,
-                    ),
-                  ).messages,
-                ),
-                ...(snapshot.attachments?.length
-                  ? { attachments: snapshot.attachments }
-                  : {}),
-                requestSnapshot: snapshot,
-                failedSubmission: true,
-                failedSubmissionNeedsReview: failedRecord.retryRequiresReview,
-              },
+              ...restoredMessages,
+              restoredFailedMessage(
+                failedRecord,
+                tipMessageId(buildVisiblePath(
+                  restoredMessages,
+                  normalizeSelectedBranches(session.preferences?.selected_branches),
+                ).messages),
+              ),
             ];
             restoredStatus = "failed";
           }
@@ -2472,8 +2520,8 @@ export function ChatStateAdapterProvider({
   }, []);
 
   // URL is now the source of truth for session loading.
-  // Chat pages load sessions based on URL params; no sessionStorage restore needed.
-  // Initialize a draft session so the provider always has a selected key.
+  // Initialize a draft session, restoring first-message failures before a
+  // server session ID exists. A page with a URL-selected session still wins.
   //
   // React flushes a child's effects before its parent's, so any page under
   // this provider has already picked and configured its session by the time
@@ -2482,7 +2530,11 @@ export function ChatStateAdapterProvider({
   // reducer decides on live state; this only supplies the key it may need.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    dispatch({ type: "ENSURE_DRAFT_SESSION", key: makeDraftKey() });
+    dispatch({
+      type: "ENSURE_DRAFT_SESSION",
+      key: makeDraftKey(),
+      failedRecords: readFailedSubmissions(draftFailedSubmissionKey()),
+    });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Idle recovery: if a streaming session receives no events for the
@@ -2737,6 +2789,13 @@ export function ChatStateAdapterProvider({
           : tipId !== null && tipId > 0
             ? tipId
             : undefined;
+      const trackNewSubmission =
+        options?.displayUserMessage !== false &&
+        !options?.masteryAnswer &&
+        !options?.masterySkip &&
+        content.trim() !== "";
+      const submissionId = options?.retrySubmissionId ??
+        (trackNewSubmission ? randomUuid() : undefined);
       if (options?.displayUserMessage !== false) {
         dispatch({
           type: "ADD_USER_MSG",
@@ -2746,6 +2805,7 @@ export function ChatStateAdapterProvider({
           attachments: effectiveAttachments,
           requestSnapshot,
           parentMessageId: localParentId,
+          failedSubmissionId: submissionId,
         });
       }
       dispatch({ type: "STREAM_START", key, startedAt: Date.now() / 1000 });
@@ -2765,38 +2825,28 @@ export function ChatStateAdapterProvider({
         legacyPersistUserMessage === false
           ? false
           : undefined;
-      // Pessimistic record (#1594): remember this submission locally until
-      // evidence arrives that the server took the turn over (``done``, a
-      // terminal error, or a cancel). If none ever does — the socket never
-      // connected — a reload can restore the text as clearly unsent.
-      // Replays/resends (``displayUserMessage: false``) and card answers
-      // keep the record of the row they replay rather than adding one.
-      if (
-        session.sessionId &&
-        options?.displayUserMessage !== false &&
-        !options?.masteryAnswer &&
-        !options?.masterySkip &&
-        content.trim() !== ""
-      ) {
-        storeFailedSubmission(session.sessionId, {
+      // Persist before attempting the socket, including a first turn that
+      // has no server session yet. Replays reuse their original identity.
+      const submissionStorageKey = session.sessionId ?? draftFailedSubmissionKey();
+      if (trackNewSubmission && submissionId) {
+        storeFailedSubmission(submissionStorageKey, {
           content,
           capability: effectiveCapability,
           requestSnapshot,
-          priorMatchingUserIds: session.messages
-            .filter(
-              (message) =>
-                message.role === "user" &&
-                message.content === content &&
-                message.id != null &&
-                (typeof message.id === "string" || message.id > 0),
-            )
-            .map((message) => String(message.id)),
+          submissionId,
+        });
+      }
+      if (submissionId) {
+        pendingSubmissionIdsRef.current.set(key, {
+          storageKey: submissionStorageKey,
+          submissionId,
         });
       }
       return sendThroughRunner(
         key,
         buildStartTurnInput({
         content,
+        clientSubmissionId: submissionId,
         tools: effectiveTools,
         capability: effectiveCapability,
         workspaceMode: effectiveWorkspaceMode ?? "",
@@ -2894,7 +2944,11 @@ export function ChatStateAdapterProvider({
     if (session.isStreaming) {
       // The user aborted on purpose — do not resurrect this submission as
       // "unsent" after the next reload (#1594).
-      if (session.sessionId) clearFailedSubmission(session.sessionId);
+      const pendingSubmission = pendingSubmissionIdsRef.current.get(key);
+      if (pendingSubmission) {
+        clearFailedSubmission(pendingSubmission.storageKey, pendingSubmission.submissionId);
+        pendingSubmissionIdsRef.current.delete(key);
+      }
       dispatch({ type: "STREAM_END", key, status: "cancelled" });
     }
   }, []);
@@ -3022,6 +3076,7 @@ export function ChatStateAdapterProvider({
         {
           displayUserMessage: false,
           requestSnapshotOverride: snapshot,
+          retrySubmissionId: liveLastUser.failedSubmissionId,
           parentMessageId:
             typeof liveLastUser.parentMessageId === "number" &&
             liveLastUser.parentMessageId <= 0

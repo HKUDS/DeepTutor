@@ -1,11 +1,15 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   ChatStateAdapterProvider,
   useChatStateAdapter,
 } from "@/features/chat/ChatStateAdapter";
 import { initI18n } from "@/i18n/init";
-import { readFailedSubmission, storeFailedSubmission } from "@/lib/failed-submissions";
+import {
+  readFailedSubmission,
+  readFailedSubmissions,
+  storeFailedSubmission,
+} from "@/lib/failed-submissions";
 
 initI18n("en");
 
@@ -98,11 +102,10 @@ function completedServerSession() {
   };
 }
 
-function seedUnsentSubmission(content = "Hello offline", priorMatchingUserIds: string[] = []) {
-  storeFailedSubmission("s1", {
+function seedUnsentSubmission(content = "Hello offline") {
+  return storeFailedSubmission("s1", {
     content,
     capability: "chat",
-    priorMatchingUserIds,
     requestSnapshot: {
       content,
       capability: "chat",
@@ -120,6 +123,7 @@ function Harness() {
     <>
       <button onClick={() => void loadSession("s1")}>Load</button>
       <button onClick={() => sendMessage("Hello offline")}>Send</button>
+      <button onClick={() => sendMessage("Second offline")}>Send another</button>
       <button onClick={() => void resendLastMessage()}>Resend</button>
       <div data-testid="submissionFailed">
         {String(state.submissionFailed)}
@@ -155,11 +159,15 @@ function readStoredKeys() {
 }
 
 beforeEach(() => {
+  localStorage.clear();
+  sessionStorage.clear();
   fixture.connected = false;
   fixture.sent = [];
   fixture.emit = undefined;
   fixture.close = undefined;
 });
+
+afterEach(() => vi.restoreAllMocks());
 
 it("marks a submission the server never received as unsent, not a failed reply", async () => {
   vi.useFakeTimers();
@@ -190,7 +198,7 @@ it("marks a submission the server never received as unsent, not a failed reply",
     expect(screen.getByTestId("lastTurnFailed").textContent).toBe("true");
     // The text survives in local storage for reload recovery.
     expect(JSON.parse(screen.getByTestId("stored").textContent ?? "{}"))
-      .toMatchObject({ s1: { content: "Hello offline" } });
+      .toMatchObject({ s1: [{ content: "Hello offline" }] });
   } finally {
     vi.useRealTimers();
   }
@@ -256,6 +264,7 @@ it("restores the unsent submission after a reload and resends it on retry", asyn
 });
 
 it("drops the record when the server transcript already holds the submission", async () => {
+  const submissionId = seedUnsentSubmission();
   const serverHoldsIt = {
     ...completedServerSession(),
     status: "failed",
@@ -266,6 +275,7 @@ it("drops the record when the server transcript already holds the submission", a
         session_id: "s1",
         role: "user",
         content: "Hello offline",
+        metadata: { client_submission_id: submissionId },
         events: [],
         attachments: [],
         created_at: 3,
@@ -274,7 +284,6 @@ it("drops the record when the server transcript already holds the submission", a
     ],
   };
   fixture.session = serverHoldsIt;
-  seedUnsentSubmission();
   render(
     <ChatStateAdapterProvider>
       <Harness />
@@ -327,7 +336,7 @@ it("keeps a new unsent submission when an older server turn has identical text",
       await vi.advanceTimersByTimeAsync(2_400);
     });
     const saved = readFailedSubmission("s1");
-    expect(saved?.priorMatchingUserIds).toEqual(["3"]);
+    expect(saved?.submissionId).toBeTruthy();
     firstView.unmount();
     render(
       <ChatStateAdapterProvider>
@@ -390,4 +399,152 @@ it("preserves text after storage quota errors without offering an incomplete res
   });
   expect(screen.getByTestId("submissionNeedsReview").textContent).toBe("true");
   expect(screen.getByTestId("lastTurnFailed").textContent).toBe("false");
+});
+
+it("restores a failed first message in a draft and can retry after reload", async () => {
+  vi.useFakeTimers();
+  try {
+    fixture.session = undefined;
+    const firstView = render(
+      <ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>,
+    );
+    fireEvent.click(screen.getByText("Send"));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_400);
+    });
+    expect(readMessages()).toEqual([
+      { role: "user", content: "Hello offline", failed: true },
+    ]);
+    expect(readFailedSubmissions("draft:general")).toHaveLength(1);
+    firstView.unmount();
+
+    fixture.connected = true;
+    render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+    expect(readMessages()).toEqual([
+      { role: "user", content: "Hello offline", failed: true },
+    ]);
+    expect(screen.getByTestId("lastTurnFailed").textContent).toBe("true");
+    await act(async () => {
+      fireEvent.click(screen.getByText("Resend"));
+    });
+    expect(fixture.sent.at(-1)).toMatchObject({
+      type: "start_turn",
+      content: "Hello offline",
+      session_id: null,
+    });
+    await act(async () => {
+      fixture.emit?.({
+        type: "done", source: "chat", stage: "responding", content: "",
+        turn_id: "draft-retry", seq: 1, timestamp: Date.now() / 1000,
+        metadata: { status: "completed", user_message_id: 1, assistant_message_id: 2 },
+      });
+    });
+    expect(readFailedSubmissions("draft:general")).toEqual([]);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("keeps a start_turn_rejected submission as an unsent user row across reload", async () => {
+  fixture.connected = true;
+  fixture.session = completedServerSession();
+  const firstView = render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+  await act(async () => { fireEvent.click(screen.getByText("Load")); });
+  fireEvent.click(screen.getByText("Send"));
+  await act(async () => {
+    fixture.emit?.({
+      type: "error", source: "transport", stage: "", content: "Turn rejected",
+      timestamp: Date.now() / 1000,
+      metadata: { reason: "start_turn_rejected", turn_terminal: true, status: "failed" },
+    });
+  });
+  expect(readMessages().at(-1)).toEqual({
+    role: "user", content: "Hello offline", failed: true,
+  });
+  expect(readFailedSubmissions("s1")).toHaveLength(1);
+  firstView.unmount();
+  render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+  await act(async () => { fireEvent.click(screen.getByText("Load")); });
+  expect(readMessages().at(-1)).toEqual({
+    role: "user", content: "Hello offline", failed: true,
+  });
+  expect(screen.getByTestId("lastTurnFailed").textContent).toBe("true");
+});
+
+it("keeps both unsent messages when a second direct send fails", async () => {
+  vi.useFakeTimers();
+  try {
+    fixture.session = completedServerSession();
+    const firstView = render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+    await act(async () => { fireEvent.click(screen.getByText("Load")); });
+    fireEvent.click(screen.getByText("Send"));
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_400); });
+    fireEvent.click(screen.getByText("Send another"));
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_400); });
+    expect(readFailedSubmissions("s1").map((record) => record.content)).toEqual([
+      "Hello offline", "Second offline",
+    ]);
+    firstView.unmount();
+    render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+    await act(async () => { fireEvent.click(screen.getByText("Load")); });
+    expect(readMessages().slice(-2)).toEqual([
+      { role: "user", content: "Hello offline", failed: true },
+      { role: "user", content: "Second offline", failed: true },
+    ]);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("does not mistake another tab's identical text for this submission", async () => {
+  const ownId = seedUnsentSubmission();
+  fixture.session = {
+    ...completedServerSession(),
+    messages: [
+      ...completedServerSession().messages,
+      {
+        id: 3, session_id: "s1", role: "user", content: "Hello offline",
+        metadata: { client_submission_id: "other-tab-submission" },
+        events: [], attachments: [], created_at: 3, parent_message_id: 2,
+      },
+    ],
+  };
+  const firstView = render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+  await act(async () => { fireEvent.click(screen.getByText("Load")); });
+  expect(readMessages().at(-1)).toEqual({
+    role: "user", content: "Hello offline", failed: true,
+  });
+  expect(readFailedSubmissions("s1")).toHaveLength(1);
+  firstView.unmount();
+  (fixture.session.messages as Array<Record<string, unknown>>)[2].metadata = {
+    client_submission_id: ownId,
+  };
+  render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+  await act(async () => { fireEvent.click(screen.getByText("Load")); });
+  expect(readMessages().at(-1)).toEqual({
+    role: "user", content: "Hello offline", failed: false,
+  });
+  expect(readFailedSubmissions("s1")).toEqual([]);
+});
+
+it("falls back to localStorage text when sessionStorage is unavailable", () => {
+  const localSetItem = localStorage.setItem.bind(localStorage);
+  vi.spyOn(localStorage, "setItem").mockImplementation((key, value) => {
+    if (value.length > 500) throw new DOMException("Quota", "QuotaExceededError");
+    localSetItem(key, value);
+  });
+  vi.spyOn(sessionStorage, "setItem").mockImplementation(() => {
+    throw new DOMException("Unavailable", "SecurityError");
+  });
+  storeFailedSubmission("s1", {
+    content: "Keep this text", capability: "chat",
+    requestSnapshot: {
+      content: "Keep this text", language: "en",
+      attachments: [{ filename: "huge.png", base64: "A".repeat(10_000) }],
+    },
+  });
+  const record = readFailedSubmission("s1");
+  expect(record?.content).toBe("Keep this text");
+  expect(record?.retryRequiresReview).toBe(true);
+  expect(localStorage.getItem("deeptutor.failedSubmissions")).toContain("Keep this text");
 });

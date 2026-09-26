@@ -70,6 +70,7 @@ export function buildStartTurnInput(input: StartTurnInput): StartTurnCommand {
   return buildStartTurn({
     ...(input.workspaceId !== undefined ? { workspace_id: input.workspaceId } : {}),
     content: input.content,
+    ...(input.clientSubmissionId ? { client_submission_id: input.clientSubmissionId } : {}),
     capability: input.capability === undefined ? "chat" : input.capability,
     session_id: input.sessionId ?? null,
     tools: input.tools ?? null,

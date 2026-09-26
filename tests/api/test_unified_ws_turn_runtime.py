@@ -194,6 +194,7 @@ async def test_turn_runtime_replays_events_and_materializes_messages(
         {
             "type": "start_turn",
             "content": "hello, i'm frank",
+            "client_submission_id": "browser-submission-123",
             "session_id": None,
             "capability": None,
             "tools": [],
@@ -237,6 +238,7 @@ async def test_turn_runtime_replays_events_and_materializes_messages(
     user_row, assistant_row = detail["messages"]
     assert done_event["metadata"]["user_message_id"] == user_row["id"]
     assert done_event["metadata"]["assistant_message_id"] == assistant_row["id"]
+    assert user_row["metadata"]["client_submission_id"] == "browser-submission-123"
     assert detail["messages"][0]["metadata"]["request_snapshot"]["persona"] == "socratic"
     assert detail["messages"][0]["metadata"]["request_snapshot"]["memoryReferences"] == ["summary"]
     assert detail["messages"][0]["metadata"]["request_snapshot"]["bookReferences"] == [
