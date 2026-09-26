@@ -27,12 +27,14 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import hashlib
 import json
 import os
 from pathlib import Path
 import platform
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tarfile
@@ -115,6 +117,11 @@ def download(url: str, destination: Path) -> None:
     if destination.exists():
         log(f"cached {destination.name}")
         return
+    _download_uncached(url, destination)
+
+
+def _download_uncached(url: str, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
     log(f"downloading {url}")
     partial = destination.with_suffix(destination.suffix + ".part")
     with urllib.request.urlopen(url) as response, partial.open("wb") as handle:
@@ -122,14 +129,152 @@ def download(url: str, destination: Path) -> None:
     partial.rename(destination)
 
 
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def parse_checksums(text: str) -> dict[str, str]:
+    """`<digest>  <filename>` lines, the format PBS and nodejs.org both publish.
+
+    A leading `*` marks a binary-mode entry in some tools; it is not part of the
+    name.
+    """
+
+    checksums: dict[str, str] = {}
+    for line in text.splitlines():
+        parts = line.split()
+        if len(parts) != 2 or not re.fullmatch(r"[0-9a-fA-F]{64}", parts[0]):
+            continue
+        checksums[parts[1].lstrip("*")] = parts[0].lower()
+    return checksums
+
+
+def fetch_checksums(url: str) -> dict[str, str]:
+    log(f"downloading {url}")
+    with urllib.request.urlopen(url) as response:
+        return parse_checksums(response.read().decode("utf-8", "replace"))
+
+
+def download_verified(
+    url: str, destination: Path, *, checksums_url: str, source: str
+) -> None:
+    """Fetch `url` and refuse to keep bytes upstream does not vouch for.
+
+    A truncated or swapped download of CPython or Node ends up *executed* inside
+    every pack, so the published digest is checked before the archive is
+    unpacked — and a stale cache entry that fails the check is re-fetched once
+    instead of failing the release.
+    """
+
+    checksums = fetch_checksums(checksums_url)
+    expected = checksums.get(destination.name)
+    if expected is None:
+        raise SystemExit(
+            f"{source} publishes no checksum for {destination.name}; refusing to "
+            "stage an unverified runtime"
+        )
+    if destination.exists():
+        actual = sha256_file(destination)
+        if actual == expected:
+            log(f"cached {destination.name} (checksum ok)")
+            return
+        log(f"cached {destination.name} does not match {source}; re-downloading")
+        destination.unlink()
+    _download_uncached(url, destination)
+    actual = sha256_file(destination)
+    if actual != expected:
+        destination.unlink(missing_ok=True)
+        raise SystemExit(
+            f"{destination.name} failed its {source} checksum: expected {expected}, "
+            f"got {actual}"
+        )
+    log(f"checksum ok for {destination.name}")
+
+
+def _escapes(root: Path, candidate: Path) -> bool:
+    resolved = candidate.resolve()
+    return resolved != root and root not in resolved.parents
+
+
+class _ZipEntry:
+    """The slice of `tarfile.TarInfo` the safety check asks a zip entry for."""
+
+    def __init__(self, info: zipfile.ZipInfo) -> None:
+        self.name = info.filename
+        self._mode = info.external_attr >> 16
+
+    def isdev(self) -> bool:
+        return (
+            stat.S_ISCHR(self._mode)
+            or stat.S_ISBLK(self._mode)
+            or stat.S_ISFIFO(self._mode)
+        )
+
+    def issym(self) -> bool:
+        return False
+
+    def islnk(self) -> bool:
+        return False
+
+    @property
+    def linkname(self) -> str:
+        return ""
+
+
+def _reject_unsafe_members(destination: Path, members: list, *, kind: str) -> None:
+    """Refuse archive entries that would write outside `destination`.
+
+    The runtimes come from upstream over TLS but are not verified against a
+    digest pinned in this repository, and a tampered mirror or a corrupted
+    transfer is exactly what this catches: no absolute paths, no `..`, no links
+    pointing out, no device nodes. Everything a real runtime archive contains
+    (relative symlinks included) still passes.
+    """
+
+    root = destination.resolve()
+    for member in members:
+        name = member.name
+        target = root / name
+        if Path(name).is_absolute() or ".." in Path(name).parts:
+            raise SystemExit(f"{kind} entry escapes the destination: {name}")
+        if _escapes(root, target):
+            raise SystemExit(f"{kind} entry escapes the destination: {name}")
+        if member.isdev():
+            raise SystemExit(f"{kind} entry is a device node: {name}")
+        if member.issym() or member.islnk():
+            link = member.linkname
+            if Path(link).is_absolute() or _escapes(root, target.parent / link):
+                raise SystemExit(
+                    f"{kind} link escapes the destination: {name} -> {link}"
+                )
+
+
 def extract_archive(archive: Path, destination: Path) -> None:
     destination.mkdir(parents=True, exist_ok=True)
     if archive.suffix == ".zip" or zipfile.is_zipfile(archive):
         with zipfile.ZipFile(archive) as handle:
-            handle.extractall(destination)
+            infos = handle.infolist()
+            for info in infos:
+                # A zip symlink keeps its target in the entry *data*, so the
+                # generic check cannot see it; nothing legitimate needs one here.
+                if stat.S_ISLNK(info.external_attr >> 16):
+                    raise SystemExit(f"zip entry is a symlink: {info.filename}")
+            _reject_unsafe_members(
+                destination, [_ZipEntry(info) for info in infos], kind="zip"
+            )
+            handle.extractall(destination, members=infos)
         return
     with tarfile.open(archive, "r:gz") as handle:
-        handle.extractall(destination)
+        members = handle.getmembers()
+        _reject_unsafe_members(destination, members, kind="tar")
+        try:
+            handle.extractall(destination, members=members, filter="fully_trusted")
+        except TypeError:  # Python < 3.11.4 has no `filter` argument
+            handle.extractall(destination, members=members)
 
 
 def single_child(directory: Path) -> Path:
@@ -237,12 +382,19 @@ def assert_wheel_matches_label(wheel: Path, label: str) -> None:
 def fetch_python(stage: Path, *, tag: str, version: str, target: str) -> tuple[Path, str]:
     triple = PBS_TRIPLES[target]
     name = f"cpython-{version}+{tag}-{triple}-install_only.tar.gz"
-    url = (
+    release = (
         "https://github.com/astral-sh/python-build-standalone/releases/download/"
-        f"{tag}/{name}"
+        f"{tag}"
     )
     archive = PACK_DIR / ".cache" / name
-    download(url, archive)
+    # This tree becomes the interpreter every pack runs, so the bytes are checked
+    # against what the release publishes before they are unpacked.
+    download_verified(
+        f"{release}/{name}",
+        archive,
+        checksums_url=f"{release}/SHA256SUMS",
+        source="python-build-standalone",
+    )
     extract_archive(archive, stage / "python-download")
     extracted = find_python_dir(stage / "python-download")
     shutil.move(str(extracted), str(stage / "python"))
@@ -253,9 +405,14 @@ def fetch_python(stage: Path, *, tag: str, version: str, target: str) -> tuple[P
 def fetch_node(stage: Path, *, version: str, target: str) -> Path:
     template, label, _kind = NODE_ARCHIVES[target]
     name = template.format(version=version)
-    url = f"https://nodejs.org/dist/v{version}/{name}"
+    base = f"https://nodejs.org/dist/v{version}"
     archive = PACK_DIR / ".cache" / name
-    download(url, archive)
+    download_verified(
+        f"{base}/{name}",
+        archive,
+        checksums_url=f"{base}/SHASUMS256.txt",
+        source="nodejs.org",
+    )
     extract_archive(archive, stage / "node-download")
     extracted = single_child(stage / "node-download")
     shutil.move(str(extracted), str(stage / "node"))

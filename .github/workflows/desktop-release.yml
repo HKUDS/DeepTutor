@@ -57,13 +57,71 @@ jobs:
       - name: Shell version must match deeptutor/__version__.py
         run: python3 desktop/scripts/sync_version.py --check
 
+      # Everything downstream labels itself from `__version__.py` while the
+      # release asset URLs come from the tag. A tag that disagrees produces a
+      # `latest.json` whose version equals the installed one, i.e. a release
+      # nobody is ever offered.
+      - name: The release tag must match deeptutor/__version__.py
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          tag = (os.environ.get("RELEASE_TAG") or "").strip()
+          if not tag:
+              # `workflow_dispatch` can run from a branch; there is no tag to
+              # compare, but publishing from one would mislabel the release.
+              if os.environ.get("REF_TYPE") != "tag":
+                  print("::warning title=No release tag::This run is not on a tag, so the tag/version check is skipped.")
+                  raise SystemExit(0)
+              tag = (os.environ.get("REF_NAME") or "").strip()
+
+          match = re.match(r"^v?(\d+\.\d+\.\d+)", tag)
+          if not match:
+              raise SystemExit(f"release tag {tag!r} does not look like a version tag")
+          tag_version = match.group(1)
+
+          source = Path("deeptutor/__version__.py").read_text(encoding="utf-8")
+          found = re.search(r'^__version__\s*=\s*"([^"]+)"', source, re.MULTILINE)
+          if not found:
+              raise SystemExit("could not find __version__ in deeptutor/__version__.py")
+          code_version = found.group(1).strip()
+          if code_version != tag_version:
+              raise SystemExit(
+                  f"release tag {tag!r} (normalised {tag_version!r}) does not match "
+                  f"deeptutor/__version__.py value {code_version!r}; "
+                  "bump __version__ before tagging"
+              )
+          print(f"release tag {tag} matches {code_version}")
+          PY
+
       - name: The dependency lock must match pyproject.toml
         run: |
           set -euo pipefail
-          pip install --quiet uv
+          # Pinned, for two reasons. uv writes its own command line — including
+          # `-o` — into the lock's header, so an unpinned uv is a diff waiting to
+          # happen; and every uv before 0.11.15 carries a published advisory
+          # about wheel entry points escaping the environment. 0.11.15 was
+          # checked to reproduce the committed lock byte for byte.
+          pip install --quiet "uv==0.11.15"
+          # Compile to the *committed path*, not a scratch file. Two reasons:
+          # the header then names the same path the committed file does, and uv
+          # only prefers the existing pins when the output file already exists —
+          # writing somewhere else silently re-resolves the whole lock.
+          cp desktop/pack/runtime.lock.txt /tmp/committed.lock
           uv pip compile pyproject.toml --extra cli --extra server \
-            --python-version 3.12 --quiet -o /tmp/runtime.lock.txt
-          diff -u desktop/pack/runtime.lock.txt /tmp/runtime.lock.txt
+            --python-version 3.12 --quiet -o desktop/pack/runtime.lock.txt
+          if ! diff -u /tmp/committed.lock desktop/pack/runtime.lock.txt; then
+            echo "::error::desktop/pack/runtime.lock.txt is stale; regenerate it with the command in its own header."
+            exit 1
+          fi
 
       # A release with an empty pubkey builds bundles nobody can ever update
       # from. Catch it here rather than in a bug report three months later.
@@ -85,6 +143,10 @@ jobs:
               problems.append("plugins.updater.endpoints is empty")
           if not create:
               problems.append("bundle.createUpdaterArtifacts is not enabled")
+          if not updater.get("requireSignedVersion"):
+              # Without it a crafted endpoint response can pair a new version
+              # number with an older, genuinely signed artifact.
+              problems.append("plugins.updater.requireSignedVersion is not enabled")
           if problems:
               print("desktop update channel is not configured:", file=sys.stderr)
               for problem in problems:
@@ -146,11 +208,17 @@ jobs:
 
   catalog:
     name: Assemble runtime-packs.json
-    needs: [packs, packs-linux]
+    needs: [packs, packs-linux, deltas]
     # `packs-linux` is usually skipped, and a skipped dependency would otherwise
-    # skip the catalog too.
+    # skip the catalog too. `deltas` is best-effort: a release without an
+    # incremental path is still a complete release.
     if: always() && needs.packs.result == 'success'
     runs-on: ubuntu-latest
+    env:
+      # Job-level so the signing step's `if:` can test it (`secrets` is not
+      # available in `if:`), the same trick the shell job uses.
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -167,18 +235,154 @@ jobs:
           pattern: runtime-pack-*
           merge-multiple: true
 
+      - name: Download the incremental fragments
+        # `if-no-files-found: warn` with no matching artifact is an error for
+        # download-artifact, so this step tolerates the first release (no delta).
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          path: desktop/pack/dist
+          pattern: pack-delta-*
+          merge-multiple: true
+
       - name: Merge the fragments
         run: |
           python3 desktop/pack/assemble_catalog.py \
             --dist desktop/pack/dist \
             --base-url "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/"
 
+      # The catalog is the document that names both the archive and the sha256
+      # that authenticates it. The shell verifies it with the same minisign key
+      # as the shell plane (`plugins.updater.pubkey`), and *requires* a valid
+      # signature whenever that key is configured — so an unsigned catalog is a
+      # runtime-update plane nobody can use.
+      - name: Sign the catalog
+        if: env.TAURI_SIGNING_PRIVATE_KEY != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global @tauri-apps/cli@${{ env.TAURI_CLI_VERSION }}
+          # `signer sign` writes `<file>.sig` next to the catalog, which is the
+          # first name the shell looks for. `-f` is *not* the file to sign — it
+          # is `--private-key-path` — so the file is positional.
+          tauri signer sign desktop/pack/dist/runtime-packs.json \
+            -k "$TAURI_SIGNING_PRIVATE_KEY" \
+            -p "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"
+          ls -l desktop/pack/dist/runtime-packs.json.sig
+
+      - name: Warn when the catalog cannot be signed
+        if: env.TAURI_SIGNING_PRIVATE_KEY == ''
+        run: |
+          echo "::warning title=Runtime update plane unsigned::TAURI_SIGNING_PRIVATE_KEY is not set, so runtime-packs.json ships unsigned. A shell with an update pubkey configured will refuse it (fail closed) and only the shell plane will update."
+
       - name: Publish the catalog
         uses: actions/upload-artifact@v4
         with:
           name: runtime-packs
-          path: desktop/pack/dist/runtime-packs.json
+          path: |
+            desktop/pack/dist/runtime-packs.json
+            desktop/pack/dist/runtime-packs.json.sig
           if-no-files-found: error
+
+  # Incremental runtime updates: diff this release's pack against the previous
+  # release's pack for the same platform. Best-effort by design — no earlier
+  # release, or a delta that would be nearly as big as the full pack, simply
+  # means this release ships the full archive alone.
+  deltas:
+    name: Incremental pack (${{ matrix.platform }})
+    needs: packs
+    # A missing delta is a smaller download missed, not a broken release, so this
+    # job must not paint the whole run red.
+    continue-on-error: true
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-aarch64
+            os: macos-14
+          - platform: macos-x86_64
+            os: macos-13
+          - platform: windows-x86_64
+            os: windows-2022
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download this release's pack
+        uses: actions/download-artifact@v4
+        with:
+          name: runtime-pack-${{ matrix.platform }}
+          path: current
+
+      - name: Fetch the newest earlier pack for this platform
+        id: previous
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          current_tag="${{ github.event.release.tag_name || github.ref_name }}"
+          mkdir -p previous
+          # Walk back through releases: one may predate the desktop pipeline, or
+          # have failed before it uploaded a pack.
+          gh release list --exclude-drafts --limit 5 --json tagName --jq '.[].tagName' > tags.txt
+          tag=""
+          while read -r candidate; do
+            [ -z "$candidate" ] && continue
+            [ "$candidate" = "$current_tag" ] && continue
+            if gh release download "$candidate" \
+                 --pattern "*-${{ matrix.platform }}.tar.gz" \
+                 --dir "previous/$candidate" 2>/dev/null; then
+              tag="$candidate"
+              break
+            fi
+          done < tags.txt
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if [ -z "$tag" ]; then
+            echo "::notice title=No incremental update::No earlier release carries a ${{ matrix.platform }} pack, so this release ships the full archive only."
+          else
+            echo "building the incremental path from $tag"
+          fi
+
+      - name: Build the incremental update
+        if: steps.previous.outputs.tag != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p base target out
+          tar -xzf previous/*/*.tar.gz -C base
+          tar -xzf current/*.tar.gz -C target
+          # `--max-ratio` refuses a "delta" that would cost nearly a full
+          # download (a new CPython or Node leaves little in common). It needs
+          # this release's own archive to compare against, and in CI that sits in
+          # `current/`, not next to `--out` — without the explicit path the guard
+          # has nothing to measure and quietly does nothing.
+          full_archive="$(ls current/*.tar.gz | head -1)"
+          if [ -z "$full_archive" ]; then
+            echo "::error::no full pack in current/ to size the delta against"
+            exit 1
+          fi
+          python3 desktop/pack/build_delta.py \
+            --base base --target target --out out \
+            --full-archive "$full_archive"
+
+      - name: Upload the incremental update
+        if: steps.previous.outputs.tag != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: pack-delta-${{ matrix.platform }}
+          path: |
+            out/*.delta.tar.gz
+            out/*.delta.tar.gz.sha256
+            out/*.delta.catalog.json
+          if-no-files-found: warn
+          retention-days: 14
 
   # Linux is a v1.x target: the *pack* side is platform-agnostic (same CPython
   # tag, same locked wheels, same Node), so this job exists to prove that and to
@@ -397,6 +601,16 @@ jobs:
           find desktop/target -path "*/release/bundle/*" \
             \( -name "*.dmg" -o -name "*.app.tar.gz" -o -name "*.exe" -o -name "*.msi" -o -name "*.sig" \) \
             -exec cp {} dist/shell/ \;
+          # `gh release upload` names assets by basename, and the Tauri bundler
+          # calls the updater archive `DeepTutor.app.tar.gz` on *both* macOS
+          # architectures. Without this prefix the x86_64 job would overwrite the
+          # aarch64 asset, leaving `latest.json`'s darwin-aarch64 entry pointing
+          # at bytes its signature does not match.
+          platform="${{ matrix.manifest_platform }}"
+          for artifact in dist/shell/*; do
+            [ -e "$artifact" ] || continue
+            mv "$artifact" "dist/shell/${platform}-$(basename "$artifact")"
+          done
           ls -l dist/shell
 
       - name: Upload the shell artifacts

@@ -170,3 +170,106 @@ def test_a_platform_mismatch_is_refused(tmp_path: Path) -> None:
         assert "platform mismatch" in str(error)
     else:  # pragma: no cover - the assertion below is the failure path
         raise AssertionError("a cross-platform delta must not be buildable")
+
+
+def test_a_delta_that_is_not_worth_shipping_is_skipped(tmp_path: Path) -> None:
+    """A release that rebuilds the runtime must not ship a near-full "delta"."""
+
+    base = write_pack(tmp_path / "stage-1.6.10", version="1.6.10", marker="a")
+    target = write_pack(tmp_path / "stage-1.6.11", version="1.6.11", marker="b")
+    # A runtime where most of the payload changed: incompressible content, two of
+    # three files new, so the delta is most of the archive.
+    for index in range(3):
+        (base / "python" / "bin" / f"blob{index}").write_bytes(os.urandom(200_000))
+        payload = (
+            os.urandom(200_000) if index < 2 else (base / "python" / "bin" / f"blob{index}").read_bytes()
+        )
+        (target / "python" / "bin" / f"blob{index}").write_bytes(payload)
+    out = tmp_path / "dist"
+    out.mkdir()
+    # `build_pack.py` writes the archive next to the staged tree; the guard reads
+    # it to know what "worth shipping" means.
+    with tarfile.open(out / "1.6.11-macos-aarch64.tar.gz", "w:gz") as handle:
+        handle.add(target, arcname="stage")
+
+    delta = build_delta.build_delta(base, target, out, max_ratio=0.5)
+    assert delta.get("skipped") is True, delta
+    assert not (out / "1.6.11-macos-aarch64.delta.tar.gz").exists()
+    assert not (out / "1.6.11-macos-aarch64.delta.catalog.json").exists()
+
+    # ...and an explicit --force still produces one for debugging.
+    forced = build_delta.build_delta(base, target, out, max_ratio=0.5, force=True)
+    assert "skipped" not in forced
+    assert (out / "1.6.11-macos-aarch64.delta.tar.gz").is_file()
+
+
+def _incompressible_pair(tmp_path: Path) -> tuple[Path, Path]:
+    """Two stages whose delta is most of the archive."""
+
+    base = write_pack(tmp_path / "stage-1.6.10", version="1.6.10", marker="a")
+    target = write_pack(tmp_path / "stage-1.6.11", version="1.6.11", marker="b")
+    for index in range(3):
+        (base / "python" / "bin" / f"blob{index}").write_bytes(os.urandom(200_000))
+        payload = (
+            os.urandom(200_000)
+            if index < 2
+            else (base / "python" / "bin" / f"blob{index}").read_bytes()
+        )
+        (target / "python" / "bin" / f"blob{index}").write_bytes(payload)
+    return base, target
+
+
+def test_the_ratio_guard_works_when_the_full_archive_is_elsewhere(
+    tmp_path: Path,
+) -> None:
+    """CI downloads the full pack into `current/` and builds into `out/`.
+
+    Without `--full-archive` the guard had nothing to compare against, so it
+    silently did nothing and a "delta" bigger than the full archive shipped.
+    """
+
+    base, target = _incompressible_pair(tmp_path)
+    current = tmp_path / "current"
+    current.mkdir()
+    full = current / "1.6.11-macos-aarch64.tar.gz"
+    with tarfile.open(full, "w:gz") as handle:
+        handle.add(target, arcname="stage")
+    out = tmp_path / "out"
+    out.mkdir()
+
+    delta = build_delta.build_delta(base, target, out, max_ratio=0.5, full_archive=full)
+
+    assert delta.get("skipped") is True, delta
+    assert not (out / "1.6.11-macos-aarch64.delta.tar.gz").exists()
+    assert not (out / "1.6.11-macos-aarch64.delta.catalog.json").exists()
+
+
+def test_a_missing_full_archive_says_the_guard_is_off(tmp_path: Path, capsys) -> None:
+    base, target = _incompressible_pair(tmp_path)
+    out = tmp_path / "out"
+    out.mkdir()
+
+    delta = build_delta.build_delta(base, target, out, max_ratio=0.5)
+
+    assert "skipped" not in delta
+    assert "guard is inactive" in capsys.readouterr().out
+
+
+def test_a_skipped_delta_does_not_leave_a_stale_catalog_fragment(
+    tmp_path: Path,
+) -> None:
+    """A fragment pointing at an archive that was just deleted would make the
+    merged catalog advertise a download that 404s."""
+
+    base, target = _incompressible_pair(tmp_path)
+    out = tmp_path / "out"
+    out.mkdir()
+    stale = out / "1.6.11-macos-aarch64.delta.catalog.json"
+    stale.write_text('{"schema_version": 1, "deltas": []}\n', encoding="utf-8")
+    with tarfile.open(out / "1.6.11-macos-aarch64.tar.gz", "w:gz") as handle:
+        handle.add(target, arcname="stage")
+
+    delta = build_delta.build_delta(base, target, out, max_ratio=0.5)
+
+    assert delta.get("skipped") is True, delta
+    assert not stale.exists()
