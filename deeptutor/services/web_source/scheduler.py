@@ -184,7 +184,7 @@ class WebSourceSyncScheduler:
                 return
             task = asyncio.create_task(self._run_job(job), name=f"web-source-sync:{key[2]}")
             self._run_tasks[key] = task
-            task.add_done_callback(lambda _task, item=key: self._run_tasks.pop(item, None))
+            task.add_done_callback(lambda _task, item=key: self._run_tasks.pop(item, None))  # type: ignore[misc]
 
     async def _run_job(self, scheduled: WebSourceSyncJob) -> None:
         from deeptutor.multi_user.context import reset_current_user, set_current_user

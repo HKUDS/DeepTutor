@@ -565,6 +565,9 @@ class TurnRequestPreparer:
             "knowledge_bases": list(payload.get("knowledge_bases") or []),
             "language": str(payload.get("language") or "en"),
         }
+        if payload.get("capability_once"):
+            # One turn in another mode; the conversation keeps its own.
+            preference_update.pop("capability")
         if "reply_language_override" in payload:
             preference_update["reply_language_override"] = reply_language_override
         if content_workspace_enabled and "workspace_id" not in preferences:
@@ -936,6 +939,10 @@ class TurnRequestPreparer:
         payload: dict[str, Any] = {
             "session_id": session_id,
             "capability": capability,
+            # A turn asked in another mode once (a reading "Quiz me") is
+            # regenerated in it once, too — not adopted as the chat's mode.
+            "capability_once": "capability" not in overrides
+            and snapshot.get("capabilityOnce") is True,
             "workspace_mode": workspace_mode,
             "content": str(last_user.get("content", "") or ""),
             "tools": tools,

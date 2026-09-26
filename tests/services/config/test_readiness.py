@@ -32,6 +32,27 @@ def _empty_catalog() -> dict:
     }
 
 
+def _task_reference_catalog() -> dict:
+    catalog = _empty_catalog()
+    catalog["services"]["llm"] = {
+        "active_profile_id": "llm-profile",
+        "active_model_id": "llm-model",
+        "profiles": [
+            {
+                "id": "llm-profile",
+                "models": [{"id": "llm-model", "model": "test-model"}],
+            }
+        ],
+    }
+    catalog["services"]["task"].update(
+        {
+            "mode": "reference",
+            "selection": {"profile_id": "llm-profile", "model_id": "llm-model"},
+        }
+    )
+    return catalog
+
+
 def test_catalog_readiness_is_value_free_and_detects_stale_selection() -> None:
     catalog = _empty_catalog()
     catalog["services"]["llm"] = {
@@ -56,6 +77,57 @@ def test_catalog_readiness_is_value_free_and_detects_stale_selection() -> None:
     assert "secret-api-key" not in serialized
     assert "secret.example.test" not in serialized
     assert "secret-model-name" not in serialized
+
+
+def test_task_reference_mode_is_ready_and_enables_reason_tool() -> None:
+    catalog = _task_reference_catalog()
+
+    rows = catalog_service_rows(catalog)
+
+    task = next(row for row in rows if row["id"] == "catalog.task")
+    assert task["state"] == "enabled_verified"
+    assert task["detail_code"] == "configuration_verified"
+    assert task["configured"] is True
+    assert task["verified"] is True
+
+    dependency_rows = {row["id"]: row for row in rows}
+    reason = next(
+        row for row in tool_rows(["reason"], dependency_rows) if row["id"] == "tool.reason"
+    )
+    assert reason["state"] == "enabled_verified"
+    assert reason["detail_code"] == "tool_ready"
+
+
+def test_task_reference_rejects_empty_model_and_stale_selection() -> None:
+    catalog = _task_reference_catalog()
+    catalog["services"]["llm"]["profiles"][0]["models"][0]["model"] = ""
+    task = next(row for row in catalog_service_rows(catalog) if row["id"] == "catalog.task")
+    assert task["state"] == "misconfigured"
+    assert task["detail_code"] == "model_identifier_missing"
+
+    catalog["services"]["task"]["selection"]["model_id"] = "removed-model"
+    task = next(row for row in catalog_service_rows(catalog) if row["id"] == "catalog.task")
+    assert task["state"] == "misconfigured"
+    assert task["detail_code"] == "active_model_missing"
+
+
+def test_task_reference_rejects_stale_provider_link() -> None:
+    catalog = _task_reference_catalog()
+    catalog["services"]["llm"]["profiles"][0]["provider_ref"] = {
+        "connection_id": "removed-connection"
+    }
+
+    rows = catalog_service_rows(catalog)
+
+    task = next(row for row in rows if row["id"] == "catalog.task")
+    assert task["state"] == "misconfigured"
+    assert task["detail_code"] == "required_credential_missing"
+    reason = next(
+        row
+        for row in tool_rows(["reason"], {row["id"]: row for row in rows})
+        if row["id"] == "tool.reason"
+    )
+    assert reason["state"] != "enabled_verified"
 
 
 def test_selected_remote_parser_must_be_installed_ready_and_reachable() -> None:

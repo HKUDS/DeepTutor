@@ -10,6 +10,7 @@ import pytest
 from deeptutor.services.setup.data_volume import (
     DataVolumePermissionError,
     check_container_data_volume,
+    current_process_ids,
     ensure_data_volume_writable,
     format_data_volume_permission_error,
     parse_id,
@@ -24,6 +25,38 @@ def test_parse_id_rejects_root_and_non_integers() -> None:
         parse_id("0", default=1000, name="PUID")
     with pytest.raises(ValueError, match="non-root"):
         parse_id("alan", default=1000, name="PUID")
+
+
+def test_process_ids_and_writable_probe_work_without_posix_uid_apis(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delattr(os, "geteuid", raising=False)
+    monkeypatch.delattr(os, "getegid", raising=False)
+
+    assert current_process_ids() == (-1, -1)
+    assert resolve_runtime_ids() == (-1, -1)
+
+    target = tmp_path / "windows-style-data"
+    ensure_data_volume_writable(target)
+
+    assert target.is_dir()
+    assert not any(target.glob(".deeptutor-write-probe-*"))
+
+
+def test_permission_error_formats_without_posix_uid_apis(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delattr(os, "geteuid", raising=False)
+    monkeypatch.delattr(os, "getegid", raising=False)
+
+    message = format_data_volume_permission_error(
+        tmp_path / "knowledge_bases",
+        cause=PermissionError("denied"),
+    )
+
+    assert "euid=-1" in message
+    assert "egid=-1" in message
+    assert "denied" in message
 
 
 def test_resolve_runtime_ids_keeps_rootless_identity() -> None:
@@ -61,9 +94,37 @@ def test_root_probe_defers_mkdir_until_after_identity_drop(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     target = tmp_path / "mounted" / "knowledge_bases"
-    monkeypatch.setattr("deeptutor.services.setup.data_volume.os.geteuid", lambda: 0)
+    monkeypatch.setattr(
+        "deeptutor.services.setup.data_volume.os.geteuid",
+        lambda: 0,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.setup.data_volume.os.getegid",
+        lambda: 0,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.setup.data_volume.os.fork",
+        lambda: 1,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.setup.data_volume.os.setuid",
+        lambda _uid: None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.setup.data_volume.os.setgid",
+        lambda _gid: None,
+        raising=False,
+    )
+
+    called = False
 
     def create_as_runtime_user(path: Path, uid: int, gid: int) -> None:
+        nonlocal called
+        called = True
         assert (uid, gid) == (1234, 1234)
         assert not path.exists()
         path.mkdir(parents=True)
@@ -72,20 +133,28 @@ def test_root_probe_defers_mkdir_until_after_identity_drop(
         "deeptutor.services.setup.data_volume._ensure_writable_as", create_as_runtime_user
     )
     ensure_data_volume_writable(target, uid=1234, gid=1234)
+
+    assert called is True
     assert target.is_dir()
 
 
-def test_ensure_unwritable_directory_fail_fasts(tmp_path: Path) -> None:
-    if hasattr(os, "geteuid") and os.geteuid() == 0:
-        pytest.skip("root bypasses directory mode bits")
+def test_ensure_unwritable_directory_fail_fasts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     target = tmp_path / "locked"
     target.mkdir()
-    target.chmod(0o555)
-    try:
-        with pytest.raises(DataVolumePermissionError, match="not writable"):
-            ensure_data_volume_writable(target)
-    finally:
-        target.chmod(0o755)
+
+    real_write_text = Path.write_text
+
+    def deny_probe_write(self: Path, *args, **kwargs):
+        if self.parent == target and self.name.startswith(".deeptutor-write-probe-"):
+            raise PermissionError("permission denied")
+        return real_write_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", deny_probe_write)
+
+    with pytest.raises(DataVolumePermissionError, match="not writable"):
+        ensure_data_volume_writable(target)
 
 
 def test_check_container_data_volume_probes_knowledge_bases(tmp_path: Path, monkeypatch) -> None:

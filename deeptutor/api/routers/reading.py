@@ -651,21 +651,6 @@ async def get_workspace_ask_hint(
     return await get_ask_hint(workspace_id, session_id, locator, selection)
 
 
-@router.get("/workspaces/{workspace_id}/openers")
-async def get_workspace_openers(
-    workspace_id: str,
-    locator: int | None = None,
-) -> dict[str, Any]:
-    """Three things a learner could open this material with.
-
-    An empty list means the panel keeps its own generic suggestions — this is
-    a nicety, never a dependency.
-    """
-    from deeptutor.services.reading_hints import get_openers
-
-    return await get_openers(workspace_id, locator)
-
-
 @router.patch("/workspaces/{workspace_id}")
 async def update_workspace(workspace_id: str, payload: WorkspaceUpdateRequest) -> dict[str, Any]:
     try:

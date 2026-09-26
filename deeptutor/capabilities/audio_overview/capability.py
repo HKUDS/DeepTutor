@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 import uuid
 
 from deeptutor.agents._shared.capability_result import emit_capability_result
@@ -15,6 +15,7 @@ from deeptutor.core.capability_protocol import CapabilityManifest, StreamBusProt
 from deeptutor.core.context import UnifiedContext
 from deeptutor.i18n import StatusI18n
 from deeptutor.runtime.request_contracts import get_capability_request_schema
+from deeptutor.runtime.stream_bus import StreamBus
 
 
 class AudioOverviewCapability(TurnCapability):
@@ -34,7 +35,8 @@ class AudioOverviewCapability(TurnCapability):
         },
     )
 
-    async def run(self, context: UnifiedContext, stream: StreamBusProtocol) -> None:
+    async def run(self, context: UnifiedContext, protocol_stream: StreamBusProtocol) -> None:
+        stream = cast(StreamBus, protocol_stream)
         i18n = StatusI18n(self.name, context.language, module="capabilities")
         kb_name = str(context.knowledge_bases[0]) if context.knowledge_bases else ""
         if not kb_name:

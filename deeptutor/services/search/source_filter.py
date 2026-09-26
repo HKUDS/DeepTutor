@@ -308,7 +308,7 @@ def _web_risk_rejections(
                 if future is not None:
                     futures[url] = future
     for url, future in created:
-        future.add_done_callback(lambda completed, key=url: _cache_web_risk_result(key, completed))
+        future.add_done_callback(lambda completed, key=url: _cache_web_risk_result(key, completed))  # type: ignore[misc]
     if futures:
         done, _ = wait(set(futures.values()), timeout=_WEB_RISK_BATCH_TIMEOUT_S)
         for url, future in futures.items():

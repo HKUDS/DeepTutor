@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import {
   forwardRef,
   useCallback,
+  useEffect,
   useImperativeHandle,
   useRef,
   useState,
@@ -34,6 +35,23 @@ const LazySessionViewerPanel = forwardRef<
   const panelRef = useRef<SessionViewerPanelHandle | null>(null);
   const queuedCalls = useRef<QueuedCall[]>([]);
   const [loadRequested, setLoadRequested] = useState(props.open);
+  // Once opened, stay mounted. Unmounting on close cut the slide-out short
+  // (the panel vanished while the chat column was still easing back) and
+  // threw away the open tabs.
+  if (props.open && !loadRequested) setLoadRequested(true);
+
+  // Warm the chunk once the page goes idle, so the first open slides in with
+  // the chat column's squeeze instead of trailing it by a network fetch.
+  // Opportunistic: where requestIdleCallback is missing the first open simply
+  // loads on demand, as before.
+  useEffect(() => {
+    if (typeof window.requestIdleCallback !== "function") return;
+    const id = window.requestIdleCallback(
+      () => void import("./SessionViewerPanel"),
+      { timeout: 4000 },
+    );
+    return () => window.cancelIdleCallback(id);
+  }, []);
 
   const callPanel = useCallback(
     (run: QueuedCall["run"]) => {

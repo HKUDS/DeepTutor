@@ -177,6 +177,9 @@ class TurnRequest(BaseModel):
     # A saved failed-turn Resend repeats the old request without changing the
     # conversation's current settings for future turns.
     preserve_session_preferences: bool = False
+    # This turn runs in `capability` without making it the conversation's mode
+    # (a reading "Quiz me" asks the quiz engine once; the next message is chat).
+    capability_once: bool = False
     # SQLite message rowids are integers; PocketBase message record ids are
     # opaque strings. Preserve either form in the SESSION event for clients.
     regenerated_from_message_id: int | str | None = None

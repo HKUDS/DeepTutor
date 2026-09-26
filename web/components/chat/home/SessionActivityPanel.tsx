@@ -180,6 +180,18 @@ const SPACE_CATEGORIES: Record<string, SpaceCategoryDef> = {
   },
 };
 
+/* Activity home surface, shared with SessionViewerPanel's Open section.
+   Groups are soft filled tiles under a small label — no border, no shadow —
+   so they sit inside the viewer sheet without drawing a frame within a frame.
+   (color-mix rather than `bg-[var(--x)]/NN`: Tailwind 3 emits nothing for an
+   opacity modifier on a hex CSS variable.) */
+export const ACTIVITY_LABEL =
+  "px-1.5 pb-1.5 text-[12px] font-medium text-[var(--muted-foreground)]";
+export const ACTIVITY_TILE =
+  "rounded-xl bg-[color-mix(in_srgb,var(--muted)_45%,transparent)]";
+export const ACTIVITY_ROW_HOVER =
+  "hover:bg-[color-mix(in_srgb,var(--muted)_95%,transparent)]";
+
 export function ActivityBody({
   activity,
   open,
@@ -288,17 +300,16 @@ export function ActivityBody({
 
   if (activity.isEmpty && !configSection) {
     return (
-      <section className="overflow-hidden rounded-2xl border border-[var(--border)]/60 bg-[var(--card)] shadow-[0_2px_12px_color-mix(in_srgb,var(--foreground)_3%,transparent)]">
-        <header className="border-b border-[var(--border)]/45 px-4 py-3">
-          <h2 className="text-[13px] font-semibold text-[var(--foreground)]">
-            {t("Session activity")}
-          </h2>
-        </header>
-        <div className="flex items-start gap-3 px-4 py-4">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--muted)]/55 text-[var(--muted-foreground)]">
-            <Wrench size={15} strokeWidth={1.7} aria-hidden="true" />
-          </span>
-          <p className="min-w-0 pt-0.5 text-[12px] leading-[1.65] text-[var(--muted-foreground)]">
+      <section>
+        <h2 className={ACTIVITY_LABEL}>{t("Session activity")}</h2>
+        <div className={`${ACTIVITY_TILE} flex items-start gap-3 px-3.5 py-3`}>
+          <Wrench
+            size={15}
+            strokeWidth={1.7}
+            aria-hidden="true"
+            className="mt-[3px] shrink-0 text-[var(--muted-foreground)]"
+          />
+          <p className="min-w-0 text-[12.5px] leading-[1.65] text-[var(--muted-foreground)]">
             {t(
               "As you chat, the tools and references you use — and the files the tutor generates — will appear here.",
             )}
@@ -309,9 +320,11 @@ export function ActivityBody({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {!activity.isEmpty ? (
-        <div className="divide-y divide-[var(--border)]/45 overflow-hidden rounded-2xl border border-[var(--border)]/60 bg-[var(--card)] shadow-[0_2px_12px_color-mix(in_srgb,var(--foreground)_3%,transparent)]">
+        <section>
+        <h2 className={ACTIVITY_LABEL}>{t("Session activity")}</h2>
+        <div className={`${ACTIVITY_TILE} divide-y divide-[color-mix(in_srgb,var(--border)_55%,transparent)] overflow-hidden`}>
         {tools.length > 0 ? (
           <SectionCard icon={Wrench} title={t("Tools used")} count={tools.length}>
             <ul className="px-2 pb-2">
@@ -393,6 +406,7 @@ export function ActivityBody({
           </SectionCard>
         ) : null}
         </div>
+        </section>
       ) : null}
 
       {configSection}
@@ -417,13 +431,13 @@ function SectionCard({
 }) {
   return (
     <section>
-      <header className="flex items-center gap-2.5 px-4 pb-1.5 pt-3">
+      <header className="flex items-center gap-2.5 px-3.5 pb-1 pt-3">
         <Icon
           size={14}
           strokeWidth={1.8}
           className="shrink-0 text-[var(--muted-foreground)]"
         />
-        <h3 className="flex-1 text-[12px] font-semibold text-[var(--foreground)]">
+        <h3 className="flex-1 text-[12.5px] font-semibold text-[var(--foreground)]">
           {title}
         </h3>
         {count !== undefined && count > 0 ? (
@@ -452,7 +466,7 @@ function SpaceSubsection({
     <div>
       <Link
         href={category.href}
-        className="group flex min-h-8 items-center gap-2 rounded-lg px-2.5 py-1 transition-colors hover:bg-[var(--muted)]/55 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--ring)]"
+        className={`group flex min-h-8 items-center gap-2 rounded-lg px-2.5 py-1 transition-colors ${ACTIVITY_ROW_HOVER} focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--ring)]`}
       >
         <Icon
           size={12}
@@ -472,7 +486,7 @@ function SpaceSubsection({
           className="shrink-0 text-[var(--muted-foreground)] opacity-0 transition-opacity group-hover:opacity-100"
         />
       </Link>
-      <ul className="ml-[21px] border-l border-[var(--border)]/45 pl-2">{children}</ul>
+      <ul className="ml-[21px] border-l border-[color-mix(in_srgb,var(--border)_70%,transparent)] pl-2">{children}</ul>
     </div>
   );
 }
@@ -526,9 +540,9 @@ function AttachmentRow({
         type="button"
         onClick={onOpen}
         title={diskPath ?? undefined}
-        className="group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-[var(--muted)]/55 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--ring)]"
+        className={`group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors ${ACTIVITY_ROW_HOVER} focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--ring)]`}
       >
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--muted)]/65">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--card)]">
           <Icon
             size={13}
             strokeWidth={1.6}

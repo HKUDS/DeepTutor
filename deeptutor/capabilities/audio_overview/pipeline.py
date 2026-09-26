@@ -137,7 +137,7 @@ def _render_audio(parts: list[tuple[bytes, str]], output_dir: Path, stem: str) -
                     if pcm is not None:
                         sample_rate, channels = pcm
                         input_args = ["-f", "s16le", "-ar", str(sample_rate), "-ac", str(channels)]
-                    decoded = subprocess.run(
+                    decoded = subprocess.run(  # nosec B607 - fixed ffmpeg argv, no shell; missing binary is caught below
                         [
                             "ffmpeg",
                             "-hide_banner",
@@ -164,7 +164,7 @@ def _render_audio(parts: list[tuple[bytes, str]], output_dir: Path, stem: str) -
                             "The speech provider returned audio that could not be decoded."
                         )
                     raw.write(decoded.stdout)
-            encoded = subprocess.run(
+            encoded = subprocess.run(  # nosec B607 - same fixed ffmpeg argv as the decode step
                 [
                     "ffmpeg",
                     "-hide_banner",

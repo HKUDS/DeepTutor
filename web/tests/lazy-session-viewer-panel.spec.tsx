@@ -9,6 +9,7 @@ import type { SessionViewerPanelProps } from "@/components/chat/home/SessionView
 const fixture = vi.hoisted(() => ({
   ready: false,
   mounts: 0,
+  unmounts: 0,
   calls: [] as string[],
 }));
 
@@ -35,6 +36,9 @@ vi.mock("next/dynamic", async () => {
       forwardRef<SessionViewerPanelHandle>(function DeferredPanel(_props, ref) {
         useEffect(() => {
           fixture.mounts += 1;
+          return () => {
+            fixture.unmounts += 1;
+          };
         }, []);
         return fixture.ready ? <LoadedPanel ref={ref} /> : null;
       }),
@@ -45,6 +49,7 @@ afterEach(() => {
   cleanup();
   fixture.ready = false;
   fixture.mounts = 0;
+  fixture.unmounts = 0;
   fixture.calls = [];
 });
 
@@ -102,4 +107,19 @@ it("drops queued actions from the previous session", () => {
   fixture.ready = true;
   view.rerender(<LazySessionViewerPanel {...props} sessionId="session-b" ref={ref} />);
   expect(fixture.calls).toEqual(["current"]);
+});
+
+it("stays mounted after closing so the slide-out can play", () => {
+  const props = {
+    open: true,
+    sessionId: "session-a",
+    activity: {} as SessionViewerPanelProps["activity"],
+    onClose: () => {},
+    onAutoOpen: () => {},
+  };
+  const view = render(<LazySessionViewerPanel {...props} />);
+  expect(fixture.mounts).toBe(1);
+
+  view.rerender(<LazySessionViewerPanel {...props} open={false} />);
+  expect(fixture.unmounts).toBe(0);
 });

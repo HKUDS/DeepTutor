@@ -19,6 +19,7 @@ import {
   isBackendPath,
   isCodexCallbackPath,
   isRetiredPagePath,
+  isWebSocketPath,
 } from "../lib/proxy-policy";
 import { prepareBackendForwardHeaders } from "../lib/backend-forward";
 
@@ -34,6 +35,9 @@ test("isBackendPath matches /api and /ws paths only", () => {
   assert.equal(isBackendPath("/chat"), false);
   assert.equal(isBackendPath("/apidocs"), false); // no trailing slash → not backend
   assert.equal(isBackendPath("/logo.png"), false);
+  assert.equal(isWebSocketPath("/ws"), true);
+  assert.equal(isWebSocketPath("/ws/books"), true);
+  assert.equal(isWebSocketPath("/ws-extra"), false);
 });
 
 test("large knowledge uploads bypass the buffering proxy", () => {
@@ -157,6 +161,37 @@ test("backend forwarding does not invent a frontend host from the Next URL", () 
     "x-deeptutor-frontend-host": "app.example",
   }));
   assert.equal(headers.has("x-deeptutor-frontend-host"), false);
+});
+
+test("backend forwarding preserves only a valid WebSocket upgrade on /ws", () => {
+  const source = new Headers({
+    connection: "keep-alive, Upgrade, x-remove-me",
+    upgrade: "websocket",
+    host: "app.example",
+    "sec-websocket-key": "test-key",
+    "x-forwarded-for": "1.2.3.4",
+    "x-remove-me": "hop-by-hop",
+  });
+  const websocket = prepareBackendForwardHeaders(source, {
+    allowWebSocketUpgrade: true,
+  });
+  assert.equal(websocket.get("connection"), "Upgrade");
+  assert.equal(websocket.get("upgrade"), "websocket");
+  assert.equal(websocket.get("sec-websocket-key"), "test-key");
+  assert.equal(websocket.get("x-deeptutor-frontend-host"), "app.example");
+  assert.equal(websocket.has("x-forwarded-for"), false);
+  assert.equal(websocket.has("x-remove-me"), false);
+
+  const http = prepareBackendForwardHeaders(source);
+  assert.equal(http.has("connection"), false);
+  assert.equal(http.has("upgrade"), false);
+
+  const invalid = prepareBackendForwardHeaders(
+    new Headers({ connection: "Upgrade", upgrade: "h2c" }),
+    { allowWebSocketUpgrade: true },
+  );
+  assert.equal(invalid.has("connection"), false);
+  assert.equal(invalid.has("upgrade"), false);
 });
 
 test("isAuthExempt does NOT exempt protected app routes", () => {

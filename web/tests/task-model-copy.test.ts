@@ -102,7 +102,7 @@ test("every task the backend runs is named on the page, and nothing else is", ()
   const text = pageTaskText();
   const groups = pageGroupText();
 
-  assert.ok(kinds.length >= 11, `expected the backend's list, found ${kinds.length}`);
+  assert.ok(kinds.length >= 10, `expected the backend's list, found ${kinds.length}`);
   const unnamed = kinds.filter((kind) => !text.has(kind.id)).map((k) => k.id);
   assert.deepEqual(unnamed, [], `tasks with no wording: ${unnamed.join(", ")}`);
 
@@ -127,7 +127,7 @@ test("every task name and sentence exists in both locales", () => {
     ...pageGroupText().values(),
   ];
 
-  assert.ok(strings.length >= 25, `expected the page's copy, found ${strings.length}`);
+  assert.ok(strings.length >= 23, `expected the page's copy, found ${strings.length}`);
   const missing = strings.filter((s) => !(s in en) || !(s in zh));
   assert.deepEqual(missing, [], `copy missing a locale entry: ${missing.join(" | ")}`);
   // An entry that was added to zh untranslated is the same failure as a missing

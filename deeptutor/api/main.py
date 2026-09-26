@@ -533,6 +533,7 @@ from deeptutor.api.routers import (
     co_writer,
     courses,
     dashboard,
+    file_preview,
     imports,
     knowledge,
     marginnote4,
@@ -557,6 +558,7 @@ from deeptutor.api.routers import (
     space_mcp,
     subagents,
     system,
+    task_board,
     unified_ws,
     video_learning,
     visualizers,
@@ -582,6 +584,7 @@ app.include_router(
 # require_auth is a no-op when AUTH_ENABLED=false, so this is safe for local use.
 from deeptutor.api.routers.auth import (  # noqa: E402
     require_admin,
+    require_auth,
     require_learning_surface,
 )
 
@@ -599,6 +602,12 @@ app.include_router(
 )
 app.include_router(question.router, prefix="/api/question", tags=["question"], dependencies=_auth)
 app.include_router(knowledge.router, prefix="/api", tags=["knowledge-bases"], dependencies=_auth)
+app.include_router(
+    file_preview.router,
+    prefix="/api/file-preview",
+    tags=["file-preview"],
+    dependencies=[Depends(require_auth)],
+)
 app.include_router(imports.router, prefix="/api/imports", tags=["imports"], dependencies=_auth)
 app.include_router(
     dashboard.router, prefix="/api/dashboard", tags=["dashboard"], dependencies=_auth
@@ -627,6 +636,9 @@ app.include_router(
 )
 app.include_router(co_writer.router, prefix="/api", tags=["documents"], dependencies=_auth)
 app.include_router(notebook.router, prefix="/api", tags=["notebooks"], dependencies=_auth)
+app.include_router(
+    task_board.router, prefix="/api/task-board", tags=["task-board"], dependencies=_auth
+)
 app.include_router(book.router, prefix="/api", tags=["books"], dependencies=_auth)
 app.include_router(book.ws_router, prefix="/ws", tags=["books"])
 app.include_router(reading.router, prefix="/api/reading", tags=["reading"], dependencies=_auth)

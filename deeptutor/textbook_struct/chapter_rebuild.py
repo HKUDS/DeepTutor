@@ -13,6 +13,7 @@ page with ``page_idx`` / ``para_blocks``; blocks carry ``type`` / ``bbox`` /
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 import re
 
@@ -148,7 +149,7 @@ def detect_frames(
     height_range: tuple[float, float] = (20.0, 25.0),
     extras_range: tuple[float, float] = (26.0, 29.0),
     first_lesson_page_idx: int | None = None,
-    lesson_titles: list[str] = (),
+    lesson_titles: Sequence[str] = (),
 ) -> tuple[list[dict], list[dict]]:
     """Detect section-frame headings (and chapter-level extras like 综合探究).
 

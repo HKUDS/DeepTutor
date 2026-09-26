@@ -1,16 +1,13 @@
 "use client";
 
 import {
-  BrainCircuit,
   Check,
-  ChevronRight,
   CircleAlert,
   FileAudio,
   FileText,
   Film,
   Library,
   Loader2,
-  Sparkles,
   StickyNote,
   Youtube,
 } from "lucide-react";
@@ -76,79 +73,75 @@ export function MenuItem({
   );
 }
 
-export function CompanionWelcome({
-  title,
-  onAction,
-  suggestions = [],
-  tools = [],
-}: {
-  title: string;
-  onAction: (prompt: string) => void;
-  /** Page-level reading actions (a quiz on this page, say), one click each. */
-  tools?: { key: string; label: string; onClick: () => void }[];
-  /**
-   * Openers written against this material. Empty falls back to the three
-   * generic lines below, which are true of any document — fine as a floor,
-   * wrong as the default.
-   */
-  suggestions?: string[];
-}) {
+export function CompanionWelcome({ hasMaterial }: { hasMaterial: boolean }) {
   const { t } = useTranslation();
   return (
-    <div className="mx-auto flex min-h-full max-w-[300px] flex-col items-center justify-center py-10 text-center">
-      <span className="flex size-12 items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--muted)] text-[var(--primary)]">
-        <BrainCircuit size={20} />
-      </span>
-      <p className="mt-4 font-serif text-[17px] font-medium tracking-[-0.01em]">
-        {t("Read with a grounded companion")}
+    <div className="mx-auto flex min-h-full max-w-[290px] flex-col items-center justify-center py-10 text-center">
+      <SelectPassageMark />
+      <p className="mt-5 font-serif text-[18px] font-medium tracking-[-0.01em] text-[var(--foreground)]">
+        {t("Read and ask as you go")}
       </p>
-      <p className="mt-2 text-[12px] leading-relaxed text-[var(--muted-foreground)]">
-        {title
+      <p className="mt-2 text-[12.5px] leading-relaxed text-[var(--muted-foreground)]">
+        {hasMaterial
           ? t(
-              "Ask anything about {{title}}, or select a passage in the document to explain, translate or discuss it.",
-              { title },
+              "Select any passage to ask about it, explain it or translate it — or just ask below. Answers point back to the page they come from.",
             )
           : t("Add material to begin a reading conversation.")}
       </p>
-      <div className="mt-5 w-full space-y-2 text-left">
-        {(suggestions.length
-          ? suggestions
-          : [
-              t("Explain the key argument"),
-              t("Challenge this evidence"),
-              t("Turn this into study notes"),
-            ]
-        ).map((item) => (
-          <button
-            key={item}
-            type="button"
-            onClick={() => onAction(item)}
-            className="flex w-full items-start gap-2 rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-left text-[12px] leading-relaxed text-[var(--muted-foreground)] transition hover:border-[color-mix(in_srgb,var(--primary)_40%,transparent)] hover:text-[var(--foreground)] dark:border-[var(--border)] dark:bg-[var(--card)]"
-          >
-            <ChevronRight
-              size={12}
-              className="mt-[3px] shrink-0 text-[var(--primary)]"
-            />
-            <span className="min-w-0 flex-1">{item}</span>
-          </button>
-        ))}
-      </div>
-      {tools.length ? (
-        <div className="mt-4 flex flex-wrap justify-center gap-1.5">
-          {tools.map((tool) => (
-            <button
-              key={tool.key}
-              type="button"
-              onClick={tool.onClick}
-              className="inline-flex h-7 items-center gap-1.5 rounded-full border border-[var(--border)] px-2.5 text-[11.5px] font-medium text-[var(--muted-foreground)] transition hover:border-[color-mix(in_srgb,var(--primary)_40%,transparent)] hover:text-[var(--foreground)]"
-            >
-              <Sparkles size={11} className="text-[var(--primary)]" />
-              {tool.label}
-            </button>
-          ))}
-        </div>
-      ) : null}
     </div>
+  );
+}
+
+/**
+ * A page with one line picked out — the gesture the panel is waiting for,
+ * drawn instead of an icon that stands for "AI". Theme tokens only, so it
+ * follows light and dark without a second drawing.
+ */
+function SelectPassageMark() {
+  const line = "fill-[color-mix(in_srgb,var(--muted-foreground)_22%,transparent)]";
+  return (
+    <svg
+      width="64"
+      height="72"
+      viewBox="0 0 64 72"
+      aria-hidden="true"
+      className="overflow-visible"
+    >
+      <rect
+        x="8.5"
+        y="4.5"
+        width="47"
+        height="63"
+        rx="7"
+        className="fill-[var(--card)] stroke-[var(--border)]"
+      />
+      <rect x="17" y="17" width="30" height="3" rx="1.5" className={line} />
+      <rect x="17" y="25" width="26" height="3" rx="1.5" className={line} />
+      <rect
+        x="14.5"
+        y="30.5"
+        width="30"
+        height="10"
+        rx="2.5"
+        className="fill-[color-mix(in_srgb,var(--primary)_16%,transparent)]"
+      />
+      <rect
+        x="17"
+        y="34"
+        width="25"
+        height="3"
+        rx="1.5"
+        className="fill-[var(--primary)]"
+      />
+      <path
+        d="M44.5 29v13"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        className="stroke-[var(--primary)]"
+      />
+      <rect x="17" y="46" width="30" height="3" rx="1.5" className={line} />
+      <rect x="17" y="54" width="18" height="3" rx="1.5" className={line} />
+    </svg>
   );
 }
 

@@ -549,12 +549,12 @@ def _extract_pptx(data: bytes, filename: str) -> str:
         logger.info("pptx rich extraction failed on %s; falling back: %s", filename, exc)
 
     if rich is not None and any(slide.strip() for slide in rich.slides):
-        slides = [
+        rich_slides = [
             f"--- Slide {index} ---\n{slide}".rstrip()
             for index, slide in enumerate(rich.slides, 1)
             if slide.strip()
         ]
-        text = "\n\n".join(slides)
+        text = "\n\n".join(rich_slides)
         note = rich.collection.summary_note()
         if note:
             text += f"\n\n{note}"

@@ -132,6 +132,9 @@ WORKDIR /app
 #       installs with `pip install git+…`, which shells out to git. It is needed
 #       in *this* image and not in the runner: installing is a privileged
 #       main-app action, running is the runner's (Dockerfile.runner).
+# Office previews convert documents to PDF in the main app. Writer, Calc and
+# Impress cover DOCX, XLSX and PPTX; Noto CJK preserves Chinese text and
+# Liberation supplies common Latin font substitutes in the rendered pages.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
@@ -143,6 +146,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsm6 \
     libxext6 \
     libxrender1 \
+    libreoffice-writer \
+    libreoffice-calc \
+    libreoffice-impress \
+    fonts-noto-cjk \
+    fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy Node.js from node-runtime stage (platform-matched binary)

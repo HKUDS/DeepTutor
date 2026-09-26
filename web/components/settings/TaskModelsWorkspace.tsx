@@ -65,10 +65,6 @@ const TASK_TEXT: Record<string, { label: string; detail: string }> = {
     label: "Reading composer hint",
     detail: "Offers a question grounded in the page you are on.",
   },
-  reading_openers: {
-    label: "Reading openers",
-    detail: "Suggests what to discuss when a reading chat is still empty.",
-  },
   reading_vocabulary: {
     label: "Vocabulary help",
     detail: "Explains a word or phrase you selected while reading.",

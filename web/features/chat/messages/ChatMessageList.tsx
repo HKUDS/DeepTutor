@@ -65,6 +65,7 @@ import { hasVisibleMarkdownContent } from "@/lib/markdown-display";
 import type { SelectedBookReference } from "@/lib/book-references";
 import { buildVisiblePath, type SiblingInfo } from "@/lib/message-branches";
 import { turnAnchorKey } from "@/lib/chat-outline";
+import { readingPassageHref } from "@/lib/reading-citations";
 import { shouldSubmitOnEnter } from "@/lib/composer-keyboard";
 import { useImeComposing } from "@/lib/use-ime-composing";
 import type { SpaceMemoryFile } from "@/lib/space-items";
@@ -1766,6 +1767,20 @@ export const UserMessage = memo(function UserMessage({
             data-turn-bubble="true"
             className="rounded-2xl bg-[var(--secondary)] px-4 py-2.5 text-[14px] leading-relaxed text-[var(--foreground)] shadow-sm"
           >
+            {snap?.readingSelection ? (
+              <ReadingPassageQuote
+                quote={snap.readingSelection.quote}
+                href={
+                  snap.readingMaterialId && snap.readingSelection.locator
+                    ? readingPassageHref(
+                        snap.readingMaterialId,
+                        snap.readingSelection.locator,
+                        snap.readingMaterialRevision,
+                      )
+                    : undefined
+                }
+              />
+            ) : null}
             <div className="whitespace-pre-wrap">{msg.content}</div>
           </div>
         )}
@@ -1807,6 +1822,30 @@ export const UserMessage = memo(function UserMessage({
 });
 
 UserMessage.displayName = "UserMessage";
+
+/**
+ * The passage a reading question was asked about, at the top of its bubble.
+ *
+ * A link, not a label: it is written in the reader's citation form, so the
+ * reader's own capture-phase handler scrolls the document back to it.
+ */
+function ReadingPassageQuote({ quote, href }: { quote: string; href?: string }) {
+  const { t } = useTranslation();
+  const className =
+    "mb-1.5 block border-l-2 border-[color-mix(in_srgb,var(--primary)_45%,transparent)] pl-2.5 text-[12.5px] leading-relaxed text-[var(--muted-foreground)]";
+  const text = <span className="line-clamp-3">{quote}</span>;
+  return href ? (
+    <a
+      href={href}
+      title={t("Go to this passage")}
+      className={`${className} transition-colors hover:text-[var(--foreground)]`}
+    >
+      {text}
+    </a>
+  ) : (
+    <div className={className}>{text}</div>
+  );
+}
 
 export const ChatMessageList = memo(function ChatMessageList({
   messages,

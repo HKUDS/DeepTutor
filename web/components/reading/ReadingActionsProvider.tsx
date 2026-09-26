@@ -14,6 +14,7 @@ import {
   runReadingExtension,
   type ReadingExtensionManifest,
 } from "@/lib/reading-api";
+import { CHAT_ROUTED_READING_ACTIONS } from "@/lib/reading-passage-prompts";
 import { builtInActionLabel } from "./ReadingExtensionBar";
 import {
   ReadingActionsContext,
@@ -117,17 +118,24 @@ export function ReadingActionsProvider({
     () =>
       extensions
         .flatMap((extension) =>
-          extension.actions.map((action) => {
-            const key = `${extension.id}:${action.id}`;
-            const builtIn = builtInActionLabel(extension.id, action.id);
-            return {
-              key,
-              extension,
-              action,
-              label: builtIn ? t(builtIn) : action.label,
-              needsSelection: action.requires.includes("selection"),
-            };
-          }),
+          extension.actions
+            .filter(
+              (action) =>
+                !CHAT_ROUTED_READING_ACTIONS.has(
+                  `${extension.id}:${action.id}`,
+                ),
+            )
+            .map((action) => {
+              const key = `${extension.id}:${action.id}`;
+              const builtIn = builtInActionLabel(extension.id, action.id);
+              return {
+                key,
+                extension,
+                action,
+                label: builtIn ? t(builtIn) : action.label,
+                needsSelection: action.requires.includes("selection"),
+              };
+            }),
         )
         .sort((left, right) => {
           const leftRank = primaryReadingActionRank(left.key);

@@ -851,6 +851,11 @@
           "default": "chat",
           "title": "Capability"
         },
+        "capability_once": {
+          "default": false,
+          "title": "Capability Once",
+          "type": "boolean"
+        },
         "config": {
           "additionalProperties": true,
           "title": "Config",

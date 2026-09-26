@@ -59,6 +59,8 @@ export interface StartTurnInput {
   consultPartnerId?: string | null;
   partnerDiscussionGroupId?: string | null;
   autoRoute?: boolean | null;
+  /** Run `capability` for this turn only; the session keeps its own mode. */
+  capabilityOnce?: boolean;
 }
 
 export interface LegacySendMessageArguments {

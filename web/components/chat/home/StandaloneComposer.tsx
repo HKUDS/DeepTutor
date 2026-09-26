@@ -162,6 +162,8 @@ interface StandaloneComposerProps {
   inputPlaceholder?: string;
   /** A line Tab accepts while the composer is empty. See ComposerInput. */
   inputPlaceholderCompletion?: string;
+  /** Context shown inside the box above the text. See ChatComposer. */
+  inputHeader?: React.ReactNode;
   /**
    * Capability chip contents. Defaults to a locked "Chat" entry — pass a
    * one-entry list to relabel it, or several to make the chip a picker.
@@ -221,6 +223,7 @@ function StandaloneComposerImpl({
   awaitingUserReply = false,
   inputPlaceholder,
   inputPlaceholderCompletion,
+  inputHeader,
   capabilities,
   activeCapValue,
   onSelectCapability,
@@ -963,6 +966,7 @@ function StandaloneComposerImpl({
         prefillInputRef={prefillInputRef}
         inputPlaceholder={inputPlaceholder}
         inputPlaceholderCompletion={inputPlaceholderCompletion}
+        inputHeader={inputHeader}
       />
 
       <NotebookRecordPicker

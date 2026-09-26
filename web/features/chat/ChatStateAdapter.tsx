@@ -135,6 +135,10 @@ export interface SendMessageOptions {
    *  first ``mastery_status`` — otherwise the next ``mastery_quiz`` simply
    *  re-presents the question they just declined. */
   masterySkip?: { question_id: string } | null;
+  /** Run this one turn in another mode (a reading "Quiz me" asks the quiz
+   *  engine) without switching the conversation's own mode. Recorded in the
+   *  turn's snapshot, so a regenerate runs in it again. */
+  capability?: string;
 }
 
 /** Per-conversation narrowing of the workspace's skill and MCP selections.
@@ -266,6 +270,15 @@ export interface MessageRequestSnapshot {
   readingMaterialId?: string;
   /** Immutable content revision open when the turn was submitted. */
   readingMaterialRevision?: number;
+  /** The passage the question was asked about, and the unit it came from. */
+  readingSelection?: ReadingSelectionSnapshot;
+  /** `capability` ran for this turn only (see SendMessageOptions.capability). */
+  capabilityOnce?: boolean;
+}
+
+export interface ReadingSelectionSnapshot {
+  quote: string;
+  locator: number;
 }
 
 export interface MessageItem {
@@ -1541,6 +1554,7 @@ function hydrateRequestSnapshot(
     typeof (stored.timedMediaId ?? stored.timed_media_id) === "string"
       ? String(stored.timedMediaId ?? stored.timed_media_id).trim()
       : "";
+  const readingSelection = asReadingSelection(stored.readingSelection);
 
   if (config && Object.keys(config).length) snapshot.config = config;
   if (notebookReferences.length)
@@ -1564,7 +1578,22 @@ function hydrateRequestSnapshot(
     }
   }
   if (timedMediaId) snapshot.timedMediaId = timedMediaId;
+  if (readingSelection) snapshot.readingSelection = readingSelection;
+  if (stored.capabilityOnce === true) snapshot.capabilityOnce = true;
   return snapshot;
+}
+
+function asReadingSelection(
+  value: unknown,
+): ReadingSelectionSnapshot | undefined {
+  const record = asRecord(value);
+  const quote = typeof record?.quote === "string" ? record.quote.trim() : "";
+  if (!quote) return undefined;
+  const locator = Number(record?.locator);
+  return {
+    quote,
+    locator: Number.isSafeInteger(locator) && locator > 0 ? locator : 0,
+  };
 }
 
 export function ChatStateAdapterProvider({
@@ -2376,7 +2405,12 @@ export function ChatStateAdapterProvider({
       const session = currentState.sessions[key] ?? createSessionEntry(key);
       const replaySnapshot = options?.requestSnapshotOverride;
       const effectiveCapability =
-        replaySnapshot?.capability ?? session.activeCapability;
+        replaySnapshot?.capability ??
+        options?.capability ??
+        session.activeCapability;
+      const capabilityOnce = replaySnapshot
+        ? replaySnapshot.capabilityOnce === true
+        : Boolean(options?.capability);
       const effectiveWorkspaceMode =
         replaySnapshot?.workspaceMode ?? session.workspaceMode;
       const effectiveTools =
@@ -2426,6 +2460,7 @@ export function ChatStateAdapterProvider({
         replaySnapshot?.questionNotebookReferences ??
         questionNotebookReferences;
       const liveReadingFields = readingTurnFields(effectiveWorkspaceMode);
+      const replaySelection = replaySnapshot?.readingSelection;
       const effectiveReadingTurnFields = replaySnapshot?.readingMaterialId
         ? {
             reading_material_id: replaySnapshot.readingMaterialId,
@@ -2435,8 +2470,29 @@ export function ChatStateAdapterProvider({
                     replaySnapshot.readingMaterialRevision,
                 }
               : {}),
+            // A regenerate answers the same passage, not whatever the reader
+            // happens to have selected now.
+            ...(replaySelection
+              ? {
+                  reading_viewport: {
+                    selection: replaySelection.quote,
+                    ...(replaySelection.locator
+                      ? { locator: replaySelection.locator }
+                      : {}),
+                  },
+                }
+              : {}),
           }
         : liveReadingFields;
+      const liveViewport = liveReadingFields.reading_viewport;
+      const effectiveReadingSelection: ReadingSelectionSnapshot | undefined =
+        replaySelection ??
+        (liveReadingFields.reading_material_id && liveViewport?.selection
+          ? {
+              quote: liveViewport.selection,
+              locator: liveViewport.locator ?? 0,
+            }
+          : undefined);
       const effectiveReadingMaterialId =
         effectiveReadingTurnFields.reading_material_id;
       const effectiveReadingMaterialRevision =
@@ -2499,6 +2555,10 @@ export function ChatStateAdapterProvider({
         ...(effectiveReadingMaterialId && effectiveReadingMaterialRevision
           ? { readingMaterialRevision: effectiveReadingMaterialRevision }
           : {}),
+        ...(effectiveReadingSelection
+          ? { readingSelection: effectiveReadingSelection }
+          : {}),
+        ...(capabilityOnce ? { capabilityOnce: true } : {}),
         ...(effectiveTimedMediaId
           ? { timedMediaId: effectiveTimedMediaId }
           : {}),
@@ -2582,6 +2642,7 @@ export function ChatStateAdapterProvider({
             ? subagentConsultBudget
             : null,
         autoRoute: typeof autoRoute === "boolean" ? autoRoute : null,
+        capabilityOnce,
         attachments: effectiveAttachments,
         language: effectiveLanguage,
         // A draft has no session to PATCH yet. Persist its selector with the

@@ -295,6 +295,16 @@ export function locatorFromHref(
 }
 
 /** Material-aware reader address, with support for legacy locator-only links. */
+/** The anchor `citationTargetFromHref` reads back: this unit of this material. */
+export function readingPassageHref(
+  materialId: string,
+  locator: number,
+  materialRevision?: number,
+): string {
+  const revision = materialRevision ? `-revision-${materialRevision}` : "";
+  return `${MATERIAL_LOCATOR_HREF_PREFIX}${materialId}${revision}-locator-${locator}`;
+}
+
 export function citationTargetFromHref(
   href: string | null | undefined,
 ): ReadingCitationTarget | null {

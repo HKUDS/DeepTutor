@@ -360,6 +360,27 @@ class ModelCatalogService:
             return True
         return False
 
+    def _drop_retired_task_overrides(self, catalog: dict[str, Any]) -> bool:
+        """Remove per-task pins whose task no longer exists.
+
+        Nothing reads them, but the settings page counts every pin when deciding
+        whether a model is still in use — and offers no row to clear one for a
+        task it no longer lists — so a stale pin would lock its model forever.
+        """
+        from deeptutor.services.model_selection.tasks import TASK_KINDS, TASK_OVERRIDES_KEY
+
+        service = catalog.get("services", {}).get("task", {})
+        overrides = service.get(TASK_OVERRIDES_KEY) if isinstance(service, dict) else None
+        if not isinstance(overrides, dict):
+            return False
+        known = {str(spec.kind) for spec in TASK_KINDS}
+        retired = [key for key in overrides if key not in known]
+        for key in retired:
+            overrides.pop(key)
+        if retired and not overrides:
+            service.pop(TASK_OVERRIDES_KEY)
+        return bool(retired)
+
     def _normalize_connections(self, catalog: dict[str, Any]) -> dict[str, dict[str, Any]]:
         """Fill in connection defaults and return them keyed by id."""
         raw = catalog.get("connections")
@@ -531,6 +552,8 @@ class ModelCatalogService:
                     service["active_model_id"] = models[0]["id"]
                     changed = True
         if self._drop_legacy_llm_tasks(catalog):
+            changed = True
+        if self._drop_retired_task_overrides(catalog):
             changed = True
         return changed
 
