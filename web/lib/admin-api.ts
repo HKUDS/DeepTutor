@@ -1,11 +1,12 @@
 import { apiFetch, apiUrl } from "@/lib/api";
+import type { AccountRole } from "@/lib/account-role";
 
 export type AccountPreset = "standard" | "learner" | "custom";
 
 export interface UserRecord {
   id: string;
   username: string;
-  role: "admin" | "user";
+  role: AccountRole;
   created_at: string;
   disabled?: boolean;
   /** Avatar marker: "", "icon:<name>:<color>", or "img:<version>". */
@@ -142,7 +143,7 @@ export async function deleteUsers(
 
 export async function setUserRole(
   username: string,
-  role: "admin" | "user",
+  role: AccountRole,
 ): Promise<void> {
   const res = await apiFetch(
     apiUrl(`/api/auth/users/${encodeURIComponent(username)}/role`),
@@ -161,7 +162,7 @@ export async function setUserRole(
 export interface CreatedUser {
   user_id: string;
   username: string;
-  role: "admin" | "user";
+  role: AccountRole;
   is_admin: boolean;
   preset: AccountPreset;
 }

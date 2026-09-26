@@ -89,7 +89,7 @@ export function GuardianRelationshipsEditor({
   );
   const candidates = users.filter(
     (user) =>
-      user.role === "user" &&
+      user.role !== "admin" &&
       user.id !== learnerId &&
       user.preset !== "learner" &&
       !activeGuardianIds.has(user.id),
