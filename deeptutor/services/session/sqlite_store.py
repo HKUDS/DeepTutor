@@ -2750,6 +2750,7 @@ class SQLiteSessionStore:
 
         match_condition = r"""
             s.id NOT LIKE 'imported\_%' ESCAPE '\'
+            AND s.deleted_at IS NULL
             AND (
                 INSTR(LOWER(COALESCE(s.title, '')), LOWER(?)) > 0
                 OR EXISTS (
