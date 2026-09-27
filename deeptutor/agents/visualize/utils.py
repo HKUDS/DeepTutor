@@ -173,6 +173,24 @@ def validate_visualization(code: str, render_type: str) -> tuple[bool, str]:
             "erDiagram, gantt, mindmap, ...)."
         )
 
+    if render_type == "mindmap":
+        if text.startswith("```"):
+            return False, "Mermaid mindmap output must be raw DSL without a Markdown fence."
+        lines = [
+            (line, len(line) - len(line.lstrip()))
+            for line in text.splitlines()
+            if line.strip() and not line.lstrip().startswith("%%")
+        ]
+        if not lines or lines[0][0].strip() != "mindmap":
+            return False, "Mermaid mindmap output must start with the `mindmap` keyword."
+        root_indent = min(indent for _, indent in lines[1:])
+        root_lines = [line for line, indent in lines[1:] if indent == root_indent]
+        if len(root_lines) != 1 or not root_lines[0].strip():
+            return False, "Mermaid mindmap output must contain exactly one non-empty root node."
+        if not any(indent > root_indent for _, indent in lines[2:]):
+            return False, "Mermaid mindmap output needs at least one child branch."
+        return True, ""
+
     if render_type == "html":
         if is_valid_html_document(text):
             return True, ""
