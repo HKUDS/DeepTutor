@@ -55,7 +55,11 @@ import {
   type TopicSession,
 } from "@/lib/learning-api";
 import { setPendingPrompt } from "@/lib/pending-prompt";
-import { NEXT_CTA_LABELS, NEXT_LABELS } from "@/components/space/learning/next-step-copy";
+import {
+  localizedNextStepCopy,
+  NEXT_CTA_LABELS,
+  NEXT_LABELS,
+} from "@/components/space/learning/next-step-copy";
 
 export default function MasteryTopicPage() {
   const params = useParams<{ pathId: string }>();
@@ -289,10 +293,7 @@ export default function MasteryTopicPage() {
     );
   }
 
-  const nextCopy = NEXT_LABELS[topic.next.action] ?? {
-    zh: topic.next.reason,
-    en: topic.next.reason,
-  };
+  const nextCopy = NEXT_LABELS[topic.next.action];
   const progress = topic.map.counts.total
     ? Math.round((topic.map.counts.mastered / topic.map.counts.total) * 100)
     : 0;
@@ -429,9 +430,9 @@ export default function MasteryTopicPage() {
                   ? t(
                       "This goal has no outline yet. Open a session and the tutor will design one with you.",
                     )
-                  : zh
-                    ? nextCopy.zh
-                    : nextCopy.en}
+                  : nextCopy
+                    ? localizedNextStepCopy(nextCopy, i18n.language)
+                    : topic.next.reason}
               </p>
             </div>
           </div>
@@ -469,9 +470,7 @@ export default function MasteryTopicPage() {
               className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-[var(--primary)] px-3.5 text-[13px] font-medium text-[var(--primary-foreground)] transition hover:opacity-90"
             >
               {nextCta
-                ? zh
-                  ? nextCta.zh
-                  : nextCta.en
+                ? localizedNextStepCopy(nextCta, i18n.language)
                 : topic.session_count > 0
                   ? t("Continue learning")
                   : t("Begin first waypoint")}

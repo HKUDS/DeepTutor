@@ -47,6 +47,7 @@ from deeptutor.services.config.loader import get_capability_params
 from deeptutor.services.llm import clean_thinking_tags, get_llm_config, get_token_limit_kwargs
 from deeptutor.services.llm import stream as llm_stream
 from deeptutor.services.llm.capabilities import threads_session_id
+from deeptutor.services.prompt.language import append_language_directive, normalize_language
 from deeptutor.services.session.provider_response_state import normalize_provider_response_state
 
 logger = logging.getLogger(__name__)
@@ -114,7 +115,7 @@ class ContextExplorer:
     """Investigate the turn's attached sources and return an objective briefing."""
 
     def __init__(self, *, language: str, prompts: dict[str, Any]) -> None:
-        self.language = "zh" if str(language or "en").lower().startswith("zh") else "en"
+        self.language = normalize_language(language)
         self._prompts = prompts or {}
         cfg = get_llm_config()
         self.model = getattr(cfg, "model", None)
@@ -189,6 +190,7 @@ class ContextExplorer:
             logger.warning("explore_context loop prompts missing; using single pass")
             return ""
 
+        system_prompt = append_language_directive(system_prompt, self.language)
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": system_prompt},
             {
@@ -446,6 +448,7 @@ class ContextExplorer:
         if not system_prompt or not user_template:
             logger.warning("explore_context single-pass prompts missing; skipping pre-pass")
             return ""
+        system_prompt = append_language_directive(system_prompt, self.language)
         user_prompt = user_template.format(
             question=(context.user_message or "").strip() or "(empty)",
             mode=str(context.active_capability or "chat"),

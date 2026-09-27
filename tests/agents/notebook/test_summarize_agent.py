@@ -48,6 +48,20 @@ def test_summarize_agent_empty_extra_headers(monkeypatch) -> None:
     assert agent.extra_headers == {}
 
 
+@pytest.mark.parametrize("language", ["es", "es-ES", "es_ES"])
+def test_summarize_agent_requests_spanish_from_the_model(monkeypatch, language) -> None:
+    monkeypatch.setattr(
+        "deeptutor.agents.notebook.summarize_agent.get_llm_config",
+        lambda: _make_cfg(),
+    )
+    from deeptutor.agents.notebook.summarize_agent import NotebookSummarizeAgent
+    from deeptutor.services.prompt.language import language_directive
+
+    agent = NotebookSummarizeAgent(language=language)
+    assert agent.language == language.lower()
+    assert language_directive("es").strip() in agent._system_prompt()
+
+
 @pytest.mark.asyncio
 async def test_summarize_agent_forwards_extra_headers(monkeypatch) -> None:
     """extra_headers must reach the underlying llm_stream call."""
