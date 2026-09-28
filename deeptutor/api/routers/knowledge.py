@@ -2765,10 +2765,15 @@ def _resource_knowledge_bases() -> list[KnowledgeBaseInfo]:
 @router.get("/knowledge-bases", response_model=list[KnowledgeBaseInfo])
 async def list_knowledge_bases():
     """List all available knowledge bases with their details."""
+    from deeptutor.services.workspace.context import current_workspace_id
     from deeptutor.services.workspace.knowledge import library_request
     from deeptutor.services.workspace.resources import current_resources
 
-    if library_request.get() or current_resources().knowledge_bases is not None:
+    if (
+        library_request.get()
+        or current_resources().knowledge_bases is not None
+        or current_workspace_id()
+    ):
         return _resource_knowledge_bases()
     try:
         manager = get_kb_manager()
