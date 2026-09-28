@@ -316,7 +316,10 @@ def _parse_robots_txt(raw: str, user_agent: str = DEFAULT_USER_AGENT) -> RobotsP
     return RobotsPolicy(
         allowed=frozenset(prefix for group in selected for prefix in group.allow if prefix),
         disallowed=frozenset(prefix for group in selected for prefix in group.disallow if prefix),
-        crawl_delay_s=max((group.crawl_delay_s for group in selected), default=None),
+        crawl_delay_s=max(
+            (group.crawl_delay_s for group in selected if group.crawl_delay_s is not None),
+            default=None,
+        ),
     )
 
 

@@ -122,6 +122,26 @@ def test_robots_parser_selects_applicable_agent_and_longest_rule():
     assert not wildcard_policy.permits("https://example.com/private/secret")
 
 
+def test_robots_parser_merges_duplicate_stanzas_with_partial_crawl_delay():
+    policy = _parse_robots_txt(
+        "\n".join(
+            [
+                "User-agent: *",
+                "Disallow: /a/",
+                "",
+                "User-agent: *",
+                "Crawl-delay: 5",
+                "Disallow: /b/",
+            ]
+        )
+    )
+
+    assert policy.crawl_delay_s == 5.0
+    assert policy.permits("https://example.com/")
+    assert not policy.permits("https://example.com/a/page")
+    assert not policy.permits("https://example.com/b/page")
+
+
 @pytest.mark.asyncio
 async def test_host_rate_limiter_enforces_minimum_interval(monkeypatch):
     now = 100.0
