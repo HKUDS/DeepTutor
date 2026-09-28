@@ -112,6 +112,14 @@ _GRADED_RESULT_SQL = "COALESCE(NULLIF(n.result,''),'graded') NOT IN ('ungraded',
 _GRADED_RESULT_SQL_UNALIASED = (
     "COALESCE(NULLIF(result,''),'graded') NOT IN ('ungraded','voided','')"
 )
+# An entry whose session sits in the recycle bin is hidden from the question
+# bank until the session is restored. ``{entries}`` names the notebook_entries
+# alias of the surrounding query, so every listing, count and chip applies the
+# same rule.
+_NOT_RECYCLED_ENTRY_SQL = (
+    "NOT EXISTS (SELECT 1 FROM sessions s"
+    " WHERE s.id = {entries}.session_id AND s.deleted_at IS NOT NULL)"
+)
 ACTIVE_TURN_STATUSES = frozenset({"queued", "running", "waiting_input"})
 TERMINAL_TURN_STATUSES = frozenset({"completed", "failed", "cancelled"})
 ALL_TURN_STATUSES = ACTIVE_TURN_STATUSES | TERMINAL_TURN_STATUSES
@@ -3579,14 +3587,7 @@ class SQLiteSessionStore:
         conditions: list[str] = []
         params: list[Any] = []
 
-        conditions.append(
-            """
-            NOT EXISTS (
-                SELECT 1 FROM sessions s
-                WHERE s.id = n.session_id AND s.deleted_at IS NOT NULL
-            )
-            """
-        )
+        conditions.append(_NOT_RECYCLED_ENTRY_SQL.format(entries="n"))
         if query.mistakes_only:
             conditions.append(
                 "EXISTS (SELECT 1 FROM practice_review_state r WHERE r.entry_id = n.id AND r.is_mistake = 1)"
@@ -3805,11 +3806,11 @@ class SQLiteSessionStore:
             # not scope", empty means "scoped to nothing". The rail's counts sit
             # beside the list, so anything the list excludes must not be counted
             # here either.
-            where = ""
+            where = "WHERE " + _NOT_RECYCLED_ENTRY_SQL.format(entries="notebook_entries")
             params: list[str] = []
             if session_ids is not None:
                 placeholders = ",".join("?" for _ in session_ids) or "NULL"
-                where = f"WHERE session_id IN ({placeholders})"
+                where += f" AND session_id IN ({placeholders})"
                 params = list(session_ids)
             row = conn.execute(
                 f"""
@@ -3873,7 +3874,9 @@ class SQLiteSessionStore:
         self,
         session_ids: Sequence[str] | None = None,
     ) -> list[dict[str, Any]]:
-        where = "material_id != ''"
+        where = "material_id != '' AND " + _NOT_RECYCLED_ENTRY_SQL.format(
+            entries="notebook_entries"
+        )
         params: list[str] = []
         if session_ids is not None:
             placeholders = ",".join("?" for _ in session_ids) or "NULL"
@@ -4087,7 +4090,8 @@ class SQLiteSessionStore:
         # created still exists inside a course that has not filled it yet, and
         # dropping the row would make it look deleted. Hence the condition rides
         # on the join instead of a WHERE clause.
-        join = "LEFT JOIN notebook_entries e ON e.id = ec.entry_id"
+        not_recycled = _NOT_RECYCLED_ENTRY_SQL.format(entries="e")
+        join = f"LEFT JOIN notebook_entries e ON e.id = ec.entry_id AND {not_recycled}"
         params: list[str] = []
         if session_ids is not None:
             placeholders = ",".join("?" for _ in session_ids) or "NULL"
