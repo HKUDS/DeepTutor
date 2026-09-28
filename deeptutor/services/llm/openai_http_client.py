@@ -26,7 +26,7 @@ OPENROUTER_ATTRIBUTION_HEADERS: dict[str, str] = {
     "X-OpenRouter-Title": "DeepTutor",
 }
 
-# AI/ML API attribution. HTTP-Referer / X-Title name the calling app.
+# AI/ML API attribution.
 AIMLAPI_ATTRIBUTION_HEADERS: dict[str, str] = {
     "HTTP-Referer": "https://github.com/HKUDS/DeepTutor",
     "X-Title": "DeepTutor",
@@ -34,8 +34,7 @@ AIMLAPI_ATTRIBUTION_HEADERS: dict[str, str] = {
     "X-AIMLAPI-Source": "agent/deeptutor",
 }
 
-# Sent only when the client's endpoint host is exactly one of these, so a
-# look-alike domain or a proxy in front of the API never receives them.
+# Exact host match: a look-alike domain or a proxy never receives them.
 _AIMLAPI_ATTRIBUTION_HOSTS: frozenset[str] = frozenset({"api.aimlapi.com"})
 
 _warning_lock = threading.Lock()

@@ -291,11 +291,8 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         detect_by_base_keyword="atlascloud",
         default_api_base="https://api.atlascloud.ai/v1",
     ),
-    # AI/ML API issues opaque keys with no distinguishing prefix, so the
-    # endpoint is the only reliable signal — hence no detect_by_key_prefix.
-    # Model ids keep their vendor prefix ("openai/gpt-4o-mini"), so no
-    # strip_model_prefix either. Only POST /v1/chat/completions and
-    # /v1/responses exist; there is no /v1/completions endpoint.
+    # Keys carry no distinguishing prefix, so the endpoint is the only signal.
+    # Model ids keep their vendor prefix ("openai/gpt-4o-mini").
     ProviderSpec(
         name="aimlapi",
         keywords=("aimlapi",),

@@ -322,9 +322,9 @@ def _normalize_model_name(entry: object) -> str | None:
     return None
 
 
-# Endpoint families a gateway may tag a ``/models`` row with. Only rows that
-# serve chat belong in the LLM picker; image, video, speech and embedding rows
-# would fail on first use. Rows without a family tag are kept.
+# A gateway may tag a ``/models`` row with its endpoint family. Image, video,
+# speech and embedding rows would fail on first use, so only chat families are
+# kept; a row with no family tag is kept.
 _CHAT_ENDPOINT_TYPES: frozenset[str] = frozenset(
     {"openai/chat-completions", "openai/responses/submit", "anthropic/messages"}
 )
