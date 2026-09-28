@@ -327,6 +327,13 @@ SetPointSize, SetLabelVisible and SetLabelMode sparingly to make the teaching
 focus obvious. Choose view bounds
 that contain the whole construction with margin. Never fake a diagram with
 unrelated fixed coordinates when a dependent construction is possible.
+Use Text only with Text[<object>, <point>],
+Text[<object>, <point>, <boolean>], or
+Text[<object>, <point>, <boolean>, <boolean>]. A point must be one argument;
+for computed coordinates write Text["$x^2$", ((a+b)/2, a+b+0.8)], never
+Text["$x^2$", (a+b)/2, a+b+0.8]. Keep LaTeX dollar delimiters balanced and set
+the substitution and LaTeX-formula booleans explicitly when using the
+four-argument form.
 """,
             ),
             origin="bundled",

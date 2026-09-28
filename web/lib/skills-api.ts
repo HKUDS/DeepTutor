@@ -1,6 +1,16 @@
-import { apiFetch, apiUrl } from "@/lib/api";
+import { apiFetch, apiUrl as baseApiUrl } from "@/lib/api";
 import { invalidateClientCache, withClientCache } from "@/lib/client-cache";
 import { asJsonOrThrow as asJson } from "@/lib/api";
+
+function skillWorkspace(): string {
+  return typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("skill_workspace") ?? "";
+}
+
+function apiUrl(path: string): string {
+  const url = baseApiUrl(path);
+  const scope = skillWorkspace();
+  return scope ? `${url}${url.includes("?") ? "&" : "?"}skill_workspace=${encodeURIComponent(scope)}` : url;
+}
 
 const SKILLS_CACHE_PREFIX = "skills:";
 const SKILL_TAGS_CACHE_KEY = `${SKILLS_CACHE_PREFIX}tags`;
@@ -56,7 +66,7 @@ export async function listSkills(options?: {
   force?: boolean;
 }): Promise<SkillInfo[]> {
   return withClientCache<SkillInfo[]>(
-    `${SKILLS_CACHE_PREFIX}list`,
+    `${SKILLS_CACHE_PREFIX}list:${skillWorkspace()}`,
     async () => {
       const response = await apiFetch(apiUrl("/api/skills/list"), {
         cache: "no-store",

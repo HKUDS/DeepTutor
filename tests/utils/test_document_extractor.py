@@ -25,6 +25,7 @@ from deeptutor.utils.document_extractor import (
     extract_text_from_bytes,
     extract_text_from_path,
     is_document_extension,
+    normalize_epub_archive,
 )
 
 # ---------------------------------------------------------------------------
@@ -112,7 +113,7 @@ def _make_epub(
     root = f"{wrapper}/" if wrapper else ""
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
-        zf.writestr("mimetype", "application/epub+zip")
+        zf.writestr(f"{root}mimetype", "application/epub+zip")
         if with_container:
             zf.writestr(f"{root}META-INF/container.xml", _CONTAINER_XML.format(opf=opf_path))
         if with_opf:
@@ -328,6 +329,37 @@ class TestExtractEpub:
         units, _ = extract_epub_spine(data, "book.epub")
 
         assert [unit.href for unit in units] == ["OEBPS/a.xhtml"]
+
+    def test_archive_normalization_preserves_a_root_level_book(self) -> None:
+        data = _make_epub({"a.xhtml": "<p>Readable.</p>"})
+
+        assert normalize_epub_archive(data, "book.epub") is data
+
+    def test_archive_normalization_rejects_a_bad_zip(self) -> None:
+        with pytest.raises(CorruptDocumentError, match="failed to open"):
+            normalize_epub_archive(b"not a zip", "book.epub")
+
+    def test_archive_normalization_repairs_a_finder_package(self) -> None:
+        data = _make_epub(
+            {"a.xhtml": "<p>Readable.</p>"},
+            wrapper="MyBook",
+            with_macosx=True,
+        )
+
+        normalized = normalize_epub_archive(data, "book.epub")
+
+        with zipfile.ZipFile(io.BytesIO(normalized)) as zf:
+            infos = zf.infolist()
+            mimetype = zf.read("mimetype")
+
+        assert [info.filename for info in infos] == [
+            "mimetype",
+            "META-INF/container.xml",
+            "OEBPS/content.opf",
+            "OEBPS/a.xhtml",
+        ]
+        assert infos[0].compress_type == zipfile.ZIP_STORED
+        assert mimetype == b"application/epub+zip"
 
     def test_malformed_xhtml_uses_tolerant_html_fallback(self) -> None:
         buf = io.BytesIO()

@@ -11,19 +11,19 @@ import {
   type SidebarNavLayout,
 } from "../lib/sidebar-layout";
 
-const DEFAULTS = ["/chat", "/partners", "/agents", "/books", "/space"];
+const DEFAULTS = ["/chat", "/partners", "/agents", "/learning/books", "/space"];
 
-test("an empty layout is the shipped order, uncustomized", () => {
-  const resolved = resolveNavLayout(DEFAULTS, null);
+test("an unsaved layout uses the shipped collapsed defaults", () => {
+  const resolved = resolveNavLayout(DEFAULTS, null, ["/agents"]);
   assert.deepEqual(resolved.order, DEFAULTS);
-  assert.deepEqual(resolved.visible, DEFAULTS);
-  assert.deepEqual(resolved.collapsed, []);
+  assert.deepEqual(resolved.visible, DEFAULTS.filter((href) => href !== "/agents"));
+  assert.deepEqual(resolved.collapsed, ["/agents"]);
   assert.equal(resolved.customized, false);
 });
 
 test("a saved order wins over the shipped one", () => {
   const resolved = resolveNavLayout(DEFAULTS, {
-    order: ["/space", "/chat", "/partners", "/agents", "/books"],
+    order: ["/space", "/chat", "/partners", "/agents", "/learning/books"],
     collapsed: [],
   });
   assert.deepEqual(resolved.visible, [
@@ -31,7 +31,7 @@ test("a saved order wins over the shipped one", () => {
     "/chat",
     "/partners",
     "/agents",
-    "/books",
+    "/learning/books",
   ]);
   assert.equal(resolved.customized, true);
 });
@@ -40,17 +40,17 @@ test("a feature shipped later lands next to the neighbour it follows", () => {
   // The arrangement was saved before /reading existed and moved /space to the
   // top; /reading must arrive after /book (its default predecessor), not at
   // the bottom of whatever the user happened to arrange.
-  const defaults = ["/chat", "/partners", "/books", "/reading", "/space"];
+  const defaults = ["/chat", "/partners", "/learning/books", "/learning/reading", "/space"];
   const resolved = resolveNavLayout(defaults, {
-    order: ["/space", "/chat", "/partners", "/books"],
+    order: ["/space", "/chat", "/partners", "/learning/books"],
     collapsed: [],
   });
   assert.deepEqual(resolved.visible, [
     "/space",
     "/chat",
     "/partners",
-    "/books",
-    "/reading",
+    "/learning/books",
+    "/learning/reading",
   ]);
 });
 
@@ -65,7 +65,7 @@ test("a first feature shipped later lands at the top", () => {
 test("features that no longer exist and duplicates are dropped", () => {
   const resolved = resolveNavLayout(DEFAULTS, {
     order: ["/gone", "/space", "/space", "/chat"],
-    collapsed: ["/gone", "/books"],
+    collapsed: ["/gone", "/learning/books"],
   });
   assert.deepEqual(resolved.visible, [
     "/space",
@@ -73,14 +73,14 @@ test("features that no longer exist and duplicates are dropped", () => {
     "/partners",
     "/agents",
   ]);
-  assert.deepEqual(resolved.collapsed, ["/books"]);
+  assert.deepEqual(resolved.collapsed, ["/learning/books"]);
 });
 
 test("the resolved order feeds the next edit even before a first drag", () => {
   // A saved layout starts empty, so the first fold or drag has to work from
   // the resolved order rather than from the stored one.
   const { order, collapsed } = resolveNavLayout(DEFAULTS, null);
-  const folded = setNavCollapsed({ order, collapsed }, "/books", true);
+  const folded = setNavCollapsed({ order, collapsed }, "/learning/books", true);
   assert.deepEqual(resolveNavLayout(DEFAULTS, folded).visible, [
     "/chat",
     "/partners",
@@ -106,7 +106,7 @@ test("folding a feature keeps its slot for when it comes back", () => {
   assert.deepEqual(resolveNavLayout(DEFAULTS, layout).visible, [
     "/chat",
     "/partners",
-    "/books",
+    "/learning/books",
     "/space",
   ]);
   assert.deepEqual(resolveNavLayout(DEFAULTS, layout).collapsed, ["/agents"]);
@@ -123,11 +123,11 @@ test("dragging the visible list leaves folded features pinned", () => {
   const { visible } = resolveNavLayout(DEFAULTS, layout);
   const next = reorderNavSection(layout, visible, moveItem(visible, 3, 0));
   const after = resolveNavLayout(DEFAULTS, next);
-  assert.deepEqual(after.visible, ["/space", "/chat", "/partners", "/books"]);
+  assert.deepEqual(after.visible, ["/space", "/chat", "/partners", "/learning/books"]);
   // Unfolding still returns /agents to the third slot it has always held.
   assert.deepEqual(
     resolveNavLayout(DEFAULTS, setNavCollapsed(next, "/agents", false)).visible,
-    ["/space", "/chat", "/agents", "/partners", "/books"],
+    ["/space", "/chat", "/agents", "/partners", "/learning/books"],
   );
 });
 
@@ -214,4 +214,12 @@ test("a first drag adopts the rows it saw", () => {
     applyManualOrder(rows("a", "b"), idOf, merged),
     rows("b", "a"),
   );
+});
+
+
+test("a deliberately saved empty collapsed list overrides new defaults", () => {
+  const resolved = resolveNavLayout(DEFAULTS, { order: DEFAULTS, collapsed: [] }, ["/agents"]);
+  assert.deepEqual(resolved.visible, DEFAULTS);
+  assert.deepEqual(resolved.collapsed, []);
+  assert.equal(resolved.customized, true);
 });

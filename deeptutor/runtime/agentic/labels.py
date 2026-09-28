@@ -106,6 +106,49 @@ def classify_label(
     return None
 
 
+def recover_finished_label(
+    buffer: str,
+    *,
+    allowed_labels: tuple[str, ...],
+) -> tuple[str, str] | None:
+    r"""Re-read a *finished* reply for a recoverable protocol-label slip.
+
+    The streaming probe (:func:`classify_label` without ``final=True``) must
+    stay strict: an unclosed ``\`\`\`SECTION`` fence or an over-wide closer
+    such as ``\`\`FINISH\`\`\``` cannot be resolved while another chunk may
+    still arrive. Once the caller knows the stream is complete, accept those
+    fences around an *exact* allowed label and return ``(label, after_text)``.
+
+    Does not invent a label from body structure — report heading recovery
+    belongs to the report writer, which knows the section number it asked for.
+    """
+    parsed = classify_label(buffer, allowed_labels=allowed_labels, final=True)
+    if parsed is not None:
+        return parsed
+
+    stripped = strip_label_probe_prefix(buffer)
+    boundary = "`" + _LABEL_SEPARATOR_CHARS
+    for label in allowed_labels:
+        match = re.match(
+            rf"^(?P<ticks>`+)\s*{re.escape(label)}(?P<after>.*)$",
+            stripped,
+            flags=re.DOTALL,
+        )
+        if match is None:
+            continue
+        after = match.group("after")
+        # ``SECTIONAL`` must not match ``SECTION``; require end, a separator,
+        # or a backtick immediately after the token.
+        if after and after[0] not in boundary:
+            continue
+        # Drop a same-line closing fence of any length (unclosed = none;
+        # over-wide / mismatched = extra ticks). A code fence on the *next*
+        # line is body text and must stay.
+        after = re.sub(r"^[ \t]*`+", "", after, count=1)
+        return label, after.lstrip(_LABEL_SEPARATOR_CHARS)
+    return None
+
+
 def find_inline_labels(text: str, *, allowed_labels: tuple[str, ...]) -> list[str]:
     """Return labels that appear inside post-label body text.
 

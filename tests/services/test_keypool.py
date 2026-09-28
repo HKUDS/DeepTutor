@@ -8,6 +8,7 @@ from deeptutor.services.keypool import KeyPool, primary_api_key
 def test_keypool_rotates_in_round_robin_order() -> None:
     pool = KeyPool(["key-a", "key-b", "key-c"])
 
+    assert len(pool) == 3
     assert [pool.next() for _ in range(5)] == [
         "key-a",
         "key-b",

@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  collectNarrationCallIds,
-  isNarrationMarker,
+  collectRetractedCallIds,
+  isRetractionMarker,
   recomputeAnswerContent,
 } from "../lib/stream";
 import type { StreamEvent } from "../features/chat/model/protocol";
@@ -25,33 +25,17 @@ function event(
   };
 }
 
-test("ordinary narration is removed from answer content", () => {
+test("commentary written before a tool call stays in the answer", () => {
+  // The reader watched this sentence arrive above the tool's own row. Taking
+  // it back out on the round's completion marker is what used to make a turn
+  // look like it had said nothing while it worked.
   const events = [
-    event("content", "Searching.", {
+    event("content", "Checking the syllabus first.", {
       call_id: "round-1",
       call_kind: "agent_loop_round",
     }),
     event("progress", "", {
       call_id: "round-1",
-      trace_kind: "call_status",
-      call_state: "complete",
-      call_role: "narration",
-    }),
-  ];
-
-  assert.deepEqual([...collectNarrationCallIds(events)], ["round-1"]);
-  assert.equal(isNarrationMarker(events[1]), true);
-  assert.equal(recomputeAnswerContent(events), "");
-});
-
-test("clean prose surrounding a DSML call remains answer-visible", () => {
-  const events = [
-    event("content", "Great job! Choose the next topic.", {
-      call_id: "round-dsml",
-      call_kind: "agent_loop_round",
-    }),
-    event("progress", "", {
-      call_id: "round-dsml",
       trace_kind: "call_status",
       call_state: "complete",
       call_role: "narration",
@@ -59,12 +43,48 @@ test("clean prose surrounding a DSML call remains answer-visible", () => {
     }),
   ];
 
-  assert.deepEqual([...collectNarrationCallIds(events)], []);
-  assert.equal(isNarrationMarker(events[1]), false);
-  assert.equal(
-    recomputeAnswerContent(events),
-    "Great job! Choose the next topic.",
-  );
+  assert.deepEqual([...collectRetractedCallIds(events)], []);
+  assert.equal(isRetractionMarker(events[1]), false);
+  assert.equal(recomputeAnswerContent(events), "Checking the syllabus first.");
+});
+
+test("a round a capability retracted leaves the answer", () => {
+  const events = [
+    event("content", "Great job! Choose the next topic.", {
+      call_id: "round-rejected",
+      call_kind: "agent_loop_round",
+    }),
+    event("progress", "", {
+      call_id: "round-rejected",
+      trace_kind: "call_status",
+      call_state: "complete",
+      call_role: "narration",
+      answer_visible: false,
+    }),
+  ];
+
+  assert.deepEqual([...collectRetractedCallIds(events)], ["round-rejected"]);
+  assert.equal(isRetractionMarker(events[1]), true);
+  assert.equal(recomputeAnswerContent(events), "");
+});
+
+test("a round recorded before the flag existed keeps its text", () => {
+  // Sessions written by an older build carry no `answer_visible` at all.
+  const events = [
+    event("content", "Searching.", {
+      call_id: "round-legacy",
+      call_kind: "agent_loop_round",
+    }),
+    event("progress", "", {
+      call_id: "round-legacy",
+      trace_kind: "call_status",
+      call_state: "complete",
+      call_role: "narration",
+    }),
+  ];
+
+  assert.equal(collectRetractedCallIds(events).size, 0);
+  assert.equal(recomputeAnswerContent(events), "Searching.");
 });
 
 test("token-limit continuation replays the exact visible answer", () => {
@@ -98,8 +118,8 @@ test("token-limit continuation replays the exact visible answer", () => {
 test("a finish that is rejected after streaming is withdrawn from the answer", () => {
   // A guarded surface (mastery, partner authoring) streams optimistically and
   // closes the round as `finish`. When its capability then rejects that finish,
-  // the loop re-marks the same call_id as `narration`, and the already-visible
-  // text has to come back out of the reply.
+  // the loop republishes the same call_id with `answer_visible: false`, and the
+  // already-visible text has to come back out of the reply.
   const events = [
     event("content", "Which value is correct?\n\nA. one\nB. two\nC. three", {
       call_id: "round-1",
@@ -116,6 +136,7 @@ test("a finish that is rejected after streaming is withdrawn from the answer", (
       trace_kind: "call_status",
       call_state: "complete",
       call_role: "narration",
+      answer_visible: false,
       finish_rejected: true,
     }),
     event("content", "Let us try that on a card instead.", {
@@ -130,7 +151,7 @@ test("a finish that is rejected after streaming is withdrawn from the answer", (
     }),
   ];
 
-  assert.deepEqual([...collectNarrationCallIds(events)], ["round-1"]);
+  assert.deepEqual([...collectRetractedCallIds(events)], ["round-1"]);
   assert.equal(
     recomputeAnswerContent(events),
     "Let us try that on a card instead.",
@@ -151,6 +172,6 @@ test("an accepted finish keeps its text even after later rounds close", () => {
     }),
   ];
 
-  assert.equal(collectNarrationCallIds(events).size, 0);
+  assert.equal(collectRetractedCallIds(events).size, 0);
   assert.equal(recomputeAnswerContent(events), "The derivative is 2x.");
 });

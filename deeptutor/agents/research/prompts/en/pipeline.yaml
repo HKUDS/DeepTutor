@@ -19,6 +19,9 @@ labels:
   report_section: "Write section"
   report_conclusion: "Write conclusion"
   report_retry: "Report section was incomplete; retrying."
+  report_failure: "Report incomplete"
+  report_intro_part: "Introduction"
+  report_conclusion_part: "Conclusion"
   queue_append: "Sub-topic added"
   references_heading: "References"
   addendum_title: "Additional findings"
@@ -41,6 +44,7 @@ system:
 
 # --------------------- Notices (stream.progress) -----------------------
 notices:
+  report_incomplete: "The report stopped before these parts could be written: {parts}. Retry to generate the full report."
   protocol_retry: "The model violated the action-label protocol; retrying."
   empty_tool_result: "Tool returned no result."
   start_retrieval: "Starting retrieval"
@@ -209,7 +213,7 @@ note:
 # =======================================================================
 report:
   retry_complete: |
-    The previous report part was empty or truncated. Regenerate the complete part from its ## heading, follow the required label protocol, and finish every sentence. Do not comment on the retry.
+    The previous report part was incomplete or invalid. Regenerate the complete part from its ## heading, follow the required label protocol, and finish every sentence. Do not comment on the retry.
   outline:
     system: |
       You are planning the final report's structure from a pile of finished research blocks. Each block has an id, a sub-topic title, and a short knowledge preview.

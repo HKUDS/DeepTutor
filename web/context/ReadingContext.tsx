@@ -95,6 +95,7 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
   const [error, setErrorState] = useState<string | null>(null);
   // Guards against a slow open landing after the user opened something else.
   const openTokenRef = useRef(0);
+  useEffect(() => () => { openTokenRef.current += 1; }, []);
 
   // Mirror the open document into the turn-state cell, which is what the chat
   // reads when it sends. One effect rather than writes scattered through the
@@ -118,6 +119,7 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
             : "outline" in candidate
               ? (candidate as MaterialDetail)
               : await getMaterial(candidate.material_id);
+        if (token !== openTokenRef.current) return false;
         const marks = await listAnnotations(detail.material_id);
         if (token !== openTokenRef.current) return false;
         setMaterial(detail);

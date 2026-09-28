@@ -24,6 +24,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -39,14 +40,14 @@ import { useTranslation } from "react-i18next";
 import { useCapabilityAccess } from "@/components/access/CapabilityAccessContext";
 import {
   NAV_BY_HREF,
+  DEFAULT_COLLAPSED_NAV,
   PRIMARY_NAV_HREFS,
   isNavActive,
 } from "@/components/sidebar/nav-entries";
-import { Tooltip } from "@/components/ui/Tooltip";
+import { Tooltip } from "@/shared/ui/Tooltip";
 import { useDragSort, type DragSort } from "@/hooks/useDragSort";
 import { placeMenu, type FloatingMenuPosition } from "@/lib/floating-menu";
 import {
-  DEFAULT_NAV_LAYOUT,
   readNavLayout,
   reorderNavSection,
   resolveNavLayout,
@@ -54,6 +55,8 @@ import {
   writeNavLayout,
   type SidebarNavLayout,
 } from "@/lib/sidebar-layout";
+
+const MODULE_NAV_HREFS = PRIMARY_NAV_HREFS.filter((href) => href !== "/chat");
 
 const MORE_EXPANDED_KEY = "deeptutor.sidebar.moreExpanded";
 /** One curve and one duration for every part of the "More" disclosure, so the
@@ -73,6 +76,7 @@ interface RowMenu {
 interface SidebarNavProps {
   /** Icon-only rail. Rows there are not arrangeable — see the rail branch. */
   collapsed: boolean;
+  scrollRef?: RefObject<HTMLElement | null>;
   /** Home resets to a fresh session rather than just navigating. */
   onHomeClick: (event: React.MouseEvent) => void;
   /** Dismisses the mobile drawer on in-place navigation. */
@@ -81,6 +85,7 @@ interface SidebarNavProps {
 
 export function SidebarNav({
   collapsed,
+  scrollRef,
   onHomeClick,
   onNavigate,
 }: SidebarNavProps) {
@@ -88,7 +93,7 @@ export function SidebarNav({
   const { t } = useTranslation();
   const { has } = useCapabilityAccess();
 
-  const [layout, setLayout] = useState<SidebarNavLayout>(DEFAULT_NAV_LAYOUT);
+  const [layout, setLayout] = useState<SidebarNavLayout | null>(null);
   const [moreExpanded, setMoreExpanded] = useState(false);
   const [menu, setMenu] = useState<RowMenu | null>(null);
   const [railMenu, setRailMenu] = useState<FloatingMenuPosition | null>(null);
@@ -105,7 +110,7 @@ export function SidebarNav({
   }, []);
 
   const resolved = useMemo(
-    () => resolveNavLayout(PRIMARY_NAV_HREFS, layout),
+    () => resolveNavLayout(MODULE_NAV_HREFS, layout, DEFAULT_COLLAPSED_NAV),
     [layout],
   );
   /** Always edit the resolved order: the stored one may still be empty. */
@@ -135,12 +140,14 @@ export function SidebarNav({
   const visibleDrag = useDragSort({
     ids: resolved.visible,
     disabled: collapsed,
+    scrollRef,
     onReorder: (next) =>
       applyLayout(reorderNavSection(editable, resolved.visible, next)),
   });
   const foldedDrag = useDragSort({
     ids: resolved.collapsed,
     disabled: collapsed,
+    scrollRef,
     onReorder: (next) =>
       applyLayout(reorderNavSection(editable, resolved.collapsed, next)),
   });
@@ -223,7 +230,7 @@ export function SidebarNav({
               className={`flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-150 ${
                 railMenu
                   ? "bg-[var(--accent)] text-[var(--foreground)]"
-                  : "text-[var(--foreground)]/60 hover:bg-[var(--background)]/60 hover:text-[var(--foreground)]"
+                  : "text-foreground/60 hover:bg-background/60 hover:text-[var(--foreground)]"
               }`}
             >
               <MoreHorizontal size={18} strokeWidth={1.6} />
@@ -246,7 +253,7 @@ export function SidebarNav({
                     <span
                       key={href}
                       aria-disabled
-                      className="flex cursor-not-allowed items-center gap-2 rounded-lg px-2 py-1.5 text-[var(--muted-foreground)]/45"
+                      className="flex cursor-not-allowed items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground/45"
                     >
                       <Icon size={14} strokeWidth={1.6} />
                       <span className="min-w-0 flex-1 truncate">
@@ -258,6 +265,7 @@ export function SidebarNav({
                     <Link
                       key={href}
                       href={href}
+                      prefetch={false}
                       onClick={(event) => {
                         closeMenus();
                         if (href === "/chat") onHomeClick(event);
@@ -312,7 +320,7 @@ export function SidebarNav({
     const label = t(entry.label);
     const body = (
       <Fragment key={`${href}-content`}>
-        <Icon size={16} strokeWidth={active ? 1.9 : 1.5} className="shrink-0" />
+        <Icon size={15} strokeWidth={active ? 1.9 : 1.6} className="shrink-0" />
         <span className="min-w-0 flex-1 truncate">{label}</span>
         {locked ? (
           <Lock size={13} strokeWidth={1.8} className="shrink-0" />
@@ -320,16 +328,16 @@ export function SidebarNav({
       </Fragment>
     );
     const rowClass =
-      "flex items-center gap-2.5 rounded-lg py-2 pl-3 pr-8 text-[13.5px] transition-colors";
+      "flex min-h-8 items-center gap-2 rounded-md py-1.5 pl-2.5 pr-7 text-[13px] transition-colors";
 
     return (
       <div
         {...handlers}
         key={href}
         style={style as CSSProperties}
-        className={`group/nav relative rounded-lg ${
+        className={`group/nav relative rounded-md ${
           dragging
-            ? "bg-[var(--secondary)] shadow-lg ring-1 ring-[var(--border)]/70"
+            ? "bg-[var(--secondary)] shadow-lg ring-1 ring-border/70"
             : ""
         }`}
       >
@@ -343,7 +351,7 @@ export function SidebarNav({
             <div
               aria-label={`${label} — ${lockedTooltip}`}
               aria-disabled
-              className={`${rowClass} cursor-not-allowed text-[var(--muted-foreground)]/40`}
+              className={`${rowClass} cursor-not-allowed text-muted-foreground/40`}
             >
               {body}
             </div>
@@ -352,12 +360,13 @@ export function SidebarNav({
           <Link
             key={`${href}-destination`}
             href={href}
+            prefetch={false}
             draggable={false}
             onClick={href === "/chat" ? onHomeClick : onNavigate}
             className={`${rowClass} ${
               active
                 ? "bg-[var(--accent)] font-medium text-[var(--foreground)]"
-                : "text-[var(--foreground)]/85 hover:bg-[var(--background)]/60 hover:text-[var(--foreground)]"
+                : "text-foreground/85 hover:bg-background/60 hover:text-[var(--foreground)]"
             }`}
           >
             {body}
@@ -371,7 +380,7 @@ export function SidebarNav({
           aria-label={t("Arrange {{feature}}", { feature: label })}
           aria-haspopup="menu"
           aria-expanded={menuOpen}
-          className={`absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-1 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--background)]/70 hover:text-[var(--foreground)] ${
+          className={`absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-1 text-[var(--muted-foreground)] transition-colors hover:bg-background/70 hover:text-[var(--foreground)] ${
             menuOpen
               ? "opacity-100"
               : "opacity-0 focus-visible:opacity-100 group-hover/nav:opacity-100"
@@ -395,26 +404,23 @@ export function SidebarNav({
         <div className="mt-1">
           {/* A group heading, not a ninth feature: it sits a step down from the
               rows above it in size, weight and hover, and its caret rides a
-              16px slot so the label still lands on the same 38px text column
+              15px slot so the label still lands on the same 33px text column
               the features do. */}
           <button
             type="button"
             onClick={() => showMore(!moreExpanded)}
             aria-expanded={moreExpanded}
-            // Grey by default, foreground on hover. The colour IS the hover
-            // feedback here: `[var(--x)]/NN` emits no rule at all (the theme
-            // vars are hex, so Tailwind cannot mix an alpha into them), which
-            // is why the feature rows above have no hover state — a repo-wide
-            // issue, not one to fix behind this heading alone.
-            className="group/more flex w-full items-center gap-2.5 rounded-lg px-3 py-1.5 text-[12px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+            // Grey by default, foreground on hover. Colour alone carries the
+            // hover here — no surface tint, unlike the feature rows above — so
+            // the heading stays a step below them instead of reading as a
+            // ninth row.
+            className="group/more flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-[12px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
           >
-            <span className="flex w-4 shrink-0 items-center justify-center">
+            <span className="flex w-[15px] shrink-0 items-center justify-center">
               <ChevronDown
                 size={13}
                 strokeWidth={1.8}
-                className={`${EASE_CLASS} transition-transform ${
-                  moreExpanded ? "" : "-rotate-90"
-                }`}
+                className={`${EASE_CLASS} transition-transform ${moreExpanded ? "" : "-rotate-90"}`}
               />
             </span>
             <span className="min-w-0 flex-1 truncate text-left">
@@ -434,6 +440,8 @@ export function SidebarNav({
             </span>
           </button>
           <div
+            inert={!moreExpanded}
+            aria-hidden={!moreExpanded}
             className={`${EASE_CLASS} grid transition-[grid-template-rows] ${
               moreExpanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
             }`}
@@ -487,12 +495,15 @@ export function SidebarNav({
               />
               {resolved.customized ? (
                 <>
-                  <div className="my-1 border-t border-[var(--border)]/70" />
+                  <div className="my-1 border-t border-border/70" />
                   <MenuRow
                     icon={RotateCcw}
                     label={t("Reset sidebar order")}
                     onClick={() => {
-                      applyLayout(DEFAULT_NAV_LAYOUT);
+                      applyLayout({
+                        order: [...PRIMARY_NAV_HREFS],
+                        collapsed: [...DEFAULT_COLLAPSED_NAV],
+                      });
                       closeMenus();
                     }}
                   />
@@ -503,6 +514,77 @@ export function SidebarNav({
           )
         : null}
     </nav>
+  );
+}
+
+export function SidebarHome({
+  collapsed = false,
+  onHomeClick,
+}: {
+  collapsed?: boolean;
+  onHomeClick: (event: React.MouseEvent) => void;
+}) {
+  const { t } = useTranslation();
+  const pathname = usePathname();
+  const { has } = useCapabilityAccess();
+  const entry = NAV_BY_HREF.get("/chat")!;
+  const active = isNavActive(pathname, entry.href);
+  const locked = entry.requires ? !has(entry.requires) : false;
+  const lockedTooltip = t("Locked — contact your administrator to get access.");
+  if (collapsed) {
+    return (
+      <div className="mt-1 flex shrink-0 justify-center">
+        <RailRow
+          href="/chat"
+          active={active}
+          locked={locked}
+          lockedTooltip={lockedTooltip}
+          onHomeClick={onHomeClick}
+        />
+      </div>
+    );
+  }
+  const Icon = entry.icon;
+  const content = (
+    <>
+      <Icon size={15} strokeWidth={active ? 1.9 : 1.6} className="shrink-0" />
+      <span>{t(entry.label)}</span>
+    </>
+  );
+  const className =
+    "flex min-h-8 items-center gap-2 rounded-md px-2.5 py-1.5 text-[13px] transition-colors";
+  return (
+    <div className="shrink-0 px-2 pb-1 pt-1">
+      {locked ? (
+        <Tooltip
+          label={t(entry.label)}
+          description={lockedTooltip}
+          side="right"
+        >
+          <div
+            aria-disabled
+            aria-label={`${t(entry.label)} — ${lockedTooltip}`}
+            className={`${className} cursor-not-allowed text-muted-foreground/40`}
+          >
+            {content}
+            <Lock size={13} className="ml-auto" />
+          </div>
+        </Tooltip>
+      ) : (
+        <Link
+          href="/chat"
+          prefetch={false}
+          onClick={onHomeClick}
+          className={`${className} ${
+            active
+              ? "bg-[var(--accent)] font-medium text-[var(--foreground)]"
+              : "text-foreground/85 hover:bg-background/60 hover:text-[var(--foreground)]"
+          }`}
+        >
+          {content}
+        </Link>
+      )}
+    </div>
   );
 }
 
@@ -536,13 +618,13 @@ function RailRow({
         <div
           aria-label={`${label} — ${lockedTooltip}`}
           aria-disabled
-          className="relative flex h-9 w-9 cursor-not-allowed items-center justify-center rounded-xl text-[var(--muted-foreground)]/40"
+          className="relative flex h-9 w-9 cursor-not-allowed items-center justify-center rounded-xl text-muted-foreground/40"
         >
           <Icon size={18} strokeWidth={1.6} />
           <Lock
             size={10}
             strokeWidth={2}
-            className="absolute bottom-1 right-1 text-[var(--muted-foreground)]/70"
+            className="absolute bottom-1 right-1 text-muted-foreground/70"
           />
         </div>
       </Tooltip>
@@ -553,12 +635,13 @@ function RailRow({
     <Tooltip label={label} description={description} side="right">
       <Link
         href={href}
+        prefetch={false}
         onClick={href === "/chat" ? onHomeClick : undefined}
         aria-label={label}
         className={`relative flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-150 ${
           active
             ? "bg-[var(--accent)] text-[var(--foreground)] shadow-sm"
-            : "text-[var(--foreground)]/85 hover:bg-[var(--background)]/60 hover:text-[var(--foreground)]"
+            : "text-foreground/85 hover:bg-background/60 hover:text-[var(--foreground)]"
         }`}
       >
         <Icon size={18} strokeWidth={active ? 2 : 1.6} />

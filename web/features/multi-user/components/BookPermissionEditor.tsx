@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   AlertCircle,
   BookOpen,
@@ -18,6 +19,7 @@ import type { AdminBook, BookPermission, BookPermissionLevel } from "../types";
 const EMPTY: BookPermission = { create: true, default: "none", books: {} };
 
 export function BookPermissionEditor({ userId }: { userId: string }) {
+  const { t } = useTranslation();
   const [books, setBooks] = useState<AdminBook[]>([]);
   const [permission, setPermission] = useState<BookPermission>(EMPTY);
   const [saved, setSaved] = useState("");
@@ -78,8 +80,7 @@ export function BookPermissionEditor({ userId }: { userId: string }) {
   if (loading) {
     return (
       <div className="flex items-center gap-2 border-t border-[var(--border)] px-5 py-4 text-xs text-[var(--muted-foreground)]">
-        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading book
-        permissions…
+        <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t("Loading book permissions…")}
       </div>
     );
   }
@@ -89,11 +90,10 @@ export function BookPermissionEditor({ userId }: { userId: string }) {
       <div className="mb-3 flex items-start justify-between gap-4">
         <div>
           <h3 className="flex items-center gap-2 text-sm font-semibold text-[var(--foreground)]">
-            <BookOpen className="h-4 w-4" /> Book access
+            <BookOpen className="h-4 w-4" /> {t("Book access")}
           </h3>
           <p className="mt-1 text-xs text-[var(--muted-foreground)]">
-            Shared deletion is never delegated. Reading progress and notes stay
-            private per user.
+            {t("Shared deletion is never delegated. Reading progress and notes stay private per user.")}
           </p>
         </div>
         <button
@@ -107,7 +107,7 @@ export function BookPermissionEditor({ userId }: { userId: string }) {
           ) : (
             <Save className="h-3.5 w-3.5" />
           )}
-          Save
+          {t("Save")}
         </button>
       </div>
 
@@ -124,10 +124,10 @@ export function BookPermissionEditor({ userId }: { userId: string }) {
               }));
             }}
           />
-          May create personal books
+          {t("May create personal books")}
         </label>
         <label className="flex items-center justify-between gap-3 rounded-lg border border-[var(--border)] p-3 text-xs">
-          New shared books default to
+          {t("New shared books default to")}
           <select
             value={permission.default}
             onChange={(event) => {
@@ -139,8 +139,8 @@ export function BookPermissionEditor({ userId }: { userId: string }) {
             }}
             className="rounded border border-[var(--border)] bg-[var(--card)] px-2 py-1"
           >
-            <option value="none">No access</option>
-            <option value="read">Read only</option>
+            <option value="none">{t("No access")}</option>
+            <option value="read">{t("Read only")}</option>
           </select>
         </label>
       </div>
@@ -148,7 +148,7 @@ export function BookPermissionEditor({ userId }: { userId: string }) {
       <div className="max-h-64 space-y-1 overflow-y-auto">
         {books.length === 0 ? (
           <p className="rounded-lg border border-dashed border-[var(--border)] p-4 text-center text-xs text-[var(--muted-foreground)]">
-            No admin books are available yet.
+            {t("No admin books are available yet.")}
           </p>
         ) : (
           books.map((book) => (
@@ -169,9 +169,9 @@ export function BookPermissionEditor({ userId }: { userId: string }) {
                 }
                 className="rounded border border-[var(--border)] bg-[var(--card)] px-2 py-1"
               >
-                <option value="none">No access</option>
-                <option value="read">Read only</option>
-                <option value="edit">Collaborative edit</option>
+                <option value="none">{t("No access")}</option>
+                <option value="read">{t("Read only")}</option>
+                <option value="edit">{t("Collaborative edit")}</option>
               </select>
             </label>
           ))
@@ -186,11 +186,11 @@ export function BookPermissionEditor({ userId }: { userId: string }) {
       ) : savedNow ? (
         <p className="mt-3 flex items-center gap-1.5 text-xs text-emerald-600">
           <CheckCircle2 className="h-3.5 w-3.5" />
-          Saved
+          {t("Saved")}
         </p>
       ) : dirty ? (
         <p className="mt-3 text-xs text-amber-600">
-          Unsaved book permission changes
+          {t("Unsaved book permission changes")}
         </p>
       ) : null}
     </section>

@@ -2,7 +2,7 @@
 CLI Knowledge Base Command
 ===========================
 
-Manage llamaindex knowledge bases from the command line.
+Manage knowledge bases from the command line.
 """
 
 from __future__ import annotations
@@ -181,6 +181,26 @@ def register(app: typer.Typer) -> None:
             console.print(f"[red]KB creation failed: {exc}[/]")
             raise typer.Exit(code=1) from exc
         console.print("[green]Knowledge base created successfully.[/]")
+
+    @app.command("connect-kiwix")
+    def kb_connect_kiwix(
+        name: str = typer.Argument(..., help="New KB name."),
+        server_url: str = typer.Option(..., "--server-url", help="kiwix-serve base URL."),
+        zim_name: str = typer.Option(..., "--zim-name", help="One ZIM name served by Kiwix."),
+    ) -> None:
+        """Connect an existing ZIM archive without copying or indexing it."""
+        from deeptutor.services.rag.pipelines.kiwix.client import KiwixClient
+
+        try:
+            client = KiwixClient(server_url, zim_name)
+            title = asyncio.run(client.probe())
+            _get_kb_manager().register_kiwix_kb(
+                name, client.base_url, client.zim_name, zim_title=title
+            )
+        except Exception as exc:
+            console.print(f"[red]Could not connect Kiwix archive: {exc}[/]")
+            raise typer.Exit(code=1) from exc
+        console.print(f"[green]Connected '{name}' to Kiwix archive '{title}'.[/]")
 
     @app.command("add")
     def kb_add(

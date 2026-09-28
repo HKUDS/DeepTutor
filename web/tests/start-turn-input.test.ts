@@ -104,6 +104,21 @@ test("optional routing fields preserve omitted versus explicit null", () => {
   assert.equal(explicit.capability, null);
 });
 
+test("a draft's reply language selector is explicit and a normal turn preserves the session choice", () => {
+  const normal = buildStartTurnInput({ content: "Continue", sessionId: "session-1", language: "en" });
+  const fixed = buildStartTurnInput({
+    content: "用法语教我数学",
+    language: "zh",
+    replyLanguageOverride: "fr",
+  });
+  const cleared = buildStartTurnInput({ content: "Use default", replyLanguageOverride: null });
+
+  assert.equal("reply_language_override" in normal, false);
+  assert.equal(fixed.reply_language_override, "fr");
+  assert.equal(fixed.language, "zh");
+  assert.equal(cleared.reply_language_override, null);
+});
+
 test("the positional compatibility adapter produces object-shaped input", () => {
   const input = legacySendMessageInput(
     { content: "legacy", config: { difficulty: "hard" } },
@@ -116,4 +131,18 @@ test("the positional compatibility adapter produces object-shaped input", () => 
   assert.equal(input.content, "legacy");
   assert.deepEqual(input.capabilityConfig, { difficulty: "hard" });
   assert.equal(buildStartTurnInput(input).session_id, "session-1");
+});
+
+test("consultation selections travel as runtime fields, not capability config", () => {
+  for (const capability of ["chat", "deep_solve", "visualize"]) {
+    for (const selection of [{}, { consultPartnerId: "partner-1" }, { partnerDiscussionGroupId: "group-1" }]) {
+      const wire = buildStartTurnInput({ content: "什么是agent", capability, ...selection });
+      assert.deepEqual(wire.config, {});
+      assert.equal(wire.consult_partner_id, selection.consultPartnerId);
+      assert.equal(wire.partner_discussion_group_id, selection.partnerDiscussionGroupId);
+    }
+  }
+  for (const key of ["consult_partner_id", "partner_discussion_group_id"]) {
+    assert.throws(() => buildStartTurnInput({ content: "hi", capabilityConfig: { [key]: "id" } }), /must use its typed turn property/);
+  }
 });

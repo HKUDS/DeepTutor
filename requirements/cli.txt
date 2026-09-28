@@ -48,6 +48,7 @@ llama-index-vector-stores-faiss>=0.4.0,<1.0.0
 faiss-cpu>=1.8.0,<2.0.0; python_version < "3.14"
 faiss-cpu>=1.12.0,<2.0.0; python_version >= "3.14"
 PyMuPDF>=1.26.0
+Pillow>=10.0.0
 numpy>=1.24.0,<3.0.0
 arxiv>=2.0.0
 
@@ -77,3 +78,6 @@ json-repair>=0.57.0,<1.0.0
 # --- MCP client (configurable deferred tools; core, not partners-only) ---
 mcp>=1.26.0,<2.0.0
 pageindex>=0.2.10,<0.3.0
+
+# --- Partner channel QR onboarding (WeChat, WeCom, Feishu; core) ---
+qrcode>=7.4.0,<9.0.0

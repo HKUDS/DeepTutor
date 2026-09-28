@@ -141,3 +141,34 @@ def test_kimi_k3_is_vision_capable() -> None:
 def test_qwen38_max_enables_vision_without_legacy_vl_suffix() -> None:
     """Qwen3.8-Max is multimodal despite not carrying the legacy ``-vl`` suffix."""
     assert supports_vision("dashscope", "qwen3.8-max") is True
+
+
+def test_gemini_models_resource_prefix_is_vision_capable() -> None:
+    """Google's model list hands back resource names like ``models/gemini-2.5-flash``.
+
+    ``MODEL_OVERRIDES`` keys are bare ids and ``_static_capability`` matched them
+    with ``startswith``, so a catalog-supplied ``models/``-prefixed id missed the
+    Gemini rule and fell through to the binding default. On an OpenAI-compatible
+    binding that default is no vision, so a model card left on **Vision: Auto**
+    resolved to text-only and the model could not be selected as a LightRAG VLM.
+    The embedding layer already strips this prefix, so capability resolution now
+    matches against the same normalized form.
+    """
+    for model in (
+        "models/gemini-2.5-flash",
+        "models/gemini-2.5-pro",
+        "models/gemini-3.5-flash-lite",
+        "MODELS/Gemini-2.5-Flash",
+    ):
+        assert supports_vision("custom", model) is True, model
+
+
+def test_models_prefix_does_not_change_other_vendor_verdicts() -> None:
+    """Normalizing the resource-name prefix must not alter any other verdict."""
+    # `gemma` explicitly opts out of vision, and must keep doing so prefixed.
+    assert supports_vision("custom", "models/gemma-2-9b") is False
+    assert supports_vision("custom", "gemma-2-9b") is False
+    # Only Google's `models/` resource prefix is normalized, not any slash.
+    assert supports_vision("custom", "openai/gpt-3.5-turbo") is False
+    # The bare id keeps resolving exactly as before.
+    assert supports_vision("custom", "gemini-2.5-flash") is True

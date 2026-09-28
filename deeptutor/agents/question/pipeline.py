@@ -1010,6 +1010,33 @@ class QuestionPipeline:
             iter_meta=iter_meta,
             max_tokens=self._budgets["repair"]["max_tokens"],
         )
+        if step.reasoning_only:
+            # The round that exists to rescue a starved question is itself an
+            # LLM round and starves the same way (#1508), and nothing after it
+            # will ever ask again. Turn the thinking down, once.
+            await stream.progress(
+                self._t(
+                    "notices.repair_reasoning_retry",
+                    default=(
+                        "The repair round spent its whole budget reasoning; "
+                        "asking again with less thinking."
+                    ),
+                ),
+                source=SOURCE,
+                stage=STAGE_QUIZZING,
+                metadata={"trace_kind": "warning"},
+            )
+            step = await self._run_labeled_step(
+                client=client,
+                messages=messages,
+                tool_schemas=None,
+                protocol=_PROTOCOL_REPAIR,
+                stream=stream,
+                stage=STAGE_QUIZZING,
+                iter_meta=iter_meta,
+                max_tokens=self._budgets["repair"]["max_tokens"],
+                reasoning_effort=RETRY_REASONING_EFFORT,
+            )
         return self._parse_quiz_payload(step.text)
 
     # ------------------------------------------------------------------
@@ -1317,7 +1344,11 @@ class QuestionPipeline:
             }
             for qa_pair in qa_pairs
         ]
-        successful = sum(1 for qa in qa_pairs if not qa.metadata.get("error"))
+        # ``issues`` is what survives the repair attempt, so a non-empty list
+        # means the learner got a question that is still broken. ``error`` was
+        # read here but is written nowhere, so an all-placeholder quiz reported
+        # success=True / failed=0 and #1508 left no trace of having failed.
+        successful = sum(1 for qa in qa_pairs if not qa.metadata.get("issues"))
         markdown = self._render_summary_markdown(qa_pairs)
         finish_block = finish_text.strip()
         if finish_block:

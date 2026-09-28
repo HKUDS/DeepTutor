@@ -16,6 +16,7 @@ import pytest
 
 from deeptutor.agents.research.pipeline import ResearchPipeline, _RephraseLoopHost
 from deeptutor.core.context import UnifiedContext
+from deeptutor.runtime.agentic import DispatchOutcome
 from deeptutor.runtime.stream_bus import StreamBus
 
 
@@ -104,6 +105,31 @@ async def test_rephrase_round_cap_short_circuits_dispatch(
     # Round counter unchanged — the cap-reply doesn't consume another
     # round (and dispatch_tool_calls was never invoked).
     assert host._rounds_used == 2
+
+
+@pytest.mark.asyncio
+async def test_rephrase_pause_resumes_with_user_answers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A displayed ask_user card must consume its reply before decomposition."""
+    pipeline = _make_pipeline(monkeypatch)
+    host = _make_host(pipeline)
+
+    async def reply() -> dict:
+        return {"answers": [{"questionId": "scope", "text": "Graph theory"}]}
+
+    host._context.runtime.wait_for_user_reply = reply
+    dispatch = DispatchOutcome(
+        pause=True,
+        pause_payload={"ask_user": {"questions": [{"id": "scope", "prompt": "Which subject?"}]}},
+        pause_tool_call_id="ask-1",
+        tool_messages=[{"role": "tool", "tool_call_id": "ask-1", "content": ""}],
+    )
+
+    assert await host.resolve_pause(dispatch) is True
+    assert "Which subject?" in dispatch.tool_messages[0]["content"]
+    assert "Graph theory" in dispatch.tool_messages[0]["content"]
+    assert any(event.metadata.get("ask_user_resolved") for event in host._stream._history)
 
 
 @pytest.mark.asyncio

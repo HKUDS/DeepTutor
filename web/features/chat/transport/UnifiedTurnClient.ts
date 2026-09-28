@@ -40,6 +40,30 @@ function asRecord(value: unknown): Record<string, unknown> {
 function toStreamEvent(event: ServerEvent): StreamEvent | null {
   const raw = event as unknown as Record<string, unknown>;
   const type = raw.type;
+  if (event.type === "protocol_error") {
+    // Admission failures have no turn stream and therefore no DONE event.
+    // Translate them for the chat reducer instead of leaving STREAM_START
+    // pending forever. A failed subscription can still recover its live turn.
+    const terminal = new Set([
+      "start_turn_rejected", "regenerate_rejected", "invalid_command",
+      "invalid_json", "unsupported_protocol_version", "unknown_message_type",
+    ]).has(event.error_code);
+    return {
+      type: "error",
+      source: "transport",
+      stage: "",
+      content: event.message,
+      session_id: event.session_id || undefined,
+      turn_id: event.turn_id || undefined,
+      timestamp: Date.now() / 1000,
+      metadata: {
+        reason: event.error_code,
+        retryable: event.retryable,
+        turn_terminal: terminal,
+        ...(terminal ? { status: "failed" } : {}),
+      },
+    };
+  }
   if (typeof type !== "string" || !STREAM_TYPES.has(type as StreamEventType))
     return null;
   return {

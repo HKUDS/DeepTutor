@@ -6,7 +6,7 @@ from deeptutor.app.container import ApplicationContainer
 
 
 @pytest.mark.asyncio
-async def test_startup_data_migrations_run_legacy_then_workspace_upgrade() -> None:
+async def test_startup_data_migrations_run_legacy_then_workspace_upgrade(monkeypatch) -> None:
     container = object.__new__(ApplicationContainer)
     calls: list[str] = []
 
@@ -20,6 +20,7 @@ async def test_startup_data_migrations_run_legacy_then_workspace_upgrade() -> No
 
     container.migrate_all_legacy_chats = migrate_legacy  # type: ignore[method-assign]
     container.migrate_all_workspace_preferences = migrate_workspace  # type: ignore[method-assign]
+    monkeypatch.setattr(container, "_local_users", lambda: [])
 
     reports = await container.run_startup_data_migrations()
 
@@ -27,4 +28,5 @@ async def test_startup_data_migrations_run_legacy_then_workspace_upgrade() -> No
     assert reports == {
         "legacy_chat": [{"imported": 2}],
         "workspace_preferences": [{"migrated": 3}],
+        "workspace_data": [],
     }

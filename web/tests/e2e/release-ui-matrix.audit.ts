@@ -4,8 +4,8 @@ const BASE_URL = process.env.WEB_BASE_URL || "http://127.0.0.1:3300";
 
 const surfaces = [
   ["Chat", "/chat"],
-  ["Reading", "/reading"],
-  ["Mastery", "/mastery"],
+  ["Reading", "/learning/reading"],
+  ["Mastery", "/learning/mastery"],
   ["Settings", "/settings"],
   ["Knowledge", "/knowledge-bases"],
   ["Co-Writer", "/co-writer"],

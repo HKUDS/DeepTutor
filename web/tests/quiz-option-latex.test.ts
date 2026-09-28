@@ -65,7 +65,7 @@ test("saved and book quiz options use the math-capable Markdown renderer", () =>
     readFileSync(
       path.join(
         process.cwd(),
-        "app/(workspace)/books/components/blocks/QuizBlock.tsx",
+        "app/(workspace)/learning/books/components/blocks/QuizBlock.tsx",
       ),
       "utf8",
     ),
@@ -81,7 +81,9 @@ test("saved and book quiz options use the math-capable Markdown renderer", () =>
   for (const source of sources) {
     const marker = source.includes("content={label}")
       ? "content={label}"
-      : "content={text}";
-    assert.match(markdownTagContaining(source, marker), /\benableMath\b/);
+      : "content={practiceMarkdown(text)}";
+    const tag = markdownTagContaining(source, marker);
+    assert.doesNotMatch(tag, /enableMath=\{false\}/);
+    if (marker === "content={label}") assert.match(tag, /\benableMath\b/);
   }
 });

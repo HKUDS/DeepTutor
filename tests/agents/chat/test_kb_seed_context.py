@@ -84,6 +84,10 @@ class _SeedRegistry:
         self._metadata = metadata if metadata is not None else {"content": _PASSAGE}
         self._raise = raise_exc
 
+    def deferred_tools(self) -> list[Any]:
+        """No provider tools: keeps the turn on this registry (see view.py)."""
+        return []
+
     def build_prompt_text(self, *_args, **_kwargs):
         return "- rag: retrieve from a knowledge base"
 

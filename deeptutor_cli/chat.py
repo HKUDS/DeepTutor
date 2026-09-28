@@ -30,6 +30,7 @@ from .common import (
 @dataclass
 class ChatState:
     session_id: str | None = None
+    workspace_id: str | None = None
     capability: str = "chat"
     tools: list[str] = field(default_factory=list)
     knowledge_bases: list[str] = field(default_factory=list)
@@ -44,6 +45,9 @@ def register(app: typer.Typer) -> None:
     def chat(
         ctx: typer.Context,
         session: str | None = typer.Option(None, "--session", help="Resume an existing session."),
+        workspace: str | None = typer.Option(
+            None, "--workspace", help="Registered workspace id; omit for default."
+        ),
         tool: list[str] = typer.Option([], "--tool", "-t", help="Pre-enable tool(s)."),
         capability: str = typer.Option("chat", "--capability", "-c", help="Initial capability."),
         kb: list[str] = typer.Option([], "--kb", help="Pre-attach knowledge base(s)."),
@@ -67,6 +71,7 @@ def register(app: typer.Typer) -> None:
 
         state = ChatState(
             session_id=session,
+            workspace_id=workspace,
             capability=capability,
             tools=list(tool),
             knowledge_bases=list(kb),
@@ -79,7 +84,11 @@ def register(app: typer.Typer) -> None:
 
 
 async def _chat_repl(state: ChatState) -> None:
-    client = DeepTutorApp()
+    client = (
+        DeepTutorApp(workspace_id=state.workspace_id)
+        if state.workspace_id is not None
+        else DeepTutorApp()
+    )
     cron_service = None
     try:
         from deeptutor.services.cron import get_cron_service

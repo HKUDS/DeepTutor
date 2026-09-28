@@ -436,6 +436,8 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
         followup_question_context: followupQuestionContext,
         selection_tutor_context: selectionTutorContext,
         subagent_consult_budget: subagentConsultBudget,
+        consult_partner_id: consultPartnerId,
+        partner_discussion_group_id: partnerDiscussionGroupId,
         auto_route: autoRoute,
         ...capabilityConfig
       } = input.config ?? {};
@@ -468,6 +470,8 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
               >,
             }
           : {}),
+        ...(typeof consultPartnerId === "string" && consultPartnerId ? { consult_partner_id: consultPartnerId } : {}),
+        ...(typeof partnerDiscussionGroupId === "string" && partnerDiscussionGroupId ? { partner_discussion_group_id: partnerDiscussionGroupId } : {}),
         ...(typeof subagentConsultBudget === "number"
           ? { subagent_consult_budget: subagentConsultBudget }
           : {}),

@@ -33,12 +33,17 @@ class TTSConfig:
     adapter: str = "openai_compat"
     auth_style: str = AUTH_BEARER
     api_key: str = ""
+    app_id: str = ""  # Volcengine legacy Speech application; empty uses X-Api-Key.
+    resource_id: str = ""
     base_url: str = ""
     api_version: str | None = None
     extra_headers: dict[str, str] = field(default_factory=dict)
     voice: str = ""
     response_format: str = "mp3"
     speed: float | None = None
+    language: str | None = None
+    sample_rate: int = 24000
+    instructions: str = ""
     max_input_chars: int = DEFAULT_MAX_INPUT_CHARS
     request_timeout: int = 60
 
@@ -53,6 +58,8 @@ class STTConfig:
     request_style: str = STT_MULTIPART
     auth_style: str = AUTH_BEARER
     api_key: str = ""
+    app_id: str = ""  # Volcengine legacy Speech application; empty uses X-Api-Key.
+    resource_id: str = ""
     base_url: str = ""
     api_version: str | None = None
     extra_headers: dict[str, str] = field(default_factory=dict)

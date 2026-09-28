@@ -1,4 +1,5 @@
 import { resolveBackendApiBase } from "./backend-runtime-config";
+import { prepareBackendForwardHeaders } from "./backend-forward";
 
 // HTTP/1.1 hop-by-hop headers describe one transport connection and must not
 // be replayed on the independent frontend -> backend connection.
@@ -30,14 +31,14 @@ export interface UploadProxyDependencies {
   fetchImpl?: typeof fetch;
 }
 
-function forwardedHeaders(source: Headers, { request }: { request: boolean }) {
-  const headers = new Headers(source);
-  const connectionTokens = (headers.get("connection") || "")
-    .split(",")
-    .map((value) => value.trim().toLowerCase())
-    .filter(Boolean);
-
-  for (const name of [...HOP_BY_HOP_HEADERS, ...connectionTokens]) {
+function forwardedHeaders(
+  source: Headers,
+  { request }: { request: boolean },
+) {
+  const headers = request
+    ? prepareBackendForwardHeaders(source)
+    : new Headers(source);
+  for (const name of HOP_BY_HOP_HEADERS) {
     headers.delete(name);
   }
   if (request) headers.delete("host");
@@ -63,7 +64,9 @@ export async function forwardBackendUpload(
 
   const init: StreamingRequestInit = {
     method: request.method,
-    headers: forwardedHeaders(request.headers, { request: true }),
+    headers: forwardedHeaders(request.headers, {
+      request: true,
+    }),
     signal: request.signal,
     redirect: "manual",
   };

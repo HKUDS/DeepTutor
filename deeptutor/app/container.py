@@ -145,20 +145,46 @@ class ApplicationContainer:
         """
 
         from deeptutor.multi_user.paths import user_context
+        from deeptutor.services.workspace.activity import acquire_activity
+        from deeptutor.services.workspace.models import WorkspaceError
 
         seen: set[str] = set()
         for user in self._local_users():
             with user_context(user):
-                store = self.store_provider.get()
-                scope_key = store_scope(store).cache_key
-                if scope_key in seen:
+                try:
+                    activity = acquire_activity()
+                except WorkspaceError:
                     continue
-                seen.add(scope_key)
-                recovery = self._recovery_services.get(scope_key)
-                if recovery is None:
-                    recovery = TurnRecoveryService(self.coordinator, store)
-                    self._recovery_services[scope_key] = recovery
-                await recovery.recover_once()
+                try:
+                    await self._recover_user_workspaces(seen)
+                finally:
+                    activity.close()
+
+    async def _recover_user_workspaces(self, seen: set[str]) -> None:
+        from deeptutor.services.workspace import get_content_workspace_service
+        from deeptutor.services.workspace.context import workspace_context
+        from deeptutor.services.workspace.models import WorkspaceError
+
+        workspace_ids = [""] + [
+            row["workspace_id"]
+            for row in get_content_workspace_service()._catalog()
+            if row.get("kind") == "workspace" and os.path.isdir(row["path"])
+        ]
+        for workspace_id in workspace_ids:
+            try:
+                with workspace_context(workspace_id):
+                    store = self.store_provider.get()
+                    scope_key = store_scope(store).cache_key
+                    if scope_key in seen:
+                        continue
+                    seen.add(scope_key)
+                    recovery = self._recovery_services.get(scope_key)
+                    if recovery is None:
+                        recovery = TurnRecoveryService(self.coordinator, store)
+                        self._recovery_services[scope_key] = recovery
+                    await recovery.recover_once()
+            except WorkspaceError:
+                continue
 
     @staticmethod
     def _local_users() -> list[Any]:
@@ -238,7 +264,18 @@ class ApplicationContainer:
                 continue
             seen_users.add(user.id)
             with user_context(user):
-                migrated = await self.store_provider.get().migrate_workspace_preferences()
+                from deeptutor.services.workspace.activity import acquire_activity
+                from deeptutor.services.workspace.models import WorkspaceError
+
+                try:
+                    activity = acquire_activity()
+                except WorkspaceError as exc:
+                    reports.append({"user_id": user.id, "skipped": str(exc)})
+                    continue
+                try:
+                    migrated = await self.store_provider.get().migrate_workspace_preferences()
+                finally:
+                    activity.close()
             reports.append(
                 {
                     "user_id": user.id,
@@ -251,10 +288,29 @@ class ApplicationContainer:
     async def run_startup_data_migrations(self) -> dict[str, list[dict[str, Any]]]:
         """Run every idempotent migration shared by all server launch modes."""
 
-        return {
+        result = {
             "legacy_chat": await self.migrate_all_legacy_chats(),
             "workspace_preferences": await self.migrate_all_workspace_preferences(),
         }
+        from deeptutor.multi_user.paths import user_context
+        from deeptutor.services.workspace.session_move import migrate_legacy_bindings
+
+        reports = []
+        for user in self._local_users():
+            with user_context(user):
+                from deeptutor.services.workspace.models import WorkspaceError
+
+                try:
+                    reports.append(
+                        {
+                            "user_id": user.id,
+                            "migrated": await asyncio.to_thread(migrate_legacy_bindings),
+                        }
+                    )
+                except WorkspaceError as exc:
+                    reports.append({"user_id": user.id, "skipped": str(exc)})
+        result["workspace_data"] = reports
+        return result
 
     async def runtime_report(self) -> dict[str, Any]:
         report = self.settings.runtime_report()

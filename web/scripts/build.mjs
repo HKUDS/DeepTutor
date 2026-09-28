@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -53,6 +53,31 @@ function prepareBuildTsconfig(snapshots, distDir) {
   return buildTsconfigPath;
 }
 
+export function packageStandaloneAssets(sourceRoot, distDir) {
+  const distRoot = path.resolve(sourceRoot, distDir);
+  const standaloneRoot = path.join(distRoot, "standalone");
+  const server = path.join(standaloneRoot, "server.js");
+  const staticAssets = path.join(distRoot, "static");
+  if (!existsSync(server) || !existsSync(staticAssets)) {
+    throw new Error(
+      `Next build did not produce a complete standalone bundle in ${distRoot}`,
+    );
+  }
+
+  // Next omits these runtime assets from standalone output (#1424). Keep the
+  // active dist directory name so server.js can resolve its own client chunks.
+  const standaloneStatic = path.join(standaloneRoot, distDir, "static");
+  rmSync(standaloneStatic, { recursive: true, force: true });
+  cpSync(staticAssets, standaloneStatic, { recursive: true });
+
+  const publicAssets = path.join(sourceRoot, "public");
+  if (existsSync(publicAssets)) {
+    const standalonePublic = path.join(standaloneRoot, "public");
+    rmSync(standalonePublic, { recursive: true, force: true });
+    cpSync(publicAssets, standalonePublic, { recursive: true });
+  }
+}
+
 const snapshots = generatedPaths
   .filter((path) => process.env.DEEPTUTOR_BUILD_SKIP_MISSING !== "1")
   .map((path) => [path, snapshot(path)]);
@@ -65,15 +90,15 @@ export { restoreAll };
 if (isEntry) {
   const distDir = process.env.DEEPTUTOR_NEXT_DIST_DIR || ".next";
   const buildTsconfigPath = prepareBuildTsconfig(snapshots, distDir);
+  const isVercel = process.env.VERCEL === "1";
   let result;
   try {
     copyPdfjsAssets();
     // On Vercel (process.env.VERCEL === "1") do NOT force --webpack: the
     // post-build validator expects Turbopack's output layout and fails with
     // ENOENT routes-manifest-deterministic.json otherwise (see issue #1428).
-    // The Webpack standalone bundle is only needed by the local
-    // `deeptutor start` launcher, so keep the flag for local/Docker builds.
-    const isVercel = process.env.VERCEL === "1";
+    // Local and Docker builds use the Webpack standalone runtime; Vercel
+    // packages its own deployment output.
     const args = isVercel
       ? [nextBin, "build", ...process.argv.slice(2)]
       : [nextBin, "build", "--webpack", ...process.argv.slice(2)];
@@ -99,5 +124,7 @@ if (isEntry) {
     console.error(result.error);
     process.exit(1);
   }
-  process.exit(result.status ?? 1);
+  const status = result.status ?? 1;
+  if (status === 0 && !isVercel) packageStandaloneAssets(webRoot, distDir);
+  process.exit(status);
 }

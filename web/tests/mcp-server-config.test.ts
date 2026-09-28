@@ -95,7 +95,7 @@ test("a hand-written disabled_tools blocklist survives GET → edit → PUT", as
 
     await updateMcpSettings(MCP_ADMIN_BASE_PATH, { docs: built });
     const put = stub.calls[1];
-    assert.equal(put.url, MCP_ADMIN_BASE_PATH);
+    assert.equal(put.url, `${MCP_ADMIN_BASE_PATH}?dt_workspace=`);
     assert.equal(put.init?.method, "PUT");
     const sent = JSON.parse(String(put.init?.body)) as {
       servers: Record<string, McpServerConfig>;
@@ -110,7 +110,7 @@ test("the request path comes from the caller's surface, not a hardcoded base", a
   const stub = stubFetch([{ servers: {}, status: [] }]);
   try {
     await getMcpSettings("/api/space/mcp/servers");
-    assert.equal(stub.calls[0].url, "/api/space/mcp/servers");
+    assert.equal(stub.calls[0].url, "/api/space/mcp/servers?dt_workspace=");
   } finally {
     stub.restore();
   }

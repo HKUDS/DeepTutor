@@ -82,6 +82,7 @@ export default function MemoryPicker({
     >
       <div className="surface-card w-full max-w-xl overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)] text-[var(--card-foreground)] shadow-[0_22px_70px_rgba(0,0,0,0.18)]">
         <PickerHeader
+          resourceKind="memory"
           icon={Brain}
           titleId="memory-picker-title"
           title={t("Select Memory")}

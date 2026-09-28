@@ -1,6 +1,8 @@
 "use client";
 
 import type { AnnotationItem, NormalisedRect } from "@/lib/reading-api";
+import { useTranslation } from "react-i18next";
+import Tooltip from "@/shared/ui/Tooltip";
 
 /** Ink for each palette colour, tuned to stay readable over black-on-white text. */
 const COLOR_INK: Record<string, string> = {
@@ -41,6 +43,7 @@ export function AnnotationLayer({
   flashRects,
   onAnnotationClick,
 }: AnnotationLayerProps) {
+  const { t } = useTranslation();
   return (
     <div className="pointer-events-none absolute inset-0">
       {annotations.map((annotation) =>
@@ -49,14 +52,21 @@ export function AnnotationLayer({
           const isFocused =
             annotation.annotation_id === highlightedAnnotationId;
           const isUnderline = annotation.kind === "underline";
+          const label =
+            annotation.note ||
+            annotation.quote ||
+            t(
+              annotation.kind === "citation"
+                ? "Citation"
+                : isUnderline
+                  ? "Underline"
+                  : "Highlight",
+            );
           return (
-            <button
+            <span
               key={`${annotation.annotation_id}-${index}`}
-              type="button"
-              title={annotation.note || annotation.quote || undefined}
-              onClick={() => onAnnotationClick?.(annotation)}
               className={[
-                "pointer-events-auto absolute cursor-pointer transition-[box-shadow,filter] duration-150",
+                "pointer-events-auto absolute cursor-pointer transition-[box-shadow,filter] duration-150 [&>span]:h-full [&>span]:w-full [&>span>button]:h-full [&>span>button]:w-full",
                 isUnderline ? "" : "mix-blend-multiply",
                 isFocused ? "ring-2 ring-[var(--ring)] ring-offset-1" : "",
               ]
@@ -76,13 +86,22 @@ export function AnnotationLayer({
                 borderRadius: isUnderline ? 0 : 2,
               }}
             >
-              {annotation.author === "assistant" && index === 0 && (
-                <span
-                  aria-hidden
-                  className="absolute -top-1 -right-1 h-1.5 w-1.5 rounded-full bg-[var(--primary)] shadow-sm"
-                />
-              )}
-            </button>
+              <Tooltip label={label}>
+                <button
+                  type="button"
+                  aria-label={label}
+                  onClick={() => onAnnotationClick?.(annotation)}
+                  className="block cursor-pointer"
+                >
+                  {annotation.author === "assistant" && index === 0 && (
+                    <span
+                      aria-hidden
+                      className="absolute -top-1 -right-1 h-1.5 w-1.5 rounded-full bg-[var(--primary)] shadow-sm"
+                    />
+                  )}
+                </button>
+              </Tooltip>
+            </span>
           );
         }),
       )}

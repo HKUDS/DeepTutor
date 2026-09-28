@@ -9,17 +9,17 @@ test("capabilityForPath maps LLM features to llm", () => {
   assert.equal(capabilityForPath("/chat"), "llm");
   assert.equal(capabilityForPath("/partners"), "llm");
   assert.equal(capabilityForPath("/co-writer"), "llm");
-  assert.equal(capabilityForPath("/books"), "llm");
-  assert.equal(capabilityForPath("/reading"), "llm");
-  assert.equal(capabilityForPath("/mastery"), "llm"); // Mastery Path
+  assert.equal(capabilityForPath("/learning/books"), "llm");
+  assert.equal(capabilityForPath("/learning/reading"), "llm");
+  assert.equal(capabilityForPath("/learning/mastery"), "llm"); // Mastery Path
 });
 
 test("capabilityForPath matches nested routes by prefix", () => {
   assert.equal(capabilityForPath("/chat/abc-123"), "llm");
   assert.equal(capabilityForPath("/partners/partner-1"), "llm");
-  assert.equal(capabilityForPath("/mastery/book-1"), "llm");
+  assert.equal(capabilityForPath("/learning/mastery/book-1"), "llm");
   assert.equal(
-    capabilityForPath("/reading/workspace-1/sessions/session-1"),
+    capabilityForPath("/learning/reading/workspace-1/sessions/session-1"),
     "llm",
   );
 });
@@ -29,8 +29,8 @@ test("capabilityForPath matches on a segment boundary, not a bare prefix", () =>
   assert.equal(capabilityForPath("/booket"), null);
   assert.equal(capabilityForPath("/homepage"), null);
   // The gated route itself and its children still match.
-  assert.equal(capabilityForPath("/books"), "llm");
-  assert.equal(capabilityForPath("/books/123"), "llm");
+  assert.equal(capabilityForPath("/learning/books"), "llm");
+  assert.equal(capabilityForPath("/learning/books/123"), "llm");
 });
 
 test("capabilityForPath returns null for ungated routes", () => {

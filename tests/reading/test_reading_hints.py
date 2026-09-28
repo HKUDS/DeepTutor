@@ -89,26 +89,3 @@ async def test_llm_failure_returns_empty_hint(
 
     assert result["hint"] == ""
     assert result["material_id"] == "material-1"
-
-
-def test_openers_reject_lines_that_refer_back_to_the_tutor() -> None:
-    """An opener is the first thing said, so nothing can be referred back to."""
-    assert (
-        reading_hints._sanitize_opener("你引入的‘工具调用协议’和普通函数调用差在哪？", True) == ""
-    )
-    assert reading_hints._sanitize_opener("你提到的状态机比喻能再拆一下吗？", True) == ""
-    assert (
-        reading_hints._sanitize_opener("You mentioned the planner — how does it back off?", False)
-        == ""
-    )
-    # ...while a line that points at the material itself is exactly right.
-    assert reading_hints._sanitize_opener("视频里说的‘规划与执行分离’，执行层怎么回退？", True)
-    assert reading_hints._sanitize_opener("What does section 3 mean by a planning loop?", False)
-
-
-def test_openers_allow_more_than_a_placeholder_worth_of_text() -> None:
-    """Openers are wrapped buttons, not a single-line placeholder."""
-    # The real generation that this bound used to drop on the floor.
-    line = "视频里说 LLM 只是‘概率预测’，那 Agent Skill 到底是在哪一层上改变了这种预测的性质？"
-    assert len(line) > reading_hints._MAX_HINT_CHARS["zh"]
-    assert reading_hints._sanitize_opener(line, True) == line

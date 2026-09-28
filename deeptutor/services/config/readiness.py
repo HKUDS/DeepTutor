@@ -147,6 +147,7 @@ _TOOL_LABELS = {
     "brainstorm": "Brainstorm tool",
     "web_search": "Web search tool",
     "paper_search": "Paper search tool",
+    "zotero_search": "Zotero search tool",
     "reason": "Reason tool",
     "geogebra_analysis": "GeoGebra tool",
     "imagegen": "Image generation tool",
@@ -171,6 +172,7 @@ TRANSLATABLE_ROW_LABELS: frozenset[str] = frozenset(
         "Brainstorm tool",
         "Web search tool",
         "Paper search tool",
+        "Zotero search tool",
         "Reason tool",
         "GeoGebra tool",
         "Image generation tool",
@@ -235,6 +237,21 @@ def catalog_service_rows(
         required = name in required_services
         service = services.get(name) if isinstance(services.get(name), dict) else {}
         profiles = service.get("profiles") if isinstance(service.get("profiles"), list) else []
+
+        # A task reference selects a chat profile/model. Classify the selected
+        # model below with the same checks as every other catalog service.
+        if name == "task" and service.get("mode") == "reference":
+            selection = service.get("selection")
+            selection = selection if isinstance(selection, dict) else {}
+            chat_service = services.get("llm") if isinstance(services.get("llm"), dict) else {}
+            service = {
+                **service,
+                "active_profile_id": selection.get("profile_id"),
+                "active_model_id": selection.get("model_id"),
+                "profiles": chat_service.get("profiles"),
+            }
+            profiles = service["profiles"] if isinstance(service["profiles"], list) else []
+
         active_profile_id = service.get("active_profile_id")
         if not active_profile_id:
             rows.append(
@@ -278,6 +295,39 @@ def catalog_service_rows(
             )
             continue
 
+        if profile.get("provider_ref") or any(
+            model.get("provider_ref")
+            for model in profile.get("models", [])
+            if isinstance(model, dict)
+        ):
+            from deeptutor.services.config.provider_links import resolve_profile_provider
+
+            model = next(
+                (
+                    m
+                    for m in profile.get("models", [])
+                    if m.get("id") == service.get("active_model_id")
+                ),
+                None,
+            )
+            try:
+                profile = resolve_profile_provider(catalog, name, profile, model)
+            except ValueError:
+                rows.append(
+                    readiness_row(
+                        f"catalog.{name}",
+                        "catalog",
+                        _SERVICE_LABELS[name],
+                        "misconfigured",
+                        "required_credential_missing",
+                        enabled=True,
+                        available=False,
+                        configured=False,
+                        verified=False,
+                        required=required,
+                    )
+                )
+                continue
         if name == "search":
             provider = str(profile.get("provider") or "").strip()
             configured = bool(provider and provider != "none")
@@ -903,7 +953,20 @@ async def build_settings_readiness() -> dict[str, Any]:
             metadata = info.get("metadata") if isinstance(info.get("metadata"), dict) else {}
             provider = str(metadata.get("rag_provider") or "")
             try:
-                prerequisites_ready = bool(engine_preflight(provider).get("ok"))
+                from contextlib import nullcontext
+
+                from deeptutor.services.embedding.config import embedding_config_scope
+                from deeptutor.services.rag.embedding_binding import binding_status
+
+                binding_state, embedding = binding_status(
+                    manager.config.get("knowledge_bases", {}).get(name, {})
+                )
+                with embedding_config_scope(embedding) if embedding else nullcontext():
+                    prerequisites_ready = binding_state not in {
+                        "missing",
+                        "changed",
+                        "unconfigured",
+                    } and bool(engine_preflight(provider).get("ok"))
             except Exception:
                 prerequisites_ready = False
             knowledge_entries.append(

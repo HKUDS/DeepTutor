@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from copy import deepcopy
+from dataclasses import dataclass
 import json
 from pathlib import Path
 import re
+import sys
+import threading
 from typing import Any
+
+from deeptutor.services.file_io import atomic_write_text
 
 from .identity import get_user_by_id
 from .paths import SYSTEM_ROOT, ensure_system_dirs
@@ -18,6 +24,56 @@ LEARNING_AGE_BANDS = {"6-8", "9-12", "13-15"}
 LEARNING_PERSONAS = {"teacher"}
 LEARNING_SURFACES = {"chat", "reading"}
 _EXTENSION_ID_RE = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
+_GRANT_THREAD_LOCKS: dict[Path, threading.Lock] = {}
+_GRANT_THREAD_LOCKS_GUARD = threading.Lock()
+
+
+class GrantStorageError(RuntimeError):
+    """An existing grant cannot be read safely."""
+
+
+@dataclass(frozen=True)
+class GrantWriteReceipt:
+    previous_text: str | None
+    written_text: str
+    file_identity: tuple[int, int, int, int]
+
+
+def _file_identity(path: Path) -> tuple[int, int, int, int]:
+    stat = path.stat()
+    return stat.st_dev, stat.st_ino, stat.st_mtime_ns, stat.st_size
+
+
+@contextmanager
+def _grant_write_lock(path: Path):
+    """Serialize cooperative grant writers within and across processes."""
+    with _GRANT_THREAD_LOCKS_GUARD:
+        thread_lock = _GRANT_THREAD_LOCKS.setdefault(path, threading.Lock())
+    with thread_lock:
+        lock_path = path.with_name(f".{path.name}.lock")
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with lock_path.open("a+b") as handle:
+            handle.seek(0, 2)
+            if handle.tell() == 0:
+                handle.write(b"\0")
+                handle.flush()
+            handle.seek(0)
+            if sys.platform == "win32":  # pragma: no cover - covered by platform simulation
+                import msvcrt
+
+                msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                handle.seek(0)
+                if sys.platform == "win32":  # pragma: no cover - covered by platform simulation
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def empty_grant(user_id: str) -> dict[str, Any]:
@@ -163,12 +219,43 @@ def load_grant(user_id: str) -> dict[str, Any]:
     if not path.exists():
         return empty_grant(user_id)
     try:
-        return normalize_grant(user_id, json.loads(path.read_text(encoding="utf-8")))
-    except Exception:
-        return empty_grant(user_id)
+        stored = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise GrantStorageError(f"Cannot read grant for user {user_id}") from exc
+    if not isinstance(stored, dict):
+        raise GrantStorageError(f"Grant for user {user_id} must be a JSON object")
+    for key in ("enabled_tools", "mcp_tools", "cli_apps"):
+        value = stored.get(key)
+        if value is not None and not isinstance(value, list):
+            raise GrantStorageError(f"Grant for user {user_id} has invalid {key}")
+    if stored.get("exec_enabled") is not None and not isinstance(stored["exec_enabled"], bool):
+        raise GrantStorageError(f"Grant for user {user_id} has invalid exec_enabled")
+    if stored.get("learning_policy") is not None and not isinstance(
+        stored["learning_policy"], dict
+    ):
+        raise GrantStorageError(f"Grant for user {user_id} has invalid learning_policy")
+    policy = stored.get("learning_policy")
+    if isinstance(policy, dict):
+        if "allowed_surfaces" in policy and not isinstance(policy["allowed_surfaces"], list):
+            raise GrantStorageError(f"Grant for user {user_id} has invalid allowed_surfaces")
+        reading = policy.get("reading")
+        if reading is not None and not isinstance(reading, dict):
+            raise GrantStorageError(f"Grant for user {user_id} has invalid reading policy")
+        if (
+            isinstance(reading, dict)
+            and "allow_upload" in reading
+            and not isinstance(reading["allow_upload"], bool)
+        ):
+            raise GrantStorageError(f"Grant for user {user_id} has invalid allow_upload")
+    grant = normalize_grant(user_id, stored)
+    try:
+        validate_grant(grant)
+    except ValueError as exc:
+        raise GrantStorageError(f"Grant for user {user_id} is invalid") from exc
+    return grant
 
 
-def save_grant(user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+def _validated_grant(user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     user_record = get_user_by_id(user_id)
     if user_record is None:
         raise ValueError(f"Unknown user id: {user_id}")
@@ -177,10 +264,53 @@ def save_grant(user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("Admin users use the main workspace and cannot receive assignments.")
     grant = normalize_grant(user_id, payload)
     validate_grant(grant)
-    path = grant_path(user_id)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(grant, indent=2, ensure_ascii=False), encoding="utf-8")
     return grant
+
+
+def _write_grant(
+    user_id: str, payload: dict[str, Any], *, with_receipt: bool
+) -> tuple[dict[str, Any], GrantWriteReceipt | None]:
+    grant = _validated_grant(user_id, payload)
+    path = grant_path(user_id)
+    written_text = json.dumps(grant, indent=2, ensure_ascii=False)
+    with _grant_write_lock(path):
+        previous_text = path.read_text(encoding="utf-8") if with_receipt and path.exists() else None
+        atomic_write_text(path, written_text)
+        receipt = (
+            GrantWriteReceipt(previous_text, written_text, _file_identity(path))
+            if with_receipt
+            else None
+        )
+    return grant, receipt
+
+
+def save_grant(user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    grant, _receipt = _write_grant(user_id, payload, with_receipt=False)
+    return grant
+
+
+def save_grant_with_receipt(
+    user_id: str, payload: dict[str, Any]
+) -> tuple[dict[str, Any], GrantWriteReceipt]:
+    """Save a grant and capture the previous state for conditional rollback."""
+    grant, receipt = _write_grant(user_id, payload, with_receipt=True)
+    assert receipt is not None
+    return grant, receipt
+
+
+def restore_grant_if_unchanged(user_id: str, receipt: GrantWriteReceipt) -> bool:
+    """Restore a failed transaction only while its own write is current."""
+    path = grant_path(user_id)
+    with _grant_write_lock(path):
+        if not path.exists() or _file_identity(path) != receipt.file_identity:
+            return False
+        if path.read_text(encoding="utf-8") != receipt.written_text:
+            return False
+        if receipt.previous_text is None:
+            path.unlink()
+        else:
+            atomic_write_text(path, receipt.previous_text)
+    return True
 
 
 def validate_grant(grant: dict[str, Any]) -> None:

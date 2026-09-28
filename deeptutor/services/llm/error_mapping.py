@@ -56,22 +56,12 @@ def _class_named(*names: str) -> ErrorClassifier:
     return _classifier
 
 
-def retry_after_seconds(
-    exc: Exception,
+def parse_retry_after_seconds(
+    value: object,
     *,
     now: datetime | None = None,
 ) -> float | None:
-    """Extract a numeric or HTTP-date Retry-After value from an exception."""
-    value = getattr(exc, "retry_after", None)
-    if value is None:
-        response = getattr(exc, "response", None)
-        headers = getattr(response, "headers", None)
-        get_header = getattr(headers, "get", None)
-        if callable(get_header):
-            value = get_header("Retry-After")
-            if value is None:
-                value = get_header("retry-after")
-
+    """Parse a numeric or HTTP-date ``Retry-After`` value into seconds."""
     if isinstance(value, bool) or value is None:
         return None
     if isinstance(value, (int, float)):
@@ -99,6 +89,25 @@ def retry_after_seconds(
     if not math.isfinite(seconds) or seconds < 0:
         return None
     return seconds
+
+
+def retry_after_seconds(
+    exc: Exception,
+    *,
+    now: datetime | None = None,
+) -> float | None:
+    """Extract a numeric or HTTP-date Retry-After value from an exception."""
+    value = getattr(exc, "retry_after", None)
+    if value is None:
+        response = getattr(exc, "response", None)
+        headers = getattr(response, "headers", None)
+        get_header = getattr(headers, "get", None)
+        if callable(get_header):
+            value = get_header("Retry-After")
+            if value is None:
+                value = get_header("retry-after")
+
+    return parse_retry_after_seconds(value, now=now)
 
 
 def _rate_limit_error(exc: Exception, provider: str | None) -> LLMRateLimitError:

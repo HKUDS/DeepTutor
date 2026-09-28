@@ -69,7 +69,7 @@ test("the real dashboard gates whisper and nothing else", () => {
 test("the standalone Mastery Path is not duplicated in Learning Space", () => {
   const dashboardItems = DASHBOARD_GROUPS.flatMap((group) => group.items);
 
-  assert.ok(!dashboardItems.some((item) => item.href === "/mastery"));
+  assert.ok(!dashboardItems.some((item) => item.href === "/learning/mastery"));
 });
 
 test("with whisper absent the real dashboard drops More Projects entirely", () => {

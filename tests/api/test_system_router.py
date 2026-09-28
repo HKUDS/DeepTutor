@@ -130,6 +130,22 @@ async def test_managed_update_refuses_live_conversation(
 
 
 @pytest.mark.asyncio
+async def test_managed_update_refuses_systemd_before_reserving_job(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(system_router, "get_runtime_settings_service", _UpdateSettings)
+    monkeypatch.setattr(system_router, "running_under_systemd_service", lambda: True)
+
+    with pytest.raises(Exception) as raised:
+        await system_router.request_managed_update(
+            system_router.ManagedUpdateRequest(confirmation="update-and-restart")
+        )
+
+    assert getattr(raised.value, "status_code", None) == 409
+    assert "systemctl" in str(getattr(raised.value, "detail", ""))
+
+
+@pytest.mark.asyncio
 async def test_managed_update_creates_durable_job(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
@@ -139,6 +155,7 @@ async def test_managed_update_creates_durable_job(
             return reserve()
 
     store = UpdateJobStore(tmp_path / "update")
+    monkeypatch.setattr(system_router, "running_under_systemd_service", lambda: False)
     monkeypatch.setattr(system_router, "get_runtime_settings_service", _UpdateSettings)
     monkeypatch.setattr(system_router, "launcher_available", lambda: True)
     monkeypatch.setattr(system_router, "get_turn_activity", _Activity)

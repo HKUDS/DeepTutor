@@ -88,7 +88,9 @@ async def build_tool_view(
         )
     except Exception:
         logger.warning("provider tool view assembly failed; continuing without", exc_info=True)
-        return ProviderToolView.empty(base_registry)
+        return ProviderToolView.empty(
+            ScopedToolRegistry(base=base_registry, allowed=Allowlist.of([]))
+        )
 
 
 async def _build(
@@ -103,10 +105,15 @@ async def _build(
     from deeptutor.services.mcp import get_mcp_manager, load_loaded_tools
 
     manager = get_mcp_manager()
-    await manager.ensure_started()
+    if scope.workspace_mcp is None or any(r.startswith("deployment:") for r in scope.workspace_mcp):
+        await manager.ensure_started()
 
     shared_pool = list(base_registry.deferred_tools())
-    owned_pool = await _owned_tools(manager, scope)
+    owned_pool = (
+        await _owned_tools(manager, scope)
+        if scope.workspace_mcp is None or any(r.startswith("account:") for r in scope.workspace_mcp)
+        else []
+    )
     cli_pool = _cli_app_tools(scope)
     if not shared_pool and not owned_pool and not cli_pool and not overlay_tools:
         return ProviderToolView.empty(base_registry)
@@ -127,6 +134,20 @@ async def _build(
     # Resource-bound overlays (including PageIndex SDK tools) are authorised by
     # possession of the selected resource and live only in this turn's registry.
     allowed = allowed.widen(tool.get_definition().name for tool in overlay_tools)
+
+    if scope.workspace_mcp is not None:
+        from deeptutor.core.tool_protocol import provider_identity
+        from deeptutor.services.mcp.manager import SHARED_OWNER
+
+        workspace_names = []
+        for tool in (*shared_pool, *owned_pool, *cli_pool, *overlay_tools):
+            kind, server = provider_identity(tool)
+            origin = (
+                "deployment" if getattr(tool, "owner", SHARED_OWNER) == SHARED_OWNER else "account"
+            )
+            if kind != "mcp" or f"{origin}:{server}" in scope.workspace_mcp:
+                workspace_names.append(tool.name)
+        allowed = allowed.narrow(Allowlist.of(workspace_names))
 
     pool = tuple(
         tool

@@ -42,7 +42,7 @@ SHIPPED_BUDGETS: dict[str, dict[str, int]] = {
         "outline": 2000,
         "report_outline": 2000,
         "report_intro": 3000,
-        "report_section": 6000,
+        "report_section": 12000,
         "report_conclusion": 3000,
     },
     "explore_context": {

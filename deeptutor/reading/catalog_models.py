@@ -94,6 +94,7 @@ class WorkspaceRecord:
     workspace_id: str
     title: str
     description: str = ""
+    color: str = ""
     active_material_id: str | None = None
     created_at: float = 0.0
     updated_at: float = 0.0
@@ -104,6 +105,7 @@ class WorkspaceRecord:
             "workspace_id": self.workspace_id,
             "title": self.title,
             "description": self.description,
+            "color": self.color,
             "active_material_id": self.active_material_id,
             "created_at": self.created_at,
             "updated_at": self.updated_at,

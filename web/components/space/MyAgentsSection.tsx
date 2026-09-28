@@ -1,5 +1,6 @@
 "use client";
 
+import Tooltip from "@/shared/ui/Tooltip";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -191,7 +192,7 @@ export default function MyAgentsSection() {
 
   const handleDeleteSession = useCallback(
     async (sessionId: string) => {
-      if (!window.confirm(t("Delete this conversation?"))) return;
+      if (!window.confirm(t("Permanently delete this chat and its tutor threads? This cannot be undone."))) return;
       await deleteSession(sessionId);
       if (activeSessionId === sessionId) setActiveSessionId(null);
       setSessions((prev) =>
@@ -274,7 +275,7 @@ export default function MyAgentsSection() {
         icon={Bot}
         title={t("Imported conversations")}
         description={t(
-          "Your Claude Code and Codex conversations as named agents — open one to keep chatting, edit what each imports, or refresh to pull in new conversations.",
+          "Import ChatGPT exports or connect Claude Code and Codex folders. Open any imported conversation to keep chatting.",
         )}
         action={
           !isEmpty ? (
@@ -284,7 +285,7 @@ export default function MyAgentsSection() {
               className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--foreground)] px-3 py-1.5 text-[12px] font-medium text-[var(--background)] shadow-sm transition-opacity hover:opacity-90"
             >
               <Plus className="h-3.5 w-3.5" />
-              {t("Add agent")}
+              {t("Import conversations")}
             </button>
           ) : null
         }
@@ -477,38 +478,40 @@ function AgentCard({
       </div>
 
       <div className="flex shrink-0 items-center gap-1">
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            onRefresh();
-          }}
-          disabled={refreshing}
-          title={t("Refresh history")}
-          aria-label={t("Refresh history")}
-          className="rounded-lg border border-[var(--border)]/50 p-2 text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)] disabled:opacity-50"
-        >
-          {refreshing ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <RefreshCw className="h-3.5 w-3.5" />
-          )}
-        </button>
-        <div ref={menuRef} className="relative">
+        <Tooltip label={t("Refresh history")} side="top">
           <button
             type="button"
             onClick={(event) => {
               event.stopPropagation();
-              setMenuOpen((v) => !v);
+              onRefresh();
             }}
-            title={t("More")}
-            aria-label={t("More")}
-            aria-haspopup="menu"
-            aria-expanded={menuOpen}
-            className="rounded-lg border border-[var(--border)]/50 p-2 text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)]"
+            disabled={refreshing}
+            aria-label={t("Refresh history")}
+            className="rounded-lg border border-[var(--border)]/50 p-2 text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)] disabled:opacity-50"
           >
-            <MoreHorizontal className="h-3.5 w-3.5" />
+            {refreshing ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5" />
+            )}
           </button>
+        </Tooltip>
+        <div ref={menuRef} className="relative">
+          <Tooltip label={t("More")} side="top">
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setMenuOpen((v) => !v);
+              }}
+              aria-label={t("More")}
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              className="rounded-lg border border-[var(--border)]/50 p-2 text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)]"
+            >
+              <MoreHorizontal className="h-3.5 w-3.5" />
+            </button>
+          </Tooltip>
           {menuOpen && (
             <div
               role="menu"
@@ -656,7 +659,7 @@ function UngroupedCard({
         }}
         className="shrink-0 rounded-lg border border-[var(--border)]/50 px-2.5 py-1.5 text-[11px] font-medium text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)]"
       >
-        {t("Add agent")}
+        {t("Import conversations")}
       </button>
     </div>
   );
@@ -675,7 +678,7 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
         </h2>
         <p className="mx-auto max-w-sm text-[12.5px] leading-relaxed text-[var(--muted-foreground)]">
           {t(
-            "Add your Claude Code or Codex folder to bring its conversations in — then chat with them or refresh anytime.",
+            "Import a ChatGPT data export or add a Claude Code or Codex folder, then open any conversation to continue it in DeepTutor.",
           )}
         </p>
       </div>
@@ -685,7 +688,7 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
         className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--foreground)] px-4 py-2 text-[12.5px] font-medium text-[var(--background)] shadow-sm transition-opacity hover:opacity-90"
       >
         <Plus className="h-3.5 w-3.5" />
-        {t("Add agent")}
+        {t("Import conversations")}
       </button>
     </section>
   );

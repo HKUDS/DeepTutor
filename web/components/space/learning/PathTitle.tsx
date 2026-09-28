@@ -3,6 +3,7 @@
 import { Check, Pencil, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useEffect, useRef, useState } from "react";
+import Tooltip from "@/shared/ui/Tooltip";
 
 import type { Translate } from "./format";
 
@@ -89,14 +90,16 @@ export function PathTitle({
         <h1 className={`truncate ${TITLE_TYPE}`}>{displayName}</h1>
         {/* Always present, like the reset/delete controls beside it. A
             hover-revealed affordance does not exist on a touch screen. */}
-        <button
-          onClick={() => setEditing(true)}
-          title={t("Rename")}
-          aria-label={t("Rename")}
-          className="shrink-0 cursor-pointer rounded-lg p-1.5 text-[var(--muted-foreground)]/60 transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
-        >
-          <Pencil className="h-4 w-4" />
-        </button>
+        <Tooltip label={t("Rename")}>
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            aria-label={t("Rename")}
+            className="shrink-0 cursor-pointer rounded-lg p-1.5 text-[var(--muted-foreground)]/60 transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+          >
+            <Pencil className="h-4 w-4" />
+          </button>
+        </Tooltip>
       </div>
     );
   }
@@ -122,28 +125,32 @@ export function PathTitle({
         className={`min-w-0 flex-1 rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-1 outline-none focus:border-[var(--primary)] disabled:opacity-60 ${TITLE_TYPE}`}
       />
       {/* mousedown, not click: blur fires first and would commit-then-cancel. */}
-      <button
-        onMouseDown={(event) => {
-          event.preventDefault();
-          void commit();
-        }}
-        title={t("Save")}
-        aria-label={t("Save")}
-        className="shrink-0 cursor-pointer rounded-lg p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
-      >
-        <Check className="h-4 w-4" />
-      </button>
-      <button
-        onMouseDown={(event) => {
-          event.preventDefault();
-          cancel();
-        }}
-        title={t("Cancel")}
-        aria-label={t("Cancel")}
-        className="shrink-0 cursor-pointer rounded-lg p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
-      >
-        <X className="h-4 w-4" />
-      </button>
+      <Tooltip label={t("Save")}>
+        <button
+          type="button"
+          onMouseDown={(event) => {
+            event.preventDefault();
+            void commit();
+          }}
+          aria-label={t("Save")}
+          className="shrink-0 cursor-pointer rounded-lg p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+        >
+          <Check className="h-4 w-4" />
+        </button>
+      </Tooltip>
+      <Tooltip label={t("Cancel")}>
+        <button
+          type="button"
+          onMouseDown={(event) => {
+            event.preventDefault();
+            cancel();
+          }}
+          aria-label={t("Cancel")}
+          className="shrink-0 cursor-pointer rounded-lg p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </Tooltip>
     </div>
   );
 }

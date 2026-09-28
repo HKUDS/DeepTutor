@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 from deeptutor.api.routers.auth import require_auth
 from deeptutor.multi_user.context import get_current_user_or_none
 from deeptutor.multi_user.partner_access import visible_partners
-from deeptutor.multi_user.paths import get_path_service_for_scope
+from deeptutor.multi_user.paths import get_current_path_service, get_path_service_for_scope
 from deeptutor.services.auth import TokenPayload
 from deeptutor.services.partners.scope import partner_scope
 from deeptutor.services.path_service import PathService
@@ -29,7 +29,7 @@ def _request_path_service() -> PathService:
     user = get_current_user_or_none()
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Output not found")
-    return get_path_service_for_scope(user.scope)
+    return get_current_path_service()
 
 
 def _resolve_output(path_service: PathService, relative_path: str) -> Path:
@@ -53,6 +53,10 @@ def _resolve_partner_output(relative_path: str) -> Path | None:
     the same relative path colliding across multiple partners is vanishingly
     unlikely. Fail closed anyway: only a unique partner match is served.
     """
+    from deeptutor.services.workspace.context import current_workspace_id
+
+    if current_workspace_id():
+        return None
     matches: list[Path] = []
     for partner in visible_partners():
         partner_id = str(partner.get("partner_id") or "").strip()

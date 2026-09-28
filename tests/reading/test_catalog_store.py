@@ -168,3 +168,53 @@ def test_default_stores_follow_the_current_user_scope(tmp_path: Path) -> None:
     assert attacker.list_workspaces() == []
     assert victim.db_path != attacker.db_path
     assert victim_content_root != attacker_content_root
+
+
+def test_sidebar_rename_and_delete_reach_the_collection_list(
+    catalog: ReadingCatalogStore,
+) -> None:
+    # The sidebar renames and deletes through /api/sessions, not through the
+    # reader; the collection's own list must follow both.
+    material = _material(catalog, "d" * 16, "Networks")
+    workspace = catalog.create_workspace("Networks", [material.material_id])
+    catalog.attach_session(workspace.workspace_id, "kept", title="Kept")
+    catalog.attach_session(workspace.workspace_id, "gone", title="Gone")
+
+    catalog.retitle_session("kept", "Routing questions")
+    catalog.forget_session("gone")
+    catalog.retitle_session("never_tracked", "No-op")
+
+    rows = catalog.list_sessions(workspace.workspace_id)
+    assert [(row.session_id, row.title) for row in rows] == [("kept", "Routing questions")]
+
+
+def test_collection_color_is_a_palette_key_that_survives_updates(
+    catalog: ReadingCatalogStore,
+) -> None:
+    workspace = catalog.create_workspace("Networks", color="Teal")
+    assert workspace.color == "teal"
+    assert workspace.to_dict()["color"] == "teal"
+
+    renamed = catalog.update_workspace(workspace.workspace_id, title="Routing")
+    assert (renamed.title, renamed.color) == ("Routing", "teal")
+
+    # Arbitrary CSS never reaches the page; it falls back to the default tint.
+    recolored = catalog.update_workspace(workspace.workspace_id, color="#ff0000; x")
+    assert recolored.color == ""
+
+
+def test_catalog_created_before_collection_colors_gains_the_column(
+    tmp_path: Path,
+) -> None:
+    import sqlite3
+
+    root = tmp_path / "reading"
+    catalog = ReadingCatalogStore(root=root)
+    workspace = catalog.create_workspace("Legacy")
+    database = next(root.rglob("*.sqlite*"))
+    with sqlite3.connect(database) as conn:
+        conn.execute("ALTER TABLE reading_workspaces DROP COLUMN color")
+
+    reopened = ReadingCatalogStore(root=root)
+    assert reopened.get_workspace(workspace.workspace_id).color == ""
+    assert reopened.update_workspace(workspace.workspace_id, color="amber").color == "amber"

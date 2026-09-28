@@ -24,6 +24,8 @@ export default function PersonaSelector({
   open: openProp,
   onOpenChange,
   placement = "top",
+  pinned = false,
+  embedded = false,
 }: {
   /** Active persona name; "" = Default (no persona). */
   value: string;
@@ -31,11 +33,20 @@ export default function PersonaSelector({
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   placement?: "top" | "bottom";
+  /** Keep the label visible instead of collapsing to the icon at rest.
+   *  Set by the composer rail, where there is room for it. */
+  pinned?: boolean;
+  /** Render the picker contents inside a shared resource panel. */
+  embedded?: boolean;
 }) {
   const { t } = useTranslation();
   const [openState, setOpenState] = useState(false);
-  const open = openProp ?? openState;
-  const { expanded, linger, triggerProps: lingerProps } = useLingerExpand(open);
+  const open = embedded || (openProp ?? openState);
+  const {
+    expanded,
+    linger,
+    triggerProps: lingerProps,
+  } = useLingerExpand(open, 1200, pinned);
   const setOpen = (next: boolean) => {
     setOpenState(next);
     onOpenChange?.(next);
@@ -73,7 +84,10 @@ export default function PersonaSelector({
   useEffect(() => {
     if (!open) return;
     setQuery("");
-    requestAnimationFrame(() => searchRef.current?.focus());
+    const frame = requestAnimationFrame(() =>
+      searchRef.current?.focus({ preventScroll: true }),
+    );
+    return () => cancelAnimationFrame(frame);
   }, [open]);
 
   // Close on outside click.
@@ -121,39 +135,45 @@ export default function PersonaSelector({
           and lingers ~1.2s after leave/selection before collapsing. A
           non-default persona tints the icon primary so the active state
           stays visible even when collapsed. */}
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        aria-label={t("Select persona")}
-        aria-expanded={open}
-        {...lingerProps}
-        className={`inline-flex h-8 shrink-0 items-center rounded-lg px-2 text-[14px] font-medium transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
-          open
-            ? "bg-[var(--muted)] text-[var(--foreground)]"
-            : value
-              ? "text-[var(--primary)] hover:bg-[var(--primary)]/[0.07]"
-              : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/55 hover:text-[var(--foreground)]"
-        }`}
-      >
-        <UserRound size={16} strokeWidth={1.7} className="shrink-0" />
-        <span
-          className={`flex min-w-0 items-center gap-1 overflow-hidden whitespace-nowrap transition-[max-width,opacity,margin-left] duration-300 ease-out ${
-            expanded
-              ? "ml-1.5 max-w-[140px] opacity-100"
-              : "ml-0 max-w-0 opacity-0"
+      {!embedded && (
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          aria-label={t("Select persona")}
+          aria-expanded={open}
+          {...lingerProps}
+          className={`inline-flex h-8 shrink-0 items-center rounded-lg px-2 text-[14px] font-medium transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
+            open
+              ? "bg-[var(--muted)] text-[var(--foreground)]"
+              : value
+                ? "text-[var(--primary)] hover:bg-[var(--primary)]/[0.07]"
+                : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/55 hover:text-[var(--foreground)]"
           }`}
         >
-          <span className="min-w-0 truncate">{label}</span>
-          <ChevronDown
-            size={13}
-            className={`shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
-          />
-        </span>
-      </button>
+          <UserRound size={16} strokeWidth={1.7} className="shrink-0" />
+          <span
+            className={`flex min-w-0 items-center gap-1 overflow-hidden whitespace-nowrap transition-[max-width,opacity,margin-left] duration-300 ease-out ${
+              expanded
+                ? "ml-1.5 max-w-[140px] opacity-100"
+                : "ml-0 max-w-0 opacity-0"
+            }`}
+          >
+            <span className="min-w-0 truncate">{label}</span>
+            <ChevronDown
+              size={13}
+              className={`shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
+            />
+          </span>
+        </button>
+      )}
 
       {open && (
         <div
-          className={`absolute right-0 z-50 ${menuPlacementClass} w-[min(280px,calc(100vw-32px))] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--popover)] shadow-lg backdrop-blur-md`}
+          className={
+            embedded
+              ? "w-full"
+              : `absolute right-0 z-50 ${menuPlacementClass} w-[min(280px,calc(100vw-32px))] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--popover)] shadow-lg backdrop-blur-md`
+          }
         >
           <div className="border-b border-[var(--border)]/50 p-2">
             <div className="flex items-center gap-1.5 rounded-lg border border-[var(--border)]/60 bg-[var(--background)] px-2 py-1">
@@ -169,7 +189,7 @@ export default function PersonaSelector({
                 onKeyDown={(e) => {
                   if (e.key === "Escape") {
                     e.preventDefault();
-                    setOpen(false);
+                    if (!embedded) setOpen(false);
                   }
                 }}
                 placeholder={t("Search personas...")}
@@ -182,7 +202,7 @@ export default function PersonaSelector({
               <button
                 type="button"
                 onClick={() => pick("")}
-                className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-left transition-colors active:bg-[var(--muted)]/70 ${
+                className={`flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors active:bg-[var(--muted)]/70 ${
                   !value
                     ? "bg-[var(--primary)]/[0.06]"
                     : "hover:bg-[var(--muted)]/45"
@@ -221,7 +241,7 @@ export default function PersonaSelector({
                   key={persona.name}
                   type="button"
                   onClick={() => pick(persona.name)}
-                  className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-left transition-colors active:bg-[var(--muted)]/70 ${
+                  className={`flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors active:bg-[var(--muted)]/70 ${
                     selected
                       ? "bg-[var(--primary)]/[0.06]"
                       : "hover:bg-[var(--muted)]/45"

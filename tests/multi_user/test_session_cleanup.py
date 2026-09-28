@@ -16,10 +16,14 @@ def test_delete_session_cleans_only_current_user_artifacts(as_user, monkeypatch)
     attachment_id = "upload-1"
 
     class _SessionStore:
-        async def soft_delete_session(self, candidate: str) -> bool:
-            return candidate == session_id
+        async def get_session(self, candidate: str) -> dict[str, str] | None:
+            """The router looks the row up first, so a 404 can't be deleted."""
+            return {"session_id": candidate} if candidate == session_id else None
 
-        async def hard_delete_session(self, candidate: str) -> bool:
+        async def list_sessions(self, *, limit: int, offset: int) -> list[dict[str, str]]:
+            return [{"session_id": session_id}][offset : offset + limit]
+
+        async def delete_session(self, candidate: str) -> bool:
             return candidate == session_id
 
     monkeypatch.setattr(sessions_router, "get_session_store", lambda: _SessionStore())
@@ -55,11 +59,7 @@ def test_delete_session_cleans_only_current_user_artifacts(as_user, monkeypatch)
         with as_user("u_alice"):
             response = await sessions_router.delete_session(session_id)
 
-        assert response == {"deleted": True, "session_id": session_id, "recycled": True}
-        assert await _artifacts_exist("u_alice") == (True, True)
-        with as_user("u_alice"):
-            purge_response = await sessions_router.purge_session(session_id)
-        assert purge_response == {"purged": True, "session_id": session_id}
+        assert response == {"deleted": True, "session_id": session_id}
         assert await _artifacts_exist("u_alice") == (False, False)
         assert await _artifacts_exist("u_bob") == (True, True)
 

@@ -1,8 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { peekPickerOrigin } from "@/lib/picker-origin";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import {
+  AnimatePresence,
+  m as motion,
+  useAnimationControls,
+  useReducedMotion,
+} from "framer-motion";
+import { pickerFlight, peekPickerOrigin } from "@/lib/picker-origin";
 
 // Ref-count of currently-open PickerShells. While any are open we mark the
 // <body> so global CSS can freeze ambient background animations (the sidebar
@@ -98,6 +109,13 @@ export default function PickerShell({
   const dialogRef = useRef<HTMLDivElement>(null);
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
   const reduceMotion = useReducedMotion();
+  const cardControls = useAnimationControls();
+  const departureRef = useRef({
+    x: 0,
+    y: 8,
+    scaleX: 0.98,
+    scaleY: 0.98,
+  });
 
   // Capture the trigger's rect at the moment `open` flips true so the card can
   // expand outward from it. Derived during render (React's documented
@@ -107,8 +125,37 @@ export default function PickerShell({
   const [wasOpen, setWasOpen] = useState(false);
   if (open !== wasOpen) {
     setWasOpen(open);
-    setOriginRect(open ? peekPickerOrigin() : null);
+    if (open) setOriginRect(peekPickerOrigin());
   }
+
+  useLayoutEffect(() => {
+    const card = dialogRef.current;
+    if (!open || !card) return;
+    // Read the final layout before paint, independently of an interrupted exit.
+    card.style.transform = "none";
+    const target = card.getBoundingClientRect();
+    const from =
+      !reduceMotion && originRect
+        ? pickerFlight(originRect, target)
+        : {
+            x: 0,
+            y: reduceMotion ? 0 : 8,
+            scaleX: reduceMotion ? 1 : 0.98,
+            scaleY: reduceMotion ? 1 : 0.98,
+          };
+    departureRef.current = from;
+    cardControls.set({ ...from, opacity: originRect && !reduceMotion ? 1 : 0 });
+    void cardControls.start(
+      { x: 0, y: 0, scaleX: 1, scaleY: 1, opacity: 1 },
+      {
+        type: "spring",
+        duration: reduceMotion ? 0 : originRect ? 0.48 : 0.24,
+        bounce: originRect ? 0.06 : 0,
+        opacity: { duration: reduceMotion ? 0 : 0.12 },
+      },
+    );
+    return () => cardControls.stop();
+  }, [open, originRect, reduceMotion, cardControls]);
 
   // Freeze ambient background animations while this shell is open.
   useEffect(() => {
@@ -147,8 +194,12 @@ export default function PickerShell({
       // Prefer an explicit autofocus marker, then the first focusable child.
       const explicit = node.querySelector<HTMLElement>("[data-autofocus]");
       const target =
-        explicit ?? node.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
-      target?.focus();
+        explicit ??
+        node.querySelector<HTMLElement>(
+          'input[type="search"], input[type="text"], input:not([type]), textarea',
+        ) ??
+        node.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
+      target?.focus({ preventScroll: true });
     });
     return () => window.cancelAnimationFrame(id);
   }, [open]);
@@ -159,7 +210,12 @@ export default function PickerShell({
   useEffect(() => {
     if (open) return;
     const trigger = previouslyFocusedRef.current;
-    if (trigger && document.contains(trigger)) {
+    const activeDialog = document.activeElement?.closest('[role="dialog"]');
+    if (
+      trigger &&
+      document.contains(trigger) &&
+      (!activeDialog || activeDialog === dialogRef.current)
+    ) {
       trigger.focus();
     }
     previouslyFocusedRef.current = null;
@@ -207,55 +263,21 @@ export default function PickerShell({
   const alignmentClass =
     align === "center" ? "items-center justify-center" : "items-start";
 
-  // Motion. When we captured the trigger rect, the card *expands outward from
-  // it* — it starts small, centered on the clicked row, and grows + glides to
-  // the screen center. That sells the "this box unfolded into the picker"
-  // feeling. Without an origin (picker opened from elsewhere) it falls back to
-  // a quiet placed-from-below settle. The scrim always cross-fades, masking
-  // the menu's own exit so the handoff reads as one continuous motion.
-  // reduced-motion keeps presence (AnimatePresence still gates mount) but drops
-  // transforms to a plain fade.
-  const originExpand =
-    !reduceMotion && originRect && typeof window !== "undefined"
-      ? {
-          x: originRect.x + originRect.width / 2 - window.innerWidth / 2,
-          y: originRect.y + originRect.height / 2 - window.innerHeight / 2,
-        }
-      : null;
-
-  const scrimTransition = reduceMotion
-    ? { duration: 0 }
-    : { duration: 0.2, ease: [0.22, 1, 0.36, 1] as const };
-  const cardInitial = reduceMotion
-    ? { opacity: 0 }
-    : originExpand
-      ? { opacity: 0, scale: 0.5, x: originExpand.x, y: originExpand.y }
-      : { opacity: 0, y: 10, scale: 0.97, x: 0 };
-  const cardAnimate = reduceMotion
-    ? { opacity: 1 }
-    : { opacity: 1, y: 0, scale: 1, x: 0 };
-  const cardExit = reduceMotion
-    ? { opacity: 0 }
-    : {
-        opacity: 0,
-        y: 6,
-        scale: 0.985,
-        x: 0,
-        // Closing stays a quick, clean collapse — no bounce on the way out.
-        transition: { duration: 0.16, ease: [0.4, 0, 1, 1] as const },
-      };
-  const cardTransition = reduceMotion
-    ? { duration: 0 }
-    : {
-        // A gently under-damped spring gives the expand some life: it eases out
-        // and settles with a barely-there overshoot, instead of the flat,
-        // mechanical glide a fixed cubic-bezier produces. Opacity rides a quick
-        // separate fade so only the size/position carry the spring.
-        type: "spring" as const,
-        bounce: 0.28,
-        duration: 0.44,
-        opacity: { duration: 0.2, ease: [0.22, 1, 0.36, 1] as const },
-      };
+  // The surface starts at the clicked row's exact bounds. Fade its contents
+  // in after the shell has begun expanding so text never looks stretched.
+  const scrimTransition = { duration: reduceMotion ? 0 : 0.2 };
+  const cardExit = () =>
+    reduceMotion
+      ? { opacity: 0, transition: { duration: 0 } }
+      : {
+          ...departureRef.current,
+          opacity: 0,
+          transition: {
+            duration: originRect ? 0.28 : 0.16,
+            ease: [0.4, 0, 0.2, 1] as const,
+            opacity: { duration: 0.12, delay: originRect ? 0.14 : 0 },
+          },
+        };
 
   return (
     <AnimatePresence>
@@ -265,17 +287,24 @@ export default function PickerShell({
           // input doesn't dismiss the picker on the eventual mouseup.
           key="picker-backdrop"
           onMouseDown={handleBackdropMouseDown}
-          className={`fixed inset-0 flex ${backdropClass} ${alignmentClass} ${
-            className ?? ""
+          className={`fixed inset-0 flex ${alignmentClass} ${
+            className?.replace(/backdrop-blur-\w+/g, "") ?? ""
           }`}
           style={{ zIndex }}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={scrimTransition}
+          initial={false}
+          exit={{ opacity: 1 }}
         >
           <motion.div
+            aria-hidden="true"
+            className={`pointer-events-none absolute inset-0 ${backdropClass}`}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={scrimTransition}
+          />
+          <motion.div
             ref={dialogRef}
+            className="relative rounded-2xl bg-[var(--card)]"
             role="dialog"
             aria-modal="true"
             aria-labelledby={labelledBy}
@@ -291,12 +320,25 @@ export default function PickerShell({
               willChange: "transform, opacity",
               backfaceVisibility: "hidden",
             }}
-            initial={cardInitial}
-            animate={cardAnimate}
-            exit={cardExit}
-            transition={cardTransition}
+            initial={{ opacity: 0 }}
+            animate={cardControls}
+            variants={{ depart: cardExit }}
+            exit="depart"
           >
-            {children}
+            <motion.div
+              initial={{ opacity: originRect && !reduceMotion ? 0 : 1 }}
+              animate={{ opacity: 1 }}
+              exit={{
+                opacity: 0,
+                transition: { duration: reduceMotion ? 0 : 0.08 },
+              }}
+              transition={{
+                duration: reduceMotion ? 0 : 0.18,
+                delay: originRect && !reduceMotion ? 0.1 : 0,
+              }}
+            >
+              {children}
+            </motion.div>
           </motion.div>
         </motion.div>
       )}

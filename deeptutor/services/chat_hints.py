@@ -239,12 +239,12 @@ def _response_language() -> str:
 
 async def _call_llm(material: _Material, language: str) -> str:
     from deeptutor.services.llm import complete
-    from deeptutor.services.model_selection.tasks import task_llm_scope
+    from deeptutor.services.model_selection.tasks import TaskKind, task_llm_scope
 
     zh = _is_zh(language)
     # Same call class as titles and starter lines — short, frequent, and
     # nobody asked for it — so it runs on the task model when one is set.
-    with task_llm_scope():
+    with task_llm_scope(TaskKind.CHAT_ASK_HINT):
         return await asyncio.wait_for(
             complete(
                 prompt=_render(material, zh),

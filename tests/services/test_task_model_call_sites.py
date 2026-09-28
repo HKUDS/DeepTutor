@@ -1,9 +1,11 @@
-"""The two task call sites actually run inside the scope they claim to.
+"""Task call sites actually run inside the scope they claim to.
 
 Configuring a task model is only worth anything if the LLM call at the other
-end resolves it. Both tests assert the model *observed from inside
-the call*: a scope wrapped around the wrong statement, or a call site that was
-never wired at all, still looks correct from the outside.
+end resolves it. Every test here asserts the model *observed from inside the
+call*: a scope wrapped around the wrong statement, or a call site that was
+never wired at all, still looks correct from the outside. That goes double for
+a per-task pin, whose whole point is that one call site resolves something the
+others do not.
 """
 
 from __future__ import annotations
@@ -29,7 +31,13 @@ class _FakePathService:
         return self._root / "settings" / f"{name}.json"
 
 
-def _pin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, task_model: str | None) -> None:
+def _pin(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    task_model: str | None,
+    *,
+    overrides: dict[str, Any] | None = None,
+) -> None:
     """Point every catalog reader at a tmp catalog, optionally with a task model.
 
     Patching the path service rather than ``get_model_catalog_service`` is
@@ -64,11 +72,16 @@ def _pin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, task_model: str | None
                 "binding": "openai",
                 "base_url": "https://api.openai.com/v1",
                 "api_key": "sk-test",
-                "models": [{"id": "task-model", "model": task_model}],
+                "models": [
+                    {"id": "task-model", "model": task_model},
+                    {"id": "task-second", "model": "gpt-5-nano"},
+                ],
             }
         ]
         catalog["services"]["task"]["active_profile_id"] = "task-1"
         catalog["services"]["task"]["active_model_id"] = "task-model"
+    if overrides is not None:
+        catalog["services"]["task"]["overrides"] = overrides
     service.save(catalog)
 
     # get_instance memoizes per resolved path; every reader must land on the
@@ -86,15 +99,9 @@ def _clear_llm_cache() -> Any:
     clear_llm_config_cache()
 
 
-def test_starter_generation_calls_the_task_model(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _pin(tmp_path, monkeypatch, "gpt-5-mini")
-
+def _run_starters(monkeypatch: pytest.MonkeyPatch, observed: list[str]) -> None:
     from deeptutor.services import suggestions
     import deeptutor.services.llm as llm
-
-    observed: list[str] = []
 
     async def _complete(prompt: str, **kwargs: Any) -> str:
         observed.append(get_llm_config().model)
@@ -107,6 +114,15 @@ def test_starter_generation_calls_the_task_model(
         topics=[suggestions._Topic(surface="chat", label="Agentic RAG", days_ago=1)],
     )
     asyncio.run(suggestions._generate("en", material))
+
+
+def test_starter_generation_calls_the_task_model(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _pin(tmp_path, monkeypatch, "gpt-5-mini")
+
+    observed: list[str] = []
+    _run_starters(monkeypatch, observed)
 
     assert observed == ["gpt-5-mini"]
 
@@ -116,22 +132,64 @@ def test_starter_generation_inherits_when_unconfigured(
 ) -> None:
     _pin(tmp_path, monkeypatch, None)
 
-    from deeptutor.services import suggestions
-    import deeptutor.services.llm as llm
+    observed: list[str] = []
+    _run_starters(monkeypatch, observed)
+
+    assert observed == ["gpt-5"]
+
+
+def test_a_pinned_task_runs_on_its_own_model(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _pin(
+        tmp_path,
+        monkeypatch,
+        "gpt-5-mini",
+        overrides={
+            "chat_starters": {
+                "mode": "profiles",
+                "active_profile_id": "task-1",
+                "active_model_id": "task-second",
+            }
+        },
+    )
 
     observed: list[str] = []
+    _run_starters(monkeypatch, observed)
 
-    async def _complete(prompt: str, **kwargs: Any) -> str:
-        observed.append(get_llm_config().model)
-        return "[]"
+    assert observed == ["gpt-5-nano"]
 
-    monkeypatch.setattr(llm, "complete", _complete)
 
-    material = suggestions._Material(
-        profile="A learner.",
-        topics=[suggestions._Topic(surface="chat", label="Agentic RAG", days_ago=1)],
+def test_a_pin_on_another_task_leaves_this_one_on_the_global_model(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _pin(
+        tmp_path,
+        monkeypatch,
+        "gpt-5-mini",
+        overrides={
+            "session_title": {
+                "mode": "profiles",
+                "active_profile_id": "task-1",
+                "active_model_id": "task-second",
+            }
+        },
     )
-    asyncio.run(suggestions._generate("en", material))
+
+    observed: list[str] = []
+    _run_starters(monkeypatch, observed)
+
+    assert observed == ["gpt-5-mini"]
+
+
+def test_a_task_pinned_to_the_chat_model_ignores_the_task_model(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Opting one call *out* of the task model is a real choice, not a no-op."""
+    _pin(tmp_path, monkeypatch, "gpt-5-mini", overrides={"chat_starters": {"mode": "inherit"}})
+
+    observed: list[str] = []
+    _run_starters(monkeypatch, observed)
 
     assert observed == ["gpt-5"]
 

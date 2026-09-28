@@ -1,6 +1,10 @@
 "use client";
 
+import { scopedUrl } from "@/lib/workspace-scope";
+import { MASTERY_HOME, masterySessionsRoute, masteryTopicRoute } from "@/lib/learning-routes";
+
 import { browserStorage } from "@/shared/storage";
+import Tooltip from "@/shared/ui/Tooltip";
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -25,12 +29,13 @@ import { buildSessionActivity } from "@/components/chat/home/SessionActivityPane
 import { TurnNavigator } from "@/components/chat/home/TurnNavigator";
 import SessionViewerPanel, {
   type SessionViewerPanelHandle,
-} from "@/components/chat/home/SessionViewerPanel";
+} from "@/components/chat/home/LazySessionViewerPanel";
 import {
   type MessageAttachment,
   useChatStateAdapter,
 } from "@/features/chat/ChatStateAdapter";
 import { useChatAutoScroll } from "@/hooks/useChatAutoScroll";
+import { useMasteryOpening } from "@/hooks/useMasteryOpening";
 import { useMasteryStudySession } from "@/hooks/useMasteryStudySession";
 import { useMeasuredHeight } from "@/hooks/useMeasuredHeight";
 import { useResearchOutlineContinuation } from "@/hooks/useResearchOutlineContinuation";
@@ -45,8 +50,6 @@ import { consumePendingPrompt } from "@/lib/pending-prompt";
 import { buildChatOutline, scrollToChatTurn } from "@/lib/chat-outline";
 import { buildConversationNotebookSave } from "@/lib/conversation-notebook-save";
 import {
-  MASTERY_OPENING_SCOPE,
-  masteryOpeningMessage,
   masterySessionRoute,
   type MasteryMode,
 } from "@/lib/mastery-mode";
@@ -175,6 +178,7 @@ export function MasteryStudy({
     sendMessage,
     submitUserReply,
     regenerateLastMessage,
+    resendLastMessage,
     deleteTurn,
     editMessage,
     switchBranch,
@@ -471,42 +475,16 @@ export function MasteryStudy({
     [state.activeCapability, submit],
   );
 
-  // A conversation that opens with nothing to say says the thing it was
-  // opened to say.
-  //
-  // Derived from the mode rather than handed across the navigation. The
-  // hand-off channel that used to carry it reads *destructively*, so a send
-  // refused for any reason (a turn still settling, a session still resolving)
-  // consumed the message and left the screen insisting work was under way
-  // forever — the same dead end twice, in two different places. There is no
-  // channel to lose now: an empty outline conversation always knows what it
-  // is for. The hand-off is still read, but only to *enrich* the opening (the
-  // review card names what is due), never to supply it.
-  const openingSentRef = useRef("");
-  useEffect(() => {
-    if (!topic || hasMessages || sessionLoading || sessionError) return;
-    if (state.isStreaming || openingSentRef.current === pathId) return;
-    const opening =
-      consumePendingPrompt(MASTERY_OPENING_SCOPE).trim() ||
-      masteryOpeningMessage(sessionMode, t as Translate);
-    // A study conversation opens with nothing on purpose: "start learning"
-    // does not say what to start with, so the screen offers ways in instead.
-    if (!opening) return;
-    // Latch on the send, never before it: ``submit`` refuses silently while a
-    // turn is live or the session is still resolving, and the next render
-    // tries again.
-    if (submit(opening)) openingSentRef.current = pathId;
-  }, [
-    hasMessages,
+  useMasteryOpening({
     pathId,
-    sessionError,
+    topicReady: Boolean(topic),
+    hasMessages,
     sessionLoading,
+    sessionError,
     sessionMode,
-    state.isStreaming,
+    isStreaming: state.isStreaming,
     submit,
-    t,
-    topic,
-  ]);
+  });
 
   // The learner pressing one of the three modes above the transcript. The same
   // move the tutor makes with ``mastery_mode``, through the same admission
@@ -561,7 +539,7 @@ export function MasteryStudy({
           {topicError}
         </p>
         <Link
-          href="/mastery"
+          href={scopedUrl(MASTERY_HOME)}
           className="mt-5 text-sm font-medium text-[var(--primary)] hover:underline"
         >
           {t("Back to topics")}
@@ -582,14 +560,15 @@ export function MasteryStudy({
           unit rather than a ring on the left and its own number on the
           right saying the same thing twice. */}
       <header className="flex h-[56px] shrink-0 items-center gap-1 border-b border-[var(--border)] bg-[var(--background)]/95 px-3 backdrop-blur sm:px-4">
-        <Link
-          href={`/mastery/${encodeURIComponent(pathId)}`}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]"
-          title={t("Learning topics")}
-          aria-label={t("Learning topics")}
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
+        <Tooltip label={t("Learning topics")} side="bottom">
+          <Link
+            href={masteryTopicRoute(pathId)}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]"
+            aria-label={t("Learning topics")}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+        </Tooltip>
 
         <div className="ml-1.5 flex min-w-0 flex-1 items-baseline gap-2">
           <h1 className="shrink-0 truncate text-[14.5px] font-semibold tracking-[-0.01em] text-[var(--foreground)]">
@@ -620,16 +599,17 @@ export function MasteryStudy({
         />
 
         <div className="flex shrink-0 items-center gap-1.5 pl-2">
-          <button
-            type="button"
-            onClick={() => setShowSaveModal(true)}
-            disabled={!notebookSavePayload}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
-            title={t("Save to Notebook")}
-            aria-label={t("Save to Notebook")}
-          >
-            <BookmarkPlus className="h-4 w-4" />
-          </button>
+          <Tooltip label={t("Save to Notebook")}>
+            <button
+              type="button"
+              onClick={() => setShowSaveModal(true)}
+              disabled={!notebookSavePayload}
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label={t("Save to Notebook")}
+            >
+              <BookmarkPlus className="h-4 w-4" />
+            </button>
+          </Tooltip>
           <button
             type="button"
             onClick={() => setViewerOpen((open) => !open)}
@@ -722,7 +702,7 @@ export function MasteryStudy({
                       {sessionError}
                     </p>
                     <Link
-                      href={`/mastery/${encodeURIComponent(pathId)}/sessions`}
+                      href={masterySessionsRoute(pathId)}
                       className="mt-4 inline-flex rounded-xl bg-[var(--primary)] px-3 py-2 text-xs font-medium text-[var(--primary-foreground)]"
                     >
                       {t("Start a new session")}
@@ -805,6 +785,8 @@ export function MasteryStudy({
                       language={state.language}
                       onCopyAssistantMessage={copyAssistantMessage}
                       onRegenerateMessage={regenerateLastMessage}
+                      canResendLastTurn={state.lastTurnFailed}
+                      onResendLastTurn={resendLastMessage}
                       onDeleteTurn={deleteTurn}
                       selectedBranches={state.selectedBranches}
                       onEditMessage={editMessage}

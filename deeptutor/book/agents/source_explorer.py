@@ -37,6 +37,7 @@ from deeptutor.agents.base_agent import BaseAgent
 from deeptutor.core.context import UnifiedContext
 from deeptutor.runtime.stream_bus import StreamBus
 from deeptutor.services.llm.structured_retry import json_with_reasoning_retry
+from deeptutor.services.llm.types import StreamOutcome
 
 from ..models import (
     BookInputs,
@@ -299,14 +300,18 @@ class SourceExplorer(BaseAgent):
 
         async def _run(reasoning_effort: str | None) -> str:
             chunks: list[str] = []
+            outcome = StreamOutcome()
             async for piece in self.stream_llm(
                 user_prompt=user_prompt,
                 system_prompt=system_prompt,
                 response_format={"type": "json_object"},
                 stage="explore_queries",
                 reasoning_effort=reasoning_effort,
+                outcome=outcome,
             ):
                 chunks.append(piece)
+            if outcome.truncated:
+                return ""
             return "".join(chunks)
 
         try:
@@ -576,6 +581,19 @@ class SourceExplorer(BaseAgent):
     def _collect_non_kb_chunks(self, inputs: BookInputs) -> list[SourceChunk]:
         chunks: list[SourceChunk] = []
 
+        # The captured text remains available when later stages run in the
+        # destination workspace; references never move the original material.
+        if inputs.source_context:
+            for index, start in enumerate(range(0, len(inputs.source_context), 3000)):
+                chunks.append(
+                    SourceChunk(
+                        chunk_id=f"selected::{index}",
+                        source="notebook",
+                        ref="Selected materials",
+                        text=inputs.source_context[start : start + 3000],
+                    )
+                )
+
         # Notebook records
         try:
             if inputs.notebook_refs:
@@ -688,14 +706,18 @@ class SourceExplorer(BaseAgent):
 
         async def _run(reasoning_effort: str | None) -> str:
             buf: list[str] = []
+            outcome = StreamOutcome()
             async for piece in self.stream_llm(
                 user_prompt=user_prompt,
                 system_prompt=system_prompt,
                 response_format={"type": "json_object"},
                 stage="explore_summary",
                 reasoning_effort=reasoning_effort,
+                outcome=outcome,
             ):
                 buf.append(piece)
+            if outcome.truncated:
+                return ""
             return "".join(buf)
 
         try:

@@ -76,8 +76,22 @@ def record_attempt(
     user_answer: str,
     is_correct: bool | None,
     page_to_chapter: dict[str, str],
+    submission_id: str = "",
 ) -> Progress:
     """Append an attempt and refresh everything derived from the set."""
+    if submission_id:
+        for existing in progress.quiz_attempts:
+            if existing.submission_id != submission_id:
+                continue
+            if (
+                existing.page_id != page_id
+                or existing.block_id != block_id
+                or existing.question_id != question_id
+                or existing.user_answer != user_answer
+                or existing.is_correct != is_correct
+            ):
+                raise ValueError("Submission id was reused for a different quiz answer")
+            return progress
     progress.quiz_attempts.append(
         QuizAttempt(
             block_id=block_id,
@@ -85,6 +99,7 @@ def record_attempt(
             question_id=question_id,
             user_answer=user_answer,
             is_correct=is_correct,
+            submission_id=submission_id,
         )
     )
     progress.score = recompute_score(progress)

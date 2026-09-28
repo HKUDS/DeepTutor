@@ -39,6 +39,18 @@ def _new_id(prefix: str) -> str:
     return f"{prefix}_{uuid.uuid4().hex}"
 
 
+# A collection's folder tint is a palette key the web client maps to its own
+# light/dark tones; anything else falls back to the neutral default.
+COLLECTION_COLORS = frozenset(
+    {"blue", "teal", "green", "amber", "orange", "rose", "violet", "slate"}
+)
+
+
+def _collection_color(color: str) -> str:
+    key = (color or "").strip().lower()
+    return key if key in COLLECTION_COLORS else ""
+
+
 class ReadingCatalogStore:
     """Durable workspace metadata for one already-scoped owner."""
 
@@ -98,6 +110,7 @@ class ReadingCatalogStore:
                     workspace_id TEXT PRIMARY KEY,
                     title TEXT NOT NULL,
                     description TEXT NOT NULL DEFAULT '',
+                    color TEXT NOT NULL DEFAULT '',
                     active_material_id TEXT REFERENCES reading_materials(material_id)
                         ON DELETE SET NULL,
                     created_at REAL NOT NULL,
@@ -157,6 +170,14 @@ class ReadingCatalogStore:
                 conn.execute(
                     "ALTER TABLE reading_materials "
                     "ADD COLUMN duration_seconds REAL NOT NULL DEFAULT 0"
+                )
+            collection_columns = {
+                str(row["name"])
+                for row in conn.execute("PRAGMA table_info(reading_workspaces)").fetchall()
+            }
+            if "color" not in collection_columns:
+                conn.execute(
+                    "ALTER TABLE reading_workspaces ADD COLUMN color TEXT NOT NULL DEFAULT ''"
                 )
             if self._content_id_is_unique(conn):
                 self._remove_content_id_unique_constraint(conn)
@@ -555,6 +576,7 @@ class ReadingCatalogStore:
         material_ids: Sequence[str] = (),
         *,
         description: str = "",
+        color: str = "",
         workspace_id: str | None = None,
     ) -> WorkspaceRecord:
         resolved_id = workspace_id or _new_id("rw")
@@ -566,13 +588,15 @@ class ReadingCatalogStore:
             conn.execute(
                 """
                 INSERT INTO reading_workspaces (
-                    workspace_id, title, description, active_material_id, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                    workspace_id, title, description, color, active_material_id,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     resolved_id,
                     (title or "Untitled reading workspace").strip()[:300],
                     description.strip()[:2000],
+                    _collection_color(color),
                     unique_materials[0] if unique_materials else None,
                     now,
                     now,
@@ -634,7 +658,12 @@ class ReadingCatalogStore:
         return results
 
     def update_workspace(
-        self, workspace_id: str, *, title: str | None = None, description: str | None = None
+        self,
+        workspace_id: str,
+        *,
+        title: str | None = None,
+        description: str | None = None,
+        color: str | None = None,
     ) -> WorkspaceRecord:
         self._validate_id(workspace_id, "workspace")
         assignments = ["updated_at = ?"]
@@ -645,6 +674,9 @@ class ReadingCatalogStore:
         if description is not None:
             assignments.append("description = ?")
             params.append(description.strip()[:2000])
+        if color is not None:
+            assignments.append("color = ?")
+            params.append(_collection_color(color))
         params.append(workspace_id)
         with self._lock, self._connect() as conn:
             changed = conn.execute(
@@ -889,6 +921,23 @@ class ReadingCatalogStore:
                 ).rowcount
             )
 
+    def retitle_session(self, session_id: str, title: str) -> None:
+        """Follow a rename made outside the reader (the sidebar), if tracked."""
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """UPDATE reading_workspace_sessions SET title = ?, updated_at = ?
+                   WHERE session_id = ?""",
+                ((title or "New reading conversation").strip()[:300], time.time(), session_id),
+            )
+
+    def forget_session(self, session_id: str) -> None:
+        """Drop a conversation deleted outside the reader from every collection."""
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                "DELETE FROM reading_workspace_sessions WHERE session_id = ?",
+                (session_id,),
+            )
+
     def link_session(
         self, workspace_id: str, source_session_id: str, target_session_id: str
     ) -> None:
@@ -961,6 +1010,7 @@ class ReadingCatalogStore:
             workspace_id=row["workspace_id"],
             title=row["title"],
             description=row["description"],
+            color=row["color"],
             active_material_id=row["active_material_id"],
             created_at=float(row["created_at"]),
             updated_at=float(row["updated_at"]),

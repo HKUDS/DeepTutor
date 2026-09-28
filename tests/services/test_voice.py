@@ -30,13 +30,40 @@ from deeptutor.services.voice.adapters.openai_compat import (
     OpenAICompatTTSAdapter,
     OpenRouterTTSAdapter,
 )
+from deeptutor.services.voice.audio import normalize_wav, pcm_to_wav
 from deeptutor.services.voice.base import (
+    VoiceProviderError,
     build_auth_headers,
     join_audio_path,
     normalize_stt_content_type,
     strip_markdown_for_speech,
 )
 from deeptutor.services.voice.config import STTConfig, TTSConfig
+from deeptutor.services.voice.options import voice_options
+
+
+@pytest.mark.asyncio
+async def test_browser_audio_names_missing_ffmpeg_but_canonical_wav_bypasses_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def missing_ffmpeg(*_args: object, **_kwargs: object) -> object:
+        raise FileNotFoundError("ffmpeg")
+
+    monkeypatch.setattr(
+        "deeptutor.services.voice.audio.asyncio.create_subprocess_exec", missing_ffmpeg
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.voice.adapters.dashscope.asyncio.create_subprocess_exec",
+        missing_ffmpeg,
+    )
+    canonical = pcm_to_wav(b"\x00\x00", sample_rate=16000)
+    assert await normalize_wav(canonical) == canonical
+    assert await DashScopeSTTAdapter()._prepare_wav(canonical, "clip.wav", "audio/wav") == canonical
+
+    with pytest.raises(VoiceProviderError, match="Install FFmpeg.*PATH"):
+        await normalize_wav(b"browser-webm")
+    with pytest.raises(VoiceProviderError, match="Install FFmpeg.*PATH"):
+        await DashScopeSTTAdapter()._prepare_wav(b"browser-webm", "clip.webm", "audio/webm")
 
 
 def _capture_post(monkeypatch: pytest.MonkeyPatch, response: httpx.Response) -> dict[str, Any]:
@@ -121,6 +148,95 @@ def test_strip_markdown_truncates_on_boundary() -> None:
     out = strip_markdown_for_speech("Sentence one. Sentence two. Sentence three.", max_chars=20)
     assert len(out) <= 20
     assert out.endswith(".")
+
+
+def test_strip_markdown_unwraps_latex_dollars() -> None:
+    out = strip_markdown_for_speech("The identity is $E = mc^2$ and $$\\int x dx$$.")
+    assert "$" not in out
+    assert "\\" not in out
+    assert "E = mc squared" in out
+    assert "integral x dx" in out
+
+
+def test_strip_markdown_unwraps_latex_parens_and_brackets() -> None:
+    out = strip_markdown_for_speech(r"See \(a + b\) and \[c + d\].")
+    assert "a + b" in out
+    assert "c + d" in out
+    assert "\\(" not in out
+    assert "\\[" not in out
+
+
+def test_strip_markdown_drops_unpaired_dollars() -> None:
+    out = strip_markdown_for_speech("A leftover $ delimiter should not be spoken.")
+    assert "$" not in out
+    assert "leftover" in out
+    assert "delimiter" in out
+
+
+def test_strip_markdown_verbalizes_fractions_roots_and_greek() -> None:
+    out = strip_markdown_for_speech(r"Take $\frac{1}{2}$ of $\sqrt{x}$ and $\alpha + \beta$.")
+    assert "$" not in out
+    assert "\\" not in out
+    assert "{" not in out and "}" not in out
+    assert "1 over 2" in out
+    assert "square root of x" in out
+    cube = strip_markdown_for_speech(r"$\sqrt[3]{x}$")
+    assert "cube root of x" in cube
+    assert "alpha" in out
+    assert "beta" in out
+
+
+def test_strip_markdown_verbalizes_nested_fraction() -> None:
+    out = strip_markdown_for_speech(r"$\frac{1}{\frac{2}{3}}$")
+    assert "1 over (2 over 3)" in out
+    assert "\\frac" not in out
+
+
+def test_strip_markdown_verbalizes_sum_limits() -> None:
+    out = strip_markdown_for_speech(r"$$\sum_{i=1}^{n} i$$")
+    assert "sum from i = 1 to n" in out
+    assert "_" not in out
+    assert "^" not in out
+
+
+def test_strip_markdown_preserves_snake_case_outside_math() -> None:
+    out = strip_markdown_for_speech("See file_name and $x_i$.")
+    assert "file_name" in out
+    assert "x sub i" in out
+    assert "$" not in out
+
+
+def test_strip_markdown_verbalizes_trig_and_inequality() -> None:
+    out = strip_markdown_for_speech(r"If $\sin \theta \leq 1$ then done.")
+    assert "sine" in out
+    assert "theta" in out
+    assert "less than or equal to 1" in out
+
+
+def test_strip_markdown_leaves_windows_paths_alone() -> None:
+    out = strip_markdown_for_speech(r"Saved at C:\Users\antmi\notes.md")
+    assert r"C:\Users\antmi\notes.md" in out
+
+
+def test_strip_markdown_keeps_windows_paths_beside_loose_tex() -> None:
+    out = strip_markdown_for_speech(
+        r"Saved at C:\Users\alpha\notes.md and \\server\share\beta.txt; use \frac{1}{2}."
+    )
+    assert r"C:\Users\alpha\notes.md" in out
+    assert r"\\server\share\beta.txt" in out
+    assert "1 over 2" in out
+
+
+def test_strip_markdown_math_speak_off_keeps_inner_tex() -> None:
+    out = strip_markdown_for_speech(
+        r"The identity is $E = mc^2$ and $\frac{1}{2}$.",
+        math_speak=False,
+    )
+    assert "$" not in out
+    assert "E = mc^2" in out
+    assert r"\frac{1}{2}" in out
+    assert "squared" not in out
+    assert "over" not in out
 
 
 def test_join_audio_path_appends_and_preserves_full_url() -> None:
@@ -209,12 +325,14 @@ async def test_dashscope_tts_posts_native_shape_and_downloads_audio(
     download = httpx.Response(200, content=b"WAVDATA", headers={"content-type": "audio/wav"})
     captured = _capture_http(monkeypatch, post=post, get=download)
     config = TTSConfig(
-        model="qwen3-tts-flash",
+        model="qwen3-tts-instruct-flash",
         provider_name="dashscope",
         adapter="dashscope",
         base_url="https://dashscope.aliyuncs.com/api/v1",
         api_key="dash-key",
         voice="Cherry",
+        language="Chinese",
+        instructions="Speak gently.",
     )
 
     audio, content_type = await DashScopeTTSAdapter().synthesize("hello", config)
@@ -225,8 +343,13 @@ async def test_dashscope_tts_posts_native_shape_and_downloads_audio(
         "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
     )
     assert captured["posts"][0]["json"] == {
-        "model": "qwen3-tts-flash",
-        "input": {"text": "hello", "voice": "Cherry"},
+        "model": "qwen3-tts-instruct-flash",
+        "input": {
+            "text": "hello",
+            "voice": "Cherry",
+            "language_type": "Chinese",
+            "instructions": "Speak gently.",
+        },
     }
     assert captured["posts"][0]["headers"]["Authorization"] == "Bearer dash-key"
     assert captured["gets"][0]["url"] == "https://cdn.example.com/audio.wav"
@@ -376,7 +499,7 @@ async def test_dashscope_stt_recognition_websocket_shape() -> None:
 
     websocket.send_str = record_start  # type: ignore[method-assign]
     config = STTConfig(
-        model="paraformer-v2",
+        model="paraformer-realtime-v2",
         provider_name="dashscope",
         adapter="dashscope",
         base_url="https://dashscope.aliyuncs.com/api/v1",
@@ -387,7 +510,7 @@ async def test_dashscope_stt_recognition_websocket_shape() -> None:
 
     assert text == "hello world"
     start = json.loads(websocket.strings[0])
-    assert start["payload"]["model"] == "paraformer-v2"
+    assert start["payload"]["model"] == "paraformer-realtime-v2"
     assert start["payload"]["parameters"] == {"format": "wav", "sample_rate": 16000}
     assert websocket.chunks == [b"RIFFxxxx"]
     assert json.loads(websocket.strings[-1])["header"]["action"] == "finish-task"
@@ -399,6 +522,18 @@ def test_dashscope_stt_url_and_errors() -> None:
         "wss://dashscope.aliyuncs.com/api-ws/v1/inference"
     )
     assert adapter._sentence_texts({"sentence": {"text": "single"}}) == ["single"]
+
+
+def test_dashscope_stt_options_only_offer_supported_sample_rate() -> None:
+    models = voice_options("dashscope", "stt")["models"]
+    assert [model["id"] for model in models] == ["paraformer-realtime-v2"]
+
+
+@pytest.mark.asyncio
+async def test_dashscope_stt_rejects_8k_model_before_audio_conversion() -> None:
+    config = STTConfig(model="paraformer-realtime-8k-v2", api_key="dash-key")
+    with pytest.raises(VoiceProviderError, match="require 8000 Hz audio"):
+        await DashScopeSTTAdapter().transcribe(b"audio", config)
 
 
 @pytest.mark.asyncio
@@ -491,7 +626,7 @@ def test_resolve_dashscope_voice_configs() -> None:
         "voice": "",
     }
     catalog["services"]["stt"]["profiles"][0]["binding"] = "bailian"
-    catalog["services"]["stt"]["profiles"][0]["models"][0]["model"] = "paraformer-v2"
+    catalog["services"]["stt"]["profiles"][0]["models"][0]["model"] = "paraformer-realtime-v2"
 
     tts = resolve_tts_runtime_config(catalog=catalog)
     stt = resolve_stt_runtime_config(catalog=catalog)
@@ -503,7 +638,7 @@ def test_resolve_dashscope_voice_configs() -> None:
     assert tts.base_url == "https://dashscope.aliyuncs.com/api/v1"
     assert stt.provider_name == "dashscope"
     assert stt.adapter == "dashscope"
-    assert stt.model == "paraformer-v2"
+    assert stt.model == "paraformer-realtime-v2"
     assert stt.base_url == tts.base_url
 
 
@@ -531,9 +666,49 @@ def test_resolve_tts_config_raises_without_model() -> None:
 async def test_synthesize_speech_facade_strips_markdown(monkeypatch: pytest.MonkeyPatch) -> None:
     resp = httpx.Response(200, content=b"audio", headers={"content-type": "audio/wav"})
     captured = _capture_post(monkeypatch, resp)
-    audio, ctype = await synthesize_speech("# Hi\n\n**bold**", catalog=_voice_catalog())
+    audio, ctype = await synthesize_speech(
+        "# Hi\n\n**bold** $x^2$",
+        catalog=_voice_catalog(),
+        math_speak=True,
+    )
     assert audio == b"audio"
-    assert captured["json"]["input"] == "Hi\n\nbold"  # markdown stripped
+    spoken = captured["json"]["input"]
+    assert spoken.startswith("Hi")
+    assert "bold" in spoken
+    assert "x squared" in spoken
+    assert "$" not in spoken
+    assert "^" not in spoken
+
+
+@pytest.mark.asyncio
+async def test_synthesize_speech_math_speak_off_keeps_caret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    resp = httpx.Response(200, content=b"audio", headers={"content-type": "audio/wav"})
+    captured = _capture_post(monkeypatch, resp)
+    await synthesize_speech(
+        "$x^2$",
+        catalog=_voice_catalog(),
+        math_speak=False,
+    )
+    spoken = captured["json"]["input"]
+    assert "$" not in spoken
+    assert "x^2" in spoken
+    assert "squared" not in spoken
+
+
+@pytest.mark.asyncio
+async def test_synthesize_speech_reads_math_speak_from_ui_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from deeptutor.services.settings import interface_settings
+
+    monkeypatch.setattr(interface_settings, "get_ui_settings", lambda: {"voice_math_speak": False})
+    resp = httpx.Response(200, content=b"audio", headers={"content-type": "audio/wav"})
+    captured = _capture_post(monkeypatch, resp)
+    await synthesize_speech("$x^2$", catalog=_voice_catalog())
+    assert "x^2" in captured["json"]["input"]
+    assert "squared" not in captured["json"]["input"]
 
 
 @pytest.mark.asyncio

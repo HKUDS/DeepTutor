@@ -113,6 +113,12 @@ export interface AnnotationItem {
   rects: NormalisedRect[];
   source_anchor: string;
   selectors?: ReadingTextSelector[];
+  /**
+   * Selector validity against the current content revision. Backend revision
+   * migration marks rows "unresolved" or "ambiguous" when the stored quote
+   * no longer identifies exactly one passage in the new text.
+   */
+  resolution?: "resolved" | "unresolved" | "ambiguous";
   /** "user" or "assistant" — the model can annotate too. */
   author: string;
   created_at: number;
@@ -277,6 +283,39 @@ export async function getUnitText(
   );
 }
 
+export interface MaterialMediaItem {
+  name: string;
+  locator: number;
+  mime: string;
+  bytes: number;
+}
+
+/** Embedded images (DOCX/PPTX) with the locator each belongs to. */
+export async function getMaterialMedia(
+  materialId: string,
+): Promise<MaterialMediaItem[]> {
+  const payload: unknown = await unwrap(
+    await apiFetch(apiUrl(`${BASE}/materials/${materialId}/media`), {
+      cache: "no-store",
+    }),
+  );
+  if (!Array.isArray(payload)) return [];
+  return payload.filter(
+    (row): row is MaterialMediaItem =>
+      Boolean(row) &&
+      typeof row === "object" &&
+      typeof (row as MaterialMediaItem).name === "string" &&
+      Number.isFinite((row as MaterialMediaItem).locator),
+  );
+}
+
+/** Public URL for one stored embedded image. */
+export function materialMediaUrl(materialId: string, name: string): string {
+  return apiUrl(
+    `${BASE}/materials/${encodeURIComponent(materialId)}/media/${encodeURIComponent(name)}`,
+  );
+}
+
 export interface ReadingTranscript {
   material_id: string;
   revision: number;
@@ -346,9 +385,66 @@ export async function runReadingExtension(
   );
 }
 
+export interface ReadingQuizAnswer {
+  question_id: string;
+  selected_index: number;
+}
+
+export interface ReadingQuizAnswerVerdict {
+  question_id: string;
+  is_correct: boolean;
+  result: "correct" | "incorrect" | "partial" | "ungraded";
+}
+
+/**
+ * Persist a reading Focus-Check on the server.
+ *
+ * The browser sends only the chosen index and shows the server's verdict
+ * after the answer has been saved successfully.
+ */
+export async function submitReadingQuizAnswers(
+  materialId: string,
+  payload: {
+    locator: number;
+    source_anchor?: string;
+    section_title?: string;
+    session_id?: string;
+    turn_id?: string;
+    submission_id?: string;
+    answers: ReadingQuizAnswer[];
+  },
+): Promise<ReadingQuizAnswerVerdict[]> {
+  const data = await unwrap<{ answers?: ReadingQuizAnswerVerdict[] }>(
+    await apiFetch(
+      apiUrl(`${BASE}/materials/${materialId}/extensions/quiz/answers`),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          locator: payload.locator,
+          source_anchor: payload.source_anchor || "",
+          section_title: payload.section_title || "",
+          session_id: payload.session_id || "",
+          turn_id: payload.turn_id || "",
+          submission_id: payload.submission_id || "",
+          answers: payload.answers.map((row) => ({
+            question_id: row.question_id,
+            selected_index: row.selected_index,
+          })),
+        }),
+      },
+    ),
+  );
+  return data.answers ?? [];
+}
+
 /** URL of the original bytes. Served with Range support so pdf.js can stream. */
 export function rawMaterialUrl(materialId: string): string {
   return apiUrl(`${BASE}/materials/${materialId}/raw`);
+}
+
+export function renderMaterialUrl(materialId: string): string {
+  return apiUrl(`${BASE}/materials/${materialId}/render`);
 }
 
 export async function getReadingPosition(

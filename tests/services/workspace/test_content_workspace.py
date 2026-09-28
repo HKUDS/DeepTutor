@@ -62,7 +62,8 @@ def test_custom_workspace_is_saved_and_turn_output_is_scoped(
 
     assert service.current_binding().workspace_id == binding.workspace_id
     assert context.root == str(custom.resolve())
-    assert context.logical_output_dir == "outputs/deep_research/session_one/turn_1"
+    assert context.logical_output_dir.startswith("outputs/deep_research/session_one_")
+    assert context.logical_output_dir.endswith("/turn_1")
     assert Path(context.output_dir).is_dir()
 
 
@@ -580,6 +581,22 @@ def test_execution_environment_keeps_mutable_tool_state_in_the_turn(
         assert exec_env[key] == code_env[key]
     assert exec_env["PYTHONPATH"] == exec_env["PIP_TARGET"]
     assert exec_env["DEEPTUTOR_WORKSPACE_ROOT"] == str(workspace_root.resolve())
+
+
+def test_execution_environment_requests_utf8_mode(
+    tmp_path: Path,
+) -> None:
+    """Model-authored Python must not inherit the host's ANSI code page.
+
+    Without UTF-8 mode a bare ``Path.read_text()`` / ``open()`` decodes UTF-8
+    files with the locale encoding — ``cp936`` on a Chinese Windows host — so
+    any script that reads a template or writes non-ASCII output fails or
+    corrupts it. The exec environment inherits only a fixed subset of host
+    variables, so this has to be set here rather than left to the host.
+    """
+    exec_env = prepare_workspace_execution_env(tmp_path / "outputs" / "chat" / "s" / "turn")
+
+    assert exec_env["PYTHONUTF8"] == "1"
 
 
 def test_execution_environment_rejects_hidden_state_symlink(

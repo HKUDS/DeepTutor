@@ -1,27 +1,75 @@
 "use client";
 
 import { useTranslation } from "react-i18next";
-import { Star, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowRight, Star, Trash2 } from "lucide-react";
+import { knowledgeBaseRef } from "@/lib/knowledge-helpers";
+import {
+  listWorkspaces,
+  previewKnowledgeMove,
+  type ChatWorkspaceRegistration,
+  type KnowledgeMovePreview,
+} from "@/lib/workspaces-api";
 import {
   formatKnowledgeTimestamp,
   isMarginNoteKb,
   providerUsesEmbeddingMetadata,
   type KnowledgeBase,
 } from "@/lib/knowledge-helpers";
-import LightRagIndexingProvenance from "./LightRagIndexingProvenance";
 
 interface KbSettingsSectionProps {
   kb: KnowledgeBase;
   onSetDefault: () => Promise<void>;
   onDelete: () => Promise<void>;
+  onMove?: (targetWorkspaceId: string) => Promise<void>;
 }
 
 export default function KbSettingsSection({
   kb,
   onSetDefault,
   onDelete,
+  onMove,
 }: KbSettingsSectionProps) {
   const { t } = useTranslation();
+  const [workspaces, setWorkspaces] = useState<ChatWorkspaceRegistration[]>([]);
+  const [targetWorkspaceId, setTargetWorkspaceId] = useState("");
+  const [movePreview, setMovePreview] = useState<KnowledgeMovePreview | null>(null);
+  const [moveBusy, setMoveBusy] = useState(false);
+  const [moveError, setMoveError] = useState<string | null>(null);
+  const sourceId = knowledgeBaseRef(kb);
+  const sourceWorkspaceId = sourceId.startsWith("account:kb:")
+    ? ""
+    : sourceId.startsWith("workspace:")
+      ? sourceId.slice("workspace:".length).split(":kb:")[0]
+      : null;
+
+  useEffect(() => {
+    void listWorkspaces().then(setWorkspaces).catch(() => setWorkspaces([]));
+  }, []);
+
+  const reviewMove = async () => {
+    setMoveBusy(true);
+    setMoveError(null);
+    try {
+      setMovePreview(await previewKnowledgeMove(sourceId, targetWorkspaceId));
+    } catch (error) {
+      setMoveError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setMoveBusy(false);
+    }
+  };
+
+  const commitMove = async () => {
+    setMoveBusy(true);
+    setMoveError(null);
+    try {
+      await onMove?.(targetWorkspaceId);
+    } catch (error) {
+      setMoveError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setMoveBusy(false);
+    }
+  };
   const meta = kb.metadata || {};
   // A MarginNote library runs no engine and no embedding, and its `path` is
   // a name rather than a folder that exists — reporting the ordinary fields
@@ -40,12 +88,6 @@ export default function KbSettingsSection({
   const created = formatKnowledgeTimestamp(meta.created_at);
   const updated = formatKnowledgeTimestamp(meta.last_updated);
   const lastIndexed = formatKnowledgeTimestamp(meta.last_indexed_at);
-  const publishedLightRagVersion =
-    provider === "lightrag"
-      ? kb.statistics?.index_versions?.find(
-          (version) => version.provider === "lightrag" && version.ready,
-        )
-      : undefined;
 
   return (
     <div className="space-y-6">
@@ -87,18 +129,6 @@ export default function KbSettingsSection({
         </dl>
       </section>
 
-      {provider === "lightrag" && (
-        <section className="space-y-3">
-          <div className="text-[13px] font-medium text-[var(--foreground)]">
-            {t("Indexing model provenance")}
-          </div>
-          <LightRagIndexingProvenance
-            policy={meta.indexing_policy}
-            version={publishedLightRagVersion}
-          />
-        </section>
-      )}
-
       <section className="space-y-3 rounded-lg border border-[var(--border)] bg-[var(--background)] p-3">
         <div>
           <div className="text-[12.5px] font-medium text-[var(--foreground)]">
@@ -124,6 +154,66 @@ export default function KbSettingsSection({
           </button>
         )}
       </section>
+
+      {!kb.read_only && onMove && sourceWorkspaceId !== null && (
+        <section className="space-y-3 rounded-lg border border-[var(--border)] bg-[var(--background)] p-3">
+          <div>
+            <div className="text-[12.5px] font-medium text-[var(--foreground)]">
+              {t("Move knowledge base")}
+            </div>
+            <p className="mt-0.5 text-[11.5px] text-[var(--muted-foreground)]">
+              {t("Move this knowledge base with its documents, settings, and indexes. Existing workspace assignments are updated.")}
+            </p>
+          </div>
+          <select
+            value={targetWorkspaceId}
+            onChange={(event) => {
+              setTargetWorkspaceId(event.target.value);
+              setMovePreview(null);
+            }}
+            disabled={moveBusy}
+            className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-1.5 text-[12px]"
+          >
+            <option value="" disabled={sourceWorkspaceId === ""}>{t("Account library")}</option>
+            {workspaces
+              .filter((row) => row.kind === "workspace" && !row.archived && row.status === "ready" && row.workspace_id !== sourceWorkspaceId)
+              .map((row) => (
+                <option key={row.workspace_id} value={row.workspace_id}>{row.display_name}</option>
+              ))}
+          </select>
+          <button
+            type="button"
+            disabled={moveBusy || targetWorkspaceId === sourceWorkspaceId}
+            onClick={() => void reviewMove()}
+            className="rounded-md border border-[var(--border)] px-2.5 py-1 text-[12px] disabled:opacity-50"
+          >
+            {t("Review move")}
+          </button>
+          {movePreview && (
+            <div className="space-y-2 text-[11.5px] text-[var(--muted-foreground)]">
+              <p>{t("{{count}} files · {{bytes}} bytes", { count: movePreview.files, bytes: movePreview.bytes })}</p>
+              {movePreview.assignments.length > 0 && (
+                <p>{t("Assignments updated: {{names}}", { names: movePreview.assignments.map((row) => row.display_name).join(", ") })}</p>
+              )}
+              {movePreview.blockers.map((blocker) => (
+                <p key={blocker} role="alert" className="text-red-600">{blocker}</p>
+              ))}
+              {movePreview.blockers.length === 0 && (
+                <button
+                  type="button"
+                  disabled={moveBusy}
+                  onClick={() => void commitMove()}
+                  className="inline-flex items-center gap-1 rounded-md bg-[var(--primary)] px-2.5 py-1 text-white disabled:opacity-50"
+                >
+                  <ArrowRight className="h-3 w-3" />
+                  {t("Move knowledge base")}
+                </button>
+              )}
+            </div>
+          )}
+          {moveError && <p role="alert" className="text-[11.5px] text-red-600">{moveError}</p>}
+        </section>
+      )}
 
       <section className="space-y-3 rounded-lg border border-red-200 bg-red-50/40 p-3 dark:border-red-900/60 dark:bg-red-950/15">
         <div>

@@ -52,6 +52,7 @@ import {
   writeStoredSidebarCollapsed,
   type AppLanguage,
 } from "@/context/app-shell-storage";
+import { isAppLanguage } from "@/i18n/languages";
 
 interface AppShellContextValue {
   theme: Theme;
@@ -122,9 +123,12 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
       // split has `deeptutor-language` and no `deeptutor-response-language` —
       // and returning here on the first alone locked it out of ever adopting
       // the account's model output language.
-      if (hasStoredLanguage() && hasStoredResponseLanguage()) {
+      const hadLanguageAtStart = hasStoredLanguage();
+      if (hadLanguageAtStart && !cancelled) {
+        setLanguageState(readStoredLanguage());
+      }
+      if (hadLanguageAtStart && hasStoredResponseLanguage()) {
         if (!cancelled) {
-          setLanguageState(readStoredLanguage());
           setLanguageReady(true);
         }
         return;
@@ -143,7 +147,7 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
           language?: unknown;
           response_language?: unknown;
         };
-        if (payload.language !== "zh" && payload.language !== "en") return;
+        if (!isAppLanguage(payload.language)) return;
         // Only what this browser is actually missing: a stored interface
         // language is this user's own choice and the server must not overwrite
         // it just because the response key was absent.

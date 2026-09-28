@@ -41,11 +41,18 @@ MODEL_PRICING = {
 
 
 def get_pricing(model: str) -> dict[str, float]:
-    """Get pricing for a model (fuzzy match)."""
+    """Get pricing for a model, preferring the most specific match."""
     model_lower = model.lower()
-    for key, pricing in MODEL_PRICING.items():
-        if key in model_lower or model_lower in key:
-            return pricing
+
+    exact_match = MODEL_PRICING.get(model_lower)
+    if exact_match is not None:
+        return exact_match
+
+    fuzzy_matches = ((key, pricing) for key, pricing in MODEL_PRICING.items() if key in model_lower)
+    most_specific = max(fuzzy_matches, key=lambda item: len(item[0]), default=None)
+    if most_specific is not None:
+        return most_specific[1]
+
     return MODEL_PRICING.get("gpt-4o-mini", {"input": 0.00015, "output": 0.0006})
 
 

@@ -15,6 +15,8 @@ The database file lives under ``data/marginnote4/<kb_name>.db`` by default.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -172,11 +174,21 @@ class MarginNoteStore:
 
     # -- internal helpers ---------------------------------------------------
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
+        # A connection's own context manager commits or rolls back but never
+        # closes, so the file stayed open until the GC reached it. On Windows
+        # an open file cannot be removed: deleting the KB left the store, and
+        # its paired device tokens, for a library reconnected under the same
+        # name to pick up again. ``with conn`` keeps each call one transaction.
         conn = sqlite3.connect(str(self.db_path))
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
-        return conn
+        try:
+            with conn:
+                yield conn
+        finally:
+            conn.close()
 
     def _init_schema(self) -> None:
         with self._connect() as conn:

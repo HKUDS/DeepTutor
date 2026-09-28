@@ -2,8 +2,8 @@
 Skills API Router
 =================
 
-CRUD endpoints for user-authored SKILL.md files stored under
-``data/user/workspace/skills/<name>/SKILL.md``.
+CRUD endpoints for account-shared and workspace-owned SKILL.md packages.
+The optional ``skill_workspace`` selector is validated at authentication.
 
 Mounted at ``/api/skills``.
 """
@@ -19,7 +19,7 @@ from deeptutor.multi_user.skill_access import (
     assigned_skill_ids,
     assigned_skill_infos,
 )
-from deeptutor.services.skill import get_skill_service
+from deeptutor.services.skill import get_skill_service as get_account_skill_service
 from deeptutor.services.skill.service import (
     InvalidSkillNameError,
     InvalidTagError,
@@ -30,6 +30,14 @@ from deeptutor.services.skill.service import (
     TagExistsError,
     TagNotFoundError,
 )
+
+
+def get_skill_service():
+    from deeptutor.services.skill.runtime import library_workspace, workspace_skill_service
+
+    workspace_id = library_workspace.get()
+    return workspace_skill_service(workspace_id) if workspace_id else get_account_skill_service()
+
 
 router = APIRouter()
 
@@ -126,7 +134,9 @@ async def list_skills() -> dict[str, list[dict[str, object]]]:
     service = get_skill_service()
     own_items = [info.to_dict() for info in service.list_skills()]
     user = get_current_user()
-    if user.is_admin:
+    from deeptutor.services.skill.runtime import library_workspace
+
+    if user.is_admin or library_workspace.get():
         return {"skills": own_items}
     own_names = {item.get("name") for item in own_items}
     merged = list(own_items)

@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import Tooltip from "@/shared/ui/Tooltip";
+import { useStagedSettings } from "@/features/settings/store/useStagedSettings";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, Loader2, Lock, Search, Wrench, X } from "lucide-react";
 import Link from "next/link";
 import { useTranslation } from "react-i18next";
@@ -8,7 +10,6 @@ import { useTranslation } from "react-i18next";
 import { useSettings } from "@/features/settings/store/SettingsStore";
 import { SettingsPageHeader } from "@/components/settings/shared";
 import { apiFetch, apiUrl } from "@/lib/api";
-import { invalidateEnabledOptionalToolsCache } from "@/lib/tools-settings";
 import {
   toolAvailabilityCopy,
   toolEffectiveEnabled,
@@ -37,7 +38,8 @@ type BuiltinTool = {
   name: string;
   description: string;
   parameters: ToolParameter[];
-  hints: { en: ToolHints; zh: ToolHints };
+  // The API types this as a language-keyed map; only ``en`` is guaranteed.
+  hints: Partial<Record<string, ToolHints>> & { en: ToolHints };
   aliases: string[];
   toggleable: boolean;
   enabled: boolean;
@@ -75,13 +77,16 @@ const CAPABILITY_LABELS: Record<string, { zh: string; en: string }> = {
 
 export default function ToolsSettingsPage() {
   const { t } = useTranslation();
-  const { language } = useSettings();
+  const { language, draftRevision } = useSettings();
+  const hintLanguage = language === "zh" ? "zh" : "en";
   const [tools, setTools] = useState<BuiltinTool[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [enabled, setEnabled] = useState<Set<string>>(new Set());
-  const [pending, setPending] = useState<Set<string>>(new Set());
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [liveTools, setLiveTools] = useState({ enabled_tools: [] as string[] });
+  const [toolDraft, setToolDraft] = useStagedSettings("tools", liveTools, setLiveTools);
+  const enabled = new Set(toolDraft.enabled_tools);
+  const pending = new Set<string>();
+
   const [query, setQuery] = useState("");
 
   useEffect(() => {
@@ -93,7 +98,7 @@ export default function ToolsSettingsPage() {
         const payload = (await res.json()) as ToolsResponse;
         if (!cancelled) {
           setTools(payload.tools);
-          setEnabled(new Set(payload.enabled_optional_tools ?? []));
+          setLiveTools({ enabled_tools: (payload.enabled_optional_tools ?? []).slice().sort() });
         }
       } catch (err) {
         if (!cancelled) {
@@ -104,48 +109,16 @@ export default function ToolsSettingsPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [draftRevision]);
 
-  const persist = useCallback(async (next: Set<string>) => {
-    const body = JSON.stringify({ enabled_tools: Array.from(next) });
-    const res = await apiFetch(apiUrl("/api/settings/enabled-tools"), {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body,
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const payload = (await res.json()) as { enabled_optional_tools: string[] };
-    // Bust the cached snapshot any other page in this tab is holding.
-    invalidateEnabledOptionalToolsCache();
-    return new Set(payload.enabled_optional_tools);
-  }, []);
-
-  const handleToggleEnabled = useCallback(
-    async (toolName: string) => {
-      if (pending.has(toolName)) return;
-      const before = enabled;
-      const next = new Set(before);
+  const handleToggleEnabled = (toolName: string) => {
+    setToolDraft((current) => {
+      const next = new Set(current.enabled_tools);
       if (next.has(toolName)) next.delete(toolName);
       else next.add(toolName);
-      setEnabled(next);
-      setPending((prev) => new Set(prev).add(toolName));
-      setSaveError(null);
-      try {
-        const saved = await persist(next);
-        setEnabled(saved);
-      } catch (err) {
-        setEnabled(before);
-        setSaveError(err instanceof Error ? err.message : String(err));
-      } finally {
-        setPending((prev) => {
-          const out = new Set(prev);
-          out.delete(toolName);
-          return out;
-        });
-      }
-    },
-    [enabled, pending, persist],
-  );
+      return { enabled_tools: Array.from(next).sort() };
+    });
+  };
 
   const sections = useMemo<ToolSection[] | null>(() => {
     if (!tools) return null;
@@ -213,8 +186,9 @@ export default function ToolsSettingsPage() {
       .map((section) => ({
         ...section,
         tools: section.tools.filter((tool) => {
-          const hints = tool.hints[language];
-          const alternateHints = tool.hints[language === "zh" ? "en" : "zh"];
+          const hints = tool.hints[hintLanguage] ?? tool.hints.en;
+          const alternateHints =
+            tool.hints[hintLanguage === "zh" ? "en" : "zh"] ?? tool.hints.en;
           const searchableText = [
             tool.name,
             tool.description,
@@ -248,7 +222,7 @@ export default function ToolsSettingsPage() {
         }),
       }))
       .filter((section) => section.tools.length > 0);
-  }, [language, query, sections]);
+  }, [hintLanguage, query, sections]);
 
   const toggleExpanded = (name: string) => {
     setExpanded((prev) => {
@@ -284,15 +258,18 @@ export default function ToolsSettingsPage() {
             spellCheck={false}
           />
           {query && (
-            <button
-              type="button"
-              onClick={() => setQuery("")}
-              aria-label={t("Clear")}
-              title={t("Clear")}
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/30"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
+            <span className="absolute right-2 top-1/2 -translate-y-1/2">
+              <Tooltip label={t("Clear")} side="top">
+                <button
+                  type="button"
+                  onClick={() => setQuery("")}
+                  aria-label={t("Clear")}
+                  className="rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/30"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </Tooltip>
+            </span>
           )}
         </div>
       </div>
@@ -303,11 +280,7 @@ export default function ToolsSettingsPage() {
         </div>
       )}
 
-      {saveError && (
-        <div className="mb-4 rounded-xl border border-red-500/40 bg-red-500/5 px-4 py-3 text-[12px] text-red-500">
-          {t("Failed to save")}: {saveError}
-        </div>
-      )}
+
 
       {!tools && !error && (
         <div className="flex items-center gap-2 text-[12px] text-[var(--muted-foreground)]">
@@ -345,7 +318,7 @@ export default function ToolsSettingsPage() {
                 <div className="border-t border-[var(--border)]/60">
                   {list.map((tool, idx) => {
                     const isOpen = expanded.has(tool.name);
-                    const hints = tool.hints[language];
+                    const hints = tool.hints[hintLanguage] ?? tool.hints.en;
                     const isPending = pending.has(tool.name);
                     const isComingSoon = !!tool.coming_soon;
                     const isAvailable = tool.available !== false;
@@ -474,15 +447,21 @@ export default function ToolsSettingsPage() {
                                 label={t(isEnabled ? "On" : "Off")}
                               />
                             ) : (
-                              <span
-                                className="inline-flex items-center gap-1 rounded-full bg-[var(--muted)]/40 px-2 py-0.5 text-[10.5px] text-[var(--muted-foreground)]"
-                                title={t(
+                              <Tooltip
+                                label={t(
                                   "Auto-mounted by the agent when needed. Not user-toggleable.",
                                 )}
+                                side="top"
                               >
-                                <Lock className="h-3 w-3" />
-                                {t("Always on")}
-                              </span>
+                                <span
+                                  role="note"
+                                  tabIndex={0}
+                                  className="inline-flex items-center gap-1 rounded-full bg-[var(--muted)]/40 px-2 py-0.5 text-[10.5px] text-[var(--muted-foreground)]"
+                                >
+                                  <Lock className="h-3 w-3" />
+                                  {t("Always on")}
+                                </span>
+                              </Tooltip>
                             )}
                           </div>
                         </div>

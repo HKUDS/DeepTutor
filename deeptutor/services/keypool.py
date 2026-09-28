@@ -19,6 +19,10 @@ class KeyPool:
         self._cooldown_until = {key: 0.0 for key in self._keys}
         self._lock = Lock()
 
+    def __len__(self) -> int:
+        """Return the number of configured keys."""
+        return len(self._keys)
+
     def next(self) -> str:
         """Return the next key, preferring one that is not cooling down.
 
@@ -30,7 +34,7 @@ class KeyPool:
         every LLM and embedding call failing for a full minute, which is
         strictly worse than letting the provider's own 429 surface and be
         retried. The caller (``_KeyRotatingCompletions.create``) already marks
-        the strike and re-raises the real 429 on its second attempt.
+        the strike and re-raises the real 429 after exhausting its retry budget.
         """
         with self._lock:
             now = monotonic()

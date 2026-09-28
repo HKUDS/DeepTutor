@@ -199,7 +199,9 @@ async def test_dashscope_imagegen_task_polls_and_downloads(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def post_router(url: str, _kwargs: Any) -> httpx.Response:
-        assert url == "https://dashscope.aliyuncs.com/api/v1/services/aigc/image-synthesis"
+        assert (
+            url == "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis"
+        )
         return httpx.Response(200, json={"output": {"task_id": "image-task"}})
 
     def get_router(url: str, _kwargs: Any) -> httpx.Response:
@@ -347,12 +349,15 @@ async def test_dashscope_videogen_task_polls_and_downloads(
         progress_messages.append(message)
 
     def post_router(url: str, kwargs: Any) -> httpx.Response:
-        assert url == "https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation"
+        assert (
+            url
+            == "https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis"
+        )
         assert kwargs["headers"]["X-DashScope-Async"] == "enable"
         assert kwargs["json"] == {
             "model": "wanx2.1-t2v-turbo",
             "input": {"prompt": "a wave"},
-            "parameters": {"ratio": "16:9", "duration": 5, "resolution": "720p"},
+            "parameters": {"size": "1280*720"},
         }
         return httpx.Response(200, json={"output": {"task_id": "video-task"}})
 
@@ -384,6 +389,50 @@ async def test_dashscope_videogen_task_polls_and_downloads(
     assert video == b"MP4DATA"
     assert content_type == "video/mp4"
     assert progress_messages[0].startswith("Submitted DashScope video task")
+
+
+@pytest.mark.parametrize(
+    ("model", "ratio", "resolution", "expected_size"),
+    [
+        ("wanx2.1-t2v-turbo", "9:16", "480p", "480*832"),
+        ("wanx2.1-t2v-turbo", "1:1", "", "960*960"),
+        ("wan2.2-t2v-plus", "16:9", "480p", "832*480"),
+        ("wan2.2-t2v-plus", "4:3", "1080p", "1632*1248"),
+        ("wan2.6-t2v", "4:3", "1080p", "1632*1248"),
+        ("wan2.6-t2v", "", "1280*720", "1280*720"),
+    ],
+)
+def test_dashscope_videogen_uses_concrete_size(
+    model: str, ratio: str, resolution: str, expected_size: str
+) -> None:
+    config = VideogenConfig(model=model, aspect_ratio=ratio, resolution=resolution)
+    assert DashScopeVideogenAdapter._payload("a wave", config)["parameters"] == {
+        "size": expected_size
+    }
+
+
+@pytest.mark.parametrize(
+    ("model", "ratio", "resolution", "message"),
+    [
+        ("wanx2.1-t2v-plus", "16:9", "480p", "does not support 480p"),
+        ("wan2.2-t2v-plus", "16:9", "720p", "does not support 720p"),
+        ("wan2.2-t2v-plus", "", "1280*720", "does not support 720p"),
+        ("wanx2.1-t2v-turbo", "4:3", "480p", "Unsupported DashScope"),
+        ("wanx2.1-t2v-turbo", "9:16", "1280*720", "conflicts with aspect ratio"),
+    ],
+)
+def test_dashscope_videogen_rejects_unsupported_size(
+    model: str, ratio: str, resolution: str, message: str
+) -> None:
+    config = VideogenConfig(model=model, aspect_ratio=ratio, resolution=resolution)
+    with pytest.raises(GenerationProviderError, match=message):
+        DashScopeVideogenAdapter._payload("a wave", config)
+
+
+def test_dashscope_videogen_rejects_non_five_second_legacy_duration() -> None:
+    config = VideogenConfig(model="wanx2.1-t2v-turbo", duration="10")
+    with pytest.raises(GenerationProviderError, match="only supports a 5-second video"):
+        DashScopeVideogenAdapter._payload("a wave", config)
 
 
 @pytest.mark.asyncio

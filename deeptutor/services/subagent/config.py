@@ -47,7 +47,8 @@ class BackendConfig:
     # programmatically (be concise, self-contained, don't ask follow-ups).
     # CC: --append-system-prompt. Empty = none.
     system_prompt: str = ""
-    # Claude Code: --permission-mode value. "bypassPermissions" never stalls and
+    # Claude Code / Grok CLI: --permission-mode. Grok defaults to "dontAsk"
+    # through default_backend_config. Claude's "bypassPermissions" never stalls and
     # lets the agent act autonomously on the user's own machine (the explicit
     # trust model of "connect my local CLI"). Codex ignores this field.
     permission_mode: str = "bypassPermissions"
@@ -88,7 +89,7 @@ class SubagentSettings:
     backends: dict[str, BackendConfig] = field(default_factory=dict)
 
     def backend(self, kind: str) -> BackendConfig:
-        return self.backends.get(kind, BackendConfig())
+        return self.backends.get(kind, default_backend_config(kind))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -133,8 +134,13 @@ def _coerce_budget(value: Any) -> int:
     return max(CONSULT_BUDGET_MIN, min(CONSULT_BUDGET_MAX, n))
 
 
-def _coerce_backend(raw: Any) -> BackendConfig:
-    base = BackendConfig()
+def default_backend_config(kind: str) -> BackendConfig:
+    """Backend-specific defaults without changing existing CLI permissions."""
+    return BackendConfig(permission_mode="dontAsk") if kind == "grok" else BackendConfig()
+
+
+def _coerce_backend(raw: Any, kind: str = "") -> BackendConfig:
+    base = default_backend_config(kind)
     if not isinstance(raw, dict):
         return base
     extra = raw.get("extra_args")
@@ -173,7 +179,7 @@ def settings_from_dict(raw: Any) -> SubagentSettings:
     backends: dict[str, BackendConfig] = {}
     if isinstance(backends_raw, dict):
         for kind, cfg in backends_raw.items():
-            backends[str(kind)] = _coerce_backend(cfg)
+            backends[str(kind)] = _coerce_backend(cfg, str(kind))
     return SubagentSettings(
         consult_budget=_coerce_budget(raw.get("consult_budget") if isinstance(raw, dict) else None),
         backends=backends,
@@ -205,6 +211,7 @@ def get_consult_budget() -> int:
 
 __all__ = [
     "BackendConfig",
+    "default_backend_config",
     "SubagentSettings",
     "DEFAULT_CONSULT_BUDGET",
     "CONSULT_BUDGET_MIN",

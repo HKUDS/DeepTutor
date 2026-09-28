@@ -423,3 +423,16 @@ async def test_oauth_http_failure_does_not_echo_upstream_body() -> None:
     assert exc_info.value.code == "token_refresh_failed"
     assert "private-upstream-detail" not in str(exc_info.value)
     assert "refresh-secret" not in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_invalid_refresh_grant_requires_new_sign_in() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(400, json={"error": "invalid_grant"})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        with pytest.raises(CodexAuthError) as exc_info:
+            await CodexOAuthClient(http).refresh("refresh-secret")
+
+    assert exc_info.value.code == "token_refresh_rejected"
+    assert "refresh-secret" not in str(exc_info.value)

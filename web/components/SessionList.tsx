@@ -7,6 +7,7 @@ import { type SessionSummary } from "@/lib/session-api";
 import { normalizeMessageContent, truncateText } from "@/lib/message-content";
 import {
   deriveSessionMark,
+  sessionKindOf,
   SessionAvatar,
 } from "@/components/sidebar/SessionAvatar";
 import { useUnreadSessions } from "@/lib/session-unread";
@@ -99,7 +100,7 @@ export default function SessionList({
           {[1, 2, 3].map((i) => (
             <div
               key={i}
-              className="h-4 w-3/4 animate-pulse rounded bg-[var(--muted)]/40"
+              className="h-4 w-3/4 animate-pulse rounded bg-muted/40"
             />
           ))}
         </div>
@@ -110,7 +111,7 @@ export default function SessionList({
         {[1, 2, 3].map((i) => (
           <div
             key={i}
-            className="h-10 animate-pulse rounded-md bg-[var(--muted)]/60"
+            className="h-10 animate-pulse rounded-md bg-muted/60"
           />
         ))}
       </div>
@@ -120,13 +121,13 @@ export default function SessionList({
   if (sessions.length === 0) {
     if (compact) {
       return (
-        <div className="px-3 py-4 text-center text-[11px] text-[var(--muted-foreground)]/70">
+        <div className="px-3 py-4 text-center text-[11px] text-muted-foreground/70">
           {t("No conversations yet")}
         </div>
       );
     }
     return (
-      <div className="px-3 py-4 text-center text-[11px] text-[var(--muted-foreground)]/70">
+      <div className="px-3 py-4 text-center text-[11px] text-muted-foreground/70">
         {t("No conversations yet")}
       </div>
     );
@@ -153,13 +154,14 @@ export default function SessionList({
               tabIndex={0}
               className={`group flex items-center gap-2 rounded-lg px-2.5 py-1.5 transition-colors ${
                 active
-                  ? "bg-[var(--background)]/50 text-[var(--foreground)]"
-                  : "text-[var(--muted-foreground)] hover:bg-[var(--background)]/40 hover:text-[var(--foreground)]"
+                  ? "bg-background/50 text-[var(--foreground)]"
+                  : "text-[var(--foreground)] hover:bg-background/40"
               }`}
             >
               <SessionAvatar
                 sessionId={session.session_id}
                 mark={deriveSessionMark(session, undefined, unread)}
+                kind={sessionKindOf(session)}
                 className={
                   session.status === "running" ? "opacity-100" : "opacity-80"
                 }
@@ -178,11 +180,11 @@ export default function SessionList({
                     }
                   }}
                   onClick={(event) => event.stopPropagation()}
-                  className="min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--background)] px-1.5 py-px text-[12px] text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--primary)]/40"
+                  className="min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--background)] px-1.5 py-px text-[12px] text-[var(--foreground)] outline-none focus:ring-1 focus:ring-primary/40"
                 />
               ) : isPlaceholderSessionTitle(session.title) ? (
                 <span
-                  className={`dt-breathing-text min-w-0 flex-1 truncate text-[13px] italic text-[var(--muted-foreground)] ${active ? "font-medium" : ""}`}
+                  className={`dt-breathing-text min-w-0 flex-1 truncate text-[13px] italic text-[var(--foreground)] ${active ? "font-medium" : ""}`}
                 >
                   {placeholderLabel}
                 </span>
@@ -243,7 +245,7 @@ export default function SessionList({
           <div className="mb-1.5 px-2 text-[11px] font-semibold uppercase tracking-widest text-[var(--muted-foreground)]">
             {groupLabels[key]}
           </div>
-          <div className="divide-y divide-[var(--border)]/45 overflow-hidden rounded-lg border border-[var(--border)]/45 bg-[var(--card)]/50">
+          <div className="divide-y divide-border/45 overflow-hidden rounded-lg border border-border/45 bg-card/50">
             {items.map((session) => {
               const active = activeSessionId === session.session_id;
               const isEditing = editingId === session.session_id;
@@ -261,8 +263,8 @@ export default function SessionList({
                   tabIndex={0}
                   className={`group relative w-full px-3 py-2.5 text-left transition-colors duration-150 ${
                     active
-                      ? "bg-[var(--background)]/70 text-[var(--foreground)]"
-                      : "text-[var(--muted-foreground)] hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]"
+                      ? "bg-background/70 text-[var(--foreground)]"
+                      : "text-[var(--foreground)] hover:bg-background/50"
                   }`}
                 >
                   {active && (
@@ -286,13 +288,13 @@ export default function SessionList({
                             }
                           }}
                           onClick={(event) => event.stopPropagation()}
-                          className="w-full rounded border border-[var(--border)] bg-[var(--background)] px-2 py-0.5 text-[12px] text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--primary)]/40"
+                          className="w-full rounded border border-[var(--border)] bg-[var(--background)] px-2 py-0.5 text-[12px] text-[var(--foreground)] outline-none focus:ring-1 focus:ring-primary/40"
                         />
                       ) : (
                         <div className="flex items-center">
                           {isPlaceholderSessionTitle(session.title) ? (
                             <span
-                              className={`dt-breathing-text line-clamp-1 min-w-0 flex-1 text-[12px] italic leading-snug text-[var(--muted-foreground)] ${
+                              className={`dt-breathing-text line-clamp-1 min-w-0 flex-1 text-[12px] italic leading-snug text-[var(--foreground)] ${
                                 active ? "font-medium" : "font-normal"
                               }`}
                             >

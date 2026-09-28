@@ -1,0 +1,6 @@
+short_description: "搜索用户 Zotero 文献库中已保存的文献。"
+when_to_use: "用户要查找自己 Zotero 库中的文献或确认某条文献是否已保存时使用；公共网页搜索或 arXiv 检索不要用。"
+input_format: "提供 `query` 和数字 Zotero `user_id`；仅当用户为私有库提供 `api_key` 时才传入。"
+guideline: "不要编造 user_id 或 API key。缺少 user_id 时先询问；可提示该 ID 位于 Zotero 账户设置页。"
+note: "只读调用 Zotero Web API v3，最多返回 25 条文献。"
+phase: "expansion"

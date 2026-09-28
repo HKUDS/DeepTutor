@@ -13,6 +13,7 @@ import uuid
 import aiohttp
 import httpx
 
+from deeptutor.services.voice.audio import FFMPEG_STT_INSTALL_HINT
 from deeptutor.services.voice.base import (
     BaseSTTAdapter,
     BaseTTSAdapter,
@@ -68,6 +69,10 @@ class DashScopeTTSAdapter(BaseTTSAdapter):
         }
         if config.voice:
             payload["input"]["voice"] = config.voice
+        if config.language:
+            payload["input"]["language_type"] = config.language
+        if config.instructions:
+            payload["input"]["instructions"] = config.instructions
 
         try:
             async with httpx.AsyncClient(timeout=config.request_timeout) as client:
@@ -131,6 +136,11 @@ class DashScopeSTTAdapter(BaseSTTAdapter):
     ) -> str:
         if not audio:
             raise VoiceProviderError("No audio data to transcribe.")
+        if config.model in {"paraformer-realtime-8k-v1", "paraformer-realtime-8k-v2"}:
+            raise VoiceProviderError(
+                "DashScope 8k realtime models require 8000 Hz audio; "
+                "select paraformer-realtime-v2 for the 16000 Hz voice adapter."
+            )
         wav_audio = await self._prepare_wav(audio, filename, content_type)
         if not wav_audio:
             raise VoiceProviderError("Audio conversion returned an empty file.")
@@ -181,7 +191,8 @@ class DashScopeSTTAdapter(BaseSTTAdapter):
                 )
             except OSError as exc:
                 raise VoiceProviderError(
-                    "ffmpeg is required to normalize audio for DashScope STT."
+                    "ffmpeg is required to normalize audio for DashScope STT. "
+                    + FFMPEG_STT_INSTALL_HINT
                 ) from exc
             _, stderr = await process.communicate()
             if process.returncode != 0:
@@ -244,7 +255,11 @@ class DashScopeSTTAdapter(BaseSTTAdapter):
                 "task": "asr",
                 "function": "recognition",
                 "input": {},
-                "parameters": {"format": "wav", "sample_rate": sample_rate},
+                "parameters": {
+                    "format": "wav",
+                    "sample_rate": sample_rate,
+                    **({"language_hints": [config.language]} if config.language else {}),
+                },
             },
         }
 

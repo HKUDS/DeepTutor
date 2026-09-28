@@ -30,7 +30,7 @@ test("GraphRAG candidate probe sends catalog IDs without activating the model", 
 
     assert.equal(
       requestUrl,
-      "/api/knowledge-bases/rag-pipelines/graphrag/model-compatibility",
+      "/api/knowledge-bases/rag-pipelines/graphrag/model-compatibility?dt_workspace=",
     );
     assert.equal(requestInit?.method, "POST");
     assert.deepEqual(JSON.parse(String(requestInit?.body)), {

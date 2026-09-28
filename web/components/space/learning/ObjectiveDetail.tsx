@@ -25,6 +25,8 @@ export function ObjectiveDetail({
 }) {
   const { t } = useTranslation();
   const qualitative = report.gate === "qualitative";
+  const evidence = report.evidence ?? [];
+  const evidenceCount = report.evidence_count ?? evidence.length;
   return (
     <div className="mt-1 mb-2 ml-5 space-y-3 border-l border-[var(--border)] pl-3">
       <GateBar report={report} />
@@ -38,11 +40,22 @@ export function ObjectiveDetail({
               })
             : t("Not scheduled")}
           <span className="ml-2 text-[var(--muted-foreground)]">
-            {t("interval {{interval}} · {{streak}} in a row", {
-              interval: report.review.interval_index + 1,
-              streak: report.review.consecutive_correct,
+            {t("memory {{retrievability}}% · stability {{stability}} days", {
+              retrievability: Math.round(report.review.retrievability * 100),
+              stability: report.review.stability.toFixed(1),
             })}
           </span>
+          <span className="block text-[var(--muted-foreground)]">
+            {t("risk {{risk}}% · {{lapses}} lapses", {
+              risk: Math.round(report.review.forgetting_risk * 100),
+              lapses: report.review.lapse_count,
+            })}
+          </span>
+          {report.review.reason && (
+            <span className="block text-[var(--muted-foreground)]">
+              {report.review.reason}
+            </span>
+          )}
         </Row>
       )}
 
@@ -102,6 +115,36 @@ export function ObjectiveDetail({
         </Row>
       )}
 
+      {evidence.length > 0 && (
+        <div>
+          <div className="text-xs text-[var(--muted-foreground)]">
+            {t("Retention evidence ({{count}})", {
+              count: evidenceCount,
+            })}
+          </div>
+          <ul className="mt-1 space-y-1">
+            {evidence.map((evidence, index) => (
+              <li
+                key={`${evidence.timestamp}-${evidence.turn_id || index}`}
+                className="flex items-center justify-between gap-2 text-[11px] text-[var(--muted-foreground)]"
+              >
+                <span>
+                  {t(evidence.result)} · {t(evidence.assessment_type)}
+                  {evidence.quality !== null &&
+                    ` · ${Math.round(evidence.quality * 100)}%`}
+                </span>
+                <span className="shrink-0">{formatRelative(evidence.timestamp, zh)}</span>
+              </li>
+            ))}
+          </ul>
+          {evidenceCount > evidence.length && (
+            <p className="mt-1 text-[10px] text-[var(--muted-foreground)]">
+              {t("Showing the latest 20 events")}
+            </p>
+          )}
+        </div>
+      )}
+
       {report.attempts.length === 0 && !report.explanation && (
         <p className="text-xs text-[var(--muted-foreground)]">
           {t(
@@ -116,7 +159,16 @@ export function ObjectiveDetail({
 /** Mastery against the gate it has to clear. */
 function GateBar({ report }: { report: ObjectiveReport }) {
   const { t } = useTranslation();
-  const pct = Math.round(report.mastery * 100);
+  const qualitative = report.gate === "qualitative";
+  // A qualitative gate is a boolean, so all-or-nothing is the only honest
+  // fill. `mastery` carries quiz accuracy for these objectives too, and
+  // drawing that as gate progress is how a waypoint comes to show a full bar
+  // beside a hollow dot — the learner reads "100%, still not cleared".
+  const pct = qualitative
+    ? report.mastered
+      ? 100
+      : 0
+    : Math.round(report.mastery * 100);
   const thresholdPct = Math.round(report.threshold * 100);
   const perfectButBelowGate =
     report.gate === "quantitative" &&
@@ -158,6 +210,13 @@ function GateBar({ report }: { report: ObjectiveReport }) {
           {t(
             "Even with {{correct}}/{{total}} correct so far, mastery also weighs evidence volume, difficulty, and recent consistency. One more discriminating practice can raise it further.",
             { correct: report.correct_count, total: report.attempts.length },
+          )}
+        </p>
+      )}
+      {qualitative && !report.mastered && report.attempts.length > 0 && (
+        <p className="mt-1.5 text-[11px] leading-4 text-[var(--muted-foreground)]">
+          {t(
+            "Practice questions do not open this gate — it opens when you explain the idea in your own words and your tutor records that. Your answers here still count as practice.",
           )}
         </p>
       )}

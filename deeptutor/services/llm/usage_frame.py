@@ -93,21 +93,66 @@ def usage_breakdown(
     reasoning from one that generated visible output, without changing the
     accounting contract of :func:`token_counts`.
     """
-    counts = token_counts(payload, prompt=prompt, completion=completion, total=total)
-    if not counts:
-        return {}
-
     frame = usage_mapping(
         payload,
         keys=(
             prompt,
             completion,
             total,
+            "input_tokens",
+            "output_tokens",
             "reasoning_tokens",
             "completion_tokens_details",
             "output_tokens_details",
+            "prompt_tokens_details",
+            "input_tokens_details",
+            "cached_tokens",
+            "cache_read_input_tokens",
+            "cache_creation_input_tokens",
+            "prompt_cache_hit_tokens",
+            "prompt_cache_miss_tokens",
+            "cached_content_token_count",
         ),
     )
+    if prompt not in frame and "input_tokens" in frame:
+        prompt = "input_tokens"
+        completion = "output_tokens"
+    counts = token_counts(frame, prompt=prompt, completion=completion, total=total)
+    if not counts:
+        # A fully cached Anthropic request can report zero uncached input/output.
+        if prompt == "input_tokens" and any(
+            _as_int(frame.get(k))
+            for k in ("cache_read_input_tokens", "cache_creation_input_tokens")
+        ):
+            counts = dict.fromkeys(CANONICAL_KEYS, 0)
+        else:
+            return {}
+    cached = None
+    for key in (
+        "cache_read_input_tokens",
+        "cached_tokens",
+        "prompt_cache_hit_tokens",
+        "cached_content_token_count",
+    ):
+        if frame.get(key) is not None:
+            cached = frame[key]
+            break
+    if cached is None:
+        for key in ("prompt_tokens_details", "input_tokens_details"):
+            details = usage_mapping(frame.get(key), keys=("cached_tokens",))
+            if details.get("cached_tokens") is not None:
+                cached = details["cached_tokens"]
+                break
+    creation = frame.get("cache_creation_input_tokens")
+    # Native Anthropic input_tokens excludes cache reads AND cache writes.
+    # Canonical/OpenAI prompt_tokens already includes those tokens.
+    if prompt == "input_tokens" and ("cache_read_input_tokens" in frame or creation is not None):
+        counts["prompt_tokens"] += _as_int(cached) + _as_int(creation)
+        counts["total_tokens"] = counts["prompt_tokens"] + counts["completion_tokens"]
+    if cached is not None:
+        counts["cache_read_input_tokens"] = min(_as_int(cached), counts["prompt_tokens"])
+    if creation is not None:
+        counts["cache_creation_input_tokens"] = min(_as_int(creation), counts["prompt_tokens"])
     reasoning = frame.get("reasoning_tokens")
     if reasoning is None:
         for key in ("completion_tokens_details", "output_tokens_details"):
@@ -123,8 +168,8 @@ def usage_breakdown(
 
 def _as_int(value: Any) -> int:
     try:
-        return int(value or 0)
-    except (TypeError, ValueError):
+        return max(0, int(value or 0))
+    except (TypeError, ValueError, OverflowError):
         return 0
 
 

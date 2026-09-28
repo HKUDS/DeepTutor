@@ -9,7 +9,7 @@ from typing import Any
 
 from deeptutor.partners.bus.events import OutboundMessage
 from deeptutor.partners.bus.queue import MessageBus
-from deeptutor.partners.channels.base import BaseChannel, constructing_for
+from deeptutor.partners.channels.base import BaseChannel, constructing_for, deliver_outbound
 from deeptutor.partners.config.schema import ChannelsConfig
 
 
@@ -299,12 +299,7 @@ class ChannelManager:
     @staticmethod
     async def _send_once(channel: BaseChannel, msg: OutboundMessage) -> None:
         """Send one outbound message without retry policy."""
-        if msg.metadata.get("_stream_delta") or msg.metadata.get("_stream_end"):
-            await channel.send_delta(msg.chat_id, msg.content, msg.metadata)
-        elif not msg.metadata.get("_streamed"):
-            # ``_streamed`` marks a final reply already delivered live via
-            # send_delta — skip the plain send to avoid a duplicate message.
-            await channel.send(msg)
+        await deliver_outbound(channel, msg)
 
     def _coalesce_stream_deltas(
         self, first_msg: OutboundMessage
@@ -339,6 +334,8 @@ class ChannelManager:
                 combined_content += next_msg.content
                 if is_end:
                     final_metadata["_stream_end"] = True
+                    if next_meta.get("_stream_final"):
+                        final_metadata["_stream_final"] = True
                     break
             else:
                 # First non-matching message defines the coalescing boundary.

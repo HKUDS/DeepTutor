@@ -1,5 +1,7 @@
 "use client";
 
+import { masterySessionsRoute, readingCollectionRoute } from "@/lib/learning-routes";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Signpost } from "lucide-react";
@@ -89,7 +91,7 @@ function decide(
       detail: stalled.weak_points[0] ?? t("Pick up where the path left off"),
       action: {
         label: t("Keep going"),
-        href: `/mastery/${encodeURIComponent(stalled.path_id)}/sessions`,
+        href: masterySessionsRoute(stalled.path_id),
         scope: "mastery_path",
         prompt: t("Continue this path from where I stopped."),
       },
@@ -108,7 +110,7 @@ function decide(
       }),
       action: {
         label: t("Read on"),
-        href: `/reading/${encodeURIComponent(workspace.workspace_id)}`,
+        href: readingCollectionRoute(workspace.workspace_id),
         scope: "immersive_reading",
         prompt: t("Summarise where I left off, then continue from there."),
       },

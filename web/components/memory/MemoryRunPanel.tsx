@@ -1,5 +1,6 @@
 "use client";
 
+import Tooltip from "@/shared/ui/Tooltip";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
@@ -270,37 +271,43 @@ export default function MemoryRunPanel({
         <div className="flex items-center gap-1">
           {run && events.length > 0 && (
             <>
-              <button
-                type="button"
-                onClick={handleUndo}
-                disabled={isRunning || undoDepth <= 0}
-                className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-40"
-                title={t("Undo last memory edit")}
-              >
-                <Undo2 className="h-3 w-3" />
-                {undoDepth > 0 && <span>{undoDepth}</span>}
-              </button>
-              <button
-                type="button"
-                onClick={clear}
-                disabled={isRunning}
-                className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-40"
-                title={t("Clear trace")}
-              >
-                <Trash2 className="h-3 w-3" />
-              </button>
+              <Tooltip label={t("Undo last memory edit")} side="top">
+                <button
+                  type="button"
+                  onClick={handleUndo}
+                  disabled={isRunning || undoDepth <= 0}
+                  className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-40"
+                  aria-label={t("Undo last memory edit")}
+                >
+                  <Undo2 className="h-3 w-3" />
+                  {undoDepth > 0 && <span>{undoDepth}</span>}
+                </button>
+              </Tooltip>
+              <Tooltip label={t("Clear trace")} side="top">
+                <button
+                  type="button"
+                  onClick={clear}
+                  disabled={isRunning}
+                  className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-40"
+                  aria-label={t("Clear trace")}
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              </Tooltip>
             </>
           )}
-          <button
-            type="button"
-            onClick={() => void handleReset()}
-            disabled={isRunning}
-            className="inline-flex items-center gap-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 hover:bg-amber-500/20 hover:text-amber-800 disabled:opacity-40 dark:text-amber-300 dark:hover:text-amber-200"
-            title={t("Reset memory (delete md + seen-id state)")}
-          >
-            <RotateCcw className="h-3 w-3" />
-            <span>{t("Reset")}</span>
-          </button>
+          <Tooltip label={t("Reset memory (delete md + seen-id state)")} side="top">
+            <button
+              type="button"
+              onClick={() => void handleReset()}
+              disabled={isRunning}
+              className="inline-flex items-center gap-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 hover:bg-amber-500/20 hover:text-amber-800 disabled:opacity-40 dark:text-amber-300 dark:hover:text-amber-200"
+              aria-label={t("Reset memory (delete md + seen-id state)")}
+            >
+              <RotateCcw className="h-3 w-3" />
+              <span>{t("Reset")}</span>
+            </button>
+          </Tooltip>
         </div>
       </header>
 
@@ -357,23 +364,27 @@ export default function MemoryRunPanel({
             t={t}
           />
           {isRunning ? (
-            <button
-              type="button"
-              onClick={() => void cancel()}
-              className="inline-flex h-7 w-9 items-center justify-center rounded-full bg-[var(--muted)] text-[var(--foreground)] transition hover:opacity-90"
-              title={t("Cancel")}
-            >
-              <Octagon className="h-3.5 w-3.5" />
-            </button>
+            <Tooltip label={t("Cancel")} side="top">
+              <button
+                type="button"
+                onClick={() => void cancel()}
+                className="inline-flex h-7 w-9 items-center justify-center rounded-full bg-[var(--muted)] text-[var(--foreground)] transition hover:opacity-90"
+                aria-label={t("Cancel")}
+              >
+                <Octagon className="h-3.5 w-3.5" />
+              </button>
+            </Tooltip>
           ) : (
-            <button
-              type="button"
-              onClick={handleRun}
-              className="inline-flex h-7 w-9 items-center justify-center rounded-full bg-[var(--primary)] text-[var(--primary-foreground)] transition hover:opacity-90"
-              title={t("Run")}
-            >
-              <Send className="h-3.5 w-3.5" />
-            </button>
+            <Tooltip label={t("Run")} side="top">
+              <button
+                type="button"
+                onClick={handleRun}
+                className="inline-flex h-7 w-9 items-center justify-center rounded-full bg-[var(--primary)] text-[var(--primary-foreground)] transition hover:opacity-90"
+                aria-label={t("Run")}
+              >
+                <Send className="h-3.5 w-3.5" />
+              </button>
+            </Tooltip>
           )}
         </div>
       </div>
@@ -860,25 +871,26 @@ function ModelPill({
   const inactive = disabled || loading || error || options.length === 0;
 
   return (
-    <div ref={rootRef} className="relative w-full min-w-0">
-      <button
-        type="button"
-        disabled={inactive}
-        onClick={() => setOpen(!open)}
-        title={
+    <div ref={rootRef} className="relative w-full min-w-0 [&>span]:w-full">
+      <Tooltip label={
           selectedOption
             ? `${selectedOption.profile_name} | ${selectedOption.provider}`
             : label
-        }
-        className={
-          "flex w-full min-w-0 items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--background)] px-2.5 py-1 text-[11.5px] text-[var(--foreground)] transition hover:bg-[var(--muted)]/60 disabled:opacity-50 " +
-          (open ? "border-[var(--primary)]/40" : "")
-        }
-      >
-        <Bot className="h-3 w-3 shrink-0 text-[var(--muted-foreground)]" />
-        <span className="flex-1 truncate text-left">{label}</span>
-        <ChevronDown className="h-3 w-3 shrink-0 text-[var(--muted-foreground)]" />
-      </button>
+        } side="top">
+        <button
+          type="button"
+          disabled={inactive}
+          onClick={() => setOpen(!open)}
+          className={
+            "flex w-full min-w-0 items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--background)] px-2.5 py-1 text-[11.5px] text-[var(--foreground)] transition hover:bg-[var(--muted)]/60 disabled:opacity-50 " +
+            (open ? "border-[var(--primary)]/40" : "")
+          }
+        >
+          <Bot className="h-3 w-3 shrink-0 text-[var(--muted-foreground)]" />
+          <span className="flex-1 truncate text-left">{label}</span>
+          <ChevronDown className="h-3 w-3 shrink-0 text-[var(--muted-foreground)]" />
+        </button>
+      </Tooltip>
 
       {open && !inactive && (
         <div className="absolute right-0 top-full z-30 mt-1 max-h-72 w-[min(320px,calc(100vw-32px))] overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--card)] p-1 shadow-lg">

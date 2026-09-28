@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -48,6 +49,23 @@ def selection_range(text: str, selection: str) -> tuple[int, int] | None:
     return start, end
 
 
+_LINE_NUMBER = re.compile(r"^[ \t]*\d{1,4}[ \t]*$", re.MULTILINE)
+_SPACING = re.compile(r"[\s\-\u00ad\u2010\u2011]+")
+
+
+def evidence_key(value: str) -> str:
+    """A comparison form for "is this quote from the text?".
+
+    Review copies and legal texts number their lines in the margin, and the
+    extractor puts each number on a line of its own ("fall short in\n3\n
+    delivering"). A model quoting the passage leaves them out, and it rejoins
+    a word the line broke with a hyphen ("DeepTu-\n4\ntor"). Neither is a
+    difference in what the text says, so the key drops number-only lines,
+    spacing and hyphens before comparing.
+    """
+    return _SPACING.sub("", _LINE_NUMBER.sub(" ", value.casefold()))
+
+
 def grounding_context(
     text: str,
     selection: str,
@@ -89,6 +107,7 @@ def grounded_prompt(context: ReadingContext) -> str:
 
 __all__ = [
     "MAX_GROUNDING_CONTEXT_CHARS",
+    "evidence_key",
     "grounded_prompt",
     "grounding_context",
     "normalized_with_map",

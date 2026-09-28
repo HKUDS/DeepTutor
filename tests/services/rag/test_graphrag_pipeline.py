@@ -950,10 +950,14 @@ def test_ingestion_avoids_name_collisions(tmp_path) -> None:
         p.parent.mkdir(parents=True)
         p.write_text("content", encoding="utf-8")
 
-    count = asyncio.run(ingestion.prepare_input([str(a), str(b)], root))
+    source_for_input: dict[str, str] = {}
+    count = asyncio.run(
+        ingestion.prepare_input([str(a), str(b)], root, source_for_input=source_for_input)
+    )
     assert count == 2
     names = sorted(p.name for p in storage.input_dir(root).glob("*.txt"))
     assert names == ["doc.txt", "doc_1.txt"]
+    assert source_for_input == {"doc.txt": str(a), "doc_1.txt": str(b)}
 
 
 # --------------------------------------------------------------------------- #
@@ -1043,9 +1047,11 @@ def test_initialize_orchestrates_index(tmp_path, monkeypatch) -> None:
     txt.write_text("graph content", encoding="utf-8")
 
     pipe = GraphRagPipeline(kb_base_dir=str(tmp_path))
-    ok = asyncio.run(pipe.initialize("kb", [str(txt)]))
+    receipts: list[list[str]] = []
+    ok = asyncio.run(pipe.initialize("kb", [str(txt)], indexed_file_callback=receipts.append))
 
     assert ok is True
+    assert receipts == [[]]  # No documents.parquet: a build marker alone proves no source.
     assert calls == [
         {
             "root": calls[0]["root"],
@@ -1057,6 +1063,45 @@ def test_initialize_orchestrates_index(tmp_path, monkeypatch) -> None:
     assert (root / gr_config.SETTINGS_FILENAME).exists()
     assert list(storage.input_dir(root).glob("*.txt"))
     assert (root / storage.META_FILENAME).exists()
+
+
+def test_initialize_receipt_requires_persisted_document_text_units(tmp_path, monkeypatch) -> None:
+    pd = pytest.importorskip("pandas")
+    pytest.importorskip("pyarrow")
+    _force_available(monkeypatch, True)
+    _stub_build(monkeypatch)
+    first = tmp_path / "first" / "doc.txt"
+    second = tmp_path / "second" / "doc.txt"
+    empty = tmp_path / "empty.txt"
+    for path, content in ((first, "indexed"), (second, "loaded but not chunked"), (empty, "   ")):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+
+    async def build_with_documents(root_dir, **_kwargs):
+        output = storage.output_dir(Path(root_dir))
+        output.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame(
+            {
+                "title": ["doc.txt", "doc_1.txt"],
+                "text_unit_ids": [["unit-1"], ["missing-unit"]],
+            }
+        ).to_parquet(output / "documents.parquet")
+        pd.DataFrame({"id": ["unit-1"]}).to_parquet(output / "text_units.parquet")
+        (output / "entities.parquet").write_bytes(b"")
+
+    monkeypatch.setattr(engine, "build", build_with_documents)
+    receipts: list[list[str]] = []
+    pipe = GraphRagPipeline(kb_base_dir=str(tmp_path))
+
+    assert asyncio.run(
+        pipe.initialize(
+            "kb",
+            [str(first), str(second), str(empty)],
+            indexed_file_callback=receipts.append,
+        )
+    )
+
+    assert receipts == [[str(first)]]
 
 
 def test_initialize_no_text_returns_false(tmp_path, monkeypatch) -> None:

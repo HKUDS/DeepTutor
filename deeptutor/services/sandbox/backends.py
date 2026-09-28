@@ -269,10 +269,17 @@ class BwrapBackend(SandboxBackend):
             return False, "bwrap not installed"
         # bwrap needs unprivileged user namespaces; a default-seccomp Docker
         # container blocks them, so confirm a trivial sandbox actually runs.
+        # A non-zero exit with empty ``error`` still means the sandbox cannot
+        # run (Ubuntu 24.04 loopback RTM_NEWADDR denial is the usual case).
         probe = ExecRequest(command="true")
         result = await self.exec(probe)
-        if result.error:
-            return False, result.error
+        if result.error or result.exit_code != 0 or result.timed_out:
+            detail = (
+                result.error
+                or (result.stderr.strip() if result.stderr else "")
+                or f"bwrap probe exited with code {result.exit_code}"
+            )
+            return False, detail
         return True, "bwrap functional"
 
 

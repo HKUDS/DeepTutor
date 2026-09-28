@@ -1,5 +1,7 @@
 "use client";
 
+import { navigateTask } from "@/lib/workspace-scope";
+import { sessionWorkspaceId } from "@/lib/session-api";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -79,7 +81,7 @@ export default function ChatHistorySection({
       // conversation came from, so losing them costs that line, never the
       // conversation.
       const [nextSessions, nextTopics, nextCollections] = await Promise.all([
-        listAllSessions({ force }),
+        listAllSessions({ force, allWorkspaces: true }),
         fetchMasteryTopicIndex().catch(() => [] as MasteryTopicLabel[]),
         fetchReadingCollectionIndex().catch(
           () => [] as ReadingCollectionLabel[],
@@ -128,29 +130,29 @@ export default function ChatHistorySection({
     (sessionId: string) => {
       setActiveSessionId(sessionId);
       const session = sessions.find((item) => item.session_id === sessionId);
-      router.push(session ? sessionRoute(session) : `${basePath}/${sessionId}`);
+      navigateTask(session ? sessionRoute(session) : `${basePath}/${sessionId}`, router.push);
     },
     [basePath, router, sessions, setActiveSessionId],
   );
 
   const handleRename = useCallback(
     async (sessionId: string, title: string) => {
-      await updateSessionTitle(sessionId, title);
+      await updateSessionTitle(sessionId, title, sessionWorkspaceId(sessions.find(item => item.session_id === sessionId)));
       await load(true);
     },
-    [load],
+    [load, sessions],
   );
 
   const handleDelete = useCallback(
     async (sessionId: string) => {
-      if (!window.confirm(t("Delete this chat?"))) return;
-      await deleteSession(sessionId);
+      if (!window.confirm(t("Permanently delete this chat and its tutor threads? This cannot be undone."))) return;
+      await deleteSession(sessionId, sessionWorkspaceId(sessions.find(item => item.session_id === sessionId)));
       if (activeSessionId === sessionId) setActiveSessionId(null);
       setSessions((prev) =>
         prev.filter((session) => session.session_id !== sessionId),
       );
     },
-    [activeSessionId, setActiveSessionId, t],
+    [activeSessionId, setActiveSessionId, t, sessions],
   );
 
   // The archived view is built from the same filtered set as the list, so the
@@ -178,18 +180,18 @@ export default function ChatHistorySection({
         setRestoringId(null);
       }
     },
-    [load],
+    [load, sessions],
   );
 
   const handleOrganize = useCallback(
     async (sessionId: string, patch: SessionOrganizationPatch) => {
-      await updateSessionOrganization(sessionId, patch);
+      await updateSessionOrganization(sessionId, patch, sessionWorkspaceId(sessions.find(item => item.session_id === sessionId)));
       await load(true);
       // Archiving or restoring here changes what the sidebar beside this page
       // is allowed to show, and that list was fetched when the shell mounted.
       notifySessionsChanged();
     },
-    [load],
+    [load, sessions],
   );
 
   const HeaderIcon = icon ?? History;

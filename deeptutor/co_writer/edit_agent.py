@@ -92,6 +92,13 @@ def save_tool_call(call_id: str, tool_type: str, data: dict[str, Any]) -> str:
     return str(filepath)
 
 
+def _readable_automark_output(marked_text: str, original_text: str) -> str:
+    """Never insert unsupported rough-notation markup into a Markdown draft."""
+    if "data-rough-notation" in marked_text.lower():
+        return original_text
+    return marked_text
+
+
 class EditAgent(BaseAgent):
     """Co-writer editing agent using unified BaseAgent."""
 
@@ -340,6 +347,7 @@ class EditAgent(BaseAgent):
         ):
             _chunks.append(_c)
         response = clean_thinking_tags("".join(_chunks), self.binding, self.get_model())
+        response = _readable_automark_output(response, text)
 
         # Record operation history
         append_history(

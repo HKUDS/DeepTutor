@@ -9,6 +9,7 @@
  *   ActivityStack    the rows under it, aligned to the orb's column
  *   ActivityDivider  a labelled break between groups of rows
  *   ActivityRow      one action, with its specifics folded away
+ *   ActivityFold     the content a header folds away, on the shared curve
  *   ActivityDetailGrid  the label/value layout inside level two
  *   ActivityMark     a list row's mark, for lists with no header orb above
  *
@@ -19,6 +20,7 @@
  */
 
 export { ActivityHeader } from "./ActivityHeader";
+export { ActivityFold, FoldCaret, FOLD_EASE } from "./ActivityFold";
 export {
   ActivityDetailGrid,
   argumentRows,

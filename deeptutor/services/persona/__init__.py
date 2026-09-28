@@ -10,6 +10,7 @@ from .service import (
     PersonaNotFoundError,
     PersonaService,
     get_persona_service,
+    load_visible_for_context,
 )
 
 __all__ = [
@@ -22,4 +23,5 @@ __all__ = [
     "PersonaNotFoundError",
     "PersonaService",
     "get_persona_service",
+    "load_visible_for_context",
 ]

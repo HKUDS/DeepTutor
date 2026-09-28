@@ -1,5 +1,6 @@
 "use client";
 
+import { knowledgeBaseRef } from "@/lib/knowledge-helpers";
 import { useEffect, useMemo, useState } from "react";
 import {
   knowledgeBaseFilePath,
@@ -25,6 +26,7 @@ interface KbFilesTabProps {
  * to reclaim horizontal space for the actual preview content.
  */
 export default function KbFilesTab({ kb, task }: KbFilesTabProps) {
+  const kbRef = knowledgeBaseRef(kb);
   const [selectedFile, setSelectedFile] = useState<KnowledgeBaseFile | null>(
     null,
   );
@@ -46,20 +48,20 @@ export default function KbFilesTab({ kb, task }: KbFilesTabProps) {
     return {
       filename: selectedFile.name,
       mimeType: selectedFile.mime_type ?? undefined,
-      url: knowledgeBaseFilePath(kb.name, selectedFile.name),
+      url: knowledgeBaseFilePath(kbRef, selectedFile.name),
       extractedTextUrl: knowledgeBaseFilePreviewTextPath(
-        kb.name,
+        kbRef,
         selectedFile.name,
       ),
       size: selectedFile.size,
-      id: `${kb.name}/${selectedFile.name}`,
+      id: `${kbRef}/${selectedFile.name}`,
     };
-  }, [kb.name, selectedFile]);
+  }, [kbRef, selectedFile]);
 
   return (
     <div className="flex h-full min-h-0">
       <KbDocumentList
-        kbName={kb.name}
+        kbName={kbRef}
         refreshKey={refreshKey}
         selectedFile={selectedFile?.name ?? null}
         onSelect={setSelectedFile}

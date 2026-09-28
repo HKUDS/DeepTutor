@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import { fetchAuthStatus, type AuthStatus } from "@/lib/auth";
 import { UserAvatar } from "@/components/UserAvatar";
+import Tooltip from "@/shared/ui/Tooltip";
 
 interface ProfileLinkProps {
   collapsed?: boolean;
@@ -33,40 +34,43 @@ export function ProfileLink({ collapsed = false }: ProfileLinkProps) {
       avatar={status.avatar}
       role={status.role}
       size={collapsed ? 18 : 16}
+      suppressTitle
     />
   );
 
   if (collapsed) {
     return (
+      <Tooltip label={`${t("My profile")} — ${status.username}`} side="right">
+        <Link
+          href="/profile"
+          className={`rounded-lg p-2 transition-colors
+            ${
+              active
+                ? "bg-[var(--primary)]/10 text-[var(--primary)]"
+                : "text-[var(--muted-foreground)] hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]"
+            }`}
+          aria-label={t("My profile")}
+        >
+          {avatar}
+        </Link>
+      </Tooltip>
+    );
+  }
+
+  return (
+    <Tooltip label={t("My profile")} as="div" className="w-full" side="right">
       <Link
         href="/profile"
-        className={`rounded-lg p-2 transition-colors
+        className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] transition-colors
           ${
             active
               ? "bg-[var(--primary)]/10 text-[var(--primary)]"
               : "text-[var(--muted-foreground)] hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]"
           }`}
-        aria-label={t("My profile")}
-        title={`${t("My profile")} — ${status.username}`}
       >
         {avatar}
+        <span className="truncate">{status.username}</span>
       </Link>
-    );
-  }
-
-  return (
-    <Link
-      href="/profile"
-      className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] transition-colors
-        ${
-          active
-            ? "bg-[var(--primary)]/10 text-[var(--primary)]"
-            : "text-[var(--muted-foreground)] hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]"
-        }`}
-      title={t("My profile")}
-    >
-      {avatar}
-      <span className="truncate">{status.username}</span>
-    </Link>
+    </Tooltip>
   );
 }

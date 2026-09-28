@@ -1,5 +1,6 @@
 "use client";
 
+import Tooltip from "@/shared/ui/Tooltip";
 import { useEffect, useState } from "react";
 import { Check, ListTree, Pencil } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -228,14 +229,16 @@ export default function CourseSyllabus({
                     ) : null}
                   </span>
                   {unit.wrong_questions > 0 ? (
-                    <span
-                      title={t(
+                    <Tooltip
+                      label={t(
                         "Evidence, not a verdict — you decide whether this unit is done.",
                       )}
-                      className="mt-0.5 shrink-0 text-[10.5px] text-[var(--muted-foreground)]"
+                      side="top"
                     >
-                      {t("{{count}} wrong", { count: unit.wrong_questions })}
-                    </span>
+                      <span className="mt-0.5 shrink-0 text-[10.5px] text-[var(--muted-foreground)]">
+                        {t("{{count}} wrong", { count: unit.wrong_questions })}
+                      </span>
+                    </Tooltip>
                   ) : null}
                 </label>
               </li>

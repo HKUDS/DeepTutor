@@ -3,6 +3,7 @@
 import { ArrowDown, ArrowUp, Plus, Trash2, X } from "lucide-react";
 
 import type { ModuleInit, TopicDraft } from "@/lib/learning-api";
+import { randomUuid } from "@/lib/random-uuid";
 import { useTranslation } from "react-i18next";
 
 import type { Translate } from "./format";
@@ -13,13 +14,8 @@ import {
   routeDraftIssues,
 } from "./route-draft";
 
-let fallbackSequence = 0;
-
 function draftId(kind: "region" | "waypoint"): string {
-  const random = globalThis.crypto?.randomUUID?.();
-  return random
-    ? `draft_${kind}_${random}`
-    : `draft_${kind}_${Date.now()}_${fallbackSequence++}`;
+  return `draft_${kind}_${randomUuid()}`;
 }
 
 /**

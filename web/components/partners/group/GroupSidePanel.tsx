@@ -40,7 +40,9 @@ export default function GroupSidePanel({
   entries,
   onTabChange,
   onClose,
+  embedded = false,
 }: {
+  embedded?: boolean;
   open: boolean;
   tab: PanelTab;
   focus: TraceFocus | null;
@@ -89,7 +91,7 @@ export default function GroupSidePanel({
   return (
     <aside
       data-group-panel
-      className="absolute inset-y-0 right-0 z-30 flex w-[min(380px,88vw)] flex-col border-l border-[var(--border)] bg-[var(--background)] shadow-xl lg:static lg:w-[360px] lg:shadow-none"
+      className={`absolute inset-y-0 right-0 z-30 flex flex-col border-l border-[var(--border)] bg-[var(--background)] shadow-xl ${embedded ? "w-full" : "w-[min(380px,88vw)] lg:static lg:w-[360px] lg:shadow-none"}`}
     >
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--border)] px-3 py-2">
         <div className="flex items-center gap-1">

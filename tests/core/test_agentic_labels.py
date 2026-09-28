@@ -1,4 +1,8 @@
-from deeptutor.runtime.agentic.labels import classify_label, find_inline_labels
+from deeptutor.runtime.agentic.labels import (
+    classify_label,
+    find_inline_labels,
+    recover_finished_label,
+)
 
 _ALLOWED = ("FINISH", "TOOL", "THINK", "PAUSE")
 
@@ -45,6 +49,40 @@ def test_classify_label_does_not_accept_split_wrapped_label_too_early() -> None:
         "FINISH",
         "Done",
     )
+
+
+def test_streaming_probe_rejects_unclosed_and_overwide_fences() -> None:
+    """Mid-stream routing cannot commit to a fence that may still close."""
+    assert classify_label("```SECTION\n## 4. Findings", allowed_labels=("SECTION",)) is None
+    assert classify_label("``FINISH```\nDone", allowed_labels=_ALLOWED) is None
+    assert classify_label("```FINISH``\nDone", allowed_labels=_ALLOWED) is None
+
+
+def test_finished_reply_recovery_accepts_unclosed_and_overwide_fences() -> None:
+    assert recover_finished_label(
+        "```SECTION\n## 4. Findings\n\nBody.",
+        allowed_labels=("SECTION",),
+    ) == ("SECTION", "## 4. Findings\n\nBody.")
+    assert recover_finished_label("``FINISH```\nDone", allowed_labels=_ALLOWED) == (
+        "FINISH",
+        "Done",
+    )
+    assert recover_finished_label("```FINISH``\nDone", allowed_labels=_ALLOWED) == (
+        "FINISH",
+        "Done",
+    )
+    assert recover_finished_label("``FINISH`", allowed_labels=_ALLOWED) == (
+        "FINISH",
+        "",
+    )
+
+
+def test_finished_reply_recovery_requires_an_exact_allowed_label() -> None:
+    assert recover_finished_label("```SECTIONAL\nnope", allowed_labels=("SECTION",)) is None
+    assert recover_finished_label("FINISHED", allowed_labels=_ALLOWED) is None
+    # Heading-number recovery is report-specific and needs the section the
+    # step was asked to write; the generic helper must not invent a label.
+    assert recover_finished_label("## 4. Findings\n\nBody.", allowed_labels=("SECTION",)) is None
 
 
 def test_find_inline_labels_detects_tolerated_label_variants() -> None:

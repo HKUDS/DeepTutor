@@ -1,5 +1,6 @@
 "use client";
 
+import Tooltip from "@/shared/ui/Tooltip";
 import { LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
@@ -24,14 +25,15 @@ export function LogoutButton({ collapsed = false }: LogoutButtonProps) {
 
   if (collapsed) {
     return (
-      <button
-        onClick={handleLogout}
-        className="rounded-lg p-2 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--background)]/50 hover:text-red-500"
-        aria-label={t("Sign out")}
-        title={t("Sign out")}
-      >
-        <LogOut size={16} strokeWidth={1.5} />
-      </button>
+      <Tooltip label={t("Sign out")} side="top">
+        <button
+          onClick={handleLogout}
+          className="rounded-lg p-2 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--background)]/50 hover:text-red-500"
+          aria-label={t("Sign out")}
+        >
+          <LogOut size={16} strokeWidth={1.5} />
+        </button>
+      </Tooltip>
     );
   }
 

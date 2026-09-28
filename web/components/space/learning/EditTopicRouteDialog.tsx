@@ -29,6 +29,8 @@ function topicDraft(topic: MasteryTopic): TopicDraft {
           name: point.name,
           type: point.type,
           module_id: module.id,
+          prerequisite_ids: point.prerequisite_ids,
+          topic_source_ids: point.topic_source_ids,
         })),
       }),
     ),

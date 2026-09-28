@@ -68,7 +68,7 @@ def client(monkeypatch, tmp_path):
     monkeypatch.setattr(
         subagents_module,
         "list_backend_kinds",
-        lambda: ["claude_code", "codex", "hermes_remote", "partner"],
+        lambda: ["claude_code", "codex", "grok", "hermes_remote", "partner"],
     )
     monkeypatch.setattr(subagents_module, "assert_path_allowed", lambda p: Path(p))
     # Isolate settings persistence to a temp file — the PUT path otherwise
@@ -130,6 +130,26 @@ def test_connect_rejects_unknown_kind(client):
     assert res.status_code == 400
 
 
+def test_grok_connection_and_settings_roundtrip(client):
+    created = client.post(
+        "/api/subagents/connections",
+        json={"name": "MyGrok", "agent_kind": "grok", "cwd": "/tmp"},
+    )
+    assert created.status_code == 200
+    assert created.json()["agent_kind"] == "grok"
+    saved = client.put(
+        "/api/subagents/settings",
+        json={"backends": {"grok": {"model": "custom-model", "effort": "high"}}},
+    )
+    assert saved.status_code == 200
+    config = client.get("/api/subagents/settings").json()["backends"]["grok"]
+    assert config["permission_mode"] == "dontAsk"
+    assert config["model"] == "custom-model" and config["effort"] == "high"
+    assert client.get("/api/subagents/connections").json()["connections"][0]["agent_kind"] == "grok"
+    assert client.delete("/api/subagents/connections/MyGrok").status_code == 200
+    assert client.get("/api/subagents/connections").json()["connections"] == []
+
+
 def test_connect_remote_backend_does_not_persist_a_local_cwd(client):
     created = client.post(
         "/api/subagents/connections",
@@ -143,87 +163,13 @@ def test_connect_remote_backend_does_not_persist_a_local_cwd(client):
     assert created.json()["cwd"] == ""
 
 
-class _FakePartnerManagerForConnect:
-    def __init__(self, known: set[str]) -> None:
-        self._known = known
-
-    def partner_exists(self, pid: str) -> bool:
-        return pid in self._known
-
-
-def _patch_partner_existence(monkeypatch, known: set[str]) -> None:
-    import deeptutor.services.partners as partners_pkg
-
-    monkeypatch.setattr(
-        partners_pkg, "get_partner_manager", lambda: _FakePartnerManagerForConnect(known)
-    )
-
-
-def test_connect_partner_binds_partner_id(client, monkeypatch):
-    _patch_partner_existence(monkeypatch, {"paul"})
-    created = client.post(
+def test_partners_cannot_be_registered_as_subagents(client):
+    response = client.post(
         "/api/subagents/connections",
         json={"name": "Paul", "agent_kind": "partner", "partner_id": "paul"},
     )
-    assert created.status_code == 200
-    body = created.json()
-    assert body["agent_kind"] == "partner"
-    assert body["partner_id"] == "paul"
-    assert body["cwd"] == ""
-
-    listed = client.get("/api/subagents/connections").json()["connections"]
-    assert listed[0]["agent_kind"] == "partner"
-    assert listed[0]["partner_id"] == "paul"
-
-
-def test_list_visible_partners(client, monkeypatch):
-    monkeypatch.setattr(
-        subagents_module,
-        "visible_partner_cards",
-        lambda: [{"partner_id": "p1", "name": "P1", "emoji": "🤖"}],
-    )
-    res = client.get("/api/subagents/partners")
-    assert res.status_code == 200
-    partners = res.json()["partners"]
-    assert partners == [{"partner_id": "p1", "name": "P1", "emoji": "🤖"}]
-
-
-def test_connect_partner_denied_when_not_assigned(client, monkeypatch):
-    # A non-admin connecting an unassigned partner is rejected by the
-    # assignment guard before the connection is created.
-    from fastapi import HTTPException
-
-    _patch_partner_existence(monkeypatch, {"paul"})
-
-    def deny(_pid):
-        raise HTTPException(status_code=403, detail="Partner is not assigned to you")
-
-    monkeypatch.setattr(subagents_module, "assert_partner_allowed", deny)
-    res = client.post(
-        "/api/subagents/connections",
-        json={"name": "Paul", "agent_kind": "partner", "partner_id": "paul"},
-    )
-    assert res.status_code == 403
-    # Nothing was connected.
+    assert response.status_code == 400
     assert client.get("/api/subagents/connections").json()["connections"] == []
-
-
-def test_connect_partner_requires_partner_id(client, monkeypatch):
-    _patch_partner_existence(monkeypatch, {"paul"})
-    res = client.post(
-        "/api/subagents/connections",
-        json={"name": "Paul", "agent_kind": "partner"},
-    )
-    assert res.status_code == 400
-
-
-def test_connect_partner_rejects_unknown_partner(client, monkeypatch):
-    _patch_partner_existence(monkeypatch, set())
-    res = client.post(
-        "/api/subagents/connections",
-        json={"name": "Ghost", "agent_kind": "partner", "partner_id": "ghost"},
-    )
-    assert res.status_code == 400
 
 
 def test_disconnect_unknown_is_404(client):

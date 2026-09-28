@@ -9,6 +9,7 @@ let dispatchedEvents: Array<{ type: string; detail: any }> = [];
 
 function mockWindow() {
   global.window = {
+    location: { search: "", origin: "http://localhost" },
     localStorage: {
       getItem: (key: string) => mockLocalStorage[key] ?? null,
       setItem: (key: string, value: string) => {
@@ -109,7 +110,7 @@ test("settings-context: persistUiSettingsPatch sends only the changed code-block
     },
   );
 
-  assert.match(String(capturedInput), /\/api\/settings\/ui$/);
+  assert.match(String(capturedInput), /\/api\/settings\/ui\?dt_workspace=$/);
   assert.equal(capturedInit?.method, "PUT");
   assert.deepEqual(JSON.parse(String(capturedInit?.body)), {
     code_block_theme: "dracula",
@@ -240,16 +241,8 @@ test("settings-context: routes code-block state through the AppShell single sour
     /syncLoadedCodeBlockSettingsToAppShell\(\s*payload\.ui,?\s*\)/,
     "loadSettings should push backend-loaded code-block values into the AppShell source.",
   );
-  // User edits delegate to the AppShell setters (which normalize, persist to
-  // localStorage, and notify consumers) rather than a local mirror.
-  assert.match(
-    source,
-    /setAppShellCodeBlockShowLineNumbers\(next\)/,
-    "updateCodeBlockShowLineNumbers should delegate to the AppShell setter.",
-  );
-  assert.match(
-    source,
-    /setAppShellCodeBlockWrapLongLines\(next\)/,
-    "updateCodeBlockWrapLongLines should delegate to the AppShell setter.",
-  );
+  // User edits stay in the global draft until Apply publishes to AppShell.
+  assert.match(source, /stageUi\(\{ code_block_show_line_numbers \}\)/);
+  assert.match(source, /stageUi\(\{ code_block_wrap_long_lines \}\)/);
+  assert.match(source, /syncLoadedCodeBlockSettingsToAppShell\(ui\)/);
 });

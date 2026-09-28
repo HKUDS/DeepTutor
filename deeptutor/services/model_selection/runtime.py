@@ -23,6 +23,7 @@ def llm_config_from_resolved(resolved: ResolvedLLMConfig) -> LLMConfig:
         api_version=resolved.api_version,
         extra_headers=resolved.extra_headers,
         wire_api=resolved.wire_api,
+        api_format=resolved.api_format,
         reasoning_effort=resolved.reasoning_effort,
         context_window=resolved.context_window,
     )

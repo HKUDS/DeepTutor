@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import sqlite3
 
 import pytest
 
@@ -273,3 +274,46 @@ def test_resolve_db_path_derives_when_no_kb_is_resolvable(tmp_path, monkeypatch)
         assert resolve_db_path("Nonexistent") == default_db_path("Nonexistent")
     finally:
         PathService.reset_instance()
+
+
+# ---- connection lifecycle --------------------------------------------------
+
+
+class _TrackedConnection(sqlite3.Connection):
+    """Connection that records whether ``close()`` was called."""
+
+    was_closed = False
+
+    def close(self) -> None:
+        self.was_closed = True
+        super().close()
+
+
+def test_every_connection_is_closed_after_use(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An open connection keeps the store's file locked on Windows until GC.
+
+    ``with sqlite3.Connection`` commits but never closes, so a store relying on
+    it could not be deleted there, and a library reconnected under the same name
+    picked its paired devices back up.
+    """
+    opened: list[_TrackedConnection] = []
+    real_connect = sqlite3.connect
+
+    def _tracked_connect(*args, **kwargs):
+        conn = real_connect(*args, factory=_TrackedConnection, **kwargs)
+        opened.append(conn)
+        return conn
+
+    monkeypatch.setattr(sqlite3, "connect", _tracked_connect)
+
+    store = MarginNoteStore(tmp_path / "test.db")
+    device, token = store.pair_device(device_name="iPad")
+    store.ingest(SyncBatch(device_id=device.device_id, objects=_seed_objects(device.device_id)))
+    assert store.verify_token(device.device_id, token) is True
+    assert store.search("photosynthesis")
+    assert store.revoke_device(device.device_id) is True
+
+    assert opened
+    assert all(conn.was_closed for conn in opened)

@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from deeptutor.services.config.launch_settings import load_launch_settings
 
 
@@ -39,6 +41,38 @@ def test_launch_settings_reads_ports_from_system_json_and_ignores_env_json(
     assert settings.language == "zh"
     assert "system.json" in settings.source
     assert "env.json" not in settings.source
+    assert "interface.json" in settings.source
+
+
+@pytest.mark.parametrize(
+    ("stored_language", "expected"),
+    [
+        ("french", "fr"),
+        ("fr-FR", "fr"),
+        ("ukrainian", "uk"),
+        ("uk_UA", "uk"),
+        ("uk-UA", "uk"),
+    ],
+)
+def test_launch_settings_reads_supported_languages_from_interface_json(
+    monkeypatch, tmp_path: Path, stored_language: str, expected: str
+) -> None:
+    for key in ("BACKEND_PORT", "FRONTEND_PORT", "UI_LANGUAGE", "LANGUAGE"):
+        monkeypatch.delenv(key, raising=False)
+
+    settings_dir = _settings_dir(tmp_path)
+    (settings_dir / "system.json").write_text(
+        json.dumps({"backend_port": 8001, "frontend_port": 3782}),
+        encoding="utf-8",
+    )
+    (settings_dir / "interface.json").write_text(
+        json.dumps({"language": stored_language}),
+        encoding="utf-8",
+    )
+
+    settings = load_launch_settings(tmp_path)
+
+    assert settings.language == expected
     assert "interface.json" in settings.source
 
 

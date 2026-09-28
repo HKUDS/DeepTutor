@@ -16,6 +16,7 @@ from llama_index.core.schema import BaseNode
 
 from . import vector_store
 from .config import should_show_progress, vector_index_config_from_settings
+from .embedding_adapter import current_embedding
 
 
 def build_ingestion_pipeline() -> IngestionPipeline:
@@ -32,7 +33,7 @@ def build_ingestion_pipeline() -> IngestionPipeline:
                 chunk_size=Settings.chunk_size,
                 chunk_overlap=Settings.chunk_overlap,
             ),
-            Settings.embed_model,
+            current_embedding(),
         ],
     )
 
@@ -102,7 +103,10 @@ def create_index_from_documents(
         nodes, vector_index_config_from_settings()
     )
     index = VectorStoreIndex(
-        nodes=nodes, storage_context=storage_context, show_progress=show_progress
+        nodes=nodes,
+        storage_context=storage_context,
+        show_progress=show_progress,
+        embed_model=current_embedding(),
     )
     index.storage_context.persist(persist_dir=str(storage_dir))
     return index, len(documents)

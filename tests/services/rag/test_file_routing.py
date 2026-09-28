@@ -22,6 +22,8 @@ class TestExtensionClassification:
             ("notes.md", DocumentType.TEXT),
             ("readme.MARKDOWN", DocumentType.TEXT),
             ("data.json", DocumentType.TEXT),
+            ("references.bib", DocumentType.TEXT),
+            ("REFERENCES.BIB", DocumentType.TEXT),
             ("script.py", DocumentType.TEXT),
             ("config.yaml", DocumentType.TEXT),
             ("paper.docx", DocumentType.DOCX),
@@ -212,3 +214,12 @@ class TestReadTextFile:
         path.write_bytes("中文测试".encode("gbk"))
         content = asyncio.run(FileTypeRouter.read_text_file(str(path)))
         assert "中文" in content
+
+
+def test_bibtex_uses_readable_reference_text_in_direct_rag_route(tmp_path: Path) -> None:
+    path = tmp_path / "references.bib"
+    path.write_text("@article{example, title={A Test Paper}, author={Doe, Jane}, year={2026}}")
+    content = asyncio.run(FileTypeRouter.read_text_file(str(path)))
+    assert "A Test Paper" in content
+    assert "Jane Doe" in content
+    assert "@article" not in content

@@ -301,3 +301,11 @@ def _restore_process_env():
     if os.environ != before:
         os.environ.clear()
         os.environ.update(before)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_usage_ledger(monkeypatch, tmp_path):
+    """Mocked model calls must never enter the developer's real usage totals."""
+    from deeptutor.services.llm import usage_ledger
+
+    monkeypatch.setattr(usage_ledger, "ledger_path", lambda: tmp_path / "usage.sqlite3")

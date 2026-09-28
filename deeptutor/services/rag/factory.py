@@ -21,6 +21,9 @@ today:
                             self-hosted Tencent WeKnora deployment. No local
                             index or document copy; each KB is a connection
                             pointer queried over WeKnora's REST API.
+* ``kiwix``               — retrieval from one ZIM already served by
+                            kiwix-serve. Only matched articles are fetched;
+                            no local archive or index copy is made.
 
 A KB is bound to one provider at creation time; later adds and retrieval always
 go through that same pipeline (enforced upstream in the knowledge router).
@@ -39,6 +42,7 @@ LIGHTRAG_PROVIDER = "lightrag"
 LIGHTRAG_SERVER_PROVIDER = "lightrag-server"
 IMA_PROVIDER = "ima"
 WEKNORA_PROVIDER = "weknora"
+KIWIX_PROVIDER = "kiwix"
 
 # Providers the factory can instantiate. Unknown / legacy strings fall back to
 # the default with a re-index hint upstream.
@@ -52,6 +56,7 @@ KNOWN_PROVIDERS = frozenset(
         LIGHTRAG_SERVER_PROVIDER,
         IMA_PROVIDER,
         WEKNORA_PROVIDER,
+        KIWIX_PROVIDER,
     }
 )
 
@@ -96,6 +101,7 @@ def version_matches_provider(entry: dict[str, Any], provider: Optional[str]) -> 
             LIGHTRAG_SERVER_PROVIDER,
             IMA_PROVIDER,
             WEKNORA_PROVIDER,
+            KIWIX_PROVIDER,
         }
 
     return entry_provider == resolved or signature == resolved
@@ -169,6 +175,13 @@ def _build_pipeline(provider: str, kb_base_dir: Optional[str], **kwargs: Any):
         if kb_base_dir is not None:
             kwargs.setdefault("kb_base_dir", kb_base_dir)
         return WeKnoraPipeline(**kwargs)
+
+    if provider == KIWIX_PROVIDER:
+        from .pipelines.kiwix.pipeline import KiwixPipeline
+
+        if kb_base_dir is not None:
+            kwargs.setdefault("kb_base_dir", kb_base_dir)
+        return KiwixPipeline(**kwargs)
 
     from .pipelines.llamaindex.pipeline import LlamaIndexPipeline
 

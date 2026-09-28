@@ -11,7 +11,7 @@ const source = readFileSync(
 test("partner chat restores only the active conversation", () => {
   assert.match(
     source,
-    /getPartnerHistory\(partnerId, \{ sessionKey, limit: 60 \}\)/,
+    /getPartnerHistoryPage\(partnerId, sessionKey, \{ limit: 60 \}\)/,
   );
 });
 
@@ -27,7 +27,7 @@ test("partner chat renders external user echoes and live trace events", () => {
 });
 
 test("history activity ids prevent replayed channel turns from duplicating", () => {
-  assert.match(source, /m\.metadata\?\.activity_id/);
+  assert.match(source, /message\.metadata\?\.activity_id/);
   assert.match(
     source,
     /msg\.activityId === activityId && msg\.role === "user"/,

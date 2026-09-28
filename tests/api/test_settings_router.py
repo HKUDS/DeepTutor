@@ -75,6 +75,60 @@ async def test_ui_languages_are_persisted_independently(
     assert response["response_language"] == "zh"
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("language", ["fr", "uk"])
+async def test_ui_settings_persist_supported_languages_independently(
+    monkeypatch: pytest.MonkeyPatch, tmp_path, language: str
+) -> None:
+    settings_file = tmp_path / "interface.json"
+    monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
+
+    response = await settings_router.update_ui_settings(
+        settings_router.UISettingsUpdate(theme="snow", language=language, response_language="en")
+    )
+
+    assert response["language"] == language
+    assert response["response_language"] == "en"
+    persisted = settings_router.load_ui_settings()
+    assert persisted["language"] == language
+    assert persisted["response_language"] == "en"
+    assert (await settings_router.get_ui_settings())["language"] == language
+    assert settings_router.LanguageUpdate(language=language).language == language
+
+
+def test_ui_settings_update_rejects_unsupported_language() -> None:
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        settings_router.UISettingsUpdate(language="xx")
+    with pytest.raises(ValidationError):
+        settings_router.UISettingsUpdate(response_language="xx")
+
+
+@pytest.mark.asyncio
+async def test_ui_accepts_extended_response_languages(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    settings_file = tmp_path / "interface.json"
+    monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
+
+    response = await settings_router.update_ui_settings(
+        settings_router.UISettingsUpdate(language="en", response_language="ja")
+    )
+    assert response["response_language"] == "ja"
+
+    response = await settings_router.update_ui_settings(
+        settings_router.UISettingsUpdate(response_language="pt")
+    )
+    assert response["response_language"] == "pt"
+
+    response = await settings_router.update_ui_settings(
+        settings_router.UISettingsUpdate(response_language="ms")
+    )
+    assert response["response_language"] == "ms"
+    assert settings_router.load_ui_settings()["response_language"] == "ms"
+
+
 class _FakeEmbeddingAdapter:
     def __init__(self, config: dict[str, Any]):
         self.config = config
@@ -603,7 +657,7 @@ def test_media_and_voice_provider_choices_include_dashscope() -> None:
     )
     assert dashscope["tts"]["default_model"] == "qwen3-tts-flash"
     assert dashscope["tts"]["default_voice"] == "Cherry"
-    assert dashscope["stt"]["default_model"] == "paraformer-v2"
+    assert dashscope["stt"]["default_model"] == "paraformer-realtime-v2"
     assert dashscope["imagegen"]["default_model"] == "wanx2.1-t2i-turbo"
     assert dashscope["videogen"]["default_model"] == "wanx2.1-t2v-turbo"
 
@@ -613,6 +667,20 @@ def test_llm_provider_choices_include_atlascloud() -> None:
 
     assert llm["atlascloud"]["label"] == "Atlas Cloud"
     assert llm["atlascloud"]["base_url"] == "https://api.atlascloud.ai/v1"
+
+
+def test_llm_provider_choices_include_unifically() -> None:
+    llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
+
+    assert llm["unifically"]["label"] == "Unifically"
+    assert llm["unifically"]["base_url"] == "https://api.unifically.com/v1"
+
+
+def test_llm_provider_choices_include_cheaperinference() -> None:
+    llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
+
+    assert llm["cheaperinference"]["label"] == "Cheaper Inference"
+    assert llm["cheaperinference"]["base_url"] == "https://api.cheaperinference.com/v1"
 
 
 def test_llm_provider_choices_include_novita() -> None:
@@ -1797,3 +1865,22 @@ async def test_ui_endpoints_do_not_freeze_defaults_into_the_file(
     assert stored == {"theme": "dark"}, f"only the changed field belongs on disk: {stored}"
     # The read path still reports the full picture.
     assert settings_router.load_ui_settings()["language"] == "en"
+
+
+@pytest.mark.asyncio
+async def test_voice_math_speak_persists_without_freezing_defaults(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    settings_file = tmp_path / "interface.json"
+    monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
+
+    response = await settings_router.update_voice_math_speak(
+        settings_router.VoiceMathSpeakUpdate(voice_math_speak=False)
+    )
+
+    assert response == {"voice_math_speak": False}
+    stored = json.loads(settings_file.read_text(encoding="utf-8"))
+    assert stored == {"voice_math_speak": False}
+    loaded = settings_router.load_ui_settings()
+    assert loaded["voice_math_speak"] is False
+    assert loaded["voice_autoplay"] is False

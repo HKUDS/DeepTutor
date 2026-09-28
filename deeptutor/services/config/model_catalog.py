@@ -179,7 +179,12 @@ _CONNECTION_BASE_SUFFIX: dict[str, str] = {"embedding": "/embeddings"}
 
 # Credential fields a linked profile inherits from its connection. base_url is
 # handled separately because it is per-service (see _CONNECTION_BASE_SUFFIX).
-_CONNECTION_CREDENTIAL_FIELDS: tuple[str, ...] = ("api_key", "api_version", "extra_headers")
+_CONNECTION_CREDENTIAL_FIELDS: tuple[str, ...] = (
+    "api_key",
+    "api_version",
+    "extra_headers",
+    "app_id",
+)
 
 # Services whose profiles are LLM-shaped and therefore carry an API format.
 LLM_SHAPED_SERVICES: tuple[str, ...] = ("llm", "task")
@@ -187,6 +192,8 @@ LLM_SHAPED_SERVICES: tuple[str, ...] = ("llm", "task")
 # Per-model capability overrides a user may set. Absent means "let the
 # built-in tables decide"; only explicit booleans are kept.
 MODEL_CAPABILITY_KEYS: tuple[str, ...] = ("tools", "vision", "json_output", "reasoning")
+
+_DASHSCOPE_VOICE_BINDINGS = {"dashscope", "aliyun", "bailian"}
 
 
 def _normalize_model_capabilities(model: dict[str, Any]) -> bool:
@@ -355,6 +362,27 @@ class ModelCatalogService:
             return True
         return False
 
+    def _drop_retired_task_overrides(self, catalog: dict[str, Any]) -> bool:
+        """Remove per-task pins whose task no longer exists.
+
+        Nothing reads them, but the settings page counts every pin when deciding
+        whether a model is still in use — and offers no row to clear one for a
+        task it no longer lists — so a stale pin would lock its model forever.
+        """
+        from deeptutor.services.model_selection.tasks import TASK_KINDS, TASK_OVERRIDES_KEY
+
+        service = catalog.get("services", {}).get("task", {})
+        overrides = service.get(TASK_OVERRIDES_KEY) if isinstance(service, dict) else None
+        if not isinstance(overrides, dict):
+            return False
+        known = {str(spec.kind) for spec in TASK_KINDS}
+        retired = [key for key in overrides if key not in known]
+        for key in retired:
+            overrides.pop(key)
+        if retired and not overrides:
+            service.pop(TASK_OVERRIDES_KEY)
+        return bool(retired)
+
     def _normalize_connections(self, catalog: dict[str, Any]) -> dict[str, dict[str, Any]]:
         """Fill in connection defaults and return them keyed by id."""
         raw = catalog.get("connections")
@@ -403,6 +431,10 @@ class ModelCatalogService:
             value = deepcopy(connection.get(field))
             if profile.get(field) != value:
                 profile[field] = value
+                changed = True
+        for field in ("api_format", "wire_api", "proxy"):
+            if field in connection and profile.get(field) != connection[field]:
+                profile[field] = deepcopy(connection[field])
                 changed = True
         base_url = str(connection.get("base_url") or "").strip()
         if base_url:
@@ -470,6 +502,27 @@ class ModelCatalogService:
                         model.setdefault("id", f"{service_name}-model-{uuid4().hex[:8]}")
                         model.setdefault("name", model.get("model") or "Untitled Model")
                         model.setdefault("model", "")
+                        if service_name == "stt" and model["model"] == "paraformer-v2":
+                            from .provider_links import resolve_profile_provider
+
+                            # The provider can be overridden on either the profile
+                            # or the model. Use the binding the runtime will use.
+                            try:
+                                effective = resolve_profile_provider(
+                                    catalog, service_name, profile, model
+                                )
+                            except ValueError:
+                                effective = {}  # Leave a broken reference for readiness to report.
+                            if (
+                                str(effective.get("binding") or "").strip().lower()
+                                in _DASHSCOPE_VOICE_BINDINGS
+                            ):
+                                # The old default was a batch API model, but this
+                                # adapter always uses the real-time WebSocket.
+                                model["model"] = "paraformer-realtime-v2"
+                                if model["name"] == "paraformer-v2":
+                                    model["name"] = "paraformer-realtime-v2"
+                                changed = True
                         if service_name in LLM_SHAPED_SERVICES and _normalize_model_capabilities(
                             model
                         ):
@@ -487,7 +540,7 @@ class ModelCatalogService:
                             # Provider/model-specific free-form voice string
                             # (e.g. "alloy", "autumn", "model:voice").
                             model.setdefault("voice", "")
-                            model.setdefault("response_format", "mp3")
+                            model.setdefault("response_format", "")  # Resolve per provider/model.
                         elif service_name == "imagegen":
                             # Generation knobs; empty → provider default.
                             model.setdefault("size", "")
@@ -498,18 +551,32 @@ class ModelCatalogService:
                             model.setdefault("aspect_ratio", "")
                             model.setdefault("duration", "")
                             model.setdefault("resolution", "")
-            profile_ids = {profile.get("id") for profile in profiles}
-            if profiles and service.get("active_profile_id") not in profile_ids:
-                service["active_profile_id"] = profiles[0]["id"]
+            selectable = [
+                p
+                for p in profiles
+                if not p.get("provider_only") and (service_name == "search" or p.get("models"))
+            ]
+            profile_ids = {profile.get("id") for profile in selectable}
+            if selectable and service.get("active_profile_id") not in profile_ids:
+                service["active_profile_id"] = selectable[0]["id"]
                 changed = True
             if service_name != "search":
-                active_profile = self.get_active_profile(catalog, service_name)
+                active_profile = next(
+                    (
+                        item
+                        for item in profiles
+                        if item.get("id") == service.get("active_profile_id")
+                    ),
+                    profiles[0] if profiles else None,
+                )
                 models = (active_profile or {}).get("models") or []
                 model_ids = {model.get("id") for model in models}
                 if models and service.get("active_model_id") not in model_ids:
                     service["active_model_id"] = models[0]["id"]
                     changed = True
         if self._drop_legacy_llm_tasks(catalog):
+            changed = True
+        if self._drop_retired_task_overrides(catalog):
             changed = True
         return changed
 
@@ -519,17 +586,41 @@ class ModelCatalogService:
         service = catalog.get("services", {}).get(service_name, {})
         active_id = service.get("active_profile_id")
         for profile in service.get("profiles", []):
-            if profile.get("id") == active_id:
-                return profile
-        profiles = service.get("profiles", [])
-        return profiles[0] if profiles else None
+            if profile.get("id") == active_id and not profile.get("provider_only"):
+                break
+        else:
+            profiles = [
+                p
+                for p in service.get("profiles", [])
+                if not p.get("provider_only") and (service_name == "search" or p.get("models"))
+            ]
+            profile = profiles[0] if profiles else None
+        if not profile:
+            return None
+        from .provider_links import resolve_profile_provider
+
+        models = profile.get("models", [])
+        model = next(
+            (item for item in models if item.get("id") == service.get("active_model_id")),
+            models[0] if models else None,
+        )
+        return resolve_profile_provider(catalog, service_name, profile, model)
 
     def get_active_model(self, catalog: dict[str, Any], service_name: str) -> dict[str, Any] | None:
         if service_name == "search":
             return None
         service = catalog.get("services", {}).get(service_name, {})
         active_model_id = service.get("active_model_id")
-        profile = self.get_active_profile(catalog, service_name)
+        profile = next(
+            (
+                p
+                for p in service.get("profiles", [])
+                if p.get("id") == service.get("active_profile_id")
+            ),
+            None,
+        )
+        if profile is None:
+            profile = next((p for p in service.get("profiles", []) if p.get("models")), None)
         if not profile:
             return None
         for model in profile.get("models", []):

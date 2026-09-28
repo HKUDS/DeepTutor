@@ -2,7 +2,7 @@
 
 import { useTranslation } from "react-i18next";
 
-import { ConnectionsEditor } from "@/components/settings/ConnectionsEditor";
+import { ProvidersWorkspace } from "@/components/settings/ProvidersWorkspace";
 import { SettingsPageHeader } from "@/components/settings/shared";
 
 export default function ConnectionsSettingsPage() {
@@ -10,12 +10,12 @@ export default function ConnectionsSettingsPage() {
   return (
     <div>
       <SettingsPageHeader
-        title={t("Connections")}
+        title={t("Providers")}
         description={t(
-          "One vendor credential, supplying every model service that can use it. Services can still hold their own key instead.",
+          "Manage provider names, URLs, and credentials. Configure models on their own pages.",
         )}
       />
-      <ConnectionsEditor />
+      <ProvidersWorkspace />
     </div>
   );
 }

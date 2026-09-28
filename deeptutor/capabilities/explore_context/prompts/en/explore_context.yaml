@@ -22,6 +22,11 @@ loop:
       their identity.
 
     How to investigate:
+    - Request at most {tool_call_limit} tool calls in one assistant message. If more
+      reads are needed, split them across later rounds within the remaining budget.
+      Only batch independent reads; wait for results before following dependent leads.
+      Calls beyond the limit are not executed: retry only still-needed skipped calls
+      in a smaller later batch, without repeating reads that already succeeded.
     - Start from the user's request and decide which sources you need to read in
       full; load them with read_source. Follow leads across sources as the
       content warrants, interleaving reads, until you can give a thorough,

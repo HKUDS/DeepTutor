@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import binascii
+from contextlib import nullcontext
 import json
 import logging
 from typing import Any, AsyncGenerator, Literal
@@ -49,11 +50,20 @@ from deeptutor.services.partners.manager import (
     LEGACY_GLOBAL_DELIVERY_KEYS,
     PartnerConfig,
     PartnerInstance,
+    PartnerStaleSessionError,
+    PartnerTurnBusyError,
     mask_channel_secrets,
     strip_legacy_global_delivery,
 )
 from deeptutor.services.partners.runtime_status import (
     get_partner_runtime_status_repository,
+)
+from deeptutor.services.partners.web_continuity import (
+    fresh_web_session_key,
+    get_web_continuity,
+    move_active_web_session,
+    set_web_continuity,
+    validate_session_key,
 )
 from deeptutor.services.partners.workspace import (
     list_assets,
@@ -220,6 +230,7 @@ class AssetSpec(BaseModel):
 
 
 class CreatePartnerRequest(BaseModel):
+    workspace_id: str = ""
     partner_id: str | None = None
     name: str = Field(..., min_length=1)
     description: str | None = None
@@ -253,6 +264,7 @@ class ConfirmPartnerDraftRequest(BaseModel):
 
 
 class UpdatePartnerRequest(BaseModel):
+    workspace_id: str | None = None
     name: str | None = None
     description: str | None = None
     channels: dict | None = None
@@ -301,6 +313,11 @@ class SessionKeyBody(BaseModel):
 class SessionBranchBody(BaseModel):
     source_key: str = Field(..., min_length=1)
     new_key: str = Field(..., min_length=1)
+
+
+class WebContinuityBody(BaseModel):
+    enabled: bool
+    session_key: str | None = None
 
 
 class SoulCreateRequest(BaseModel):
@@ -529,11 +546,10 @@ def _load_persona_markdown(name: str) -> str:
     except Exception:
         pass
     try:
-        if not get_current_user().is_admin:
-            admin_service = PersonaService(
-                root=get_admin_path_service().get_workspace_dir() / "personas"
-            )
-            return strip_frontmatter(admin_service.get_detail(name).content)
+        admin_service = PersonaService(
+            root=get_admin_path_service().get_workspace_dir() / "personas"
+        )
+        return strip_frontmatter(admin_service.get_detail(name).content)
     except Exception:
         pass
     return ""
@@ -607,13 +623,12 @@ async def soul_sources():
     except Exception:
         logger.warning("Failed to list user personas", exc_info=True)
     try:
-        if not get_current_user().is_admin:
-            admin_service = PersonaService(
-                root=get_admin_path_service().get_workspace_dir() / "personas"
-            )
-            for info in admin_service.list_personas():
-                if info.name not in seen:
-                    personas.append(_persona_entry(admin_service, info))
+        admin_service = PersonaService(
+            root=get_admin_path_service().get_workspace_dir() / "personas"
+        )
+        for info in admin_service.list_personas():
+            if info.name not in seen:
+                personas.append(_persona_entry(admin_service, info))
     except Exception:
         logger.warning("Failed to list admin personas", exc_info=True)
 
@@ -627,6 +642,23 @@ async def soul_sources():
 async def list_partners():
     """Partners the caller may talk to — theirs in full, assigned ones as cards."""
     return visible_partners()
+
+
+@router.get("/consultation-session")
+async def get_partner_consultation_session(chat_session_id: str, partner_name: str):
+    """Recover native identity for older consultation traces in this user's registry."""
+    from deeptutor.services.subagent.sessions import get_session, session_key
+
+    matches = []
+    for partner in visible_partners():
+        if partner.get("name") != partner_name:
+            continue
+        partner_id = str(partner["partner_id"])
+        native_key = get_session(session_key(chat_session_id, f"partner:{partner_id}"))
+        if native_key:
+            matches.append({"partner_id": partner_id, "session_key": native_key})
+    # Never open a different conversation when names are ambiguous.
+    return matches[0] if len(matches) == 1 else None
 
 
 @router.get("/recent")
@@ -736,7 +768,15 @@ async def _create_partner(payload: CreatePartnerRequest) -> dict[str, Any]:
     backup_llm_selection = _validate_llm_selection_payload(payload.backup_llm_selection)
     soul_content, soul_origin = _resolve_soul_content(payload.soul)
 
+    workspace_id = _validate_workspace(payload.workspace_id, get_current_user().id)
+    if workspace_id and payload.assets and any(payload.assets.model_dump().values()):
+        raise HTTPException(
+            status_code=400,
+            detail="Use the shared workspace resources or copy private assets, not both.",
+        )
+
     config = PartnerConfig(
+        workspace_id=workspace_id,
         name=payload.name.strip(),
         description=(payload.description or "").strip(),
         owner_id=get_current_user().id,
@@ -866,6 +906,7 @@ def _stopped_partner_dict(
         channels = mask_channel_secrets(strip_legacy_global_delivery(cfg.channels))
     result = {
         "partner_id": partner_id,
+        "workspace_id": cfg.workspace_id,
         "name": cfg.name,
         "description": cfg.description,
         "channels": channels,
@@ -942,7 +983,19 @@ async def get_partner(
     return {**full, "can_manage": True}
 
 
+def _validate_workspace(workspace_id: str, owner_id: str) -> str:
+    from deeptutor.services.partners.workspace_binding import validate_partner_workspace
+    from deeptutor.services.workspace import WorkspaceError
+
+    try:
+        return validate_partner_workspace(workspace_id, owner_id)
+    except WorkspaceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 def _apply_update(cfg: PartnerConfig, payload: UpdatePartnerRequest) -> None:
+    if "workspace_id" in payload.model_fields_set:
+        cfg.workspace_id = _validate_workspace(payload.workspace_id or "", cfg.owner_id)
     if payload.name is not None:
         cfg.name = payload.name
     if payload.description is not None:
@@ -1203,6 +1256,24 @@ async def put_partner_soul(partner_id: str, payload: SoulUpdateBody):
 # ── Assets ─────────────────────────────────────────────────────
 
 
+@router.get("/{partner_id}/workspaces", dependencies=_MANAGEABLE)
+async def get_partner_workspaces(partner_id: str):
+    """Configuration choices belong to the Partner owner, including admin edits."""
+    from deeptutor.multi_user.paths import user_context
+    from deeptutor.services.partners.workspace_binding import workspace_owner
+    from deeptutor.services.workspace import WorkspaceError, get_content_workspace_service
+    from deeptutor.services.workspace.context import workspace_context
+
+    config = get_partner_manager().load_config(partner_id)
+    if config is None:
+        raise HTTPException(status_code=404, detail=t("api.partner_not_found"))
+    try:
+        with user_context(workspace_owner(config.owner_id)), workspace_context(""):
+            return {"workspaces": get_content_workspace_service().list_workspaces()}
+    except WorkspaceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.get("/{partner_id}/assets", dependencies=_MANAGEABLE)
 async def get_partner_assets(partner_id: str):
     return list_assets(partner_id)
@@ -1210,6 +1281,12 @@ async def get_partner_assets(partner_id: str):
 
 @router.post("/{partner_id}/assets", dependencies=_MANAGEABLE)
 async def add_partner_assets(partner_id: str, payload: AssetAddRequest):
+    config = get_partner_manager().load_config(partner_id)
+    if config and config.workspace_id:
+        raise HTTPException(
+            status_code=400,
+            detail="This partner uses shared workspace resources. Add resources to that workspace.",
+        )
     report = provision_assets(
         partner_id,
         knowledge_bases=payload.knowledge_bases,
@@ -1295,6 +1372,43 @@ async def get_partner_history(
     )
 
 
+@router.get("/{partner_id}/history/page", dependencies=_USABLE)
+async def get_partner_history_page(
+    partner_id: str,
+    session_key: str,
+    before: int | None = Query(default=None, ge=0),
+    limit: int = Query(default=60, ge=1, le=200),
+):
+    """Read older turns of one actor-scoped conversation in bounded pages."""
+    return (
+        get_partner_manager()
+        .session_store(partner_id)
+        .messages_page(session_key, before=before, limit=limit)
+    )
+
+
+@router.get("/{partner_id}/web-continuity", dependencies=_USABLE)
+async def get_partner_web_continuity(partner_id: str):
+    return get_web_continuity(partner_id, get_current_user().id)
+
+
+@router.put("/{partner_id}/web-continuity", dependencies=_USABLE)
+async def put_partner_web_continuity(partner_id: str, payload: WebContinuityBody):
+    mgr = get_partner_manager()
+    try:
+        return set_web_continuity(
+            partner_id,
+            get_current_user().id,
+            enabled=payload.enabled,
+            session_key=payload.session_key,
+            idle_lock=lambda key: mgr.web_session_idle_lock(partner_id, key),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    except PartnerTurnBusyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+
+
 @router.get("/{partner_id}/sessions", dependencies=_USABLE)
 async def get_partner_sessions(partner_id: str):
     mgr = get_partner_manager()
@@ -1305,38 +1419,113 @@ async def get_partner_sessions(partner_id: str):
 async def archive_partner_session(partner_id: str, payload: SessionKeyBody):
     """Soft-archive a session (web /new) — it stays resumable, file untouched."""
     mgr = get_partner_manager()
-    if not mgr.archive_session(partner_id, payload.session_key):
-        raise HTTPException(status_code=404, detail="Session not found")
-    return {"partner_id": partner_id, "archived": True, "session_key": payload.session_key}
+    try:
+        with mgr.web_session_idle_lock(partner_id, payload.session_key):
+            if not mgr.archive_session(partner_id, payload.session_key):
+                raise HTTPException(status_code=404, detail="Session not found")
+            active_key = move_active_web_session(
+                partner_id,
+                get_current_user().id,
+                session_key=payload.session_key,
+                new_session_key=fresh_web_session_key(),
+            )
+    except PartnerTurnBusyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    return {
+        "partner_id": partner_id,
+        "archived": True,
+        "session_key": payload.session_key,
+        "active_session_key": active_key,
+    }
 
 
 @router.post("/{partner_id}/sessions/resume", dependencies=_USABLE)
 async def resume_partner_session(partner_id: str, payload: SessionKeyBody):
     """Clear a session's archived flag so the web app can continue it."""
     mgr = get_partner_manager()
-    summary = mgr.resume_session(partner_id, payload.session_key)
-    if summary is None:
-        raise HTTPException(status_code=404, detail="Session not found")
-    return {"partner_id": partner_id, "resumed": True, "session": summary}
+    try:
+        session_key = validate_session_key(payload.session_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    try:
+        with mgr.web_session_idle_lock(partner_id, session_key):
+            summary = mgr.resume_session(partner_id, session_key)
+            if summary is None:
+                raise HTTPException(status_code=404, detail="Session not found")
+            active_key = move_active_web_session(
+                partner_id,
+                get_current_user().id,
+                session_key=session_key,
+                new_session_key=session_key,
+                only_if_current=False,
+                idle_lock=lambda key: mgr.web_session_idle_lock(partner_id, key),
+            )
+    except PartnerTurnBusyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    return {
+        "partner_id": partner_id,
+        "resumed": True,
+        "session": summary,
+        "active_session_key": active_key,
+    }
 
 
 @router.post("/{partner_id}/sessions/delete", dependencies=_USABLE)
 async def delete_partner_session(partner_id: str, payload: SessionKeyBody):
     mgr = get_partner_manager()
-    removed = mgr.delete_session(partner_id, payload.session_key)
-    if not removed:
-        raise HTTPException(status_code=404, detail="Session not found")
-    return {"partner_id": partner_id, "deleted": True, "session_key": payload.session_key}
+    try:
+        with mgr.web_session_idle_lock(partner_id, payload.session_key):
+            removed = mgr.delete_session(partner_id, payload.session_key)
+            if not removed:
+                raise HTTPException(status_code=404, detail="Session not found")
+            active_key = move_active_web_session(
+                partner_id,
+                get_current_user().id,
+                session_key=payload.session_key,
+                new_session_key=fresh_web_session_key(),
+            )
+    except PartnerTurnBusyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    return {
+        "partner_id": partner_id,
+        "deleted": True,
+        "session_key": payload.session_key,
+        "active_session_key": active_key,
+    }
 
 
 @router.post("/{partner_id}/sessions/branch", dependencies=_USABLE)
 async def branch_partner_session(partner_id: str, payload: SessionBranchBody):
     """Copy a session's full history into a new key and archive the source."""
     mgr = get_partner_manager()
-    summary = mgr.branch_session(partner_id, payload.source_key, payload.new_key)
-    if summary is None:
-        raise HTTPException(status_code=400, detail="Nothing to branch (source is empty)")
-    return {"partner_id": partner_id, "branched": True, "session": summary}
+    try:
+        target_key = validate_session_key(payload.new_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    if mgr.session_store(partner_id)._stem(payload.source_key) == target_key:
+        raise HTTPException(status_code=400, detail="Branch needs a different session key")
+    try:
+        with mgr.web_session_idle_lock(partner_id, payload.source_key):
+            with mgr.web_session_idle_lock(partner_id, target_key):
+                summary = mgr.branch_session(partner_id, payload.source_key, target_key)
+                if summary is None:
+                    raise HTTPException(
+                        status_code=400, detail="Nothing to branch (source is empty)"
+                    )
+                active_key = move_active_web_session(
+                    partner_id,
+                    get_current_user().id,
+                    session_key=payload.source_key,
+                    new_session_key=target_key,
+                )
+    except PartnerTurnBusyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    return {
+        "partner_id": partner_id,
+        "branched": True,
+        "session": summary,
+        "active_session_key": active_key,
+    }
 
 
 @router.get("/commands/palette")
@@ -1362,6 +1551,12 @@ def _resolve_http_session(payload: ChatMessageRequest) -> tuple[str, str]:
         return explicit_chat, explicit_chat
     session_id = uuid4().hex
     return session_id, session_id
+
+
+def _assert_selected_web_session(partner_id: str, account_id: str, session_key: str) -> None:
+    state = get_web_continuity(partner_id, account_id)
+    if state["enabled"] and state["session_key"] != validate_session_key(session_key):
+        raise PartnerStaleSessionError(str(state["session_key"]))
 
 
 # Fallback caps when the settings layer is unavailable; the effective values
@@ -1451,14 +1646,29 @@ async def partner_chat_http(partner_id: str, payload: ChatMessageRequest) -> dic
     mgr = get_partner_manager()
     session_id, chat_id = _resolve_http_session(payload)
     try:
-        response = await mgr.send_message(
-            partner_id,
-            content,
-            chat_id=chat_id,
-            session_id=session_id,
-            media=media_paths,
-            session_key=payload.session_key,
+        lock = (
+            mgr.web_session_idle_lock(partner_id, payload.session_key)
+            if payload.session_key
+            else nullcontext()
         )
+        with lock:
+            if payload.session_key:
+                _assert_selected_web_session(partner_id, get_current_user().id, payload.session_key)
+            response = await mgr.send_message(
+                partner_id,
+                content,
+                chat_id=chat_id,
+                session_id=session_id,
+                media=media_paths,
+                session_key=payload.session_key,
+            )
+    except PartnerStaleSessionError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"message": str(exc), "active_session_key": exc.active_session_key},
+        ) from None
+    except PartnerTurnBusyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
     return {
@@ -1471,6 +1681,7 @@ async def partner_chat_http(partner_id: str, payload: ChatMessageRequest) -> dic
 async def _partner_chat_stream(
     partner_id: str,
     payload: ChatMessageRequest,
+    account_id: str,
 ) -> AsyncGenerator[str, None]:
     from deeptutor.core.stream import StreamEventType
 
@@ -1493,15 +1704,23 @@ async def _partner_chat_stream(
 
     async def run() -> None:
         try:
-            holder["content"] = await mgr.send_message(
-                partner_id,
-                content,
-                chat_id=chat_id,
-                session_id=session_id,
-                media=media_paths,
-                on_event=on_event,
-                session_key=payload.session_key,
+            lock = (
+                mgr.web_session_idle_lock(partner_id, payload.session_key)
+                if payload.session_key
+                else nullcontext()
             )
+            with lock:
+                if payload.session_key:
+                    _assert_selected_web_session(partner_id, account_id, payload.session_key)
+                holder["content"] = await mgr.send_message(
+                    partner_id,
+                    content,
+                    chat_id=chat_id,
+                    session_id=session_id,
+                    media=media_paths,
+                    on_event=on_event,
+                    session_key=payload.session_key,
+                )
         except Exception as exc:  # noqa: BLE001
             holder["error"] = str(exc)
         finally:
@@ -1536,7 +1755,7 @@ async def partner_chat_http_stream(partner_id: str, payload: ChatMessageRequest)
         raise HTTPException(status_code=400, detail=t("api.content_required"))
     await _ensure_running_partner(partner_id, allow_stopped=True)
     return StreamingResponse(
-        _partner_chat_stream(partner_id, payload),
+        _partner_chat_stream(partner_id, payload, get_current_user().id),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
@@ -1663,7 +1882,7 @@ async def partner_chat_ws(ws: WebSocket, partner_id: str):
                 # starts the cross-channel activity feed. The feed replays a
                 # bounded recent window, and persisted activity ids let the
                 # client remove any overlap with the history snapshot.
-                if activity["queue"] is None:
+                if activity["queue"] is None and data.get("include_activity", True):
                     activity["queue"] = instance.activity_feed.subscribe_many(activity_actor_ids)
                     activity_attached.set()
                 # Reconnect (a page refresh) — replay an in-flight turn so the
@@ -1674,6 +1893,12 @@ async def partner_chat_ws(ws: WebSocket, partner_id: str):
                     if turn.user_content:
                         await _safe_send({"type": "user_echo", "content": turn.user_content})
                     _start_drain(turn.subscribe())
+                else:
+                    key = _resolve_key(data)
+                    frame_type = (
+                        "attach_busy" if mgr.web_session_is_busy(partner_id, key) else "attach_idle"
+                    )
+                    await _safe_send({"type": frame_type, "session_key": key})
                 continue
 
             content = data.get("content", "").strip()
@@ -1700,11 +1925,43 @@ async def partner_chat_ws(ws: WebSocket, partner_id: str):
                 content = _default_attachment_prompt(attachments)
 
             try:
-                turn = mgr.start_web_turn(partner_id, _resolve_key(data), content, media_paths)
+                session_key = _resolve_key(data)
+                turn = mgr.start_web_turn(
+                    partner_id,
+                    session_key,
+                    content,
+                    media_paths,
+                    account_id=get_current_user_or_none().id
+                    if get_current_user_or_none()
+                    else None,
+                )
+            except PartnerStaleSessionError as exc:
+                if not await _safe_send(
+                    {
+                        "type": "stale_session",
+                        "content": str(exc),
+                        "active_session_key": exc.active_session_key,
+                    }
+                ):
+                    break
+                continue
+            except PartnerTurnBusyError as exc:
+                if not await _safe_send({"type": "turn_busy", "content": str(exc)}):
+                    break
+                continue
+            except ValueError as exc:
+                if not await _safe_send({"type": "error", "content": str(exc)}):
+                    break
+                continue
             except RuntimeError as exc:
                 if not await _safe_send({"type": "error", "content": str(exc)}):
                     break
                 continue
+            # Admission is distinct from execution: a later error can happen
+            # after the question was persisted, so clients must not restore it
+            # as a rejected draft and accidentally submit it twice.
+            if not await _safe_send({"type": "accepted", "session_key": session_key}):
+                break
             _start_drain(turn.subscribe())
 
     async def _handle_channel_activity():

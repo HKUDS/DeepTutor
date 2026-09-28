@@ -68,9 +68,9 @@ test("app update client uses the canonical system routes", async () => {
       body: typeof init?.body === "string" ? init.body : undefined,
     });
     const updateRequest =
-      String(input) === "/api/system/update" && init?.method === "POST";
+      String(input) === "/api/system/update?dt_workspace=" && init?.method === "POST";
     const body =
-      String(input).endsWith("/job") || updateRequest
+      String(input).endsWith("/job?dt_workspace=") || updateRequest
         ? jobPayload
         : statusPayload;
     return new Response(JSON.stringify(body), {
@@ -93,11 +93,11 @@ test("app update client uses the canonical system routes", async () => {
   assert.deepEqual(
     requests.map(({ path, method }) => ({ path, method })),
     [
-      { path: "/api/system/update", method: "GET" },
-      { path: "/api/system/update/check", method: "POST" },
-      { path: "/api/system/update/settings", method: "PUT" },
-      { path: "/api/system/update", method: "POST" },
-      { path: "/api/system/update/job", method: "GET" },
+      { path: "/api/system/update?dt_workspace=", method: "GET" },
+      { path: "/api/system/update/check?dt_workspace=", method: "POST" },
+      { path: "/api/system/update/settings?dt_workspace=", method: "PUT" },
+      { path: "/api/system/update?dt_workspace=", method: "POST" },
+      { path: "/api/system/update/job?dt_workspace=", method: "GET" },
     ],
   );
   assert.equal(requests[2]?.body, JSON.stringify({ enabled: false }));
@@ -165,7 +165,7 @@ test("only non-terminal jobs remain active", () => {
   assert.equal(updateJobIsActive("failed"), false);
 });
 
-test("sidebar presents the version as a synced status dot and branded footer marks", () => {
+test("sidebar presents the update state as a clickable status dot", () => {
   const badge = readFileSync(
     path.join(process.cwd(), "components", "sidebar", "VersionBadge.tsx"),
     "utf8",
@@ -176,15 +176,12 @@ test("sidebar presents the version as a synced status dot and branded footer mar
   );
 
   assert.match(badge, /subscribeAppUpdateStatus/);
-  assert.match(badge, /font-serif/);
-  assert.match(badge, /bg-emerald-500/);
+  assert.match(badge, /label: t\("Up to date"\)/);
   assert.match(badge, /bg-amber-500/);
   assert.match(badge, /bg-red-500/);
-  // The footer GitHub mark is now an inline CC0 octocat (kept out of the
-  // app-shell chunk) instead of a lookup into the generated brand table.
-  assert.match(shell, /GitHubMarkLink/);
-  assert.match(shell, /GITHUB_REPO_URL/);
-  assert.match(shell, /GITHUB_MARK_PATH/);
-  assert.match(shell, /text-\[#181717\] dark:text-white/);
-  assert.match(shell, /text-blue-600 dark:text-blue-400/);
+  assert.match(badge, /href="\/settings\/about"/);
+  assert.match(badge, /aria-label=\{state\.label/);
+  assert.doesNotMatch(badge, /displayTag/);
+  assert.doesNotMatch(shell, /GitHubMarkLink/);
+  assert.doesNotMatch(shell, /GITHUB_REPO_URL/);
 });

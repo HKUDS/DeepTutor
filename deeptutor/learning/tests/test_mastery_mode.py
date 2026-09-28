@@ -81,6 +81,8 @@ def test_examining_belongs_to_study_and_review():
         "mastery_grade",
         "mastery_assess",
         "mastery_skip_question",
+        "mastery_repair_question",
+        "mastery_defer_objective",
     ):
         assert owning_modes(tool) == (STUDY, REVIEW), tool
         assert not tool_is_allowed(tool, OUTLINE)

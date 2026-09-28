@@ -315,6 +315,7 @@ export default function ReadingReferencePicker({
     >
       <div className="surface-card flex h-[78vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)] text-[var(--card-foreground)] shadow-[0_22px_70px_rgba(0,0,0,0.18)]">
         <PickerHeader
+          resourceKind="reading"
           icon={BookMarked}
           titleId="reading-reference-picker-title"
           title={t("Select Reading Sections")}

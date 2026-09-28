@@ -151,6 +151,9 @@ class ToolResult:
             ``ask_user`` to keep the turn alive across the user's
             answer instead of ending and starting a new turn.
             Shape mirrors ``AskUserPayload.to_dict()``.
+        model_message: Request-local multimodal context attached after this
+            tool result. The loop must never add it to durable messages or
+            user-facing stream metadata.
     """
 
     content: str = ""
@@ -159,6 +162,9 @@ class ToolResult:
     success: bool = True
     terminate_turn: bool = False
     pause_for_user: dict[str, Any] | None = None
+    # Private model-only follow-up (for example verified source image parts).
+    # Never copy this into stream events, citation rows, or persisted metadata.
+    model_message: dict[str, Any] | None = field(default=None, repr=False)
 
     def __str__(self) -> str:
         return self.content

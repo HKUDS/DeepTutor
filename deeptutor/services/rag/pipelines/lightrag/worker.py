@@ -3,9 +3,9 @@
 LightRAG's local storage backends perform synchronous graph merging and
 JSON serialization from inside async methods.  Running those methods on the
 service event loop therefore stalls unrelated API and LLM work.  This module
-provides one narrow boundary: run the indexing coroutine on a worker thread's
-private event loop, while explicitly forwarding network I/O and callbacks to
-the event loop that owns the request.
+provides one narrow boundary: run local LightRAG coroutines on a process-wide
+worker event loop, while explicitly forwarding network I/O and callbacks to
+the event loop that owns each request. LightRAG's storage locks are process-wide.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ import concurrent.futures
 import contextvars
 import inspect
 import logging
+import os
 import threading
 from typing import Any, TypeVar
 
@@ -24,6 +25,36 @@ T = TypeVar("T")
 logger = logging.getLogger(__name__)
 
 DEFAULT_WORKER_CANCEL_GRACE_SECONDS = 10.0
+_WORKER_LOOP_LOCK = threading.Lock()
+_WORKER_LOOP: asyncio.AbstractEventLoop | None = None
+_WORKER_THREAD: threading.Thread | None = None
+_WORKER_PID: int | None = None
+
+
+def _worker_loop() -> asyncio.AbstractEventLoop:
+    """Return the one loop that owns all local LightRAG asyncio locks (#1578)."""
+    global _WORKER_LOOP, _WORKER_THREAD, _WORKER_PID
+    with _WORKER_LOOP_LOCK:
+        pid = os.getpid()
+        if _WORKER_PID != pid:
+            # A fork inherits Python globals, but not the worker's thread.
+            _WORKER_LOOP = None
+            _WORKER_THREAD = None
+            _WORKER_PID = pid
+        if _WORKER_LOOP is None:
+            loop = asyncio.new_event_loop()
+            thread = threading.Thread(
+                target=loop.run_forever,
+                name="lightrag-worker-loop",
+                daemon=True,
+            )
+            thread.start()
+            _WORKER_LOOP = loop
+            _WORKER_THREAD = thread
+        elif _WORKER_THREAD is None or not _WORKER_THREAD.is_alive():
+            # A new loop in this process would reuse locks bound to the old one.
+            raise RuntimeError("LightRAG worker loop stopped; restart DeepTutor.")
+        return _WORKER_LOOP
 
 
 class _WorkerLoopController:
@@ -56,6 +87,8 @@ class _WorkerLoopController:
 
     def cancel(self) -> None:
         """Cancel the worker's actual top-level task, including before bind."""
+        if self._cancel_requested.is_set():
+            return
         self._cancel_requested.set()
         with self._lock:
             loop = self._loop
@@ -65,19 +98,7 @@ class _WorkerLoopController:
         try:
             loop.call_soon_threadsafe(task.cancel)
         except RuntimeError:
-            # The worker completed and closed its loop between the snapshot and
-            # the signal. Its executor future will become done independently.
-            pass
-
-    def stop_loop(self) -> None:
-        """Escalate an async cancellation that exceeded its grace period."""
-        with self._lock:
-            loop = self._loop
-        if loop is None:
-            return
-        try:
-            loop.call_soon_threadsafe(loop.stop)
-        except RuntimeError:
+            # The worker loop failed between the snapshot and the signal.
             pass
 
 
@@ -154,7 +175,7 @@ async def run_in_worker_loop(
     *,
     cancel_grace_seconds: float = DEFAULT_WORKER_CANCEL_GRACE_SECONDS,
 ) -> T:
-    """Run one async indexing job on a worker thread's private event loop.
+    """Run one local LightRAG job on the process-wide worker event loop.
 
     ``job`` and every object it creates should remain confined to that worker.
     The supplied bridge is the only supported route back to the owner loop.
@@ -165,25 +186,34 @@ async def run_in_worker_loop(
     controller = _WorkerLoopController()
     caller_context = contextvars.copy_context()
 
-    async def invoke_job() -> T:
-        return await job(bridge)
+    finished: concurrent.futures.Future[T] = concurrent.futures.Future()
 
-    async def run_bound_job() -> T:
-        controller.bind_current_task()
+    async def run_bound_job() -> None:
         try:
-            return await invoke_job()
+            controller.bind_current_task()
+            result = await job(bridge)
+        except BaseException as exc:
+            finished.set_exception(exc)
+        else:
+            finished.set_result(result)
         finally:
             controller.clear()
 
-    def run() -> T:
-        return asyncio.run(run_bound_job())
+    worker_loop = _worker_loop()
 
-    worker = owner_loop.run_in_executor(None, caller_context.run, run)
+    def submit() -> None:
+        try:
+            worker_loop.create_task(run_bound_job(), context=caller_context)
+        except BaseException as exc:
+            finished.set_exception(exc)
+
+    worker_loop.call_soon_threadsafe(submit)
+    # run_coroutine_threadsafe's Future becomes cancelled before its coroutine
+    # finishes cleanup. This completion Future resolves only after job exits.
+    worker = asyncio.wrap_future(finished)
     try:
-        # Shielding keeps cancellation of the request task from orphaning a
-        # running worker.  Python cannot interrupt arbitrary synchronous code
-        # safely, so cancellation becomes cooperative at the next bridge or
-        # explicit check; meanwhile the owner loop stays alive for cleanup.
+        # Shielding keeps request cancellation from cancelling the completion
+        # signal. The owner waits for the worker's cleanup below.
         return await asyncio.shield(worker)
     except asyncio.CancelledError:
         bridge.cancel()
@@ -200,24 +230,19 @@ async def run_in_worker_loop(
                 bridge.cancel()
                 controller.cancel()
         if not worker.done():
-            # Stopping the private loop interrupts async work and makes
-            # asyncio.run() cancel its remaining tasks during teardown. It
-            # still cannot interrupt arbitrary synchronous Python/native work,
-            # so keep waiting rather than returning an orphan that may mutate
-            # the KB after the request has reported cancellation.
+            # Stopping this loop would strand unrelated jobs and leave locks
+            # bound to a stopped loop. Wait for confirmed cleanup instead.
             logger.error(
-                "LightRAG worker did not stop within %.1fs; forcing worker-loop teardown",
+                "LightRAG worker did not stop within %.1fs; waiting for confirmed cleanup",
                 grace,
             )
-            controller.stop_loop()
             while not worker.done():
                 try:
                     await asyncio.wait({worker})
                 except asyncio.CancelledError:
                     bridge.cancel()
                     controller.cancel()
-                    controller.stop_loop()
-        # Retrieve the terminal exception so the executor Future never emits
+        # Retrieve the terminal exception so the completion Future never emits
         # an "exception was never retrieved" warning.  The caller's
         # cancellation remains authoritative.
         try:

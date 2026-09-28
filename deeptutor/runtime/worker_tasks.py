@@ -29,11 +29,16 @@ def extract_document_to_markdown(
     max_bytes: int | None,
     max_chars: int | None,
 ) -> None:
+    source = Path(source_path)
     text = extract_document_text(
         source_path,
         max_bytes=max_bytes,
         max_chars=max_chars,
     )
+    if source.suffix.lower() == ".bib":
+        from deeptutor.utils.bibtex_converter import bibtex_to_markdown
+
+        text = bibtex_to_markdown(text, source.stem)
     Path(output_path).write_text(text, encoding="utf-8")
 
 

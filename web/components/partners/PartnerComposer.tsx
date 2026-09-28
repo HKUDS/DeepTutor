@@ -9,6 +9,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUp, Info, Paperclip, Square, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import Tooltip from "@/shared/ui/Tooltip";
 import { shouldSubmitOnEnter } from "@/lib/composer-keyboard";
 import {
   getPartnerCommands,
@@ -44,19 +45,36 @@ export const PartnerComposer = memo(function PartnerComposer({
   disabled,
   streaming,
   placeholder,
+  restoreDraft,
 }: {
-  /** Returns true when sending starts an asynchronous streamed response. */
-  onSend: (content: string, attachments: PartnerPendingAttachment[]) => boolean;
+  /** True starts a turn, "handled" consumes a client command, false keeps the draft. */
+  onSend: (content: string, attachments: PartnerPendingAttachment[]) => boolean | "handled";
   onStop?: () => void;
   disabled?: boolean;
   streaming?: boolean;
   placeholder?: string;
+  /** A rejected cross-browser send restores the cleared text and attachments. */
+  restoreDraft?: {
+    id: number;
+    content: string;
+    attachments: PartnerPendingAttachment[];
+  };
 }) {
   const { t } = useTranslation();
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<PartnerPendingAttachment[]>(
     [],
   );
+  useEffect(() => {
+    if (!restoreDraft) return;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setInput(restoreDraft.content);
+      setAttachments(restoreDraft.attachments);
+    });
+    return () => { cancelled = true; };
+  }, [restoreDraft]);
   const attachmentLimits = useAttachmentLimits();
   const [dragging, setDragging] = useState(false);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
@@ -241,10 +259,14 @@ export const PartnerComposer = memo(function PartnerComposer({
   const submit = useCallback(() => {
     const content = input.trim();
     if ((!content && attachments.length === 0) || disabled) return;
-    const awaitsResponse = onSend(content, attachments);
+    const result = onSend(content, attachments);
+    if (result === false) {
+      focusTextarea();
+      return;
+    }
     setInput("");
     setAttachments([]);
-    if (awaitsResponse) {
+    if (result === true) {
       restoreFocusAfterSendRef.current = true;
     } else {
       focusTextarea();
@@ -533,16 +555,17 @@ export const PartnerComposer = memo(function PartnerComposer({
 
       <div className="flex items-center justify-between px-2 pb-2">
         <div className="flex items-center gap-0.5">
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={disabled || streaming}
-            aria-label={t("Attach files")}
-            title={t("Attach files")}
-            className="flex h-7 w-7 items-center justify-center rounded-full text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-30"
-          >
-            <Paperclip className="h-4 w-4" strokeWidth={1.9} />
-          </button>
+          <Tooltip label={t("Attach files")}>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={disabled || streaming}
+              aria-label={t("Attach files")}
+              className="flex h-7 w-7 items-center justify-center rounded-full text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-30"
+            >
+              <Paperclip className="h-4 w-4" strokeWidth={1.9} />
+            </button>
+          </Tooltip>
           <div
             className="relative flex items-center"
             onMouseEnter={() => setShowHelp(true)}
@@ -575,15 +598,16 @@ export const PartnerComposer = memo(function PartnerComposer({
           </div>
         </div>
         {streaming ? (
-          <button
-            type="button"
-            onClick={onStop}
-            aria-label={t("Stop")}
-            title={t("Stop")}
-            className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--foreground)] text-[var(--background)] transition-opacity hover:opacity-90"
-          >
-            <Square className="h-3 w-3" strokeWidth={2.2} fill="currentColor" />
-          </button>
+          <Tooltip label={t("Stop")}>
+            <button
+              type="button"
+              onClick={onStop}
+              aria-label={t("Stop")}
+              className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--foreground)] text-[var(--background)] transition-opacity hover:opacity-90"
+            >
+              <Square className="h-3 w-3" strokeWidth={2.2} fill="currentColor" />
+            </button>
+          </Tooltip>
         ) : (
           <button
             type="button"

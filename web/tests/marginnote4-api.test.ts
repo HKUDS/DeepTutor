@@ -60,10 +60,10 @@ test("every device-bridge call names its library through X-MN4-KB", async () => 
     assert.deepEqual(
       calls.map((c) => [c.method, c.input, c.kb]),
       [
-        ["POST", "/api/marginnote4/pair", "My Lib"],
-        ["GET", "/api/marginnote4/devices", "My Lib"],
-        ["DELETE", "/api/marginnote4/devices/d1", "My Lib"],
-        ["GET", "/api/marginnote4/status", "My Lib"],
+        ["POST", "/api/marginnote4/pair?dt_workspace=", "My Lib"],
+        ["GET", "/api/marginnote4/devices?dt_workspace=", "My Lib"],
+        ["DELETE", "/api/marginnote4/devices/d1?dt_workspace=", "My Lib"],
+        ["GET", "/api/marginnote4/status?dt_workspace=", "My Lib"],
       ],
     );
   } finally {
@@ -102,7 +102,7 @@ test("a device id is escaped into the revoke path", async () => {
   });
   try {
     await revokeMarginNote4Device({ kbName: "Lib", deviceId: "a/b?c" });
-    assert.equal(url, "/api/marginnote4/devices/a%2Fb%3Fc");
+    assert.equal(url, "/api/marginnote4/devices/a%2Fb%3Fc?dt_workspace=");
   } finally {
     restore();
   }

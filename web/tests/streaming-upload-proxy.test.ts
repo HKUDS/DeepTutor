@@ -11,9 +11,13 @@ test("upload proxy streams the original body and preserves the backend response"
       method: "POST",
       headers: {
         connection: "keep-alive, x-remove-me",
+        forwarded: "for=1.2.3.4;host=attacker.example",
         "content-type": "multipart/form-data; boundary=example",
         cookie: "deeptutor_session=token",
         host: "frontend.test",
+        "x-forwarded-for": "1.2.3.4",
+        "x-forwarded-host": "attacker.example",
+        "x-real-ip": "1.2.3.4",
         "x-remove-me": "transport-only",
       },
       body: new Blob(["multipart bytes"]).stream(),
@@ -36,6 +40,11 @@ test("upload proxy streams the original body and preserves the backend response"
       );
       assert.equal(headers.get("cookie"), "deeptutor_session=token");
       assert.equal(headers.has("connection"), false);
+      assert.equal(headers.has("forwarded"), false);
+      assert.equal(headers.has("x-forwarded-for"), false);
+      assert.equal(headers.has("x-forwarded-host"), false);
+      assert.equal(headers.has("x-real-ip"), false);
+      assert.equal(headers.get("x-deeptutor-frontend-host"), "frontend.test");
       assert.equal(headers.has("host"), false);
       assert.equal(headers.has("x-remove-me"), false);
       assert.equal((init as StreamingRequestInit).duplex, "half");

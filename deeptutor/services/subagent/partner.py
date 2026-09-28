@@ -4,8 +4,8 @@ Unlike the local-CLI backends (Claude Code / Codex) this drives no subprocess:
 it puts the question to a running partner through the partner manager's web
 entry point, exactly as if the user opened a new session on the partner page.
 The partner answers with its own chat loop — its soul, library and skills — and
-streams its native trace back, which we map onto the coarse subagent event
-channels so the sidebar renders it like any other consulted agent.
+uses the same live web turn as the native partner chat. The sidebar subscribes
+to that turn directly; coarse events remain available to the outer chat trace.
 
 Session continuity is the whole point of the design. ``session_id`` here IS the
 *partner session key*. The first consult of a DeepTutor chat session has none,
@@ -19,6 +19,8 @@ first consult's question.
 
 from __future__ import annotations
 
+import asyncio
+from contextlib import suppress
 import logging
 from typing import TYPE_CHECKING
 import uuid
@@ -135,18 +137,59 @@ class PartnerBackend(SubagentBackend):
                 events += 1
                 await on_event(out)
 
+        # A user may still be finishing a sidebar follow-up. Do not mistake
+        # that response for the answer to this new consultation question.
+        existing = manager.subscribe_web_turn(pid, session_key)
+        if existing is not None and existing.task is not None:
+            with suppress(asyncio.CancelledError):
+                # Shield the user's turn from cancellation of this waiter.
+                await asyncio.shield(existing.task)
+            if asyncio.current_task().cancelling():
+                raise asyncio.CancelledError
+
+        live = manager.start_web_turn(pid, session_key, question, media=list(images or []))
+        queue = live.subscribe()
+        identity = {"partner_id": pid, "partner_session_key": session_key}
+        reply = ""
+        failure = ""
         try:
-            reply = await manager.send_message(
-                pid,
-                question,
-                session_key=session_key,
-                media=list(images or []),
-                on_event=relay,
-            )
-        except Exception as exc:  # pragma: no cover - defensive: surface, don't crash the turn
-            logger.warning("Partner consult failed (%s): %s", pid, exc, exc_info=True)
+            # Publish only after the native turn exists so the sidebar can
+            # attach immediately, replay its backlog and restore after refresh.
+            await on_event(SubagentEvent("log", pid, meta=identity))
+            while True:
+                frame = await queue.get()
+                kind = frame.get("type")
+                if kind == "stream_event":
+                    from deeptutor.core.stream import StreamEvent, StreamEventType
+
+                    raw = frame["event"]
+                    await relay(
+                        StreamEvent(
+                            type=StreamEventType(raw["type"]),
+                            content=raw.get("content", ""),
+                            metadata=raw.get("metadata") or {},
+                        )
+                    )
+                elif kind == "content":
+                    reply = str(frame.get("content") or "")
+                elif kind == "error":
+                    failure = str(frame.get("content") or "Partner request failed.")
+                elif kind == "stopped":
+                    failure = "Partner response stopped."
+                    break
+                elif kind == "done":
+                    break
+        except asyncio.CancelledError:
+            if live.task is not None and not live.task.done():
+                live.task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await live.task
+            raise
+        finally:
+            live.subscribers.discard(queue)
+        if failure:
             return ConsultResult(
-                session_id=session_key, success=False, error=str(exc), event_count=events
+                session_id=session_key, success=False, error=failure, event_count=events
             )
 
         # Defensive: surface any tool call that never produced a result event so

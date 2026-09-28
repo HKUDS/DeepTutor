@@ -1,5 +1,7 @@
 "use client";
 
+import { navigateTask } from "@/lib/workspace-scope";
+import { sessionWorkspaceId } from "@/lib/session-api";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
@@ -49,10 +51,10 @@ export default function UtilitySidebar() {
       // Labels only name a heading, so losing them costs grouping, not the list.
       const [nextSessions, nextCourses, nextTopics, nextCollections] =
         await Promise.all([
-          listSessions(50, 0, { force: true }),
-          listCourses({ force: true }),
+          listSessions(50, 0, { force: true, allWorkspaces: true }),
+          listCourses({ force: true }).catch(() => [] as StudyCourse[]),
           fetchMasteryTopicIndex().catch(() => [] as MasteryTopicLabel[]),
-          fetchReadingCollectionIndex(),
+          fetchReadingCollectionIndex().catch(() => [] as ReadingCollectionLabel[]),
         ]);
       setSessions(nextSessions);
       setCourses(nextCourses);
@@ -84,14 +86,14 @@ export default function UtilitySidebar() {
     async (sessionId: string) => {
       setActiveSessionId(sessionId);
       const session = sessions.find((item) => item.session_id === sessionId);
-      router.push(session ? sessionRoute(session) : `/chat/${sessionId}`);
+      navigateTask(session ? sessionRoute(session) : `/chat/${sessionId}`, router.push);
     },
     [router, sessions, setActiveSessionId],
   );
 
   const handleRenameSession = useCallback(
     async (sessionId: string, title: string) => {
-      const updated = await updateSessionTitle(sessionId, title);
+      const updated = await updateSessionTitle(sessionId, title, sessionWorkspaceId(sessions.find(item => item.session_id === sessionId)));
       setSessions((prev) =>
         prev.map((session) =>
           session.session_id === sessionId
@@ -104,13 +106,13 @@ export default function UtilitySidebar() {
         ),
       );
     },
-    [],
+    [sessions],
   );
 
   const handleDeleteSession = useCallback(
     async (sessionId: string) => {
-      if (!window.confirm(t("Delete this chat history?"))) return;
-      await deleteSession(sessionId);
+      if (!window.confirm(t("Permanently delete this chat and its tutor threads? This cannot be undone."))) return;
+      await deleteSession(sessionId, sessionWorkspaceId(sessions.find(item => item.session_id === sessionId)));
       setSessions((prev) =>
         prev.filter((session) => session.session_id !== sessionId),
       );
@@ -118,12 +120,12 @@ export default function UtilitySidebar() {
         setActiveSessionId(null);
       }
     },
-    [activeSessionId, setActiveSessionId, t],
+    [activeSessionId, setActiveSessionId, t, sessions],
   );
 
   const handleOrganizeSession = useCallback(
     async (sessionId: string, patch: SessionOrganizationPatch) => {
-      const updated = await updateSessionOrganization(sessionId, patch);
+      const updated = await updateSessionOrganization(sessionId, patch, sessionWorkspaceId(sessions.find(item => item.session_id === sessionId)));
       setSessions((previous) =>
         previous.map((session) =>
           session.session_id === sessionId
@@ -131,12 +133,13 @@ export default function UtilitySidebar() {
                 ...session,
                 updated_at: updated.updated_at,
                 preferences: updated.preferences,
+                content_workspace_id: "workspace_id" in patch ? updated.preferences?.workspace_id || "" : session.content_workspace_id,
               }
             : session,
         ),
       );
     },
-    [],
+    [sessions],
   );
 
   return (

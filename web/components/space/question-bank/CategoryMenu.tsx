@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Check, FolderPlus, Loader2, Plus } from "lucide-react";
 import { notify } from "@/lib/notifications";
 import type { NotebookCategory } from "@/lib/notebook-api";
+import Tooltip from "@/shared/ui/Tooltip";
 
 interface CategoryMenuProps {
   categories: NotebookCategory[];
@@ -105,26 +106,29 @@ export default function CategoryMenu({
 
   return (
     <div ref={rootRef} className="relative">
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => setOpen((v) => !v)}
-        title={t("Add to category")}
-        className={`inline-flex items-center gap-1.5 rounded-lg text-[11.5px] font-medium transition-colors disabled:opacity-40 ${
-          variant === "outlined" ? "border px-2 py-1.5" : "p-1.5"
-        } ${
-          open
-            ? variant === "outlined"
-              ? "border-[var(--primary)]/40 bg-[var(--primary)]/10 text-[var(--primary)]"
-              : "bg-[var(--muted)]/60 text-[var(--primary)]"
-            : variant === "outlined"
-              ? "border-[var(--border)] text-[var(--muted-foreground)] hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]"
-              : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]"
-        }`}
-      >
-        <FolderPlus className="h-3.5 w-3.5" />
-        {label ? <span>{label}</span> : null}
-      </button>
+      <Tooltip label={t("Add tag")} suppressed={open}>
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => setOpen((v) => !v)}
+          aria-label={label || t("Add tag")}
+          aria-expanded={open}
+          className={`inline-flex items-center gap-1.5 rounded-lg text-[11.5px] font-medium transition-colors disabled:opacity-40 ${
+            variant === "outlined" ? "border px-2 py-1.5" : "p-1.5"
+          } ${
+            open
+              ? variant === "outlined"
+                ? "border-[var(--primary)]/40 bg-[var(--primary)]/10 text-[var(--primary)]"
+                : "bg-[var(--muted)]/60 text-[var(--primary)]"
+              : variant === "outlined"
+                ? "border-[var(--border)] text-[var(--muted-foreground)] hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]"
+                : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]"
+          }`}
+        >
+          <FolderPlus className="h-3.5 w-3.5" />
+          {label ? <span>{label}</span> : null}
+        </button>
+      </Tooltip>
 
       {open && (
         <div
@@ -135,7 +139,7 @@ export default function CategoryMenu({
           <div className="max-h-56 overflow-y-auto p-1.5">
             {categories.length === 0 && (
               <p className="px-2 py-3 text-center text-[11.5px] text-[var(--muted-foreground)]">
-                {t("No categories yet. Type a name below to create one.")}
+                {t("No tags yet. Type a name below to create one.")}
               </p>
             )}
             {categories.map((category) => {
@@ -181,22 +185,24 @@ export default function CategoryMenu({
                 if (event.key === "Enter" && !event.nativeEvent.isComposing)
                   void handleCreate();
               }}
-              placeholder={t("New category…")}
+              placeholder={t("New tag…")}
               className="min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-1.5 text-[12px] text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-foreground)] focus:border-[var(--primary)]/50"
             />
-            <button
-              type="button"
-              disabled={busy || !name.trim()}
-              onClick={() => void handleCreate()}
-              title={t("Create and add")}
-              className="shrink-0 rounded-lg bg-[var(--primary)] p-1.5 text-white transition-opacity disabled:opacity-30"
-            >
-              {busy ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Plus className="h-3.5 w-3.5" />
-              )}
-            </button>
+            <Tooltip label={t("Create and add")}>
+              <button
+                type="button"
+                disabled={busy || !name.trim()}
+                onClick={() => void handleCreate()}
+                aria-label={t("Create and add")}
+                className="shrink-0 rounded-lg bg-[var(--primary)] p-1.5 text-white transition-opacity disabled:opacity-30"
+              >
+                {busy ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Plus className="h-3.5 w-3.5" />
+                )}
+              </button>
+            </Tooltip>
           </div>
         </div>
       )}

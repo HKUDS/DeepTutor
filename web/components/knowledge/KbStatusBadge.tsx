@@ -5,6 +5,7 @@ import { AlertTriangle, CheckCircle2, Clock3 } from "lucide-react";
 import {
   kbHasLiveProgress,
   kbNeedsReindex,
+  kbEmbeddingUnavailable,
   resolveKbStatus,
   type KnowledgeBase,
 } from "@/lib/knowledge-helpers";
@@ -23,27 +24,34 @@ export default function KbStatusBadge({
   const needsReindex = kbNeedsReindex(kb);
   const isLive = kbHasLiveProgress(kb) || isReindexingLocally;
   const isError = status === "error";
-  const isReady = status === "ready" && !needsReindex;
+  const embeddingUnavailable = kbEmbeddingUnavailable(kb);
+  const isReady = status === "ready" && !needsReindex && !embeddingUnavailable;
 
-  const tone = needsReindex
-    ? "bg-amber-100 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300"
-    : isError
-      ? "bg-red-100 text-red-700 dark:bg-red-950/30 dark:text-red-300"
-      : isLive
-        ? "bg-sky-100 text-sky-700 dark:bg-sky-950/30 dark:text-sky-300"
-        : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300";
+  const tone =
+    needsReindex || embeddingUnavailable
+      ? "bg-amber-100 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300"
+      : isError
+        ? "bg-red-100 text-red-700 dark:bg-red-950/30 dark:text-red-300"
+        : isLive
+          ? "bg-sky-100 text-sky-700 dark:bg-sky-950/30 dark:text-sky-300"
+          : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300";
 
   const Icon = isLive ? Clock3 : isReady ? CheckCircle2 : AlertTriangle;
 
-  const label = needsReindex
-    ? t("Needs reindex")
-    : isError
-      ? t("Error")
-      : isLive
-        ? t("Processing live")
-        : isReady
-          ? t("Ready")
-          : status.replaceAll("_", " ");
+  const label =
+    !isLive && embeddingUnavailable
+      ? kb.metadata?.embedding_status === "missing"
+        ? t("Embedding model deleted")
+        : t("Check embedding model")
+      : needsReindex
+        ? t("Needs reindex")
+        : isError
+          ? t("Error")
+          : isLive
+            ? t("Processing live")
+            : isReady
+              ? t("Ready")
+              : status.replaceAll("_", " ");
 
   return (
     <span

@@ -7,6 +7,7 @@ from typing import Any, Dict
 import httpx
 
 from deeptutor.services.embedding.request_options import should_send_embedding_dimensions
+from deeptutor.services.llm.error_mapping import parse_retry_after_seconds
 from deeptutor.services.llm.openai_http_client import disable_ssl_verify_enabled
 
 from .base import (
@@ -248,8 +249,10 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
                         # 429 会连挂 8 轮后仍然 raise，不会无限空转。
                         if rate_limit_retries < 8:
                             rate_limit_retries += 1
-                            retry_after = float(response.headers.get("Retry-After", 0))
-                            await asyncio.sleep(max(retry_after, 60))
+                            retry_after = parse_retry_after_seconds(
+                                response.headers.get("Retry-After")
+                            )
+                            await asyncio.sleep(max(retry_after or 0.0, 60))
                             try:
                                 api_key = self._auth_api_key()
                             except RuntimeError:
@@ -259,7 +262,7 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
                                 api_key = self._auth_api_key()
                             self._set_auth_header(headers, api_key)
                             continue
-                        retry_after = float(response.headers.get("Retry-After", 0))
+                        retry_after = parse_retry_after_seconds(response.headers.get("Retry-After"))
                         raise EmbeddingProviderError(
                             "Embedding provider remained rate limited after key rotation"
                             + (f" (Retry-After: {retry_after:g}s)" if retry_after else ""),

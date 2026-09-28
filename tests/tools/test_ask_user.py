@@ -7,6 +7,8 @@ single-question shorthand which auto-wraps into a one-element list.
 
 from __future__ import annotations
 
+import pytest
+
 from deeptutor.tools.ask_user import (
     MAX_HEADER_CHARS,
     MAX_OPTION_CHARS,
@@ -281,6 +283,44 @@ def test_v3_drops_model_supplied_other_option() -> None:
     )
     assert payload is not None
     assert _labels(payload.questions[0]) == ("A", "B")
+
+
+@pytest.mark.parametrize(
+    ("options", "expected"),
+    [
+        (["First answer", " first   ANSWER "], ("First answer",)),
+        (["Straße", "STRASSE"], ("Straße",)),
+        (
+            [
+                {"label": "First answer", "description": "keep"},
+                {"label": "  first\tanswer  ", "description": "drop"},
+            ],
+            ("First answer",),
+        ),
+    ],
+)
+def test_ask_user_drops_duplicate_labels_like_mastery_quiz(options, expected) -> None:
+    """A visible duplicate makes an interactive question unanswerable (#1409)."""
+    payload, err = build_ask_user_payload(
+        questions=[{"prompt": "Which answer?", "options": options}]
+    )
+    assert err is None
+    assert payload is not None
+    assert _labels(payload.questions[0]) == expected
+
+
+def test_ask_user_deduplicates_even_when_free_text_is_disabled() -> None:
+    payload, _ = build_ask_user_payload(
+        questions=[
+            {
+                "prompt": "Which answer?",
+                "options": ["Answer", " answer "],
+                "allow_free_text": False,
+            }
+        ]
+    )
+    assert payload is not None
+    assert _labels(payload.questions[0]) == ("Answer",)
 
 
 def test_v3_keeps_other_option_when_free_text_disabled() -> None:

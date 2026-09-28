@@ -84,3 +84,38 @@ test("durations read as compact human time", () => {
   assert.equal(formatTurnDuration(64), "1m 4s");
   assert.equal(formatTurnDuration(3600), "1h");
 });
+
+test("opening a trace does not move the number it was showing", () => {
+  // A collapsed turn is timed from its preview plus the span recorded over
+  // the whole stream; opening it swaps in every event the server holds. The
+  // label has to survive that, so the recorded span must travel with the
+  // fetched events — dropping it left the duration to be re-derived, and an
+  // 11s turn read 12s the moment it was opened.
+  const bounds = { started_at: 100, ended_at: 111.4 };
+  const preview = [event("tool_call", 104), event("done", 111)];
+  const full = [
+    event("stage_start", 100.2),
+    event("thinking", 101),
+    event("tool_call", 104),
+    event("thinking", 108),
+    event("done", 111),
+  ];
+
+  const collapsed = getTurnDurationSeconds(preview, 0, false, bounds);
+  const opened = getTurnDurationSeconds(full, 0, false, bounds);
+  assert.equal(collapsed, opened);
+  assert.equal(formatTurnDuration(collapsed ?? 0), "11s");
+  assert.equal(formatTurnDuration(opened ?? 0), "11s");
+});
+
+test("losing the recorded span is what made the number move", () => {
+  // Guards the reason rather than the symptom: with no bounds to anchor it,
+  // the same two event sets disagree. This is the state the fetch used to
+  // leave the message in.
+  const preview = [event("tool_call", 104), event("done", 111)];
+  const full = [event("stage_start", 100.2), event("done", 111)];
+  assert.notEqual(
+    getTurnDurationSeconds(preview, 0, false, null),
+    getTurnDurationSeconds(full, 0, false, null),
+  );
+});

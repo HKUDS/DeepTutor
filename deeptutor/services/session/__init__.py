@@ -4,6 +4,7 @@ from .protocol import SessionStoreProtocol
 from .sqlite_store import (
     SQLiteSessionStore,
     get_sqlite_session_store,
+    get_sqlite_session_store_for,
     make_imported_session_id,
 )
 from .turn_runtime import TurnRuntimeManager, get_turn_runtime_manager
@@ -43,6 +44,7 @@ __all__ = [
     "TurnRuntimeManager",
     "get_session_store",
     "get_sqlite_session_store",
+    "get_sqlite_session_store_for",
     "get_turn_runtime_manager",
     "make_imported_session_id",
 ]

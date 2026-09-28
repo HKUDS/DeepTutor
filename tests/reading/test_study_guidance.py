@@ -12,6 +12,7 @@ from deeptutor.api.routers import reading_extensions
 from deeptutor.reading import ReadingStore
 from deeptutor.reading.extensions import ReadingContext, ReadingExtensionRegistry
 from deeptutor.reading.study_guidance import StudyGuidanceExtension
+from deeptutor.services.llm.reasoning_params import RETRY_REASONING_EFFORT
 from deeptutor.services.path_service import PathService
 
 
@@ -57,6 +58,52 @@ async def test_study_guidance_returns_a_bounded_card(monkeypatch):
     assert prompt["selection"] == "verified phrase"
     assert "Before context" in prompt["surrounding_context"]
     assert calls[0]["response_format"] == {"type": "json_object"}
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_study_guidance_retries_an_empty_model_answer_with_lower_reasoning(monkeypatch):
+    calls = []
+
+    async def complete(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            return ""
+        return json.dumps(
+            {
+                "focus": "Connect the phrase to its surrounding argument.",
+                "steps": [
+                    "Locate the two claims nearest the selected phrase.",
+                    "Explain how the phrase links those two claims.",
+                    "Rewrite the linked idea in one sentence.",
+                ],
+            }
+        )
+
+    monkeypatch.setattr("deeptutor.reading.study_guidance.complete", complete)
+    result = await StudyGuidanceExtension().run_action("guide", _context())
+
+    assert len(result.payload["steps"]) == 3
+    assert [call["reasoning_effort"] for call in calls] == [
+        None,
+        RETRY_REASONING_EFFORT,
+    ]
+    assert calls[0]["prompt"] == calls[1]["prompt"]
+
+
+@pytest.mark.asyncio
+async def test_study_guidance_stops_after_two_empty_model_answers(monkeypatch):
+    calls = []
+
+    async def complete(**kwargs):
+        calls.append(kwargs)
+        return ""
+
+    monkeypatch.setattr("deeptutor.reading.study_guidance.complete", complete)
+    with pytest.raises(ValueError, match="invalid JSON"):
+        await StudyGuidanceExtension().run_action("guide", _context())
+
+    assert len(calls) == 2
 
 
 @pytest.mark.asyncio

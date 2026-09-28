@@ -1,5 +1,6 @@
 "use client";
 
+import Tooltip from "@/shared/ui/Tooltip";
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -164,13 +165,14 @@ export default function MemoryUsageItem() {
           </span>
         </span>
         {usage.partial && (
-          <span
-            title={t(
+          <Tooltip
+            label={t(
               "Only the backend and its own children. Start DeepTutor through the launcher to include the web server.",
             )}
+            side="top"
           >
-            {t("(backend only)")}
-          </span>
+            <span role="note" tabIndex={0}>{t("(backend only)")}</span>
+          </Tooltip>
         )}
       </div>
     </Fragment>

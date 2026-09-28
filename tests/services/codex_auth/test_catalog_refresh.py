@@ -35,6 +35,8 @@ async def test_refresh_discovers_version_gated_model_and_preserves_selection(
     requests: list[httpx.Request] = []
 
     def respond(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "registry.npmjs.org":
+            return httpx.Response(503)
         requests.append(request)
         version = request.url.params["client_version"]
         assert version in {"0.145.0", "0.153.4"}
@@ -56,7 +58,7 @@ async def test_refresh_discovers_version_gated_model_and_preserves_selection(
     )
     model_catalog = ModelCatalogService(tmp_path / "model_catalog.json")
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
-        catalog = CodexModelCatalog(store, http=http, clock=lambda: 1_000)
+        catalog = CodexModelCatalog(store, http=http, version_http=http, clock=lambda: 1_000)
         # Seed a still-fresh pre-upgrade cache and a user's selected model.
         previous = CatalogSnapshot(
             models=parse_models_response(old_payload),
@@ -75,7 +77,8 @@ async def test_refresh_discovers_version_gated_model_and_preserves_selection(
         before = model_catalog.load()
         status = await service.refresh_models()
 
-        assert requests[0].headers["if-none-match"] == '"old-catalog"'
+        # Legacy caches have no request version, so their ETag cannot be reused.
+        assert "if-none-match" not in requests[0].headers
         assert [m["model"] for m in status["models"]].count("gpt-6-astra") == 1
         refreshed = model_catalog.load()
         llm = refreshed["services"]["llm"]

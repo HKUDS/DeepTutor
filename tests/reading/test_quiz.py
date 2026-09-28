@@ -12,6 +12,7 @@ from deeptutor.api.routers import reading_extensions
 from deeptutor.reading import ReadingStore
 from deeptutor.reading.extensions import ReadingContext, ReadingExtensionRegistry
 from deeptutor.reading.quiz import ReadingQuizExtension
+from deeptutor.services.llm.reasoning_params import RETRY_REASONING_EFFORT
 from deeptutor.services.path_service import PathService
 
 
@@ -73,6 +74,41 @@ async def test_quiz_returns_a_bounded_quiz_without_grounding_metadata(monkeypatc
         "correct_choice_index": 1,
     }
     assert calls[0]["response_format"] == {"type": "json_object"}
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_quiz_retries_an_empty_model_answer_with_lower_reasoning(monkeypatch):
+    calls = []
+
+    async def complete(**kwargs):
+        calls.append(kwargs)
+        return "" if len(calls) == 1 else _model_response()
+
+    monkeypatch.setattr("deeptutor.reading.quiz.complete", complete)
+    result = await ReadingQuizExtension().run_action("start", _context())
+
+    assert len(result.payload["questions"]) == 3
+    assert [call["reasoning_effort"] for call in calls] == [
+        None,
+        RETRY_REASONING_EFFORT,
+    ]
+    assert calls[0]["prompt"] == calls[1]["prompt"]
+
+
+@pytest.mark.asyncio
+async def test_quiz_stops_after_two_empty_model_answers(monkeypatch):
+    calls = []
+
+    async def complete(**kwargs):
+        calls.append(kwargs)
+        return ""
+
+    monkeypatch.setattr("deeptutor.reading.quiz.complete", complete)
+    with pytest.raises(ValueError, match="invalid JSON"):
+        await ReadingQuizExtension().run_action("start", _context())
+
+    assert len(calls) == 2
 
 
 @pytest.mark.asyncio
@@ -182,10 +218,12 @@ def test_quiz_crosses_the_api_boundary_with_stored_text(monkeypatch, tmp_path):
         encoding="utf-8",
     )
     material = ReadingStore().ingest(source)
-    captured = {}
+    calls = []
 
     async def complete(**kwargs):
-        captured.update(kwargs)
+        calls.append(kwargs)
+        if len(calls) == 1:
+            return ""
         return _model_response(evidence="verified phrase supports the answer")
 
     monkeypatch.setattr("deeptutor.reading.quiz.complete", complete)
@@ -207,10 +245,38 @@ def test_quiz_crosses_the_api_boundary_with_stored_text(monkeypatch, tmp_path):
     body = response.json()
     assert body["type"] == "quiz"
     assert len(body["payload"]["questions"]) == 3
-    prompt = json.loads(captured["prompt"])
+    assert len(calls) == 2
+    prompt = json.loads(calls[1]["prompt"])
     assert prompt["selection"] == "verified phrase supports the answer"
     assert (
         "Stored passage where a verified phrase supports the answer."
         in prompt["surrounding_context"]
     )
     assert "forged phrase" not in prompt["surrounding_context"]
+
+
+@pytest.mark.asyncio
+async def test_evidence_matches_across_margin_line_numbers(monkeypatch):
+    """A review copy's line numbers sit on lines of their own in the unit text;
+    a model quoting the sentence leaves them out and rejoins the hyphenated
+    word, and that is still a quote from the page."""
+    context = ReadingContext(
+        material_id="material",
+        locator=1,
+        locale="en",
+        visible_text=(
+            "while existing RAG systems fall short in\n3\ndelivering personalized, "
+            "guided feedback. To bridge this gap, we present DeepTu-\n4\ntor, a fully "
+            "open-source agentic framework"
+        ),
+    )
+
+    async def complete(**_kwargs):
+        return _model_response(
+            evidence="fall short in delivering personalized, guided feedback. "
+            "To bridge this gap, we present DeepTutor"
+        )
+
+    monkeypatch.setattr("deeptutor.reading.quiz.complete", complete)
+    result = await ReadingQuizExtension().run_action("start", context)
+    assert len(result.payload["questions"]) == 3

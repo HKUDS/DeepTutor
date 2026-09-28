@@ -274,7 +274,6 @@ export default function PartnerChannels({
                   <button
                     type="button"
                     onClick={() => setActiveChannel(name)}
-                    title={unavailable ? entry.unavailable_reason : undefined}
                     className={`group flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[13px] transition-colors ${
                       isActive
                         ? "bg-[var(--muted)] font-medium text-[var(--foreground)]"
@@ -286,11 +285,10 @@ export default function PartnerChannels({
                       {entry.display_name}
                     </span>
                     {enabled && (
-                      <span
-                        aria-label={t("Enabled")}
-                        title={t("Enabled")}
-                        className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500"
-                      />
+                      <span className="inline-flex shrink-0 items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400">
+                        <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                        {t("Enabled")}
+                      </span>
                     )}
                   </button>
                 </li>

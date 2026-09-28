@@ -5,6 +5,7 @@ import { CheckSquare, FolderMinus, X } from "lucide-react";
 import type { NotebookCategory } from "@/lib/notebook-api";
 import CategoryMenu from "./CategoryMenu";
 import type { BankScope } from "./useQuestionBank";
+import Tooltip from "@/shared/ui/Tooltip";
 
 interface BankSelectionBarProps {
   count: number;
@@ -60,7 +61,7 @@ export default function BankSelectionBar({
 
       <CategoryMenu
         categories={categories}
-        label={t("Add to category")}
+        label={t("Add tag")}
         align="left"
         direction="up"
         variant="outlined"
@@ -75,18 +76,20 @@ export default function BankSelectionBar({
           className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-2 py-1.5 text-[11.5px] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]"
         >
           <FolderMinus className="h-3.5 w-3.5" />
-          {t("Remove from category")}
+          {t("Remove tag")}
         </button>
       )}
 
-      <button
-        type="button"
-        onClick={onClear}
-        title={t("Clear selection")}
-        className="rounded-lg p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]"
-      >
-        <X className="h-3.5 w-3.5" />
-      </button>
+      <Tooltip label={t("Clear selection")} side="top">
+        <button
+          type="button"
+          onClick={onClear}
+          aria-label={t("Clear selection")}
+          className="rounded-lg p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </Tooltip>
     </div>
   );
 }

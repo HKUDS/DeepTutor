@@ -117,6 +117,12 @@ services:
       # - DEEPTUTOR_EXTRAS=math-animator,partners
       # - DEEPTUTOR_APT_PACKAGES=ffmpeg
 
+      # Unraid / NAS bind mounts: set these to the host owner of ./data
+      # instead of chowning the volume or running the app as root.
+      # The entrypoint remaps the unprivileged `deeptutor` user to these ids.
+      # - PUID=99
+      # - PGID=100
+
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${DEEPTUTOR_DOCKER_BACKEND_PORT:-8001}/health/ready"]
       interval: 30s

@@ -106,10 +106,10 @@ class KnowledgeBaseConfigService:
         return payload
 
     def _save(self) -> None:
+        from deeptutor.services.file_io import atomic_write_json
+
         self._config = self._normalize_payload(self._config)
-        self.config_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.config_path, "w", encoding="utf-8") as handle:
-            json.dump(self._config, handle, indent=2, ensure_ascii=False)
+        atomic_write_json(self.config_path, self._config)
 
     def _refresh(self) -> None:
         """Re-read kb_config.json so this singleton sees changes made by

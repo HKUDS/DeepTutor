@@ -1,5 +1,10 @@
 "use client";
 
+import { knowledgeBaseRef } from "@/lib/knowledge-helpers";
+import { moveKnowledgeBase, resourceUsage } from "@/lib/workspaces-api";
+import { apiFetch, apiUrl } from "@/lib/api";
+import type { EmbeddingModelSelection } from "@/features/knowledge/model/types";
+
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
@@ -12,7 +17,11 @@ import {
   decodeResourceSegment,
   knowledgeBaseRoute,
 } from "@/lib/resource-routes";
-import type { IndexingLLMSelection } from "@/features/knowledge/model/types";
+import type {
+  IndexingLLMSelection,
+  LinkedFolderInfo,
+  SyncFolderResponse,
+} from "@/features/knowledge/model/types";
 
 const panelLoading = () => (
   <div
@@ -31,9 +40,12 @@ const KnowledgeBaseDetail = dynamic(() => import("./KnowledgeBaseDetail"), {
 });
 const EngineDetail = dynamic(
   () => import("@/features/knowledge/components/engines/EngineDetail"),
-  { loading: panelLoading },
+  {
+    loading: panelLoading,
+  },
 );
 const CreateKbModal = dynamic(() => import("./CreateKbModal"));
+const ConnectKiwixModal = dynamic(() => import("./ConnectKiwixModal"));
 
 export default function KnowledgePage() {
   const { t } = useTranslation();
@@ -62,15 +74,18 @@ export default function KnowledgePage() {
     uploadFiles,
     setDefault,
     reindex,
-    updatePendingIndexingPolicy,
     retry,
     deleteKb,
     connectObsidian,
     connectLinkedFolder,
+    linkFolder,
+    unlinkFolder,
+    syncLinkedFolder,
     connectLightRagServer,
     connectWeKnora,
     connectMarginNote4,
     connectIma,
+    connectKiwix,
   } = useKnowledgeBases();
 
   // Connected subagents are stored as ``type: subagent`` KBs so the chat
@@ -90,6 +105,7 @@ export default function KnowledgePage() {
   const [homeSection, setHomeSection] =
     useState<KnowledgeHomeSection>(initialHomeSection);
   const [createOpen, setCreateOpen] = useState(false);
+  const [kiwixOpen, setKiwixOpen] = useState(false);
   const [createPreset, setCreatePreset] = useState<{
     mode: "new" | "link";
     source?: string;
@@ -99,7 +115,11 @@ export default function KnowledgePage() {
     setCreatePreset(null);
     setCreateOpen(true);
   }, []);
-  const openSource = useCallback((source: "obsidian" | "marginnote4") => {
+  const openSource = useCallback((source: "obsidian" | "marginnote4" | "kiwix") => {
+    if (source === "kiwix") {
+      setKiwixOpen(true);
+      return;
+    }
     setCreatePreset({ mode: "link", source });
     setCreateOpen(true);
   }, []);
@@ -143,17 +163,41 @@ export default function KnowledgePage() {
     // request is still in flight. Once loading finishes, the normal existence
     // check below may repair an actually stale name to the default KB.
     if (loading && explicitSelection) return explicitSelection;
-    if (explicitSelection && kbs.some((kb) => kb.name === explicitSelection)) {
-      return explicitSelection;
-    }
+    const exact = kbs.find((kb) => knowledgeBaseRef(kb) === explicitSelection);
+    if (exact) return knowledgeBaseRef(exact);
+    const legacy = kbs.filter((kb) => kb.name === explicitSelection);
+    if (legacy.length === 1) return knowledgeBaseRef(legacy[0]);
+    if (explicitSelection) return explicitSelection;
     if (!kbs.length) return null;
-    return kbs.find((kb) => kb.is_default)?.name ?? kbs[0].name;
+    return knowledgeBaseRef(kbs.find((kb) => kb.is_default) ?? kbs[0]);
   }, [explicitSelection, kbs, loading]);
 
   const selectedKb = useMemo(
-    () => kbs.find((kb) => kb.name === selectedKbName) ?? null,
+    () => kbs.find((kb) => knowledgeBaseRef(kb) === selectedKbName) ?? null,
     [kbs, selectedKbName],
   );
+
+  // Saved links may still contain the original qualified ID after a move.
+  // The detail endpoint resolves that ID through the server's move alias.
+  useEffect(() => {
+    if (
+      loading ||
+      !explicitSelection ||
+      kbs.some((kb) => knowledgeBaseRef(kb) === explicitSelection || kb.name === explicitSelection)
+    ) return;
+    let cancelled = false;
+    void apiFetch(
+      apiUrl(`/api/knowledge-bases/${encodeURIComponent(explicitSelection)}?resource_library=true`),
+    )
+      .then((response) => response.ok ? response.json() : null)
+      .then((detail: { id?: string } | null) => {
+        if (!cancelled && detail?.id && kbs.some((kb) => knowledgeBaseRef(kb) === detail.id)) {
+          setExplicitSelection(detail.id);
+        }
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [explicitSelection, kbs, loading]);
 
   // The effective engine selection: respect the pick if it still exists.
   const selectedProvider = useMemo(
@@ -194,18 +238,33 @@ export default function KnowledgePage() {
       name: string;
       provider: string;
       files: File[];
+      storageWorkspaceId?: string;
       pageindexMode?: "flash" | "standard";
       searchMode?: string;
     }) => {
       try {
-        await createKb(params);
-        openKb(params.name);
+        const result = await createKb(params);
+        openKb(result.id || `account:kb:${params.name}`);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
         throw err;
       }
     },
     [createKb, openKb, setError],
+  );
+
+  const handleMove = useCallback(
+    async (sourceId: string, targetWorkspaceId: string) => {
+      try {
+        const result = await moveKnowledgeBase(sourceId, targetWorkspaceId);
+        await refresh({ force: true });
+        openKb(result.target_id);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+        throw err;
+      }
+    },
+    [openKb, refresh, setError],
   );
 
   const handleSetDefault = useCallback(
@@ -221,10 +280,18 @@ export default function KnowledgePage() {
 
   const handleDelete = useCallback(
     async (name: string) => {
-      if (!window.confirm(t('Delete knowledge base "{{name}}"?', { name }))) {
-        return;
-      }
       try {
+        const workspaces = await resourceUsage("knowledge_bases", name);
+        const impact = workspaces.length
+          ? "\n\n" +
+            t("Used by workspaces: {{names}}", { names: workspaces.join(", ") })
+          : "";
+        if (
+          !window.confirm(
+            t('Delete knowledge base "{{name}}"?', { name }) + impact,
+          )
+        )
+          return;
         await deleteKb(name);
         if (explicitSelection === name) {
           setExplicitSelection(null);
@@ -249,28 +316,56 @@ export default function KnowledgePage() {
     [setError, uploadFiles],
   );
 
-  const handleReindex = useCallback(
-    async (kbName: string, indexingLLM?: IndexingLLMSelection) => {
+  const handleLinkFolder = useCallback(
+    async (kbName: string, folderPath: string): Promise<LinkedFolderInfo> => {
       try {
-        await reindex(kbName, indexingLLM);
+        return await linkFolder(kbName, folderPath);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+        throw err;
+      }
+    },
+    [linkFolder, setError],
+  );
+
+  const handleUnlinkFolder = useCallback(
+    async (kbName: string, folderId: string): Promise<void> => {
+      try {
+        await unlinkFolder(kbName, folderId);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+        throw err;
+      }
+    },
+    [setError, unlinkFolder],
+  );
+
+  const handleSyncFolder = useCallback(
+    async (kbName: string, folderId: string): Promise<SyncFolderResponse> => {
+      try {
+        return await syncLinkedFolder(kbName, folderId);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+        throw err;
+      }
+    },
+    [setError, syncLinkedFolder],
+  );
+
+  const handleReindex = useCallback(
+    async (
+      kbName: string,
+      configFingerprint?: string,
+      embeddingModel?: EmbeddingModelSelection,
+    ) => {
+      try {
+        await reindex(kbName, configFingerprint, embeddingModel);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
         throw err;
       }
     },
     [reindex, setError],
-  );
-
-  const handleUpdatePendingIndexingPolicy = useCallback(
-    async (kbName: string, indexingLLM: IndexingLLMSelection) => {
-      try {
-        await updatePendingIndexingPolicy(kbName, indexingLLM);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-        throw err;
-      }
-    },
-    [setError, updatePendingIndexingPolicy],
   );
 
   const handleRetry = useCallback(
@@ -366,15 +461,24 @@ export default function KnowledgePage() {
             <KnowledgeBaseDetail
               kb={selectedKb}
               uploadPolicy={uploadPolicy}
-              task={selectedKb ? tasksByKb[selectedKb.name] : undefined}
-              history={selectedKb ? (historyByKb[selectedKb.name] ?? []) : []}
+              task={
+                selectedKb ? tasksByKb[knowledgeBaseRef(selectedKb)] : undefined
+              }
+              history={
+                selectedKb
+                  ? (historyByKb[knowledgeBaseRef(selectedKb)] ?? [])
+                  : []
+              }
               onCreate={openCreate}
               onUpload={handleUpload}
+              onLinkFolder={handleLinkFolder}
+              onUnlinkFolder={handleUnlinkFolder}
+              onSyncFolder={handleSyncFolder}
               onReindex={handleReindex}
-              onUpdatePendingIndexingPolicy={handleUpdatePendingIndexingPolicy}
               onRetry={handleRetry}
               onSetDefault={handleSetDefault}
               onDelete={handleDelete}
+              onMove={handleMove}
               onClearHistory={clearHistory}
               onBack={() => {
                 setHomeSection("knowledge-bases");
@@ -403,6 +507,15 @@ export default function KnowledgePage() {
           onConfigureProvider={(providerId) => {
             setCreateOpen(false);
             openEngine(providerId);
+          }}
+        />
+      ) : null}
+      {kiwixOpen ? (
+        <ConnectKiwixModal
+          onClose={() => setKiwixOpen(false)}
+          onConnect={async (params) => {
+            await connectKiwix(params);
+            openKb(`account:kb:${params.name}`);
           }}
         />
       ) : null}

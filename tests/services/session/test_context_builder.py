@@ -154,7 +154,7 @@ class TestContextBuilderBudgets:
     def test_history_budget_uses_large_context_model_heuristic(self) -> None:
         builder = ContextBuilder(store=MagicMock(), history_budget_ratio=0.35)
         budget = builder._history_budget(self._make_llm_config(4096, model="gpt-4o-mini"))
-        assert budget == int(65536 * 0.35)
+        assert budget == int(128000 * 0.35)
 
     def test_history_budget_has_absolute_cap(self) -> None:
         builder = ContextBuilder(store=MagicMock(), history_budget_ratio=0.35)
@@ -523,6 +523,43 @@ class TestContextBuilderSummarize:
         assert summary == "short summary"
         assert captured["max_tokens"] == 50
         assert "under 40 tokens" in captured["user_prompt"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("language", "expected"),
+        [
+            ("ja", "Write the summary itself in 日本語."),
+            ("zh", "摘要正文本身请使用中文（简体）撰写。"),
+        ],
+    )
+    async def test_summary_instruction_names_the_session_language(
+        self, language: str, expected: str
+    ) -> None:
+        captured: dict[str, Any] = {}
+
+        async def _stream_llm(**kwargs: Any):
+            captured.update(kwargs)
+            yield "short summary"
+
+        agent = MagicMock()
+        agent.stream_llm = _stream_llm
+        builder = ContextBuilder(store=MagicMock())
+
+        with patch(
+            "deeptutor.services.session.context_builder._ContextSummaryAgent",
+            return_value=agent,
+        ):
+            await builder._summarize(
+                session_id="s1",
+                language=language,
+                source_text="User: hello",
+                summary_budget=50,
+            )
+
+        # The summary is replayed as a system row on every later turn, so an
+        # instruction that never says which language to write in drags the
+        # answer back to the prompt's own language (#1511).
+        assert expected in captured["system_prompt"]
 
 
 # ---------------------------------------------------------------------------

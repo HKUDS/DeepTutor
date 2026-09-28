@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 
 from deeptutor.runtime.home import get_runtime_data_root
 
+from .embedding_binding import with_kb_embedding
 from .factory import DEFAULT_PROVIDER, get_pipeline, list_pipelines, normalize_provider_name
 from .provider_binding import resolve_bound_provider
 
@@ -63,12 +64,14 @@ class RAGService:
             self._pipelines[provider] = get_pipeline(name=provider, kb_base_dir=self.kb_base_dir)
         return self._pipelines[provider]
 
+    @with_kb_embedding
     async def initialize(self, kb_name: str, file_paths: List[str], **kwargs) -> bool:
         provider = self._resolve_provider(kb_name)
         self.logger.info(f"Initializing KB '{kb_name}' (provider={provider})")
         pipeline = self._get_pipeline(provider)
         return await pipeline.initialize(kb_name=kb_name, file_paths=file_paths, **kwargs)
 
+    @with_kb_embedding
     async def add_documents(self, kb_name: str, file_paths: List[str], **kwargs) -> bool:
         provider = self._resolve_provider(kb_name)
         self.logger.info(
@@ -79,6 +82,7 @@ class RAGService:
             return await pipeline.initialize(kb_name=kb_name, file_paths=file_paths, **kwargs)
         return await pipeline.add_documents(kb_name=kb_name, file_paths=file_paths, **kwargs)
 
+    @with_kb_embedding
     async def search(
         self,
         query: str,

@@ -1,5 +1,8 @@
 "use client";
 
+import Tooltip from "@/shared/ui/Tooltip";
+import type { EmbeddingModelSelection } from "@/features/knowledge/model/types";
+
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -14,12 +17,15 @@ import {
   Plus,
   Server,
 } from "lucide-react";
+import { useEmbeddingModels } from "@/hooks/useEmbeddingModels";
+import EmbeddingModelSelector from "./EmbeddingModelSelector";
 import Modal from "@/components/common/Modal";
 import { useImaConnection } from "@/hooks/useImaConnection";
 import { useLLMOptions } from "@/hooks/useLLMOptions";
 import {
   getGraphRagConfig,
   getLightRagConfig,
+  getLightRagModelOptions,
   getLightRagServerConfig,
   getLlamaIndexConfig,
   getPageIndexConfig,
@@ -30,7 +36,6 @@ import {
   probeLinkedFolder,
   probeWeKnora,
   type KnowledgeUploadPolicy,
-  type IndexingLLMSelection,
   type LinkedFolderProbe,
   type RagProviderSummary,
   type WeKnoraProbe,
@@ -45,12 +50,15 @@ import {
   validateFiles,
 } from "@/lib/knowledge-helpers";
 import { forbiddenKbNameChars, isValidKbName } from "@/lib/kb-name";
+import { listWorkspaces, type ChatWorkspaceRegistration } from "@/lib/workspaces-api";
 import FileDropZone from "./FileDropZone";
 import ImaConnectionFields from "./ImaConnectionFields";
 import KnowledgeEngineIcon from "./KnowledgeEngineIcon";
-import IndexingModelSelector, {
-  selectionFromLightRagDefault,
-} from "./IndexingModelSelector";
+import {
+  indexingSelectionFromDefaults,
+  isCompleteIndexingSelection,
+} from "./LightRagIndexingSelector";
+import { resolvedRole } from "./LightRagRoleModelsEditor";
 
 const OBSIDIAN_SOURCE = "obsidian";
 const MARGINNOTE4_SOURCE = "marginnote4";
@@ -71,9 +79,10 @@ interface CreateKbModalProps {
     name: string;
     provider: string;
     files: File[];
+    storageWorkspaceId?: string;
     pageindexMode?: "flash" | "standard";
     searchMode?: string;
-    indexingLLM?: IndexingLLMSelection;
+    embeddingModel?: EmbeddingModelSelection;
   }) => Promise<void>;
   /** Link a pre-built engine index folder in place (no copy, no re-index). */
   onConnectLinkedFolder: (params: {
@@ -138,6 +147,8 @@ export default function CreateKbModal({
   const [name, setName] = useState("");
   const [provider, setProvider] = useState("llamaindex");
   const [files, setFiles] = useState<File[]>([]);
+  const [storageWorkspaceId, setStorageWorkspaceId] = useState("");
+  const [storageWorkspaces, setStorageWorkspaces] = useState<ChatWorkspaceRegistration[]>([]);
   const [pageIndexMode, setPageIndexMode] = useState<"" | "flash" | "standard">(
     "",
   );
@@ -165,9 +176,6 @@ export default function CreateKbModal({
   const [weKnoraProbe, setWeKnoraProbe] = useState<WeKnoraProbe | null>(null);
   const [weKnoraProbing, setWeKnoraProbing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [indexingLLM, setIndexingLLM] = useState<IndexingLLMSelection | null>(
-    null,
-  );
   const [lightRagConfig, setLightRagConfig] = useState<Awaited<
     ReturnType<typeof getLightRagConfig>
   > | null>(null);
@@ -183,7 +191,66 @@ export default function CreateKbModal({
     onError: setError,
     active: linkIsIma,
   });
-  const llmCatalog = useLLMOptions();
+  const llmCatalog = useLLMOptions(getLightRagModelOptions);
+  const lightRagIndexingDefaults = lightRagConfig
+    ? indexingSelectionFromDefaults(
+        llmCatalog.options,
+        lightRagConfig,
+        llmCatalog.activeDefault,
+      )
+    : null;
+  const lightRagModelLabel = (
+    value?: {
+      profile_id: string;
+      model_id: string;
+      reasoning_effort?: string;
+    } | null,
+  ) => {
+    if (!value) return t("Disabled");
+    const option = llmCatalog.options.find(
+      (item) =>
+        item.profile_id === value.profile_id &&
+        item.model_id === value.model_id,
+    );
+    return `${option?.model_name ?? value.model_id} · ${value.reasoning_effort || t("Auto")}`;
+  };
+  const visibleEngineDefaultSummary =
+    provider === "lightrag" && lightRagIndexingDefaults
+      ? [
+          ...engineDefaultSummary,
+          ...(["query", "keyword", "extract", "vlm"] as const).map((role) => {
+            const value = lightRagConfig?.role_models
+              ? resolvedRole(lightRagConfig.role_models, role)
+              : role === "vlm"
+                ? lightRagIndexingDefaults.vlm.selection
+                : lightRagIndexingDefaults.extract;
+            return `${role.toUpperCase()}: ${lightRagModelLabel(value)}`;
+          }),
+        ]
+      : engineDefaultSummary;
+  const [defaultsRevision, setDefaultsRevision] = useState(0);
+  const refreshCatalog = llmCatalog.refresh;
+
+  useEffect(() => {
+    if (!isOpen) return;
+    void listWorkspaces().then(setStorageWorkspaces).catch(() => setStorageWorkspaces([]));
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const refresh = () => setDefaultsRevision((value) => value + 1);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    window.addEventListener("focus", refresh);
+    window.addEventListener("pageshow", refresh);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("pageshow", refresh);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [isOpen]);
 
   const firstLinkable = providers.find((p) => p.linkable)?.id;
 
@@ -234,44 +301,19 @@ export default function CreateKbModal({
     setWeKnoraKnowledgeBaseId("");
     setWeKnoraProbe(null);
     setWeKnoraProbing(false);
-    setIndexingLLM(null);
     setLightRagConfig(null);
     setLightRagConfigLoaded(false);
     setLightRagConfigError(false);
   }, [isOpen, providers, firstLinkable, initialMode, initialSource]);
 
   useEffect(() => {
-    if (
-      !isOpen ||
-      mode !== "new" ||
-      provider !== "lightrag" ||
-      indexingLLM ||
-      !lightRagConfigLoaded ||
-      !lightRagConfig
-    ) {
-      return;
-    }
-    setIndexingLLM(
-      selectionFromLightRagDefault(
-        llmCatalog.options,
-        lightRagConfig,
-        llmCatalog.activeDefault,
-      ),
-    );
-  }, [
-    indexingLLM,
-    isOpen,
-    llmCatalog.activeDefault,
-    llmCatalog.options,
-    lightRagConfig,
-    lightRagConfigLoaded,
-    mode,
-    provider,
-  ]);
-
-  useEffect(() => {
     if (!isOpen || mode !== "new") return;
     let cancelled = false;
+    if (provider === "lightrag") {
+      setLightRagConfig(null);
+      setLightRagConfigLoaded(false);
+      void refreshCatalog({ force: true });
+    }
 
     const load = async () => {
       try {
@@ -290,7 +332,7 @@ export default function CreateKbModal({
             `${t("Community level")}: ${config.community_level}`,
           ];
         } else if (provider === "lightrag") {
-          const config = await getLightRagConfig();
+          const config = await getLightRagConfig({ force: true });
           if (!cancelled) {
             setLightRagConfig(config);
             setLightRagConfigLoaded(true);
@@ -299,7 +341,7 @@ export default function CreateKbModal({
           summary = [
             `${t("Results per query")}: ${config.top_k}`,
             `${t("Files in parallel")}: ${config.max_concurrent_files}`,
-            `${t("Concurrent LLM calls")}: ${config.llm_model_max_async}`,
+            `${t("Extra extraction passes")}: ${config.entity_extract_max_gleaning}`,
           ];
         } else if (provider === "pageindex") {
           const config = await getPageIndexConfig();
@@ -337,7 +379,7 @@ export default function CreateKbModal({
     return () => {
       cancelled = true;
     };
-  }, [isOpen, mode, provider, t]);
+  }, [isOpen, mode, provider, t, defaultsRevision, refreshCatalog]);
 
   // A fresh path / source invalidates a stale probe verdict.
   useEffect(() => {
@@ -380,6 +422,14 @@ export default function CreateKbModal({
   // all today, which is how a "/" name got registered in the first place.
   const nameProblems = forbiddenKbNameChars(trimmed);
 
+  const needsEmbedding = ["llamaindex", "lightrag", "graphrag"].includes(
+    provider,
+  );
+  const embeddingCatalog = useEmbeddingModels(
+    undefined,
+    isOpen && mode === "new" && needsEmbedding,
+  );
+
   const canSubmit = (() => {
     if (submitting) return false;
     if (!trimmed) return false;
@@ -397,7 +447,25 @@ export default function CreateKbModal({
           !!weKnoraProbe?.ok
         );
       }
-      if (provider === "lightrag" && !indexingLLM) return false;
+      if (
+        provider === "lightrag" &&
+        (!lightRagConfigLoaded ||
+          lightRagConfigError ||
+          llmCatalog.loading ||
+          llmCatalog.error ||
+          !isCompleteIndexingSelection(
+            lightRagIndexingDefaults,
+            llmCatalog.options,
+          ))
+      )
+        return false;
+      if (
+        needsEmbedding &&
+        (!embeddingCatalog.selection ||
+          embeddingCatalog.loading ||
+          embeddingCatalog.error)
+      )
+        return false;
       return !providerUnavailable;
     }
     if (linkIsIma) return imaConnection.canSubmit;
@@ -496,11 +564,13 @@ export default function CreateKbModal({
             name: trimmed,
             provider,
             files: selection.validFiles,
+            storageWorkspaceId,
             pageindexMode:
               isPageIndexOSS && pageIndexMode ? pageIndexMode : undefined,
             searchMode: retrievalMode || undefined,
-            indexingLLM:
-              provider === "lightrag" ? indexingLLM || undefined : undefined,
+            embeddingModel: needsEmbedding
+              ? embeddingCatalog.selection || undefined
+              : undefined,
           });
         }
       } else if (linkIsIma) {
@@ -609,6 +679,32 @@ export default function CreateKbModal({
           )}
         </div>
 
+        {mode === "new" && !isLightRagServer && !isWeKnora && (
+          <div>
+            <label className="mb-1 block text-[12px] font-medium text-[var(--foreground)]">
+              {t("Storage workspace")}
+            </label>
+            <select
+              value={storageWorkspaceId}
+              onChange={(event) => setStorageWorkspaceId(event.target.value)}
+              disabled={submitting}
+              className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--foreground)]"
+            >
+              <option value="">{t("Account library")}</option>
+              {storageWorkspaces
+                .filter((row) => row.kind === "workspace" && !row.archived && row.status === "ready")
+                .map((row) => (
+                  <option key={row.workspace_id} value={row.workspace_id}>
+                    {row.display_name}
+                  </option>
+                ))}
+            </select>
+            <p className="mt-1 text-[11px] text-[var(--muted-foreground)]">
+              {t("Documents and indexes are stored in the selected workspace.")}
+            </p>
+          </div>
+        )}
+
         {mode === "new" ? (
           <NewModeFields
             providers={createProviders(providers)}
@@ -619,7 +715,7 @@ export default function CreateKbModal({
             providerNeedsKey={providerNeedsKey}
             onConfigureProvider={onConfigureProvider}
             activeProvider={activeProvider}
-            engineDefaultSummary={engineDefaultSummary}
+            engineDefaultSummary={visibleEngineDefaultSummary}
             modeOptions={modeOptions}
             retrievalMode={retrievalMode}
             setRetrievalMode={setRetrievalMode}
@@ -631,25 +727,29 @@ export default function CreateKbModal({
             setFiles={setFiles}
             policyForProvider={policyForProvider}
             indexingModelField={
-              provider === "lightrag" ? (
-                <IndexingModelSelector
-                  options={llmCatalog.options}
-                  selection={indexingLLM}
-                  loading={llmCatalog.loading}
-                  error={llmCatalog.error}
-                  defaultUnavailable={
-                    lightRagConfigLoaded &&
-                    !!(
-                      lightRagConfig?.llm_profile_id ||
-                      lightRagConfig?.llm_model_id
-                    ) &&
-                    !indexingLLM
-                  }
-                  defaultLoadError={lightRagConfigError}
-                  disabled={submitting}
-                  onChange={setIndexingLLM}
-                />
-              ) : null
+              <div className="space-y-4">
+                {needsEmbedding && (
+                  <EmbeddingModelSelector
+                    catalog={embeddingCatalog}
+                    disabled={submitting}
+                  />
+                )}
+                {provider === "lightrag" &&
+                (lightRagConfigError ||
+                  llmCatalog.error ||
+                  (lightRagConfigLoaded &&
+                    !llmCatalog.loading &&
+                    !isCompleteIndexingSelection(
+                      lightRagIndexingDefaults,
+                      llmCatalog.options,
+                    ))) ? (
+                  <p role="alert" className="text-[12px] text-red-600">
+                    {t(
+                      "Configure valid LightRAG defaults in Settings before creating a knowledge base.",
+                    )}
+                  </p>
+                ) : null}
+              </div>
             }
             connectionForm={
               isLightRagServer ? (
@@ -969,11 +1069,7 @@ function NewModeFields({
         </div>
       )}
 
-      {indexingModelField && (
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--muted)]/20 p-3">
-          {indexingModelField}
-        </div>
-      )}
+      {indexingModelField && <div>{indexingModelField}</div>}
 
       {modeOptions.length > 0 && (
         <div>
@@ -1380,45 +1476,45 @@ function LinkModeFields({
             const enabled = linkSourceEnabled(p);
             const disabled = submitting || !enabled;
             return (
-              <button
+              <Tooltip
                 key={p.id}
-                type="button"
-                disabled={disabled}
-                onClick={() => setLinkSource(p.id)}
-                title={
-                  !enabled
-                    ? t(
-                        "This engine's index lives in the cloud and can't be linked.",
-                      )
-                    : undefined
-                }
-                className={`group flex flex-col gap-1 rounded-2xl border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                  selected
-                    ? "border-[var(--primary)] bg-[var(--primary)]/5"
-                    : "border-[var(--border)] hover:border-[var(--ring)]"
-                }`}
+                label={enabled ? p.name : t("This engine's index lives in the cloud and can't be linked.")}
+                suppressed={enabled}
+                side="top"
               >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="flex min-w-0 items-center gap-2 text-[13px] font-medium text-[var(--foreground)]">
-                    <KnowledgeEngineIcon engine={p.id} size={24} />
-                    <span className="truncate">{p.name}</span>
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => setLinkSource(p.id)}
+                  aria-label={p.name}
+                  className={`group flex h-full w-full flex-col gap-1 rounded-2xl border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                    selected
+                      ? "border-[var(--primary)] bg-[var(--primary)]/5"
+                      : "border-[var(--border)] hover:border-[var(--ring)]"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="flex min-w-0 items-center gap-2 text-[13px] font-medium text-[var(--foreground)]">
+                      <KnowledgeEngineIcon engine={p.id} size={24} />
+                      <span className="truncate">{p.name}</span>
+                    </span>
+                    {selected ? (
+                      <Check className="h-3.5 w-3.5 text-[var(--primary)]" />
+                    ) : !enabled ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted-foreground)]">
+                        {t("Cloud index")}
+                      </span>
+                    ) : p.id === IMA_PROVIDER ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-700 dark:bg-sky-950/30 dark:text-sky-300">
+                        {t("Read only")}
+                      </span>
+                    ) : null}
+                  </div>
+                  <span className="text-[11.5px] leading-snug text-[var(--muted-foreground)]">
+                    {p.description}
                   </span>
-                  {selected ? (
-                    <Check className="h-3.5 w-3.5 text-[var(--primary)]" />
-                  ) : !enabled ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted-foreground)]">
-                      {t("Cloud index")}
-                    </span>
-                  ) : p.id === IMA_PROVIDER ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-700 dark:bg-sky-950/30 dark:text-sky-300">
-                      {t("Read only")}
-                    </span>
-                  ) : null}
-                </div>
-                <span className="text-[11.5px] leading-snug text-[var(--muted-foreground)]">
-                  {p.description}
-                </span>
-              </button>
+                </button>
+              </Tooltip>
             );
           })}
 

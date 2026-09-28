@@ -16,6 +16,7 @@ from deeptutor.services.session.turn_runtime import (
     _resolve_turn_outcome,
     _TurnExecution,
 )
+from deeptutor.services.session.turns import lifecycle as lifecycle_module
 
 
 def _isolate_learning_store(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
@@ -213,23 +214,67 @@ async def test_replacing_subscription_does_not_synthesize_duplicate_done(tmp_pat
 
 
 @pytest.mark.asyncio
-async def test_subscribe_turn_does_not_mutate_remote_running_turn(tmp_path) -> None:
+async def test_subscribe_turn_does_not_mutate_remote_running_turn(tmp_path, monkeypatch) -> None:
     """A subscriber may be on a different worker from the turn owner."""
 
+    monkeypatch.setattr(lifecycle_module, "_SUBSCRIPTION_POLL_SECONDS", 0.01)
     store = SQLiteSessionStore(tmp_path / "chat_history.db")
     runtime = TurnRuntimeManager(store)
     session = await store.ensure_session(None)
     turn = await store.create_turn(session["id"], capability="chat")
 
     events: list[dict] = []
-    async for event in runtime.subscribe_turn(turn["id"], after_seq=0):
-        events.append(event)
+
+    async def _collect() -> None:
+        async for event in runtime.subscribe_turn(turn["id"], after_seq=0):
+            events.append(event)
+
+    task = asyncio.create_task(_collect())
+    await asyncio.sleep(0.04)
 
     persisted = await store.get_turn(turn["id"])
     assert persisted is not None
     assert persisted["status"] == "running"
     assert persisted["error"] == ""
     assert events == []
+    assert await store.update_turn_status(turn["id"], "completed") is True
+    await asyncio.wait_for(task, timeout=1)
+    assert [event["type"] for event in events] == ["done"]
+
+
+@pytest.mark.asyncio
+async def test_worker_lost_unblocks_a_stale_local_subscriber(tmp_path, monkeypatch) -> None:
+    """Recovery's durable terminal state reaches an abandoned live queue."""
+
+    monkeypatch.setattr(lifecycle_module, "_SUBSCRIPTION_POLL_SECONDS", 0.01)
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    runtime = TurnRuntimeManager(store)
+    session = await store.ensure_session(None)
+    turn = await store.create_turn(session["id"], capability="mastery_path")
+    execution = _TurnExecution(
+        turn_id=turn["id"], session_id=session["id"], capability="mastery_path", payload={}
+    )
+    runtime._executions[turn["id"]] = execution
+    events: list[dict] = []
+
+    async def _collect() -> None:
+        async for event in runtime.subscribe_turn(turn["id"]):
+            events.append(event)
+
+    task = asyncio.create_task(_collect())
+    for _ in range(100):
+        if execution.subscribers:
+            break
+        await asyncio.sleep(0.01)
+    assert execution.subscribers
+    assert await store.transition_turn(
+        turn["id"], "failed", error="Worker lost", failure_code="worker_lost", retryable=True
+    )
+    await asyncio.wait_for(task, timeout=1)
+
+    assert [event["type"] for event in events] == ["error", "done"]
+    assert events[0]["metadata"]["error_code"] == "worker_lost"
+    assert events[1]["metadata"]["status"] == "failed"
 
 
 @pytest.mark.asyncio
@@ -525,6 +570,19 @@ async def test_reconnect_after_turn_completion_still_carries_message_ids(
                 content="hello there",
                 metadata={"call_kind": "llm_final_response"},
             )
+            yield StreamEvent(
+                type=StreamEventType.DONE,
+                source="chat",
+                metadata={
+                    "status": "completed",
+                    "usage_summary": {
+                        "total_tokens": 120,
+                        "total_calls": 1,
+                        "cache_hit_rate": 0.75,
+                        "ttft_seconds": 1.5,
+                    },
+                },
+            )
 
     async def _noop_title(**_kwargs):
         return None
@@ -562,12 +620,19 @@ async def test_reconnect_after_turn_completion_still_carries_message_ids(
     messages = await store.get_messages(session["id"])
     assert [m["role"] for m in messages] == ["user", "assistant"]
     real_assistant_id = messages[1]["id"]
+    saved_usage = next(
+        e["metadata"]["usage_summary"] for e in messages[1]["events"] if e["type"] == "done"
+    )
+    assert saved_usage["total_tokens"] == 120
+    assert saved_usage["cache_hit_rate"] == 0.75
 
     # The client reconnects now and asks to catch up from the start.
     events = [event async for event in runtime.subscribe_turn(turn_id, after_seq=0)]
     done_events = [e for e in events if e["type"] == "done"]
     assert len(done_events) == 1
     assert done_events[0]["metadata"].get("assistant_message_id") == real_assistant_id
+
+    assert done_events[0]["metadata"]["usage_summary"] == saved_usage
 
 
 def _open_mastery_question(path_id: str, *, question_id: str = "q-1"):

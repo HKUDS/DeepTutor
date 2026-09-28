@@ -1232,3 +1232,137 @@ def test_plan_still_empty_after_the_retry_fails_instead_of_returning_nothing() -
         )
 
     assert "retry" in str(exc.value).lower()
+
+
+# ---------------------------------------------------------------------------
+# quiz repair starvation and honest failure accounting (#1508)
+# ---------------------------------------------------------------------------
+
+
+_QUIZ_JSON = json.dumps(
+    {
+        "question": "State the chain rule in one line.",
+        "correct_answer": "dy/dx = (dy/du)(du/dx)",
+        "explanation": "Compose the derivative of the outer with the inner.",
+    }
+)
+
+
+def _quiz_template() -> QuizTemplate:
+    return QuizTemplate(
+        question_id="q1",
+        topic="chain rule",
+        question_type="short_answer",
+        difficulty="medium",
+    )
+
+
+async def _repair_with_steps(
+    steps: list[LabeledStepResult],
+) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Drive ``_repair_quiz_payload`` against scripted labeled-step outcomes.
+
+    Returns the payload it landed on, the bus's progress events, and the kwargs
+    each ``_run_labeled_step`` call was made with.
+    """
+    pipeline = _make_pipeline()
+    bus = _StubStreamBus()
+    calls: list[dict[str, Any]] = []
+    remaining = list(steps)
+
+    async def _fake_step(**kwargs: Any) -> LabeledStepResult:
+        calls.append(kwargs)
+        return remaining.pop(0)
+
+    with patch.object(QuestionPipeline, "_run_labeled_step", side_effect=_fake_step):
+        payload = await pipeline._repair_quiz_payload(
+            template=_quiz_template(),
+            payload={},
+            issues=["missing_question"],
+            stream=bus,
+            client=object(),
+        )
+    return payload or {}, bus.progress_events, calls
+
+
+def test_starved_repair_round_is_asked_again_with_less_thinking() -> None:
+    """The round that rescues a starved question can itself starve.
+
+    A reasoning model that spends the whole ``repair`` budget thinking leaves no
+    JSON behind, and nothing after this call asks again — so the learner got the
+    ``[Generation failed]`` placeholder with the retry never spent (#1508).
+    """
+    payload, progress, calls = asyncio.run(
+        _repair_with_steps(
+            [
+                LabeledStepResult(label="UNKNOWN", text="", reasoning_only=True),
+                LabeledStepResult(label="FINISH", text=_QUIZ_JSON),
+            ]
+        )
+    )
+
+    assert len(calls) == 2
+    assert calls[0].get("reasoning_effort") is None
+    assert calls[1]["reasoning_effort"] == RETRY_REASONING_EFFORT
+    assert payload["question"].startswith("State the chain rule")
+    assert any("reasoning" in event["message"].lower() for event in progress)
+
+
+def test_repair_that_answers_first_time_is_not_asked_twice() -> None:
+    """The retry costs a whole LLM round; a repair that answered must not pay it."""
+    payload, _progress, calls = asyncio.run(
+        _repair_with_steps([LabeledStepResult(label="FINISH", text=_QUIZ_JSON)])
+    )
+
+    assert payload["correct_answer"]
+    assert len(calls) == 1
+
+
+def _quiz_pair(question: str, *, issues: list[str]) -> QuizPair:
+    return QuizPair(
+        question_id="q1",
+        question=question,
+        question_type="short_answer",
+        correct_answer="N/A" if issues else "42",
+        explanation="N/A" if issues else "arithmetic",
+        topic="chain rule",
+        difficulty="medium",
+        metadata={"issues": issues} if issues else {},
+    )
+
+
+def _summary_for(pairs: list[QuizPair]) -> dict[str, Any]:
+    pipeline = _make_pipeline()
+    plan = QuizPlan(analysis="two ideas", templates=[_quiz_template(), _quiz_template()])
+    payload = pipeline._build_result_payload(plan, pairs, is_mimic=False, finish_text="preface")
+    return payload["summary"]
+
+
+def test_unrepaired_question_is_counted_as_failed_in_the_envelope() -> None:
+    """The envelope read a key nothing ever writes.
+
+    ``metadata["error"]`` is set nowhere in the pipeline, so a quiz of
+    ``[Generation failed]`` placeholders still reported ``success=True`` and
+    ``failed=0`` — the reason #1508 left no trace of having failed. ``issues``
+    is recomputed after the repair attempt, so what survives it is the question
+    the learner actually got.
+    """
+    broken = _quiz_pair("[Generation failed] chain rule", issues=["missing_question"])
+    good = _quiz_pair("What is 2+2?", issues=[])
+
+    summary = _summary_for([broken, good])
+
+    assert summary["completed"] == 1
+    assert summary["failed"] == 1
+    assert summary["success"] is False
+
+
+def test_a_clean_quiz_is_still_reported_successful() -> None:
+    """The other direction: counting issues must not turn into always-failed."""
+    summary = _summary_for(
+        [_quiz_pair("What is 2+2?", issues=[]), _quiz_pair("And 3+3?", issues=[])]
+    )
+
+    assert summary["completed"] == 2
+    assert summary["failed"] == 0
+    assert summary["success"] is True

@@ -27,9 +27,11 @@ def current_owner_id() -> str:
 
 
 def pocketbase_scope(url: str) -> StoreScope:
+    from deeptutor.services.workspace.context import current_workspace_id
+
     return StoreScope(
         backend="pocketbase",
-        resource=str(url or "").rstrip("/"),
+        resource=f"{str(url or '').rstrip('/')}#workspace={current_workspace_id()}",
         owner_id=current_owner_id(),
     )
 

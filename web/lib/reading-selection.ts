@@ -124,6 +124,85 @@ export function cleanQuote(raw: string, limit = 2000): string {
   return flat.length <= limit ? flat : flat.slice(0, limit);
 }
 
+const MARGIN_NUMBER = /^\d{1,4}$/;
+
+/**
+ * The selected words without the page's margin line numbers, or `null` when
+ * there were none to drop.
+ *
+ * Review copies, legal texts and some textbooks number their lines in the
+ * margin, and pdf.js lays those digits out as text-layer spans like any other.
+ * A selection over several lines therefore comes back with them glued to the
+ * neighbouring words ("fall short in3 delivering", "DeepTu-4 tor"). A span
+ * that is nothing but a short number and sits wholly outside the column the
+ * selected words are set in is furniture, not text; a number inside that
+ * column ("Figure 3", "1 Introduction") is kept.
+ *
+ * Only for what a question carries. A mark keeps the raw selection: that is
+ * the string that matches the text layer when it is re-anchored.
+ */
+export function selectionTextWithoutLineNumbers(range: Range): string | null {
+  const container = range.commonAncestorContainer;
+  const root =
+    container.nodeType === Node.ELEMENT_NODE ? container : container.parentNode;
+  if (!root) return null;
+  const walker = document.createTreeWalker(
+    root,
+    NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
+  );
+  const nodes: Node[] = [];
+  // A selection inside a single text node has that node as its root, which
+  // the walker never yields; start from it rather than from its children.
+  for (
+    let node: Node | null =
+      root.nodeType === Node.TEXT_NODE ? root : walker.nextNode();
+    node;
+    node = walker.nextNode()
+  ) {
+    if (range.intersectsNode(node)) nodes.push(node);
+  }
+
+  const isNumber = (node: Node) =>
+    node.nodeType === Node.TEXT_NODE &&
+    MARGIN_NUMBER.test((node.textContent ?? "").trim());
+  let columnLeft = Infinity;
+  let columnRight = -Infinity;
+  for (const node of nodes) {
+    if (node.nodeType !== Node.TEXT_NODE || isNumber(node)) continue;
+    if (!(node.textContent ?? "").trim() || !node.parentElement) continue;
+    const rect = node.parentElement.getBoundingClientRect();
+    columnLeft = Math.min(columnLeft, rect.left);
+    columnRight = Math.max(columnRight, rect.right);
+  }
+  if (!Number.isFinite(columnLeft)) return null;
+
+  const parts: string[] = [];
+  let dropped = false;
+  for (const node of nodes) {
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      if ((node as Element).tagName === "BR") parts.push("\n");
+      continue;
+    }
+    const raw = node.textContent ?? "";
+    if (isNumber(node) && node.parentElement) {
+      const rect = node.parentElement.getBoundingClientRect();
+      if (rect.right <= columnLeft + 1 || rect.left >= columnRight - 1) {
+        dropped = true;
+        parts.push(" ");
+        continue;
+      }
+    }
+    const start = node === range.startContainer ? range.startOffset : 0;
+    const end = node === range.endContainer ? range.endOffset : raw.length;
+    parts.push(raw.slice(start, end));
+  }
+  if (!dropped) return null;
+  // A word the line broke with a hyphen keeps the hyphen but loses the gap
+  // the dropped number left: "DeepTu-tor" reads, "DeepTu- tor" does not.
+  const joined = parts.join("").replace(/(\p{L})-\s+(?=\p{L})/gu, "$1-");
+  return cleanQuote(joined) || null;
+}
+
 /**
  * Which locator a selection belongs to, given the elements it spans.
  *

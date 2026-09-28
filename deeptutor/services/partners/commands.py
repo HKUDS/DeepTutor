@@ -7,7 +7,12 @@ import shlex
 from typing import Any, Callable
 
 from deeptutor.agents._shared.tool_composition import default_optional_tools
+from deeptutor.multi_user.model_access import allowed_llm_options, apply_allowed_llm_selection
+from deeptutor.multi_user.partner_access import can_manage_partner
+from deeptutor.multi_user.paths import user_context
 from deeptutor.partners.bus.events import InboundMessage
+from deeptutor.services.config import get_model_catalog_service
+from deeptutor.services.model_selection import apply_llm_selection_to_catalog, list_llm_options
 from deeptutor.services.partners.sessions import PartnerSessionStore
 
 
@@ -21,6 +26,7 @@ class PartnerCommandSpec:
 @dataclass(frozen=True)
 class PartnerCommandResult:
     content: str
+    metadata: dict[str, Any] | None = None
 
 
 BUILTIN_PARTNER_COMMANDS: tuple[PartnerCommandSpec, ...] = (
@@ -32,6 +38,7 @@ BUILTIN_PARTNER_COMMANDS: tuple[PartnerCommandSpec, ...] = (
     PartnerCommandSpec("/resume", "Reopen an archived conversation.", "<session ID>"),
     PartnerCommandSpec("/delete", "Delete a conversation permanently.", "<session ID>"),
     PartnerCommandSpec("/status", "Show partner, session, model, and tool status."),
+    PartnerCommandSpec("/model", "List or switch this partner's model.", "[number|model name]"),
     PartnerCommandSpec("/history", "Show recent messages in this conversation.", "[n]"),
     PartnerCommandSpec("/tool", "Show or change enabled tools.", "[on|off <name>|reset]"),
     PartnerCommandSpec(
@@ -110,6 +117,8 @@ class PartnerCommandHandler:
             return self._delete(args)
         if command == "/status":
             return self._status(msg)
+        if command == "/model":
+            return self._model(msg, args)
         if command == "/history":
             return self._history(msg, args)
         if command == "/tool":
@@ -223,6 +232,181 @@ class PartnerCommandHandler:
             f"- Tools: {', '.join(f'`{name}`' for name in tools) if tools else '(none)'}",
         ]
         return PartnerCommandResult("\n".join(lines))
+
+    def _model(self, msg: InboundMessage, args: list[str]) -> PartnerCommandResult:
+        """List catalog models or persist a validated partner-level selection."""
+        if (msg.metadata or {}).get("is_group") or (msg.metadata or {}).get("chat_type") == "group":
+            return PartnerCommandResult(
+                "Use /model in a linked direct message to manage this partner's model."
+            )
+        # Model names and profile wiring are part of partner configuration,
+        # not the permissions granted to everyone who may chat with it.
+        if msg.actor is None and msg.channel != "web":
+            return PartnerCommandResult(
+                "Link this chat to the partner owner or an admin with /link before managing models."
+            )
+        if not can_manage_partner(self.partner_id, msg.actor):
+            return PartnerCommandResult("You cannot manage this partner's models.")
+
+        try:
+            catalog = get_model_catalog_service().load()
+            all_options = list_llm_options(catalog)
+            options = all_options["options"]
+            if msg.actor is not None and not msg.actor.is_admin:
+                with user_context(msg.actor):
+                    allowed = {
+                        (row["profile_id"], row["model_id"])
+                        for row in allowed_llm_options()["options"]
+                    }
+                options = [
+                    row for row in options if (row["profile_id"], row["model_id"]) in allowed
+                ]
+        except Exception as exc:
+            return PartnerCommandResult(f"Could not list models: {exc}")
+
+        configured_selection = getattr(self.config, "llm_selection", None)
+        legacy_model = (
+            str(getattr(self.config, "model", "") or "").strip() if not configured_selection else ""
+        )
+        active = configured_selection or all_options["active"] or {}
+        if legacy_model:
+            legacy_option = next((row for row in options if row["model"] == legacy_model), None)
+            active = (
+                {
+                    "profile_id": legacy_option["profile_id"],
+                    "model_id": legacy_option["model_id"],
+                }
+                if legacy_option
+                else {}
+            )
+        current = next(
+            (
+                row
+                for row in options
+                if row["profile_id"] == active.get("profile_id")
+                and row["model_id"] == active.get("model_id")
+            ),
+            None,
+        )
+        name_counts: dict[str, int] = {}
+        for row in options:
+            key = row["model_name"].casefold()
+            name_counts[key] = name_counts.get(key, 0) + 1
+
+        def option_label(row: dict[str, Any]) -> str:
+            label = f"{row['provider_label']} · {row['model_name']}"
+            if name_counts[row["model_name"].casefold()] > 1:
+                label += f" ({row['model']})"
+            return label
+
+        if not args:
+            if not options:
+                return PartnerCommandResult("No chat models are configured for this account.")
+            lines = ["Available models:"]
+            for index, row in enumerate(options, 1):
+                selected = " (current)" if row is current else ""
+                lines.append(f"{index}. {option_label(row)}{selected}")
+            lines.append("Use /model <number> or /model <wire model name> to switch.")
+            providers: list[dict[str, str]] = []
+            seen_profiles: set[str] = set()
+            for row in options:
+                profile_id = row["profile_id"]
+                if profile_id in seen_profiles:
+                    continue
+                seen_profiles.add(profile_id)
+                providers.append(
+                    {
+                        "profile_id": profile_id,
+                        "provider_label": row["provider_label"],
+                        "profile_name": row["profile_name"],
+                    }
+                )
+            metadata = (
+                {
+                    "_feishu_model_options": options,
+                    "_feishu_model_providers": providers,
+                    "_feishu_model_current": active,
+                }
+                if msg.channel == "feishu" and (msg.metadata or {}).get("chat_type") == "p2p"
+                else None
+            )
+            return PartnerCommandResult("\n".join(lines), metadata)
+
+        choice: dict[str, Any] | None = None
+        if len(args) == 1 and args[0].isdigit():
+            index = int(args[0]) - 1
+            if 0 <= index < len(options):
+                choice = options[index]
+        elif len(args) == 2:
+            profile_options = [row for row in options if row["profile_id"] == args[0]]
+            if msg.channel == "feishu" and (msg.metadata or {}).get("_feishu_model_picker_id"):
+                # The callback selected a server-owned option by its stable ID.
+                # Recheck that ID against today's visible catalog, since wire
+                # names can occur more than once within one profile.
+                choice = next((row for row in profile_options if row["model_id"] == args[1]), None)
+            else:
+                wire_matches = [row for row in profile_options if row["model"] == args[1]]
+                if len(wire_matches) > 1:
+                    return PartnerCommandResult(
+                        "That wire model name is ambiguous. Use its /model number."
+                    )
+                if wire_matches:
+                    choice = wire_matches[0]
+                else:
+                    choice = next(
+                        (row for row in profile_options if row["model_id"] == args[1]), None
+                    )
+        if choice is None and not (len(args) == 1 and args[0].isdigit()):
+            requested_name = " ".join(args)
+            matches = [
+                row for row in options if row["model"].casefold() == requested_name.casefold()
+            ]
+            if not matches:
+                matches = [
+                    row
+                    for row in options
+                    if row["model_name"].casefold() == requested_name.casefold()
+                ]
+            if len(matches) == 1:
+                choice = matches[0]
+            elif len(matches) > 1:
+                return PartnerCommandResult(
+                    "That model name is ambiguous. Use its /model number or wire model name."
+                )
+        if choice is None:
+            return PartnerCommandResult("Unknown model. Use /model to see available numbers.")
+
+        selection = {"profile_id": choice["profile_id"], "model_id": choice["model_id"]}
+        try:
+            apply_llm_selection_to_catalog(catalog, selection)
+            if msg.actor is not None and not msg.actor.is_admin:
+                with user_context(msg.actor):
+                    apply_allowed_llm_selection(selection)
+        except (PermissionError, ValueError) as exc:
+            return PartnerCommandResult(str(exc))
+
+        selected_label = option_label(choice)
+        if selection == configured_selection and not legacy_model:
+            return PartnerCommandResult(
+                f"✅ Already using {selected_label}.", {"_feishu_model_switch_success": True}
+            )
+        previous_label = (
+            legacy_model if legacy_model else option_label(current) if current else "default"
+        )
+        old_selection = getattr(self.config, "llm_selection", None)
+        old_legacy_model = getattr(self.config, "model", None)
+        self.config.llm_selection = selection
+        self.config.model = None
+        try:
+            self._persist_config()
+        except Exception as exc:
+            self.config.llm_selection = old_selection
+            self.config.model = old_legacy_model
+            return PartnerCommandResult(f"Could not switch model: {exc}")
+        return PartnerCommandResult(
+            f"✅ Switched model: {previous_label} → {selected_label}.",
+            {"_feishu_model_switch_success": True},
+        )
 
     def _history(self, msg: InboundMessage, args: list[str]) -> PartnerCommandResult:
         count = 10

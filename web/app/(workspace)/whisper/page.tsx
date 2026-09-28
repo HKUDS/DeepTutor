@@ -21,12 +21,7 @@ import {
   type WhisperSeat,
 } from "@/lib/whisper-transcript";
 
-function newMessageId(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
-  }
-  return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
+import { randomUuid } from "@/lib/random-uuid";
 
 function looksLikeRoomEnded(text: string): boolean {
   const t = (text || "").toLowerCase();
@@ -95,7 +90,7 @@ export default function WhisperPage() {
       setMessages((prev) => [
         ...prev,
         {
-          id: newMessageId(),
+          id: randomUuid(),
           role: "system",
           text,
           stage: event.stage,
@@ -112,7 +107,7 @@ export default function WhisperPage() {
     setMessages((prev) => [
       ...prev,
       {
-        id: newMessageId(),
+        id: randomUuid(),
         role: "assistant",
         text,
         stage: event.stage || undefined,
@@ -199,7 +194,7 @@ export default function WhisperPage() {
       setMessages((prev) => [
         ...prev,
         {
-          id: newMessageId(),
+          id: randomUuid(),
           role: "system",
           text: "Connection failed. Please try again.",
         },
@@ -221,7 +216,7 @@ export default function WhisperPage() {
       setMessages((prev) => [
         ...prev,
         {
-          id: newMessageId(),
+          id: randomUuid(),
           role: "user",
           text,
           localSeat: seat,

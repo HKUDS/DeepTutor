@@ -9,7 +9,7 @@ const EDITOR = path.resolve(
 );
 const CONTEXT = path.resolve(
   process.cwd(),
-  "features/settings/store/SettingsStore.tsx",
+  "lib/model-catalog-types.ts",
 );
 const MAIN = path.resolve(
   process.cwd(),
@@ -61,10 +61,10 @@ test("wire API settings remain usable on narrow viewports", () => {
   const main = readFileSync(MAIN, "utf8");
   const toolbar = readFileSync(TOOLBAR, "utf8");
 
-  // The 1.6 settings UI uses provider cards and a modal instead of the old
+  // The 1.6 settings UI uses provider cards and an inline editor instead of the old
   // sticky profile list. Profile fields stay one-column until the `sm`
   // breakpoint, and the shell keeps compact horizontal padding on phones.
   assert.match(editor, /grid gap-4 sm:grid-cols-2/);
-  assert.match(main, /px-5[^\"]*sm:px-8/);
-  assert.match(toolbar, /flex-col[^\"]*sm:flex-row/);
+  assert.match(main, /px-5[^\"]*sm:px-10/);
+  assert.match(toolbar, /flex flex-wrap/);
 });

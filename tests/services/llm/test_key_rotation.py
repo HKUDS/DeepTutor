@@ -7,7 +7,7 @@ import pytest
 
 
 @pytest.mark.asyncio
-async def test_openai_compatible_llm_retries_429_with_next_api_key(
+async def test_openai_compatible_llm_tries_every_api_key_after_429(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from deeptutor.services.llm.provider_core import openai_compat_provider as provider_module
@@ -20,7 +20,7 @@ async def test_openai_compatible_llm_retries_429_with_next_api_key(
     class _Completions:
         async def create(self, **kwargs: Any) -> Any:
             seen_auth.append((kwargs.get("extra_headers") or {}).get("Authorization", ""))
-            if len(seen_auth) == 1:
+            if len(seen_auth) < 3:
                 raise _RateLimitError("429 rate limited")
             return SimpleNamespace(
                 choices=[
@@ -44,7 +44,7 @@ async def test_openai_compatible_llm_retries_429_with_next_api_key(
 
     monkeypatch.setattr(provider_module, "AsyncOpenAI", _Client)
     provider = provider_module.OpenAICompatProvider(
-        api_key=["key-a", "key-b"],
+        api_key=["key-a", "key-b", "key-c"],
         api_base="https://api.example.test/v1",
         default_model="gpt-4o-mini",
     )
@@ -52,4 +52,4 @@ async def test_openai_compatible_llm_retries_429_with_next_api_key(
     response = await provider.chat([{"role": "user", "content": "hello"}])
 
     assert response.content == "ok"
-    assert seen_auth == ["Bearer key-a", "Bearer key-b"]
+    assert seen_auth == ["Bearer key-a", "Bearer key-b", "Bearer key-c"]

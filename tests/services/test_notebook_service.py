@@ -232,3 +232,27 @@ def test_export_markdown_renders_titles_and_bodies(tmp_path) -> None:
     assert "> A short blurb" in markdown
     assert "## First entry" in markdown
     assert "Body text." in markdown
+
+
+def test_notebook_id_cannot_escape_base_dir(tmp_path) -> None:
+    """A traversal id must be rejected, never resolved outside ``base_dir``."""
+    import pytest
+
+    manager = NotebookManager(base_dir=str(tmp_path))
+
+    for evil in ("../../x", "/etc/passwd", "../../../../../system/auth/users"):
+        with pytest.raises(ValueError):
+            manager.get_notebook(evil)
+
+
+def test_save_notebook_uses_managed_id_not_content_id(tmp_path) -> None:
+    """A notebook's on-disk ``id`` must not redirect where it is written."""
+    manager = NotebookManager(base_dir=str(tmp_path))
+
+    payload = {"id": "../../../../../system/auth/users", "records": []}
+    manager._save_notebook("real-notebook-id", payload)
+
+    target = manager._get_notebook_file("real-notebook-id")
+    assert target.is_relative_to(tmp_path.resolve())
+    persisted = json.loads(target.read_text(encoding="utf-8"))
+    assert persisted["id"] == "../../../../../system/auth/users"

@@ -173,9 +173,8 @@ export default function MemoryL1Workbench({
                     {p > 0 ? (
                       <span
                         className="rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-600 dark:text-amber-400"
-                        title={t("{{n}} pending", { n: p })}
                       >
-                        {p}
+                        {t("{{n}} pending", { n: p })}
                       </span>
                     ) : typeof c === "number" ? (
                       <span className="rounded-full bg-[var(--background)] px-1.5 py-0.5 text-[10px] text-[var(--muted-foreground)]">

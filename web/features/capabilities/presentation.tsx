@@ -240,11 +240,19 @@ export function mergeCapabilityPresentations(
           defaultTools: [...known.defaultTools],
         };
       }
-      const label =
-        typeof capability.manifest?.name === "string" &&
-        capability.manifest.name.trim()
+      // Extension manifests routinely set ``name`` to the capability id, so
+      // preferring the manifest outright surfaced rows reading "math_animator".
+      // A manifest name only wins when it says something the id does not; the
+      // humanized form ("Math Animator") is also what the locale files key on.
+      const humanized = humanizeCapabilityId(capability.id);
+      const manifestName =
+        typeof capability.manifest?.name === "string"
           ? capability.manifest.name.trim()
-          : humanizeCapabilityId(capability.id);
+          : "";
+      const label =
+        manifestName && manifestName !== capability.id
+          ? manifestName
+          : humanized;
       return {
         ...UNKNOWN_PRESENTATION,
         value: capability.id,

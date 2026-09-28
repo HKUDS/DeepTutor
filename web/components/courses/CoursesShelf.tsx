@@ -188,16 +188,16 @@ export default function CoursesShelf() {
                 <div className="mt-3 flex items-center gap-3 text-[10.5px] text-[var(--muted-foreground)]/75">
                   <span
                     className="inline-flex items-center gap-1"
-                    title={t("Materials")}
                   >
                     <Layers size={11} strokeWidth={1.8} />
+                    {t("Materials")}
                     {course.resources.length}
                   </span>
                   <span
                     className="inline-flex items-center gap-1"
-                    title={t("Conversations")}
                   >
                     <MessagesSquare size={11} strokeWidth={1.8} />
+                    {t("Conversations")}
                     {counts.get(course.id) ?? 0}
                   </span>
                   {lastActive.has(course.id) ? (

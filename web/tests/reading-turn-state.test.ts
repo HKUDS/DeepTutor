@@ -24,6 +24,15 @@ test("normalizes persisted reading material ids and rejects unsafe values", () =
   assert.equal(normalizeReadingMaterialId(null), null);
 });
 
+test("accepts catalog-minted rm_ material ids", () => {
+  assert.equal(
+    normalizeReadingMaterialId("rm_6e2e838e6381"),
+    "rm_6e2e838e6381",
+  );
+  assert.equal(normalizeReadingMaterialId("rm_short"), null);
+  assert.equal(normalizeReadingMaterialId("rm_6e2e838e63811"), null);
+});
+
 test("normalizes immutable material revisions", () => {
   assert.equal(normalizeReadingMaterialRevision(3), 3);
   assert.equal(normalizeReadingMaterialRevision("4"), 4);

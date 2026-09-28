@@ -1,5 +1,8 @@
 "use client";
 
+import Tooltip from "@/shared/ui/Tooltip";
+import { MASTERY_HOME, READING_HOME } from "@/lib/learning-routes";
+
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
@@ -78,12 +81,12 @@ const CREATE_ROUTES: {
   },
   {
     kind: "mastery_path",
-    href: (courseId) => `/mastery?course=${encodeURIComponent(courseId)}`,
+    href: (courseId) => `${MASTERY_HOME}?course=${encodeURIComponent(courseId)}`,
     label: "New mastery path",
   },
   {
     kind: "reading_workspace",
-    href: (courseId) => `/reading?course=${encodeURIComponent(courseId)}`,
+    href: (courseId) => `${READING_HOME}?course=${encodeURIComponent(courseId)}`,
     label: "New reading collection",
   },
   {
@@ -208,14 +211,20 @@ export default function CourseResources({
                       as a separate cell its varying width pushed the kind name
                       to a different x-position on every row. */}
                   {!resource.available ? (
-                    <span
-                      className="shrink-0 cursor-help text-[10.5px] text-[var(--muted-foreground)]/80"
-                      title={t(
+                    <Tooltip
+                      label={t(
                         "This target no longer exists — remove the reference, or attach the resource again.",
                       )}
+                      side="top"
                     >
-                      · {t("Unavailable")}
-                    </span>
+                      <span
+                        role="note"
+                        tabIndex={0}
+                        className="shrink-0 cursor-help text-[10.5px] text-[var(--muted-foreground)]/80"
+                      >
+                        · {t("Unavailable")}
+                      </span>
+                    </Tooltip>
                   ) : null}
                 </span>
                 <span className="shrink-0 text-[10.5px] text-[var(--muted-foreground)]/70">

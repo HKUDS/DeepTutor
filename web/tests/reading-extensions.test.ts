@@ -39,6 +39,27 @@ test("the browser sends a locator and selection, not trusted visible text", () =
   assert.doesNotMatch(api, /visible_text\?: string/);
 });
 
+test("reading quiz answers send only the selected index", () => {
+  assert.match(api, /export async function submitReadingQuizAnswers/);
+  assert.match(
+    api,
+    /answers: payload\.answers\.map\(\(row\) => \(\{[\s\S]*question_id: row\.question_id,[\s\S]*selected_index: row\.selected_index,[\s\S]*\}\)\)/,
+  );
+  const submitFn = api.slice(api.indexOf("submitReadingQuizAnswers"));
+  assert.doesNotMatch(submitFn, /correct_choice_index/);
+  assert.match(component, /submitReadingQuizAnswers\(materialId,/);
+  assert.match(component, /selected_index: choiceIndex/);
+  const persistStart = component.indexOf("function persistAnswer");
+  const persistEnd = component.indexOf("return questions.map", persistStart);
+  assert.notEqual(persistStart, -1);
+  assert.notEqual(persistEnd, -1);
+  assert.doesNotMatch(
+    component.slice(persistStart, persistEnd),
+    /correct_choice_index/,
+  );
+  assert.match(pane, /sessionId=\{sessionId\}/);
+});
+
 test("a malformed extension catalog cannot crash the whole reader", () => {
   assert.match(api, /if \(!Array\.isArray\(payload\)\) return \[\]/);
   assert.match(
@@ -119,7 +140,7 @@ test("reading quizzes reveal grading only after the learner answers", () => {
   assert.match(component, /correct_choice_index\?: number/);
   assert.match(component, /const \[answers, setAnswers\] = useState/);
   assert.match(component, /aria-pressed=\{selected === choiceIndex\}/);
-  assert.match(component, /selected === correctChoiceIndex/);
+  assert.match(component, /verdicts\[key\]/);
   assert.match(component, /t\("Correct"\).*t\("Incorrect"\)/s);
 });
 

@@ -27,6 +27,7 @@ import {
 import AssetPicker, {
   type AssetSelection,
 } from "@/components/partners/AssetPicker";
+import PartnerWorkspacePicker from "@/components/partners/PartnerWorkspacePicker";
 import PartnerAvatar from "@/components/partners/PartnerAvatar";
 import FaceEditor, { type FaceValue } from "@/components/partners/FaceEditor";
 import PartnerModelPicker from "@/components/partners/PartnerModelPicker";
@@ -64,6 +65,8 @@ export default function NewPartnerPage() {
   const [backupSelection, setBackupSelection] = useState<LLMSelection | null>(
     null,
   );
+  const [workspaceId, setWorkspaceId] = useState("");
+  const [workspaceName, setWorkspaceName] = useState("");
   const [assets, setAssets] = useState<AssetSelection>({
     knowledge_bases: [],
     skills: [],
@@ -151,7 +154,8 @@ export default function NewPartnerPage() {
         // Never null for MCP: the list stays explicit so a server configured
         // later is not silently inherited by this partner.
         mcp_tools: mcpTools,
-        assets,
+        workspace_id: workspaceId,
+        assets: workspaceId ? undefined : assets,
         start: true,
       });
       // Land in the chat tab — the partner is ready to talk to right away
@@ -214,7 +218,7 @@ export default function NewPartnerPage() {
     library: {
       title: t("Hand over some knowledge"),
       subtitle: t(
-        "Give it a slice of your knowledge — copied into the partner's own workspace.",
+        "Choose a shared workspace or copy resources into a private workspace.",
       ),
     },
     review: {
@@ -360,6 +364,7 @@ export default function NewPartnerPage() {
                   <option value="">{t("Auto (English)")}</option>
                   <option value="en">English</option>
                   <option value="zh">中文</option>
+                  <option value="uk">Українська</option>
                 </select>
               </div>
             </div>
@@ -419,11 +424,22 @@ export default function NewPartnerPage() {
           )}
 
           {step === "library" && (
-            <AssetPicker
-              value={assets}
-              onChange={setAssets}
-              preselectAllSkills
-            />
+            <div className="space-y-6">
+              <PartnerWorkspacePicker
+                value={workspaceId}
+                onChange={(id, label) => {
+                  setWorkspaceId(id);
+                  setWorkspaceName(label);
+                }}
+              />
+              {!workspaceId && (
+                <AssetPicker
+                  value={assets}
+                  onChange={setAssets}
+                  preselectAllSkills
+                />
+              )}
+            </div>
           )}
 
           {step === "review" && (
@@ -433,6 +449,12 @@ export default function NewPartnerPage() {
                   [t("Name"), name.trim() || "—"],
                   [t("Description"), description.trim() || "—"],
                   [t("Soul"), soulSummary],
+                  [
+                    t("Workspace"),
+                    workspaceId
+                      ? workspaceName
+                      : t("Partner private workspace"),
+                  ],
                   [t("Model"), modelSummary],
                   [t("Backup model"), backupSummary],
                   [
@@ -445,13 +467,15 @@ export default function NewPartnerPage() {
                   ],
                   [
                     t("Library"),
-                    assetCount > 0
-                      ? t("{{count}} items will be copied", {
-                          count: assetCount,
-                        })
-                      : t(
-                          "Nothing assigned yet — this partner only knows what you tell it.",
-                        ),
+                    workspaceId
+                      ? t("Live workspace resources")
+                      : assetCount > 0
+                        ? t("{{count}} items will be copied", {
+                            count: assetCount,
+                          })
+                        : t(
+                            "Nothing assigned yet — this partner only knows what you tell it.",
+                          ),
                   ],
                 ].map(([label, valueText]) => (
                   <div

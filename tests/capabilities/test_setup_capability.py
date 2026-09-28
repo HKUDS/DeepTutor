@@ -143,6 +143,19 @@ async def test_apply_personal_setting_persists(isolated_settings: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_setup_can_select_malay_reply_language(isolated_settings: Path) -> None:
+    from deeptutor.services.settings.interface_settings import get_ui_settings
+
+    choices = setting_specs()["interface.response_language"].choices()
+    assert "ms" in {choice.value for choice in choices}
+
+    outcome = await apply_setting("interface.response_language", "ms")
+
+    assert outcome.ok
+    assert get_ui_settings()["response_language"] == "ms"
+
+
+@pytest.mark.asyncio
 async def test_apply_reports_a_coupled_setting(isolated_settings: Path) -> None:
     outcome = await apply_setting("interface.language", "zh")
 

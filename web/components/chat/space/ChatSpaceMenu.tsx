@@ -40,7 +40,8 @@ export interface ChatSpaceSelectionCounts {
 }
 
 interface ChatSpaceMenuProps {
-  variant: "toolbar" | "mention";
+  variant: "toolbar" | "mention" | "resources";
+  query?: string;
   selectedCounts: ChatSpaceSelectionCounts;
   /** Hide the Knowledge entry when no knowledge bases are configured. */
   knowledgeAvailable?: boolean;
@@ -103,6 +104,7 @@ function countFor(
 
 export default memo(function ChatSpaceMenu({
   variant,
+  query = "",
   selectedCounts,
   knowledgeAvailable = true,
   personaAvailable = true,
@@ -111,7 +113,7 @@ export default memo(function ChatSpaceMenu({
   onSelectItem,
 }: ChatSpaceMenuProps) {
   const { t } = useTranslation();
-  const compact = variant === "toolbar";
+  const compact = variant !== "mention";
   const isMention = variant === "mention";
 
   // Render the items in a fixed, hand-tuned order so the menu always reads
@@ -145,7 +147,7 @@ export default memo(function ChatSpaceMenu({
       if (key === "my_agents") {
         return {
           key,
-          label: "My Agents",
+          label: variant === "resources" ? "Agent conversations" : "My Agents",
           description: "Reference imported Claude Code / Codex conversations.",
           icon: Bot,
         };
@@ -176,7 +178,10 @@ export default memo(function ChatSpaceMenu({
       }
       return SPACE_ITEMS.find((it) => it.key === key)!;
     })
-    .filter(Boolean);
+    .filter(Boolean)
+    .filter((item) =>
+      t(item.label).toLowerCase().includes(query.trim().toLowerCase()),
+    );
 
   // Active row index for keyboard navigation. Only meaningful in the
   // mention variant — the toolbar variant is mouse/click driven.
@@ -232,11 +237,23 @@ export default memo(function ChatSpaceMenu({
     <div
       role={isMention ? "listbox" : undefined}
       aria-label={isMention ? t("Reference space") : undefined}
-      className={`rounded-xl border border-[var(--border)] bg-[var(--popover)] shadow-lg backdrop-blur-md ${
-        compact ? "w-[280px] py-1.5" : "w-64 p-2"
-      }`}
+      className={
+        variant === "resources"
+          ? "w-full py-1"
+          : `rounded-xl border border-[var(--border)] bg-[var(--popover)] shadow-lg backdrop-blur-md ${
+              compact ? "w-[280px] py-1.5" : "w-64 p-2"
+            }`
+      }
     >
-      <div className={compact ? "" : "space-y-1"}>
+      <div
+        className={
+          variant === "resources"
+            ? "grid grid-cols-2"
+            : compact
+              ? ""
+              : "space-y-1"
+        }
+      >
         {items.map(({ key, label, description, icon: Icon }, idx) => {
           const count = countFor(key as SelectableSpaceKey, selectedCounts);
           const isActive = isMention && idx === activeIdx;
@@ -247,13 +264,15 @@ export default memo(function ChatSpaceMenu({
           const opensPicker = key !== "attach";
           return (
             <Fragment key={key}>
-              {idx === 1 && items[0]?.key === "attach" && (
-                <div
-                  className={`border-t border-[var(--border)]/60 ${
-                    compact ? "mx-3 my-1" : "mx-1 my-1"
-                  }`}
-                />
-              )}
+              {variant !== "resources" &&
+                idx === 1 &&
+                items[0]?.key === "attach" && (
+                  <div
+                    className={`border-t border-[var(--border)]/60 ${
+                      compact ? "mx-3 my-1" : "mx-1 my-1"
+                    }`}
+                  />
+                )}
               <button
                 type="button"
                 role={isMention ? "option" : undefined}
@@ -265,20 +284,20 @@ export default memo(function ChatSpaceMenu({
                   setPickerOrigin(e.currentTarget.getBoundingClientRect());
                   onSelectItem(key as SelectableSpaceKey);
                 }}
-                className={`flex w-full items-center gap-2.5 text-left transition-colors active:bg-[var(--muted)]/70 ${
-                  isActive
-                    ? "bg-[var(--muted)]/60"
+                className={`${variant === "resources" && key === "attach" ? "col-span-2" : ""} flex w-full items-center gap-2.5 text-left transition-[background-color,transform] active:scale-[0.98] active:bg-[var(--muted)]/70 ${
+                  isActive || count > 0
+                    ? "bg-[var(--primary)]/[0.07]"
                     : "hover:bg-[var(--muted)]/40"
                 } ${
                   compact
-                    ? "px-3.5 py-2 text-[13px]"
+                    ? "px-3 py-2 text-[12px]"
                     : "rounded-xl px-3 py-2.5 text-[13px]"
                 }`}
               >
                 <Icon
                   size={15}
                   strokeWidth={1.7}
-                  className="shrink-0 text-[var(--muted-foreground)]"
+                  className={`shrink-0 ${count > 0 ? "text-[var(--primary)]" : "text-[var(--muted-foreground)]"}`}
                 />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium text-[var(--foreground)]">

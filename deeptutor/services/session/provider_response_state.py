@@ -18,7 +18,7 @@ MAX_THINKING_BLOCK_BYTES = 256 * 1024
 _ALLOWED_RESPONSE_OUTPUT_TYPES = frozenset(
     {"reasoning", "message", "function_call", "web_search_call", "web_search"}
 )
-_PRIVATE_MESSAGE_METADATA_KEYS = frozenset({"provider_response_state"})
+_PRIVATE_MESSAGE_METADATA_KEYS = frozenset({"provider_response_state", "model_turn"})
 
 
 def _normalized_output_items(value: Any) -> list[dict[str, Any]]:

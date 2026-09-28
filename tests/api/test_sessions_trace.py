@@ -68,3 +68,86 @@ def test_message_trace_is_paginated_and_session_scoped(tmp_path, monkeypatch) ->
     first, last = message["events"][0], message["events"][-1]
     assert trace["started_at"] <= first["timestamp"]
     assert trace["ended_at"] >= last["timestamp"]
+
+
+def test_worker_lost_without_assistant_is_visible_after_session_reload(
+    tmp_path, monkeypatch
+) -> None:
+    store = SQLiteSessionStore(tmp_path / "chat.db")
+    session = asyncio.run(store.ensure_session(None))
+    turn = asyncio.run(store.begin_turn(session["id"], capability="chat"))
+    user_id = asyncio.run(
+        store.add_message(
+            session["id"],
+            "user",
+            "My mastery answer is B",
+            metadata={
+                "turn_id": turn["id"],
+                "request_snapshot": {"content": "My mastery answer is B"},
+            },
+        )
+    )
+    assert asyncio.run(
+        store.transition_turn(
+            turn["id"],
+            "failed",
+            error="Worker lost during this turn",
+            failure_code="worker_lost",
+            retryable=True,
+        )
+    )
+
+    monkeypatch.setattr(sessions_router, "get_session_store", lambda: store)
+    app = FastAPI()
+    app.include_router(sessions_router.router, prefix="/api/sessions")
+    with TestClient(app) as client:
+        response = client.get(f"/api/sessions/{session['id']}")
+        assert response.status_code == 200
+        detail = response.json()
+        assert detail["status"] == "failed"
+        assert len(detail["messages"]) == 1
+        saved = detail["messages"][0]
+        assert saved["id"] == user_id
+        assert saved["metadata"]["request_snapshot"]["content"] == "My mastery answer is B"
+        assert saved["metadata"]["orphaned_failed_turn"] == {
+            "turn_id": turn["id"],
+            "error": "Worker lost during this turn",
+            "failure_code": "worker_lost",
+            "retryable": True,
+            "finished_at": saved["metadata"]["orphaned_failed_turn"]["finished_at"],
+        }
+
+
+def test_legacy_worker_lost_matches_saved_user_but_not_an_answered_retry(
+    tmp_path, monkeypatch
+) -> None:
+    store = SQLiteSessionStore(tmp_path / "chat.db")
+    session = asyncio.run(store.ensure_session(None))
+    turn = asyncio.run(store.begin_turn(session["id"], capability="chat"))
+    user_id = asyncio.run(store.add_message(session["id"], "user", "B"))
+    asyncio.run(
+        store.transition_turn(
+            turn["id"],
+            "failed",
+            error="Worker lost",
+            failure_code="worker_lost",
+            retryable=True,
+        )
+    )
+    monkeypatch.setattr(sessions_router, "get_session_store", lambda: store)
+    app = FastAPI()
+    app.include_router(sessions_router.router, prefix="/api/sessions")
+    with TestClient(app) as client:
+        first = client.get(f"/api/sessions/{session['id']}").json()
+        assert first["messages"][0]["metadata"]["orphaned_failed_turn"]["turn_id"] == turn["id"]
+
+        asyncio.run(
+            store.add_message(
+                session["id"],
+                "assistant",
+                "The correct answer is B.",
+                parent_message_id=user_id,
+            )
+        )
+        answered = client.get(f"/api/sessions/{session['id']}").json()
+        assert "orphaned_failed_turn" not in answered["messages"][0]["metadata"]

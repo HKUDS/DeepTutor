@@ -295,6 +295,16 @@ export function locatorFromHref(
 }
 
 /** Material-aware reader address, with support for legacy locator-only links. */
+/** The anchor `citationTargetFromHref` reads back: this unit of this material. */
+export function readingPassageHref(
+  materialId: string,
+  locator: number,
+  materialRevision?: number,
+): string {
+  const revision = materialRevision ? `-revision-${materialRevision}` : "";
+  return `${MATERIAL_LOCATOR_HREF_PREFIX}${materialId}${revision}-locator-${locator}`;
+}
+
 export function citationTargetFromHref(
   href: string | null | undefined,
 ): ReadingCitationTarget | null {
@@ -304,8 +314,10 @@ export function citationTargetFromHref(
     return Number.isInteger(locator) && locator >= 1 ? { locator } : null;
   }
   if (!href.startsWith(MATERIAL_LOCATOR_HREF_PREFIX)) return null;
+  // Material ids are content hashes or catalog-minted rm_ ids, matching the
+  // id shape the server-side citation generator can emit.
   const match =
-    /^#dt-material-([0-9a-f]{8,64})(?:-revision-(\d+))?-locator-(\d+)$/i.exec(
+    /^#dt-material-((?:[0-9a-f]{8,64}|rm_[0-9a-f]{12}))(?:-revision-(\d+))?-locator-(\d+)$/i.exec(
       href,
     );
   if (!match) return null;

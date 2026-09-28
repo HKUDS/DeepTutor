@@ -1,5 +1,6 @@
 "use client";
 
+import { knowledgeBaseRef } from "@/lib/knowledge-helpers";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -38,7 +39,7 @@ interface KnowledgeHomeProps {
   providers: RagProviderSummary[];
   onOpenKb: (name: string) => void;
   onOpenEngine: (id: string) => void;
-  onOpenSource: (id: "obsidian" | "marginnote4") => void;
+  onOpenSource: (id: "obsidian" | "marginnote4" | "kiwix") => void;
   onCreate: () => void;
   activeSection: KnowledgeHomeSection;
   onSectionChange: (section: KnowledgeHomeSection) => void;
@@ -154,6 +155,13 @@ export default function KnowledgeHome({
         ),
         action: t("Connect library"),
         count: kbs.filter((kb) => kb.metadata?.type === "marginnote4").length,
+      },
+      {
+        id: "kiwix" as const,
+        name: t("Kiwix / ZIM"),
+        description: t("Search an existing ZIM archive through kiwix-serve. Articles stay on the server."),
+        action: t("Connect archive"),
+        count: kbs.filter((kb) => kb.metadata?.type === "kiwix").length,
       },
     ],
     [kbs, t],
@@ -357,9 +365,9 @@ export default function KnowledgeHome({
                   const docs = kbDocCount(kb);
                   return (
                     <button
-                      key={kb.name}
+                      key={knowledgeBaseRef(kb)}
                       type="button"
-                      onClick={() => onOpenKb(kb.name)}
+                      onClick={() => onOpenKb(knowledgeBaseRef(kb))}
                       className="group flex flex-col gap-2 rounded-2xl border border-[var(--border)] p-4 text-left transition-colors hover:border-[var(--ring)]"
                     >
                       <div className="flex items-start gap-3">
@@ -383,6 +391,7 @@ export default function KnowledgeHome({
                               />
                             )}
                           </div>
+                          {kb.provenance_label && <p className="mt-1 truncate text-xs text-[var(--muted-foreground)]">{kb.provenance_label}</p>}
                           <div className="mt-2 flex items-center gap-2 text-[11px] text-[var(--muted-foreground)]">
                             <span className="rounded-full border border-[var(--border)] px-1.5 py-0.5">
                               {providerName(kbProvider(kb))}

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowUpRight, Loader2 } from "lucide-react";
+import ChatResponseTimeoutSection from "@/components/settings/ChatResponseTimeoutSection";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -41,8 +42,7 @@ export default function StarterSettingsPage() {
           apiUrl(EXTENSION_ENDPOINTS["chat-starters"]),
         );
         const data = (await response.json().catch(() => ({}))) as
-          | StarterSettingsPayload
-          | { detail?: string };
+          StarterSettingsPayload | { detail?: string };
         if (!response.ok) {
           throw new Error(
             "detail" in data && data.detail
@@ -57,8 +57,7 @@ export default function StarterSettingsPage() {
         // draft) wins over the server value — leaving the page is not a way
         // to discard changes.
         const pending = pendingExtensionPayload("chat-starters") as
-          | StarterSettings
-          | undefined;
+          StarterSettings | undefined;
         setDraft(pending ? { ...pending } : { ...next.settings });
       } catch (err) {
         if (!cancelled)
@@ -98,8 +97,7 @@ export default function StarterSettingsPage() {
         },
       );
       const data = (await response.json().catch(() => ({}))) as
-        | StarterSettingsPayload
-        | { detail?: string };
+        StarterSettingsPayload | { detail?: string };
       if (!response.ok) {
         throw new Error(
           "detail" in data && data.detail
@@ -112,6 +110,7 @@ export default function StarterSettingsPage() {
       setDraft({ ...next.settings });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      throw err;
     }
   }, [t]);
 
@@ -125,11 +124,13 @@ export default function StarterSettingsPage() {
   return (
     <div>
       <SettingsPageHeader
-        title={t("Starting points")}
+        title={t("Conversation")}
         description={t(
-          "The three lines under the composer on an empty home screen, generated from your long-term memory and what you have been working on lately.",
+          "Manage home suggestions and how long DeepTutor waits for replies.",
         )}
       />
+
+      <ChatResponseTimeoutSection />
 
       {loading && (
         <div className="flex items-center gap-2 text-[13px] text-[var(--muted-foreground)]">
@@ -146,7 +147,7 @@ export default function StarterSettingsPage() {
 
       {!loading && payload && draft && (
         <SettingSection
-          title={t("Material")}
+          title={t("Starting points")}
           description={t(
             "Your consolidated memory is always included. This controls how much raw recent activity goes with it — conversations, practice questions, searches, documents, in one list ordered by time.",
           )}
@@ -180,7 +181,7 @@ export default function StarterSettingsPage() {
         <p className="mt-5 text-[11.5px] leading-relaxed text-[var(--muted-foreground)]">
           {t("These lines are written by the active model unless you pin one.")}{" "}
           <Link
-            href="/settings#task-models"
+            href="/settings/task-models"
             className="inline-flex items-center gap-1 text-[var(--foreground)] underline-offset-2 hover:underline"
           >
             {t("Task models")}

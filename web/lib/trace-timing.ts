@@ -19,9 +19,9 @@ import type { StreamEvent } from "@/features/chat/model/protocol";
 /**
  * Elapsed seconds for the turn the ``events`` belong to.
  *
- * Returns ``null`` when the stream has not produced any timestamped
- * event yet (e.g. the optimistic assistant placeholder before the
- * first server frame arrives).
+ * Returns ``null`` when neither events nor submission bounds provide a
+ * timestamp. Optimistic messages carry their submission time so connection
+ * and provider latency are visible before the first server frame (#1435).
  *
  * While ``isStreaming`` is true the upper bound floats to
  * ``nowSeconds`` so the label ticks up in real time; once streaming

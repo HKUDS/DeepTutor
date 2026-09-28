@@ -279,7 +279,7 @@ test("ordinary users send a scoped Codex reasoning effort update", async () => {
 
   assert.match(
     capturedUrl,
-    /\/providers\/openai-codex\/models\/reasoning-effort$/,
+    /\/providers\/openai-codex\/models\/reasoning-effort\?dt_workspace=$/,
   );
   assert.equal(capturedInit?.method, "POST");
   assert.equal(

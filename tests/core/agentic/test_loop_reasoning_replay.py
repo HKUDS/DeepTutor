@@ -235,6 +235,21 @@ async def test_a_repair_round_replays_its_reasoning() -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_reasoning_only_repair_round_replays_its_reasoning() -> None:
+    client = await _run(
+        [
+            [_reasoning_chunk("The answer needs a label.")],
+            [_content_chunk("``FINISH``\ndone")],
+        ]
+    )
+
+    second_request = _assistant_messages(client.calls[1])
+    assert len(second_request) == 1
+    assert second_request[0]["content"] == ""
+    assert second_request[0]["reasoning_content"] == "The answer needs a label."
+
+
+@pytest.mark.asyncio
 async def test_signed_thinking_blocks_survive_the_round() -> None:
     """Anthropic's blocks are signed, so they cannot be rebuilt from text."""
     blocks = [{"type": "thinking", "thinking": "…", "signature": "sig-1"}]

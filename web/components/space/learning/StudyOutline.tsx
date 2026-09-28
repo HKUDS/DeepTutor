@@ -14,6 +14,7 @@
 
 import { ChevronsLeft, ChevronsRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import Tooltip from "@/shared/ui/Tooltip";
 
 import type { MapKnowledgePoint, MasteryTopic } from "@/lib/learning-api";
 
@@ -80,7 +81,6 @@ export function StudyOutline({
       <button
         type="button"
         onClick={onToggleCollapsed}
-        title={t("Show outline")}
         aria-label={t("Show outline")}
         className={`flex h-full w-full flex-col items-center gap-2.5 pt-4 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--foreground)] ${
           justMasteredId ? "mastery-just-mastered-strip" : ""
@@ -107,15 +107,16 @@ export function StudyOutline({
           <span className="text-[10.5px] tabular-nums text-[var(--muted-foreground)]/55">
             {mastered}/{total}
           </span>
-          <button
-            type="button"
-            onClick={onToggleCollapsed}
-            title={t("Hide outline")}
-            aria-label={t("Hide outline")}
-            className="flex h-5 w-5 items-center justify-center rounded text-[var(--muted-foreground)]/50 transition-colors hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]"
-          >
-            <ChevronsLeft className="h-3.5 w-3.5" />
-          </button>
+          <Tooltip label={t("Hide outline")}>
+            <button
+              type="button"
+              onClick={onToggleCollapsed}
+              aria-label={t("Hide outline")}
+              className="flex h-5 w-5 items-center justify-center rounded text-[var(--muted-foreground)]/50 transition-colors hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]"
+            >
+              <ChevronsLeft className="h-3.5 w-3.5" />
+            </button>
+          </Tooltip>
         </div>
       </div>
 

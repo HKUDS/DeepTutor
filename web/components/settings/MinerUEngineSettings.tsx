@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle2, Loader2, Save, XCircle } from "lucide-react";
+import { useSettings } from "@/features/settings/store/SettingsStore";
+import { useStagedSettings } from "@/features/settings/store/useStagedSettings";
+import { useEffect, useRef, useState } from "react";
+import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -32,6 +34,7 @@ const DOWNLOAD_SOURCE_LABELS: Record<MinerUDownloadSource, string> = {
 const DOWNLOAD_TYPES: MinerUDownloadType[] = ["pipeline", "vlm", "all"];
 
 type MinerUSettings = {
+  api_token?: string;
   mode: MinerUMode;
   api_base_url: string;
   local_cli_path: string;
@@ -82,21 +85,19 @@ function normalizeDraft(payload: MinerUPayload): MinerUSettings {
 
 export function MinerUEngineSettings() {
   const { t } = useTranslation();
+  const { draftRevision } = useSettings();
   const [payload, setPayload] = useState<MinerUPayload | null>(null);
-  const [draft, setDraft] = useState<MinerUSettings | null>(null);
-  // Token is write-only: blank field + "set/not set" hint. Only sent on save
-  // when the user actually edits it (tokenTouched).
-  const [tokenDraft, setTokenDraft] = useState("");
-  const [tokenTouched, setTokenTouched] = useState(false);
+  const [liveDraft, setLiveDraft] = useState<MinerUSettings | null>(null);
+  const [draft, setDraft] = useStagedSettings("mineru", liveDraft, setLiveDraft);
+  const tokenDraft = draft?.api_token ?? "";
+  const tokenTouched = draft?.api_token !== undefined;
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{
     ok: boolean;
     message: string;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState("");
   const [download, setDownload] = useState<DownloadStatus | null>(null);
   const [downloadType, setDownloadType] =
     useState<MinerUDownloadType>("pipeline");
@@ -123,9 +124,7 @@ export function MinerUEngineSettings() {
         if (cancelled) return;
         const next = data as MinerUPayload;
         setPayload(next);
-        setDraft(normalizeDraft(next));
-        setTokenDraft("");
-        setTokenTouched(false);
+        setLiveDraft(normalizeDraft(next));
       } catch (err) {
         if (!cancelled)
           setError(err instanceof Error ? err.message : String(err));
@@ -137,68 +136,10 @@ export function MinerUEngineSettings() {
     return () => {
       cancelled = true;
     };
-  }, [t]);
-
-  const dirty = useMemo(() => {
-    if (!payload || !draft) return false;
-    const current = normalizeDraft(payload);
-    return (
-      tokenTouched ||
-      current.mode !== draft.mode ||
-      current.api_base_url !== draft.api_base_url ||
-      current.local_cli_path !== draft.local_cli_path ||
-      current.model_download_source !== draft.model_download_source ||
-      current.model_download_endpoint !== draft.model_download_endpoint ||
-      current.model_version !== draft.model_version ||
-      current.language !== draft.language ||
-      current.enable_formula !== draft.enable_formula ||
-      current.enable_table !== draft.enable_table ||
-      current.is_ocr !== draft.is_ocr ||
-      current.allow_local_model_download !== draft.allow_local_model_download
-    );
-  }, [draft, payload, tokenTouched]);
+  }, [t, draftRevision]);
 
   function patch(next: Partial<MinerUSettings>) {
     setDraft((current) => (current ? { ...current, ...next } : current));
-  }
-
-  async function save() {
-    if (!draft) return;
-    setSaving(true);
-    setError(null);
-    setMessage("");
-    setTestResult(null);
-    try {
-      const body: Record<string, unknown> = {
-        ...draft,
-        api_token: tokenTouched ? tokenDraft : null,
-      };
-      const response = await apiFetch(apiUrl("/api/settings/mineru"), {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = (await response.json().catch(() => ({}))) as
-        | MinerUPayload
-        | { detail?: string };
-      if (!response.ok) {
-        throw new Error(
-          "detail" in data && data.detail
-            ? data.detail
-            : t("Failed to save MinerU settings."),
-        );
-      }
-      const next = data as MinerUPayload;
-      setPayload(next);
-      setDraft(normalizeDraft(next));
-      setTokenDraft("");
-      setTokenTouched(false);
-      setMessage(t("MinerU settings saved."));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSaving(false);
-    }
   }
 
   async function testConnection() {
@@ -633,8 +574,7 @@ export function MinerUEngineSettings() {
                 placeholder={tokenSet ? TOKEN_MASK : t("Paste API token")}
                 value={tokenDraft}
                 onChange={(e) => {
-                  setTokenDraft(e.target.value);
-                  setTokenTouched(true);
+                  patch({ api_token: e.target.value });
                 }}
               />
             }
@@ -720,26 +660,7 @@ export function MinerUEngineSettings() {
         />
       </SettingSection>
 
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-[12px] text-[var(--muted-foreground)]">
-          {message ||
-            t(
-              "MinerU settings are written to data/user/settings/document_parsing.json.",
-            )}
-        </p>
-        <button
-          onClick={save}
-          disabled={saving || !dirty}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--foreground)] px-3 py-1.5 text-[12px] font-medium text-[var(--background)] transition-opacity hover:opacity-80 disabled:opacity-40"
-        >
-          {saving ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
-          ) : (
-            <Save className="h-3 w-3" />
-          )}
-          {t("Save MinerU")}
-        </button>
-      </div>
+
     </>
   );
 }

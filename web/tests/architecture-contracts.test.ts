@@ -65,6 +65,31 @@ test("source modules cannot import Next route pages", () => {
   assert.deepEqual(violations, []);
 });
 
+test("the canonical tooltip owns every tooltip role and guards import paths", () => {
+  const roleOwners = allSources
+    .filter((file) => /role=["']tooltip["']/.test(fs.readFileSync(file, "utf8")))
+    .map((file) => path.relative(root, file));
+  assert.deepEqual(roleOwners.sort(), [
+    "shared/ui/Tooltip.tsx",
+    "shared/ui/TooltipLayer.tsx",
+  ].sort());
+  assert.equal(fs.existsSync(path.join(root, "components/common/Tooltip.tsx")), false);
+  assert.equal(fs.existsSync(path.join(root, "components/ui/Tooltip.tsx")), false);
+
+  const legacyImports = allSources
+    .filter((file) =>
+      /@\/components\/(?:common|ui)\/Tooltip/.test(
+        fs.readFileSync(file, "utf8"),
+      ),
+    )
+    .map((file) => path.relative(root, file));
+  assert.deepEqual(legacyImports, []);
+
+  const eslintConfig = fs.readFileSync(path.join(root, "eslint.config.mjs"), "utf8");
+  assert.match(eslintConfig, /no-restricted-imports/);
+  assert.match(eslintConfig, /JSXAttribute\[name\.name='title'\]/);
+});
+
 test("tracked source contains no editor backups or generated trash", () => {
   const suspicious = execFileSync("git", ["ls-files", "web"], {
     cwd: path.dirname(root),

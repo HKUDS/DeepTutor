@@ -34,11 +34,9 @@ function fitRenderedDocx(viewport: HTMLElement, host: HTMLElement) {
 }
 
 /**
- * Faithful DOCX preview via ``docx-preview`` (lazy-loaded so the parser only
- * ships when a Word doc is actually opened). It lays the document out as
- * page-shaped HTML with the original styles, which reads far better than the
- * extracted-text fallback. On any parse/layout failure we surface a quiet
- * error — the tab's Download button is the escape hatch.
+ * Client fallback for DOCX when server-side PDF conversion is unavailable.
+ * docx-preview preserves explicit and Word-saved page breaks, but does not
+ * paginate flowing text by page height like a word processor.
  */
 export default function DocxPreview({ url }: { url: string }) {
   const { t } = useTranslation();
@@ -83,7 +81,7 @@ export default function DocxPreview({ url }: { url: string }) {
           className: "docx",
           inWrapper: true,
           breakPages: true,
-          ignoreLastRenderedPageBreak: true,
+          ignoreLastRenderedPageBreak: false,
           useBase64URL: true,
         });
         if (cancelled) return;

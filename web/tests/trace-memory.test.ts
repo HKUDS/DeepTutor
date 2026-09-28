@@ -7,6 +7,7 @@ import {
   TraceCache,
   compactTracePreview,
   settleMessageTrace,
+  traceSettleAction,
 } from "../features/chat/trace/memory";
 
 function event(
@@ -123,6 +124,7 @@ test("settling a message keeps its card and stamps where the answer was cut", ()
           trace_kind: "call_status",
           call_state: "complete",
           call_role: "narration",
+          answer_visible: true,
         }),
         seq: 2,
       },
@@ -157,10 +159,11 @@ test("settling a message keeps its card and stamps where the answer was cut", ()
     settled.events.map((item) => item.type),
     ["tool_result", "progress", "done"],
   );
-  // The narration preamble never reached the answer, so it is not counted.
+  // The commentary the turn opened with is answer text too, so the boundary
+  // the card was cut at counts it.
   assert.equal(
     settled.events[1].metadata?.assistant_content_offset,
-    "Two ways.\n\n".length,
+    "preamble Two ways.\n\n".length,
   );
   assert.deepEqual(settled.trace, {
     turn_id: "turn-1",
@@ -172,4 +175,55 @@ test("settling a message keeps its card and stamps where the answer was cut", ()
     started_at: 1,
     ended_at: 1,
   });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Deferred compaction                                                */
+/* ------------------------------------------------------------------ */
+
+const assistant = (
+  id: number,
+  events: StreamEvent[],
+  trace?: Record<string, unknown>,
+) => ({ id, role: "assistant", events, ...(trace ? { trace } : {}) });
+
+test("the turn that just finished keeps the events it streamed", () => {
+  // Trading them for a preview here is what made opening a just-finished
+  // trace blank out its reasoning, hitch on a fetch, and then repaint.
+  assert.equal(
+    traceSettleAction(assistant(7, [event("thinking", "…")]), 7),
+    "keep",
+  );
+});
+
+test("the turn before it is the one compacted instead", () => {
+  // Still holding everything it streamed (events.length >= total), and no
+  // longer the turn being looked at.
+  assert.equal(
+    traceSettleAction(
+      assistant(5, [event("thinking", "…"), event("done")], {
+        turn_id: "t5",
+        total: 2,
+      }),
+      7,
+    ),
+    "compact",
+  );
+});
+
+test("a turn already down to its preview is left alone", () => {
+  // Its list is shorter than the stream it came from, so there is nothing
+  // left to compact and re-settling would only churn the message.
+  assert.equal(
+    traceSettleAction(assistant(5, [event("done")], { turn_id: "t5", total: 9 }), 7),
+    "skip",
+  );
+});
+
+test("nothing is compacted on the strength of a message with no turn", () => {
+  assert.equal(traceSettleAction(assistant(5, [event("done")]), 7), "skip");
+  assert.equal(
+    traceSettleAction({ id: 6, role: "user", events: [] }, 7),
+    "skip",
+  );
 });

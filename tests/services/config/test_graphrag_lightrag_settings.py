@@ -52,6 +52,7 @@ def test_lightrag_indexing_knobs_round_trip_and_clamp(tmp_path: Path) -> None:
     assert defaults["max_concurrent_files"] == 1
     assert defaults["llm_model_max_async"] == 4
     assert defaults["entity_extract_max_gleaning"] == 1
+    assert defaults["llm_timeout"] == 240
     assert defaults["llm_profile_id"] == ""
     assert defaults["llm_model_id"] == ""
 
@@ -60,22 +61,26 @@ def test_lightrag_indexing_knobs_round_trip_and_clamp(tmp_path: Path) -> None:
             "max_concurrent_files": 4,
             "llm_model_max_async": 8,
             "entity_extract_max_gleaning": 0,
+            "llm_timeout": 480,
         }
     )
     assert saved["max_concurrent_files"] == 4
     assert saved["llm_model_max_async"] == 8
     assert saved["entity_extract_max_gleaning"] == 0
+    assert saved["llm_timeout"] == 480
 
     clamped = svc.save_lightrag(
         {
             "max_concurrent_files": 999,
             "llm_model_max_async": 0,
             "entity_extract_max_gleaning": 99,
+            "llm_timeout": 99999,
         }
     )
     assert clamped["max_concurrent_files"] == 16
     assert clamped["llm_model_max_async"] == 1
     assert clamped["entity_extract_max_gleaning"] == 5
+    assert clamped["llm_timeout"] == 3600  # clamped to max
     # Editing one knob must not reset the query knobs beside it.
     assert clamped["top_k"] == 60
     assert clamped["response_type"] == "Multiple Paragraphs"
@@ -94,6 +99,7 @@ def test_lightrag_settings_written_before_the_indexing_knobs_still_load(
     assert loaded["max_concurrent_files"] == 1
     assert loaded["llm_model_max_async"] == 4
     assert loaded["entity_extract_max_gleaning"] == 1
+    assert loaded["llm_timeout"] == 240
     assert loaded["llm_profile_id"] == ""
     assert loaded["llm_model_id"] == ""
 

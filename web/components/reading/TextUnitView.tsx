@@ -1,7 +1,5 @@
 "use client";
 
-import { browserStorage } from "@/shared/storage";
-
 import {
   Fragment,
   useCallback,
@@ -11,30 +9,30 @@ import {
   useState,
 } from "react";
 import {
-  ALargeSmall,
   ChevronLeft,
   ChevronRight,
   Loader2,
-  Minus,
-  Plus,
-  RotateCcw,
-  Rows3,
-  SunMoon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import RichMarkdownRenderer from "@/components/common/RichMarkdownRenderer";
 import type { AnnotationItem, UnitKind } from "@/lib/reading-api";
-import { getUnitText } from "@/lib/reading-api";
+import {
+  getMaterialMedia,
+  getUnitText,
+  materialMediaUrl,
+  type MaterialMediaItem,
+} from "@/lib/reading-api";
 import {
   DEFAULT_FONT_SIZE,
   DEFAULT_LINE_WIDTH,
   DEFAULT_READER_DISPLAY_PREFERENCES,
   MAX_FONT_SIZE,
-  MAX_LINE_WIDTH,
   MIN_FONT_SIZE,
-  MIN_LINE_WIDTH,
-  normaliseReaderDisplayPreferences,
+  loadReaderDisplayPreferences,
   readerDisplayShortcut,
+  saveReaderDisplayPreferences,
+  type EpubSpreadMode,
+  type ReaderDisplayPreferences,
   type ReaderTheme,
 } from "@/lib/reading-display-preferences";
 import {
@@ -44,9 +42,13 @@ import {
   type ReaderHeading,
 } from "@/lib/reading-outline";
 import { cleanQuote } from "@/lib/reading-selection";
-import { MarkdownLine } from "@/lib/reading-inline-markdown";
+import {
+  imageMarkerNames,
+  MarkdownLine,
+} from "@/lib/reading-inline-markdown";
 import { toRecogitoTextAnnotation } from "@/lib/reading-w3c-annotations";
 import type { JumpRequest, SelectionPayload } from "./PdfDocumentView";
+import { PreferenceButton, ReaderDisplayControls } from "./ReaderDisplayControls";
 
 const COLOR_INK: Record<string, string> = {
   yellow: "250 220 90",
@@ -55,9 +57,6 @@ const COLOR_INK: Record<string, string> = {
   pink: "250 161 199",
   purple: "199 174 250",
 };
-
-const READER_PREFS_KEY = "dt.reader.textPreferences";
-const LINE_WIDTH_STEPS = [48, 64, 84, 104];
 
 export interface TextUnitViewProps {
   materialId: string;
@@ -115,56 +114,41 @@ export function TextUnitView({
   } | null>(null);
   const [locator, setLocator] = useState(1);
   const [text, setText] = useState("");
+  const [media, setMedia] = useState<MaterialMediaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE);
   const [lineWidth, setLineWidth] = useState(DEFAULT_LINE_WIDTH);
   const [serif, setSerif] = useState(true);
   const [readerTheme, setReaderTheme] = useState<ReaderTheme>("auto");
+  const [spreadMode, setSpreadMode] = useState<EpubSpreadMode>("none");
   const isWebMarkdown = contentFormat === "web_markdown";
   // Sepia and Night are whole-surface paper: a sheet drawn on top of them
   // would be a second, differently coloured page inside the first.
   const paperSheet = readerTheme === "auto";
 
   useEffect(() => {
-    try {
-      const value = normaliseReaderDisplayPreferences(
-        JSON.parse(browserStorage.readRaw("local", READER_PREFS_KEY) || "{}"),
-      );
-      setFontSize(value.fontSize);
-      setLineWidth(value.lineWidth);
-      setSerif(value.serif);
-      setReaderTheme(value.readerTheme);
-    } catch {
-      // Invalid or unavailable local storage falls back to readable defaults.
-    }
+    const value = loadReaderDisplayPreferences();
+    setFontSize(value.fontSize);
+    setLineWidth(value.lineWidth);
+    setSerif(value.serif);
+    setReaderTheme(value.readerTheme);
+    setSpreadMode(value.spreadMode);
   }, []);
 
   const updatePreferences = useCallback(
     (
-      next: Partial<{
-        fontSize: number;
-        lineWidth: number;
-        serif: boolean;
-        readerTheme: ReaderTheme;
-      }>,
+      next: Partial<ReaderDisplayPreferences>,
     ) => {
-      const merged = { fontSize, lineWidth, serif, readerTheme, ...next };
+      const merged = { fontSize, lineWidth, serif, readerTheme, spreadMode, ...next };
       setFontSize(merged.fontSize);
       setLineWidth(merged.lineWidth);
       setSerif(merged.serif);
       setReaderTheme(merged.readerTheme);
-      try {
-        browserStorage.writeRaw(
-          "local",
-          READER_PREFS_KEY,
-          JSON.stringify(merged),
-        );
-      } catch {
-        // Preferences still apply for the current session.
-      }
+      setSpreadMode(merged.spreadMode);
+      saveReaderDisplayPreferences(merged);
     },
-    [fontSize, lineWidth, readerTheme, serif],
+    [fontSize, lineWidth, readerTheme, serif, spreadMode],
   );
 
   const changeFontSize = useCallback(
@@ -179,12 +163,6 @@ export function TextUnitView({
   const resetPreferences = useCallback(() => {
     updatePreferences(DEFAULT_READER_DISPLAY_PREFERENCES);
   }, [updatePreferences]);
-
-  const cycleLineWidth = useCallback(() => {
-    const nextWidth =
-      LINE_WIDTH_STEPS.find((width) => width > lineWidth) ?? MIN_LINE_WIDTH;
-    updatePreferences({ lineWidth: nextWidth });
-  }, [lineWidth, updatePreferences]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -215,6 +193,36 @@ export function TextUnitView({
   useEffect(() => {
     setLocator(1);
   }, [materialId]);
+
+  // Embedded pictures (DOCX/PPTX ingest), keyed to locators. Materials
+  // without images simply return an empty index; failure keeps the text
+  // readable without the strip.
+  useEffect(() => {
+    let cancelled = false;
+    setMedia([]);
+    getMaterialMedia(materialId)
+      .then((items) => {
+        if (!cancelled) setMedia(items);
+      })
+      .catch(() => {
+        if (!cancelled) setMedia([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [materialId]);
+
+  // Pictures whose marker lines the inline renderer does not claim (a marker
+  // embedded mid-paragraph, say) still need the fallback strip below the
+  // article; everything else renders at its original position in the body.
+  // Only this unit's pictures belong here — a picture whose marker lives in
+  // another unit renders inline there.
+  const fallbackMedia = useMemo(() => {
+    const claimed = imageMarkerNames(text);
+    return media.filter(
+      (item) => item.locator === locator && !claimed.has(item.name),
+    );
+  }, [locator, media, text]);
 
   useEffect(() => {
     let cancelled = false;
@@ -485,57 +493,10 @@ export function TextUnitView({
           position is the header's to state, since that is the one line that is
           there in every render mode. What is left here is what you can *do*. */}
       <div className="flex items-center justify-between gap-2 overflow-x-auto border-b border-[var(--border)] px-2 py-2 sm:px-3">
-        <div className="flex shrink-0 items-center gap-0.5">
-          <PreferenceButton
-            label={t("Smaller text ({{percent}}%)", {
-              percent: Math.round((fontSize / 16) * 100),
-            })}
-            icon={Minus}
-            disabled={fontSize <= MIN_FONT_SIZE}
-            onClick={() => changeFontSize(fontSize - 1)}
-          />
-          <PreferenceButton
-            label={t("Larger text ({{percent}}%)", {
-              percent: Math.round((fontSize / 16) * 100),
-            })}
-            icon={Plus}
-            disabled={fontSize >= MAX_FONT_SIZE}
-            onClick={() => changeFontSize(fontSize + 1)}
-          />
-          <PreferenceButton
-            label={serif ? t("Use sans-serif font") : t("Use serif font")}
-            icon={ALargeSmall}
-            active={!serif}
-            onClick={() => updatePreferences({ serif: !serif })}
-          />
-          <PreferenceButton
-            label={t("Change line width ({{width}} characters)", {
-              width: lineWidth,
-            })}
-            icon={Rows3}
-            onClick={cycleLineWidth}
-          />
-          <PreferenceButton
-            label={t("Change reading theme")}
-            icon={SunMoon}
-            active={readerTheme !== "auto"}
-            onClick={() =>
-              updatePreferences({
-                readerTheme:
-                  readerTheme === "auto"
-                    ? "sepia"
-                    : readerTheme === "sepia"
-                      ? "night"
-                      : "auto",
-              })
-            }
-          />
-          <PreferenceButton
-            label={t("Reset reading display")}
-            icon={RotateCcw}
-            onClick={resetPreferences}
-          />
-        </div>
+        <ReaderDisplayControls
+          preferences={{ fontSize, lineWidth, serif, readerTheme, spreadMode }}
+          onChange={updatePreferences}
+        />
         <div className="flex shrink-0 items-center gap-0.5">
           <PreferenceButton
             label={t("Previous {{unit}}", { unit: t(unitLabel(unit)) })}
@@ -569,6 +530,7 @@ export function TextUnitView({
         ) : error ? (
           <p className="text-[12px] text-[var(--muted-foreground)]">{error}</p>
         ) : (
+          <>
           <article
             ref={articleRef}
             // The sheet. Text used to run edge to edge on the same white as
@@ -615,57 +577,90 @@ export function TextUnitView({
                 variant="prose"
               />
             ) : (
-              <TextWithHeadings text={text} headings={pageHeadings} />
+              <TextWithHeadings
+                text={text}
+                headings={pageHeadings}
+                media={media}
+                materialId={materialId}
+              />
             )}
-          </article>
+            </article>
+            {fallbackMedia.length > 0 && (
+              <div
+                className="mx-auto mt-6 flex flex-col gap-5 pb-4"
+                style={{ maxWidth: `${lineWidth}ch` }}
+              >
+                {fallbackMedia.map((item) => (
+                  <figure
+                    key={item.name}
+                    className="flex flex-col items-center"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={materialMediaUrl(materialId, item.name)}
+                      alt={item.name}
+                      loading="lazy"
+                      className="max-h-[70vh] w-auto max-w-full rounded-lg border border-[var(--border)]"
+                    />
+                    <figcaption className="mt-1.5 text-center text-[10.5px] text-[var(--muted-foreground)]">
+                      {item.name}
+                    </figcaption>
+                  </figure>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
   );
 }
 
-function PreferenceButton({
-  label,
-  icon: Icon,
-  active = false,
-  disabled = false,
-  onClick,
-}: {
-  label: string;
-  icon: typeof Minus;
-  active?: boolean;
-  disabled?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      title={label}
-      aria-label={label}
-      aria-pressed={active}
-      disabled={disabled}
-      onClick={onClick}
-      className={`inline-flex h-7 w-7 items-center justify-center rounded-lg transition hover:bg-[var(--muted)] disabled:opacity-35 disabled:hover:bg-transparent ${
-        active
-          ? "text-[var(--foreground)]"
-          : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-      }`}
-    >
-      <Icon size={15} />
-    </button>
-  );
-}
-
 function TextWithHeadings({
   text,
   headings,
+  media,
+  materialId,
 }: {
   text: string;
   headings: ReaderHeading[];
+  media: MaterialMediaItem[];
+  materialId: string;
 }) {
   const lines = useMemo(
     () => readerLinesWithHeadings(text, headings),
     [headings, text],
+  );
+
+  // An embedded-picture marker line renders as the picture itself, at the
+  // picture's original position between paragraphs. The marker text stays in
+  // the DOM (HiddenMark pattern, same as every other collapsed marker) so
+  // Recogito's char-level selectors keep resolving against the exact text an
+  // annotation was saved against. A picture whose media row is missing keeps
+  // its literal marker rather than silently vanishing.
+  const renderImage = useCallback(
+    (name: string, markerText: string) => {
+      const item = media.find((row) => row.name === name);
+      if (!item) return null;
+      return (
+        <figure className="my-6 flex flex-col items-center">
+          <span
+            aria-hidden="true"
+            className="inline-block size-0 overflow-hidden align-top text-[0px]"
+          >
+            {markerText}
+          </span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={materialMediaUrl(materialId, item.name)}
+            alt={item.name}
+            loading="lazy"
+            className="max-h-[70vh] w-auto max-w-full rounded-lg border border-[var(--border)]"
+          />
+        </figure>
+      );
+    },
+    [materialId, media],
   );
 
   return (
@@ -721,7 +716,9 @@ function TextWithHeadings({
             {lineIndex > 0 && "\n"}
             {/* Fenced code stays completely literal — Markdown syntax
                 inside a code block is content, not formatting. */}
-            {line.fence ? line.text : <MarkdownLine text={line.text} />}
+            {line.fence ? line.text : (
+              <MarkdownLine text={line.text} renderImage={renderImage} />
+            )}
           </Fragment>
         );
       })}

@@ -37,6 +37,7 @@ logger = logging.getLogger(__name__)
 class IdeationContext:
     """Structured text+metadata bundle consumed by Stage 1 (Ideation)."""
 
+    source_context: str = ""
     user_intent: str = ""
     chat_history_text: str = ""
     notebook_context: str = ""
@@ -50,6 +51,9 @@ class IdeationContext:
         """Render as a single multi-section prompt block."""
         sections: list[str] = []
         sections.append(f"[User Intent]\n{(self.user_intent or '(empty)').strip()}")
+
+        if self.source_context:
+            sections.append("[Selected materials]\n" + self.source_context)
 
         if self.notebook_context.strip():
             sections.append(f"[Notebook Context]\n{self.notebook_context.strip()}")
@@ -308,6 +312,7 @@ def _normalize_chat_selections(
 async def build_book_inputs(
     *,
     user_intent: str,
+    source_refs: list[dict[str, Any]] | None = None,
     chat_session_id: str = "",
     chat_selections: list[dict[str, Any]] | None = None,
     notebook_refs: list[dict[str, Any]] | None = None,
@@ -334,7 +339,41 @@ async def build_book_inputs(
     )
     question_text, question_count = await _resolve_question_notebook(cat_ids, entry_ids)
 
+    source_context = ""
+    if source_refs:
+        import asyncio
+
+        from deeptutor.learning.models import TopicSource, TopicSourceKind
+        from deeptutor.learning.topic_generation import ground_topic_sources
+        from deeptutor.learning.topic_materials import build_topic_materials
+
+        sources = [
+            TopicSource.model_validate({**row, "id": row.get("id") or f"book-source-{i}"})
+            for i, row in enumerate(source_refs[:32])
+        ]
+        materials = await asyncio.to_thread(build_topic_materials, sources)
+        files = await ground_topic_sources(
+            name="",
+            goal=intent,
+            sources=[source for source in sources if source.kind == TopicSourceKind.FILE],
+        )
+        source_context = "\n\n".join(
+            f"## {item.name}\n{item.full_text or item.outline or item.note}"
+            for item in materials.materials
+            if item.kind != "file"
+        )[:80_000]
+        if files:
+            source_context += (
+                "\n\n"
+                + "\n\n".join(
+                    f"## {source.label}\n{source.excerpt if source.available else 'Selected document is unavailable.'}"
+                    for source in files
+                )[:80_000]
+            )
+
     book_inputs = BookInputs(
+        source_refs=source_refs or [],
+        source_context=source_context,
         user_intent=intent,
         chat_session_id=chat_session_id,
         chat_selections=sels,
@@ -346,6 +385,7 @@ async def build_book_inputs(
         language=language,
     )
     ideation_ctx = IdeationContext(
+        source_context=source_context,
         user_intent=intent,
         chat_history_text=chat_history_text,
         notebook_context=notebook_context,

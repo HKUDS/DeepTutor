@@ -9,14 +9,14 @@ const source = (relative: string) =>
 test("workspace owns one runtime and Reading does not nest another", () => {
   assert.match(source("app/(workspace)/layout.tsx"), /ChatRuntimeProvider/);
   assert.doesNotMatch(
-    source("app/(workspace)/reading/layout.tsx"),
+    source("app/(workspace)/learning/reading/layout.tsx"),
     /ChatRuntimeProvider|ChatStateAdapterProvider/,
   );
 });
 
-test("Mastery study receives its own runtime outside the workspace group", () => {
-  assert.match(
-    source("app/(utility)/mastery/[pathId]/sessions/layout.tsx"),
+test("Mastery study inherits the workspace runtime without nesting", () => {
+  assert.doesNotMatch(
+    source("app/(workspace)/learning/mastery/[pathId]/sessions/layout.tsx"),
     /ChatRuntimeProvider/,
   );
 });

@@ -359,6 +359,30 @@ def get_persona_service() -> PersonaService:
     return _instances[key]
 
 
+def load_visible_for_context(
+    name: str,
+    *,
+    workspace: PersonaService | None = None,
+    admin: PersonaService | None = None,
+) -> str:
+    """Render a persona from the active workspace, then admin presets.
+
+    Workspace-local files stay isolated. Admin presets are a read-only overlay
+    visible to every role — including an admin in an explicit workspace whose
+    own ``personas/`` directory is empty.
+    """
+    if not name:
+        return ""
+    text = (workspace or get_persona_service()).load_for_context(name)
+    if text:
+        return text
+    if admin is None:
+        from deeptutor.multi_user.paths import get_admin_path_service
+
+        admin = PersonaService(root=get_admin_path_service().get_workspace_dir() / "personas")
+    return admin.load_for_context(name)
+
+
 __all__ = [
     "InvalidPersonaNameError",
     "LEGACY_PERSONA_SKILLS",
@@ -369,4 +393,5 @@ __all__ = [
     "PersonaNotFoundError",
     "PersonaService",
     "get_persona_service",
+    "load_visible_for_context",
 ]

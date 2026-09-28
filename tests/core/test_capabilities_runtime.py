@@ -69,6 +69,7 @@ async def _collect_events(run_coro) -> list[StreamEvent]:
 
 def test_builtin_capability_registry_covers_documented_capabilities() -> None:
     assert set(BUILTIN_CAPABILITY_CLASSES) == {
+        "audio_overview",
         "chat",
         "ask_questions",
         "deep_solve",
@@ -455,6 +456,10 @@ async def test_visualize_capability_reuses_chat_loop_and_preserves_attachments(
         "AgenticChatPipeline",
         FakeAgenticChatPipeline,
     )
+    monkeypatch.setattr(
+        "deeptutor.agents.visualize.capability.get_visualize_params",
+        lambda: {"temperature": 0.23, "max_tokens": 12345},
+    )
 
     context = UnifiedContext(
         user_message="make a figure",
@@ -474,8 +479,8 @@ async def test_visualize_capability_reuses_chat_loop_and_preserves_attachments(
     assert captured["init"] == {
         "language": "en",
         "max_rounds": 5,
-        "temperature": 0.15,
-        "max_tokens": 16000,
+        "temperature": 0.23,
+        "max_tokens": 12345,
         "event_source": "visualize",
         "event_stage": "generating",
         "emit_result": False,

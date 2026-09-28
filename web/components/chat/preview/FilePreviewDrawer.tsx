@@ -1,5 +1,7 @@
 "use client";
 
+import { readingCollectionRoute } from "@/lib/learning-routes";
+
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
@@ -10,6 +12,7 @@ import { apiUrl } from "@/lib/api";
 import { apiFetch } from "@/lib/api";
 import { uploadMaterial } from "@/lib/reading-api";
 import { createReadingWorkspace } from "@/lib/reading-workspace-api";
+import Tooltip from "@/shared/ui/Tooltip";
 import {
   type FilePreviewSource,
   previewKindFor,
@@ -26,12 +29,15 @@ const MarkdownPreview = dynamic(() => import("./previewers/MarkdownPreview"));
 const TextPreview = dynamic(() => import("./previewers/TextPreview"));
 const DocxPreview = dynamic(() => import("./previewers/DocxPreview"));
 const XlsxPreview = dynamic(() => import("./previewers/XlsxPreview"));
+const OfficePdfPreview = dynamic(() => import("./previewers/OfficePdfPreview"));
 const OfficeTextPreview = dynamic(
   () => import("./previewers/OfficeTextPreview"),
 );
 const FallbackPreview = dynamic(() => import("./previewers/FallbackPreview"));
 
-const ANIM_MS = 220;
+// Matches `--viewer-dur` in globals.css — the chat column's squeeze runs on
+// that duration and curve, and the slide must land with it.
+const ANIM_MS = 300;
 
 interface FilePreviewDrawerProps {
   open: boolean;
@@ -182,7 +188,7 @@ export default function FilePreviewDrawer({
         material_ids: [material.material_id],
       });
       onClose();
-      router.push(`/reading/${workspace.workspace_id}`);
+      router.push(readingCollectionRoute(workspace.workspace_id));
     } catch (caught) {
       setReaderError(
         caught instanceof Error
@@ -209,7 +215,7 @@ export default function FilePreviewDrawer({
       // Full-screen sheet below the drawer breakpoint, matching
       // SessionViewerPanel — a 92vw overlay on a phone is an awkward
       // near-miss rather than a usable second column.
-      className={`fixed right-0 top-0 z-[30] flex h-dvh w-full flex-col border-l border-[var(--border)] bg-[var(--card)] transition-transform ease-out md:w-[min(560px,92vw)] ${
+      className={`fixed right-0 top-0 z-[30] flex h-dvh w-full flex-col border-l border-[var(--border)] bg-[var(--card)] md:w-[min(560px,92vw)] ${
         // shadow-2xl only while visible — parked off-screen at translate-x-full,
         // the blurred shadow still bleeds ~38px back onto the viewport's right
         // edge. Dropping it off-screen kills that stray sliver.
@@ -218,7 +224,7 @@ export default function FilePreviewDrawer({
       style={{
         // Hand the transform to the GPU compositor for a buttery slide.
         willChange: "transform",
-        transitionDuration: `${ANIM_MS}ms`,
+        transition: "transform var(--viewer-dur) var(--viewer-ease)",
         // While off-screen the drawer must not steal pointer events from
         // the chat behind it.
         pointerEvents: visible ? "auto" : "none",
@@ -241,62 +247,67 @@ export default function FilePreviewDrawer({
             </div>
 
             {canOpenInReading && downloadUrl && (
-              <button
-                type="button"
-                onClick={() => void handleOpenInReading()}
-                disabled={openingInReader}
-                title={t("Open in Immersive Reading")}
-                className="mr-1 inline-flex h-8 items-center gap-1.5 rounded-lg bg-[var(--primary)]/10 px-2.5 text-[10px] font-semibold text-[var(--primary)] transition hover:bg-[var(--primary)]/15 disabled:opacity-50"
-              >
-                {openingInReader ? (
-                  <Loader2 size={12} className="animate-spin" />
-                ) : (
-                  <BookOpenText size={12} />
-                )}
-                <span className="hidden sm:inline">{t("Open in Reading")}</span>
-              </button>
+              <Tooltip label={t("Open in Immersive Reading")} side="bottom">
+                <button
+                  type="button"
+                  onClick={() => void handleOpenInReading()}
+                  disabled={openingInReader}
+                  aria-label={t("Open in Immersive Reading")}
+                  className="mr-1 inline-flex h-8 items-center gap-1.5 rounded-lg bg-[var(--primary)]/10 px-2.5 text-[10px] font-semibold text-[var(--primary)] transition hover:bg-[var(--primary)]/15 disabled:opacity-50"
+                >
+                  {openingInReader ? (
+                    <Loader2 size={12} className="animate-spin" />
+                  ) : (
+                    <BookOpenText size={12} />
+                  )}
+                  <span className="hidden sm:inline">{t("Open in Reading")}</span>
+                </button>
+              </Tooltip>
             )}
 
             {downloadUrl && (
-              <a
-                href={downloadUrl}
-                download={filename}
-                title={t("Download")}
-                aria-label={t("Download")}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-              >
-                <Download size={14} strokeWidth={1.7} />
-              </a>
+              <Tooltip label={t("Download")} side="bottom">
+                <a
+                  href={downloadUrl}
+                  download={filename}
+                  aria-label={t("Download")}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                >
+                  <Download size={14} strokeWidth={1.7} />
+                </a>
+              </Tooltip>
             )}
             {downloadUrl && (
+              <Tooltip label={t("Copy link")} side="bottom">
+                <button
+                  type="button"
+                  onClick={handleCopy}
+                  aria-label={t("Copy link")}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                >
+                  {copied ? (
+                    <Check
+                      size={14}
+                      strokeWidth={1.7}
+                      className="text-emerald-500"
+                    />
+                  ) : (
+                    <Copy size={14} strokeWidth={1.7} />
+                  )}
+                </button>
+              </Tooltip>
+            )}
+            <Tooltip label={t("Close")} side="bottom">
               <button
+                ref={closeBtnRef}
                 type="button"
-                onClick={handleCopy}
-                title={t("Copy link")}
-                aria-label={t("Copy link")}
+                onClick={onClose}
+                aria-label={t("Close")}
                 className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
               >
-                {copied ? (
-                  <Check
-                    size={14}
-                    strokeWidth={1.7}
-                    className="text-emerald-500"
-                  />
-                ) : (
-                  <Copy size={14} strokeWidth={1.7} />
-                )}
+                <X size={15} strokeWidth={1.8} />
               </button>
-            )}
-            <button
-              ref={closeBtnRef}
-              type="button"
-              onClick={onClose}
-              title={t("Close")}
-              aria-label={t("Close")}
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-            >
-              <X size={15} strokeWidth={1.8} />
-            </button>
+            </Tooltip>
           </div>
 
           {readerError && (
@@ -351,7 +362,7 @@ const PreviewBody = memo(function PreviewBody({
   // Office docs lean on extracted_text and degrade gracefully via the
   // OfficeTextPreview, even when previewUrl is missing (legacy messages).
   if (kind === "office-text") {
-    return (
+    const fallback = (
       <OfficeTextPreview
         filename={filename}
         extractedText={source.extractedText}
@@ -359,6 +370,10 @@ const PreviewBody = memo(function PreviewBody({
         url={previewUrl}
       />
     );
+    if (previewUrl) {
+      return <OfficePdfPreview url={previewUrl} filename={filename} fallback={fallback} />;
+    }
+    return fallback;
   }
 
   // Everything else needs a fetchable URL. Without one we fall back.
@@ -370,9 +385,21 @@ const PreviewBody = memo(function PreviewBody({
     case "pdf":
       return <PdfPreview url={previewUrl} filename={filename} />;
     case "docx":
-      return <DocxPreview url={previewUrl} />;
+      return (
+        <OfficePdfPreview
+          url={previewUrl}
+          filename={filename}
+          fallback={<DocxPreview url={previewUrl} />}
+        />
+      );
     case "xlsx":
-      return <XlsxPreview url={previewUrl} />;
+      return (
+        <OfficePdfPreview
+          url={previewUrl}
+          filename={filename}
+          fallback={<XlsxPreview url={previewUrl} />}
+        />
+      );
     case "image":
       return <ImagePreview url={previewUrl} filename={filename} />;
     case "video":

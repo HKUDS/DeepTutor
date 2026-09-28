@@ -1,4 +1,6 @@
-export type ToolAvailabilityLanguage = "en" | "zh";
+import type { AppLanguage } from "@/i18n/languages";
+
+export type ToolAvailabilityLanguage = AppLanguage;
 
 export type ToolAvailabilityCopy = {
   badge: string;

@@ -1,5 +1,6 @@
 "use client";
 
+import Tooltip from "@/shared/ui/Tooltip";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
@@ -275,27 +276,29 @@ function Installed({
                   />
                 )}
                 {isAdmin && (
-                  <button
-                    type="button"
-                    disabled={busy === app.id}
-                    onClick={() => {
-                      if (
-                        typeof window !== "undefined" &&
-                        !window.confirm(
-                          t('Remove "{{name}}" from this deployment?', {
-                            name: app.display_name,
-                          }),
-                        )
-                      ) {
-                        return;
-                      }
-                      void act(app.id, () => uninstallCliApp(app.id));
-                    }}
-                    title={t("Uninstall")}
-                    className="rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-red-500 disabled:opacity-50"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                  <Tooltip label={t("Uninstall")} side="top">
+                    <button
+                      type="button"
+                      disabled={busy === app.id}
+                      onClick={() => {
+                        if (
+                          typeof window !== "undefined" &&
+                          !window.confirm(
+                            t('Remove "{{name}}" from this deployment?', {
+                              name: app.display_name,
+                            }),
+                          )
+                        ) {
+                          return;
+                        }
+                        void act(app.id, () => uninstallCliApp(app.id));
+                      }}
+                      aria-label={t("Uninstall")}
+                      className="rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-red-500 disabled:opacity-50"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </Tooltip>
                 )}
               </div>
             </div>

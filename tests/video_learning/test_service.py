@@ -81,16 +81,40 @@ def test_transcript_normalization_enforces_the_storage_budget(monkeypatch) -> No
     assert [cue["text"] for cue in cues] == ["1234", "5678"]
 
 
+def test_transcript_normalization_decodes_entities_and_normalizes_whitespace() -> None:
+    cues = service.normalize_cues(
+        [
+            {
+                "start": 0,
+                "duration": 1,
+                "text": "Learn&nbsp;&nbsp;from &#x41; &amp; &#66;",
+            }
+        ]
+    )
+
+    assert cues == [{"start": 0.0, "end": 1.0, "text": "Learn from A & B"}]
+
+
+def test_nested_caption_entities_decode_only_once() -> None:
+    parsed = service.parse_webvtt(
+        "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nUse &amp;lt;tag&amp;gt; literally\n"
+    )
+
+    assert service.normalize_cues(parsed)[0]["text"] == "Use &lt;tag&gt; literally"
+
+
 def test_webvtt_preserves_caption_after_leading_blank_and_inline_tags() -> None:
-    cues = service.parse_webvtt(
-        "WEBVTT\n\n00:00:00.000 --> 00:00:02.000\n \nOpening <c>idea</c>\nand continuation\n"
+    cues = service.normalize_cues(
+        service.parse_webvtt(
+            "WEBVTT\n\n00:00:00.000 --> 00:00:02.000\n \nOpening <c>idea</c>&nbsp;&amp;\nand continuation\n"
+        )
     )
 
     assert cues == [
         {
             "start": 0.0,
             "end": 2.0,
-            "text": "Opening idea and continuation",
+            "text": "Opening idea & and continuation",
         }
     ]
 
@@ -112,6 +136,55 @@ Second line
         {"start": 1.0, "end": 2.5, "text": "Ordinary caption"},
         {"start": 3.0, "end": 4.0, "text": "Second line"},
     ]
+
+
+def test_store_repairs_legacy_caption_entities(isolated: Path) -> None:
+    store = service.TimedMediaStore()
+    material_id = service.material_id_for("dQw4w9WgXcQ")
+    store.save(
+        {
+            "version": 1,
+            "type": "timed_media",
+            "material_id": material_id,
+            "transcript": {
+                "status": "ready",
+                "cues": [{"start": 0, "end": 1, "text": "Learn&nbsp;&nbsp;&amp; apply"}],
+            },
+            "segments": [
+                {"locator": 7, "start": 0, "end": 1, "text": "Learn&nbsp;&nbsp;&amp; apply"}
+            ],
+            "learning": {"last_position": 0},
+        }
+    )
+
+    with store.lock(material_id):
+        repaired = store.get(material_id, lock_held=True)
+
+    assert repaired["transcript"]["cues"][0]["text"] == "Learn & apply"
+    assert repaired["segments"] == [{"locator": 7, "start": 0, "end": 1, "text": "Learn & apply"}]
+    persisted = json.loads(store._path(material_id).read_text(encoding="utf-8"))
+    assert persisted["transcript"]["cues"][0]["text"] == "Learn & apply"
+    assert store.get(material_id)["segments"][0]["text"] == "Learn & apply"
+
+
+def test_store_legacy_repair_does_not_decode_nested_entities_twice(isolated: Path) -> None:
+    store = service.TimedMediaStore()
+    material_id = service.material_id_for("dQw4w9WgXcQ")
+    store.save(
+        {
+            "version": 1,
+            "type": "timed_media",
+            "material_id": material_id,
+            "transcript": {
+                "status": "ready",
+                "cues": [{"start": 0, "end": 1, "text": "Use &amp;lt;tag&amp;gt;"}],
+            },
+            "segments": [{"locator": 1, "start": 0, "end": 1, "text": "Use &amp;lt;tag&amp;gt;"}],
+        }
+    )
+
+    assert store.get(material_id)["segments"][0]["text"] == "Use &lt;tag&gt;"
+    assert store.get(material_id)["segments"][0]["text"] == "Use &lt;tag&gt;"
 
 
 def test_invidious_caption_choice_accepts_the_real_snake_case_schema() -> None:
@@ -242,6 +315,37 @@ async def test_provider_switch_preserves_material_and_progress(monkeypatch, isol
     assert second["material_id"] == first["material_id"]
     assert second["learning"]["last_position"] == 42
     assert second["playback"]["provider"] == "invidious"
+
+
+@pytest.mark.asyncio
+async def test_youtube_captions_resolution_allows_invidious_without_playback_stream(
+    monkeypatch, isolated: Path
+) -> None:
+    service.save_video_learning_settings(
+        {
+            "default_provider": "invidious",
+            "invidious": {"api_base_url": "http://localhost:3000"},
+        }
+    )
+
+    async def metadata(_client, _base, _video_id):
+        return {
+            "title": "Captions only",
+            "captions": [{"label": "English", "languageCode": "en"}],
+        }
+
+    async def transcript(_client, _base, _video_id, _captions, _language, **_kwargs):
+        return ([{"start": 0, "end": 12, "text": "Hello"}], "en", "invidious")
+
+    monkeypatch.setattr(service, "_invidious_metadata", metadata)
+    monkeypatch.setattr(service, "_invidious_transcript", transcript)
+
+    resolution = await service.resolve_youtube_captions("https://youtu.be/dQw4w9WgXcQ")
+
+    assert resolution.metadata["title"] == "Captions only"
+    assert resolution.transcript_source == "invidious"
+    assert resolution.cues == [{"start": 0, "end": 12, "text": "Hello"}]
+    assert resolution.formats == []
 
 
 @pytest.mark.asyncio

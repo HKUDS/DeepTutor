@@ -7,7 +7,7 @@ const read = (relative: string) =>
   fs.readFileSync(path.resolve(process.cwd(), relative), "utf8");
 
 test("settings layout installs independently memoized provider slices", () => {
-  const layout = read("app/(utility)/settings/layout.tsx");
+  const layout = read("app/(settings)/settings/layout.tsx");
   for (const provider of [
     "UiSettingsProvider",
     "ModelCatalogProvider",
@@ -33,9 +33,9 @@ test("appearance consumes only the UI preference slice", () => {
   assert.doesNotMatch(appearance, /useSettings\(\)/);
 });
 
-test("continuous settings imports feature sections, never route modules", () => {
-  const page = read("app/(utility)/settings/page.tsx");
-  assert.match(page, /features\/settings\/sections\/ModelsSettingsSection/);
-  assert.match(page, /features\/settings\/sections\/ChatSettingsSection/);
-  assert.doesNotMatch(page, /from "\.\/.+\/page"|from "\.\/.+page"/);
+test("settings mounts one feature section on demand, never route modules", () => {
+  const page = read("components/settings/SettingsPageContent.tsx");
+  assert.match(page, /dynamic\(/);
+  assert.match(page, /<Component key=\{key\}/);
+  assert.doesNotMatch(page, /CategoryScroll/);
 });

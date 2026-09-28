@@ -10,6 +10,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import Tooltip from "@/shared/ui/Tooltip";
 
 import { BrandGlyph } from "@/components/common/BrandIcon";
 import { brandIconFor } from "@/lib/brand-icons";
@@ -113,15 +114,16 @@ export default function McpServerRow({
           {secretFields && secretFields.length > 0 && (
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
               {secretFields.map((field) => (
-                <span
+                <Tooltip
                   key={field}
-                  title={t("Stored on the server and never shown here.")}
-                  className="inline-flex items-center gap-1 rounded-full border border-[var(--border)]/60 bg-[var(--muted)]/40 px-2 py-0.5 text-[10.5px] font-medium text-[var(--muted-foreground)]"
+                  label={t("Stored on the server and never shown here.")}
                 >
-                  <KeyRound className="h-2.5 w-2.5" />
-                  <span className="font-mono">{field}</span>
-                  <span className="opacity-70">{t("configured")}</span>
-                </span>
+                  <span className="inline-flex items-center gap-1 rounded-full border border-[var(--border)]/60 bg-[var(--muted)]/40 px-2 py-0.5 text-[10.5px] font-medium text-[var(--muted-foreground)]">
+                    <KeyRound className="h-2.5 w-2.5" />
+                    <span className="font-mono">{field}</span>
+                    <span className="opacity-70">{t("configured")}</span>
+                  </span>
+                </Tooltip>
               ))}
             </div>
           )}
@@ -188,26 +190,27 @@ function Toggle({
   label: string;
 }) {
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      title={label}
-      disabled={disabled}
-      onClick={onChange}
-      className={`relative inline-flex h-[18px] w-[32px] shrink-0 items-center rounded-full border transition-colors ${
-        checked
-          ? "border-[var(--primary)] bg-[var(--primary)]/70"
-          : "border-[var(--border)] bg-[var(--muted)]/50"
-      } ${disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
-    >
-      <span
-        className={`inline-block h-[12px] w-[12px] transform rounded-full bg-white shadow transition-transform ${
-          checked ? "translate-x-[16px]" : "translate-x-[2px]"
-        }`}
-      />
-    </button>
+    <Tooltip label={label} side="bottom">
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        disabled={disabled}
+        onClick={onChange}
+        className={`relative inline-flex h-[18px] w-[32px] shrink-0 items-center rounded-full border transition-colors ${
+          checked
+            ? "border-[var(--primary)] bg-[var(--primary)]/70"
+            : "border-[var(--border)] bg-[var(--muted)]/50"
+        } ${disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
+      >
+        <span
+          className={`inline-block h-[12px] w-[12px] transform rounded-full bg-white shadow transition-transform ${
+            checked ? "translate-x-[16px]" : "translate-x-[2px]"
+          }`}
+        />
+      </button>
+    </Tooltip>
   );
 }
 
@@ -225,17 +228,18 @@ function IconButton({
   danger?: boolean;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={label}
-      title={label}
-      className={`rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] ${
-        danger ? "hover:text-red-500" : "hover:text-[var(--foreground)]"
-      } disabled:cursor-not-allowed disabled:opacity-60`}
-    >
-      {icon}
-    </button>
+    <Tooltip label={label} side="bottom">
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        aria-label={label}
+        className={`rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] ${
+          danger ? "hover:text-red-500" : "hover:text-[var(--foreground)]"
+        } disabled:cursor-not-allowed disabled:opacity-60`}
+      >
+        {icon}
+      </button>
+    </Tooltip>
   );
 }

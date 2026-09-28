@@ -10,6 +10,17 @@
  * hand-written public path, which lets the bundler fingerprint and serve the
  * worker file itself — a hard-coded `/pdf.worker.mjs` would have to be copied
  * into `public/` by a build step and would break the moment the version bumps.
+ *
+ * Both the library and its worker use the `legacy` build. The default worker
+ * calls newer ECMAScript methods such as `Map.prototype.getOrInsertComputed`
+ * that are absent in some supported browsers and embedded webviews. There,
+ * the worker can fail with
+ *
+ *   this._requestsByChunk.getOrInsertComputed is not a function
+ *
+ * and the document never renders — silently, since the failure happens in the
+ * worker. The legacy worker includes core-js polyfills for those methods. The
+ * extra code is loaded only when a user opens a PDF.
  */
 
 import type * as PdfjsModule from "pdfjs-dist";
@@ -25,10 +36,13 @@ let pending: Promise<Pdfjs> | null = null;
 export function loadPdfjs(): Promise<Pdfjs> {
   if (pending) return pending;
   pending = (async () => {
-    const pdfjs = await import("pdfjs-dist");
+    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
     if (!pdfjs.GlobalWorkerOptions.workerSrc) {
+      // Use the legacy worker for its polyfills, matching the library build
+      // above. API/worker version mismatches arise from different pdfjs-dist
+      // releases, not from choosing different builds of the same release.
       pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-        "pdfjs-dist/build/pdf.worker.min.mjs",
+        "pdfjs-dist/legacy/build/pdf.worker.min.mjs",
         import.meta.url,
       ).toString();
     }

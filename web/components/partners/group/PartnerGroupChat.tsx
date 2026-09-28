@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { useChatAutoScroll } from "@/hooks/useChatAutoScroll";
 import { TurnNavigator } from "@/components/chat/home/TurnNavigator";
+import type { ExportableMessage } from "@/lib/chat-export";
 import {
   getPartnerGroupWhiteboard,
   type PartnerGroup,
@@ -36,7 +37,12 @@ export default function PartnerGroupChat({
   panelOpen,
   onOpenPanel,
   onClosePanel,
+  onExportMessagesChange,
+  embedded = false,
+  consultationActive = false,
 }: {
+  embedded?: boolean;
+  consultationActive?: boolean;
   group: PartnerGroup;
   /** Which discussion thread is open; owned by the page header's picker. */
   sessionKey: string;
@@ -44,6 +50,7 @@ export default function PartnerGroupChat({
   panelOpen: boolean;
   onOpenPanel: () => void;
   onClosePanel: () => void;
+  onExportMessagesChange?: (messages: ExportableMessage[]) => void;
 }) {
   const { t } = useTranslation();
   const [quote, setQuote] = useState<QuotedSpeech | null>(null);
@@ -53,6 +60,7 @@ export default function PartnerGroupChat({
 
   const {
     rounds,
+    reportConsultationActivity,
     running,
     progress,
     connected,
@@ -66,6 +74,51 @@ export default function PartnerGroupChat({
     summarizeRound,
     cancel,
   } = useGroupSession(group, sessionKey);
+
+  // Export the settled messages in the same round and seat order as the UI.
+  // A partially streamed answer is not part of the saved discussion yet.
+  useEffect(() => {
+    if (!onExportMessagesChange) return;
+    if (loading) {
+      onExportMessagesChange([]);
+      return;
+    }
+    onExportMessagesChange(
+      rounds.flatMap((round): ExportableMessage[] => [
+        ...(round.user ? [{ role: "user", content: round.user.content }] : []),
+        ...round.seats.flatMap((seat): ExportableMessage[] =>
+          seat.message
+            ? [{
+                role: "assistant",
+                content: seat.message.content,
+                capability: seat.message.author_name,
+              }]
+            : [],
+        ),
+      ]),
+    );
+  }, [loading, onExportMessagesChange, rounds]);
+
+  const draftRef = useRef(false);
+  const lastInteraction = useRef(0);
+  const reportInteraction = useCallback(() => {
+    if (!consultationActive || Date.now() - lastInteraction.current < 200) return;
+    lastInteraction.current = Date.now();
+    reportConsultationActivity(draftRef.current, true);
+  }, [consultationActive, reportConsultationActivity]);
+  const reportDraft = useCallback((hasDraft: boolean) => {
+    const changed = draftRef.current !== hasDraft;
+    draftRef.current = hasDraft;
+    if (consultationActive) reportConsultationActivity(hasDraft, changed);
+  }, [consultationActive, reportConsultationActivity]);
+  useEffect(() => {
+    if (!consultationActive || !connected) return;
+    // A heartbeat renews the draft lease but does not count as user activity.
+    const renew = () => reportConsultationActivity(draftRef.current, false);
+    renew();
+    const timer = setInterval(renew, 2000);
+    return () => clearInterval(timer);
+  }, [consultationActive, connected, reportConsultationActivity]);
 
   const lastSeat = rounds[rounds.length - 1]?.seats.slice(-1)[0];
   const seatCount = useMemo(
@@ -158,7 +211,13 @@ export default function PartnerGroupChat({
   );
 
   return (
-    <div className="relative flex min-h-0 flex-1 overflow-hidden">
+    <div className="relative flex min-h-0 flex-1 overflow-hidden"
+      onPointerDownCapture={reportInteraction}
+      onWheelCapture={reportInteraction}
+      onTouchMoveCapture={reportInteraction}
+      onPointerMoveCapture={event => { if (event.buttons) reportInteraction() }}
+      onKeyDownCapture={reportInteraction}
+    >
       <div className="flex min-w-0 flex-1 flex-col">
         {/* The rail is an absolutely-positioned sibling of the scrollport, so
             the two share this wrapper and nothing else lives in it. */}
@@ -225,6 +284,7 @@ export default function PartnerGroupChat({
         </div>
 
         <GroupComposer
+          onDraftChange={reportDraft}
           members={group.members}
           running={running}
           connected={connected}
@@ -241,6 +301,7 @@ export default function PartnerGroupChat({
       </div>
 
       <GroupSidePanel
+        embedded={embedded}
         open={panelOpen}
         tab={panelTab}
         focus={traceFocus}

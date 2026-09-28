@@ -1,13 +1,14 @@
 "use client";
 
+import { useSettings } from "@/features/settings/store/SettingsStore";
+import { useStagedSettings } from "@/features/settings/store/useStagedSettings";
 import { useEffect, useState } from "react";
-import { CheckCircle2, Loader2, Save, Server, Youtube } from "lucide-react";
+import { CheckCircle2, Loader2, Server, Youtube } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { SettingsPageHeader } from "@/components/settings/shared";
 import {
   getVideoLearningSettings,
-  saveVideoLearningSettings,
   testInvidious,
   type VideoLearningSettings,
 } from "@/lib/video-learning-api";
@@ -21,14 +22,15 @@ const DEFAULTS: VideoLearningSettings = {
 
 export default function VideoLearningSettingsPage() {
   const { t } = useTranslation();
-  const [settings, setSettings] = useState(DEFAULTS);
+  const { draftRevision } = useSettings();
+  const [live, setLive] = useState(DEFAULTS);
+  const [settings, setSettings] = useStagedSettings("video-learning", live, setLive);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
   useEffect(() => {
     void getVideoLearningSettings()
-      .then(setSettings)
+      .then(setLive)
       .catch((error) =>
         setMessage(
           error instanceof Error
@@ -37,26 +39,7 @@ export default function VideoLearningSettingsPage() {
         ),
       )
       .finally(() => setLoading(false));
-  }, [t]);
-
-  const save = async () => {
-    setSaving(true);
-    setMessage("");
-    try {
-      setSettings(await saveVideoLearningSettings(settings));
-      setMessage(
-        t("Saved. New and reopened videos use this provider immediately."),
-      );
-    } catch (error) {
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : t("Settings could not be saved."),
-      );
-    } finally {
-      setSaving(false);
-    }
-  };
+  }, [t, draftRevision]);
 
   const test = async () => {
     setMessage(t("Testing Invidious…"));
@@ -208,19 +191,6 @@ export default function VideoLearningSettingsPage() {
           </label>
 
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => void save()}
-              disabled={saving}
-              className="inline-flex items-center gap-2 rounded-lg bg-[var(--foreground)] px-4 py-2 text-sm text-[var(--background)] disabled:opacity-50"
-            >
-              {saving ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Save className="h-4 w-4" />
-              )}{" "}
-              {t("Save")}
-            </button>
             {message && (
               <p className="inline-flex items-center gap-1 text-sm text-[var(--muted-foreground)]">
                 <CheckCircle2 className="h-4 w-4" />

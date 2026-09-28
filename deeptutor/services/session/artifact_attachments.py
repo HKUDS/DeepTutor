@@ -147,6 +147,15 @@ def _resolve_artifact_path(url: str) -> Path | None:
     would itself serve — the same guard ``/files/outputs`` applies, so a crafted
     URL cannot walk this out of the public workspace.
     """
+    from urllib.parse import parse_qs, urlsplit
+
+    from deeptutor.services.workspace.context import current_workspace_id
+
+    parsed = urlsplit(url)
+    explicit_scope = parse_qs(parsed.query, keep_blank_values=True).get("dt_workspace")
+    if explicit_scope is not None and explicit_scope[0] != current_workspace_id():
+        return None
+    url = parsed.path
     if url.startswith(_WORKSPACE_ITEMS_URL_PREFIX):
         parts = url[len(_WORKSPACE_ITEMS_URL_PREFIX) :].split("/", 1)
         if len(parts) != 2:

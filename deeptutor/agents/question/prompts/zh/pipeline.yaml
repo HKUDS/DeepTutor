@@ -312,6 +312,7 @@ notices:
   plan_unusable: "出题规划没有产出任何可用的题目模板，无法生成题目。请重试或缩小主题范围。"
   plan_reasoning_retry: "规划阶段把预算全部用在思考上，没有产出方案；正在降低思考强度重试。"
   repair_attempted: "上一轮题目载荷不合法；做一次 schema 修复。"
+  repair_reasoning_retry: "修复轮次把预算全部用在思考上；正在降低思考强度重试。"
   repair_failed: "修复未能完全修正题目；使用尽力版本输出。"
   tool_summarizer_failed: "工具结果概括失败（{error}）；将把原始工具结果传给下一轮。"
 

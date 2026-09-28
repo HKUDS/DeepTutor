@@ -156,7 +156,7 @@ for (const mobile of [false, true]) {
     })
 
     const turns: Record<string, unknown>[] = []
-    await page.routeWebSocket('**/ws', socket => {
+    await page.routeWebSocket('**/ws*', socket => {
       socket.onMessage(raw => {
         const command = JSON.parse(String(raw))
         if (command.type !== 'start_turn') return
@@ -207,6 +207,7 @@ for (const mobile of [false, true]) {
             },
           ],
         })
+      if (path === '/api/partners' || path === '/api/partner-groups') return json([])
       if (path === '/api/auth/status') {
         return json({
           enabled: false,
@@ -346,8 +347,8 @@ for (const mobile of [false, true]) {
       return json({})
     })
 
-    await page.goto('/chat?capability=immersive_watching')
-    await expect(page).toHaveURL(/\/watching$/)
+    await page.goto('/watching?create=1', { waitUntil: 'domcontentloaded' })
+    await expect(page).toHaveURL(/\/learning\/watching(?:\?|$)/)
     await expect(page.getByRole('button', { name: 'Disconnect Invidious' })).toBeVisible()
     await expect(page.getByRole('button', { name: /Browse lesson/ })).toBeVisible()
     await page.getByRole('button', { name: 'Playlists', exact: true }).click()
@@ -477,7 +478,7 @@ for (const mobile of [false, true]) {
     if (mobile) await page.getByRole('button', { name: 'Conversation', exact: true }).click()
     await page.locator('textarea').fill('Explain the video')
     await page.locator('textarea').press('Enter')
-    await expect(page).toHaveURL(/\/watching\/watching-test$/)
+    await expect(page).toHaveURL(/\/learning\/watching\/watching-test(?:\?|$)/)
     expect(turns[0]).toMatchObject({
       capability: 'immersive_watching',
       workspace_mode: 'immersive_watching',
@@ -510,8 +511,8 @@ for (const mobile of [false, true]) {
     await expect(page.getByRole('alert').filter({ hasText: 'Notes export failed' })).toBeVisible()
     exportShouldFail = false
 
-    await page.goto('/watching/watching-test')
-    await page.reload()
+    await page.goto('/learning/watching/watching-test', { waitUntil: 'domcontentloaded' })
+    await page.reload({ waitUntil: 'domcontentloaded' })
     await expect(page.getByText('Timestamped lesson')).toBeVisible()
     await page.getByRole('tab', { name: 'Video notes' }).click()
     await expect(page.getByText('First timestamped note')).toBeVisible()
@@ -580,7 +581,7 @@ for (const mobile of [false, true]) {
       button.setAttribute('data-persisted', 'true')
     })
     await expect.poll(() => savedPosition).toBeGreaterThanOrEqual(70)
-    await page.reload()
+    await page.reload({ waitUntil: 'domcontentloaded' })
     await expect(page.getByText('Timestamped lesson')).toBeVisible()
     await expect
       .poll(() =>
@@ -639,7 +640,7 @@ for (const mobile of [false, true]) {
     invidiousOffline = false
     secondMaterial = true
     await page.getByRole('button', { name: 'Close video learning' }).click()
-    await page.goto('/watching?video=https%3A%2F%2Fyoutu.be%2F9bZkp7q19f0')
+    await page.goto('/learning/watching?video=https%3A%2F%2Fyoutu.be%2F9bZkp7q19f0', { waitUntil: 'domcontentloaded' })
     await expect(page.getByText('Replacement lesson')).toBeVisible()
     await expect(page.getByRole('button', { name: 'Set playback speed to 1x' })).toHaveAttribute(
       'aria-pressed',

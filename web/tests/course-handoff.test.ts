@@ -100,7 +100,7 @@ test("mastery hand-offs land on the study route, which has a composer", () => {
       label: "",
       course_id: "c1",
     }),
-    "/mastery/path%201%2Fa/sessions?course=c1",
+    "/learning/mastery/path%201%2Fa/sessions?course=c1",
   );
 });
 
@@ -116,7 +116,7 @@ test("specific reading hand-offs keep the course scope", () => {
       label: "",
       course_id: "course os",
     }),
-    "/reading/rw%201%2Fa?course=course%20os",
+    "/learning/reading/rw%201%2Fa?course=course+os&dt_workspace=",
   );
 });
 
@@ -145,11 +145,11 @@ test("a hand-off with no ref falls back to the surface's index, still scoped", (
   };
   assert.equal(
     courseHandoffHref({ ...base, target: "immersive_reading" }),
-    "/reading?course=c1",
+    "/learning/reading?course=c1&dt_workspace=",
   );
   assert.equal(
     courseHandoffHref({ ...base, target: "mastery_path" }),
-    "/mastery?course=c1",
+    "/learning/mastery?course=c1",
   );
 });
 
@@ -161,7 +161,7 @@ test("global surfaces are handed the course so they can scope themselves", () =>
       target: "question_bank",
       course_id: "course a/b",
     }),
-    "/space/questions?course=course%20a%2Fb",
+    "/learning/practice?course=course%20a%2Fb",
   );
   assert.equal(
     courseHandoffHref({ ...base, target: "notebook", course_id: "c1" }),

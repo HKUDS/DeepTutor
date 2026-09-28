@@ -6,6 +6,7 @@ path service, a user workspace, or an LLM.
 
 from __future__ import annotations
 
+import io
 import json
 from pathlib import Path
 import zipfile
@@ -20,6 +21,7 @@ from deeptutor.reading import (
     Rect,
     TextPositionSelector,
     TextQuoteSelector,
+    content_hash,
     export_material,
     parse_locators,
     render_outline,
@@ -79,6 +81,22 @@ def _write_epub(path: Path) -> Path:
             "OEBPS/chapters/two.xhtml",
             "<html xmlns='http://www.w3.org/1999/xhtml'><body><h1>Second Chapter</h1><p>Beta source text.</p></body></html>",
         )
+    return path
+
+
+def _wrap_epub_for_finder(path: Path) -> Path:
+    """Model the package macOS Finder makes when it compresses an EPUB."""
+    data = path.read_bytes()
+    with zipfile.ZipFile(io.BytesIO(data)) as source:
+        output = io.BytesIO()
+        with zipfile.ZipFile(output, "w") as target:
+            for info in source.infolist():
+                target.writestr(f"MyBook/{info.filename}", source.read(info))
+            target.writestr(
+                "__MACOSX/OEBPS/._one.xhtml",
+                b"\x00\x05\x16\x07" + b"\x00" * 60,
+            )
+    path.write_bytes(output.getvalue())
     return path
 
 
@@ -150,7 +168,7 @@ def test_pdf_without_bookmarks_does_not_invent_contents(tmp_path: Path) -> None:
 
 def test_text_file_is_cut_into_sections_on_paragraph_boundaries(tmp_path: Path) -> None:
     paragraph = "Dense prose about attention mechanisms. " * 30  # ~1.2k chars
-    path = tmp_path / "notes.md"
+    path = tmp_path / "notes.txt"
     path.write_text("\n\n".join([paragraph] * 8), encoding="utf-8")
 
     extraction = extract_material(path)
@@ -160,6 +178,54 @@ def test_text_file_is_cut_into_sections_on_paragraph_boundaries(tmp_path: Path) 
     assert len(extraction.units) > 1
     # Cuts land on paragraph boundaries, so no unit starts mid-sentence.
     assert all(unit.startswith("Dense prose") for unit in extraction.units)
+
+
+@pytest.mark.parametrize("suffix", [".md", ".markdown"])
+def test_uploaded_markdown_uses_headings_for_stored_outline(
+    store: ReadingStore, tmp_path: Path, suffix: str
+) -> None:
+    prose = "Ordinary prose at a section boundary. " * 95
+    path = tmp_path / f"notes{suffix}"
+    path.write_text(
+        "# Opening\n\nIntroduction.\n\n"
+        "## Long section\n\n" + prose + "\n\n```md\n# Not a heading\n```\n\n"
+        "### Finish\n\nConclusion.",
+        encoding="utf-8",
+    )
+
+    manifest = store.ingest(path)
+    outline = store.outline(manifest.material_id)
+
+    assert manifest.unit == "section"
+    assert [row.title for row in outline] == [
+        "Opening",
+        "Long section",
+        "Long section",
+        "Finish",
+    ]
+    assert [row.level for row in outline] == [1, 2, 2, 3]
+    assert [row.locator for row in outline] == [1, 2, 3, 4]
+    assert all(row.synthesised is False for row in outline)
+    assert all("Ordinary prose" not in row.title for row in outline)
+    assert all(len(store.unit_text(manifest.material_id, row.locator)) <= 4200 for row in outline)
+    assert "# Not a heading" in "\n".join(
+        store.unit_text(manifest.material_id, row.locator) for row in outline
+    )
+
+
+@pytest.mark.parametrize("markdown", ["No headings.\n\nMore prose.", "# Only\n\nMore prose."])
+def test_uploaded_markdown_with_fewer_than_two_headings_keeps_flat_fallback(
+    store: ReadingStore, tmp_path: Path, markdown: str
+) -> None:
+    path = tmp_path / "flat.md"
+    path.write_text(markdown, encoding="utf-8")
+
+    extraction = extract_material(path)
+    manifest = store.ingest(path)
+
+    assert extraction.units == split_into_sections(markdown)
+    assert extraction.outline == ()
+    assert all(row.synthesised is True for row in store.outline(manifest.material_id))
 
 
 def test_epub_preserves_spine_units_source_hrefs_and_nested_outline(tmp_path: Path) -> None:
@@ -256,6 +322,36 @@ def test_epub_store_keeps_original_but_legacy_pdf_flag_stays_false(
     assert manifest.has_raw_view is False
     assert store.raw_path(manifest.material_id) is not None
     assert store.unit_references(manifest.material_id)[1].source_href.endswith("two.xhtml")
+
+
+def test_epub_store_normalizes_finder_packages_for_browser_readers(
+    store: ReadingStore, tmp_path: Path
+) -> None:
+    path = _wrap_epub_for_finder(_write_epub(tmp_path / "book.epub"))
+
+    manifest = store.ingest(path)
+
+    raw = store.raw_path(manifest.material_id)
+    render = store.render_path(manifest.material_id)
+    assert raw is not None and render is not None
+    assert raw.read_bytes() == path.read_bytes()
+    normalized = render.read_bytes()
+    assert manifest.byte_size == len(path.read_bytes())
+    assert manifest.source_hash == content_hash(path.read_bytes())
+    assert store.ingest(path).material_id == manifest.material_id
+    assert [ref.source_href for ref in store.unit_references(manifest.material_id)] == [
+        "OEBPS/chapters/one.xhtml",
+        "OEBPS/chapters/two.xhtml",
+    ]
+    with zipfile.ZipFile(io.BytesIO(normalized)) as archive:
+        infos = archive.infolist()
+        assert archive.read("mimetype") == b"application/epub+zip"
+    assert infos[0].filename == "mimetype"
+    assert infos[0].compress_type == zipfile.ZIP_STORED
+    assert all(
+        "__MACOSX" not in info.filename and not info.filename.startswith("MyBook/")
+        for info in infos
+    )
 
 
 def test_position_round_trip_validates_locator_and_anchor(

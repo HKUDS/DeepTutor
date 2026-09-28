@@ -106,15 +106,24 @@ def compact_trace_preview(
         if len(selected_indices) >= max_events:
             break
         selected_indices.add(index)
-    selected = [event for index, event in semantic if index in selected_indices]
-    result: list[dict[str, Any]] = []
+    selected = [(index, event) for index, event in semantic if index in selected_indices]
+    # The byte budget is spent in rank order, not in time order: the rows a
+    # settled message cannot render without first, then the others from the
+    # tail back. Spending it in time order let a turn's early tool results —
+    # a quiz that fetched two web pages — use it all up, and the result that
+    # carries the quiz itself was the row left out.
+    ranked = sorted(
+        selected,
+        key=lambda row: (row[0] not in critical, -row[0]),
+    )
+    kept: dict[int, dict[str, Any]] = {}
     used_bytes = 0
-    for event in selected:
+    for index, event in ranked:
         bounded = _truncate_legacy_payloads(event)
         size = len(json.dumps(bounded, ensure_ascii=False, default=str).encode("utf-8"))
-        if result and used_bytes + size > max_bytes:
+        if kept and used_bytes + size > max_bytes:
             continue
-        if not result and size > max_bytes:
+        if not kept and size > max_bytes:
             bounded = {
                 "type": bounded.get("type", ""),
                 "turn_id": bounded.get("turn_id"),
@@ -124,8 +133,9 @@ def compact_trace_preview(
                 "_truncated": True,
             }
             size = len(json.dumps(bounded, ensure_ascii=False, default=str).encode("utf-8"))
-        result.append(bounded)
+        kept[index] = bounded
         used_bytes += size
+    result = [kept[index] for index in sorted(kept)]
 
     omitted = len(events) != len(result) or len(selected) != len(result)
     terminal = next(

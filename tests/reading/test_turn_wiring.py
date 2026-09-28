@@ -138,6 +138,24 @@ def test_open_material_is_persisted_with_the_user_message() -> None:
     assert snapshot["readingMaterialId"] == "0123456789abcdef"
 
 
+def test_the_asked_about_passage_is_persisted_with_the_user_message() -> None:
+    """The bubble shows what "this" was, and a regenerate asks about it again."""
+    snapshot = _snapshot(
+        {
+            "reading_material_id": "0123456789abcdef",
+            "reading_viewport": {"locator": 3, "selection": "  the slope of the line "},
+        }
+    )
+    assert snapshot["readingSelection"] == {"quote": "the slope of the line", "locator": 3}
+    # No passage without a document it came from.
+    assert "readingSelection" not in _snapshot(
+        {"reading_viewport": {"locator": 3, "selection": "the slope"}}
+    )
+    assert "readingSelection" not in _snapshot(
+        {"reading_material_id": "0123456789abcdef", "reading_viewport": {"locator": 3}}
+    )
+
+
 def test_workspace_mode_is_persisted_independently_of_the_action() -> None:
     snapshot = _snapshot(
         {

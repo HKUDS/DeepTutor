@@ -159,6 +159,15 @@ def test_load_history_survives_corrupt_file(tmp_path, monkeypatch):
     assert edit_agent.load_history() == []
 
 
+def test_automark_never_returns_unsupported_rough_notation_markup():
+    original = "Deep learning uses neural networks."
+    marked = '<span data-rough-notation="circle">Deep learning</span> uses neural networks.'
+    assert edit_agent._readable_automark_output(marked, original) == original
+    assert edit_agent._readable_automark_output(
+        "【Deep learning】 uses neural networks.", original
+    ) == ("【Deep learning】 uses neural networks.")
+
+
 def _docx_bytes_from_document(document: DocxDocument) -> bytes:
     buf = BytesIO()
     document.save(buf)

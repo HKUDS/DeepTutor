@@ -9,6 +9,7 @@ and back the history API, so a flat append-only file per session is enough.
 
 from __future__ import annotations
 
+from collections import deque
 from datetime import datetime
 import json
 import logging
@@ -290,7 +291,94 @@ class PartnerSessionStore:
 
     def messages(self, session_key: str, *, limit: int = 100) -> list[dict[str, Any]]:
         """Raw records (role/content/timestamp/...) for the history API."""
-        return self._read_records(session_key)[-limit:]
+        from deeptutor.services.session.provider_response_state import (
+            redact_private_message_metadata,
+        )
+
+        records = self._read_records(session_key)[-limit:]
+        redact_private_message_metadata(records)
+        return records
+
+    def messages_page(
+        self, session_key: str, *, before: int | None = None, limit: int = 60
+    ) -> dict[str, Any]:
+        """One bounded history page, oldest first, with a stable older cursor.
+
+        ``before`` is an exclusive record index. Appending new turns therefore
+        cannot shift the cursor while a browser is reading earlier pages.
+        """
+        from deeptutor.services.session.provider_response_state import (
+            redact_private_message_metadata,
+        )
+
+        capped_limit = max(1, min(limit, 200))
+        cursor = None if before is None else max(before, 0)
+        window: deque[dict[str, Any]] = deque(maxlen=capped_limit)
+        total = 0
+        path = self._path(session_key)
+        if path.exists():
+            try:
+                with path.open(encoding="utf-8") as handle:
+                    for line in handle:
+                        try:
+                            record = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        if (
+                            not isinstance(record, dict)
+                            or not record.get("role")
+                            or not record.get("content")
+                        ):
+                            continue
+                        if cursor is None or total < cursor:
+                            window.append(record)
+                        total += 1
+            except OSError:
+                logger.exception("Failed to read partner session %s", session_key)
+        end = total if cursor is None else min(cursor, total)
+        start = max(0, end - capped_limit)
+        page = list(window)
+        redact_private_message_metadata(page)
+        return {
+            "messages": page,
+            "next_before": start if start > 0 else None,
+            "start": start,
+            "total": total,
+        }
+
+    def previous_model_turn(self, session_key: str) -> dict[str, Any] | None:
+        """Last private request header, used for tool order and cache diagnostics."""
+        from deeptutor.services.session.model_history import model_turn
+
+        return next(
+            (
+                record
+                for row in reversed(self._read_records(session_key))
+                if (record := model_turn(row)) is not None
+            ),
+            None,
+        )
+
+    def model_history(
+        self, session_key: str, route: dict[str, str] | None = None
+    ) -> list[dict[str, Any]]:
+        """Retain complete model turns within the Partner's existing budget."""
+        from deeptutor.services.session.model_history import history_groups, replay_group
+
+        kept: list[list[dict[str, Any]]] = []
+        chars = 0
+        count = 0
+        for group in reversed(history_groups(self._read_records(session_key))):
+            messages = replay_group(group, route)
+            size = len(json.dumps(messages, ensure_ascii=False))
+            if kept and (
+                chars + size > _HISTORY_MAX_CHARS or count + len(group) > _HISTORY_MAX_MESSAGES
+            ):
+                break
+            kept.insert(0, messages)
+            chars += size
+            count += len(group)
+        return [message for group in kept for message in group]
 
     def merged_messages(
         self, *, limit: int = 100, include_archived: bool = False
@@ -306,7 +394,13 @@ class PartnerSessionStore:
                 merged.append((str(record.get("timestamp", "")), sequence, record))
                 sequence += 1
         merged.sort(key=lambda item: (item[0], item[1]))
-        return [item[2] for item in merged[-limit:]]
+        from deeptutor.services.session.provider_response_state import (
+            redact_private_message_metadata,
+        )
+
+        records = [item[2] for item in merged[-limit:]]
+        redact_private_message_metadata(records)
+        return records
 
     def _session_summary(self, path: Path) -> dict[str, Any]:
         records = self._read_records(path.stem)

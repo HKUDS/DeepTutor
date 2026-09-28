@@ -708,3 +708,89 @@ async def test_two_users_never_see_each_others_suggestions(
     current["root"] = bob
     theirs = await suggestions.get_suggestions()
     assert theirs["suggestions"] == []
+
+
+@pytest.mark.asyncio
+async def test_material_collection_does_not_block_the_event_loop(monkeypatch):
+    import threading
+
+    entered = threading.Event()
+    release = threading.Event()
+
+    def collect(_):
+        entered.set()
+        release.wait(2)
+        return suggestions._Material(profile="", topics=[])
+
+    monkeypatch.setattr(suggestions, "_collect_material", collect)
+    task = asyncio.create_task(suggestions.refresh_suggestions())
+    try:
+        for _ in range(50):
+            if entered.is_set():
+                break
+            await asyncio.sleep(0.005)
+        assert entered.is_set()
+        assert not task.done()
+    finally:
+        release.set()
+        result = await task
+    assert result.status == "no-material"
+
+
+@pytest.mark.asyncio
+async def test_manual_refresh_joins_background_generation_and_reports_failure(monkeypatch):
+    _stub_material(monkeypatch, [_hit("chat", "Chain rule")])
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    calls = []
+    import deeptutor.services.llm as llm
+
+    async def complete(**kwargs):
+        calls.append(1)
+        entered.set()
+        await release.wait()
+        raise RuntimeError("provider unavailable")
+
+    monkeypatch.setattr(llm, "complete", complete)
+    await suggestions.get_suggestions()
+    await entered.wait()
+    manual = asyncio.create_task(suggestions.refresh_suggestions())
+    await asyncio.sleep(0)
+    release.set()
+    assert (await manual).status == "error"
+    after = await suggestions.get_suggestions()
+    assert after["status"] == "error"
+    assert after["stale"] is False
+    assert calls == [1]
+
+
+@pytest.mark.asyncio
+async def test_total_generation_deadline_includes_material_collection(monkeypatch):
+    def collect(_):
+        time.sleep(0.05)
+        return suggestions._Material(profile="", topics=[])
+
+    monkeypatch.setattr(suggestions, "_collect_material", collect)
+    monkeypatch.setattr(suggestions, "_REFRESH_TIMEOUT", 0.005)
+    result = await suggestions.refresh_suggestions()
+    assert result.status == "error"
+    assert suggestions._load() is None
+    await asyncio.sleep(0.06)
+
+
+@pytest.mark.asyncio
+async def test_short_starters_request_does_not_spend_its_budget_on_hidden_reasoning(monkeypatch):
+    _stub_material(monkeypatch, [_hit("chat", "Chain rule")])
+    import deeptutor.services.llm as llm
+
+    seen = []
+
+    async def complete(**kwargs):
+        seen.append(kwargs)
+        return _THREE if kwargs.get("reasoning_effort") == "none" else ""
+
+    monkeypatch.setattr(llm, "complete", complete)
+    result = await suggestions.refresh_suggestions()
+    assert result.status == "ready"
+    assert len(result.suggestions) == 3
+    assert seen[0]["reasoning_effort"] == "none"

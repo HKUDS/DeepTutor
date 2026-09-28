@@ -1,5 +1,11 @@
 "use client";
 
+import {
+  ResourceReuseControl,
+  useResourceReuse,
+} from "@/components/chat/home/ResourceReuse";
+import type { ResourceKind } from "@/lib/resource-reuse";
+
 import { X, type LucideIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -22,6 +28,7 @@ export default function PickerHeader({
   subtitle,
   onClose,
   trailing,
+  resourceKind,
 }: {
   icon: LucideIcon;
   /** id wired to the dialog's `aria-labelledby`. */
@@ -33,20 +40,27 @@ export default function PickerHeader({
   onClose: () => void;
   /** Optional control rendered between the title block and the close button. */
   trailing?: React.ReactNode;
+  resourceKind?: ResourceKind;
 }) {
   const { t } = useTranslation();
+  const reuse = useResourceReuse();
   return (
     <div className="flex items-start gap-3.5 border-b border-[var(--border)] px-5 py-4">
       <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--primary)]/10 text-[var(--primary)]">
         <Icon className="h-[18px] w-[18px]" strokeWidth={1.8} />
       </div>
       <div className="min-w-0 flex-1">
-        <h2
-          id={titleId}
-          className="text-[15px] font-semibold leading-tight text-[var(--foreground)]"
-        >
-          {title}
-        </h2>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <h2
+            id={titleId}
+            className="text-[15px] font-semibold leading-tight text-[var(--foreground)]"
+          >
+            {title}
+          </h2>
+          {resourceKind && reuse && (
+            <ResourceReuseControl kind={resourceKind} />
+          )}
+        </div>
         <p className="mt-1 text-[13px] leading-snug text-[var(--muted-foreground)]">
           {subtitle}
         </p>

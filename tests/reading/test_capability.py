@@ -125,7 +125,7 @@ def test_reading_turns_do_not_activate_the_explore_context_pre_pass() -> None:
 
 def test_capability_owns_reading_and_workspace_navigation_tools() -> None:
     assert ReadingCapability().owned_tools == READING_TOOL_NAMES
-    assert len(READING_TOOL_NAMES) == 7
+    assert len(READING_TOOL_NAMES) == 8
     assert READING_TOOL_NAMES[:2] == ("reading_list_tabs", "reading_switch_tab")
     # Additive, not exclusive: chat keeps its own surface on a reading turn.
     assert getattr(ReadingCapability(), "exclusive_tools", False) is False

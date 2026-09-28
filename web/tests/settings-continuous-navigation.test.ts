@@ -1,137 +1,113 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import path from "node:path";
-
 import {
   settingsAnchorHref,
   storagePathFor,
+  SETTINGS_CATEGORIES,
 } from "../features/settings/navigation/settings-nav";
+import {
+  legacySettingsDestination,
+  visibleSettingsPages,
+  settingsPageFamily,
+  SETTINGS_PAGE_GROUPS,
+} from "../features/settings/navigation/settings-pages";
 
-const readWebFile = (...parts: string[]) =>
-  readFileSync(path.join(process.cwd(), ...parts), "utf8");
+const admin = {
+  resolved: true,
+  hideAdminOnly: false,
+  showLearnerOnly: false,
+  showGuardianOnly: false,
+};
 
-test("settings navigation: every label targets the unified settings document", () => {
-  assert.equal(settingsAnchorHref("overview"), "/settings#overview");
-  assert.equal(settingsAnchorHref("llm"), "/settings#llm");
-  assert.equal(settingsAnchorHref("about"), "/settings#about");
-
-  const nav = readWebFile("components", "settings", "SettingsNav.tsx");
-  assert.match(nav, /settingsAnchorHref\(['"]overview['"]\)/);
-  assert.match(nav, /settingsAnchorHref\(group\.key\)/);
-  assert.match(nav, /settingsAnchorHref\(leaf\.key\)/);
-});
-
-test("settings page: stacks every first-level section from overview to about", () => {
-  const page = readWebFile("app", "(utility)", "settings", "page.tsx");
-  const keys = [
-    "overview",
-    "appearance",
-    "network",
-    "models",
-    "knowledge",
-    "chat",
-    "agents",
-    "learner-profile",
-    "guardian",
-    "memory",
-    "about",
-  ];
-
-  let previousIndex = -1;
-  for (const key of keys) {
-    const index = Math.max(
-      page.indexOf(`key: '${key}'`),
-      page.indexOf(`key: "${key}"`),
-    );
-    assert.ok(
-      index > previousIndex,
-      `${key} should follow the previous section`,
-    );
-    previousIndex = index;
+test("legacy settings bookmarks resolve to independent pages, preserving profile links", () => {
+  assert.equal(legacySettingsDestination("", ""), "/settings/general");
+  assert.equal(legacySettingsDestination("#overview", ""), "/settings/general");
+  assert.equal(
+    legacySettingsDestination("#document-parsing", ""),
+    "/settings/knowledge",
+  );
+  assert.equal(
+    legacySettingsDestination("#llm?profile=old%20id", ""),
+    "/settings/llm?profile=old+id",
+  );
+  assert.equal(
+    legacySettingsDestination("#llm", "?profile=old-id"),
+    "/settings/llm?profile=old-id",
+  );
+  assert.equal(legacySettingsDestination("#%invalid", ""), "/settings/general");
+  for (const category of SETTINGS_CATEGORIES) {
+    for (const leaf of category.children ?? [category]) {
+      assert.equal(
+        legacySettingsDestination(`#${leaf.key}`, ""),
+        settingsAnchorHref(leaf.key),
+      );
+    }
   }
 });
 
-test("settings scroll: the outer document tracks nested section anchors", () => {
-  const source = readWebFile("components", "settings", "CategoryScroll.tsx");
-  const scrollHelper = readWebFile(
-    "features",
-    "settings",
-    "navigation",
-    "settings-scroll.ts",
+test("every available setting is reachable through a navigation family", () => {
+  const reachable = new Set(
+    SETTINGS_PAGE_GROUPS.flatMap(group =>
+      group.keys.flatMap(settingsPageFamily),
+    ),
   );
-
-  assert.match(source, /data-settings-section-list/);
-  assert.match(
-    source,
-    /querySelectorAll<HTMLElement>\(['"]\[data-settings-section\]['"]\)/,
-  );
-  assert.match(source, /scrollToSettingsSection/);
-  assert.match(source, /ResizeObserver/);
-  assert.match(source, /pendingAnchorRef/);
-  assert.match(source, /SETTINGS_ANCHOR_EVENT/);
-  assert.match(source, /setActiveSection\(current\)/);
-  assert.match(source, /requested && !validRequested/);
-  assert.match(source, /DeferredSectionContent/);
-  assert.match(source, /IntersectionObserver/);
-  assert.match(source, /rootMargin: ["']800px 0px["']/);
-  assert.match(source, /section\.activationKeys\?\.includes\(requested\)/);
-  assert.doesNotMatch(source, /scrollIntoView/);
-  assert.match(
-    scrollHelper,
-    /closest<HTMLElement>\(SETTINGS_SCROLL_SELECTOR\)/,
-  );
-  assert.match(scrollHelper, /scroller\.scrollTo/);
-  assert.match(scrollHelper, /window\.scrollTo/);
-  assert.match(scrollHelper, /document\.documentElement\.scrollTop = 0/);
-  assert.match(scrollHelper, /requestAnimationFrame\(resetDocumentScroll\)/);
+  for (const page of visibleSettingsPages({
+    ...admin,
+    showLearnerOnly: true,
+    showGuardianOnly: true,
+  })) {
+    assert.ok(reachable.has(page.key), page.key);
+  }
 });
 
-test("settings page: heavy sections are split and mounted on demand", () => {
-  const page = readWebFile("app", "(utility)", "settings", "page.tsx");
-  const models = readWebFile(
-    "features",
-    "settings",
-    "sections",
-    "ModelsSettingsSection.tsx",
-  );
-  const chat = readWebFile(
-    "features",
-    "settings",
-    "sections",
-    "ChatSettingsSection.tsx",
-  );
-
-  assert.match(page, /dynamic\(/);
-  assert.match(page, /deferSections/);
-  assert.match(page, /activationKeys: childKeys\(["']models["']\)/);
-  assert.match(models, /dynamic\(/);
-  assert.match(models, /deferSections/);
-  assert.match(chat, /dynamic\(/);
-  assert.match(chat, /deferSections/);
+test("restricted pages stay hidden, including when searched or linked directly", () => {
+  const keys = visibleSettingsPages({
+    ...admin,
+    hideAdminOnly: true,
+    showLearnerOnly: true,
+  }).map(page => page.key);
+  assert.ok(keys.includes("learner-profile"));
+  assert.ok(!keys.includes("guardian"));
+  assert.ok(!keys.includes("attachments"));
+  assert.ok(!keys.includes("agent-codex"));
 });
 
-test("sidebar version badge targets the canonical in-document About section", () => {
-  const source = readWebFile("components", "sidebar", "VersionBadge.tsx");
-
-  assert.match(source, /href="\/settings#about"/);
-  assert.match(source, /scroll={false}/);
-  assert.match(source, /requestSettingsSection\(["']about["']\)/);
-  assert.doesNotMatch(source, /\/settings\/about/);
-});
-
-test("settings toolbar: resolves storage paths while scrolling the unified page", () => {
+test("settings routes expose their configuration storage destinations", () => {
+  assert.equal(storagePathFor("/settings/workspace"), "data/user/.runtime/workspaces.sqlite3");
+  for (const [key, file] of Object.entries({
+    network: "system.json",
+    connections: "model_catalog.json",
+    llm: "model_catalog.json",
+    "task-models": "model_catalog.json",
+    embedding: "model_catalog.json",
+    knowledge: "document_parsing.json",
+    general: "interface.json",
+    "agent-codex": "subagent.json",
+  }))
+    assert.equal(
+      storagePathFor(`/settings/${key}`),
+      `data/user/settings/${file}`,
+    );
   assert.equal(
     storagePathFor("/settings", "network"),
     "data/user/settings/system.json",
   );
-  assert.equal(
-    storagePathFor("/settings", "connections"),
-    "data/user/settings/model_catalog.json",
-  );
-  assert.equal(
-    storagePathFor("/settings", "knowledge"),
-    "data/user/settings/document_parsing.json",
-  );
-  assert.equal(storagePathFor("/settings", "about"), null);
+  assert.equal(storagePathFor("/settings/about"), null);
+});
+
+
+test("voice and generation have independent pages and legacy destinations", () => {
+  const keys = visibleSettingsPages(admin).map(page => page.key);
+  assert.ok(keys.includes("voice"));
+  assert.ok(keys.includes("multimodal"));
+  for (const key of ["tts", "stt"]) {
+    assert.equal(settingsAnchorHref(key), "/settings/voice");
+    assert.equal(legacySettingsDestination(`#${key}`, "?profile=saved"), "/settings/voice?profile=saved");
+  }
+  for (const key of ["image", "video", "imagegen", "videogen"]) {
+    assert.equal(settingsAnchorHref(key), "/settings/multimodal");
+  }
+  for (const key of ["voice", "multimodal", "tts", "stt", "imagegen", "videogen"]) {
+    assert.equal(storagePathFor(`/settings/${key}`), "data/user/settings/model_catalog.json");
+  }
 });

@@ -27,6 +27,7 @@ from urllib.parse import quote, unquote, urldefrag, urljoin, urlparse
 import httpx
 
 from deeptutor.services.web_source.markdown import strip_leading_snapshot_provenance
+from deeptutor.services.web_source.robots import CrawlAccess
 
 # Reuse the SSRF guard and HTML extraction from web_fetch
 from deeptutor.tools.web_fetch import (
@@ -191,6 +192,7 @@ async def _fetch_page(
     url: str,
     *,
     client: httpx.AsyncClient,
+    access: CrawlAccess | None = None,
 ) -> tuple[str, str] | None:
     """Fetch *url*, return ``(html, final_url)`` or ``None`` on failure.
 
@@ -211,6 +213,9 @@ async def _fetch_page(
         # private target by the time they can be rejected.
         if _is_disallowed_host(host):
             logger.warning("Crawl: request to disallowed host %s blocked", host)
+            return None
+        if access is not None and not await access.permits_request(current_url):
+            logger.warning("Crawl: robots.txt blocks %s", current_url)
             return None
         try:
             async with client.stream(
@@ -282,6 +287,7 @@ async def _process_page(
     base_host: str,
     base_path_prefix: str,
     max_depth: int,
+    access: CrawlAccess,
 ) -> dict | None:
     """Fetch and process a single page for concurrent crawling.
 
@@ -289,7 +295,7 @@ async def _process_page(
     or ``None`` on fetch failure.
     """
     async with sem:
-        fetched = await _fetch_page(url, client=client)
+        fetched = await _fetch_page(url, client=client, access=access)
     if fetched is None:
         return None
     html, final_url = fetched
@@ -391,6 +397,14 @@ async def crawl_docs_site(
     sem = asyncio.Semaphore(concurrency)
 
     async with factory() as client:
+        access = CrawlAccess(client)
+        policy = await access.policy_for(base_url)
+        if not policy.available:
+            result.errors.append("robots.txt unavailable; crawl blocked")
+            return result
+        if not policy.permits(base_url):
+            result.errors.append("robots.txt disallows the configured URL")
+            return result
         while queue and len(visited) < max_pages:
             # Dequeue a batch of URLs to process concurrently.
             batch: list[tuple[str, int]] = []
@@ -413,6 +427,7 @@ async def crawl_docs_site(
                     base_host=base_host,
                     base_path_prefix=base_path_prefix,
                     max_depth=max_depth,
+                    access=access,
                 )
                 for url, depth in batch
             ]

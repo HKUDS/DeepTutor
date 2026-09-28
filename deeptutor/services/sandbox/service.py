@@ -18,7 +18,11 @@ import asyncio
 import logging
 
 from deeptutor.services.i18n import t
-from deeptutor.services.sandbox.backends import SandboxBackend
+from deeptutor.services.sandbox.backends import (
+    BwrapBackend,
+    RestrictedSubprocessBackend,
+    SandboxBackend,
+)
 from deeptutor.services.sandbox.config import SandboxSettings, build_backend
 from deeptutor.services.sandbox.quota import QuotaExceeded, UserExecQuota
 from deeptutor.services.sandbox.spec import ExecRequest, ExecResult, IsolationLevel
@@ -60,7 +64,37 @@ class SandboxService:
                         type(self._backend).__name__,
                         self._health_detail,
                     )
+                    await self._try_subprocess_fallback()
         return bool(self._healthy)
+
+    async def _try_subprocess_fallback(self) -> None:
+        """Fall back to restricted subprocess when bwrap cannot run.
+
+        Honours ``sandbox_allow_subprocess``. A down runner sidecar is left
+        failed — the main process must not start executing untrusted shell.
+        """
+        if not self._settings.allow_subprocess:
+            return
+        if not isinstance(self._backend, BwrapBackend):
+            return
+        fallback = RestrictedSubprocessBackend()
+        try:
+            healthy, detail = await fallback.health()
+        except Exception as exc:
+            logger.warning("subprocess fallback health check failed: %s", exc)
+            return
+        if not healthy:
+            logger.warning("subprocess fallback unhealthy: %s", detail)
+            return
+        logger.info(
+            "sandbox backend %s failed (%s); falling back to %s",
+            type(self._backend).__name__,
+            self._health_detail,
+            type(fallback).__name__,
+        )
+        self._backend = fallback
+        self._healthy = True
+        self._health_detail = "fallback subprocess functional"
 
     async def isolation_level(self) -> IsolationLevel:
         """Effective isolation level (OFF when no healthy backend)."""

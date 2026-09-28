@@ -132,6 +132,9 @@ WORKDIR /app
 #       installs with `pip install git+…`, which shells out to git. It is needed
 #       in *this* image and not in the runner: installing is a privileged
 #       main-app action, running is the runner's (Dockerfile.runner).
+# Office previews convert documents to PDF in the main app. Writer, Calc and
+# Impress cover DOCX, XLSX and PPTX; Noto CJK preserves Chinese text and
+# Liberation supplies common Latin font substitutes in the rendered pages.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
@@ -143,6 +146,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsm6 \
     libxext6 \
     libxrender1 \
+    libreoffice-writer \
+    libreoffice-calc \
+    libreoffice-impress \
+    fonts-noto-cjk \
+    fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy Node.js from node-runtime stage (platform-matched binary)
@@ -188,13 +196,15 @@ RUN mkdir -p \
     data/user/logs \
     data/knowledge_bases
 
-# Bake a non-root user (UID 1000) for the supervisord programs. supervisord
-# itself runs as PID 1's UID — root under rootful Docker/Podman, or UID 1000
-# under rootless podman + `userns_mode: keep-id` (where PID 1 is the host
-# user). Each child (backend/frontend) is dropped to this `deeptutor` user via
-# the per-program `user=deeptutor` directive, so the app processes stay
-# non-root in either runtime. UID 1000 also matches the host user under
-# keep-id with a bind mount on ./data.
+# Bake a non-root user (UID 1000 by default) for the supervisord programs.
+# supervisord itself runs as PID 1's UID — root under rootful Docker/Podman,
+# or the host UID under rootless podman + `userns_mode: keep-id`. Each child
+# (backend/frontend) is dropped to this `deeptutor` user via the per-program
+# `user=deeptutor` directive, so the app processes stay non-root. The
+# entrypoint remaps this user's UID/GID to PUID/PGID when PID 1 is root, so
+# Unraid/NAS bind mounts owned by a host user other than 1000 stay writable
+# without running the app as root. Under rootless keep-id the remap is
+# skipped (no CAP_SETUID) and UID 1000 matches the typical host user.
 RUN groupadd --system --gid 1000 deeptutor \
     && useradd --system --uid 1000 --gid 1000 --no-create-home --shell /usr/sbin/nologin deeptutor \
     && chown -R deeptutor:deeptutor /app/data /app/web/.next
@@ -356,6 +366,40 @@ for key in \
     unset "$key"
 done
 
+# Runtime user for supervisord children (`user=deeptutor`). Default 1000:1000
+# matches ordinary Docker and rootless keep-id. Unraid/NAS bind mounts are
+# often owned by another host user that *reverts* in-container chown; set
+# PUID/PGID to that owner instead of running the app as root.
+PUID="${PUID:-${DEEPTUTOR_PUID:-1000}}"
+PGID="${PGID:-${DEEPTUTOR_PGID:-1000}}"
+export PUID PGID
+
+if [ "$(id -u)" -eq 0 ]; then
+    case "$PUID$PGID" in
+        ''|*[!0-9]*)
+            echo "❌ PUID and PGID must be non-root integers (got PUID=${PUID} PGID=${PGID})"
+            exit 1
+            ;;
+    esac
+    if [ "$PUID" -eq 0 ] || [ "$PGID" -eq 0 ]; then
+        echo "❌ PUID/PGID must be non-root so the app does not run as root (got PUID=${PUID} PGID=${PGID})"
+        exit 1
+    fi
+    echo "👤 Runtime user deeptutor → uid=${PUID} gid=${PGID}"
+    if [ "$(id -g deeptutor)" != "$PGID" ]; then
+        if getent group "$PGID" >/dev/null 2>&1; then
+            usermod -g "$PGID" deeptutor
+        else
+            groupmod -o -g "$PGID" deeptutor
+        fi
+    fi
+    if [ "$(id -u deeptutor)" != "$PUID" ]; then
+        usermod -o -u "$PUID" deeptutor
+    fi
+else
+    echo "👤 Rootless runtime uid=$(id -u) gid=$(id -g); skipping PUID remap"
+fi
+
 # Initialize user data directories if empty
 echo "📁 Checking data directories..."
 echo "   Ensuring runtime settings and workspace layout..."
@@ -363,11 +407,27 @@ python -c "
 from pathlib import Path
 from deeptutor.services.setup import init_user_directories
 init_user_directories(Path('/app'))
-" 2>/dev/null || echo "   ⚠️ Directory initialization skipped (will be created on first use)"
+" || echo "   ⚠️ Directory initialization failed (volume writability check follows)"
 
-# Idempotent: re-chown /app/data so the unprivileged `deeptutor` user (UID 1000)
-# owns it. Cheap on no-op; the only first-start cost is one stat per file.
-chown -R deeptutor:deeptutor /app/data 2>/dev/null || true
+# Re-chown /app/data to the (possibly remapped) deeptutor user. Named Docker
+# volumes are typically root-owned and need this. Bind mounts on Unraid/NFS
+# often reject chown and keep the host owner — do NOT swallow that with
+# `|| true`; warn and let the writability probe fail-fast if the runtime
+# user still cannot write.
+if [ "$(id -u)" -eq 0 ]; then
+    if chown -R deeptutor:deeptutor /app/data; then
+        echo "   ✅ /app/data owned by deeptutor (uid=${PUID} gid=${PGID})"
+    else
+        echo "   ⚠️ chown /app/data failed (common on Unraid/NFS bind mounts that reject ownership changes)."
+        echo "      The app will run as uid=${PUID} gid=${PGID}; the volume must already be writable by that user."
+        echo "      Set PUID/PGID to the host owner of the bind mount rather than running as root."
+    fi
+else
+    echo "   Skipping chown under rootless runtime"
+fi
+
+echo "📁 Verifying /app/data is writable by the runtime user..."
+python -c "from deeptutor.services.setup.data_volume import check_container_data_volume; check_container_data_volume()"
 
 # Optional dependencies (#762). A container is disposable, so anything
 # `docker exec … pip install`ed into a running one is gone at the next
@@ -402,7 +462,11 @@ fi
 if [ -n "${DEEPTUTOR_EXTRAS:-}" ]; then
     echo "🔧 Ensuring Python extras: ${DEEPTUTOR_EXTRAS}"
     python /app/scripts/install_extras.py "${DEEPTUTOR_EXTRAS}" || true
-    chown -R deeptutor:deeptutor "$PIP_CACHE_DIR" 2>/dev/null || true
+    if [ "$(id -u)" -eq 0 ]; then
+        if ! chown -R deeptutor:deeptutor "$PIP_CACHE_DIR"; then
+            echo "   ⚠️ chown pip cache failed; continuing if the runtime user can still write it"
+        fi
+    fi
 fi
 
 echo "⚙️  Loading runtime JSON settings..."

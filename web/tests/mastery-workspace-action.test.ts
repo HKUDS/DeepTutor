@@ -80,3 +80,23 @@ test("the mastery composer pins its action and renders no action menu", () => {
   );
   assert.match(sessionHook, /capability: MASTERY_CAPABILITY_VALUE/);
 });
+
+test("the mastery composer reuses Chat's skill and MCP pickers", () => {
+  const source = fs.readFileSync(
+    path.join(process.cwd(), "components/space/learning/MasteryComposer.tsx"),
+    "utf8",
+  );
+  assert.match(source, /useComposerResources/);
+  assert.match(source, /setResourceSelection/);
+  assert.match(source, /resourceCatalog=\{resourceCatalog\}/);
+  assert.match(source, /resourceSelection=\{state\.resourceSelection\}/);
+  assert.match(source, /onResourceSelectionChange=\{setResourceSelection\}/);
+
+  const standalone = fs.readFileSync(
+    path.join(process.cwd(), "components/chat/home/StandaloneComposer.tsx"),
+    "utf8",
+  );
+  assert.match(standalone, /resourceCatalog=\{resourceCatalog\}/);
+  assert.match(standalone, /resourceSelection=\{resourceSelection\}/);
+  assert.match(standalone, /onResourceSelectionChange=\{onResourceSelectionChange\}/);
+});

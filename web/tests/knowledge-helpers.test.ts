@@ -95,7 +95,7 @@ test("kbCanReindex keeps empty failed knowledge bases disabled", () => {
   );
 });
 
-test("kbCanReindex preserves mismatch and needs-reindex behavior", () => {
+test("kbCanReindex supports recovery and changing a healthy KB's model", () => {
   assert.equal(
     kbCanReindex(kb({ statistics: { raw_documents: 1, needs_reindex: true } })),
     true,
@@ -106,7 +106,7 @@ test("kbCanReindex preserves mismatch and needs-reindex behavior", () => {
   );
   assert.equal(
     kbCanReindex(kb({ statistics: { raw_documents: 1, active_match: true } })),
-    false,
+    true,
   );
 });
 
@@ -253,10 +253,21 @@ test("an ordinary knowledge base has no devices section", () => {
   assert.deepEqual(kbDetailSections(indexed), [
     "files",
     "add",
+    "folders",
     "github",
     "web",
     "versions",
     "settings",
   ]);
   assert.equal(isMarginNoteKb(indexed), false);
+});
+
+test("connected knowledge bases do not expose local source-folder controls", () => {
+  assert.deepEqual(
+    kbDetailSections({
+      name: "Obsidian",
+      metadata: { type: "obsidian", vault_path: "/notes" },
+    }),
+    ["files", "add", "github", "web", "versions", "settings"],
+  );
 });

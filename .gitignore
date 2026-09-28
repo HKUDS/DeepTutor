@@ -1,20 +1,20 @@
 # ============================================
-# AI-Tutor Project .gitignore
+# DeepTutor Project .gitignore
 # ============================================
 
 # ============================================
 # User Generated Data and Outputs
 # ============================================
-# Runtime data (knowledge bases, tutorbot workspaces, memory, etc.)
+# Runtime data (knowledge bases, partner workspaces, memory, etc.)
 data/
 /multi-user/
-run_code_workspace/
-deeptutor/agents/question/reference_papers/
-deeptutor/services/rag/eg_only_for_analysis/
+# Local development documents; public guides live in docs-for-user/.
 /docs/
+/design-qa.md
 /site/
 .claude
 .agents/
+.workbuddy/
 
 # LaTeX build artifacts
 *.aux
@@ -25,7 +25,6 @@ deeptutor/services/rag/eg_only_for_analysis/
 *.out
 *.synctex.gz
 *.pdf
-!demo/*.pdf
 !tests/fixtures/lightrag_bridge/original.pdf
 !tests/fixtures/lightrag_bridge/mineru-v2-current/*_origin.pdf
 
@@ -34,7 +33,6 @@ deeptutor/services/rag/eg_only_for_analysis/
 # ============================================
 # Bytecode cache
 __pycache__/
-**/__pycache__/
 *.py[cod]
 *$py.class
 *.so
@@ -57,10 +55,14 @@ wheels/
 *.egg
 MANIFEST
 
-# Virtual Environments
+# Environment configuration (keep the public template)
 .env
+.env.*
 *.env
 *.env.local
+!.env.example
+
+# Virtual environments
 env/
 venv/
 ENV/
@@ -72,18 +74,11 @@ venv.bak/
 # Node.js and Frontend Build
 # ============================================
 # Node modules
-# Both spellings: the trailing slash matches only a real directory, so a
-# symlinked node_modules (how a git worktree usually borrows the main
-# checkout's install) would otherwise be staged by `git add -A`.
+# No trailing slash: also ignore symlinked installs borrowed by worktrees.
 node_modules
-node_modules/
-**/node_modules
-**/node_modules/
 
 # Next.js build output
 .next/
-web/.next/
-web/.next-deeptutor/
 # Custom distDir builds (DEEPTUTOR_NEXT_DIST_DIR / parallel dev servers)
 web/.next-*/
 # PDF.js decoder files are copied from node_modules for local/dev and release
@@ -94,26 +89,13 @@ web/tsconfig.deeptutor-*.json
 # Temporary Next.js dist roots created by isolated build/test runs
 web/tmp/
 out/
-web/out/
 .vercel/
-**/.vercel/
 .turbo/
-**/.turbo/
-
-# Auto-generated env.local (created by start_web.py / start_tour.py)
-web/.env.local
 
 # Frontend build artifacts
-dist/
-web/dist/
-build/
-web/build/
 .open-next/
-**/.open-next/
 .wrangler/
-**/.wrangler/
 .vite/
-**/.vite/
 
 # Yarn / Plug'n'Play
 .pnp
@@ -133,14 +115,12 @@ web/build/
 # Output directories
 output/
 outputs/
-**/output/
-**/outputs/
 
 # Cache directories
 cache/
-**/cache/
 .cache/
 .ruff_cache
+.import_linter_cache/
 .playwright-cli/
 # Written by `npm run audit` (the playwright ui-audit project).
 web/test-results/
@@ -153,7 +133,6 @@ web/playwright-report/
 # IDE and Editors
 # ============================================
 # VSCode
-.vscode/
 .vscode/*
 !.vscode/settings.json
 !.vscode/tasks.json
@@ -180,7 +159,6 @@ web/playwright-report/
 .netrwhist
 
 # Emacs
-*~
 \#*\#
 /.emacs.desktop
 /.emacs.desktop.lock
@@ -227,7 +205,6 @@ $RECYCLE.BIN/
 *.lnk
 
 # Linux
-*~
 .fuse_hidden*
 .directory
 .Trash-*
@@ -240,8 +217,6 @@ $RECYCLE.BIN/
 *.temp
 *.bak
 *.backup
-*.swp
-*.swo
 
 # Local scripts
 启动 DeepTutor.bat
@@ -280,23 +255,6 @@ dmypy.json
 .pytype/
 
 # ============================================
-# Other Python Tools
-# ============================================
-# Celery
-celerybeat-schedule
-celerybeat.pid
-
-# SageMath parsed files
-*.sage.py
-
-# Spyder project settings
-.spyderproject
-.spyproject
-
-# Rope project settings
-.ropeproject
-
-# ============================================
 # Profiling
 # ============================================
 *.prof
@@ -319,15 +277,8 @@ celerybeat.pid
 *.7z
 
 # ============================================
-# Reference Papers (large binary files)
-# ============================================
-# Keep structure but ignore large PDFs in reference_papers
-# question_agents/reference_papers/**/*.pdf
-
-# ============================================
 # Audio/Video Output (TTS generated)
 # ============================================
 *.mp3
 *.wav
 *.ogg
-!demo/*.mp4

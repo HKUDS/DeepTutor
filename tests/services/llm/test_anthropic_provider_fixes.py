@@ -54,6 +54,7 @@ def test_temperature_omitted_for_effort_based_models() -> None:
         "claude-sonnet-5",
         "claude-opus-4-7",
         "claude-fable-5",
+        "claude-mythos-5",
     ):
         assert "temperature" not in _kwargs(provider, model), model
 
@@ -154,6 +155,7 @@ def test_effort_based_families_map_real_effort_to_adaptive_thinking() -> None:
         "claude-sonnet-5",
         "claude-opus-4-7",
         "claude-fable-5",
+        "claude-mythos-5",
     ):
         kwargs = _kwargs_with_effort(provider, model, "high")
         assert kwargs["thinking"] == {"type": "adaptive"}, model
@@ -161,11 +163,24 @@ def test_effort_based_families_map_real_effort_to_adaptive_thinking() -> None:
         assert kwargs["max_tokens"] == 1024, model  # no budget headroom inflation
 
 
-def test_effort_based_families_omit_thinking_for_off_sentinels() -> None:
+@pytest.mark.parametrize(
+    "model",
+    [
+        "claude-opus-4-7",
+        "claude-opus-4-8",
+        "claude-opus-5",
+        "claude-sonnet-5",
+        "claude-fable-5",
+        "claude-mythos-5",
+    ],
+)
+@pytest.mark.parametrize("effort", ["none", "minimal", "minimum"])
+def test_effort_based_families_omit_thinking_for_off_sentinels(model: str, effort: str) -> None:
     provider = _provider()
-    kwargs = _kwargs_with_effort(provider, "claude-opus-4-8", "minimal")
+    kwargs = _kwargs_with_effort(provider, model, effort)
     assert "thinking" not in kwargs
     assert "temperature" not in kwargs
+    assert "temperature" not in kwargs.get("extra_body", {})
 
 
 def test_older_models_keep_budget_tokens_thinking() -> None:

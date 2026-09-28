@@ -157,7 +157,7 @@ function HtmlRenderer({ html }: { html: string }) {
       const contentUrl = URL.createObjectURL(
         new Blob([prepared], { type: "text/html" }),
       );
-      const wrapper = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Visualization</title><style>html,body,iframe{height:100%;width:100%;margin:0;border:0;}</style></head><body><iframe sandbox="allow-scripts" src="${contentUrl}"></iframe></body></html>`;
+      const wrapper = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${t("Visualization").replace(/[&<>]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[char]!)}</title><style>html,body,iframe{height:100%;width:100%;margin:0;border:0;}</style></head><body><iframe sandbox="allow-scripts" src="${contentUrl}"></iframe></body></html>`;
       const url = URL.createObjectURL(
         new Blob([wrapper], { type: "text/html" }),
       );
@@ -177,10 +177,9 @@ function HtmlRenderer({ html }: { html: string }) {
         type="button"
         onClick={handleOpenInNewTab}
         className="absolute right-2 top-2 z-10 inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--background)]/90 px-2 py-1 text-[10px] font-medium text-[var(--muted-foreground)] backdrop-blur transition-colors hover:text-[var(--foreground)]"
-        title={t("Open in new tab")}
       >
         <ExternalLink size={10} strokeWidth={1.8} />
-        {t("Open")}
+        {t("Open in new tab")}
       </button>
       <iframe
         ref={iframeRef}
@@ -571,7 +570,6 @@ export default function VisualizationViewer({
           <button
             type="button"
             onClick={() => setFullscreen(true)}
-            title={t("Fullscreen")}
             className="absolute right-2 top-2 z-10 inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--background)]/90 px-2 py-1 text-[10px] font-medium text-[var(--muted-foreground)] backdrop-blur transition-colors hover:text-[var(--foreground)]"
           >
             <Maximize2 size={10} strokeWidth={1.8} />
@@ -652,7 +650,6 @@ export default function VisualizationViewer({
                   e.stopPropagation();
                   setFullscreen(false);
                 }}
-                title={t("Close")}
                 className="inline-flex items-center gap-1 rounded-md bg-white/10 px-2.5 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-white/20"
               >
                 <X size={12} strokeWidth={1.8} />

@@ -17,11 +17,13 @@ pulling the whole file before rendering page one.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 from pathlib import Path
 import shutil
 import tempfile
 from typing import Any, Literal
+from urllib.parse import quote
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, UploadFile
@@ -29,6 +31,7 @@ from fastapi.params import File
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field, model_validator
 
+from deeptutor.learning.storage import LearningStore
 from deeptutor.multi_user.learning_access import (
     assert_learning_material,
     assert_learning_material_mutation,
@@ -48,6 +51,7 @@ from deeptutor.reading import (
     export_material,
     render_outline,
 )
+from deeptutor.reading.captions import caption_material_media, captions_enabled
 from deeptutor.reading.ingestion import (
     MAX_TRANSCRIPT_BYTES,
     ReadingIngestionService,
@@ -88,6 +92,14 @@ def _store() -> ReadingStore:
     return ReadingStore()
 
 
+def _record_reading_position(material_id: str, *, locator: int, percentage: float) -> None:
+    LearningStore().record_reading_position(
+        material_id,
+        locator=locator,
+        percentage=percentage,
+    )
+
+
 def _catalog() -> ReadingCatalogStore:
     return ReadingCatalogStore()
 
@@ -99,6 +111,31 @@ def _ingestion() -> ReadingIngestionService:
 
 def _new_material_id() -> str:
     return f"rm_{uuid.uuid4().hex[:12]}"
+
+
+def _schedule_media_captions(
+    background_tasks: BackgroundTasks, store: ReadingStore, material_id: str
+) -> None:
+    """Best-effort: caption a material's embedded figures after ingest.
+
+    The vision model writes one sentence per image back into the store's media
+    index so a text-only model can still describe every figure in the book.
+    This must never affect the upload result or the ingest status, so any
+    failure is only logged.
+    """
+    if not captions_enabled():
+        return
+    background_tasks.add_task(_caption_material_best_effort, store, material_id)
+
+
+async def _caption_material_best_effort(store: ReadingStore, material_id: str) -> None:
+    """Run the caption pass without ever letting an error escape."""
+    if not captions_enabled():
+        return
+    try:
+        await caption_material_media(material_id, store=store)
+    except Exception:  # noqa: BLE001 - captioning is best-effort
+        logger.warning("Image captioning failed for %s", material_id, exc_info=True)
 
 
 def _content_facts(store: ReadingStore, record: Any) -> tuple[int, int]:
@@ -323,15 +360,24 @@ class UrlImportRequest(BaseModel):
     workspace_title: str = ""
 
 
+class ZimArticleImportRequest(BaseModel):
+    kb_ref: str = Field(min_length=1, max_length=300)
+    article_path: str = Field(min_length=1, max_length=2048)
+    title: str = Field(default="", max_length=300)
+    workspace_id: str = ""
+
+
 class WorkspaceCreateRequest(BaseModel):
     title: str = Field(default="Untitled collection", max_length=300)
     description: str = Field(default="", max_length=2000)
+    color: str = Field(default="", max_length=32)
     material_ids: list[str] = Field(default_factory=list, max_length=100)
 
 
 class WorkspaceUpdateRequest(BaseModel):
     title: str | None = Field(default=None, max_length=300)
     description: str | None = Field(default=None, max_length=2000)
+    color: str | None = Field(default=None, max_length=32)
 
 
 class WorkspaceMaterialRequest(BaseModel):
@@ -522,6 +568,90 @@ async def import_urls(
         raise _http_error(exc) from exc
 
 
+@router.post("/library/import-zim-article")
+async def import_zim_article(payload: ZimArticleImportRequest) -> dict[str, Any]:
+    """Open one selected Kiwix article in Immersive Reading.
+
+    Only its bounded text snapshot enters the reading store.  The ZIM archive
+    stays on the existing kiwix-serve instance, without bulk extraction.
+    """
+    from deeptutor.multi_user.knowledge_access import manager_for_resource, resolve_kb
+    from deeptutor.reading.catalog_models import IngestionStatus, SourceKind
+    from deeptutor.reading.extract import split_markdown_by_headings
+    from deeptutor.services.rag.pipelines.kiwix.client import (
+        KiwixClient,
+        KiwixError,
+        validate_article_path,
+    )
+    from deeptutor.services.workspace.knowledge import library_request
+
+    try:
+        assert_learning_material("", upload=True)
+        # Knowledge Center browses the account library outside the current
+        # conversation's selected KB list. Resolve the source with that same
+        # access scope, then restore the Reading workspace for storage.
+        token = library_request.set(True)
+        try:
+            resource = resolve_kb(payload.kb_ref)
+            entry = manager_for_resource(resource).get_metadata(resource.name)
+        finally:
+            library_request.reset(token)
+        if not isinstance(entry, dict) or entry.get("type") != "kiwix":
+            raise ReadingError("Select a connected Kiwix knowledge base.")
+        path = validate_article_path(payload.article_path)
+        client = KiwixClient(entry["server_url"], entry["zim_name"])
+        text = await client.read_article(path)
+        units, outline = split_markdown_by_headings(text)
+        if not units:
+            raise ReadingError("The selected ZIM article has no readable text.")
+        title = payload.title.strip() or path.rsplit("/", 1)[-1].replace("_", " ")
+        material_id = hashlib.sha256(f"{resource.id}\0{path}".encode()).hexdigest()[:16]
+        catalog = _catalog()
+        store = ReadingStore(catalog.root)
+        source_url = f"{client.base_url}/content/{client.zim_name}/" + "/".join(
+            quote(segment, safe="") for segment in path.split("/")
+        )
+        store.ingest_units(
+            material_id,
+            filename=f"{title[:150]}.md",
+            units=units,
+            unit="section",
+            title=title,
+            mime="text/markdown",
+            extractor="kiwix-article",
+            content_format="plain_text",
+            source_type="zim_article",
+            source_url=source_url,
+            outline=outline or None,
+        )
+        material = catalog.upsert_material(
+            content_id=material_id,
+            material_id=material_id,
+            filename=f"{title[:150]}.md",
+            title=title,
+            source_kind=SourceKind.WEB,
+            source_url=source_url,
+            mime="text/markdown",
+            render_mode="text",
+            status=IngestionStatus.READY,
+        )
+        if payload.workspace_id.strip():
+            catalog.add_material(payload.workspace_id.strip(), material_id)
+            workspace = catalog.get_workspace(payload.workspace_id.strip())
+        else:
+            workspace = catalog.create_workspace(title, [material_id])
+        return {
+            "material": material.to_dict(),
+            "workspace": workspace.to_dict() if workspace else None,
+        }
+    except HTTPException:
+        raise
+    except (KiwixError, KeyError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
 @router.post("/materials/{material_id}/retry", status_code=202)
 async def retry_import(material_id: str, background_tasks: BackgroundTasks) -> dict[str, Any]:
     service = _ingestion()
@@ -579,6 +709,7 @@ async def create_workspace(payload: WorkspaceCreateRequest) -> dict[str, Any]:
             payload.title,
             payload.material_ids,
             description=payload.description,
+            color=payload.color,
         )
         return {"workspace": row.to_dict()}
     except Exception as exc:
@@ -613,21 +744,6 @@ async def get_workspace_ask_hint(
     return await get_ask_hint(workspace_id, session_id, locator, selection)
 
 
-@router.get("/workspaces/{workspace_id}/openers")
-async def get_workspace_openers(
-    workspace_id: str,
-    locator: int | None = None,
-) -> dict[str, Any]:
-    """Three things a learner could open this material with.
-
-    An empty list means the panel keeps its own generic suggestions — this is
-    a nicety, never a dependency.
-    """
-    from deeptutor.services.reading_hints import get_openers
-
-    return await get_openers(workspace_id, locator)
-
-
 @router.patch("/workspaces/{workspace_id}")
 async def update_workspace(workspace_id: str, payload: WorkspaceUpdateRequest) -> dict[str, Any]:
     try:
@@ -635,6 +751,7 @@ async def update_workspace(workspace_id: str, payload: WorkspaceUpdateRequest) -
             workspace_id,
             title=payload.title,
             description=payload.description,
+            color=payload.color,
         )
         return {"workspace": row.to_dict()}
     except Exception as exc:
@@ -965,6 +1082,7 @@ async def upload_material(
             catalog = _catalog()
             if reuse or catalog.get_material(manifest.material_id) is None:
                 catalog.register_manifest(manifest)
+                _schedule_media_captions(background_tasks, store, manifest.material_id)
                 return _detail(store, manifest)
             # A separate material over the same extracted content: the bytes
             # are stored once, while annotations and reading position are kept
@@ -979,6 +1097,7 @@ async def upload_material(
                 render_mode=manifest.render_mode,
                 status=IngestionStatus.READY,
             )
+            _schedule_media_captions(background_tasks, store, record.material_id)
             return _detail(store, store.manifest(record.material_id))
     except HTTPException:
         raise
@@ -1169,11 +1288,21 @@ async def get_revision_unit(material_id: str, revision: int, locator: int) -> Un
 @router.get("/materials/{material_id}/raw")
 async def get_raw(material_id: str) -> FileResponse:
     """The original bytes, for the faithful viewer. Serves Range requests."""
+    return _material_file_response(material_id, browser_ready=False)
+
+
+@router.get("/materials/{material_id}/render")
+async def get_render(material_id: str) -> FileResponse:
+    """Serve a browser-ready EPUB archive, or the original for other formats."""
+    return _material_file_response(material_id, browser_ready=True)
+
+
+def _material_file_response(material_id: str, *, browser_ready: bool) -> FileResponse:
     store = _store()
     try:
         assert_learning_material(material_id)
         manifest = store.manifest(material_id)
-        path = store.raw_path(material_id)
+        path = store.render_path(material_id) if browser_ready else store.raw_path(material_id)
     except Exception as exc:
         raise _http_error(exc) from exc
     if path is None or not path.is_file():
@@ -1218,6 +1347,38 @@ async def get_snapshot_asset(material_id: str, asset_name: str) -> FileResponse:
     )
 
 
+@router.get("/materials/{material_id}/media")
+async def list_material_media(material_id: str) -> list[dict[str, Any]]:
+    """The embedded-image index (name / locator / mime / size), empty if none."""
+    store = _store()
+    try:
+        return store.media_items(material_id)
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.get("/materials/{material_id}/media/{name}")
+async def get_material_media(material_id: str, name: str) -> FileResponse:
+    """One embedded image's bytes, for the reader pane's media strip."""
+    store = _store()
+    try:
+        path = store.media_path(material_id, name)
+        mime = next(
+            (row.get("mime") for row in store.media_items(material_id) if row.get("name") == name),
+            "",
+        )
+    except Exception as exc:
+        raise _http_error(exc) from exc
+    if path is None:
+        raise HTTPException(status_code=404, detail="No such image in this material.")
+    return FileResponse(
+        path,
+        media_type=mime or "image/png",
+        filename=name,
+        content_disposition_type="inline",
+    )
+
+
 @router.get("/materials/{material_id}/annotations", response_model=list[AnnotationInfo])
 async def list_annotations(material_id: str) -> list[AnnotationInfo]:
     store = _store()
@@ -1253,6 +1414,15 @@ async def save_position(material_id: str, payload: PositionPayload) -> PositionI
                 percentage=payload.percentage,
             ),
         )
+        try:
+            await asyncio.to_thread(
+                _record_reading_position,
+                material_id,
+                locator=saved.locator,
+                percentage=saved.percentage,
+            )
+        except Exception:
+            logger.exception("Reading position saved, but learning activity recording failed")
         return PositionInfo(**saved.to_dict())
     except Exception as exc:
         raise _http_error(exc) from exc

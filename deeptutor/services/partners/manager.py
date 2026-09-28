@@ -9,20 +9,24 @@ isolated chat-format workspace under ``data/partners/{partner_id}/``.
 from __future__ import annotations
 
 import asyncio
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
+import errno
 import hashlib
 import logging
 import os
 from pathlib import Path
 import re
 import shutil
-from typing import Any, Awaitable, Callable
+import sys
+from typing import Any, Awaitable, BinaryIO, Callable, Iterator
 
 import yaml
 
 from deeptutor.core.stream import StreamEventType
 from deeptutor.multi_user.models import CurrentUser
+from deeptutor.partners.channels.base import deliver_outbound
 from deeptutor.partners.config.paths import (
     get_data_dir,
     get_partner_dir,
@@ -43,6 +47,61 @@ from deeptutor.services.partners.workspace import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class PartnerTurnBusyError(RuntimeError):
+    """A new message cannot take over an in-flight web conversation."""
+
+
+class PartnerStaleSessionError(RuntimeError):
+    """A browser submitted a key that is no longer selected for its account."""
+
+    def __init__(self, active_session_key: str) -> None:
+        super().__init__("The active conversation changed in another browser.")
+        self.active_session_key = active_session_key
+
+
+def _acquire_web_turn_lock(path: Path) -> BinaryIO:
+    """Hold a per-session process lock for the full streamed web turn."""
+    handle = path.open("a+b")
+    try:
+        handle.seek(0, 2)
+        if handle.tell() == 0:
+            handle.write(b"\0")
+            handle.flush()
+        handle.seek(0)
+        if sys.platform == "win32":  # pragma: no cover - Windows only
+            import msvcrt
+
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return handle
+    except OSError as exc:
+        handle.close()
+        if exc.errno in {errno.EACCES, errno.EAGAIN}:
+            raise PartnerTurnBusyError(
+                "This conversation is already replying. Please wait."
+            ) from exc
+        raise
+
+
+def _release_web_turn_lock(handle: BinaryIO) -> None:
+    try:
+        handle.seek(0)
+        if sys.platform == "win32":  # pragma: no cover - Windows only
+            import msvcrt
+
+            msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    finally:
+        handle.close()
+
 
 _RESERVED_NAMES = {"workspace", "media", "sessions", "_souls"}
 _HYPHEN_RUN_RE = re.compile(r"-+")
@@ -189,6 +248,7 @@ class PartnerConfig:
     # predate ownership (and for anything an admin created before this field
     # existed) — those stay admin-managed, which is what they always were.
     owner_id: str = ""
+    workspace_id: str = ""  # Empty keeps the private Partner resource library.
     channels: dict[str, Any] = field(default_factory=dict)
     llm_selection: dict[str, str] | None = None
     # Fallback model: when a turn fails outright on the primary selection
@@ -246,6 +306,7 @@ class LiveTurn:
     done: bool = False
     subscribers: set[asyncio.Queue] = field(default_factory=set, repr=False)
     task: asyncio.Task | None = field(default=None, repr=False)
+    turn_lock: BinaryIO | None = field(default=None, repr=False)
 
     def emit(self, frame: dict[str, Any]) -> None:
         self.events.append(frame)
@@ -259,6 +320,10 @@ class LiveTurn:
             for frame in frames:
                 queue.put_nowait(frame)
         self.subscribers.clear()
+        if self.turn_lock is not None:
+            handle = self.turn_lock
+            self.turn_lock = None
+            _release_web_turn_lock(handle)
 
     def subscribe(self) -> asyncio.Queue:
         """Preload the backlog and register — atomically (no await between) so
@@ -380,6 +445,7 @@ class PartnerInstance:
             "name": self.config.name,
             "description": self.config.description,
             "owner_id": self.config.owner_id,
+            "workspace_id": self.config.workspace_id,
             "channels": channels,
             "llm_selection": self.config.llm_selection,
             "backup_llm_selection": self.config.backup_llm_selection,
@@ -485,6 +551,7 @@ class PartnerManager:
         "name",
         "description",
         "owner_id",
+        "workspace_id",
         "channels",
         "llm_selection",
         "backup_llm_selection",
@@ -509,6 +576,7 @@ class PartnerManager:
                 name=data.get("name", partner_id),
                 description=data.get("description", ""),
                 owner_id=str(data.get("owner_id", "") or ""),
+                workspace_id=str(data.get("workspace_id", "") or ""),
                 channels=strip_legacy_global_delivery(data.get("channels", {}) or {}),
                 llm_selection=data.get("llm_selection"),
                 backup_llm_selection=data.get("backup_llm_selection"),
@@ -544,6 +612,7 @@ class PartnerManager:
             "name": config.name,
             "description": config.description,
             "owner_id": config.owner_id,
+            "workspace_id": config.workspace_id,
             "channels": strip_legacy_global_delivery(config.channels),
             "language": config.language,
             "emoji": config.emoji,
@@ -682,13 +751,18 @@ class PartnerManager:
             event_bus = get_event_bus()
             while True:
                 msg: _OMsg = await bus.consume_outbound()
-                is_progress = bool(msg.metadata and msg.metadata.get("_progress"))
+                metadata = msg.metadata or {}
+                is_progress = bool(
+                    metadata.get("_progress")
+                    or metadata.get("_stream_delta")
+                    or metadata.get("_stream_end")
+                )
 
                 if instance.channel_manager:
                     channel = instance.channel_manager.get_channel(msg.channel)
                     if channel:
                         try:
-                            await channel.send(msg)
+                            await deliver_outbound(channel, msg)
                         except Exception:
                             logger.exception(
                                 "Failed to send to channel %s for partner %s",
@@ -898,6 +972,7 @@ class PartnerManager:
                 "name": cfg.name if cfg else pid,
                 "description": cfg.description if cfg else "",
                 "owner_id": cfg.owner_id if cfg else "",
+                "workspace_id": cfg.workspace_id if cfg else "",
                 "channels": list(cfg.channels.keys()) if cfg else [],
                 "llm_selection": cfg.llm_selection if cfg else None,
                 "backup_llm_selection": cfg.backup_llm_selection if cfg else None,
@@ -1118,25 +1193,67 @@ class PartnerManager:
         session_key: str,
         content: str,
         media: list[str] | None = None,
+        *,
+        account_id: str | None = None,
     ) -> "LiveTurn":
-        """Run a web turn as an instance-owned task and return its LiveTurn.
+        """Run a new web turn, rejecting concurrent sends on the same session.
 
-        If a turn is already in flight for this session, returns it (one at a
-        time per session). The turn keeps running even if every socket detaches.
+        Reconnects use :meth:`subscribe_web_turn`; a fresh send must never
+        receive another browser's answer as if it were its own.
         """
         instance = self._partners.get(partner_id)
         if not instance or not instance.running or not instance.runner:
             raise RuntimeError(f"Partner '{partner_id}' is not running")
         existing = instance.live_turns.get(session_key)
         if existing is not None and not existing.done:
-            return existing
-        turn = LiveTurn(user_content=content)
+            raise PartnerTurnBusyError("This conversation is already replying. Please wait.")
+        lock_path = self.web_turn_lock_path(partner_id, session_key)
+        turn_lock = _acquire_web_turn_lock(lock_path)
+        try:
+            if account_id is not None:
+                from deeptutor.services.partners.web_continuity import (
+                    get_web_continuity,
+                    validate_session_key,
+                )
+
+                state = get_web_continuity(partner_id, account_id)
+                if state["enabled"] and state["session_key"] != validate_session_key(session_key):
+                    raise PartnerStaleSessionError(str(state["session_key"]))
+        except Exception:
+            _release_web_turn_lock(turn_lock)
+            raise
+        turn = LiveTurn(user_content=content, turn_lock=turn_lock)
         instance.live_turns[session_key] = turn
-        turn.task = asyncio.create_task(
-            self._drive_web_turn(partner_id, session_key, content, media or [], turn),
-            name=f"partner:{partner_id}:webturn",
-        )
+        try:
+            turn.task = asyncio.create_task(
+                self._drive_web_turn(partner_id, session_key, content, media or [], turn),
+                name=f"partner:{partner_id}:webturn",
+            )
+        except Exception:
+            turn.finish([])
+            instance.live_turns.pop(session_key, None)
+            raise
         return turn
+
+    def web_turn_lock_path(self, partner_id: str, session_key: str) -> Path:
+        return self.session_store(partner_id)._path(session_key).with_suffix(".turn.lock")
+
+    @contextmanager
+    def web_session_idle_lock(self, partner_id: str, session_key: str) -> Iterator[None]:
+        """Exclude in-flight turns while changing or deleting their session."""
+        handle = _acquire_web_turn_lock(self.web_turn_lock_path(partner_id, session_key))
+        try:
+            yield
+        finally:
+            _release_web_turn_lock(handle)
+
+    def web_session_is_busy(self, partner_id: str, session_key: str) -> bool:
+        """Detect a turn owned by this or another backend worker."""
+        try:
+            with self.web_session_idle_lock(partner_id, session_key):
+                return False
+        except PartnerTurnBusyError:
+            return True
 
     def subscribe_web_turn(self, partner_id: str, session_key: str) -> "LiveTurn | None":
         """The in-flight turn for a session, or None (completed turns are read

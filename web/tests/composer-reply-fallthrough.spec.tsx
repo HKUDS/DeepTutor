@@ -37,6 +37,8 @@ const chat = vi.hoisted(() => ({
     knowledgeBases: [],
     llmSelection: null,
     personaSelection: null,
+    resourceSelection: { skills: [], mcp: [] },
+    workspaceId: null,
     isStreaming: false,
   },
 }));
@@ -50,6 +52,7 @@ vi.mock("@/features/chat/ChatStateAdapter", () => ({
     setKBs: () => undefined,
     setLLMSelection: () => undefined,
     setPersonaSelection: () => undefined,
+    setResourceSelection: () => undefined,
   }),
 }));
 
@@ -63,6 +66,14 @@ vi.mock("@/hooks/useWorkspaceChatActions", () => ({
 
 vi.mock("@/hooks/useContextBudget", () => ({
   useContextBudget: () => null,
+}));
+
+vi.mock("@/hooks/useChatWorkspaces", () => ({
+  useChatWorkspaces: () => ({ workspaces: [], error: "" }),
+}));
+
+vi.mock("@/hooks/useComposerResources", () => ({
+  useComposerResources: () => ({ skills: [], mcp: [] }),
 }));
 
 /** Stands in for the real composer: one button that submits fixed text. */

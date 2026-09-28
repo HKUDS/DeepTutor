@@ -17,6 +17,7 @@ from __future__ import annotations
 from typing import Any
 
 from deeptutor.services.config.model_catalog import ModelCatalogService
+from deeptutor.services.config.provider_links import resolve_profile_provider
 from deeptutor.services.model_selection import list_llm_options
 
 from .context import get_current_user
@@ -95,17 +96,29 @@ def redacted_model_access(user_id: str | None = None) -> dict[str, list[dict[str
             continue
         for model_id in item.get("model_ids") or []:
             model = _model_by_id(profile, str(model_id))
+            try:
+                effective = resolve_profile_provider(catalog, "llm", profile, model)
+            except ValueError:
+                continue
+            if is_owner_bound(effective):
+                continue
             result["llm"].append(
                 {
                     "profile_id": profile_id,
                     "model_id": str(model_id),
                     "name": (model or {}).get("name") or str(model_id),
                     "model": (model or {}).get("model") or "",
-                    "provider": profile.get("binding") or "",
+                    "provider": effective.get("binding") or "",
+                    "profile_name": effective.get("name") or profile_id,
                     "reasoning_effort": (model or {}).get("reasoning_effort"),
                     "supported_reasoning_efforts": (model or {}).get(
                         "codex_supported_reasoning_levels"
                     ),
+                    **{
+                        f"declared_{key}": value
+                        for key, value in ((model or {}).get("capabilities") or {}).items()
+                        if key in {"reasoning", "vision"} and type(value) is bool
+                    },
                     "source": "admin",
                     "available": model is not None,
                 }
@@ -133,13 +146,17 @@ def allowed_llm_options() -> dict[str, Any]:
         {
             "profile_id": item.get("profile_id"),
             "model_id": item.get("model_id"),
-            "profile_name": item.get("name") or item.get("profile_id") or "LLM",
+            "profile_name": item.get("profile_name")
+            or item.get("name")
+            or item.get("profile_id")
+            or "LLM",
             "model_name": item.get("name") or item.get("model") or item.get("model_id"),
             "label": item.get("name") or item.get("model") or item.get("model_id"),
             "model": item.get("model") or "",
             "provider": item.get("provider") or "",
             "reasoning_effort": item.get("reasoning_effort"),
             "supported_reasoning_efforts": item.get("supported_reasoning_efforts"),
+            **{key: item[key] for key in ("declared_reasoning", "declared_vision") if key in item},
             "source": item.get("source") or "admin",
             "is_active_default": (
                 item.get("profile_id") == active_profile_id

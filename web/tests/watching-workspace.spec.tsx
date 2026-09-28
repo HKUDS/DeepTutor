@@ -49,6 +49,18 @@ function App({ scope, id }: { scope: string; id: string | null }) {
 }
 
 describe("Watching conversation restoration", () => {
+  it("ignores pending video results after the provider itself is replaced", async () => {
+    let finish!: (value: TimedMediaMaterial) => void;
+    api.get.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    const view = render(<WatchingProvider><Probe /></WatchingProvider>);
+    let pending!: Promise<void>;
+    act(() => { pending = context.restore("old-workspace"); });
+    view.unmount();
+    render(<WatchingProvider><Probe /></WatchingProvider>);
+    await act(async () => { finish(material("old-workspace")); await pending; });
+    expect(watchingTurnFields("immersive_watching")).toEqual({});
+    expect(screen.getByText("empty")).toBeInTheDocument();
+  });
   it("ignores browser-global video history and does not fetch on ordinary provider mount", () => {
     api.get.mockClear();
     localStorage.setItem("dt:video-learning:last-material", "other-owner");

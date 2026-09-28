@@ -1,5 +1,7 @@
 "use client";
 
+import { masterySessionRoute, masterySessionsRoute } from "@/lib/learning-routes";
+
 import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import { ArrowRight, Loader2, MessageCircle, Plus, Radio } from "lucide-react";
@@ -29,8 +31,8 @@ export function SessionCamp({
   const openStudy = (sessionId?: string) =>
     router.push(
       sessionId
-        ? `/mastery/${encodeURIComponent(pathId)}/sessions/${encodeURIComponent(sessionId)}`
-        : `/mastery/${encodeURIComponent(pathId)}/sessions`,
+        ? masterySessionRoute(pathId, sessionId)
+        : masterySessionsRoute(pathId),
     );
 
   return (

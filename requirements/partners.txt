@@ -35,5 +35,3 @@ websockets>=12.0
 aiohttp>=3.10.0,<4.0.0
 # msteams Bot Framework token validation
 PyJWT[crypto]>=2.8.0,<3.0.0
-# weixin QR-code login
-qrcode>=7.4.0,<9.0.0

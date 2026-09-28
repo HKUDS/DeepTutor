@@ -81,8 +81,23 @@ class ImaPipeline:
             self.logger.error("IMA search failed for '%s': %s", kb_name, exc)
             return self._error_result(query, exc, error_type="retrieval_error")
 
-        sources = source_policy.documents_to_sources(page.documents)
-        await self._hydrate(client, sources)
+        matched = source_policy.documents_to_sources(page.documents)
+        await self._hydrate(client, matched)
+        # A title match without a snippet or readable media is useful for
+        # hydration, but it is not evidence that the rag tool may cite (#1500).
+        sources = [source for source in matched if str(source.get("content") or "").strip()]
+        if matched and not sources:
+            return {
+                "query": query,
+                "answer": (
+                    "Tencent IMA matched document titles, but returned no readable text. "
+                    "Check access to the matched media or try again."
+                ),
+                "content": "",
+                "sources": [],
+                "provider": PROVIDER,
+                "error_type": "content_unavailable",
+            }
         content = source_policy.render_context(sources)
         return {
             "query": query,

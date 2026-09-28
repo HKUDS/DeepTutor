@@ -6,6 +6,8 @@ import { useTranslation } from "react-i18next";
 import { useCapabilityFilter } from "@/features/capabilities/useCapabilityCatalog";
 import {
   ArrowUpRight,
+  BookOpen,
+  Brain,
   ClipboardList,
   Ear,
   Github,
@@ -23,6 +25,7 @@ import { getCliApps } from "@/lib/cli-apps-api";
 import { listSessions } from "@/lib/session-api";
 import { listNotebooks, listNotebookEntries } from "@/lib/notebook-api";
 import { listPersonas } from "@/lib/personas-api";
+import { listKnowledgeBases } from "@/features/knowledge/api/catalog";
 import { listSkills } from "@/lib/skills-api";
 
 /**
@@ -37,6 +40,8 @@ import { listSkills } from "@/lib/skills-api";
 type Lang = { zh: string; en: string };
 
 type DashKey =
+  | "knowledge"
+  | "memory"
   | "chat_history"
   | "notebooks"
   | "question_bank"
@@ -124,6 +129,19 @@ const GROUPS: DashboardGroup[] = [
         tile: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
         load: async () => (await listNotebookEntries({ limit: 1 })).total,
       },
+      {
+        key: "knowledge",
+        href: "/knowledge-bases",
+        icon: BookOpen,
+        title: { zh: "知识中心", en: "Knowledge Center" },
+        blurb: {
+          zh: "管理知识库与检索引擎。",
+          en: "Manage knowledge bases and retrieval engines.",
+        },
+        unit: { zh: "个知识库", en: "knowledge bases" },
+        tile: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+        load: async () => (await listKnowledgeBases({ library: true })).length,
+      },
     ],
   },
   {
@@ -185,8 +203,19 @@ const GROUPS: DashboardGroup[] = [
         // What this reader can actually use, not what the deployment installed:
         // an app they were not granted is visible on the page but is not theirs.
         load: async () =>
-          (await getCliApps()).apps.filter((app) => app.granted && app.enabled)
+          (await getCliApps()).apps.filter(app => app.granted && app.enabled)
             .length,
+      },
+      {
+        key: "memory",
+        href: "/memory",
+        icon: Brain,
+        title: { zh: "记忆", en: "Memory" },
+        blurb: {
+          zh: "查看与整理导师记住的偏好和学习经历。",
+          en: "Review what your tutor remembers about you.",
+        },
+        tile: "bg-rose-500/10 text-rose-600 dark:text-rose-400",
       },
     ],
   },
@@ -211,7 +240,7 @@ const GROUPS: DashboardGroup[] = [
   },
 ];
 
-const ALL_ITEMS = GROUPS.flatMap((g) => g.items);
+const ALL_ITEMS = GROUPS.flatMap(g => g.items);
 
 /**
  * The groups to render, given what the backend can actually serve.
@@ -224,18 +253,18 @@ const ALL_ITEMS = GROUPS.flatMap((g) => g.items);
  */
 export function visibleGroups(
   groups: DashboardGroup[],
-  isAvailable: ((name: string) => boolean) | null,
+  isAvailable: ((name: string) => boolean) | null
 ): DashboardGroup[] {
   return groups
-    .map((group) => ({
+    .map(group => ({
       ...group,
       items: group.items.filter(
-        (item) =>
+        item =>
           !item.requiresCapability ||
-          (isAvailable?.(item.requiresCapability) ?? false),
+          (isAvailable?.(item.requiresCapability) ?? false)
       ),
     }))
-    .filter((group) => group.items.length > 0);
+    .filter(group => group.items.length > 0);
 }
 
 export { GROUPS as DASHBOARD_GROUPS };
@@ -250,7 +279,7 @@ export default function SpaceDashboard() {
   const capabilityAvailable = useCapabilityFilter();
   const groups = useMemo(
     () => visibleGroups(GROUPS, capabilityAvailable),
-    [capabilityAvailable],
+    [capabilityAvailable]
   );
 
   useEffect(() => {
@@ -261,8 +290,8 @@ export default function SpaceDashboard() {
       if (!item.load) continue;
       item
         .load()
-        .then((n) => {
-          if (!cancelled) setCounts((prev) => ({ ...prev, [item.key]: n }));
+        .then(n => {
+          if (!cancelled) setCounts(prev => ({ ...prev, [item.key]: n }));
         })
         .catch(() => {
           /* leave undefined → tile just omits the count */
@@ -281,20 +310,20 @@ export default function SpaceDashboard() {
         </h1>
         <p className="mt-1.5 max-w-xl text-[13px] leading-relaxed text-[var(--muted-foreground)]">
           {tr({
-            zh: "你的对话、智能体、笔记与练习，集中在一处 —— 从这里进入。",
-            en: "Your conversations, agents, notebooks, and practice in one place — enter from here.",
+            zh: "你的对话、智能体、笔记与题目，集中在一处 —— 从这里进入。",
+            en: "Your conversations, agents, notebooks, and questions in one place — enter from here.",
           })}
         </p>
       </header>
 
       <div className="space-y-9">
-        {groups.map((group) => (
+        {groups.map(group => (
           <section key={group.label.en}>
             <h2 className="mb-3 px-0.5 font-serif text-[16px] font-semibold tracking-tight text-[var(--foreground)]">
               {tr(group.label)}
             </h2>
             <div className="grid gap-3 sm:grid-cols-2">
-              {group.items.map((item) => (
+              {group.items.map(item => (
                 <DashboardCard
                   key={item.key}
                   item={item}
@@ -323,7 +352,7 @@ function DashboardCard({
   const loaded = count !== undefined;
   const formatted = useMemo(
     () => (loaded ? count.toLocaleString() : ""),
-    [loaded, count],
+    [loaded, count]
   );
 
   return (

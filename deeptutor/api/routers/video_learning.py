@@ -211,7 +211,7 @@ async def save_video_progress(material_id: str, payload: ProgressRequest) -> dic
     try:
         store = get_timed_media_store()
         with store.lock(material_id):
-            material = store.get(material_id)
+            material = store.get(material_id, lock_held=True)
             known_duration = float(material.get("metadata", {}).get("duration_seconds") or 0)
             duration = known_duration or float(payload.duration_seconds or 0)
             position = min(payload.time_seconds, duration) if duration > 0 else payload.time_seconds

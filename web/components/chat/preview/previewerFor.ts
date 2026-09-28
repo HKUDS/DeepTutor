@@ -2,10 +2,9 @@
  * Maps a chat attachment to the preview renderer it should use.
  *
  * The drawer uses the returned ``kind`` to dynamically import the matching
- * renderer (see ``./previewers/*.tsx``). Office binaries (DOCX/XLSX/PPTX)
- * cannot be rendered natively in the browser, so we fall back to the
- * extractor's plain-text output when present, or to a download-only
- * affordance otherwise.
+ * renderer (see ``./previewers/*.tsx``). Office files first use the server's
+ * PDF conversion for a paged preview, then fall back to client rendering or
+ * extracted text when conversion is unavailable.
  */
 
 import { langForFilename } from "@/lib/code-languages";
@@ -47,12 +46,19 @@ export interface FilePreviewSource {
   id?: string;
 }
 
-// OOXML formats with a faithful browser renderer (docx-preview / exceljs).
+// OOXML formats with a browser fallback (docx-preview / exceljs).
 const DOCX_EXTS = new Set([".docx", ".docm"]);
 const XLSX_EXTS = new Set([".xlsx", ".xlsm"]);
-// Office binaries with no reliable browser renderer (PowerPoint, and the
-// legacy pre-OOXML formats) — fall back to the extractor's plain text.
-const OFFICE_BINARY_EXTS = new Set([".pptx", ".ppt", ".doc", ".xls"]);
+// PowerPoint and legacy Office formats use extracted text if PDF conversion
+// fails. A slide with only graphics has no extracted text to display.
+const OFFICE_BINARY_EXTS = new Set([".pptx", ".pptm", ".ppt", ".doc", ".xls"]);
+const OFFICE_TEXT_MIMES = new Set([
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/vnd.ms-powerpoint.presentation.macroEnabled.12",
+  "application/vnd.ms-powerpoint",
+  "application/msword",
+  "application/vnd.ms-excel",
+]);
 const MARKDOWN_EXTS = new Set([".md", ".markdown", ".rst", ".asciidoc"]);
 const PLAIN_TEXT_EXTS = new Set([
   ".txt",
@@ -108,7 +114,8 @@ export function previewKindFor(source: FilePreviewSource): PreviewKind {
     mime === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
   )
     return "xlsx";
-  if (OFFICE_BINARY_EXTS.has(ext)) return "office-text";
+  if (OFFICE_BINARY_EXTS.has(ext) || OFFICE_TEXT_MIMES.has(mime))
+    return "office-text";
   // Catches both extension-based mappings (.js, .ts, .go, .vue, .lua, …)
   // and special filenames without extensions (Dockerfile, Makefile, …).
   if (langForFilename(source.filename || "")) return "code";

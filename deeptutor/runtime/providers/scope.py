@@ -24,6 +24,8 @@ class ToolScope:
     #: writing it under another is how one account's servers become invisible to
     #: itself. Comes from ``multi_user.paths.current_owner_id``.
     owner_id: str = ""
+    # None inherits the account surface; empty explicitly disables MCP.
+    workspace_mcp: frozenset[str] | None = None
     #: A partner is a synthetic non-admin user anchored to an owner's
     #: workspace; its own configured filter is the authority for its surface,
     #: not the (absent) per-user grant.

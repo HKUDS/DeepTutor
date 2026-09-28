@@ -259,3 +259,18 @@ class BaseChannel(ABC):
     def is_running(self) -> bool:
         """Check if the channel is running."""
         return self._running
+
+
+async def deliver_outbound(channel: BaseChannel, msg: OutboundMessage) -> None:
+    """Apply the shared stream/final delivery contract at either partner router."""
+    metadata = msg.metadata or {}
+    if metadata.get("_stream_delta") or metadata.get("_stream_end"):
+        await channel.send_delta(msg.chat_id, msg.content, metadata)
+    elif metadata.get("_streamed"):
+        # A channel can confirm that its streamed final actually reached the
+        # user. If it could not, give the ordinary final its own send attempt.
+        consume = getattr(channel, "consume_stream_delivery", None)
+        if callable(consume) and not consume(metadata):
+            await channel.send(msg)
+    else:
+        await channel.send(msg)
