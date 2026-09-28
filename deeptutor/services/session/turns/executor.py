@@ -944,6 +944,10 @@ class TurnExecutor:
                     "mastery_card_grade": mastery_card_grade or {},
                     # The question this turn opened by dropping, if it did.
                     "mastery_card_skip": mastery_card_skip or {},
+                    # Whether the message is a pick on the open card at all,
+                    # graded or not: "A" is an answer, not something to search.
+                    "mastery_card_answered": workspace_mode == WORKSPACE_MODE_MASTERY
+                    and bool(payload.get("mastery_answer")),
                     "mastery_path_lease_managed": mastery_lease_managed,
                     # Immersive reading: the open material activates the reading
                     # capability and binds its tools; the viewport tells the
