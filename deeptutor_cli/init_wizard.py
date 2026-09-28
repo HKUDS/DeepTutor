@@ -74,6 +74,14 @@ LLM_FALLBACK_MODELS: dict[str, tuple[str, ...]] = {
         "anthropic/claude-sonnet-4-6",
         "deepseek/deepseek-chat",
     ),
+    # Verified against GET https://api.aimlapi.com/v1/models on 2026-09-03,
+    # filtered to type == "openai/chat-completions".
+    "aimlapi": (
+        "openai/gpt-4o-mini",
+        "openai/gpt-5-5",
+        "anthropic/claude-sonnet-4.5",
+        "deepseek/deepseek-chat",
+    ),
     "orcarouter": (
         "orcarouter/auto",
         "anthropic/claude-sonnet-4-6",

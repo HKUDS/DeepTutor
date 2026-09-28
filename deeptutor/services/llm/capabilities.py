@@ -154,6 +154,14 @@ PROVIDER_CAPABILITIES: dict[str, dict[str, object]] = {
         "supports_vision": True,  # Depends on underlying model
         "system_in_messages": True,
     },
+    # AI/ML API (aggregator, OpenAI-compatible chat completions)
+    "aimlapi": {
+        "supports_response_format": True,  # Depends on underlying model
+        "supports_streaming": True,
+        "supports_tools": True,
+        "supports_vision": True,  # Depends on underlying model
+        "system_in_messages": True,
+    },
     # OrcaRouter (aggregator, generally OpenAI-compatible)
     "orcarouter": {
         "supports_response_format": True,  # Depends on underlying model

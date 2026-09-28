@@ -152,6 +152,8 @@ PROVIDER_ALIASES = {
     "atlas_cloud": "atlascloud",
     "atlas-cloud": "atlascloud",
     "eden_ai": "edenai",
+    "aiml": "aimlapi",
+    "aiml_api": "aimlapi",
     "novita_ai": "novita",
     "orca_router": "orcarouter",
     "orca-router": "orcarouter",
@@ -288,6 +290,18 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         is_gateway=True,
         detect_by_base_keyword="atlascloud",
         default_api_base="https://api.atlascloud.ai/v1",
+    ),
+    # Keys carry no distinguishing prefix, so the endpoint is the only signal.
+    # Model ids keep their vendor prefix ("openai/gpt-4o-mini").
+    ProviderSpec(
+        name="aimlapi",
+        keywords=("aimlapi",),
+        env_key="AIMLAPI_API_KEY",
+        display_name="aimlapi.com",
+        backend="openai_compat",
+        is_gateway=True,
+        detect_by_base_keyword="aimlapi",
+        default_api_base="https://api.aimlapi.com/v1",
     ),
     ProviderSpec(
         name="unifically",
