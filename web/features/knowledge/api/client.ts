@@ -1656,6 +1656,18 @@ export async function syncGitHubSources(
 
 // ── Web sources ──────────────────────────────────────────────────────
 
+export interface BilingualPairing {
+  pairing_id: string;
+  source_url: string;
+  target_url: string;
+  source_file: string;
+  target_file: string;
+  source_lang: string;
+  target_lang: string;
+  pairing_method: string;
+  updated_at?: number;
+}
+
 export interface WebSource {
   id: string;
   url: string;
@@ -1669,6 +1681,7 @@ export interface WebSource {
   last_sync_status: string;
   last_sync_error: string | null;
   added_at: string;
+  bilingual_pairings?: BilingualPairing[];
 }
 
 export interface AddWebSourcePayload {
@@ -1726,6 +1739,28 @@ export async function listWebSources(
     );
   }
   return (await res.json()) as WebSource[];
+}
+
+export async function listWebSourcePairings(
+  kbName: string,
+  sourceId: string,
+  options?: { signal?: AbortSignal },
+): Promise<BilingualPairing[]> {
+  const res = await apiFetch(
+    apiUrl(
+      `/api/knowledge-bases/${encodeURIComponent(kbName)}/web-source/${encodeURIComponent(sourceId)}/pairings`,
+    ),
+    { signal: options?.signal },
+  );
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(
+        res,
+        `Failed to list web source pairings (${res.status})`,
+      ),
+    );
+  }
+  return (await res.json()) as BilingualPairing[];
 }
 
 export async function addWebSource(

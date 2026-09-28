@@ -59,6 +59,8 @@ class CrawledPage:
     markdown: str
     content_hash: str
     headings: list[dict] = field(default_factory=list)
+    language: str = ""
+    alternate_links: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -304,6 +306,7 @@ async def _process_page(
         extract_article_markdown,
         extract_headings,
         extract_navigation,
+        extract_page_language_and_alternates,
     )
 
     try:
@@ -316,6 +319,7 @@ async def _process_page(
     nav = extract_navigation(html, final_url) if depth <= 1 else []
 
     page_headings = extract_headings(body)
+    lang, alternates = extract_page_language_and_alternates(html, final_url or url)
 
     if len(body) > DEFAULT_MAX_CHARS:
         body = body[:DEFAULT_MAX_CHARS].rstrip() + "\n…[truncated]"
@@ -326,6 +330,8 @@ async def _process_page(
         markdown=body,
         content_hash=content_hash,
         headings=page_headings,
+        language=lang,
+        alternate_links=alternates,
     )
 
     links: list[str] = []
@@ -533,6 +539,7 @@ class CrawlDiff:
     pages_removed: list[str] = field(default_factory=list)
     changed_paths: list[str] = field(default_factory=list)
     navigation: dict = field(default_factory=dict)
+    pairings: list[dict] = field(default_factory=list)
 
     @property
     def page_count(self) -> int:
@@ -642,6 +649,12 @@ async def crawl_and_diff(
         page_urls,
     )
 
+    # 6. Detect bilingual page pairings across discovered pages
+    from deeptutor.services.web_source.bilingual import detect_bilingual_pairings
+
+    page_file_map = {page.url: fname for page, fname in zip(result.pages, page_files)}
+    pairings = detect_bilingual_pairings(result.pages, page_file_map)
+
     return CrawlDiff(
         ok=True,
         url=url,
@@ -654,4 +667,5 @@ async def crawl_and_diff(
         pages_removed=removed,
         changed_paths=changed_paths,
         navigation=nav_manifest,
+        pairings=pairings,
     )
