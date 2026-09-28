@@ -70,3 +70,25 @@ def test_bibtex_to_markdown_skips_entry_with_unterminated_value() -> None:
 
 def test_bibtex_to_markdown_passes_non_bibtex_through() -> None:
     assert bibtex_to_markdown("not a bibliography") == "not a bibliography"
+
+
+def test_bibtex_to_markdown_keeps_entry_with_accent_quote_in_braces() -> None:
+    text = r"""
+    @article{mueller2020,
+      author = {M{\"u}ller, Hans and Smith, Jane},
+      title = {Deep Learning},
+      year = {2020}
+    }
+
+    @article{second2021,
+      title = {Second Paper},
+      year = {2021}
+    }
+    """
+
+    result = bibtex_to_markdown(text)
+
+    assert "Total entries: 2" in result
+    assert "## 1. Deep Learning" in result
+    assert "mueller2020" in result
+    assert "## 2. Second Paper" in result
