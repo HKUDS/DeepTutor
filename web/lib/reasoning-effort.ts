@@ -204,6 +204,12 @@ function tableReasoningEffortOptions(
     if (includesAny(modelName, ["o1", "o3", "o4"])) {
       return options(["low", "medium", "high"], current);
     }
+    if (includesAny(modelName, ["glm"])) {
+      // Zhipu GLM (open.bigmodel.cn coding endpoint) accepts the four levels;
+      // `none` means "omit the parameter", which for GLM turns server-side
+      // thinking fully on, so it stays off the menu.
+      return options(["minimal", "low", "medium", "high"], current);
+    }
     return options([], current);
   }
 
