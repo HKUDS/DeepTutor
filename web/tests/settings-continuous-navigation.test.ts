@@ -17,6 +17,7 @@ const admin = {
   hideAdminOnly: false,
   showLearnerOnly: false,
   showGuardianOnly: false,
+  learningPolicyActive: false,
 };
 
 test("legacy settings bookmarks resolve to independent pages, preserving profile links", () => {

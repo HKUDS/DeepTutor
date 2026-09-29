@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fetchAuthStatus } from "@/lib/auth";
+import { fetchAuthStatus, type AuthStatus } from "@/lib/auth";
 
 export interface AuthStatusState {
   /** Whether auth is enabled on the backend. */
@@ -12,6 +12,8 @@ export interface AuthStatusState {
   isAdmin: boolean;
   /** Stable account id for account-scoped browser state. */
   userId: string | null;
+  /** Server-enforced learning policy, when the account has one. */
+  learningPolicy: AuthStatus["learning_policy"];
   /** False when the runtime status endpoint could not be reached. */
   statusAvailable: boolean;
   /** True until the first status fetch resolves. */
@@ -23,6 +25,7 @@ const INITIAL: AuthStatusState = {
   authenticated: false,
   isAdmin: false,
   userId: null,
+  learningPolicy: null,
   statusAvailable: false,
   loading: true,
 };
@@ -37,8 +40,10 @@ const INITIAL: AuthStatusState = {
  * constant, so it works identically on Docker (read-only rootfs), the PyPI
  * `deeptutor start` launcher, and source dev.
  */
-function loadAuthStatus(): Promise<AuthStatusState> {
-  return fetchAuthStatus().then((status) => ({
+export function authStatusStateFromStatus(
+  status: AuthStatus | null,
+): AuthStatusState {
+  return {
     enabled: Boolean(status?.enabled),
     authenticated: Boolean(status?.authenticated),
     isAdmin: status?.role === "admin",
@@ -46,9 +51,14 @@ function loadAuthStatus(): Promise<AuthStatusState> {
       typeof status?.user_id === "string" && status.user_id.trim()
         ? status.user_id
         : null,
+    learningPolicy: status?.learning_policy ?? null,
     statusAvailable: status !== null,
     loading: false,
-  }));
+  };
+}
+
+function loadAuthStatus(): Promise<AuthStatusState> {
+  return fetchAuthStatus().then(authStatusStateFromStatus);
 }
 
 export function useAuthStatus(): AuthStatusState {

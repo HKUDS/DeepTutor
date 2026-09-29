@@ -51,6 +51,17 @@ vi.mock("@/hooks/useDevice", () => ({
 vi.mock("@/hooks/useChatWorkspaces", () => ({
   useChatWorkspaces: () => ({ workspaces: [], error: "" }),
 }));
+vi.mock("@/hooks/useAuthStatus", () => ({
+  useAuthStatus: () => ({
+    enabled: false,
+    authenticated: false,
+    isAdmin: false,
+    userId: null,
+    learningPolicy: null,
+    statusAvailable: false,
+    loading: false,
+  }),
+}));
 vi.mock("@/lib/app-update", () => ({
   fetchAppUpdateStatus: vi.fn(() => Promise.resolve({ current_version: "1.0" })),
   subscribeAppUpdateStatus: vi.fn(() => () => undefined),

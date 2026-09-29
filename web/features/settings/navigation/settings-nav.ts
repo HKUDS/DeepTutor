@@ -83,6 +83,8 @@ export interface SettingsCategory {
   learnerOnly?: boolean;
   /** Shown only to authenticated standard users who may act as guardians. */
   guardianOnly?: boolean;
+  /** Available without access to deployment-owned settings. */
+  availableToLearningAccounts?: boolean;
 }
 
 export function isSettingsLeafVisible(
@@ -98,6 +100,11 @@ export function isSettingsCategoryVisible(
 ): boolean {
   if (category.learnerOnly && !access.showLearnerOnly) return false;
   if (category.guardianOnly && !access.showGuardianOnly) return false;
+  if (
+    access.learningPolicyActive &&
+    !category.availableToLearningAccounts &&
+    !category.learnerOnly
+  ) return false;
   return (
     !category.children ||
     category.children.some((leaf) => isSettingsLeafVisible(leaf, access))
@@ -442,6 +449,7 @@ const AGENT_CHILDREN: SettingsLeaf[] = [
 export const SETTINGS_CATEGORIES: SettingsCategory[] = [
   {
     key: "appearance",
+    availableToLearningAccounts: true,
     label: { zh: "外观", en: "Appearance" },
     blurb: { zh: "视觉主题与代码块", en: "Theme and code blocks" },
     icon: Palette,
@@ -548,6 +556,7 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
   },
   {
     key: "about",
+    availableToLearningAccounts: true,
     label: { zh: "关于", en: "About" },
     blurb: {
       zh: "版本、更新与项目资源",

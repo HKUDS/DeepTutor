@@ -8,6 +8,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -30,7 +31,14 @@ import type { ReadingCollectionLabel } from "@/lib/reading-workspace-api";
 import type { StudyCourse } from "@/lib/courses-api";
 import { useSidebarResize } from "@/hooks/useSidebarResize";
 import { SidebarHome, SidebarNav } from "@/components/sidebar/SidebarNav";
-import { SECONDARY_NAV, isNavActive } from "@/components/sidebar/nav-entries";
+import {
+  NAV_BY_HREF,
+  PRIMARY_NAV,
+  SECONDARY_NAV,
+  isNavActive,
+  isNavEntryAllowedForLearningPolicy,
+} from "@/components/sidebar/nav-entries";
+import { useAuthStatus } from "@/hooks/useAuthStatus";
 import Tooltip from "@/shared/ui/Tooltip";
 import {
   mergeManualOrder,
@@ -108,6 +116,8 @@ export function SidebarShell({
   const router = useRouter();
   const { t } = useTranslation();
   const { sidebarCollapsed, setSidebarCollapsed: setCollapsed } = useAppShell();
+  const { learningPolicy } = useAuthStatus();
+  const activeLearningPolicy = learningPolicy ?? null;
   const { isMobile } = useDevice();
   const drawer = useSidebarDrawer();
   const recentsScrollRef = useRef<HTMLDivElement>(null);
@@ -130,6 +140,26 @@ export function SidebarShell({
 
   const renderedFooter =
     typeof footerSlot === "function" ? footerSlot(collapsed) : footerSlot;
+  const chatEntry = NAV_BY_HREF.get("/chat");
+  const chatAllowed = chatEntry
+    ? isNavEntryAllowedForLearningPolicy(chatEntry, activeLearningPolicy)
+    : false;
+  const allowedModuleHrefs = useMemo(
+    () =>
+      PRIMARY_NAV.filter(
+        entry =>
+          entry.href !== "/chat" &&
+          isNavEntryAllowedForLearningPolicy(entry, activeLearningPolicy),
+      ).map(entry => entry.href),
+    [activeLearningPolicy],
+  );
+  const visibleSecondaryNav = useMemo(
+    () =>
+      SECONDARY_NAV.filter(entry =>
+        isNavEntryAllowedForLearningPolicy(entry, activeLearningPolicy),
+      ),
+    [activeLearningPolicy],
+  );
   // The order the learner dragged the history region into — conversation ids
   // and group ids in one list, since the two are peers there. Like the
   // collapse preference above it is per-machine view state, hydrated after
@@ -210,19 +240,22 @@ export function SidebarShell({
           </button>
         </div>
 
-        <SidebarHome collapsed onHomeClick={handleHomeClick} />
+        {chatAllowed && <SidebarHome collapsed onHomeClick={handleHomeClick} />}
         <div className="min-h-0 w-full flex-1 overflow-y-auto overscroll-contain">
+          {allowedModuleHrefs.length > 0 && (
           <SidebarNav
             collapsed
+            allowedHrefs={allowedModuleHrefs}
             onHomeClick={handleHomeClick}
             onNavigate={closeDrawerOnNav}
           />
+          )}
         </div>
 
         {/* Secondary nav + footer */}
         <div className="flex w-full shrink-0 flex-col items-center gap-1 px-1.5">
           <div className="my-1 h-px w-7 bg-border/40" />
-          {SECONDARY_NAV.map((item) => {
+          {visibleSecondaryNav.map((item) => {
             const active = isNavActive(pathname, item.href);
             return (
               <Tooltip key={item.href} label={t(item.label) as string} side="right">
@@ -284,19 +317,22 @@ export function SidebarShell({
         </button>
       </div>
 
-      <SidebarHome onHomeClick={handleHomeClick} />
+      {chatAllowed && <SidebarHome onHomeClick={handleHomeClick} />}
 
       {/* Modules and conversations share one scroll region below Home. */}
       <div
         ref={recentsScrollRef}
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-2"
       >
-        <SidebarNav
-          scrollRef={recentsScrollRef}
-          collapsed={false}
-          onHomeClick={handleHomeClick}
-          onNavigate={closeDrawerOnNav}
-        />
+          {allowedModuleHrefs.length > 0 && (
+          <SidebarNav
+            scrollRef={recentsScrollRef}
+            collapsed={false}
+            allowedHrefs={allowedModuleHrefs}
+            onHomeClick={handleHomeClick}
+            onNavigate={closeDrawerOnNav}
+          />
+          )}
 
         {/* Conversation history follows the module entries in the same scroller. */}
         {showSessions &&
@@ -362,7 +398,7 @@ export function SidebarShell({
       <div className="shrink-0 border-t border-border/40 px-2 py-2">
         {renderedFooter}
         <div className="flex items-center gap-1">
-          {SECONDARY_NAV.map((item) => {
+          {visibleSecondaryNav.map((item) => {
             const active = isNavActive(pathname, item.href);
             return (
               <Link

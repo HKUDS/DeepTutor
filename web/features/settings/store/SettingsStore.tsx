@@ -561,6 +561,8 @@ export type SettingsContextValue = {
   // Save / apply
   saving: boolean;
   applying: boolean;
+  /** False for accounts whose policy denies the deployment draft store. */
+  draftAvailable: boolean;
   saveDraft: () => Promise<boolean>;
   applyCatalog: () => Promise<void>;
   /** Promote one model service without applying unrelated Settings drafts. */
@@ -643,6 +645,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [catalog, setCatalog] = useState<Catalog>(defaultCatalog());
   const [draft, setDraft] = useState<Catalog>(defaultCatalog());
   const [catalogEditable, setCatalogEditable] = useState<boolean | null>(null);
+  const [draftAvailable, setDraftAvailable] = useState(true);
   const [providers, setProviders] = useState<
     Record<ServiceName, ProviderOption[]>
   >({
@@ -749,11 +752,35 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     let settingsLoaded = false;
     try {
       const settingsResponse = await apiFetch(apiUrl("/api/settings"));
+      if (settingsResponse.status === 403) {
+        setDraftAvailable(false);
+        // Learner policies deny the deployment settings router, while the
+        // narrow public UI projection remains the supported read for theme
+        // and language preferences.
+        const uiResponse = await apiFetch(apiUrl("/api/settings/ui"));
+        if (!uiResponse.ok) {
+          throw new Error(`Settings fetch failed: HTTP ${uiResponse.status}`);
+        }
+        const payload = (await uiResponse.json()) as Partial<
+          Pick<UiSettings, "theme" | "language" | "response_language">
+        >;
+        setTheme(payload.theme ?? "snow");
+        setLanguage(payload.language ?? "en");
+        const loadedResponseLanguage =
+          payload.response_language ?? payload.language ?? "en";
+        setResponseLanguage(loadedResponseLanguage);
+        writeStoredLanguage(payload.language ?? "en");
+        writeStoredResponseLanguage(loadedResponseLanguage);
+        setCatalogEditable(false);
+        settingsLoaded = true;
+        return;
+      }
       if (!settingsResponse.ok) {
         throw new Error(
           `Settings fetch failed: HTTP ${settingsResponse.status}`,
         );
       }
+      setDraftAvailable(true);
       const payload = (await settingsResponse.json()) as SettingsPayload;
       if (payload.catalog) {
         setCatalog(payload.catalog);
@@ -1465,6 +1492,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
    * reported success for edits it had not touched.
    */
   const saveDraft = useCallback(async () => {
+    if (!draftAvailable) return false;
     setSaving(true);
     const signature = envelopeSignatureRef.current;
     try {
@@ -1491,7 +1519,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     } finally {
       setSaving(false);
     }
-  }, [draftEnvelope, t]);
+  }, [draftAvailable, draftEnvelope, t]);
 
   /** Apply one model-service editor without promoting unrelated settings. */
   const applyService = useCallback(
@@ -1739,16 +1767,18 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // Park the current state server-side first so Apply promotes exactly
-      // what is on screen, and so credentials typed into a draft never have
-      // to round-trip through the browser as placeholders.
-      const draftResponse = await apiFetch(apiUrl("/api/settings/draft"), {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(draftEnvelope()),
-      });
+      if (draftAvailable) {
+        // Park the current state server-side first so Apply promotes exactly
+        // what is on screen, and so credentials typed into a draft never have
+        // to round-trip through the browser as placeholders.
+        const draftResponse = await apiFetch(apiUrl("/api/settings/draft"), {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(draftEnvelope()),
+        });
 
-      if (!draftResponse.ok) throw new Error(`HTTP ${draftResponse.status}`);
+        if (!draftResponse.ok) throw new Error(`HTTP ${draftResponse.status}`);
+      }
 
       // Pages still on screen save themselves — they refresh their own local
       // state and surface their own errors. Everything else pending is
@@ -1780,7 +1810,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         } catch {
           /* Applying succeeded; diagnostics can be retried independently. */
         }
-      } else {
+      } else if (draftAvailable) {
         const response = await apiFetch(apiUrl("/api/settings/draft"), {
           method: "DELETE",
         });
@@ -1800,7 +1830,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     } finally {
       setApplying(false);
     }
-  }, [catalog, draft, catalogEditable, clearPending, draftEnvelope, applyUi, t]);
+  }, [catalog, draft, catalogEditable, draftAvailable, clearPending, draftEnvelope, applyUi, t]);
 
   /** Stage a named preset over the current draft without applying anything. */
   const stagePreset = useCallback(
@@ -1860,10 +1890,12 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const discardDraft = useCallback(async () => {
     setApplying(true);
     try {
-      const response = await apiFetch(apiUrl("/api/settings/draft"), {
-        method: "DELETE",
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (draftAvailable) {
+        const response = await apiFetch(apiUrl("/api/settings/draft"), {
+          method: "DELETE",
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      }
       clearPending();
       setStoredDraft(null);
       setSavedSignature(null);
@@ -1880,7 +1912,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     } finally {
       setApplying(false);
     }
-  }, [catalog, clearPending, t]);
+  }, [catalog, clearPending, draftAvailable, t]);
 
   // ── Diagnostics ─────────────────────────────────────────────────────────
   // Reset capability snapshot when switching embedding profile/model so a
@@ -2199,6 +2231,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       applyDetectedContextWindow,
       saving,
       applying,
+      draftAvailable,
       saveDraft,
       applyCatalog,
       saveProvider,
@@ -2268,6 +2301,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       removeActiveProfile,
       runDetailedTest,
       saveDraft,
+      draftAvailable,
       saving,
       setActiveSection,
       settingsError,

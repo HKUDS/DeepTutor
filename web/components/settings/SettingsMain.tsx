@@ -17,7 +17,15 @@ export default function SettingsMain({ children }: { children: React.ReactNode }
   const { t } = useTranslation()
   const pathname = usePathname()
   const router = useRouter()
-  const { hasUnsavedChanges, saveDraft, saving, applying, toast, setActiveSection } = useSettings()
+  const {
+    hasUnsavedChanges,
+    saveDraft,
+    saving,
+    applying,
+    toast,
+    setActiveSection,
+    draftAvailable,
+  } = useSettings()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [leaving, setLeaving] = useState(false)
   const [leaveFailed, setLeaveFailed] = useState(false)
@@ -25,6 +33,9 @@ export default function SettingsMain({ children }: { children: React.ReactNode }
   const content = useRef<HTMLDivElement>(null)
   const priorPath = useRef(pathname)
   const section = pathname.split('/')[2] || 'general'
+  const leaveMessage = draftAvailable
+    ? t('Save a draft before leaving. You can return and apply it later; your current settings will keep working.')
+    : t('Unsaved changes')
 
   useEffect(() => {
     setActiveSection(section)
@@ -124,11 +135,7 @@ export default function SettingsMain({ children }: { children: React.ReactNode }
               {toast}
             </p>
           )}
-          <p className="text-sm leading-relaxed text-[var(--muted-foreground)]">
-            {t(
-              'Save a draft before leaving. You can return and apply it later; your current settings will keep working.'
-            )}
-          </p>
+          <p className="text-sm leading-relaxed text-[var(--muted-foreground)]">{leaveMessage}</p>
           <div className="flex flex-wrap justify-end gap-2">
             <button
               type="button"
@@ -138,17 +145,19 @@ export default function SettingsMain({ children }: { children: React.ReactNode }
             >
               {t('Keep editing')}
             </button>
-            <button
-              type="button"
-              disabled={saving}
-              onClick={async () => {
-                if (await saveDraft()) returnToApp()
-                else setLeaveFailed(true)
-              }}
-              className="rounded-lg bg-[var(--foreground)] px-3 py-2 text-sm text-[var(--background)] disabled:opacity-40"
-            >
-              {t('Save draft and return')}
-            </button>
+            {draftAvailable && (
+              <button
+                type="button"
+                disabled={saving}
+                onClick={async () => {
+                  if (await saveDraft()) returnToApp()
+                  else setLeaveFailed(true)
+                }}
+                className="rounded-lg bg-[var(--foreground)] px-3 py-2 text-sm text-[var(--background)] disabled:opacity-40"
+              >
+                {t('Save draft and return')}
+              </button>
+            )}
           </div>
           <button
             type="button"

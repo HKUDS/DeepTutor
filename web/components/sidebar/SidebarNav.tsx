@@ -41,7 +41,6 @@ import { useCapabilityAccess } from "@/components/access/CapabilityAccessContext
 import {
   NAV_BY_HREF,
   DEFAULT_COLLAPSED_NAV,
-  PRIMARY_NAV_HREFS,
   isNavActive,
 } from "@/components/sidebar/nav-entries";
 import { Tooltip } from "@/shared/ui/Tooltip";
@@ -55,8 +54,6 @@ import {
   writeNavLayout,
   type SidebarNavLayout,
 } from "@/lib/sidebar-layout";
-
-const MODULE_NAV_HREFS = PRIMARY_NAV_HREFS.filter((href) => href !== "/chat");
 
 const MORE_EXPANDED_KEY = "deeptutor.sidebar.moreExpanded";
 /** One curve and one duration for every part of the "More" disclosure, so the
@@ -81,6 +78,8 @@ interface SidebarNavProps {
   onHomeClick: (event: React.MouseEvent) => void;
   /** Dismisses the mobile drawer on in-place navigation. */
   onNavigate: (event: React.MouseEvent) => void;
+  /** Module destinations allowed by the current server-side account policy. */
+  allowedHrefs: readonly string[];
 }
 
 export function SidebarNav({
@@ -88,6 +87,7 @@ export function SidebarNav({
   scrollRef,
   onHomeClick,
   onNavigate,
+  allowedHrefs,
 }: SidebarNavProps) {
   const pathname = usePathname();
   const { t } = useTranslation();
@@ -110,8 +110,8 @@ export function SidebarNav({
   }, []);
 
   const resolved = useMemo(
-    () => resolveNavLayout(MODULE_NAV_HREFS, layout, DEFAULT_COLLAPSED_NAV),
-    [layout],
+    () => resolveNavLayout(allowedHrefs, layout, DEFAULT_COLLAPSED_NAV),
+    [allowedHrefs, layout],
   );
   /** Always edit the resolved order: the stored one may still be empty. */
   const editable = useMemo<SidebarNavLayout>(
@@ -501,7 +501,7 @@ export function SidebarNav({
                     label={t("Reset sidebar order")}
                     onClick={() => {
                       applyLayout({
-                        order: [...PRIMARY_NAV_HREFS],
+                        order: [...allowedHrefs],
                         collapsed: [...DEFAULT_COLLAPSED_NAV],
                       });
                       closeMenus();

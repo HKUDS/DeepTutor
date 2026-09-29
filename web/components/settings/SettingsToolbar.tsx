@@ -12,6 +12,7 @@ export function SettingsToolbar() {
     draftState,
     saving,
     applying,
+    draftAvailable,
     saveDraft,
     applyCatalog,
     discardDraft,
@@ -44,30 +45,34 @@ export function SettingsToolbar() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={discardDraft}
-            disabled={busy}
-            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs text-[var(--muted-foreground)] hover:bg-[var(--accent)] disabled:opacity-40"
-          >
-            <Undo2 size={14} />
-            {t("Discard")}
-          </button>
-          <Tooltip label={t("Store these changes without putting them into effect.")} side="top">
+          {draftAvailable && (
             <button
               type="button"
-              onClick={() => void saveDraft()}
-              disabled={busy || draftState !== "unsaved"}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-2 text-xs disabled:opacity-40"
+              onClick={discardDraft}
+              disabled={busy}
+              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs text-[var(--muted-foreground)] hover:bg-[var(--accent)] disabled:opacity-40"
             >
-              {saving ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <Save size={14} />
-              )}
-              {t("Save draft")}
+              <Undo2 size={14} />
+              {t("Discard")}
             </button>
-          </Tooltip>
+          )}
+          {draftAvailable && (
+            <Tooltip label={t("Store these changes without putting them into effect.")} side="top">
+              <button
+                type="button"
+                onClick={() => void saveDraft()}
+                disabled={busy || draftState !== "unsaved"}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-2 text-xs disabled:opacity-40"
+              >
+                {saving ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Save size={14} />
+                )}
+                {t("Save draft")}
+              </button>
+            </Tooltip>
+          )}
           <button
             type="button"
             onClick={applyCatalog}

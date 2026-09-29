@@ -18,12 +18,29 @@ export interface CoWriterDocument {
   updated_at: number;
 }
 
+function detailFromBody(text: string): string {
+  if (!text.trim()) return "";
+  try {
+    const body = JSON.parse(text) as { detail?: unknown };
+    return typeof body.detail === "string" && body.detail.trim()
+      ? body.detail
+      : "";
+  } catch {
+    return "";
+  }
+}
+
+function requestError(res: Response, text: string): Error {
+  return new Error(
+    detailFromBody(text) ||
+      `Request failed (${res.status}): ${text || res.statusText}`,
+  );
+}
+
 async function jsonOrThrow<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(
-      `Request failed (${res.status}): ${text || res.statusText}`,
-    );
+    throw requestError(res, text);
   }
   return res.json() as Promise<T>;
 }
@@ -120,9 +137,7 @@ export async function exportCoWriterDocx(payload: {
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(
-      `Request failed (${res.status}): ${text || res.statusText}`,
-    );
+    throw requestError(res, text);
   }
   return res.blob();
 }
