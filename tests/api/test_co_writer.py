@@ -2,6 +2,7 @@
 
 from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
 import zipfile
 
 from docx import Document as DocxDocument
@@ -157,6 +158,137 @@ def test_load_history_survives_corrupt_file(tmp_path, monkeypatch):
     stub.get_co_writer_dir().mkdir(parents=True, exist_ok=True)
     stub.get_co_writer_history_file().write_text("{not json", encoding="utf-8")
     assert edit_agent.load_history() == []
+
+
+def test_llm_selection_defaults_to_admin_active_model(monkeypatch):
+    monkeypatch.setattr(
+        "deeptutor.multi_user.context.get_current_user", lambda: SimpleNamespace(is_admin=True)
+    )
+
+    assert co_writer_router._validated_llm_selection(None) is None
+
+
+def test_llm_selection_uses_first_granted_model_for_ordinary_user(monkeypatch):
+    monkeypatch.setattr(
+        "deeptutor.multi_user.context.get_current_user",
+        lambda: SimpleNamespace(is_admin=False),
+    )
+    monkeypatch.setattr(
+        "deeptutor.multi_user.model_access.has_capability_access", lambda _capability: True
+    )
+    monkeypatch.setattr(
+        "deeptutor.multi_user.model_access.redacted_model_access",
+        lambda: {
+            "llm": [{"profile_id": "profile", "model_id": "granted-model", "available": True}]
+        },
+    )
+    monkeypatch.setattr(
+        "deeptutor.multi_user.model_access.apply_allowed_llm_selection",
+        lambda selection: selection,
+    )
+    monkeypatch.setattr(
+        "deeptutor.multi_user.personal_models.merge_personal_llm_profiles",
+        lambda catalog: catalog,
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.config.get_model_catalog_service",
+        lambda: SimpleNamespace(load=lambda: {}),
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.model_selection.apply_llm_selection_to_catalog",
+        lambda _catalog, selection: selection,
+    )
+
+    selection = co_writer_router._validated_llm_selection(None)
+
+    assert selection == {"profile_id": "profile", "model_id": "granted-model"}
+
+
+def _reject_model_assignment(_selection):
+    raise PermissionError("not assigned")
+
+
+def test_llm_selection_rejects_unassigned_model(monkeypatch):
+    monkeypatch.setattr(
+        "deeptutor.multi_user.context.get_current_user",
+        lambda: SimpleNamespace(is_admin=False),
+    )
+    monkeypatch.setattr(
+        "deeptutor.multi_user.model_access.apply_allowed_llm_selection",
+        _reject_model_assignment,
+    )
+    monkeypatch.setattr(
+        "deeptutor.multi_user.personal_models.merge_personal_llm_profiles",
+        lambda catalog: catalog,
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.config.get_model_catalog_service",
+        lambda: SimpleNamespace(load=lambda: {}),
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.model_selection.apply_llm_selection_to_catalog",
+        lambda _catalog, selection: selection,
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        co_writer_router._validated_llm_selection(
+            co_writer_router.LLMSelectionPayload(profile_id="profile", model_id="unassigned-model")
+        )
+
+    assert exc.value.status_code == 403
+
+
+def test_selected_edit_agent_is_request_scoped(monkeypatch):
+    calls = []
+
+    class ScopedAgent:
+        def __init__(self, language):
+            self.language = language
+            self.model = "scoped-model"
+
+    def activate(selection):
+        calls.append(("activate", selection))
+        return "scoped-config", "scope-token"
+
+    def reset(token):
+        calls.append(("reset", token))
+
+    monkeypatch.setattr(co_writer_router, "activate_llm_selection", activate)
+    monkeypatch.setattr(co_writer_router, "reset_llm_selection", reset)
+    monkeypatch.setattr(edit_agent, "EditAgent", ScopedAgent)
+
+    selection = {"profile_id": "profile", "model_id": "scoped-model"}
+    with co_writer_router._selected_edit_agent(selection, language="zh") as agent:
+        assert agent.model == "scoped-model"
+
+    assert calls == [
+        ("activate", selection),
+        ("reset", "scope-token"),
+    ]
+
+
+def test_selected_edit_agent_keeps_default_singleton_and_resets(monkeypatch):
+    calls = []
+
+    class SharedAgent:
+        model = "default-model"
+
+    monkeypatch.setattr(
+        co_writer_router,
+        "activate_llm_selection",
+        lambda selection: (selection, "default-token"),
+    )
+    monkeypatch.setattr(
+        co_writer_router,
+        "reset_llm_selection",
+        lambda token: calls.append(token),
+    )
+    monkeypatch.setattr(co_writer_router, "get_edit_agent", lambda: SharedAgent())
+
+    with co_writer_router._selected_edit_agent(None, language="en") as agent:
+        assert agent.model == "default-model"
+
+    assert calls == ["default-token"]
 
 
 def test_automark_never_returns_unsupported_rough_notation_markup():
