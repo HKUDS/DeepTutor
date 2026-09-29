@@ -20,8 +20,15 @@ import {
   readFailedSubmissions,
   storeFailedSubmission,
 } from "@/lib/failed-submissions";
+import {
+  SUBMIT_CONNECT_RETRY_INTERVAL_MS,
+  SUBMIT_CONNECT_RETRY_LIMIT,
+} from "@/lib/send-retry";
 
 initI18n("en");
+
+const GIVE_UP_MS =
+  SUBMIT_CONNECT_RETRY_LIMIT * SUBMIT_CONNECT_RETRY_INTERVAL_MS + 400;
 
 const fixture = vi.hoisted(() => ({
   connected: false,
@@ -279,10 +286,10 @@ it("marks a submission the server never received as unsent, not a failed reply",
       fireEvent.click(screen.getByText("Load"));
     });
     // Submit while the transport cannot connect. The retry schedule gives
-    // up after ~2s of failed connection attempts.
+    // up once its connect budget is exhausted.
     fireEvent.click(screen.getByText("Send"));
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(2_400);
+      await vi.advanceTimersByTimeAsync(GIVE_UP_MS);
     });
     // The optimistic user row is flagged unsent and NO assistant row was
     // left behind to masquerade as an errored reply.
@@ -430,7 +437,7 @@ it("keeps a new unsent submission when an older server turn has identical text",
     });
     fireEvent.click(screen.getByText("Send"));
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(2_400);
+      await vi.advanceTimersByTimeAsync(GIVE_UP_MS);
     });
     const saved = readFailedSubmission("s1");
     expect(saved?.submissionId).toBeTruthy();
@@ -507,7 +514,7 @@ it("restores a failed first message in a draft and can retry after reload", asyn
     );
     fireEvent.click(screen.getByText("Send"));
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(2_400);
+      await vi.advanceTimersByTimeAsync(GIVE_UP_MS);
     });
     expect(readMessages()).toEqual([
       { role: "user", content: "Hello offline", failed: true },
@@ -552,7 +559,7 @@ it("retries a failed draft with its original settings after live settings change
   try {
     render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
     fireEvent.click(screen.getByText("Send"));
-    await act(async () => { await vi.advanceTimersByTimeAsync(2_400); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(GIVE_UP_MS); });
     fireEvent.click(screen.getByText("Change live settings"));
     fixture.connected = true;
     await act(async () => { fireEvent.click(screen.getByText("Resend")); });
@@ -575,7 +582,7 @@ it("retries the original reading viewport after the live document changes", asyn
     render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
     fireEvent.click(screen.getByText("Prepare reading"));
     fireEvent.click(screen.getByText("Send"));
-    await act(async () => { await vi.advanceTimersByTimeAsync(2_400); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(GIVE_UP_MS); });
     setReadingWorkspace("ws-other");
     setReadingMaterial("feedface", 3);
     setReadingViewport({ locator: 99, selection: "new passage", timeSeconds: 33 });
@@ -598,7 +605,7 @@ it("retries the original watching position after the live video changes", async 
     render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
     fireEvent.click(screen.getByText("Prepare watching"));
     fireEvent.click(screen.getByText("Send"));
-    await act(async () => { await vi.advanceTimersByTimeAsync(2_400); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(GIVE_UP_MS); });
     setWatchingMaterial("video-b");
     setWatchingViewport(99);
     fixture.connected = true;
@@ -712,9 +719,9 @@ it("keeps both unsent messages when a second direct send fails", async () => {
     const firstView = render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
     await act(async () => { fireEvent.click(screen.getByText("Load")); });
     fireEvent.click(screen.getByText("Send"));
-    await act(async () => { await vi.advanceTimersByTimeAsync(2_400); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(GIVE_UP_MS); });
     fireEvent.click(screen.getByText("Send another"));
-    await act(async () => { await vi.advanceTimersByTimeAsync(2_400); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(GIVE_UP_MS); });
     expect(readFailedSubmissions("s1").map((record) => record.content)).toEqual([
       "Hello offline", "Second offline",
     ]);
@@ -738,7 +745,7 @@ it("a later successful send clears only its own record", async () => {
     render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
     await act(async () => { fireEvent.click(screen.getByText("Load")); });
     fireEvent.click(screen.getByText("Send"));
-    await act(async () => { await vi.advanceTimersByTimeAsync(2_400); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(GIVE_UP_MS); });
     fixture.connected = true;
     fireEvent.click(screen.getByText("Send another"));
     expect(readFailedSubmissions("s1")).toHaveLength(2);
@@ -762,7 +769,7 @@ it("moves an older failed draft message into the server session after a later se
   try {
     const firstView = render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
     fireEvent.click(screen.getByText("Send"));
-    await act(async () => { await vi.advanceTimersByTimeAsync(2_400); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(GIVE_UP_MS); });
     fixture.connected = true;
     fireEvent.click(screen.getByText("Send another"));
     const secondId = readFailedSubmissions("draft:general").at(-1)?.submissionId;
@@ -1031,7 +1038,7 @@ it("warns when browser storage cannot save even the unsent text", async () => {
     });
     render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
     fireEvent.click(screen.getByText("Send"));
-    await act(async () => { await vi.advanceTimersByTimeAsync(2_400); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(GIVE_UP_MS); });
     expect(screen.getByTestId("submissionNotSaved").textContent).toBe("true");
     expect(screen.getByTestId("submissionFailed").textContent).toBe("true");
     expect(readMessages().at(-1)?.content).toBe("Hello offline");

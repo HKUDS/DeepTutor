@@ -69,6 +69,10 @@ import {
   tipMessageId,
 } from "@/lib/message-branches";
 import { nextOptimisticId, resolvePersistedMessage } from "@/lib/optimistic-id";
+import {
+  SUBMIT_CONNECT_RETRY_INTERVAL_MS,
+  SUBMIT_CONNECT_RETRY_LIMIT,
+} from "@/lib/send-retry";
 import { reconcileTurnIds } from "@/lib/turn-reconcile";
 import { decideFailedTurnReplay, isFailedTurnVisible } from "@/lib/chat-resend";
 import {
@@ -2242,7 +2246,7 @@ export function ChatStateAdapterProvider({
       }
       const runner = ensureRunner(key);
       if (!runner.client.connected) {
-        if (attempt >= 10) {
+        if (attempt >= SUBMIT_CONNECT_RETRY_LIMIT) {
           console.error("WebSocket failed to connect after retries");
           dispatch({
             type: "STREAM_END",
@@ -2276,7 +2280,7 @@ export function ChatStateAdapterProvider({
             resolve(
               dispatchToRunner(key, msg, { ...options, attempt: attempt + 1 }),
             );
-          }, 200);
+          }, SUBMIT_CONNECT_RETRY_INTERVAL_MS);
           retryTimersRef.current.add(timerId);
         });
       }
