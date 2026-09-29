@@ -1452,6 +1452,11 @@ class AgenticLoopPipeline:
         context: UnifiedContext,
         stream: StreamBus,
     ) -> str:
+        # A mastery answer card is already paired with its question and graded
+        # by the runtime before the loop starts. Its user message may be only
+        # an option label, which is not a meaningful standalone RAG query.
+        if context.metadata.get("mastery_card_grade") or context.metadata.get("mastery_card_skip"):
+            return ""
         # Only traditional RAG KBs are pre-seeded. PageIndex and capability-owned
         # KBs are read with their tools inside the reasoning loop.
         kbs = self._coexisting_rag_kbs(context)

@@ -215,6 +215,33 @@ async def test_run_seeds_each_attached_kb(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 @pytest.mark.asyncio
+async def test_run_does_not_seed_a_graded_mastery_card_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _SeedRegistry()
+    client = _ScriptedChatClient([[_llm_chunk(content="That is correct.")]])
+    pipeline = _make_pipeline(monkeypatch, registry, client)
+
+    context = UnifiedContext(
+        session_id="s1",
+        user_message="A",
+        knowledge_bases=["course-notes"],
+        language="en",
+        metadata={
+            "turn_id": "t1",
+            "mastery_card_grade": {"is_correct": True},
+        },
+    )
+    await _run(pipeline, context)
+
+    assert registry.executed == []
+    first_call_text = "\n".join(
+        m["content"] for m in client.calls[0]["messages"] if isinstance(m.get("content"), str)
+    )
+    assert "[Knowledge Base Context]" not in first_call_text
+
+
+@pytest.mark.asyncio
 async def test_run_seeds_coexisting_kb_but_not_owned_vault(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
