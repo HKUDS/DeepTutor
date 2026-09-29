@@ -248,6 +248,19 @@ DeepTutor is an agent-native learning workspace that connects tutoring, problem 
 
 DeepTutor ships four installation paths. They all share one runtime-home layout: private settings live in `data/user/settings/` under the directory you launch from (or under `DEEPTUTOR_HOME` / `deeptutor start --home` if you set one explicitly). For the full app, the recommended flow is **pick a runtime-home directory → install → `deeptutor init` → `deeptutor start`**.
 
+### One-Command Docker Trial
+
+If Docker is not installed yet, [install Docker](https://docs.docker.com/get-docker/) first. Then try the full app without setting up Python or Node.js:
+
+```bash
+docker run --rm --name deeptutor \
+  -p 127.0.0.1:3782:3782 \
+  -v deeptutor-data:/app/data \
+  ghcr.io/hkuds/deeptutor:latest
+```
+
+Open [http://127.0.0.1:3782](http://127.0.0.1:3782), configure model providers in **Settings → Providers**, and press `Ctrl+C` when you are done. The named `deeptutor-data` volume keeps settings and local data for the next run.
+
 ### Content Workspace
 
 The **Content Workspace** is separate from DeepTutor's private runtime home. It

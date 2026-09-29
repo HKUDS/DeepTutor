@@ -75,6 +75,19 @@ DeepTutor 是一个智能体原生的学习工作区，将辅导、解题、测�
 
 DeepTutor 提供四种安装方式，四者共享同一套运行时主目录布局：私有设置存储在启动目录下的 `data/user/settings/` 中（如果显式指定了 `DEEPTUTOR_HOME` / `deeptutor start --home`，则存储在该位置）。完整应用的推荐流程为：**选定运行时主目录 → 安装 → `deeptutor init` → `deeptutor start`**。
 
+### 一条命令 Docker 试用
+
+如果尚未安装 Docker，请先[安装 Docker](https://docs.docker.com/get-docker/)；随后无需配置 Python 或 Node.js，即可直接试用完整应用：
+
+```bash
+docker run --rm --name deeptutor \
+  -p 127.0.0.1:3782:3782 \
+  -v deeptutor-data:/app/data \
+  ghcr.io/hkuds/deeptutor:latest
+```
+
+打开 [http://127.0.0.1:3782](http://127.0.0.1:3782)，在 **Settings → Providers** 中配置模型提供商；体验结束后在该终端按 `Ctrl+C` 停止。名为 `deeptutor-data` 的卷会保留设置和本地数据，供下次启动复用。
+
 ### 内容工作区
 
 **内容工作区（Content Workspace）** 与 DeepTutor 的私有运行时主目录相互独立。它是智能体可以读取的文件夹，生成的文件位于 `outputs/<capability>/<session>/<turn>/` 下。自定义工作区将对话、学习素材、进度和缓存隔离在私有的 `.deeptutor/data/` 目录树中，文件工具无法浏览该目录树。设置、凭证和 Memory 仍在账号层面共享。
