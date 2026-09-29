@@ -1,5 +1,6 @@
 'use client'
 
+import Tooltip from "@/shared/ui/Tooltip";
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Archive, ArchiveRestore, Folder, FolderInput, Globe2, Pencil, Plus, Settings2 } from 'lucide-react'
@@ -40,9 +41,15 @@ function WorkspaceRow({ row, run, busy }: { row: ChatWorkspaceRegistration; run:
             </Link>
           )}
           {row.kind !== 'system' && !row.archived && <button type="button" className={actionClass} onClick={() => { setResources(row.resources ?? inheritedWorkspaceResources()); setResourcesOpen(!resourcesOpen) }}><Settings2 size={14} />{t('Assigned resources')}</button>}
-          {custom && <button type="button" className={actionClass} aria-label={t('Rename workspace')} title={t('Rename workspace')} onClick={() => { setName(row.display_name); setEditing(!editing); setMoving(false) }}><Pencil size={14} /></button>}
-          <button type="button" className={actionClass} aria-label={t('Move folder')} title={t('Move folder')} onClick={() => { setMoving(!moving); setEditing(false); setDestination('') }}><FolderInput size={14} /></button>
-          {custom && <button type="button" className={actionClass} aria-label={row.archived ? t('Restore workspace') : t('Archive workspace')} title={row.archived ? t('Restore workspace') : t('Archive workspace')} onClick={() => void run(() => saveWorkspace({ archived: !row.archived }, row.workspace_id))}>{row.archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}</button>}
+          {custom && <Tooltip label={t('Rename workspace')} side="top">
+            <button type="button" className={actionClass} aria-label={t('Rename workspace')} onClick={() => { setName(row.display_name); setEditing(!editing); setMoving(false) }}><Pencil size={14} /></button>
+          </Tooltip>}
+          <Tooltip label={t('Move folder')} side="top">
+            <button type="button" className={actionClass} aria-label={t('Move folder')}  onClick={() => { setMoving(!moving); setEditing(false); setDestination('') }}><FolderInput size={14} /></button>
+          </Tooltip>
+          {custom && <Tooltip label={row.archived ? t('Restore workspace') : t('Archive workspace')} side="top">
+            <button type="button" className={actionClass} aria-label={row.archived ? t('Restore workspace') : t('Archive workspace')} onClick={() => void run(() => saveWorkspace({ archived: !row.archived }, row.workspace_id))}>{row.archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}</button>
+          </Tooltip>}
         </div>
       </div>
       <div className="mt-1.5 min-w-0 sm:pl-[30px]">

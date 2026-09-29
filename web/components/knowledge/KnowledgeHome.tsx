@@ -39,7 +39,7 @@ interface KnowledgeHomeProps {
   providers: RagProviderSummary[];
   onOpenKb: (name: string) => void;
   onOpenEngine: (id: string) => void;
-  onOpenSource: (id: "obsidian" | "marginnote4") => void;
+  onOpenSource: (id: "obsidian" | "marginnote4" | "kiwix") => void;
   onCreate: () => void;
   activeSection: KnowledgeHomeSection;
   onSectionChange: (section: KnowledgeHomeSection) => void;
@@ -155,6 +155,13 @@ export default function KnowledgeHome({
         ),
         action: t("Connect library"),
         count: kbs.filter((kb) => kb.metadata?.type === "marginnote4").length,
+      },
+      {
+        id: "kiwix" as const,
+        name: t("Kiwix / ZIM"),
+        description: t("Search an existing ZIM archive through kiwix-serve. Articles stay on the server."),
+        action: t("Connect archive"),
+        count: kbs.filter((kb) => kb.metadata?.type === "kiwix").length,
       },
     ],
     [kbs, t],

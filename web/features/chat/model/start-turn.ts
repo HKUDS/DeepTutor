@@ -14,6 +14,7 @@ import type {
 export interface StartTurnInput {
   workspaceId?: string | null;
   content: string;
+  clientSubmissionId?: string | null;
   capability?: string | null;
   sessionId?: string | null;
   tools?: string[] | null;

@@ -4,6 +4,7 @@ import { ListChecks, Loader2, Sparkles, Square, Volume2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { useReadingActions } from "@/components/reading/reading-actions-context";
+import Tooltip from "@/shared/ui/Tooltip";
 
 const READ_ALOUD_KEY = "read_aloud:read";
 
@@ -26,29 +27,30 @@ export function ReadAloudButton({ disabled }: { disabled?: boolean }) {
     ? t("Stop reading aloud")
     : t("Read this page aloud");
   return (
-    <button
-      type="button"
-      disabled={disabled || busy}
-      onClick={() =>
-        shared.speaking ? shared.stopSpeaking() : void shared.run(entry)
-      }
-      aria-label={label}
-      aria-pressed={shared.speaking}
-      title={label}
-      className={`flex size-7 shrink-0 items-center justify-center rounded-md transition hover:bg-[var(--muted)] disabled:cursor-not-allowed disabled:opacity-40 ${
-        shared.speaking
-          ? "text-[var(--primary)]"
-          : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-      }`}
-    >
-      {busy ? (
-        <Loader2 size={14} className="animate-spin" />
-      ) : shared.speaking ? (
-        <Square size={11} fill="currentColor" />
-      ) : (
-        <Volume2 size={14} />
-      )}
-    </button>
+    <Tooltip label={label}>
+      <button
+        type="button"
+        disabled={disabled || busy}
+        onClick={() =>
+          shared.speaking ? shared.stopSpeaking() : void shared.run(entry)
+        }
+        aria-label={label}
+        aria-pressed={shared.speaking}
+        className={`flex size-7 shrink-0 items-center justify-center rounded-md transition hover:bg-[var(--muted)] disabled:cursor-not-allowed disabled:opacity-40 ${
+          shared.speaking
+            ? "text-[var(--primary)]"
+            : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+        }`}
+      >
+        {busy ? (
+          <Loader2 size={14} className="animate-spin" />
+        ) : shared.speaking ? (
+          <Square size={11} fill="currentColor" />
+        ) : (
+          <Volume2 size={14} />
+        )}
+      </button>
+    </Tooltip>
   );
 }
 
@@ -74,16 +76,17 @@ export function PageToolButtons({
     "flex size-7 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40";
   return (
     <>
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={onQuiz}
-        aria-label={t("Quiz me on this page")}
-        title={t("Quiz me on this page")}
-        className={buttonClass}
-      >
-        <ListChecks size={14} />
-      </button>
+      <Tooltip label={t("Quiz me on this page")}>
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={onQuiz}
+          aria-label={t("Quiz me on this page")}
+          className={buttonClass}
+        >
+          <ListChecks size={14} />
+        </button>
+      </Tooltip>
       {shared.actions
         .filter(
           (entry) => !entry.needsSelection && entry.key !== READ_ALOUD_KEY,
@@ -91,21 +94,21 @@ export function PageToolButtons({
         .map((entry) => {
           const busy = shared.busyKey === entry.key;
           return (
-            <button
-              key={entry.key}
-              type="button"
-              disabled={disabled || busy}
-              onClick={() => void shared.run(entry)}
-              aria-label={entry.label}
-              title={entry.label}
-              className={buttonClass}
-            >
-              {busy ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <Sparkles size={14} />
-              )}
-            </button>
+            <Tooltip key={entry.key} label={entry.label}>
+              <button
+                type="button"
+                disabled={disabled || busy}
+                onClick={() => void shared.run(entry)}
+                aria-label={entry.label}
+                className={buttonClass}
+              >
+                {busy ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Sparkles size={14} />
+                )}
+              </button>
+            </Tooltip>
           );
         })}
     </>

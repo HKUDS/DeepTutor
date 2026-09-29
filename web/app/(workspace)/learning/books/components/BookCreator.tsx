@@ -12,6 +12,7 @@ import {
   toggleSourceSelection,
 } from '@/hooks/useTopicSourceLibrary'
 import { SourcesStep } from '@/components/space/learning/TopicWizardSteps'
+import Tooltip from '@/shared/ui/Tooltip'
 
 /**
  * Languages a book can be written in, plus the request-driven default.
@@ -274,20 +275,20 @@ export default function BookCreator({
                   {t('Depth')}
                   <div className="inline-flex overflow-hidden rounded-md border border-[var(--border)] text-[11px]">
                     {DEPTH_OPTIONS.map(option => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => setDepth(option.value)}
-                        aria-pressed={depth === option.value}
-                        title={t(option.hint)}
-                        className={`px-2 py-0.5 font-medium transition-colors ${
-                          depth === option.value
-                            ? 'bg-[var(--primary)]/12 text-[var(--foreground)]'
-                            : 'text-[var(--muted-foreground)] hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)]'
-                        }`}
-                      >
-                        {t(option.label)}
-                      </button>
+                      <Tooltip key={option.value} label={t(option.hint)}>
+                        <button
+                          type="button"
+                          onClick={() => setDepth(option.value)}
+                          aria-pressed={depth === option.value}
+                          className={`px-2 py-0.5 font-medium transition-colors ${
+                            depth === option.value
+                              ? 'bg-[var(--primary)]/12 text-[var(--foreground)]'
+                              : 'text-[var(--muted-foreground)] hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)]'
+                          }`}
+                        >
+                          {t(option.label)}
+                        </button>
+                      </Tooltip>
                     ))}
                   </div>
                 </div>

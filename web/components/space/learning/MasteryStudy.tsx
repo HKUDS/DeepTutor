@@ -4,6 +4,7 @@ import { scopedUrl } from "@/lib/workspace-scope";
 import { MASTERY_HOME, masterySessionsRoute, masteryTopicRoute } from "@/lib/learning-routes";
 
 import { browserStorage } from "@/shared/storage";
+import Tooltip from "@/shared/ui/Tooltip";
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -177,6 +178,7 @@ export function MasteryStudy({
     sendMessage,
     submitUserReply,
     regenerateLastMessage,
+    resendLastMessage,
     deleteTurn,
     editMessage,
     switchBranch,
@@ -558,14 +560,15 @@ export function MasteryStudy({
           unit rather than a ring on the left and its own number on the
           right saying the same thing twice. */}
       <header className="flex h-[56px] shrink-0 items-center gap-1 border-b border-[var(--border)] bg-[var(--background)]/95 px-3 backdrop-blur sm:px-4">
-        <Link
-          href={masteryTopicRoute(pathId)}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]"
-          title={t("Learning topics")}
-          aria-label={t("Learning topics")}
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
+        <Tooltip label={t("Learning topics")} side="bottom">
+          <Link
+            href={masteryTopicRoute(pathId)}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]"
+            aria-label={t("Learning topics")}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+        </Tooltip>
 
         <div className="ml-1.5 flex min-w-0 flex-1 items-baseline gap-2">
           <h1 className="shrink-0 truncate text-[14.5px] font-semibold tracking-[-0.01em] text-[var(--foreground)]">
@@ -596,16 +599,17 @@ export function MasteryStudy({
         />
 
         <div className="flex shrink-0 items-center gap-1.5 pl-2">
-          <button
-            type="button"
-            onClick={() => setShowSaveModal(true)}
-            disabled={!notebookSavePayload}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
-            title={t("Save to Notebook")}
-            aria-label={t("Save to Notebook")}
-          >
-            <BookmarkPlus className="h-4 w-4" />
-          </button>
+          <Tooltip label={t("Save to Notebook")}>
+            <button
+              type="button"
+              onClick={() => setShowSaveModal(true)}
+              disabled={!notebookSavePayload}
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label={t("Save to Notebook")}
+            >
+              <BookmarkPlus className="h-4 w-4" />
+            </button>
+          </Tooltip>
           <button
             type="button"
             onClick={() => setViewerOpen((open) => !open)}
@@ -781,6 +785,8 @@ export function MasteryStudy({
                       language={state.language}
                       onCopyAssistantMessage={copyAssistantMessage}
                       onRegenerateMessage={regenerateLastMessage}
+                      canResendLastTurn={state.lastTurnFailed}
+                      onResendLastTurn={resendLastMessage}
                       onDeleteTurn={deleteTurn}
                       selectedBranches={state.selectedBranches}
                       onEditMessage={editMessage}

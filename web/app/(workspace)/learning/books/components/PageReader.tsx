@@ -27,6 +27,7 @@ import {
   type SequentialReadDirection,
 } from "@/lib/book-reader-navigation";
 import { browserStorage } from "@/shared/storage";
+import Tooltip from "@/shared/ui/Tooltip";
 import BlockRenderer from "./blocks/BlockRenderer";
 import type { QuizAttemptArgs } from "./blocks/QuizBlock";
 import PageOutlineNav from "./PageOutlineNav";
@@ -490,25 +491,27 @@ export default function PageReader({
               </span>
             )}
             {onToggleBookmark && (
-              <button
-                type="button"
-                onClick={onToggleBookmark}
-                title={
-                  bookmarked ? t("Remove bookmark") : t("Bookmark this chapter")
-                }
-                aria-pressed={bookmarked}
-                className={`inline-flex h-6 w-6 items-center justify-center rounded-md transition-colors ${
-                  bookmarked
-                    ? "text-[var(--primary)]"
-                    : "text-[var(--muted-foreground)] hover:bg-[var(--background)] hover:text-[var(--foreground)]"
-                }`}
+              <Tooltip
+                label={bookmarked ? t("Remove bookmark") : t("Bookmark this chapter")}
               >
-                {bookmarked ? (
-                  <BookmarkCheck className="h-3.5 w-3.5" />
-                ) : (
-                  <Bookmark className="h-3.5 w-3.5" />
-                )}
-              </button>
+                <button
+                  type="button"
+                  onClick={onToggleBookmark}
+                  aria-label={bookmarked ? t("Remove bookmark") : t("Bookmark this chapter")}
+                  aria-pressed={bookmarked}
+                  className={`inline-flex h-6 w-6 items-center justify-center rounded-md transition-colors ${
+                    bookmarked
+                      ? "text-[var(--primary)]"
+                      : "text-[var(--muted-foreground)] hover:bg-[var(--background)] hover:text-[var(--foreground)]"
+                  }`}
+                >
+                  {bookmarked ? (
+                    <BookmarkCheck className="h-3.5 w-3.5" />
+                  ) : (
+                    <Bookmark className="h-3.5 w-3.5" />
+                  )}
+                </button>
+              </Tooltip>
             )}
             {!headerCollapsed && onRecompile && (
               <button
@@ -524,22 +527,23 @@ export default function PageReader({
                 {loading ? t("Regenerating…") : t("Force regenerate")}
               </button>
             )}
-            <button
-              type="button"
-              onClick={() => {
-                setHeaderCollapsed((v) => !v);
-                setUserToggled(true);
-              }}
-              title={headerCollapsed ? expandTip : collapseTip}
-              aria-label={headerCollapsed ? expandTip : collapseTip}
-              className="inline-flex h-6 w-6 items-center justify-center rounded-md text-[var(--muted-foreground)] hover:bg-[var(--background)] hover:text-[var(--foreground)]"
-            >
-              {headerCollapsed ? (
-                <ChevronDown className="h-3.5 w-3.5" />
-              ) : (
-                <ChevronUp className="h-3.5 w-3.5" />
-              )}
-            </button>
+            <Tooltip label={headerCollapsed ? expandTip : collapseTip}>
+              <button
+                type="button"
+                onClick={() => {
+                  setHeaderCollapsed((v) => !v);
+                  setUserToggled(true);
+                }}
+                aria-label={headerCollapsed ? expandTip : collapseTip}
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-[var(--muted-foreground)] hover:bg-[var(--background)] hover:text-[var(--foreground)]"
+              >
+                {headerCollapsed ? (
+                  <ChevronDown className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronUp className="h-3.5 w-3.5" />
+                )}
+              </button>
+            </Tooltip>
           </div>
         </div>
       </header>
@@ -800,22 +804,25 @@ function NavButton({
   if (!page) return <span className="min-w-0 flex-1" />;
   const isNext = direction === "next";
   return (
-    <button
-      type="button"
-      onClick={() => onNavigate(page.id)}
-      className={`group inline-flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 py-1 text-xs text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)] ${
-        isNext ? "justify-end text-right" : "justify-start text-left"
-      }`}
-      title={page.title}
-    >
-      {!isNext && <ChevronLeft className="h-3.5 w-3.5 shrink-0" />}
-      <span className="min-w-0">
-        <span className="block text-[10px] uppercase tracking-wider opacity-70">
-          {label}
-        </span>
-        <span className="block truncate">{page.title}</span>
-      </span>
-      {isNext && <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
-    </button>
+    <div className="min-w-0 flex-1 [&>span]:w-full">
+      <Tooltip label={page.title}>
+        <button
+          type="button"
+          onClick={() => onNavigate(page.id)}
+          className={`group inline-flex w-full min-w-0 items-center gap-1.5 rounded-md px-2 py-1 text-xs text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)] ${
+            isNext ? "justify-end text-right" : "justify-start text-left"
+          }`}
+        >
+          {!isNext && <ChevronLeft className="h-3.5 w-3.5 shrink-0" />}
+          <span className="min-w-0">
+            <span className="block text-[10px] uppercase tracking-wider opacity-70">
+              {label}
+            </span>
+            <span className="block truncate">{page.title}</span>
+          </span>
+          {isNext && <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
+        </button>
+      </Tooltip>
+    </div>
   );
 }

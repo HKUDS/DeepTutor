@@ -1408,6 +1408,23 @@ class SQLiteSessionStore:
     async def list_active_turns(self, session_id: str) -> list[dict[str, Any]]:
         return await self._run(self._list_active_turns_sync, session_id)
 
+    def _list_orphaned_failed_turns_sync(self, session_id: str) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT t.*, 0 AS last_seq
+                FROM turns t
+                WHERE t.session_id = ? AND t.status = 'failed'
+                  AND t.assistant_message_id IS NULL
+                ORDER BY t.created_at, t.id
+                """,
+                (session_id,),
+            ).fetchall()
+        return [self._serialize_turn(row) for row in rows]
+
+    async def list_orphaned_failed_turns(self, session_id: str) -> list[dict[str, Any]]:
+        return await self._run(self._list_orphaned_failed_turns_sync, session_id)
+
     def _list_nonterminal_turns_sync(self) -> list[dict[str, Any]]:
         with self._connect() as conn:
             rows = conn.execute(

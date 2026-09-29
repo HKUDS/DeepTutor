@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useBinarySource } from "./useBinarySource";
+import Tooltip from "@/shared/ui/Tooltip";
 
 // Preview bounds — a spreadsheet can hold millions of cells; rendering them
 // all would lock the tab. We cap and flag truncation; Download gets the rest.
@@ -147,19 +148,20 @@ export default function XlsxPreview({ url }: { url: string }) {
       {sheets.length > 1 ? (
         <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-t border-[var(--border)]/40 bg-[var(--muted)]/25 px-2 py-1.5">
           {sheets.map((s, i) => (
-            <button
-              key={`${s.name}-${i}`}
-              type="button"
-              onClick={() => setActive(i)}
-              className={`shrink-0 rounded-md px-2.5 py-1 text-[11.5px] font-medium transition-colors ${
-                i === active
-                  ? "bg-[var(--card)] text-[var(--foreground)] shadow-sm"
-                  : "text-[var(--muted-foreground)] hover:bg-[var(--card)]/70 hover:text-[var(--foreground)]"
-              }`}
-              title={s.name}
-            >
-              <span className="block max-w-[140px] truncate">{s.name}</span>
-            </button>
+            <Tooltip key={`${s.name}-${i}`} label={s.name} side="top">
+              <button
+                type="button"
+                onClick={() => setActive(i)}
+                aria-label={s.name}
+                className={`shrink-0 rounded-md px-2.5 py-1 text-[11.5px] font-medium transition-colors ${
+                  i === active
+                    ? "bg-[var(--card)] text-[var(--foreground)] shadow-sm"
+                    : "text-[var(--muted-foreground)] hover:bg-[var(--card)]/70 hover:text-[var(--foreground)]"
+                }`}
+              >
+                <span className="block max-w-[140px] truncate">{s.name}</span>
+              </button>
+            </Tooltip>
           ))}
         </div>
       ) : null}

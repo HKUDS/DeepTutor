@@ -28,6 +28,11 @@ GITHUB_LATEST_RELEASE_URL = "https://api.github.com/repos/HKUDS/DeepTutor/releas
 GITHUB_LATEST_RELEASE_WEB_URL = "https://github.com/HKUDS/DeepTutor/releases/latest"
 VERSION_CHECK_TTL_SECONDS = 24 * 60 * 60
 LAUNCHER_PID_ENV = "DEEPTUTOR_LAUNCHER_PID"
+SYSTEMD_UPDATE_REASON = (
+    "In-app updates are unavailable under a systemd service because systemd may stop "
+    "the update worker with the service. Stop the service, upgrade DeepTutor with "
+    "the same Python environment, then start the service with systemctl."
+)
 
 InstallMode = Literal["pypi", "source", "docker", "unknown"]
 JobStatus = Literal["pending", "handoff", "running", "restarting", "succeeded", "failed"]
@@ -175,6 +180,42 @@ def _running_from_source_checkout() -> bool:
     return (checkout_root / ".git").exists() and (checkout_root / "pyproject.toml").is_file()
 
 
+def _systemd_service_unit(cgroup_text: str) -> str | None:
+    """Find the owning service unit, ignoring user managers and app scopes."""
+    for line in cgroup_text.splitlines():
+        fields = line.split(":", 2)
+        if len(fields) != 3:
+            continue
+        # The nearest unit owns the process. A desktop app scope commonly sits
+        # below user@1000.service, but is not itself that service's process.
+        for component in reversed(fields[2].split("/")):
+            if component.endswith(".scope"):
+                break
+            if component.endswith(".service"):
+                if component.startswith("user@"):
+                    break
+                return component
+    return None
+
+
+def running_under_systemd_service() -> bool:
+    """A detached process group does not escape a systemd service cgroup."""
+    if sys.platform != "linux":
+        return False
+    try:
+        membership = Path("/proc/self/cgroup").read_text(encoding="utf-8")
+    except OSError:
+        return bool(os.getenv("INVOCATION_ID"))
+    if _systemd_service_unit(membership) is not None:
+        return True
+    # INVOCATION_ID can also be inherited by a desktop app scope. It is only
+    # useful when a private cgroup namespace hides the actual unit path.
+    visible_paths = [
+        line.split(":", 2)[2] for line in membership.splitlines() if line.count(":") >= 2
+    ]
+    return bool(os.getenv("INVOCATION_ID")) and all(path in {"", "/"} for path in visible_paths)
+
+
 def detect_installation() -> Installation:
     """Classify only layouts whose update ownership is unambiguous."""
 
@@ -216,6 +257,14 @@ def detect_installation() -> Installation:
 
     in_virtualenv = Path(sys.prefix).resolve() != Path(sys.base_prefix).resolve()
     if not direct_url and in_virtualenv:
+        if running_under_systemd_service():
+            return Installation(
+                mode="pypi",
+                current_version=__version__,
+                automatic_update=False,
+                command=f"{sys.executable} -m pip install -U deeptutor",
+                reason=SYSTEMD_UPDATE_REASON,
+            )
         return Installation(
             mode="pypi",
             current_version=__version__,
@@ -618,6 +667,7 @@ __all__ = [
     "Installation",
     "LAUNCHER_PID_ENV",
     "ReleaseInfo",
+    "SYSTEMD_UPDATE_REASON",
     "UpdateInProgressError",
     "UpdateJob",
     "UpdateJobStore",
@@ -629,6 +679,7 @@ __all__ = [
     "get_version_check_service",
     "launch_update_worker",
     "launcher_available",
+    "running_under_systemd_service",
     "reset_version_check_service_for_tests",
     "update_store_root",
 ]

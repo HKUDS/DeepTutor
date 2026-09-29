@@ -10,6 +10,10 @@ import wave
 
 from .base import VoiceProviderError
 
+FFMPEG_STT_INSTALL_HINT = (
+    "Install FFmpeg, add its bin directory to DeepTutor's PATH, then restart DeepTutor."
+)
+
 
 def pcm_to_wav(audio: bytes, sample_rate: int = 24000) -> bytes:
     output = io.BytesIO()
@@ -58,7 +62,7 @@ async def normalize_wav(audio: bytes) -> bytes:
             )
         except OSError as exc:
             raise VoiceProviderError(
-                "ffmpeg is required to convert this recording to WAV."
+                "ffmpeg is required to convert this recording to WAV. " + FFMPEG_STT_INSTALL_HINT
             ) from exc
         try:
             _, stderr = await asyncio.wait_for(process.communicate(), timeout=60)

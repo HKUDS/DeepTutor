@@ -1,5 +1,6 @@
 "use client";
 
+import Tooltip from "@/shared/ui/Tooltip";
 import { useCallback, useMemo, useRef, useState, type DragEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle, CheckCircle2, FileText, Files, X } from "lucide-react";
@@ -361,14 +362,16 @@ function SelectionSummary({
                 </p>
               )}
             </div>
-            <button
-              type="button"
-              onClick={() => onRemove(item.id)}
-              title={t("Remove")}
-              className="rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--background)] hover:text-[var(--foreground)]"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
+            <Tooltip label={t("Remove")} side="top">
+              <button
+                type="button"
+                onClick={() => onRemove(item.id)}
+                aria-label={t("Remove")}
+                className="rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--background)] hover:text-[var(--foreground)]"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </Tooltip>
           </div>
         ))}
       </div>

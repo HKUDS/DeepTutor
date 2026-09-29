@@ -28,6 +28,7 @@ import { useChatRouteSession } from "@/features/chat/controllers/useChatRouteSes
 import { waitForReplyLanguageSave } from "@/features/chat/controllers/reply-language-save";
 
 import {
+  AlertCircle,
   GraduationCap,
   NotebookPen,
   PenLine,
@@ -2447,21 +2448,22 @@ export default function ChatWorkspace({
                     conversation says which workspace's files it can see without
                     the learner opening a menu to find out. */}
                 {activeWorkspace ? (
-                  <Link
-                    href="/settings/workspace"
-                    title={activeWorkspace.path}
-                    className="inline-flex shrink-0 items-center gap-1 rounded-lg px-1.5 py-1 text-[12.5px] text-[var(--muted-foreground)] transition hover:bg-[var(--muted)]/55 hover:text-[var(--foreground)]"
-                  >
-                    <FolderOpen size={13} strokeWidth={1.7} />
-                    <span className="max-w-[140px] truncate">
-                      {activeWorkspace.display_name}
-                    </span>
-                    <ChevronRight
-                      size={12}
-                      strokeWidth={2}
-                      className="-mr-1 opacity-60"
-                    />
-                  </Link>
+                  <Tooltip label={activeWorkspace.path} side="bottom">
+                    <Link
+                      href="/settings/workspace"
+                      className="inline-flex shrink-0 items-center gap-1 rounded-lg px-1.5 py-1 text-[12.5px] text-[var(--muted-foreground)] transition hover:bg-[var(--muted)]/55 hover:text-[var(--foreground)]"
+                    >
+                      <FolderOpen size={13} strokeWidth={1.7} />
+                      <span className="max-w-[140px] truncate">
+                        {activeWorkspace.display_name}
+                      </span>
+                      <ChevronRight
+                        size={12}
+                        strokeWidth={2}
+                        className="-mr-1 opacity-60"
+                      />
+                    </Link>
+                  </Tooltip>
                 ) : null}
                 {sessionTitleEditing ? (
                   <input
@@ -2478,22 +2480,24 @@ export default function ChatWorkspace({
                     maxLength={100}
                   />
                 ) : (
-                  <button
-                    type="button"
-                    onClick={startSessionTitleEdit}
-                    disabled={!canRenameSession}
-                    title={
-                      canRenameSession
-                        ? t("Click to rename session")
-                        : t("Start a conversation to rename")
-                    }
-                    className="inline-flex min-w-0 max-w-full items-center gap-2 rounded-xl px-2 py-1 text-left font-serif text-[17px] font-semibold tracking-[-0.01em] text-[var(--foreground)] transition hover:bg-[var(--muted)]/55 disabled:cursor-default disabled:hover:bg-transparent"
+                  <Tooltip
+                    label={canRenameSession
+                      ? t("Click to rename session")
+                      : t("Start a conversation to rename")}
+                    side="bottom"
                   >
-                    <span className="truncate">{displaySessionTitle}</span>
-                    {canRenameSession ? (
-                      <PenLine className="h-3.5 w-3.5 shrink-0 text-[var(--muted-foreground)] opacity-0 transition-opacity group-hover/title:opacity-100" />
-                    ) : null}
-                  </button>
+                    <button
+                      type="button"
+                      onClick={startSessionTitleEdit}
+                      disabled={!canRenameSession}
+                      className="inline-flex min-w-0 max-w-full items-center gap-2 rounded-xl px-2 py-1 text-left font-serif text-[17px] font-semibold tracking-[-0.01em] text-[var(--foreground)] transition hover:bg-[var(--muted)]/55 disabled:cursor-default disabled:hover:bg-transparent"
+                    >
+                      <span className="truncate">{displaySessionTitle}</span>
+                      {canRenameSession ? (
+                        <PenLine className="h-3.5 w-3.5 shrink-0 text-[var(--muted-foreground)] opacity-0 transition-opacity group-hover/title:opacity-100" />
+                      ) : null}
+                    </button>
+                  </Tooltip>
                 )}
                 {sessionTitleSaving ? (
                   <span className="shrink-0 text-xs text-[var(--muted-foreground)]">
@@ -2680,6 +2684,40 @@ export default function ChatWorkspace({
                 </div>
               )}
 
+              {/* Submission failure banner (#1594): the server never received
+                 the message, so the error belongs next to the composer — not
+                 rendered as an assistant reply — with the message's text kept
+                 above, marked unsent, and retryable. */}
+              {state.submissionFailed ? (
+                <div
+                  role="alert"
+                  data-submission-error="true"
+                  className="mx-auto w-full max-w-[960px] px-6 pb-1"
+                >
+                  <div className="flex w-full items-center gap-2 rounded-xl border border-[var(--destructive)]/30 bg-[var(--destructive)]/5 px-3 py-2">
+                    <AlertCircle
+                      className="h-4 w-4 shrink-0 text-[var(--destructive)]"
+                      aria-hidden="true"
+                    />
+                    <span className="min-w-0 flex-1 text-[12px] leading-[1.5] text-[var(--foreground)]">
+                      {state.submissionNotSaved
+                        ? t("This unsent message could not be saved in your browser. Copy it before leaving this page.")
+                        : state.submissionNeedsReview
+                        ? t("Message text was saved, but its attachments or settings could not be restored. Copy it and send again.")
+                        : t("Couldn't reach the server. Please check your connection and retry.")}
+                    </span>
+                    {!state.submissionNeedsReview ? (
+                      <button
+                        type="button"
+                        onClick={handleResendMessage}
+                        className="shrink-0 rounded-md px-2 py-1 text-[11.5px] font-medium text-[var(--foreground)] hover:bg-[var(--muted)]"
+                      >
+                        {t("Resend")}
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
               <ChatComposer
                 composerRef={composerRef}
                 capMenuRef={capMenuRef}

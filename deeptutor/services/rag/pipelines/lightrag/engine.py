@@ -7,7 +7,9 @@ from collections.abc import Awaitable, Callable, Iterable, Mapping
 import hashlib
 from importlib.metadata import PackageNotFoundError, version
 import inspect
+import json
 from pathlib import Path
+import re
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -181,7 +183,22 @@ def _register_parser() -> None:
 
 
 def workspace_for(working_dir: Path) -> str:
-    identity = str(Path(working_dir).resolve()).encode("utf-8")
+    root = Path(working_dir)
+    # A published version keeps its native LightRAG workspace name when its
+    # containing KB is moved. The name is a hash of the original absolute
+    # version path; recomputing it after a move would open an empty store.
+    try:
+        meta = json.loads((root / "meta.json").read_text(encoding="utf-8"))
+        published = str(meta.get("workspace") or "") if isinstance(meta, dict) else ""
+        if (
+            isinstance(meta, dict)
+            and meta.get("provider") == "lightrag"
+            and re.fullmatch(r"deeptutor_[0-9a-f]{16}", published)
+        ):
+            return published
+    except (OSError, ValueError):
+        pass
+    identity = str(root.resolve()).encode("utf-8")
     return f"deeptutor_{hashlib.sha256(identity).hexdigest()[:16]}"
 
 

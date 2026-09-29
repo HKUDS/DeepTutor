@@ -26,6 +26,7 @@ from deeptutor.services.config.runtime_settings import DOCUMENT_PARSING_ENGINE_L
 from deeptutor.services.embedding import get_embedding_client
 from deeptutor.services.llm.client import get_llm_client
 from deeptutor.services.rag.file_routing import FileTypeRouter
+from deeptutor.services.rag.visual_assets import VisualAssetCandidate, collect_visual_assets
 from deeptutor.utils.document_validator import DocumentValidator
 
 from .config import image_description_limits
@@ -59,6 +60,7 @@ class _ImageSource:
 
     path: Path
     origin: Path
+    visual: VisualAssetCandidate | None = None
 
 
 class LlamaIndexDocumentLoader:
@@ -72,6 +74,9 @@ class LlamaIndexDocumentLoader:
         self,
         file_paths: Iterable[str],
         image_progress_callback: Callable[[int, int], None] | None = None,
+        *,
+        kb_dir: Path | None = None,
+        visual_candidates: list[VisualAssetCandidate] | None = None,
     ) -> list[Any]:
         documents: list[Any] = []
         image_sources: list[_ImageSource] = []
@@ -85,7 +90,7 @@ class LlamaIndexDocumentLoader:
             # the event loop stalls every other request for the whole PDF
             # (same class of bug as upstream #761/#777). Hand it to a thread.
             text, extracted_images, parse_engine = await asyncio.to_thread(
-                self._parse_document, file_path
+                self._parse_document, file_path, kb_dir=kb_dir
             )
             scanned_pdf_needs_ocr = (
                 file_path.suffix.lower() == ".pdf"
@@ -98,6 +103,7 @@ class LlamaIndexDocumentLoader:
                     file_path,
                     None,
                     _PDF_OCR_FALLBACK_ENGINE,
+                    kb_dir=kb_dir,
                 )
                 if fallback[0].strip() or fallback[1]:
                     text, extracted_images, parse_engine = fallback
@@ -117,6 +123,7 @@ class LlamaIndexDocumentLoader:
                     extracted_image_count=len(extracted_images),
                 )
                 image_sources.extend(extracted_images)
+                self._append_visual_documents(documents, extracted_images, visual_candidates)
 
         for file_path_str in classification.text_files:
             file_path = Path(file_path_str)
@@ -133,7 +140,7 @@ class LlamaIndexDocumentLoader:
             if supports(path):
                 self.logger.info(f"Parsing image with active document parser: {path.name}")
                 text, extracted_images, parse_engine = await asyncio.to_thread(
-                    self._parse_document, path, parse_service
+                    self._parse_document, path, parse_service, kb_dir=kb_dir
                 )
                 if text.strip() or extracted_images:
                     self._append_if_nonempty(
@@ -144,6 +151,7 @@ class LlamaIndexDocumentLoader:
                         extracted_image_count=len(extracted_images),
                     )
                     image_sources.extend(extracted_images)
+                    self._append_visual_documents(documents, extracted_images, visual_candidates)
                 else:
                     # Preserve the pre-parser behavior when an image-capable
                     # engine fails or yields no usable IR.
@@ -151,10 +159,11 @@ class LlamaIndexDocumentLoader:
             else:
                 image_sources.append(_ImageSource(path=path, origin=path))
 
-        if image_sources:
+        legacy_image_sources = [source for source in image_sources if source.visual is None]
+        if legacy_image_sources:
             documents.extend(
                 await self._load_image_nodes(
-                    image_sources, image_progress_callback=image_progress_callback
+                    legacy_image_sources, image_progress_callback=image_progress_callback
                 )
             )
 
@@ -168,6 +177,8 @@ class LlamaIndexDocumentLoader:
         file_path: Path,
         parse_service=None,  # noqa: ANN001
         engine: str | None = None,
+        *,
+        kb_dir: Path | None = None,
     ) -> tuple[str, list[_ImageSource], str]:
         """Parse a document through the shared, engine-pluggable parse layer.
 
@@ -197,7 +208,53 @@ class LlamaIndexDocumentLoader:
 
         text = parsed.markdown.strip() or self._text_from_blocks(parsed.blocks)
         images = self._collect_asset_images(parsed.asset_dir, origin=file_path)
+        if kb_dir is not None and images:
+            by_path = {
+                candidate.path.resolve(): candidate
+                for candidate in collect_visual_assets(parsed, file_path, kb_dir)
+            }
+            images = [
+                _ImageSource(
+                    path=image.path, origin=image.origin, visual=by_path[image.path.resolve()]
+                )
+                for image in images
+                if image.path.resolve() in by_path
+            ]
         return text, images, str(parsed.engine or "")
+
+    @staticmethod
+    def _append_visual_documents(
+        documents: list[Any],
+        images: list[_ImageSource],
+        candidates: list[VisualAssetCandidate] | None,
+    ) -> None:
+        for image in images:
+            if image.visual is None:
+                continue
+            record = image.visual.record
+            if candidates is not None:
+                candidates.append(image.visual)
+            caption = record["caption"] or "Source figure"
+            context = record["context"]
+            text = f"[Source visual] {image.origin.name}: {caption}"
+            if context:
+                text += f"\nContext: {context}"
+            documents.append(
+                Document(
+                    text=text,
+                    metadata={
+                        "file_name": image.origin.name,
+                        "file_path": str(image.origin),
+                        "content_type": "source_visual",
+                        "visual_asset_id": record["asset_id"],
+                        "source_document_id": record["source_document_id"],
+                        "page": record["page_number"] or "",
+                        "bbox": record["bbox"],
+                        "caption": record["caption"],
+                        "source_locator": record["source_locator"],
+                    },
+                )
+            )
 
     def _log_scanned_pdf_without_ocr(
         self,

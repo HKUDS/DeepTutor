@@ -96,6 +96,13 @@ def prepare_workspace_execution_env(
         "LANG": os.environ.get("LANG", "C.UTF-8"),
         "PYTHONUNBUFFERED": "1",
         "PYTHONDONTWRITEBYTECODE": "1",
+        # Model-authored Python must not fall back to the host's ANSI code page
+        # (cp936, cp1252, …): a bare ``open()`` / ``Path.read_text()`` would then
+        # mis-decode the UTF-8 files this workspace and every skill writes, and
+        # printing a non-ASCII path or message would reach the caller mojibaked.
+        # The exec environment inherits only a fixed subset of host variables,
+        # so UTF-8 mode has to be requested explicitly rather than assumed.
+        "PYTHONUTF8": "1",
     }
     if workspace_root:
         # A stable symbolic handle for model-authored code that needs to open

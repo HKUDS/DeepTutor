@@ -1,5 +1,6 @@
 "use client";
 
+import Tooltip from "@/shared/ui/Tooltip";
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -149,23 +150,24 @@ export default function KbFilePreview({
       <div className="flex h-full flex-col">
         {onToggleFileList && (
           <div className="flex items-center justify-end border-b border-[var(--border)] bg-[var(--card)]/40 px-3 py-1.5">
-            <button
-              type="button"
-              onClick={onToggleFileList}
-              title={
+            <Tooltip label={
                 fileListCollapsed ? t("Show file list") : t("Hide file list")
-              }
-              aria-label={
-                fileListCollapsed ? t("Show file list") : t("Hide file list")
-              }
-              className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-            >
-              {fileListCollapsed ? (
-                <PanelLeftOpen size={13} strokeWidth={1.7} />
-              ) : (
-                <PanelLeftClose size={13} strokeWidth={1.7} />
-              )}
-            </button>
+              } side="top">
+              <button
+                type="button"
+                onClick={onToggleFileList}
+                aria-label={
+                  fileListCollapsed ? t("Show file list") : t("Hide file list")
+                }
+                className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+              >
+                {fileListCollapsed ? (
+                  <PanelLeftOpen size={13} strokeWidth={1.7} />
+                ) : (
+                  <PanelLeftClose size={13} strokeWidth={1.7} />
+                )}
+              </button>
+            </Tooltip>
           </div>
         )}
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-12 text-center">
@@ -213,23 +215,24 @@ export default function KbFilePreview({
       {/* Header */}
       <div className="flex items-center gap-2 border-b border-[var(--border)] bg-[var(--card)]/80 px-3 py-2">
         {onToggleFileList && !fullscreen && (
-          <button
-            type="button"
-            onClick={onToggleFileList}
-            title={
+          <Tooltip label={
               fileListCollapsed ? t("Show file list") : t("Hide file list")
-            }
-            aria-label={
-              fileListCollapsed ? t("Show file list") : t("Hide file list")
-            }
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-          >
-            {fileListCollapsed ? (
-              <PanelLeftOpen size={13} strokeWidth={1.7} />
-            ) : (
-              <PanelLeftClose size={13} strokeWidth={1.7} />
-            )}
-          </button>
+            } side="top">
+            <button
+              type="button"
+              onClick={onToggleFileList}
+              aria-label={
+                fileListCollapsed ? t("Show file list") : t("Hide file list")
+              }
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+            >
+              {fileListCollapsed ? (
+                <PanelLeftOpen size={13} strokeWidth={1.7} />
+              ) : (
+                <PanelLeftClose size={13} strokeWidth={1.7} />
+              )}
+            </button>
+          </Tooltip>
         )}
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[var(--muted)]/60">
           <HeaderIcon size={15} strokeWidth={1.6} className={spec.tint} />
@@ -249,48 +252,51 @@ export default function KbFilePreview({
           </div>
         )}
 
-        <button
-          type="button"
-          onClick={() => setFullscreen((value) => !value)}
-          title={fullscreen ? t("Exit fullscreen") : t("Fullscreen")}
-          aria-label={fullscreen ? t("Exit fullscreen") : t("Fullscreen")}
-          className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-        >
-          {fullscreen ? (
-            <Minimize2 size={13} strokeWidth={1.7} />
-          ) : (
-            <Maximize2 size={13} strokeWidth={1.7} />
-          )}
-        </button>
+        <Tooltip label={fullscreen ? t("Exit fullscreen") : t("Fullscreen")} side="top">
+          <button
+            type="button"
+            onClick={() => setFullscreen((value) => !value)}
+            aria-label={fullscreen ? t("Exit fullscreen") : t("Fullscreen")}
+            className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+          >
+            {fullscreen ? (
+              <Minimize2 size={13} strokeWidth={1.7} />
+            ) : (
+              <Maximize2 size={13} strokeWidth={1.7} />
+            )}
+          </button>
+        </Tooltip>
 
         {previewUrl && (
           <>
-            <a
-              href={previewUrl}
-              download={source.filename}
-              title={t("Download")}
-              aria-label={t("Download")}
-              className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-            >
-              <Download size={13} strokeWidth={1.7} />
-            </a>
-            <button
-              type="button"
-              onClick={() => void handleCopy()}
-              title={t("Copy link")}
-              aria-label={t("Copy link")}
-              className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-            >
-              {copied ? (
-                <Check
-                  size={13}
-                  strokeWidth={1.7}
-                  className="text-emerald-500"
-                />
-              ) : (
-                <Copy size={13} strokeWidth={1.7} />
-              )}
-            </button>
+            <Tooltip label={t("Download")} side="top">
+              <a
+                href={previewUrl}
+                download={source.filename}
+                aria-label={t("Download")}
+                className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+              >
+                <Download size={13} strokeWidth={1.7} />
+              </a>
+            </Tooltip>
+            <Tooltip label={t("Copy link")} side="top">
+              <button
+                type="button"
+                onClick={() => void handleCopy()}
+                aria-label={t("Copy link")}
+                className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+              >
+                {copied ? (
+                  <Check
+                    size={13}
+                    strokeWidth={1.7}
+                    className="text-emerald-500"
+                  />
+                ) : (
+                  <Copy size={13} strokeWidth={1.7} />
+                )}
+              </button>
+            </Tooltip>
           </>
         )}
       </div>

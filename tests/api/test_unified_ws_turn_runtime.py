@@ -194,6 +194,7 @@ async def test_turn_runtime_replays_events_and_materializes_messages(
         {
             "type": "start_turn",
             "content": "hello, i'm frank",
+            "client_submission_id": "browser-submission-123",
             "session_id": None,
             "capability": None,
             "tools": [],
@@ -204,6 +205,7 @@ async def test_turn_runtime_replays_events_and_materializes_messages(
             "memory_references": ["summary"],
             "book_references": [{"book_id": "book-1", "page_ids": ["page-1"]}],
             "mastery_path_id": "path-1",
+            "mastery_answer": {"question_id": "question-1", "text": "B"},
             "config": {},
             **consultation,
         }
@@ -237,12 +239,18 @@ async def test_turn_runtime_replays_events_and_materializes_messages(
     user_row, assistant_row = detail["messages"]
     assert done_event["metadata"]["user_message_id"] == user_row["id"]
     assert done_event["metadata"]["assistant_message_id"] == assistant_row["id"]
+    assert user_row["metadata"]["client_submission_id"] == "browser-submission-123"
+    assert user_row["metadata"]["turn_id"] == turn["id"]
     assert detail["messages"][0]["metadata"]["request_snapshot"]["persona"] == "socratic"
     assert detail["messages"][0]["metadata"]["request_snapshot"]["memoryReferences"] == ["summary"]
     assert detail["messages"][0]["metadata"]["request_snapshot"]["bookReferences"] == [
         {"book_id": "book-1", "page_ids": ["page-1"]}
     ]
     assert detail["messages"][0]["metadata"]["request_snapshot"]["masteryPathId"] == "path-1"
+    assert detail["messages"][0]["metadata"]["request_snapshot"]["masteryAnswer"] == {
+        "question_id": "question-1",
+        "text": "B",
+    }
     snapshot = detail["messages"][0]["metadata"]["request_snapshot"]
     assert snapshot.get("consultPartnerId") == requested.get("consult_partner_id")
     assert snapshot.get("partnerDiscussionGroupId") == requested.get("partner_discussion_group_id")
@@ -768,6 +776,7 @@ async def test_regenerate_reuses_snapshot_or_override_llm_selection(tmp_path) ->
             "request_snapshot": {
                 "content": "again",
                 "llmSelection": {"profile_id": "p-alt", "model_id": "m-alt"},
+                "masteryAnswer": {"question_id": "question-1", "text": "B"},
             }
         },
     )
@@ -777,6 +786,9 @@ async def test_regenerate_reuses_snapshot_or_override_llm_selection(tmp_path) ->
         "profile_id": "p-alt",
         "model_id": "m-alt",
     }
+
+    await runtime.regenerate_last_turn(session["id"], overrides={"replay_snapshot": True})
+    assert captured_payloads[-1]["mastery_answer"] == {"question_id": "question-1", "text": "B"}
 
     await runtime.regenerate_last_turn(
         session["id"],

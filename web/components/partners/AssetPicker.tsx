@@ -12,6 +12,7 @@ import { BookOpen, Database, NotebookPen } from "lucide-react";
 import { listKnowledgeBases } from "@/features/knowledge/api/catalog";
 import { listSkills } from "@/lib/skills-api";
 import { listNotebooks } from "@/lib/notebook-api";
+import Tooltip from "@/shared/ui/Tooltip";
 
 export interface AssetSelection {
   knowledge_bases: string[];
@@ -60,19 +61,19 @@ function ChipGroup({
           {options.map((option) => {
             const active = selected.includes(option.id);
             return (
-              <button
-                key={option.id}
-                type="button"
-                onClick={() => onToggle(option.id)}
-                title={option.hint}
-                className={`rounded-full border px-3.5 py-1.5 text-[13px] transition-all duration-150 active:scale-[0.97] ${
-                  active
-                    ? "border-[var(--primary)] bg-[var(--secondary)] font-medium text-[var(--primary)]"
-                    : "border-[var(--border)] text-[var(--muted-foreground)] hover:border-[var(--ring)] hover:text-[var(--foreground)]"
-                }`}
-              >
-                {option.label}
-              </button>
+              <Tooltip key={option.id} label={option.label} description={option.hint}>
+                <button
+                  type="button"
+                  onClick={() => onToggle(option.id)}
+                  className={`rounded-full border px-3.5 py-1.5 text-[13px] transition-all duration-150 active:scale-[0.97] ${
+                    active
+                      ? "border-[var(--primary)] bg-[var(--secondary)] font-medium text-[var(--primary)]"
+                      : "border-[var(--border)] text-[var(--muted-foreground)] hover:border-[var(--ring)] hover:text-[var(--foreground)]"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              </Tooltip>
             );
           })}
         </div>

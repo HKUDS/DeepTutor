@@ -1,5 +1,6 @@
 "use client";
 
+import Tooltip from "@/shared/ui/Tooltip";
 import { navigateTask } from "@/lib/workspace-scope";
 import { sessionWorkspaceId } from "@/lib/session-api";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -191,16 +192,17 @@ export default function ArchivedChatsSettingsSection() {
           <option value="mastery">{t("Mastery Path")}</option>
           <option value="reading">{t("Immersive Reading")}</option>
         </select>
-        <button
-          type="button"
-          onClick={() => void refresh()}
-          disabled={loading || !!busy}
-          aria-label={t("Refresh")}
-          title={t("Refresh")}
-          className="rounded-xl border border-[var(--border)] p-2.5 disabled:opacity-40"
-        >
-          <RefreshCw size={16} />
-        </button>
+        <Tooltip label={t("Refresh")} side="top">
+          <button
+            type="button"
+            onClick={() => void refresh()}
+            disabled={loading || !!busy}
+            aria-label={t("Refresh")}
+            className="rounded-xl border border-[var(--border)] p-2.5 disabled:opacity-40"
+          >
+            <RefreshCw size={16} />
+          </button>
+        </Tooltip>
       </div>
       {error && (
         <p role="alert" className="mb-4 text-sm text-red-600 dark:text-red-400">

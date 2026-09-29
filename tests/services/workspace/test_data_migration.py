@@ -15,6 +15,27 @@ from deeptutor.services.workspace.models import WorkspaceError
 from tests.services.workspace.test_data_scope import account as account
 
 
+def test_task_board_export_and_migration_preserve_archived_cards(account):
+    from deeptutor.services.task_board import CreateCard, UpdateCard, get_task_board_store
+    from deeptutor.services.workspace.data_migration import export_path
+
+    target = account.create_workspace("Destination")["workspace_id"]
+    with workspace_context():
+        store = get_task_board_store()
+        card = store.create(CreateCard(title="Review examples")).cards[0]
+        expected = store.update(card.id, UpdateCard(status="done", archived=True))
+    feature = next(row for row in discover()["features"] if row["feature"] == "task-board")
+    assert not feature["error"]
+    exported = export_data("", ["task-board"])
+    with zipfile.ZipFile(export_path(exported["id"])) as archive:
+        assert any(name.endswith("cards.sqlite") for name in archive.namelist())
+    assert migrate_data("", target, ["task-board"])["status"] == "completed"
+    with workspace_context(target):
+        assert get_task_board_store().read() == expected
+    with workspace_context():
+        assert get_task_board_store().read().cards == []
+
+
 @pytest.mark.asyncio
 async def test_migration_keeps_messages_branches_questions_and_source_backup(account):
     target = account.create_workspace("Destination")["workspace_id"]

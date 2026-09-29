@@ -65,6 +65,20 @@ def test_unifically_provider_lookup_and_base_detection() -> None:
     assert find_gateway(api_base="https://api.unifically.com/v1") == spec
 
 
+def test_cheaperinference_provider_aliases_and_base_detection() -> None:
+    spec = find_by_name("cheaperinference")
+
+    assert spec is not None
+    assert spec.display_name == "Cheaper Inference"
+    assert spec.env_key == "CHEAPER_INFERENCE_API_KEY"
+    assert spec.backend == "openai_compat"
+    assert spec.mode == "gateway"
+    assert spec.default_api_base == "https://api.cheaperinference.com/v1"
+    assert find_by_name("cheaper-inference") == spec
+    assert find_by_name("cheaper_inference") == spec
+    assert find_gateway(api_base="https://api.cheaperinference.com/v1") == spec
+
+
 def test_openai_codex_is_not_detected_from_api_base() -> None:
     assert find_gateway(api_base="https://codex.example.com/v1") is None
 

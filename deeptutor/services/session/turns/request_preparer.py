@@ -67,6 +67,8 @@ _REPLAY_SNAPSHOT_FIELDS: dict[str, str] = {
     "course_id": "courseId",
     "mastery_path_id": "masteryPathId",
     "mastery_session_mode": "masterySessionMode",
+    "mastery_answer": "masteryAnswer",
+    "mastery_skip": "masterySkip",
     "reading_material_id": "readingMaterialId",
     "reading_material_revision": "readingMaterialRevision",
     "reading_workspace_id": "readingWorkspaceId",

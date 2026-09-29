@@ -9,6 +9,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Eye, EyeOff } from "lucide-react";
+import Tooltip from "@/shared/ui/Tooltip";
 
 export type JsonSchema = {
   type?: string | string[];
@@ -329,19 +330,22 @@ export function SchemaField({
           className={`w-full rounded-lg border border-[var(--border)] bg-transparent py-2 pl-3 ${isSecret ? "pr-10 font-mono" : "pr-3"} text-[13px] outline-none focus:border-[var(--ring)]`}
         />
         {isSecret && (
-          <button
-            type="button"
-            onClick={() => toggleSecret(path)}
-            className="absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-            aria-label={reveal ? t("Hide secret") : t("Show secret")}
-            title={reveal ? t("Hide secret") : t("Show secret")}
-          >
-            {reveal ? (
-              <EyeOff className="h-4 w-4" />
-            ) : (
-              <Eye className="h-4 w-4" />
-            )}
-          </button>
+          <span className="absolute right-1 top-1/2 -translate-y-1/2">
+            <Tooltip label={reveal ? t("Hide secret") : t("Show secret")}>
+              <button
+                type="button"
+                onClick={() => toggleSecret(path)}
+                className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                aria-label={reveal ? t("Hide secret") : t("Show secret")}
+              >
+                {reveal ? (
+                  <EyeOff className="h-4 w-4" />
+                ) : (
+                  <Eye className="h-4 w-4" />
+                )}
+              </button>
+            </Tooltip>
+          </span>
         )}
       </div>
     </div>

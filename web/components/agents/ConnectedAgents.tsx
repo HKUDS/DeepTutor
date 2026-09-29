@@ -1,5 +1,6 @@
 "use client";
 
+import Tooltip from "@/shared/ui/Tooltip";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Cpu, Loader2, Plug, Plus, Trash2, X } from "lucide-react";
@@ -160,20 +161,21 @@ export default function ConnectedAgents() {
                     {conn.cwd ? ` · ${conn.cwd}` : ""}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => void handleDisconnect(conn.name)}
-                  disabled={busyName === conn.name}
-                  title={tr({ zh: "断开", en: "Disconnect" })}
-                  aria-label={tr({ zh: "断开", en: "Disconnect" })}
-                  className="rounded-lg border border-[var(--border)]/50 p-2 text-[var(--muted-foreground)] transition-colors hover:border-red-300 hover:text-red-600 disabled:opacity-50 dark:hover:border-red-900 dark:hover:text-red-400"
-                >
-                  {busyName === conn.name ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Trash2 className="h-3.5 w-3.5" />
-                  )}
-                </button>
+                <Tooltip label={tr({ zh: "断开", en: "Disconnect" })} side="top">
+                  <button
+                    type="button"
+                    onClick={() => void handleDisconnect(conn.name)}
+                    disabled={busyName === conn.name}
+                    aria-label={tr({ zh: "断开", en: "Disconnect" })}
+                    className="rounded-lg border border-[var(--border)]/50 p-2 text-[var(--muted-foreground)] transition-colors hover:border-red-300 hover:text-red-600 disabled:opacity-50 dark:hover:border-red-900 dark:hover:text-red-400"
+                  >
+                    {busyName === conn.name ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                </Tooltip>
               </div>
             );
           })}

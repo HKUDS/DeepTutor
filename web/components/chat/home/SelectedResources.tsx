@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { useResourceReuse, ResourceReuseControl } from "./ResourceReuse";
 import type { ContextTreeItem } from "./ContextReferenceTree";
 import type { ResourceKind } from "@/lib/resource-reuse";
+import Tooltip from "@/shared/ui/Tooltip";
 
 const kinds: Record<string, ResourceKind> = {
   file: "attachments",
@@ -56,7 +57,7 @@ export default function SelectedResources({
                   type="button"
                   disabled={!item.onClick}
                   onClick={item.onClick}
-                  title={`${item.kind} · ${item.label}`}
+                  aria-label={`${item.kind} · ${item.label}`}
                   className="flex min-w-0 items-center gap-1.5 text-left disabled:cursor-default"
                 >
                   {item.thumbnailUrl ? (
@@ -73,25 +74,30 @@ export default function SelectedResources({
                   )}
                   <span className="truncate">{item.label}</span>
                 </button>
-                <span
-                  title={t(repeat ? "Every turn" : "This turn only")}
-                  className="shrink-0 text-[var(--muted-foreground)]"
-                >
-                  {repeat ? (
-                    <Pin size={11} />
-                  ) : (
-                    <span className="text-[10px]">{t("This turn only")}</span>
-                  )}
-                </span>
-                {item.onRemove && (
-                  <button
-                    type="button"
-                    aria-label={`${t("Remove")} ${item.label}`}
-                    onClick={item.onRemove}
-                    className="rounded p-0.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                <Tooltip label={t(repeat ? "Every turn" : "This turn only")} side="top">
+                  <span
+                    role="img"
+                    aria-label={t(repeat ? "Every turn" : "This turn only")}
+                    className="shrink-0 text-[var(--muted-foreground)]"
                   >
-                    <X size={12} />
-                  </button>
+                    {repeat ? (
+                      <Pin size={11} aria-hidden="true" />
+                    ) : (
+                      <span className="text-[10px]">{t("This turn only")}</span>
+                    )}
+                  </span>
+                </Tooltip>
+                {item.onRemove && (
+                  <Tooltip label={`${t("Remove")} ${item.label}`} side="top">
+                    <button
+                      type="button"
+                      aria-label={`${t("Remove")} ${item.label}`}
+                      onClick={item.onRemove}
+                      className="rounded p-0.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                    >
+                      <X size={12} />
+                    </button>
+                  </Tooltip>
                 )}
               </motion.div>
             );

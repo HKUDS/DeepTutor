@@ -33,6 +33,7 @@ import {
 } from "@/lib/chat-import/attribution";
 import { normalizeMessageContent, truncateText } from "@/lib/message-content";
 import { displaySessionTitle } from "@/lib/session-title";
+import Tooltip from "@/shared/ui/Tooltip";
 
 interface MyAgentsPickerProps {
   open: boolean;
@@ -492,15 +493,16 @@ export default function MyAgentsPicker({
                                     </div>
                                   </div>
                                 </button>
-                                <button
-                                  type="button"
-                                  onClick={() => void openPreview(row)}
-                                  title={t("Preview")}
-                                  aria-label={t("Preview")}
-                                  className="mr-3 mt-3 shrink-0 rounded-lg border border-transparent p-1.5 text-[var(--muted-foreground)] opacity-0 transition-all hover:border-[var(--border)] hover:text-[var(--foreground)] focus:opacity-100 group-hover/row:opacity-100"
-                                >
-                                  <Eye size={15} />
-                                </button>
+                                <Tooltip label={t("Preview")} side="top">
+                                  <button
+                                    type="button"
+                                    onClick={() => void openPreview(row)}
+                                    aria-label={t("Preview")}
+                                    className="mr-3 mt-3 shrink-0 rounded-lg border border-transparent p-1.5 text-[var(--muted-foreground)] opacity-0 transition-all hover:border-[var(--border)] hover:text-[var(--foreground)] focus:opacity-100 group-hover/row:opacity-100"
+                                  >
+                                    <Eye size={15} />
+                                  </button>
+                                </Tooltip>
                               </div>
                             );
                           })}

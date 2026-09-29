@@ -132,6 +132,18 @@ def test_next_objective_new_is_probe_then_practice_when_seen():
     assert policy.next_objective(progress).action == "practice"
 
 
+def test_next_objective_teaches_before_assessing_when_learner_requests_it():
+    from deeptutor.learning.models import LearnerProfile, QuizAttempt
+
+    progress = _progress(_kp("kp1", KnowledgeType.PROCEDURE))
+    progress.learner_profile = LearnerProfile(teaching_strategy="teach_first")
+    assert policy.next_objective(progress).action == "teach"
+    progress.quiz_attempts.append(
+        QuizAttempt(question_id="q", knowledge_point_id="kp1", is_correct=False)
+    )
+    assert policy.next_objective(progress).action == "practice"
+
+
 def test_next_objective_qualitative_type_recommends_assess():
     kp = _kp("kp1", KnowledgeType.DESIGN)
     progress = _progress(kp)

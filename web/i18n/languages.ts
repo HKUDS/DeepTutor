@@ -3,6 +3,7 @@ export const APP_LANGUAGES = [
   { code: "en", labelKey: "language.english" },
   { code: "zh", labelKey: "language.chinese" },
   { code: "fr", labelKey: "language.french" },
+  { code: "de", labelKey: "language.german" },
   { code: "uk", labelKey: "language.ukrainian" },
 ] as const;
 
@@ -22,6 +23,7 @@ export function normalizeLanguage(value: unknown): AppLanguage {
   const base = code.split("-", 1)[0];
   if (base === "zh" || base === "cn" || code === "chinese") return "zh";
   if (base === "fr" || code === "french") return "fr";
+  if (base === "de" || code === "german" || code === "deutsch") return "de";
   if (base === "uk" || base === "ua" || code === "ukrainian") return "uk";
   return "en";
 }

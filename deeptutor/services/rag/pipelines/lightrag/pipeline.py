@@ -21,7 +21,7 @@ from deeptutor.services.rag.index_versioning import (
 )
 from deeptutor.services.rag.kb_paths import resolve_kb_dir
 
-from . import block_policy, engine, indexing_policy, ingress, storage
+from . import block_policy, cache_reuse, engine, indexing_policy, ingress, storage
 from . import config as lr_config
 from .indexing_policy import (
     IndexingPolicyError,
@@ -432,6 +432,14 @@ class LightRagPipeline:
             snapshot = indexing_policy.with_image_analysis(snapshot, kwargs["image_analysis"])
         root_dir = resolve_storage_dir_for_rebuild(kb_dir, None)
         try:
+            persisted_policy = getattr(snapshot, "persisted_policy", None)
+            if callable(persisted_policy):
+                await asyncio.to_thread(
+                    cache_reuse.inherit_index_cache,
+                    kb_dir,
+                    root_dir,
+                    persisted_policy(),
+                )
             outcome = await self._run_indexing(
                 root_dir,
                 file_paths,

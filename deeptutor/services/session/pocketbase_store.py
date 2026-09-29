@@ -42,6 +42,9 @@ _VALID_ID = re.compile(r"^[a-zA-Z0-9_-]+$")
 _ACTIVE_TURN_STATUSES = frozenset({"queued", "running", "waiting_input"})
 _TERMINAL_TURN_STATUSES = frozenset({"completed", "failed", "cancelled"})
 _ALL_TURN_STATUSES = _ACTIVE_TURN_STATUSES | _TERMINAL_TURN_STATUSES
+# The deployed PocketBase messages collection has no parent column. Keep the
+# link inside its JSON metadata until the collection schema can be upgraded.
+_PARENT_MESSAGE_METADATA_KEY = "_parent_message_id"
 
 
 def _captured_store_context(method):
@@ -860,12 +863,11 @@ class PocketBaseSessionStore:
         metadata: dict[str, Any] | None = None,
         parent_message_id: int | str | None = None,
     ) -> int | str:
-        # ``parent_message_id`` is accepted to match the protocol shape but is
-        # not yet wired through PocketBase storage — branching only works on
-        # the SQLite backend today.
-        _ = parent_message_id
         sid = _validate_id(session_id, "session_id")
         now = time.time()
+        stored_metadata = dict(metadata or {})
+        if parent_message_id is not None:
+            stored_metadata[_PARENT_MESSAGE_METADATA_KEY] = str(parent_message_id)
 
         def _add():
             if _find_session_record(_pb(), sid, _current_user_id()) is None:
@@ -877,7 +879,7 @@ class PocketBaseSessionStore:
                 "capability": capability or "",
                 "events_json": events or [],
                 "attachments_json": attachments or [],
-                "metadata_json": metadata or {},
+                "metadata_json": stored_metadata,
                 "msg_created_at": now,
             }
             record = _pb().collection("messages").create(payload)
@@ -1200,7 +1202,10 @@ class PocketBaseSessionStore:
         ]
 
     def _message_record_to_dict(self, record: Any) -> dict[str, Any]:
-        return {
+        raw_metadata = _json_loads(getattr(record, "metadata_json", None), {})
+        metadata = dict(raw_metadata) if isinstance(raw_metadata, dict) else {}
+        parent_message_id = metadata.pop(_PARENT_MESSAGE_METADATA_KEY, None)
+        message = {
             "id": getattr(record, "id", ""),
             "session_id": getattr(record, "session_id", ""),
             "role": getattr(record, "role", ""),
@@ -1208,9 +1213,12 @@ class PocketBaseSessionStore:
             "capability": getattr(record, "capability", "") or "",
             "events": _json_loads(getattr(record, "events_json", None), []),
             "attachments": _json_loads(getattr(record, "attachments_json", None), []),
-            "metadata": _json_loads(getattr(record, "metadata_json", None), {}),
+            "metadata": metadata,
             "created_at": _to_float(getattr(record, "msg_created_at", None)),
         }
+        if parent_message_id is not None:
+            message["parent_message_id"] = parent_message_id
+        return message
 
     # ------------------------------------------------------------------
     # Turns
@@ -1367,6 +1375,35 @@ class PocketBaseSessionStore:
             return [self._turn_record_to_dict(r) for r in records]
         except Exception:
             return []
+
+    @_captured_store_context
+    async def list_orphaned_failed_turns(self, session_id: str) -> list[dict[str, Any]]:
+        if await self.get_session(session_id) is None:
+            return []
+        sid = _validate_id(session_id, "session_id")
+
+        def _list():
+            return (
+                _pb()
+                .collection("turns")
+                .get_full_list(
+                    query_params={
+                        "filter": f'session_id="{sid}" && status="failed"',
+                        "sort": "turn_created_at",
+                    }
+                )
+            )
+
+        try:
+            records = await asyncio.to_thread(_list)
+        except Exception:
+            logger.exception("Could not list orphaned failed turns for session %s", sid)
+            return []
+        return [
+            self._turn_record_to_dict(record)
+            for record in records
+            if not getattr(record, "assistant_message_id", None)
+        ]
 
     @_captured_store_context
     async def list_nonterminal_turns(self) -> list[dict[str, Any]]:

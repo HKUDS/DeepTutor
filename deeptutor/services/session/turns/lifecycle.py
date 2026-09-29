@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from deeptutor.services.app_update import UpdateJob
 
 logger = logging.getLogger(__name__)
+_SUBSCRIPTION_POLL_SECONDS = 5.0
 
 
 class TurnLifecycle:
@@ -363,11 +364,16 @@ class TurnLifecycle:
         # the frontend's ``isStreaming`` state clears immediately rather than
         # waiting on the 45s heartbeat-timeout + reconnect catchup path.
         done_yielded = False
+        terminal_error_yielded = False
 
         def _track(item: dict[str, Any]) -> dict[str, Any]:
-            nonlocal done_yielded
+            nonlocal done_yielded, terminal_error_yielded
             if str(item.get("type") or "") == "done":
                 done_yielded = True
+            if str(item.get("type") or "") == "error" and (item.get("metadata") or {}).get(
+                "turn_terminal"
+            ):
+                terminal_error_yielded = True
             return item
 
         for item in backlog:
@@ -410,7 +416,11 @@ class TurnLifecycle:
                 # persisted history above — synthesise one so the caller can
                 # still close out its streaming state cleanly.
                 if not done_yielded:
-                    if turn is not None and str(turn.get("status") or "") == "failed":
+                    if (
+                        not terminal_error_yielded
+                        and turn is not None
+                        and str(turn.get("status") or "") == "failed"
+                    ):
                         error_event = self._synthesize_error_event(
                             turn_id,
                             turn,
@@ -425,14 +435,49 @@ class TurnLifecycle:
                         seq=last_seq + 1,
                     )
                 return
-            # A running turn may be owned by another worker. Subscription is a
-            # read-only operation; distributed coordinators attach a live event
-            # source above this local-runtime fallback.
-            return
+            # A running turn may be owned by another worker, including one
+            # whose lease is about to be recovered. Keep watching persisted
+            # events so recovery can reach this subscriber without requiring
+            # the browser to reconnect after its long idle timeout.
         queue_drained = False
         try:
             while True:
-                item = await queue.get()
+                try:
+                    item = await asyncio.wait_for(queue.get(), timeout=_SUBSCRIPTION_POLL_SECONDS)
+                except TimeoutError:
+                    # A dead producer cannot put a sentinel on its old local
+                    # queue. Reconcile against the durable turn, including a
+                    # recovery worker's terminal events, while the socket is
+                    # still open (#1570).
+                    for persisted in await self.store.get_turn_events(turn_id, after_seq=last_seq):
+                        seq = int(persisted.get("seq") or 0)
+                        if seq <= last_seq:
+                            continue
+                        last_seq = seq
+                        yield _track(persisted)
+                    persisted_turn = await self.store.get_turn(turn_id)
+                    if persisted_turn is None or str(persisted_turn.get("status") or "") in {
+                        "failed",
+                        "cancelled",
+                        "completed",
+                    }:
+                        if not done_yielded:
+                            if (
+                                not terminal_error_yielded
+                                and persisted_turn is not None
+                                and persisted_turn.get("status") == "failed"
+                            ):
+                                error_event = self._synthesize_error_event(
+                                    turn_id, persisted_turn, seq=last_seq + 1
+                                )
+                                if error_event is not None:
+                                    yield error_event
+                                    last_seq += 1
+                            yield self._synthesize_done_event(
+                                turn_id, persisted_turn, seq=last_seq + 1
+                            )
+                        break
+                    continue
                 if item is None:
                     queue_drained = True
                     break

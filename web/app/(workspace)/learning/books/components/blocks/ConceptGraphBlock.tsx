@@ -134,7 +134,6 @@ export default function ConceptGraphBlock({
                 <li key={chapter.id}>
                   <Link
                     href={bookRoute(bookId, chapter.page_id)}
-                    title={chapter.title}
                     className="block rounded-md px-2 py-1.5 hover:bg-[var(--background)]"
                   >
                     {label}
@@ -145,7 +144,6 @@ export default function ConceptGraphBlock({
             return (
               <li
                 key={chapter.id}
-                title={chapter.title}
                 className="rounded-md px-2 py-1.5 text-[var(--foreground)]"
               >
                 {label}

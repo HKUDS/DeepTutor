@@ -16,6 +16,7 @@ from deeptutor.services.session.turn_runtime import (
     _resolve_turn_outcome,
     _TurnExecution,
 )
+from deeptutor.services.session.turns import lifecycle as lifecycle_module
 
 
 def _isolate_learning_store(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
@@ -213,23 +214,67 @@ async def test_replacing_subscription_does_not_synthesize_duplicate_done(tmp_pat
 
 
 @pytest.mark.asyncio
-async def test_subscribe_turn_does_not_mutate_remote_running_turn(tmp_path) -> None:
+async def test_subscribe_turn_does_not_mutate_remote_running_turn(tmp_path, monkeypatch) -> None:
     """A subscriber may be on a different worker from the turn owner."""
 
+    monkeypatch.setattr(lifecycle_module, "_SUBSCRIPTION_POLL_SECONDS", 0.01)
     store = SQLiteSessionStore(tmp_path / "chat_history.db")
     runtime = TurnRuntimeManager(store)
     session = await store.ensure_session(None)
     turn = await store.create_turn(session["id"], capability="chat")
 
     events: list[dict] = []
-    async for event in runtime.subscribe_turn(turn["id"], after_seq=0):
-        events.append(event)
+
+    async def _collect() -> None:
+        async for event in runtime.subscribe_turn(turn["id"], after_seq=0):
+            events.append(event)
+
+    task = asyncio.create_task(_collect())
+    await asyncio.sleep(0.04)
 
     persisted = await store.get_turn(turn["id"])
     assert persisted is not None
     assert persisted["status"] == "running"
     assert persisted["error"] == ""
     assert events == []
+    assert await store.update_turn_status(turn["id"], "completed") is True
+    await asyncio.wait_for(task, timeout=1)
+    assert [event["type"] for event in events] == ["done"]
+
+
+@pytest.mark.asyncio
+async def test_worker_lost_unblocks_a_stale_local_subscriber(tmp_path, monkeypatch) -> None:
+    """Recovery's durable terminal state reaches an abandoned live queue."""
+
+    monkeypatch.setattr(lifecycle_module, "_SUBSCRIPTION_POLL_SECONDS", 0.01)
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    runtime = TurnRuntimeManager(store)
+    session = await store.ensure_session(None)
+    turn = await store.create_turn(session["id"], capability="mastery_path")
+    execution = _TurnExecution(
+        turn_id=turn["id"], session_id=session["id"], capability="mastery_path", payload={}
+    )
+    runtime._executions[turn["id"]] = execution
+    events: list[dict] = []
+
+    async def _collect() -> None:
+        async for event in runtime.subscribe_turn(turn["id"]):
+            events.append(event)
+
+    task = asyncio.create_task(_collect())
+    for _ in range(100):
+        if execution.subscribers:
+            break
+        await asyncio.sleep(0.01)
+    assert execution.subscribers
+    assert await store.transition_turn(
+        turn["id"], "failed", error="Worker lost", failure_code="worker_lost", retryable=True
+    )
+    await asyncio.wait_for(task, timeout=1)
+
+    assert [event["type"] for event in events] == ["error", "done"]
+    assert events[0]["metadata"]["error_code"] == "worker_lost"
+    assert events[1]["metadata"]["status"] == "failed"
 
 
 @pytest.mark.asyncio

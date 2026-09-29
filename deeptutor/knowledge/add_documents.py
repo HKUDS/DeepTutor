@@ -11,7 +11,6 @@ import hashlib
 import itertools
 import json
 import logging
-import os
 from pathlib import Path
 import shutil
 from typing import TYPE_CHECKING, List, Optional
@@ -415,9 +414,7 @@ class DocumentAdder:
             except PermissionError as e:
                 logger.exception("Permission denied while indexing %s: %s", doc_file.name, e)
                 raise DataVolumePermissionError(
-                    format_data_volume_permission_error(
-                        self.kb_dir, uid=os.geteuid(), gid=os.getegid(), cause=e
-                    )
+                    format_data_volume_permission_error(self.kb_dir, cause=e)
                 ) from e
             except Exception as e:
                 logger.exception(f"Failed {doc_file.name}: {e}")

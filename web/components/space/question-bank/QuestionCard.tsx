@@ -18,6 +18,7 @@ import { optionIsAnswer } from "@/lib/question-bank-answers";
 import { bookRoute, masterySessionRoute } from "@/lib/learning-routes";
 import CategoryMenu from "./CategoryMenu";
 import { practiceMarkdown } from "@/lib/practice-content";
+import Tooltip from "@/shared/ui/Tooltip";
 
 const SOURCE_LABELS: Record<NotebookEntry["source"], string> = {
   deep_question: "Deep Question",
@@ -190,12 +191,20 @@ export default function QuestionCard({
   const badge = resultBadge(entry);
   const showReviewState =
     !!entry.practice?.is_mistake || mistakesOnly || result === "incorrect" || result === "partial";
+  const hasConversationSession =
+    !!entry.session_id &&
+    !entry.session_id.startsWith("reading-notebook:") &&
+    !entry.session_id.startsWith("partner-notebook:");
   const independentProvenance =
-    !entry.session_id &&
+    !hasConversationSession &&
     entry.source !== "book" &&
     entry.source !== "immersive_reading" &&
     entry.source !== "mastery_path"
-      ? entry.material_title || entry.section_title || entry.origin_ref || ""
+      ? entry.material_title ||
+        entry.section_title ||
+        (entry.source === "partner_chat" ? entry.session_title : "") ||
+        entry.origin_ref ||
+        ""
       : "";
 
   return (
@@ -278,47 +287,53 @@ export default function QuestionCard({
             onUnpick={onUnfile}
             onCreate={onCreateAndFile}
           />
-          <button
-            type="button"
-            onClick={onToggleBookmark}
-            disabled={disabled}
-            title={entry.bookmarked ? t("Remove Bookmark") : t("Bookmark")}
-            className={`rounded-lg p-1.5 transition-colors disabled:opacity-40 ${
-              entry.bookmarked
-                ? "text-[var(--primary)]"
-                : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]"
-            }`}
-          >
-            <Bookmark className="h-3.5 w-3.5" fill={entry.bookmarked ? "currentColor" : "none"} />
-          </button>
-          {showReviewState && (
+          <Tooltip label={entry.bookmarked ? t("Remove Bookmark") : t("Bookmark")}>
             <button
               type="button"
-              onClick={onToggleResolved}
+              onClick={onToggleBookmark}
               disabled={disabled}
-              title={entry.resolved ? t("Reopen Review") : t("Mark Resolved")}
+              aria-label={entry.bookmarked ? t("Remove Bookmark") : t("Bookmark")}
               className={`rounded-lg p-1.5 transition-colors disabled:opacity-40 ${
-                entry.resolved
-                  ? "text-green-600 dark:text-green-400"
+                entry.bookmarked
+                  ? "text-[var(--primary)]"
                   : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]"
               }`}
             >
-              {entry.resolved ? (
-                <RotateCcw className="h-3.5 w-3.5" />
-              ) : (
-                <CheckCheck className="h-3.5 w-3.5" />
-              )}
+              <Bookmark className="h-3.5 w-3.5" fill={entry.bookmarked ? "currentColor" : "none"} />
             </button>
+          </Tooltip>
+          {showReviewState && (
+            <Tooltip label={entry.resolved ? t("Reopen Review") : t("Mark Resolved")}>
+              <button
+                type="button"
+                onClick={onToggleResolved}
+                disabled={disabled}
+                aria-label={entry.resolved ? t("Reopen Review") : t("Mark Resolved")}
+                className={`rounded-lg p-1.5 transition-colors disabled:opacity-40 ${
+                  entry.resolved
+                    ? "text-green-600 dark:text-green-400"
+                    : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]"
+                }`}
+              >
+                {entry.resolved ? (
+                  <RotateCcw className="h-3.5 w-3.5" />
+                ) : (
+                  <CheckCheck className="h-3.5 w-3.5" />
+                )}
+              </button>
+            </Tooltip>
           )}
-          <button
-            type="button"
-            onClick={onDelete}
-            disabled={disabled}
-            title={t("Delete")}
-            className="rounded-lg p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-40 dark:hover:bg-red-950/30"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
+          <Tooltip label={t("Delete")}>
+            <button
+              type="button"
+              onClick={onDelete}
+              disabled={disabled}
+              aria-label={t("Delete")}
+              className="rounded-lg p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-40 dark:hover:bg-red-950/30"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </Tooltip>
         </div>
       </div>
 
@@ -458,20 +473,20 @@ export default function QuestionCard({
                 className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--muted)]/40 py-0.5 pl-2 pr-1 text-[var(--muted-foreground)]"
               >
                 {category.name}
-                <button
-                  type="button"
-                  onClick={() => void onUnfile(category.id)}
-                  disabled={disabled}
-                  title={t("Remove tag")}
-                  className="rounded p-0.5 transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-40"
-                >
-                  <X className="h-2.5 w-2.5" />
-                </button>
+                <Tooltip label={t("Remove tag")}>
+                  <button
+                    type="button"
+                    onClick={() => void onUnfile(category.id)}
+                    disabled={disabled}
+                    aria-label={t("Remove tag")}
+                    className="rounded p-0.5 transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-40"
+                  >
+                    <X className="h-2.5 w-2.5" />
+                  </button>
+                </Tooltip>
               </span>
             ))}
-            {entry.session_id &&
-              entry.source !== "import" &&
-              !entry.session_id.startsWith("reading-notebook:") && (
+            {hasConversationSession && entry.source !== "import" && (
               <Link
                 href={
                   entry.source === "mastery_path" && (entry.mastery_path_id || entry.material_id)

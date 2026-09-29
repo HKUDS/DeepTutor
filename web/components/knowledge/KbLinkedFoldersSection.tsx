@@ -1,5 +1,6 @@
 "use client";
 
+import Tooltip from "@/shared/ui/Tooltip";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   CheckCircle2,
@@ -213,22 +214,24 @@ export default function KbLinkedFoldersSection({
             )}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setLinkOpen(true)}
-          disabled={readOnly || activeSync}
-          className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-2 text-[12px] font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-45"
-          title={
-            readOnly
-              ? t("Assigned knowledge bases are read-only.")
-              : activeSync
-                ? t("Wait for the current sync to finish.")
-                : undefined
-          }
-        >
-          <FolderSync className="h-3.5 w-3.5" />
-          {t("Link folder")}
-        </button>
+        <Tooltip label={
+          readOnly
+            ? t("Assigned knowledge bases are read-only.")
+            : activeSync
+              ? t("Wait for the current sync to finish.")
+              : t("Link folder")
+        } side="top">
+          <button
+            type="button"
+            onClick={() => setLinkOpen(true)}
+            disabled={readOnly || activeSync}
+            className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-2 text-[12px] font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-45"
+            aria-label={t("Link folder")}
+          >
+            <FolderSync className="h-3.5 w-3.5" />
+            {t("Link folder")}
+          </button>
+        </Tooltip>
       </div>
 
       {readOnly && (
@@ -363,40 +366,42 @@ function LinkedFolderCard({
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-          <button
-            type="button"
-            onClick={onSync}
-            disabled={actionDisabled}
-            className="inline-flex min-h-9 items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] px-2.5 py-2 text-[11.5px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-45"
-            title={
+          <Tooltip label={
               readOnly
                 ? t("Assigned knowledge bases are read-only.")
                 : busy
                   ? t("Wait for the current sync to finish.")
                   : t("Check this folder for new or modified files")
-            }
-          >
-            {syncing ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : (
-              <RefreshCw className="h-3 w-3" />
-            )}
-            {syncing ? t("Syncing…") : t("Sync now")}
-          </button>
-          <button
-            type="button"
-            onClick={onUnlink}
-            disabled={actionDisabled}
-            aria-label={t("Unlink {{path}}", { path: folder.path })}
-            title={t("Unlink folder")}
-            className="inline-flex min-h-9 min-w-9 items-center justify-center rounded-md border border-transparent px-2 py-2 text-[var(--muted-foreground)] transition-colors hover:bg-red-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-45 dark:hover:bg-red-950/30"
-          >
-            {unlinking ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Trash2 className="h-3.5 w-3.5" />
-            )}
-          </button>
+            } side="top">
+            <button
+              type="button"
+              onClick={onSync}
+              disabled={actionDisabled}
+              className="inline-flex min-h-9 items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] px-2.5 py-2 text-[11.5px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              {syncing ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3 w-3" />
+              )}
+              {syncing ? t("Syncing…") : t("Sync now")}
+            </button>
+          </Tooltip>
+          <Tooltip label={t("Unlink folder")} side="top">
+            <button
+              type="button"
+              onClick={onUnlink}
+              disabled={actionDisabled}
+              aria-label={t("Unlink {{path}}", { path: folder.path })}
+              className="inline-flex min-h-9 min-w-9 items-center justify-center rounded-md border border-transparent px-2 py-2 text-[var(--muted-foreground)] transition-colors hover:bg-red-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-45 dark:hover:bg-red-950/30"
+            >
+              {unlinking ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5" />
+              )}
+            </button>
+          </Tooltip>
         </div>
       </div>
 

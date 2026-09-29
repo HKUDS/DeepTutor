@@ -18,6 +18,7 @@ function runAudit(
       en,
       zh,
       fr: partial.fr ?? en,
+      de: en,
       uk: partial.uk ?? en,
     })) {
       mkdirSync(path.join(root, "locales", locale), { recursive: true });

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUp, AtSign, Square, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import Tooltip from "@/shared/ui/Tooltip";
 
 import PartnerAvatar from "@/components/partners/PartnerAvatar";
 import { shouldSubmitOnEnter } from "@/lib/composer-keyboard";
@@ -235,24 +236,28 @@ export default function GroupComposer({
             className="flex-1 resize-none bg-transparent px-2 py-2 text-[13px] leading-relaxed text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]"
           />
           {running ? (
-            <button
-              type="button"
-              onClick={onCancel}
-              title={t("Stop")}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--border)] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
-            >
-              <Square size={11} fill="currentColor" />
-            </button>
+            <Tooltip label={t("Stop")}>
+              <button
+                type="button"
+                onClick={onCancel}
+                aria-label={t("Stop")}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--border)] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+              >
+                <Square size={11} fill="currentColor" />
+              </button>
+            </Tooltip>
           ) : (
-            <button
-              type="button"
-              onClick={submit}
-              disabled={!input.trim() || !connected}
-              title={connected ? t("Send") : t("Connecting…")}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--primary)] text-[var(--primary-foreground)] transition-opacity disabled:opacity-35"
-            >
-              <ArrowUp size={15} />
-            </button>
+            <Tooltip label={connected ? t("Send") : t("Connecting…")}>
+              <button
+                type="button"
+                onClick={submit}
+                disabled={!input.trim() || !connected}
+                aria-label={connected ? t("Send") : t("Connecting…")}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--primary)] text-[var(--primary-foreground)] transition-opacity disabled:opacity-35"
+              >
+                <ArrowUp size={15} />
+              </button>
+            </Tooltip>
           )}
         </div>
       </div>

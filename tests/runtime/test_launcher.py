@@ -141,7 +141,12 @@ def test_start_does_not_create_nested_data_tree(monkeypatch, tmp_path: Path) -> 
     assert not bad_home.exists()
 
 
-def test_launcher_hands_pending_update_to_worker(tmp_path: Path) -> None:
+def test_launcher_hands_pending_update_to_worker(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from deeptutor.services import app_update
+
+    monkeypatch.setattr(app_update, "running_under_systemd_service", lambda: False)
     store = UpdateJobStore(update_store_root(tmp_path))
     pending = store.create(current_version="1.6.1", target_version="1.7.0")
     launched: list[Path] = []
@@ -158,6 +163,29 @@ def test_launcher_hands_pending_update_to_worker(tmp_path: Path) -> None:
     assert job.id == pending.id
     assert job.status == "handoff"
     assert job.restart_home == str(tmp_path.resolve())
+
+
+def test_launcher_keeps_systemd_service_running_for_pending_update(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from deeptutor.services import app_update
+
+    store = UpdateJobStore(update_store_root(tmp_path))
+    store.create(current_version="1.6.1", target_version="1.7.0")
+    monkeypatch.setattr(app_update, "running_under_systemd_service", lambda: True)
+    launched: list[Path] = []
+
+    assert (
+        launcher._handoff_pending_update(
+            tmp_path,
+            restart_argv=["start", "--home", str(tmp_path.resolve())],
+            worker_launcher=launched.append,
+        )
+        is False
+    )
+    assert launched == []
+    assert store.load().status == "failed"
+    assert not store.active_path.exists()
 
 
 def test_launcher_completes_update_only_after_restart(tmp_path: Path) -> None:

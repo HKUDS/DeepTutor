@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState, type MouseEventHandler } from "react";
 import { useTranslation } from "react-i18next";
+import Tooltip from "@/shared/ui/Tooltip";
 
 import {
   fetchAppUpdateStatus,
@@ -62,18 +63,19 @@ export function VersionBadge({ onNavigate }: VersionBadgeProps) {
             };
 
   return (
-    <Link
-      href="/settings/about"
-      prefetch={false}
-      onClick={onNavigate}
-      title={state.label as string}
-      aria-label={state.label as string}
-      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-background/50 hover:text-[var(--foreground)]"
-    >
-      <span
-        aria-hidden="true"
-        className={`h-1.5 w-1.5 rounded-full transition-colors ${state.dot}`}
-      />
-    </Link>
+    <Tooltip label={state.label as string} side="right">
+      <Link
+        href="/settings/about"
+        prefetch={false}
+        onClick={onNavigate}
+        aria-label={state.label as string}
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-background/50 hover:text-[var(--foreground)]"
+      >
+        <span
+          aria-hidden="true"
+          className={`h-1.5 w-1.5 rounded-full transition-colors ${state.dot}`}
+        />
+      </Link>
+    </Tooltip>
   );
 }

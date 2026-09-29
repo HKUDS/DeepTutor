@@ -5,6 +5,7 @@ from deeptutor.agents.math_animator.utils import (
     describe_unusable_output,
     escalated_max_tokens,
     extract_json_object,
+    trim_error_message,
 )
 from deeptutor.services.llm import StreamOutcome
 
@@ -25,6 +26,19 @@ def test_build_repair_error_message_adds_targeted_3d_point_hint() -> None:
 def test_build_repair_error_message_keeps_unknown_errors_plain() -> None:
     error_message = "NameError: name 'FadeInn' is not defined"
     assert build_repair_error_message(error_message) == error_message
+
+
+def test_render_error_keeps_start_and_end_with_latex_repair_hint() -> None:
+    stderr = "FileNotFoundError: latex executable missing\n" + "noise\n" * 300 + "last frame"
+    excerpt = trim_error_message(stderr, limit=120)
+    assert len(excerpt) <= 120
+    assert "latex executable missing" in excerpt
+    assert excerpt.endswith("last frame")
+
+    repaired = build_repair_error_message(excerpt, code="MathTex(r'x^2')")
+    assert "latex and dvisvgm" in repaired
+    assert "use Text" in repaired
+    assert build_repair_error_message(excerpt, code="Text('x')") == excerpt
 
 
 def test_extract_json_object_accepts_trailing_extra_data() -> None:

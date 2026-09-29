@@ -1938,8 +1938,29 @@ async def test_a_correction_merges_instead_of_wiping_the_other_answers(path_id):
         "target_level": "能看懂论文里的推导",
         "time_budget": "改成两周",
         "preferences": "",
+        "teaching_strategy": "probe_first",
         "notes": "",
     }
+
+
+@pytest.mark.asyncio
+async def test_teach_first_preference_persists_and_changes_next_step(path_id):
+    from deeptutor.tools.mastery_tool import MasteryProfileTool
+
+    profile = MasteryProfileTool()
+    selected = await profile.execute(_mastery_path_id=path_id, teaching_strategy="teach_first")
+    assert selected.success is True
+    await _build_basic(path_id)
+    status = tool_payload(await MasteryStatusTool().execute(_mastery_path_id=path_id))
+    assert status["learner_profile"]["teaching_strategy"] == "teach_first"
+    assert status["next"]["action"] == "teach"
+
+    restored = await profile.execute(_mastery_path_id=path_id, teaching_strategy="probe_first")
+    assert restored.success is True
+    status = tool_payload(await MasteryStatusTool().execute(_mastery_path_id=path_id))
+    assert status["next"]["action"] == "probe"
+    invalid = await profile.execute(_mastery_path_id=path_id, teaching_strategy="skip_all")
+    assert invalid.success is False
 
 
 @pytest.mark.asyncio

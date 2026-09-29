@@ -1,5 +1,6 @@
 "use client";
 
+import Tooltip from "@/shared/ui/Tooltip";
 import { useStagedSettings } from "@/features/settings/store/useStagedSettings";
 import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, Loader2, Lock, Search, Wrench, X } from "lucide-react";
@@ -257,15 +258,18 @@ export default function ToolsSettingsPage() {
             spellCheck={false}
           />
           {query && (
-            <button
-              type="button"
-              onClick={() => setQuery("")}
-              aria-label={t("Clear")}
-              title={t("Clear")}
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/30"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
+            <span className="absolute right-2 top-1/2 -translate-y-1/2">
+              <Tooltip label={t("Clear")} side="top">
+                <button
+                  type="button"
+                  onClick={() => setQuery("")}
+                  aria-label={t("Clear")}
+                  className="rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/30"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </Tooltip>
+            </span>
           )}
         </div>
       </div>
@@ -443,15 +447,21 @@ export default function ToolsSettingsPage() {
                                 label={t(isEnabled ? "On" : "Off")}
                               />
                             ) : (
-                              <span
-                                className="inline-flex items-center gap-1 rounded-full bg-[var(--muted)]/40 px-2 py-0.5 text-[10.5px] text-[var(--muted-foreground)]"
-                                title={t(
+                              <Tooltip
+                                label={t(
                                   "Auto-mounted by the agent when needed. Not user-toggleable.",
                                 )}
+                                side="top"
                               >
-                                <Lock className="h-3 w-3" />
-                                {t("Always on")}
-                              </span>
+                                <span
+                                  role="note"
+                                  tabIndex={0}
+                                  className="inline-flex items-center gap-1 rounded-full bg-[var(--muted)]/40 px-2 py-0.5 text-[10.5px] text-[var(--muted-foreground)]"
+                                >
+                                  <Lock className="h-3 w-3" />
+                                  {t("Always on")}
+                                </span>
+                              </Tooltip>
                             )}
                           </div>
                         </div>

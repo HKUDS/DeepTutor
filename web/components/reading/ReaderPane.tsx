@@ -1,6 +1,7 @@
 "use client";
 
 import { browserStorage } from "@/shared/storage";
+import Tooltip from "@/shared/ui/Tooltip";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import {
@@ -1265,26 +1266,27 @@ function HeaderButton({
   className?: string;
 }) {
   return (
-    <button
-      ref={buttonRef}
-      type="button"
-      title={label}
-      aria-label={label}
-      aria-pressed={menu ? undefined : active}
-      aria-haspopup={menu ? "menu" : undefined}
-      aria-expanded={menu ? active : undefined}
-      disabled={spinning || disabled}
-      onClick={onClick}
-      className={`h-7 w-7 shrink-0 items-center justify-center rounded-lg transition disabled:cursor-default ${
-        className || "inline-flex"
-      } ${
-        active
-          ? "bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary)]"
-          : "text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-35 disabled:hover:bg-transparent"
-      }`}
-    >
-      <Icon size={14} className={spinning ? "animate-spin" : undefined} />
-    </button>
+    <Tooltip label={label} suppressed={Boolean(menu && active)}>
+      <button
+        ref={buttonRef}
+        type="button"
+        aria-label={label}
+        aria-pressed={menu ? undefined : active}
+        aria-haspopup={menu ? "menu" : undefined}
+        aria-expanded={menu ? active : undefined}
+        disabled={spinning || disabled}
+        onClick={onClick}
+        className={`h-7 w-7 shrink-0 items-center justify-center rounded-lg transition disabled:cursor-default ${
+          className || "inline-flex"
+        } ${
+          active
+            ? "bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary)]"
+            : "text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-35 disabled:hover:bg-transparent"
+        }`}
+      >
+        <Icon size={14} className={spinning ? "animate-spin" : undefined} />
+      </button>
+    </Tooltip>
   );
 }
 
@@ -1310,7 +1312,6 @@ function MenuToolButton({
     <button
       type="button"
       role={active === undefined ? "menuitem" : "menuitemcheckbox"}
-      title={hint || label}
       aria-label={hint ? `${label}. ${hint}` : label}
       aria-checked={active}
       disabled={spinning || disabled}

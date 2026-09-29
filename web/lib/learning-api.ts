@@ -553,6 +553,7 @@ export interface LearnerProfile {
   target_level: string;
   time_budget: string;
   preferences: string;
+  teaching_strategy?: "probe_first" | "teach_first";
   notes: string;
   updated_at: number;
 }

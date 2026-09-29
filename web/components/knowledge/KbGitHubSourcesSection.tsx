@@ -1,5 +1,6 @@
 "use client";
 
+import Tooltip from "@/shared/ui/Tooltip";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Github, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
@@ -305,14 +306,16 @@ function SourceCard({
           </p>
         )}
       </div>
-      <button
-        type="button"
-        onClick={onRemove}
-        title={t("Remove source")}
-        className="shrink-0 rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-red-600"
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-      </button>
+      <Tooltip label={t("Remove source")} side="top">
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label={t("Remove source")}
+          className="shrink-0 rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-red-600"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      </Tooltip>
     </div>
   );
 }

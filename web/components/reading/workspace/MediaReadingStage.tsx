@@ -546,7 +546,6 @@ export function MediaReadingStage({
                 <YouTubeReadingPlayer
                   videoId={youtubeId}
                   startSeconds={startSeconds}
-                  title={title}
                   onController={handleController}
                   onTime={handleTime}
                   onPersist={persist}

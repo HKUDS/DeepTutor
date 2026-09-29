@@ -1,5 +1,5 @@
 import React from "react";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import KnowledgeBaseDetail from "@/components/knowledge/KnowledgeBaseDetail";
 import KbIndexVersionsSection from "@/components/knowledge/KbIndexVersionsSection";
@@ -173,8 +173,16 @@ it("shows the recorded bound version rather than a newer unbound publication", a
   });
   const boundRow = screen.getByText("version-1").closest("li");
   const newerRow = screen.getByText("version-2").closest("li");
-  expect(boundRow?.querySelector('[title="Active version"]')).not.toBeNull();
-  expect(newerRow?.querySelector('[title="Inactive version"]')).not.toBeNull();
+  const boundTrigger = boundRow?.querySelector<HTMLElement>('[role="img"][aria-label="Active version"]');
+  const newerTrigger = newerRow?.querySelector<HTMLElement>('[role="img"][aria-label="Inactive version"]');
+  expect(boundTrigger?.tabIndex).toBe(0);
+  expect(newerTrigger?.tabIndex).toBe(0);
+  expect(document.getElementById(boundTrigger?.getAttribute("aria-describedby") ?? "")).toHaveTextContent("Active version");
+  expect(document.getElementById(newerTrigger?.getAttribute("aria-describedby") ?? "")).toHaveTextContent("Inactive version");
+  fireEvent.focus(boundTrigger!);
+  await waitFor(() =>
+    expect(document.body.querySelector('[role="tooltip"].fixed')).toHaveTextContent("Active version"),
+  );
 });
 
 it.each(["ready", "error"])(

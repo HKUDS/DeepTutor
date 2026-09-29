@@ -237,6 +237,21 @@ def catalog_service_rows(
         required = name in required_services
         service = services.get(name) if isinstance(services.get(name), dict) else {}
         profiles = service.get("profiles") if isinstance(service.get("profiles"), list) else []
+
+        # A task reference selects a chat profile/model. Classify the selected
+        # model below with the same checks as every other catalog service.
+        if name == "task" and service.get("mode") == "reference":
+            selection = service.get("selection")
+            selection = selection if isinstance(selection, dict) else {}
+            chat_service = services.get("llm") if isinstance(services.get("llm"), dict) else {}
+            service = {
+                **service,
+                "active_profile_id": selection.get("profile_id"),
+                "active_model_id": selection.get("model_id"),
+                "profiles": chat_service.get("profiles"),
+            }
+            profiles = service["profiles"] if isinstance(service["profiles"], list) else []
+
         active_profile_id = service.get("active_profile_id")
         if not active_profile_id:
             rows.append(

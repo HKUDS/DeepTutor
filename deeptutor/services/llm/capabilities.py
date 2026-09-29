@@ -460,7 +460,13 @@ def _static_capability(
 
     # 1. Check model-specific overrides first
     if model:
-        model_lower = model.lower()
+        # Google's model list returns resource names ("models/gemini-2.5-flash")
+        # while every MODEL_OVERRIDES key is a bare id, so a catalog-supplied id
+        # missed each vendor rule and fell through to the binding default. The
+        # embedding layer already strips this prefix (see embedding_endpoint.py
+        # and embedding/adapters/gemini.py); match the same normalized form here
+        # so "Vision: Auto" resolves identically for both spellings (#1579).
+        model_lower = model.lower().removeprefix("models/")
         # Sort by pattern length descending to match most specific first
         for pattern, overrides in sorted(MODEL_OVERRIDES.items(), key=lambda x: -len(x[0])):
             if model_lower.startswith(pattern):

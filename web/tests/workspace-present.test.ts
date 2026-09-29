@@ -9,6 +9,7 @@ import {
   extractStreamedArtifacts,
   makeFileLinkRemarkPlugin,
   mergeGeneratedFiles,
+  unlinkedGeneratedFiles,
 } from '../components/common/InlineFileCard'
 
 function workspaceFile(path: string, id: string): MessageAttachment {
@@ -82,6 +83,36 @@ test('workspace Markdown images use the same attachment rewrite', () => {
     ],
   })
   assert.equal(paragraph.children?.[0]?.url, 'attachment:outputs%2Fvisualize%2Fturn%2Fchart.png')
+})
+
+test('external links keep their destination even when the basename matches a generated file', () => {
+  const file = workspaceFile('outputs/chat/turn/report.pdf', 'wsi_report')
+  const paragraph = runPlugin([file], {
+    type: 'paragraph',
+    children: [
+      {
+        type: 'link',
+        url: 'https://example.com/files/report.pdf',
+        children: [{ type: 'text', value: 'report.pdf' }],
+      },
+      {
+        type: 'link',
+        url: '//example.com/files/report.pdf',
+        children: [{ type: 'text', value: 'Download' }],
+      },
+    ],
+  })
+  assert.equal(paragraph.children?.[0]?.url, 'https://example.com/files/report.pdf')
+  assert.equal(paragraph.children?.[1]?.url, '//example.com/files/report.pdf')
+})
+
+test('code examples do not hide generated file cards', () => {
+  const file = workspaceFile('outputs/chat/turn/report.pdf', 'wsi_report')
+  const path = 'outputs/chat/turn/report.pdf'
+  assert.deepEqual(unlinkedGeneratedFiles('```md\n[Download](' + path + ')\n```', [file]), [file])
+  assert.deepEqual(unlinkedGeneratedFiles('`' + path + '`', [file]), [file])
+  assert.deepEqual(unlinkedGeneratedFiles('[Download](' + path + ')', [file]), [])
+  assert.deepEqual(unlinkedGeneratedFiles('Open ' + path, [file]), [])
 })
 
 test('streamed workspace items win over legacy artifacts and dedupe by URL', () => {

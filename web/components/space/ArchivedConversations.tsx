@@ -1,5 +1,6 @@
 "use client";
 
+import Tooltip from "@/shared/ui/Tooltip";
 import {
   ArchiveRestore,
   BookText,
@@ -76,7 +77,7 @@ export default function ArchivedConversations({
           disabled={disabled}
           onClick={() => onOpen(session.session_id)}
           className="min-w-0 flex-1 px-1 text-left"
-          title={t("Open")}
+
         >
           <div
             className={`truncate text-[13px] font-medium text-[var(--foreground)] ${
@@ -95,20 +96,21 @@ export default function ArchivedConversations({
           </p>
         </button>
         {onDelete && (
-          <button
-            type="button"
-            onClick={() => onDelete(session.session_id)}
-            disabled={disabled || busy || deletingId === session.session_id}
-            aria-label={t("Delete permanently")}
-            title={t("Delete permanently")}
-            className="shrink-0 rounded-lg p-2 text-[var(--muted-foreground)] hover:bg-red-500/10 hover:text-red-600 disabled:opacity-50"
-          >
-            {deletingId === session.session_id ? (
-              <Loader2 size={15} className="animate-spin" />
-            ) : (
-              <Trash2 size={15} />
-            )}
-          </button>
+          <Tooltip label={t("Delete permanently")} side="top">
+            <button
+              type="button"
+              onClick={() => onDelete(session.session_id)}
+              disabled={disabled || busy || deletingId === session.session_id}
+              aria-label={t("Delete permanently")}
+              className="shrink-0 rounded-lg p-2 text-[var(--muted-foreground)] hover:bg-red-500/10 hover:text-red-600 disabled:opacity-50"
+            >
+              {deletingId === session.session_id ? (
+                <Loader2 size={15} className="animate-spin" />
+              ) : (
+                <Trash2 size={15} />
+              )}
+            </button>
+          </Tooltip>
         )}
         <button
           type="button"

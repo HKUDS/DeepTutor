@@ -19,6 +19,7 @@ import {
   type ReadingExtensionResult,
 } from "@/lib/reading-api";
 import { useReadingActions } from "./reading-actions-context";
+import Tooltip from "@/shared/ui/Tooltip";
 
 type VocabularyTerm = {
   term: string;
@@ -227,12 +228,11 @@ function ExtensionToolbar({
           const Icon =
             (ageMode !== "default" ? PRIMARY_ACTION_ICONS[primaryRank] : null) ?? Sparkles;
           const iconSize = primaryRank >= 0 && ageMode === "early" ? 18 : 14;
-          return (
+          const button = (
             <button
               key={key}
               type="button"
               disabled={disabled}
-              title={needsSelection ? t("Select text in the document first.") : undefined}
               aria-label={
                 shortLabel && builtInLabel
                   ? `${t(shortLabel)} — ${t(builtInLabel)}`
@@ -257,6 +257,21 @@ function ExtensionToolbar({
               </span>
             </button>
           );
+          if (!needsSelection) return button;
+          return (
+            <span
+              key={key}
+              className={
+                ageMode === "default"
+                  ? "inline-flex min-w-[88px] flex-1 [&>span]:w-full [&>span>button]:w-full"
+                  : "inline-flex w-max flex-none max-sm:min-w-0 max-sm:w-0 max-sm:flex-1 [&>span]:w-full [&>span>button]:w-full"
+              }
+            >
+              <Tooltip label={t("Select text in the document first.")}>
+                {button}
+              </Tooltip>
+            </span>
+          );
         })}
       </div>
       {speaking ? (
@@ -266,15 +281,18 @@ function ExtensionToolbar({
         >
           <Volume2 size={14} />
           <span>{t("Reading aloud")}</span>
-          <button
-            type="button"
-            aria-label={t("Stop reading aloud")}
-            title={t("Stop reading aloud")}
-            onClick={stopSpeaking}
-            className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--foreground)] transition hover:bg-[var(--muted)]"
-          >
-            <Square size={12} fill="currentColor" />
-          </button>
+          <span className="ml-auto">
+            <Tooltip label={t("Stop reading aloud")}>
+              <button
+                type="button"
+                aria-label={t("Stop reading aloud")}
+                onClick={stopSpeaking}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--foreground)] transition hover:bg-[var(--muted)]"
+              >
+                <Square size={12} fill="currentColor" />
+              </button>
+            </Tooltip>
+          </span>
         </div>
       ) : null}
       {result && result.type !== "browser_speech" ? (

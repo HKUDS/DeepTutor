@@ -856,6 +856,20 @@
           "title": "Capability Once",
           "type": "boolean"
         },
+        "client_submission_id": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Client Submission Id"
+        },
         "config": {
           "additionalProperties": true,
           "title": "Config",

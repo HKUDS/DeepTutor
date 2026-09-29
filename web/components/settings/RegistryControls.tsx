@@ -1,5 +1,6 @@
 "use client";
 
+import Tooltip from "@/shared/ui/Tooltip";
 import { type KeyboardEvent, useEffect, useId, useRef, useState } from "react";
 import { Check, ChevronDown, Loader2, Pencil, PlugZap, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -57,17 +58,18 @@ export function EditableRegistryName({
       >
         {name}
       </h3>
-      <button
-        type="button"
-        aria-label={label}
-        title={label}
-        onClick={() => {
-          setEditing(true);
-        }}
-        className="shrink-0 rounded-md p-2 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
-      >
-        <Pencil size={14} />
-      </button>
+      <Tooltip label={label} side="top">
+        <button
+          type="button"
+          aria-label={label}
+          onClick={() => {
+            setEditing(true);
+          }}
+          className="shrink-0 rounded-md p-2 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+        >
+          <Pencil size={14} />
+        </button>
+      </Tooltip>
     </div>
   );
 }

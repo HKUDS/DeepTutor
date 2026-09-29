@@ -1,5 +1,6 @@
 "use client";
 
+import Tooltip from "@/shared/ui/Tooltip";
 import {
   CheckCircle2,
   ExternalLink,
@@ -114,16 +115,17 @@ export function CodeBuddyAuthCard() {
             {t("codebuddy.auth.description")}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => void refresh()}
-          disabled={loading || working}
-          className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-40"
-          title={t("codebuddy.auth.checkAgain")}
-          aria-label={t("codebuddy.auth.checkAgain")}
-        >
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-        </button>
+        <Tooltip label={t("codebuddy.auth.checkAgain")} side="top">
+          <button
+            type="button"
+            onClick={() => void refresh()}
+            disabled={loading || working}
+            className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-40"
+            aria-label={t("codebuddy.auth.checkAgain")}
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          </button>
+        </Tooltip>
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">

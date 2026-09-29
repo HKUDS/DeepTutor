@@ -56,6 +56,23 @@ from deeptutor.services.web_source.crawler import MAX_CRAWL_DEPTH, MAX_CRAWL_PAG
 logger = logging.getLogger(__name__)
 
 
+def _assert_move_id_available(base_dir: Path, name: str) -> None:
+    """Prevent a new registration from shadowing a saved moved-KB redirect."""
+    from deeptutor.services.workspace.knowledge import (
+        canonical_kb_id,
+        qualified_kb_id,
+        workspace_id_for_kb_base_dir,
+    )
+
+    workspace_id = workspace_id_for_kb_base_dir(base_dir)
+    if workspace_id is None:
+        # A manager targeting a partner's separate directory has no catalog ID.
+        return
+    resource_id = qualified_kb_id(name, workspace_id)
+    if canonical_kb_id(resource_id) != resource_id:
+        raise ValueError("This knowledge base ID is reserved by an earlier move.")
+
+
 # How long an entry can be missing its KB directory before ``list_knowledge_bases``
 # treats it as a stale orphan. The KB create flow writes the "initializing"
 # config entry before the on-disk folder is created, so a too-short grace would
@@ -739,6 +756,7 @@ class KnowledgeBaseManager:
     def register_knowledge_base(self, name: str, description: str = "", set_default: bool = False):
         """Register a knowledge base"""
         name = validate_knowledge_base_name(name)
+        _assert_move_id_available(self.base_dir, name)
         kb_dir = self.base_dir / name
         if not kb_dir.exists():
             raise ValueError(f"Knowledge base directory does not exist: {kb_dir}")
@@ -771,6 +789,7 @@ class KnowledgeBaseManager:
             raise ValueError("Knowledge base name is required.")
         if not is_connected_kb(entry):
             raise ValueError(f"Not a connected knowledge base entry: {name}")
+        _assert_move_id_available(self.base_dir, name)
 
         self.config = self._load_config()
         knowledge_bases = self.config.setdefault("knowledge_bases", {})
@@ -789,6 +808,7 @@ class KnowledgeBaseManager:
         live. Raises ``ValueError`` on a missing/invalid path or a name clash.
         """
         name = validate_knowledge_base_name(name)
+        _assert_move_id_available(self.base_dir, name)
         vault = Path(vault_path).expanduser()
         if not vault.is_dir():
             raise ValueError(f"Vault path is not a directory: {vault_path}")
@@ -832,6 +852,7 @@ class KnowledgeBaseManager:
         Raises ``ValueError`` on a missing/invalid path or a name clash.
         """
         name = validate_knowledge_base_name(name)
+        _assert_move_id_available(self.base_dir, name)
         provider = normalize_provider_name(provider)
         folder = Path(external_path).expanduser()
         if not folder.is_dir():
@@ -874,6 +895,7 @@ class KnowledgeBaseManager:
     ) -> dict:
         """Register a local or remote agent connection without creating an index."""
         name = validate_knowledge_base_name(name)
+        _assert_move_id_available(self.base_dir, name)
         agent_kind = (agent_kind or "").strip()
         if agent_kind == "partner":
             raise ValueError("Select partners directly through Ask partner instead.")
@@ -926,6 +948,7 @@ class KnowledgeBaseManager:
         name clash.
         """
         name = validate_knowledge_base_name(name)
+        _assert_move_id_available(self.base_dir, name)
         server_url = (server_url or "").strip().rstrip("/")
         if not server_url:
             raise ValueError("LightRAG server URL is required.")
@@ -973,6 +996,7 @@ class KnowledgeBaseManager:
         claimed by another library.
         """
         name = validate_knowledge_base_name(name)
+        _assert_move_id_available(self.base_dir, name)
 
         self.config = self._load_config()
         knowledge_bases = self.config.setdefault("knowledge_bases", {})
@@ -1052,6 +1076,7 @@ class KnowledgeBaseManager:
         or a name clash.
         """
         name = validate_knowledge_base_name(name)
+        _assert_move_id_available(self.base_dir, name)
         client_id = (client_id or "").strip()
         api_key = (api_key or "").strip()
         knowledge_base_id = (knowledge_base_id or "").strip()
@@ -1095,6 +1120,7 @@ class KnowledgeBaseManager:
     ) -> dict:
         """Register a self-hosted WeKnora knowledge base as a pointer KB."""
         name = validate_knowledge_base_name(name)
+        _assert_move_id_available(self.base_dir, name)
         server_url = (server_url or "").strip().rstrip("/")
         api_key = (api_key or "").strip()
         knowledge_base_id = (knowledge_base_id or "").strip()
@@ -1123,6 +1149,46 @@ class KnowledgeBaseManager:
             "updated_at": now,
         }
         knowledge_bases[name] = entry
+        self._save_config()
+        return entry
+
+    def register_kiwix_kb(
+        self,
+        name: str,
+        server_url: str,
+        zim_name: str,
+        *,
+        zim_title: str = "",
+    ) -> dict:
+        """Register a read-only pointer to one ZIM already served by Kiwix."""
+        from deeptutor.knowledge.kb_types import KIWIX_KB_TYPE
+        from deeptutor.services.rag.pipelines.kiwix.client import (
+            normalize_base_url,
+            validate_zim_name,
+        )
+
+        name = validate_knowledge_base_name(name)
+        server_url = normalize_base_url(server_url)
+        zim_name = validate_zim_name(zim_name)
+        self.config = self._load_config()
+        bases = self.config.setdefault("knowledge_bases", {})
+        if name in bases:
+            raise ValueError(f"A knowledge base named '{name}' already exists.")
+        now = datetime.now().isoformat()
+        entry = {
+            "path": name,
+            "type": KIWIX_KB_TYPE,
+            "rag_provider": KIWIX_KB_TYPE,
+            "server_url": server_url,
+            "zim_name": zim_name,
+            "zim_title": zim_title[:300],
+            "description": f"Kiwix archive: {zim_title or zim_name}",
+            "status": "ready",
+            "needs_reindex": False,
+            "created_at": now,
+            "updated_at": now,
+        }
+        bases[name] = entry
         self._save_config()
         return entry
 
@@ -1284,6 +1350,8 @@ class KnowledgeBaseManager:
                 # LightRAG server pointer (the URL is safe to surface; the API
                 # key deliberately is not).
                 "server_url": kb_config.get("server_url"),
+                "zim_name": kb_config.get("zim_name"),
+                "zim_title": kb_config.get("zim_title"),
                 # IMA pointer. The library id identifies which IMA knowledge
                 # base this KB reads; the client id and API key are credentials
                 # and are deliberately absent from this allowlist.
@@ -1446,6 +1514,9 @@ class KnowledgeBaseManager:
         # Same split for IMA: the library id is shown, the credentials are not.
         if kb_config.get("knowledge_base_id"):
             metadata["knowledge_base_id"] = kb_config.get("knowledge_base_id")
+        if kb_config.get("zim_name"):
+            metadata["zim_name"] = kb_config.get("zim_name")
+            metadata["zim_title"] = kb_config.get("zim_title") or ""
 
         if rag_provider == LIGHTRAG_PROVIDER:
             from deeptutor.services.rag.pipelines.lightrag.storage import (

@@ -80,6 +80,8 @@ interface UserAvatarProps {
   role?: string;
   size?: number;
   className?: string;
+  /** The parent already provides an identity tooltip. */
+  suppressTitle?: boolean;
 }
 
 export function UserAvatar({
@@ -89,6 +91,7 @@ export function UserAvatar({
   role,
   size = 28,
   className,
+  suppressTitle = false,
 }: UserAvatarProps) {
   const { t } = useTranslation();
   const [imageBroken, setImageBroken] = useState(false);
@@ -137,7 +140,7 @@ export function UserAvatar({
     <span
       className={`relative inline-flex shrink-0 ${className ?? ""}`}
       style={{ width: size, height: size }}
-      title={isAdmin ? `${username} — ${adminLabel}` : username}
+      title={suppressTitle ? undefined : isAdmin ? `${username} — ${adminLabel}` : username}
       aria-label={isAdmin ? `${username} (${adminLabel})` : username}
     >
       {isImage ? (

@@ -34,12 +34,16 @@ flavours exist today:
   self-hosted Tencent WeKnora deployment. Retrieval is offloaded to WeKnora's
   knowledge-search API by the bound ``weknora`` provider; no documents are
   copied or indexed locally. See ``services/rag/pipelines/weknora``.
+* ``kiwix`` — a pointer (``server_url`` + ``zim_name``) to one searchable ZIM
+  served by kiwix-serve. Retrieval reads matched articles over its public HTTP
+  API; DeepTutor neither copies the archive nor builds a second index.
 
 All connected flavours share the same lifecycle quirks: no on-disk folder under
 ``base_dir``, no embedding reconcile, and deletion must never touch the
 external resource. The :func:`is_connected_kb` / :func:`external_root_of` helpers
 let the manager treat them uniformly without sprinkling ``type`` literals
-across the codebase. ``subagent``, ``lightrag_server``, ``ima`` and ``weknora`` are connected
+across the codebase. ``subagent``, ``lightrag_server``, ``ima``, ``weknora`` and
+``kiwix`` are connected
 but point at no folder, so :func:`external_root_of` returns ``None`` for them — a
 subagent is driven by its capability and the two server-backed kinds are reached
 over HTTP; none resolves to a local path.
@@ -90,6 +94,10 @@ WEKNORA_KB_TYPE = "weknora"
 # See ``capabilities/marginnote4``.
 MARGINNOTE4_KB_TYPE = "marginnote4"
 
+# One archive served by kiwix-serve.  The server owns the ZIM and its index;
+# DeepTutor stores only its URL and ZIM name.
+KIWIX_KB_TYPE = "kiwix"
+
 # Every pointer/connected KB type. Membership here is what makes the manager
 # skip the index pipeline, the orphan prune and the embedding reconcile.
 CONNECTED_KB_TYPES = frozenset(
@@ -101,6 +109,7 @@ CONNECTED_KB_TYPES = frozenset(
         IMA_KB_TYPE,
         WEKNORA_KB_TYPE,
         MARGINNOTE4_KB_TYPE,
+        KIWIX_KB_TYPE,
     }
 )
 
@@ -145,7 +154,7 @@ def supports_local_raw_files(entry: Any) -> bool:
 def external_root_of(entry: Any) -> str | None:
     """Absolute path a connected KB points at, or ``None`` for ordinary KBs.
 
-    ``linked`` KBs store it under ``external_path``; ``obsidian`` vaults under
+        ``linked`` KBs store it under ``external_path``; ``obsidian`` vaults under
     the older ``vault_path`` field. One accessor so callers don't care which.
     """
     if not isinstance(entry, dict):
@@ -161,6 +170,7 @@ __all__ = [
     "IMA_KB_TYPE",
     "WEKNORA_KB_TYPE",
     "MARGINNOTE4_KB_TYPE",
+    "KIWIX_KB_TYPE",
     "CONNECTED_KB_TYPES",
     "NON_RETRIEVABLE_KB_TYPES",
     "is_connected_kb",

@@ -1,5 +1,6 @@
 "use client";
 
+import Tooltip from "@/shared/ui/Tooltip";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Check, ChevronDown, Folder, FolderOpen, Plus } from "lucide-react";
@@ -93,62 +94,70 @@ export function WorkspacePill({
 
   if (readOnly) {
     return (
-      <span
-        {...triggerProps}
-        tabIndex={collapsible ? 0 : undefined}
-        className="inline-flex h-8 min-w-0 shrink-0 items-center rounded-lg px-2 text-[13px] font-medium text-[var(--muted-foreground)]"
-        title={`${t(pickerLabel)}: ${label}\n${t("Conversations with messages are moved from workspace settings")}`}
+      <Tooltip
+        label={`${t(pickerLabel)}: ${label}`}
+        description={t("Conversations with messages are moved from workspace settings")}
+        side="top"
       >
-        {workspaceId ? (
-          <FolderOpen size={15} strokeWidth={1.7} className="shrink-0" />
-        ) : (
-          <Folder size={15} strokeWidth={1.7} className="shrink-0" />
-        )}
-        <span className="sr-only">{label}</span>
-        <ToolbarLabel expanded={expanded}>
-          <span className="max-w-[150px] truncate">{label}</span>
-        </ToolbarLabel>
-      </span>
+        <span
+          {...triggerProps}
+          tabIndex={collapsible ? 0 : undefined}
+          className="inline-flex h-8 min-w-0 shrink-0 items-center rounded-lg px-2 text-[13px] font-medium text-[var(--muted-foreground)]"
+        >
+          {workspaceId ? (
+            <FolderOpen size={15} strokeWidth={1.7} className="shrink-0" />
+          ) : (
+            <Folder size={15} strokeWidth={1.7} className="shrink-0" />
+          )}
+          <span className="sr-only">{label}</span>
+          <ToolbarLabel expanded={expanded}>
+            <span className="max-w-[150px] truncate">{label}</span>
+          </ToolbarLabel>
+        </span>
+      </Tooltip>
     );
   }
 
   return (
     <div className="relative flex min-w-0 items-center gap-1.5">
-      <button
-        ref={buttonRef}
-        {...triggerProps}
-        type="button"
-        disabled={disabled}
-        onClick={() => setOpen((value) => !value)}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-label={t(pickerLabel)}
-        title={label}
-        className="inline-flex h-8 shrink-0 items-center rounded-lg px-2 text-[13px] font-medium text-[var(--muted-foreground)] transition-[background-color,color,transform] duration-150 hover:bg-[color-mix(in_srgb,var(--muted)_55%,transparent)] hover:text-[var(--foreground)] active:scale-[0.97] disabled:opacity-50"
-      >
-        {workspaceId ? (
-          <FolderOpen size={15} strokeWidth={1.7} className="shrink-0" />
-        ) : (
-          <Folder size={15} strokeWidth={1.7} className="shrink-0" />
-        )}
-        <ToolbarLabel expanded={expanded}>
-          <span className="max-w-[150px] truncate">{label}</span>
-          <ChevronDown
-            size={12}
-            strokeWidth={2}
-            className={`-mr-0.5 shrink-0 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
-          />
-        </ToolbarLabel>
-      </button>
+      <Tooltip label={label} side="top">
+        <button
+          ref={buttonRef}
+          {...triggerProps}
+          type="button"
+          disabled={disabled}
+          onClick={() => setOpen((value) => !value)}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          aria-label={t(pickerLabel)}
+          className="inline-flex h-8 shrink-0 items-center rounded-lg px-2 text-[13px] font-medium text-[var(--muted-foreground)] transition-[background-color,color,transform] duration-150 hover:bg-[color-mix(in_srgb,var(--muted)_55%,transparent)] hover:text-[var(--foreground)] active:scale-[0.97] disabled:opacity-50"
+        >
+          {workspaceId ? (
+            <FolderOpen size={15} strokeWidth={1.7} className="shrink-0" />
+          ) : (
+            <Folder size={15} strokeWidth={1.7} className="shrink-0" />
+          )}
+          <ToolbarLabel expanded={expanded}>
+            <span className="max-w-[150px] truncate">{label}</span>
+            <ChevronDown
+              size={12}
+              strokeWidth={2}
+              className={`-mr-0.5 shrink-0 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+            />
+          </ToolbarLabel>
+        </button>
+      </Tooltip>
 
       {error ? (
-        <span
-          role="alert"
-          className="max-w-[180px] truncate text-[11.5px] text-[var(--destructive)]"
-          title={error}
-        >
-          {error}
-        </span>
+        <Tooltip label={`${t("Error")}: ${error}`} side="top">
+          <span
+            role="alert"
+            tabIndex={0}
+            className="max-w-[180px] truncate text-[11.5px] text-[var(--destructive)]"
+          >
+            {error}
+          </span>
+        </Tooltip>
       ) : null}
 
       {open && !disabled && (
@@ -157,7 +166,7 @@ export function WorkspacePill({
           role="menu"
           className="dt-popup-up absolute bottom-full left-0 z-50 mb-1.5 w-[248px] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--popover)] py-1 shadow-lg backdrop-blur-md"
         >
-          <div className="max-h-[280px] overflow-y-auto">
+          <div className="max-h-[280px] overflow-y-auto [&>span]:w-full">
             {selectable.length === 0 ? (
               <p className="px-3 py-2.5 text-[11.5px] leading-relaxed text-[var(--muted-foreground)]">
                 {t(
@@ -166,31 +175,35 @@ export function WorkspacePill({
               </p>
             ) : (
               selectable.map((row) => (
-                <button
+                <Tooltip
                   key={row.workspace_id}
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={row.workspace_id === workspaceId}
-                  disabled={row.status !== "ready"}
-                  title={row.status === "ready" ? row.path : row.error}
-                  onClick={() => {
-                    onSelect(row.workspace_id);
-                    setOpen(false);
-                  }}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12.5px] text-[var(--foreground)] transition-colors hover:bg-[color-mix(in_srgb,var(--muted)_60%,transparent)] disabled:opacity-50"
+                  label={row.status === "ready" ? row.path : row.error}
+                  side="right"
                 >
-                  <Folder
-                    size={13}
-                    strokeWidth={1.7}
-                    className="shrink-0 text-[var(--muted-foreground)]"
-                  />
-                  <span className="min-w-0 flex-1 truncate">
-                    {row.display_name}
-                  </span>
-                  {row.workspace_id === workspaceId ? (
-                    <Check size={12} className="shrink-0" />
-                  ) : null}
-                </button>
+                  <button
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={row.workspace_id === workspaceId}
+                    disabled={row.status !== "ready"}
+                    onClick={() => {
+                      onSelect(row.workspace_id);
+                      setOpen(false);
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12.5px] text-[var(--foreground)] transition-colors hover:bg-[color-mix(in_srgb,var(--muted)_60%,transparent)] disabled:opacity-50"
+                  >
+                    <Folder
+                      size={13}
+                      strokeWidth={1.7}
+                      className="shrink-0 text-[var(--muted-foreground)]"
+                    />
+                    <span className="min-w-0 flex-1 truncate">
+                      {row.display_name}
+                    </span>
+                    {row.workspace_id === workspaceId ? (
+                      <Check size={12} className="shrink-0" />
+                    ) : null}
+                  </button>
+                </Tooltip>
               ))
             )}
           </div>
@@ -246,15 +259,16 @@ export function WorkspacePill({
               {t("Manage workspaces")}
             </Link>
             {!creating && (
-              <button
-                type="button"
-                aria-label={t("New workspace")}
-                title={t("New workspace")}
-                onClick={() => setCreating(true)}
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ring)]"
-              >
-                <Plus size={15} strokeWidth={1.7} />
-              </button>
+              <Tooltip label={t("New workspace")} side="top">
+                <button
+                  type="button"
+                  aria-label={t("New workspace")}
+                  onClick={() => setCreating(true)}
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ring)]"
+                >
+                  <Plus size={15} strokeWidth={1.7} />
+                </button>
+              </Tooltip>
             )}
           </div>
         </div>

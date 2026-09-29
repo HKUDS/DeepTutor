@@ -159,3 +159,37 @@ export async function resourceUsage(
   )
   return result.workspaces.map(row => row.display_name)
 }
+
+export interface KnowledgeMovePreview {
+  source_id: string
+  target_id: string
+  source_workspace_id: string
+  target_workspace_id: string
+  name: string
+  files: number
+  bytes: number
+  assignments: { workspace_id: string; display_name: string }[]
+  blockers: string[]
+  status?: string
+  cleanup_path?: string
+}
+
+export function previewKnowledgeMove(sourceId: string, targetWorkspaceId: string): Promise<KnowledgeMovePreview> {
+  return request('/api/settings/workspace/knowledge-bases/preview-move', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source_id: sourceId, target_workspace_id: targetWorkspaceId }),
+  })
+}
+
+export async function moveKnowledgeBase(sourceId: string, targetWorkspaceId: string): Promise<KnowledgeMovePreview> {
+  const result = await request<KnowledgeMovePreview>('/api/settings/workspace/knowledge-bases/move', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source_id: sourceId, target_workspace_id: targetWorkspaceId }),
+  })
+  invalidateClientCache('workspaces:')
+  invalidateClientCache('knowledge:')
+  notifySessionsChanged()
+  return result
+}

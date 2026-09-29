@@ -12,6 +12,7 @@ import { apiUrl } from "@/lib/api";
 import { apiFetch } from "@/lib/api";
 import { uploadMaterial } from "@/lib/reading-api";
 import { createReadingWorkspace } from "@/lib/reading-workspace-api";
+import Tooltip from "@/shared/ui/Tooltip";
 import {
   type FilePreviewSource,
   previewKindFor,
@@ -246,62 +247,67 @@ export default function FilePreviewDrawer({
             </div>
 
             {canOpenInReading && downloadUrl && (
-              <button
-                type="button"
-                onClick={() => void handleOpenInReading()}
-                disabled={openingInReader}
-                title={t("Open in Immersive Reading")}
-                className="mr-1 inline-flex h-8 items-center gap-1.5 rounded-lg bg-[var(--primary)]/10 px-2.5 text-[10px] font-semibold text-[var(--primary)] transition hover:bg-[var(--primary)]/15 disabled:opacity-50"
-              >
-                {openingInReader ? (
-                  <Loader2 size={12} className="animate-spin" />
-                ) : (
-                  <BookOpenText size={12} />
-                )}
-                <span className="hidden sm:inline">{t("Open in Reading")}</span>
-              </button>
+              <Tooltip label={t("Open in Immersive Reading")} side="bottom">
+                <button
+                  type="button"
+                  onClick={() => void handleOpenInReading()}
+                  disabled={openingInReader}
+                  aria-label={t("Open in Immersive Reading")}
+                  className="mr-1 inline-flex h-8 items-center gap-1.5 rounded-lg bg-[var(--primary)]/10 px-2.5 text-[10px] font-semibold text-[var(--primary)] transition hover:bg-[var(--primary)]/15 disabled:opacity-50"
+                >
+                  {openingInReader ? (
+                    <Loader2 size={12} className="animate-spin" />
+                  ) : (
+                    <BookOpenText size={12} />
+                  )}
+                  <span className="hidden sm:inline">{t("Open in Reading")}</span>
+                </button>
+              </Tooltip>
             )}
 
             {downloadUrl && (
-              <a
-                href={downloadUrl}
-                download={filename}
-                title={t("Download")}
-                aria-label={t("Download")}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-              >
-                <Download size={14} strokeWidth={1.7} />
-              </a>
+              <Tooltip label={t("Download")} side="bottom">
+                <a
+                  href={downloadUrl}
+                  download={filename}
+                  aria-label={t("Download")}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                >
+                  <Download size={14} strokeWidth={1.7} />
+                </a>
+              </Tooltip>
             )}
             {downloadUrl && (
+              <Tooltip label={t("Copy link")} side="bottom">
+                <button
+                  type="button"
+                  onClick={handleCopy}
+                  aria-label={t("Copy link")}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                >
+                  {copied ? (
+                    <Check
+                      size={14}
+                      strokeWidth={1.7}
+                      className="text-emerald-500"
+                    />
+                  ) : (
+                    <Copy size={14} strokeWidth={1.7} />
+                  )}
+                </button>
+              </Tooltip>
+            )}
+            <Tooltip label={t("Close")} side="bottom">
               <button
+                ref={closeBtnRef}
                 type="button"
-                onClick={handleCopy}
-                title={t("Copy link")}
-                aria-label={t("Copy link")}
+                onClick={onClose}
+                aria-label={t("Close")}
                 className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
               >
-                {copied ? (
-                  <Check
-                    size={14}
-                    strokeWidth={1.7}
-                    className="text-emerald-500"
-                  />
-                ) : (
-                  <Copy size={14} strokeWidth={1.7} />
-                )}
+                <X size={15} strokeWidth={1.8} />
               </button>
-            )}
-            <button
-              ref={closeBtnRef}
-              type="button"
-              onClick={onClose}
-              title={t("Close")}
-              aria-label={t("Close")}
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-            >
-              <X size={15} strokeWidth={1.8} />
-            </button>
+            </Tooltip>
           </div>
 
           {readerError && (

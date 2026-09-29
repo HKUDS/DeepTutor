@@ -5,6 +5,8 @@ from __future__ import annotations
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import replace
+import json
+from pathlib import Path
 
 from fastapi import HTTPException
 
@@ -13,6 +15,25 @@ library_request: ContextVar[bool] = ContextVar("knowledge_library_request", defa
 
 def qualified_kb_id(name: str, workspace_id: str = "") -> str:
     return f"workspace:{workspace_id}:kb:{name}" if workspace_id else f"account:kb:{name}"
+
+
+def workspace_id_for_kb_base_dir(base_dir: str | Path) -> str | None:
+    """Find the owned storage scope for a KB directory used by a background job."""
+    from deeptutor.multi_user.paths import get_account_path_service
+    from deeptutor.services.path_service import get_path_service
+    from deeptutor.services.workspace import get_content_workspace_service
+    from deeptutor.services.workspace.context import workspace_context
+
+    root = Path(base_dir).resolve()
+    if root == get_account_path_service().get_knowledge_bases_root().resolve():
+        return ""
+    for row in get_content_workspace_service()._catalog():
+        if row.get("kind") != "workspace":
+            continue
+        with workspace_context(row["workspace_id"]):
+            if root == get_path_service().get_knowledge_bases_root().resolve():
+                return str(row["workspace_id"])
+    return None
 
 
 def parse_kb_id(value: str) -> tuple[str, str] | None:
@@ -26,10 +47,39 @@ def parse_kb_id(value: str) -> tuple[str, str] | None:
     return None
 
 
+def _move_aliases_path():
+    from deeptutor.multi_user.paths import get_account_path_service
+
+    return get_account_path_service().get_runtime_state_dir() / "knowledge-move-aliases.json"
+
+
+def move_aliases() -> dict[str, str]:
+    """Old qualified IDs remain valid in saved sessions and learning sources."""
+    path = _move_aliases_path()
+    if not path.exists():
+        return {}
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise ValueError("Knowledge move aliases are damaged.")
+    return {str(key): str(target) for key, target in value.items()}
+
+
+def canonical_kb_id(value: str) -> str:
+    aliases = move_aliases()
+    seen = set()
+    while value in aliases:
+        if value in seen:
+            raise ValueError("Knowledge move aliases contain a cycle.")
+        seen.add(value)
+        value = aliases[value]
+    return value
+
+
 def resolve_qualified(kb_ref: str, *, require_write=False):
     from deeptutor.multi_user.knowledge_access import _resolve_kb
     from deeptutor.services.workspace.context import workspace_context
 
+    kb_ref = canonical_kb_id(kb_ref)
     parsed = parse_kb_id(kb_ref)
     if parsed is None:
         return _resolve_kb(kb_ref, require_write=require_write)
@@ -105,6 +155,8 @@ def knowledge_catalog() -> list[dict]:
 def resolve_selected(kb_ref: str, selected: list[str], *, require_write=False):
     from deeptutor.multi_user.knowledge_access import DEFAULT_KB_ALIASES, _strip_resource_prefix
 
+    selected = list(dict.fromkeys(canonical_kb_id(ref) for ref in selected))
+    kb_ref = canonical_kb_id(kb_ref)
     _, name = _strip_resource_prefix(kb_ref)
     if kb_ref in selected:
         return resolve_qualified(kb_ref, require_write=require_write)

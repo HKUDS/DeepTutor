@@ -17,10 +17,18 @@ import type { TooltipSide } from "./tooltip-position";
 const loadTooltipLayer = () => import("./TooltipLayer");
 const TooltipLayer = lazy(loadTooltipLayer);
 
+function isNestedControl(target: EventTarget): boolean {
+  return target instanceof Element &&
+    Boolean(target.closest("button, a, input, select, textarea"));
+}
+
 export interface TooltipProps {
   label: string;
   description?: string;
   children: ReactElement<{ "aria-describedby"?: string }>;
+  /** Choose a semantic wrapper when a span cannot contain the trigger. */
+  as?: "span" | "div" | "li";
+  className?: string;
   side?: TooltipSide;
   delay?: number;
   /** Suppress a tooltip while its trigger owns an open popover or menu. */
@@ -31,12 +39,17 @@ export function Tooltip({
   label,
   description,
   children,
+  as: Wrapper = "span",
+  className,
   side = "bottom",
   delay = 180,
   suppressed = false,
 }: TooltipProps) {
   const id = useId();
-  const wrapperRef = useRef<HTMLSpanElement>(null);
+  const wrapperRef = useRef<HTMLElement>(null);
+  const setWrapperRef = useCallback((node: HTMLElement | null) => {
+    wrapperRef.current = node;
+  }, []);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hoverRef = useRef(false);
   const keyboardFocusRef = useRef(false);
@@ -96,13 +109,19 @@ export function Tooltip({
   const tooltipText = description ? `${label}. ${description}` : label;
 
   return (
-    <span
-      ref={wrapperRef}
-      className="inline-flex"
+    <Wrapper
+      ref={setWrapperRef}
+      className={Wrapper === "span" ? `inline-flex ${className ?? ""}` : className}
       onPointerEnter={(event) => {
         if (event.pointerType === "touch") return;
+        if (Wrapper === "li" && isNestedControl(event.target)) return;
         hoverRef.current = true;
         show(false);
+      }}
+      onPointerOverCapture={(event) => {
+        if (Wrapper !== "li" || !isNestedControl(event.target)) return;
+        hoverRef.current = false;
+        hide();
       }}
       onPointerLeave={(event) => {
         if (event.pointerType === "touch") return;
@@ -111,6 +130,10 @@ export function Tooltip({
       }}
       onPointerDown={(event) => {
         pointerFocusRef.current = true;
+        if (Wrapper === "li" && isNestedControl(event.target)) {
+          hide();
+          return;
+        }
         if (event.pointerType !== "touch") return;
         touchRef.current = true;
         if (renderedVisible) hide();
@@ -124,7 +147,11 @@ export function Tooltip({
           pointerFocusRef.current = false;
         });
       }}
-      onFocusCapture={() => {
+      onFocusCapture={(event) => {
+        if (Wrapper === "li" && isNestedControl(event.target)) {
+          hide();
+          return;
+        }
         if (pointerFocusRef.current) return;
         keyboardFocusRef.current = true;
         show(true);
@@ -158,7 +185,7 @@ export function Tooltip({
             </Suspense>
           )
         : null}
-    </span>
+    </Wrapper>
   );
 }
 

@@ -164,7 +164,11 @@ def resource_catalog(*, workspace_id: str = "") -> dict:
 def resource_usage(kind: str, resource_id: str, *, skill_workspace: str = "") -> list[dict]:
     """Account-local impact preview for library edits and deletion."""
     from deeptutor.services.workspace import get_content_workspace_service
-    from deeptutor.services.workspace.knowledge import parse_kb_id
+    from deeptutor.services.workspace.knowledge import (
+        canonical_kb_id,
+        move_aliases,
+        parse_kb_id,
+    )
 
     if kind not in {"skills", "mcp", "knowledge_bases"}:
         raise WorkspaceError("Unknown resource type.")
@@ -180,7 +184,16 @@ def resource_usage(kind: str, resource_id: str, *, skill_workspace: str = "") ->
         if kind == "knowledge_bases" and selected is None:
             parsed = parse_kb_id(resource_id)
             origin = "" if row["kind"] == "general" else row["workspace_id"]
-            uses = parsed is None or parsed[0] == origin
+            uses = (
+                parsed is None
+                or parsed[0] == origin
+                or any(
+                    (old := parse_kb_id(previous_id)) is not None
+                    and old[0] == origin
+                    and canonical_kb_id(previous_id) == canonical_kb_id(resource_id)
+                    for previous_id in move_aliases()
+                )
+            )
         if uses:
             result.append(
                 {"workspace_id": row["workspace_id"], "display_name": row["display_name"]}

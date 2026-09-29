@@ -1,5 +1,6 @@
 'use client'
 
+import Tooltip from "@/shared/ui/Tooltip";
 import { useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { activityCalendar, type DailyUsage } from '@/lib/usage-statistics'
@@ -99,14 +100,15 @@ export default function UsageActivity({
                       : 0
                     const future = day.date > today
                     return (
-                      <button
-                        key={day.date}
+                      <Tooltip key={day.date} label={dayLabel(day)} side="top">
+                        <button
+
                         type="button"
                         data-date={day.date}
                         disabled={future}
                         tabIndex={index === focused ? 0 : -1}
                         aria-label={dayLabel(day)}
-                        title={dayLabel(day)}
+
                         aria-pressed={selected?.date === day.date}
                         className={`h-[11px] w-[11px] rounded-[2px] outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)] ${future ? 'bg-[var(--muted)]/40' : colors[level]} ${selected?.date === day.date ? 'ring-1 ring-[var(--foreground)] ring-offset-1 ring-offset-[var(--background)]' : ''}`}
                         onMouseEnter={() => setSelected(day)}
@@ -137,6 +139,7 @@ export default function UsageActivity({
                             ?.focus()
                         }}
                       />
+                      </Tooltip>
                     )
                   })}
                 </div>

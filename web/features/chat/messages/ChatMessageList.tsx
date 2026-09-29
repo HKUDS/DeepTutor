@@ -105,6 +105,7 @@ import {
 } from "@/features/chat/trace/TracePresentation";
 import { hasSettledFinalRound } from "@/features/chat/trace/selectors";
 import type { MessageTraceMetadata } from "@/features/chat/trace/memory";
+import type { OrphanedFailedTurn } from "@/lib/session-api";
 import { agentGlyph } from "@/components/agents/agent-icons";
 import { useConsultationReference } from "@/hooks/useConsultationReference";
 import { useConnectedAgentKinds } from "@/hooks/useConnectedAgentKinds";
@@ -142,6 +143,10 @@ interface ChatMessageItem {
   attachments?: MessageAttachment[];
   requestSnapshot?: MessageRequestSnapshot;
   parentMessageId?: number | null;
+  /** The server never accepted this submission (#1594) — rendered as an
+   *  unsent message, not an ordinary sent one. */
+  failedSubmission?: boolean;
+  orphanedFailedTurn?: OrphanedFailedTurn;
 }
 
 interface NotebookReferenceGroup {
@@ -1784,6 +1789,18 @@ export const UserMessage = memo(function UserMessage({
             <div className="whitespace-pre-wrap">{msg.content}</div>
           </div>
         )}
+        {/* Unsent marker (#1594): this text never reached the server, so the
+            bubble must not read as an ordinary sent message. The error and
+            retry live next to the composer, not on an assistant bubble. */}
+        {!editing && msg.failedSubmission ? (
+          <div
+            data-unsent="true"
+            className="flex items-center gap-1 pr-1 text-[11px] font-medium text-[var(--destructive)]"
+          >
+            <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />
+            {t("Not sent")}
+          </div>
+        ) : null}
         {!editing && refTreeItems.length > 0 && (
           <div className="pr-1">
             <ContextReferenceTree
@@ -1837,7 +1854,7 @@ function ReadingPassageQuote({ quote, href }: { quote: string; href?: string }) 
   return href ? (
     <a
       href={href}
-      title={t("Go to this passage")}
+      aria-label={`${t("Go to this passage")}: ${quote}`}
       className={`${className} transition-colors hover:text-[var(--foreground)]`}
     >
       {text}
@@ -2135,6 +2152,10 @@ export const ChatMessageList = memo(function ChatMessageList({
           const sib =
             msg.id !== undefined ? siblingsByMessageId.get(msg.id) : undefined;
           const reply = messageRows[rowIndex + 1]?.msg;
+          const orphanedFailure =
+            reply?.role === "assistant" && reply.parentMessageId === msg.id
+              ? null
+              : msg.orphanedFailedTurn;
           const consultationEvents = reply?.role === "assistant"
             ? (reply.events ?? []).filter(event => event.metadata?.trace_kind === "subagent_event")
             : [];
@@ -2160,6 +2181,28 @@ export const ChatMessageList = memo(function ChatMessageList({
                   ? () => onOpenConsultation(consultationEvents)
                   : undefined}
               />
+              {orphanedFailure ? (
+                <div
+                  role="alert"
+                  data-orphaned-failed-turn={orphanedFailure.turn_id}
+                  className="mt-3 flex w-full max-w-[min(520px,90%)] items-center gap-2 rounded-xl border border-[var(--destructive)]/30 bg-[var(--destructive)]/5 px-3 py-2"
+                >
+                  <AlertCircle className="h-4 w-4 shrink-0 text-[var(--destructive)]" />
+                  <span className="min-w-0 flex-1 text-[12px] leading-[1.5] text-[var(--foreground)]">
+                    {orphanedFailure.error || t("The turn was interrupted.")}
+                  </span>
+                  {!isStreaming && rowIndex === messageRows.length - 1 &&
+                    canResendLastTurn && orphanedFailure.retryable && onResendLastTurn ? (
+                    <button
+                      type="button"
+                      onClick={onResendLastTurn}
+                      className="shrink-0 rounded-md px-2 py-1 text-[11.5px] font-medium text-[var(--destructive)] hover:bg-[var(--destructive)]/10"
+                    >
+                      {t("Retry")}
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           );
         }

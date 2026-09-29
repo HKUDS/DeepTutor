@@ -1,5 +1,6 @@
 "use client";
 
+import Tooltip from "@/shared/ui/Tooltip";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -439,37 +440,40 @@ function WebSourceCard({
       </div>
       <div className="flex shrink-0 items-center gap-1">
         {job?.state === "running" || job?.state === "pending" ? (
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={busy}
-            title={t("Cancel sync")}
-            aria-label={t("Cancel sync")}
-            className="rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-red-600 disabled:opacity-50"
-          >
-            <Ban className="h-3.5 w-3.5" />
-          </button>
+          <Tooltip label={t("Cancel sync")} side="top">
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={busy}
+              aria-label={t("Cancel sync")}
+              className="rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-red-600 disabled:opacity-50"
+            >
+              <Ban className="h-3.5 w-3.5" />
+            </button>
+          </Tooltip>
         ) : (
+          <Tooltip label={t("Retry sync")} side="top">
+            <button
+              type="button"
+              onClick={onRetry}
+              disabled={busy || !source.enabled || !source.auto_sync_enabled}
+              aria-label={t("Retry sync")}
+              className="rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-50"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+            </button>
+          </Tooltip>
+        )}
+        <Tooltip label={t("Remove source")} side="top">
           <button
             type="button"
-            onClick={onRetry}
-            disabled={busy || !source.enabled || !source.auto_sync_enabled}
-            title={t("Retry sync")}
-            aria-label={t("Retry sync")}
-            className="rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-50"
+            onClick={onRemove}
+            aria-label={t("Remove source")}
+            className="shrink-0 rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-red-600"
           >
-            <RotateCcw className="h-3.5 w-3.5" />
+            <Trash2 className="h-3.5 w-3.5" />
           </button>
-        )}
-        <button
-          type="button"
-          onClick={onRemove}
-          title={t("Remove source")}
-          aria-label={t("Remove source")}
-          className="shrink-0 rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-red-600"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
+        </Tooltip>
       </div>
     </div>
   );

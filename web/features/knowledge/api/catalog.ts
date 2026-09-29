@@ -1,5 +1,6 @@
 export {
   connectImaKnowledgeBase,
+  connectKiwix,
   connectLinkedFolder,
   connectMarginNote4Library,
   connectObsidianVault,
@@ -12,6 +13,7 @@ export {
   listKnowledgeBases,
   listRagProviders,
   probeImaKnowledgeBase,
+  probeKiwix,
   probeLinkedFolder,
   probeWeKnora,
   readErrorDetail,
@@ -19,6 +21,9 @@ export {
   getReindexConfig,
   type LightRagRebuildConfig,
   retryKnowledgeBase,
+  searchKiwixArticles,
+  importKiwixArticle,
+  listKiwixArchives,
   setDefaultKnowledgeBase,
 } from "./client";
 

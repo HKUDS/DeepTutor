@@ -83,7 +83,7 @@ def get_embedding_config(
     )
 
     if not resolved.model:
-        raise ValueError("Embedding model not set. Please configure it in Settings > Catalog.")
+        raise ValueError("Embedding model not set. Configure it in Settings > Embedding models.")
 
     if not resolved.effective_url:
         raise ValueError(
@@ -92,7 +92,8 @@ def get_embedding_config(
 
     if resolved.provider_mode != "local" and not resolved.api_key:
         raise ValueError(
-            "Embedding API key not set. Please configure the active profile in Settings > Catalog."
+            "Embedding API key not set. Configure the active profile in "
+            "Settings > Embedding models."
         )
 
     return EmbeddingConfig(

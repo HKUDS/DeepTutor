@@ -16,6 +16,7 @@ import {
   useReadingActions,
   type ReadingActionCard,
 } from "@/components/reading/reading-actions-context";
+import Tooltip from "@/shared/ui/Tooltip";
 
 /**
  * Where a reading action's answer lands: under the conversation, in the same
@@ -98,15 +99,16 @@ function ActionCard({
         <h3 className="min-w-0 flex-1 truncate text-[12px] font-semibold text-[var(--foreground)]">
           {title}
         </h3>
-        <button
-          type="button"
-          onClick={onDismiss}
-          aria-label={t("Dismiss")}
-          title={t("Dismiss")}
-          className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-        >
-          <X size={12} />
-        </button>
+        <Tooltip label={t("Dismiss")}>
+          <button
+            type="button"
+            onClick={onDismiss}
+            aria-label={t("Dismiss")}
+            className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+          >
+            <X size={12} />
+          </button>
+        </Tooltip>
       </header>
       {card.quote ? (
         <blockquote className="mx-3 mt-1 line-clamp-3 border-l-2 border-[var(--primary)] pl-2.5 text-[11.5px] leading-relaxed text-[var(--muted-foreground)]">

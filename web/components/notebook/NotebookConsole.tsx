@@ -273,15 +273,17 @@ export default function NotebookConsole({
                 {scopedNotebooks.length}
               </span>
             </h1>
-            <button
-              type="button"
-              onClick={() => setCreating((v) => !v)}
-              title={t("New notebook")}
-              aria-expanded={creating}
-              className="rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-            >
-              <Plus size={15} />
-            </button>
+            <Tooltip label={t("New notebook")} side="top">
+              <button
+                type="button"
+                onClick={() => setCreating((v) => !v)}
+                aria-label={t("New notebook")}
+                aria-expanded={creating}
+                className="rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+              >
+                <Plus size={15} />
+              </button>
+            </Tooltip>
           </div>
 
           {creating && (

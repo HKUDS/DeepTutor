@@ -1,5 +1,6 @@
 "use client";
 
+import Tooltip from "@/shared/ui/Tooltip";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -40,15 +41,16 @@ export default function KbUpdateHistory({
             {entries.length}
           </span>
         </div>
-        <button
-          type="button"
-          onClick={onClear}
-          title={t("Clear history")}
-          className="flex h-6 w-6 items-center justify-center rounded text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-          aria-label={t("Clear history")}
-        >
-          <Trash2 className="h-3 w-3" />
-        </button>
+        <Tooltip label={t("Clear history")} side="top">
+          <button
+            type="button"
+            onClick={onClear}
+            className="flex h-6 w-6 items-center justify-center rounded text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+            aria-label={t("Clear history")}
+          >
+            <Trash2 className="h-3 w-3" />
+          </button>
+        </Tooltip>
       </div>
 
       <ul className="divide-y divide-[var(--border)] rounded-lg border border-[var(--border)]">

@@ -1,5 +1,6 @@
 "use client";
 
+import Tooltip from "@/shared/ui/Tooltip";
 import { useTranslation } from "react-i18next";
 
 import type { McpServerStatus } from "@/lib/mcp-api";
@@ -27,10 +28,11 @@ export default function McpStatusBadge({
     needs_auth: "bg-amber-400",
     disabled: "bg-[var(--border)]",
   };
-  return (
+  const badge = (
     <span
+      role={status === "error" && error ? "note" : undefined}
+      tabIndex={status === "error" && error ? 0 : undefined}
       className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--muted)]/30 px-2 py-0.5 text-[10.5px] font-medium text-[var(--muted-foreground)]"
-      title={status === "error" && error ? error : undefined}
     >
       <span
         className={`h-1.5 w-1.5 rounded-full ${dotClass[status]}`}
@@ -39,4 +41,7 @@ export default function McpStatusBadge({
       {labels[status]}
     </span>
   );
+  return status === "error" && error ? (
+    <Tooltip label={error} side="top">{badge}</Tooltip>
+  ) : badge;
 }

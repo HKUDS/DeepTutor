@@ -10,6 +10,7 @@ import {
   type WorkspaceMenuSection,
 } from "@/components/reading/workspace-menu-context";
 import { MenuItem } from "./WorkspaceChrome";
+import Tooltip from "@/shared/ui/Tooltip";
 
 export type WorkspaceMenuSections = Partial<
   Record<WorkspaceMenuSection, WorkspaceMenuItem[]>
@@ -69,17 +70,18 @@ export function WorkspaceMenu({
 
   return (
     <div className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((current) => !current)}
-        className="flex size-7 items-center justify-center rounded-md text-[var(--muted-foreground)] transition hover:bg-[var(--muted)]"
-        aria-label={t("More")}
-        title={t("More")}
-        aria-haspopup="menu"
-        aria-expanded={open}
-      >
-        <MoreHorizontal size={14} />
-      </button>
+      <Tooltip label={t("More")} suppressed={open}>
+        <button
+          type="button"
+          onClick={() => setOpen((current) => !current)}
+          className="flex size-7 items-center justify-center rounded-md text-[var(--muted-foreground)] transition hover:bg-[var(--muted)]"
+          aria-label={t("More")}
+          aria-haspopup="menu"
+          aria-expanded={open}
+        >
+          <MoreHorizontal size={14} />
+        </button>
+      </Tooltip>
       {open && (
         <>
           <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />

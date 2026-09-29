@@ -308,7 +308,7 @@ def set_learner_profile(username: str, profile: dict[str, Any] | None) -> dict[s
         record = users.get(username)
         if (
             record is None
-            or str(record.get("role") or "user") != "user"
+            or str(record.get("role") or "user") == "admin"
             or str(record.get("preset") or "standard") != "learner"
         ):
             return None

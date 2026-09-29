@@ -100,7 +100,7 @@ def test_ui_settings_update_rejects_unsupported_language() -> None:
     from pydantic import ValidationError
 
     with pytest.raises(ValidationError):
-        settings_router.UISettingsUpdate(language="de")
+        settings_router.UISettingsUpdate(language="xx")
     with pytest.raises(ValidationError):
         settings_router.UISettingsUpdate(response_language="xx")
 
@@ -121,6 +121,12 @@ async def test_ui_accepts_extended_response_languages(
         settings_router.UISettingsUpdate(response_language="pt")
     )
     assert response["response_language"] == "pt"
+
+    response = await settings_router.update_ui_settings(
+        settings_router.UISettingsUpdate(response_language="ms")
+    )
+    assert response["response_language"] == "ms"
+    assert settings_router.load_ui_settings()["response_language"] == "ms"
 
 
 class _FakeEmbeddingAdapter:
@@ -651,7 +657,7 @@ def test_media_and_voice_provider_choices_include_dashscope() -> None:
     )
     assert dashscope["tts"]["default_model"] == "qwen3-tts-flash"
     assert dashscope["tts"]["default_voice"] == "Cherry"
-    assert dashscope["stt"]["default_model"] == "paraformer-v2"
+    assert dashscope["stt"]["default_model"] == "paraformer-realtime-v2"
     assert dashscope["imagegen"]["default_model"] == "wanx2.1-t2i-turbo"
     assert dashscope["videogen"]["default_model"] == "wanx2.1-t2v-turbo"
 
@@ -668,6 +674,13 @@ def test_llm_provider_choices_include_unifically() -> None:
 
     assert llm["unifically"]["label"] == "Unifically"
     assert llm["unifically"]["base_url"] == "https://api.unifically.com/v1"
+
+
+def test_llm_provider_choices_include_cheaperinference() -> None:
+    llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
+
+    assert llm["cheaperinference"]["label"] == "Cheaper Inference"
+    assert llm["cheaperinference"]["base_url"] == "https://api.cheaperinference.com/v1"
 
 
 def test_llm_provider_choices_include_novita() -> None:

@@ -500,6 +500,7 @@ def _profile_status(progress: LearningProgress | None) -> dict[str, Any]:
             "target_level": profile.target_level,
             "time_budget": profile.time_budget,
             "preferences": profile.preferences,
+            "teaching_strategy": profile.teaching_strategy,
             "notes": profile.notes,
         },
         "intake_needed": False,
@@ -1907,6 +1908,15 @@ class MasteryProfileTool(BaseTool):
                     required=False,
                 ),
                 ToolParameter(
+                    name="teaching_strategy",
+                    type="string",
+                    description=(
+                        "Use 'teach_first' only when the learner explicitly asks to be taught "
+                        "before being quizzed; use 'probe_first' to restore the diagnostic default."
+                    ),
+                    required=False,
+                ),
+                ToolParameter(
                     name="notes",
                     type="string",
                     description=("Anything else worth carrying that the fields above do not hold."),
@@ -1922,16 +1932,31 @@ class MasteryProfileTool(BaseTool):
 
         fields = {
             key: kwargs[key]
-            for key in ("prior_knowledge", "target_level", "time_budget", "preferences", "notes")
+            for key in (
+                "prior_knowledge",
+                "target_level",
+                "time_budget",
+                "preferences",
+                "teaching_strategy",
+                "notes",
+            )
             if key in kwargs and kwargs[key] is not None
         }
         if not fields:
             return ToolResult(
                 content=(
                     "mastery_profile needs at least one of prior_knowledge, "
-                    "target_level, time_budget, preferences or notes — pass what "
+                    "target_level, time_budget, preferences, teaching_strategy or notes — pass what "
                     "the learner actually told you."
                 ),
+                success=False,
+            )
+        if "teaching_strategy" in fields and fields["teaching_strategy"] not in {
+            "probe_first",
+            "teach_first",
+        }:
+            return ToolResult(
+                content="teaching_strategy must be probe_first or teach_first.",
                 success=False,
             )
 

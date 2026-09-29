@@ -1,5 +1,6 @@
 "use client";
 
+import Tooltip from "@/shared/ui/Tooltip";
 import { stageRegistryAction, type RegistryEdit } from "@/lib/provider-registry";
 import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
@@ -319,10 +320,10 @@ export function ModelsWorkspace({
                     </span>
                     {isDefault && (
                       <span
-                        title={t("Default model")}
-                        className="shrink-0 text-[var(--primary)]"
+                        className="inline-flex shrink-0 items-center gap-0.5 text-[10px] text-[var(--primary)]"
                       >
                         <Check size={13} />
+                        {t("Default model")}
                       </span>
                     )}
                   </span>
@@ -788,16 +789,17 @@ function ModelEditor({
             {active && <Check size={13} />}{" "}
             {t(active ? "Default model" : "Set as default")}
           </button>
-          <button
-            type="button"
-            aria-label={t("Remove model")}
-            disabled={applying || managed || assignedToTask}
-            title={assignedToTask ? t("Choose another background task model before removing this model.") : undefined}
-            onClick={() => void remove()}
-            className={`${registryDanger} ml-auto`}
-          >
-            <Trash2 size={14} />
-          </button>
+          <Tooltip label={assignedToTask ? t("Choose another background task model before removing this model.") : t("Remove model")} side="top">
+            <button
+              type="button"
+              aria-label={t("Remove model")}
+              disabled={applying || managed || assignedToTask}
+              onClick={() => void remove()}
+              className={`${registryDanger} ml-auto`}
+            >
+              <Trash2 size={14} />
+            </button>
+          </Tooltip>
         </div>
       </div>
     </section>

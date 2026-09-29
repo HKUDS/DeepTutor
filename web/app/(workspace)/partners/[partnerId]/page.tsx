@@ -23,6 +23,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import Tooltip from "@/shared/ui/Tooltip";
 import {
   archivePartnerSession,
   destroyPartner,
@@ -485,12 +486,15 @@ function PartnerDetail() {
               <span className="truncate text-[14px] font-medium text-[var(--foreground)]">
                 {partner.name}
               </span>
-              <span
-                title={partner.running ? t("Running") : t("Stopped")}
-                className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                  partner.running ? "bg-emerald-500" : "bg-[var(--border)]"
-                }`}
-              />
+              <span className="inline-flex shrink-0 items-center gap-1 text-[10px] text-[var(--muted-foreground)]">
+                <span
+                  aria-hidden
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    partner.running ? "bg-emerald-500" : "bg-[var(--border)]"
+                  }`}
+                />
+                {partner.running ? t("Running") : t("Stopped")}
+              </span>
             </div>
             {partner.description ? (
               <p className="truncate text-[11.5px] text-[var(--muted-foreground)]">
@@ -519,96 +523,103 @@ function PartnerDetail() {
         </nav>
 
         <div className="flex min-w-0 items-center justify-end gap-0.5">
-          <label
-            title={t("Share this conversation across browsers")}
-            className="mr-1 inline-flex cursor-pointer items-center gap-1.5 text-[11px] text-[var(--muted-foreground)]"
-          >
-            <input
-              type="checkbox"
-              aria-label={t("Sync browsers")}
-              checked={continuityEnabled}
-              disabled={continuityBusy || switchingSession || runtimeContinuityError || chatBusy}
-              onChange={() => void toggleContinuity()}
-              className="h-3.5 w-3.5 accent-[var(--primary)]"
-            />
-            <span className="hidden whitespace-nowrap xl:inline">
-              {t("Sync browsers")}
-            </span>
-          </label>
+          <Tooltip label={t("Share this conversation across browsers")}>
+            <label className="mr-1 inline-flex cursor-pointer items-center gap-1.5 text-[11px] text-[var(--muted-foreground)]">
+              <input
+                type="checkbox"
+                aria-label={t("Sync browsers")}
+                checked={continuityEnabled}
+                disabled={continuityBusy || switchingSession || runtimeContinuityError || chatBusy}
+                onChange={() => void toggleContinuity()}
+                className="h-3.5 w-3.5 accent-[var(--primary)]"
+              />
+              <span className="hidden whitespace-nowrap xl:inline">
+                {t("Sync browsers")}
+              </span>
+            </label>
+          </Tooltip>
           {(activeTab === "chat" || activeTab === "archive") && (
             <>
               {activeTab === "chat" ? (
+                <Tooltip label={t("Archive")}>
+                  <button
+                    type="button"
+                    onClick={() => void handleArchiveConversation()}
+                    disabled={!chatMessages.length || archiveBusy || switchingSession || chatBusy}
+                    aria-label={t("Archive")}
+                    className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {archiveBusy ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Archive className="h-4 w-4" />
+                    )}
+                  </button>
+                </Tooltip>
+              ) : null}
+              <Tooltip label={t("Save to Notebook")}>
                 <button
                   type="button"
-                  onClick={() => void handleArchiveConversation()}
-                  disabled={!chatMessages.length || archiveBusy || switchingSession || chatBusy}
-                  title={t("Archive")}
-                  aria-label={t("Archive")}
+                  onClick={() => setShowSaveModal(true)}
+                  disabled={!canExport}
+                  aria-label={t("Save to Notebook")}
                   className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  {archiveBusy ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Archive className="h-4 w-4" />
-                  )}
+                  <BookmarkPlus className="h-4 w-4" />
                 </button>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => setShowSaveModal(true)}
-                disabled={!canExport}
-                title={t("Save to Notebook")}
-                aria-label={t("Save to Notebook")}
-                className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <BookmarkPlus className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                onClick={handleDownload}
-                disabled={!canExport}
-                title={t("Download chat history as Markdown")}
-                aria-label={t("Download Markdown")}
-                className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <Download className="h-4 w-4" />
-              </button>
+              </Tooltip>
+              <Tooltip label={t("Download chat history as Markdown")}>
+                <button
+                  type="button"
+                  onClick={handleDownload}
+                  disabled={!canExport}
+                  aria-label={t("Download Markdown")}
+                  className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Download className="h-4 w-4" />
+                </button>
+              </Tooltip>
             </>
           )}
-          <button
-            type="button"
-            onClick={() => setShowLinkModal(true)}
-            title={t("Link a chat account")}
-            aria-label={t("Link a chat account")}
-            className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-          >
-            <Link2 className="h-4 w-4" />
-          </button>
+          <Tooltip label={t("Link a chat account")}>
+            <button
+              type="button"
+              onClick={() => setShowLinkModal(true)}
+              aria-label={t("Link a chat account")}
+              className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+            >
+              <Link2 className="h-4 w-4" />
+            </button>
+          </Tooltip>
           {canManage ? (
             <>
-              <button
-                type="button"
-                onClick={() => void toggleRunning()}
-                disabled={lifecycleBusy}
-                title={partner.running ? t("Stop") : t("Start")}
-                className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-40"
-              >
-                {lifecycleBusy ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : partner.running ? (
-                  <Square className="h-4 w-4" />
-                ) : (
-                  <Play className="h-4 w-4" />
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleDestroy()}
-                title={t("Delete partner")}
-                className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-red-500"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
+              <Tooltip label={partner.running ? t("Stop") : t("Start")}>
+                <button
+                  type="button"
+                  onClick={() => void toggleRunning()}
+                  disabled={lifecycleBusy}
+                  aria-label={partner.running ? t("Stop") : t("Start")}
+                  className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-40"
+                >
+                  {lifecycleBusy ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : partner.running ? (
+                    <Square className="h-4 w-4" />
+                  ) : (
+                    <Play className="h-4 w-4" />
+                  )}
+                </button>
+              </Tooltip>
+              <Tooltip label={t("Delete partner")}>
+                <button
+                  type="button"
+                  onClick={() => void handleDestroy()}
+                  aria-label={t("Delete partner")}
+                  className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-red-500"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </Tooltip>
             </>
           ) : null}
         </div>

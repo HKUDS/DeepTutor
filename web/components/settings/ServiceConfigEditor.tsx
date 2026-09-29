@@ -1329,7 +1329,9 @@ function defaultModelLabel(language: AppLanguage, index: number): string {
     ? `模型${safeIndex}`
     : language === "fr"
       ? `Modèle ${safeIndex}`
-      : `Model ${safeIndex}`;
+      : language === "de"
+        ? `Modell ${safeIndex}`
+        : `Model ${safeIndex}`;
 }
 
 function formatCompactTokens(value: string | number | undefined): string {
@@ -1714,21 +1716,22 @@ function ProfileFields({
               }
               placeholder="sk-..."
             />
-            <button
-              type="button"
-              onClick={() => setShowApiKey((prev) => !prev)}
-              className="absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-              aria-label={
-                showApiKey ? t("Hide API key") : t("Show API key")
-              }
-              title={showApiKey ? t("Hide API key") : t("Show API key")}
-            >
-              {showApiKey ? (
-                <EyeOff className="h-4 w-4" />
-              ) : (
-                <Eye className="h-4 w-4" />
-              )}
-            </button>
+            <span className="absolute right-1 top-1/2 -translate-y-1/2">
+              <Tooltip label={showApiKey ? t("Hide API key") : t("Show API key")} side="top">
+                <button
+                  type="button"
+                  onClick={() => setShowApiKey((prev) => !prev)}
+                  className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                  aria-label={showApiKey ? t("Hide API key") : t("Show API key")}
+                >
+                  {showApiKey ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </button>
+              </Tooltip>
+            </span>
           </div>
         </div>
       )}

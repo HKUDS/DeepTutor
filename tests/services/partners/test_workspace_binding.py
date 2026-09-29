@@ -7,6 +7,7 @@ from deeptutor.partners.bus.events import InboundMessage
 from deeptutor.partners.bus.queue import MessageBus
 from deeptutor.services.partners.manager import PartnerConfig
 from deeptutor.services.partners.runtime import PartnerRunner
+from deeptutor.services.partners.workspace import provision_assets
 from deeptutor.services.partners.workspace_binding import partner_content_context
 from deeptutor.services.workspace import WorkspaceError, get_content_workspace_service
 from deeptutor.services.workspace.context import current_workspace_id, workspace_context
@@ -146,3 +147,71 @@ def test_binding_follows_registry_move_without_copying_resources(partners_root):
         binding = get_content_workspace_service().binding_by_id(config.workspace_id)
         assert binding.root == destination
         assert (binding.root / "notes.txt").read_text() == "persistent notes"
+
+
+@pytest.mark.asyncio
+async def test_copied_ima_pointer_reaches_partner_rag_with_source(
+    partners_root, fake_orchestrator, monkeypatch
+) -> None:
+    from deeptutor.services.rag.pipelines.ima.models import ImaDocument, ImaKnowledgePage
+    from deeptutor.services.rag.pipelines.ima.pipeline import ImaPipeline
+    from deeptutor.tools.builtin import RAGTool
+    from tests.services.partners.scripts import finish
+
+    name = "宝宝小学"
+    _seed_admin_connected_kb(
+        partners_root.parent,
+        name,
+        "ima",
+        rag_provider="ima",
+        client_id="cid",
+        api_key="key",
+        knowledge_base_id="kb-1",
+    )
+    report = provision_assets("ada", knowledge_bases=[name])
+    assert report["errors"] == []
+    assert report["copied"]["knowledge_bases"] == [name]
+
+    class Client:
+        async def search_knowledge(self, query: str, *, limit: int) -> ImaKnowledgePage:
+            assert query == "三年级乘法"
+            assert limit > 0
+            return ImaKnowledgePage(
+                documents=(
+                    ImaDocument(
+                        media_id="m-1",
+                        title="三年级数学教材",
+                        highlight="乘法表示相同加数的简便运算。" * 20,
+                    ),
+                )
+            )
+
+    def client_for_binding(self, config):
+        assert (config.client_id, config.api_key, config.knowledge_base_id) == (
+            "cid",
+            "key",
+            "kb-1",
+        )
+        return Client()
+
+    monkeypatch.setattr(ImaPipeline, "_client", client_for_binding)
+    runner = PartnerRunner("ada", PartnerConfig(name="熊猫数学伙伴"), MessageBus())
+    seen = []
+
+    async def handle(self, context):
+        assert context.knowledge_bases == [name]
+        seen.append(await RAGTool().execute(query="三年级乘法", kb_name=name))
+        for event in finish("检索完成"):
+            yield event
+
+    monkeypatch.setattr(fake_orchestrator, "handle", handle)
+    await runner.process_message(
+        InboundMessage(channel="web", sender_id="42", chat_id="42", content="检索三年级乘法")
+    )
+
+    assert len(seen) == 1
+    result = seen[0]
+    assert result.success is True
+    assert "乘法表示" in result.content
+    assert result.sources[0]["title"] == "三年级数学教材"
+    assert result.sources[0]["chunk_id"] == "m-1"

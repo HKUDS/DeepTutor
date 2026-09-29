@@ -36,6 +36,11 @@ function Harness() {
       <button onClick={() => regenerateLastMessage()}>Retry</button>
       <button onClick={cancelStreamingTurn}>Stop</button>
       <div data-testid="events">{JSON.stringify(message?.events ?? [])}</div>
+      <div data-testid="last-turn-failed">{String(state.lastTurnFailed)}</div>
+      <div data-testid="last-message">{JSON.stringify({
+        role: message?.role, content: message?.content,
+        failedSubmission: message?.failedSubmission,
+      })}</div>
       {message?.role === "assistant" && (
         <StreamingStatus
           events={message.events ?? []}
@@ -105,11 +110,14 @@ it("counts submission latency before the first frame, preserves it on completion
   expect(screen.getByRole("status")).toHaveTextContent("0s");
 });
 
-it("keeps a stopped marker when cancelled before the first server event", () => {
+it("keeps an unsent retryable message when stopped before server admission", () => {
   render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
   fireEvent.click(screen.getByText("Send"));
   fireEvent.click(screen.getByText("Stop"));
-  expect(screen.getByTestId("events")).toHaveTextContent('"status":"cancelled"');
+  expect(screen.getByTestId("last-turn-failed")).toHaveTextContent("true");
+  expect(screen.getByTestId("last-message")).toHaveTextContent(
+    '"role":"user","content":"Hello","failedSubmission":true',
+  );
 });
 
 it("retains the connection error in the reply after transport closes", () => {

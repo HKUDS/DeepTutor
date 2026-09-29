@@ -17,6 +17,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import Tooltip from "@/shared/ui/Tooltip";
 
 import { LearningSkeleton } from "@/components/learning/LearningShell";
 import { useChatWorkspaces } from "@/hooks/useChatWorkspaces";
@@ -410,45 +411,49 @@ function FileRow({
 
   return (
     <li className="group flex items-center">
-      <button
-        type="button"
-        onClick={onOpen}
-        title={t("Open in reader")}
-        className="flex min-w-0 flex-1 items-center gap-3 px-1 py-2.5 text-left transition hover:bg-[var(--secondary)]"
-      >
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-[var(--muted)] text-[var(--muted-foreground)]">
-          {opening || pending ? (
-            <Loader2 size={14} className="animate-spin" />
-          ) : (
-            <MaterialGlyph material={material} size={14} />
-          )}
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-[13px] font-medium">
-            {material.title || material.filename}
-          </span>
-          {detail && (
-            <span
-              className={`block truncate text-[11px] ${
-                failed
-                  ? "text-[var(--destructive)]"
-                  : "text-[var(--muted-foreground)]"
-              }`}
-            >
-              {detail}
+      <span className="min-w-0 flex-1 [&>span]:w-full [&>span>button]:w-full">
+        <Tooltip label={t("Open in reader")}>
+          <button
+            type="button"
+            onClick={onOpen}
+            className="flex min-w-0 flex-1 items-center gap-3 px-1 py-2.5 text-left transition hover:bg-[var(--secondary)]"
+          >
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-[var(--muted)] text-[var(--muted-foreground)]">
+              {opening || pending ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <MaterialGlyph material={material} size={14} />
+              )}
             </span>
-          )}
-        </span>
-      </button>
-      <button
-        type="button"
-        onClick={onRemove}
-        aria-label={t("Remove from collection")}
-        title={t("Remove from collection")}
-        className="mx-1 flex size-7 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] opacity-100 transition hover:bg-[var(--muted)] hover:text-[var(--foreground)] sm:opacity-0 sm:focus:opacity-100 sm:group-hover:opacity-100"
-      >
-        <X size={13} />
-      </button>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[13px] font-medium">
+                {material.title || material.filename}
+              </span>
+              {detail && (
+                <span
+                  className={`block truncate text-[11px] ${
+                    failed
+                      ? "text-[var(--destructive)]"
+                      : "text-[var(--muted-foreground)]"
+                  }`}
+                >
+                  {detail}
+                </span>
+              )}
+            </span>
+          </button>
+        </Tooltip>
+      </span>
+      <Tooltip label={t("Remove from collection")}>
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label={t("Remove from collection")}
+          className="mx-1 flex size-7 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] opacity-100 transition hover:bg-[var(--muted)] hover:text-[var(--foreground)] sm:opacity-0 sm:focus:opacity-100 sm:group-hover:opacity-100"
+        >
+          <X size={13} />
+        </button>
+      </Tooltip>
     </li>
   );
 }

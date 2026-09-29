@@ -29,6 +29,10 @@ from deeptutor.api.routers.auth import _learning_surface_for_path
         ("/api/chat/sessions", "GET", "chat"),
         ("/api/question/generate", "POST", "chat"),
         ("/api/sessions/abc", "GET", "chat"),
+        ("/api/task-board", "GET", "chat"),
+        ("/api/task-board/cards", "POST", "chat"),
+        ("/api/task-board/cards/card-1", "PATCH", "chat"),
+        ("/api/task-board-private", "GET", ""),
         # Mastery Path: the learner's own per-user progress, all methods.
         ("/api/mastery-paths/topics", "GET", "chat"),
         ("/api/mastery-paths/topics/index", "GET", "chat"),

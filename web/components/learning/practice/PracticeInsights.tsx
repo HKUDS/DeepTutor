@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import { BarChart3, ChartNoAxesCombined, RefreshCw } from "lucide-react";
 import { practiceRoute } from "@/lib/learning-routes";
+import Tooltip from "@/shared/ui/Tooltip";
 import {
   getPracticeAnalytics,
   type PracticeAnalytics,
@@ -116,17 +117,17 @@ export function PracticeInsights({ courseId, revision, workspaceId }: { courseId
             aria-label={t("Chart style")}
           >
             {(["line", "bars"] as const).map(value => (
-              <button
-                key={value}
-                type="button"
-                aria-pressed={style === value}
-                title={t(value === "line" ? "Line chart" : "Bar chart")}
-                aria-label={t(value === "line" ? "Line chart" : "Bar chart")}
-                onClick={() => setView("stats_chart", value)}
-                className={`rounded-md p-2 ${style === value ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                {value === "line" ? <ChartNoAxesCombined size={15} /> : <BarChart3 size={15} />}
-              </button>
+              <Tooltip key={value} label={t(value === "line" ? "Line chart" : "Bar chart")}>
+                <button
+                  type="button"
+                  aria-pressed={style === value}
+                  aria-label={t(value === "line" ? "Line chart" : "Bar chart")}
+                  onClick={() => setView("stats_chart", value)}
+                  className={`rounded-md p-2 ${style === value ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  {value === "line" ? <ChartNoAxesCombined size={15} /> : <BarChart3 size={15} />}
+                </button>
+              </Tooltip>
             ))}
           </div>
         </div>

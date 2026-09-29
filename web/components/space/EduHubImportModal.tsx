@@ -1,5 +1,6 @@
 "use client";
 
+import Tooltip from "@/shared/ui/Tooltip";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useTranslation } from "react-i18next";
@@ -350,75 +351,78 @@ function SkillCard({
   onInstall: (slug: string, opts?: { force?: boolean }) => void;
 }) {
   return (
-    <li
-      role="button"
-      tabIndex={0}
-      onClick={onOpen}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onOpen();
-        }
-      }}
-      title={tr("查看详情", "View details")}
-      className="group relative flex cursor-pointer flex-col rounded-xl border border-[var(--border)] bg-[var(--card)] p-4 shadow-sm transition-all hover:border-[var(--foreground)]/30 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40"
-    >
-      <div className="flex items-start gap-2.5">
-        <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-[var(--border)]/60 bg-[var(--background)] text-[var(--muted-foreground)]">
-          <Wand2 size={13} strokeWidth={1.6} />
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <span className="truncate text-[14px] font-semibold tracking-tight text-[var(--foreground)]">
-              {skill.name}
-            </span>
-            {installed ? (
-              <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-emerald-500/12 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
-                <CheckCircle2 size={9} />
-                {tr("已导入", "Installed")}
+    <Tooltip label={tr("查看详情", "View details")} as="li" side="top">
+      <div
+        role="button"
+        tabIndex={0}
+        aria-label={`${tr("查看详情", "View details")}: ${skill.name}`}
+        onClick={onOpen}
+        onKeyDown={(e) => {
+          if (e.target !== e.currentTarget) return;
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onOpen();
+          }
+        }}
+        className="group relative flex h-full cursor-pointer flex-col rounded-xl border border-[var(--border)] bg-[var(--card)] p-4 shadow-sm transition-all hover:border-[var(--foreground)]/30 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40"
+      >
+        <div className="flex items-start gap-2.5">
+          <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-[var(--border)]/60 bg-[var(--background)] text-[var(--muted-foreground)]">
+            <Wand2 size={13} strokeWidth={1.6} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5">
+              <span className="truncate text-[14px] font-semibold tracking-tight text-[var(--foreground)]">
+                {skill.name}
               </span>
+              {installed ? (
+                <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-emerald-500/12 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+                  <CheckCircle2 size={9} />
+                  {tr("已导入", "Installed")}
+                </span>
+              ) : null}
+            </div>
+            {skill.summary ? (
+              <p className="mt-0.5 line-clamp-2 text-[12px] leading-relaxed text-[var(--muted-foreground)]">
+                {skill.summary}
+              </p>
+            ) : (
+              <p className="mt-0.5 text-[12px] italic text-[var(--muted-foreground)]/60">
+                {tr("暂无描述。", "No description.")}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-3 flex items-center justify-between gap-2 pt-2">
+          <div className="flex min-w-0 items-center gap-2.5 text-[11px] text-[var(--muted-foreground)]">
+            <span className="inline-flex items-center gap-1">
+              <Download size={11} />
+              {skill.downloads}
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <Star size={11} />
+              {skill.stars}
+            </span>
+            {skill.owner ? (
+              <span className="truncate">· {skill.owner}</span>
             ) : null}
           </div>
-          {skill.summary ? (
-            <p className="mt-0.5 line-clamp-2 text-[12px] leading-relaxed text-[var(--muted-foreground)]">
-              {skill.summary}
-            </p>
-          ) : (
-            <p className="mt-0.5 text-[12px] italic text-[var(--muted-foreground)]/60">
-              {tr("暂无描述。", "No description.")}
-            </p>
-          )}
+          <InstallButton
+            state={state}
+            installed={installed}
+            tr={tr}
+            onClick={(force) => onInstall(skill.slug, { force })}
+          />
         </div>
-      </div>
 
-      <div className="mt-3 flex items-center justify-between gap-2 pt-2">
-        <div className="flex min-w-0 items-center gap-2.5 text-[11px] text-[var(--muted-foreground)]">
-          <span className="inline-flex items-center gap-1">
-            <Download size={11} />
-            {skill.downloads}
-          </span>
-          <span className="inline-flex items-center gap-1">
-            <Star size={11} />
-            {skill.stars}
-          </span>
-          {skill.owner ? (
-            <span className="truncate">· {skill.owner}</span>
-          ) : null}
-        </div>
-        <InstallButton
-          state={state}
-          installed={installed}
-          tr={tr}
-          onClick={(force) => onInstall(skill.slug, { force })}
-        />
+        {state?.kind === "error" ? (
+          <p className="mt-2 line-clamp-2 text-[11px] text-amber-700 dark:text-amber-400">
+            {state.message}
+          </p>
+        ) : null}
       </div>
-
-      {state?.kind === "error" ? (
-        <p className="mt-2 line-clamp-2 text-[11px] text-amber-700 dark:text-amber-400">
-          {state.message}
-        </p>
-      ) : null}
-    </li>
+    </Tooltip>
   );
 }
 

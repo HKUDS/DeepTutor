@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Search, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import Tooltip from '@/shared/ui/Tooltip'
 import { useSettingsAccess } from '@/features/settings/navigation/SettingsAccessProvider'
 import { settingsAnchorHref, type Lang } from '@/features/settings/navigation/settings-nav'
 import {
@@ -92,21 +93,21 @@ export default function SettingsNav({ onNavigate }: { onNavigate?: () => void })
                   const Icon = needle ? page.icon : settingsPageIcon(page.key, page.icon)
                   const active = needle ? page.key === currentKey : currentFamily.includes(page.key)
                   return (
-                    <Link
-                      key={page.key}
-                      href={settingsAnchorHref(page.key)}
-                      scroll={false}
-                      onClick={onNavigate}
-                      aria-current={active ? 'page' : undefined}
-                      title={tr(page.blurb)}
-                      data-tour={`tour-nav-${page.key}`}
-                      className={`flex min-h-8 items-center gap-2 rounded-md px-2.5 py-1.5 text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${active ? 'bg-[var(--accent)] font-medium text-[var(--foreground)]' : 'text-[var(--foreground)] hover:bg-accent/60'}`}
-                    >
-                      <Icon size={15} strokeWidth={1.8} className="shrink-0" />
-                      <span>
-                        {tr(needle ? page.label : settingsPageLabel(page.key, page.label))}
-                      </span>
-                    </Link>
+                    <Tooltip key={page.key} label={tr(page.blurb)} as="div" side="right">
+                      <Link
+                        href={settingsAnchorHref(page.key)}
+                        scroll={false}
+                        onClick={onNavigate}
+                        aria-current={active ? 'page' : undefined}
+                        data-tour={`tour-nav-${page.key}`}
+                        className={`flex min-h-8 items-center gap-2 rounded-md px-2.5 py-1.5 text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${active ? 'bg-[var(--accent)] font-medium text-[var(--foreground)]' : 'text-[var(--foreground)] hover:bg-accent/60'}`}
+                      >
+                        <Icon size={15} strokeWidth={1.8} className="shrink-0" />
+                        <span>
+                          {tr(needle ? page.label : settingsPageLabel(page.key, page.label))}
+                        </span>
+                      </Link>
+                    </Tooltip>
                   )
                 })}
               </div>

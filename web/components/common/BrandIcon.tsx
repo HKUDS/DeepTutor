@@ -45,7 +45,6 @@ export default function BrandIcon({
       // The name is already adjacent in every current caller, so the mark is
       // decorative and announcing it again would just double every row.
       aria-hidden
-      title={icon ? icon.title : name}
       className={`flex shrink-0 items-center justify-center rounded-lg border border-[var(--border)]/60 bg-[var(--background)] font-semibold tracking-tight text-[var(--muted-foreground)] ${box} ${className}`}
     >
       {icon ? (

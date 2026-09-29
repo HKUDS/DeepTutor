@@ -90,6 +90,7 @@ import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
 import type { CapabilityDef } from "@/features/capabilities/presentation";
 import AttachmentProcessingStatus from "./AttachmentProcessingStatus";
 import type { AttachmentProcessingItem } from "@/features/chat/selectors/attachment-processing";
+import Tooltip from "@/shared/ui/Tooltip";
 
 interface PendingAttachment {
   type: string;
@@ -1079,6 +1080,12 @@ export default memo(function ChatComposer({
             </div>
           )}
 
+          {recorder.error && (
+            <div role="alert" className="px-4 pb-2 text-[11px] text-red-600">
+              {recorder.error}
+            </div>
+          )}
+
           {/* Claude-style chrome-free toolbar: no divider against the input
               area, no pill borders — quiet text/icon buttons that surface
               on hover. */}
@@ -1087,25 +1094,26 @@ export default memo(function ChatComposer({
               <div className={styles.context}>
                 {showCapabilityChip && (
                   <div className="relative min-w-0 max-w-full">
-                    <button
-                      ref={capBtnRef}
-                      aria-haspopup="menu"
-                      aria-expanded={capMenuOpen}
-                      onClick={() => onSetCapMenuOpen((v) => !v)}
-                      aria-label={t(activeCap.label)}
-                      title={t(activeCap.label)}
-                      className={`inline-flex h-8 max-w-full items-center rounded-lg px-2 text-[14px] font-medium transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
-                        capMenuOpen
-                          ? "bg-[var(--primary)]/10 text-[var(--primary)]"
-                          : "text-[var(--foreground)] hover:bg-[var(--muted)]/55"
-                      }`}
-                    >
-                      <CapIcon size={16} strokeWidth={1.7} className="shrink-0" />
-                      <span className="ml-1.5 inline-flex min-w-0 items-center gap-1.5 whitespace-nowrap">
-                        <span className="min-w-0 truncate">{t(activeCap.label)}</span>
-                        <ChevronDown size={13} strokeWidth={2} className={`shrink-0 transition-transform duration-200 ${capMenuOpen ? "rotate-180" : ""}`} />
-                      </span>
-                    </button>
+                    <Tooltip label={t(activeCap.label)} suppressed={capMenuOpen} side="top">
+                      <button
+                        ref={capBtnRef}
+                        aria-haspopup="menu"
+                        aria-expanded={capMenuOpen}
+                        onClick={() => onSetCapMenuOpen((v) => !v)}
+                        aria-label={t(activeCap.label)}
+                        className={`inline-flex h-8 max-w-full items-center rounded-lg px-2 text-[14px] font-medium transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
+                          capMenuOpen
+                            ? "bg-[var(--primary)]/10 text-[var(--primary)]"
+                            : "text-[var(--foreground)] hover:bg-[var(--muted)]/55"
+                        }`}
+                      >
+                        <CapIcon size={16} strokeWidth={1.7} className="shrink-0" />
+                        <span className="ml-1.5 inline-flex min-w-0 items-center gap-1.5 whitespace-nowrap">
+                          <span className="min-w-0 truncate">{t(activeCap.label)}</span>
+                          <ChevronDown size={13} strokeWidth={2} className={`shrink-0 transition-transform duration-200 ${capMenuOpen ? "rotate-180" : ""}`} />
+                        </span>
+                      </button>
+                    </Tooltip>
 
                     {capMenuOpen && (
                       <div
@@ -1297,40 +1305,36 @@ export default memo(function ChatComposer({
 
                 {contextBudget ? <ContextBudgetChip budget={contextBudget} /> : null}
 
-                <button
-                  type="button"
-                  onClick={recorder.toggle}
-                  disabled={recorder.state === "transcribing" || isStreaming}
-                  className={`group relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] transition-[background-color,color,transform] duration-150 active:scale-90 disabled:opacity-40 ${
-                    recorder.state === "recording"
-                      ? "bg-red-500/15 text-red-500"
-                      : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/55 hover:text-[var(--foreground)]"
-                  }`}
-                  aria-label={
-                    recorder.state === "recording"
-                      ? t("Stop recording")
-                      : t("Record voice")
-                  }
-                  title={
-                    recorder.error ||
-                    (recorder.state === "recording"
-                      ? t("Stop recording")
-                      : t("Record voice"))
-                  }
+                <Tooltip
+                  label={recorder.state === "recording" ? t("Stop recording") : t("Record voice")}
+                  description={recorder.error || undefined}
+                  side="top"
                 >
-                  {recorder.state === "recording" && (
-                    <span className="pointer-events-none absolute inset-0 rounded-[10px] border border-red-500/40 animate-pulse" />
-                  )}
-                  {recorder.state === "transcribing" ? (
-                    <Loader2
-                      size={16}
-                      strokeWidth={1.9}
-                      className="animate-spin"
-                    />
-                  ) : (
-                    <Mic size={16} strokeWidth={1.9} />
-                  )}
-                </button>
+                  <button
+                    type="button"
+                    onClick={recorder.toggle}
+                    disabled={recorder.state === "transcribing" || isStreaming}
+                    className={`group relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] transition-[background-color,color,transform] duration-150 active:scale-90 disabled:opacity-40 ${
+                      recorder.state === "recording"
+                        ? "bg-red-500/15 text-red-500"
+                        : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/55 hover:text-[var(--foreground)]"
+                    }`}
+                    aria-label={recorder.state === "recording" ? t("Stop recording") : t("Record voice")}
+                  >
+                    {recorder.state === "recording" && (
+                      <span className="pointer-events-none absolute inset-0 rounded-[10px] border border-red-500/40 animate-pulse" />
+                    )}
+                    {recorder.state === "transcribing" ? (
+                      <Loader2
+                        size={16}
+                        strokeWidth={1.9}
+                        className="animate-spin"
+                      />
+                    ) : (
+                      <Mic size={16} strokeWidth={1.9} />
+                    )}
+                  </button>
+                </Tooltip>
 
                 {/* The thing you press is the thing that's working is the
                     thing you press to stop — one element for the whole turn,
@@ -1339,38 +1343,39 @@ export default memo(function ChatComposer({
                     place (both stacked in the same grid cell) and the progress
                     ring moves to the perimeter, where it can spin without
                     fighting the square for the same space. */}
-                <button
-                  type="button"
-                  onClick={handleSendButtonClick}
-                  disabled={sendState === "idle"}
-                  className={`group relative ml-1 inline-grid h-8 w-8 shrink-0 place-items-center rounded-full transition-[background-color,box-shadow,transform] duration-200 active:scale-95 ${SEND_STATE_CLASS[sendState]}`}
-                  aria-label={sendLabel}
-                  title={sendTitle}
-                >
-                  {sendState === "streaming" && (
-                    // Outside the fill, so "still working" reads at a glance
-                    // and dims on hover to hand the control back as "stop".
-                    <span className="pointer-events-none absolute -inset-[3px] rounded-full border-2 border-[color-mix(in_srgb,var(--primary)_15%,transparent)] border-t-[var(--primary)] animate-spin transition-opacity group-hover:opacity-30" />
-                  )}
-                  <ArrowUp
-                    size={16}
-                    strokeWidth={2.5}
-                    className={`col-start-1 row-start-1 transition-[opacity,transform] duration-200 ${
-                      sendState === "streaming"
-                        ? "scale-50 opacity-0"
-                        : "scale-100 opacity-100"
-                    }`}
-                  />
-                  <Square
-                    size={10}
-                    strokeWidth={2.6}
-                    className={`col-start-1 row-start-1 fill-current transition-[opacity,transform] duration-200 ${
-                      sendState === "streaming"
-                        ? "scale-100 opacity-100"
-                        : "scale-50 opacity-0"
-                    }`}
-                  />
-                </button>
+                <Tooltip label={sendTitle} side="top">
+                  <button
+                    type="button"
+                    onClick={handleSendButtonClick}
+                    disabled={sendState === "idle"}
+                    className={`group relative ml-1 inline-grid h-8 w-8 shrink-0 place-items-center rounded-full transition-[background-color,box-shadow,transform] duration-200 active:scale-95 ${SEND_STATE_CLASS[sendState]}`}
+                    aria-label={sendLabel}
+                  >
+                    {sendState === "streaming" && (
+                      // Outside the fill, so "still working" reads at a glance
+                      // and dims on hover to hand the control back as "stop".
+                      <span className="pointer-events-none absolute -inset-[3px] rounded-full border-2 border-[color-mix(in_srgb,var(--primary)_15%,transparent)] border-t-[var(--primary)] animate-spin transition-opacity group-hover:opacity-30" />
+                    )}
+                    <ArrowUp
+                      size={16}
+                      strokeWidth={2.5}
+                      className={`col-start-1 row-start-1 transition-[opacity,transform] duration-200 ${
+                        sendState === "streaming"
+                          ? "scale-50 opacity-0"
+                          : "scale-100 opacity-100"
+                      }`}
+                    />
+                    <Square
+                      size={10}
+                      strokeWidth={2.6}
+                      className={`col-start-1 row-start-1 fill-current transition-[opacity,transform] duration-200 ${
+                        sendState === "streaming"
+                          ? "scale-100 opacity-100"
+                          : "scale-50 opacity-0"
+                      }`}
+                    />
+                  </button>
+                </Tooltip>
               </div>
             </div>
           </div>

@@ -9,7 +9,9 @@ import pytest
 from deeptutor.agents.research.pipeline import (
     _PROTOCOL_REPORT_SECTION,
     LABEL_SECTION,
+    IncompleteReportError,
     ReportOutline,
+    ReportSectionPlan,
     ResearchPipeline,
 )
 from deeptutor.agents.research.utils.citation_manager import CitationManager
@@ -92,6 +94,58 @@ async def test_report_title_is_separated_before_the_streamed_introduction(
         event.content for event in stream._history if event.type.value == "content"
     )
     assert live_content.startswith("# Report title\n\n## 1. Introduction")
+
+
+async def test_failed_report_section_names_unwritten_parts_without_provider_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    pipeline = _make_pipeline(monkeypatch)
+    stream = StreamBus()
+
+    async def fake_outline(self, **_kwargs):
+        return ReportOutline(
+            title="Report title",
+            sections=(
+                ReportSectionPlan("S1", "First topic", "", ()),
+                ReportSectionPlan("S2", "Second topic", "", ()),
+            ),
+        )
+
+    async def fake_intro(self, *, stream, **_kwargs):
+        await stream.content("## 1. Introduction", stage="reporting")
+        return "## 1. Introduction"
+
+    async def fake_section(self, *, section_index, stream, **_kwargs):
+        if section_index == 2:
+            raise RuntimeError("provider secret detail")
+        await stream.content("## 2. First topic", stage="reporting")
+        return "## 2. First topic"
+
+    pipeline._gen_report_outline = types.MethodType(fake_outline, pipeline)
+    pipeline._write_intro = types.MethodType(fake_intro, pipeline)
+    pipeline._write_section = types.MethodType(fake_section, pipeline)
+
+    with pytest.raises(IncompleteReportError) as failure:
+        await pipeline._write_report(
+            topic="topic",
+            blocks=[],
+            citations=CitationManager("test-report", cache_dir=tmp_path),
+            stream=stream,
+            client=None,
+        )
+    await pipeline._emit_visible_failure(stream, failure.value)
+
+    content = "".join(event.content for event in stream._history if event.type.value == "content")
+    errors = "".join(event.content for event in stream._history if event.type.value == "error")
+    assert "## 1. Introduction" in content
+    assert "## 2. First topic" in content
+    assert "3. Second topic" in content
+    assert "4. Conclusion" in content
+    assert "1. Introduction, 2. First topic" not in content
+    assert "provider secret detail" not in content
+    assert "RuntimeError: provider secret detail" in errors
+    assert isinstance(failure.value.__cause__, RuntimeError)
 
 
 async def test_report_step_retries_an_idle_truncated_response_before_streaming(
@@ -182,6 +236,7 @@ async def test_report_retry_replays_reasoning_from_incomplete_attempt(
     assistant = next(message for message in requests[1] if message["role"] == "assistant")
     assert assistant["content"] == "``SECTION``\n## 2. Partial section"
     assert assistant["reasoning_content"] == "Plan the missing evidence."
+    assert "incomplete or invalid" in requests[1][-1]["content"]
 
 
 async def test_report_step_rejects_empty_success_after_all_retries(

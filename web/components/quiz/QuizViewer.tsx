@@ -54,6 +54,7 @@ import {
 } from "@/lib/notebook-api";
 import { recordQuizResults } from "@/lib/session-api";
 import { apiUrl } from "@/lib/api";
+import Tooltip from "@/shared/ui/Tooltip";
 
 import { randomUuid } from "@/lib/random-uuid";
 
@@ -780,16 +781,17 @@ export default function QuizViewer({
       className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]"
     >
       <div className="flex items-center gap-2 border-b border-[var(--border)] px-3 py-2">
-        <button
-          type="button"
-          onClick={() => setIdx((value) => Math.max(0, value - 1))}
-          disabled={idx === 0}
-          title={t("Previous")}
-          aria-label={t("Previous")}
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--muted)]/60 text-[var(--foreground)] shadow-sm transition-colors hover:border-[var(--primary)] hover:bg-[var(--primary)]/10 hover:text-[var(--primary)] disabled:cursor-not-allowed disabled:border-[var(--border)] disabled:bg-transparent disabled:text-[var(--muted-foreground)] disabled:opacity-40 disabled:hover:bg-transparent"
-        >
-          <ChevronLeft size={18} strokeWidth={2.5} />
-        </button>
+        <Tooltip label={t("Previous")}>
+          <button
+            type="button"
+            onClick={() => setIdx((value) => Math.max(0, value - 1))}
+            disabled={idx === 0}
+            aria-label={t("Previous")}
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--muted)]/60 text-[var(--foreground)] shadow-sm transition-colors hover:border-[var(--primary)] hover:bg-[var(--primary)]/10 hover:text-[var(--primary)] disabled:cursor-not-allowed disabled:border-[var(--border)] disabled:bg-transparent disabled:text-[var(--muted-foreground)] disabled:opacity-40 disabled:hover:bg-transparent"
+          >
+            <ChevronLeft size={18} strokeWidth={2.5} />
+          </button>
+        </Tooltip>
         <span className="text-[11px] font-semibold text-[var(--muted-foreground)]">
           {completedCount}/{total}
         </span>
@@ -866,16 +868,17 @@ export default function QuizViewer({
             );
           })}
         </div>
-        <button
-          type="button"
-          onClick={() => setIdx((value) => Math.min(total - 1, value + 1))}
-          disabled={idx === total - 1}
-          title={t("Next")}
-          aria-label={t("Next")}
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--muted)]/60 text-[var(--foreground)] shadow-sm transition-colors hover:border-[var(--primary)] hover:bg-[var(--primary)]/10 hover:text-[var(--primary)] disabled:cursor-not-allowed disabled:border-[var(--border)] disabled:bg-transparent disabled:text-[var(--muted-foreground)] disabled:opacity-40 disabled:hover:bg-transparent"
-        >
-          <ChevronRight size={18} strokeWidth={2.5} />
-        </button>
+        <Tooltip label={t("Next")}>
+          <button
+            type="button"
+            onClick={() => setIdx((value) => Math.min(total - 1, value + 1))}
+            disabled={idx === total - 1}
+            aria-label={t("Next")}
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--muted)]/60 text-[var(--foreground)] shadow-sm transition-colors hover:border-[var(--primary)] hover:bg-[var(--primary)]/10 hover:text-[var(--primary)] disabled:cursor-not-allowed disabled:border-[var(--border)] disabled:bg-transparent disabled:text-[var(--muted-foreground)] disabled:opacity-40 disabled:hover:bg-transparent"
+          >
+            <ChevronRight size={18} strokeWidth={2.5} />
+          </button>
+        </Tooltip>
       </div>
       <div className="h-0.5 bg-[var(--muted)]">
         <div
@@ -910,47 +913,52 @@ export default function QuizViewer({
 
           {ans.submitted && (
             <div className="relative flex items-center gap-1">
-              <button
-                onClick={handleToggleBookmark}
-                disabled={!currentEntryId}
-                title={currentBookmarked ? t("Remove Bookmark") : t("Bookmark")}
-                className={`rounded-lg p-1.5 transition-all disabled:opacity-30 ${
-                  currentBookmarked
-                    ? "scale-110 text-amber-500 dark:text-amber-400"
-                    : "text-[var(--muted-foreground)] hover:text-amber-500 dark:hover:text-amber-400"
-                }`}
-              >
-                <Bookmark
-                  size={18}
-                  strokeWidth={currentBookmarked ? 2.5 : 1.8}
-                  fill={currentBookmarked ? "currentColor" : "none"}
-                />
-              </button>
+              <Tooltip label={currentBookmarked ? t("Remove Bookmark") : t("Bookmark")}>
+                <button
+                  type="button"
+                  onClick={handleToggleBookmark}
+                  disabled={!currentEntryId}
+                  aria-label={currentBookmarked ? t("Remove Bookmark") : t("Bookmark")}
+                  className={`rounded-lg p-1.5 transition-all disabled:opacity-30 ${
+                    currentBookmarked
+                      ? "scale-110 text-amber-500 dark:text-amber-400"
+                      : "text-[var(--muted-foreground)] hover:text-amber-500 dark:hover:text-amber-400"
+                  }`}
+                >
+                  <Bookmark
+                    size={18}
+                    strokeWidth={currentBookmarked ? 2.5 : 1.8}
+                    fill={currentBookmarked ? "currentColor" : "none"}
+                  />
+                </button>
+              </Tooltip>
               <CategoryMenu
                 categories={categories}
                 disabled={!currentEntryId}
                 onPick={handleAddToCategory}
                 onCreate={handleCreateAndAdd}
               />
-              <button
-                onClick={handleOpenFollowup}
-                title={t("Follow-up Chat")}
-                className="ml-1 inline-flex items-center gap-1 rounded-lg border border-[var(--primary)]/60 bg-[var(--primary)]/10 px-2 py-1 text-[12px] font-medium text-[var(--primary)] transition-colors hover:bg-[var(--primary)]/15"
-              >
-                <MessageSquarePlus size={13} />
-                {t("Follow-up")}
-                {(() => {
-                  const tcount =
-                    followupThreads[questionKey]?.messages.filter(
-                      (m) => m.role !== "system",
-                    ).length ?? 0;
-                  return tcount > 0 ? (
-                    <span className="rounded-full bg-[var(--primary)]/25 px-1.5 py-0 text-[10px]">
-                      {tcount}
-                    </span>
-                  ) : null;
-                })()}
-              </button>
+              <Tooltip label={t("Follow-up Chat")}>
+                <button
+                  type="button"
+                  onClick={handleOpenFollowup}
+                  className="ml-1 inline-flex items-center gap-1 rounded-lg border border-[var(--primary)]/60 bg-[var(--primary)]/10 px-2 py-1 text-[12px] font-medium text-[var(--primary)] transition-colors hover:bg-[var(--primary)]/15"
+                >
+                  <MessageSquarePlus size={13} />
+                  {t("Follow-up")}
+                  {(() => {
+                    const tcount =
+                      followupThreads[questionKey]?.messages.filter(
+                        (m) => m.role !== "system",
+                      ).length ?? 0;
+                    return tcount > 0 ? (
+                      <span className="rounded-full bg-[var(--primary)]/25 px-1.5 py-0 text-[10px]">
+                        {tcount}
+                      </span>
+                    ) : null;
+                  })()}
+                </button>
+              </Tooltip>
             </div>
           )}
         </div>
@@ -1154,14 +1162,18 @@ export default function QuizViewer({
                         {image.filename}
                       </div>
                       {!ans.submitted && (
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveImage(image.id)}
-                          title={t("Remove image")}
-                          className="absolute right-1 top-1 inline-flex h-5 w-5 items-center justify-center rounded-full bg-black/55 text-white opacity-0 transition-opacity group-hover:opacity-100"
-                        >
-                          <X size={11} />
-                        </button>
+                        <span className="absolute right-1 top-1 opacity-0 transition-opacity group-hover:opacity-100">
+                          <Tooltip label={t("Remove image")}>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveImage(image.id)}
+                              aria-label={t("Remove image")}
+                              className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-black/55 text-white"
+                            >
+                              <X size={11} />
+                            </button>
+                          </Tooltip>
+                        </span>
                       )}
                     </div>
                   );
@@ -1298,18 +1310,19 @@ export default function QuizViewer({
                         <Loader2 size={10} className="animate-spin" />
                       )}
                     </button>
-                    <button
-                      type="button"
-                      onClick={toggleCollapsed}
-                      aria-label={collapsed ? t("Expand") : t("Collapse")}
-                      title={collapsed ? t("Expand") : t("Collapse")}
-                      className="ml-auto inline-flex h-5 w-5 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-                    >
-                      <ChevronDown
-                        size={13}
-                        className={`transition-transform ${collapsed ? "-rotate-90" : ""}`}
-                      />
-                    </button>
+                    <Tooltip label={collapsed ? t("Expand") : t("Collapse")}>
+                      <button
+                        type="button"
+                        onClick={toggleCollapsed}
+                        aria-label={collapsed ? t("Expand") : t("Collapse")}
+                        className="ml-auto inline-flex h-5 w-5 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                      >
+                        <ChevronDown
+                          size={13}
+                          className={`transition-transform ${collapsed ? "-rotate-90" : ""}`}
+                        />
+                      </button>
+                    </Tooltip>
                   </div>
                 ) : (
                   <button

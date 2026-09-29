@@ -13,6 +13,7 @@ import {
 } from "@/lib/co-writer-api";
 import { notifyCoWriterChanged } from "@/lib/co-writer-events";
 import { CO_WRITER_SAMPLE_TEMPLATE } from "./sampleTemplate";
+import Tooltip from "@/shared/ui/Tooltip";
 
 function relativeTime(seconds: number): string {
   if (!seconds || Number.isNaN(seconds)) return "";
@@ -280,34 +281,34 @@ export default function CoWriterHomePage() {
                         </div>
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        if (isPendingDelete) {
-                          void handleDelete(doc.id);
-                        } else {
-                          setPendingDeleteId(doc.id);
-                        }
-                      }}
-                      disabled={isDeleting}
-                      title={
-                        isPendingDelete
-                          ? t("Click again to confirm")
-                          : t("Delete draft")
-                      }
-                      className={`shrink-0 rounded-md p-1 transition-colors disabled:opacity-50 ${
-                        isPendingDelete
-                          ? "bg-rose-500/15 text-rose-600 dark:text-rose-400"
-                          : "text-[var(--muted-foreground)]/60 opacity-0 hover:bg-rose-500/10 hover:text-rose-600 group-hover:opacity-100 dark:hover:text-rose-400"
-                      }`}
+                    <Tooltip
+                      label={isPendingDelete ? t("Click again to confirm") : t("Delete draft")}
                     >
-                      {isDeleting ? (
-                        <Loader2 size={13} className="animate-spin" />
-                      ) : (
-                        <Trash2 size={13} />
-                      )}
-                    </button>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          if (isPendingDelete) {
+                            void handleDelete(doc.id);
+                          } else {
+                            setPendingDeleteId(doc.id);
+                          }
+                        }}
+                        disabled={isDeleting}
+                        aria-label={isPendingDelete ? t("Click again to confirm") : t("Delete draft")}
+                        className={`shrink-0 rounded-md p-1 transition-colors disabled:opacity-50 ${
+                          isPendingDelete
+                            ? "bg-rose-500/15 text-rose-600 dark:text-rose-400"
+                            : "text-[var(--muted-foreground)]/60 hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400"
+                        }`}
+                      >
+                        {isDeleting ? (
+                          <Loader2 size={13} className="animate-spin" />
+                        ) : (
+                          <Trash2 size={13} />
+                        )}
+                      </button>
+                    </Tooltip>
                   </div>
                   <p className="mt-2.5 line-clamp-4 flex-1 text-[12px] leading-relaxed text-[var(--muted-foreground)]">
                     {doc.preview || t("Empty draft")}

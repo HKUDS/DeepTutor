@@ -110,6 +110,7 @@ class DispatchOutcome:
 
     sources: list[dict[str, Any]] = field(default_factory=list)
     tool_messages: list[dict[str, Any]] = field(default_factory=list)
+    model_messages: list[dict[str, Any]] = field(default_factory=list, repr=False)
     tool_metadata_by_id: dict[str, dict[str, Any]] = field(default_factory=dict)
     terminate: bool = False
     terminate_payload: dict[str, Any] | None = None
@@ -777,6 +778,7 @@ async def execute_tool_call(
             "metadata": result.metadata,
             "terminate_turn": getattr(result, "terminate_turn", False),
             "pause_for_user": getattr(result, "pause_for_user", None),
+            "model_message": getattr(result, "model_message", None),
         }
     except Exception as exc:
         # Unknown tool names arrive here too (the registry raises KeyError), so
@@ -843,6 +845,8 @@ async def _collect_outcome(
     """
     aggregated_sources: list[dict[str, Any]] = []
     tool_messages: list[dict[str, Any]] = []
+    model_messages: list[dict[str, Any]] = []
+    model_image_count = 0
     tool_metadata_by_id: dict[str, dict[str, Any]] = {}
     terminate = False
     terminate_payload: dict[str, Any] | None = None
@@ -879,6 +883,18 @@ async def _collect_outcome(
                 "content": result_text,
             }
         )
+        private_message = result.get("model_message")
+        if isinstance(private_message, dict) and private_message.get("role") == "user":
+            content = private_message.get("content")
+            if isinstance(content, list):
+                image_count = sum(
+                    1
+                    for part in content
+                    if isinstance(part, dict) and part.get("type") == "image_url"
+                )
+                if image_count and model_image_count + image_count <= 2:
+                    model_messages.append({**private_message, "_after_tool_call_id": tool_call_id})
+                    model_image_count += image_count
         if isinstance(tool_extra_meta, dict) and tool_extra_meta:
             tool_metadata_by_id[tool_call_id] = dict(tool_extra_meta)
         if result.get("terminate_turn") and not terminate:
@@ -900,6 +916,7 @@ async def _collect_outcome(
     return DispatchOutcome(
         sources=aggregated_sources,
         tool_messages=tool_messages,
+        model_messages=model_messages,
         tool_metadata_by_id=tool_metadata_by_id,
         terminate=terminate,
         terminate_payload=terminate_payload,

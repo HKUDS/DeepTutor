@@ -186,6 +186,10 @@ export interface KnowledgeBase {
     vault_path?: string;
     /** SQLite store of a connected MarginNote 4 library (when type === "marginnote4"). */
     db_path?: string;
+    /** Connected Kiwix archive; article bytes remain on the configured server. */
+    server_url?: string;
+    zim_name?: string;
+    zim_title?: string;
     /** Backend of a connected subagent (when type === "subagent"): "claude_code" | "codex" | "antigravity" | "kimi" | "opencode" | "mimo" | "hermes" | "openclaw" | "deepseek_harness" | "partner". */
     agent_kind?: string;
     /** Bound partner id when agent_kind === "partner". */
@@ -332,6 +336,7 @@ export const KB_DETAIL_SECTIONS = [
   "web",
   "versions",
   "devices",
+  "kiwix",
   "settings",
 ] as const;
 
@@ -347,8 +352,10 @@ export type KbDetailSection = (typeof KB_DETAIL_SECTIONS)[number];
 export const kbDetailSections = (kb: KnowledgeBase): KbDetailSection[] =>
   isMarginNoteKb(kb)
     ? ["devices", "settings"]
+    : kb.metadata?.type === "kiwix"
+      ? ["kiwix", "settings"]
     : KB_DETAIL_SECTIONS.filter(
-        (section) => section !== "devices" && (section !== "folders" || !kb.metadata?.type),
+        (section) => section !== "devices" && section !== "kiwix" && (section !== "folders" || !kb.metadata?.type),
       );
 
 /** Local source folders belong to ordinary, DeepTutor-managed indexed KBs. */
@@ -359,6 +366,7 @@ export const kbSupportsLinkedFolders = (kb: KnowledgeBase): boolean =>
 export const kbProvider = (kb: KnowledgeBase): string => {
   if (kb.metadata?.type === "obsidian") return "obsidian";
   if (isMarginNoteKb(kb)) return MARGINNOTE4_KB_TYPE;
+  if (kb.metadata?.type === "kiwix") return "kiwix";
   return (
     (kb.statistics?.rag_provider as string | undefined) ||
     (kb.metadata?.rag_provider as string | undefined) ||
@@ -368,6 +376,7 @@ export const kbProvider = (kb: KnowledgeBase): string => {
 
 /** Source-document count for a KB, or null when unknown. */
 export const kbDocCount = (kb: KnowledgeBase): number | null => {
+  if (kb.metadata?.type === "kiwix") return null;
   const raw = kb.statistics?.raw_documents;
   if (typeof raw === "number") return raw;
   const indexed = kb.metadata?.last_indexed_count;

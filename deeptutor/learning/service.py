@@ -51,6 +51,7 @@ _LEARNER_PROFILE_FIELDS: tuple[str, ...] = (
     "target_level",
     "time_budget",
     "preferences",
+    "teaching_strategy",
     "notes",
 )
 
@@ -1247,6 +1248,11 @@ class LearningService:
             for key, value in fields.items()
             if key in _LEARNER_PROFILE_FIELDS and value is not None
         }
+        if "teaching_strategy" in cleaned and cleaned["teaching_strategy"] not in {
+            "probe_first",
+            "teach_first",
+        }:
+            raise ValueError("teaching_strategy must be probe_first or teach_first")
 
         def record(tx):
             profile = tx.progress.learner_profile or LearnerProfile()

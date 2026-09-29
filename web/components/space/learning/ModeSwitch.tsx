@@ -1,6 +1,7 @@
 "use client";
 
 import { useTranslation } from "react-i18next";
+import Tooltip from "@/shared/ui/Tooltip";
 
 import {
   MASTERY_MODES,
@@ -47,34 +48,36 @@ export function ModeSwitch({
       {MASTERY_MODES.map((candidate) => {
         const active = candidate === mode;
         return (
-          <button
+          <Tooltip
             key={candidate}
-            type="button"
-            onClick={() => !active && onSelect(candidate)}
-            disabled={disabled || active}
-            aria-pressed={active}
-            // Why it is not clickable right now, rather than a dead control.
-            title={
+            label={
               disabled
                 ? t("Wait for the tutor to finish before changing mode")
-                : undefined
+                : t(MASTERY_MODE_LABELS[candidate])
             }
-            className={`flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition ${
-              active
-                ? "bg-[var(--background)] text-[var(--foreground)] shadow-sm"
-                : "text-[var(--muted-foreground)] hover:text-[var(--foreground)] disabled:hover:text-[var(--muted-foreground)]"
-            } disabled:cursor-default`}
           >
-            <span
-              aria-hidden="true"
-              className={`h-[7px] w-[7px] rounded-full border transition-colors ${
+            <button
+              type="button"
+              onClick={() => !active && onSelect(candidate)}
+              disabled={disabled || active}
+              aria-pressed={active}
+              className={`flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition ${
                 active
-                  ? "border-[var(--primary)] bg-[var(--primary)]"
-                  : "border-[var(--muted-foreground)]/45"
-              }`}
-            />
-            {t(MASTERY_MODE_LABELS[candidate])}
-          </button>
+                  ? "bg-[var(--background)] text-[var(--foreground)] shadow-sm"
+                  : "text-[var(--muted-foreground)] hover:text-[var(--foreground)] disabled:hover:text-[var(--muted-foreground)]"
+              } disabled:cursor-default`}
+            >
+              <span
+                aria-hidden="true"
+                className={`h-[7px] w-[7px] rounded-full border transition-colors ${
+                  active
+                    ? "border-[var(--primary)] bg-[var(--primary)]"
+                    : "border-[var(--muted-foreground)]/45"
+                }`}
+              />
+              {t(MASTERY_MODE_LABELS[candidate])}
+            </button>
+          </Tooltip>
         );
       })}
     </div>

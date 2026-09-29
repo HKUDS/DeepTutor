@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Check, Pencil, Plus, Trash2, X } from "lucide-react";
 import type { NotebookCategory } from "@/lib/notebook-api";
+import Tooltip from "@/shared/ui/Tooltip";
 
 interface CategoryManagerProps {
   categories: NotebookCategory[];
@@ -75,23 +76,27 @@ export default function CategoryManager({
                   }}
                   className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-[12.5px] text-[var(--foreground)] outline-none focus:border-[var(--primary)]/50"
                 />
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void commitRename()}
-                  title={t("Save")}
-                  className="rounded-md p-1 text-[var(--primary)] transition-colors hover:bg-[var(--muted)] disabled:opacity-40"
-                >
-                  <Check size={13} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRenaming(null)}
-                  title={t("Cancel")}
-                  className="rounded-md p-1 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]"
-                >
-                  <X size={13} />
-                </button>
+                <Tooltip label={t("Save")}>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void commitRename()}
+                    aria-label={t("Save")}
+                    className="rounded-md p-1 text-[var(--primary)] transition-colors hover:bg-[var(--muted)] disabled:opacity-40"
+                  >
+                    <Check size={13} />
+                  </button>
+                </Tooltip>
+                <Tooltip label={t("Cancel")}>
+                  <button
+                    type="button"
+                    onClick={() => setRenaming(null)}
+                    aria-label={t("Cancel")}
+                    className="rounded-md p-1 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]"
+                  >
+                    <X size={13} />
+                  </button>
+                </Tooltip>
               </>
             ) : (
               <>
@@ -101,37 +106,41 @@ export default function CategoryManager({
                     {category.entry_count}
                   </span>
                 </span>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setRenaming({ id: category.id, name: category.name })
-                  }
-                  title={t("Rename")}
-                  className="rounded-md p-1 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-                >
-                  <Pencil size={13} />
-                </button>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => {
-                    // Deleting a category unfiles its questions; it never
-                    // deletes them. Say so — the wording is the whole point
-                    // of the prompt.
-                    if (
-                      window.confirm(
-                        t(
-                          "Delete this tag? The questions themselves stay in your bank.",
-                        ),
+                <Tooltip label={t("Rename")}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setRenaming({ id: category.id, name: category.name })
+                    }
+                    aria-label={t("Rename")}
+                    className="rounded-md p-1 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                  >
+                    <Pencil size={13} />
+                  </button>
+                </Tooltip>
+                <Tooltip label={t("Delete")}>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      // Deleting a category unfiles its questions; it never
+                      // deletes them. Say so — the wording is the whole point
+                      // of the prompt.
+                      if (
+                        window.confirm(
+                          t(
+                            "Delete this tag? The questions themselves stay in your bank.",
+                          ),
+                        )
                       )
-                    )
-                      void run(() => onDelete(category.id));
-                  }}
-                  title={t("Delete")}
-                  className="rounded-md p-1 text-[var(--muted-foreground)] transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-40 dark:hover:bg-red-950/30"
-                >
-                  <Trash2 size={13} />
-                </button>
+                        void run(() => onDelete(category.id));
+                    }}
+                    aria-label={t("Delete")}
+                    className="rounded-md p-1 text-[var(--muted-foreground)] transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-40 dark:hover:bg-red-950/30"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </Tooltip>
               </>
             )}
           </div>
@@ -161,6 +170,7 @@ export default function CategoryManager({
         <button
           type="button"
           disabled={busy || !newName.trim()}
+          aria-label={t("Add tag")}
           onClick={() =>
             void run(() => onCreate(newName)).then((ok) => {
               if (ok) setNewName("");

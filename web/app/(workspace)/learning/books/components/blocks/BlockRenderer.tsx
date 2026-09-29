@@ -14,6 +14,7 @@ import {
 import { useTranslation } from "react-i18next";
 import type { Block, BlockType, QuizAttempt } from "@/lib/book-types";
 import MarkdownRenderer from "@/components/common/MarkdownRenderer";
+import Tooltip from "@/shared/ui/Tooltip";
 
 import BlockBodyEditor from "./BlockBodyEditor";
 import TextBlock from "./TextBlock";
@@ -268,34 +269,41 @@ export default function BlockRenderer({
         </div>
       )}
       {hasActions && (
-        <div className="pointer-events-none absolute -top-3 right-2 z-10 flex translate-y-1 items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--card)] px-1 py-0.5 text-[var(--muted-foreground)] opacity-0 shadow-sm transition group-hover:translate-y-0 group-hover:opacity-100">
+        <div className="pointer-events-none absolute -top-3 right-2 z-10 flex translate-y-1 items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--card)] px-1 py-0.5 text-[var(--muted-foreground)] opacity-0 shadow-sm transition group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100">
           {onMove && (
             <>
-              <button
-                onClick={() => onMove(block, "up")}
-                className="pointer-events-auto rounded p-1 hover:bg-[var(--background)] hover:text-[var(--foreground)]"
-                title={t("Move up")}
-              >
-                <ArrowUp className="h-3.5 w-3.5" />
-              </button>
-              <button
-                onClick={() => onMove(block, "down")}
-                className="pointer-events-auto rounded p-1 hover:bg-[var(--background)] hover:text-[var(--foreground)]"
-                title={t("Move down")}
-              >
-                <ArrowDown className="h-3.5 w-3.5" />
-              </button>
+              <Tooltip label={t("Move up")}>
+                <button
+                  onClick={() => onMove(block, "up")}
+                  aria-label={t("Move up")}
+                  className="pointer-events-auto rounded p-1 hover:bg-[var(--background)] hover:text-[var(--foreground)]"
+                >
+                  <ArrowUp className="h-3.5 w-3.5" />
+                </button>
+              </Tooltip>
+              <Tooltip label={t("Move down")}>
+                <button
+                  onClick={() => onMove(block, "down")}
+                  aria-label={t("Move down")}
+                  className="pointer-events-auto rounded p-1 hover:bg-[var(--background)] hover:text-[var(--foreground)]"
+                >
+                  <ArrowDown className="h-3.5 w-3.5" />
+                </button>
+              </Tooltip>
             </>
           )}
           {onChangeType && (
             <div className="relative pointer-events-auto">
-              <button
-                onClick={() => setShowTypeMenu((v) => !v)}
-                className="rounded p-1 hover:bg-[var(--background)] hover:text-[var(--foreground)]"
-                title={t("Change type")}
-              >
-                <Replace className="h-3.5 w-3.5" />
-              </button>
+              <Tooltip label={t("Change type")} suppressed={showTypeMenu}>
+                <button
+                  onClick={() => setShowTypeMenu((v) => !v)}
+                  aria-label={t("Change type")}
+                  aria-expanded={showTypeMenu}
+                  className="rounded p-1 hover:bg-[var(--background)] hover:text-[var(--foreground)]"
+                >
+                  <Replace className="h-3.5 w-3.5" />
+                </button>
+              </Tooltip>
               {showTypeMenu && (
                 <div className="absolute right-0 top-full mt-1 max-h-60 w-44 overflow-y-auto rounded-md border border-[var(--border)] bg-[var(--card)] p-1 shadow-lg">
                   {CHANGEABLE_TYPES.filter((type) => type !== block.type).map(
@@ -317,47 +325,59 @@ export default function BlockRenderer({
             </div>
           )}
           {canEditBody && !editingBody && (
-            <button
-              onClick={() => setEditingBody(true)}
-              className="pointer-events-auto rounded p-1 hover:bg-[var(--background)] hover:text-[var(--foreground)]"
-              title={t("Edit text")}
-            >
-              <Pencil className="h-3.5 w-3.5" />
-            </button>
+            <Tooltip label={t("Edit text")}>
+              <button
+                onClick={() => setEditingBody(true)}
+                aria-label={t("Edit text")}
+                className="pointer-events-auto rounded p-1 hover:bg-[var(--background)] hover:text-[var(--foreground)]"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            </Tooltip>
           )}
           {onRegenerate && (
-            <button
-              onClick={() => onRegenerate(block)}
-              className="pointer-events-auto rounded p-1 hover:bg-[var(--background)] hover:text-[var(--foreground)]"
-              title={t("Regenerate")}
-            >
-              <RefreshCw className="h-3.5 w-3.5" />
-            </button>
+            <Tooltip label={t("Regenerate")}>
+              <button
+                onClick={() => onRegenerate(block)}
+                aria-label={t("Regenerate")}
+                className="pointer-events-auto rounded p-1 hover:bg-[var(--background)] hover:text-[var(--foreground)]"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+              </button>
+            </Tooltip>
           )}
           {onDelete && (
-            <button
-              onClick={() => {
-                if (confirmDelete) {
-                  setConfirmDelete(false);
-                  onDelete(block);
-                } else {
-                  setConfirmDelete(true);
-                }
-              }}
-              onBlur={() => setConfirmDelete(false)}
-              className={`pointer-events-auto rounded p-1 ${
-                confirmDelete
-                  ? "bg-rose-500/15 text-rose-600 dark:text-rose-300"
-                  : "hover:bg-rose-100 hover:text-rose-700 dark:hover:bg-rose-500/10 dark:hover:text-rose-200"
-              }`}
-              title={
+            <Tooltip
+              label={
                 confirmDelete
                   ? t("Click again to delete this block")
                   : t("Delete")
               }
             >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
+              <button
+                onClick={() => {
+                  if (confirmDelete) {
+                    setConfirmDelete(false);
+                    onDelete(block);
+                  } else {
+                    setConfirmDelete(true);
+                  }
+                }}
+                onBlur={() => setConfirmDelete(false)}
+                aria-label={
+                  confirmDelete
+                    ? t("Click again to delete this block")
+                    : t("Delete")
+                }
+                className={`pointer-events-auto rounded p-1 ${
+                  confirmDelete
+                    ? "bg-rose-500/15 text-rose-600 dark:text-rose-300"
+                    : "hover:bg-rose-100 hover:text-rose-700 dark:hover:bg-rose-500/10 dark:hover:text-rose-200"
+                }`}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </Tooltip>
           )}
         </div>
       )}

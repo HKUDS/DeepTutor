@@ -1,7 +1,8 @@
 "use client";
 
 import { knowledgeBaseRef } from "@/lib/knowledge-helpers";
-import { resourceUsage } from "@/lib/workspaces-api";
+import { moveKnowledgeBase, resourceUsage } from "@/lib/workspaces-api";
+import { apiFetch, apiUrl } from "@/lib/api";
 import type { EmbeddingModelSelection } from "@/features/knowledge/model/types";
 
 import dynamic from "next/dynamic";
@@ -44,6 +45,7 @@ const EngineDetail = dynamic(
   },
 );
 const CreateKbModal = dynamic(() => import("./CreateKbModal"));
+const ConnectKiwixModal = dynamic(() => import("./ConnectKiwixModal"));
 
 export default function KnowledgePage() {
   const { t } = useTranslation();
@@ -83,6 +85,7 @@ export default function KnowledgePage() {
     connectWeKnora,
     connectMarginNote4,
     connectIma,
+    connectKiwix,
   } = useKnowledgeBases();
 
   // Connected subagents are stored as ``type: subagent`` KBs so the chat
@@ -102,6 +105,7 @@ export default function KnowledgePage() {
   const [homeSection, setHomeSection] =
     useState<KnowledgeHomeSection>(initialHomeSection);
   const [createOpen, setCreateOpen] = useState(false);
+  const [kiwixOpen, setKiwixOpen] = useState(false);
   const [createPreset, setCreatePreset] = useState<{
     mode: "new" | "link";
     source?: string;
@@ -111,7 +115,11 @@ export default function KnowledgePage() {
     setCreatePreset(null);
     setCreateOpen(true);
   }, []);
-  const openSource = useCallback((source: "obsidian" | "marginnote4") => {
+  const openSource = useCallback((source: "obsidian" | "marginnote4" | "kiwix") => {
+    if (source === "kiwix") {
+      setKiwixOpen(true);
+      return;
+    }
     setCreatePreset({ mode: "link", source });
     setCreateOpen(true);
   }, []);
@@ -169,6 +177,28 @@ export default function KnowledgePage() {
     [kbs, selectedKbName],
   );
 
+  // Saved links may still contain the original qualified ID after a move.
+  // The detail endpoint resolves that ID through the server's move alias.
+  useEffect(() => {
+    if (
+      loading ||
+      !explicitSelection ||
+      kbs.some((kb) => knowledgeBaseRef(kb) === explicitSelection || kb.name === explicitSelection)
+    ) return;
+    let cancelled = false;
+    void apiFetch(
+      apiUrl(`/api/knowledge-bases/${encodeURIComponent(explicitSelection)}?resource_library=true`),
+    )
+      .then((response) => response.ok ? response.json() : null)
+      .then((detail: { id?: string } | null) => {
+        if (!cancelled && detail?.id && kbs.some((kb) => knowledgeBaseRef(kb) === detail.id)) {
+          setExplicitSelection(detail.id);
+        }
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [explicitSelection, kbs, loading]);
+
   // The effective engine selection: respect the pick if it still exists.
   const selectedProvider = useMemo(
     () => providers.find((p) => p.id === selectedEngineId) ?? null,
@@ -208,18 +238,33 @@ export default function KnowledgePage() {
       name: string;
       provider: string;
       files: File[];
+      storageWorkspaceId?: string;
       pageindexMode?: "flash" | "standard";
       searchMode?: string;
     }) => {
       try {
-        await createKb(params);
-        openKb(`account:kb:${params.name}`);
+        const result = await createKb(params);
+        openKb(result.id || `account:kb:${params.name}`);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
         throw err;
       }
     },
     [createKb, openKb, setError],
+  );
+
+  const handleMove = useCallback(
+    async (sourceId: string, targetWorkspaceId: string) => {
+      try {
+        const result = await moveKnowledgeBase(sourceId, targetWorkspaceId);
+        await refresh({ force: true });
+        openKb(result.target_id);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+        throw err;
+      }
+    },
+    [openKb, refresh, setError],
   );
 
   const handleSetDefault = useCallback(
@@ -433,6 +478,7 @@ export default function KnowledgePage() {
               onRetry={handleRetry}
               onSetDefault={handleSetDefault}
               onDelete={handleDelete}
+              onMove={handleMove}
               onClearHistory={clearHistory}
               onBack={() => {
                 setHomeSection("knowledge-bases");
@@ -461,6 +507,15 @@ export default function KnowledgePage() {
           onConfigureProvider={(providerId) => {
             setCreateOpen(false);
             openEngine(providerId);
+          }}
+        />
+      ) : null}
+      {kiwixOpen ? (
+        <ConnectKiwixModal
+          onClose={() => setKiwixOpen(false)}
+          onConnect={async (params) => {
+            await connectKiwix(params);
+            openKb(`account:kb:${params.name}`);
           }}
         />
       ) : null}

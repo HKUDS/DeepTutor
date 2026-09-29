@@ -1,6 +1,7 @@
 import type { StreamEvent } from "@/features/chat/model/protocol";
 
 export type AttachmentProcessingPhase =
+  | "uploading"
   | "received"
   | "submitting"
   | "parsing"
@@ -19,6 +20,7 @@ export interface AttachmentProcessingItem {
 interface MessageWithEvents {
   role: string;
   events?: StreamEvent[];
+  attachments?: Array<{ filename?: string; mime_type?: string }>;
 }
 
 const PHASES = new Set<AttachmentProcessingPhase>([
@@ -56,17 +58,43 @@ export function selectAttachmentProcessing(
   messages: MessageWithEvents[],
   isStreaming: boolean,
 ): AttachmentProcessingItem[] {
-  const latest = [...messages]
-    .reverse()
-    .find((message) => message.role === "assistant");
-  if (!latest) return [];
+  const userIndex = messages.findLastIndex((message) => message.role === "user");
+  const assistantIndex = messages.findLastIndex((message) => message.role === "assistant");
+  const latest = assistantIndex > userIndex ? messages[assistantIndex] : null;
+  if (!latest && !isStreaming) return [];
 
   const byAttachment = new Map<string, AttachmentProcessingItem>();
-  for (const event of latest.events ?? []) {
+  for (const event of latest?.events ?? []) {
     const item = parsingEvent(event);
     if (item) byAttachment.set(item.attachmentId, item);
   }
   const items = [...byAttachment.values()];
+  // Before the first server progress event the PDF is travelling in the
+  // start_turn WebSocket payload. This is a stage, not a byte percentage:
+  // browser WebSocket.send does not expose upload progress (#1523).
+  if (isStreaming && userIndex >= 0) {
+    const receivedByName = new Map<string, number>();
+    for (const item of items) {
+      receivedByName.set(item.filename, (receivedByName.get(item.filename) ?? 0) + 1);
+    }
+    for (const [index, attachment] of (messages[userIndex].attachments ?? []).entries()) {
+      const filename = attachment.filename ?? "";
+      if (attachment.mime_type !== "application/pdf" && !filename.toLowerCase().endsWith(".pdf")) {
+        continue;
+      }
+      const received = receivedByName.get(filename) ?? 0;
+      if (received) {
+        receivedByName.set(filename, received - 1);
+      } else {
+        items.push({
+          attachmentId: `uploading:${index}`,
+          filename,
+          phase: "uploading",
+          detail: "",
+        });
+      }
+    }
+  }
   if (isStreaming) return items;
   return items.filter(
     (item) => item.phase === "failed" || item.phase === "fallback",

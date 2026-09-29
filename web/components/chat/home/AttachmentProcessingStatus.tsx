@@ -17,6 +17,8 @@ function phaseLabel(
   t: (key: string) => string,
 ): string {
   switch (phase) {
+    case "uploading":
+      return t("Sending to DeepTutor");
     case "received":
       return t("Uploaded to DeepTutor");
     case "submitting":

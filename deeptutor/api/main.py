@@ -558,6 +558,7 @@ from deeptutor.api.routers import (
     space_mcp,
     subagents,
     system,
+    task_board,
     unified_ws,
     video_learning,
     visualizers,
@@ -635,6 +636,9 @@ app.include_router(
 )
 app.include_router(co_writer.router, prefix="/api", tags=["documents"], dependencies=_auth)
 app.include_router(notebook.router, prefix="/api", tags=["notebooks"], dependencies=_auth)
+app.include_router(
+    task_board.router, prefix="/api/task-board", tags=["task-board"], dependencies=_auth
+)
 app.include_router(book.router, prefix="/api", tags=["books"], dependencies=_auth)
 app.include_router(book.ws_router, prefix="/ws", tags=["books"])
 app.include_router(reading.router, prefix="/api/reading", tags=["reading"], dependencies=_auth)

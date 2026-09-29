@@ -17,11 +17,13 @@ pulling the whole file before rendering page one.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 from pathlib import Path
 import shutil
 import tempfile
 from typing import Any, Literal
+from urllib.parse import quote
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, UploadFile
@@ -358,6 +360,13 @@ class UrlImportRequest(BaseModel):
     workspace_title: str = ""
 
 
+class ZimArticleImportRequest(BaseModel):
+    kb_ref: str = Field(min_length=1, max_length=300)
+    article_path: str = Field(min_length=1, max_length=2048)
+    title: str = Field(default="", max_length=300)
+    workspace_id: str = ""
+
+
 class WorkspaceCreateRequest(BaseModel):
     title: str = Field(default="Untitled collection", max_length=300)
     description: str = Field(default="", max_length=2000)
@@ -555,6 +564,90 @@ async def import_urls(
             "materials": [row.to_dict() for row in materials],
             "workspace": workspace.to_dict() if workspace else None,
         }
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/library/import-zim-article")
+async def import_zim_article(payload: ZimArticleImportRequest) -> dict[str, Any]:
+    """Open one selected Kiwix article in Immersive Reading.
+
+    Only its bounded text snapshot enters the reading store.  The ZIM archive
+    stays on the existing kiwix-serve instance, without bulk extraction.
+    """
+    from deeptutor.multi_user.knowledge_access import manager_for_resource, resolve_kb
+    from deeptutor.reading.catalog_models import IngestionStatus, SourceKind
+    from deeptutor.reading.extract import split_markdown_by_headings
+    from deeptutor.services.rag.pipelines.kiwix.client import (
+        KiwixClient,
+        KiwixError,
+        validate_article_path,
+    )
+    from deeptutor.services.workspace.knowledge import library_request
+
+    try:
+        assert_learning_material("", upload=True)
+        # Knowledge Center browses the account library outside the current
+        # conversation's selected KB list. Resolve the source with that same
+        # access scope, then restore the Reading workspace for storage.
+        token = library_request.set(True)
+        try:
+            resource = resolve_kb(payload.kb_ref)
+            entry = manager_for_resource(resource).get_metadata(resource.name)
+        finally:
+            library_request.reset(token)
+        if not isinstance(entry, dict) or entry.get("type") != "kiwix":
+            raise ReadingError("Select a connected Kiwix knowledge base.")
+        path = validate_article_path(payload.article_path)
+        client = KiwixClient(entry["server_url"], entry["zim_name"])
+        text = await client.read_article(path)
+        units, outline = split_markdown_by_headings(text)
+        if not units:
+            raise ReadingError("The selected ZIM article has no readable text.")
+        title = payload.title.strip() or path.rsplit("/", 1)[-1].replace("_", " ")
+        material_id = hashlib.sha256(f"{resource.id}\0{path}".encode()).hexdigest()[:16]
+        catalog = _catalog()
+        store = ReadingStore(catalog.root)
+        source_url = f"{client.base_url}/content/{client.zim_name}/" + "/".join(
+            quote(segment, safe="") for segment in path.split("/")
+        )
+        store.ingest_units(
+            material_id,
+            filename=f"{title[:150]}.md",
+            units=units,
+            unit="section",
+            title=title,
+            mime="text/markdown",
+            extractor="kiwix-article",
+            content_format="plain_text",
+            source_type="zim_article",
+            source_url=source_url,
+            outline=outline or None,
+        )
+        material = catalog.upsert_material(
+            content_id=material_id,
+            material_id=material_id,
+            filename=f"{title[:150]}.md",
+            title=title,
+            source_kind=SourceKind.WEB,
+            source_url=source_url,
+            mime="text/markdown",
+            render_mode="text",
+            status=IngestionStatus.READY,
+        )
+        if payload.workspace_id.strip():
+            catalog.add_material(payload.workspace_id.strip(), material_id)
+            workspace = catalog.get_workspace(payload.workspace_id.strip())
+        else:
+            workspace = catalog.create_workspace(title, [material_id])
+        return {
+            "material": material.to_dict(),
+            "workspace": workspace.to_dict() if workspace else None,
+        }
+    except HTTPException:
+        raise
+    except (KiwixError, KeyError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise _http_error(exc) from exc
 

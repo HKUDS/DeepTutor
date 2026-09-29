@@ -48,6 +48,7 @@ llama-index-vector-stores-faiss>=0.4.0,<1.0.0
 faiss-cpu>=1.8.0,<2.0.0; python_version < "3.14"
 faiss-cpu>=1.12.0,<2.0.0; python_version >= "3.14"
 PyMuPDF>=1.26.0
+Pillow>=10.0.0
 numpy>=1.24.0,<3.0.0
 arxiv>=2.0.0
 

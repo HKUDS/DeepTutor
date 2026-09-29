@@ -27,6 +27,7 @@ import {
   Field,
   INPUT_CLS,
 } from "@/components/chat/home/composer-field";
+import Tooltip from "@/shared/ui/Tooltip";
 
 interface QuizConfigPanelProps {
   value: DeepQuestionFormConfig;
@@ -483,8 +484,8 @@ function TypeMultiSelect({ value, onChange }: TypeMultiSelectProps) {
     return `${value.length} ${t("types")}`;
   }, [value, t]);
 
-  // Full list of selected types — surfaced as a native title tooltip on
-  // the trigger so the user can see exactly which types are picked when
+  // Full list of selected types — surfaced through the shared tooltip so
+  // the user can see exactly which types are picked when
   // the summary collapses to "N types" (or even just truncates a single
   // long label).
   const triggerTooltip = useMemo(() => {
@@ -555,21 +556,25 @@ function TypeMultiSelect({ value, onChange }: TypeMultiSelectProps) {
 
   return (
     <>
-      <button
-        ref={triggerRef}
-        type="button"
-        title={triggerTooltip}
-        onClick={toggleMenu}
-        className={`${INPUT_CLS} flex w-full items-center justify-between gap-1`}
-      >
-        <span className="min-w-0 truncate text-left">{summary}</span>
-        <ChevronDown
-          size={12}
-          className={`shrink-0 text-[var(--muted-foreground)]/60 transition-transform ${
-            open ? "rotate-180" : ""
-          }`}
-        />
-      </button>
+      <span className="block w-full [&>span]:w-full">
+        <Tooltip label={triggerTooltip} suppressed={open}>
+          <button
+            ref={triggerRef}
+            type="button"
+            onClick={toggleMenu}
+            aria-expanded={open}
+            className={`${INPUT_CLS} flex w-full items-center justify-between gap-1`}
+          >
+            <span className="min-w-0 truncate text-left">{summary}</span>
+            <ChevronDown
+              size={12}
+              className={`shrink-0 text-[var(--muted-foreground)]/60 transition-transform ${
+                open ? "rotate-180" : ""
+              }`}
+            />
+          </button>
+        </Tooltip>
+      </span>
       {menu}
     </>
   );
@@ -590,7 +595,6 @@ function DropdownRow({
     <button
       type="button"
       onClick={onClick}
-      title={label}
       className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[12px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]"
     >
       <span

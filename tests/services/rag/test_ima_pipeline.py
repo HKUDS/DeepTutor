@@ -679,7 +679,7 @@ class TestPipelineSearch:
         # Snippets this substantial need no full-text top-up.
         assert stub.media_calls == []
 
-    def test_title_only_match_is_kept_without_a_snippet(self, tmp_path) -> None:
+    def test_title_only_match_without_readable_media_is_not_cited(self, tmp_path) -> None:
         base = _kb_config(
             tmp_path,
             {"client_id": "cid", "api_key": "key", "knowledge_base_id": "kb-1"},
@@ -689,8 +689,28 @@ class TestPipelineSearch:
 
         result = asyncio.run(pipeline.search("q", "IMA"))
 
-        assert result["sources"][0]["content"] == ""
-        assert result["content"].strip() == "[1] Alpha"
+        assert result["sources"] == []
+        assert result["content"] == ""
+        assert result["error_type"] == "content_unavailable"
+        assert "matched document titles" in result["answer"]
+
+    def test_unreadable_title_match_does_not_pollute_readable_sources(self, tmp_path) -> None:
+        base = _kb_config(
+            tmp_path,
+            {"client_id": "cid", "api_key": "key", "knowledge_base_id": "kb-1"},
+        )
+        stub = _SearchStub(
+            [
+                {"media_id": "unreadable", "title": "Title match"},
+                {"media_id": "readable", "title": "Passage", "highlight_content": _thick("text")},
+            ]
+        )
+        result = asyncio.run(
+            ImaPipeline(kb_base_dir=base, client_factory=lambda _c: stub).search("q", "IMA")
+        )
+
+        assert [source["title"] for source in result["sources"]] == ["Passage"]
+        assert "Title match" not in result["content"]
 
     def test_title_only_match_loads_note_content(self, tmp_path) -> None:
         base = _kb_config(
@@ -818,7 +838,7 @@ class TestPipelineSearch:
         assert sorted(stub.media_calls) == sorted(f"m{i}" for i in range(DEFAULT_HYDRATION_BUDGET))
         hydrated = [source for source in result["sources"] if source["content"]]
         assert len(hydrated) == DEFAULT_HYDRATION_BUDGET
-        assert result["sources"][-1]["content"] == ""
+        assert len(result["sources"]) == DEFAULT_HYDRATION_BUDGET
 
     def test_downloaded_text_file_is_extracted(self, tmp_path) -> None:
         base = _kb_config(

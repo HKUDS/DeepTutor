@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 
 import MarkdownRenderer from "@/components/common/MarkdownRenderer";
 import type { Block } from "@/lib/book-types";
+import Tooltip from "@/shared/ui/Tooltip";
 
 export interface UserNoteBlockProps {
   block: Block;
@@ -74,14 +75,16 @@ export default function UserNoteBlock({
             {t("Your note")}
           </div>
           {editable && !editing && (
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              title={t("Edit note")}
-              className="inline-flex h-6 w-6 items-center justify-center rounded-md text-[var(--muted-foreground)] opacity-0 transition-opacity hover:bg-[var(--background)] hover:text-[var(--foreground)] group-hover/note:opacity-100"
-            >
-              <Pencil className="h-3 w-3" />
-            </button>
+            <Tooltip label={t("Edit note")}>
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                aria-label={t("Edit note")}
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-[var(--muted-foreground)] opacity-0 transition-opacity hover:bg-[var(--background)] hover:text-[var(--foreground)] group-hover/note:opacity-100 focus-visible:opacity-100"
+              >
+                <Pencil className="h-3 w-3" />
+              </button>
+            </Tooltip>
           )}
         </div>
 

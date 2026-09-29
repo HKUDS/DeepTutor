@@ -14,6 +14,7 @@ import type {
   ScoreTrend,
 } from "@/lib/notebook-api";
 import type { BankSort, ReviewFilters } from "./useQuestionBank";
+import Tooltip from "@/shared/ui/Tooltip";
 
 interface BankToolbarProps {
   search: string;
@@ -61,28 +62,33 @@ export default function BankToolbar({
         {refreshing ? (
           <Loader2 className="absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-[var(--muted-foreground)]" />
         ) : search ? (
-          <button
-            type="button"
-            onClick={() => onSearchChange("")}
-            title={t("Clear")}
-            className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
+          <span className="absolute right-2.5 top-1/2 -translate-y-1/2">
+            <Tooltip label={t("Clear")}>
+              <button
+                type="button"
+                onClick={() => onSearchChange("")}
+                aria-label={t("Clear")}
+                className="rounded p-0.5 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </Tooltip>
+          </span>
         ) : null}
       </div>
 
-      <button
-        type="button"
-        onClick={() => onSortChange(sort === "recent" ? "oldest" : "recent")}
-        title={t("Toggle sort order")}
-        className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] px-2.5 py-1.5 text-[12px] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]"
-      >
-        <ArrowDownWideNarrow
-          className={`h-3.5 w-3.5 transition-transform ${sort === "oldest" ? "rotate-180" : ""}`}
-        />
-        {sort === "recent" ? t("Newest first") : t("Oldest first")}
-      </button>
+      <Tooltip label={t("Toggle sort order")}>
+        <button
+          type="button"
+          onClick={() => onSortChange(sort === "recent" ? "oldest" : "recent")}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] px-2.5 py-1.5 text-[12px] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]"
+        >
+          <ArrowDownWideNarrow
+            className={`h-3.5 w-3.5 transition-transform ${sort === "oldest" ? "rotate-180" : ""}`}
+          />
+          {sort === "recent" ? t("Newest first") : t("Oldest first")}
+        </button>
+      </Tooltip>
 
       <select
         value={filters.source}
@@ -148,7 +154,6 @@ export default function BankToolbar({
       <button
         type="button"
         onClick={onToggleManager}
-        title={t("Manage tags")}
         className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] transition-colors ${
           managerOpen
             ? "border-[var(--primary)]/40 bg-[var(--primary)]/10 text-[var(--primary)]"

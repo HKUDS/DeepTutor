@@ -21,7 +21,7 @@ export default function TooltipLayer({
   side,
   onMount,
 }: {
-  anchorRef: RefObject<HTMLSpanElement | null>;
+  anchorRef: RefObject<HTMLElement | null>;
   id: string;
   label: string;
   description?: string;

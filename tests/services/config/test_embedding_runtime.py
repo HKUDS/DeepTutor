@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import pytest
 
+from deeptutor.services.config.embedding_endpoint import normalize_embedding_endpoint_for_display
 from deeptutor.services.config.provider_runtime import (
     EMBEDDING_PROVIDERS,
     resolve_embedding_runtime_config,
 )
+from deeptutor.services.embedding.config import get_embedding_config
 
 NATIVE_GEMINI2_ENDPOINT = (
     "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2:batchEmbedContents"
@@ -74,6 +76,134 @@ def test_embedding_explicit_binding_and_headers() -> None:
     assert resolved.effective_url == "https://api.jina.ai/v1/embeddings"
     assert resolved.extra_headers == {"X-App": "demo"}
     assert resolved.dimension == 1024
+
+
+def test_lemonade_embedding_is_local_even_for_qwen_model_and_docker_hostname() -> None:
+    catalog = _build_catalog(
+        embedding_profile={
+            "id": "embedding-p",
+            "name": "Lemonade Server",
+            "binding": "lemonade",
+            "base_url": "http://lemonade:13305/api/v1/embeddings",
+            "api_key": "",
+            "models": [
+                {
+                    "id": "embedding-m",
+                    "name": "Qwen3",
+                    "model": "Qwen3-Embedding-0.6B-GGUF",
+                }
+            ],
+        }
+    )
+
+    resolved = resolve_embedding_runtime_config(catalog=catalog)
+    assert resolved.provider_name == "lemonade"
+    assert resolved.provider_mode == "local"
+    assert resolved.api_key == ""
+    assert get_embedding_config(catalog=catalog).effective_url == (
+        "http://lemonade:13305/api/v1/embeddings"
+    )
+    assert normalize_embedding_endpoint_for_display("lemonade", "http://localhost:13305/v1") == (
+        "http://localhost:13305/v1/embeddings"
+    )
+
+
+def test_lemonade_connection_shared_from_llm_resolves_embedding_endpoint() -> None:
+    catalog = _build_catalog(
+        embedding_profile={
+            "id": "embedding-p",
+            "name": "Lemonade embedding",
+            "provider_ref": {"connection_id": "lemonade-connection"},
+            "models": [
+                {
+                    "id": "embedding-m",
+                    "model": "Qwen3-Embedding-0.6B-GGUF",
+                }
+            ],
+        }
+    )
+    catalog["connections"] = [
+        {
+            "id": "lemonade-connection",
+            "name": "Lemonade Server",
+            "binding": "lemonade",
+            "base_url": "http://lemonade:13305/api/v1",
+            "api_key": "",
+            "source_service": "llm",
+        }
+    ]
+
+    resolved = resolve_embedding_runtime_config(catalog=catalog)
+    assert resolved.provider_name == "lemonade"
+    assert resolved.provider_mode == "local"
+    assert resolved.effective_url == "http://lemonade:13305/api/v1/embeddings"
+    assert get_embedding_config(catalog=catalog).api_key == ""
+
+
+def test_legacy_custom_lemonade_endpoint_stays_keyless() -> None:
+    catalog = _build_catalog(
+        embedding_profile={
+            "id": "embedding-p",
+            "binding": "custom",
+            "base_url": "http://localhost:13305/v1/embeddings",
+            "api_key": "",
+            "models": [
+                {
+                    "id": "embedding-m",
+                    "model": "Qwen3-Embedding-0.6B-GGUF",
+                }
+            ],
+        }
+    )
+
+    resolved = resolve_embedding_runtime_config(catalog=catalog)
+    assert resolved.provider_name == "lemonade"
+    assert get_embedding_config(catalog=catalog).api_key == ""
+
+
+def test_explicit_openai_binding_to_local_lemonade_is_keyless() -> None:
+    catalog = _build_catalog(
+        embedding_profile={
+            "id": "embedding-p",
+            "binding": "openai",
+            "base_url": "http://lemonade:13305/api/v1/embeddings",
+            "api_key": "",
+            "models": [
+                {
+                    "id": "embedding-m",
+                    "model": "Qwen3-Embedding-0.6B-GGUF",
+                }
+            ],
+        }
+    )
+
+    resolved = resolve_embedding_runtime_config(catalog=catalog)
+    assert resolved.provider_name == "lemonade"
+    assert resolved.provider_mode == "local"
+    assert get_embedding_config(catalog=catalog).api_key == ""
+
+
+def test_remote_openai_compatible_endpoint_still_requires_key() -> None:
+    catalog = _build_catalog(
+        embedding_profile={
+            "id": "embedding-p",
+            "binding": "openai",
+            "base_url": "https://api.example.com:13305/api/v1/embeddings",
+            "api_key": "",
+            "models": [
+                {
+                    "id": "embedding-m",
+                    "model": "Qwen3-Embedding-0.6B-GGUF",
+                }
+            ],
+        }
+    )
+
+    resolved = resolve_embedding_runtime_config(catalog=catalog)
+    assert resolved.provider_name == "openai"
+    assert resolved.provider_mode != "local"
+    with pytest.raises(ValueError, match="Embedding API key not set"):
+        get_embedding_config(catalog=catalog)
 
 
 def test_embedding_orcarouter_binding_uses_default_endpoint() -> None:

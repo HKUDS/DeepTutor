@@ -5,6 +5,7 @@ import { AlertCircle, Bot, Check, ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useLingerExpand } from "@/hooks/use-linger-expand";
 import { useOutsideClick } from "@/hooks/use-outside-click";
+import Tooltip from "@/shared/ui/Tooltip";
 import ToolbarLabel from "./ToolbarLabel";
 import ProviderIcon from "@/components/common/ProviderIcon";
 import type { LLMSelection } from "@/features/chat/model/protocol";
@@ -50,7 +51,7 @@ function ModelOptionRow({
   return (
     <button
       type="button"
-      title={`${option.model_name} | ${option.profile_name}`}
+      aria-label={`${option.model_name} | ${option.profile_name}`}
       onClick={onSelect}
       onMouseEnter={() => {
         const el = nameRef.current;
@@ -182,42 +183,43 @@ export default function ModelSelector({
   return (
     <div ref={rootRef} className="relative">
       {/* The model name shares the composer selectors' spring and hover delay. */}
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => {
-          if (canRefresh) {
-            setOpen(false);
-            onRefresh?.();
-            return;
-          }
-          setOpen((current) => !current);
-        }}
-        aria-label={canRefresh ? t("Refresh models") : t("Select model")}
-        title={canRefresh ? t("Refresh models") : label}
-        aria-expanded={open}
-        {...lingerProps}
-        className={`inline-flex h-8 shrink-0 items-center rounded-lg px-2 text-[14px] font-medium transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
-          disabled
-            ? "cursor-not-allowed text-[var(--border)]"
-            : open
-              ? "bg-[var(--muted)] text-[var(--foreground)]"
-              : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/55 hover:text-[var(--foreground)]"
-        }`}
-      >
-        {error ? (
-          <AlertCircle size={16} strokeWidth={1.7} className="shrink-0" />
-        ) : (
-          <ProviderIcon provider={selectedOption?.provider} size={16} />
-        )}
-        <ToolbarLabel expanded={expanded} fullWidth>
-          <span className="min-w-0">{label}</span>
-          <ChevronDown
-            size={13}
-            className={`shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
-          />
-        </ToolbarLabel>
-      </button>
+      <Tooltip label={canRefresh ? t("Refresh models") : label} suppressed={open} side="top">
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => {
+            if (canRefresh) {
+              setOpen(false);
+              onRefresh?.();
+              return;
+            }
+            setOpen((current) => !current);
+          }}
+          aria-label={canRefresh ? t("Refresh models") : t("Select model")}
+          aria-expanded={open}
+          {...lingerProps}
+          className={`inline-flex h-8 shrink-0 items-center rounded-lg px-2 text-[14px] font-medium transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
+            disabled
+              ? "cursor-not-allowed text-[var(--border)]"
+              : open
+                ? "bg-[var(--muted)] text-[var(--foreground)]"
+                : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/55 hover:text-[var(--foreground)]"
+          }`}
+        >
+          {error ? (
+            <AlertCircle size={16} strokeWidth={1.7} className="shrink-0" />
+          ) : (
+            <ProviderIcon provider={selectedOption?.provider} size={16} />
+          )}
+          <ToolbarLabel expanded={expanded} fullWidth>
+            <span className="min-w-0">{label}</span>
+            <ChevronDown
+              size={13}
+              className={`shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
+            />
+          </ToolbarLabel>
+        </button>
+      </Tooltip>
 
       {open && !disabled && (
         <div
@@ -232,7 +234,7 @@ export default function ModelSelector({
             {allowSystemDefault && (
               <button
                 type="button"
-                title={defaultDetail}
+                aria-label={defaultDetail}
                 onClick={() => {
                   onChange(null);
                   setOpen(false);

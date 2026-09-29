@@ -10,6 +10,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import Tooltip from "@/shared/ui/Tooltip";
 import {
   ANNOTATION_SWATCH,
   type AnnotationColor,
@@ -177,18 +178,21 @@ export function AnnotationList({
                           </span>
                         )}
                       </div>
-                      <button
-                        type="button"
-                        title={t("Delete annotation")}
-                        aria-label={t("Delete annotation")}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onDelete(annotation);
-                        }}
-                        className="absolute right-1.5 top-1.5 inline-flex h-6 w-6 items-center justify-center rounded-md text-[var(--muted-foreground)] opacity-0 transition hover:bg-[color-mix(in_srgb,var(--destructive)_10%,transparent)] hover:text-[var(--destructive)] focus-visible:opacity-100 group-hover/anno:opacity-100"
-                      >
-                        <Trash2 size={12} />
-                      </button>
+                      <span className="absolute right-1.5 top-1.5 opacity-0 transition focus-within:opacity-100 group-hover/anno:opacity-100">
+                        <Tooltip label={t("Delete annotation")}>
+                          <button
+                            type="button"
+                            aria-label={t("Delete annotation")}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onDelete(annotation);
+                            }}
+                            className="inline-flex h-6 w-6 items-center justify-center rounded-md text-[var(--muted-foreground)] hover:bg-[color-mix(in_srgb,var(--destructive)_10%,transparent)] hover:text-[var(--destructive)]"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </Tooltip>
+                      </span>
                     </div>
                   </li>
                 ))}

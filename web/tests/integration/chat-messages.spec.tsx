@@ -9,6 +9,35 @@ import { initI18n } from '@/i18n/init'
 initI18n('en')
 
 describe('chat message feature', () => {
+  it('shows a persisted worker loss beside the saved mastery answer with Retry', async () => {
+    const retry = vi.fn()
+    render(
+      <ChatMessageList
+        messages={[{
+          id: 23,
+          role: 'user',
+          content: 'B',
+          parentMessageId: null,
+          requestSnapshot: { content: 'B', enabledTools: [], knowledgeBases: [], language: 'en' },
+          orphanedFailedTurn: {
+            turn_id: 'failed-turn', error: 'Worker lost during this turn',
+            failure_code: 'worker_lost', retryable: true, finished_at: 1,
+          },
+        }]}
+        isStreaming={false}
+        canResendLastTurn
+        onResendLastTurn={retry}
+        onCopyAssistantMessage={vi.fn()}
+        onRegenerateMessage={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('B')).toBeVisible()
+    expect(screen.getByRole('alert')).toHaveTextContent('Worker lost during this turn')
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Retry' }))
+    expect(retry).toHaveBeenCalledOnce()
+  })
+
   it('renders a user row with keyboard-accessible message actions', async () => {
     const copy = vi.fn(async () => undefined)
     const user = userEvent.setup()

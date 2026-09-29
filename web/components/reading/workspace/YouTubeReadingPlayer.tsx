@@ -11,7 +11,6 @@ import { loadYouTubeApi } from "@/lib/youtube-iframe-api";
 export function YouTubeReadingPlayer({
   videoId,
   startSeconds,
-  title,
   onController,
   onTime,
   onPersist,
@@ -19,7 +18,6 @@ export function YouTubeReadingPlayer({
 }: {
   videoId: string;
   startSeconds: number;
-  title: string;
   onController(controller: ReadingMediaController | null): void;
   onTime(seconds: number, duration: number): void;
   onPersist(): void;
@@ -94,11 +92,5 @@ export function YouTubeReadingPlayer({
     };
   }, [onController, onError, onPersist, onTime, startSeconds, videoId]);
 
-  return (
-    <div
-      ref={playerRootRef}
-      className="aspect-video w-full bg-black"
-      title={title}
-    />
-  );
+  return <div ref={playerRootRef} className="aspect-video w-full bg-black" />;
 }

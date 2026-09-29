@@ -104,6 +104,7 @@ EMBEDDING_PROVIDER_LABELS = {
     "orcarouter": "OrcaRouter",
     "jina": "Jina",
     "vllm": "vLLM / LM Studio",
+    "lemonade": "Lemonade Server",
     "siliconflow": "SiliconFlow",
     "ollama": "Ollama",
     "cohere": "Cohere",
@@ -118,6 +119,7 @@ EMBEDDING_PROVIDER_DEFAULT_ENDPOINTS = {
     "jina": "https://api.jina.ai/v1/embeddings",
     "ollama": "http://localhost:11434/api/embed",
     "vllm": "http://localhost:8000/v1/embeddings",
+    "lemonade": "http://localhost:13305/v1/embeddings",
     "siliconflow": "https://api.siliconflow.cn/v1/embeddings",
     "aliyun": (
         "https://dashscope.aliyuncs.com/api/v1/services/embeddings/"
@@ -131,6 +133,7 @@ EMBEDDING_PROVIDERS_REQUIRING_EMBEDDINGS_PATH = {
     "orcarouter",
     "jina",
     "vllm",
+    "lemonade",
     "siliconflow",
 }
 

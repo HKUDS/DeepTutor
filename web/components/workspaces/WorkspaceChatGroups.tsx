@@ -1,5 +1,6 @@
 "use client";
 
+import Tooltip from "@/shared/ui/Tooltip";
 import { useCallback, useEffect, useState } from "react";
 import { ChevronDown, Folder, Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -135,18 +136,19 @@ function WorkspaceGroup({
         {/* Starting a conversation here is the workspace's own action, so it
             lives on its row — revealed on hover, like every other row action in
             this column, rather than parked beside the title at all times. */}
-        <button
-          type="button"
-          aria-label={t("New chat in {{name}}", {
-            name: workspace.display_name,
-          })}
-          title={t("New chat in {{name}}", { name: workspace.display_name })}
-          onClick={() => props.onNewChat(workspace.workspace_id)}
-          disabled={workspace.status !== "ready"}
-          className="shrink-0 rounded-md p-1 text-[var(--muted-foreground)] opacity-100 transition-opacity hover:text-[var(--foreground)] sm:opacity-0 focus-visible:opacity-100 group-hover/heading:opacity-100 disabled:opacity-30"
-        >
-          <Plus size={13} strokeWidth={1.9} />
-        </button>
+        <Tooltip label={t("New chat in {{name}}", { name: workspace.display_name })} side="top">
+          <button
+            type="button"
+            aria-label={t("New chat in {{name}}", {
+              name: workspace.display_name,
+            })}
+            onClick={() => props.onNewChat(workspace.workspace_id)}
+            disabled={workspace.status !== "ready"}
+            className="shrink-0 rounded-md p-1 text-[var(--muted-foreground)] opacity-100 transition-opacity hover:text-[var(--foreground)] sm:opacity-0 focus-visible:opacity-100 group-hover/heading:opacity-100 disabled:opacity-30"
+          >
+            <Plus size={13} strokeWidth={1.9} />
+          </button>
+        </Tooltip>
       </div>
       {open && (
         <div className="ml-1.5 border-l border-[color-mix(in_srgb,var(--border)_40%,transparent)] pl-1">

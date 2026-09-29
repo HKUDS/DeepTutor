@@ -295,6 +295,57 @@ def test_llm_unifically_base_url_detection_preserves_openai_binding_compatibilit
     assert resolved.effective_url == "https://api.unifically.com/v1"
 
 
+def test_llm_cheaperinference_binding_uses_default_openai_compatible_endpoint() -> None:
+    catalog = _build_catalog(
+        llm_profile={
+            "id": "llm-p",
+            "name": "Cheaper Inference",
+            "binding": "cheaperinference",
+            "base_url": "",
+            "api_key": "cheaperinference-key",
+            "api_version": "",
+            "extra_headers": {},
+            "models": [
+                {
+                    "id": "llm-m",
+                    "name": "GPT-5.4",
+                    "model": "gpt-5.4",
+                }
+            ],
+        }
+    )
+
+    resolved = resolve_llm_runtime_config(catalog=catalog)
+
+    assert resolved.provider_name == "cheaperinference"
+    assert resolved.provider_mode == "gateway"
+    assert resolved.binding == "cheaperinference"
+    assert resolved.model == "gpt-5.4"
+    assert resolved.api_key == "cheaperinference-key"
+    assert resolved.effective_url == "https://api.cheaperinference.com/v1"
+
+
+def test_llm_cheaperinference_base_url_detection_preserves_openai_binding_compatibility() -> None:
+    catalog = _build_catalog(
+        llm_profile={
+            "id": "llm-p",
+            "name": "OpenAI Compatible",
+            "binding": "openai",
+            "base_url": "https://api.cheaperinference.com/v1",
+            "api_key": "cheaperinference-key",
+            "api_version": "",
+            "extra_headers": {},
+            "models": [{"id": "llm-m", "name": "GPT", "model": "gpt-5.4-mini"}],
+        }
+    )
+
+    resolved = resolve_llm_runtime_config(catalog=catalog)
+
+    assert resolved.provider_name == "cheaperinference"
+    assert resolved.provider_mode == "gateway"
+    assert resolved.effective_url == "https://api.cheaperinference.com/v1"
+
+
 def test_llm_novita_binding_uses_default_openai_compatible_endpoint() -> None:
     catalog = _build_catalog(
         llm_profile={

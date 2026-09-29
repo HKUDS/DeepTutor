@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { LearningCapture } from "@/lib/book-types";
+import Tooltip from "@/shared/ui/Tooltip";
 
 interface LearningCapturePanelProps {
   captures: LearningCapture[];
@@ -92,19 +93,22 @@ export default function LearningCapturePanel({
           </span>
         </button>
         {open && (
-          <button
-            type="button"
-            onClick={() => setShowAll((current) => !current)}
-            className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-            title={
+          <Tooltip
+            label={
               showAll
                 ? t("Show only reviewable captures")
                 : t("Show all captures")
             }
           >
-            <ListFilter className="h-3.5 w-3.5" />
-            {showAll ? t("Review") : t("All")}
-          </button>
+            <button
+              type="button"
+              onClick={() => setShowAll((current) => !current)}
+              className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+            >
+              <ListFilter className="h-3.5 w-3.5" />
+              {showAll ? t("Review") : t("All")}
+            </button>
+          </Tooltip>
         )}
       </div>
 

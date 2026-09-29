@@ -18,10 +18,15 @@ def trim_error_message(stderr: str, limit: int = 1200) -> str:
     text = (stderr or "").strip()
     if len(text) <= limit:
         return text
-    return text[-limit:]
+    separator = "\n…\n"
+    if limit <= len(separator):
+        return text[:limit]
+    head = (limit - len(separator)) // 2
+    tail = limit - len(separator) - head
+    return text[:head] + separator + text[-tail:]
 
 
-def build_repair_error_message(error_message: str) -> str:
+def build_repair_error_message(error_message: str, *, code: str = "") -> str:
     text = (error_message or "").strip()
     lowered = text.lower()
     hints: list[str] = []
@@ -39,6 +44,15 @@ def build_repair_error_message(error_message: str) -> str:
         )
         hints.append(
             "Check any custom point lists, helper lines, braces, polygons, or manually assembled VMobject paths."
+        )
+
+    if re.search(r"\b(?:MathTex|Tex)\s*\(", code) and (
+        "filenotfounderror" in lowered or "winerror 2" in lowered
+    ):
+        hints.append(
+            "This scene uses MathTex/Tex and a renderer executable was not found. "
+            "Check that latex and dvisvgm are installed on PATH, or use Text "
+            "when a LaTeX toolchain is unavailable."
         )
 
     if not hints:

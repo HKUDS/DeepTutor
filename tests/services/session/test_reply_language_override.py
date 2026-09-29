@@ -64,7 +64,8 @@ async def test_explicit_reply_language_stays_with_one_conversation(
 
 
 @pytest.mark.parametrize(
-    "code", ["en", "zh", "zh-tw", "ja", "ko", "es", "fr", "de", "ru", "pt", "it", "ar", "pl", "uk"]
+    "code",
+    ["en", "zh", "zh-tw", "ja", "ko", "es", "fr", "de", "ru", "pt", "it", "ar", "pl", "uk", "ms"],
 )
 def test_selector_accepts_every_supported_response_language(code: str) -> None:
     assert TurnRequest(content="hi", reply_language_override=code).reply_language_override == code

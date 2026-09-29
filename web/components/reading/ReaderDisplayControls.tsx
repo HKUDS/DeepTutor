@@ -11,6 +11,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import Tooltip from "@/shared/ui/Tooltip";
 
 import {
   DEFAULT_READER_DISPLAY_PREFERENCES,
@@ -36,19 +37,20 @@ export function PreferenceButton({
   onClick: () => void;
 }) {
   return (
-    <button
-      type="button"
-      title={label}
-      aria-label={label}
-      aria-pressed={active}
-      disabled={disabled}
-      onClick={onClick}
-      className={`inline-flex h-7 w-7 items-center justify-center rounded-lg text-inherit transition hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)] disabled:opacity-35 disabled:hover:bg-transparent ${
-        active ? "opacity-100" : "opacity-70 hover:opacity-100"
-      }`}
-    >
-      <Icon size={15} />
-    </button>
+    <Tooltip label={label}>
+      <button
+        type="button"
+        aria-label={label}
+        aria-pressed={active}
+        disabled={disabled}
+        onClick={onClick}
+        className={`inline-flex h-7 w-7 items-center justify-center rounded-lg text-inherit transition hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)] disabled:opacity-35 disabled:hover:bg-transparent ${
+          active ? "opacity-100" : "opacity-70 hover:opacity-100"
+        }`}
+      >
+        <Icon size={15} />
+      </button>
+    </Tooltip>
   );
 }
 

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   ArrowLeft,
+  Bookmark,
   ChevronLeft,
   ChevronRight,
   Compass,
@@ -15,6 +16,7 @@ import { useTranslation } from "react-i18next";
 import { ActivityMark } from "@/components/activity";
 import type { ActivityState, MarkTone } from "@/components/activity";
 import type { Book, Page } from "@/lib/book-types";
+import Tooltip from "@/shared/ui/Tooltip";
 
 const STATUS_LABEL: Record<string, string> = {
   pending: "Queued",
@@ -88,41 +90,46 @@ export default function BookSidebar({
   if (collapsed) {
     return (
       <aside className="flex h-full w-14 flex-col items-center gap-3 border-r border-[var(--border)] bg-[var(--card)]/40 px-2 py-4">
-        <button
-          onClick={onBackToLibrary}
-          title={t("All books")}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)]"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </button>
-        <button
-          onClick={() => setCollapsed(false)}
-          title={t("Expand chapters")}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)]"
-        >
-          <ChevronRight className="h-4 w-4" />
-        </button>
+        <Tooltip label={t("All books")}>
+          <button
+            onClick={onBackToLibrary}
+            aria-label={t("All books")}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)]"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+        </Tooltip>
+        <Tooltip label={t("Expand chapters")}>
+          <button
+            onClick={() => setCollapsed(false)}
+            aria-label={t("Expand chapters")}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)]"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </Tooltip>
         <div className="mt-1 h-px w-8 bg-[var(--border)]" />
         <div className="flex flex-1 flex-col items-center gap-1 overflow-y-auto">
           {pages.map((page, index) => {
             const active = page.id === selectedPageId;
             return (
-              <button
-                key={page.id}
-                onClick={() => onSelectPage?.(page.id)}
-                title={page.title || t("Untitled")}
-                className={`inline-flex h-8 w-8 items-center justify-center rounded-md text-[11px] font-semibold ${
-                  active
-                    ? "bg-[var(--primary)]/15 text-[var(--foreground)]"
-                    : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)]"
-                }`}
-              >
-                {page.content_type === "overview" ? (
-                  <Compass className="h-3.5 w-3.5" />
-                ) : (
-                  index + 1
-                )}
-              </button>
+              <Tooltip key={page.id} label={page.title || t("Untitled")}>
+                <button
+                  onClick={() => onSelectPage?.(page.id)}
+                  aria-label={page.title || t("Untitled")}
+                  className={`inline-flex h-8 w-8 items-center justify-center rounded-md text-[11px] font-semibold ${
+                    active
+                      ? "bg-[var(--primary)]/15 text-[var(--foreground)]"
+                      : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)]"
+                  }`}
+                >
+                  {page.content_type === "overview" ? (
+                    <Compass className="h-3.5 w-3.5" />
+                  ) : (
+                    index + 1
+                  )}
+                </button>
+              </Tooltip>
             );
           })}
         </div>
@@ -139,13 +146,15 @@ export default function BookSidebar({
         >
           <ArrowLeft className="h-3.5 w-3.5" /> {t("All books")}
         </button>
-        <button
-          onClick={() => setCollapsed(true)}
-          title={t("Collapse chapters")}
-          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)]"
-        >
-          <ChevronLeft className="h-3.5 w-3.5" />
-        </button>
+        <Tooltip label={t("Collapse chapters")}>
+          <button
+            onClick={() => setCollapsed(true)}
+            aria-label={t("Collapse chapters")}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)]"
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+          </button>
+        </Tooltip>
       </div>
 
       {book && (
@@ -232,9 +241,18 @@ export default function BookSidebar({
               {pages.map((page) => {
                 const active = page.id === selectedPageId;
                 const isOverview = page.content_type === "overview";
+                const bookmarked = bookmarkedPageIds?.includes(page.id) ?? false;
+                const hint = [
+                  page.title || t("Untitled"),
+                  t(STATUS_LABEL[page.status] || page.status),
+                  bookmarked ? t("Bookmarked") : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ");
                 return (
-                  <li key={page.id}>
-                    <button
+                  <li key={page.id} className="[&>span]:w-full">
+                    <Tooltip label={hint}>
+                      <button
                       onClick={() => onSelectPage?.(page.id)}
                       className={`flex w-full items-start justify-between gap-2 rounded-md py-1.5 pr-2 text-left text-xs ${
                         page.parent_page_id ? "pl-5" : "pl-2"
@@ -257,18 +275,15 @@ export default function BookSidebar({
                         </span>
                       </span>
                       <span className="flex shrink-0 items-center gap-1.5">
-                        {bookmarkedPageIds?.includes(page.id) && (
-                          <span
-                            className="h-1.5 w-1.5 rounded-full bg-[var(--primary)]"
-                            title={t("Bookmarked")}
+                        {bookmarked && (
+                          <Bookmark
+                            className="h-3 w-3 fill-[var(--primary)] text-[var(--primary)]"
+                            aria-hidden="true"
                           />
                         )}
-                        {/* The status word survives as the tooltip:
-                            available when wanted, not shouted on every row.
-                            A chapter already read keeps the blue dot but
-                            dimmed — one mark, two facts. */}
+                        {/* The row hint carries status and bookmark details;
+                            the mark stays compact in the chapter list. */}
                         <span
-                          title={t(STATUS_LABEL[page.status] || page.status)}
                           className={`inline-flex items-center ${
                             page.status === "ready" &&
                             visitedPageIds?.includes(page.id)
@@ -282,7 +297,8 @@ export default function BookSidebar({
                           />
                         </span>
                       </span>
-                    </button>
+                      </button>
+                    </Tooltip>
                   </li>
                 );
               })}

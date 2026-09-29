@@ -14,7 +14,9 @@ Per-format strategy, and why:
   raw view.
 * **PPTX** — the shared extractor already emits ``--- Slide N ---`` separators,
   so we split on those instead of re-implementing python-pptx handling.
-* **everything else** (EPUB, DOCX, XLSX, TXT, MD, code, …) — the shared
+* **Markdown** — the shared extractor's text, cut at usable ATX headings and
+  then at paragraph boundaries for long sections.
+* **everything else** (EPUB, DOCX, XLSX, TXT, code, …) — the shared
   extractor's plain text, cut into fixed-size *sections* on paragraph
   boundaries.
 
@@ -151,6 +153,9 @@ def extract_material(path: str | Path, *, data: bytes | None = None) -> Extracti
         extraction = _extract_epub(data, source.name)
     elif suffix == ".pptx":
         extraction = _extract_slides(source)
+    elif suffix in {".md", ".markdown"}:
+        units, outline = split_markdown_by_headings(_shared_extract(source))
+        extraction = Extraction(units=units, unit="section", extractor="text", outline=outline)
     else:
         extraction = _extract_sections(source)
 

@@ -445,7 +445,7 @@ class LearnerProfile(BaseModel):
     These are the things only the learner knows; the tutor can read the
     material's own difficulty for itself.
 
-    Every field is free text on purpose. The useful answer to "how much time do
+    Intake answers are free text on purpose. The useful answer to "how much time do
     you have" is "两周，每天晚上一小时", not an enum the learner has to be
     translated into. Empty means never asked, which is why nothing here is
     required: a goal created before intake existed reads as a profile with
@@ -465,6 +465,8 @@ class LearnerProfile(BaseModel):
     #: How they want it taught — language, worked examples over prose,
     #: intuition before formalism.
     preferences: str = ""
+    #: Explicit sequencing preference. Existing paths keep the diagnostic default.
+    teaching_strategy: Literal["probe_first", "teach_first"] = "probe_first"
     #: Anything else worth carrying that the four fields above do not hold.
     notes: str = ""
     updated_at: float = Field(default_factory=time.time)
@@ -477,6 +479,7 @@ class LearnerProfile(BaseModel):
                 self.target_level.strip(),
                 self.time_budget.strip(),
                 self.preferences.strip(),
+                self.teaching_strategy != "probe_first",
                 self.notes.strip(),
             )
         )

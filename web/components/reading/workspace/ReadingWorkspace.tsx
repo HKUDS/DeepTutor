@@ -4,6 +4,7 @@ import { scopedUrl } from "@/lib/workspace-scope";
 import { READING_HOME, readingFolderRoute, readingSessionIdFromPath } from "@/lib/learning-routes";
 
 import { browserStorage } from "@/shared/storage";
+import Tooltip from "@/shared/ui/Tooltip";
 
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -491,39 +492,44 @@ export function ReadingWorkspacePage() {
         {/* The outline opens on the left, so its switch lives on the left:
             it sat at the far right, next to the companion's, and a learner
             had to guess which of two panel icons was which. */}
-        <button
-          type="button"
-          onClick={() => toggleNavigator(!navigatorOpen)}
-          className={`flex size-7 shrink-0 items-center justify-center rounded-md transition hover:bg-[var(--muted)] ${
-            navigatorOpen
-              ? "text-[var(--primary)]"
-              : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-          }`}
-          aria-label={
-            navigatorOpen ? t("Collapse contents") : t("Expand contents")
-          }
-          title={navigatorOpen ? t("Collapse contents") : t("Expand contents")}
-          aria-expanded={navigatorOpen}
-        >
-          {navigatorOpen ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />}
-        </button>
-        <button
-          type="button"
-          onClick={() => setShowRename(true)}
-          className="max-w-[240px] shrink-0 truncate font-serif text-[13.5px] font-semibold tracking-[-0.01em] transition hover:text-[var(--primary)]"
-          title={t("Rename collection")}
-        >
-          {workspace.title}
-        </button>
-        <button
-          type="button"
-          onClick={() => setShowAddSource(true)}
-          className="flex size-7 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--primary)]"
-          aria-label={t("Add material")}
-          title={t("Add material")}
-        >
-          <Plus size={14} />
-        </button>
+        <Tooltip label={navigatorOpen ? t("Collapse contents") : t("Expand contents")}>
+          <button
+            type="button"
+            onClick={() => toggleNavigator(!navigatorOpen)}
+            className={`flex size-7 shrink-0 items-center justify-center rounded-md transition hover:bg-[var(--muted)] ${
+              navigatorOpen
+                ? "text-[var(--primary)]"
+                : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+            }`}
+            aria-label={
+              navigatorOpen ? t("Collapse contents") : t("Expand contents")
+            }
+            aria-expanded={navigatorOpen}
+          >
+            {navigatorOpen ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />}
+          </button>
+        </Tooltip>
+        <span className="inline-flex min-w-0 max-w-[240px] shrink-0">
+          <Tooltip label={t("Rename collection")} suppressed={showRename}>
+            <button
+              type="button"
+              onClick={() => setShowRename(true)}
+              className="min-w-0 max-w-[240px] truncate font-serif text-[13.5px] font-semibold tracking-[-0.01em] transition hover:text-[var(--primary)]"
+            >
+              {workspace.title}
+            </button>
+          </Tooltip>
+        </span>
+        <Tooltip label={t("Add material")}>
+          <button
+            type="button"
+            onClick={() => setShowAddSource(true)}
+            className="flex size-7 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--primary)]"
+            aria-label={t("Add material")}
+          >
+            <Plus size={14} />
+          </button>
+        </Tooltip>
 
         <div className="ml-auto flex shrink-0 items-center gap-0.5">
           {notice && (
@@ -538,24 +544,23 @@ export function ReadingWorkspacePage() {
           />
           {/* An icon, like every other control on this bar: as the only
               labelled button it read as the page's primary action. */}
-          <button
-            type="button"
-            onClick={() => (learning ? closeLearning() : openLearning())}
-            className={`flex size-7 shrink-0 items-center justify-center rounded-md transition hover:bg-[var(--muted)] ${
-              learning
-                ? "text-[var(--primary)]"
-                : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-            }`}
-            aria-pressed={learning}
-            aria-label={t(
-              learning ? "Exit learning mode" : "Fullscreen learning",
-            )}
-            title={t(
-              learning ? "Exit learning mode" : "Fullscreen learning",
-            )}
-          >
-            {learning ? <Minimize2 size={14} /> : <Expand size={14} />}
-          </button>
+          <Tooltip label={t(learning ? "Exit learning mode" : "Fullscreen learning")}>
+            <button
+              type="button"
+              onClick={() => (learning ? closeLearning() : openLearning())}
+              className={`flex size-7 shrink-0 items-center justify-center rounded-md transition hover:bg-[var(--muted)] ${
+                learning
+                  ? "text-[var(--primary)]"
+                  : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+              }`}
+              aria-pressed={learning}
+              aria-label={t(
+                learning ? "Exit learning mode" : "Fullscreen learning",
+              )}
+            >
+              {learning ? <Minimize2 size={14} /> : <Expand size={14} />}
+            </button>
+          </Tooltip>
           <WorkspaceMenu
             sections={menuSections}
             collection={collectionMenu}
@@ -563,16 +568,17 @@ export function ReadingWorkspacePage() {
           {/* Past conversations are in the app sidebar with every other one;
               this bar only starts a fresh one. Beside the companion's switch,
               since that is the column it clears. */}
-          <button
-            type="button"
-            onClick={newConversation}
-            disabled={!activeConversation}
-            className="flex size-7 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
-            aria-label={t("New conversation")}
-            title={t("New conversation")}
-          >
-            <SquarePen size={14} />
-          </button>
+          <Tooltip label={t("New conversation")}>
+            <button
+              type="button"
+              onClick={newConversation}
+              disabled={!activeConversation}
+              className="flex size-7 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+              aria-label={t("New conversation")}
+            >
+              <SquarePen size={14} />
+            </button>
+          </Tooltip>
           <button
             type="button"
             onClick={() => toggleCompanion(!companionOpen)}

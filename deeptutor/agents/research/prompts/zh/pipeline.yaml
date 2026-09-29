@@ -14,6 +14,9 @@ labels:
   report_section: "撰写章节"
   report_conclusion: "撰写结论"
   report_retry: "报告段落不完整，正在重试。"
+  report_failure: "报告未完成"
+  report_intro_part: "引言"
+  report_conclusion_part: "结论"
   queue_append: "新增子主题"
   references_heading: "参考资料"
   addendum_title: "补充发现"
@@ -33,6 +36,7 @@ system:
   obsidian_kb_system_note: "用户已挂载知识库 {kb_name}，这是一个只读 Obsidian vault。请使用 obsidian_search、obsidian_list 和 obsidian_read 收集证据。不要调用 rag。"
 
 notices:
+  report_incomplete: "报告未能完成，以下部分尚未写出：{parts}。请重试以生成完整报告。"
   protocol_retry: "模型未遵循标签协议，正在重试。"
   empty_tool_result: "工具未返回任何结果。"
   start_retrieval: "开始检索"
@@ -200,7 +204,7 @@ note:
 # =======================================================================
 report:
   retry_complete: |
-    上一次报告段落为空或被截断。请从本段的 ## 标题开始重新生成完整内容，严格遵守标签协议，并写完每个句子。不要解释重试过程。
+    上一次报告段落不完整或格式无效。请从本段的 ## 标题开始重新生成完整内容，严格遵守标签协议，并写完每个句子。不要解释重试过程。
   outline:
     system: |
       根据已完成的研究块规划最终报告的结构。每个块有 id、子主题标题，以及一段简短的知识预览。

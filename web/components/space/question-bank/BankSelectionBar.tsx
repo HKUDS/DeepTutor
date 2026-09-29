@@ -5,6 +5,7 @@ import { CheckSquare, FolderMinus, X } from "lucide-react";
 import type { NotebookCategory } from "@/lib/notebook-api";
 import CategoryMenu from "./CategoryMenu";
 import type { BankScope } from "./useQuestionBank";
+import Tooltip from "@/shared/ui/Tooltip";
 
 interface BankSelectionBarProps {
   count: number;
@@ -79,14 +80,16 @@ export default function BankSelectionBar({
         </button>
       )}
 
-      <button
-        type="button"
-        onClick={onClear}
-        title={t("Clear selection")}
-        className="rounded-lg p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]"
-      >
-        <X className="h-3.5 w-3.5" />
-      </button>
+      <Tooltip label={t("Clear selection")} side="top">
+        <button
+          type="button"
+          onClick={onClear}
+          aria-label={t("Clear selection")}
+          className="rounded-lg p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </Tooltip>
     </div>
   );
 }

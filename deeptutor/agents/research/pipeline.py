@@ -303,6 +303,10 @@ class ReportOutline:
     sections: tuple[ReportSectionPlan, ...]
 
 
+class IncompleteReportError(RuntimeError):
+    """A report stopped after some parts may already have reached the reader."""
+
+
 # ---------------------------------------------------------------------------
 # ResearchPipeline
 # ---------------------------------------------------------------------------
@@ -718,25 +722,37 @@ class ResearchPipeline:
         call_id = new_call_id("research-failure")
         meta = build_trace_metadata(
             call_id=call_id,
-            phase="researching",
-            label=self._t("labels.research_step", default="Research step"),
+            phase="reporting" if isinstance(exc, IncompleteReportError) else "researching",
+            label=(
+                self._t("labels.report_failure", default="Report incomplete")
+                if isinstance(exc, IncompleteReportError)
+                else self._t("labels.research_step", default="Research step")
+            ),
             call_kind="llm_final_response",
             trace_id=call_id,
             trace_role="response",
             trace_group="stage",
         )
-        message = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
+        if isinstance(exc, IncompleteReportError):
+            cause = exc.__cause__ or exc
+            error_message = f"{type(cause).__name__}: {cause}"
+            visible_message = str(exc)
+            stage = "reporting"
+        else:
+            error_message = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
+            visible_message = error_message
+            stage = "researching"
         await stream.error(
-            message,
+            error_message,
             source=SOURCE,
-            stage="researching",
+            stage=stage,
             metadata=merge_trace_metadata(meta, {"trace_kind": "error"}),
         )
         prefix = self._t("system.warning_prefix", default="⚠ ")
         await stream.content(
-            f"{prefix}{message}",
+            f"{prefix}{visible_message}",
             source=SOURCE,
-            stage="researching",
+            stage=stage,
             metadata=merge_trace_metadata(meta, {"trace_kind": "llm_output"}),
         )
 
@@ -1287,6 +1303,23 @@ class ResearchPipeline:
         # them into every report-writing step.
         section_count = len(outline.sections)
         conclusion_number = section_count + 2
+        report_parts = [
+            f"1. {self._t('labels.report_intro_part', default='Introduction')}",
+            *(
+                f"{index + 1}. {section.title}"
+                for index, section in enumerate(outline.sections, start=1)
+            ),
+            f"{conclusion_number}. {self._t('labels.report_conclusion_part', default='Conclusion')}",
+        ]
+
+        def incomplete_error(first_missing: int) -> IncompleteReportError:
+            notice_template = self._t(
+                "notices.report_incomplete",
+                default="The report stopped before these parts could be written: {parts}. Retry to generate the full report.",
+            )
+            return IncompleteReportError(
+                notice_template.format(parts=", ".join(report_parts[first_missing:]))
+            )
 
         section_texts: list[str] = []
 
@@ -1310,7 +1343,12 @@ class ResearchPipeline:
         # assembled response was normalized correctly.
         if section_texts:
             await self._stream_report_separator(stream)
-        intro = await self._write_intro(topic=topic, outline=outline, stream=stream, client=client)
+        try:
+            intro = await self._write_intro(
+                topic=topic, outline=outline, stream=stream, client=client
+            )
+        except Exception as exc:
+            raise incomplete_error(0) from exc
         if intro:
             section_texts.append(intro)
 
@@ -1318,32 +1356,38 @@ class ResearchPipeline:
         for section_index, section in enumerate(outline.sections, start=1):
             if section_texts:
                 await self._stream_report_separator(stream)
-            body = await self._write_section(
-                section=section,
-                section_index=section_index,
-                section_count=section_count,
-                section_number=section_index + 1,
-                topic=topic,
-                outline=outline,
-                blocks=blocks,
-                citations=citations,
-                stream=stream,
-                client=client,
-            )
+            try:
+                body = await self._write_section(
+                    section=section,
+                    section_index=section_index,
+                    section_count=section_count,
+                    section_number=section_index + 1,
+                    topic=topic,
+                    outline=outline,
+                    blocks=blocks,
+                    citations=citations,
+                    stream=stream,
+                    client=client,
+                )
+            except Exception as exc:
+                raise incomplete_error(section_index) from exc
             if body:
                 section_texts.append(body)
                 section_bodies.append(body)
 
         if section_texts:
             await self._stream_report_separator(stream)
-        conclusion = await self._write_conclusion(
-            topic=topic,
-            outline=outline,
-            section_bodies=section_bodies,
-            section_number=conclusion_number,
-            stream=stream,
-            client=client,
-        )
+        try:
+            conclusion = await self._write_conclusion(
+                topic=topic,
+                outline=outline,
+                section_bodies=section_bodies,
+                section_number=conclusion_number,
+                stream=stream,
+                client=client,
+            )
+        except Exception as exc:
+            raise incomplete_error(section_count + 1) from exc
         if conclusion:
             section_texts.append(conclusion)
 
@@ -1943,7 +1987,7 @@ class ResearchPipeline:
                             "content": self._t(
                                 "report.retry_complete",
                                 default=(
-                                    "The previous report part was empty or truncated. "
+                                    "The previous report part was incomplete or invalid. "
                                     "Regenerate the complete part from its ## heading, "
                                     "follow the required label protocol, and finish every sentence."
                                 ),
@@ -3105,7 +3149,7 @@ class _RephraseLoopHost:
         return outcome
 
     async def resolve_pause(self, dispatch: DispatchOutcome) -> bool:
-        from deeptutor.agents.chat.agentic_pipeline import (
+        from deeptutor.agents.loop.pipeline import (
             _format_user_reply_body,
             _normalise_user_reply,
         )

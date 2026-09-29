@@ -17,6 +17,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { bookApi, type EstimateBasis } from "@/lib/book-api";
 import type { BookDepth, Chapter, ContentType, Spine } from "@/lib/book-types";
+import Tooltip from "@/shared/ui/Tooltip";
 
 /**
  * Each chapter declares a *content type* — a hint to the SectionArchitect
@@ -344,14 +345,19 @@ export default function SpineEditor({
                 <label className="text-xs text-[var(--muted-foreground)]">
                   <span className="flex items-center gap-1">
                     {t("Content type")}
-                    <span
-                      className="cursor-help text-[10px] opacity-60"
-                      title={t(
+                    <Tooltip
+                      label={t(
                         "Hint that drives the chapter's block plan (text length, whether to include diagrams / quizzes / code, etc.).",
                       )}
                     >
-                      ⓘ
-                    </span>
+                      <span
+                        tabIndex={0}
+                        role="note"
+                        className="cursor-help text-[10px] opacity-60"
+                      >
+                        ⓘ
+                      </span>
+                    </Tooltip>
                   </span>
                   <select
                     value={chapter.content_type}

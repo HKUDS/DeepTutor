@@ -11,6 +11,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuthStatus } from "@/hooks/useAuthStatus";
+import Tooltip from "@/shared/ui/Tooltip";
 import {
   BookHeart,
   Check,
@@ -190,19 +191,19 @@ export default function SoulPicker({
       {tab === "persona" && (
         <div className="flex flex-wrap gap-2">
           {(sources?.personas ?? []).map((persona) => (
-            <button
-              key={persona.name}
-              type="button"
-              onClick={() => selectPersona(persona.name)}
-              title={persona.description}
-              className={`rounded-full border px-3.5 py-1.5 text-[13px] transition-all duration-150 active:scale-[0.97] ${
-                value.source === "persona" && value.id === persona.name
-                  ? "border-[var(--primary)] bg-[var(--secondary)] font-medium text-[var(--primary)]"
-                  : "border-[var(--border)] text-[var(--muted-foreground)] hover:border-[var(--ring)] hover:text-[var(--foreground)]"
-              }`}
-            >
-              {persona.name}
-            </button>
+            <Tooltip key={persona.name} label={persona.name} description={persona.description}>
+              <button
+                type="button"
+                onClick={() => selectPersona(persona.name)}
+                className={`rounded-full border px-3.5 py-1.5 text-[13px] transition-all duration-150 active:scale-[0.97] ${
+                  value.source === "persona" && value.id === persona.name
+                    ? "border-[var(--primary)] bg-[var(--secondary)] font-medium text-[var(--primary)]"
+                    : "border-[var(--border)] text-[var(--muted-foreground)] hover:border-[var(--ring)] hover:text-[var(--foreground)]"
+                }`}
+              >
+                {persona.name}
+              </button>
+            </Tooltip>
           ))}
           {sources && sources.personas.length === 0 && (
             <p className="text-[13px] text-[var(--muted-foreground)]">

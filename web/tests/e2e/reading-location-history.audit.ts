@@ -214,7 +214,9 @@ test("back and forward cross materials, survive reload, and stay session-scoped"
   await expect(page.getByText("History B1 text.")).toBeVisible();
 
   await page.goto(`/learning/reading/${WORKSPACE_ID}/sessions/${SESSION_TWO}`, { waitUntil: "domcontentloaded" });
-  await page.getByRole("button", { name: "History material B" }).click();
+  // A fresh load starts with the contents navigator collapsed (v1.6.10).
+  await page.getByRole("button", { name: "Expand contents", exact: true }).click();
+  await page.getByRole("button", { name: "History material B", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Back", exact: true }),
   ).toBeDisabled();
@@ -251,6 +253,9 @@ test("a deleted material remains identifiable and does not block older history",
       .getByRole("alert")
       .filter({ hasText: "Material is no longer available" }),
   ).toBeVisible();
+  // History moved behind the reader's "More" menu in the v1.6.10 rework;
+  // it only appears once the reader has recorded history entries.
+  await page.getByRole("button", { name: "More", exact: true }).click();
   await page.getByRole("button", { name: "History", exact: true }).click();
   await expect(page.getByText("Deleted reading material")).toBeVisible();
   await expect(page.getByText("Section 2 · Unavailable")).toBeVisible();

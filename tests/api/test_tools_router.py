@@ -23,6 +23,7 @@ async def test_list_builtin_tools_marks_toggleable_set(
     can render the right control per row."""
     settings_file = tmp_path / "interface.json"
     monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
+    monkeypatch.setattr(interface_settings, "_interface_settings_file", lambda: settings_file)
 
     response = await tools_router.list_builtin_tools()
     by_name = {tool.name: tool for tool in response.tools}

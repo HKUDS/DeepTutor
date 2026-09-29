@@ -1,5 +1,6 @@
 "use client";
 
+import Tooltip from "@/shared/ui/Tooltip";
 import { useCallback, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { useTranslation } from "react-i18next";
@@ -297,83 +298,89 @@ export default function PersonasSection() {
           {personas.map((persona) => {
             const readOnly = Boolean(persona.read_only);
             return (
-              <li
-                key={persona.name}
-                role="button"
-                tabIndex={0}
-                onClick={() => void openView(persona)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    void openView(persona);
-                  }
-                }}
-                title={t("View persona")}
-                className="group relative flex cursor-pointer flex-col rounded-xl border border-[var(--border)] bg-[var(--card)] p-4 shadow-sm transition-all hover:border-[var(--foreground)]/30 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-start gap-2.5">
-                    <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-[var(--border)]/60 bg-[var(--background)] text-[var(--muted-foreground)]">
-                      <UserRound size={13} strokeWidth={1.6} />
-                    </span>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <span className="truncate text-[14px] font-semibold tracking-tight text-[var(--foreground)]">
-                          {persona.name}
-                        </span>
-                        {persona.source === "admin" ? (
-                          <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
-                            {readOnly ? <Lock size={9} /> : null}
-                            {t("Preset")}
+              <Tooltip key={persona.name} label={t("View persona")} as="li" side="top">
+                <div
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`${t("View persona")}: ${persona.name}`}
+                  onClick={() => void openView(persona)}
+                  onKeyDown={(e) => {
+                    if (e.target !== e.currentTarget) return;
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      void openView(persona);
+                    }
+                  }}
+                  className="group relative flex h-full cursor-pointer flex-col rounded-xl border border-[var(--border)] bg-[var(--card)] p-4 shadow-sm transition-all hover:border-[var(--foreground)]/30 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-start gap-2.5">
+                      <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-[var(--border)]/60 bg-[var(--background)] text-[var(--muted-foreground)]">
+                        <UserRound size={13} strokeWidth={1.6} />
+                      </span>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="truncate text-[14px] font-semibold tracking-tight text-[var(--foreground)]">
+                            {persona.name}
                           </span>
-                        ) : null}
-                      </div>
-                      {persona.description ? (
-                        <p className="mt-0.5 line-clamp-2 text-[12px] leading-relaxed text-[var(--muted-foreground)]">
-                          {persona.description}
-                        </p>
-                      ) : (
-                        <p className="mt-0.5 text-[12px] italic text-[var(--muted-foreground)]/60">
-                          {t("No description.")}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  {readOnly ? (
-                    <span className="shrink-0 text-[var(--muted-foreground)] opacity-0 transition-opacity group-hover:opacity-100">
-                      <Eye size={13} />
-                    </span>
-                  ) : (
-                    <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void openEdit(persona.name);
-                        }}
-                        className="rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-                        title={t("Edit")}
-                      >
-                        <Pencil size={13} />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void handleDelete(persona.name);
-                        }}
-                        disabled={deleting === persona.name}
-                        className="rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50 dark:hover:bg-red-950/30"
-                        title={t("Delete")}
-                      >
-                        {deleting === persona.name ? (
-                          <Loader2 size={13} className="animate-spin" />
+                          {persona.source === "admin" ? (
+                            <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
+                              {readOnly ? <Lock size={9} /> : null}
+                              {t("Preset")}
+                            </span>
+                          ) : null}
+                        </div>
+                        {persona.description ? (
+                          <p className="mt-0.5 line-clamp-2 text-[12px] leading-relaxed text-[var(--muted-foreground)]">
+                            {persona.description}
+                          </p>
                         ) : (
-                          <Trash2 size={13} />
+                          <p className="mt-0.5 text-[12px] italic text-[var(--muted-foreground)]/60">
+                            {t("No description.")}
+                          </p>
                         )}
-                      </button>
+                      </div>
                     </div>
-                  )}
+                    {readOnly ? (
+                      <span className="shrink-0 text-[var(--muted-foreground)] opacity-0 transition-opacity group-hover:opacity-100">
+                        <Eye size={13} />
+                      </span>
+                    ) : (
+                      <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                        <Tooltip label={t("Edit")} side="top">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void openEdit(persona.name);
+                            }}
+                            className="rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                            aria-label={t("Edit")}
+                          >
+                            <Pencil size={13} />
+                          </button>
+                        </Tooltip>
+                        <Tooltip label={t("Delete")} side="top">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void handleDelete(persona.name);
+                            }}
+                            disabled={deleting === persona.name}
+                            className="rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50 dark:hover:bg-red-950/30"
+                            aria-label={t("Delete")}
+                          >
+                            {deleting === persona.name ? (
+                              <Loader2 size={13} className="animate-spin" />
+                            ) : (
+                              <Trash2 size={13} />
+                            )}
+                          </button>
+                        </Tooltip>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </li>
+              </Tooltip>
             );
           })}
         </ul>
@@ -416,7 +423,7 @@ export default function PersonasSection() {
                       void openEdit(name);
                     }}
                     className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[12px] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-                    title={t("Edit")}
+
                   >
                     <Pencil size={12} />
                     {t("Edit")}

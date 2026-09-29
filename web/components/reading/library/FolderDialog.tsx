@@ -12,6 +12,7 @@ import {
 } from "@/lib/reading-workspace-api";
 
 import { FOLDER_COLORS, FolderGlyph, folderTone } from "./FolderGlyph";
+import Tooltip from "@/shared/ui/Tooltip";
 
 /**
  * Creating a collection and renaming or recolouring one are the same small
@@ -135,21 +136,21 @@ export function FolderDialog({
             {FOLDER_COLORS.map((row) => {
               const selected = row.key === color;
               return (
-                <button
-                  key={row.key || "default"}
-                  type="button"
-                  onClick={() => setColor(row.key)}
-                  aria-label={t(row.label)}
-                  aria-pressed={selected}
-                  title={t(row.label)}
-                  className="size-6 rounded-full transition hover:scale-110"
-                  style={{
-                    background: row.tone,
-                    boxShadow: selected
-                      ? `0 0 0 2px var(--card), 0 0 0 3.5px ${folderTone(row.key)}`
-                      : undefined,
-                  }}
-                />
+                <Tooltip key={row.key || "default"} label={t(row.label)}>
+                  <button
+                    type="button"
+                    onClick={() => setColor(row.key)}
+                    aria-label={t(row.label)}
+                    aria-pressed={selected}
+                    className="size-6 rounded-full transition hover:scale-110"
+                    style={{
+                      background: row.tone,
+                      boxShadow: selected
+                        ? `0 0 0 2px var(--card), 0 0 0 3.5px ${folderTone(row.key)}`
+                        : undefined,
+                    }}
+                  />
+                </Tooltip>
               );
             })}
           </div>

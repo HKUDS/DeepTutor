@@ -5,6 +5,7 @@ import { AlertTriangle, RefreshCcw, X, ScrollText } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { bookApi } from "@/lib/book-api";
 import type { GenerationSummary } from "@/lib/book-types";
+import Tooltip from "@/shared/ui/Tooltip";
 
 export interface BookHealthBannerProps {
   bookId: string | null;
@@ -328,26 +329,32 @@ export default function BookHealthBanner({
         </div>
         <div className="flex items-center gap-1">
           {hasDrift && (
-            <button
-              onClick={() => acknowledge()}
-              disabled={busy}
-              title={t(
+            <Tooltip
+              label={t(
                 "Available only after every stale page has been recompiled.",
               )}
-              className="whitespace-nowrap rounded-md border border-current px-2 py-1 text-xs font-medium hover:bg-white/40 disabled:opacity-60"
             >
-              {busy ? "…" : t("Mark as seen")}
-            </button>
+              <button
+                onClick={() => acknowledge()}
+                disabled={busy}
+                className="whitespace-nowrap rounded-md border border-current px-2 py-1 text-xs font-medium hover:bg-white/40 disabled:opacity-60"
+              >
+                {busy ? "…" : t("Mark as seen")}
+              </button>
+            </Tooltip>
           )}
           {hasDrift && canForce && onRecompile && (
-            <button
-              onClick={() => acknowledge(true)}
-              disabled={busy}
-              title={t("Dismiss the warning without recompiling those pages.")}
-              className="whitespace-nowrap rounded-md border border-current px-2 py-1 text-xs font-medium hover:bg-white/40 disabled:opacity-60"
+            <Tooltip
+              label={t("Dismiss the warning without recompiling those pages.")}
             >
-              {t("Mark as seen anyway")}
-            </button>
+              <button
+                onClick={() => acknowledge(true)}
+                disabled={busy}
+                className="whitespace-nowrap rounded-md border border-current px-2 py-1 text-xs font-medium hover:bg-white/40 disabled:opacity-60"
+              >
+                {t("Mark as seen anyway")}
+              </button>
+            </Tooltip>
           )}
           <button
             onClick={() => setDismissed(true)}

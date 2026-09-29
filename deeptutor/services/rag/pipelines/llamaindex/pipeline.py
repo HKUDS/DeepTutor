@@ -22,6 +22,7 @@ from deeptutor.services.rag.index_versioning import (
     write_version_meta,
 )
 from deeptutor.services.rag.kb_paths import resolve_kb_dir
+from deeptutor.services.rag.visual_assets import VisualAssetStore
 
 from . import storage
 from .config import default_top_k, should_show_progress
@@ -212,8 +213,12 @@ class LlamaIndexPipeline:
 
         try:
             await self._verify_embedding_connectivity()
+            visual_candidates = []
             documents = await self.document_loader.load(
-                file_paths, image_progress_callback=image_progress_callback
+                file_paths,
+                image_progress_callback=image_progress_callback,
+                kb_dir=kb_dir,
+                visual_candidates=visual_candidates,
             )
             if not documents:
                 self.logger.error("No valid documents found")
@@ -233,6 +238,7 @@ class LlamaIndexPipeline:
             )
 
             self.logger.info(f"Index persisted to {storage_dir}")
+            VisualAssetStore(kb_dir).publish(visual_candidates, prune_missing=True)
             if signature is not None:
                 write_version_meta(kb_dir, signature, storage_dir=storage_dir)
 
@@ -351,6 +357,17 @@ class LlamaIndexPipeline:
                     "page": meta.get("page_label", meta.get("page", "")),
                     "chunk_id": node.node.node_id or str(i),
                     "score": round(node.score, 4) if node.score is not None else "",
+                    **(
+                        {
+                            "visual_asset_id": meta["visual_asset_id"],
+                            "source_document_id": meta.get("source_document_id", ""),
+                            "bbox": meta.get("bbox"),
+                            "caption": meta.get("caption", ""),
+                            "source_locator": meta.get("source_locator", ""),
+                        }
+                        if meta.get("visual_asset_id")
+                        else {}
+                    ),
                 }
             )
 
@@ -378,8 +395,12 @@ class LlamaIndexPipeline:
         try:
             await self._verify_embedding_connectivity()
 
+            visual_candidates = []
             documents = await self.document_loader.load(
-                file_paths, image_progress_callback=image_progress_callback
+                file_paths,
+                image_progress_callback=image_progress_callback,
+                kb_dir=kb_dir,
+                visual_candidates=visual_candidates,
             )
             if not documents:
                 self.logger.warning("No valid documents to add")
@@ -395,6 +416,7 @@ class LlamaIndexPipeline:
                     worker_key=str(kb_dir.resolve()),
                 )
                 self.logger.info(f"Added {num_added} documents to existing index")
+                VisualAssetStore(kb_dir).publish(visual_candidates)
                 if signature is not None and plan.storage_dir != plan.existing_storage:
                     write_version_meta(kb_dir, signature, storage_dir=plan.storage_dir)
             else:
@@ -408,6 +430,7 @@ class LlamaIndexPipeline:
                     worker_key=str(kb_dir.resolve()),
                 )
                 self.logger.info(f"Created new index with {num_added} documents")
+                VisualAssetStore(kb_dir).publish(visual_candidates)
                 if signature is not None:
                     write_version_meta(kb_dir, signature, storage_dir=plan.storage_dir)
 

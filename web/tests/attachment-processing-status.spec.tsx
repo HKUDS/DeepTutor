@@ -61,6 +61,27 @@ it("keeps one latest parser stage per attachment during a live turn", () => {
   ]);
 });
 
+it("shows PDF transfer before server receipt and replaces it with confirmed progress", () => {
+  const user = {
+    role: "user",
+    attachments: [{ filename: "notes.pdf", mime_type: "application/pdf" }],
+  };
+  expect(selectAttachmentProcessing([user, { role: "assistant", events: [] }], true)).toEqual([
+    { attachmentId: "uploading:0", filename: "notes.pdf", phase: "uploading", detail: "" },
+  ]);
+
+  const confirmed = selectAttachmentProcessing([
+    user,
+    { role: "assistant", events: [progress("stored-a", "notes.pdf", "received", "Uploaded")] },
+  ], true);
+  expect(confirmed).toEqual([
+    { attachmentId: "stored-a", filename: "notes.pdf", phase: "received", detail: "Uploaded" },
+  ]);
+  render(<AttachmentProcessingStatus items={confirmed} />);
+  expect(screen.getByText("Uploaded to DeepTutor")).toBeVisible();
+  expect(selectAttachmentProcessing([user, { role: "assistant", events: [] }], false)).toEqual([]);
+});
+
 it("hides settled success but preserves parser failure details", () => {
   const items = selectAttachmentProcessing(
     [

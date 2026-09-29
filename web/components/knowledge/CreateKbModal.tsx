@@ -1,5 +1,6 @@
 "use client";
 
+import Tooltip from "@/shared/ui/Tooltip";
 import type { EmbeddingModelSelection } from "@/features/knowledge/model/types";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -49,6 +50,7 @@ import {
   validateFiles,
 } from "@/lib/knowledge-helpers";
 import { forbiddenKbNameChars, isValidKbName } from "@/lib/kb-name";
+import { listWorkspaces, type ChatWorkspaceRegistration } from "@/lib/workspaces-api";
 import FileDropZone from "./FileDropZone";
 import ImaConnectionFields from "./ImaConnectionFields";
 import KnowledgeEngineIcon from "./KnowledgeEngineIcon";
@@ -77,6 +79,7 @@ interface CreateKbModalProps {
     name: string;
     provider: string;
     files: File[];
+    storageWorkspaceId?: string;
     pageindexMode?: "flash" | "standard";
     searchMode?: string;
     embeddingModel?: EmbeddingModelSelection;
@@ -144,6 +147,8 @@ export default function CreateKbModal({
   const [name, setName] = useState("");
   const [provider, setProvider] = useState("llamaindex");
   const [files, setFiles] = useState<File[]>([]);
+  const [storageWorkspaceId, setStorageWorkspaceId] = useState("");
+  const [storageWorkspaces, setStorageWorkspaces] = useState<ChatWorkspaceRegistration[]>([]);
   const [pageIndexMode, setPageIndexMode] = useState<"" | "flash" | "standard">(
     "",
   );
@@ -225,6 +230,11 @@ export default function CreateKbModal({
       : engineDefaultSummary;
   const [defaultsRevision, setDefaultsRevision] = useState(0);
   const refreshCatalog = llmCatalog.refresh;
+
+  useEffect(() => {
+    if (!isOpen) return;
+    void listWorkspaces().then(setStorageWorkspaces).catch(() => setStorageWorkspaces([]));
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -554,6 +564,7 @@ export default function CreateKbModal({
             name: trimmed,
             provider,
             files: selection.validFiles,
+            storageWorkspaceId,
             pageindexMode:
               isPageIndexOSS && pageIndexMode ? pageIndexMode : undefined,
             searchMode: retrievalMode || undefined,
@@ -667,6 +678,32 @@ export default function CreateKbModal({
             </p>
           )}
         </div>
+
+        {mode === "new" && !isLightRagServer && !isWeKnora && (
+          <div>
+            <label className="mb-1 block text-[12px] font-medium text-[var(--foreground)]">
+              {t("Storage workspace")}
+            </label>
+            <select
+              value={storageWorkspaceId}
+              onChange={(event) => setStorageWorkspaceId(event.target.value)}
+              disabled={submitting}
+              className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--foreground)]"
+            >
+              <option value="">{t("Account library")}</option>
+              {storageWorkspaces
+                .filter((row) => row.kind === "workspace" && !row.archived && row.status === "ready")
+                .map((row) => (
+                  <option key={row.workspace_id} value={row.workspace_id}>
+                    {row.display_name}
+                  </option>
+                ))}
+            </select>
+            <p className="mt-1 text-[11px] text-[var(--muted-foreground)]">
+              {t("Documents and indexes are stored in the selected workspace.")}
+            </p>
+          </div>
+        )}
 
         {mode === "new" ? (
           <NewModeFields
@@ -1439,45 +1476,45 @@ function LinkModeFields({
             const enabled = linkSourceEnabled(p);
             const disabled = submitting || !enabled;
             return (
-              <button
+              <Tooltip
                 key={p.id}
-                type="button"
-                disabled={disabled}
-                onClick={() => setLinkSource(p.id)}
-                title={
-                  !enabled
-                    ? t(
-                        "This engine's index lives in the cloud and can't be linked.",
-                      )
-                    : undefined
-                }
-                className={`group flex flex-col gap-1 rounded-2xl border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                  selected
-                    ? "border-[var(--primary)] bg-[var(--primary)]/5"
-                    : "border-[var(--border)] hover:border-[var(--ring)]"
-                }`}
+                label={enabled ? p.name : t("This engine's index lives in the cloud and can't be linked.")}
+                suppressed={enabled}
+                side="top"
               >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="flex min-w-0 items-center gap-2 text-[13px] font-medium text-[var(--foreground)]">
-                    <KnowledgeEngineIcon engine={p.id} size={24} />
-                    <span className="truncate">{p.name}</span>
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => setLinkSource(p.id)}
+                  aria-label={p.name}
+                  className={`group flex h-full w-full flex-col gap-1 rounded-2xl border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                    selected
+                      ? "border-[var(--primary)] bg-[var(--primary)]/5"
+                      : "border-[var(--border)] hover:border-[var(--ring)]"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="flex min-w-0 items-center gap-2 text-[13px] font-medium text-[var(--foreground)]">
+                      <KnowledgeEngineIcon engine={p.id} size={24} />
+                      <span className="truncate">{p.name}</span>
+                    </span>
+                    {selected ? (
+                      <Check className="h-3.5 w-3.5 text-[var(--primary)]" />
+                    ) : !enabled ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted-foreground)]">
+                        {t("Cloud index")}
+                      </span>
+                    ) : p.id === IMA_PROVIDER ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-700 dark:bg-sky-950/30 dark:text-sky-300">
+                        {t("Read only")}
+                      </span>
+                    ) : null}
+                  </div>
+                  <span className="text-[11.5px] leading-snug text-[var(--muted-foreground)]">
+                    {p.description}
                   </span>
-                  {selected ? (
-                    <Check className="h-3.5 w-3.5 text-[var(--primary)]" />
-                  ) : !enabled ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted-foreground)]">
-                      {t("Cloud index")}
-                    </span>
-                  ) : p.id === IMA_PROVIDER ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-700 dark:bg-sky-950/30 dark:text-sky-300">
-                      {t("Read only")}
-                    </span>
-                  ) : null}
-                </div>
-                <span className="text-[11.5px] leading-snug text-[var(--muted-foreground)]">
-                  {p.description}
-                </span>
-              </button>
+                </button>
+              </Tooltip>
             );
           })}
 

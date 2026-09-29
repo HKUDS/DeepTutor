@@ -1,5 +1,6 @@
 "use client";
 
+import Tooltip from "@/shared/ui/Tooltip";
 import { ArrowRight, CheckCircle2, Clock3, Loader2, Play } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useState } from "react";
@@ -44,14 +45,13 @@ export function ReviewTrail({
     ? RETENTION_TARGETS
     : [...RETENTION_TARGETS, desiredRetention].sort((a, b) => a - b);
   return (
-    <section className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--secondary)] px-4 py-2.5">
-        <h2
-          className="text-[12px] font-semibold text-[var(--foreground)]"
-          title={t("Scheduled by your forgetting curve")}
-        >
-          {t("Review plan")}
-        </h2>
+    <section className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] lg:max-h-[min(30vh,260px)] lg:shrink-0">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--secondary)] px-4 py-2.5">
+        <Tooltip label={t("Scheduled by your forgetting curve")} as="div" side="top">
+          <h2 tabIndex={0} className="text-[12px] font-semibold text-[var(--foreground)]">
+            {t("Review plan")}
+          </h2>
+        </Tooltip>
         <div className="flex items-center gap-3">
           <label className="flex items-center gap-1.5 text-[11px] text-[var(--muted-foreground)]">
             <span>{t("Recall target")}</span>
@@ -80,7 +80,7 @@ export function ReviewTrail({
           </span>
         </div>
       </div>
-      <p id="review-retention-hint" className="px-4 pt-2 text-[10px] text-[var(--muted-foreground)]">
+      <p id="review-retention-hint" className="shrink-0 px-4 pt-2 text-[10px] text-[var(--muted-foreground)]">
         {t("Higher targets schedule reviews sooner.")}
       </p>
       {retentionError && (
@@ -96,7 +96,7 @@ export function ReviewTrail({
           )}
         </div>
       ) : (
-        <div className="p-2">
+        <div className="min-h-0 overflow-y-auto p-2">
           {visible.map((review) => (
             <div
               key={review.id}
@@ -109,7 +109,6 @@ export function ReviewTrail({
                 type="button"
                 onClick={() => onSelect(review.knowledge_point_id)}
                 className="min-w-0 flex-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]/40"
-                title={review.reason}
               >
                 <span className="block truncate text-xs font-medium text-[var(--foreground)]">
                   {review.knowledge_point_name}

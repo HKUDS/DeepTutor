@@ -40,7 +40,12 @@ playbook: |
      Write the sentence however reads best; you do not have to avoid naming the
      location in words. If you write "…on page 3 … [p.3]", the reader merges the
      two into one link on the phrase itself, so it never comes out doubled.
-  5. `reader_annotate` leaves a durable mark the user can export with their own
+  5. `view_figure` looks at a single figure's pixels through a vision model.
+     Call it with the figure's name from the image list when the caption there
+     is not enough to tell what the figure shows — a non-current page, another
+     tab, or any figure the turn does not carry. If the caption already answers,
+     do not call it.
+  6. `reader_annotate` leaves a durable mark the user can export with their own
      annotations. Use it when they ask you to mark something up — not as a
      substitute for explaining.
 

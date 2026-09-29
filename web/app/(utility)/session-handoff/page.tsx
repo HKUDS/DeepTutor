@@ -117,11 +117,10 @@ export default function SessionHandoffPage() {
                 <button
                   type="button"
                   onClick={() => void copy()}
-                  title={t("Copy link")}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-2.5 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--card)]"
                 >
                   <ClipboardCopy size={14} />
-                  {copied ? t("Copied") : t("Copy")}
+                  {copied ? t("Copied") : t("Copy link")}
                 </button>
               </div>
               <p className="mt-3 break-all text-sm text-[var(--muted-foreground)]">

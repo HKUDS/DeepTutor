@@ -1,5 +1,6 @@
 "use client";
 
+import Tooltip from "@/shared/ui/Tooltip";
 import { Loader2, Save, Undo2, Check } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useSettings } from "@/features/settings/store/SettingsStore";
@@ -52,20 +53,21 @@ export function SettingsToolbar() {
             <Undo2 size={14} />
             {t("Discard")}
           </button>
-          <button
-            type="button"
-            onClick={() => void saveDraft()}
-            disabled={busy || draftState !== "unsaved"}
-            title={t("Store these changes without putting them into effect.")}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-2 text-xs disabled:opacity-40"
-          >
-            {saving ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <Save size={14} />
-            )}
-            {t("Save draft")}
-          </button>
+          <Tooltip label={t("Store these changes without putting them into effect.")} side="top">
+            <button
+              type="button"
+              onClick={() => void saveDraft()}
+              disabled={busy || draftState !== "unsaved"}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-2 text-xs disabled:opacity-40"
+            >
+              {saving ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Save size={14} />
+              )}
+              {t("Save draft")}
+            </button>
+          </Tooltip>
           <button
             type="button"
             onClick={applyCatalog}

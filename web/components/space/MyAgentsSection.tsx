@@ -1,5 +1,6 @@
 "use client";
 
+import Tooltip from "@/shared/ui/Tooltip";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -477,38 +478,40 @@ function AgentCard({
       </div>
 
       <div className="flex shrink-0 items-center gap-1">
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            onRefresh();
-          }}
-          disabled={refreshing}
-          title={t("Refresh history")}
-          aria-label={t("Refresh history")}
-          className="rounded-lg border border-[var(--border)]/50 p-2 text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)] disabled:opacity-50"
-        >
-          {refreshing ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <RefreshCw className="h-3.5 w-3.5" />
-          )}
-        </button>
-        <div ref={menuRef} className="relative">
+        <Tooltip label={t("Refresh history")} side="top">
           <button
             type="button"
             onClick={(event) => {
               event.stopPropagation();
-              setMenuOpen((v) => !v);
+              onRefresh();
             }}
-            title={t("More")}
-            aria-label={t("More")}
-            aria-haspopup="menu"
-            aria-expanded={menuOpen}
-            className="rounded-lg border border-[var(--border)]/50 p-2 text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)]"
+            disabled={refreshing}
+            aria-label={t("Refresh history")}
+            className="rounded-lg border border-[var(--border)]/50 p-2 text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)] disabled:opacity-50"
           >
-            <MoreHorizontal className="h-3.5 w-3.5" />
+            {refreshing ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5" />
+            )}
           </button>
+        </Tooltip>
+        <div ref={menuRef} className="relative">
+          <Tooltip label={t("More")} side="top">
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setMenuOpen((v) => !v);
+              }}
+              aria-label={t("More")}
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              className="rounded-lg border border-[var(--border)]/50 p-2 text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)]"
+            >
+              <MoreHorizontal className="h-3.5 w-3.5" />
+            </button>
+          </Tooltip>
           {menuOpen && (
             <div
               role="menu"

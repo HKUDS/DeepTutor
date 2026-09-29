@@ -77,10 +77,13 @@ def _assigned_admin_names() -> set[str]:
 
 
 def resolve_kb(kb_ref: str, *, require_write: bool = False) -> KnowledgeResource:
+    from deeptutor.services.workspace.context import current_workspace_id
     from deeptutor.services.workspace.knowledge import (
+        canonical_kb_id,
         learning_source_kbs,
         library_request,
         parse_kb_id,
+        qualified_kb_id,
         resolve_qualified,
         resolve_selected,
     )
@@ -91,8 +94,12 @@ def resolve_kb(kb_ref: str, *, require_write: bool = False) -> KnowledgeResource
     selected = None if library_request.get() else current_resources().knowledge_bases
     if selected is not None:
         return resolve_selected(kb_ref, selected, require_write=require_write)
-    if parse_kb_id(kb_ref) is not None:
+    if parse_kb_id(kb_ref) is not None or canonical_kb_id(kb_ref) != kb_ref:
         return resolve_qualified(kb_ref, require_write=require_write)
+    if kb_ref and not kb_ref.startswith((ADMIN_PREFIX, USER_PREFIX)):
+        previous_id = qualified_kb_id(kb_ref, current_workspace_id())
+        if canonical_kb_id(previous_id) != previous_id:
+            return resolve_qualified(previous_id, require_write=require_write)
     return _resolve_kb(kb_ref, require_write=require_write)
 
 
@@ -199,16 +206,38 @@ def manager_for_resource(resource: KnowledgeResource) -> KnowledgeBaseManager:
 
 
 def list_visible_knowledge_bases() -> list[dict[str, Any]]:
-    from deeptutor.services.workspace.knowledge import knowledge_catalog, library_request
+    from deeptutor.services.workspace.context import current_workspace_id
+    from deeptutor.services.workspace.knowledge import (
+        canonical_kb_id,
+        knowledge_catalog,
+        library_request,
+        move_aliases,
+        parse_kb_id,
+    )
     from deeptutor.services.workspace.resources import current_resources
 
     if library_request.get():
         return knowledge_catalog()
     selected = current_resources().knowledge_bases
     if selected is None:
-        return _list_visible_knowledge_bases()
+        own = _list_visible_knowledge_bases()
+        origin = current_workspace_id()
+        moved_refs = {
+            canonical_kb_id(old_id)
+            for old_id in move_aliases()
+            if (parsed := parse_kb_id(old_id)) is not None and parsed[0] == origin
+        }
+        if not moved_refs:
+            return own
+        catalog = {item["id"]: item for item in knowledge_catalog()}
+        existing = {item["id"] for item in own}
+        return own + [catalog[rid] for rid in sorted(moved_refs - existing) if rid in catalog]
     catalog = {item["id"]: item for item in knowledge_catalog()}
-    return [catalog[rid] for rid in selected if rid in catalog]
+    return [
+        catalog[rid]
+        for rid in dict.fromkeys(canonical_kb_id(ref) for ref in selected)
+        if rid in catalog
+    ]
 
 
 def _list_visible_knowledge_bases() -> list[dict[str, Any]]:

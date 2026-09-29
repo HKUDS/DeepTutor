@@ -150,6 +150,7 @@ class NextStep:
     * ``answer_pending`` — a posed question awaits the learner's answer.
     * ``review`` — a spaced-repetition item is due.
     * ``probe`` — an untouched objective; test out before teaching.
+    * ``teach`` — teach an untouched objective before assessing it, by request.
     * ``practice`` — a quantitative objective below its gate.
     * ``assess`` — a qualitative objective awaiting a Feynman-style check.
     * ``complete`` — every objective mastered, nothing due.
@@ -282,7 +283,12 @@ def next_objective(
             status = objective_status(progress, kp)
             gate = gate_kind(kp)
             if status == "new":
-                action = "probe"
+                action = (
+                    "teach"
+                    if progress.learner_profile is not None
+                    and progress.learner_profile.teaching_strategy == "teach_first"
+                    else "probe"
+                )
             elif gate == "qualitative":
                 action = "assess"
             else:
@@ -299,7 +305,11 @@ def next_objective(
                 mastery=display_mastery(progress, kp),
                 threshold=gate_threshold(kp.type),
                 reason=(
-                    "Untouched objective — probe first to let the learner test out."
+                    (
+                        "Untouched objective — teach before assessing, as the learner requested."
+                        if action == "teach"
+                        else "Untouched objective — probe first to let the learner test out."
+                    )
                     if status == "new"
                     else "Objective is below its mastery gate; keep working it until it clears."
                 ),

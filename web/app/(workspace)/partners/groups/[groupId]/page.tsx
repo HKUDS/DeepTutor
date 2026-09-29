@@ -151,7 +151,6 @@ export default function PartnerGroupPage() {
             onClick={() => downloadChatMarkdown(exportMessages, { title: group.name })}
             disabled={exportMessages.length === 0}
             aria-label={t("Download")}
-            title={t("Download")}
             className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--border)] px-2.5 text-[11px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Download size={12} />

@@ -32,6 +32,7 @@ FEATURES = {
     "reading": "Immersive Reading",
     "timed_media": "Immersive Watching",
     "notebook": "Notebooks",
+    "task-board": "Task Board",
     "co-writer": "Writing",
     "courses": "Courses",
     "files": "File library",

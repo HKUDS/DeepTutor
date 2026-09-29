@@ -58,11 +58,6 @@ export default function GeogebraOpenCTA({
         type="button"
         onClick={onClick}
         disabled={disabled}
-        title={
-          disabled
-            ? t("GeoGebra viewer is not available in this surface")
-            : undefined
-        }
         className={`group flex w-full items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--card)] px-4 py-3 text-left transition-colors ${
           disabled
             ? "cursor-not-allowed opacity-60"
@@ -77,9 +72,9 @@ export default function GeogebraOpenCTA({
             {title || t("Interactive GeoGebra figure")}
           </span>
           <span className="block text-xs text-[var(--muted-foreground)]">
-            {t(
-              "Click to open an interactive GeoGebra canvas in the side viewer.",
-            )}
+            {disabled
+              ? t("GeoGebra viewer is not available in this surface")
+              : t("Click to open an interactive GeoGebra canvas in the side viewer.")}
           </span>
         </span>
       </button>

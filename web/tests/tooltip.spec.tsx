@@ -67,6 +67,42 @@ it("shows on touch and on hover over a disabled trigger", async () => {
   expect(visualTooltip()).toHaveTextContent("Unavailable because setup is incomplete");
 });
 
+it("keeps list cards as list items while exposing focus and touch hints", async () => {
+  render(
+    <ul>
+      <Tooltip label="View details" as="li">
+        <div role="button" tabIndex={0} aria-label="View details: Example">
+          Example
+          <button type="button">Edit</button>
+        </div>
+      </Tooltip>
+    </ul>,
+  );
+
+  const card = screen.getByRole("button", { name: "View details: Example" });
+  const list = screen.getByRole("list");
+  expect(list.children).toHaveLength(1);
+  expect(list.firstElementChild?.tagName).toBe("LI");
+  expect(card.getAttribute("aria-describedby")).toBeTruthy();
+  expect(document.getElementById(card.getAttribute("aria-describedby")!)).toHaveTextContent(
+    "View details",
+  );
+
+  fireEvent.focus(card);
+  await waitFor(() => expect(visualTooltip()).toHaveTextContent("View details"));
+  fireEvent.pointerOver(screen.getByRole("button", { name: "Edit" }), { pointerType: "mouse" });
+  expect(visualTooltip()).toBeNull();
+  fireEvent.focus(card);
+  await waitFor(() => expect(visualTooltip()).toHaveTextContent("View details"));
+  fireEvent.blur(card);
+  expect(visualTooltip()).toBeNull();
+
+  fireEvent.pointerDown(card, { pointerType: "touch" });
+  await waitFor(() => expect(visualTooltip()).toHaveTextContent("View details"));
+  fireEvent.pointerDown(screen.getByRole("button", { name: "Edit" }), { pointerType: "touch" });
+  expect(visualTooltip()).toBeNull();
+});
+
 it("flips and clamps near viewport edges", () => {
   const rect = (values: Partial<DOMRect>): DOMRect =>
     ({

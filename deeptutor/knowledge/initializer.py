@@ -8,7 +8,6 @@ import asyncio
 from datetime import datetime
 import json
 import logging
-import os
 from pathlib import Path
 import shutil
 from typing import TYPE_CHECKING, Optional
@@ -271,9 +270,7 @@ class KnowledgeBaseInitializer:
                     exc_info=True,
                 )
         except PermissionError as e:
-            error_msg = format_data_volume_permission_error(
-                self.kb_dir, uid=os.geteuid(), gid=os.getegid(), cause=e
-            )
+            error_msg = format_data_volume_permission_error(self.kb_dir, cause=e)
             logger.error("Error processing documents: %s", error_msg)
             self.progress_tracker.update(
                 ProgressStage.ERROR,

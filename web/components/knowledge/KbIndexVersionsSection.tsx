@@ -1,5 +1,6 @@
 "use client";
 
+import Tooltip from "@/shared/ui/Tooltip";
 import { useEffect, useState } from "react";
 import { useEmbeddingModels } from "@/hooks/useEmbeddingModels";
 import type { EmbeddingModelSelection } from "@/features/knowledge/model/types";
@@ -210,11 +211,7 @@ export default function KbIndexVersionsSection({
         </div>
 
         {showReindexCta && (
-          <button
-            type="button"
-            onClick={handleReindex}
-            disabled={submitting || isReindexingHere}
-            title={
+          <Tooltip label={
               isError
                 ? t(
                     "Retry indexing from the documents already stored in this knowledge base.",
@@ -226,28 +223,33 @@ export default function KbIndexVersionsSection({
                         ? "Rebuild this PageIndex knowledge base. Existing index versions are preserved."
                         : "Choose an embedding model to rebuild this knowledge base. Existing index versions are preserved.",
                   )
-            }
-            className={`inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 text-[12px] font-medium transition-colors disabled:opacity-50 ${
-              isError
-                ? "border-red-200 bg-red-50 text-red-700 hover:bg-red-100 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300"
-                : "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300"
-            }`}
-          >
-            {submitting || isReindexingHere ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : (
-              <RefreshCw className="h-3 w-3" />
-            )}
-            {isReindexingHere
-              ? isError
-                ? t("Retrying…")
-                : t("Re-indexing…")
-              : isError
-                ? t("Retry indexing")
-                : isEmptyEmbeddingKb
-                  ? t("Change model")
-                  : t("Re-index")}
-          </button>
+            } side="top">
+            <button
+              type="button"
+              onClick={handleReindex}
+              disabled={submitting || isReindexingHere}
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 text-[12px] font-medium transition-colors disabled:opacity-50 ${
+                isError
+                  ? "border-red-200 bg-red-50 text-red-700 hover:bg-red-100 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300"
+                  : "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300"
+              }`}
+            >
+              {submitting || isReindexingHere ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3 w-3" />
+              )}
+              {isReindexingHere
+                ? isError
+                  ? t("Retrying…")
+                  : t("Re-indexing…")
+                : isError
+                  ? t("Retry indexing")
+                  : isEmptyEmbeddingKb
+                    ? t("Change model")
+                    : t("Re-index")}
+            </button>
+          </Tooltip>
         )}
       </div>
 
@@ -471,39 +473,42 @@ function IndexVersionRow({
     version.version || (isLegacy ? t("Legacy index") : t("Unknown"));
 
   const created = formatKnowledgeTimestamp(version.created_at);
+  const statusHint = isActive
+    ? t("Active version")
+    : isPhantom
+      ? t("Stale (matches active config but storage is empty)")
+      : isLegacy
+        ? t("Legacy index format")
+        : t("Inactive version");
 
   return (
     <li className="flex items-center gap-3 px-3 py-2.5">
-      <div
-        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${
-          isActive
-            ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-300"
-            : isPhantom
-              ? "bg-amber-100 text-amber-600 dark:bg-amber-950/30 dark:text-amber-300"
-              : "bg-[var(--muted)] text-[var(--muted-foreground)]"
-        }`}
-        title={
-          isActive
-            ? t("Active version")
-            : isPhantom
-              ? t("Stale (matches active config but storage is empty)")
-              : isLegacy
-                ? t("Legacy index format")
-                : t("Inactive version")
-        }
-      >
-        {isActive ? (
-          <Star className="h-3.5 w-3.5" fill="currentColor" />
-        ) : isBuildingLightRagCandidate ? (
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        ) : isPhantom ? (
-          <AlertTriangle className="h-3.5 w-3.5" />
-        ) : isLegacy ? (
-          <Clock className="h-3.5 w-3.5" />
-        ) : (
-          <CheckCircle2 className="h-3.5 w-3.5" />
-        )}
-      </div>
+      <Tooltip label={statusHint} side="top">
+        <div
+          role="img"
+          aria-label={statusHint}
+          tabIndex={0}
+          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${
+            isActive
+              ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-300"
+              : isPhantom
+                ? "bg-amber-100 text-amber-600 dark:bg-amber-950/30 dark:text-amber-300"
+                : "bg-[var(--muted)] text-[var(--muted-foreground)]"
+          }`}
+        >
+          {isActive ? (
+            <Star className="h-3.5 w-3.5" fill="currentColor" />
+          ) : isBuildingLightRagCandidate ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : isPhantom ? (
+            <AlertTriangle className="h-3.5 w-3.5" />
+          ) : isLegacy ? (
+            <Clock className="h-3.5 w-3.5" />
+          ) : (
+            <CheckCircle2 className="h-3.5 w-3.5" />
+          )}
+        </div>
+      </Tooltip>
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">

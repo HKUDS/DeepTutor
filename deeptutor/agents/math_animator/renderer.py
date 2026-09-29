@@ -13,7 +13,7 @@ from typing import Awaitable, Callable
 from deeptutor.services.path_service import get_path_service
 
 from .models import RenderedArtifact, RenderResult
-from .utils import slugify_filename, trim_error_message
+from .utils import build_repair_error_message, slugify_filename, trim_error_message
 
 YON_IMAGE_PATTERN = re.compile(
     r"###\s*YON_IMAGE_(\d+)_START\s*###\s*(.*?)\s*###\s*YON_IMAGE_\1_END\s*###",
@@ -203,13 +203,18 @@ class ManimRenderService:
         return_code = process.wait()
         await self._emit_progress(f"Manim process finished with exit code {return_code}.", raw=True)
         if return_code != 0:
-            raise ManimRenderError(
-                trim_error_message(
-                    "\n".join(
-                        part for part in ["\n".join(stdout_lines), "\n".join(stderr_lines)] if part
-                    )
+            detail = trim_error_message(
+                "\n".join(
+                    part for part in ["\n".join(stdout_lines), "\n".join(stderr_lines)] if part
                 )
             )
+            try:
+                generated_code = code_path.read_text(encoding="utf-8")
+            except OSError:
+                # The renderer's stderr is still the cause if the source file
+                # disappeared while Manim was running.
+                generated_code = ""
+            raise ManimRenderError(build_repair_error_message(detail, code=generated_code))
 
     async def _emit_progress(self, message: str, raw: bool = False) -> None:
         if self.progress_callback is None:

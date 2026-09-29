@@ -31,7 +31,14 @@ import { createPartnerDraftPublisher } from "@/lib/partner-chat-draft";
 import { ReconnectingWebSocket } from "@/lib/reconnecting-websocket";
 import type { ExportableMessage } from "@/lib/chat-export";
 import type { StreamEvent } from "@/features/chat/model/protocol";
+import type { MessageAttachment } from "@/features/chat/ChatStateAdapter";
 import { docIconFor, formatBytes, isSvgFilename } from "@/lib/doc-attachments";
+import {
+  InlineFileCard,
+  InlineFileCardProvider,
+  mergeGeneratedFiles,
+  unlinkedGeneratedFiles,
+} from "@/components/common/InlineFileCard";
 import {
   isRetractionMarker,
   recomputeAnswerContent,
@@ -75,6 +82,15 @@ interface PartnerMessageAttachment {
   mimeType?: string;
   size?: number;
   previewUrl?: string;
+  url?: string;
+  generated?: boolean;
+  origin?: "workspace";
+  workspaceId?: string;
+  workspaceItemId?: string;
+  relativePath?: string;
+  sha256?: string;
+  title?: string;
+  caption?: string;
 }
 
 // Commands the web client handles itself (they change client state — the
@@ -120,10 +136,77 @@ function normalizeHistoryAttachments(
         type: String(obj.type || "file"),
         filename,
         mimeType: String(obj.mime_type || obj.mimeType || ""),
-        size: typeof sizeRaw === "number" ? sizeRaw : undefined,
+        size:
+          typeof obj.size_bytes === "number"
+            ? obj.size_bytes
+            : typeof sizeRaw === "number"
+              ? sizeRaw
+              : undefined,
+        url: typeof obj.url === "string" ? obj.url : undefined,
+        generated: Boolean(obj.generated),
+        origin: obj.origin === "workspace" ? "workspace" : undefined,
+        workspaceId:
+          typeof obj.workspace_id === "string" ? obj.workspace_id : undefined,
+        workspaceItemId:
+          typeof obj.workspace_item_id === "string"
+            ? obj.workspace_item_id
+            : undefined,
+        relativePath:
+          typeof obj.relative_path === "string" ? obj.relative_path : undefined,
+        sha256: typeof obj.sha256 === "string" ? obj.sha256 : undefined,
+        title: typeof obj.title === "string" ? obj.title : undefined,
+        caption: typeof obj.caption === "string" ? obj.caption : undefined,
       };
     })
     .filter((item): item is PartnerMessageAttachment => item !== null);
+}
+
+function workspaceAttachments(
+  attachments?: PartnerMessageAttachment[],
+): MessageAttachment[] {
+  return (attachments ?? []).map((attachment) => ({
+    type: attachment.type,
+    filename: attachment.filename,
+    url: attachment.url,
+    mime_type: attachment.mimeType,
+    generated: attachment.generated,
+    size_bytes: attachment.size,
+    origin: attachment.origin,
+    workspace_id: attachment.workspaceId,
+    workspace_item_id: attachment.workspaceItemId,
+    relative_path: attachment.relativePath,
+    sha256: attachment.sha256,
+    title: attachment.title,
+    caption: attachment.caption,
+  }));
+}
+
+function PartnerGeneratedFiles({
+  attachments,
+  events,
+  content,
+}: {
+  attachments?: PartnerMessageAttachment[];
+  events?: StreamEvent[];
+  content: string;
+}) {
+  const files = mergeGeneratedFiles(workspaceAttachments(attachments), events);
+  const unlinked = unlinkedGeneratedFiles(content, files);
+  if (!unlinked.length) return null;
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {unlinked.map((file) => (
+        <InlineFileCard
+          key={file.url || file.relative_path || file.filename}
+          name={
+            file.origin === "workspace"
+              ? file.relative_path || ""
+              : file.filename || ""
+          }
+        />
+      ))}
+    </div>
+  );
 }
 
 function normalizeHistoryMessages(history: PartnerHistoryMessage[]): ChatMsg[] {
@@ -301,6 +384,18 @@ export default function PartnerChat({
   const loadedTotalRef = useRef(0);
   const oldestIndexRef = useRef(0);
   const refreshInFlightRef = useRef(false);
+  const downloadGeneratedAttachment = useCallback(
+    (attachment: MessageAttachment) => {
+      if (!attachment.url) return;
+      const link = document.createElement("a");
+      link.href = attachment.url;
+      link.download = attachment.filename || "download";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    },
+    [],
+  );
   useEffect(() => onBusyChange?.(streaming), [onBusyChange, streaming]);
   useEffect(() => () => onBusyChange?.(false), [onBusyChange]);
   // Attach to an in-flight turn only AFTER history has loaded, so the replay's
@@ -1169,7 +1264,18 @@ export default function PartnerChat({
                         {msg.content}
                       </p>
                     ) : (
-                      <AssistantResponse content={msg.content} />
+                      <InlineFileCardProvider
+                        attachments={workspaceAttachments(msg.attachments)}
+                        events={msg.events}
+                        onOpen={downloadGeneratedAttachment}
+                      >
+                        <AssistantResponse content={msg.content} />
+                        <PartnerGeneratedFiles
+                          attachments={msg.attachments}
+                          events={msg.events}
+                          content={msg.content}
+                        />
+                      </InlineFileCardProvider>
                     )}
                   </div>
                 </div>
@@ -1195,7 +1301,17 @@ export default function PartnerChat({
                     headerClassName="min-h-[26px]"
                   />
                   {draft.content ? (
-                    <AssistantResponse content={draft.content} />
+                    <InlineFileCardProvider
+                      attachments={[]}
+                      events={draft.events}
+                      onOpen={downloadGeneratedAttachment}
+                    >
+                      <AssistantResponse content={draft.content} />
+                      <PartnerGeneratedFiles
+                        events={draft.events}
+                        content={draft.content}
+                      />
+                    </InlineFileCardProvider>
                   ) : null}
                 </div>
               </div>
@@ -1223,7 +1339,17 @@ export default function PartnerChat({
                     headerClassName="min-h-[26px]"
                   />
                   {externalDraft.content ? (
-                    <AssistantResponse content={externalDraft.content} />
+                    <InlineFileCardProvider
+                      attachments={[]}
+                      events={externalDraft.events}
+                      onOpen={downloadGeneratedAttachment}
+                    >
+                      <AssistantResponse content={externalDraft.content} />
+                      <PartnerGeneratedFiles
+                        events={externalDraft.events}
+                        content={externalDraft.content}
+                      />
+                    </InlineFileCardProvider>
                   ) : null}
                 </div>
               </div>

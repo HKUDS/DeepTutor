@@ -4,6 +4,7 @@ import { UserRound } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import type { LearnerProfile } from "@/lib/learning-api";
+import { TEACH_FIRST_PROFILE_LABEL } from "./next-step-copy";
 
 /**
  * What the tutor knows about the person learning this goal.
@@ -16,14 +17,22 @@ import type { LearnerProfile } from "@/lib/learning-api";
  * here would be a second writer with no way to do that second half.
  */
 export function LearnerProfileCard({ profile }: { profile: LearnerProfile | null }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const teachFirst = profile?.teaching_strategy === "teach_first"
+    ? i18n.language?.toLowerCase().startsWith("zh")
+      ? TEACH_FIRST_PROFILE_LABEL.zh
+      : TEACH_FIRST_PROFILE_LABEL.en
+    : "";
+  const teachingPreference = [profile?.preferences?.trim(), teachFirst]
+    .filter(Boolean)
+    .join(" · ");
   const rows: [string, string][] = profile
     ? (
         [
           [t("Already knows"), profile.prior_knowledge],
           [t("Wants to reach"), profile.target_level],
           [t("Time available"), profile.time_budget],
-          [t("How to teach it"), profile.preferences],
+          [t("How to teach it"), teachingPreference],
           [t("Other"), profile.notes],
         ] as [string, string][]
       ).filter(([, value]) => value.trim())

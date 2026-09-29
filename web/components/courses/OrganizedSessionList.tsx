@@ -1,5 +1,6 @@
 "use client";
 
+import Tooltip from "@/shared/ui/Tooltip";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -370,20 +371,20 @@ export default function OrganizedSessionList({
               }}
               className="min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--background)] px-1.5 py-0.5 text-[12px] outline-none focus:border-[var(--ring)]"
             />
-          ) : isPlaceholderSessionTitle(session.title) ? (
-            <span
-              className="dt-breathing-text min-w-0 flex-1 truncate text-[12.5px] italic text-[var(--foreground)]"
-              title={placeholderLabel}
-            >
-              {displaySessionTitle(session.title, placeholderLabel)}
-            </span>
           ) : (
-            <span
-              className="min-w-0 flex-1 truncate text-[12.5px]"
-              title={session.title}
+            <Tooltip
+              label={`${t("Conversation")}: ${isPlaceholderSessionTitle(session.title) ? placeholderLabel : session.title}`}
+              side="top"
+              className="min-w-0 flex-1"
             >
-              {displaySessionTitle(session.title, placeholderLabel)}
-            </span>
+              <span
+                className={isPlaceholderSessionTitle(session.title)
+                  ? "dt-breathing-text min-w-0 flex-1 truncate text-[12.5px] italic text-[var(--foreground)]"
+                  : "min-w-0 flex-1 truncate text-[12.5px]"}
+              >
+                {displaySessionTitle(session.title, placeholderLabel)}
+              </span>
+            </Tooltip>
           )}
           {pinned ? <Pin size={10} className="shrink-0 opacity-55" /> : null}
           {children.length > 0 && !expanded ? (

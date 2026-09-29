@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import MarkdownRenderer from "@/components/common/MarkdownRenderer";
 import { apiUrl } from "@/lib/api";
 import type { Block } from "@/lib/book-types";
+import Tooltip from "@/shared/ui/Tooltip";
 
 export interface AnimationBlockProps {
   block: Block;
@@ -70,25 +71,29 @@ export default function AnimationBlock({ block }: AnimationBlockProps) {
         )}
         {primary && (
           <div className="absolute right-2 top-2 z-10 flex items-center gap-1">
-            <a
-              href={primary}
-              target="_blank"
-              rel="noopener noreferrer"
-              title={t("Open in new tab")}
-              className="inline-flex items-center gap-1 rounded-md bg-black/40 px-2 py-1 text-[10px] font-medium text-white/90 backdrop-blur-sm transition-colors hover:bg-black/60 hover:text-white"
-            >
-              <ExternalLink size={11} strokeWidth={1.8} />
-              {t("Open")}
-            </a>
-            {isVideo && (
+            <Tooltip label={t("Open in new tab")}>
               <a
                 href={primary}
-                download={filename || true}
-                title={t("Download video")}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={t("Open in new tab")}
                 className="inline-flex items-center gap-1 rounded-md bg-black/40 px-2 py-1 text-[10px] font-medium text-white/90 backdrop-blur-sm transition-colors hover:bg-black/60 hover:text-white"
               >
-                <Download size={11} strokeWidth={1.8} />
+                <ExternalLink size={11} strokeWidth={1.8} />
+                {t("Open")}
               </a>
+            </Tooltip>
+            {isVideo && (
+              <Tooltip label={t("Download video")}>
+                <a
+                  href={primary}
+                  download={filename || true}
+                  aria-label={t("Download video")}
+                  className="inline-flex items-center gap-1 rounded-md bg-black/40 px-2 py-1 text-[10px] font-medium text-white/90 backdrop-blur-sm transition-colors hover:bg-black/60 hover:text-white"
+                >
+                  <Download size={11} strokeWidth={1.8} />
+                </a>
+              </Tooltip>
             )}
           </div>
         )}
