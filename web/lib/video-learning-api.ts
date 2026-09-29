@@ -8,6 +8,9 @@ export interface TranscriptCue {
   text: string;
 }
 
+export type VideoMark = VideoLearningMark;
+export type SuggestedVideoMark = VideoMarkSuggestion;
+
 export interface TimedSegment extends TranscriptCue {
   locator: number;
 }
@@ -53,8 +56,40 @@ export interface TimedMediaMaterial {
     cues: TranscriptCue[];
   };
   segments: TimedSegment[];
-  learning: { last_position: number };
+  learning: { last_position: number; marks?: VideoLearningMark[] };
   playback: VideoPlayback;
+}
+
+export type VideoMarkKind = "key_point" | "question" | "review";
+export type VideoMarkAuthor = "user" | "assistant";
+export type VideoMarkSource = "immersive";
+
+export interface VideoLearningMark {
+  mark_id: string;
+  kind: VideoMarkKind;
+  start_seconds: number;
+  end_seconds: number;
+  start_locator: number;
+  end_locator: number;
+  quote: string;
+  note: string;
+  author: VideoMarkAuthor;
+  source?: VideoMarkSource;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  reviewed_at?: string;
+}
+
+export interface VideoMarkSuggestion {
+  kind: VideoMarkKind;
+  start_seconds: number;
+  end_seconds: number;
+  start_locator: number;
+  end_locator: number;
+  quote: string;
+  note: string;
+  author: VideoMarkAuthor;
 }
 
 export interface VideoNote {
@@ -241,6 +276,95 @@ export async function saveVideoProgress(
       },
     ),
   );
+}
+
+export async function listVideoMarks(
+  materialId: string,
+): Promise<VideoLearningMark[]> {
+  return unwrap(
+    await apiFetch(
+      apiUrl(
+        `/api/video-learning/materials/${encodeURIComponent(materialId)}/marks`,
+      ),
+      { cache: "no-store" },
+    ),
+  );
+}
+
+export async function createVideoMark(
+  materialId: string,
+  payload: {
+    kind: VideoMarkKind;
+    start_seconds: number;
+    end_seconds?: number | null;
+    start_locator?: number;
+    end_locator?: number;
+    quote?: string;
+    note?: string;
+  },
+): Promise<VideoLearningMark> {
+  return unwrap(
+    await apiFetch(
+      apiUrl(`/api/video-learning/materials/${encodeURIComponent(materialId)}/marks`),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+    ),
+  );
+}
+
+export async function updateVideoMark(
+  materialId: string,
+  markId: string,
+  payload: Partial<{ reviewed: boolean; note: string }>,
+): Promise<VideoLearningMark> {
+  return unwrap(
+    await apiFetch(
+      apiUrl(
+        `/api/video-learning/materials/${encodeURIComponent(materialId)}/marks/${encodeURIComponent(markId)}`,
+      ),
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+    ),
+  );
+}
+
+export async function deleteVideoMark(
+  materialId: string,
+  markId: string,
+): Promise<void> {
+  await unwrap(
+    await apiFetch(
+      apiUrl(
+        `/api/video-learning/materials/${encodeURIComponent(materialId)}/marks/${encodeURIComponent(markId)}`,
+      ),
+      { method: "DELETE" },
+    ),
+  );
+}
+
+export async function suggestVideoMarks(
+  materialId: string,
+  timeSeconds = 0,
+): Promise<VideoMarkSuggestion[]> {
+  const payload = await unwrap<{ suggestions: VideoMarkSuggestion[] }>(
+    await apiFetch(
+      apiUrl(
+        `/api/video-learning/materials/${encodeURIComponent(materialId)}/mark-suggestions`,
+      ),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ time_seconds: timeSeconds }),
+      },
+    ),
+  );
+  return payload.suggestions || [];
 }
 
 export async function getVideoLearningSettings(): Promise<VideoLearningSettings> {
