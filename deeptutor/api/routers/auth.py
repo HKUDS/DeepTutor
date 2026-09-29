@@ -607,6 +607,28 @@ _LEARNER_KB_READ_ROUTES = frozenset(
 )
 
 
+_LEARNER_SETTINGS_WRITE_ROUTES = frozenset(
+    {
+        # UI preferences resolve through the per-user path service into the
+        # caller's OWN workspace (interface.json) — saving theme/language is
+        # safe for learning accounts.
+        ("PUT", "/api/settings/ui"),
+        # Per-user settings draft document. Applying a draft to the runtime
+        # catalog stays admin-gated in the endpoint itself.
+        ("PUT", "/api/settings/draft"),
+        ("DELETE", "/api/settings/draft"),
+        # Workspace self-management: the caller's own registrations inside
+        # their own scope directory. Data migration/export/root-migration
+        # routes under the same prefix stay denied — they move data across
+        # scopes and carry no internal admin gate.
+        ("PUT", "/api/settings/workspace"),
+        ("POST", "/api/settings/workspace/validate"),
+        ("POST", "/api/settings/workspace/registrations"),
+        ("PATCH", "/api/settings/workspace/registrations/{workspace_id}"),
+    }
+)
+
+
 def _learning_surface_for_path(
     path: str, method: str = "GET", *, route_path: str | None = None
 ) -> str:
@@ -635,6 +657,12 @@ def _learning_surface_for_path(
         and route_path in _LEARNER_KB_READ_ROUTES
     ):
         return "reading"
+    # Learner-safe settings/workspace writes, matched on the resolved route
+    # template like the KB reads above: the same URL prefixes also host
+    # admin-grade operations (catalog apply, data migration), so a plain
+    # prefix match would open too much.
+    if route_path and (method.upper(), route_path) in _LEARNER_SETTINGS_WRITE_ROUTES:
+        return "chat"
     return ""
 
 

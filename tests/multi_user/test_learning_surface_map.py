@@ -112,6 +112,90 @@ def test_learner_kb_get_allowlist(path: str, route_path: str, expected: str) -> 
         assert _learning_surface_for_path(path, "GET") == ""
 
 
+@pytest.mark.parametrize(
+    ("path", "method", "route_path", "expected"),
+    [
+        # UI preferences and the per-user settings draft.
+        ("/api/settings/ui", "PUT", "/api/settings/ui", "chat"),
+        ("/api/settings/draft", "PUT", "/api/settings/draft", "chat"),
+        ("/api/settings/draft", "DELETE", "/api/settings/draft", "chat"),
+        # Workspace self-management.
+        ("/api/settings/workspace", "PUT", "/api/settings/workspace", "chat"),
+        (
+            "/api/settings/workspace/validate",
+            "POST",
+            "/api/settings/workspace/validate",
+            "chat",
+        ),
+        (
+            "/api/settings/workspace/registrations",
+            "POST",
+            "/api/settings/workspace/registrations",
+            "chat",
+        ),
+        (
+            "/api/settings/workspace/registrations/ws_1",
+            "PATCH",
+            "/api/settings/workspace/registrations/{workspace_id}",
+            "chat",
+        ),
+        # Admin-grade neighbors under the same prefixes stay denied.
+        ("/api/settings/ui", "POST", "/api/settings/ui", ""),
+        ("/api/settings/draft", "GET", "/api/settings/draft", ""),
+        (
+            "/api/settings/workspace/registrations",
+            "GET",
+            "/api/settings/workspace/registrations",
+            "",
+        ),
+        (
+            "/api/settings/workspace/data/migrate",
+            "POST",
+            "/api/settings/workspace/data/migrate",
+            "",
+        ),
+        (
+            "/api/settings/workspace/data/export",
+            "POST",
+            "/api/settings/workspace/data/export",
+            "",
+        ),
+        (
+            "/api/settings/workspace/registrations/migrate-root",
+            "POST",
+            "/api/settings/workspace/registrations/migrate-root",
+            "",
+        ),
+        (
+            "/api/settings/workspace/registrations/ws_1/migrate",
+            "POST",
+            "/api/settings/workspace/registrations/{workspace_id}/migrate",
+            "",
+        ),
+        (
+            "/api/settings/workspace/registrations/system-snapshot",
+            "POST",
+            "/api/settings/workspace/registrations/system-snapshot",
+            "",
+        ),
+        (
+            "/api/settings/workspace/knowledge-bases/move",
+            "POST",
+            "/api/settings/workspace/knowledge-bases/move",
+            "",
+        ),
+    ],
+)
+def test_learner_settings_write_allowlist(
+    path: str, method: str, route_path: str, expected: str
+) -> None:
+    assert _learning_surface_for_path(path, method, route_path=route_path) == expected
+    if expected:
+        # Without the resolved route template the guard must stay denied:
+        # prefix matching alone cannot tell these from admin operations.
+        assert _learning_surface_for_path(path, method) == ""
+
+
 def test_route_template_is_passed_to_surface_guard(monkeypatch) -> None:
     import asyncio
     from types import SimpleNamespace
