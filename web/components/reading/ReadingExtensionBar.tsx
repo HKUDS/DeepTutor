@@ -19,6 +19,7 @@ import {
   type ReadingExtensionResult,
 } from "@/lib/reading-api";
 import { useReadingActions } from "./reading-actions-context";
+import { useReadAloudSpeech } from "./use-read-aloud-speech";
 import Tooltip from "@/shared/ui/Tooltip";
 
 type VocabularyTerm = {
@@ -88,13 +89,8 @@ function ExtensionToolbar({
   const [busy, setBusy] = useState("");
   const [result, setResult] = useState<ReadingExtensionResult | null>(null);
   const [resultLocator, setResultLocator] = useState(locator);
-  const [speaking, setSpeaking] = useState(false);
   const [ageMode, setAgeMode] = useState<ReadingAgeMode>("default");
-
-  function stopSpeaking() {
-    window.speechSynthesis?.cancel();
-    setSpeaking(false);
-  }
+  const { speak, speaking, stop: stopSpeaking } = useReadAloudSpeech();
 
   useEffect(() => {
     let active = true;
@@ -144,12 +140,7 @@ function ExtensionToolbar({
 
   // Speech, on the other hand, must stop the moment the reader navigates
   // away from the passage being read aloud — so this one keeps both keys.
-  useEffect(() => {
-    return () => {
-      window.speechSynthesis?.cancel();
-      setSpeaking(false);
-    };
-  }, [locator, materialId]);
+  useEffect(() => stopSpeaking, [locator, materialId, stopSpeaking]);
 
   const actions = useMemo(
     () =>
@@ -180,17 +171,15 @@ function ExtensionToolbar({
       setResultLocator(requestedLocator);
       if (next.type === "browser_speech") {
         const text = String(next.payload.text || "");
-        if (!("speechSynthesis" in window) || !text) {
+        const played = await speak({
+          materialId,
+          locator: requestedLocator,
+          locale: String(next.payload.locale || i18n.language),
+          fallbackText: text,
+        });
+        if (!played) {
           onError(t("No speech voice is available in this browser."));
-          return;
         }
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = String(next.payload.locale || i18n.language);
-        utterance.onend = () => setSpeaking(false);
-        utterance.onerror = () => setSpeaking(false);
-        window.speechSynthesis.speak(utterance);
-        setSpeaking(true);
       }
     } catch (error) {
       onError(error instanceof Error ? error.message : String(error));

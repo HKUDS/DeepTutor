@@ -9,7 +9,7 @@ import re
 from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response, status
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from deeptutor.learning.storage import LearningStore
@@ -24,6 +24,8 @@ from deeptutor.reading.extensions import (
     get_reading_extension_registry,
 )
 from deeptutor.services.llm.exceptions import LLMError
+from deeptutor.services.voice import VoiceProviderError, synthesize_speech
+from deeptutor.services.voice.audio import _parse_pcm_content_type, _pcm16_to_wav
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +55,10 @@ class ActionPayload(BaseModel):
     locator: int = Field(ge=1)
     selection: str = Field(default="", max_length=10_000)
     locale: str = Field(default="en", max_length=32)
+
+
+class ReadAloudAudioPayload(BaseModel):
+    locator: int = Field(ge=1)
 
 
 class QuizAnswerItem(BaseModel):
@@ -140,6 +146,50 @@ async def list_extensions() -> list[dict[str, Any]]:
         for extension in get_reading_extension_registry().all()
         if allowed is None or extension.manifest.id in allowed
     ]
+
+
+@router.post("/materials/{material_id}/read-aloud")
+async def read_material_aloud(material_id: str, payload: ReadAloudAudioPayload) -> Response:
+    """Synthesize one assigned material unit with the active server voice."""
+    try:
+        assert_learning_material(material_id)
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+
+    allowed = allowed_reading_extensions()
+    if allowed is not None and "read_aloud" not in allowed:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="This reading extension is not allowed."
+        )
+
+    extension = get_reading_extension_registry().get("read_aloud")
+    if extension is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Reading extension not found."
+        )
+
+    try:
+        text = ReadingStore().unit_text(material_id, payload.locator)
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    try:
+        audio, content_type = await synthesize_speech(text)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except VoiceProviderError as exc:
+        logger.warning("Reading TTS provider error for %s: %s", material_id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="The speech provider is unavailable. Browser speech will be used instead.",
+        ) from exc
+
+    pcm_info = _parse_pcm_content_type(content_type)
+    if pcm_info:
+        sample_rate, channels = pcm_info
+        audio = _pcm16_to_wav(audio, sample_rate=sample_rate, channels=channels)
+        content_type = "audio/wav"
+    return Response(content=audio, media_type=content_type, headers={"Cache-Control": "no-store"})
 
 
 @router.post("/materials/{material_id}/extensions/{extension_id}/actions/{action}")

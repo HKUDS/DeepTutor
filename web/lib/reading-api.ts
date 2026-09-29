@@ -385,6 +385,39 @@ export async function runReadingExtension(
   );
 }
 
+/**
+ * Fetch natural speech for a stored reading unit.
+ *
+ * The request deliberately carries no text: the server re-reads the material
+ * unit and is the only side that can decide what restricted learners may hear.
+ */
+export async function readReadingAloudAudio(
+  materialId: string,
+  context: { locator: number },
+): Promise<Blob> {
+  const response = await apiFetch(
+    apiUrl(`${BASE}/materials/${materialId}/read-aloud`),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(context),
+    },
+  );
+  if (response.ok) return response.blob();
+
+  let detail = `Request failed: ${response.status}`;
+  try {
+    const body = (await response.json()) as { detail?: unknown };
+    if (typeof body?.detail === "string" && body.detail) detail = body.detail;
+    else if (typeof body?.detail === "object" && body.detail !== null && "message" in body.detail) {
+      detail = String((body.detail as { message: unknown }).message);
+    }
+  } catch {
+    // Binary and proxy error bodies both fall back to the status message.
+  }
+  throw new Error(detail);
+}
+
 export interface ReadingQuizAnswer {
   question_id: string;
   selected_index: number;
