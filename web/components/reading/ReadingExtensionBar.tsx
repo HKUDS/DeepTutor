@@ -1,7 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BookOpenText, Loader2, PencilLine, Sparkles, Square, Volume2, X } from "lucide-react";
+import {
+  BookOpenText,
+  Loader2,
+  PencilLine,
+  Sparkles,
+  Square,
+  Star,
+  Volume2,
+  X,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { fetchAuthStatus } from "@/lib/auth";
 import { getOwnLearnerProfile } from "@/lib/profile-api";
@@ -17,6 +26,7 @@ import {
   submitReadingQuizAnswers,
   type ReadingExtensionManifest,
   type ReadingExtensionResult,
+  type ReadingQuizReward,
 } from "@/lib/reading-api";
 import { useReadingActions } from "./reading-actions-context";
 import Tooltip from "@/shared/ui/Tooltip";
@@ -478,6 +488,7 @@ function QuizQuestions({
   const { t } = useTranslation();
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [verdicts, setVerdicts] = useState<Record<string, boolean>>({});
+  const [reward, setReward] = useState<ReadingQuizReward | null>(null);
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const pendingSubmissions = useRef<Record<string, { selected: number; id: string }>>({});
 
@@ -495,10 +506,11 @@ function QuizQuestions({
         submission_id: submissionId,
         answers: [{ question_id: questionId, selected_index: choiceIndex }],
       });
-      const verdict = results.find((item) => item.question_id === questionId);
+      const verdict = results.answers.find((item) => item.question_id === questionId);
       if (!verdict) throw new Error(t("Failed to save answer. Please try again."));
       setAnswers((current) => ({ ...current, [key]: choiceIndex }));
       setVerdicts((current) => ({ ...current, [key]: verdict.is_correct }));
+      setReward(results.reward ?? null);
       delete pendingSubmissions.current[key];
     } catch (error) {
       onError(error instanceof Error ? error.message : String(error));
@@ -507,57 +519,70 @@ function QuizQuestions({
     }
   }
 
-  return questions.map((question, index) => {
-    const key = question.id || String(index);
-    const selected = answers[key];
-    const correctChoiceIndex = Number.isInteger(question.correct_choice_index)
-      ? Number(question.correct_choice_index)
-      : -1;
-    const canGrade = correctChoiceIndex >= 0 && correctChoiceIndex < question.choices.length;
-    if (!canGrade) {
-      return (
-        <div key={key} className="mt-3">
-          <p className="font-medium">{question.prompt}</p>
-          <ol className="mt-1 list-inside list-[upper-alpha] space-y-0.5 text-[var(--muted-foreground)]">
-            {question.choices.map((choice) => (
-              <li key={choice}>{choice}</li>
-            ))}
-          </ol>
-        </div>
-      );
-    }
-    return (
-      <fieldset key={key} className="mt-3">
-        <legend className="font-medium">{question.prompt}</legend>
-        <div className="mt-1 grid gap-1">
-          {question.choices.map((choice, choiceIndex) => (
-            <button
-              key={choice}
-              type="button"
-              aria-pressed={selected === choiceIndex}
-              disabled={Boolean(saving[key])}
-              onClick={() => {
-                void persistAnswer(question, index, choiceIndex);
-              }}
-              className="rounded-md border border-[var(--border)] px-2 py-1.5 text-left text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] aria-pressed:bg-[var(--muted)] aria-pressed:text-[var(--foreground)]"
-            >
-              {String.fromCharCode(65 + choiceIndex)}. {choice}
-            </button>
-          ))}
-        </div>
-        {selected !== undefined ? (
-          <p
-            role="status"
-            className={`mt-1 font-medium ${
-              verdicts[key]
-                ? "text-emerald-600 dark:text-emerald-400"
-                : "text-amber-600 dark:text-amber-400"
-            }`}
-          >
-            {verdicts[key] ? t("Correct") : t("Incorrect")}
-          </p>
-        ) : null}
-      </fieldset>
-    );
-  });
+  return (
+    <>
+      {questions.map((question, index) => {
+        const key = question.id || String(index);
+        const selected = answers[key];
+        const correctChoiceIndex = Number.isInteger(question.correct_choice_index)
+          ? Number(question.correct_choice_index)
+          : -1;
+        const canGrade = correctChoiceIndex >= 0 && correctChoiceIndex < question.choices.length;
+        if (!canGrade) {
+          return (
+            <div key={key} className="mt-3">
+              <p className="font-medium">{question.prompt}</p>
+              <ol className="mt-1 list-inside list-[upper-alpha] space-y-0.5 text-[var(--muted-foreground)]">
+                {question.choices.map((choice) => (
+                  <li key={choice}>{choice}</li>
+                ))}
+              </ol>
+            </div>
+          );
+        }
+        return (
+          <fieldset key={key} className="mt-3">
+            <legend className="font-medium">{question.prompt}</legend>
+            <div className="mt-1 grid gap-1">
+              {question.choices.map((choice, choiceIndex) => (
+                <button
+                  key={choice}
+                  type="button"
+                  aria-pressed={selected === choiceIndex}
+                  disabled={Boolean(saving[key])}
+                  onClick={() => {
+                    void persistAnswer(question, index, choiceIndex);
+                  }}
+                  className="rounded-md border border-[var(--border)] px-2 py-1.5 text-left text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] aria-pressed:bg-[var(--muted)] aria-pressed:text-[var(--foreground)]"
+                >
+                  {String.fromCharCode(65 + choiceIndex)}. {choice}
+                </button>
+              ))}
+            </div>
+            {selected !== undefined ? (
+              <p
+                role="status"
+                className={`mt-1 font-medium ${
+                  verdicts[key]
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : "text-amber-600 dark:text-amber-400"
+                }`}
+              >
+                {verdicts[key] ? t("Correct") : t("Incorrect")}
+              </p>
+            ) : null}
+          </fieldset>
+        );
+      })}
+      {reward ? (
+        <p
+          role="status"
+          className="mt-3 flex items-center gap-1.5 font-medium text-amber-600 dark:text-amber-400"
+        >
+          <Star size={14} fill="currentColor" aria-hidden="true" />
+          {t("Quiz stars: {{count}}", { count: reward.stars })}
+        </p>
+      ) : null}
+    </>
+  );
 }

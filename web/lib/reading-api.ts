@@ -396,6 +396,13 @@ export interface ReadingQuizAnswerVerdict {
   result: "correct" | "incorrect" | "partial" | "ungraded";
 }
 
+export interface ReadingQuizReward {
+  locator: number;
+  stars: number;
+  updated_at: number;
+  awarded: boolean;
+}
+
 /**
  * Persist a reading Focus-Check on the server.
  *
@@ -413,8 +420,14 @@ export async function submitReadingQuizAnswers(
     submission_id?: string;
     answers: ReadingQuizAnswer[];
   },
-): Promise<ReadingQuizAnswerVerdict[]> {
-  const data = await unwrap<{ answers?: ReadingQuizAnswerVerdict[] }>(
+): Promise<{
+  answers: ReadingQuizAnswerVerdict[];
+  reward?: ReadingQuizReward;
+}> {
+  const data = await unwrap<{
+    answers?: ReadingQuizAnswerVerdict[];
+    reward?: ReadingQuizReward;
+  }>(
     await apiFetch(
       apiUrl(`${BASE}/materials/${materialId}/extensions/quiz/answers`),
       {
@@ -435,7 +448,17 @@ export async function submitReadingQuizAnswers(
       },
     ),
   );
-  return data.answers ?? [];
+  return { answers: data.answers ?? [], reward: data.reward };
+}
+
+export async function listReadingQuizRewards(
+  materialId: string,
+): Promise<{ rewards: ReadingQuizReward[]; total_stars: number }> {
+  return unwrap(
+    await apiFetch(apiUrl(`${BASE}/materials/${materialId}/quiz/rewards`), {
+      cache: "no-store",
+    }),
+  );
 }
 
 /** URL of the original bytes. Served with Range support so pdf.js can stream. */

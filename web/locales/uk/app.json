@@ -5286,5 +5286,6 @@
   "Move this knowledge base with its documents, settings, and indexes. Existing workspace assignments are updated.": "Перемістити базу знань разом із документами, налаштуваннями та індексами. Наявні призначення робочих областей буде оновлено.",
   "Review move": "Перевірити переміщення",
   "{{count}} files · {{bytes}} bytes": "{{count}} файлів · {{bytes}} байтів",
-  "Assignments updated: {{names}}": "Оновлені призначення: {{names}}"
+  "Assignments updated: {{names}}": "Оновлені призначення: {{names}}",
+  "Quiz stars: {{count}}": "Зірки за тест: {{count}}"
 }

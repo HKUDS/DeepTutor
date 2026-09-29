@@ -456,6 +456,11 @@ async def list_library_materials(
             if _material_allowed(row.material_id)
         ]
         membership = catalog.collections_for_materials([row.material_id for row in rows])
+        from deeptutor.services.session import get_sqlite_session_store
+
+        reward_totals = await get_sqlite_session_store().reading_quiz_reward_totals(
+            [row.material_id for row in rows]
+        )
         materials: list[dict[str, Any]] = []
         for row in rows:
             payload = row.to_dict()
@@ -463,6 +468,7 @@ async def list_library_materials(
             size_bytes, unit_count = _content_facts(store, row)
             payload["size_bytes"] = size_bytes
             payload["unit_count"] = unit_count
+            payload["quiz_stars"] = reward_totals.get(row.material_id, 0)
             materials.append(payload)
         # Counts describe every material this account may see, not only the
         # filtered page and never revoked or unassigned learner material.

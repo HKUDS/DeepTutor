@@ -96,6 +96,15 @@ def _payload(**overrides) -> dict:
     return values
 
 
+def _submit(client: TestClient, payload: dict) -> dict:
+    response = client.post(
+        f"/api/reading/materials/{MATERIAL_ID}/extensions/quiz/answers",
+        json=payload,
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
 def test_focus_check_entries_land_in_unified_list(
     store: SQLiteSessionStore,
 ) -> None:
@@ -168,14 +177,101 @@ def test_grading_uses_server_key_not_client_submission(store: SQLiteSessionStore
     asyncio.run(store.put_reading_quiz_pending(MATERIAL_ID, LOCATOR, _quiz_questions()))
     payload = _payload(answers=_answers(("q_1", 1)))
     with TestClient(_build_app(store)) as client:
-        resp = client.post(
-            f"/api/reading/materials/{MATERIAL_ID}/extensions/quiz/answers",
-            json=payload,
+        body = _submit(client, payload)
+    assert body["answers"] == [{"question_id": "q_1", "is_correct": True, "result": "correct"}]
+    assert "reward" not in body
+    assert asyncio.run(store.list_reading_quiz_rewards(MATERIAL_ID)) == []
+
+
+def test_complete_quiz_awards_completion_and_correctness_stars(
+    store: SQLiteSessionStore,
+) -> None:
+    asyncio.run(store.create_session(title="Reading", session_id="reading-session"))
+    asyncio.run(store.put_reading_quiz_pending(MATERIAL_ID, LOCATOR, _quiz_questions()))
+    with TestClient(_build_app(store)) as client:
+        first = _submit(client, _payload(answers=_answers(("q_1", 1))))
+        assert "reward" not in first
+
+        completed = _submit(
+            client,
+            _payload(answers=_answers(("q_2", 0)), submission_id="retry-q2"),
         )
-    assert resp.status_code == 200
-    assert resp.json()["answers"] == [
-        {"question_id": "q_1", "is_correct": True, "result": "correct"}
-    ]
+        assert completed["reward"]["stars"] == 1
+        assert completed["reward"]["awarded"] is True
+
+        improved = _submit(
+            client,
+            _payload(answers=_answers(("q_2", 1)), submission_id="retry-q2-correct"),
+        )
+        assert improved["reward"]["stars"] == 2
+        assert improved["reward"]["awarded"] is True
+
+        lower = _submit(
+            client,
+            _payload(answers=_answers(("q_2", 0)), submission_id="retry-q2-again"),
+        )
+        assert lower["reward"]["stars"] == 2
+        assert lower["reward"]["awarded"] is False
+
+        rewards = client.get(f"/api/reading/materials/{MATERIAL_ID}/quiz/rewards").json()
+    assert rewards == {
+        "rewards": [
+            {"locator": LOCATOR, "stars": 2, "updated_at": rewards["rewards"][0]["updated_at"]}
+        ],
+        "total_stars": 2,
+    }
+
+
+def test_regenerated_quiz_does_not_remove_a_previous_reward(
+    store: SQLiteSessionStore,
+) -> None:
+    asyncio.run(store.create_session(title="Reading", session_id="reading-session"))
+    asyncio.run(store.put_reading_quiz_pending(MATERIAL_ID, LOCATOR, _quiz_questions()))
+    with TestClient(_build_app(store)) as client:
+        _submit(client, _payload(submission_id="first"))
+        _submit(
+            client,
+            _payload(answers=_answers(("q_2", 1)), submission_id="first-q2-correct"),
+        )
+
+        questions = _quiz_questions()
+        for index, question in enumerate(questions):
+            question["id"] = f"new:{index}"
+        asyncio.run(store.put_reading_quiz_pending(MATERIAL_ID, LOCATOR, questions))
+        partial = _submit(
+            client,
+            _payload(answers=_answers(("new:0", 0)), submission_id="new-first"),
+        )
+        assert "reward" not in partial
+        rewards = client.get(f"/api/reading/materials/{MATERIAL_ID}/quiz/rewards").json()
+    assert rewards["total_stars"] == 2
+
+
+def test_quiz_rewards_require_material_and_extension_access(
+    store: SQLiteSessionStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asyncio.run(store.upsert_reading_quiz_reward(MATERIAL_ID, LOCATOR, 2))
+    with TestClient(_build_app(store)) as client:
+        assert client.get(f"/api/reading/materials/{MATERIAL_ID}/quiz/rewards").status_code == 200
+
+    monkeypatch.setattr(
+        "deeptutor.api.routers.reading_extensions.assert_learning_material",
+        lambda material_id: (_ for _ in ()).throw(PermissionError("not assigned")),
+    )
+    with TestClient(_build_app(store)) as client:
+        assert client.get(f"/api/reading/materials/{MATERIAL_ID}/quiz/rewards").status_code == 403
+
+    monkeypatch.setattr(
+        "deeptutor.api.routers.reading_extensions.assert_learning_material",
+        lambda material_id: None,
+    )
+    monkeypatch.setattr(
+        "deeptutor.api.routers.reading_extensions.allowed_reading_extensions",
+        lambda: {"read_aloud"},
+    )
+    with TestClient(_build_app(store)) as client:
+        assert client.get(f"/api/reading/materials/{MATERIAL_ID}/quiz/rewards").status_code == 403
 
 
 def test_repeat_submission_is_idempotent(store: SQLiteSessionStore) -> None:

@@ -429,6 +429,14 @@ class SQLiteSessionStore:
                     PRIMARY KEY (material_id, locator, question_id)
                 );
 
+                CREATE TABLE IF NOT EXISTS reading_quiz_rewards (
+                    material_id TEXT NOT NULL,
+                    locator INTEGER NOT NULL,
+                    stars INTEGER NOT NULL,
+                    updated_at REAL NOT NULL,
+                    PRIMARY KEY (material_id, locator)
+                );
+
                 CREATE TABLE IF NOT EXISTS notebook_categories (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL UNIQUE,
@@ -808,6 +816,17 @@ class SQLiteSessionStore:
                 question_json TEXT NOT NULL,
                 created_at REAL NOT NULL,
                 PRIMARY KEY (material_id, locator, question_id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS reading_quiz_rewards (
+                material_id TEXT NOT NULL,
+                locator INTEGER NOT NULL,
+                stars INTEGER NOT NULL,
+                updated_at REAL NOT NULL,
+                PRIMARY KEY (material_id, locator)
             )
             """
         )
@@ -3497,6 +3516,142 @@ class SQLiteSessionStore:
             locator,
             None if question_ids is None else tuple(question_ids),
         )
+
+    def _best_reading_quiz_results_sync(
+        self, material_id: str, locator: int, question_ids: Sequence[str]
+    ) -> dict[str, dict[str, bool]]:
+        material = str(material_id or "").strip()
+        section = str(int(locator))
+        wanted = list(dict.fromkeys(str(qid).strip() for qid in question_ids if str(qid).strip()))
+        if not material or not wanted:
+            return {}
+        placeholders = ",".join("?" for _ in wanted)
+        with self._connect() as conn:
+            query = f"""
+                SELECT question_id, assessment_json FROM assessment_attempts
+                WHERE source = 'immersive_reading'
+                  AND question_id IN ({placeholders})
+                """  # nosec B608 - fixed SQL columns with bound values
+            rows = conn.execute(
+                query,
+                tuple(wanted),
+            ).fetchall()
+        results: dict[str, dict[str, bool]] = {}
+        for row in rows:
+            value = _json_loads(str(row["assessment_json"]), {})
+            if not isinstance(value, dict):
+                continue
+            if str(value.get("material_id") or "") != material:
+                continue
+            if str(value.get("section_id") or "") != section:
+                continue
+            question_id = str(row["question_id"])
+            correct = str(value.get("result") or "") == "correct"
+            current = results.setdefault(question_id, {"attempted": True, "correct": False})
+            current["correct"] = current["correct"] or correct
+        return results
+
+    async def best_reading_quiz_results(
+        self, material_id: str, locator: int, question_ids: Sequence[str]
+    ) -> dict[str, dict[str, bool]]:
+        """Return the best immutable result for each current quiz question."""
+        return await self._run(
+            self._best_reading_quiz_results_sync,
+            material_id,
+            locator,
+            tuple(question_ids),
+        )
+
+    def _upsert_reading_quiz_reward_sync(
+        self, material_id: str, locator: int, stars: int
+    ) -> dict[str, Any]:
+        material = str(material_id or "").strip()
+        normalized_locator = int(locator)
+        normalized_stars = max(1, int(stars))
+        if not material:
+            raise ValueError("material_id is required")
+        now = time.time()
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT stars FROM reading_quiz_rewards WHERE material_id = ? AND locator = ?",
+                (material, normalized_locator),
+            ).fetchone()
+            previous = int(row["stars"]) if row is not None else 0
+            awarded = normalized_stars > previous
+            conn.execute(
+                """
+                INSERT INTO reading_quiz_rewards (
+                    material_id, locator, stars, updated_at
+                ) VALUES (?, ?, ?, ?)
+                ON CONFLICT(material_id, locator) DO UPDATE SET
+                    stars = excluded.stars,
+                    updated_at = excluded.updated_at
+                WHERE excluded.stars > reading_quiz_rewards.stars
+                """,
+                (material, normalized_locator, normalized_stars, now),
+            )
+            conn.commit()
+        return {
+            "locator": normalized_locator,
+            "stars": max(normalized_stars, previous),
+            "updated_at": now,
+            "awarded": awarded,
+        }
+
+    async def upsert_reading_quiz_reward(
+        self, material_id: str, locator: int, stars: int
+    ) -> dict[str, Any]:
+        """Raise, never lower, a chapter's server-owned star watermark."""
+        return await self._run(self._upsert_reading_quiz_reward_sync, material_id, locator, stars)
+
+    def _list_reading_quiz_rewards_sync(self, material_id: str) -> list[dict[str, Any]]:
+        material = str(material_id or "").strip()
+        if not material:
+            return []
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT locator, stars, updated_at FROM reading_quiz_rewards "
+                "WHERE material_id = ? ORDER BY locator",
+                (material,),
+            ).fetchall()
+        return [
+            {
+                "locator": int(row["locator"]),
+                "stars": int(row["stars"]),
+                "updated_at": float(row["updated_at"]),
+            }
+            for row in rows
+        ]
+
+    async def list_reading_quiz_rewards(self, material_id: str) -> list[dict[str, Any]]:
+        return await self._run(self._list_reading_quiz_rewards_sync, material_id)
+
+    def _reading_quiz_reward_totals_sync(self, material_ids: Sequence[str]) -> dict[str, int]:
+        wanted = list(
+            dict.fromkeys(
+                str(material_id).strip() for material_id in material_ids if str(material_id).strip()
+            )
+        )
+        if not wanted:
+            return {}
+        placeholders = ",".join("?" for _ in wanted)
+        with self._connect() as conn:
+            query = f"""
+                SELECT material_id, SUM(stars) AS stars
+                FROM reading_quiz_rewards
+                WHERE material_id IN ({placeholders})
+                GROUP BY material_id
+                """  # nosec B608 - fixed SQL columns with bound values
+            rows = conn.execute(
+                query,
+                tuple(wanted),
+            ).fetchall()
+        return {str(row["material_id"]): int(row["stars"]) for row in rows}
+
+    async def reading_quiz_reward_totals(self, material_ids: Sequence[str]) -> dict[str, int]:
+        """Return total reward stars for a library page in one query."""
+        return await self._run(self._reading_quiz_reward_totals_sync, tuple(material_ids))
 
     @staticmethod
     def _serialize_notebook_entry(row: sqlite3.Row) -> dict[str, Any]:

@@ -5270,5 +5270,6 @@
   "Move this knowledge base with its documents, settings, and indexes. Existing workspace assignments are updated.": "连同文档、设置和索引一起移动此知识库。现有工作区分配会同步更新。",
   "Review move": "检查移动详情",
   "{{count}} files · {{bytes}} bytes": "{{count}} 个文件 · {{bytes}} 字节",
-  "Assignments updated: {{names}}": "将更新以下工作区的分配：{{names}}"
+  "Assignments updated: {{names}}": "将更新以下工作区的分配：{{names}}",
+  "Quiz stars: {{count}}": "测验星星：{{count}}"
 }

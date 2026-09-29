@@ -50,7 +50,7 @@ test("reading quiz answers send only the selected index", () => {
   assert.match(component, /submitReadingQuizAnswers\(materialId,/);
   assert.match(component, /selected_index: choiceIndex/);
   const persistStart = component.indexOf("function persistAnswer");
-  const persistEnd = component.indexOf("return questions.map", persistStart);
+  const persistEnd = component.indexOf("questions.map", persistStart);
   assert.notEqual(persistStart, -1);
   assert.notEqual(persistEnd, -1);
   assert.doesNotMatch(

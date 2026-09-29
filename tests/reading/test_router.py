@@ -6,6 +6,7 @@ boot every other router; the routes themselves are the real ones.
 
 from __future__ import annotations
 
+import asyncio
 import io
 from pathlib import Path
 import zipfile
@@ -18,6 +19,7 @@ from deeptutor.api.routers import reading
 from deeptutor.learning.storage import LearningStore
 from deeptutor.reading import ReadingCatalogStore, ReadingError, ReadingStore
 from deeptutor.services.path_service import PathService
+from deeptutor.services.session import get_sqlite_session_store
 
 pymupdf = pytest.importorskip("pymupdf")
 
@@ -801,6 +803,9 @@ def test_library_lists_collection_membership_and_totals(client: TestClient) -> N
         )
         assert created.status_code == 201, created.text
 
+    asyncio.run(get_sqlite_session_store().upsert_reading_quiz_reward(shared["material_id"], 1, 3))
+    asyncio.run(get_sqlite_session_store().upsert_reading_quiz_reward(shared["material_id"], 2, 2))
+
     payload = client.get("/api/reading/library/materials").json()
     rows = {row["material_id"]: row for row in payload["materials"]}
 
@@ -811,6 +816,8 @@ def test_library_lists_collection_membership_and_totals(client: TestClient) -> N
     assert rows[orphan["material_id"]]["collections"] == []
     assert rows[shared["material_id"]]["size_bytes"] > 0
     assert rows[shared["material_id"]]["unit_count"] == len(PAGES)
+    assert rows[shared["material_id"]]["quiz_stars"] == 5
+    assert rows[orphan["material_id"]]["quiz_stars"] == 0
     assert payload["counts"]["all"] == 2
     assert payload["counts"]["unassigned"] == 1
 

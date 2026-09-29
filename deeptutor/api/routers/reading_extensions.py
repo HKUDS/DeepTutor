@@ -288,6 +288,12 @@ def _material_title(material_id: str) -> str:
     return str(getattr(manifest, "title", "") or getattr(manifest, "filename", "") or "")
 
 
+def _assert_quiz_extension_allowed() -> None:
+    allowed = allowed_reading_extensions()
+    if allowed is not None and "quiz" not in allowed:
+        raise HTTPException(status_code=403, detail="This reading extension is not allowed.")
+
+
 async def _persist_reading_quiz_pending(
     material_id: str, locator: int, payload: dict[str, Any]
 ) -> None:
@@ -308,6 +314,7 @@ async def _persist_reading_quiz_pending(
 async def submit_quiz_answers(material_id: str, payload: QuizAnswersPayload) -> dict[str, Any]:
     try:
         assert_learning_material(material_id)
+        _assert_quiz_extension_allowed()
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
 
@@ -321,7 +328,8 @@ async def submit_quiz_answers(material_id: str, payload: QuizAnswersPayload) -> 
 
     store = get_sqlite_session_store()
     question_ids = [item.question_id.strip() for item in payload.answers]
-    pending = await store.get_reading_quiz_pending(material_id, payload.locator, question_ids)
+    pending_quiz = await store.get_reading_quiz_pending(material_id, payload.locator)
+    pending = {qid: pending_quiz[qid] for qid in question_ids if qid in pending_quiz}
     missing = [qid for qid in question_ids if qid not in pending]
     if missing:
         raise HTTPException(status_code=409, detail="This reading quiz has expired.")
@@ -408,7 +416,33 @@ async def submit_quiz_answers(material_id: str, payload: QuizAnswersPayload) -> 
                 "result": result,
             }
         )
-    return {"answers": graded}
+    response: dict[str, Any] = {"answers": graded}
+    current_question_ids = list(pending_quiz)
+    best_results = await store.best_reading_quiz_results(
+        material_id, payload.locator, current_question_ids
+    )
+    if current_question_ids and all(
+        best_results.get(qid, {}).get("attempted") for qid in current_question_ids
+    ):
+        stars = max(1, sum(bool(best_results[qid].get("correct")) for qid in current_question_ids))
+        response["reward"] = await store.upsert_reading_quiz_reward(
+            material_id, payload.locator, stars
+        )
+    return response
+
+
+@router.get("/materials/{material_id}/quiz/rewards")
+async def list_quiz_rewards(material_id: str) -> dict[str, Any]:
+    try:
+        assert_learning_material(material_id)
+        _assert_quiz_extension_allowed()
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+    from deeptutor.services.session import get_sqlite_session_store
+
+    rewards = await get_sqlite_session_store().list_reading_quiz_rewards(material_id)
+    return {"rewards": rewards, "total_stars": sum(row["stars"] for row in rewards)}
 
 
 __all__ = ["router"]

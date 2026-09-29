@@ -41,6 +41,8 @@ export interface ReadingLibraryMaterial extends LearningOrigin {
   unit_count?: number;
   /** Every collection holding this material; empty means unassigned. */
   collections?: ReadingMaterialCollection[];
+  /** Server-owned reading-quiz reward total for this material. */
+  quiz_stars?: number;
 }
 
 export interface ReadingMaterialCollection {
