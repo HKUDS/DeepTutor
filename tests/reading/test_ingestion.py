@@ -379,6 +379,31 @@ def test_heading_sections_keep_long_continuations_under_the_same_title() -> None
     )
 
 
+@pytest.mark.parametrize(
+    "block",
+    [
+        pytest.param("````md\n```py\n# Not a heading\n```\n````", id="longer-fence-around-example"),
+        pytest.param("```bash\n```py\n# Not a heading\n```", id="fence-with-info-does-not-close"),
+        pytest.param("~~~\n# Not a heading\n~~~", id="tilde-fence"),
+    ],
+)
+def test_heading_splitter_ignores_headings_inside_fenced_code(block: str) -> None:
+    markdown = f"# Guide\n\nIntro.\n\n{block}\n\n## Next\n\nDone."
+
+    units, outline = split_markdown_by_headings(markdown)
+
+    assert [row.title for row in outline] == ["Guide", "Next"]
+    assert "# Not a heading" in units[0]
+
+
+def test_heading_splitter_does_not_open_a_fence_on_inline_backticks() -> None:
+    markdown = "# Guide\n\n```inline``` code.\n\n## Next\n\nDone."
+
+    _units, outline = split_markdown_by_headings(markdown)
+
+    assert [row.title for row in outline] == ["Guide", "Next"]
+
+
 def test_heading_splitter_falls_back_when_only_the_page_title_exists() -> None:
     markdown = "# Article title\n\nA flat article paragraph.\n\nAnother paragraph."
 

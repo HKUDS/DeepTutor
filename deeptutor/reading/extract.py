@@ -59,7 +59,7 @@ SECTION_HARD_CHARS = 4200
 _SLIDE_SEPARATOR = re.compile(r"^--- Slide \d+ ---$", re.MULTILINE)
 # Title candidates: a markdown heading, or the first non-trivial line.
 _MD_HEADING = re.compile(r"^\s{0,3}(?P<marks>#{1,6})\s+(?P<title>.+?)\s*#*\s*$")
-_MD_FENCE = re.compile(r"^\s{0,3}(?P<marker>`{3,}|~{3,})")
+_MD_FENCE = re.compile(r"^\s{0,3}(?P<marker>`{3,}|~{3,})(?P<info>.*)$")
 
 # Formats whose original bytes the browser can render faithfully next to the
 # extracted text. Only PDF today; adding one means teaching the reader pane to
@@ -448,18 +448,30 @@ def split_markdown_by_headings(
         return (), ()
 
     boundaries: list[tuple[int, int, str]] = []
+    # The run that opened the current fenced block ("```", "~~~~", ...). As in
+    # CommonMark, only a bare run of the same character that is at least as long
+    # closes it, so a ```` fence can show a ``` example and "```py" inside a
+    # block is content, not a closing fence.
     fence_marker = ""
     offset = 0
     for line in normalised.splitlines(keepends=True):
-        fence = _MD_FENCE.match(line)
+        fence = _MD_FENCE.match(line.rstrip("\n"))
         if fence:
-            marker = fence.group("marker")
+            marker, info = fence.group("marker"), fence.group("info")
             if not fence_marker:
-                fence_marker = marker[0]
-            elif marker[0] == fence_marker:
+                # A backtick fence's info string cannot contain a backtick.
+                if not (marker[0] == "`" and "`" in info):
+                    fence_marker = marker
+                    offset += len(line)
+                    continue
+            elif (
+                marker[0] == fence_marker[0]
+                and len(marker) >= len(fence_marker)
+                and not info.strip()
+            ):
                 fence_marker = ""
-            offset += len(line)
-            continue
+                offset += len(line)
+                continue
         if not fence_marker:
             heading = _MD_HEADING.match(line.rstrip("\n"))
             if heading:
