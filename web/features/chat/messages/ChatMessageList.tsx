@@ -1533,6 +1533,7 @@ export const UserMessage = memo(function UserMessage({
   siblingInfo,
   onSwitchBranch,
   availableKbNames,
+  kbDisplayNames,
   showModeBadge,
   onOpenConsultation,
 }: {
@@ -1546,6 +1547,9 @@ export const UserMessage = memo(function UserMessage({
   onSwitchBranch?: (parentMessageId: number | null, childId: number) => void;
   /** Names of KBs confirmed to exist. Omitted when the KB list is unavailable. */
   availableKbNames?: Set<string>;
+  /** Qualified KB ref -> display name from the selection catalog; the chip
+   *  label falls back to the raw ref when no entry matches. */
+  kbDisplayNames?: Record<string, string>;
   /** Label the bubble with its capability. A single-capability surface
    *  already names the mode in its own chrome. */
   showModeBadge?: boolean;
@@ -1636,7 +1640,7 @@ export const UserMessage = memo(function UserMessage({
           key: `kb-${name}`,
           icon: Database,
           kind: t("Knowledge"),
-          label: name,
+          label: kbDisplayNames?.[name] ?? name,
         };
       }),
     ...(snap?.bookReferences ?? []).map((ref): ContextTreeItem => ({
@@ -1881,6 +1885,7 @@ export const ChatMessageList = memo(function ChatMessageList({
   onEditMessage,
   onSwitchBranch,
   availableKbNames,
+  kbDisplayNames,
   onSubmitUserReply,
   onAnswerMasteryQuestion,
   onSkipMasteryQuestion,
@@ -1942,8 +1947,12 @@ export const ChatMessageList = memo(function ChatMessageList({
   ) => void | boolean | Promise<void | boolean>;
   /** Names of KBs confirmed to exist. Omitted when the KB list is unavailable. */
   availableKbNames?: Set<string>;
+  /** Qualified KB ref -> display name, from the same catalog the composer
+   *  resolves against. Snapshots store the ref; only the chip label should
+   *  show the human-readable name (falls back to the ref when unmapped). */
+  kbDisplayNames?: Record<string, string>;
   /** Label each user bubble with its capability. Off on surfaces that run a
-   *  single capability and already name it in their own chrome. */
+   *  single capability and already name it in its own chrome. */
   showModeBadge?: boolean;
   onLoadMessageTrace?: (messageId: number) => Promise<void>;
   onReleaseMessageTrace?: (messageId: number) => void;
@@ -2176,6 +2185,7 @@ export const ChatMessageList = memo(function ChatMessageList({
                 siblingInfo={sib}
                 onSwitchBranch={onSwitchBranch}
                 availableKbNames={availableKbNames}
+                kbDisplayNames={kbDisplayNames}
                 showModeBadge={showModeBadge}
                 onOpenConsultation={consultationEvents.length && onOpenConsultation
                   ? () => onOpenConsultation(consultationEvents)

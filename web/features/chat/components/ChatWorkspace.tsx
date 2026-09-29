@@ -328,6 +328,12 @@ export default function ChatWorkspace({
     () => new Set(knowledgeBases.map(knowledgeBaseRef)),
     [knowledgeBases],
   );
+  // Sent-message reference chips show the readable KB name; the snapshot
+  // stores the qualified ref, so the label is resolved through this map.
+  const kbDisplayNames = useMemo(
+    () => Object.fromEntries(knowledgeBases.map((kb) => [knowledgeBaseRef(kb), kb.name])),
+    [knowledgeBases],
+  );
   // A connected agent to preselect once it loads, from `?agent=<name>` on the
   // URL (the partner list page links here to drop straight into a chat with a
   // partner). Captured once at first client render — the URL is rewritten to
@@ -2651,6 +2657,9 @@ export default function ChatWorkspace({
                         }}
                         availableKbNames={
                           knowledgeBasesLoaded ? availableKbNames : undefined
+                        }
+                        kbDisplayNames={
+                          knowledgeBasesLoaded ? kbDisplayNames : undefined
                         }
                       />
                       <div
