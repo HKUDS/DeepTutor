@@ -4035,6 +4035,7 @@
   "A knowledge base name cannot contain {{chars}} — these separate paths and URLs.": "Назва бази знань не може містити {{chars}} — ці символи розділяють шляхи та URL-адреси.",
   "Select text in the document first.": "Спочатку виділіть текст у документі.",
   "language.ukrainian": "Українська",
+  "language.polish": "Польська",
   "Review rebuild": "Огляд перебудови",
   "Attachment processing": "Обробка вкладень",
   "Uploaded to DeepTutor": "Завантажено в DeepTutor",

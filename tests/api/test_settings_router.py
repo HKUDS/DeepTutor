@@ -76,7 +76,7 @@ async def test_ui_languages_are_persisted_independently(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("language", ["fr", "uk"])
+@pytest.mark.parametrize("language", ["fr", "uk", "pl"])
 async def test_ui_settings_persist_supported_languages_independently(
     monkeypatch: pytest.MonkeyPatch, tmp_path, language: str
 ) -> None:
