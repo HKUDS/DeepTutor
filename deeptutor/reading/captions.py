@@ -22,7 +22,7 @@ from typing import Any
 
 from deeptutor.reading.store import ReadingStore
 from deeptutor.services.config.runtime_settings import load_document_parsing_settings
-from deeptutor.services.llm.client import get_llm_client
+from deeptutor.services.llm.image_description import get_image_description_client
 from deeptutor.services.rag.pipelines.llamaindex.config import image_description_limits
 
 logger = logging.getLogger(__name__)
@@ -72,7 +72,7 @@ async def caption_material_media(
         return 0
 
     try:
-        client = get_llm_client()
+        client = get_image_description_client()
     except Exception as exc:  # noqa: BLE001 - the client may not be configured
         logger.warning("Image captioning skipped: LLM client is unavailable (%s)", exc)
         return 0

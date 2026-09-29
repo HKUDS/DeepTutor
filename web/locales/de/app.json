@@ -5270,5 +5270,9 @@
   "Move this knowledge base with its documents, settings, and indexes. Existing workspace assignments are updated.": "Diese Knowledge Base samt Dokumenten, Einstellungen und Indizes verschieben. Bestehende Workspace-Zuweisungen werden aktualisiert.",
   "Review move": "Verschiebung prüfen",
   "{{count}} files · {{bytes}} bytes": "{{count}} Dateien · {{bytes}} Bytes",
-  "Assignments updated: {{names}}": "Aktualisierte Zuweisungen: {{names}}"
+  "Assignments updated: {{names}}": "Aktualisierte Zuweisungen: {{names}}",
+  "Image description model": "Modell für Bildbeschreibungen",
+  "Use main LLM (fallback)": "Hauptmodell verwenden (Standard)",
+  "Select a vision model for image descriptions in documents.": "Wählen Sie ein Vision-Modell für Bildbeschreibungen in Dokumenten.",
+  "Failed to load image description models.": "Die Modelle für Bildbeschreibungen konnten nicht geladen werden."
 }

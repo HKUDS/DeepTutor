@@ -40,7 +40,10 @@ vi.mock("@/context/AppShellContext", () => ({
     codeBlockWrapLongLines: false,
   }),
 }));
-vi.mock("@/lib/llm-options", () => ({ invalidateLLMOptionsCache: vi.fn() }));
+vi.mock("@/lib/llm-options", () => ({
+  invalidateLLMOptionsCache: vi.fn(),
+  listLLMOptions: vi.fn(async () => ({ active: null, options: [] })),
+}));
 let settings: ReturnType<typeof useSettings>;
 let live: ReturnType<typeof defaultCatalog>;
 let stored: any;

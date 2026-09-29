@@ -416,7 +416,7 @@ def test_loader_indexes_images_extracted_from_parsed_document(
             return "Figure showing a bar chart."
 
     monkeypatch.setattr(loader_module, "get_embedding_client", lambda: _MultimodalEmbeddingClient())
-    monkeypatch.setattr(loader_module, "get_llm_client", lambda: _VisionClient())
+    monkeypatch.setattr(loader_module, "get_image_description_client", lambda: _VisionClient())
 
     documents = asyncio.run(loader_module.LlamaIndexDocumentLoader().load([str(pdf_path)]))
 
@@ -456,7 +456,7 @@ def test_loader_skips_images_when_embedding_provider_is_text_only(
     def _unexpected_llm_client():
         pytest.fail("text-only embedding must not initialize the LLM client")
 
-    monkeypatch.setattr(loader_module, "get_llm_client", _unexpected_llm_client)
+    monkeypatch.setattr(loader_module, "get_image_description_client", _unexpected_llm_client)
 
     documents = asyncio.run(loader_module.LlamaIndexDocumentLoader().load([str(image_path)]))
 
@@ -504,7 +504,7 @@ def test_loader_embeds_images_with_qwen38_max_vision_capability(
     monkeypatch.setattr(vision_client, "complete", _complete)
 
     monkeypatch.setattr(loader_module, "get_embedding_client", lambda: _MultimodalClient())
-    monkeypatch.setattr(loader_module, "get_llm_client", lambda: vision_client)
+    monkeypatch.setattr(loader_module, "get_image_description_client", lambda: vision_client)
 
     documents = asyncio.run(loader_module.LlamaIndexDocumentLoader().load([str(image_path)]))
 
@@ -540,7 +540,7 @@ def test_loader_skips_images_when_llm_is_text_only(
             return False
 
     monkeypatch.setattr(loader_module, "get_embedding_client", lambda: _MultimodalEmbeddingClient())
-    monkeypatch.setattr(loader_module, "get_llm_client", lambda: _TextOnlyLLMClient())
+    monkeypatch.setattr(loader_module, "get_image_description_client", lambda: _TextOnlyLLMClient())
 
     documents = asyncio.run(loader_module.LlamaIndexDocumentLoader().load([str(image_path)]))
 
@@ -566,7 +566,7 @@ def test_loader_skips_images_when_llm_client_is_unavailable(
         raise RuntimeError("no LLM configured")
 
     monkeypatch.setattr(loader_module, "get_embedding_client", lambda: _MultimodalEmbeddingClient())
-    monkeypatch.setattr(loader_module, "get_llm_client", _unavailable_llm_client)
+    monkeypatch.setattr(loader_module, "get_image_description_client", _unavailable_llm_client)
 
     with caplog.at_level("WARNING"):
         documents = asyncio.run(loader_module.LlamaIndexDocumentLoader().load([str(image_path)]))

@@ -5270,5 +5270,9 @@
   "Move this knowledge base with its documents, settings, and indexes. Existing workspace assignments are updated.": "Move this knowledge base with its documents, settings, and indexes. Existing workspace assignments are updated.",
   "Review move": "Review move",
   "{{count}} files · {{bytes}} bytes": "{{count}} files · {{bytes}} bytes",
-  "Assignments updated: {{names}}": "Assignments updated: {{names}}"
+  "Assignments updated: {{names}}": "Assignments updated: {{names}}",
+  "Image description model": "Image description model",
+  "Use main LLM (fallback)": "Use main LLM (fallback)",
+  "Failed to load image description models.": "Failed to load image description models.",
+  "Select a vision model for image descriptions in documents.": "Select a vision model for image descriptions in documents."
 }

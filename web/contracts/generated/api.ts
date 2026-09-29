@@ -11802,6 +11802,8 @@ export interface components {
       } | null;
       /** Image Caption */
       readonly image_caption?: boolean | null;
+      readonly image_description_model?:
+        components["schemas"]["ImageDescriptionModelSelection"] | null;
     };
     /** DocumentResponse */
     readonly DocumentResponse: {
@@ -12119,6 +12121,16 @@ export interface components {
       readonly api_key?: string | null;
       /** Client Id */
       readonly client_id?: string | null;
+    };
+    /**
+     * ImageDescriptionModelSelection
+     * @description Reference a configured vision model without changing the chat default.
+     */
+    readonly ImageDescriptionModelSelection: {
+      /** Model Id */
+      readonly model_id: string;
+      /** Profile Id */
+      readonly profile_id: string;
     };
     /** ImaKnowledgeBaseSummary */
     readonly ImaKnowledgeBaseSummary: {
@@ -16312,6 +16324,8 @@ export type SchemaGuardianRestrictionsPayload =
 export type SchemaHttpValidationError =
   components["schemas"]["HTTPValidationError"];
 export type SchemaImaConfigUpdate = components["schemas"]["ImaConfigUpdate"];
+export type SchemaImageDescriptionModelSelection =
+  components["schemas"]["ImageDescriptionModelSelection"];
 export type SchemaImaKnowledgeBaseSummary =
   components["schemas"]["ImaKnowledgeBaseSummary"];
 export type SchemaImportedMessage = components["schemas"]["ImportedMessage"];

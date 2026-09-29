@@ -38,6 +38,7 @@ from deeptutor.services.config import (
     redact_catalog_secrets,
     restore_catalog_secrets,
 )
+from deeptutor.services.config.image_description import ImageDescriptionModelSelection
 from deeptutor.services.config.origins import normalize_origins
 from deeptutor.services.config.runtime_settings import (
     CHAT_ATTACHMENT_CHARS_RANGE,
@@ -428,6 +429,8 @@ class DocumentParsingUpdate(BaseModel):
     engines: Optional[dict[str, dict]] = None
     # Toggle for vision-model captions of embedded images (None = keep stored).
     image_caption: Optional[bool] = None
+    # Omit to keep the selection; null restores the main LLM.
+    image_description_model: Optional[ImageDescriptionModelSelection] = None
 
 
 class DocumentParsingTest(BaseModel):
@@ -1192,6 +1195,7 @@ def _document_parsing_payload() -> dict[str, Any]:
     return {
         "engine": full.get("engine"),
         "image_caption": bool(full.get("image_caption", False)),
+        "image_description_model": full.get("image_description_model"),
         "engines": redacted,
         "available_engines": available,
         "readiness": readiness,
@@ -1360,6 +1364,20 @@ async def update_document_parsing_settings(payload: DocumentParsingUpdate):
         engines[name].update(merged)
 
     new_engine = payload.engine or full.get("engine")
+    image_model = full.get("image_description_model")
+    if "image_description_model" in payload.model_fields_set:
+        image_model = (
+            payload.image_description_model.model_dump()
+            if payload.image_description_model is not None
+            else None
+        )
+        if image_model is not None:
+            from deeptutor.services.llm.image_description import resolve_image_description_config
+
+            try:
+                resolve_image_description_config(image_model)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
     image_caption = (
         payload.image_caption
         if payload.image_caption is not None
@@ -1369,6 +1387,7 @@ async def update_document_parsing_settings(payload: DocumentParsingUpdate):
         {
             "engine": new_engine,
             "image_caption": image_caption,
+            "image_description_model": image_model,
             "engines": engines,
         }
     )

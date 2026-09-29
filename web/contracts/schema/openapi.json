@@ -3174,6 +3174,16 @@
               }
             ],
             "title": "Image Caption"
+          },
+          "image_description_model": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageDescriptionModelSelection"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "title": "DocumentParsingUpdate",
@@ -3985,6 +3995,28 @@
           "name"
         ],
         "title": "ImaKnowledgeBaseSummary",
+        "type": "object"
+      },
+      "ImageDescriptionModelSelection": {
+        "additionalProperties": false,
+        "description": "Reference a configured vision model without changing the chat default.",
+        "properties": {
+          "model_id": {
+            "minLength": 1,
+            "title": "Model Id",
+            "type": "string"
+          },
+          "profile_id": {
+            "minLength": 1,
+            "title": "Profile Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "profile_id",
+          "model_id"
+        ],
+        "title": "ImageDescriptionModelSelection",
         "type": "object"
       },
       "ImportFromBookRequest": {

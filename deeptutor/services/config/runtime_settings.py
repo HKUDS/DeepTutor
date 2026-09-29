@@ -10,6 +10,7 @@ from typing import Any, Callable
 from deeptutor.services.file_io import atomic_write_json as _atomic_write_json
 from deeptutor.services.path_service import get_path_service
 
+from .image_description import normalize_image_description_model
 from .origins import normalize_origins
 
 DEFAULT_SYSTEM_SETTINGS: dict[str, Any] = {
@@ -247,6 +248,7 @@ DEFAULT_DOCUMENT_PARSING_SETTINGS: dict[str, Any] = {
     # Caption embedded figures with a vision model at ingest, so a text-only
     # model reading the material can still describe its images.
     "image_caption": False,
+    "image_description_model": None,
     "engines": {
         DOCUMENT_PARSING_ENGINE_TEXT_ONLY: _DEFAULT_TEXT_ONLY_ENGINE,
         DOCUMENT_PARSING_ENGINE_MINERU: _DEFAULT_MINERU_ENGINE,
@@ -1127,6 +1129,9 @@ class RuntimeSettingsService:
             "version": 2,
             "engine": engine,
             "image_caption": _coerce_bool(settings.get("image_caption"), False),
+            "image_description_model": normalize_image_description_model(
+                settings.get("image_description_model")
+            ),
             "engines": engines_out,
         }
 

@@ -56,7 +56,7 @@ def _install_multimodal_clients(
             return await complete_fn(prompt, **kwargs)
 
     monkeypatch.setattr(loader_module, "get_embedding_client", lambda: _EmbeddingClient())
-    monkeypatch.setattr(loader_module, "get_llm_client", lambda: _VisionClient())
+    monkeypatch.setattr(loader_module, "get_image_description_client", lambda: _VisionClient())
 
 
 @pytest.mark.asyncio

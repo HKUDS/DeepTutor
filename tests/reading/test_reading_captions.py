@@ -74,7 +74,7 @@ async def test_caption_material_media_writes_back(
     store: ReadingStore, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     stub = _StubClient()
-    monkeypatch.setattr(captions_module, "get_llm_client", lambda: stub)
+    monkeypatch.setattr(captions_module, "get_image_description_client", lambda: stub)
 
     written = await captions_module.caption_material_media(_MATERIAL_ID, store=store)
 
@@ -89,7 +89,7 @@ async def test_existing_captions_are_skipped(
     store: ReadingStore, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     stub = _StubClient()
-    monkeypatch.setattr(captions_module, "get_llm_client", lambda: stub)
+    monkeypatch.setattr(captions_module, "get_image_description_client", lambda: stub)
 
     assert await captions_module.caption_material_media(_MATERIAL_ID, store=store) == 3
     stub.calls.clear()
@@ -105,7 +105,7 @@ async def test_single_failure_keeps_the_rest(
     store: ReadingStore, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     stub = _StubClient(fail={"image-01.png"})
-    monkeypatch.setattr(captions_module, "get_llm_client", lambda: stub)
+    monkeypatch.setattr(captions_module, "get_image_description_client", lambda: stub)
 
     written = await captions_module.caption_material_media(_MATERIAL_ID, store=store)
 
@@ -121,7 +121,7 @@ async def test_text_only_client_makes_no_calls(
     store: ReadingStore, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     stub = _StubClient(vision=False)
-    monkeypatch.setattr(captions_module, "get_llm_client", lambda: stub)
+    monkeypatch.setattr(captions_module, "get_image_description_client", lambda: stub)
 
     written = await captions_module.caption_material_media(_MATERIAL_ID, store=store)
 

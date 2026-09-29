@@ -24,7 +24,7 @@ from llama_index.core.schema import ImageNode
 
 from deeptutor.services.config.runtime_settings import DOCUMENT_PARSING_ENGINE_LITEPARSE
 from deeptutor.services.embedding import get_embedding_client
-from deeptutor.services.llm.client import get_llm_client
+from deeptutor.services.llm.image_description import get_image_description_client
 from deeptutor.services.rag.file_routing import FileTypeRouter
 from deeptutor.services.rag.visual_assets import VisualAssetCandidate, collect_visual_assets
 from deeptutor.utils.document_validator import DocumentValidator
@@ -328,7 +328,7 @@ class LlamaIndexDocumentLoader:
         # keeps text-only embedding setups independent of LLM configuration and
         # reuses one client for the whole image batch.
         try:
-            llm_client = get_llm_client()
+            llm_client = get_image_description_client()
         except Exception as exc:
             self._log_skipped_images(sources, f"LLM client is unavailable ({exc})")
             return []
