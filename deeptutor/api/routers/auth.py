@@ -614,6 +614,8 @@ def _learning_surface_for_path(
     for root, surface in (
         ("/api/reading", "reading"),
         ("/api/courses", "reading"),
+        ("/api/books", "books"),
+        ("/api/dashboard/learning-library/books", "books"),
         ("/api/chat", "chat"),
         ("/api/question", "chat"),
         ("/api/question-notebook", "chat"),

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from copy import deepcopy
+
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 import pytest
@@ -21,6 +23,7 @@ def shared_env(tmp_path, monkeypatch):
     from deeptutor.book import engine as engine_module
     from deeptutor.book import storage as storage_module
     from deeptutor.multi_user import audit, grants, identity, paths
+    from deeptutor.multi_user.grants import learner_grant, save_grant
     from deeptutor.multi_user.identity import save_user, set_book_permission
     from deeptutor.multi_user.paths import get_admin_path_service
     from deeptutor.services import auth as auth_service
@@ -54,15 +57,32 @@ def shared_env(tmp_path, monkeypatch):
     alice = save_user("alice", "hash", role="user")
     bob = save_user("bob", "hash", role="user")
     editor = save_user("editor", "hash", role="user")
+    default_learner = save_user("default-learner", "hash", role="user", preset="learner")
+    books_without_acl = save_user("books-without-acl", "hash", role="user", preset="learner")
+    reader = save_user("reader", "hash", role="user", preset="learner")
     set_book_permission("alice", BookPermission(books=(("bk_shared", "read"),)))
     set_book_permission("bob", BookPermission(books=(("bk_shared", "read"),)))
     set_book_permission("editor", BookPermission(books=(("bk_shared", "edit"),)))
+    set_book_permission("default-learner", BookPermission(create=False))
+    set_book_permission("books-without-acl", BookPermission(create=False))
+    set_book_permission("reader", BookPermission(create=False, books=(("bk_shared", "read"),)))
+    books_grant = deepcopy(learner_grant(reader["id"]))
+    books_grant["learning_policy"]["allowed_surfaces"] = ["chat", "reading", "books"]
+    save_grant(books_without_acl["id"], deepcopy(books_grant))
+    save_grant(reader["id"], books_grant)
 
     tokens = {
         "root": TokenPayload(username="root", role="admin", user_id=root["id"]),
         "alice": TokenPayload(username="alice", role="user", user_id=alice["id"]),
         "bob": TokenPayload(username="bob", role="user", user_id=bob["id"]),
         "editor": TokenPayload(username="editor", role="user", user_id=editor["id"]),
+        "default-learner": TokenPayload(
+            username="default-learner", role="user", user_id=default_learner["id"]
+        ),
+        "books-without-acl": TokenPayload(
+            username="books-without-acl", role="user", user_id=books_without_acl["id"]
+        ),
+        "reader": TokenPayload(username="reader", role="user", user_id=reader["id"]),
     }
     monkeypatch.setattr(auth_router, "decode_token", lambda token: tokens.get(token))
 
@@ -90,9 +110,65 @@ def shared_env(tmp_path, monkeypatch):
     app.include_router(
         book_router.router,
         prefix="/api",
-        dependencies=[Depends(auth_router.require_auth)],
+        dependencies=[
+            Depends(auth_router.require_auth),
+            Depends(auth_router.require_learning_surface),
+        ],
     )
     return TestClient(app), shared
+
+
+def test_learner_books_surface_requires_explicit_grant(shared_env) -> None:
+    client, _ = shared_env
+
+    denied = client.get("/api/books", headers=_headers("default-learner"))
+    allowed = client.get("/api/books", headers=_headers("reader"))
+
+    assert denied.status_code == 403
+    assert allowed.status_code == 200
+
+
+def test_learner_with_books_surface_still_requires_shared_acl(shared_env) -> None:
+    client, _ = shared_env
+
+    response = client.get("/api/books", headers=_headers("books-without-acl"))
+
+    assert response.status_code == 200
+    assert response.json() == {"books": [], "can_create": False}
+
+
+def test_assigned_shared_book_is_read_only_for_learner(shared_env) -> None:
+    client, _ = shared_env
+
+    listing = client.get("/api/books", headers=_headers("reader")).json()
+    assert [book["id"] for book in listing["books"]] == ["bk_shared"]
+    assert listing["can_create"] is False
+    assert listing["books"][0]["source"] == "shared"
+    assert listing["books"][0]["permission"] == "read"
+    assert listing["books"][0]["can_edit"] is False
+    assert listing["books"][0]["can_delete"] is False
+
+    create = client.post(
+        "/api/books",
+        headers=_headers("reader"),
+        json={"user_intent": "New book"},
+    )
+    update = client.post(
+        "/api/books/update-block",
+        headers=_headers("reader"),
+        json={
+            "book_id": "bk_shared",
+            "page_id": "pg_1",
+            "block_id": "blk_1",
+            "body": "Nope",
+            "expected_revision": 1,
+        },
+    )
+    delete = client.delete("/api/books/bk_shared", headers=_headers("reader"))
+
+    assert create.status_code == 403
+    assert update.status_code == 404
+    assert delete.status_code == 404
 
 
 def test_shared_learning_state_is_isolated_per_reader(shared_env) -> None:

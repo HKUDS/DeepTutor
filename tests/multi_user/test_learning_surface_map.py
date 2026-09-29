@@ -26,6 +26,11 @@ from deeptutor.api.routers.auth import _learning_surface_for_path
         # Pre-existing mappings keep working.
         ("/api/reading/materials", "GET", "reading"),
         ("/api/courses", "GET", "reading"),
+        ("/api/books", "GET", "books"),
+        ("/api/books/bk_123", "GET", "books"),
+        ("/api/books/quiz-attempt", "POST", "books"),
+        ("/api/dashboard/learning-library/books", "GET", "books"),
+        ("/api/books-private", "GET", ""),
         ("/api/chat/sessions", "GET", "chat"),
         ("/api/question/generate", "POST", "chat"),
         ("/api/sessions/abc", "GET", "chat"),
