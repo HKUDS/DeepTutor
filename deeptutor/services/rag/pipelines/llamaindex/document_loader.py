@@ -25,6 +25,7 @@ from llama_index.core.schema import ImageNode
 from deeptutor.services.config.runtime_settings import DOCUMENT_PARSING_ENGINE_LITEPARSE
 from deeptutor.services.embedding import get_embedding_client
 from deeptutor.services.llm.client import get_llm_client
+from deeptutor.services.llm.image_caption_cache import complete_image_caption
 from deeptutor.services.rag.file_routing import FileTypeRouter
 from deeptutor.services.rag.visual_assets import VisualAssetCandidate, collect_visual_assets
 from deeptutor.utils.document_validator import DocumentValidator
@@ -458,7 +459,8 @@ class LlamaIndexDocumentLoader:
     async def _describe_image(
         self, llm_client: Any, file_path: Path, image_base64: str, mimetype: str
     ) -> str:
-        response = await llm_client.complete(
+        response = await complete_image_caption(
+            llm_client,
             IMAGE_DESCRIPTION_PROMPT,
             system_prompt=IMAGE_DESCRIPTION_SYSTEM_PROMPT,
             image_data=image_base64,

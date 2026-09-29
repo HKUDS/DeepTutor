@@ -23,6 +23,7 @@ from typing import Any
 from deeptutor.reading.store import ReadingStore
 from deeptutor.services.config.runtime_settings import load_document_parsing_settings
 from deeptutor.services.llm.client import get_llm_client
+from deeptutor.services.llm.image_caption_cache import complete_image_caption
 from deeptutor.services.rag.pipelines.llamaindex.config import image_description_limits
 
 logger = logging.getLogger(__name__)
@@ -97,12 +98,14 @@ async def caption_material_media(
                 data = await asyncio.to_thread(path.read_bytes)
                 encoded = base64.b64encode(data).decode("ascii")
                 text = await asyncio.wait_for(
-                    client.complete(
+                    complete_image_caption(
+                        client,
                         CAPTION_PROMPT,
                         system_prompt=CAPTION_SYSTEM_PROMPT,
                         image_data=encoded,
                         image_mime_type=mime,
                         image_filename=name,
+                        force=force,
                     ),
                     timeout=timeout_seconds,
                 )
