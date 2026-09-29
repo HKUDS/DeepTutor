@@ -5270,5 +5270,7 @@
   "Move this knowledge base with its documents, settings, and indexes. Existing workspace assignments are updated.": "Move this knowledge base with its documents, settings, and indexes. Existing workspace assignments are updated.",
   "Review move": "Review move",
   "{{count}} files · {{bytes}} bytes": "{{count}} files · {{bytes}} bytes",
-  "Assignments updated: {{names}}": "Assignments updated: {{names}}"
+  "Assignments updated: {{names}}": "Assignments updated: {{names}}",
+  "Assigned models": "Assigned models",
+  "No assigned models": "No assigned models"
 }

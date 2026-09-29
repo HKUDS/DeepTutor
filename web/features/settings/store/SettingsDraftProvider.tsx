@@ -8,6 +8,7 @@ type SettingsDraftSlice = Pick<
   | "hasUnsavedChanges"
   | "saving"
   | "applying"
+  | "draftAvailable"
   | "saveDraft"
   | "applyCatalog"
   | "applyService"
@@ -28,6 +29,7 @@ export function SettingsDraftProvider({ children }: { children: ReactNode }) {
       hasUnsavedChanges: source.hasUnsavedChanges,
       saving: source.saving,
       applying: source.applying,
+      draftAvailable: source.draftAvailable,
       saveDraft: source.saveDraft,
       applyCatalog: source.applyCatalog,
       applyService: source.applyService,
@@ -42,6 +44,7 @@ export function SettingsDraftProvider({ children }: { children: ReactNode }) {
       source.hasUnsavedChanges,
       source.saving,
       source.applying,
+      source.draftAvailable,
       source.saveDraft,
       source.applyCatalog,
       source.applyService,

@@ -120,13 +120,17 @@ const extraPages: SettingsLeaf[] = [
 ]
 
 export function visibleSettingsPages(access: SettingsAccess): SettingsLeaf[] {
+  const categoryPages = SETTINGS_CATEGORIES.filter(category =>
+    isSettingsCategoryVisible(category, access)
+  )
+    .flatMap(category => category.children ?? [{ ...category, tile: '' }])
+    .filter(
+      leaf => isSettingsLeafVisible(leaf, access) && resolveSettingsKey(leaf.key) === leaf.key
+    )
+  if (access.learningPolicyActive) return categoryPages
   return [
     ...extraPages,
-    ...SETTINGS_CATEGORIES.filter(category => isSettingsCategoryVisible(category, access))
-      .flatMap(category => category.children ?? [{ ...category, tile: '' }])
-      .filter(
-        leaf => isSettingsLeafVisible(leaf, access) && resolveSettingsKey(leaf.key) === leaf.key
-      ),
+    ...categoryPages,
   ]
 }
 

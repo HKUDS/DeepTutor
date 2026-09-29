@@ -21,6 +21,10 @@ export interface NavEntry {
   defaultCollapsed?: boolean
   /** Model capability this feature needs; locked when the user lacks it. */
   requires?: Capability
+  /** Server surface required by a learner-policy account. */
+  learningSurface?: 'chat' | 'reading'
+  /** Remains available when a learning policy redacts the workspace. */
+  alwaysAvailableToLearningAccounts?: boolean
 }
 
 /**
@@ -33,7 +37,14 @@ export interface NavEntry {
  * the neighbour it follows below rather than at the bottom of their list.
  */
 export const PRIMARY_NAV: NavEntry[] = [
-  { href: '/chat', label: 'Home', icon: House, tooltipKey: 'Home tooltip', requires: 'llm' },
+  {
+    href: '/chat',
+    label: 'Home',
+    icon: House,
+    tooltipKey: 'Home tooltip',
+    requires: 'llm',
+    learningSurface: 'chat',
+  },
   {
     href: '/partners',
     label: 'Partners',
@@ -46,9 +57,16 @@ export const PRIMARY_NAV: NavEntry[] = [
     label: 'Personalized Learning',
     icon: GraduationCap,
     tooltipKey: 'One tutor, your own way to learn.',
+    learningSurface: 'reading',
   },
   { href: '/space', label: 'Learning Space', icon: LayoutGrid, tooltipKey: 'Space tooltip' },
-  { href: '/kanban', label: 'Task Board', icon: ListTodo, tooltipKey: 'kanban.intro' },
+  {
+    href: '/kanban',
+    label: 'Task Board',
+    icon: ListTodo,
+    tooltipKey: 'kanban.intro',
+    learningSurface: 'chat',
+  },
   {
     href: '/co-writer',
     label: 'Co-Writer',
@@ -66,7 +84,14 @@ export const PRIMARY_NAV: NavEntry[] = [
   },
 ]
 
-export const SECONDARY_NAV: NavEntry[] = [{ href: '/settings', label: 'Settings', icon: Settings }]
+export const SECONDARY_NAV: NavEntry[] = [
+  {
+    href: '/settings',
+    label: 'Settings',
+    icon: Settings,
+    alwaysAvailableToLearningAccounts: true,
+  },
+]
 
 export const DEFAULT_COLLAPSED_NAV = PRIMARY_NAV.filter(entry => entry.defaultCollapsed).map(
   entry => entry.href
@@ -80,4 +105,18 @@ export const NAV_BY_HREF = new Map(
 
 export function isNavActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`)
+}
+
+export function isNavEntryAllowedForLearningPolicy(
+  entry: NavEntry,
+  learningPolicy: { allowed_surfaces?: string[] } | null,
+): boolean {
+  if (!learningPolicy) return true
+  const allowedSurfaces = Array.isArray(learningPolicy.allowed_surfaces)
+    ? learningPolicy.allowed_surfaces
+    : ['chat', 'reading']
+  if (entry.learningSurface) {
+    return allowedSurfaces.includes(entry.learningSurface)
+  }
+  return Boolean(entry.alwaysAvailableToLearningAccounts)
 }
