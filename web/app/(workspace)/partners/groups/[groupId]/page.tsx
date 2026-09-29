@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
@@ -28,9 +28,11 @@ import {
   partnerGroupSessionKey,
   setPartnerGroupSessionKey,
   type PartnerGroup,
+  type PartnerGroupMessage,
 } from "@/lib/partner-groups-api";
 import { listPartners, type PartnerInfo } from "@/lib/partners-api";
-import { downloadChatMarkdown, type ExportableMessage } from "@/lib/chat-export";
+import { downloadChatMarkdown } from "@/lib/chat-export";
+import { toPartnerGroupExportMessages } from "@/lib/partner-group-export";
 
 export default function PartnerGroupPage() {
   const { t } = useTranslation();
@@ -44,7 +46,21 @@ export default function PartnerGroupPage() {
   const [editing, setEditing] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
   const [sessionKey, setSessionKey] = useState("");
-  const [exportMessages, setExportMessages] = useState<ExportableMessage[]>([]);
+  const [sessionTitle, setSessionTitle] = useState("");
+  const [groupMessages, setGroupMessages] = useState<PartnerGroupMessage[]>([]);
+
+  const exportMessages = useMemo(
+    () => toPartnerGroupExportMessages(groupMessages),
+    [groupMessages],
+  );
+  const exportTitle = group
+    ? `${group.name} — ${sessionTitle || t("New discussion")}`
+    : sessionTitle;
+
+  const handleDownload = useCallback(() => {
+    if (!exportMessages.length) return;
+    downloadChatMarkdown(exportMessages, { title: exportTitle });
+  }, [exportMessages, exportTitle]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -136,20 +152,21 @@ export default function PartnerGroupPage() {
               groupId={groupId}
               sessionKey={sessionKey}
               onSelect={(key) => {
-                setExportMessages([]);
+                setGroupMessages([]);
                 setPartnerGroupSessionKey(groupId, key);
                 setSessionKey(key);
               }}
               onCreate={() => {
-                setExportMessages([]);
+                setGroupMessages([]);
                 setSessionKey(createPartnerGroupSessionKey(groupId));
               }}
+              onTitleChange={setSessionTitle}
             />
           ) : null}
           <button
             type="button"
-            onClick={() => downloadChatMarkdown(exportMessages, { title: group.name })}
-            disabled={exportMessages.length === 0}
+            onClick={handleDownload}
+            disabled={!groupMessages.length}
             aria-label={t("Download")}
             className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--border)] px-2.5 text-[11px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
           >
@@ -185,7 +202,7 @@ export default function PartnerGroupPage() {
         panelOpen={panelOpen}
         onOpenPanel={() => setPanelOpen(true)}
         onClosePanel={() => setPanelOpen(false)}
-        onExportMessagesChange={setExportMessages}
+        onMessagesChange={setGroupMessages}
       />
 
       {editing ? (
