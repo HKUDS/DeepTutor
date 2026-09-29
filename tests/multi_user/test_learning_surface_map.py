@@ -26,6 +26,8 @@ from deeptutor.api.routers.auth import _learning_surface_for_path
         # Pre-existing mappings keep working.
         ("/api/reading/materials", "GET", "reading"),
         ("/api/courses", "GET", "reading"),
+        ("/api/dashboard/learning-library/materials", "GET", "reading"),
+        ("/api/dashboard/learning-library/reading", "GET", "reading"),
         ("/api/chat/sessions", "GET", "chat"),
         ("/api/question/generate", "POST", "chat"),
         ("/api/sessions/abc", "GET", "chat"),
@@ -46,6 +48,8 @@ from deeptutor.api.routers.auth import _learning_surface_for_path
         # Everything else still default-denies.
         ("/api/settings", "GET", ""),
         ("/api/system/status", "GET", ""),
+        ("/api/dashboard/learning-library/chats", "GET", ""),
+        ("/api/dashboard/learning-library/materials-private", "GET", ""),
         ("/api/partners", "GET", ""),
         ("/api/memory/overview", "GET", ""),
         ("", "GET", ""),

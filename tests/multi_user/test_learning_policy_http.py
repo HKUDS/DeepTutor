@@ -9,7 +9,8 @@ from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 import pytest
 
-from deeptutor.api.routers import reading, reading_extensions
+from deeptutor.api.routers import dashboard, reading, reading_extensions
+from deeptutor.api.routers.auth import require_auth, require_learning_surface
 from deeptutor.multi_user.context import reset_current_user, set_current_user
 from deeptutor.reading import ReadingStore
 from deeptutor.reading.extensions import (
@@ -64,6 +65,12 @@ def learner_client(mu_isolated_root, seed_user, make_user, monkeypatch, tmp_path
         prefix="/api/reading",
         dependencies=dependencies,
     )
+    app.dependency_overrides[require_auth] = lambda: None
+    app.include_router(
+        dashboard.router,
+        prefix="/api/dashboard",
+        dependencies=[*dependencies, Depends(require_learning_surface)],
+    )
     return TestClient(app), learner, current_user, tmp_path
 
 
@@ -73,7 +80,9 @@ def _seed_material(root: Path, name: str, text: str):
     return ReadingStore().ingest(source)
 
 
-def _save_learner_grant(user_id: str, material_id: str):
+def _save_learner_grant(
+    user_id: str, material_id: str, *, allowed_surfaces: list[str] | None = None
+):
     from deeptutor.multi_user.grants import save_grant
 
     save_grant(
@@ -88,7 +97,7 @@ def _save_learner_grant(user_id: str, material_id: str):
                 "locked_persona": "teacher",
                 "allowed_capabilities": ["chat", "immersive_reading"],
                 "default_capability": "immersive_reading",
-                "allowed_surfaces": ["chat", "reading"],
+                "allowed_surfaces": allowed_surfaces or ["chat", "reading"],
                 "reading": {
                     "allow_upload": False,
                     "material_ids": [material_id],
@@ -178,3 +187,38 @@ def test_reading_extensions_and_actions_follow_the_policy(learner_client, as_use
     )
     assert denied.status_code == 403
     assert "not allowed" in denied.json()["detail"]
+
+
+def test_dashboard_learning_library_follows_the_policy(learner_client, as_user):
+    client, learner, current_user, tmp_path = learner_client
+    with as_user(current_user.id, username="student"):
+        from deeptutor.reading.catalog_store import ReadingCatalogStore
+
+        allowed = _seed_material(tmp_path, "allowed.txt", "Allowed passage.")
+        private = _seed_material(tmp_path, "private.txt", "Private passage.")
+        catalog = ReadingCatalogStore()
+        catalog.register_manifest(allowed)
+        catalog.register_manifest(private)
+        workspace = catalog.create_workspace(
+            "Mixed collection",
+            [allowed.material_id, private.material_id],
+        )
+        _save_learner_grant(learner["id"], allowed.material_id)
+
+    materials = client.get("/api/dashboard/learning-library/materials")
+    assert materials.status_code == 200, materials.text
+    assert [row["material_id"] for row in materials.json()["items"]] == [allowed.material_id]
+    assert private.material_id not in materials.text
+
+    collections = client.get("/api/dashboard/learning-library/reading")
+    assert collections.status_code == 200, collections.text
+    assert [row["workspace_id"] for row in collections.json()["items"]] == [workspace.workspace_id]
+    assert [tab["material"]["material_id"] for tab in collections.json()["items"][0]["tabs"]] == [
+        allowed.material_id
+    ]
+
+    _save_learner_grant(learner["id"], allowed.material_id, allowed_surfaces=["chat"])
+    for kind in ("materials", "reading"):
+        denied = client.get(f"/api/dashboard/learning-library/{kind}")
+        assert denied.status_code == 403
+        assert "reading surface" in denied.json()["detail"]
