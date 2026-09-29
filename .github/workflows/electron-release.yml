@@ -1,0 +1,200 @@
+name: Electron Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: electron-release-${{github.event.release.tag_name}}
+  cancel-in-progress: false
+
+jobs:
+  validate-release-tag:
+    name: Validate release tag
+    runs-on: ubuntu-latest
+    if: startsWith(github.event.release.tag_name, 'v')
+    steps:
+      - name: Require vX.Y.Z tag
+        shell: python
+        run: |
+          import os, re
+          tag = os.environ['RELEASE_TAG']
+          pattern = r'^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:(?:a|b|rc)(?:0|[1-9]\d*))?(?:\.post(?:0|[1-9]\d*))?(?:\.dev(?:0|[1-9]\d*))?$'
+          if not re.fullmatch(pattern, tag):
+              raise SystemExit(f'Release tag {tag!r} is not a valid version tag.')
+        env:
+          RELEASE_TAG: ${{github.event.release.tag_name}}
+
+  verify-version:
+    name: Verify version matches tag
+    runs-on: ubuntu-latest
+    needs: validate-release-tag
+    outputs:
+      version: ${{ steps.verify.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{github.event.release.tag_name}}
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify tag matches __version__
+        id: verify
+        shell: python
+        run: |
+          import os, re
+          from pathlib import Path
+          tag = os.environ['RELEASE_TAG']
+          tag_raw = tag[1:] if tag.startswith('v') else tag
+          src = Path('deeptutor/__version__.py').read_text(encoding='utf-8')
+          match = re.search(r'^__version__\s*=\s*"([^"]+)"', src, re.MULTILINE)
+          if not match:
+              raise SystemExit('Could not find __version__ in deeptutor/__version__.py')
+          code_version = match.group(1)
+          if code_version != tag_raw:
+              raise SystemExit(f'Release tag {tag!r} does not match deeptutor/__version__.py value {code_version!r}.')
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as f:
+              f.write('version=' + code_version + chr(10))
+        env:
+          RELEASE_TAG: ${{github.event.release.tag_name}}
+
+  build-electron:
+    name: Build Electron (${{matrix.platform}} ${{matrix.arch}})
+    needs: verify-version
+    runs-on: ${{matrix.os}}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: Windows
+            os: windows-latest
+            arch: x64
+            target: win
+            native_sidecar: true
+            zip_cmd: powershell -Command "Compress-Archive -Path dist/electron_ui/win-unpacked -DestinationPath dist/electron_ui/DeepTutor-${{needs.verify-version.outputs.version}}-win-x64.zip"
+          - platform: Windows
+            os: windows-latest
+            arch: arm64
+            target: win
+            # PyInstaller cannot cross-compile; ship Electron arm64 without frozen sidecars.
+            native_sidecar: false
+            zip_cmd: powershell -Command "Compress-Archive -Path dist/electron_ui/win-arm64-unpacked -DestinationPath dist/electron_ui/DeepTutor-${{needs.verify-version.outputs.version}}-win-arm64.zip"
+          - platform: Linux
+            os: ubuntu-latest
+            arch: x64
+            target: linux
+            native_sidecar: true
+            zip_cmd: tar czf dist/electron_ui/DeepTutor-${{needs.verify-version.outputs.version}}-linux-x64.tar.gz -C dist/electron_ui linux-unpacked
+          - platform: Linux
+            os: ubuntu-latest
+            arch: arm64
+            target: linux
+            native_sidecar: true
+            zip_cmd: tar czf dist/electron_ui/DeepTutor-${{needs.verify-version.outputs.version}}-linux-arm64.tar.gz -C dist/electron_ui linux-arm64-unpacked
+          - platform: macOS
+            os: macos-latest
+            arch: x64
+            target: mac
+            native_sidecar: true
+          - platform: macOS
+            os: macos-latest
+            arch: arm64
+            target: mac
+            native_sidecar: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{github.event.release.tag_name}}
+          fetch-depth: 0
+      - name: Set version in electron_ui/package.json
+        run: |
+          import json, os
+          ver = os.environ['VERSION']
+          pkg = json.load(open('electron_ui/package.json'))
+          pkg['version'] = ver
+          with open('electron_ui/package.json', 'w') as f:
+              json.dump(pkg, f, indent=2)
+              f.write(chr(10))
+          print('set version=' + ver)
+        shell: python
+        env:
+          VERSION: ${{needs.verify-version.outputs.version}}
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Linux system deps
+        if: matrix.platform == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpango1.0-dev libcairo2-dev pkg-config
+      - name: Install Python build deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[all]
+          pip install "pyinstaller>=6.0,<7"
+      - name: Set up Node.js (web)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package.json
+      - name: Build web
+        working-directory: web
+        run: npm install && npm run build
+      - name: Set up Node.js (electron)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: electron_ui/package.json
+      - name: Prepare web package
+        run: python scripts/prepare_web_package.py --skip-build
+      - name: Install Electron deps
+        working-directory: electron_ui
+        run: npm install
+      - name: Build TypeScript
+        working-directory: electron_ui
+        run: npm run build
+      - name: Prepare Node + PyInstaller sidecars
+        if: matrix.native_sidecar
+        run: |
+          python packaging/node-runtime/prepare.py
+          python packaging/pyinstaller/build.py --python "$(python -c 'import sys; print(sys.executable)')" --skip-smoke
+      - name: Ensure packaging-sidecar dirs exist
+        shell: python
+        run: |
+          from pathlib import Path
+          for p in (
+              Path("dist/packaging-sidecar/python-backend"),
+              Path("dist/packaging-sidecar/node-runtime"),
+          ):
+              p.mkdir(parents=True, exist_ok=True)
+              marker = p / ".keep"
+              if not any(p.iterdir()):
+                  marker.write_text("placeholder\n", encoding="utf-8")
+      - name: Build ${{matrix.platform}} package
+        working-directory: electron_ui
+        run: npx electron-builder --${{matrix.target}} --${{matrix.arch}} --config electron-builder.yml
+      - name: Zip portable
+        if: matrix.zip_cmd
+        run: ${{matrix.zip_cmd}}
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/electron_ui/*Setup*.exe
+            dist/electron_ui/*.zip
+            dist/electron_ui/*.tar.gz
+            dist/electron_ui/*.AppImage
+            dist/electron_ui/*.deb
+            dist/electron_ui/*.dmg
+        env:
+          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
