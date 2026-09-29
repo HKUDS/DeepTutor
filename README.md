@@ -801,6 +801,12 @@ The built-in LightRAG engine is installed with `pip install 'deeptutor[rag-light
 
 Native LightRAG queries and incremental indexing require the embedding configuration recorded by the published index, including the model, dimension, and endpoint identity. If it changes, restore the original configuration or rebuild with the current embedding; indexes without a recorded embedding identity require a rebuild. The knowledge-base detail and index-version views show recovery guidance, while files remain available for viewing and download.
 
+**Scoring a knowledge base.** With several engines available, "which one retrieves best here?" is an empirical question — so `deeptutor kb eval` answers it. Write a QA set (one JSON object per line: a `query` plus the `gold` passages an ideal retrieval should return), then score the KB with `deeptutor kb eval <name> --dataset qa.jsonl --top-k 5 [--mode hybrid] [--save baseline.json]`. Each case is retrieved through the same path a chat turn uses, its ranked citations are matched against the gold passages (verbatim, truncated, or paraphrased — thresholds are tunable with `--min-ratio`), and the run reports **Recall@k / Precision@k / nDCG@k / MRR / MAP / Hit@k**. Metrics are pure functions over the ranking, so no model judges the output: scores are reproducible and diffable, and a saved baseline turns the set into a regression gate for an embedding switch, a reranker change, or a chunk-size experiment. Cases whose search failed (a missing index, bad credentials) carry no score and are reported separately rather than dragging the means down. PageIndex uses reasoning as retrieval and returns no ranked chunks, so it is excluded.
+
+```jsonl
+{"query": "Why do transformers scale attention?", "gold": ["Scaling keeps the dot products from growing with the dimension."]}
+```
+
 </details>
 
 <details>
@@ -962,7 +968,7 @@ The repo ships a root [`SKILL.md`](SKILL.md) — a ~200-line handover doc that t
 | `deeptutor run <capability> <message>` | Run a single capability turn (`chat`, `ask_questions`, `deep_solve`, `deep_question`, `deep_research`, `visualize`, `math_animator`, `mastery_path`, `immersive_reading`, `course_study`, `immersive_watching`, `audio_overview`); add `--format json` for NDJSON output |
 | `deeptutor chat` | Interactive REPL with capability, tool, KB, notebook, and history controls |
 | `deeptutor partner list/create/start/stop` | Manage IM-connected partners |
-| `deeptutor kb list/info/create/connect-kiwix/add/search/set-default/delete/list-sources/sync` | Manage knowledge bases and synchronize registered GitHub/web sources (with source add/remove commands) |
+| `deeptutor kb list/info/create/connect-kiwix/add/search/eval/set-default/delete/list-sources/sync` | Manage knowledge bases, connect Kiwix archives, score retrieval quality against a QA set, and synchronize registered GitHub/web sources (with source add/remove commands) |
 | `deeptutor skill search/install/list/remove/login/logout/publish/update` | Manage skills, install from hubs, and publish your own (`eduhub:<slug>` by default, see Ecosystem) |
 | `deeptutor memory show/clear` | Inspect L2/L3 memory docs or clear L1/all memory |
 | `deeptutor session list/show/open/rename/delete` | Manage shared sessions |
