@@ -41,6 +41,17 @@ def preset(model: str, *, voices=None, languages=None, formats=None, **kwargs) -
 
 
 def _tts_models(provider: str) -> tuple[list[dict], str]:
+    if provider == "xiaomi_mimo":
+        return [
+            preset(
+                "mimo-v2.5-tts",
+                voices=choices(
+                    ["mimo_default", "冰糖", "茉莉", "苏打", "白桦", "Mia", "Chloe", "Milo", "Dean"]
+                ),
+                formats=["wav", "pcm16"],
+                instructions=True,
+            )
+        ], "https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/speech-synthesis-v2.5"
     openai = [
         preset(
             "gpt-4o-mini-tts",
@@ -194,6 +205,8 @@ def voice_options(provider: str, service: str) -> dict:
             fallback = {**deepcopy(models[0]), "id": "", "voices": [], "instructions": False}
         elif provider == "groq":
             fallback = preset("", formats=["wav"])
+        elif provider == "xiaomi_mimo":
+            fallback = preset("", formats=["wav", "pcm16"], instructions=True)
     else:
         ids = {
             "openai": ["gpt-4o-mini-transcribe", "gpt-4o-transcribe", "whisper-1"],

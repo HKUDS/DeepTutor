@@ -319,6 +319,13 @@ class VoiceProviderSpec:
 # Voice providers either use the shared OpenAI-compatible adapter or a native
 # protocol adapter registered by name (DashScope and Volcengine Speech TTS/STT).
 TTS_PROVIDERS: dict[str, VoiceProviderSpec] = {
+    "xiaomi_mimo": VoiceProviderSpec(
+        label="Xiaomi MiMo",
+        default_api_base="https://api.xiaomimimo.com/v1",
+        adapter="mimo_tts",
+        default_model="mimo-v2.5-tts",
+        default_voice="mimo_default",
+    ),
     "volcengine_speech": VoiceProviderSpec(
         label="Volcengine Speech (Doubao)",
         default_api_base="https://openspeech.bytedance.com/api/v3",
