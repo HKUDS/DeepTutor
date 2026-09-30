@@ -346,6 +346,51 @@ def test_llm_cheaperinference_base_url_detection_preserves_openai_binding_compat
     assert resolved.effective_url == "https://api.cheaperinference.com/v1"
 
 
+def test_llm_api_route_binding_uses_default_openai_compatible_endpoint() -> None:
+    catalog = _build_catalog(
+        llm_profile={
+            "id": "llm-p",
+            "name": "API Route",
+            "binding": "api_route",
+            "base_url": "",
+            "api_key": "api-route-key",
+            "api_version": "",
+            "extra_headers": {},
+            "models": [{"id": "llm-m", "name": "GPT", "model": "gpt-5.5"}],
+        }
+    )
+
+    resolved = resolve_llm_runtime_config(catalog=catalog)
+
+    assert resolved.provider_name == "api_route"
+    assert resolved.provider_mode == "gateway"
+    assert resolved.binding == "api_route"
+    assert resolved.model == "gpt-5.5"
+    assert resolved.api_key == "api-route-key"
+    assert resolved.effective_url == "https://global.api-route.com/v1"
+
+
+def test_llm_api_route_base_url_detection_preserves_openai_binding_compatibility() -> None:
+    catalog = _build_catalog(
+        llm_profile={
+            "id": "llm-p",
+            "name": "OpenAI Compatible",
+            "binding": "openai",
+            "base_url": "https://global.api-route.com/v1",
+            "api_key": "api-route-key",
+            "api_version": "",
+            "extra_headers": {},
+            "models": [{"id": "llm-m", "name": "GPT", "model": "gpt-5.5"}],
+        }
+    )
+
+    resolved = resolve_llm_runtime_config(catalog=catalog)
+
+    assert resolved.provider_name == "api_route"
+    assert resolved.provider_mode == "gateway"
+    assert resolved.effective_url == "https://global.api-route.com/v1"
+
+
 def test_llm_novita_binding_uses_default_openai_compatible_endpoint() -> None:
     catalog = _build_catalog(
         llm_profile={

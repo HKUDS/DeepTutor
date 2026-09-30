@@ -683,6 +683,13 @@ def test_llm_provider_choices_include_cheaperinference() -> None:
     assert llm["cheaperinference"]["base_url"] == "https://api.cheaperinference.com/v1"
 
 
+def test_llm_provider_choices_include_api_route() -> None:
+    llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
+
+    assert llm["api_route"]["label"] == "API Route"
+    assert llm["api_route"]["base_url"] == "https://global.api-route.com/v1"
+
+
 def test_llm_provider_choices_include_novita() -> None:
     llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
 

@@ -156,6 +156,7 @@ PROVIDER_ALIASES = {
     "orca_router": "orcarouter",
     "orca-router": "orcarouter",
     "cheaper_inference": "cheaperinference",
+    "api route": "api_route",
 }
 
 
@@ -308,6 +309,16 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         is_gateway=True,
         detect_by_base_keyword="cheaperinference",
         default_api_base="https://api.cheaperinference.com/v1",
+    ),
+    ProviderSpec(
+        name="api_route",
+        keywords=("api_route", "api-route", "api route"),
+        env_key="API_ROUTE_API_KEY",
+        display_name="API Route",
+        backend="openai_compat",
+        is_gateway=True,
+        detect_by_base_keyword="api-route.com",
+        default_api_base="https://global.api-route.com/v1",
     ),
     ProviderSpec(
         name="volcengine",

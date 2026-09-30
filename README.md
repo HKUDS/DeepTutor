@@ -570,6 +570,8 @@ and their subdomains; `blocked_domains` always takes precedence.
 
 Project-root `.env` is **not** read as an application config file. For a minimal model setup, save a Base URL and API key in **Settings → Providers**, then add and select an LLM in **Language models**. Add an embedding profile only if you plan to use Knowledge Base / RAG features.
 
+For API Route, select **API Route** in **Settings → Providers** and enter an API Route key. The preset uses `https://global.api-route.com/v1`; then add a model using its API Route model ID in **Language models**. See the [API Route quickstart](https://www.api-route.com/docs/quickstart) for key and model setup.
+
 LLM and task-model profiles expose an **API format** setting when their provider
 supports a choice. Keep `Auto` for normal routing and fallback, or choose
 `OpenAI Chat Completions`, `OpenAI Responses`, or `Anthropic Messages`; forced

@@ -558,6 +558,7 @@ def test_registered_cloud_openai_compat_providers_enable_native_tools() -> None:
         "atlascloud",
         "unifically",
         "cheaperinference",
+        "api_route",
         "edenai",
         "novita",
         "volcengine_coding_plan",
