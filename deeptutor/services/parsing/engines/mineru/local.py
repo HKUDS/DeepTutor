@@ -4,6 +4,8 @@
 import argparse
 from collections import deque
 from collections.abc import Callable
+from dataclasses import dataclass
+from enum import StrEnum
 import os
 from pathlib import Path
 import shutil
@@ -17,6 +19,57 @@ from .formats import MINERU_SUPPORTED_FORMATS
 # progress that universal-newline decoding turns into many lines per second;
 # without a floor the trace panel gets flooded during model downloads.
 _ON_OUTPUT_MIN_INTERVAL = 0.5
+
+#: Upper bound on the failure excerpt carried back to callers: long enough for
+#: a useful stderr tail, short enough to fit inside an error message.
+_FAILURE_DETAIL_MAX_CHARS = 400
+
+
+def _bounded_detail(text: str) -> str:
+    """One failure excerpt, trimmed to ``_FAILURE_DETAIL_MAX_CHARS``."""
+    clean = str(text or "").strip()
+    if len(clean) <= _FAILURE_DETAIL_MAX_CHARS:
+        return clean
+    return clean[:_FAILURE_DETAIL_MAX_CHARS].rstrip() + "…"
+
+
+class LocalParseReason(StrEnum):
+    """Why a local MinerU parse failed.
+
+    The values mirror ``readiness.py``'s pre-flight reasons (``cli_missing``,
+    ``models_missing``) so the two failure vocabularies stay aligned.
+    """
+
+    CLI_MISSING = "cli_missing"
+    INPUT_MISSING = "input_missing"
+    UNSUPPORTED_INPUT = "unsupported_input"
+    LEGACY_CLI_INPUT = "legacy_cli_input"
+    NONZERO_EXIT = "nonzero_exit"
+    NO_ARTIFACTS = "no_artifacts"
+    EXCEPTION = "exception"
+
+
+@dataclass(frozen=True, slots=True)
+class LocalParseResult:
+    """Outcome of one local MinerU parse.
+
+    ``detail`` is a bounded, user-safe excerpt (stderr tail or exception
+    text), never the whole process log.
+    """
+
+    ok: bool
+    reason: LocalParseReason | None = None
+    detail: str = ""
+
+    @classmethod
+    def success(cls) -> "LocalParseResult":
+        """A parse that wrote its artifacts."""
+        return cls(ok=True)
+
+    @classmethod
+    def failure(cls, reason: LocalParseReason, detail: str = "") -> "LocalParseResult":
+        """A failed parse, with the reason and its bounded excerpt."""
+        return cls(ok=False, reason=reason, detail=_bounded_detail(detail))
 
 
 def check_mineru_installed():
@@ -53,15 +106,18 @@ def check_mineru_installed():
     return None
 
 
-def parse_document_with_mineru(
+def parse_document_with_mineru_result(
     source_path: str,
     output_base_dir: str | None = None,
     on_output: Callable[[str], None] | None = None,
     cli_command: str | None = None,
     extra_env: dict[str, str] | None = None,
-):
-    """
-    Parse a supported document or image using MinerU.
+) -> LocalParseResult:
+    """Parse with MinerU and report *why* a failure happened.
+
+    Same inputs as :func:`parse_document_with_mineru`, but the outcome carries
+    a :class:`LocalParseReason` and a bounded ``detail`` (stderr tail or
+    exception text) instead of a bare ``False``.
 
     Args:
         source_path: Path to a PDF, image, DOCX, PPTX, or XLSX file
@@ -77,7 +133,7 @@ def parse_document_with_mineru(
             download honors the configured source and mirror).
 
     Returns:
-        bool: Whether parsing was successful
+        LocalParseResult: Whether parsing succeeded, and why it failed.
     """
     if cli_command:
         mineru_cmd = cli_command
@@ -91,23 +147,32 @@ def parse_document_with_mineru(
             print("or")
             print("  pip install mineru")
             print("or visit: https://github.com/opendatalab/MinerU")
-            return False
+            return LocalParseResult.failure(
+                LocalParseReason.CLI_MISSING,
+                "neither `mineru` nor `magic-pdf` was found on PATH",
+            )
         print(f"✓ Detected MinerU command: {mineru_cmd}")
 
     source_file = Path(source_path).resolve()
     if not source_file.exists():
         print(f"✗ Error: Input file does not exist: {source_file}")
-        return False
+        return LocalParseResult.failure(LocalParseReason.INPUT_MISSING, str(source_file))
 
     suffix = source_file.suffix.lower()
     if suffix not in MINERU_SUPPORTED_FORMATS:
         print(f"✗ Error: Unsupported MinerU input format: {source_file}")
-        return False
+        return LocalParseResult.failure(
+            LocalParseReason.UNSUPPORTED_INPUT,
+            suffix or "(no file extension)",
+        )
 
     if Path(mineru_cmd).name == "magic-pdf" and suffix != ".pdf":
         print("✗ Error: The legacy magic-pdf CLI only accepts PDF files.")
         print("Install the current CLI with `pip install mineru` for images and Office files.")
-        return False
+        return LocalParseResult.failure(
+            LocalParseReason.LEGACY_CLI_INPUT,
+            f"magic-pdf cannot parse {suffix or '(no file extension)'}",
+        )
 
     # Project root is 3 levels up from deeptutor/tools/question/
     project_root = Path(__file__).parent.parent.parent.parent
@@ -177,7 +242,10 @@ def parse_document_with_mineru(
             print("\n".join(tail))
             if temp_output.exists():
                 shutil.rmtree(temp_output)
-            return False
+            return LocalParseResult.failure(
+                LocalParseReason.NONZERO_EXIT,
+                f"exit code {returncode}\n" + "\n".join(tail),
+            )
 
         print("✓ MinerU parsing completed!")
 
@@ -187,7 +255,10 @@ def parse_document_with_mineru(
             print("⚠️ Warning: No generated files found in temp directory")
             if temp_output.exists():
                 shutil.rmtree(temp_output)
-            return False
+            return LocalParseResult.failure(
+                LocalParseReason.NO_ARTIFACTS,
+                f"no files were produced in {temp_output}",
+            )
 
         source_folder = generated_folders[0] if generated_folders[0].is_dir() else temp_output
 
@@ -221,14 +292,42 @@ def parse_document_with_mineru(
                 rel_path = item.relative_to(output_dir)
                 print(f"  - {rel_path}")
 
-        return True
+        return LocalParseResult.success()
 
     except Exception as e:
         print(f"✗ Error occurred during parsing: {e!s}")
         import traceback
 
         traceback.print_exc()
-        return False
+        return LocalParseResult.failure(
+            LocalParseReason.EXCEPTION,
+            f"{type(e).__name__}: {e}",
+        )
+
+
+def parse_document_with_mineru(
+    source_path: str,
+    output_base_dir: str | None = None,
+    on_output: Callable[[str], None] | None = None,
+    cli_command: str | None = None,
+    extra_env: dict[str, str] | None = None,
+) -> bool:
+    """Parse a supported document or image using MinerU.
+
+    Retained bool contract for existing callers; see
+    :func:`parse_document_with_mineru_result` when the failure reason and its
+    bounded diagnostic excerpt matter.
+
+    Returns:
+        bool: Whether parsing was successful
+    """
+    return parse_document_with_mineru_result(
+        source_path,
+        output_base_dir,
+        on_output=on_output,
+        cli_command=cli_command,
+        extra_env=extra_env,
+    ).ok
 
 
 def parse_pdf_with_mineru(

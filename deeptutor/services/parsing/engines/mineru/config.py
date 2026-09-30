@@ -25,6 +25,15 @@ class MinerUError(RuntimeError):
     misconfiguration). Carries a user-facing message; the capability layer
     surfaces it as a stream error."""
 
+    def __init__(self, message: str, *, code: str | None = None, detail: str = "") -> None:
+        super().__init__(message)
+        #: Machine-readable reason when one is known (``LocalParseReason``
+        #: values for local failures); ``None`` when the error is raised
+        #: without a classification.
+        self.code = code
+        #: Bounded diagnostic excerpt backing the message; ``""`` when none.
+        self.detail = detail
+
 
 @dataclass(frozen=True)
 class MinerUConfig:
