@@ -1569,6 +1569,7 @@ class LlamaIndexConfigUpdate(BaseModel):
     chunk_size: int | None = None
     chunk_overlap: int | None = None
     image_description_concurrency: int | None = None
+    image_description_batch_size: int | None = None
     image_description_timeout_seconds: int | None = None
 
 

@@ -5270,6 +5270,17 @@
             ],
             "title": "Hnsw M"
           },
+          "image_description_batch_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Description Batch Size"
+          },
           "image_description_concurrency": {
             "anyOf": [
               {

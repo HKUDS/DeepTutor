@@ -329,6 +329,7 @@ DEFAULT_LLAMAINDEX_SETTINGS: dict[str, Any] = {
     "chunk_size": 512,
     "chunk_overlap": 50,
     "image_description_concurrency": 4,
+    "image_description_batch_size": 1,
     "image_description_timeout_seconds": 60,
 }
 
@@ -1010,6 +1011,9 @@ class RuntimeSettingsService:
             "chunk_overlap": chunk_overlap,
             "image_description_concurrency": _coerce_clamped_int(
                 settings.get("image_description_concurrency"), 4, 1, 16
+            ),
+            "image_description_batch_size": _coerce_clamped_int(
+                settings.get("image_description_batch_size"), 1, 1, 8
             ),
             "image_description_timeout_seconds": _coerce_clamped_int(
                 settings.get("image_description_timeout_seconds"), 60, 5, 600

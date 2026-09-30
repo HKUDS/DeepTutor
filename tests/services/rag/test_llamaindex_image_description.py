@@ -9,10 +9,71 @@ reports progress via ``image_progress_callback``. These tests pin that behavior.
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 import time
 
 import pytest
+
+
+@pytest.mark.asyncio
+async def test_opt_in_batches_preserve_node_alignment_and_progress(tmp_path, monkeypatch):
+    from deeptutor.services.rag.pipelines.llamaindex import document_loader as loader_module
+
+    calls = []
+
+    async def complete(prompt, **kwargs):
+        calls.append(kwargs)
+        if "image_filename" in kwargs:
+            return "last image"
+        return json.dumps(
+            {
+                "captions": [
+                    {"image_id": "IMAGE_1", "caption": "second image"},
+                    {"image_id": "IMAGE_0", "caption": "first image"},
+                ]
+            }
+        )
+
+    _install_multimodal_clients(monkeypatch, complete_fn=complete)
+    monkeypatch.setattr(loader_module, "image_description_batch_size", lambda: 2)
+    paths = _make_images(tmp_path, ["a.png", "b.png", "c.png"])
+    progress = []
+    docs = await loader_module.LlamaIndexDocumentLoader().load(
+        [str(p) for p in paths],
+        image_progress_callback=lambda n, total: progress.append((n, total)),
+    )
+    assert len(calls) == 2
+    assert [d.metadata["file_name"] for d in docs] == ["a.png", "b.png", "c.png"]
+    assert [d.metadata["image_description"] for d in docs] == [
+        "first image",
+        "second image",
+        "last image",
+    ]
+    assert progress == [(1, 3), (2, 3), (3, 3)]
+
+
+@pytest.mark.asyncio
+async def test_opt_in_auth_failure_stops_waiting_groups(tmp_path, monkeypatch):
+    from deeptutor.services.llm.exceptions import LLMAuthenticationError
+    from deeptutor.services.rag.pipelines.llamaindex import document_loader as loader_module
+
+    calls = []
+
+    async def complete(prompt, **kwargs):
+        calls.append(kwargs)
+        raise LLMAuthenticationError()
+
+    _install_multimodal_clients(monkeypatch, complete_fn=complete, limits=(1, 2.0))
+    monkeypatch.setattr(loader_module, "image_description_batch_size", lambda: 2)
+    paths = _make_images(tmp_path, [f"{i}.png" for i in range(6)])
+    progress = []
+    docs = await loader_module.LlamaIndexDocumentLoader().load(
+        [str(p) for p in paths], image_progress_callback=lambda n, total: progress.append(n)
+    )
+    assert docs == []
+    assert len(calls) == 1
+    assert progress == list(range(1, 7))
 
 
 def _make_images(tmp_path: Path, names: list[str]) -> list[Path]:
@@ -151,3 +212,65 @@ async def test_image_description_skips_failed_and_empty(tmp_path, monkeypatch):
 
     # Only the two "ok" images survive; order preserved.
     assert [d.metadata["file_name"] for d in docs] == ["ok0.png", "ok1.png"]
+
+
+@pytest.mark.asyncio
+async def test_batches_bound_concurrency_and_finish_progress(tmp_path, monkeypatch):
+    from deeptutor.services.rag.pipelines.llamaindex import document_loader as loader_module
+
+    inflight = 0
+    peak = 0
+
+    async def complete(prompt, **kwargs):
+        nonlocal inflight, peak
+        inflight += 1
+        peak = max(peak, inflight)
+        await asyncio.sleep(0.03)
+        inflight -= 1
+        return json.dumps(
+            {
+                "captions": [
+                    {"image_id": "IMAGE_0", "caption": "first"},
+                    {"image_id": "IMAGE_1", "caption": "second"},
+                ]
+            }
+        )
+
+    _install_multimodal_clients(monkeypatch, complete_fn=complete, limits=(2, 2.0))
+    monkeypatch.setattr(loader_module, "image_description_batch_size", lambda: 2)
+    paths = _make_images(tmp_path, [f"{i}.png" for i in range(6)])
+    progress = []
+    docs = await loader_module.LlamaIndexDocumentLoader().load(
+        [str(p) for p in paths],
+        image_progress_callback=lambda n, total: progress.append((n, total)),
+    )
+    assert peak == 2
+    assert [d.metadata["file_name"] for d in docs] == [p.name for p in paths]
+    assert progress == [(i, 6) for i in range(1, 7)]
+
+
+@pytest.mark.asyncio
+async def test_batch_deadline_covers_split_fallback(tmp_path, monkeypatch):
+    from deeptutor.services.rag.pipelines.llamaindex import document_loader as loader_module
+
+    calls = []
+
+    async def complete(prompt, **kwargs):
+        calls.append(kwargs)
+        if "image_filename" in kwargs:
+            await asyncio.sleep(1.0)
+            return "late"
+        return "malformed response"
+
+    _install_multimodal_clients(monkeypatch, complete_fn=complete, limits=(1, 0.1))
+    monkeypatch.setattr(loader_module, "image_description_batch_size", lambda: 2)
+    paths = _make_images(tmp_path, ["a.png", "b.png"])
+    progress = []
+    start = time.monotonic()
+    docs = await loader_module.LlamaIndexDocumentLoader().load(
+        [str(p) for p in paths], image_progress_callback=lambda n, total: progress.append(n)
+    )
+    assert docs == []
+    assert len(calls) == 2  # canceled first single fallback; second is never sent
+    assert time.monotonic() - start < 0.8
+    assert progress == [1, 2]

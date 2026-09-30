@@ -12661,6 +12661,8 @@ export interface components {
       readonly hnsw_ef_search?: number | null;
       /** Hnsw M */
       readonly hnsw_m?: number | null;
+      /** Image Description Batch Size */
+      readonly image_description_batch_size?: number | null;
       /** Image Description Concurrency */
       readonly image_description_concurrency?: number | null;
       /** Image Description Timeout Seconds */
