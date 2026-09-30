@@ -26,3 +26,18 @@ source image assets. Images that are only vector drawing commands, or pages
 that require OCR when no usable OCR engine is configured, may be absent.
 Other RAG providers do not yet index this visual manifest. Interactive
 exercises, visual annotations, and mastery updates are separate future work.
+
+
+## Token estimates for image requests
+
+When the provider returns usage, DeepTutor uses those reported counters. When
+usage is absent, the conversation statistics are marked as estimates. The
+fallback counts serialized text at roughly 3.5 characters per token and adds
+1,024 tokens per structured image block. It excludes image URLs and Base64
+payloads from the text estimate, so the encoded file size does not inflate the
+counter into millions of tokens.
+
+The image allowance is a rough placeholder, independent of resolution, detail,
+model and provider; it is not a billing calculation. Each model call in a turn
+still counts its own input, including any replayed images. Existing stored
+estimates are not rewritten by this change, and conversation content is kept.
