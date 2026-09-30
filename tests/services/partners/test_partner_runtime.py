@@ -43,6 +43,42 @@ def _muted_progress_config() -> PartnerConfig:
 
 class TestTurnExecution:
     @pytest.mark.asyncio
+    async def test_feishu_turn_announces_thinking_before_any_output(
+        self, partners_root, fake_orchestrator
+    ):
+        """Reasoning never reaches a channel, so the reader gets a placeholder."""
+        fake_orchestrator.script = finish("done")
+        runner = _runner(partners_root, PartnerConfig(name="Ada", language="zh"))
+
+        await runner.process_message(_msg(channel="feishu"))
+
+        notice = await runner.bus.outbound.get()
+        assert notice.content == "🤔 正在思考…"
+        assert notice.metadata["_thinking_notice"] is True
+        assert notice.metadata["_progress"] is True
+
+    @pytest.mark.asyncio
+    async def test_web_turn_never_announces_thinking(self, partners_root, fake_orchestrator):
+        fake_orchestrator.script = finish("done")
+        runner = _runner(partners_root, PartnerConfig(name="Ada", language="zh"))
+
+        await runner.process_message(_msg(channel="web"))
+
+        assert runner.bus.outbound.empty()
+
+    @pytest.mark.asyncio
+    async def test_muted_progress_suppresses_the_thinking_notice(
+        self, partners_root, fake_orchestrator
+    ):
+        fake_orchestrator.script = finish("done")
+        config = PartnerConfig(name="Ada", channels={"feishu": {"sendProgress": False}})
+        runner = _runner(partners_root, config)
+
+        await runner.process_message(_msg(channel="feishu"))
+
+        assert runner.bus.outbound.empty()
+
+    @pytest.mark.asyncio
     async def test_model_history_and_request_header_survive_partner_turns(
         self, partners_root, fake_orchestrator, monkeypatch
     ):
