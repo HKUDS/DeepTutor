@@ -319,6 +319,13 @@ class VoiceProviderSpec:
 # Voice providers either use the shared OpenAI-compatible adapter or a native
 # protocol adapter registered by name (DashScope and Volcengine Speech TTS/STT).
 TTS_PROVIDERS: dict[str, VoiceProviderSpec] = {
+    "minimax": VoiceProviderSpec(
+        label="MiniMax",
+        default_api_base="https://api.minimax.io/v1",
+        adapter="minimax",
+        default_model="speech-2.8-hd",
+        default_voice="English_expressive_narrator",
+    ),
     "volcengine_speech": VoiceProviderSpec(
         label="Volcengine Speech (Doubao)",
         default_api_base="https://openspeech.bytedance.com/api/v3",

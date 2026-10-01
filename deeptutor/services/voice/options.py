@@ -41,6 +41,27 @@ def preset(model: str, *, voices=None, languages=None, formats=None, **kwargs) -
 
 
 def _tts_models(provider: str) -> tuple[list[dict], str]:
+    if provider == "minimax":
+        return [
+            preset(
+                model,
+                voices=choices(["English_expressive_narrator"]),
+                languages=choices(["auto", "Chinese", "English"]),
+                formats=["mp3", "wav", "flac", "pcm"],
+                sample_rates=[8000, 16000, 22050, 24000, 32000, 44100],
+                speed={"min": 0.5, "max": 2, "step": 0.05},
+            )
+            for model in [
+                "speech-2.8-hd",
+                "speech-2.8-turbo",
+                "speech-2.6-hd",
+                "speech-2.6-turbo",
+                "speech-02-hd",
+                "speech-02-turbo",
+                "speech-01-hd",
+                "speech-01-turbo",
+            ]
+        ], "https://platform.minimax.io/docs/api-reference/speech-t2a-http"
     openai = [
         preset(
             "gpt-4o-mini-tts",
@@ -188,7 +209,9 @@ def voice_options(provider: str, service: str) -> dict:
             formats=OPENAI_FORMATS,
             language_note="Language follows the text and selected voice.",
         )
-        if provider == "volcengine_speech":
+        if provider == "minimax":
+            fallback = {**deepcopy(models[0]), "id": "", "voices": []}
+        elif provider == "volcengine_speech":
             fallback = {**deepcopy(models[0]), "id": "", "voices": [], "instructions": False}
         elif provider == "dashscope":
             fallback = {**deepcopy(models[0]), "id": "", "voices": [], "instructions": False}
