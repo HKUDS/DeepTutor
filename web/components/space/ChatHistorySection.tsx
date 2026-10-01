@@ -2,7 +2,7 @@
 
 import { navigateTask } from "@/lib/workspace-scope";
 import { sessionWorkspaceId } from "@/lib/session-api";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   History,
@@ -30,9 +30,11 @@ import { notifySessionsChanged } from "@/lib/session-events";
 import {
   deleteSession,
   listAllSessions,
+  searchAllSessions,
   updateSessionTitle,
   updateSessionOrganization,
   type SessionOrganizationPatch,
+  type SessionSearchResult,
   type SessionSummary,
 } from "@/lib/session-api";
 
@@ -67,6 +69,10 @@ export default function ChatHistorySection({
   const [loading, setLoading] = useState(true);
   const [restoringId, setRestoringId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SessionSearchResult[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchVersion, setSearchVersion] = useState(0);
+  const searchGenerationRef = useRef(0);
   const [courseFilter] = useState("all");
   const [kindFilter, setKindFilter] = useState("all");
   const [archiveFilter, setArchiveFilter] = useState("active");
@@ -95,13 +101,58 @@ export default function ChatHistorySection({
     }
   }, []);
 
+  const reload = useCallback(
+    async (force = false, quiet = false) => {
+      await load(force, quiet);
+      setSearchVersion((version) => version + 1);
+    },
+    [load],
+  );
+
   useEffect(() => {
     void load(true);
   }, [load]);
 
+  useEffect(() => {
+    const generation = ++searchGenerationRef.current;
+    const term = query.trim();
+    if (!term) {
+      setSearchResults([]);
+      setSearchLoading(false);
+      return;
+    }
+
+    setSearchResults([]);
+    setSearchLoading(true);
+    let controller: AbortController | null = null;
+    const timer = window.setTimeout(() => {
+      controller = new AbortController();
+      searchAllSessions(term, controller.signal, { allWorkspaces: true })
+        .then((results) => {
+          if (generation !== searchGenerationRef.current) return;
+          setSearchResults(results);
+        })
+        .catch((error: unknown) => {
+          if (error instanceof DOMException && error.name === "AbortError")
+            return;
+          if (generation !== searchGenerationRef.current) return;
+          setSearchResults([]);
+        })
+        .finally(() => {
+          if (generation === searchGenerationRef.current)
+            setSearchLoading(false);
+        });
+    }, 300);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller?.abort();
+    };
+  }, [query, searchVersion]);
+
   const filteredSessions = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    return sessions.filter((session) => {
+    const source = query.trim() ? searchResults : sessions;
+    return source.filter((session) => {
       const prefs = session.preferences ?? {};
       if (archiveFilter === "active" && prefs.archived) return false;
       if (archiveFilter === "archived" && !prefs.archived) return false;
@@ -119,40 +170,54 @@ export default function ChatHistorySection({
         prefs.session_kind !== "selection_tutor"
       )
         return false;
-      if (!needle) return true;
-      return [session.title, session.last_message]
-        .filter(Boolean)
-        .some((value) => value.toLowerCase().includes(needle));
+      return true;
     });
-  }, [archiveFilter, courseFilter, kindFilter, query, sessions]);
+  }, [archiveFilter, courseFilter, kindFilter, query, searchResults, sessions]);
 
   const handleSelect = useCallback(
     (sessionId: string) => {
       setActiveSessionId(sessionId);
-      const session = sessions.find((item) => item.session_id === sessionId);
+      const session = filteredSessions.find(
+        (item) => item.session_id === sessionId,
+      );
       navigateTask(session ? sessionRoute(session) : `${basePath}/${sessionId}`, router.push);
     },
-    [basePath, router, sessions, setActiveSessionId],
+    [basePath, filteredSessions, router, setActiveSessionId],
   );
 
   const handleRename = useCallback(
     async (sessionId: string, title: string) => {
-      await updateSessionTitle(sessionId, title, sessionWorkspaceId(sessions.find(item => item.session_id === sessionId)));
-      await load(true);
+      await updateSessionTitle(
+        sessionId,
+        title,
+        sessionWorkspaceId(
+          filteredSessions.find((item) => item.session_id === sessionId),
+        ),
+      );
+      await reload(true);
     },
-    [load, sessions],
+    [filteredSessions, reload],
   );
 
   const handleDelete = useCallback(
     async (sessionId: string) => {
       if (!window.confirm(t("Permanently delete this chat and its tutor threads? This cannot be undone."))) return;
-      await deleteSession(sessionId, sessionWorkspaceId(sessions.find(item => item.session_id === sessionId)));
+      await deleteSession(
+        sessionId,
+        sessionWorkspaceId(
+          filteredSessions.find((item) => item.session_id === sessionId),
+        ),
+      );
       if (activeSessionId === sessionId) setActiveSessionId(null);
       setSessions((prev) =>
         prev.filter((session) => session.session_id !== sessionId),
       );
+      setSearchResults((prev) =>
+        prev.filter((session) => session.session_id !== sessionId),
+      );
+      setSearchVersion((version) => version + 1);
     },
-    [activeSessionId, setActiveSessionId, t, sessions],
+    [activeSessionId, filteredSessions, setActiveSessionId, t],
   );
 
   // The archived view is built from the same filtered set as the list, so the
@@ -174,24 +239,30 @@ export default function ChatHistorySection({
         await updateSessionOrganization(sessionId, { archived: false });
         // Restoring cascades to the tutor threads under the conversation, so
         // the server's own list is what says which rows are left.
-        await load(true, true);
+        await reload(true, true);
         notifySessionsChanged();
       } finally {
         setRestoringId(null);
       }
     },
-    [load, sessions],
+    [reload],
   );
 
   const handleOrganize = useCallback(
     async (sessionId: string, patch: SessionOrganizationPatch) => {
-      await updateSessionOrganization(sessionId, patch, sessionWorkspaceId(sessions.find(item => item.session_id === sessionId)));
-      await load(true);
+      await updateSessionOrganization(
+        sessionId,
+        patch,
+        sessionWorkspaceId(
+          filteredSessions.find((item) => item.session_id === sessionId),
+        ),
+      );
+      await reload(true);
       // Archiving or restoring here changes what the sidebar beside this page
       // is allowed to show, and that list was fetched when the shell mounted.
       notifySessionsChanged();
     },
-    [load, sessions],
+    [filteredSessions, reload],
   );
 
   const HeaderIcon = icon ?? History;
@@ -216,11 +287,11 @@ export default function ChatHistorySection({
         action={
           <button
             type="button"
-            onClick={() => void load(true)}
-            disabled={loading}
+            onClick={() => void reload(true)}
+            disabled={loading || searchLoading}
             className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)]/50 px-3 py-1.5 text-[12px] font-medium text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)] disabled:opacity-40"
           >
-            {loading ? (
+            {loading || searchLoading ? (
               <Loader2 className="h-3 w-3 animate-spin" />
             ) : (
               <RefreshCw className="h-3 w-3" />
@@ -237,6 +308,7 @@ export default function ChatHistorySection({
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
+              maxLength={200}
               placeholder={t("Search chat history...")}
               className="min-w-0 flex-1 bg-transparent text-[13px] text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]/55"
             />
@@ -275,7 +347,7 @@ export default function ChatHistorySection({
         </div>
 
         <div className="px-3 py-3">
-          {loading ? (
+          {loading || searchLoading ? (
             <div className="space-y-2 p-2">
               {[0, 1, 2, 3].map((item) => (
                 <div
