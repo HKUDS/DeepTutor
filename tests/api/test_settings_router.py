@@ -683,6 +683,13 @@ def test_llm_provider_choices_include_cheaperinference() -> None:
     assert llm["cheaperinference"]["base_url"] == "https://api.cheaperinference.com/v1"
 
 
+def test_llm_provider_choices_include_futureinfra() -> None:
+    llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
+
+    assert llm["futureinfra"]["label"] == "FutureInfra"
+    assert llm["futureinfra"]["base_url"] == "https://futureinfra.ai/v1/ai"
+
+
 def test_llm_provider_choices_include_novita() -> None:
     llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
 
