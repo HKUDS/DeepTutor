@@ -1267,6 +1267,27 @@
       "docs_url": "https://reference.wolfram.com/language/"
     },
     {
+      "id": "you-com",
+      "display_name": "You.com",
+      "category": "search",
+      "tier": "curated",
+      "transport": "streamableHttp",
+      "description": {
+        "en": "Live web search for current facts and sources through You.com's hosted server.",
+        "zh": "通过 You.com 托管服务进行实时联网搜索，获取最新事实与来源。"
+      },
+      "requires": {
+        "en": "No account or API key — the free profile works out of the box.",
+        "zh": "无需账号或 API 密钥：免费 profile 开箱即用。"
+      },
+      "server": {
+        "url": "https://api.you.com/mcp?profile=free",
+        "tool_timeout": 45
+      },
+      "homepage": "https://you.com",
+      "docs_url": "https://you.com/docs/welcome"
+    },
+    {
       "id": "zapier",
       "display_name": "Zapier",
       "category": "business",
