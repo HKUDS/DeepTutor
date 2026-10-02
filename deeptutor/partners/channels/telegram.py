@@ -10,7 +10,7 @@ from typing import Any, Literal
 import unicodedata
 
 from loguru import logger
-from pydantic import Field
+from pydantic import Field, model_validator
 from telegram import BotCommand, ReplyParameters, Update
 from telegram.error import BadRequest, TimedOut
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
@@ -19,7 +19,7 @@ from telegram.request import HTTPXRequest
 from deeptutor.partners.bus.events import OutboundMessage
 from deeptutor.partners.bus.queue import MessageBus
 from deeptutor.partners.channels.base import BaseChannel
-from deeptutor.partners.config.schema import DeliveryOverrides, StreamingSupport
+from deeptutor.partners.config.schema import Base, DeliveryOverrides, StreamingSupport
 from deeptutor.partners.helpers import (
     is_markdown_table_separator_row,
     split_markdown_table_row,
@@ -46,6 +46,28 @@ class _StreamBuf:
     message_id: int | None = None
     last_edit: float = 0.0
     stream_id: str | None = None
+
+
+class TelegramChatPolicy(Base):
+    """Per-chat inbound response policy."""
+
+    chat_id: int = Field(description="Telegram chat id this rule applies to.")
+    policy: Literal["open", "mention", "topics_only"] = Field(
+        description=(
+            "open responds to every message; mention requires an explicit mention or bot reply; "
+            "topics_only responds without a mention only in allowed_topics."
+        )
+    )
+    allowed_topics: list[int] = Field(
+        default_factory=list,
+        description="Telegram message_thread_id values that may receive automatic replies.",
+    )
+
+    @model_validator(mode="after")
+    def _require_allowed_topics(self) -> "TelegramChatPolicy":
+        if self.policy == "topics_only" and not self.allowed_topics:
+            raise ValueError("topics_only policy requires at least one allowed topic")
+        return self
 
 
 def _strip_md_block(text: str) -> str:
@@ -201,6 +223,10 @@ class TelegramConfig(DeliveryOverrides, StreamingSupport):
     proxy: str | None = None
     reply_to_message: bool = False
     group_policy: Literal["open", "mention"] = "mention"
+    chat_policies: list[TelegramChatPolicy] = Field(
+        default_factory=list,
+        description="Per-chat overrides; the first matching chat_id wins.",
+    )
     # Outbound API connection pool; long-polling uses its own small pool so
     # getUpdates never starves sends.
     connection_pool_size: int = 16
@@ -746,6 +772,12 @@ class TelegramChannel(BaseChannel):
             return None
         return f"telegram:{message.chat_id}:topic:{message_thread_id}"
 
+    def _matching_chat_policy(self, chat_id: int) -> TelegramChatPolicy | None:
+        for rule in self.config.chat_policies:
+            if rule.chat_id == chat_id:
+                return rule
+        return None
+
     @staticmethod
     def _build_message_metadata(message, user) -> dict:
         """Build common Telegram inbound metadata payload."""
@@ -865,7 +897,17 @@ class TelegramChannel(BaseChannel):
 
     async def _is_group_message_for_bot(self, message) -> bool:
         """Allow group messages when policy is open, @mentioned, or replying to the bot."""
-        if message.chat.type == "private" or self.config.group_policy == "open":
+        if message.chat.type == "private":
+            return True
+
+        chat_policy = self._matching_chat_policy(message.chat_id)
+        policy = chat_policy.policy if chat_policy is not None else self.config.group_policy
+        if policy == "open":
+            return True
+        if (
+            policy == "topics_only"
+            and getattr(message, "message_thread_id", None) in chat_policy.allowed_topics
+        ):
             return True
 
         bot_id, bot_username = await self._ensure_bot_identity()
