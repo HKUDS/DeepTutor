@@ -65,6 +65,8 @@ export interface OutlineRow {
   title: string;
   level: number;
   synthesised: boolean;
+  source_href?: string;
+  source_anchor?: string;
 }
 
 export interface MaterialDetail extends MaterialInfo {

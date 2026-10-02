@@ -111,6 +111,40 @@ it("opens EPUB in single-page mode and keeps the CFI when switching spreads", as
     .toMatchObject({ spreadMode: "auto" });
 });
 
+it("resolves outline anchors through epub.js spine-relative hrefs", async () => {
+  const props = {
+    materialId: "book",
+    unitCount: 1,
+    unitRefs: [],
+    annotations: [],
+    jump: null,
+    onSelection: () => undefined,
+  };
+  const { rerender } = render(<EpubDocumentView {...props} />);
+  await waitFor(() => expect(fixture.renderTo).toHaveBeenCalled());
+
+  rerender(
+    <EpubDocumentView
+      {...props}
+      headingJump={{
+        id: "publisher-anchor",
+        nonce: 1,
+        locator: 1,
+        sourceHref: "OEBPS/one.xhtml",
+      }}
+    />,
+  );
+
+  await waitFor(() =>
+    expect(fixture.rendition.display).toHaveBeenCalledWith(
+      "one.xhtml#publisher-anchor",
+    ),
+  );
+  expect(fixture.rendition.display).not.toHaveBeenCalledWith(
+    "OEBPS/one.xhtml#publisher-anchor",
+  );
+});
+
 it("overrides a publisher's explicit paragraph and span ink and font", async () => {
   publisherParagraph = document.createElement("p");
   publisherParagraph.style.cssText =

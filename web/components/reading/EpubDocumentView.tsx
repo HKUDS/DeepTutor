@@ -515,14 +515,14 @@ export function EpubDocumentView({
     const section = bookRef.current.spine.get(
       (headingJump.locator ?? locatorRef.current) - 1,
     );
-    const sourceHref = headingJump.sourceHref || section?.href;
+    const sourceHref = section?.href || headingJump.sourceHref;
     if (!sourceHref) return;
     void renditionRef.current
       .display(`${sourceHref}#${headingJump.id}`)
       .catch(() => {
         // A damaged publisher anchor leaves the reader on the current page.
       });
-  }, [headingJump]);
+  }, [headingJump, loading]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {

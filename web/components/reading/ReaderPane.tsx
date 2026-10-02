@@ -858,6 +858,17 @@ export function ReaderPane({
 
   const showAnnotations = annotationPanel ?? annotations.length > 0;
   const unitWord = material ? t(unitLabel(material.unit)) : "";
+  const isEpub = material?.render_mode === "epub";
+  const currentUnitTitle = isEpub
+    ? material?.unit_refs.find((row) => row.locator === currentLocator)?.title
+    : undefined;
+  const epubProgress = material
+    ? Math.round(
+        material.unit_count > 1
+          ? ((currentLocator - 1) / (material.unit_count - 1)) * 100
+          : 100,
+      )
+    : 0;
   const bookmarkedHere = bookmarks.some(
     (row) => row.locator === currentLocator,
   );
@@ -972,11 +983,22 @@ export function ReaderPane({
                 code, not for a line of UI copy; tabular figures alone stop the
                 number from jittering as the learner scrolls. */}
             <span className="hidden shrink-0 whitespace-nowrap px-1 text-[11.5px] tabular-nums text-[var(--muted-foreground)] md:inline">
-              {t("{{unit}} {{n}} / {{total}}", {
-                unit: unitWord,
-                n: currentLocator,
-                total: material.unit_count,
-              })}
+              {isEpub ? (
+                <>
+                  <span className="max-w-[180px] truncate">
+                    {currentUnitTitle || material.title}
+                  </span>
+                  <span>
+                    {` · ${Math.min(100, Math.max(0, epubProgress))}%`}
+                  </span>
+                </>
+              ) : (
+                t("{{unit}} {{n}} / {{total}}", {
+                  unit: unitWord,
+                  n: currentLocator,
+                  total: material.unit_count,
+                })
+              )}
             </span>
             {onToggleBookmark && (
               <HeaderButton

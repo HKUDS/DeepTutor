@@ -12,7 +12,11 @@ const material = {
   render_mode: "text",
   unit: "section",
   unit_count: 100,
-  unit_refs: [],
+  unit_refs: [
+    { locator: 1, source_href: "chapter-1.xhtml", title: "Opening" },
+    { locator: 5, source_href: "chapter-5.xhtml", title: "Second chapter" },
+    { locator: 20, source_href: "chapter-20.xhtml", title: "Last chapter" },
+  ],
   has_raw_view: false,
   status: "ready",
   source_kind: "upload",
@@ -51,6 +55,18 @@ vi.mock("@/components/reading/TextUnitView", () => ({
   ),
 }));
 
+vi.mock("@/components/reading/EpubDocumentView", () => ({
+  EpubDocumentView: ({
+    onVisibleLocatorChange,
+  }: {
+    onVisibleLocatorChange?: (locator: number) => void;
+  }) => (
+    <button type="button" onClick={() => onVisibleLocatorChange?.(5)}>
+      turn epub to chapter 5
+    </button>
+  ),
+}));
+
 describe("the reading outline", () => {
   it("hears about a page turned in the document, not only a row clicked", async () => {
     const onLocatorChange = vi.fn();
@@ -61,5 +77,17 @@ describe("the reading outline", () => {
     // Without this the workspace's activeLocator stayed wherever the panel
     // last put it, so the outline never left chapter one (#1447).
     expect(onLocatorChange).toHaveBeenCalledWith(5);
+  });
+
+  it("labels an EPUB by its current chapter and progress, not spine page count", async () => {
+    material.render_mode = "epub";
+    material.unit_count = 20;
+    render(<ReaderPane onClose={vi.fn()} />);
+
+    fireEvent.click(await screen.findByText("turn epub to chapter 5"));
+
+    expect(screen.getByText("Second chapter")).toBeInTheDocument();
+    expect(screen.getByText(/21%/)).toBeInTheDocument();
+    expect(screen.queryByText("chapter 5 / 20")).not.toBeInTheDocument();
   });
 });

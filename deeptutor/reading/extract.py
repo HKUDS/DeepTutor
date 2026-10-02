@@ -258,7 +258,14 @@ def _extract_epub(data: bytes, filename: str) -> Extraction:
         for index, unit in enumerate(units, start=1)
     )
     outline = tuple(
-        OutlineEntry(locator=row.locator, title=row.title, level=row.level) for row in navigation
+        OutlineEntry(
+            locator=row.locator,
+            title=row.title,
+            level=row.level,
+            source_href=row.source_href,
+            source_anchor=row.source_anchor,
+        )
+        for row in navigation
     )
     if not outline:
         outline = tuple(
