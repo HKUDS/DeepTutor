@@ -116,6 +116,7 @@ def test_export_is_value_free_and_preserves_safe_configuration(tmp_path) -> None
         "enable_formula": True,
         "enable_table": True,
         "is_ocr": False,
+        "max_pages_per_part": 180,
         "allow_local_model_download": False,
     }
     assert profile["settings"]["document_parsing"]["engines"]["tika"] == {

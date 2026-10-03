@@ -185,6 +185,7 @@ _DEFAULT_MINERU_ENGINE: dict[str, Any] = {
     "enable_formula": True,
     "enable_table": True,
     "is_ocr": False,
+    "max_pages_per_part": 180,
     "allow_local_model_download": False,
 }
 
@@ -1154,6 +1155,9 @@ class RuntimeSettingsService:
             "enable_formula": _coerce_bool(settings.get("enable_formula"), True),
             "enable_table": _coerce_bool(settings.get("enable_table"), True),
             "is_ocr": _coerce_bool(settings.get("is_ocr"), False),
+            "max_pages_per_part": _coerce_clamped_int(
+                settings.get("max_pages_per_part"), 180, 1, 200
+            ),
             "allow_local_model_download": _coerce_bool(
                 settings.get("allow_local_model_download"), False
             ),
