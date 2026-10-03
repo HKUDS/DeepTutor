@@ -297,54 +297,70 @@ def execute(payload: dict[str, Any]) -> dict[str, Any]:
         drain_fd, report_fd = os.pipe()
         preexec_fn = _build_preexec_fn(memory_mb, cpu_seconds, report_fd)
 
-    try:
-        completed = subprocess.run(  # noqa: S602 - shell=True is the contract
-            argv or command,
-            # An argv request is exec'd directly; only the shell-string form gets
-            # a shell. See the "Argv note" in the module docstring.
-            shell=not argv,  # nosec B602 — the runner exists to execute shell commands in-sandbox
-            cwd=workdir,
-            env=env,
-            timeout=timeout_s,
-            capture_output=True,
-            text=True,
-            preexec_fn=preexec_fn,  # POSIX-only; None elsewhere
-            # Keep the report pipe's write end open in the child until exec
-            # (close_fds would otherwise close it before preexec_fn runs).
-            pass_fds=() if report_fd is None else (report_fd,),
-        )
-    except subprocess.TimeoutExpired as exc:
-        # Surface whatever was captured before the kill, head+tail capped.
-        stdout = _decode(exc.stdout)
-        stderr = _decode(exc.stderr)
-        return _with_limit_degradation(
-            {
-                "stdout": _truncate_head_tail(stdout, max_output_chars),
-                "stderr": _truncate_head_tail(stderr, max_output_chars),
-                "exit_code": 124,  # conventional "timed out" exit status
-                "timed_out": True,
-                "error": "",
-            },
-            drain_fd,
-            report_fd,
-        )
-    except (OSError, ValueError) as exc:
-        # Spawn failure (bad cwd, exec error, ...) — a runner-level problem.
-        return _with_limit_degradation(
-            _error_result(f"{type(exc).__name__}: {exc}"), drain_fd, report_fd
-        )
+    # The pipe ends are released by _with_limit_degradation as part of the
+    # drain on every explicit return path below. _drained also nulls the
+    # locals so the finally backstop — which only fires on exits that skip
+    # those returns (cancellation, KeyboardInterrupt, ...) — cannot double-
+    # close a number another thread may already have reused.
+    def _drained(result: dict[str, Any]) -> dict[str, Any]:
+        nonlocal drain_fd, report_fd
+        drained = _with_limit_degradation(result, drain_fd, report_fd)
+        drain_fd = report_fd = None
+        return drained
 
-    return _with_limit_degradation(
-        {
-            "stdout": _truncate_head_tail(completed.stdout or "", max_output_chars),
-            "stderr": _truncate_head_tail(completed.stderr or "", max_output_chars),
-            "exit_code": completed.returncode,
-            "timed_out": False,
-            "error": "",
-        },
-        drain_fd,
-        report_fd,
-    )
+    try:
+        try:
+            completed = subprocess.run(  # noqa: S602 - shell=True is the contract
+                argv or command,
+                # An argv request is exec'd directly; only the shell-string form gets
+                # a shell. See the "Argv note" in the module docstring.
+                shell=not argv,  # nosec B602 — the runner exists to execute shell commands in-sandbox
+                cwd=workdir,
+                env=env,
+                timeout=timeout_s,
+                capture_output=True,
+                text=True,
+                preexec_fn=preexec_fn,  # POSIX-only; None elsewhere
+                # No pass_fds here on purpose: it would clear FD_CLOEXEC on the
+                # report pipe, leaking the write end into the command and any
+                # background process it spawns — the parent would then block on
+                # the drain read until that process exits. CLOEXEC keeps the fd
+                # usable from preexec_fn (it runs post-fork, pre-exec) while the
+                # kernel closes it at execve, so nothing downstream inherits it.
+            )
+        except subprocess.TimeoutExpired as exc:
+            # Surface whatever was captured before the kill, head+tail capped.
+            stdout = _decode(exc.stdout)
+            stderr = _decode(exc.stderr)
+            return _drained(
+                {
+                    "stdout": _truncate_head_tail(stdout, max_output_chars),
+                    "stderr": _truncate_head_tail(stderr, max_output_chars),
+                    "exit_code": 124,  # conventional "timed out" exit status
+                    "timed_out": True,
+                    "error": "",
+                }
+            )
+        except (OSError, ValueError) as exc:
+            # Spawn failure (bad cwd, exec error, ...) — a runner-level problem.
+            return _drained(_error_result(f"{type(exc).__name__}: {exc}"))
+
+        return _drained(
+            {
+                "stdout": _truncate_head_tail(completed.stdout or "", max_output_chars),
+                "stderr": _truncate_head_tail(completed.stderr or "", max_output_chars),
+                "exit_code": completed.returncode,
+                "timed_out": False,
+                "error": "",
+            }
+        )
+    finally:
+        for fd in (drain_fd, report_fd):
+            if fd is not None:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
 
 
 def _decode(value: Any) -> str:

@@ -10,6 +10,9 @@ change execution semantics.
 
 from __future__ import annotations
 
+import os
+import time
+
 import pytest
 
 from deeptutor.services.sandbox.runner import server as runner_server
@@ -18,6 +21,18 @@ pytestmark = pytest.mark.skipif(
     runner_server.resource is None or not runner_server._POSIX,
     reason="POSIX rlimits only",
 )
+
+
+def _open_fds() -> set[int]:
+    """Snapshot this process's open descriptors (fstat adds none of its own)."""
+    fds: set[int] = set()
+    for fd in range(1024):
+        try:
+            os.fstat(fd)
+        except OSError:
+            continue
+        fds.add(fd)
+    return fds
 
 
 def test_no_degradation_field_when_limits_apply(
@@ -78,3 +93,48 @@ def test_timeout_response_also_reports_degraded_limits(
     assert result["timed_out"] is True
     assert result["exit_code"] == 124
     assert "as" in result["limits_degraded"]
+
+
+def test_background_process_returns_promptly_without_pipe_leak(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Regression: pass_fds on the report pipe cleared FD_CLOEXEC, so any
+    # background process the command spawned inherited the write end and
+    # execute() blocked on the drain read until that process exited. With
+    # CLOEXEC kept, the pipe must stay inside the (direct) child only.
+    monkeypatch.setattr(runner_server.resource, "setrlimit", lambda _w, _l: None)
+
+    before = _open_fds()
+    start = time.monotonic()
+    result = runner_server.execute(
+        {"command": "sleep 2 >/dev/null 2>&1 &", "limits": {"timeout_s": 10}}
+    )
+    elapsed = time.monotonic() - start
+
+    assert result["error"] == ""
+    assert result["exit_code"] == 0
+    assert "limits_degraded" not in result
+    # Must not wait out the 2s background sleep (the regression blocked for
+    # its full duration); margin is generous for a slow spawn, still < 2s.
+    assert elapsed < 1.5
+    # Neither pipe end may outlive the call.
+    assert not (_open_fds() - before)
+
+
+def test_pipe_ends_released_when_execution_is_interrupted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The finally backstop in execute(): an exception that is neither
+    # TimeoutExpired nor (OSError, ValueError) — e.g. KeyboardInterrupt or
+    # cancellation — must still close both pipe ends instead of leaking them.
+    def _interrupt(*_args: object, **_kwargs: object) -> None:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(runner_server.subprocess, "run", _interrupt)
+    monkeypatch.setattr(runner_server.resource, "setrlimit", lambda _w, _l: None)
+
+    before = _open_fds()
+    with pytest.raises(KeyboardInterrupt):
+        runner_server.execute({"command": "echo hi", "limits": {"timeout_s": 10}})
+
+    assert not (_open_fds() - before)
