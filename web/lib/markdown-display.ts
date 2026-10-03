@@ -136,7 +136,14 @@ const ALLOWED_HTML_TAGS = new Set<string>([
   "mtd",
 ]);
 
-const HTML_LIKE_TAG_REGEX = /<\/?([A-Za-z][A-Za-z0-9_-]*)\b[^<>]*?\/?>/g;
+// Attribute values may legally contain `<`/`>` inside quotes (e.g.
+// ``<iframe srcdoc="<b>">``, ``<a title="a>b">``). A quote-blind scan either
+// truncates the match at a quoted `>` — leaving trailing `on*=` handlers
+// outside the sanitized portion — or fails to match at all, letting the whole
+// unknown tag reach rehype-raw as a live element. Quoted segments are
+// therefore matched as atomic units.
+const HTML_LIKE_TAG_REGEX =
+  /<\/?([A-Za-z][A-Za-z0-9_-]*)\b(?:[^<>"']|"[^"]*"|'[^']*')*?\/?>/g;
 const FENCED_CODE_BLOCK_REGEX = /```[\s\S]*?```/g;
 const INLINE_CODE_SPAN_REGEX = /`[^`\n]*`/g;
 // Display math (\[…\], \(…\), $$…$$) plus single-dollar inline math ($…$).
@@ -151,7 +158,7 @@ const MATH_SPAN_REGEX =
 // non-space and end at a colon, because this rewrite has no notion of which
 // two delimiters the author meant to pair (see repairStrongEmphasisLine).
 const MALFORMED_STRONG_EMPHASIS_REGEX =
-  /(?<!\S)\*\*(?=\S)([^*\n]*?[:：])[ \t]+\*\*(?=\S)/g;
+  /(?<!\S)\*\*(?=\S)([^*\n]*?[:：])([ \t]+)\*\*(?=\S)/g;
 const ESCAPED_UNICODE_RUN_REGEX = /(?:\\u[0-9a-fA-F]{4}){3,}/g;
 const INDENTED_CODE_LINE_REGEX = /^(?: {4}|\t)/;
 const FENCE_LINE_REGEX = /^ {0,3}(`{3,}|~{3,})(.*)$/;
@@ -828,7 +835,7 @@ function repairStrongEmphasisLine(line: string): string {
   // Indented code blocks are displayed verbatim and are not masked above.
   if (INDENTED_CODE_LINE_REGEX.test(line)) return line;
   if ((line.split("**").length - 1) % 2 !== 0) return line;
-  return line.replace(MALFORMED_STRONG_EMPHASIS_REGEX, "**$1** ");
+  return line.replace(MALFORMED_STRONG_EMPHASIS_REGEX, "**$1**$2");
 }
 
 function linkifyCitationsOutsideCode(content: string): string {
