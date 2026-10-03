@@ -1,0 +1,34 @@
+........................................................................ [ 12%]
+........................................................................ [ 24%]
+........................................................................ [ 36%]
+........................................................................ [ 48%]
+........................................................................ [ 60%]
+................................F.......................F............... [ 73%]
+........................................................................ [ 85%]
+........................................................................ [ 97%]
+...............                                                          [100%]
+=================================== FAILURES ===================================
+____________ test_media_group_straggler_during_flush_is_not_dropped ____________
+tests/services/partners/test_telegram_message_parsing.py:274: in test_media_group_straggler_during_flush_is_not_dropped
+    assert channel._handle_message.await_count == 2
+E   AssertionError: assert 1 == 2
+E    +  where 1 = <AsyncMock id='4682555008'>.await_count
+E    +    where <AsyncMock id='4682555008'> = <deeptutor.partners.channels.telegram.TelegramChannel object at 0x1160f3e50>._handle_message
+----------------------------- Captured stderr call -----------------------------
+2026-10-03 15:36:36.313 | DEBUG    | deeptutor.partners.channels.telegram:_on_message:937 - Downloaded message media to /private/tmp/multica-task-288652684/pytest-of-xzh/pytest-6/test_media_group_straggler_dur0/data/partners/media/telegram/ua.jpg
+2026-10-03 15:36:36.314 | DEBUG    | deeptutor.partners.channels.telegram:_on_message:954 - Telegram message from 123|alice: hello
+[image: /private/tmp/multica-task-288652684/...
+2026-10-03 15:36:36.917 | DEBUG    | deeptutor.partners.channels.telegram:_on_message:937 - Downloaded message media to /private/tmp/multica-task-288652684/pytest-of-xzh/pytest-6/test_media_group_straggler_dur0/data/partners/media/telegram/ub.jpg
+2026-10-03 15:36:36.918 | DEBUG    | deeptutor.partners.channels.telegram:_on_message:954 - Telegram message from 123|alice: hello
+[image: /private/tmp/multica-task-288652684/...
+________________ test_denied_sender_typing_indicator_is_stopped ________________
+tests/services/partners/test_telegram_message_parsing.py:684: in test_denied_sender_typing_indicator_is_stopped
+    assert not await _alive(channel, "888")
+E   assert not True
+----------------------------- Captured stderr call -----------------------------
+2026-10-03 15:36:40.290 | DEBUG    | deeptutor.partners.channels.telegram:_on_message:954 - Telegram message from 999|mallory: hello...
+2026-10-03 15:36:40.290 | WARNING  | deeptutor.partners.channels.base:_handle_message:226 - Access denied for sender 999|mallory on channel telegram. Add them to allowFrom list in config to grant access.
+=========================== short test summary info ============================
+FAILED tests/services/partners/test_telegram_message_parsing.py::test_media_group_straggler_during_flush_is_not_dropped
+FAILED tests/services/partners/test_telegram_message_parsing.py::test_denied_sender_typing_indicator_is_stopped
+2 failed, 589 passed, 2 warnings in 10.05s
