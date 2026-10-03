@@ -7,6 +7,10 @@ const ROOT = process.cwd();
 const APP_ROOT = path.join(ROOT, "app");
 const SOURCE_ROOTS = ["app", "components", "context", "features", "hooks", "lib", "shared"];
 
+function toPosix(filePath: string): string {
+  return filePath.replace(/\\/g, "/");
+}
+
 function walk(directory: string): string[] {
   return readdirSync(directory).flatMap((name) => {
     const absolute = path.join(directory, name);
@@ -35,7 +39,7 @@ function pagePattern(pageFile: string): RegExp {
 }
 
 const pagePatterns = walk(APP_ROOT)
-  .filter((file) => /\/page\.(?:ts|tsx|js|jsx)$/.test(file))
+  .filter((file) => /[/\\]page\.(?:ts|tsx|js|jsx)$/.test(file))
   .map(pagePattern);
 
 function isPagePath(value: string): boolean {
@@ -76,7 +80,7 @@ test("literal frontend navigation targets resolve to real pages", () => {
           continue;
         }
         if (!isPagePath(target)) {
-          failures.push(`${path.relative(ROOT, file)} -> ${target}`);
+          failures.push(`${toPosix(path.relative(ROOT, file))} -> ${target}`);
         }
       }
     }
