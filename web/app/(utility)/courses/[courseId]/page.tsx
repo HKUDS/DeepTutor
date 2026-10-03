@@ -56,6 +56,8 @@ export default function CourseDetailPage() {
   const [loading, setLoading] = useState(true);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
 
   const load = useCallback(async () => {
@@ -174,6 +176,24 @@ export default function CourseDetailPage() {
     },
     [load, t],
   );
+
+  const confirmDelete = useCallback(async () => {
+    if (!course) return;
+    setDeleteBusy(true);
+    setDeleteError(null);
+    try {
+      await deleteCourse(course.id);
+      router.push("/courses");
+    } catch (error) {
+      setDeleteError(
+        error instanceof Error && error.message
+          ? error.message
+          : t("Delete failed"),
+      );
+    } finally {
+      setDeleteBusy(false);
+    }
+  }, [course, router, t]);
 
   if (loading) {
     return (
@@ -304,6 +324,7 @@ export default function CourseDetailPage() {
                   type="button"
                   onClick={() => {
                     setMenuOpen(false);
+                    setDeleteError(null);
                     setDeleteOpen(true);
                   }}
                   className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-[var(--destructive)] hover:bg-[var(--muted)]"
@@ -409,14 +430,19 @@ export default function CourseDetailPage() {
         title={t("Delete course?")}
         confirmLabel={t("Delete course")}
         tone="danger"
+        busy={deleteBusy}
+        busyLabel={t("Deleting…")}
         onCancel={() => setDeleteOpen(false)}
-        onConfirm={() => {
-          void deleteCourse(course.id).then(() => router.push("/courses"));
-        }}
+        onConfirm={confirmDelete}
       >
         {t(
           "Conversations will not be deleted. They will move to Unclassified.",
         )}
+        {deleteError ? (
+          <p role="alert" className="mt-2 text-[var(--destructive)]">
+            {deleteError}
+          </p>
+        ) : null}
       </ConfirmDialog>
     </div>
   );
