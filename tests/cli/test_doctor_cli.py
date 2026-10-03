@@ -203,7 +203,13 @@ async def test_online_probe_success_is_reported(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_online_probe_passes_one_bounded_token_parameter(monkeypatch, tmp_path) -> None:
+@pytest.mark.parametrize(
+    ("configured_budget", "expected"),
+    [(None, 4096), (512, 512), (8192, 8192), ("2048", 2048), ("invalid", 4096), (0, 1)],
+)
+async def test_online_probe_uses_configured_budget(
+    monkeypatch, tmp_path, configured_budget, expected
+) -> None:
     import deeptutor.services.llm as llm
 
     captured = {}
@@ -213,6 +219,13 @@ async def test_online_probe_passes_one_bounded_token_parameter(monkeypatch, tmp_
         return "OK"
 
     monkeypatch.setattr(llm, "complete", fake_complete)
+    (tmp_path / "agents.yaml").write_text(
+        json.dumps({"diagnostics": {"llm_probe": {"max_tokens": configured_budget}}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.config.loader.get_runtime_settings_dir", lambda _root: tmp_path
+    )
 
     report = await run_diagnostics(
         online=True,
@@ -227,8 +240,34 @@ async def test_online_probe_passes_one_bounded_token_parameter(monkeypatch, tmp_
     )
 
     assert report.ok is True
-    assert captured["max_tokens"] == 64
+    assert captured["max_tokens"] == expected
     assert "max_completion_tokens" not in captured
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("response", "expected_status"), [("OK", "pass"), (" ", "fail")])
+async def test_online_probe_allows_reasoning_before_visible_output(
+    monkeypatch, tmp_path, response, expected_status
+) -> None:
+    """A healthy reasoning endpoint must not fail because the probe truncates it."""
+
+    async def fake_complete(**kwargs):
+        return response if kwargs["max_tokens"] >= 4096 else ""
+
+    def missing_settings(module):
+        raise FileNotFoundError("agents.yaml")
+
+    monkeypatch.setattr("deeptutor.services.llm.complete", fake_complete)
+    monkeypatch.setattr("deeptutor.services.config.loader.get_agent_params", missing_settings)
+    report = await run_diagnostics(
+        online=True,
+        resolve_llm=lambda: _llm_config(model="gpt-5-mini"),
+        data_root=tmp_path,
+        load_rag_config=lambda: {"defaults": {}, "knowledge_bases": {}},
+    )
+
+    assert next(check for check in report.checks if check.key == "online").status == expected_status
+    assert report.ok is (expected_status == "pass")
 
 
 @pytest.mark.asyncio
