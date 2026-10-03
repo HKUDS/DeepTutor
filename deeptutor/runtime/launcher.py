@@ -6,6 +6,7 @@ import atexit
 from dataclasses import dataclass
 import hashlib
 import json
+import logging
 import os
 from pathlib import Path
 import secrets
@@ -34,6 +35,8 @@ from deeptutor.services.app_update import LAUNCHER_PID_ENV
 
 BACKEND_READY_TIMEOUT_ENV = "DEEPTUTOR_BACKEND_READY_TIMEOUT"
 FRONTEND_READY_TIMEOUT_ENV = "DEEPTUTOR_FRONTEND_READY_TIMEOUT"
+
+logger = logging.getLogger(__name__)
 
 
 def _ready_timeout(env_name: str, default: int) -> int:
@@ -138,25 +141,41 @@ def _log(message: str) -> None:
 
 
 def _reset_runtime_singletons() -> None:
-    """Make a just-selected DEEPTUTOR_HOME visible to path/config singletons."""
+    """Make a just-selected DEEPTUTOR_HOME visible to path/config singletons.
+
+    Same caveat as ``deeptutor_cli.init_cmd``: a reset that silently fails
+    leaves the previous home's cached paths in place, so failures are logged
+    instead of swallowed.
+    """
     try:
         from deeptutor.services.path_service import PathService
 
         PathService.reset_instance()
     except Exception:
-        pass
+        logger.exception(
+            "PathService reset failed; the runtime may keep writing to the "
+            "previous DEEPTUTOR_HOME instead of the selected one"
+        )
     try:
         from deeptutor.services.config.runtime_settings import RuntimeSettingsService
 
         RuntimeSettingsService._instances.clear()
     except Exception:
-        pass
+        logger.warning(
+            "RuntimeSettings cache reset failed; settings cached for the "
+            "previous DEEPTUTOR_HOME may be reused",
+            exc_info=True,
+        )
     try:
         from deeptutor.services.config.model_catalog import ModelCatalogService
 
         ModelCatalogService._instances.clear()
     except Exception:
-        pass
+        logger.warning(
+            "ModelCatalog cache reset failed; model catalog cached for the "
+            "previous DEEPTUTOR_HOME may be reused",
+            exc_info=True,
+        )
 
 
 def _get_pgid(pid: int | None) -> int | None:

@@ -10,6 +10,7 @@ intentionally thin so the order of steps is easy to read top-to-bottom.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -20,32 +21,47 @@ from deeptutor.runtime.home import DEEPTUTOR_HOME_ENV, get_runtime_home
 
 from . import init_wizard as wiz
 
+logger = logging.getLogger(__name__)
+
 
 def _reset_runtime_singletons() -> None:
     """Drop cached service instances so the new DEEPTUTOR_HOME takes effect.
 
     ``deeptutor init`` may pass ``--home`` to target a different workspace; the
     singletons cache paths from the *previous* PathService and will silently
-    write to the wrong place if not cleared.
+    write to the wrong place if not cleared. Failures are therefore logged
+    instead of swallowed: a silent reset failure means every later write still
+    lands in the old workspace with no trace of why.
     """
     try:
         from deeptutor.services.path_service import PathService
 
         PathService.reset_instance()
     except Exception:
-        pass
+        logger.exception(
+            "PathService reset failed; later writes may keep going to the "
+            "previous DEEPTUTOR_HOME instead of the selected one"
+        )
     try:
         from deeptutor.services.config.runtime_settings import RuntimeSettingsService
 
         RuntimeSettingsService._instances.clear()
     except Exception:
-        pass
+        logger.warning(
+            "RuntimeSettings cache reset failed; settings cached for the "
+            "previous DEEPTUTOR_HOME may be reused",
+            exc_info=True,
+        )
     try:
         from deeptutor.services.config.model_catalog import ModelCatalogService
 
         ModelCatalogService._instances.clear()
     except Exception:
-        pass
+        logger.warning(
+            "ModelCatalog cache reset failed; model catalog cached for the "
+            "previous DEEPTUTOR_HOME may be reused",
+            exc_info=True,
+        )
 
 
 def _ensure_model_service(catalog: dict, service_name: str, profile_id: str, model_id: str):
