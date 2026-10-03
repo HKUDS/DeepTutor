@@ -127,14 +127,14 @@ def _critique_prompts() -> dict[str, str]:
         ),
         "revise_system": "Revise the draft spine.",
         "revise_user": (
-            "Proposal:\n{proposal_block}\n"
-            "Critique:\n{critique_block}\n"
-            "Draft:\n{draft_block}"
+            "Proposal:\n{proposal_block}\nCritique:\n{critique_block}\nDraft:\n{draft_block}"
         ),
     }
 
 
-def _install_prompts(monkeypatch: pytest.MonkeyPatch, agent: SpineSynthesizer, mapping: dict[str, str]) -> None:
+def _install_prompts(
+    monkeypatch: pytest.MonkeyPatch, agent: SpineSynthesizer, mapping: dict[str, str]
+) -> None:
     monkeypatch.setattr(agent, "get_prompt", lambda key, *a, **k: mapping.get(key))
 
 
@@ -580,9 +580,7 @@ def test_chapter_map_matches_prerequisite_titles_to_chapter_edges() -> None:
 
     # Both chapters are roots of the concept graph (no edges), so the virtual
     # root appears; the explicit prerequisite still produces its own edge.
-    assert ("vectors", "matrices", "depends_on") in {
-        (e.src, e.dst, e.relation) for e in cmap.edges
-    }
+    assert ("vectors", "matrices", "depends_on") in {(e.src, e.dst, e.relation) for e in cmap.edges}
 
 
 def test_render_proposal_and_chunks_shape_the_prompts() -> None:
