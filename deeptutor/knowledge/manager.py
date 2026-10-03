@@ -564,10 +564,20 @@ class KnowledgeBaseManager:
                 kb_dir = self.base_dir / name
                 if kb_dir.is_dir():
                     kb_config["index_versions"] = inspect_kb_versions(kb_dir, provider)
-            except Exception:  # pragma: no cover - best-effort metadata
-                pass
+            except Exception as exc:  # best-effort metadata
+                logger.warning(
+                    f"Failed to refresh embedding/index metadata for KB '{name}' "
+                    f"on ready transition: {exc}"
+                )
 
-        self._save_config()
+        try:
+            self._save_config()
+        except Exception as exc:
+            logger.error(
+                f"Failed to persist KB status update for '{name}' "
+                f"(status='{status}'): {exc}"
+            )
+            raise
         self._sync_kb_to_pb(name, kb_config)
 
     def get_kb_entry(self, name: str) -> dict | None:
