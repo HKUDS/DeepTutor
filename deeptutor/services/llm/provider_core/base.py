@@ -8,6 +8,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 import inspect
 import json
+import re
 from typing import Any
 
 from loguru import logger
@@ -74,12 +75,7 @@ class LLMProvider(ABC):
 
     _CHAT_RETRY_DELAYS = (1, 2, 4)
     _TRANSIENT_ERROR_MARKERS = (
-        "429",
         "rate limit",
-        "500",
-        "502",
-        "503",
-        "504",
         "overloaded",
         "timeout",
         "timed out",
@@ -273,7 +269,11 @@ class LLMProvider(ABC):
     @classmethod
     def _is_transient_error(cls, content: str | None) -> bool:
         err = (content or "").lower()
-        return any(marker in err for marker in cls._TRANSIENT_ERROR_MARKERS)
+        # Gateway errors often embed opaque request IDs. Matching bare status
+        # substrings misclassifies permanent errors when an ID contains "500".
+        return bool(re.search(r"\b(?:429|500|502|503|504)\b", err)) or any(
+            marker in err for marker in cls._TRANSIENT_ERROR_MARKERS
+        )
 
     async def _call_with_retry(
         self,
