@@ -21,8 +21,7 @@ _dt_config.load_config_with_main = lambda *_a, **_k: {
 
 from deeptutor.api.routers import co_writer as co_writer_router
 from deeptutor.api.routers.co_writer import _validate_doc_id
-from deeptutor.co_writer import docx_converter
-from deeptutor.co_writer import edit_agent
+from deeptutor.co_writer import docx_converter, edit_agent
 from deeptutor.co_writer.docx_converter import (
     DocxConversionError,
     _table_to_markdown,
@@ -280,7 +279,7 @@ def test_table_to_markdown_warns_and_keeps_placeholder_for_unparseable_row(caplo
 
     assert "| Metric | Value |" in markdown
     assert "| Revenue | 1.2M |" in markdown
-    assert "(无法解析的行)" in markdown
+    assert "(unparseable row)" in markdown
     warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert warnings, "expected a warning for the unparseable row"
     assert "table #1" in warnings[0].getMessage()
@@ -312,7 +311,7 @@ def test_docx_to_markdown_bad_table_row_warns_and_keeps_placeholder(monkeypatch,
     assert "| Metric | Value |" in markdown
     assert "| Profit | 0.3M |" in markdown
     assert "Revenue" not in markdown
-    assert "(无法解析的行)" in markdown
+    assert "(unparseable row)" in markdown
     matching = [
         r
         for r in caplog.records

@@ -64,7 +64,7 @@ _MD_HR_RE = re.compile(r"^(-{3,}|\*{3,}|_{3,})$")
 _MD_TABLE_SEP_RE = re.compile(r"^\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$")
 _MD_FENCE_RE = re.compile(r"^```")
 
-_UNPARSEABLE_ROW_CELL = "(无法解析的行)"
+_UNPARSEABLE_ROW_CELL = "(unparseable row)"
 _INLINE_RE = re.compile(
     r"\[(?P<link_text>[^\]\n]*)\]\((?P<link_href>[^)\s]*)\)"
     r"|`(?P<code>[^`\n]+)`"
