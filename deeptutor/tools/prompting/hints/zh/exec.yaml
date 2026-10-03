@@ -1,6 +1,0 @@
-short_description: "用一个隔离工具运行源码或明确的 shell 脚本，返回 stdout/stderr 和生成文件。"
-when_to_use: "用于计算、生成文件、数据处理、运行已有脚本、检查 CLI/环境，以及简短 shell 操作。"
-input_format: "`code` — 完整源码或 shell 文本；可选 `language` — python（默认）、c、cpp 或 shell；可选 `stdin` 与 `timeout`。"
-guideline: "Python/C/C++ 直接传完整源码，用纯相对文件名把产物保存到每回合稳定的工作目录。后续调用和所有语言模式共享该目录及依赖环境，可以重新打开并修订先前文件。shell 任务使用 `language: shell`；不要用 `python -c` 或 heredoc 包裹 Python。shell 命令优先使用非交互参数，安装 Python 包使用 `python -m pip`。"
-note: "破坏性命令（rm -rf、mkfs、shutdown 等）会被拦截。不要把命令语法或依赖错误说成沙箱无权访问；应检查 STDERR 并调整源码或依赖。"
-phase: "expansion"

@@ -1,2 +1,0 @@
-recursive-include deeptutor_web *
-recursive-include deeptutor_web/.next *

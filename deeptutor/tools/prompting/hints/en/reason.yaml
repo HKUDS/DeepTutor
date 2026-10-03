@@ -1,6 +1,0 @@
-short_description: "Call a dedicated reasoning model for a difficult sub-problem."
-when_to_use: "Use when the current context is ambiguous, multiple steps must be synthesized, or a hard sub-problem needs deeper analysis."
-input_format: "A focused reasoning question plus optional supporting context."
-guideline: "Reserve deep reasoning for bottlenecks where simpler retrieval or calculation is not enough."
-note: "Good reasoning prompts are specific; include only the context needed for the sub-problem."
-phase: "synthesis"
