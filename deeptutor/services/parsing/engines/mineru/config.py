@@ -49,6 +49,8 @@ class MinerUConfig:
     enable_formula: bool = True
     enable_table: bool = True
     is_ocr: bool = False
+    # Cloud-only opt-in; preserves all parser choices and the original PDF.
+    normalize_tiny_scans: bool = False
     # When False (default), a local parse fails fast instead of letting the
     # MinerU CLI silently download multi-GB model weights on first run. The user
     # opts in explicitly (Settings → Document Parsing) or via the one-click
@@ -94,6 +96,7 @@ def resolve_mineru_config() -> MinerUConfig:
         enable_formula=bool(settings.get("enable_formula", True)),
         enable_table=bool(settings.get("enable_table", True)),
         is_ocr=bool(settings.get("is_ocr", False)),
+        normalize_tiny_scans=bool(settings.get("normalize_tiny_scans", False)),
         allow_local_model_download=bool(settings.get("allow_local_model_download", False)),
     )
 

@@ -1242,6 +1242,7 @@ async def update_mineru_settings(payload: MinerUSettingsUpdate):
             "enable_formula": payload.enable_formula,
             "enable_table": payload.enable_table,
             "is_ocr": payload.is_ocr,
+            "normalize_tiny_scans": current.get("normalize_tiny_scans", False),
             "allow_local_model_download": payload.allow_local_model_download,
         }
     )

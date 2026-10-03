@@ -185,6 +185,7 @@ _DEFAULT_MINERU_ENGINE: dict[str, Any] = {
     "enable_formula": True,
     "enable_table": True,
     "is_ocr": False,
+    "normalize_tiny_scans": False,
     "allow_local_model_download": False,
 }
 
@@ -1154,6 +1155,7 @@ class RuntimeSettingsService:
             "enable_formula": _coerce_bool(settings.get("enable_formula"), True),
             "enable_table": _coerce_bool(settings.get("enable_table"), True),
             "is_ocr": _coerce_bool(settings.get("is_ocr"), False),
+            "normalize_tiny_scans": _coerce_bool(settings.get("normalize_tiny_scans"), False),
             "allow_local_model_download": _coerce_bool(
                 settings.get("allow_local_model_download"), False
             ),

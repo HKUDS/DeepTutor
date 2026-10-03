@@ -57,9 +57,11 @@ def parse_document_to_workdir(
 
     if cfg.is_cloud:
         from .cloud import parse_cloud
+        from .normalization import working_copy
 
         logger.info("Parsing %s via MinerU cloud API", source_path.name)
-        return parse_cloud(source_path, output_base, cfg, on_progress=on_output)
+        with working_copy(source_path, output_base, cfg, on_output) as upload_path:
+            return parse_cloud(upload_path, output_base, cfg, on_progress=on_output)
 
     return _parse_local(source_path, output_base, config=cfg, on_output=on_output)
 
