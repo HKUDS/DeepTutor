@@ -3949,8 +3949,16 @@ async def run_reindex_task(
                     error=error_msg,
                     **failure_metadata,
                 )
-            except Exception:
-                pass
+            except Exception as progress_err:
+                # The task-level error above stays authoritative; degrade loudly
+                # instead of silently, so a stale KB progress view is explainable.
+                logger.warning(
+                    "[%s] Re-index of '%s' failed, and persisting its error progress "
+                    "also failed (%s); the KB progress view may stay stale.",
+                    task_id,
+                    kb_name,
+                    progress_err,
+                )
             task_stream_manager.emit_failed(task_id, error_msg, **failure_metadata)
 
 
