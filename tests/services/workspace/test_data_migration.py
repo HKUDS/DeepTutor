@@ -229,6 +229,36 @@ async def test_crash_after_session_commit_can_restore_both_stores(account, monke
     assert_no_pending_recovery()
 
 
+def test_corrupted_journal_blocks_new_migrations(account):
+    from deeptutor.services.workspace.data_migration import (
+        _journal_root,
+        assert_no_pending_recovery,
+        operations,
+    )
+
+    valid_id = "1" * 32
+    valid_dir = _journal_root() / valid_id
+    valid_dir.mkdir(parents=True, exist_ok=True)
+    (valid_dir / "operation.json").write_text(
+        json.dumps(
+            {"id": valid_id, "status": "completed", "created_at": "2026-01-01T00:00:00Z"}
+        )
+    )
+    corrupt_id = "0" * 32
+    corrupt_dir = _journal_root() / corrupt_id
+    corrupt_dir.mkdir(parents=True, exist_ok=True)
+    (corrupt_dir / "operation.json").write_text("{ truncated journal")
+
+    assert [row["id"] for row in operations()] == [valid_id]
+    with pytest.raises(WorkspaceError, match="unreadable"):
+        assert_no_pending_recovery()
+    with pytest.raises(WorkspaceError, match="unreadable"):
+        migrate_data("", account.create_workspace("Destination")["workspace_id"], ["chat"])
+
+    (corrupt_dir / "operation.json").unlink()
+    assert_no_pending_recovery()
+
+
 def test_crash_during_copy_tracks_partial_destination(account, monkeypatch):
     import shutil
 

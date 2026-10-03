@@ -11,6 +11,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import hashlib
 import json
+import logging
 import os
 from pathlib import Path
 import shutil
@@ -24,6 +25,8 @@ from deeptutor.services.path_service import get_path_service
 from deeptutor.services.workspace.activity import data_activity
 from deeptutor.services.workspace.context import workspace_context
 from deeptutor.services.workspace.models import WorkspaceError
+
+logger = logging.getLogger(__name__)
 
 FEATURES = {
     "chat": "Conversations",
@@ -893,14 +896,31 @@ def _restore_sessions(root: Path, source, target) -> None:
             Path(str(target.get_chat_history_db()) + suffix).unlink(missing_ok=True)
 
 
-def operations() -> list[dict]:
-    rows = []
+def _journal_rows() -> list[tuple[Path, dict | None]]:
+    """Read every migration journal. Corrupt entries yield ``(path, None)``.
+
+    Journals are only written through :func:`atomic_write_json`, so an
+    unreadable journal means real corruption rather than a torn write.
+    """
+    rows: list[tuple[Path, dict | None]] = []
     for path in _journal_root().glob("*/operation.json"):
         try:
-            rows.append(json.loads(path.read_text()))
-        except (OSError, ValueError):
-            continue
-    return sorted(rows, key=lambda row: row.get("created_at", ""), reverse=True)
+            row = json.loads(path.read_text())
+            if not isinstance(row, dict):
+                raise ValueError("journal is not a JSON object")
+        except (OSError, ValueError) as exc:
+            logger.warning("Skipping unreadable migration journal %s: %s", path, exc)
+            row = None
+        rows.append((path, row))
+    return rows
+
+
+def operations() -> list[dict]:
+    return sorted(
+        (row for _, row in _journal_rows() if row is not None),
+        key=lambda row: row.get("created_at", ""),
+        reverse=True,
+    )
 
 
 def assert_no_pending_recovery() -> None:
@@ -912,7 +932,12 @@ def assert_no_pending_recovery() -> None:
         "cleanup_required",
         "recovery_required",
     }
-    for row in operations():
+    for path, row in _journal_rows():
+        if row is None:
+            raise WorkspaceError(
+                "A migration journal is unreadable, so a pending recovery cannot be ruled out "
+                f"({path.parent.name}). Open Settings → Data migration before changing learning data."
+            )
         if row.get("status") in pending:
             raise WorkspaceError(
                 "A data migration needs recovery. Open Settings → Data migration before changing learning data."
