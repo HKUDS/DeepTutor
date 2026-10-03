@@ -315,8 +315,9 @@ def preview(
         sessions = _sessions(source)
         from deeptutor.services.workspace.dependencies import dependency_closure
 
+        closure_warnings: list[str] = []
         selected, session_ids = dependency_closure(
-            source, sessions, features, session_ids=session_ids
+            source, sessions, features, session_ids=session_ids, warnings=closure_warnings
         )
         # Legacy capability artifacts may be keyed by turn IDs. Preserve a
         # copy of the chat/output trees while transferring only selected rows.
@@ -419,6 +420,7 @@ def preview(
             "files": sum(row["files"] for row in rows),
             "bytes": sum(row["bytes"] for row in rows),
             "blockers": blockers,
+            "warnings": closure_warnings,
             "rows": rows,
             "artifact_files": artifacts,
         }
