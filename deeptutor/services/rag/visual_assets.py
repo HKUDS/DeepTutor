@@ -21,7 +21,6 @@ import warnings
 from deeptutor.services.parsing.types import ParsedDocument
 
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
-MAX_ASSETS_PER_DOCUMENT = 64
 MAX_MODEL_IMAGES = 2
 MAX_IMAGE_PIXELS = 30_000_000
 MAX_MANIFEST_BYTES = 16 * 1024 * 1024
@@ -175,7 +174,10 @@ class VisualAssetCandidate:
 def collect_visual_assets(
     parsed: ParsedDocument, source: Path, kb_dir: Path
 ) -> list[VisualAssetCandidate]:
-    """Normalize extracted PDF/EPUB images with provenance and byte identity."""
+    """Retain all verified extracted images with provenance and byte identity.
+
+    Document retention is independent of the per-request model image budget.
+    """
     asset_dir = parsed.asset_dir
     if asset_dir is None or asset_dir.is_symlink() or not asset_dir.is_dir():
         return []
@@ -183,8 +185,6 @@ def collect_visual_assets(
     source_hash = _sha256_file(source)
     candidates: list[VisualAssetCandidate] = []
     for path in sorted(asset_dir.iterdir()):
-        if len(candidates) >= MAX_ASSETS_PER_DOCUMENT:
-            break
         loaded = _image_bytes(path)
         if loaded is None:
             continue
