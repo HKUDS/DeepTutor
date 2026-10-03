@@ -1249,8 +1249,11 @@ def _handoff_pending_update(
     except Exception as exc:
         try:
             store.mark_failed(job.id, f"Launcher handoff failed: {exc}")
-        except Exception:
-            pass
+        except Exception as mark_exc:
+            _log(
+                f"Launcher handoff failed for update {job.id}: {exc} "
+                f"(could not record failure: {mark_exc})"
+            )
         return False
     return True
 
