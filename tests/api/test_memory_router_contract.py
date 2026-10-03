@@ -35,9 +35,7 @@ memory_router_mod = importlib.import_module("deeptutor.api.routers.memory")
 paths_mod = importlib.import_module("deeptutor.services.memory.paths")
 document_mod = importlib.import_module("deeptutor.services.memory.document")
 settings_mod = importlib.import_module("deeptutor.services.memory.settings")
-snap_adapters_mod = importlib.import_module(
-    "deeptutor.services.memory.snapshot.adapters"
-)
+snap_adapters_mod = importlib.import_module("deeptutor.services.memory.snapshot.adapters")
 snapshot_store = importlib.import_module("deeptutor.services.memory.snapshot.store")
 runs_mod = importlib.import_module("deeptutor.services.memory.consolidator.runs")
 
@@ -431,7 +429,9 @@ def test_doc_invalid_layer_returns_400(client: TestClient) -> None:
         ("delete", "/api/memory/doc/L9/chat/entry/x"),
         ("get", "/api/memory/doc/L9/chat/lines"),
     ):
-        res = getattr(client, method)(path, **({"json": {"content": "x"}} if method == "put" else {}))
+        res = getattr(client, method)(
+            path, **({"json": {"content": "x"}} if method == "put" else {})
+        )
         assert res.status_code == 400, (method, path)
         assert res.json()["detail"] == "layer must be L2 or L3"
 
@@ -490,9 +490,7 @@ def test_list_runs_validation(client: TestClient) -> None:
     assert empty.json() == {"runs": []}
 
     assert client.get("/api/memory/runs", params={"layer": "L9"}).status_code == 400
-    assert (
-        client.get("/api/memory/runs", params={"layer": "L2", "key": "nope"}).status_code == 404
-    )
+    assert client.get("/api/memory/runs", params={"layer": "L2", "key": "nope"}).status_code == 404
 
 
 def test_trace_day_invalid_and_missing(client: TestClient) -> None:
