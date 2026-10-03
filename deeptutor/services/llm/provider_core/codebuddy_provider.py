@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 from copy import deepcopy
 from dataclasses import dataclass, field
 import json
+import logging
 import os
 import re
 import shutil
@@ -28,6 +29,16 @@ _API_KEY_ENV_LOCK = asyncio.Lock()
 _SESSION_POOL_MAXSIZE = 4
 _MCP_SERVER_NAME = "deeptutor"
 _MCP_TOOL_PREFIX = f"mcp__{_MCP_SERVER_NAME}__"
+
+logger = logging.getLogger(__name__)
+
+
+def _short_exception(exc: BaseException) -> str:
+    """Type plus a short reason — never prompt bodies or credentials."""
+    reason = str(exc).strip()
+    if len(reason) > 200:
+        reason = reason[:200] + "..."
+    return reason or "<no message>"
 
 
 @dataclass
@@ -549,9 +560,15 @@ async def _consume_messages(
             if interrupt is not None:
                 try:
                     await interrupt()
+                except Exception as exc:
+                    logger.warning(
+                        "CodeBuddy interrupt after tool calls failed (%s: %s); "
+                        "background generation may keep running",
+                        type(exc).__name__,
+                        _short_exception(exc),
+                    )
+                else:
                     await _drain_interrupted_response(messages)
-                except Exception:
-                    pass
             return LLMResponse(
                 content="".join(chunks),
                 tool_calls=tool_calls,
@@ -571,8 +588,13 @@ async def _drain_interrupted_response(messages: Any) -> None:
         async for message in messages:
             if _is_result_message(message) or type(message).__name__ == "ErrorMessage":
                 return
-    except Exception:
-        return
+    except Exception as exc:
+        logger.warning(
+            "CodeBuddy interrupted response drain failed (%s: %s); "
+            "stale SDK messages may surface in the next turn",
+            type(exc).__name__,
+            _short_exception(exc),
+        )
 
 
 def _assistant_tool_calls(message: Any) -> list[ToolCallRequest]:
