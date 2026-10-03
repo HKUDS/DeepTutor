@@ -1,0 +1,14 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.13.13, pytest-9.1.1, pluggy-1.6.0
+rootdir: /Users/xzh/services/ai-development/multica-pilot/workspaces/agents-plan-5fede2af789a/agen-147-506b1be82b18/workdir/deeptutor-wt
+configfile: pyproject.toml
+plugins: devtools-0.12.2, asyncio-1.4.0, anyio-4.14.2
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
+collected 65 items
+
+tests/api/routers/test_reading_progress.py ....................          [ 30%]
+tests/reading/test_router.py ........................................... [ 96%]
+..                                                                       [100%]
+
+============================== 65 passed in 2.50s ==============================
+<sys>:0: DeprecationWarning: builtin type swigvarlink has no __module__ attribute

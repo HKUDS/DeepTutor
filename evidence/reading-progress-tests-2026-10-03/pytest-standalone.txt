@@ -1,0 +1,30 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.13.13, pytest-9.1.1, pluggy-1.6.0 -- /Users/Shared/DeepTutor/.venv/bin/python
+rootdir: /Users/xzh/services/ai-development/multica-pilot/workspaces/agents-plan-5fede2af789a/agen-147-506b1be82b18/workdir/deeptutor-wt
+configfile: pyproject.toml
+plugins: devtools-0.12.2, asyncio-1.4.0, anyio-4.14.2
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
+collecting ... collected 20 items
+
+tests/api/routers/test_reading_progress.py::test_position_defaults_to_first_locator_before_any_save PASSED [  5%]
+tests/api/routers/test_reading_progress.py::test_saved_position_roundtrips_through_get PASSED [ 10%]
+tests/api/routers/test_reading_progress.py::test_duplicate_save_of_the_same_position_is_idempotent PASSED [ 15%]
+tests/api/routers/test_reading_progress.py::test_re_save_with_a_new_locator_overwrites_the_previous_state PASSED [ 20%]
+tests/api/routers/test_reading_progress.py::test_failed_save_out_of_range_locator_keeps_previous_state PASSED [ 25%]
+tests/api/routers/test_reading_progress.py::test_position_routes_404_for_an_unknown_material PASSED [ 30%]
+tests/api/routers/test_reading_progress.py::test_invalid_position_payloads_are_rejected_with_4xx[payload0] PASSED [ 35%]
+tests/api/routers/test_reading_progress.py::test_invalid_position_payloads_are_rejected_with_4xx[payload1] PASSED [ 40%]
+tests/api/routers/test_reading_progress.py::test_invalid_position_payloads_are_rejected_with_4xx[payload2] PASSED [ 45%]
+tests/api/routers/test_reading_progress.py::test_invalid_position_payloads_are_rejected_with_4xx[payload3] PASSED [ 50%]
+tests/api/routers/test_reading_progress.py::test_invalid_position_payloads_are_rejected_with_4xx[payload4] PASSED [ 55%]
+tests/api/routers/test_reading_progress.py::test_invalid_position_payloads_are_rejected_with_4xx[payload5] PASSED [ 60%]
+tests/api/routers/test_reading_progress.py::test_bookmark_roundtrip_lists_in_reading_order PASSED [ 65%]
+tests/api/routers/test_reading_progress.py::test_duplicate_bookmark_of_the_same_locator_is_idempotent PASSED [ 70%]
+tests/api/routers/test_reading_progress.py::test_delete_bookmark_removes_exactly_one_place PASSED [ 75%]
+tests/api/routers/test_reading_progress.py::test_bookmark_routes_404_for_an_unknown_material PASSED [ 80%]
+tests/api/routers/test_reading_progress.py::test_invalid_bookmark_payloads_are_rejected_with_4xx[payload0] PASSED [ 85%]
+tests/api/routers/test_reading_progress.py::test_invalid_bookmark_payloads_are_rejected_with_4xx[payload1] PASSED [ 90%]
+tests/api/routers/test_reading_progress.py::test_invalid_bookmark_payloads_are_rejected_with_4xx[payload2] PASSED [ 95%]
+tests/api/routers/test_reading_progress.py::test_invalid_bookmark_payloads_are_rejected_with_4xx[payload3] PASSED [100%]
+
+============================== 20 passed in 0.95s ==============================
