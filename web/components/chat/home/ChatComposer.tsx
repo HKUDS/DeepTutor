@@ -517,6 +517,7 @@ export default memo(function ChatComposer({
     addDraftFilesRef.current = onAddFiles;
   }, [onAddFiles]);
   const restoredDraftRef = useRef(false);
+  const restoreFailedRef = useRef(false);
   useEffect(() => {
     let alive = true;
     const restore = readWorkspaceDraft();
@@ -542,21 +543,33 @@ export default memo(function ChatComposer({
             });
           if (files.length) addDraftFilesRef.current(files);
         })
-        .catch(() => {});
+        .catch((error) => {
+          if (!alive) return;
+          restoreFailedRef.current = true;
+          console.warn(
+            "[ChatComposer] workspace draft restore failed; keeping the stored draft untouched",
+            error,
+          );
+        });
     }
     const save = (event: Event) => {
+      if (restoreFailedRef.current) return;
       (event as CustomEvent<Promise<void>[]>).detail.push(
-        restore.then(() =>
-          saveWorkspaceDraft({
-            text: inputHandleRef.current?.getValue() || "",
-            attachments: draftAttachmentsRef.current.map(
-              ({ filename, base64, mimeType }) => ({
-                filename,
-                base64,
-                mimeType,
-              }),
-            ),
-          }),
+        restore.then(
+          () =>
+            saveWorkspaceDraft({
+              text: inputHandleRef.current?.getValue() || "",
+              attachments: draftAttachmentsRef.current.map(
+                ({ filename, base64, mimeType }) => ({
+                  filename,
+                  base64,
+                  mimeType,
+                }),
+              ),
+            }),
+          () => {
+            restoreFailedRef.current = true;
+          },
         ),
       );
     };
@@ -655,7 +668,8 @@ export default memo(function ChatComposer({
   const doSend = useCallback(
     (content: string) => {
       onSend(content);
-      void saveWorkspaceDraft({ text: "", attachments: [] }).catch(() => {});
+      if (!restoreFailedRef.current)
+        void saveWorkspaceDraft({ text: "", attachments: [] }).catch(() => {});
       setHasContent(false);
       inputHandleRef.current?.clear();
       // Sending can move focus to the button or rerender the empty-state
