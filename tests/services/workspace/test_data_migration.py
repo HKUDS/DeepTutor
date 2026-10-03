@@ -229,34 +229,45 @@ async def test_crash_after_session_commit_can_restore_both_stores(account, monke
     assert_no_pending_recovery()
 
 
-def test_corrupted_journal_blocks_new_migrations(account):
+def test_unreadable_journal_blocks_only_migration_paths(account):
+    from deeptutor.services.workspace.activity import acquire_activity
     from deeptutor.services.workspace.data_migration import (
         _journal_root,
         assert_no_pending_recovery,
         operations,
+        recover_operation,
     )
 
     valid_id = "1" * 32
     valid_dir = _journal_root() / valid_id
     valid_dir.mkdir(parents=True, exist_ok=True)
     (valid_dir / "operation.json").write_text(
-        json.dumps(
-            {"id": valid_id, "status": "completed", "created_at": "2026-01-01T00:00:00Z"}
-        )
+        json.dumps({"id": valid_id, "status": "completed", "created_at": "2026-01-01T00:00:00Z"})
     )
     corrupt_id = "0" * 32
     corrupt_dir = _journal_root() / corrupt_id
     corrupt_dir.mkdir(parents=True, exist_ok=True)
-    (corrupt_dir / "operation.json").write_text("{ truncated journal")
+    corrupt_journal = corrupt_dir / "operation.json"
+    corrupt_journal.write_text("{ truncated journal")
 
-    assert [row["id"] for row in operations()] == [valid_id]
-    with pytest.raises(WorkspaceError, match="unreadable"):
-        assert_no_pending_recovery()
-    with pytest.raises(WorkspaceError, match="unreadable"):
-        migrate_data("", account.create_workspace("Destination")["workspace_id"], ["chat"])
-
-    (corrupt_dir / "operation.json").unlink()
+    # Settings → Data migration lists the unreadable journal instead of hiding it.
+    listed = {row["id"]: row for row in operations()}
+    assert listed[corrupt_id]["status"] == "unreadable"
+    assert str(corrupt_journal) in listed[corrupt_id]["error"]
+    # The per-request precheck (and therefore normal requests) keeps working.
     assert_no_pending_recovery()
+    handle = acquire_activity()
+    handle.close()
+    # Migration-class prechecks reject the journal and name its full path.
+    with pytest.raises(WorkspaceError, match=str(corrupt_journal)):
+        assert_no_pending_recovery(reject_unreadable=True)
+    with pytest.raises(WorkspaceError, match=str(corrupt_journal)):
+        migrate_data("", account.create_workspace("Destination")["workspace_id"], ["chat"])
+    # The settings recover entry quarantines the journal, not a 500.
+    assert recover_operation(corrupt_id)["status"] == "recovered"
+    assert not corrupt_journal.exists()
+    assert (corrupt_dir / "operation.json.corrupt").is_file()
+    assert_no_pending_recovery(reject_unreadable=True)
 
 
 def test_crash_during_copy_tracks_partial_destination(account, monkeypatch):
