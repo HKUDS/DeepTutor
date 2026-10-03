@@ -457,7 +457,7 @@ class KnowledgeBaseManager:
         name: str,
         status: str,
         progress: dict | None = None,
-    ):
+    ) -> bool:
         """
         Update knowledge base status and progress in kb_config.json.
 
@@ -475,6 +475,12 @@ class KnowledgeBaseManager:
                 - total: Total items
                 - file_name: Current file being processed
                 - error: Error message (if status is "error")
+
+        Returns:
+            True when the updated status was persisted to kb_config.json,
+            False when the persist failed (also logged). The PocketBase
+            mirror and ready-metadata refresh stay best-effort and never
+            flip a successful local write to False.
         """
         # Reload config to get latest state
         self.config = self._load_config()
@@ -564,11 +570,22 @@ class KnowledgeBaseManager:
                 kb_dir = self.base_dir / name
                 if kb_dir.is_dir():
                     kb_config["index_versions"] = inspect_kb_versions(kb_dir, provider)
-            except Exception:  # pragma: no cover - best-effort metadata
-                pass
+            except Exception as exc:  # best-effort metadata
+                logger.warning(
+                    f"Failed to refresh embedding/index metadata for KB '{name}' "
+                    f"on ready transition: {exc}"
+                )
 
-        self._save_config()
+        try:
+            self._save_config()
+        except Exception as exc:
+            logger.error(
+                f"Failed to persist KB status update for '{name}' "
+                f"(status='{status}'): {exc}"
+            )
+            return False
         self._sync_kb_to_pb(name, kb_config)
+        return True
 
     def get_kb_entry(self, name: str) -> dict | None:
         """The KB's raw ``kb_config.json`` record, or ``None`` if unregistered.
