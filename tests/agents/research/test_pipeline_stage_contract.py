@@ -78,7 +78,9 @@ class _FakeRegistry:
 class _FakeAgenticLoopLLM:
     """Stand-in for ``run_agentic_loop``: rephrase and block loops."""
 
-    def __init__(self, *, rephrase_reply: str = REPHRASE_REPLY, block_reply: str = "consolidated") -> None:
+    def __init__(
+        self, *, rephrase_reply: str = REPHRASE_REPLY, block_reply: str = "consolidated"
+    ) -> None:
         self.rephrase_reply = rephrase_reply
         self.block_reply = block_reply
         self.calls: list[str] = []
@@ -289,12 +291,15 @@ async def test_confirmed_run_stage_order_result_envelope_and_report_assembly() -
         "## 4. Conclusion",
     ):
         assert part in response
-    positions = [response.index(part) for part in (
-        "## 1. Introduction",
-        "## 2. Background",
-        "## 3. Findings",
-        "## 4. Conclusion",
-    )]
+    positions = [
+        response.index(part)
+        for part in (
+            "## 1. Introduction",
+            "## 2. Background",
+            "## 3. Findings",
+            "## 4. Conclusion",
+        )
+    ]
     assert positions == sorted(positions)
 
     assert len(emitted) == 1
