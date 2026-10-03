@@ -10,7 +10,11 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import { saveWorkspaceDraft, readWorkspaceDraft } from "@/lib/workspace-drafts";
+import {
+  saveWorkspaceDraft,
+  readWorkspaceDraft,
+  type WorkspaceDraft,
+} from "@/lib/workspace-drafts";
 import {
   ArrowUp,
   BookMarked,
@@ -552,25 +556,45 @@ export default memo(function ChatComposer({
           );
         });
     }
+    const collectDraft = () => ({
+      text: inputHandleRef.current?.getValue() || "",
+      attachments: draftAttachmentsRef.current.map(
+        ({ filename, base64, mimeType }) => ({ filename, base64, mimeType }),
+      ),
+    });
+    // The stored draft never made it into the composer, so saving the composer
+    // as-is could clobber it. Skip when nothing new was typed; otherwise merge
+    // the new input on top of the stored draft. If even the re-read fails,
+    // reject the switch (as on main) instead of losing the new input.
+    let storedDraft: WorkspaceDraft | undefined | null = null;
+    const saveAfterFailedRestore = () => {
+      restoreFailedRef.current = true;
+      const draft = collectDraft();
+      if (!draft.text && !draft.attachments.length) return Promise.resolve();
+      const merge = (stored?: WorkspaceDraft) =>
+        saveWorkspaceDraft({
+          text:
+            stored?.text && draft.text
+              ? `${stored.text}\n${draft.text}`
+              : (stored?.text ?? draft.text),
+          attachments: [...(stored?.attachments ?? []), ...draft.attachments],
+        });
+      // Re-read only once per mount so a retried switch merges the original
+      // stored draft instead of re-appending the composer to itself.
+      if (storedDraft !== null) return merge(storedDraft);
+      return readWorkspaceDraft().then((stored) => {
+        storedDraft = stored ?? { text: "", attachments: [] };
+        return merge(stored);
+      });
+    };
     const save = (event: Event) => {
-      if (restoreFailedRef.current) return;
       (event as CustomEvent<Promise<void>[]>).detail.push(
-        restore.then(
-          () =>
-            saveWorkspaceDraft({
-              text: inputHandleRef.current?.getValue() || "",
-              attachments: draftAttachmentsRef.current.map(
-                ({ filename, base64, mimeType }) => ({
-                  filename,
-                  base64,
-                  mimeType,
-                }),
-              ),
-            }),
-          () => {
-            restoreFailedRef.current = true;
-          },
-        ),
+        restoreFailedRef.current
+          ? saveAfterFailedRestore()
+          : restore.then(
+              () => saveWorkspaceDraft(collectDraft()),
+              saveAfterFailedRestore,
+            ),
       );
     };
     window.addEventListener("deeptutor:before-workspace-switch", save);
@@ -668,8 +692,9 @@ export default memo(function ChatComposer({
   const doSend = useCallback(
     (content: string) => {
       onSend(content);
-      if (!restoreFailedRef.current)
+      if (!restoreFailedRef.current) {
         void saveWorkspaceDraft({ text: "", attachments: [] }).catch(() => {});
+      }
       setHasContent(false);
       inputHandleRef.current?.clear();
       // Sending can move focus to the button or rerender the empty-state

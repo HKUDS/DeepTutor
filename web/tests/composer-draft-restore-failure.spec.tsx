@@ -115,7 +115,7 @@ function switchWorkspace(): Promise<void>[] {
   return pending;
 }
 
-it("does not save the empty composer over a draft whose restore failed, and lets the switch proceed", async () => {
+it("keeps the workspace switch usable when restore failed and nothing new was typed", async () => {
   drafts.read.mockRejectedValue(new Error("indexeddb unavailable"));
   drafts.save.mockResolvedValue(undefined);
   render(<Harness />);
@@ -123,6 +123,42 @@ it("does not save the empty composer over a draft whose restore failed, and lets
   const pending = switchWorkspace();
 
   await expect(Promise.all(pending)).resolves.toBeDefined();
+  expect(drafts.save).not.toHaveBeenCalled();
+});
+
+it("saves newly typed text merged with the stored draft when switching after a failed restore", async () => {
+  drafts.read
+    .mockRejectedValueOnce(new Error("indexeddb unavailable"))
+    .mockResolvedValueOnce({ text: "stored draft", attachments: [] });
+  drafts.save.mockResolvedValue(undefined);
+  render(<Harness />);
+  await act(async () => {});
+
+  fireEvent.change(screen.getByRole("textbox"), {
+    target: { value: "typed after failure" },
+  });
+  const pending = switchWorkspace();
+
+  await expect(Promise.all(pending)).resolves.toBeDefined();
+  expect(drafts.save).toHaveBeenCalledTimes(1);
+  expect(drafts.save).toHaveBeenCalledWith({
+    text: "stored draft\ntyped after failure",
+    attachments: [],
+  });
+});
+
+it("rejects the switch when a re-read of the stored draft still fails after new input", async () => {
+  drafts.read.mockRejectedValue(new Error("indexeddb unavailable"));
+  drafts.save.mockResolvedValue(undefined);
+  render(<Harness />);
+  await act(async () => {});
+
+  fireEvent.change(screen.getByRole("textbox"), {
+    target: { value: "typed after failure" },
+  });
+  const pending = switchWorkspace();
+
+  await expect(Promise.all(pending)).rejects.toBeDefined();
   expect(drafts.save).not.toHaveBeenCalled();
 });
 
