@@ -28,8 +28,8 @@ def _write_auth_file(tmp_path: Path, monkeypatch, **auth_overrides) -> Path:
         "accessToken": "access-token",
         "refreshToken": "refresh-token",
         "tokenType": "Bearer",
-        "expiresAt": 1791055241000,
-        "refreshExpiresAt": 1793647241000,
+        "expiresAt": int((time.time() + 3600) * 1000),
+        "refreshExpiresAt": int((time.time() + 30 * 24 * 3600) * 1000),
         "domain": "www.codebuddy.cn",
     }
     auth.update(auth_overrides)
@@ -43,7 +43,8 @@ def _write_auth_file(tmp_path: Path, monkeypatch, **auth_overrides) -> Path:
 
 
 def test_load_credentials_parses_session(tmp_path, monkeypatch) -> None:
-    _write_auth_file(tmp_path, monkeypatch)
+    expires_at_ms = int((time.time() + 3600) * 1000)
+    _write_auth_file(tmp_path, monkeypatch, expiresAt=expires_at_ms)
 
     credentials = load_credentials()
 
@@ -53,7 +54,7 @@ def test_load_credentials_parses_session(tmp_path, monkeypatch) -> None:
     assert credentials.user_id == "uid-1"
     assert credentials.user_label == "tester"
     # Epoch milliseconds in the file, seconds in the dataclass.
-    assert credentials.expires_at == pytest.approx(1791055241.0)
+    assert credentials.expires_at == pytest.approx(expires_at_ms / 1000)
     assert credentials.is_expired() is False
 
 
