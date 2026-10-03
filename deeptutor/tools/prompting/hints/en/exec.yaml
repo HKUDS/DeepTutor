@@ -1,6 +1,0 @@
-short_description: "Run source code or an explicit shell script in one isolated workspace tool; returns stdout/stderr and generated files."
-when_to_use: "For calculations, generated files, data processing, existing scripts, CLI/environment checks, and concise shell operations."
-input_format: "`code` — complete source or shell text; optional `language` — python (default), c, cpp, or shell; optional `stdin` and `timeout`."
-guideline: "For Python/C/C++, pass complete source directly and save generated files with bare relative names in the stable per-turn working directory. Later calls and every language mode share that directory and dependency environment, so they can reopen and revise earlier files. Use `language: shell` for shell tasks; never wrap Python in `python -c` or a heredoc. Prefer non-interactive shell flags and `python -m pip`."
-note: "Destructive patterns (rm -rf, mkfs, shutdown, …) are blocked. Do not describe syntax or dependency failures as sandbox denial; inspect STDERR and change the source or dependency."
-phase: "expansion"

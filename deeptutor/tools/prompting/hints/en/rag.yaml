@@ -1,6 +1,0 @@
-short_description: "Retrieve relevant passages from one of the attached knowledge bases."
-when_to_use: "Use when the answer is likely covered by the attached knowledge bases — definitions, formulas, concepts, or textbook explanations."
-input_format: "{\"query\": \"non-empty natural-language query\", \"kb_name\": \"one of the attached knowledge base names\"}."
-guideline: "Prefer RAG before external search when the task is course-aligned. To consult multiple knowledge bases, call rag once per kb_name (the system runs them in parallel)."
-note: "The query must be non-empty; if the first retrieval is weak, revise the query from another angle before giving up."
-phase: "exploration"

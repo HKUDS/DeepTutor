@@ -64,6 +64,10 @@ _MAX_IMAGE_BYTES = 8 * 1024 * 1024
 _MAX_MEDIA_BYTES = 10 * 1024 * 1024
 _TOOL_HINT_MAX_CHARS = 120
 
+# Engine-injected housekeeping args (internal paths, working dirs) are noise on
+# an IM surface and leak deployment layout — never render them in tool hints.
+_HINT_SKIP_ARGS = frozenset({"output_dir", "output_path", "workdir", "cwd"})
+
 
 @dataclass(frozen=True, slots=True)
 class PartnerTurnOptions:
@@ -91,14 +95,14 @@ def _format_tool_hint(tool_name: str, args: Any) -> str:
     if isinstance(args, dict) and args:
         parts = []
         for key, value in args.items():
-            if str(key).startswith("_"):
+            if str(key).startswith("_") or str(key) in _HINT_SKIP_ARGS:
                 continue
             text = str(value)
             if len(text) > 40:
                 text = text[:37] + "…"
             parts.append(f"{key}={text!r}" if isinstance(value, str) else f"{key}={text}")
         rendered = ", ".join(parts)
-    hint = f"⚙ {tool_name}({rendered})"
+    hint = f"⚙ {tool_name}({rendered})" if rendered else f"⚙ {tool_name}"
     if len(hint) > _TOOL_HINT_MAX_CHARS:
         hint = hint[: _TOOL_HINT_MAX_CHARS - 1] + "…"
     return hint

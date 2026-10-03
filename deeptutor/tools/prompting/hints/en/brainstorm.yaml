@@ -1,6 +1,0 @@
-short_description: "Explore multiple possible directions for a topic in one LLM call."
-when_to_use: "Use when you need broad idea exploration, alternative angles, or early-stage option generation before committing to a solution."
-input_format: "A topic or goal in natural language, plus optional context or constraints."
-guideline: "Prefer brainstorm when breadth is more important than deep deduction, and when you want several viable directions with light justification."
-note: "Good prompts include the objective, audience, constraints, and what kinds of ideas would be most useful."
-phase: "ideation"

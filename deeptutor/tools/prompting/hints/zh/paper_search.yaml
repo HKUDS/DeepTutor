@@ -1,6 +1,0 @@
-short_description: "搜索 arXiv 预印本，用于学术背景和前沿方法。"
-when_to_use: "需要研究论文、最新学术方法或可引用学术来源时使用；普通教材型问题不要用。"
-input_format: "**最多 3 个英文单词**（如 `agent harness`、`LLM benchmark`）。禁止整句、禁止 4 词及以上、禁止把多个名词短语堆在一起。"
-guideline: "paper_search 仅覆盖 arXiv；零结果时不要反复改写查询，改用 web_search 或直接 FINISH。"
-note: "只覆盖 arXiv 预印本，工业界术语可能没有命中。"
-phase: "expansion"

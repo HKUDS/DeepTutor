@@ -1,6 +1,0 @@
-short_description: "Search arXiv preprints for academic background and recent methods."
-when_to_use: "Use when the task needs research papers, state-of-the-art methods, or scholarly references. Skip for standard textbook questions."
-input_format: "**At most 3 English words** (e.g. `agent harness`, `LLM benchmark`). No full sentences, no 4-word-or-longer queries, no stacked noun phrases."
-guideline: "paper_search only covers arXiv; on zero results, do not keep rewriting the query — switch to web_search or FINISH."
-note: "arXiv-only; industrial-only terms may have no hits."
-phase: "expansion"

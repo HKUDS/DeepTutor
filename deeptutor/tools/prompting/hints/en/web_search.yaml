@@ -1,6 +1,0 @@
-short_description: "Search the web for current or external information with citations."
-when_to_use: "Use when the knowledge base is insufficient or the task needs recent events, real-world examples, or external references."
-input_format: "Natural-language search query."
-guideline: "Prefer web search only when freshness or external coverage matters."
-note: "Web results can vary in quality; cross-check claims before relying on them."
-phase: "expansion"
