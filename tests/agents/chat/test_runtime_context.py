@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+import time
 
 import pytest
 import yaml
@@ -39,8 +40,22 @@ class FrozenDateTime(datetime):
 
 
 @pytest.fixture(autouse=True)
-def _freeze_runtime_date(monkeypatch: pytest.MonkeyPatch) -> None:
+def _freeze_runtime_date(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(prompt_blocks_module, "datetime", FrozenDateTime)
+    # The block renders the frozen instant in the host's local timezone
+    # (``datetime.now().astimezone()``), so west of UTC the calendar date
+    # shifts a day earlier. Pin TZ to the frozen clock's own offset so the
+    # date assertions below hold on any host; tzset() is restored on exit.
+    if hasattr(time, "tzset"):
+        monkeypatch.setenv("TZ", "Asia/Shanghai")
+        time.tzset()
+        try:
+            yield
+        finally:
+            monkeypatch.undo()
+            time.tzset()
+    else:  # Windows: no tzset(); behavior unchanged there.
+        yield
 
 
 def _runtime_block(assembler: ChatPromptAssembler) -> str:
