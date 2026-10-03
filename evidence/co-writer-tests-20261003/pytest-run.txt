@@ -1,0 +1,51 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.13.13, pytest-9.1.1, pluggy-1.6.0 -- /Users/Shared/DeepTutor/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/xzh/services/ai-development/multica-pilot/workspaces/agents-plan-5fede2af789a/agen-289-c9175b250985/workdir/dt-cowriter-wt
+configfile: pyproject.toml
+plugins: cov-7.1.0, devtools-0.12.2, asyncio-1.4.0, anyio-4.14.2
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
+collecting ... collected 40 items
+
+tests/api/routers/test_co_writer_contract.py::test_create_document_returns_full_document_shape PASSED [  2%]
+tests/api/routers/test_co_writer_contract.py::test_create_document_without_title_derives_it_from_first_heading PASSED [  5%]
+tests/api/routers/test_co_writer_contract.py::test_create_document_with_empty_body_uses_defaults PASSED [  7%]
+tests/api/routers/test_co_writer_contract.py::test_create_document_rejects_non_string_fields PASSED [ 10%]
+tests/api/routers/test_co_writer_contract.py::test_list_documents_returns_summary_views_without_content PASSED [ 12%]
+tests/api/routers/test_co_writer_contract.py::test_list_documents_truncates_preview_at_160_chars PASSED [ 15%]
+tests/api/routers/test_co_writer_contract.py::test_get_document_returns_persisted_content PASSED [ 17%]
+tests/api/routers/test_co_writer_contract.py::test_update_document_applies_title_and_content PASSED [ 20%]
+tests/api/routers/test_co_writer_contract.py::test_update_document_with_empty_object_keeps_fields PASSED [ 22%]
+tests/api/routers/test_co_writer_contract.py::test_update_document_rejects_non_string_title PASSED [ 25%]
+tests/api/routers/test_co_writer_contract.py::test_delete_document_returns_deleted_true_then_404 PASSED [ 27%]
+tests/api/routers/test_co_writer_contract.py::test_unknown_or_malformed_doc_ids_return_404_on_crud_routes[ffffffffffff] PASSED [ 30%]
+tests/api/routers/test_co_writer_contract.py::test_unknown_or_malformed_doc_ids_return_404_on_crud_routes[A1B2C3D4E5F6] PASSED [ 32%]
+tests/api/routers/test_co_writer_contract.py::test_unknown_or_malformed_doc_ids_return_404_on_crud_routes[g1b2c3d4e5f6] PASSED [ 35%]
+tests/api/routers/test_co_writer_contract.py::test_unknown_or_malformed_doc_ids_return_404_on_crud_routes[abc123] PASSED [ 37%]
+tests/api/routers/test_co_writer_contract.py::test_unknown_or_malformed_doc_ids_return_404_on_crud_routes[aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa] PASSED [ 40%]
+tests/api/routers/test_co_writer_contract.py::test_not_found_details_name_the_document PASSED [ 42%]
+tests/api/routers/test_co_writer_contract.py::test_edit_action_rejects_missing_fields_and_bad_literals PASSED [ 45%]
+tests/api/routers/test_co_writer_contract.py::test_edit_action_rejects_oversized_text_and_instruction PASSED [ 47%]
+tests/api/routers/test_co_writer_contract.py::test_react_edit_rejects_invalid_mode_tools_and_oversized_selection PASSED [ 50%]
+tests/api/routers/test_co_writer_contract.py::test_react_edit_requires_instruction_when_mode_is_none PASSED [ 52%]
+tests/api/routers/test_co_writer_contract.py::test_react_edit_requires_a_non_blank_selection PASSED [ 55%]
+tests/api/routers/test_co_writer_contract.py::test_react_edit_stream_rejects_bad_payloads_before_streaming PASSED [ 57%]
+tests/api/routers/test_co_writer_contract.py::test_export_docx_rejects_oversized_content PASSED [ 60%]
+tests/api/routers/test_co_writer_contract.py::test_import_docx_rejects_missing_unsupported_and_empty_files PASSED [ 62%]
+tests/api/routers/test_co_writer_contract.py::test_export_docx_returns_400_when_converter_reports_bad_input PASSED [ 65%]
+tests/api/routers/test_co_writer_contract.py::test_export_docx_returns_500_on_unexpected_converter_error PASSED [ 67%]
+tests/api/routers/test_co_writer_contract.py::test_export_docx_sanitizes_unsafe_title_in_content_disposition PASSED [ 70%]
+tests/api/routers/test_co_writer_contract.py::test_import_docx_returns_400_for_corrupt_upload PASSED [ 72%]
+tests/api/routers/test_co_writer_contract.py::test_import_docx_returns_500_on_unexpected_conversion_error PASSED [ 75%]
+tests/api/routers/test_co_writer_contract.py::test_edit_action_forwards_request_fields_to_agent PASSED [ 77%]
+tests/api/routers/test_co_writer_contract.py::test_edit_action_maps_agent_exception_to_500 PASSED [ 80%]
+tests/api/routers/test_co_writer_contract.py::test_automark_forwards_text_and_returns_payload PASSED [ 82%]
+tests/api/routers/test_co_writer_contract.py::test_automark_maps_agent_exception_to_500 PASSED [ 85%]
+tests/api/routers/test_co_writer_contract.py::test_react_edit_strips_output_fence_and_reports_tools_used PASSED [ 87%]
+tests/api/routers/test_co_writer_contract.py::test_react_edit_skips_rag_tool_without_kb_name_and_deduplicates PASSED [ 90%]
+tests/api/routers/test_co_writer_contract.py::test_react_edit_forwards_kb_name_to_rag_gather PASSED [ 92%]
+tests/api/routers/test_co_writer_contract.py::test_react_edit_records_history_entry PASSED [ 95%]
+tests/api/routers/test_co_writer_contract.py::test_history_endpoints_return_recorded_operations PASSED [ 97%]
+tests/api/routers/test_co_writer_contract.py::test_tool_call_endpoint_serves_recorded_payload PASSED [100%]
+
+============================== 40 passed in 0.51s ==============================
