@@ -127,16 +127,6 @@ def _extract_interactive_content(content: dict) -> list[str]:
         elif isinstance(title, str):
             parts.append(f"title: {title}")
 
-    for elements in (
-        content.get("elements", []) if isinstance(content.get("elements"), list) else []
-    ):
-        for element in elements:
-            parts.extend(_extract_element_content(element))
-
-    card = content.get("card", {})
-    if card:
-        parts.extend(_extract_interactive_content(card))
-
     header = content.get("header", {})
     if header:
         header_title = header.get("title", {})
@@ -144,6 +134,15 @@ def _extract_interactive_content(content: dict) -> list[str]:
             header_text = header_title.get("content", "") or header_title.get("text", "")
             if header_text:
                 parts.append(f"title: {header_text}")
+
+    elements = content.get("elements", [])
+    if isinstance(elements, list):
+        for element in elements:
+            parts.extend(_extract_element_content(element))
+
+    card = content.get("card", {})
+    if card:
+        parts.extend(_extract_interactive_content(card))
 
     return parts
 
@@ -1070,8 +1069,8 @@ class FeishuChannel(BaseChannel):
         from lark_oapi.api.im.v1 import GetMessageResourceRequest
 
         # Feishu API only accepts 'image' or 'file' as type parameter
-        # Convert 'audio' to 'file' for API compatibility
-        if resource_type == "audio":
+        # Convert 'audio'/'media' to 'file' for API compatibility
+        if resource_type in ("audio", "media"):
             resource_type = "file"
 
         try:
@@ -2061,6 +2060,12 @@ class FeishuChannel(BaseChannel):
             if msg_type == "text":
                 text = content_json.get("text", "")
                 if text:
+                    for mention in getattr(message, "mentions", None) or []:
+                        key = getattr(mention, "key", None)
+                        name = getattr(mention, "name", None)
+                        if key and name:
+                            replacement = name if name.startswith("@") else f"@{name}"
+                            text = text.replace(key, replacement)
                     content_parts.append(text)
 
             elif msg_type == "post":
