@@ -39,6 +39,11 @@ Wire contract (must match ``RunnerSidecarBackend``):
   ``error`` is non-empty *only* when the runner itself failed (bad JSON,
   spawn error, ...), never merely because the command exited non-zero.
 
+  An extra ``limits_degraded`` field appears *only* when a per-command
+  rlimit could not be applied in the child. The command still ran — the
+  field lets the caller (and the runner log, which gets one warning line)
+  see that a resource guard was missing instead of assuming it held.
+
 Argv note:
   The app sends ``command`` and ``argv`` together and they describe the same
   execution (``command == shlex.join(argv)``). ``argv`` wins here, so a caller
@@ -107,12 +112,18 @@ def _truncate_head_tail(text: str, max_chars: int) -> str:
     return text[:half] + f"\n\n... ({dropped:,} chars truncated) ...\n\n" + text[-half:]
 
 
-def _build_preexec_fn(memory_mb: int, cpu_seconds: int):
+def _build_preexec_fn(memory_mb: int, cpu_seconds: int, report_fd: int | None = None):
     """Return a ``preexec_fn`` that applies rlimits in the forked child (POSIX).
 
     The closure runs after ``fork`` and before ``exec`` in the child process,
     so the limits apply to the command and everything it spawns. Returns
     ``None`` on non-POSIX platforms (no rlimit support there).
+
+    ``report_fd`` is the write end of a pipe owned by the parent. The child
+    cannot log from here (fork + only-async-signal-safe territory), so when a
+    ``setrlimit`` fails it writes one short reason to the pipe instead; the fd
+    is CLOEXEC, so a successful ``exec`` closes it and the parent's read sees
+    a clean EOF — no report means every limit applied.
 
     Notes on portability:
       * ``RLIMIT_AS`` (address space) is the most portable memory cap but it
@@ -128,27 +139,76 @@ def _build_preexec_fn(memory_mb: int, cpu_seconds: int):
         return None
 
     def _apply() -> None:
+        failures: list[str] = []
         # Address space (bytes). Cap virtual memory as a secondary guard.
         if memory_mb > 0 and resource is not None:
             mem_bytes = memory_mb * 1024 * 1024
             try:
                 resource.setrlimit(resource.RLIMIT_AS, (mem_bytes, mem_bytes))  # type: ignore[attr-defined]
-            except (ValueError, OSError):
-                pass
+            except (ValueError, OSError) as exc:
+                failures.append(f"as: {type(exc).__name__}: {exc}")
         # CPU time (seconds). SIGXCPU/SIGKILL the child if it burns this much CPU.
         if cpu_seconds > 0 and resource is not None:
             try:
                 resource.setrlimit(resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds))  # type: ignore[attr-defined]
-            except (ValueError, OSError):
-                pass
+            except (ValueError, OSError) as exc:
+                failures.append(f"cpu: {type(exc).__name__}: {exc}")
         # Open file descriptors.
         if resource is not None:
             try:
                 resource.setrlimit(resource.RLIMIT_NOFILE, (_RLIMIT_NOFILE, _RLIMIT_NOFILE))  # type: ignore[attr-defined]
-            except (ValueError, OSError):
+            except (ValueError, OSError) as exc:
+                failures.append(f"nofile: {type(exc).__name__}: {exc}")
+        if failures and report_fd is not None:
+            try:
+                os.write(report_fd, "; ".join(failures).encode("utf-8", "replace"))
+            except OSError:
+                # Reporting is best-effort: never change execution semantics.
                 pass
 
     return _apply
+
+
+def _with_limit_degradation(
+    result: dict[str, Any], drain_fd: int | None, report_fd: int | None
+) -> dict[str, Any]:
+    """Fold the child's rlimit report, if any, into *result*.
+
+    Called once the child is gone from every outcome path of
+    :func:`execute`. The parent holds both pipe ends by then, so closing the
+    write end yields EOF on the read side; leftover bytes are the failure
+    report written by ``_apply`` before ``exec``. A degraded result keeps its
+    execution fields untouched — this only adds the ``limits_degraded``
+    marker (and one warning line to the runner log, where container logs can
+    be grepped for it).
+    """
+    if drain_fd is None or report_fd is None:
+        return result
+    try:
+        os.close(report_fd)
+    except OSError:
+        pass
+    chunks: list[bytes] = []
+    try:
+        while True:
+            data = os.read(drain_fd, 4096)
+            if not data:
+                break
+            chunks.append(data)
+    except OSError:
+        pass
+    finally:
+        try:
+            os.close(drain_fd)
+        except OSError:
+            pass
+    degraded = b"".join(chunks).decode("utf-8", "replace").strip()
+    if not degraded:
+        return result
+    sys.stdout.write(f"runner: WARNING sandbox rlimits not applied: {degraded}\n")
+    sys.stdout.flush()
+    result["limits_degraded"] = degraded
+    return result
 
 
 # Workdirs must stay inside the workspace's writable outputs tree (defence in
@@ -227,7 +287,15 @@ def execute(payload: dict[str, Any]) -> dict[str, Any]:
     cpu_seconds = _int(limits.get("cpu_seconds"), _DEFAULT_CPU_SECONDS)
     max_output_chars = _int(limits.get("max_output_chars"), _DEFAULT_MAX_OUTPUT_CHARS)
 
-    preexec_fn = _build_preexec_fn(memory_mb, cpu_seconds)
+    # rlimit application happens in the forked child (see _build_preexec_fn),
+    # which cannot log. A CLOEXEC pipe is the child→parent report channel:
+    # bytes on it after the child is gone are the limits it could not apply.
+    report_fd: int | None = None
+    drain_fd: int | None = None
+    preexec_fn = None
+    if _POSIX and resource is not None:
+        drain_fd, report_fd = os.pipe()
+        preexec_fn = _build_preexec_fn(memory_mb, cpu_seconds, report_fd)
 
     try:
         completed = subprocess.run(  # noqa: S602 - shell=True is the contract
@@ -241,29 +309,42 @@ def execute(payload: dict[str, Any]) -> dict[str, Any]:
             capture_output=True,
             text=True,
             preexec_fn=preexec_fn,  # POSIX-only; None elsewhere
+            # Keep the report pipe's write end open in the child until exec
+            # (close_fds would otherwise close it before preexec_fn runs).
+            pass_fds=() if report_fd is None else (report_fd,),
         )
     except subprocess.TimeoutExpired as exc:
         # Surface whatever was captured before the kill, head+tail capped.
         stdout = _decode(exc.stdout)
         stderr = _decode(exc.stderr)
-        return {
-            "stdout": _truncate_head_tail(stdout, max_output_chars),
-            "stderr": _truncate_head_tail(stderr, max_output_chars),
-            "exit_code": 124,  # conventional "timed out" exit status
-            "timed_out": True,
-            "error": "",
-        }
+        return _with_limit_degradation(
+            {
+                "stdout": _truncate_head_tail(stdout, max_output_chars),
+                "stderr": _truncate_head_tail(stderr, max_output_chars),
+                "exit_code": 124,  # conventional "timed out" exit status
+                "timed_out": True,
+                "error": "",
+            },
+            drain_fd,
+            report_fd,
+        )
     except (OSError, ValueError) as exc:
         # Spawn failure (bad cwd, exec error, ...) — a runner-level problem.
-        return _error_result(f"{type(exc).__name__}: {exc}")
+        return _with_limit_degradation(
+            _error_result(f"{type(exc).__name__}: {exc}"), drain_fd, report_fd
+        )
 
-    return {
-        "stdout": _truncate_head_tail(completed.stdout or "", max_output_chars),
-        "stderr": _truncate_head_tail(completed.stderr or "", max_output_chars),
-        "exit_code": completed.returncode,
-        "timed_out": False,
-        "error": "",
-    }
+    return _with_limit_degradation(
+        {
+            "stdout": _truncate_head_tail(completed.stdout or "", max_output_chars),
+            "stderr": _truncate_head_tail(completed.stderr or "", max_output_chars),
+            "exit_code": completed.returncode,
+            "timed_out": False,
+            "error": "",
+        },
+        drain_fd,
+        report_fd,
+    )
 
 
 def _decode(value: Any) -> str:
