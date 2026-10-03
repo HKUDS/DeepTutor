@@ -1,0 +1,72 @@
+============================= test session starts ==============================
+collecting ... collected 20 items
+
+tests/services/partners/test_feishu_message_parsing.py::test_p2p_text_message_forwarded_to_sender_chat PASSED [  5%]
+tests/services/partners/test_feishu_message_parsing.py::test_group_text_replaces_mention_placeholders_with_display_names FAILED [ 10%]
+tests/services/partners/test_feishu_message_parsing.py::test_post_message_parses_text_at_and_downloads_images PASSED [ 15%]
+tests/services/partners/test_feishu_message_parsing.py::test_extract_post_content_supports_localized_wrapped_and_fallback PASSED [ 20%]
+tests/services/partners/test_feishu_message_parsing.py::test_video_media_download_uses_file_resource_type FAILED [ 25%]
+tests/services/partners/test_feishu_message_parsing.py::test_audio_download_uses_file_resource_type_and_opus_suffix PASSED [ 30%]
+tests/services/partners/test_feishu_message_parsing.py::test_file_message_saved_and_forwarded PASSED [ 35%]
+tests/services/partners/test_feishu_message_parsing.py::test_image_download_failure_degrades_to_placeholder PASSED [ 40%]
+tests/services/partners/test_feishu_message_parsing.py::test_interactive_card_extracts_header_title_and_element_bodies FAILED [ 45%]
+tests/services/partners/test_feishu_message_parsing.py::test_interactive_json_string_content_is_parsed FAILED [ 50%]
+tests/services/partners/test_feishu_message_parsing.py::test_share_card_types_render_descriptive_placeholders PASSED [ 55%]
+tests/services/partners/test_feishu_message_parsing.py::test_group_message_without_mention_skipped_under_mention_policy PASSED [ 60%]
+tests/services/partners/test_feishu_message_parsing.py::test_group_message_with_bot_mention_routes_to_group_chat PASSED [ 65%]
+tests/services/partners/test_feishu_message_parsing.py::test_group_media_message_routes_to_group_with_media_path PASSED [ 70%]
+tests/services/partners/test_feishu_message_parsing.py::test_is_bot_mentioned_detects_bot_and_all_but_not_user_mentions PASSED [ 75%]
+tests/services/partners/test_feishu_message_parsing.py::test_duplicate_message_id_is_processed_once PASSED [ 80%]
+tests/services/partners/test_feishu_message_parsing.py::test_bot_sender_messages_are_ignored PASSED [ 85%]
+tests/services/partners/test_feishu_message_parsing.py::test_malformed_content_json_is_dropped_without_crash PASSED [ 90%]
+tests/services/partners/test_feishu_message_parsing.py::test_outbound_p2p_reply_uses_open_id_and_targets_inbound_source PASSED [ 95%]
+tests/services/partners/test_feishu_message_parsing.py::test_outbound_group_reply_uses_chat_id_receive_type PASSED [100%]
+
+=================================== FAILURES ===================================
+_______ test_group_text_replaces_mention_placeholders_with_display_names _______
+tests/services/partners/test_feishu_message_parsing.py:158: in test_group_text_replaces_mention_placeholders_with_display_names
+    assert msg.content == "@DeepTutor @Alice please summarize"
+E   AssertionError: assert '@_user_1 @_u...ase summarize' == '@DeepTutor @...ase summarize'
+E     
+E     - @DeepTutor @Alice please summarize
+E     + @_user_1 @_user_2 please summarize
+______________ test_video_media_download_uses_file_resource_type _______________
+tests/services/partners/test_feishu_message_parsing.py:224: in test_video_media_download_uses_file_resource_type
+    assert request.type == "file"
+E   AssertionError: assert 'media' == 'file'
+E     
+E     - file
+E     + media
+----------------------------- Captured stderr call -----------------------------
+2026-10-03 08:16:09.795 | DEBUG    | deeptutor.partners.channels.feishu:_download_and_save_media:1140 - Downloaded media to /private/tmp/multica-task-1075915524/pytest-of-xzh/pytest-3/test_video_media_download_uses0/data/partners/media/feishu/clip.mp4
+________ test_interactive_card_extracts_header_title_and_element_bodies ________
+tests/services/partners/test_feishu_message_parsing.py:319: in test_interactive_card_extracts_header_title_and_element_bodies
+    assert _published(channel).content == expected
+E   AssertionError: assert 'title: Card Header' == 'title: Card ...l\nnested unk'
+E     
+E     - title: Card Header
+E     ?                   -
+E     + title: Card Header
+E     - md body
+E     - div text
+E     - field A...
+E     
+E     ...Full output truncated (9 lines hidden), use '-vv' to show
+________________ test_interactive_json_string_content_is_parsed ________________
+tests/services/partners/test_feishu_message_parsing.py:326: in test_interactive_json_string_content_is_parsed
+    assert _extract_interactive_content(
+E   AssertionError: assert [] == ['str body']
+E     
+E     Right contains one more item: 'str body'
+E     
+E     Full diff:
+E     + []
+E     - [
+E     -     'str body',
+E     - ]
+=========================== short test summary info ============================
+FAILED tests/services/partners/test_feishu_message_parsing.py::test_group_text_replaces_mention_placeholders_with_display_names
+FAILED tests/services/partners/test_feishu_message_parsing.py::test_video_media_download_uses_file_resource_type
+FAILED tests/services/partners/test_feishu_message_parsing.py::test_interactive_card_extracts_header_title_and_element_bodies
+FAILED tests/services/partners/test_feishu_message_parsing.py::test_interactive_json_string_content_is_parsed
+========================= 4 failed, 16 passed in 2.20s =========================
