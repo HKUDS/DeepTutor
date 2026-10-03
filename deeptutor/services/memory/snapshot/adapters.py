@@ -84,7 +84,8 @@ def read_notebook_entities() -> list[Entity]:
             continue
         try:
             nb_data = json.loads(nb_file.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning("notebook snapshot skipped corrupt file: %s (%s)", nb_file, exc)
             continue
         for r in nb_data.get("records") or []:
             if not isinstance(r, dict):
@@ -135,7 +136,8 @@ def read_cowriter_entities() -> list[Entity]:
             continue
         try:
             m = json.loads(manifest.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning("cowriter snapshot skipped corrupt manifest: %s (%s)", manifest, exc)
             continue
         doc_id = m.get("id")
         if not doc_id:
@@ -168,7 +170,8 @@ def read_book_entities() -> list[Entity]:
             continue
         try:
             m = json.loads(manifest_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning("book snapshot skipped corrupt manifest: %s (%s)", manifest_path, exc)
             continue
         book_id = m.get("id")
         if not book_id:
