@@ -201,8 +201,15 @@ class EmbeddingClient:
             if progress_callback:
                 try:
                     progress_callback(i + 1, total_batches)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    # Progress feedback is best-effort: never fail the embedding
+                    # run, but never lose the failure silently either — index
+                    # progress would read as stalled with no trace why.
+                    self.logger.warning(
+                        f"Embedding progress callback failed "
+                        f"(batch {i + 1}/{total_batches}): {exc}",
+                        exc_info=True,
+                    )
 
             # Delay between batches to avoid rate limiting
             if i < total_batches - 1 and batch_delay > 0:
@@ -276,8 +283,14 @@ class EmbeddingClient:
             if progress_callback:
                 try:
                     progress_callback(i + 1, total_batches)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    # Same contract as embed(): log and continue, so a broken
+                    # progress sink cannot stall multimodal indexing invisibly.
+                    self.logger.warning(
+                        f"Embedding progress callback failed "
+                        f"(batch {i + 1}/{total_batches}): {exc}",
+                        exc_info=True,
+                    )
 
             if i < total_batches - 1 and self.config.batch_delay > 0:
                 await asyncio.sleep(self.config.batch_delay)
