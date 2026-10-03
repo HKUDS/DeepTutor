@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { expect, it, vi } from "vitest";
+import { beforeEach, expect, it, vi } from "vitest";
 import { MessageSquare } from "lucide-react";
 
 import ChatComposer from "@/components/chat/home/ChatComposer";
@@ -27,6 +27,14 @@ const activeCap: CapabilityDef = {
   icon: MessageSquare,
   allowedTools: [],
 };
+
+// Drop queued once-mocks so a test whose re-read never happens (e.g. on the
+// pre-fix code, where the switch chain rejects first) cannot leak its
+// responses into the next test.
+beforeEach(() => {
+  drafts.read.mockReset();
+  drafts.save.mockReset();
+});
 
 function Harness({ onSend = () => {} }: { onSend?: (content: string) => void }) {
   const composerRef = useRef<HTMLDivElement>(null);
