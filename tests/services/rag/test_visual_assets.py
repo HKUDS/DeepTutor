@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 import zipfile
@@ -124,7 +125,7 @@ def test_manifest_limit_does_not_replace_existing_assets(tmp_path: Path, monkeyp
     assert store.read(second.record["asset_id"]) is None
 
 
-def test_size_count_and_rebuild_cleanup(tmp_path: Path, monkeypatch):
+def test_size_and_rebuild_cleanup(tmp_path: Path, monkeypatch):
     import deeptutor.services.rag.visual_assets as assets_module
 
     kb_dir, source, image, parsed = _fixture(tmp_path)
@@ -139,10 +140,138 @@ def test_size_count_and_rebuild_cleanup(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(assets_module, "MAX_IMAGE_BYTES", 10)
     assert collect_visual_assets(parsed, source, kb_dir) == []
     monkeypatch.setattr(assets_module, "MAX_IMAGE_BYTES", 5 * 1024 * 1024)
-    for index in range(2):
-        Image.new("RGB", (3, 2), color=(index * 60, 0, 0)).save(image.parent / f"extra-{index}.png")
-    monkeypatch.setattr(assets_module, "MAX_ASSETS_PER_DOCUMENT", 2)
-    assert len(collect_visual_assets(parsed, source, kb_dir)) == 2
+    assert len(collect_visual_assets(parsed, source, kb_dir)) == 1
+
+
+@pytest.mark.parametrize(("suffix", "engine"), [(".pdf", "mineru"), (".epub", "pymupdf4llm")])
+def test_figures_beyond_64_are_retained_and_indexed(tmp_path: Path, monkeypatch, suffix, engine):
+    pytest.importorskip("llama_index.core")
+    import deeptutor.services.parsing as parsing
+    from deeptutor.services.rag.pipelines.llamaindex.document_loader import LlamaIndexDocumentLoader
+
+    kb_dir, source, image, parsed = _fixture(tmp_path, suffix=suffix, engine=engine)
+    paths = [image]
+    for index in range(1, 70):
+        path = image.parent / f"z-figure-{index:03}.png"
+        Image.new("RGB", (3, 2), color=(index, 99, 211)).save(path)
+        paths.append(path)
+    parsed = replace(
+        parsed,
+        markdown="\n\n".join(
+            f"![Figure {index}](images/{path.name})" for index, path in enumerate(paths)
+        ),
+        blocks=[
+            {"img_path": str(path), "page_idx": index, "image_caption": [f"Figure {index}"]}
+            for index, path in enumerate(paths)
+        ]
+        if engine == "mineru"
+        else None,
+    )
+
+    candidates = collect_visual_assets(parsed, source, kb_dir)
+    assert [item.path for item in candidates] == paths
+    store = VisualAssetStore(kb_dir)
+    store.publish(candidates, replace=True)
+    assert len(store.records()) == 70
+    for candidate in candidates:
+        assert store.read(candidate.record["asset_id"]) == (
+            candidate.record,
+            candidate.path.read_bytes(),
+        )
+
+    monkeypatch.setattr(
+        parsing,
+        "get_parse_service",
+        lambda: SimpleNamespace(parse=lambda *_args, **_kwargs: parsed),
+    )
+    indexed_candidates = []
+    documents = asyncio.run(
+        LlamaIndexDocumentLoader().load(
+            [str(source)], kb_dir=kb_dir, visual_candidates=indexed_candidates
+        )
+    )
+    visual = [doc for doc in documents if doc.metadata.get("content_type") == "source_visual"]
+    assert len(visual) == 70
+    assert indexed_candidates == candidates
+    assert visual[-1].metadata["visual_asset_id"] == candidates[-1].record["asset_id"]
+    assert "Figure 69" in visual[-1].text
+    if engine == "mineru":
+        assert visual[-1].metadata["page"] == 70
+
+
+def test_block_metadata_matching_resolves_each_image_path_once(tmp_path: Path, monkeypatch):
+    import deeptutor.services.rag.visual_assets as assets_module
+
+    kb_dir, source, image, parsed = _fixture(tmp_path)
+    paths = [image]
+    for index in range(1, 12):
+        path = image.parent / f"figure-{index:02}.png"
+        Image.new("RGB", (3, 2), color=(index, 99, 211)).save(path)
+        paths.append(path)
+    parsed = replace(
+        parsed,
+        markdown="",
+        blocks=[
+            {"img_path": str(path), "image_caption": [f"Figure {index}"], "text": "context"}
+            for index, path in enumerate(paths)
+        ],
+    )
+
+    resolve_calls = 0
+    original_resolve = Path.resolve
+
+    def counting_resolve(path: Path, *args, **kwargs) -> Path:
+        nonlocal resolve_calls
+        resolve_calls += 1
+        return original_resolve(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "resolve", counting_resolve)
+    candidates = collect_visual_assets(parsed, source, kb_dir)
+
+    assert [candidate.record["caption"] for candidate in candidates] == [
+        f"Figure {paths.index(candidate.path)}" for candidate in candidates
+    ]
+    # One normalization per distinct image path, plus the fixed source/KB
+    # containment checks. A per-image scan of all blocks grows quadratically.
+    assert resolve_calls <= len(paths) + 8
+
+
+def test_block_metadata_matching_preserves_path_and_duplicate_semantics(
+    tmp_path: Path, monkeypatch
+):
+    kb_dir, source, image, parsed = _fixture(tmp_path)
+    unmatched_dir = tmp_path / "unmatched"
+    unmatched_dir.mkdir()
+    other_image = image.parent / "other.png"
+    Image.new("RGB", (3, 2), color="green").save(other_image)
+    wrong_same_name = unmatched_dir / other_image.name
+    monkeypatch.chdir(tmp_path)
+    parsed = replace(
+        parsed,
+        markdown="",
+        blocks=[
+            {
+                "img_path": str(wrong_same_name),
+                "caption": "must not match by name",
+                "text": "neighbor before",
+            },
+            {"img_path": str(image), "caption": "first match", "page_idx": 4},
+            {"img_path": str(image), "caption": "duplicate match", "text": "neighbor after"},
+            {"img_path": "parse-cache/images/figure.png", "caption": "relative duplicate"},
+            {"img_path": str(wrong_same_name), "caption": "wrong other image"},
+        ],
+    )
+
+    candidates = collect_visual_assets(parsed, source, kb_dir)
+
+    assert [candidate.path.name for candidate in candidates] == ["figure.png", "other.png"]
+    figure, other = candidates
+    assert figure.record["caption"] == "first match"
+    assert figure.record["context"] == "neighbor before neighbor after"
+    assert figure.record["page_index"] == 4
+    assert figure.record["source_locator"] == "blocks.json#/1"
+    assert other.record["caption"] == ""
+    assert other.record["source_locator"] == "asset:other.png"
 
 
 @pytest.mark.parametrize("suffix", [".pdf", ".epub"])
