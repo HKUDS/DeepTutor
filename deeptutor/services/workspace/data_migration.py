@@ -953,8 +953,8 @@ def assert_no_pending_recovery(*, reject_unreadable: bool = False) -> None:
             if reject_unreadable:
                 raise WorkspaceError(
                     "A migration journal is unreadable, so a pending recovery cannot be "
-                    f"ruled out: {path}. Discard it in Settings → Data migration before "
-                    "changing learning data."
+                    f"ruled out: {path}. Use Recover migration in Settings → Data migration to "
+                    "quarantine it before changing learning data."
                 )
             continue
         if row.get("status") in pending:
