@@ -155,6 +155,55 @@ it("saves newly typed text merged with the stored draft when switching after a f
   });
 });
 
+it("keeps typed text on a retried switch after the first merge save failed", async () => {
+  drafts.read
+    .mockRejectedValueOnce(new Error("indexeddb unavailable"))
+    .mockResolvedValueOnce(undefined);
+  drafts.save
+    .mockRejectedValueOnce(new Error("QuotaExceededError"))
+    .mockResolvedValue(undefined);
+  render(<Harness />);
+  await act(async () => {});
+
+  fireEvent.change(screen.getByRole("textbox"), {
+    target: { value: "typed after failure" },
+  });
+  let pending = switchWorkspace();
+  await expect(Promise.all(pending)).rejects.toBeDefined();
+
+  pending = switchWorkspace();
+  await expect(Promise.all(pending)).resolves.toBeDefined();
+  expect(drafts.save).toHaveBeenCalledTimes(2);
+  expect(drafts.save).toHaveBeenLastCalledWith({
+    text: "typed after failure",
+    attachments: [],
+  });
+});
+
+it("keeps typed text when the stored draft has attachments but no text", async () => {
+  const storedAttachments = [
+    { filename: "notes.pdf", base64: "Zm9v", mimeType: "application/pdf" },
+  ];
+  drafts.read
+    .mockRejectedValueOnce(new Error("indexeddb unavailable"))
+    .mockResolvedValueOnce({ text: "", attachments: storedAttachments });
+  drafts.save.mockResolvedValue(undefined);
+  render(<Harness />);
+  await act(async () => {});
+
+  fireEvent.change(screen.getByRole("textbox"), {
+    target: { value: "typed after failure" },
+  });
+  const pending = switchWorkspace();
+
+  await expect(Promise.all(pending)).resolves.toBeDefined();
+  expect(drafts.save).toHaveBeenCalledTimes(1);
+  expect(drafts.save).toHaveBeenCalledWith({
+    text: "typed after failure",
+    attachments: storedAttachments,
+  });
+});
+
 it("rejects the switch when a re-read of the stored draft still fails after new input", async () => {
   drafts.read.mockRejectedValue(new Error("indexeddb unavailable"));
   drafts.save.mockResolvedValue(undefined);

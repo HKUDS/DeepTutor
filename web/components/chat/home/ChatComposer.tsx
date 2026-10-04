@@ -573,10 +573,7 @@ export default memo(function ChatComposer({
       if (!draft.text && !draft.attachments.length) return Promise.resolve();
       const merge = (stored?: WorkspaceDraft) =>
         saveWorkspaceDraft({
-          text:
-            stored?.text && draft.text
-              ? `${stored.text}\n${draft.text}`
-              : (stored?.text ?? draft.text),
+          text: [stored?.text, draft.text].filter(Boolean).join("\n"),
           attachments: [...(stored?.attachments ?? []), ...draft.attachments],
         });
       // Re-read only once per mount so a retried switch merges the original
