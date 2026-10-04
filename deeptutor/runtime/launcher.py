@@ -6,6 +6,7 @@ import atexit
 from dataclasses import dataclass
 import hashlib
 import json
+import logging
 import os
 from pathlib import Path
 import secrets
@@ -34,6 +35,8 @@ from deeptutor.services.app_update import LAUNCHER_PID_ENV
 
 BACKEND_READY_TIMEOUT_ENV = "DEEPTUTOR_BACKEND_READY_TIMEOUT"
 FRONTEND_READY_TIMEOUT_ENV = "DEEPTUTOR_FRONTEND_READY_TIMEOUT"
+
+logger = logging.getLogger(__name__)
 
 
 def _ready_timeout(env_name: str, default: int) -> int:
@@ -237,13 +240,17 @@ def _send_tree_signal(pid: int | None, pgid: int | None, sig: signal.Signals | i
         cmd = ["taskkill", "/PID", str(pid), "/T"]
         if sig == KILL_SIGNAL:
             cmd.append("/F")
-        subprocess.run(
+        completed = subprocess.run(
             cmd,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             check=False,
             **_no_window_kwargs(),
         )
+        # Exit code 128 is taskkill's "process not found": the tree is
+        # already gone, which is what the caller wanted anyway.
+        if completed.returncode not in (0, 128):
+            raise RuntimeError(f"taskkill {pid} failed with exit code {completed.returncode}")
         return
     if os.name != "nt" and pgid is not None:
         os.killpg(pgid, sig)
@@ -251,21 +258,50 @@ def _send_tree_signal(pid: int | None, pgid: int | None, sig: signal.Signals | i
         os.kill(pid, sig)
 
 
+def _signal_target(
+    pid: int | None,
+    pgid: int | None,
+    sig: signal.Signals | int,
+    *,
+    target: str,
+) -> None:
+    """Deliver ``sig`` to a process tree, logging failures instead of
+    swallowing them.
+
+    A target that is already gone (ESRCH on POSIX, taskkill's "process not
+    found" on Windows) has reached the intended end state, so it is not a
+    delivery failure. Any other failure is logged with its cause; the
+    caller's escalation ladder is unchanged.
+    """
+    try:
+        _send_tree_signal(pid, pgid, sig)
+    except ProcessLookupError:
+        return
+    except Exception:
+        logger.warning(
+            "failed to send %s to %s",
+            getattr(sig, "name", sig),
+            target,
+            exc_info=True,
+        )
+
+
 def _terminate(proc: ManagedProcess | None) -> None:
+    """Stop ``proc`` with the SIGTERM -> SIGKILL ladder.
+
+    A signal that could not be delivered is logged rather than silently
+    dropped, so a surviving child can be traced back to its failed
+    termination.
+    """
     if proc is None or proc.process.poll() is not None:
         return
     _log(_t("start.stopping", name=proc.name, pid=proc.process.pid))
-    try:
-        _send_tree_signal(proc.process.pid, proc.pgid, signal.SIGTERM)
-    except Exception:
-        pass
+    target = f"{proc.name} (pid={proc.process.pid})"
+    _signal_target(proc.process.pid, proc.pgid, signal.SIGTERM, target=target)
     try:
         proc.process.wait(timeout=8)
     except subprocess.TimeoutExpired:
-        try:
-            _send_tree_signal(proc.process.pid, proc.pgid, KILL_SIGNAL)
-        except Exception:
-            pass
+        _signal_target(proc.process.pid, proc.pgid, KILL_SIGNAL, target=target)
 
 
 def _relax_console_encoding(streams: tuple[object, ...] | None = None) -> None:
@@ -497,22 +533,24 @@ def _prompt_new_ports(
 
 
 def _kill_port_listeners(listeners: dict[int, list[tuple[int, str]]]) -> None:
+    """Signal every port listener with the SIGTERM -> SIGKILL ladder.
+
+    One unreachable listener does not stop the others from being signalled,
+    and each failed delivery leaves a warning in the log instead of a silent
+    zombie.
+    """
     for port, entries in listeners.items():
         for pid, command in entries:
             _log(_t("start.port_killing", pid=pid, command=command))
-            try:
-                _send_tree_signal(pid, None, signal.SIGTERM)
-            except Exception:
-                pass
+            target = f"port {port} listener (pid={pid})"
+            _signal_target(pid, None, signal.SIGTERM, target=target)
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline and _port_accepts_connection(port):
             time.sleep(0.2)
         if _port_accepts_connection(port):
             for pid, _command in entries:
-                try:
-                    _send_tree_signal(pid, None, KILL_SIGNAL)
-                except Exception:
-                    pass
+                target = f"port {port} listener (pid={pid})"
+                _signal_target(pid, None, KILL_SIGNAL, target=target)
             deadline = time.monotonic() + 3
             while time.monotonic() < deadline and _port_accepts_connection(port):
                 time.sleep(0.2)
