@@ -61,7 +61,11 @@ from deeptutor.services.llm import (
 from deeptutor.services.llm import finish_was_truncated as _finish_was_truncated
 from deeptutor.services.llm.capabilities import threads_session_id
 from deeptutor.services.llm.image_replay import deduplicate_user_images
-from deeptutor.services.llm.multimodal import should_degrade_to_text, strip_image_parts_inplace
+from deeptutor.services.llm.multimodal import (
+    has_image_parts,
+    should_degrade_to_text,
+    strip_image_parts_inplace,
+)
 from deeptutor.services.llm.request_compat import (
     is_forced_tool_choice_unsupported,
     is_image_input_unsupported,
@@ -1233,12 +1237,19 @@ class AgentLoop:
             response_stream = None
             try:
                 sent_content = [message.get("content") for message in kwargs["messages"]]
+                sent_had_images = has_image_parts(kwargs["messages"])
                 response_stream = await self._create_response_stream(kwargs, trace_meta, stage)
                 # Retain an actual provider fallback for later rounds. The
                 # request-only image deduplication must never overwrite history.
-                for original, accepted, sent in zip(messages, kwargs["messages"], sent_content):
-                    if "content" in accepted and accepted["content"] is not sent:
-                        original["content"] = accepted["content"]
+                if sent_had_images and not has_image_parts(kwargs["messages"]):
+                    # Degrade all canonical copies too, including duplicates
+                    # replaced only on the wire. Otherwise the next round would
+                    # retry images the provider has already rejected.
+                    strip_image_parts_inplace(messages)
+                else:
+                    for original, accepted, sent in zip(messages, kwargs["messages"], sent_content):
+                        if "content" in accepted and accepted["content"] is not sent:
+                            original["content"] = accepted["content"]
                 async for chunk in response_stream:
                     usage = getattr(chunk, "usage", None)
                     if usage is not None:

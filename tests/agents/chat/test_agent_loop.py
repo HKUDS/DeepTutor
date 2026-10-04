@@ -3514,8 +3514,58 @@ async def test_wire_deduplicates_user_images_without_mutating_model_history(monk
     monkeypatch.setattr(pipeline, "_build_loop_messages", lambda *_args, **_kwargs: messages)
     await _run(pipeline, UnifiedContext(session_id="s", user_message="again"))
     wire = client.calls[0]["messages"]
-    assert wire[0] == original[0]
+    assert wire[0]["content"][-1] == original[0]["content"][0]
     assert "Repeated image" in wire[2]["content"][0]["text"]
     assert [message["content"] for message in messages[:3]] == [
         message["content"] for message in original
     ]
+
+
+@pytest.mark.asyncio
+async def test_image_fallback_strips_all_canonical_copies_after_wire_deduplication(monkeypatch):
+    from copy import deepcopy
+
+    from deeptutor.services.llm.multimodal import has_image_parts
+
+    image = {"type": "image_url", "image_url": {"url": "data:image/png;base64,YWJj"}}
+    messages = [
+        {"role": "user", "content": [image]},
+        {"role": "user", "content": [deepcopy(image)]},
+    ]
+    client = _ScriptedChatClient(
+        [
+            [
+                _llm_chunk(
+                    tool_calls=[
+                        {"id": "search-1", "name": "web_search", "arguments": '{"query":"text"}'}
+                    ],
+                    finish_reason="tool_calls",
+                )
+            ],
+            [_llm_chunk(content="Text answer.")],
+        ]
+    )
+    create = client.chat.completions.create
+    attempted = []
+
+    async def reject_images(**kwargs):
+        attempted.append(deepcopy(kwargs["messages"]))
+        if has_image_parts(kwargs["messages"]):
+            raise RuntimeError("image input is not supported")
+        return await create(**kwargs)
+
+    client.chat.completions.create = reject_images
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.model = "gpt-3.5-turbo"
+    pipeline.registry = _Registry()
+    pipeline._model_turn_start = 0
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["web_search"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    monkeypatch.setattr(pipeline, "_build_loop_messages", lambda *_args, **_kwargs: messages)
+    context = UnifiedContext(session_id="s", user_message="again")
+    await _run(pipeline, context)
+    assert len(attempted) == 3
+    assert not has_image_parts(attempted[1])
+    assert not has_image_parts(attempted[2])
+    assert not has_image_parts(messages)
+    assert "Repeated image" not in str(messages)

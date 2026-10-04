@@ -50,36 +50,39 @@ def _inline_image_key(block: Any) -> str | None:
 
 
 def deduplicate_user_images(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Project repeated inline user images to references in this request only.
+    """Project repeated inline user images to stable references in this request.
 
-    Leave the first image unchanged so appending a turn keeps earlier request
-    prefixes stable. Recompute from full history after any history cut: every
-    reference always points to real image bytes still present in this request.
+    Label each retained image even when unique so appending a repeat never
+    changes earlier request prefixes. Labels also survive provider translation,
+    which may move system messages or combine tool results with user messages.
+    Recompute from full history after a cut: every reference still has real
+    bytes in the current request. Original image blocks and history are intact.
     """
-    seen: dict[str, tuple[int, int]] = {}
+    seen: set[str] = set()
     projected = []
-    for message_index, message in enumerate(messages, start=1):
+    for message in messages:
         content = message.get("content")
         if message.get("role") != "user" or not isinstance(content, list):
             projected.append(dict(message))
             continue
         parts = []
-        image_index = 0
         for block in content:
             key = _inline_image_key(block)
             if key is None:
                 parts.append(block)
                 continue
-            image_index += 1
+            label = key[:32]
             if key not in seen:
-                seen[key] = (message_index, image_index)
+                seen.add(key)
+                marker = {"type": "text", "text": f"[Image {label}]"}
+                if not parts or parts[-1] != marker:
+                    parts.append(marker)
                 parts.append(block)
                 continue
-            earlier_message, earlier_image = seen[key]
             parts.append(
                 {
                     "type": "text",
-                    "text": f"[Repeated image: identical to image {earlier_image} in message {earlier_message} earlier in this request.]",
+                    "text": f"[Repeated image {label}; see the identical image included earlier in this request.]",
                 }
             )
         projected.append({**message, "content": parts})
