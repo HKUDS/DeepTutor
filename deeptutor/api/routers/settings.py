@@ -43,6 +43,7 @@ from deeptutor.services.config.runtime_settings import (
     CHAT_ATTACHMENT_CHARS_RANGE,
     CHAT_ATTACHMENT_MAX_FILE_MB_RANGE,
     CHAT_ATTACHMENT_MAX_TOTAL_MB_RANGE,
+    CRON_SCHEDULER_CHECK_INTERVAL_RANGE,
     compute_ws_max_size,
 )
 from deeptutor.services.config.settings_draft import (
@@ -345,6 +346,22 @@ class NetworkSettingsUpdate(BaseModel):
     frontend_port: int = Field(ge=1, le=65535)
     public_api_base: str = ""
     cors_origins: list[str] = Field(default_factory=list)
+
+
+class CronSchedulerSettingsUpdate(BaseModel):
+    """Built-in cron scheduler toggles (scheduled tasks / reminders).
+
+    Disabling stops the leader's scheduler loop — due jobs stop firing until
+    it is re-enabled, so nothing runs against provider quota on a timer.
+    ``check_interval_s`` only bounds idle re-check wake-ups of the job store;
+    per-job schedules are unaffected.
+    """
+
+    enabled: bool
+    check_interval_s: int = Field(
+        ge=CRON_SCHEDULER_CHECK_INTERVAL_RANGE[0],
+        le=CRON_SCHEDULER_CHECK_INTERVAL_RANGE[1],
+    )
 
 
 class ChatAttachmentSettingsUpdate(BaseModel):
@@ -1046,6 +1063,47 @@ async def update_network_settings(payload: NetworkSettingsUpdate):
         }
     )
     return _network_settings_payload()
+
+
+def _cron_scheduler_payload() -> dict[str, Any]:
+    system = get_runtime_settings_service().load_system()
+    return {
+        "settings": {
+            "enabled": bool(system["cron_scheduler_enabled"]),
+            "check_interval_s": int(system["cron_scheduler_check_interval_s"]),
+        },
+        "bounds": {
+            "check_interval_s": list(CRON_SCHEDULER_CHECK_INTERVAL_RANGE),
+        },
+    }
+
+
+@router.get("/cron-scheduler")
+async def get_cron_scheduler_settings():
+    _require_settings_admin()
+    return _cron_scheduler_payload()
+
+
+@router.put("/cron-scheduler")
+async def update_cron_scheduler_settings(payload: CronSchedulerSettingsUpdate):
+    _require_settings_admin()
+    service = get_runtime_settings_service()
+    current = service.load_system(include_process_overrides=False)
+    service.save_system(
+        {
+            **current,
+            "cron_scheduler_enabled": payload.enabled,
+            "cron_scheduler_check_interval_s": payload.check_interval_s,
+        }
+    )
+    # Wake the leader's scheduler through the same background command the job
+    # store uses, so the new toggles apply without a process restart.
+    from deeptutor.services.cron import get_cron_service
+
+    notifier = get_cron_service().change_notifier
+    if notifier is not None:
+        notifier()
+    return _cron_scheduler_payload()
 
 
 def _chat_attachments_payload() -> dict[str, Any]:

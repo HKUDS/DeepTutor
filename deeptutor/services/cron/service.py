@@ -27,7 +27,9 @@ from deeptutor.services.cron.repository import CronRepository, SQLiteCronReposit
 logger = logging.getLogger(__name__)
 
 # Re-check the schedule at least this often even when nothing is due —
-# cheap, and it picks up externally-edited stores within a minute.
+# cheap, and it picks up externally-edited stores within a minute. This is
+# the default for the configurable idle re-check interval
+# (``cron_scheduler_check_interval_s`` in runtime settings).
 _MAX_SLEEP_SECONDS = 60.0
 _MAX_RUN_HISTORY = 10
 
@@ -186,6 +188,7 @@ class CronService:
         repository: CronRepository | None = None,
         legacy_store_path: Path | None = None,
         change_notifier: Callable[[], None] | None = None,
+        settings_provider: Callable[[], dict[str, Any]] | None = None,
     ) -> None:
         """``on_job`` returns ``(status, error)`` with status ok/error/skipped."""
         if repository is None:
@@ -196,12 +199,17 @@ class CronService:
         self.repository = repository
         self.on_job = on_job
         self.change_notifier = change_notifier
+        # Reads the deployment's scheduler toggles (enabled / idle re-check
+        # interval); injectable so tests can flip settings without a disk
+        # round-trip. The default reads the runtime settings service.
+        self._settings_provider = settings_provider
         self._jobs: dict[str, CronJob] = {}
         self._loaded = False
         self._loaded_revision = -1
         self._timer_task: asyncio.Task | None = None
         self._wake = asyncio.Event()
         self._running = False
+        self._max_sleep_seconds = _MAX_SLEEP_SECONDS
 
     # ── persistence ───────────────────────────────────────────────
 
@@ -216,10 +224,67 @@ class CronService:
         }
         self._loaded_revision = revision
 
+    def _scheduler_settings(self) -> dict[str, Any]:
+        """Effective scheduler toggles: ``enabled`` + idle re-check interval.
+
+        Never raises — unreadable settings fall back to the defaults so a
+        broken settings file cannot wedge the scheduler.
+        """
+        if self._settings_provider is not None:
+            try:
+                raw = self._settings_provider() or {}
+            except Exception:  # noqa: BLE001
+                logger.debug("cron scheduler settings provider failed", exc_info=True)
+                raw = {}
+        else:
+            try:
+                from deeptutor.services.config.runtime_settings import (
+                    get_runtime_settings_service,
+                )
+
+                raw = get_runtime_settings_service().load_system()
+            except Exception:  # noqa: BLE001
+                logger.debug("cron scheduler settings unreadable", exc_info=True)
+                raw = {}
+        if not isinstance(raw, dict):
+            raw = {}
+        try:
+            interval = float(raw.get("cron_scheduler_check_interval_s", _MAX_SLEEP_SECONDS))
+        except (TypeError, ValueError):
+            interval = _MAX_SLEEP_SECONDS
+        return {
+            "enabled": bool(raw.get("cron_scheduler_enabled", True)),
+            "check_interval_s": max(1.0, interval),
+        }
+
     def reload(self) -> None:
-        """Refresh the leader's snapshot after another worker changes jobs."""
+        """Refresh the leader's snapshot after another worker changes jobs
+        or scheduler settings (the loop re-reads toggles on every wake)."""
         self._load(force=True)
+        self._maybe_launch_loop()
         self._wake.set()
+
+    def _maybe_launch_loop(self) -> bool:
+        """(Re)launch the scheduler loop when settings allow and it isn't live.
+
+        Only the leader's reload path may call this: a disabled-at-boot
+        deployment starts no timer, and re-enabling from settings has to bring
+        the loop back without a process restart. Missed interval jobs and
+        one-shots whose time passed while disabled run once on resume (same
+        catch-up rule as waking from a parked loop).
+        """
+        if self._timer_task is not None and not self._timer_task.done():
+            return False
+        if not self._scheduler_settings()["enabled"]:
+            return False
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return False
+        self._running = True
+        self._timer_task = loop.create_task(self._loop(), name="cron:scheduler")
+        logger.info("Cron service started (%d jobs)", len(self._jobs))
+        return True
 
     def _changed(self) -> None:
         self._loaded_revision = self.repository.revision()
@@ -301,6 +366,13 @@ class CronService:
     async def start(self) -> None:
         if self._running:
             return
+        settings = self._scheduler_settings()
+        if not settings["enabled"]:
+            # Disabled deployments register no scheduler timer at all — due
+            # jobs stay dormant until the toggle is turned back on.
+            logger.info("Cron scheduler disabled by settings; not starting")
+            return
+        self._max_sleep_seconds = settings["check_interval_s"]
         self._load()
         # Re-arm interval/cron jobs whose due time passed while the server
         # was down: run once now (next_run in the past stays "due"); expired
@@ -330,6 +402,15 @@ class CronService:
 
     async def _loop(self) -> None:
         while self._running:
+            # Re-read the scheduler toggles every wake: a disable parks the
+            # loop (no periodic timer, no due-job runs) and an interval change
+            # applies to the very next sleep — both without a restart.
+            settings = self._scheduler_settings()
+            if not settings["enabled"]:
+                self._wake.clear()
+                await self._wake.wait()
+                continue
+            self._max_sleep_seconds = settings["check_interval_s"]
             try:
                 await self._tick()
             except asyncio.CancelledError:
@@ -350,9 +431,9 @@ class CronService:
             if job.enabled and job.state.next_run_at_ms
         ]
         if not due_times:
-            return _MAX_SLEEP_SECONDS
+            return self._max_sleep_seconds
         delta_s = (min(due_times) - _now_ms()) / 1000
-        return max(0.05, min(delta_s, _MAX_SLEEP_SECONDS))
+        return max(0.05, min(delta_s, self._max_sleep_seconds))
 
     async def _tick(self) -> None:
         self._load()

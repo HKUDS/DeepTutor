@@ -44,6 +44,8 @@ _DEPLOYMENT_FIELD_HINTS = (
 _DEPLOYMENT_FIELD_PREFIXES = ("cors_",)
 _SYSTEM_FIELDS = (
     "version_check_enabled",
+    "cron_scheduler_enabled",
+    "cron_scheduler_check_interval_s",
     "backend_workers",
     "disable_ssl_verify",
     "sandbox_allow_subprocess",

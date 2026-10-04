@@ -25,6 +25,7 @@ export const EXTENSION_ENDPOINTS = {
   "chat-starters": "/api/settings/chat-starters",
   "chat-attachments": "/api/settings/chat-attachments",
   "chat-timeout": "/api/settings/chat-response-timeout",
+  "cron-scheduler": "/api/settings/cron-scheduler",
   capabilities: "/api/capabilities/settings",
   memory: "/api/memory/settings",
   network: "/api/settings/network",

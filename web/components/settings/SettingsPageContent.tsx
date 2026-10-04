@@ -38,6 +38,12 @@ const Network = dynamic(
     loading,
   },
 );
+const ScheduledTasks = dynamic(
+  () => import("@/features/settings/sections/ScheduledTasksSettingsSection"),
+  {
+    loading,
+  },
+);
 const Workspace = dynamic(
   () => import("@/features/settings/sections/WorkspaceSettingsSection"),
   {
@@ -178,6 +184,7 @@ const PAGES: Record<string, React.ComponentType> = {
   usage: Usage,
   appearance: Appearance,
   network: Network,
+  "scheduled-tasks": ScheduledTasks,
   workspace: Workspace,
   knowledge: Knowledge,
   memory: Memory,

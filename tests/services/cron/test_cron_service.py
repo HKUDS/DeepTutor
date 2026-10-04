@@ -260,3 +260,134 @@ class TestSchedulerLoop:
         assert refreshed.state.last_status == "error"
         assert "boom" in (refreshed.state.last_error or "")
         assert refreshed.state.next_run_at_ms is not None
+
+
+class TestSchedulerSettings:
+    """The #451 toggles: disable the scheduler, configure the idle re-check."""
+
+    @staticmethod
+    def _provider(enabled: bool = True, interval: int = 60):
+        state = {"enabled": enabled, "interval": interval}
+        return lambda: {
+            "cron_scheduler_enabled": state["enabled"],
+            "cron_scheduler_check_interval_s": state["interval"],
+        }, state
+
+    @pytest.mark.asyncio
+    async def test_disabled_at_start_registers_no_timer_and_fires_nothing(self, tmp_path):
+        provider, _ = self._provider(enabled=False)
+        fired: list[str] = []
+
+        async def on_job(job):
+            fired.append(job.id)
+            return "ok", None
+
+        service = CronService(
+            store_path=tmp_path / "jobs.json", on_job=on_job, settings_provider=provider
+        )
+        # A job that is already due must stay dormant: no timer, no run.
+        job = service.add_job(
+            name="due-now",
+            message="x",
+            schedule=CronSchedule(kind="at", at_ms=_now_ms() + 50),
+            owner=_chat_owner(),
+        )
+        job.state.next_run_at_ms = _now_ms() - 10
+
+        await service.start()
+        await asyncio.sleep(0.2)
+
+        assert service._timer_task is None  # the scheduler timer never registered
+        assert service._running is False
+        assert fired == []
+        await service.stop()
+
+    @pytest.mark.asyncio
+    async def test_disable_midrun_parks_the_loop(self, tmp_path):
+        provider, state = self._provider(enabled=True)
+        fired: list[str] = []
+
+        async def on_job(job):
+            fired.append(job.id)
+            return "ok", None
+
+        service = CronService(
+            store_path=tmp_path / "jobs.json", on_job=on_job, settings_provider=provider
+        )
+        await service.start()
+        assert service._timer_task is not None
+        # Let the loop run one enabled iteration (it ticks, then idles).
+        await asyncio.sleep(0.1)
+
+        state["enabled"] = False
+        # A job that is already due, plus the disable, both land together.
+        job = service.add_job(
+            name="due-while-disabled",
+            message="x",
+            schedule=CronSchedule(kind="every", every_seconds=3600),
+            owner=_chat_owner(),
+        )
+        job.state.next_run_at_ms = _now_ms() - 10
+        service.reload()
+        await asyncio.sleep(0.3)
+
+        assert fired == []  # parked: no periodic wake, no due-job run
+        await service.stop()
+
+    @pytest.mark.asyncio
+    async def test_interval_change_applies_immediately(self, tmp_path):
+        provider, state = self._provider(enabled=True, interval=60)
+        service = CronService(store_path=tmp_path / "jobs.json", settings_provider=provider)
+        await service.start()
+        assert service._max_sleep_seconds == 60.0
+        assert service._seconds_until_next_due() == 60.0  # no jobs → idle bound
+
+        state["interval"] = 5
+        service.reload()  # the settings PUT pokes the leader through here
+        for _ in range(40):
+            if service._max_sleep_seconds == 5.0:
+                break
+            await asyncio.sleep(0.05)
+        assert service._max_sleep_seconds == 5.0
+        assert service._seconds_until_next_due() == 5.0
+        await service.stop()
+
+    @pytest.mark.asyncio
+    async def test_reenable_after_disabled_start_launches_loop_again(self, tmp_path):
+        provider, state = self._provider(enabled=False)
+        fired: list[str] = []
+
+        async def on_job(job):
+            fired.append(job.id)
+            return "ok", None
+
+        service = CronService(
+            store_path=tmp_path / "jobs.json", on_job=on_job, settings_provider=provider
+        )
+        await service.start()
+        assert service._timer_task is None
+
+        state["enabled"] = True
+        job = service.add_job(
+            name="after-reenable",
+            message="x",
+            schedule=CronSchedule(kind="at", at_ms=_now_ms() + 50),
+            owner=_chat_owner(),
+        )
+        service.reload()  # the leader relaunches the loop for due work
+        assert service._timer_task is not None
+        for _ in range(40):
+            if fired:
+                break
+            await asyncio.sleep(0.05)
+        await service.stop()
+        assert fired == [job.id]
+
+    @pytest.mark.asyncio
+    async def test_provider_failure_falls_back_to_defaults(self, tmp_path):
+        def broken_provider():
+            raise RuntimeError("settings store exploded")
+
+        service = CronService(store_path=tmp_path / "jobs.json", settings_provider=broken_provider)
+        settings = service._scheduler_settings()
+        assert settings == {"enabled": True, "check_interval_s": 60.0}

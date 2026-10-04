@@ -15,6 +15,8 @@ from deeptutor.services.config.runtime_settings import (
 
 RUNTIME_ENV_KEYS = (
     "DEEPTUTOR_VERSION_CHECK_ENABLED",
+    "DEEPTUTOR_CRON_SCHEDULER_ENABLED",
+    "DEEPTUTOR_CRON_SCHEDULER_CHECK_INTERVAL_S",
     "BACKEND_PORT",
     "FRONTEND_PORT",
     "NEXT_PUBLIC_API_BASE_EXTERNAL",
@@ -712,3 +714,39 @@ def test_compute_ws_max_size_floor_and_inflation() -> None:
     derived = compute_ws_max_size(total)
     assert derived > (total * 4) // 3
     assert derived == (total * 4) // 3 + 8 * 1024 * 1024
+
+
+def test_cron_scheduler_toggle_defaults_and_clamping(tmp_path) -> None:
+    service = RuntimeSettingsService(tmp_path / "settings", process_env={})
+    system = service.load_system()
+    # Defaults preserve the pre-setting behavior: scheduler on, 60s re-check.
+    assert system["cron_scheduler_enabled"] is True
+    assert system["cron_scheduler_check_interval_s"] == 60
+
+    saved = service.save_system(
+        {"cron_scheduler_enabled": False, "cron_scheduler_check_interval_s": 999_999}
+    )
+    assert saved["cron_scheduler_enabled"] is False
+    assert saved["cron_scheduler_check_interval_s"] == 86_400
+
+    saved = service.save_system(
+        {"cron_scheduler_enabled": "true", "cron_scheduler_check_interval_s": "not-a-number"}
+    )
+    assert saved["cron_scheduler_enabled"] is True
+    assert saved["cron_scheduler_check_interval_s"] == 60
+
+
+def test_cron_scheduler_env_overrides(tmp_path) -> None:
+    service = RuntimeSettingsService(
+        tmp_path / "settings",
+        process_env={
+            "DEEPTUTOR_CRON_SCHEDULER_ENABLED": "false",
+            "DEEPTUTOR_CRON_SCHEDULER_CHECK_INTERVAL_S": "300",
+        },
+    )
+    service.save_system({})
+    effective = service.load_system()
+    assert effective["cron_scheduler_enabled"] is False
+    assert effective["cron_scheduler_check_interval_s"] == 300
+    # The file keeps the stored (default) values — env is a process override.
+    assert _read_json(service.path_for("system"))["cron_scheduler_enabled"] is True

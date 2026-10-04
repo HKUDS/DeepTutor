@@ -613,6 +613,7 @@ const STORAGE_PATHS: Record<string, string> = {
   "task-models": "data/user/settings/model_catalog.json",
   knowledge: "data/user/settings/document_parsing.json",
   "video-learning": "data/user/settings/video_learning.json",
+  "scheduled-tasks": "data/user/settings/system.json",
   starters: "data/user/settings/interface.json",
   memory: "data/user/settings/main.yaml",
   llm: "data/user/settings/model_catalog.json",

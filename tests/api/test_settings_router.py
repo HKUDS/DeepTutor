@@ -381,6 +381,37 @@ async def test_network_settings_roundtrip_normalizes_cors_origins(
 
 
 @pytest.mark.asyncio
+async def test_cron_scheduler_settings_roundtrip_notifies_scheduler(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    service = RuntimeSettingsService(tmp_path / "settings", process_env={})
+    service.save_system({"backend_port": 8001, "frontend_port": 3782})
+    monkeypatch.setattr(settings_router, "get_runtime_settings_service", lambda: service)
+
+    notified: list[bool] = []
+
+    class _FakeCron:
+        change_notifier = staticmethod(lambda: notified.append(True))
+
+    monkeypatch.setattr("deeptutor.services.cron.get_cron_service", lambda: _FakeCron())
+
+    initial = await settings_router.get_cron_scheduler_settings()
+    assert initial["settings"] == {"enabled": True, "check_interval_s": 60}
+    assert initial["bounds"]["check_interval_s"] == [5, 86_400]
+
+    payload = settings_router.CronSchedulerSettingsUpdate(enabled=False, check_interval_s=300)
+    response = await settings_router.update_cron_scheduler_settings(payload)
+
+    assert response["settings"] == {"enabled": False, "check_interval_s": 300}
+    assert notified == [True]  # the leader's running scheduler was woken
+    stored = service.load_system(include_process_overrides=False)
+    assert stored["cron_scheduler_enabled"] is False
+    assert stored["cron_scheduler_check_interval_s"] == 300
+    # Other system.json keys survive the partial update.
+    assert stored["backend_port"] == 8001
+
+
+@pytest.mark.asyncio
 async def test_chat_attachment_settings_roundtrip(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:

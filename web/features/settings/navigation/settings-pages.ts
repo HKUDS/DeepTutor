@@ -1,4 +1,4 @@
-import { Activity, Archive, BarChart3, Bot, Settings2 } from 'lucide-react'
+import { Activity, AlarmClock, Archive, BarChart3, Bot, Settings2 } from 'lucide-react'
 import {
   SETTINGS_CATEGORIES,
   isSettingsCategoryVisible,
@@ -26,7 +26,7 @@ export const SETTINGS_PAGE_GROUPS: { label: Lang; keys: string[] }[] = [
   },
   {
     label: { en: 'System', zh: '系统' },
-    keys: ['network', 'status', 'about'],
+    keys: ['network', 'scheduled-tasks', 'status', 'about'],
   },
   { label: { en: 'Archived', zh: '已归档' }, keys: ['archive'] },
 ]
@@ -116,6 +116,18 @@ const extraPages: SettingsLeaf[] = [
     icon: Activity,
     href: '/settings/status',
     tile: '',
+  },
+  {
+    key: 'scheduled-tasks',
+    label: { en: 'Scheduled tasks', zh: '定时任务' },
+    blurb: {
+      en: 'Enable the built-in scheduler and tune its idle re-check interval',
+      zh: '开关内置定时调度器并调整空闲复查间隔',
+    },
+    icon: AlarmClock,
+    href: '/settings/scheduled-tasks',
+    tile: '',
+    adminOnly: true,
   },
 ]
 

@@ -19,6 +19,14 @@ DEFAULT_SYSTEM_SETTINGS: dict[str, Any] = {
     # audited deployments; DEEPTUTOR_VERSION_CHECK_ENABLED is the deployment
     # override for read-only settings volumes.
     "version_check_enabled": True,
+    # Built-in cron scheduler (scheduled tasks / reminders). Disabling stops
+    # the leader's scheduler loop — due jobs stop firing until re-enabled, so
+    # nothing consumes provider quota on a timer. DEEPTUTOR_CRON_SCHEDULER_*
+    # are the deployment overrides for read-only settings volumes.
+    "cron_scheduler_enabled": True,
+    # How often the scheduler re-checks the job store when nothing is due
+    # (seconds). Only bounds idle wake-ups; per-job schedules are unaffected.
+    "cron_scheduler_check_interval_s": 60,
     "backend_port": 8001,
     "backend_workers": 1,
     "frontend_port": 3782,
@@ -76,6 +84,10 @@ CHAT_ATTACHMENT_CHARS_RANGE = (10_000, 5_000_000)
 # Zero is a real choice here — it turns prior-image re-injection off for a
 # deployment whose model or bandwidth cannot afford it.
 CHAT_PRIOR_IMAGE_REINJECT_RANGE = (0, 20)
+# Idle re-check bounds for the cron scheduler. The floor keeps the loop
+# responsive to externally-edited job stores; the ceiling lets an operator pin
+# an almost-static deployment to a handful of wake-ups per day.
+CRON_SCHEDULER_CHECK_INTERVAL_RANGE = (5, 86_400)
 
 DEFAULT_AUTH_SETTINGS: dict[str, Any] = {
     "version": 1,
@@ -836,6 +848,10 @@ class RuntimeSettingsService:
         payload = dict(settings)
         if value := self._process_env_value("DEEPTUTOR_VERSION_CHECK_ENABLED"):
             payload["version_check_enabled"] = value
+        if value := self._process_env_value("DEEPTUTOR_CRON_SCHEDULER_ENABLED"):
+            payload["cron_scheduler_enabled"] = value
+        if value := self._process_env_value("DEEPTUTOR_CRON_SCHEDULER_CHECK_INTERVAL_S"):
+            payload["cron_scheduler_check_interval_s"] = value
         if value := self._process_env_value("BACKEND_PORT"):
             payload["backend_port"] = value
         if value := self._process_env_value("FRONTEND_PORT"):
@@ -1249,6 +1265,12 @@ class RuntimeSettingsService:
         return {
             "version": 1,
             "version_check_enabled": _coerce_bool(settings.get("version_check_enabled"), True),
+            "cron_scheduler_enabled": _coerce_bool(settings.get("cron_scheduler_enabled"), True),
+            "cron_scheduler_check_interval_s": _coerce_clamped_int(
+                settings.get("cron_scheduler_check_interval_s"),
+                DEFAULT_SYSTEM_SETTINGS["cron_scheduler_check_interval_s"],
+                *CRON_SCHEDULER_CHECK_INTERVAL_RANGE,
+            ),
             "backend_port": _coerce_port(settings.get("backend_port"), 8001),
             "backend_workers": _coerce_clamped_int(settings.get("backend_workers"), 1, 1, 64),
             "frontend_port": _coerce_port(settings.get("frontend_port"), 3782),
