@@ -1,21 +1,22 @@
 """Telegram channel message parsing, chunking and typing lifecycle (coverage gap #17: 418 missing / 30.2%).
 
-Red-first contract suite for ``deeptutor/partners/channels/telegram.py`` on
-origin/main (``ef2d9e5c3``). Most tests pin currently-correct behavior so a
-fix card cannot regress it; the marked FAILING tests encode the desired
-behavior for two real defects:
+Contract suite for ``deeptutor/partners/channels/telegram.py``. Most tests pin
+currently-correct behavior so future changes cannot regress it; two tests
+encode the desired behavior for real defects that this branch fixes in
+``telegram.py`` (red-first: they failed before the fix):
 
 1. ``test_media_group_straggler_during_flush_is_not_dropped`` —
-   ``_flush_media_group`` pops the album buffer and only removes its task in
-   ``finally``, so an album item arriving while the flush task is still
-   dispatching (bus publish await) is appended to a fresh buffer whose flush
-   task is never scheduled: the message is silently dropped and the buffer
-   leaks.
+   ``_flush_media_group`` used to pop the album buffer while removing its
+   task only in ``finally``, so an album item arriving while the flush task
+   was still dispatching (bus publish await) was appended to a fresh buffer
+   whose flush task was never scheduled: the message was silently dropped
+   and the buffer leaked. The flush now releases the task slot before
+   dispatching so late items schedule their own follow-up flush.
 2. ``test_denied_sender_typing_indicator_is_stopped`` — ``_on_message``
-   starts the typing indicator before ``_handle_message`` runs the ACL
-   check, so a sender outside ``allowFrom`` gets an endless 4-second
-   ``send_chat_action`` loop that nothing ever cancels (no reply will ever
-   be sent to them).
+   used to start the typing indicator before ``_handle_message`` ran the
+   ACL check, so a sender outside ``allowFrom`` got an endless 4-second
+   ``send_chat_action`` loop that nothing ever cancelled. Typing now only
+   starts for senders that pass ``is_allowed``.
 
 Everything runs against a mocked SDK (``SimpleNamespace`` bot); no network
 access and no real bot token is needed. Streaming basics are covered by
@@ -51,9 +52,7 @@ def _bot() -> SimpleNamespace:
     return SimpleNamespace(
         get_me=AsyncMock(return_value=SimpleNamespace(id=555, username="tutorbot")),
         send_chat_action=AsyncMock(),
-        get_file=AsyncMock(
-            return_value=SimpleNamespace(download_to_drive=AsyncMock())
-        ),
+        get_file=AsyncMock(return_value=SimpleNamespace(download_to_drive=AsyncMock())),
         send_message=AsyncMock(return_value=SimpleNamespace(message_id=99)),
         send_message_draft=AsyncMock(),
         edit_message_text=AsyncMock(),
@@ -194,9 +193,7 @@ async def test_reply_context_is_truncated_at_limit() -> None:
     long_text = "r" * (TELEGRAM_REPLY_CONTEXT_MAX_LEN + 200)
     reply = SimpleNamespace(message_id=9, text=long_text, caption=None)
 
-    await channel._on_message(
-        _update(_message(text="answer", reply_to_message=reply)), None
-    )
+    await channel._on_message(_update(_message(text="answer", reply_to_message=reply)), None)
 
     msg = _published(channel)
     expected_tag = f"[Reply to: {'r' * TELEGRAM_REPLY_CONTEXT_MAX_LEN}...]"
@@ -246,9 +243,10 @@ async def test_media_group_buffers_and_flushes_as_single_turn() -> None:
 
 @pytest.mark.asyncio
 async def test_media_group_straggler_during_flush_is_not_dropped() -> None:
-    """FAILING: an album item arriving while the flush task dispatches is
-    buffered into a fresh dict but its flush task is never scheduled — the
-    message is silently dropped and the buffer leaks."""
+    """An album item arriving while the flush task dispatches must get its
+    own follow-up flush — previously it was buffered into a fresh dict whose
+    flush task was never scheduled, so the message was silently dropped and
+    the buffer leaked."""
     channel = _channel()
     gate = asyncio.Event()
     entered = asyncio.Event()
@@ -259,17 +257,22 @@ async def test_media_group_straggler_during_flush_is_not_dropped() -> None:
 
     channel._handle_message = AsyncMock(side_effect=slow_handle)
 
-    first = _message(photo=[SimpleNamespace(file_id="pa", file_unique_id="ua")],
-                     media_group_id="g1", message_id=1)
+    first = _message(
+        photo=[SimpleNamespace(file_id="pa", file_unique_id="ua")],
+        media_group_id="g1",
+        message_id=1,
+    )
     await channel._on_message(_update(first), None)
     await asyncio.wait_for(entered.wait(), timeout=2)
 
-    straggler = _message(photo=[SimpleNamespace(file_id="pb", file_unique_id="ub")],
-                         media_group_id="g1", message_id=2)
+    straggler = _message(
+        photo=[SimpleNamespace(file_id="pb", file_unique_id="ub")],
+        media_group_id="g1",
+        message_id=2,
+    )
     await channel._on_message(_update(straggler), None)
     gate.set()
-    await asyncio.wait_for(asyncio.gather(*channel._media_group_tasks.values()),
-                           timeout=2)
+    await asyncio.wait_for(asyncio.gather(*channel._media_group_tasks.values()), timeout=2)
 
     assert channel._handle_message.await_count == 2
     assert channel._media_group_buffers == {}
@@ -307,7 +310,7 @@ async def test_voice_message_transcribes_and_tags_content() -> None:
     msg = _published(channel)
     download_path = msg.media[0]
     assert download_path.endswith("uv.ogg")
-    assert msg.content == f"[transcription: hello transcript]"
+    assert msg.content == "[transcription: hello transcript]"
     channel.transcribe_audio.assert_awaited_once()
 
 
@@ -351,9 +354,7 @@ async def test_reply_to_media_only_message_attaches_media_and_tag() -> None:
         photo=[SimpleNamespace(file_id="rp", file_unique_id="ru")],
     )
 
-    await channel._on_message(
-        _update(_message(text="what is this", reply_to_message=reply)), None
-    )
+    await channel._on_message(_update(_message(text="what is this", reply_to_message=reply)), None)
 
     msg = _published(channel)
     assert msg.content.startswith("[Reply to: [image: ")
@@ -369,9 +370,7 @@ async def test_reply_to_media_only_message_attaches_media_and_tag() -> None:
 async def test_group_message_without_mention_skipped_under_mention_policy() -> None:
     channel = _channel(group_policy="mention")
 
-    await channel._on_message(
-        _update(_message(chat_id=-100999, chat_type="supergroup")), None
-    )
+    await channel._on_message(_update(_message(chat_id=-100999, chat_type="supergroup")), None)
 
     channel.bus.publish_inbound.assert_not_awaited()
 
@@ -381,9 +380,7 @@ async def test_group_message_with_bot_mention_routes_to_group_chat() -> None:
     channel = _channel(group_policy="mention")
 
     await channel._on_message(
-        _update(
-            _message(chat_id=-100999, chat_type="supergroup", text="hi @tutorbot")
-        ),
+        _update(_message(chat_id=-100999, chat_type="supergroup", text="hi @tutorbot")),
         None,
     )
 
@@ -452,9 +449,7 @@ async def test_send_splits_long_text_into_chunks_under_limit() -> None:
 
     channel = _channel()
     words = " ".join(f"w{i}" for i in range(2000))
-    await channel.send(
-        OutboundMessage(channel="telegram", chat_id="777", content=words)
-    )
+    await channel.send(OutboundMessage(channel="telegram", chat_id="777", content=words))
 
     bot = channel._app.bot
     texts = [call.kwargs["text"] for call in bot.send_message.await_args_list]
@@ -566,9 +561,7 @@ async def test_send_media_failure_notifies_chat_with_placeholder(tmp_path) -> No
     missing = tmp_path / "gone.png"
 
     await channel.send(
-        OutboundMessage(
-            channel="telegram", chat_id="777", content="", media=[str(missing)]
-        )
+        OutboundMessage(channel="telegram", chat_id="777", content="", media=[str(missing)])
     )
 
     call = channel._app.bot.send_message.await_args
@@ -579,9 +572,7 @@ async def test_send_media_failure_notifies_chat_with_placeholder(tmp_path) -> No
 async def test_send_invalid_chat_id_is_dropped_without_crash() -> None:
     channel = _channel()
 
-    await channel.send(
-        OutboundMessage(channel="telegram", chat_id="not-a-number", content="hi")
-    )
+    await channel.send(OutboundMessage(channel="telegram", chat_id="not-a-number", content="hi"))
 
     channel._app.bot.send_message.assert_not_awaited()
 
@@ -597,9 +588,7 @@ async def test_inbound_message_starts_typing_indicator() -> None:
     await asyncio.sleep(0)
 
     assert await _alive(channel, "777")
-    channel._app.bot.send_chat_action.assert_awaited_once_with(
-        chat_id=777, action="typing"
-    )
+    channel._app.bot.send_chat_action.assert_awaited_once_with(chat_id=777, action="typing")
     channel._stop_typing("777")
 
 
@@ -616,9 +605,7 @@ async def test_final_send_stops_typing_progress_keeps_it() -> None:
     )
     assert not task.done()
 
-    await channel.send(
-        OutboundMessage(channel="telegram", chat_id="777", content="done")
-    )
+    await channel.send(OutboundMessage(channel="telegram", chat_id="777", content="done"))
     await asyncio.sleep(0)
     assert task.cancelled()
     assert "777" not in channel._typing_tasks
@@ -670,14 +657,12 @@ async def test_typing_loop_exits_when_app_detached() -> None:
 
 @pytest.mark.asyncio
 async def test_denied_sender_typing_indicator_is_stopped() -> None:
-    """FAILING: the typing loop for an ACL-denied sender keeps running every
-    4 seconds forever — no reply will ever stop it."""
+    """The typing loop for an ACL-denied sender must never start — the
+    sender never gets a reply, so nothing would stop the 4-second loop."""
     channel = _channel(allow=["123"])
     mallory = _user(uid=999, username="mallory")
 
-    await channel._on_message(
-        _update(_message(chat_id=888, user=mallory)), None
-    )
+    await channel._on_message(_update(_message(chat_id=888, user=mallory)), None)
     await asyncio.sleep(0.05)
 
     assert channel.bus.publish_inbound.await_count == 0
