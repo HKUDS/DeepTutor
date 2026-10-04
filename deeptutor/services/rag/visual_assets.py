@@ -103,52 +103,78 @@ def _text(value: Any) -> str:
     return ""
 
 
-def _block_details(
-    blocks: list[dict[str, Any]] | None, asset: Path
+_EMPTY_BLOCK_DETAILS = ("", "", None, None, None, "")
+
+
+def _resolved_path(path: str | Path, cache: dict[str, Path]) -> Path:
+    """Resolve a parser or asset path once during one document collection."""
+    key = str(path)
+    if key not in cache:
+        cache[key] = Path(path).resolve()
+    return cache[key]
+
+
+def _block_details_at(
+    blocks: list[dict[str, Any]], index: int
 ) -> tuple[str, str, int | None, int | None, list[float] | None, str]:
+    """Extract metadata from one matching parser block."""
+    block = blocks[index]
+    caption = _text(
+        block.get("caption")
+        or block.get("image_caption")
+        or block.get("chart_caption")
+        or block.get("captions")
+    )
+    context = _text(block.get("text") or block.get("content"))
+    if not context:
+        neighbors = blocks[max(0, index - 1) : index] + blocks[index + 1 : index + 2]
+        context = " ".join(
+            _text(item.get("text") or item.get("content"))
+            for item in neighbors
+            if isinstance(item, dict)
+        ).strip()
+    has_page_index = block.get("page_idx") is not None
+    page_raw = block.get("page_idx") if has_page_index else block.get("page")
+    try:
+        page_value = int(page_raw) if page_raw is not None else None
+    except (ValueError, TypeError):
+        page_value = None
+    page_index = page_value if has_page_index else None
+    page_number = (
+        (page_value + 1 if has_page_index else page_value) if page_value is not None else None
+    )
+    raw_bbox = block.get("bbox")
+    try:
+        bbox = (
+            [float(value) for value in raw_bbox[:4]]
+            if isinstance(raw_bbox, (list, tuple)) and len(raw_bbox) >= 4
+            else None
+        )
+    except (ValueError, TypeError):
+        bbox = None
+    return caption[:500], context[:500], page_index, page_number, bbox, f"blocks.json#/{index}"
+
+
+def _index_block_details(
+    blocks: list[dict[str, Any]] | None,
+) -> tuple[
+    dict[Path, int],
+    dict[str, Path],
+]:
+    """Index parser block positions by resolved path, retaining the first duplicate."""
+    block_indices: dict[Path, int] = {}
+    resolved_paths: dict[str, Path] = {}
     if not blocks:
-        return "", "", None, None, None, ""
+        return block_indices, resolved_paths
     for index, block in enumerate(blocks):
         if not isinstance(block, dict):
             continue
         raw = str(block.get("img_path") or block.get("path") or "")
-        if not raw or Path(raw).resolve() != asset.resolve():
+        if not raw:
             continue
-        caption = _text(
-            block.get("caption")
-            or block.get("image_caption")
-            or block.get("chart_caption")
-            or block.get("captions")
-        )
-        context = _text(block.get("text") or block.get("content"))
-        if not context:
-            neighbors = blocks[max(0, index - 1) : index] + blocks[index + 1 : index + 2]
-            context = " ".join(
-                _text(item.get("text") or item.get("content"))
-                for item in neighbors
-                if isinstance(item, dict)
-            ).strip()
-        has_page_index = block.get("page_idx") is not None
-        page_raw = block.get("page_idx") if has_page_index else block.get("page")
-        try:
-            page_value = int(page_raw) if page_raw is not None else None
-        except (ValueError, TypeError):
-            page_value = None
-        page_index = page_value if has_page_index else None
-        page_number = (
-            (page_value + 1 if has_page_index else page_value) if page_value is not None else None
-        )
-        raw_bbox = block.get("bbox")
-        try:
-            bbox = (
-                [float(value) for value in raw_bbox[:4]]
-                if isinstance(raw_bbox, (list, tuple)) and len(raw_bbox) >= 4
-                else None
-            )
-        except (ValueError, TypeError):
-            bbox = None
-        return caption[:500], context[:500], page_index, page_number, bbox, f"blocks.json#/{index}"
-    return "", "", None, None, None, ""
+        path = _resolved_path(raw, resolved_paths)
+        block_indices.setdefault(path, index)
+    return block_indices, resolved_paths
 
 
 def _markdown_details(markdown: str, asset: Path) -> tuple[str, str, str]:
@@ -182,17 +208,26 @@ def collect_visual_assets(
     if asset_dir is None or asset_dir.is_symlink() or not asset_dir.is_dir():
         return []
     source_key = source_key_for(kb_dir, source)
+    managed_source = _managed_source(kb_dir, source)
     source_hash = _sha256_file(source)
     candidates: list[VisualAssetCandidate] = []
+    blocks = parsed.blocks or []
+    block_indices, resolved_paths = _index_block_details(blocks)
     for path in sorted(asset_dir.iterdir()):
         loaded = _image_bytes(path)
         if loaded is None:
             continue
         image, mime = loaded
         image_hash = sha256(image).hexdigest()
-        caption, context, page_index, page_number, bbox, locator = _block_details(
-            parsed.blocks, path
+        block_index = (
+            block_indices.get(_resolved_path(path, resolved_paths)) if block_indices else None
         )
+        details = (
+            _block_details_at(blocks, block_index)
+            if block_index is not None
+            else _EMPTY_BLOCK_DETAILS
+        )
+        caption, context, page_index, page_number, bbox, locator = details
         md_caption, md_context, md_locator = _markdown_details(parsed.markdown, path)
         caption = caption or md_caption
         context = context or md_context
@@ -204,7 +239,7 @@ def collect_visual_assets(
             "asset_id": asset_id,
             "source_document_id": source_hash,
             "source_path": source_key,
-            "managed_source": _managed_source(kb_dir, source),
+            "managed_source": managed_source,
             "parser_engine": parsed.engine,
             "parser_signature": parsed.parser_signature,
             "source_hash": parsed.source_hash,

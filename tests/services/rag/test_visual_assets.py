@@ -199,6 +199,81 @@ def test_figures_beyond_64_are_retained_and_indexed(tmp_path: Path, monkeypatch,
         assert visual[-1].metadata["page"] == 70
 
 
+def test_block_metadata_matching_resolves_each_image_path_once(tmp_path: Path, monkeypatch):
+    import deeptutor.services.rag.visual_assets as assets_module
+
+    kb_dir, source, image, parsed = _fixture(tmp_path)
+    paths = [image]
+    for index in range(1, 12):
+        path = image.parent / f"figure-{index:02}.png"
+        Image.new("RGB", (3, 2), color=(index, 99, 211)).save(path)
+        paths.append(path)
+    parsed = replace(
+        parsed,
+        markdown="",
+        blocks=[
+            {"img_path": str(path), "image_caption": [f"Figure {index}"], "text": "context"}
+            for index, path in enumerate(paths)
+        ],
+    )
+
+    resolve_calls = 0
+    original_resolve = Path.resolve
+
+    def counting_resolve(path: Path, *args, **kwargs) -> Path:
+        nonlocal resolve_calls
+        resolve_calls += 1
+        return original_resolve(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "resolve", counting_resolve)
+    candidates = collect_visual_assets(parsed, source, kb_dir)
+
+    assert [candidate.record["caption"] for candidate in candidates] == [
+        f"Figure {paths.index(candidate.path)}" for candidate in candidates
+    ]
+    # One normalization per distinct image path, plus the fixed source/KB
+    # containment checks. A per-image scan of all blocks grows quadratically.
+    assert resolve_calls <= len(paths) + 8
+
+
+def test_block_metadata_matching_preserves_path_and_duplicate_semantics(
+    tmp_path: Path, monkeypatch
+):
+    kb_dir, source, image, parsed = _fixture(tmp_path)
+    unmatched_dir = tmp_path / "unmatched"
+    unmatched_dir.mkdir()
+    other_image = image.parent / "other.png"
+    Image.new("RGB", (3, 2), color="green").save(other_image)
+    wrong_same_name = unmatched_dir / other_image.name
+    monkeypatch.chdir(tmp_path)
+    parsed = replace(
+        parsed,
+        markdown="",
+        blocks=[
+            {
+                "img_path": str(wrong_same_name),
+                "caption": "must not match by name",
+                "text": "neighbor before",
+            },
+            {"img_path": str(image), "caption": "first match", "page_idx": 4},
+            {"img_path": str(image), "caption": "duplicate match", "text": "neighbor after"},
+            {"img_path": "parse-cache/images/figure.png", "caption": "relative duplicate"},
+            {"img_path": str(wrong_same_name), "caption": "wrong other image"},
+        ],
+    )
+
+    candidates = collect_visual_assets(parsed, source, kb_dir)
+
+    assert [candidate.path.name for candidate in candidates] == ["figure.png", "other.png"]
+    figure, other = candidates
+    assert figure.record["caption"] == "first match"
+    assert figure.record["context"] == "neighbor before neighbor after"
+    assert figure.record["page_index"] == 4
+    assert figure.record["source_locator"] == "blocks.json#/1"
+    assert other.record["caption"] == ""
+    assert other.record["source_locator"] == "asset:other.png"
+
+
 @pytest.mark.parametrize("suffix", [".pdf", ".epub"])
 def test_real_pymupdf_parser_extracts_pdf_and_epub_pixels(tmp_path: Path, suffix: str):
     fitz = pytest.importorskip("fitz")
