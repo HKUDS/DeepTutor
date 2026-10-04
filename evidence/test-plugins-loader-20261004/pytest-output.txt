@@ -1,0 +1,12 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.13.13, pytest-9.1.1, pluggy-1.6.0
+rootdir: /Users/xzh/services/ai-development/multica-pilot/workspaces/agents-plan-5fede2af789a/agen-480-1c472ac18bc5/workdir/dt-plugins-loader-wt
+configfile: pyproject.toml
+plugins: cov-7.1.0, devtools-0.12.2, asyncio-1.4.0, anyio-4.14.2
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
+collected 19 items
+
+tests/plugins/test_entrypoint_loader.py .............                    [ 68%]
+tests/plugins/test_loader.py ......                                      [100%]
+
+======================== 19 passed, 2 warnings in 0.29s ========================
