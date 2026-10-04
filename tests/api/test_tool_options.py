@@ -174,8 +174,7 @@ async def test_unreadable_tool_is_skipped_with_warning(stub_registry, caplog) ->
     # The warning names the provider the tool came from and the failure reason.
     warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
     assert any(
-        "broken" in message and "server went away mid-listing" in message
-        for message in warnings
+        "broken" in message and "server went away mid-listing" in message for message in warnings
     ), warnings
     # Good tools keep flowing and the return structure is unchanged.
     assert [row["name"] for row in payload["mcp_tools"]] == ["mcp_notion_search"]
