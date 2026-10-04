@@ -2136,8 +2136,14 @@ class KnowledgeBaseManager:
                             if p.exists():
                                 mtime = datetime.fromtimestamp(p.stat().st_mtime)
                                 file_states[file_path] = mtime.isoformat()
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        # Recording failed: leave the file un-recorded so the
+                        # next scan re-syncs it instead of trusting a missing
+                        # mtime, and make the degradation visible in logs.
+                        logger.warning(
+                            f"Failed to record sync state for '{file_path}' in folder "
+                            f"'{folder_id}' of KB '{kb_name}': {exc}"
+                        )
 
                 folder["synced_files"] = file_states
                 folder["file_count"] = len(file_states)
