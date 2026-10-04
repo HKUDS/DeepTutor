@@ -15,6 +15,10 @@ const sourceRoots = [
   "shared",
 ];
 
+function toPosix(filePath: string): string {
+  return filePath.replace(/\\/g, "/");
+}
+
 function sourceFiles(relativeRoot: string): string[] {
   const start = path.join(root, relativeRoot);
   const result: string[] = [];
@@ -33,14 +37,14 @@ const allSources = sourceRoots.flatMap(sourceFiles);
 
 test("browser storage methods stay behind the shared boundary", () => {
   const violations = allSources
-    .filter((file) => !file.endsWith("components/ThemeScript.tsx"))
-    .filter((file) => !file.includes("shared/storage/"))
+    .filter((file) => !toPosix(file).endsWith("components/ThemeScript.tsx"))
+    .filter((file) => !toPosix(file).includes("shared/storage/"))
     .filter((file) =>
       /(?:window\.)?(?:localStorage|sessionStorage)\.(?:getItem|setItem|removeItem)/.test(
         fs.readFileSync(file, "utf8"),
       ),
     )
-    .map((file) => path.relative(root, file));
+    .map((file) => toPosix(path.relative(root, file)));
   assert.deepEqual(violations, []);
 });
 
@@ -51,7 +55,7 @@ test("raw fetch is limited to the shared API client and media preview", () => {
   ]);
   const violations = allSources
     .filter((file) => /\bfetch\(/.test(fs.readFileSync(file, "utf8")))
-    .map((file) => path.relative(root, file))
+    .map((file) => toPosix(path.relative(root, file)))
     .filter((file) => !allow.has(file));
   assert.deepEqual(violations, []);
 });
@@ -61,14 +65,14 @@ test("source modules cannot import Next route pages", () => {
     .filter((file) =>
       /from\s+["'][^"']*\/page["']/.test(fs.readFileSync(file, "utf8")),
     )
-    .map((file) => path.relative(root, file));
+    .map((file) => toPosix(path.relative(root, file)));
   assert.deepEqual(violations, []);
 });
 
 test("the canonical tooltip owns every tooltip role and guards import paths", () => {
   const roleOwners = allSources
     .filter((file) => /role=["']tooltip["']/.test(fs.readFileSync(file, "utf8")))
-    .map((file) => path.relative(root, file));
+    .map((file) => toPosix(path.relative(root, file)));
   assert.deepEqual(roleOwners.sort(), [
     "shared/ui/Tooltip.tsx",
     "shared/ui/TooltipLayer.tsx",
@@ -82,7 +86,7 @@ test("the canonical tooltip owns every tooltip role and guards import paths", ()
         fs.readFileSync(file, "utf8"),
       ),
     )
-    .map((file) => path.relative(root, file));
+    .map((file) => toPosix(path.relative(root, file)));
   assert.deepEqual(legacyImports, []);
 
   const eslintConfig = fs.readFileSync(path.join(root, "eslint.config.mjs"), "utf8");
@@ -99,7 +103,7 @@ test("tracked source contains no editor backups or generated trash", () => {
     .filter(Boolean)
     .filter(
       (file) =>
-        /(?:~|\.bak|\.orig|\.rej)$/.test(file) || file.endsWith("/.DS_Store"),
+        /(?:~|\.bak|\.orig|\.rej)$/.test(file) || toPosix(file).endsWith("/.DS_Store"),
     );
   assert.deepEqual(suspicious, []);
 });
