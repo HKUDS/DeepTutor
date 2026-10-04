@@ -9,9 +9,8 @@ See ``deeptutor/agents/loop/prompt_blocks.py:_runtime_context_block``.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from pathlib import Path
-import time
 
 import pytest
 import yaml
@@ -28,7 +27,12 @@ PROMPTS_NO_RUNTIME = {
     "loop": {"system": "loop"},
 }
 
-FIXED_NOW = datetime(2026, 8, 17, 12, tzinfo=timezone(timedelta(hours=8)))
+# Naive on purpose: ``datetime.now()`` (which ``_runtime_context_block`` calls)
+# returns a naive datetime; ``.astimezone()`` then only attaches the host's
+# local timezone without shifting the calendar date. Freezing an aware
+# datetime instead made ``astimezone()`` convert across zones, so west-of-UTC
+# hosts rendered the frozen instant as the previous day.
+FIXED_NOW = datetime(2026, 8, 17, 12)
 
 
 class FrozenDateTime(datetime):
@@ -40,22 +44,8 @@ class FrozenDateTime(datetime):
 
 
 @pytest.fixture(autouse=True)
-def _freeze_runtime_date(monkeypatch: pytest.MonkeyPatch):
+def _freeze_runtime_date(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(prompt_blocks_module, "datetime", FrozenDateTime)
-    # The block renders the frozen instant in the host's local timezone
-    # (``datetime.now().astimezone()``), so west of UTC the calendar date
-    # shifts a day earlier. Pin TZ to the frozen clock's own offset so the
-    # date assertions below hold on any host; tzset() is restored on exit.
-    if hasattr(time, "tzset"):
-        monkeypatch.setenv("TZ", "Asia/Shanghai")
-        time.tzset()
-        try:
-            yield
-        finally:
-            monkeypatch.undo()
-            time.tzset()
-    else:  # Windows: no tzset(); behavior unchanged there.
-        yield
 
 
 def _runtime_block(assembler: ChatPromptAssembler) -> str:
