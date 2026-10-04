@@ -1158,3 +1158,12 @@ Licensed under the [Apache License 2.0](LICENSE).
 </p>
 
 </div>
+
+### Repeated image attachments
+
+The agent loop sends identical inline user images once per request and replaces later
+copies with references to the retained image. Unique images, remote URLs, differing
+image options, assistant messages, and tool results remain complete. Saved history
+keeps every original attachment; references are rebuilt after history is trimmed.
+This reduces repeated image payloads, but provider-reported usage remains the
+source of truth for billing and cache hits.

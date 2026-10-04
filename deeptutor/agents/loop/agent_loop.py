@@ -60,6 +60,7 @@ from deeptutor.services.llm import (
 )
 from deeptutor.services.llm import finish_was_truncated as _finish_was_truncated
 from deeptutor.services.llm.capabilities import threads_session_id
+from deeptutor.services.llm.image_replay import deduplicate_user_images
 from deeptutor.services.llm.multimodal import should_degrade_to_text, strip_image_parts_inplace
 from deeptutor.services.llm.request_compat import (
     is_forced_tool_choice_unsupported,
@@ -1042,10 +1043,12 @@ class AgentLoop:
 
         kwargs: dict[str, Any] = {
             "model": self.pipeline.model,
-            "messages": [
-                {key: value for key, value in message.items() if key != "_context_snapshot"}
-                for message in messages
-            ],
+            "messages": deduplicate_user_images(
+                [
+                    {key: value for key, value in message.items() if key != "_context_snapshot"}
+                    for message in messages
+                ]
+            ),
             "stream": True,
             **self.pipeline._completion_kwargs(max_tokens=max_tokens),
         }
@@ -1098,7 +1101,9 @@ class AgentLoop:
         carried = list(tool_schemas or [])
         if not carried and self._last_request is not None:
             carried = self._last_request.tool_schemas
-        self._last_request = LLMRequestSnapshot(messages=list(messages), tool_schemas=carried)
+        self._last_request = LLMRequestSnapshot(
+            messages=list(kwargs["messages"]), tool_schemas=carried
+        )
 
         chunk_meta = merge_trace_metadata(trace_meta, {"trace_kind": "llm_chunk"})
 
@@ -1227,11 +1232,12 @@ class AgentLoop:
 
             response_stream = None
             try:
+                sent_content = [message.get("content") for message in kwargs["messages"]]
                 response_stream = await self._create_response_stream(kwargs, trace_meta, stage)
-                # A provider's image fallback can replace content in the wire
-                # copy. Retain that accepted representation for later rounds.
-                for original, accepted in zip(messages, kwargs["messages"]):
-                    if "content" in accepted:
+                # Retain an actual provider fallback for later rounds. The
+                # request-only image deduplication must never overwrite history.
+                for original, accepted, sent in zip(messages, kwargs["messages"], sent_content):
+                    if "content" in accepted and accepted["content"] is not sent:
                         original["content"] = accepted["content"]
                 async for chunk in response_stream:
                     usage = getattr(chunk, "usage", None)

@@ -3492,3 +3492,30 @@ async def test_truncated_tool_call_says_the_output_hit_the_limit(
     # The notice is a report, not a control-flow change: the round is handled
     # exactly as before and the turn still finishes.
     assert _answer_text(events) == "答案"
+
+
+@pytest.mark.asyncio
+async def test_wire_deduplicates_user_images_without_mutating_model_history(monkeypatch):
+    from copy import deepcopy
+
+    image = {"type": "image_url", "image_url": {"url": "data:image/png;base64,YWJj"}}
+    messages = [
+        {"role": "user", "content": [image]},
+        {"role": "assistant", "content": "answer"},
+        {"role": "user", "content": [deepcopy(image)]},
+    ]
+    original = deepcopy(messages)
+    client = _ScriptedChatClient([[_llm_chunk(content="answer")]])
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = _Registry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: [])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    pipeline._model_turn_start = 0
+    monkeypatch.setattr(pipeline, "_build_loop_messages", lambda *_args, **_kwargs: messages)
+    await _run(pipeline, UnifiedContext(session_id="s", user_message="again"))
+    wire = client.calls[0]["messages"]
+    assert wire[0] == original[0]
+    assert "Repeated image" in wire[2]["content"][0]["text"]
+    assert [message["content"] for message in messages[:3]] == [
+        message["content"] for message in original
+    ]
