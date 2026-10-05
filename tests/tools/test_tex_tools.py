@@ -8,19 +8,19 @@ members) and the mocked network-failure branches. No real network access.
 from __future__ import annotations
 
 import io
-import tarfile
-import zipfile
 from pathlib import Path
+import tarfile
 from unittest.mock import MagicMock
+import zipfile
 
 import pytest
 import requests
 
-import deeptutor.tools.tex_downloader as tex_downloader_module
 from deeptutor.tools.tex_chunker import TexChunker
+import deeptutor.tools.tex_downloader as tex_downloader_module
 from deeptutor.tools.tex_downloader import (
-    TexDownloadResult,
     TexDownloader,
+    TexDownloadResult,
     read_tex_file,
 )
 
@@ -118,7 +118,9 @@ class TestDownloadHappyPaths:
         payload = _make_tar_bytes({"main.tex": MIN_TEX.encode("utf-8")})
 
         with pytest.MonkeyPatch.context() as mp:
-            mp.setattr(tex_downloader_module.requests, "get", lambda *a, **k: _mock_response(payload))
+            mp.setattr(
+                tex_downloader_module.requests, "get", lambda *a, **k: _mock_response(payload)
+            )
             result = downloader.download_arxiv_source(
                 "https://arxiv.org/abs/1706.03762", arxiv_id="1706.03762"
             )
@@ -130,13 +132,13 @@ class TestDownloadHappyPaths:
         # temporary extraction dir is cleaned up, only the permanent paper dir remains
         assert [p.name for p in (tmp_path / "ws").iterdir()] == ["paper_1706.03762"]
 
-    def test_zip_source_picks_paper_tex(
-        self, downloader: TexDownloader, tmp_path: Path
-    ) -> None:
+    def test_zip_source_picks_paper_tex(self, downloader: TexDownloader, tmp_path: Path) -> None:
         payload = _make_zip_bytes({"paper.tex": MIN_TEX.encode("utf-8")})
 
         with pytest.MonkeyPatch.context() as mp:
-            mp.setattr(tex_downloader_module.requests, "get", lambda *a, **k: _mock_response(payload))
+            mp.setattr(
+                tex_downloader_module.requests, "get", lambda *a, **k: _mock_response(payload)
+            )
             result = downloader.download_arxiv_source(
                 "https://arxiv.org/pdf/2401.12345", arxiv_id="2401.12345"
             )
@@ -145,14 +147,14 @@ class TestDownloadHappyPaths:
         assert Path(result.tex_path).name == "main.tex"  # always finalised to main.tex
         assert result.tex_content == MIN_TEX
 
-    def test_plain_bytes_treated_as_single_tex_file(
-        self, downloader: TexDownloader
-    ) -> None:
+    def test_plain_bytes_treated_as_single_tex_file(self, downloader: TexDownloader) -> None:
         # Not a tar, not a zip → stored as <arxiv_id>.tex and still found.
         payload = b"some raw tex body without documentclass"
 
         with pytest.MonkeyPatch.context() as mp:
-            mp.setattr(tex_downloader_module.requests, "get", lambda *a, **k: _mock_response(payload))
+            mp.setattr(
+                tex_downloader_module.requests, "get", lambda *a, **k: _mock_response(payload)
+            )
             result = downloader.download_arxiv_source(
                 "https://arxiv.org/abs/2101.00001", arxiv_id="2101.00001"
             )
@@ -160,13 +162,13 @@ class TestDownloadHappyPaths:
         assert result.success is True, result.error
         assert result.tex_content == "some raw tex body without documentclass"
 
-    def test_arxiv_id_taken_from_url_when_arg_missing(
-        self, downloader: TexDownloader
-    ) -> None:
+    def test_arxiv_id_taken_from_url_when_arg_missing(self, downloader: TexDownloader) -> None:
         payload = _make_tar_bytes({"main.tex": MIN_TEX.encode("utf-8")})
 
         with pytest.MonkeyPatch.context() as mp:
-            mp.setattr(tex_downloader_module.requests, "get", lambda *a, **k: _mock_response(payload))
+            mp.setattr(
+                tex_downloader_module.requests, "get", lambda *a, **k: _mock_response(payload)
+            )
             result = downloader.download_arxiv_source("https://arxiv.org/abs/2401.12345v2")
 
         assert result.success is True, result.error
@@ -184,9 +186,7 @@ class TestDownloadFailureBranches:
         assert result.success is False
         assert result.error == "Unable to extract ArXiv ID"
 
-    def test_network_error_maps_to_download_failed(
-        self, downloader: TexDownloader
-    ) -> None:
+    def test_network_error_maps_to_download_failed(self, downloader: TexDownloader) -> None:
         with pytest.MonkeyPatch.context() as mp:
             mp.setattr(
                 tex_downloader_module.requests,
@@ -219,15 +219,17 @@ class TestDownloadFailureBranches:
         assert result.error.startswith("Download failed")
         assert "404" in result.error
 
-    def test_processing_error_maps_to_processing_failed(
-        self, downloader: TexDownloader
-    ) -> None:
+    def test_processing_error_maps_to_processing_failed(self, downloader: TexDownloader) -> None:
         payload = _make_tar_bytes({"main.tex": MIN_TEX.encode("utf-8")})
 
         with pytest.MonkeyPatch.context() as mp:
-            mp.setattr(tex_downloader_module.requests, "get", lambda *a, **k: _mock_response(payload))
             mp.setattr(
-                downloader, "_find_main_tex", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom"))
+                tex_downloader_module.requests, "get", lambda *a, **k: _mock_response(payload)
+            )
+            mp.setattr(
+                downloader,
+                "_find_main_tex",
+                lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")),
             )
             result = downloader.download_arxiv_source(
                 "https://arxiv.org/abs/1706.03762", arxiv_id="1706.03762"
@@ -236,13 +238,13 @@ class TestDownloadFailureBranches:
         assert result.success is False
         assert result.error == "Processing failed: boom"
 
-    def test_archive_without_tex_reports_main_not_found(
-        self, downloader: TexDownloader
-    ) -> None:
+    def test_archive_without_tex_reports_main_not_found(self, downloader: TexDownloader) -> None:
         payload = _make_tar_bytes({"README.txt": b"no tex here"})
 
         with pytest.MonkeyPatch.context() as mp:
-            mp.setattr(tex_downloader_module.requests, "get", lambda *a, **k: _mock_response(payload))
+            mp.setattr(
+                tex_downloader_module.requests, "get", lambda *a, **k: _mock_response(payload)
+            )
             result = downloader.download_arxiv_source(
                 "https://arxiv.org/abs/1706.03762", arxiv_id="1706.03762"
             )
@@ -257,7 +259,9 @@ class TestDownloadFailureBranches:
         payload = _make_tar_bytes({"../evil.tex": b"malicious"})
 
         with pytest.MonkeyPatch.context() as mp:
-            mp.setattr(tex_downloader_module.requests, "get", lambda *a, **k: _mock_response(payload))
+            mp.setattr(
+                tex_downloader_module.requests, "get", lambda *a, **k: _mock_response(payload)
+            )
             result = downloader.download_arxiv_source(
                 "https://arxiv.org/abs/1706.03762", arxiv_id="1706.03762"
             )
@@ -273,13 +277,17 @@ class TestDownloadFailureBranches:
 
 
 class TestFindMainTex:
-    def test_prefers_main_tex_over_documentclass(self, downloader: TexDownloader, tmp_path: Path) -> None:
+    def test_prefers_main_tex_over_documentclass(
+        self, downloader: TexDownloader, tmp_path: Path
+    ) -> None:
         (tmp_path / " appendix.tex").write_text("\\documentclass{book}", encoding="utf-8")
         (tmp_path / "main.tex").write_text("main", encoding="utf-8")
         found = downloader._find_main_tex(tmp_path)
         assert found is not None and found.name == "main.tex"
 
-    def test_falls_back_to_documentclass_file(self, downloader: TexDownloader, tmp_path: Path) -> None:
+    def test_falls_back_to_documentclass_file(
+        self, downloader: TexDownloader, tmp_path: Path
+    ) -> None:
         (tmp_path / "chapter.tex").write_text("no marker", encoding="utf-8")
         (tmp_path / "chapter-a.tex").write_text("\\documentclass{article}", encoding="utf-8")
         found = downloader._find_main_tex(tmp_path)
@@ -301,7 +309,9 @@ class TestFindMainTex:
         found = downloader._find_main_tex(tmp_path)
         assert found is not None and found.name == "Main.tex"
 
-    def test_uppercase_extension_file_is_invisible(self, downloader: TexDownloader, tmp_path: Path) -> None:
+    def test_uppercase_extension_file_is_invisible(
+        self, downloader: TexDownloader, tmp_path: Path
+    ) -> None:
         # Known limitation: discovery globs "*.tex" case-sensitively, so a file
         # named MAIN.TEX is never even considered a candidate.
         (tmp_path / "MAIN.TEX").write_text("upper", encoding="utf-8")
@@ -428,9 +438,7 @@ SECTION_DOC = (
 
 
 class TestSplitTexIntoChunks:
-    def test_short_content_passes_through_verbatim(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_short_content_passes_through_verbatim(self, monkeypatch: pytest.MonkeyPatch) -> None:
         chunker = _cl100k_chunker(monkeypatch)
         content = "\\section{Intro}\nShort body."
         assert chunker.split_tex_into_chunks(content, max_tokens=10_000) == [content]
@@ -469,9 +477,7 @@ class TestSplitTexIntoChunks:
         for chunk in chunks:
             assert chunker.estimate_tokens(chunk) <= max_tokens
 
-    def test_document_without_sections_still_chunks(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_document_without_sections_still_chunks(self, monkeypatch: pytest.MonkeyPatch) -> None:
         chunker = _cl100k_chunker(monkeypatch)
         doc = "\n\n".join(
             f"Plain paragraph number {i} with a handful of ordinary words." for i in range(40)
@@ -501,9 +507,7 @@ class TestSplitTexIntoChunks:
         assert chunker.estimate_tokens(chunks[0]) > 50
         assert "".join(chunks).strip() == doc
 
-    def test_tiny_max_tokens_never_hangs_or_crashes(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_tiny_max_tokens_never_hangs_or_crashes(self, monkeypatch: pytest.MonkeyPatch) -> None:
         chunker = _cl100k_chunker(monkeypatch)
         chunks = chunker.split_tex_into_chunks(SECTION_DOC, max_tokens=1, overlap=0)
         assert chunks  # produces something instead of failing
