@@ -248,9 +248,7 @@ async def _run_mimic_endpoint(
 
     monkeypatch.setattr("deeptutor.api.routers.auth.ws_require_auth", _allow)
 
-    await asyncio.wait_for(
-        question_router_module.websocket_mimic_generate(websocket), timeout=10
-    )
+    await asyncio.wait_for(question_router_module.websocket_mimic_generate(websocket), timeout=10)
 
 
 @pytest.mark.asyncio
