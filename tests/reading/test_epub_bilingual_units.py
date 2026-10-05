@@ -191,16 +191,12 @@ def test_metadata_rejects_opf_path_traversal(tmp_path: Path, full_path: str) -> 
 
 
 @pytest.mark.parametrize("missing", ["META-INF/container.xml", "OPS/book.opf"])
-def test_metadata_returns_empty_for_missing_archive_entries(
-    tmp_path: Path, missing: str
-) -> None:
+def test_metadata_returns_empty_for_missing_archive_entries(tmp_path: Path, missing: str) -> None:
     path = tmp_path / "incomplete.epub"
     with zipfile.ZipFile(path, "w") as archive:
         archive.writestr("mimetype", "application/epub+zip", zipfile.ZIP_STORED)
         if missing != "META-INF/container.xml":
-            archive.writestr(
-                "META-INF/container.xml", _CONTAINER.format(opf="OPS/book.opf")
-            )
+            archive.writestr("META-INF/container.xml", _CONTAINER.format(opf="OPS/book.opf"))
         if missing != "OPS/book.opf":
             archive.writestr("OPS/book.opf", _OPF_TEMPLATE.format(metadata=""))
 
@@ -295,9 +291,7 @@ def test_outline_title_overlap_scores_without_metadata(tmp_path: Path) -> None:
 
 def test_a_bare_candidate_is_listed_with_a_zero_score(tmp_path: Path) -> None:
     store = ReadingStore(root=tmp_path / "materials")
-    english = store.ingest(
-        _write_epub(tmp_path / "english.epub", chapter="Chapter One")
-    )
+    english = store.ingest(_write_epub(tmp_path / "english.epub", chapter="Chapter One"))
     bare = store.ingest(
         _write_epub(
             tmp_path / "bare.epub",
@@ -330,22 +324,18 @@ def test_a_bare_candidate_is_listed_with_a_zero_score(tmp_path: Path) -> None:
 
 def test_candidates_skip_text_materials_and_unreadable_epubs(tmp_path: Path) -> None:
     store = ReadingStore(root=tmp_path / "materials")
-    english = store.ingest(
-        _write_epub(tmp_path / "english.epub", chapter="Chapter One")
-    )
+    english = store.ingest(_write_epub(tmp_path / "english.epub", chapter="Chapter One"))
     chinese = store.ingest(
         _write_epub(
             tmp_path / "chinese.epub",
-            metadata="<dc:identifier>urn:uuid:twin</dc:identifier>"
-            "<dc:language>zh</dc:language>",
+            metadata="<dc:identifier>urn:uuid:twin</dc:identifier><dc:language>zh</dc:language>",
             chapter="别的章节",
         )
     )
     broken = store.ingest(
         _write_epub(
             tmp_path / "broken.epub",
-            metadata="<dc:identifier>urn:uuid:twin</dc:identifier>"
-            "<dc:language>zh</dc:language>",
+            metadata="<dc:identifier>urn:uuid:twin</dc:identifier><dc:language>zh</dc:language>",
             chapter="损坏章节",
             body="<p>原文丢失。</p>",
         )
@@ -371,9 +361,7 @@ def test_recommendation_fails_when_the_source_epub_is_unreadable(
     tmp_path: Path,
 ) -> None:
     store = ReadingStore(root=tmp_path / "materials")
-    english = store.ingest(
-        _write_epub(tmp_path / "english.epub", chapter="Chapter One")
-    )
+    english = store.ingest(_write_epub(tmp_path / "english.epub", chapter="Chapter One"))
     _drop_raw(store, english.material_id)
 
     with pytest.raises(ReadingError, match="The source EPUB is unavailable."):
@@ -387,9 +375,7 @@ def test_recommendation_fails_when_the_source_epub_is_unreadable(
 
 def test_pairing_rejects_pairing_a_material_with_itself(tmp_path: Path) -> None:
     store = ReadingStore(root=tmp_path / "materials")
-    english = store.ingest(
-        _write_epub(tmp_path / "english.epub", chapter="Chapter One")
-    )
+    english = store.ingest(_write_epub(tmp_path / "english.epub", chapter="Chapter One"))
 
     with pytest.raises(ReadingError, match="two different"):
         create_epub_pairing(store, english.material_id, english.material_id)
@@ -398,9 +384,7 @@ def test_pairing_rejects_pairing_a_material_with_itself(tmp_path: Path) -> None:
 
 def test_pairing_requires_available_raw_files(tmp_path: Path) -> None:
     english_store = ReadingStore(root=tmp_path / "english-side")
-    english = english_store.ingest(
-        _write_epub(tmp_path / "english.epub", chapter="Chapter One")
-    )
+    english = english_store.ingest(_write_epub(tmp_path / "english.epub", chapter="Chapter One"))
     chinese = english_store.ingest(
         _write_epub(
             tmp_path / "chinese.epub",
@@ -427,18 +411,14 @@ def test_pairing_requires_available_raw_files(tmp_path: Path) -> None:
     _drop_raw(chinese_store, chinese_again.material_id)
 
     with pytest.raises(ReadingError, match="The Chinese EPUB is unavailable."):
-        create_epub_pairing(
-            chinese_store, english_again.material_id, chinese_again.material_id
-        )
+        create_epub_pairing(chinese_store, english_again.material_id, chinese_again.material_id)
     assert list_epub_pairings(english_store) == []
     assert list_epub_pairings(chinese_store) == []
 
 
 def test_creating_the_same_pair_twice_keeps_one_row(tmp_path: Path) -> None:
     store = ReadingStore(root=tmp_path / "materials")
-    english = store.ingest(
-        _write_epub(tmp_path / "english.epub", chapter="Chapter One")
-    )
+    english = store.ingest(_write_epub(tmp_path / "english.epub", chapter="Chapter One"))
     chinese = store.ingest(
         _write_epub(
             tmp_path / "chinese.epub",
@@ -461,9 +441,7 @@ def test_deleting_an_unknown_pairing_is_a_noop(tmp_path: Path) -> None:
     assert delete_epub_pairing(store, "missing-id") is False
     assert not pairing_path.exists()
 
-    english = store.ingest(
-        _write_epub(tmp_path / "english.epub", chapter="Chapter One")
-    )
+    english = store.ingest(_write_epub(tmp_path / "english.epub", chapter="Chapter One"))
     chinese = store.ingest(
         _write_epub(
             tmp_path / "chinese.epub",
@@ -479,9 +457,7 @@ def test_deleting_an_unknown_pairing_is_a_noop(tmp_path: Path) -> None:
 
 def test_deleting_pairings_for_a_material_removes_both_roles(tmp_path: Path) -> None:
     store = ReadingStore(root=tmp_path / "materials")
-    english = store.ingest(
-        _write_epub(tmp_path / "english.epub", chapter="Chapter One")
-    )
+    english = store.ingest(_write_epub(tmp_path / "english.epub", chapter="Chapter One"))
     first_chinese = store.ingest(
         _write_epub(
             tmp_path / "first-chinese.epub",
@@ -499,13 +475,9 @@ def test_deleting_pairings_for_a_material_removes_both_roles(tmp_path: Path) -> 
     create_epub_pairing(store, english.material_id, first_chinese.material_id)
     create_epub_pairing(store, english.material_id, second_chinese.material_id)
 
-    assert (
-        delete_epub_pairings_for_material(store, first_chinese.material_id) == 1
-    )
+    assert delete_epub_pairings_for_material(store, first_chinese.material_id) == 1
     remaining = list_epub_pairings(store)
-    assert [row["chinese_material_id"] for row in remaining] == [
-        second_chinese.material_id
-    ]
+    assert [row["chinese_material_id"] for row in remaining] == [second_chinese.material_id]
 
     assert delete_epub_pairings_for_material(store, english.material_id) == 1
     assert list_epub_pairings(store) == []
