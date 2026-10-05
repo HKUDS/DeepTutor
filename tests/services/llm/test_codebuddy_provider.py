@@ -482,8 +482,7 @@ async def test_codebuddy_interrupt_failure_after_tool_calls_logs_warning(
         and r.name == "deeptutor.services.llm.provider_core.codebuddy_provider"
     ]
     assert any(
-        "interrupt" in r.getMessage().lower() and "RuntimeError" in r.getMessage()
-        for r in warnings
+        "interrupt" in r.getMessage().lower() and "RuntimeError" in r.getMessage() for r in warnings
     ), [r.getMessage() for r in warnings]
     session = provider._sessions["chat-interrupt-fail"]
     assert session.client.interrupt_calls == 1
