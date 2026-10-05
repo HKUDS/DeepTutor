@@ -574,8 +574,7 @@ class KnowledgeBaseManager:
             self._save_config()
         except Exception as exc:
             logger.error(
-                f"Failed to persist KB status update for '{name}' "
-                f"(status='{status}'): {exc}"
+                f"Failed to persist KB status update for '{name}' (status='{status}'): {exc}"
             )
             raise
         self._sync_kb_to_pb(name, kb_config)

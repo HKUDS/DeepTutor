@@ -44,8 +44,7 @@ def test_persist_failure_is_logged_and_raised(
             manager.update_kb_status(name="kb1", status="error")
 
     assert any(
-        "kb1" in record.message and record.levelno == logging.ERROR
-        for record in caplog.records
+        "kb1" in record.message and record.levelno == logging.ERROR for record in caplog.records
     )
 
 
@@ -69,6 +68,5 @@ def test_ready_metadata_failure_is_logged(
     # The metadata refresh is best-effort: the status write itself still lands.
     assert manager.get_kb_status("kb1")["status"] == "ready"
     assert any(
-        "kb1" in record.message and record.levelno == logging.WARNING
-        for record in caplog.records
+        "kb1" in record.message and record.levelno == logging.WARNING for record in caplog.records
     )

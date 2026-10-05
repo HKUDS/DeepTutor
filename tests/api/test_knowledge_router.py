@@ -1959,9 +1959,7 @@ def test_reindex_task_surfaces_failed_error_progress_write(
                 raise OSError("synthetic error progress write failure")
             return super().update(stage, *args, **kwargs)
 
-    monkeypatch.setattr(
-        knowledge_router_module, "ProgressTracker", _ErrorWriteFailsTracker
-    )
+    monkeypatch.setattr(knowledge_router_module, "ProgressTracker", _ErrorWriteFailsTracker)
 
     task_id = knowledge_router_module._build_unique_task_id("kb_reindex", "error-progress")
     with caplog.at_level(logging.WARNING, logger="deeptutor.api.routers.knowledge"):
@@ -1979,13 +1977,9 @@ def test_reindex_task_surfaces_failed_error_progress_write(
     assert task["status"] == "error"
     assert task["error"] == "original indexing failure"
     warnings = [
-        record.getMessage()
-        for record in caplog.records
-        if record.levelno >= logging.WARNING
+        record.getMessage() for record in caplog.records if record.levelno >= logging.WARNING
     ]
-    assert any(
-        "error progress" in message and "kb" in message for message in warnings
-    ), warnings
+    assert any("error progress" in message and "kb" in message for message in warnings), warnings
 
 
 @pytest.mark.parametrize("failed_sink", ["progress_file", "central_config"])
