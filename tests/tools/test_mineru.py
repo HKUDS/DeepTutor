@@ -12,6 +12,7 @@ from deeptutor.services.parsing.engines.mineru import backend as mineru_backend
 from deeptutor.services.parsing.engines.mineru import cloud as mineru_cloud
 from deeptutor.services.parsing.engines.mineru import config as mineru_config
 from deeptutor.services.parsing.engines.mineru.config import MinerUConfig, MinerUError
+from deeptutor.services.parsing.engines.mineru.local import LocalParseReason, LocalParseResult
 
 # ---------------------------------------------------------------------------
 # Config resolution
@@ -68,17 +69,15 @@ def test_resolve_mineru_config_preserves_token_array(monkeypatch: pytest.MonkeyP
 def test_parse_pdf_to_workdir_dispatches_local(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from deeptutor.services.parsing.engines.mineru import local as pdf_parser
-
     pdf = tmp_path / "exam.pdf"
     pdf.write_bytes(b"%PDF-1.4")
     out = tmp_path / "out"
 
-    def fake_local(p: str, base: str, **kwargs) -> bool:  # noqa: ANN003
+    def fake_local(p: str, base: str, **kwargs) -> LocalParseResult:  # noqa: ANN003
         (Path(base) / Path(p).stem).mkdir(parents=True, exist_ok=True)
-        return True
+        return LocalParseResult.success()
 
-    monkeypatch.setattr(pdf_parser, "parse_document_with_mineru", fake_local)
+    monkeypatch.setattr(mineru_backend, "parse_document_with_mineru_result", fake_local)
 
     workdir = mineru_backend.parse_pdf_to_workdir(pdf, out, config=MinerUConfig(mode="local"))
     assert workdir == out / "exam"
@@ -87,11 +86,13 @@ def test_parse_pdf_to_workdir_dispatches_local(
 def test_parse_pdf_to_workdir_local_failure_raises(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from deeptutor.services.parsing.engines.mineru import local as pdf_parser
-
     pdf = tmp_path / "exam.pdf"
     pdf.write_bytes(b"%PDF-1.4")
-    monkeypatch.setattr(pdf_parser, "parse_document_with_mineru", lambda *a, **k: False)
+    monkeypatch.setattr(
+        mineru_backend,
+        "parse_document_with_mineru_result",
+        lambda *a, **k: LocalParseResult.failure(LocalParseReason.EXCEPTION, "boom"),
+    )
 
     with pytest.raises(MinerUError):
         mineru_backend.parse_pdf_to_workdir(
@@ -124,19 +125,17 @@ def test_parse_pdf_to_workdir_dispatches_cloud(
 def test_parse_document_to_workdir_dispatches_office_local(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from deeptutor.services.parsing.engines.mineru import local as local_parser
-
     docx = tmp_path / "lesson.docx"
     docx.write_bytes(b"office")
     out = tmp_path / "out"
     seen: list[str] = []
 
-    def fake_local(path: str, base: str, **_kwargs) -> bool:
+    def fake_local(path: str, base: str, **_kwargs) -> LocalParseResult:
         seen.append(Path(path).name)
         (Path(base) / Path(path).stem).mkdir(parents=True, exist_ok=True)
-        return True
+        return LocalParseResult.success()
 
-    monkeypatch.setattr(local_parser, "parse_document_with_mineru", fake_local)
+    monkeypatch.setattr(mineru_backend, "parse_document_with_mineru_result", fake_local)
 
     workdir = mineru_backend.parse_document_to_workdir(docx, out, config=MinerUConfig(mode="local"))
 
@@ -222,8 +221,6 @@ def test_parse_local_rejects_bad_configured_path(
 def test_parse_local_explains_legacy_cli_limit_for_office(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from deeptutor.services.parsing.engines.mineru import local as local_parser
-
     source = tmp_path / "lesson.docx"
     source.write_bytes(b"office")
     monkeypatch.setattr(
@@ -237,8 +234,8 @@ def test_parse_local_explains_legacy_cli_limit_for_office(
         },
     )
     monkeypatch.setattr(
-        local_parser,
-        "parse_document_with_mineru",
+        mineru_backend,
+        "parse_document_with_mineru_result",
         lambda *_args, **_kwargs: pytest.fail("legacy CLI must not run"),
     )
 

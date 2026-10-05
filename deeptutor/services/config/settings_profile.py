@@ -94,6 +94,7 @@ _CATALOG_MODEL_FIELDS = (
     "language",
     "sample_rate",
     "speed",
+    "request_timeout",
 )
 
 

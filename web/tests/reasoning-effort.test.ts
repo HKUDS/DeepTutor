@@ -192,3 +192,15 @@ test("Auto removes the catalog field instead of persisting an empty string", () 
   setModelReasoningEffort(model, " medium ");
   assert.equal(model.reasoning_effort, "medium");
 });
+
+
+test("GLM effort choices follow the documented model family and retain invalid values for recovery", () => {
+  assert.deepEqual(values("openai", "glm-5.3"), ["", "low", "high", "max"]);
+  assert.deepEqual(values("zhipu", "glm-5.3"), ["", "low", "high", "max"]);
+  assert.deepEqual(values("custom", "z-ai/glm-5.3"), ["", "low", "high", "max"]);
+  assert.deepEqual(values("azure", "GLM-5.3"), ["", "low", "high", "max"]);
+  assert.deepEqual(values("openai", "glm-4.7"), []);
+  assert.deepEqual(values("openai", "glm-5.3-unknown"), []);
+  assert.deepEqual(values("openai", "glm-5.3", "medium"), ["", "low", "high", "max", "medium"]);
+  assert.deepEqual(values("openai", "glm-4.7", "vendor-level"), ["", "vendor-level"]);
+});

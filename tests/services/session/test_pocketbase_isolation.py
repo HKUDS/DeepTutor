@@ -186,6 +186,20 @@ async def test_search_sessions_is_owner_scoped_and_preserves_native_visibility(f
     assert archived_row["preferences"]["archived"] is True
 
 
+async def test_search_sessions_skips_sessions_in_the_recycle_bin(fake_pb) -> None:
+    store = PocketBaseSessionStore()
+    with as_user("alice"):
+        kept = await store.create_session(title="Bayes notes", session_id="s_kept")
+        recycled = await store.create_session(title="Bayes draft", session_id="s_recycled")
+        await store.add_message(recycled["id"], "user", "Explain Bayes theorem")
+        await store.soft_delete_session(recycled["id"])
+
+        result = await store.search_sessions("bayes")
+
+    assert result["total"] == 1
+    assert [row["session_id"] for row in result["sessions"]] == [kept["id"]]
+
+
 async def test_legacy_workspace_preferences_are_normalized_at_repository_boundary(
     fake_pb,
 ) -> None:

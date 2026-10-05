@@ -160,7 +160,9 @@ class TestFeishuStreaming:
 
         await ch.send_delta("oc_1", "Hello", _meta("s1"))
         ch._create_streaming_card_sync.assert_called_once()
-        ch._stream_update_text_sync.assert_called_with("card-1", "Hello", 1)
+        # The first text rides along with the card, so it needs no extra push.
+        assert ch._create_streaming_card_sync.call_args.args[-1] == "Hello"
+        ch._stream_update_text_sync.assert_not_called()
 
         await ch.send_delta("oc_1", "", _meta("s1", end=True))
         # Final text update then streaming_mode close, with growing sequence.

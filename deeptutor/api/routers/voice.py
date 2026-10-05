@@ -19,6 +19,7 @@ from deeptutor.services.voice import (
     transcribe_audio,
 )
 from deeptutor.services.voice.audio import _parse_pcm_content_type, _pcm16_to_wav
+from deeptutor.services.voice.base import VoiceProviderTimeout
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,8 @@ async def text_to_speech(payload: TTSRequest) -> Response:
         )
     except ValueError as exc:  # missing/invalid configuration
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except VoiceProviderTimeout as exc:
+        raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=str(exc)) from exc
     except VoiceProviderError as exc:
         logger.warning("TTS provider error: %s", exc)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc

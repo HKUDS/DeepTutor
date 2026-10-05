@@ -19,11 +19,26 @@ from deeptutor.services.config.runtime_settings import (
     load_mineru_settings,
 )
 
+# The MinerU cloud API rejects any single file above 200 pages, so the PDF
+# auto-slicer must never emit a part larger than that even if a setting asks
+# for it.
+MAX_PAGES_PER_PART_CEILING = 200
+DEFAULT_MAX_PAGES_PER_PART = 180
+
 
 class MinerUError(RuntimeError):
     """Raised when a MinerU parse fails (local CLI missing, cloud API error,
     misconfiguration). Carries a user-facing message; the capability layer
     surfaces it as a stream error."""
+
+    def __init__(self, message: str, *, code: str | None = None, detail: str = "") -> None:
+        super().__init__(message)
+        #: Machine-readable reason when one is known (``LocalParseReason``
+        #: values for local failures); ``None`` when the error is raised
+        #: without a classification.
+        self.code = code
+        #: Bounded diagnostic excerpt backing the message; ``""`` when none.
+        self.detail = detail
 
 
 @dataclass(frozen=True)
@@ -49,11 +64,24 @@ class MinerUConfig:
     enable_formula: bool = True
     enable_table: bool = True
     is_ocr: bool = False
+    # Cloud-only opt-in; preserves all parser choices and the original PDF.
+    normalize_tiny_scans: bool = False
     # When False (default), a local parse fails fast instead of letting the
     # MinerU CLI silently download multi-GB model weights on first run. The user
     # opts in explicitly (Settings → Document Parsing) or via the one-click
     # download button. Cloud mode ignores this (no local models).
     allow_local_model_download: bool = False
+    # Cloud-mode PDF auto-slicing. PDFs longer than this many pages are split
+    # into per-part PDFs, parsed one by one, and their artifacts merged back
+    # into a single working dir (see ``cloud.parse_cloud``). Values above the
+    # MinerU cloud ceiling are clamped in ``__post_init__``.
+    max_pages_per_part: int = DEFAULT_MAX_PAGES_PER_PART
+
+    def __post_init__(self) -> None:
+        if self.max_pages_per_part > MAX_PAGES_PER_PART_CEILING:
+            object.__setattr__(self, "max_pages_per_part", MAX_PAGES_PER_PART_CEILING)
+        elif self.max_pages_per_part < 1:
+            object.__setattr__(self, "max_pages_per_part", 1)
 
     @property
     def is_cloud(self) -> bool:
@@ -94,8 +122,20 @@ def resolve_mineru_config() -> MinerUConfig:
         enable_formula=bool(settings.get("enable_formula", True)),
         enable_table=bool(settings.get("enable_table", True)),
         is_ocr=bool(settings.get("is_ocr", False)),
+        normalize_tiny_scans=bool(settings.get("normalize_tiny_scans", False)),
         allow_local_model_download=bool(settings.get("allow_local_model_download", False)),
+        max_pages_per_part=(
+            DEFAULT_MAX_PAGES_PER_PART
+            if settings.get("max_pages_per_part") is None
+            else int(settings.get("max_pages_per_part"))  # type: ignore[arg-type]
+        ),
     )
 
 
-__all__ = ["MinerUConfig", "MinerUError", "resolve_mineru_config"]
+__all__ = [
+    "DEFAULT_MAX_PAGES_PER_PART",
+    "MAX_PAGES_PER_PART_CEILING",
+    "MinerUConfig",
+    "MinerUError",
+    "resolve_mineru_config",
+]

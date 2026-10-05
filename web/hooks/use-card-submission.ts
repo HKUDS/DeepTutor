@@ -1,3 +1,4 @@
+import { COMMAND_CONFIRMATION_FAILED } from "@/features/chat/transport/command-delivery";
 import { useCallback, useState } from "react";
 
 export interface UserReplyPayload {
@@ -24,15 +25,18 @@ export type SubmitUserReply = (
 export function useCardSubmission(onSubmit: SubmitUserReply) {
   const [sending, setSending] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [failureMessage, setFailureMessage] = useState<string | null>(null);
 
   const submit = useCallback(
     async (payload: UserReplyPayload) => {
       setSending(true);
       setFailed(false);
+      setFailureMessage(null);
       let accepted: void | boolean;
       try {
         accepted = await onSubmit(payload);
       } catch {
+        setFailureMessage(COMMAND_CONFIRMATION_FAILED);
         accepted = false;
       }
       // ``undefined`` is a host that does not report a verdict; only an
@@ -46,5 +50,5 @@ export function useCardSubmission(onSubmit: SubmitUserReply) {
     [onSubmit],
   );
 
-  return { sending, failed, submit };
+  return { sending, failed, failureMessage, submit };
 }

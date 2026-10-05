@@ -6,6 +6,7 @@ import asyncio
 from urllib.parse import urlsplit
 
 import aiohttp
+import requests
 
 from deeptutor.services.llm.cloud_provider import _auth_binding, _get_aiohttp_connector
 from deeptutor.services.llm.utils import build_auth_headers, collect_model_names
@@ -62,7 +63,13 @@ def detect_capabilities(items: list) -> list[dict]:
 
 
 def test_search_access(
-    binding: str, base_url: str, api_key: str | None, *, proxy: str = "", max_results: int = 1
+    binding: str,
+    base_url: str,
+    api_key: str | None,
+    *,
+    proxy: str = "",
+    max_results: int = 1,
+    require_results: bool = True,
 ):
     """Test exactly one search adapter, never a fallback or live credentials."""
     from deeptutor.services.config.provider_runtime import (
@@ -83,27 +90,55 @@ def test_search_access(
     response = get_provider(binding, **kwargs).search(
         "DeepTutor configuration health check", **kwargs
     )
-    if not (response.answer or response.search_results):
+    if require_results and not (response.answer or response.search_results):
         raise ValueError("Search provider returned no answer or results.")
     return response
 
 
-async def probe_search_provider(binding: str, base_url: str, api_key: str | None) -> dict:
+async def probe_search_provider(
+    binding: str, base_url: str, api_key: str | None, *, proxy: str = ""
+) -> dict:
     from deeptutor.services.config.provider_runtime import search_missing_credential
+    from deeptutor.services.search.providers.searxng import SearxngResponseError
 
-    if search_missing_credential(binding, api_key or "", base_url):
-        return {"status": "auth_error", "models": []}
+    missing = search_missing_credential(binding, api_key or "", base_url)
+    if missing:
+        return {"status": "invalid_url" if missing == "base_url" else "auth_error", "models": []}
     try:
-        await asyncio.wait_for(
-            asyncio.to_thread(test_search_access, binding, base_url, api_key), timeout=25
+        response = await asyncio.wait_for(
+            asyncio.to_thread(
+                test_search_access, binding, base_url, api_key, proxy=proxy, require_results=False
+            ),
+            timeout=25,
         )
-        return {
+        result = {
             "status": "connected",
             "models": [],
             "capabilities": [{"category": "search", "evidence": "metadata"}],
         }
-    except TimeoutError:
+        if not (response.answer or response.search_results):
+            result["warning"] = "empty_results"
+        return result
+    except (TimeoutError, requests.Timeout):
         return {"status": "timeout", "models": []}
+    except requests.ConnectionError:
+        return {"status": "unreachable", "models": []}
+    except (requests.exceptions.InvalidURL, requests.exceptions.InvalidSchema):
+        return {"status": "invalid_url", "models": []}
+    except SearxngResponseError:
+        return {"status": "invalid_response", "models": []}
+    except requests.HTTPError as exc:
+        status = exc.response.status_code if exc.response is not None else None
+        category = (
+            "json_forbidden"
+            if binding == "searxng" and status == 403
+            else "auth_error"
+            if status in {401, 403}
+            else "rate_limited"
+            if status == 429
+            else "http_error"
+        )
+        return {"status": category, "models": [], "http_status": status}
     except Exception:
         # No upstream exception text: it may contain the submitted key.
         return {"status": "http_error", "models": []}

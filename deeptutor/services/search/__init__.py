@@ -243,6 +243,7 @@ def web_search(
             use_llm=use_llm,
             custom_template=consolidation_custom_template,
             llm_config=llm_config,
+            max_results=provider_kwargs["max_results"],
         )
         response = consolidator.consolidate(response)
 

@@ -18,6 +18,7 @@ import {
   Loader2,
   MoreHorizontal,
   Search,
+  Star,
   Trash2,
   X,
 } from "lucide-react";
@@ -357,6 +358,7 @@ function MaterialRow({
   const preparing =
     material.status === "processing" || material.status === "queued";
   const failed = material.status === "failed";
+  const quizStars = material.quiz_stars ?? 0;
 
   // The file's own identity: what it is called on disk, or where it came from.
   const identity =
@@ -405,6 +407,17 @@ function MaterialRow({
             {failed && (
               <span className="shrink-0 rounded px-1.5 py-px text-[10px] text-[var(--destructive)]">
                 {t("Failed")}
+              </span>
+            )}
+            {quizStars > 0 && (
+              <span
+                aria-label={t("Quiz stars: {{count}}", { count: quizStars })}
+                className="inline-flex shrink-0 items-center gap-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400"
+              >
+                <Star size={11} fill="currentColor" aria-hidden="true" />
+                <span aria-hidden="true" className="tabular-nums">
+                  {quizStars}
+                </span>
               </span>
             )}
           </span>

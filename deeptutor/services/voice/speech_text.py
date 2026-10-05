@@ -18,6 +18,7 @@ Scope is deliberately Pareto, not a full MathSpeak engine:
 
 from __future__ import annotations
 
+from collections.abc import Callable
 import re
 
 # ── lexicons ──────────────────────────────────────────────────────────────
@@ -735,7 +736,9 @@ def _emit_island(inner: str, *, math_speak: bool) -> str:
     return _verbalize_math(inner) if math_speak else inner
 
 
-def verbalize_latex_for_speech(text: str, *, math_speak: bool = True) -> str:
+def verbalize_latex_for_speech(
+    text: str, *, math_speak: bool = True, prose_transform: Callable[[str], str] | None = None
+) -> str:
     """Replace math islands with speakable prose, or just unwrap delimiters.
 
     ``math_speak=True`` (default) verbalizes fractions, powers, Greek, and
@@ -743,39 +746,46 @@ def verbalize_latex_for_speech(text: str, *, math_speak: bool = True) -> str:
     wrappers so TTS never says "dollar", but leaves the inner TeX as-is.
 
     Bare underscores outside math are preserved (``file_name`` stays intact).
-    Leftover ``$`` from broken markup is dropped.
+    Leftover ``$`` from broken markup is dropped. An optional prose transform
+    cleans surrounding Markdown while leaving each math island intact.
     """
     if not text:
         return ""
     if "$" not in text and "\\" not in text:
-        return _replace_unicode(text) if math_speak else text
+        spoken = _replace_unicode(text) if math_speak else text
+        return prose_transform(spoken) if prose_transform else spoken
 
     out: list[str] = []
+    prose: list[str] = []
+
+    def flush_prose() -> None:
+        segment = "".join(prose)
+        out.append(prose_transform(segment) if prose_transform else segment)
+        prose.clear()
+
+    def append_island(inner: str) -> None:
+        flush_prose()
+        out.extend((" ", _emit_island(inner, math_speak=math_speak), " "))
+
     i = 0
     n = len(text)
     while i < n:
         if text.startswith("$$", i) and not _is_escaped(text, i):
             end = text.find("$$", i + 2)
             if end != -1:
-                out.append(" ")
-                out.append(_emit_island(text[i + 2 : end], math_speak=math_speak))
-                out.append(" ")
+                append_island(text[i + 2 : end])
                 i = end + 2
                 continue
         if text.startswith("\\[", i):
             end = text.find("\\]", i + 2)
             if end != -1:
-                out.append(" ")
-                out.append(_emit_island(text[i + 2 : end], math_speak=math_speak))
-                out.append(" ")
+                append_island(text[i + 2 : end])
                 i = end + 2
                 continue
         if text.startswith("\\(", i):
             end = text.find("\\)", i + 2)
             if end != -1:
-                out.append(" ")
-                out.append(_emit_island(text[i + 2 : end], math_speak=math_speak))
-                out.append(" ")
+                append_island(text[i + 2 : end])
                 i = end + 2
                 continue
         begin = _BEGIN_ENV.match(text, i)
@@ -784,9 +794,7 @@ def verbalize_latex_for_speech(text: str, *, math_speak: bool = True) -> str:
             end_tag = f"\\end{{{env}}}"
             end = text.find(end_tag, begin.end())
             if end != -1:
-                out.append(" ")
-                out.append(_emit_island(text[begin.end() : end], math_speak=math_speak))
-                out.append(" ")
+                append_island(text[begin.end() : end])
                 i = end + len(end_tag)
                 continue
         if text[i] == "$" and not _is_escaped(text, i):
@@ -799,14 +807,13 @@ def verbalize_latex_for_speech(text: str, *, math_speak: bool = True) -> str:
                     break
                 j += 1
             if j > i:
-                out.append(" ")
-                out.append(_emit_island(text[i + 1 : j], math_speak=math_speak))
-                out.append(" ")
+                append_island(text[i + 1 : j])
                 i = j + 1
                 continue
-        out.append(text[i])
+        prose.append(text[i])
         i += 1
 
+    flush_prose()
     spoken = "".join(out)
     if math_speak:
         spoken = _verbalize_loose_commands(spoken)

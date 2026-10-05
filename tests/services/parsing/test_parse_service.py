@@ -80,6 +80,56 @@ def test_signature_change_busts_cache(tmp_path: Path, monkeypatch: pytest.Monkey
     assert len(p1.calls) == 1 and len(p2.calls) == 1  # different signature → re-parse
 
 
+def test_restart_reuses_completed_documents_and_restarts_only_failed_document(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FailingParser(_FakeParser):
+        fail = True
+
+        def parse(self, source_path, workdir, **kwargs):
+            super().parse(source_path, workdir, **kwargs)
+            if source_path.name == "second.pdf" and self.fail:
+                raise ParserError("controlled interruption")
+
+    parser = FailingParser()
+    _use(monkeypatch, parser)
+    root = tmp_path / "cache"
+    first = _pdf(tmp_path, b"first", "first.pdf")
+    second = _pdf(tmp_path, b"second", "second.pdf")
+    service = ParseService(cache_root=root)
+    completed = service.parse(first, engine="fake")
+    with pytest.raises(ParserError, match="controlled interruption"):
+        service.parse(second, engine="fake")
+    assert len(list(root.glob("*/*/.*.failed-*/second.md"))) == 1
+
+    parser.fail = False
+    restarted = ParseService(cache_root=root)
+    assert restarted.parse(first, engine="fake").workdir == completed.workdir
+    assert restarted.parse(second, engine="fake").markdown == "# md"
+    assert parser.calls == [first, second, second]
+
+
+@pytest.mark.parametrize("corruption", [b"", b"\xff"])
+def test_unusable_cache_reparses_only_affected_document(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    corruption: bytes,
+) -> None:
+    parser = _FakeParser()
+    _use(monkeypatch, parser)
+    service = ParseService(cache_root=tmp_path / "cache")
+    first = _pdf(tmp_path, b"first", "first.pdf")
+    second = _pdf(tmp_path, b"second", "second.pdf")
+    first_result = service.parse(first, engine="fake")
+    second_result = service.parse(second, engine="fake")
+    (second_result.workdir / "second.md").write_bytes(corruption)
+
+    assert service.parse(second, engine="fake").markdown == "# md"
+    assert service.parse(first, engine="fake").workdir == first_result.workdir
+    assert parser.calls == [first, second, second]
+
+
 def test_same_bytes_different_name_share_cache(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

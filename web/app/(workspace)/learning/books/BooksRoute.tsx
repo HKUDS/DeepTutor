@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState
 import { useParams, useRouter } from 'next/navigation'
 import { ArrowLeft, Loader2, MessageSquare } from 'lucide-react'
 import { notify } from '@/lib/notifications'
+import { randomUuid } from '@/lib/random-uuid'
 import { learningLibrary } from '@/lib/learning-library'
 import { activeWorkspaceId } from '@/lib/workspace-scope'
 import { useLearningCreation, requestedLearningCreation } from '@/components/learning/LibraryWorkspace'
@@ -877,7 +878,7 @@ function BookPageInner() {
       const key = `${bookId}:${selectedPage.id}:${block.id}:${args.questionId || ''}`
       const answer = `${args.userAnswer || ''}:${String(args.isCorrect)}`
       const pending = pendingQuizSubmissions.current.get(key)
-      const submissionId = pending?.answer === answer ? pending.id : crypto.randomUUID()
+      const submissionId = pending?.answer === answer ? pending.id : randomUuid()
       pendingQuizSubmissions.current.set(key, { answer, id: submissionId })
       const { progress } = await bookApi.recordQuizAttempt({
         book_id: bookId,

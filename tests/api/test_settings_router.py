@@ -76,7 +76,7 @@ async def test_ui_languages_are_persisted_independently(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("language", ["fr", "uk"])
+@pytest.mark.parametrize("language", ["fr", "uk", "pl"])
 async def test_ui_settings_persist_supported_languages_independently(
     monkeypatch: pytest.MonkeyPatch, tmp_path, language: str
 ) -> None:
@@ -681,6 +681,27 @@ def test_llm_provider_choices_include_cheaperinference() -> None:
 
     assert llm["cheaperinference"]["label"] == "Cheaper Inference"
     assert llm["cheaperinference"]["base_url"] == "https://api.cheaperinference.com/v1"
+
+
+def test_llm_provider_choices_include_api_route() -> None:
+    llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
+
+    assert llm["api_route"]["label"] == "API Route"
+    assert llm["api_route"]["base_url"] == "https://global.api-route.com/v1"
+
+
+def test_llm_provider_choices_include_requesty() -> None:
+    llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
+
+    assert llm["requesty"]["label"] == "Requesty"
+    assert llm["requesty"]["base_url"] == "https://router.requesty.ai/v1"
+
+
+def test_llm_provider_choices_include_futureinfra() -> None:
+    llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
+
+    assert llm["futureinfra"]["label"] == "FutureInfra"
+    assert llm["futureinfra"]["base_url"] == "https://futureinfra.ai/v1/ai"
 
 
 def test_llm_provider_choices_include_novita() -> None:

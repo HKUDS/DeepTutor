@@ -38,6 +38,13 @@ def test_reserve_clears_stale_incomplete_dir(tmp_path: Path) -> None:
     second = cache.reserve(root, "h", "s")
     assert second == first
     assert not (second / "junk.txt").exists()
+    assert len(list(second.parent.glob(".s.failed-*/junk.txt"))) == 1
+
+
+def test_truncated_manifest_never_marks_output_ready(tmp_path: Path) -> None:
+    target = cache.reserve(tmp_path, "h", "s")
+    (target / "manifest.json").write_text('{"created_at":', encoding="utf-8")
+    assert cache.lookup(tmp_path, "h", "s") is None
 
 
 def test_load_ir_reads_markdown_blocks_images(tmp_path: Path) -> None:

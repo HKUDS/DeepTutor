@@ -334,6 +334,45 @@ async def test_custom_attachment_root_moves_original_files(account, monkeypatch,
         assert path.read_bytes() == b"original"
 
 
+@pytest.mark.asyncio
+async def test_moving_chat_moves_legacy_attachment_into_selected_workspace(account):
+    from deeptutor.services.storage.attachment_store import (
+        _legacy_attachment_root,
+        get_attachment_store,
+    )
+    from deeptutor.services.workspace.session_move import move_chat
+
+    target = account.create_workspace("Destination")["workspace_id"]
+    with workspace_context():
+        session = await get_sqlite_session_store().create_session()
+        legacy = _legacy_attachment_root() / session["id"] / "doc_notes.txt"
+        legacy.parent.mkdir(parents=True, exist_ok=True)
+        legacy.write_bytes(b"old upload")
+        await get_sqlite_session_store().add_message(
+            session["id"], "user", "/files/attachments/{}/doc/notes.txt".format(session["id"])
+        )
+        move_chat(session["id"], target)
+        assert not legacy.exists()
+        assert not account.search(account.general_binding(), "notes.txt")
+    with workspace_context(target):
+        store = get_attachment_store()
+        resolved = store.resolve_path(
+            session_id=session["id"], attachment_id="doc", filename="notes.txt"
+        )
+        assert (
+            resolved
+            == account.binding_by_id(target).root
+            / "chat"
+            / "attachments"
+            / session["id"]
+            / "doc_notes.txt"
+        )
+        assert resolved.read_bytes() == b"old upload"
+        assert account.search(account.binding_by_id(target), "notes.txt")[0]["path"].startswith(
+            "chat/attachments/"
+        )
+
+
 def test_initialized_empty_feature_can_receive_migration(account):
     target = account.create_workspace("Empty initialized")["workspace_id"]
     source = get_path_service().get_workspace_dir() / "reading"

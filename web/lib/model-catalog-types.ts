@@ -11,6 +11,8 @@ export type Discovery = {
   models: { id: string }[];
   capabilities?: { category: string; evidence: string }[];
   checked_at?: string;
+  http_status?: number | null;
+  warning?: string;
 };
 export type ServiceName =
   | "llm"
@@ -64,6 +66,7 @@ export type CatalogModel = {
   sample_rate?: string;
   instructions?: string;
   resource_id?: string;
+  request_timeout?: string | number;
   response_format?: string;
   language?: string;
   // Image generation: pixel size (e.g. "1024x1024"), quality, and style.
@@ -222,6 +225,8 @@ export type VoiceModelOption = {
   languages: VoiceChoice[];
   formats: string[];
   language_note?: string;
+  configuration_note?: string;
+  docs_url?: string;
   max_input_chars?: number;
   speed?: { min: number; max: number; step: number };
   sample_rates?: number[];

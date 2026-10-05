@@ -321,10 +321,11 @@ class AnnotationInfo(BaseModel):
 class PositionPayload(BaseModel):
     locator: int = Field(ge=1)
     source_anchor: str = Field(default="", max_length=4096)
-    percentage: float = Field(default=0.0, ge=0.0, le=1.0)
+    percentage: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
 class PositionInfo(PositionPayload):
+    percentage: float = 0.0
     updated_at: float = 0.0
 
 
@@ -456,6 +457,11 @@ async def list_library_materials(
             if _material_allowed(row.material_id)
         ]
         membership = catalog.collections_for_materials([row.material_id for row in rows])
+        from deeptutor.services.session import get_sqlite_session_store
+
+        reward_totals = await get_sqlite_session_store().reading_quiz_reward_totals(
+            [row.material_id for row in rows]
+        )
         materials: list[dict[str, Any]] = []
         for row in rows:
             payload = row.to_dict()
@@ -463,6 +469,7 @@ async def list_library_materials(
             size_bytes, unit_count = _content_facts(store, row)
             payload["size_bytes"] = size_bytes
             payload["unit_count"] = unit_count
+            payload["quiz_stars"] = reward_totals.get(row.material_id, 0)
             materials.append(payload)
         # Counts describe every material this account may see, not only the
         # filtered page and never revoked or unassigned learner material.
@@ -1411,7 +1418,11 @@ async def save_position(material_id: str, payload: PositionPayload) -> PositionI
             ReadingPosition(
                 locator=payload.locator,
                 source_anchor=payload.source_anchor,
-                percentage=payload.percentage,
+                percentage=(
+                    payload.percentage
+                    if payload.percentage is not None
+                    else store.position(material_id).percentage
+                ),
             ),
         )
         try:

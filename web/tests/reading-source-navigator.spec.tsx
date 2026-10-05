@@ -59,9 +59,11 @@ const headings: ReaderHeading[] = [
 function renderNavigator({
   outlineRows = outline,
   pageHeadings = [],
+  onNavigateHeading = vi.fn(),
 }: {
   outlineRows?: OutlineRow[]
   pageHeadings?: ReaderHeading[]
+  onNavigateHeading?: (heading: ReaderHeading) => void
 } = {}) {
   const onSelectMaterial = vi.fn()
   const onRemoveMaterial = vi.fn()
@@ -75,7 +77,7 @@ function renderNavigator({
       outline={outlineRows}
       pageHeadings={pageHeadings}
       activeHeadingId={null}
-      onNavigateHeading={vi.fn()}
+      onNavigateHeading={onNavigateHeading}
       refs={refs}
       transcript={[]}
       transcriptUnavailable={false}
@@ -92,7 +94,7 @@ function renderNavigator({
       onRemoveBookmark={vi.fn()}
     />
   )
-  return { onSelectMaterial, onRemoveMaterial }
+  return { onSelectMaterial, onRemoveMaterial, onNavigateHeading }
 }
 
 describe('reading source navigator', () => {
@@ -128,6 +130,50 @@ describe('reading source navigator', () => {
     renderNavigator({ outlineRows: [], pageHeadings: headings })
 
     expect(screen.getByRole('button', { name: 'Local heading' })).toBeInTheDocument()
+  })
+
+  it('navigates EPUB outline anchors through their publisher fragments', async () => {
+    const user = userEvent.setup()
+    const onNavigateHeading = vi.fn()
+    renderNavigator({
+      onNavigateHeading,
+      outlineRows: [
+        {
+          locator: 1,
+          title: 'Alpha heading',
+          level: 2,
+          synthesised: false,
+          source_href: 'OEBPS/chapter.xhtml',
+          source_anchor: 'alpha',
+        },
+        {
+          locator: 1,
+          title: 'Second heading',
+          level: 2,
+          synthesised: false,
+          source_href: 'OEBPS/chapter.xhtml',
+          source_anchor: 'second',
+        },
+      ],
+    })
+
+    await user.click(screen.getByRole('button', { name: /Alpha heading/ }))
+    await user.click(screen.getByRole('button', { name: /Second heading/ }))
+
+    expect(onNavigateHeading).toHaveBeenNthCalledWith(1, {
+      id: 'alpha',
+      title: 'Alpha heading',
+      level: 2,
+      locator: 1,
+      sourceHref: 'OEBPS/chapter.xhtml',
+    })
+    expect(onNavigateHeading).toHaveBeenNthCalledWith(2, {
+      id: 'second',
+      title: 'Second heading',
+      level: 2,
+      locator: 1,
+      sourceHref: 'OEBPS/chapter.xhtml',
+    })
   })
 
   it('collapses and re-expands the active material', async () => {

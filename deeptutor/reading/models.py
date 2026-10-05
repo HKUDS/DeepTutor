@@ -136,6 +136,8 @@ class OutlineEntry:
     title: str
     level: int = 1
     synthesised: bool = False
+    source_href: str = ""
+    source_anchor: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -143,7 +145,20 @@ class OutlineEntry:
             "title": self.title,
             "level": self.level,
             "synthesised": self.synthesised,
+            "source_href": self.source_href,
+            "source_anchor": self.source_anchor,
         }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "OutlineEntry":
+        return cls(
+            locator=max(1, int(data["locator"])),
+            title=str(data.get("title") or ""),
+            level=max(1, int(data.get("level") or 1)),
+            synthesised=bool(data.get("synthesised")),
+            source_href=str(data.get("source_href") or ""),
+            source_anchor=str(data.get("source_anchor") or ""),
+        )
 
 
 @dataclass(frozen=True, slots=True)

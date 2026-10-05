@@ -878,3 +878,52 @@ def test_windows_children_and_console_tools_allocate_no_console(
 class _NoopThread:
     def start(self) -> None:
         return None
+
+
+@pytest.mark.parametrize("probe", ["netstat", "tasklist", "lsof", "ps"])
+def test_process_probes_tolerate_non_utf8_output(monkeypatch, probe: str) -> None:
+    """A localized utility must not crash or hide a listener in UTF-8 mode."""
+    import subprocess
+    import sys
+
+    run = subprocess.run
+    outputs = {
+        "netstat": b"\xbb localized heading\n  TCP  127.0.0.1:3782  0.0.0.0:0  LISTENING  123\n",
+        "tasklist": b'"python.exe","123","\xbb session","1","0 K"\n',
+        "lsof": b"\xbb diagnostic\np123\n",
+        "ps": b"node next-server \xbb\n",
+    }
+
+    for name in outputs:
+        if name != probe:
+            outputs[name] = outputs[name].replace(b"\xbb", b"localized")
+
+    def run_probe(args, **kwargs):
+        # Use a real child pipe, with UTF-8 decoding as in the reported crash.
+        kwargs["encoding"] = "utf-8"
+        return run(
+            [sys.executable, "-c", f"import sys; sys.stdout.buffer.write({outputs[args[0]]!r})"],
+            **kwargs,
+        )
+
+    monkeypatch.setattr(launcher.shutil, "which", lambda name: name)
+    monkeypatch.setattr(launcher.subprocess, "run", run_probe)
+    if probe in {"netstat", "tasklist"}:
+        assert launcher._port_listeners_windows(3782) == [(123, "python.exe")]
+    else:
+        monkeypatch.setattr(launcher, "os", SimpleNamespace(name="posix"))
+        if probe == "lsof":
+            assert launcher._port_listeners(3782) == [(123, "node next-server localized")]
+        else:
+            assert launcher._process_command(123) == "node next-server \ufffd"
+
+
+@pytest.mark.parametrize("platform", ["nt", "posix"])
+def test_port_listeners_tolerate_missing_stdout(monkeypatch, platform: str) -> None:
+    """A failed subprocess reader may leave stdout unset on Windows."""
+    monkeypatch.setattr(launcher, "os", SimpleNamespace(name=platform))
+    monkeypatch.setattr(launcher.shutil, "which", lambda name: name)
+    monkeypatch.setattr(
+        launcher.subprocess, "run", lambda *args, **kwargs: SimpleNamespace(stdout=None)
+    )
+    assert launcher._port_listeners(3782) == []

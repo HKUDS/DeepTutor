@@ -12,6 +12,7 @@ import pytest
 
 from deeptutor.api.routers import voice as voice_router
 from deeptutor.services.voice import VoiceProviderError
+from deeptutor.services.voice.base import VoiceProviderTimeout
 
 
 @pytest.fixture()
@@ -82,6 +83,16 @@ def test_tts_missing_config_is_400(client: TestClient, monkeypatch: pytest.Monke
     monkeypatch.setattr(voice_router, "synthesize_speech", no_config)
     resp = client.post("/api/voice/tts", json={"text": "hi"})
     assert resp.status_code == 400
+
+
+def test_tts_timeout_is_504_with_an_actionable_setting(client, monkeypatch) -> None:
+    async def timeout(*args, **kwargs):
+        raise VoiceProviderTimeout()
+
+    monkeypatch.setattr(voice_router, "synthesize_speech", timeout)
+    resp = client.post("/api/voice/tts", json={"text": "hello"})
+    assert resp.status_code == 504
+    assert "Request timeout (seconds)" in resp.json()["detail"]
 
 
 def test_stt_returns_text(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
