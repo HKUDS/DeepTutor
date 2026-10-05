@@ -558,13 +558,13 @@ def migrate_data(
     from deeptutor.services.workspace.session_transfer import transfer_sessions
 
     with data_activity(exclusive=True):
-assert_no_pending_recovery(reject_unreadable=True)
-assert_no_pending_recovery()
+        assert_no_pending_recovery(reject_unreadable=True)
         if "chat" in features or "attachments" in features:
             from deeptutor.services.storage.attachment_store import (
                 LocalDiskAttachmentStore,
                 get_attachment_store,
             )
+
             with workspace_context(source_id):
                 attachment_store = get_attachment_store()
                 if isinstance(attachment_store, LocalDiskAttachmentStore):
