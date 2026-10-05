@@ -461,8 +461,13 @@ class LlamaIndexDocumentLoader:
                         if image_progress_callback:
                             try:
                                 image_progress_callback(completed, total)
-                            except Exception:
-                                pass
+                            except Exception as exc:
+                                self.logger.warning(
+                                    "Image progress callback failed (completed=%s, total=%s): %s",
+                                    completed,
+                                    total,
+                                    exc,
+                                )
 
             groups = await asyncio.gather(
                 *(

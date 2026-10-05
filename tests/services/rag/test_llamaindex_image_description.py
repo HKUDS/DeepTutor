@@ -54,6 +54,45 @@ async def test_opt_in_batches_preserve_node_alignment_and_progress(tmp_path, mon
 
 
 @pytest.mark.asyncio
+async def test_opt_in_batches_log_and_continue_when_progress_callback_fails(
+    tmp_path, monkeypatch, caplog
+):
+    from deeptutor.services.rag.pipelines.llamaindex import document_loader as loader_module
+
+    async def complete(prompt, **kwargs):
+        return json.dumps(
+            {
+                "captions": [
+                    {"image_id": "IMAGE_0", "caption": "first image"},
+                    {"image_id": "IMAGE_1", "caption": "second image"},
+                ]
+            }
+        )
+
+    _install_multimodal_clients(monkeypatch, complete_fn=complete)
+    monkeypatch.setattr(loader_module, "image_description_batch_size", lambda: 2)
+    paths = _make_images(tmp_path, ["a.png", "b.png"])
+    calls = []
+
+    def _flaky_callback(completed: int, total: int) -> None:
+        calls.append((completed, total))
+        if completed == 1:
+            raise RuntimeError("progress sink is down")
+
+    with caplog.at_level("WARNING"):
+        docs = await loader_module.LlamaIndexDocumentLoader().load(
+            [str(p) for p in paths], image_progress_callback=_flaky_callback
+        )
+
+    # Both images in one caption group still report progress even after the
+    # first tick fails, and the failure is logged instead of swallowed.
+    assert calls == [(1, 2), (2, 2)]
+    assert len(docs) == 2
+    assert "Image progress callback failed" in caplog.text
+    assert "progress sink is down" in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_opt_in_auth_failure_stops_waiting_groups(tmp_path, monkeypatch):
     from deeptutor.services.llm.exceptions import LLMAuthenticationError
     from deeptutor.services.rag.pipelines.llamaindex import document_loader as loader_module

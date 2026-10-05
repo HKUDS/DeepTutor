@@ -566,7 +566,8 @@ def test_loader_logs_and_continues_when_image_progress_callback_fails(
             return "Stub description."
 
     monkeypatch.setattr(loader_module, "get_embedding_client", lambda: _MultimodalEmbeddingClient())
-    monkeypatch.setattr(loader_module, "get_llm_client", lambda: _VisionClient())
+    monkeypatch.setattr(loader_module, "get_image_description_client", lambda: _VisionClient())
+    monkeypatch.setattr(loader_module, "image_description_batch_size", lambda: 1)
 
     calls: list[tuple[int, int]] = []
 
