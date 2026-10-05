@@ -165,9 +165,7 @@ async def test_group_text_replaces_mention_placeholders_with_display_names() -> 
 @pytest.mark.asyncio
 async def test_post_message_parses_text_at_and_downloads_images() -> None:
     channel = _channel()
-    channel._client.im.v1.message_resource.get.return_value = _sdk_response(
-        file_name="pic.png"
-    )
+    channel._client.im.v1.message_resource.get.return_value = _sdk_response(file_name="pic.png")
 
     post = {
         "title": "Report",
@@ -199,7 +197,9 @@ def test_extract_post_content_supports_localized_wrapped_and_fallback() -> None:
     assert _extract_post_content(block) == ("Report intro", [])
     assert _extract_post_content({"zh_cn": block}) == ("Report intro", [])
     assert _extract_post_content({"post": {"zh_cn": block}}) == ("Report intro", [])
-    assert _extract_post_content({"fr_fr": {"content": [[{"tag": "text", "text": "bonjour"}]]}}) == (
+    assert _extract_post_content(
+        {"fr_fr": {"content": [[{"tag": "text", "text": "bonjour"}]]}}
+    ) == (
         "bonjour",
         [],
     )
@@ -214,9 +214,7 @@ def test_extract_post_content_supports_localized_wrapped_and_fallback() -> None:
 async def test_video_media_download_uses_file_resource_type() -> None:
     """FAILING: the resource request carries type="media", which the API rejects."""
     channel = _channel()
-    channel._client.im.v1.message_resource.get.return_value = _sdk_response(
-        file_name="clip.mp4"
-    )
+    channel._client.im.v1.message_resource.get.return_value = _sdk_response(file_name="clip.mp4")
 
     await channel._on_message(_event("media", {"file_key": "vk_video"}))
 
@@ -230,9 +228,7 @@ async def test_video_media_download_uses_file_resource_type() -> None:
 @pytest.mark.asyncio
 async def test_audio_download_uses_file_resource_type_and_opus_suffix() -> None:
     channel = _channel()
-    channel._client.im.v1.message_resource.get.return_value = _sdk_response(
-        file_name="voice-note"
-    )
+    channel._client.im.v1.message_resource.get.return_value = _sdk_response(file_name="voice-note")
 
     await channel._on_message(_event("audio", {"file_key": "ak_voice"}))
 
@@ -246,9 +242,7 @@ async def test_audio_download_uses_file_resource_type_and_opus_suffix() -> None:
 @pytest.mark.asyncio
 async def test_file_message_saved_and_forwarded() -> None:
     channel = _channel()
-    channel._client.im.v1.message_resource.get.return_value = _sdk_response(
-        file_name="notes.pdf"
-    )
+    channel._client.im.v1.message_resource.get.return_value = _sdk_response(file_name="notes.pdf")
 
     await channel._on_message(_event("file", {"file_key": "fk_doc"}))
 
@@ -349,9 +343,7 @@ def test_share_card_types_render_descriptive_placeholders() -> None:
 async def test_group_message_without_mention_skipped_under_mention_policy() -> None:
     channel = _channel(group_policy="mention")
 
-    await channel._on_message(
-        _event("text", {"text": "no mention"}, chat_type="group")
-    )
+    await channel._on_message(_event("text", {"text": "no mention"}, chat_type="group"))
 
     channel.bus.publish_inbound.assert_not_awaited()
     channel._add_reaction.assert_not_awaited()
@@ -379,9 +371,7 @@ async def test_group_message_with_bot_mention_routes_to_group_chat() -> None:
 @pytest.mark.asyncio
 async def test_group_media_message_routes_to_group_with_media_path() -> None:
     channel = _channel(group_policy="open")
-    channel._client.im.v1.message_resource.get.return_value = _sdk_response(
-        file_name="clip.mp4"
-    )
+    channel._client.im.v1.message_resource.get.return_value = _sdk_response(file_name="clip.mp4")
 
     await channel._on_message(_event("media", {"file_key": "vk_group"}, chat_type="group"))
 
