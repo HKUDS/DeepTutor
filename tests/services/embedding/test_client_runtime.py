@@ -372,9 +372,7 @@ def test_embedding_client_multimodal_detection_uses_model_level_metadata() -> No
 
 
 @pytest.mark.asyncio
-async def test_embed_progress_callback_failure_logged_and_not_fatal(
-    monkeypatch, caplog
-) -> None:
+async def test_embed_progress_callback_failure_logged_and_not_fatal(monkeypatch, caplog) -> None:
     """A failing progress callback must not break embedding, but the failure
     cannot stay silent — swallowed errors make KB index progress untrustworthy."""
 
