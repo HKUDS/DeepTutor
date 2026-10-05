@@ -251,17 +251,48 @@ export async function searchSessions(
   limit = 50,
   offset = 0,
   signal?: AbortSignal,
+  options?: { allWorkspaces?: boolean },
 ): Promise<SessionSearchPage> {
   const qs = new URLSearchParams({
     q: query,
     limit: String(limit),
     offset: String(offset),
   });
+  if (options?.allWorkspaces) qs.set("all_workspaces", "true");
   const response = await apiFetch(apiUrl(`/api/sessions/search?${qs}`), {
     cache: "no-store",
     signal,
   });
   return expectJson<SessionSearchPage>(response);
+}
+
+/** Fetch every full-text search hit in bounded pages for the history console. */
+export async function searchAllSessions(
+  query: string,
+  signal?: AbortSignal,
+  options?: { allWorkspaces?: boolean },
+): Promise<SessionSearchResult[]> {
+  const pageSize = 100;
+  const sessions: SessionSearchResult[] = [];
+  const seen = new Set<string>();
+  for (let offset = 0; ; offset += pageSize) {
+    const page = await searchSessions(
+      query,
+      pageSize,
+      offset,
+      signal,
+      options,
+    );
+    for (const session of page.sessions) {
+      const key = `${sessionWorkspaceId(session)}:${session.session_id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      sessions.push(session);
+    }
+    if (sessions.length >= page.total || page.sessions.length < pageSize) {
+      return sessions;
+    }
+  }
 }
 
 export async function getSession(

@@ -70,6 +70,9 @@ deeptutor kb create <name> --doc file.pdf           # Create from documents (--d
 deeptutor kb create <name> --docs-dir ./papers      # ...or from a directory of documents
 deeptutor kb add <name> --doc more.pdf              # Add documents incrementally
 deeptutor kb search <name> "query text" [--mode hybrid] [--format rich|json]
+deeptutor kb eval <name> --dataset qa.jsonl [--top-k 5] [--mode hybrid] [--save report.json]
+#   Scores retrieval quality against a QA set (JSONL: {"query": ..., "gold": [...]});
+#   reports Recall@k / Precision@k / nDCG@k / MRR / MAP / Hit@k per case and averaged.
 deeptutor kb set-default <name>                     # Set as default KB
 deeptutor kb delete <name> [--force]                # Delete a knowledge base
 ```

@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending&amp;theme=dark"><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending"><img alt="GitHub Trending Repository of the Day" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" height="55"></picture></a>&#32;<a href="https://trendshift.io/repositories/17099"><img src="https://trendshift.io/api/badge/trendshift/repositories/17099/daily" alt="HKUDS/DeepTutor | Trendshift" width="250" height="55"></a>&#32;<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;theme=dark"><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor"><img alt="Star History Rank" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor" width="185" height="55"></picture></a>
+<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending&amp;theme=dark"><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending"><img alt="คลัง GitHub ที่กำลังเป็นที่นิยมประจำวัน" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" height="55"></picture></a>&#32;<a href="https://trendshift.io/repositories/17099"><img src="https://trendshift.io/api/badge/trendshift/repositories/17099/daily" alt="HKUDS/DeepTutor | Trendshift" width="250" height="55"></a>&#32;<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;theme=dark"><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor"><img alt="อันดับประวัติดาว" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor" width="185" height="55"></picture></a>
 </p>
 
 <p align="center">
@@ -38,7 +38,7 @@
 [![Feishu](https://img.shields.io/badge/Feishu-Group-00D4AA?style=flat-square&logo=feishu&logoColor=white)](../../Communication.md)
 [![WeChat](https://img.shields.io/badge/WeChat-Group-07C160?style=flat-square&logo=wechat&logoColor=white)](https://github.com/HKUDS/DeepTutor/issues/78)
 
-[คุณสมบัติ](#-คุณสมบัติหลัก) · [เริ่มต้น](#-เริ่มต้น) · [สำรวจ](#-สำรวจ-deeptutor) · [CLI](#️-deeptutor-cli--อินเทอร์เฟซ-agent-native) · [ระบบนิเวศ](#-ระบบนิเวศ--eduhub--ชุมชน-skills) · [ชุมชน](#-ชุมชน)
+[คุณสมบัติ](#-คุณสมบัติหลัก) · [เริ่มต้น](#-เริ่มต้น) · [สำรวจ](#-สำรวจ-deeptutor) · [CLI](#️-deeptutor-cli--อินเทอร์เฟซ-agent-native) · [ระบบนิเวศ](#-ระบบนิเวศ--eduhub-และชุมชน-skills) · [ชุมชน](#-ชุมชน)
 
 </div>
 
@@ -63,7 +63,7 @@ DeepTutor คือ workspace การเรียนรู้แบบ agent-n
 - **รันไทม์เดียวสำหรับทุกโหมด** — Chat, Ask Questions, Quiz, Research, Visualize, Solve, Course Study, Mastery Path, Immersive Reading และ Immersive Watching ใช้ capability runtime และบริบท session ชุดเดียวกัน โดยยังคงลูปและ pipeline ที่ออกแบบมาเฉพาะสำหรับแต่ละวัตถุประสงค์
 - **Task Board** — ติดตามงานการเรียนใน To do, In progress และ Done พร้อมโน้ต การลากและวางหรือปุ่มย้ายที่ใช้ได้ด้วยแป้นพิมพ์ และรายการที่เก็บถาวรซึ่งกู้คืนได้ การ์ดจะอยู่ใน workspace ปัจจุบันและใช้การตั้งค่ารูปลักษณ์และภาษาเดิม โดยไม่ต้องกำหนดค่า model
 - **บริบทการเรียนรู้ที่เชื่อมต่อกัน** — ฐานความรู้, หนังสือ, ร่าง Co-Writer, สมุดบันทึก, คลังคำถาม, บุคลิกภาพ และ Memory สามารถนำมาใช้ซ้ำในเวิร์กโฟลว์ที่รองรับ โดยอยู่ภายใต้สิทธิ์ของบัญชีและนโยบายการเรียนรู้
-- **การเรียนรู้ผ่านวิดีโออย่างดื่มด่ำ** — วางลิงก์ YouTube เพื่อเล่นวิดีโอแบบ native ที่เพิ่มความเป็นส่วนตัว พร้อมคำบรรยายที่ซิงค์กัน, การสอนพิเศษที่อ้างอิง timestamp และความคืบหน้าที่กลับมาเรียนต่อได้; ผู้ดูแลระบบสามารถเปลี่ยนการเล่นเป็น Invidious instance ที่ self-hosted ได้โดยไม่ต้องสร้างสื่อขึ้นใหม่
+- **การเรียนรู้ผ่านวิดีโออย่างดื่มด่ำ** — วางลิงก์ YouTube เพื่อเล่นวิดีโอแบบ native ที่เพิ่มความเป็นส่วนตัว พร้อมคำบรรยายที่ซิงค์กัน, การสอนพิเศษที่อ้างอิง timestamp, จุดเวลาที่บันทึกไว้ และความคืบหน้าที่กลับมาเรียนต่อได้; ผู้ดูแลระบบสามารถเปลี่ยนการเล่นเป็น Invidious instance ที่ self-hosted ได้โดยไม่ต้องสร้างสื่อขึ้นใหม่
 - **ซับเอเจนต์และ Partners** — จาก Chat คุณสามารถปรึกษา agent harness แบบสด (Claude Code, Codex, Grok CLI, Antigravity, Kimi, opencode, MiMo, Hermes, OpenClaw หรือ DeepSeek) หรือ Partner, นำเข้าบทสนทนาในอดีต และรันเพื่อนถาวรบน IM ด้วยสมองเดียวกัน
 - **ความรู้หลายเอ็นจิน** — ไลบรารี RAG แบบเวอร์ชันผ่าน LlamaIndex, PageIndex, GraphRAG, LightRAG, LightRAG Server ระยะไกล, WeKnora deployment แบบ self-hosted, ไลบรารี Tencent IMA หรือ MarginNote 4, คลัง Kiwix ZIM ที่เชื่อมต่อ หรือ Obsidian vault ที่เชื่อมโยง พร้อมการแยกวิเคราะห์เอกสารแบบ pluggable ดู [native LightRAG role models](../../deeptutor/services/rag/pipelines/lightrag/README.md) สำหรับการตั้งค่า extraction, query และ vision ที่เป็นอิสระจากกัน, การสร้างแบบใช้ค่าเริ่มต้นเท่านั้น และการสร้างใหม่ที่ต้องมีการยืนยัน
 - **เครื่องมือและทักษะที่ขยายได้** — เครื่องมือในตัว, เซิร์ฟเวอร์ MCP, แอป CLI, โมเดลสร้างรูปภาพ/วิดีโอ/เสียง และทักษะชุมชนที่ติดตั้งได้จาก EduHub
@@ -74,6 +74,19 @@ DeepTutor คือ workspace การเรียนรู้แบบ agent-n
 ## 🚀 เริ่มต้น
 
 DeepTutor มีเส้นทางการติดตั้งสี่เส้นทาง ทั้งหมดแชร์ layout runtime home เดียวกัน: การตั้งค่าส่วนตัวอยู่ใน `data/user/settings/` ภายใต้ไดเร็กทอรีที่คุณเปิดตัว (หรือภายใต้ `DEEPTUTOR_HOME` / `deeptutor start --home` หากคุณตั้งค่าไว้อย่างชัดเจน) สำหรับแอปเต็มรูปแบบ ขั้นตอนที่แนะนำคือ **เลือกไดเร็กทอรี runtime home → ติดตั้ง → `deeptutor init` → `deeptutor start`**
+
+### ทดลองใช้ Docker ด้วยคำสั่งเดียว
+
+หากยังไม่ได้ติดตั้ง Docker ให้[ติดตั้ง Docker](https://docs.docker.com/get-docker/)ก่อน จากนั้นทดลองแอปเต็มรูปแบบได้โดยไม่ต้องตั้งค่า Python หรือ Node.js:
+
+```bash
+docker run --rm --name deeptutor \
+  -p 127.0.0.1:3782:3782 \
+  -v deeptutor-data:/app/data \
+  ghcr.io/hkuds/deeptutor:latest
+```
+
+เปิด [http://127.0.0.1:3782](http://127.0.0.1:3782), กำหนดค่า model providers ใน **Settings → Providers** และกด `Ctrl+C` เมื่อใช้งานเสร็จ named volume `deeptutor-data` จะเก็บการตั้งค่าและข้อมูลในเครื่องไว้สำหรับการรันครั้งถัดไป
 
 ### Content Workspace
 
@@ -337,7 +350,7 @@ office skills ที่ติดตั้งมา — **docx / pdf / pptx / xls
 | `auth.json` | สวิตช์ auth แบบเสริม, ชื่อผู้ใช้, password hash, การตั้งค่า token/cookie |
 | `integrations.json` | การตั้งค่า PocketBase แบบเสริมและการรวม sidecar |
 | `interface.json` | ความชอบภาษา UI และภาษา output ของ model / ธีม / แถบด้านข้างของ UI |
-| `document_parsing.json` | การเลือกเอ็นจินแยกวิเคราะห์, remote endpoints และตัวเลือกเฉพาะเอ็นจิน |
+| `document_parsing.json` | การเลือกเอ็นจินแยกวิเคราะห์และโมเดลอธิบายรูปภาพ, remote endpoints และตัวเลือกเฉพาะเอ็นจิน |
 | `video_learning.json` | provider การเล่น YouTube/Invidious เริ่มต้น, ต้นทาง Invidious และ transcript adapter แบบเสริม |
 | `main.yaml` | ค่าเริ่มต้นพฤติกรรม runtime และการ inject path |
 | `agents.yaml` | การตั้งค่า temperature และ token ของ capability/tool |
@@ -358,7 +371,9 @@ office skills ที่ติดตั้งมา — **docx / pdf / pptx / xls
 
 `.env` ที่ root ของโปรเจกต์จะ **ไม่** ถูกอ่านเป็นไฟล์ config ของแอปพลิเคชัน สำหรับการตั้งค่า model เบื้องต้น ให้บันทึก Base URL และ API key ใน **Settings → Providers** จากนั้นเพิ่มและเลือก LLM ใน **Language models** เพิ่มโปรไฟล์ embedding เฉพาะเมื่อคุณวางแผนใช้ Knowledge Base / RAG features
 
-โปรไฟล์ LLM และ task-model จะแสดงการตั้งค่า API format เมื่อ provider รองรับหลายตัวเลือก คงค่า Auto ไว้สำหรับการกำหนดเส้นทางและ fallback ตามปกติ หรือเลือก OpenAI Chat Completions, OpenAI Responses หรือ Anthropic Messages; การบังคับใช้ Responses ยังคง fail-closed ฟิลด์ที่บันทึกคือ `api_format` (`auto`, `openai_chat`, `openai_responses` หรือ `anthropic`); `wire_api` เป็นสถานะความเข้ากันได้ที่อนุมานจากค่านี้ การ override ระดับแต่ละโมเดลด้วย Auto / Supported / Not supported ครอบคลุมการเรียกใช้เครื่องมือ, การป้อนภาพ, เอาต์พุต JSON และตัวควบคุมการให้เหตุผล
+สำหรับ API Route ให้เลือก **API Route** ใน **Settings → Providers** และกรอก API Route key preset ใช้ `https://global.api-route.com/v1`; จากนั้นเพิ่มโมเดลใน **Language models** โดยใช้ model ID ของ API Route ดู[คู่มือเริ่มต้น API Route](https://www.api-route.com/docs/quickstart)สำหรับการตั้งค่า key และ model
+
+โปรไฟล์ LLM และ task-model จะแสดงการตั้งค่า **API format** เมื่อ provider รองรับหลายตัวเลือก คงค่า `Auto` ไว้สำหรับการกำหนดเส้นทางและ fallback ตามปกติ หรือเลือก `OpenAI Chat Completions`, `OpenAI Responses` หรือ `Anthropic Messages`; การบังคับใช้ Responses ยังคง fail-closed ฟิลด์ที่บันทึกคือ `api_format` (`auto`, `openai_chat`, `openai_responses` หรือ `anthropic`); `wire_api` เป็นสถานะความเข้ากันได้ที่อนุมานจากค่านี้ การ override ระดับแต่ละโมเดลด้วย `Auto` / `Supported` / `Not supported` ครอบคลุมการเรียกใช้เครื่องมือ, การป้อนภาพ, เอาต์พุต JSON และตัวควบคุมการให้เหตุผล
 
 </details>
 
@@ -430,9 +445,9 @@ Chat คือความสามารถเริ่มต้นและส
 
 เครื่องมือที่ผู้ใช้สลับได้ ได้แก่ `brainstorm`, `web_search`, `paper_search`, `zotero_search`, `reason`, และ `geogebra_analysis` — รวมถึง `imagegen` และ `videogen` เมื่อคุณกำหนดค่าโมเดลสร้างที่ตรงกัน เครื่องมือตามบริบทเช่น `rag`, `kb_files`, `knowledge_frontier`, `read_source`, `read_memory`, `write_memory`, `read_skill`, `load_tools`, `exec`, `web_fetch`, `ask_user`, `list_notebook`, `write_note`, `question_bank`, `github`, `consult_subagent`, `workspace_list`, `workspace_read`, `workspace_search`, `workspace_present` และ `workspace_export` จะ mount อัตโนมัติเมื่อ turn มีบริบทที่ถูกต้อง
 
-บริบทมีสองประเภท: **sticky session context** (capability, workspace หรือ course, tools, knowledge bases, persona, model และสถานะ Reading / Mastery) คงอยู่ตลอด turns; **one-time references** (ไฟล์, ประวัติ chat, หนังสือ, ส่วนการอ่าน, notebooks, question bank, imported agents) มาจากเมนู `+` สำหรับ turn เดียว ปุ่ม voice ทำหน้าที่ถอดเสียงเฉพาะข้อความปัจจุบัน
+บริบทมีสองประเภท: **บริบท session ที่คงอยู่** (capability, workspace หรือ course, tools, knowledge bases, persona, model และสถานะ Reading / Mastery) คงอยู่ตลอด turns; **การอ้างอิงครั้งเดียว** (ไฟล์, ประวัติ chat, หนังสือ, ส่วนการอ่าน, notebooks, รายการคำถามที่เลือกจาก question bank, imported agents) มาจากเมนู `+` สำหรับ turn เดียว ปุ่ม voice ทำหน้าที่ถอดเสียงเฉพาะข้อความปัจจุบัน
 
-Home ทำให้ **Chat**, **Ask Questions**, **Quiz** และ **Visualize** อยู่ห่างเพียงคลิกเดียว; **Research** สำหรับรายงานที่มีการอ้างอิง, **Solve** สำหรับการให้เหตุผลแบบละเอียด และ **Immersive Watching** อยู่ภายใต้ *More Capabilities* **Personalized Learning** รวม Book, **Mastery Path**, **Immersive Reading**, Watching และ **Practice**; Reading เพิ่ม citations ที่ตรวจสอบแล้ว, notes ที่บันทึกไว้, การอ่านออกเสียง / คำแนะนำการเรียน / คำศัพท์ / quiz / การแปลที่อ้างอิง source และการบันทึกลง notebook ขณะที่ Course Study มีบริบทที่ผูกกับ course ของตัวเอง
+Home ทำให้ **Chat**, **Ask Questions**, **Quiz** และ **Visualize** อยู่ห่างเพียงคลิกเดียว; **Research** สำหรับรายงานที่มีการอ้างอิง, **Solve** สำหรับการให้เหตุผลแบบละเอียด และ **Immersive Watching** อยู่ภายใต้ *More Capabilities* **Personalized Learning** รวม Book, **Mastery Path**, **Immersive Reading**, Watching และ **Practice**; Reading เพิ่ม citations ที่ตรวจสอบแล้ว, notes ที่บันทึกไว้, การอ่านออกเสียงอย่างเป็นธรรมชาติจากข้อความต้นฉบับ / คำแนะนำการเรียน / คำศัพท์ / quiz / การแปล และการบันทึกลง notebook ขณะที่ Course Study มีบริบทที่ผูกกับ course ของตัวเอง
 
 </details>
 
@@ -517,7 +532,7 @@ Co-Writer คือ workspace Markdown แบบ split-view สำหรับ�
 <img src="../../assets/figs/web-1.4.6+/co-writer/01-edit%20panel.png" alt="ตัวแก้ไข Co-Writer พร้อมตัวอย่างแบบสด" width="900">
 </div>
 
-แนวคิดหลักคือ **การแก้ไขแบบผ่าตัด**: เลือกช่วงและขอให้ DeepTutor เขียนใหม่, ขยาย หรือย่อ agent การแก้ไขสามารถอ้างอิงการเปลี่ยนแปลงจาก knowledge base หรือหลักฐานเว็บ และเก็บ trace ของ tool calls หาก draft ไม่เปลี่ยนระหว่างทำงาน ผลลัพธ์จะแทนที่ข้อความที่เลือกโดยตรงและยังย้อนกลับได้ด้วย **Undo**
+แนวคิดหลักคือ **การแก้ไขเฉพาะจุด**: เลือกช่วงและขอให้ DeepTutor เขียนใหม่, ขยาย หรือย่อ เลือกโมเดลสำหรับการแก้ไขได้; โมเดลสามารถใช้ knowledge base หรือหลักฐานเว็บ และเก็บ trace ของ tool calls หาก draft ไม่เปลี่ยนระหว่างทำงาน ผลลัพธ์จะแทนที่ข้อความที่เลือกโดยตรงและยังย้อนกลับได้ด้วย **Undo**
 
 </details>
 
@@ -557,11 +572,17 @@ Knowledge bases คือคอลเลกชันเอกสารที่�
 
 กำลังย้ายไลบรารี Obsidian, Hermes หรือ Markdown ที่มีอยู่ใช่ไหม ดู [คู่มือการย้ายข้อมูล Knowledge](../../docs-for-user/KNOWLEDGE_MIGRATION.md) สำหรับเส้นทางแบบ connected-vault และ indexed-copy
 
-เมื่อสร้าง KB คุณสามารถ **สร้างใหม่** (อัพโหลดและทำ index เอกสาร), **เชื่อมโยงที่มีอยู่** (ใช้ index เดิมในที่เดิม) หรือ **เชื่อมต่อ Kiwix** (ค้นหา ZIM archive หนึ่งชุดที่ให้บริการอยู่ตามต้องการ) เลือก storage workspace ขณะสร้าง; หลังจากดูตัวอย่างแล้ว คุณสามารถย้าย KB ที่มีอยู่ระหว่าง workspaces โดยคงการกำหนดและการอ้างอิงที่บันทึกไว้ KB ยังสามารถติดตาม **GitHub repositories** (repo, branch, glob) หรือ **URL ของเว็บไซต์เอกสาร** (จำกัดความลึกในการ crawl และจำนวนหน้า โดย re-sync ทุก 24 ชั่วโมงเป็นค่าเริ่มต้น) ได้; การ sync จะเปรียบเทียบ hash ของเนื้อหาที่เพิ่ม เปลี่ยนแปลง และลบ เพื่อให้เอกสารที่ติดตามทันสมัยอยู่เสมอโดยไม่ต้องอัพโหลดใหม่ และ **linked folders** จะดึงไฟล์ local ที่เพิ่มหรือเปลี่ยนแปลงเข้ามาเมื่อ sync การ re-indexing จะเขียน directory `version-N` ใหม่และเก็บอันก่อนหน้าไว้ ดังนั้น index ที่ทำงานอยู่จะไม่ถูกทำลายระหว่างการสร้างใหม่ สามารถลบเอกสารหนึ่งรายการได้แม้ KB จะอยู่ในสถานะ **error** — ตัดไฟล์ที่แยกวิเคราะห์ไม่สำเร็จออกโดยไม่ต้องลบและสร้างใหม่ทั้งหมด การแยกวิเคราะห์เอกสาร — Text-only, MinerU, Docling, Tika, markitdown, PyMuPDF4LLM หรือ LiteParse — ถูกเลือกใน **Settings → Knowledge & documents** โดยการดาวน์โหลด local model ปิดโดยค่าเริ่มต้น Docling ยังสามารถรันในโหมด **remote** กับเซิร์ฟเวอร์ Docling Serve ได้ (ไม่ต้องติดตั้ง local หรือใช้ model ใด ๆ) โดยกำหนดค่าในหน้านั้น (`mode=remote`, server base URL และ API key ที่เป็นทางเลือก) หรือผ่าน environment variables `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` Tika ทำงานในโหมด remote เท่านั้นและชี้ไปยังเซิร์ฟเวอร์ Apache Tika ที่กำหนดค่าไว้ในหน้านั้น CLI ครอบคลุม lifecycle ด้วย `list/info/create/connect-kiwix/add/search/set-default/delete`, คำสั่งเพิ่ม/ลบ source, `list-sources` และ `sync`
+เมื่อสร้าง KB คุณสามารถ **สร้างใหม่** (อัพโหลดและทำ index เอกสาร), **เชื่อมโยงที่มีอยู่** (ใช้ index เดิมในที่เดิม) หรือ **เชื่อมต่อ Kiwix** (ค้นหา ZIM archive หนึ่งชุดที่ให้บริการอยู่ตามต้องการ) เลือก storage workspace ขณะสร้าง; หลังจากดูตัวอย่างแล้ว คุณสามารถย้าย KB ที่มีอยู่ระหว่าง workspaces โดยคงการกำหนดและการอ้างอิงที่บันทึกไว้ KB ยังสามารถติดตาม **GitHub repositories** (repo, branch, glob) หรือ **URL ของเว็บไซต์เอกสาร** (จำกัดความลึกในการ crawl และจำนวนหน้า โดย re-sync ทุก 24 ชั่วโมงเป็นค่าเริ่มต้น) ได้; การ sync จะเปรียบเทียบ hash ของเนื้อหาที่เพิ่ม เปลี่ยนแปลง และลบ เพื่อให้เอกสารที่ติดตามทันสมัยอยู่เสมอโดยไม่ต้องอัพโหลดใหม่ และ **linked folders** จะดึงไฟล์ local ที่เพิ่มหรือเปลี่ยนแปลงเข้ามาเมื่อ sync การ re-indexing จะเขียน directory `version-N` ใหม่แบบแบนและเก็บอันก่อนหน้าไว้ ดังนั้น index ที่ทำงานอยู่จะไม่ถูกทำลายระหว่างการสร้างใหม่ สามารถลบเอกสารหนึ่งรายการได้แม้ KB จะอยู่ในสถานะ **error** — ตัดไฟล์ที่แยกวิเคราะห์ไม่สำเร็จออกโดยไม่ต้องลบและสร้างใหม่ทั้งหมด การแยกวิเคราะห์เอกสาร — Text-only, MinerU, Docling, Tika, markitdown, PyMuPDF4LLM หรือ LiteParse — และโมเดลอธิบายรูปภาพที่เป็นทางเลือก ถูกเลือกใน **Settings → Knowledge & documents** โดยการดาวน์โหลด local model ปิดโดยค่าเริ่มต้น Docling ยังสามารถรันในโหมด **remote** กับเซิร์ฟเวอร์ Docling Serve ได้ (ไม่ต้องติดตั้ง local หรือใช้ model ใด ๆ) โดยกำหนดค่าในหน้านั้น (`mode=remote`, server base URL และ API key ที่เป็นทางเลือก) หรือผ่าน environment variables `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` Tika ทำงานในโหมด remote เท่านั้นและชี้ไปยังเซิร์ฟเวอร์ Apache Tika ที่กำหนดค่าไว้ในหน้านั้น CLI ครอบคลุม lifecycle ด้วย `list/info/create/connect-kiwix/add/search/eval/set-default/delete`, คำสั่งเพิ่ม/ลบ source, `list-sources` และ `sync`
 
 เอ็นจิน LightRAG ในตัวติดตั้งด้วย `pip install 'deeptutor[rag-lightrag]'` ส่วนเสริมนั้นมี SDK LightRAG ที่รองรับอยู่ แต่ไม่ได้ติดตั้ง MinerU เลือก MinerU แยกต่างหากใน Document Parsing แล้วกำหนดค่าโหมด cloud ของมันหรือติดตั้ง local CLI เวอร์ชันปัจจุบันเมื่อต้องการการแยกวิเคราะห์แบบมีโครงสร้าง MinerU รองรับ PDF, รูปภาพ raster ทั่วไป, DOCX, PPTX และ XLSX; คำสั่ง `magic-pdf` แบบ legacy ยังคงรองรับเฉพาะ PDF เท่านั้น Text-only และเอ็นจินแยกวิเคราะห์อื่น ๆ ไม่จำเป็นต้องใช้ MinerU
 
 การ query และการทำ indexing แบบ incremental ของ LightRAG แบบ native ต้องใช้การตั้งค่า embedding ที่บันทึกไว้โดย index ที่เผยแพร่แล้ว ซึ่งรวมถึง model, dimension และ endpoint identity หากมีการเปลี่ยนแปลง ให้คืนค่าการตั้งค่าเดิมหรือสร้างใหม่ด้วย embedding ปัจจุบัน; index ที่ไม่มีการบันทึก embedding identity ไว้จำเป็นต้องสร้างใหม่ หน้ารายละเอียด knowledge base และหน้า index version จะแสดงคำแนะนำในการกู้คืน ในขณะที่ไฟล์ยังคงเปิดดูและดาวน์โหลดได้อยู่
+
+**การประเมินคะแนนฐานความรู้** เมื่อมีหลายเอ็นจินให้เลือก คำถามว่า "เอ็นจินไหนค้นคืนข้อมูลได้ดีที่สุดสำหรับเนื้อหานี้?" ต้องตอบด้วยการทดลอง — `deeptutor kb eval` จึงช่วยตอบคำถามนี้ สร้างชุด QA (หนึ่ง JSON object ต่อบรรทัด: `query` พร้อมข้อความ `gold` ที่การค้นคืนในอุดมคติควรส่งกลับ) จากนั้นประเมิน KB ด้วย `deeptutor kb eval <name> --dataset qa.jsonl --top-k 5 [--mode hybrid] [--save baseline.json]` แต่ละกรณีจะค้นคืนผ่านเส้นทางเดียวกับที่ chat turn ใช้ โดยจับคู่ citations ที่จัดอันดับแล้วกับข้อความ gold ด้วยข้อความที่ตรงกันหรือการทับซ้อนของคำ (ปรับ threshold ได้ด้วย `--min-ratio`; ไม่ได้ประเมินความเทียบเท่าทางความหมาย) และรายงาน **Recall@k / Precision@k / nDCG@k / MRR / MAP / Hit@k** metrics เป็นฟังก์ชันบริสุทธิ์ที่คำนวณจากอันดับ จึงไม่มีโมเดลตัดสิน output: คะแนนสามารถทำซ้ำและเปรียบเทียบความต่างได้ และ baseline ที่บันทึกไว้ช่วยให้ชุด QA เป็นเกณฑ์ตรวจสอบ regression เมื่อเปลี่ยน embedding, เปลี่ยน reranker หรือทดลอง chunk size กรณีที่ค้นหาไม่สำเร็จ (เช่น ไม่มี index หรือ credentials ไม่ถูกต้อง) จะไม่มีคะแนนและรายงานแยกต่างหาก แทนที่จะทำให้ค่าเฉลี่ยลดลง PageIndex ใช้การให้เหตุผลเป็น retrieval และไม่ส่งคืน chunks ที่จัดอันดับ จึงไม่รวมอยู่ในการประเมินนี้
+
+```jsonl
+{"query": "Why do transformers scale attention?", "gold": ["Scaling keeps the dot products from growing with the dimension."]}
+```
 
 </details>
 
@@ -572,13 +593,13 @@ Knowledge bases คือคอลเลกชันเอกสารที่�
 <img src="../../assets/figs/web-1.4.6+/learning-space/00-overview.png" alt="ศูนย์กลาง Learning Space ของ DeepTutor" width="900">
 </div>
 
-Learning Space คือชั้น library, organization และ personalization **Conversations & Materials** เก็บ Chat History, notebooks ที่ย้าย records และ export เป็น Markdown ได้ และ question bank พร้อมคำตอบและคำอธิบาย **Practice** ใน Personalized Learning เปลี่ยนคำถามที่บันทึกไว้เป็น session ทบทวน การติดตามข้อผิดพลาด และการทบทวนซ้ำตามกำหนด **Personalization** เก็บ personas, skills (`SKILL.md` playbooks), **MCP Services** แบบคลิกเดียว และ **CLI Apps** จาก catalog [CLI-Anything](https://github.com/HKUDS/CLI-Anything) โดยแต่ละรายการมีคู่มือการใช้งานที่โหลดตามต้องการ workspace **My Courses** ที่แยกออกมาจะจัดกลุ่มบทสนทนาตามวิชาและ tutor threads; asset แต่ละรายการจะแสดงเฉพาะในเวิร์กโฟลว์ที่รองรับเท่านั้น
+Learning Space คือชั้น library, organization และ personalization **Conversations & Materials** เก็บ Chat History, notebooks ที่ย้าย records และ export เป็น Markdown ได้ และ question bank พร้อมคำตอบและคำอธิบาย เริ่ม **Practice** จากคำถามที่เลือกใน question bank หรือจาก Personalized Learning เพื่อทบทวน ติดตามข้อผิดพลาด และทบทวนซ้ำตามกำหนด **Personalization** เก็บ personas, skills (`SKILL.md` playbooks), **MCP Services** แบบคลิกเดียว และ **CLI Apps** จาก catalog [CLI-Anything](https://github.com/HKUDS/CLI-Anything) โดยแต่ละรายการมีคู่มือการใช้งานที่โหลดตามต้องการ workspace **My Courses** ที่แยกออกมาจะจัดกลุ่มบทสนทนาตามวิชาและ tutor threads; asset แต่ละรายการจะแสดงเฉพาะในเวิร์กโฟลว์ที่รองรับเท่านั้น
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/learning-space/07-%20download%20skills%20from%20eduhub.png" alt="นำเข้า skills จาก EduHub" width="900">
 </div>
 
-คุณไม่จำเป็นต้องเขียน skill ทุกอันเอง — **นำเข้าจาก EduHub** จะเรียกดู catalog ชุมชนและดาวน์โหลด skill ตรงเข้า library ผ่านประตูความปลอดภัย (ดู [ระบบนิเวศ](#-ระบบนิเวศ--eduhub--ชุมชน-skills))
+คุณไม่จำเป็นต้องเขียน skill ทุกอันเอง — **นำเข้าจาก EduHub** จะเรียกดู catalog ชุมชนและดาวน์โหลด skill ตรงเข้า library ผ่านประตูความปลอดภัย (ดู [ระบบนิเวศ](#-ระบบนิเวศ--eduhub-และชุมชน-skills))
 
 </details>
 
@@ -608,6 +629,11 @@ Memory Graph แสดงพีระมิดทั้งหมด — กา�
 
 Settings คือศูนย์ควบคุมการทำงาน โดยเปิดที่หน้า **General** สำหรับภาษา UI และภาษา output ของ model ตัวนำทางที่ค้นหาได้เชื่อมไปยังหน้าแยกกัน: **Personal** ครอบคลุม Workspaces, Data migration, Appearance และ Usage statistics; **Learning & conversation** ครอบคลุมจุดเริ่มต้น ไฟล์แนบ Video Learning การควบคุมผู้เรียนและผู้ปกครอง Learning progress และ Memory; **Models & services** ครอบคลุม Providers, Language models, Task models, Embedding, Search, Voice และ Multimodal generation; **Features & integrations** ครอบคลุมเครื่องมือ พารามิเตอร์ความสามารถ Partners & agents และ Knowledge & documents **System** มี Network, Runtime status และ About; **Archived chats** ใช้ค้นหา กู้คืน หรือลบบทสนทนาที่เก็บถาวรอย่างถาวร Runtime status แสดงสถานะ backend, resident memory และเมทริกซ์ **Readiness** ที่ประเมินปัญหาที่ขัดขวาง คำเตือน และข้อเสนอแนะของความสามารถ Workspaces แยกไฟล์แต่ละหัวข้อและสถานะการเรียน โดยมีการย้ายข้อมูลที่ตรวจสอบแล้วและการส่งออกใน Data migration **provider** เก็บที่อยู่และ credential ของผู้ให้บริการเพื่อให้ model ของบริการนั้นใช้ซ้ำได้ หน้า model เลือก provider ที่บันทึกไว้และกำหนดชื่อและความสามารถของ model **Task models** กำหนด model ขนาดเล็กที่รวดเร็วสำหรับงานเบื้องหลัง เช่น การตั้งชื่อบทสนทนาและเขียนจุดเริ่มต้น และใช้ model เริ่มต้นที่ใช้งานอยู่เมื่อปล่อยว่าง Voice รวมการสังเคราะห์เสียงพูดและการถอดเสียง ส่วน Multimodal generation รวม model ภาพและวิดีโอ Partners & agents กำหนดค่า harness ในเครื่องและ Hermes gateway ระยะไกล
 
+**เสียงพูด Xiaomi MiMo** เพิ่ม Xiaomi MiMo provider ด้วย `https://api.xiaomimimo.com/v1` และ API key จากนั้นเพิ่ม `mimo-v2.5-tts` ใน Settings → Voice เลือก preset เช่น `mimo_default`, `冰糖` หรือ `苏打`, ใช้ output แบบ `wav` หรือ `pcm16` และทดลองฟังก่อนนำไปใช้ คำสั่งเสียงควบคุมรูปแบบและความเร็วในการพูด adapter นี้รองรับเฉพาะเสียง preset; การออกแบบเสียงและการโคลนเสียงต้องใช้โมเดลแยกต่างหากและไม่รองรับใน adapter นี้ หากเคยกำหนดค่าโมเดลเสียง MiMo รุ่นเก่าผ่าน adapter ทั่วไปที่เข้ากันได้กับ OpenAI ให้สร้างรายการเสียงใหม่โดยใช้ Xiaomi MiMo provider เพื่อให้ใช้ protocol chat-completions ดู[คู่มือเสียง MiMo อย่างเป็นทางการ](https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/speech-synthesis-v2.5)
+
+**เสียงพูด MiniMax** — ใน Settings → Voice เลือก MiniMax สำหรับ text-to-speech และเลือก `speech-2.8-hd` กำหนดค่า MiniMax API key และ voice ID ของระบบหรือที่กำหนดเอง; เสียงเริ่มต้นคือ `English_expressive_narrator` API base เริ่มต้นคือ `https://api.minimax.io/v1`; สำหรับภูมิภาคจีนใช้ `https://api.minimaxi.com/v1` การอ่านออกเสียงและการทดลองเสียงใช้ native speech endpoint พร้อม output แบบ MP3, WAV, FLAC หรือ PCM รวมถึงตัวควบคุม sample rate, ความเร็ว และภาษา ดู[MiniMax speech API](https://platform.minimax.io/docs/api-reference/speech-t2a-http)สำหรับ voice IDs และความพร้อมใช้งานของบัญชี
+
+
 **Video Learning** ภายใต้ Settings → Learning & conversation ใช้ YouTube IFrame Player อย่างเป็นทางการที่เพิ่มความเป็นส่วนตัวเป็นค่าเริ่มต้น หากต้องการให้การเล่นอยู่ในระบบ local ให้ตั้งค่า Invidious API origin ที่ผู้ดูแลระบบจัดการ (ตัวอย่างเช่น `http://127.0.0.1:3000`), ทดสอบ, เลือก Invidious แล้วบันทึก วิดีโอใหม่หรือวิดีโอที่เปิดอีกครั้งจะใช้ provider ทันทีโดยมี material ID และความคืบหน้าเดิม สื่อ Invidious จะ stream ผ่าน byte-range proxy ของ DeepTutor; upstream URLs จะไม่ถูกเปิดเผยต่อเบราว์เซอร์หรือเก็บไว้บนดิสก์ หาก instance ล้มเหลว DeepTutor จะยังคงออฟไลน์จาก YouTube จนกว่าผู้เรียนจะเลือก fallback ไปยัง native YouTube อย่างชัดเจน การสอนพิเศษจากคำบรรยายสาธารณะเป็นทางเลือก: ติดตั้ง `.[video-learning]`; การเล่นยังคงทำงานได้หากไม่มี ส่วน **Explain here** ที่อิง transcript จะถูกปิดใช้งานพร้อมระบุเหตุผล
 
 <div align="center">
@@ -616,7 +642,7 @@ Settings คือศูนย์ควบคุมการทำงาน โ�
 
 ส่วนส่วนใหญ่ใช้ draft-and-apply flow เพื่อให้คุณทดสอบ provider ก่อนยืนยัน คุณยังสามารถแค่ถามใน Chat ได้เช่นกัน: ผู้ช่วยจะอ่านการกำหนดค่าปัจจุบัน, ใช้การเปลี่ยนแปลง และบอกว่าจำเป็นต้องรีสตาร์ทหรือ re-index หรือไม่ — โดยทดสอบ model ใหม่ก่อนที่จะยืนยัน จึงไม่สามารถเปลี่ยนตัวเองไปยังสิ่งที่เข้าถึงไม่ได้ API keys จะไม่ผ่านเข้าไปใน model เลย ซึ่งจะเปิดฟอร์มที่ตรงกันให้คุณแทน ธีมสี่แบบมาในกล่อง — Default, Cream, Dark และ Glass ไฟล์ `.env` ที่ root ของโปรเจกต์ถูกเพิกเฉยโดยเจตนา; การกำหนดค่า runtime อยู่ใน `data/user/settings/*.json` เว้นแต่ `DEEPTUTOR_HOME` หรือ `deeptutor start --home` จะชี้แอปไปที่อื่น
 
-**OpenAI Codex OAuth (ทดลอง)** การเพิ่ม **OpenAI Codex** ภายใต้ **Settings → Providers** จะเปิดการลงชื่อเข้าใช้ผ่านเบราว์เซอร์ที่รันกับแผน ChatGPT ของคุณเอง จึงไม่จำเป็นต้องใช้ `OPENAI_API_KEY` Tokens อยู่เฉพาะใน `data/system/user-secrets/<owner>/private/openai-codex/` — ในการปรับใช้แบบ multi-container ด้วย Compose จะอยู่นอกเหนือทุก tree ที่ exec sandbox สามารถเข้าถึงได้ — และ DeepTutor จะไม่อ่านหรือแก้ไข `~/.codex` CLI login ของคุณเลย รายการ model มาจาก catalog แบบสดของบัญชีนั้น; การลงชื่อเข้าใช้จะเผยแพร่โปรไฟล์ แต่จะกลายเป็น model ที่ใช้งานอยู่ก็ต่อเมื่อยังไม่มีการกำหนดค่า LLM ใด ๆ เท่านั้น จึงไม่มีทางเปลี่ยนทิศทางของการปรับใช้โดยที่คุณไม่รู้ตัว เนื่องจาก token อนุญาตให้ใช้แผนของคนคนเดียว โปรไฟล์นี้จึงไม่สามารถแชร์ผ่าน per-user grants ได้ — แต่ละบัญชีต้องลงชื่อเข้าใช้ด้วยตัวเอง รวมถึงผู้ใช้ทั่วไปด้วย: การ์ดลงชื่อเข้าใช้ของพวกเขาจะอยู่ภายใต้ **Providers** และ models, catalog และการลงชื่อออกที่ได้จะเป็นส่วนตัวเฉพาะบัญชีนั้นเท่านั้น
+**OpenAI Codex OAuth (ทดลอง)** การเพิ่ม **OpenAI Codex** ภายใต้ **Settings → Providers** จะเปิดการลงชื่อเข้าใช้ผ่านเบราว์เซอร์ที่รันกับแผน ChatGPT ของคุณเอง จึงไม่จำเป็นต้องใช้ `OPENAI_API_KEY` Tokens อยู่เฉพาะใน `data/system/user-secrets/<owner>/private/openai-codex/` — ในการปรับใช้แบบ multi-container ด้วย Compose จะอยู่นอกเหนือทุก tree ที่ exec sandbox สามารถเข้าถึงได้ — และ DeepTutor จะไม่อ่านหรือแก้ไข `~/.codex` CLI login ของคุณเลย รายการ model มาจาก catalog แบบสดของบัญชีนั้น; การลงชื่อเข้าใช้จะเผยแพร่โปรไฟล์ แต่จะกลายเป็น model ที่ใช้งานอยู่ก็ต่อเมื่อยังไม่มีการกำหนดค่า LLM ใด ๆ เท่านั้น เนื่องจาก token อนุญาตให้ใช้แผนของคนคนเดียว โปรไฟล์นี้จึงไม่สามารถแชร์ผ่าน per-user grants ได้ — แต่ละบัญชีต้องลงชื่อเข้าใช้ด้วยตัวเอง รวมถึงผู้ใช้ทั่วไปด้วย: การ์ดลงชื่อเข้าใช้ของพวกเขาจะอยู่ภายใต้ **Providers** และ models, catalog และการลงชื่อออกที่ได้จะเป็นส่วนตัวเฉพาะบัญชีนั้นเท่านั้น
 
 เมื่อลงชื่อเข้าใช้และตอน **Refresh models** DeepTutor จะอ่านเวอร์ชันเสถียรล่าสุดของ `@openai/codex` จาก official npm registry และใช้เป็น `client_version` ของ catalog request นี่เป็นเพียง metadata: จะไม่ติดตั้ง ดาวน์โหลด หรืออัพเกรด Codex CLI และ npm request จะไม่พก OAuth credentials ไปด้วย การค้นหานี้มี deadline สามวินาทีและขีดจำกัดขนาด response 64 KiB หากล้มเหลว DeepTutor จะใช้เวอร์ชันที่สำเร็จล่าสุดของบัญชีนั้น หรือ fallback ที่มีอยู่ในตัวเมื่อไม่มีอะไรถูก cache ไว้ จะบันทึกเวอร์ชันใหม่ก็ต่อเมื่อ catalog แบบสดถูก parse สำเร็จเท่านั้น; validators จะไม่ถูกนำมาใช้ซ้ำข้ามเวอร์ชันหรือข้าม credential generation การถูกปฏิเสธเวอร์ชันหรือโครงสร้าง catalog ที่เข้ากันไม่ได้จะอนุญาตให้ retry หนึ่งครั้งด้วยเวอร์ชันก่อนหน้า; ความล้มเหลวด้าน authentication, rate-limit และ TLS จะไม่ถูก retry ในฐานะปัญหาเรื่องเวอร์ชัน การรีเฟรชแบบ manual ที่ล้มเหลวจะรายงาน error แทนที่จะนำ catalog ที่ cache ไว้เดิมมาแสดงว่าถูกรีเฟรชแล้ว
 
@@ -716,7 +742,7 @@ repo มี root [`SKILL.md`](../../SKILL.md) — เอกสาร handover ~2
 | คำสั่ง | คำอธิบาย |
 |:---|:---|
 | `deeptutor init` | สร้างหรืออัพเดต `data/user/settings` ใน runtime home ปัจจุบัน |
-| `deeptutor doctor [--online]` | ตรวจสอบว่า workspace พร้อมเริ่ม session หรือไม่; `--online` ยังตรวจสอบ model provider ที่กำหนดค่าไว้ด้วย, `--format json` พิมพ์รายงานออกมา |
+| `deeptutor doctor [--online]` | ตรวจสอบว่า runtime พร้อมเริ่ม session หรือไม่; `--online` ยังตรวจสอบ model provider ที่กำหนดค่าไว้ด้วย, `--format json` พิมพ์รายงานออกมา |
 | `deeptutor start [--home PATH] [--dev] [--detach] [--no-browser]` | เปิดตัว backend + frontend ด้วยกัน; เลือก detach หรือปิดการเปิดเบราว์เซอร์ได้ |
 | `deeptutor stop [--home PATH]` | หยุด launcher ที่เริ่มด้วย `--detach` |
 | `deeptutor serve [--port PORT]` | เริ่มเฉพาะ FastAPI backend |
@@ -724,7 +750,7 @@ repo มี root [`SKILL.md`](../../SKILL.md) — เอกสาร handover ~2
 | `deeptutor run <capability> <message>` | รัน capability turn เดียว (`chat`, `ask_questions`, `deep_solve`, `deep_question`, `deep_research`, `visualize`, `math_animator`, `mastery_path`, `immersive_reading`, `course_study`, `immersive_watching`, `audio_overview`); เพิ่ม `--format json` สำหรับ NDJSON output |
 | `deeptutor chat` | Interactive REPL พร้อม capability, tool, KB, notebook และ history controls |
 | `deeptutor partner list/create/start/stop` | จัดการ partners ที่เชื่อมต่อผ่าน IM |
-| `deeptutor kb list/info/create/connect-kiwix/add/search/set-default/delete/list-sources/sync` | จัดการ knowledge bases และ sync GitHub/web sources ที่ลงทะเบียนไว้ (พร้อมคำสั่งเพิ่ม/ลบ source) |
+| `deeptutor kb list/info/create/connect-kiwix/add/search/eval/set-default/delete/list-sources/sync` | จัดการ knowledge bases, เชื่อมต่อคลัง Kiwix, ประเมินคุณภาพ retrieval เทียบกับชุด QA และ sync GitHub/web sources ที่ลงทะเบียนไว้ (พร้อมคำสั่งเพิ่ม/ลบ source) |
 | `deeptutor skill search/install/list/remove/login/logout/publish/update` | จัดการทักษะ ติดตั้งจากฮับ และเผยแพร่ของคุณเอง (`eduhub:<slug>` โดยค่าเริ่มต้น ดู Ecosystem) |
 | `deeptutor memory show/clear` | ตรวจสอบ L2/L3 memory docs หรือล้าง L1/all memory |
 | `deeptutor session list/show/open/rename/delete` | จัดการ shared sessions |

@@ -38,6 +38,7 @@ from deeptutor.services.config import (
     redact_catalog_secrets,
     restore_catalog_secrets,
 )
+from deeptutor.services.config.image_description import ImageDescriptionModelSelection
 from deeptutor.services.config.origins import normalize_origins
 from deeptutor.services.config.runtime_settings import (
     CHAT_ATTACHMENT_CHARS_RANGE,
@@ -334,6 +335,7 @@ class ProviderProbePayload(BaseModel):
     api_format: str = "auto"
     api_version: str = ""
     extra_headers: dict[str, str] | str | None = None
+    proxy: str = ""
     service: Literal["llm", "task", "embedding", "search", "tts", "stt", "imagegen", "videogen"] = (
         "llm"
     )
@@ -445,6 +447,8 @@ class DocumentParsingUpdate(BaseModel):
     engines: Optional[dict[str, dict]] = None
     # Toggle for vision-model captions of embedded images (None = keep stored).
     image_caption: Optional[bool] = None
+    # Omit to keep the selection; null restores the main LLM.
+    image_description_model: Optional[ImageDescriptionModelSelection] = None
 
 
 class DocumentParsingTest(BaseModel):
@@ -1250,6 +1254,7 @@ def _document_parsing_payload() -> dict[str, Any]:
     return {
         "engine": full.get("engine"),
         "image_caption": bool(full.get("image_caption", False)),
+        "image_description_model": full.get("image_description_model"),
         "engines": redacted,
         "available_engines": available,
         "readiness": readiness,
@@ -1300,6 +1305,8 @@ async def update_mineru_settings(payload: MinerUSettingsUpdate):
             "enable_formula": payload.enable_formula,
             "enable_table": payload.enable_table,
             "is_ocr": payload.is_ocr,
+            "max_pages_per_part": current.get("max_pages_per_part", 180),
+            "normalize_tiny_scans": current.get("normalize_tiny_scans", False),
             "allow_local_model_download": payload.allow_local_model_download,
         }
     )
@@ -1418,6 +1425,20 @@ async def update_document_parsing_settings(payload: DocumentParsingUpdate):
         engines[name].update(merged)
 
     new_engine = payload.engine or full.get("engine")
+    image_model = full.get("image_description_model")
+    if "image_description_model" in payload.model_fields_set:
+        image_model = (
+            payload.image_description_model.model_dump()
+            if payload.image_description_model is not None
+            else None
+        )
+        if image_model is not None:
+            from deeptutor.services.llm.image_description import resolve_image_description_config
+
+            try:
+                resolve_image_description_config(image_model)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
     image_caption = (
         payload.image_caption
         if payload.image_caption is not None
@@ -1427,6 +1448,7 @@ async def update_document_parsing_settings(payload: DocumentParsingUpdate):
         {
             "engine": new_engine,
             "image_caption": image_caption,
+            "image_description_model": image_model,
             "engines": engines,
         }
     )
@@ -1998,7 +2020,9 @@ async def test_provider_connection(payload: ProviderProbePayload):
             status_code=400, detail="Saved credentials were not found. Enter the key again."
         )
     if payload.service == "search":
-        return await probe_search_provider(payload.binding, payload.base_url, key)
+        return await probe_search_provider(
+            payload.binding, payload.base_url, key, proxy=payload.proxy
+        )
     return await probe_provider(
         payload.binding, payload.base_url, key, payload.api_format, headers, payload.api_version
     )
@@ -2210,8 +2234,8 @@ async def update_enabled_tools(update: EnabledToolsUpdate):
 async def preview_voice(payload: VoicePreviewPayload) -> Response:
     """Audition the model being edited without saving or activating its catalog."""
     _require_settings_admin()
-    from deeptutor.services.voice.base import VoiceProviderError
-    from deeptutor.services.voice.preview import synthesize_preview
+    from deeptutor.services.voice.base import VoiceProviderError, VoiceProviderTimeout
+    from deeptutor.services.voice.preview import preview_failure_message, synthesize_preview
 
     service = get_model_catalog_service()
     current = service.load()
@@ -2227,14 +2251,12 @@ async def preview_voice(payload: VoicePreviewPayload) -> Response:
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except VoiceProviderTimeout as exc:
+        raise HTTPException(status_code=504, detail=str(exc)) from exc
     except VoiceProviderError as exc:
-        # Other provider adapters may include raw upstream bodies in their errors.
-        # Never send those bodies (or echoed credentials) back to the browser.
         raise HTTPException(
             status_code=502,
-            detail=(
-                "Voice preview failed. Check the provider credentials, model, voice, language and format."
-            ),
+            detail=preview_failure_message(exc),
         ) from exc
     return Response(audio, media_type=content_type, headers={"Cache-Control": "no-store"})
 

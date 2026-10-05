@@ -46,6 +46,8 @@ const api = vi.hoisted(() => ({
 /** The document view is stubbed down to "report this selection upward". */
 const view = vi.hoisted(() => ({
   select: null as null | ((payload: unknown) => void),
+  locate: null as null | ((locator: number) => void),
+  progress: null as null | ((percentage: number | null) => void),
 }));
 
 vi.mock("@/lib/reading-api", async (importOriginal) => ({
@@ -75,7 +77,14 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 vi.mock("@/components/reading/EpubDocumentView", () => ({
-  EpubDocumentView: () => null,
+  EpubDocumentView: ({ onVisibleLocatorChange, onProgressChange }: {
+    onVisibleLocatorChange: (locator: number) => void;
+    onProgressChange: (percentage: number | null) => void;
+  }) => {
+    view.locate = onVisibleLocatorChange;
+    view.progress = onProgressChange;
+    return <div data-testid="epub" />;
+  },
 }));
 
 vi.mock("@/components/reading/TextUnitView", () => ({
@@ -96,6 +105,7 @@ const material = {
   render_mode: "raw",
   has_raw_view: true,
   unit_count: 10,
+  unit_refs: [{ locator: 1, title: "Opening" }, { locator: 2, title: "Final chapter" }],
 };
 
 vi.mock("@/context/ReadingContext", () => ({
@@ -268,4 +278,25 @@ describe("reading toolbar with a live selection", () => {
       screen.queryByRole("dialog", { name: "Annotate selection" }),
     ).not.toBeInTheDocument();
   });
+});
+
+it("shows real EPUB progress inside the final chapter rather than declaring completion (#1673)", async () => {
+  material.render_mode = "epub";
+  material.unit_count = 2;
+  try {
+    render(<ReaderPane onClose={() => undefined} />);
+    await waitFor(() => expect(view.locate).not.toBeNull());
+    act(() => view.locate?.(2));
+    expect(screen.getByText("Final chapter")).toBeVisible();
+    expect(screen.queryByText("· 100%")).not.toBeInTheDocument();
+    act(() => view.progress?.(0.62));
+    expect(screen.getByText("· 62%")).toBeVisible();
+    act(() => view.progress?.(0.73));
+    expect(screen.getByText("· 73%")).toBeVisible();
+    act(() => view.progress?.(1));
+    expect(screen.getByText("· 100%")).toBeVisible();
+  } finally {
+    material.render_mode = "raw";
+    material.unit_count = 10;
+  }
 });

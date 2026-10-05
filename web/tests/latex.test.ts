@@ -156,6 +156,37 @@ test("inline math: standalone one-line $$...$$ → split to block", () => {
   assert.equal(lines[2], "$$");
 });
 
+test("display math: $$ hugging a multi-line formula → fences on their own lines (#1623)", () => {
+  const input = "$$Testing\\ Latex \\rightarrow\n\\leftarrow ENTER\\ HERE$$";
+  const lines = processMarkdownContent(input).trim().split("\n");
+  assert.deepEqual(lines, [
+    "$$",
+    "Testing\\ Latex \\rightarrow",
+    "\\leftarrow ENTER\\ HERE",
+    "$$",
+  ]);
+});
+
+test("display math: aligned block with the opening fence hugging, closing alone", () => {
+  const input = "$$\\begin{aligned}\na &= b \\\\\nc &= d\n\\end{aligned}\n$$";
+  const lines = processMarkdownContent(input).trim().split("\n");
+  assert.equal(lines[0], "$$");
+  assert.equal(lines[1], "\\begin{aligned}");
+  assert.equal(lines[lines.length - 2], "\\end{aligned}");
+  assert.equal(lines[lines.length - 1], "$$");
+});
+
+test("display math: fences already on their own lines are left alone", () => {
+  const input = "$$\na = b\nc = d\n$$";
+  assert.equal(processMarkdownContent(input).trim(), input);
+});
+
+test("display math: an unclosed $$ across a blank line is not rewritten", () => {
+  const input = "$$x = 1\n\nprice is 5$ tomorrow";
+  const result = processMarkdownContent(input);
+  assert.ok(result.includes("$$x = 1"));
+});
+
 // ---------------------------------------------------------------------------
 // processMarkdownContent — loose block math ($...\n...\n$) promotion
 // ---------------------------------------------------------------------------

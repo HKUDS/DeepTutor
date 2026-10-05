@@ -1,8 +1,11 @@
 'use client'
 
+import dynamic from 'next/dynamic'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle,
+  Bookmark,
+  BookmarkPlus,
   ChevronDown,
   ChevronUp,
   ChevronsDown,
@@ -15,6 +18,7 @@ import {
   Play,
   RotateCcw,
   Search,
+  Sparkles,
   StickyNote,
   Trash2,
   X,
@@ -29,22 +33,48 @@ import {
   type PlayerController,
 } from '@/lib/video-player-controller'
 import {
+  createVideoMark,
   createVideoNote,
+  deleteVideoMark,
   deleteVideoNote,
   exportVideoNotes,
+  listVideoMarks,
   listVideoNotes,
   saveVideoProgress,
+  suggestVideoMarks,
+  updateVideoMark,
   updateVideoNote,
+  type SuggestedVideoMark,
+  type VideoMark,
+  type VideoMarkKind,
   type VideoNote,
 } from '@/lib/video-learning-api'
+import {
+  cueIndexesFromSelection,
+  cuesToRange,
+} from '@/lib/video-learning-marks'
 import { stepTranscriptMatch, transcriptMatchIndexes } from '@/lib/transcript-search'
 import { videoTimeFromHref } from '@/lib/watching-citations'
 import { WatchingPlayer } from './WatchingPlayer'
 import { transcriptFollowScrollTop } from '@/lib/transcript-follow'
 
+function MarksLoading() {
+  const { t } = useTranslation()
+  return (
+    <div role="status" aria-label={t('Loading')} className="flex justify-center py-4">
+      <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin text-[var(--muted-foreground)]" />
+    </div>
+  )
+}
+
+const WatchingMarksPanel = dynamic(
+  () => import('./WatchingMarksPanel').then(module => module.WatchingMarksPanel),
+  { ssr: false, loading: MarksLoading },
+)
+
 export const WATCHING_ASK_EVENT = 'dt:watching-ask'
 
-type WatchTab = 'transcript' | 'notes'
+type WatchTab = 'transcript' | 'notes' | 'marks'
 
 export function WatchingPane({ onClose }: { onClose(): void }) {
   const { t } = useTranslation()
@@ -95,6 +125,21 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
   const lastSavedRef = useRef(0)
   const stateRef = useRef({ time: 0, duration: 0 })
   activeMaterialIdRef.current = materialId
+
+  const [marks, setMarks] = useState<VideoMark[]>([])
+  const [marksLoading, setMarksLoading] = useState(false)
+  const [marksError, setMarksError] = useState<string | null>(null)
+  const [markDraft, setMarkDraft] = useState<{
+    kind: VideoMarkKind
+    start_seconds: number
+    end_seconds: number | null
+    quote?: string
+    note: string
+  } | null>(null)
+  const [suggestedMarks, setSuggestedMarks] = useState<SuggestedVideoMark[]>([])
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false)
+  const [markBusy, setMarkBusy] = useState(false)
+  const marksLoadRequestRef = useRef(0)
 
   useEffect(() => {
     setActive(true)
@@ -184,7 +229,7 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
   useEffect(() => {
     if (!followTranscript || tab !== 'transcript' || !cue) return
     const list = transcriptListRef.current
-    const activeRow = list?.querySelector<HTMLButtonElement>('[data-active-cue="true"]')
+    const activeRow = list?.querySelector<HTMLElement>('[data-active-cue="true"]')
     if (!list || !activeRow) return
     const targetTop = transcriptFollowScrollTop({
       rowOffset:
@@ -254,6 +299,41 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
         }
       } finally {
         if (!cancelled) setNotesLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [materialId, t])
+
+  useEffect(() => {
+    let cancelled = false
+    setMarks([])
+    setMarksError(null)
+    setMarkDraft(null)
+    setSuggestedMarks([])
+    const requestId = ++marksLoadRequestRef.current
+    if (!materialId) {
+      setMarksLoading(false)
+      return () => {
+        cancelled = true
+      }
+    }
+    setMarksLoading(true)
+    void (async () => {
+      try {
+        const loaded = await listVideoMarks(materialId)
+        if (!cancelled && marksLoadRequestRef.current === requestId) {
+          setMarks(loaded)
+        }
+      } catch {
+        if (!cancelled && marksLoadRequestRef.current === requestId) {
+          setMarksError(t('Marks could not be loaded.'))
+        }
+      } finally {
+        if (!cancelled && marksLoadRequestRef.current === requestId) {
+          setMarksLoading(false)
+        }
       }
     })()
     return () => {
@@ -421,6 +501,240 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
     },
     [material, selectedTranscriptMatch, transcriptMatches]
   )
+
+  const handleMarkHere = () => {
+    setMarkDraft({
+      kind: 'key_point',
+      start_seconds: time,
+      end_seconds: null,
+      note: '',
+    })
+  }
+
+  const handleMarkSelection = () => {
+    if (!material?.transcript.cues.length) {
+      handleMarkHere()
+      return
+    }
+    const selected = cueIndexesFromSelection(
+      transcriptListRef.current,
+      window.getSelection()
+    )
+    if (selected.length === 0) {
+      handleMarkHere()
+      return
+    }
+    const range = cuesToRange(material.transcript.cues, selected)
+    if (!range) {
+      handleMarkHere()
+      return
+    }
+    setMarkDraft({
+      kind: 'key_point',
+      start_seconds: range.start_seconds,
+      end_seconds: range.end_seconds,
+      quote: range.quote,
+      note: '',
+    })
+  }
+
+  const handleMarkCue = (index: number) => {
+    const cueItem = material?.transcript.cues[index]
+    if (!cueItem) return
+    setMarkDraft({
+      kind: 'key_point',
+      start_seconds: cueItem.start,
+      end_seconds: cueItem.end,
+      quote: cueItem.text,
+      note: '',
+    })
+  }
+
+  const handleSaveMarkDraft = async () => {
+    if (!materialId || !markDraft) return
+    const requestedMaterialId = materialId
+    setMarkBusy(true)
+    try {
+      const saved = await createVideoMark(requestedMaterialId, {
+        kind: markDraft.kind,
+        start_seconds: markDraft.start_seconds,
+        end_seconds: markDraft.end_seconds ?? markDraft.start_seconds,
+        quote: markDraft.quote,
+        note: markDraft.note.trim() || undefined,
+      })
+      if (activeMaterialIdRef.current !== requestedMaterialId) return
+      setMarks(prev =>
+        [...prev, saved].sort((a, b) => a.start_seconds - b.start_seconds)
+      )
+      setMarkDraft(null)
+    } catch {
+      if (activeMaterialIdRef.current === requestedMaterialId) {
+        setMarksError(t('Mark was not saved.'))
+      }
+    } finally {
+      setMarkBusy(false)
+    }
+  }
+
+  const handleDeleteMark = async (markId: string) => {
+    if (!materialId) return
+    const requestedMaterialId = materialId
+    setMarkBusy(true)
+    try {
+      await deleteVideoMark(requestedMaterialId, markId)
+      if (activeMaterialIdRef.current !== requestedMaterialId) return
+      setMarks(prev => prev.filter(m => m.mark_id !== markId))
+    } catch {
+      if (activeMaterialIdRef.current === requestedMaterialId) {
+        setMarksError(t('Mark was not deleted.'))
+      }
+    } finally {
+      setMarkBusy(false)
+    }
+  }
+
+  const handleReviewMark = async (mark: VideoMark) => {
+    if (!materialId) return
+    const requestedMaterialId = materialId
+    setMarkBusy(true)
+    try {
+      const updated = await updateVideoMark(requestedMaterialId, mark.mark_id, {
+        reviewed: true,
+      })
+      if (activeMaterialIdRef.current !== requestedMaterialId) return
+      setMarks(prev =>
+        prev.map(m => (m.mark_id === mark.mark_id ? updated : m))
+      )
+    } catch {
+      if (activeMaterialIdRef.current === requestedMaterialId) {
+        setMarksError(t('Mark was not updated.'))
+      }
+    } finally {
+      setMarkBusy(false)
+    }
+  }
+
+  const handleRequestSuggestions = async () => {
+    if (!materialId) return
+    const requestedMaterialId = materialId
+    setSuggestionsLoading(true)
+    setMarksError(null)
+    try {
+      const res = await suggestVideoMarks(requestedMaterialId, time)
+      if (activeMaterialIdRef.current !== requestedMaterialId) return
+      setSuggestedMarks(res)
+      setTab('marks')
+    } catch {
+      if (activeMaterialIdRef.current === requestedMaterialId) {
+        setMarksError(t('Suggestions could not be loaded.'))
+      }
+    } finally {
+      setSuggestionsLoading(false)
+    }
+  }
+
+  const handleConfirmSuggestion = async (suggestion: SuggestedVideoMark) => {
+    if (!materialId) return
+    const requestedMaterialId = materialId
+    setMarkBusy(true)
+    try {
+      const saved = await createVideoMark(requestedMaterialId, {
+        kind: suggestion.kind,
+        start_seconds: suggestion.start_seconds,
+        end_seconds: suggestion.end_seconds,
+        start_locator: suggestion.start_locator,
+        end_locator: suggestion.end_locator,
+        quote: suggestion.quote,
+        note: suggestion.note,
+      })
+      if (activeMaterialIdRef.current !== requestedMaterialId) return
+      setMarks(prev =>
+        [...prev, saved].sort((a, b) => a.start_seconds - b.start_seconds)
+      )
+      setSuggestedMarks(prev => prev.filter(s => s !== suggestion))
+    } catch {
+      if (activeMaterialIdRef.current === requestedMaterialId) {
+        setMarksError(t('Mark was not saved.'))
+      }
+    } finally {
+      setMarkBusy(false)
+    }
+  }
+
+  const handleDismissSuggestion = (suggestion: SuggestedVideoMark) => {
+    setSuggestedMarks(prev => prev.filter(s => s !== suggestion))
+  }
+
+  const markDraftCard = markDraft && (
+    <div className="rounded-lg border border-blue-500/30 bg-blue-500/5 p-3 text-sm">
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-mono text-xs font-semibold text-blue-600">
+          {formatTime(markDraft.start_seconds)}
+          {markDraft.end_seconds != null
+            ? ` - ${formatTime(markDraft.end_seconds)}`
+            : ''}
+        </span>
+        <div className="flex gap-1">
+          {(['key_point', 'question', 'review'] as const).map(k => (
+            <button
+              key={k}
+              type="button"
+              onClick={() =>
+                setMarkDraft(prev => (prev ? { ...prev, kind: k } : null))
+              }
+              className={`rounded px-2 py-0.5 text-xs font-medium ${
+                markDraft.kind === k
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-[var(--muted)] text-[var(--muted-foreground)]'
+              }`}
+            >
+              {k === 'key_point'
+                ? t('Key point')
+                : k === 'question'
+                  ? t('Question')
+                  : t('Review later')}
+            </button>
+          ))}
+        </div>
+      </div>
+      {markDraft.quote && (
+        <p className="mt-2 border-l-2 border-blue-500/40 pl-2 text-xs italic text-[var(--muted-foreground)]">
+          {markDraft.quote}
+        </p>
+      )}
+      <input
+        type="text"
+        value={markDraft.note}
+        onChange={e => {
+          const val = e.target.value
+          setMarkDraft(prev => (prev ? { ...prev, note: val } : null))
+        }}
+        placeholder={t('Draft note or reason...')}
+        className="mt-2 w-full rounded border border-[var(--border)] bg-transparent px-2 py-1 text-xs"
+      />
+      <div className="mt-2 flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={() => setMarkDraft(null)}
+          className="rounded px-2 py-1 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+        >
+          {t('Cancel')}
+        </button>
+        <button
+          type="button"
+          onClick={() => void handleSaveMarkDraft()}
+          disabled={markBusy}
+          className="rounded bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+        >
+          {markBusy ? (
+            <Loader2 className="mr-1 inline h-3 w-3 animate-spin" />
+          ) : null}
+          {t('Save mark')}
+        </button>
+      </div>
+    </div>
+  )
+
   return (
     <section className="flex h-full min-w-0 flex-col border-r border-[var(--border)] bg-[var(--background)]">
       <header className="flex items-center gap-2 border-b border-[var(--border)] px-4 py-3">
@@ -605,11 +919,11 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
             }}
           >
             <div
-              className="mb-3 grid w-full max-w-56 grid-cols-2 rounded-lg bg-[var(--muted)] p-1"
+              className="mb-3 grid w-full max-w-xs grid-cols-3 rounded-lg bg-[var(--muted)] p-1"
               role="tablist"
               aria-label={t('Video learning panels')}
             >
-              {(['transcript', 'notes'] as const).map(item => (
+              {(['transcript', 'marks', 'notes'] as const).map(item => (
                 <button
                   key={item}
                   type="button"
@@ -625,6 +939,11 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
                     <>
                       <Captions className="h-3.5 w-3.5" />
                       {t('Transcript')}
+                    </>
+                  ) : item === 'marks' ? (
+                    <>
+                      <Bookmark className="h-3.5 w-3.5" />
+                      {t('Marks')}
                     </>
                   ) : (
                     <>
@@ -732,6 +1051,37 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
                     </button>
                     <button
                       type="button"
+                      onClick={handleMarkHere}
+                      disabled={!material}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-2 text-sm font-medium hover:bg-[var(--muted)] disabled:opacity-50"
+                    >
+                      <Bookmark className="h-4 w-4" />
+                      {t('Mark here')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleMarkSelection}
+                      disabled={!material?.transcript.cues.length}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-2 text-sm font-medium hover:bg-[var(--muted)] disabled:opacity-50"
+                    >
+                      <BookmarkPlus className="h-4 w-4" />
+                      {t('Use selection')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleRequestSuggestions()}
+                      disabled={suggestionsLoading || !material?.transcript.cues.length}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-2 text-sm font-medium hover:bg-[var(--muted)] disabled:opacity-50"
+                    >
+                      {suggestionsLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-4 w-4" />
+                      )}
+                      {t('Suggest marks')}
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => setFollowTranscript(current => !current)}
                       disabled={Boolean(normalizedTranscriptQuery)}
                       aria-pressed={followTranscript}
@@ -741,6 +1091,7 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
                       {t('Follow playback')}
                     </button>
                   </div>
+                  {markDraftCard}
                   {normalizedTranscriptQuery && transcriptMatches.length === 0 ? (
                     <p className="rounded-lg border border-[var(--border)] p-4 text-sm text-[var(--muted-foreground)]">
                       {t('No transcript matches.')}
@@ -761,31 +1112,84 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
                           Boolean(normalizedTranscriptQuery) &&
                           transcriptMatches[selectedTranscriptMatch] === index
                         return (
-                          <button
+                          <div
                             key={`${row.start}-${index}`}
-                            type="button"
                             data-active-cue={active ? 'true' : undefined}
                             data-transcript-cue={index}
-                            onClick={() => controllerRef.current?.seek(row.start)}
-                            className={`flex w-full gap-3 rounded-md px-2 py-1.5 text-left text-sm ${
-                              active
-                                ? 'bg-blue-500/15 ring-1 ring-blue-500/30'
-                                : selectedMatch
-                                  ? 'bg-violet-500/10 ring-1 ring-violet-500/30'
-                                  : 'hover:bg-[var(--muted)]'
-                            }`}
+                            data-cue-index={index}
+                            className="group flex w-full items-start justify-between gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-[var(--muted)]"
                           >
-                            <span className="shrink-0 tabular-nums text-blue-600">
-                              {formatTime(row.start)}
-                            </span>
-                            <span>{row.text}</span>
-                          </button>
+                            <button
+                              type="button"
+                              onClick={() => controllerRef.current?.seek(row.start)}
+                              className={`flex flex-1 items-start gap-3 rounded-md text-left ${
+                                active
+                                  ? 'bg-blue-500/15 ring-1 ring-blue-500/30'
+                                  : selectedMatch
+                                    ? 'bg-violet-500/10 ring-1 ring-violet-500/30'
+                                    : ''
+                              }`}
+                            >
+                              <span className="shrink-0 tabular-nums text-blue-600">
+                                {formatTime(row.start)}
+                              </span>
+                              <span>{row.text}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleMarkCue(index)}
+                              aria-label={t('Mark this subtitle')}
+                              className="shrink-0 rounded p-1 text-[var(--muted-foreground)] opacity-0 hover:bg-[var(--muted)] hover:text-[var(--foreground)] group-hover:opacity-100 focus:opacity-100"
+                            >
+                              <BookmarkPlus className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
                         )
                       })}
                     </div>
                   )}
                 </>
               )
+            ) : tab === 'marks' ? (
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleMarkHere}
+                    disabled={!material}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-2 text-sm font-medium hover:bg-[var(--muted)] disabled:opacity-50"
+                  >
+                    <Bookmark className="h-4 w-4" />
+                    {t('Mark here')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleRequestSuggestions()}
+                    disabled={suggestionsLoading || !material?.transcript.cues.length}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-2 text-sm font-medium hover:bg-[var(--muted)] disabled:opacity-50"
+                  >
+                    {suggestionsLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-4 w-4" />
+                    )}
+                    {t('Suggest marks')}
+                  </button>
+                </div>
+                {markDraftCard}
+                <WatchingMarksPanel
+                  marks={marks}
+                  suggestions={suggestedMarks}
+                  currentTime={time}
+                  busy={markBusy || marksLoading}
+                  error={marksError}
+                  onSeek={seekTime => controllerRef.current?.seek(seekTime)}
+                  onDelete={id => void handleDeleteMark(id)}
+                  onReview={m => void handleReviewMark(m)}
+                  onSaveSuggestion={s => void handleConfirmSuggestion(s)}
+                  onDismissSuggestion={handleDismissSuggestion}
+                />
+              </div>
             ) : (
               <div className="space-y-3">
                 <form

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { CommandDeliveryError } from "../features/chat/transport/command-delivery";
 
 import {
   buildCancelTurn,
@@ -385,7 +386,22 @@ test("stopping releases waiters that will never be acknowledged", async () => {
   );
   client.stop();
 
-  assert.equal(await verdict, false);
+  await assert.rejects(verdict, CommandDeliveryError);
+});
+
+test("missing reply ACK times out without a false server rejection or delayed send", async () => {
+  const { client, sockets, scheduler } = harness();
+  client.connect();
+  const verdict = client.sendAwaitingAck(
+    buildSubmitUserReply({ turnId: "turn-1", text: "B", commandId: "unconfirmed" }),
+  );
+  const rejected = assert.rejects(verdict, CommandDeliveryError);
+  scheduler.runNext();
+  await rejected;
+  sockets[0].open();
+  assert.equal(sockets[0].sent.some((item) => item.type === "submit_user_reply"), false);
+  client.stop();
+  assert.equal(scheduler.tasks.length, 0);
 });
 
 

@@ -532,13 +532,22 @@ async def test_repair_question_tool_voids_wrong_key_from_question_bank(
             ],
         )
     )
+    # The card shuffles options at registration (choice questions), so the
+    # factually-true statement no longer owns a fixed label. Resolve its
+    # rendered label from the persisted card; the registered (wrong) key
+    # follows the "also false" body and can never collide with this label.
+    truth_label = next(
+        option["label"]
+        for option in quiz["pending_question"]["options"]
+        if option["body"] == "the true statement"
+    )
     graded = json.loads(
         (
             await MasteryGradeTool().execute(
                 _mastery_path_id=path_id,
                 _session_id=session["id"],
                 _turn_id="turn_void_1",
-                answer="C",
+                answer=truth_label,
             )
         ).content
     )

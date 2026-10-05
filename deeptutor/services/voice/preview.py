@@ -4,7 +4,29 @@ from copy import deepcopy
 
 from .adapters import get_tts_adapter
 from .audio import _parse_pcm_content_type, _pcm16_to_wav
-from .base import VoiceProviderError
+from .base import VoiceProviderError, VoiceProviderHTTPError, synthesize_with_timeout
+
+
+def preview_failure_message(error: VoiceProviderError) -> str:
+    """Give an actionable diagnosis without echoing upstream text or secrets."""
+    if error.public_message:
+        return error.public_message
+    if isinstance(error, VoiceProviderHTTPError):
+        if error.status_code == 401:
+            return "Speech authentication failed. Check the API key and its region."
+        if error.status_code == 403:
+            return "Speech access was denied. Check model and voice permissions and the API key region."
+        if error.status_code == 404:
+            return "Speech endpoint or model was not found. Check the provider URL and model ID."
+        if error.status_code in {400, 422}:
+            return "Speech parameters were rejected. Check the model, voice, language and audio format."
+        if error.status_code == 429:
+            return "Speech quota or rate limit was reached. Check your balance and quota, or retry later."
+        if error.status_code >= 500:
+            return "The speech provider is temporarily unavailable. Try again later."
+    return (
+        "Voice preview failed. Check the provider credentials, model, voice, language and format."
+    )
 
 
 async def synthesize_preview(catalog: dict, profile_id: str, model_id: str, text: str):
@@ -24,8 +46,9 @@ async def synthesize_preview(catalog: dict, profile_id: str, model_id: str, text
         raise ValueError("Saved speech credentials were not found. Enter them again.")
     if len(text) > config.max_input_chars:
         raise ValueError(f"This speech model accepts at most {config.max_input_chars} characters.")
-    config.request_timeout = min(config.request_timeout, 60)
-    audio, content_type = await get_tts_adapter(config.adapter).synthesize(text, config)
+    audio, content_type = await synthesize_with_timeout(
+        get_tts_adapter(config.adapter), text, config
+    )
     if not audio:
         raise VoiceProviderError("The provider returned empty audio.")
     pcm = _parse_pcm_content_type(content_type)

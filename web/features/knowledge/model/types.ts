@@ -3,6 +3,7 @@ export type {
   EmbeddingUsage,
   AddGitHubSourcePayload,
   AddWebSourcePayload,
+  BilingualPairing,
   EnginePreflight,
   GitHubSource,
   GitHubSyncResult,

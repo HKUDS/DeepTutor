@@ -919,16 +919,11 @@ class ReadingStore:
                 if not isinstance(row, dict):
                     continue
                 try:
-                    entries.append(
-                        OutlineEntry(
-                            locator=int(row["locator"]),
-                            title=str(row.get("title") or ""),
-                            level=max(1, int(row.get("level") or 1)),
-                            synthesised=bool(row.get("synthesised")),
-                        )
-                    )
+                    entries.append(OutlineEntry.from_dict(row))
                 except (KeyError, TypeError, ValueError):
                     continue
+            if manifest.render_mode == "epub":
+                entries = self._upgrade_epub_outline(material_id, entries)
             if manifest.render_mode == "pdf":
                 # Migrate legacy PDF imports in place at read time: older
                 # versions persisted one synthesised row per page. Returning
@@ -943,6 +938,61 @@ class ReadingStore:
             self.unit_text(material_id, locator) for locator in range(1, manifest.unit_count + 1)
         )
         return list(synthesise_outline(units))
+
+    def _upgrade_epub_outline(
+        self,
+        material_id: str,
+        entries: list[OutlineEntry],
+    ) -> list[OutlineEntry]:
+        """Restore publisher anchors in outlines written before they persisted.
+
+        Existing EPUB imports are content-addressed and idempotent, so their
+        extracted ``outline.json`` would otherwise keep the pre-anchor shape
+        forever. The raw package remains available; re-reading it once and
+        writing the enriched rows in place upgrades those books without
+        touching units, annotations, or reading positions.
+        """
+        if not entries or any(row.source_href for row in entries):
+            return entries
+        try:
+            raw_path = self.raw_path(material_id)
+            if raw_path is None:
+                return entries
+            from deeptutor.utils.document_extractor import (
+                DocumentExtractionError,
+                extract_epub_spine,
+            )
+
+            _, navigation = extract_epub_spine(raw_path.read_bytes(), raw_path.name)
+            if len(navigation) != len(entries) or any(
+                row.locator != entry.locator for row, entry in zip(navigation, entries, strict=True)
+            ):
+                return entries
+            upgraded = [
+                dataclass_replace(
+                    entry,
+                    locator=row.locator,
+                    level=row.level,
+                    source_href=row.source_href,
+                    source_anchor=row.source_anchor,
+                )
+                for row, entry in zip(navigation, entries, strict=True)
+            ]
+            if upgraded == entries:
+                return entries
+            with self._locked(material_id):
+                _atomic_write(
+                    self._dir(material_id) / OUTLINE_NAME,
+                    json.dumps([entry.to_dict() for entry in upgraded], ensure_ascii=False),
+                )
+            return upgraded
+        except (OSError, ValueError, ReadingError, DocumentExtractionError):
+            logger.warning(
+                "Could not restore EPUB navigation anchors for %s",
+                material_id,
+                exc_info=True,
+            )
+            return entries
 
     def iter_units(self, material_id: str) -> Iterator[tuple[int, str]]:
         """Stream every unit in order — for search and export."""

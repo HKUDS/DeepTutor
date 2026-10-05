@@ -17,14 +17,20 @@ from deeptutor.services.notebook.service import NotebookCorruptedError
 from deeptutor.video_learning import (
     TimedMediaError,
     TimedMediaNotFound,
+    create_mark,
+    delete_mark,
+    get_mark,
     get_timed_media_store,
     invidious_account,
     load_video_learning_settings,
+    marks_list,
     material_with_playback,
     refresh_invidious_transcript,
     resolve_material,
     save_video_learning_settings,
+    suggest_marks,
     test_invidious_connection,
+    update_mark,
 )
 from deeptutor.video_learning import notes as video_notes
 
@@ -53,6 +59,33 @@ class CreateVideoNoteRequest(BaseModel):
 
 class UpdateVideoNoteRequest(BaseModel):
     body: str = Field(min_length=1, max_length=20_000)
+
+
+class MarkCreateRequest(BaseModel):
+    kind: str = Field(min_length=1, max_length=32)
+    start_seconds: float = Field(ge=0, le=24 * 60 * 60)
+    end_seconds: float = Field(ge=0, le=24 * 60 * 60)
+    start_locator: int = Field(default=0, ge=0)
+    end_locator: int = Field(default=0, ge=0)
+    quote: str = Field(default="", max_length=4000)
+    note: str = Field(default="", max_length=2000)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class MarkPatchRequest(BaseModel):
+    kind: str | None = Field(default=None, max_length=32)
+    start_seconds: float | None = Field(default=None, ge=0, le=24 * 60 * 60)
+    end_seconds: float | None = Field(default=None, ge=0, le=24 * 60 * 60)
+    start_locator: int | None = Field(default=None, ge=0)
+    end_locator: int | None = Field(default=None, ge=0)
+    quote: str | None = Field(default=None, max_length=4000)
+    note: str | None = Field(default=None, max_length=2000)
+    reviewed: bool | None = None
+    metadata: dict[str, Any] | None = None
+
+
+class MarkSuggestionRequest(BaseModel):
+    time_seconds: float = Field(default=0.0, ge=0, le=24 * 60 * 60)
 
 
 class YouTubeSettings(BaseModel):
@@ -280,6 +313,76 @@ async def delete_video_note(material_id: str, note_id: str) -> dict[str, str]:
         return {"status": "deleted" if deleted else "missing"}
     except Exception as exc:
         raise _note_error(exc) from exc
+
+
+@router.get("/materials/{material_id}/marks")
+async def list_video_marks(material_id: str) -> list[dict[str, Any]]:
+    try:
+        material = get_timed_media_store().get(material_id)
+        return marks_list(material)
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.get("/materials/{material_id}/marks/{mark_id}")
+async def get_video_mark(material_id: str, mark_id: str) -> dict[str, Any]:
+    try:
+        material = get_timed_media_store().get(material_id)
+        return get_mark(material, mark_id)
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/materials/{material_id}/marks", status_code=201)
+async def create_video_mark(material_id: str, payload: MarkCreateRequest) -> dict[str, Any]:
+    try:
+        store = get_timed_media_store()
+        with store.lock(material_id):
+            material = store.get(material_id, lock_held=True)
+            mark = create_mark(material, payload.model_dump())
+            store.save(material)
+        return mark
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.patch("/materials/{material_id}/marks/{mark_id}")
+async def update_video_mark(
+    material_id: str, mark_id: str, payload: MarkPatchRequest
+) -> dict[str, Any]:
+    try:
+        store = get_timed_media_store()
+        fields = payload.model_dump(exclude_unset=True)
+        with store.lock(material_id):
+            material = store.get(material_id, lock_held=True)
+            mark = update_mark(material, mark_id, fields)
+            store.save(material)
+        return mark
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.delete("/materials/{material_id}/marks/{mark_id}")
+async def delete_video_mark(material_id: str, mark_id: str) -> dict[str, bool]:
+    try:
+        store = get_timed_media_store()
+        with store.lock(material_id):
+            material = store.get(material_id, lock_held=True)
+            delete_mark(material, mark_id)
+            store.save(material)
+        return {"ok": True}
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/materials/{material_id}/mark-suggestions")
+async def suggest_video_marks(material_id: str, payload: MarkSuggestionRequest) -> dict[str, Any]:
+    try:
+        material = get_timed_media_store().get(material_id)
+        suggestions = await suggest_marks(material, payload.time_seconds)
+        return {"suggestions": suggestions}
+    except Exception as exc:
+        raise _http_error(exc) from exc
 
 
 def _vtt_timestamp(value: Any) -> str:

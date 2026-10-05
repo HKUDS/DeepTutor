@@ -37,6 +37,8 @@ class MinerUParser:
         return MINERU_SUPPORTED_FORMATS
 
     def signature(self, config: MinerUConfig) -> ParserSignature:
+        from .normalization import POLICY
+
         version = f"cloud:{config.api_base_url}" if config.is_cloud else package_version("mineru")
         return ParserSignature.build(
             "mineru",
@@ -48,6 +50,19 @@ class MinerUParser:
                 "enable_formula": config.enable_formula,
                 "enable_table": config.enable_table,
                 "is_ocr": config.is_ocr,
+                **(
+                    {
+                        "segmentation": "source-pages-v1",
+                        "max_pages_per_part": config.max_pages_per_part,
+                    }
+                    if config.is_cloud
+                    else {}
+                ),
+                **(
+                    {"normalization": POLICY}
+                    if config.is_cloud and config.normalize_tiny_scans
+                    else {}
+                ),
             },
         )
 

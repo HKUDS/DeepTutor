@@ -273,6 +273,23 @@ class LlamaIndexPipeline:
         **kwargs,
     ) -> Dict[str, Any]:
         kwargs.pop("mode", None)
+        # Numbered exercises require structural lookup: tokenization discards
+        # chapter numbers, while top-k fragments omit tables and continuation.
+        # This uses completed parses only and leaves ordinary semantic queries
+        # on the existing embedding/retrieval path.
+        from .exercise_lookup import lookup_exercises, requested_exercises
+
+        if requested_exercises(query)[0]:
+            kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
+            try:
+                exact = await asyncio.to_thread(
+                    lookup_exercises, query, kb_dir, Path(self.kb_base_dir).parent / "parse_cache"
+                )
+            except Exception:
+                self.logger.exception("Exercise lookup unavailable; using normal retrieval")
+            else:
+                if exact is not None:
+                    return exact
         self._configure_settings()
         self.logger.info(f"Searching KB '{kb_name}' with query: {query[:50]}...")
 

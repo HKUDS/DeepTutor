@@ -35,7 +35,7 @@ function pagePattern(pageFile: string): RegExp {
 }
 
 const pagePatterns = walk(APP_ROOT)
-  .filter((file) => /\/page\.(?:ts|tsx|js|jsx)$/.test(file))
+  .filter((file) => /^page\.(?:ts|tsx|js|jsx)$/.test(path.basename(file)))
   .map(pagePattern);
 
 function isPagePath(value: string): boolean {

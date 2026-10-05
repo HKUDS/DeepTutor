@@ -203,16 +203,28 @@ async def test_online_probe_success_is_reported(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_online_probe_passes_one_bounded_token_parameter(monkeypatch, tmp_path) -> None:
-    import deeptutor.services.llm as llm
-
+@pytest.mark.parametrize(
+    ("configured_budget", "expected"),
+    [(None, 4096), (512, 512), (8192, 8192), ("2048", 2048), ("invalid", 4096), (0, 1)],
+)
+async def test_online_probe_uses_configured_budget(
+    monkeypatch, tmp_path, configured_budget, expected
+) -> None:
     captured = {}
 
-    async def fake_complete(**kwargs):
+    async def fake_complete(config, **kwargs):
         captured.update(kwargs)
+        captured["config"] = config
         return "OK"
 
-    monkeypatch.setattr(llm, "complete", fake_complete)
+    monkeypatch.setattr("deeptutor.services.llm.factory.complete_with_config", fake_complete)
+    (tmp_path / "agents.yaml").write_text(
+        json.dumps({"diagnostics": {"llm_probe": {"max_tokens": configured_budget}}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.config.loader.get_runtime_settings_dir", lambda _root: tmp_path
+    )
 
     report = await run_diagnostics(
         online=True,
@@ -227,21 +239,46 @@ async def test_online_probe_passes_one_bounded_token_parameter(monkeypatch, tmp_
     )
 
     assert report.ok is True
-    assert captured["max_tokens"] == 64
+    assert captured["max_tokens"] == expected
     assert "max_completion_tokens" not in captured
 
 
 @pytest.mark.asyncio
-async def test_online_probe_preserves_empty_custom_endpoint_api_key(monkeypatch, tmp_path) -> None:
-    import deeptutor.services.llm as llm
+@pytest.mark.parametrize(("response", "expected_status"), [("OK", "pass"), (" ", "fail")])
+async def test_online_probe_allows_reasoning_before_visible_output(
+    monkeypatch, tmp_path, response, expected_status
+) -> None:
+    """A healthy reasoning endpoint must not fail because the probe truncates it."""
 
+    async def fake_complete(config, **kwargs):
+        return response if kwargs["max_tokens"] >= 4096 else ""
+
+    def missing_settings(module):
+        raise FileNotFoundError("agents.yaml")
+
+    monkeypatch.setattr("deeptutor.services.llm.factory.complete_with_config", fake_complete)
+    monkeypatch.setattr("deeptutor.services.config.loader.get_agent_params", missing_settings)
+    report = await run_diagnostics(
+        online=True,
+        resolve_llm=lambda: _llm_config(model="gpt-5-mini"),
+        data_root=tmp_path,
+        load_rag_config=lambda: {"defaults": {}, "knowledge_bases": {}},
+    )
+
+    assert next(check for check in report.checks if check.key == "online").status == expected_status
+    assert report.ok is (expected_status == "pass")
+
+
+@pytest.mark.asyncio
+async def test_online_probe_preserves_empty_custom_endpoint_api_key(monkeypatch, tmp_path) -> None:
     captured = {}
 
-    async def fake_complete(**kwargs):
+    async def fake_complete(config, **kwargs):
         captured.update(kwargs)
+        captured["config"] = config
         return "OK"
 
-    monkeypatch.setattr(llm, "complete", fake_complete)
+    monkeypatch.setattr("deeptutor.services.llm.factory.complete_with_config", fake_complete)
 
     report = await run_diagnostics(
         online=True,
@@ -258,7 +295,44 @@ async def test_online_probe_preserves_empty_custom_endpoint_api_key(monkeypatch,
     )
 
     assert report.ok is True
-    assert captured["api_key"] == ""
+    assert captured["config"].api_key == ""
+
+
+@pytest.mark.asyncio
+async def test_online_probe_preserves_resolved_provider_protocol(monkeypatch, tmp_path) -> None:
+    from deeptutor.services.llm.config import LLMConfig
+
+    config = LLMConfig(
+        model="custom-reasoner",
+        provider_name="custom",
+        provider_mode="direct",
+        binding="openai",
+        api_key="",
+        base_url="https://models.example.com/v1",
+        wire_api="responses",
+        extra_headers={"X-Tenant": "tenant-a"},
+    )
+    captured = {}
+
+    async def fake_complete(snapshot, **kwargs):
+        captured["config"] = snapshot
+        captured.update(kwargs)
+        return "OK"
+
+    monkeypatch.setattr("deeptutor.services.llm.factory.complete_with_config", fake_complete)
+    report = await run_diagnostics(
+        online=True,
+        resolve_llm=lambda: config,
+        data_root=tmp_path,
+        load_rag_config=lambda: {"defaults": {}, "knowledge_bases": {}},
+    )
+
+    assert report.ok is True
+    assert captured["config"] is config
+    assert config.wire_api == "responses"
+    assert config.extra_headers == {"X-Tenant": "tenant-a"}
+    assert "binding" not in captured
+    assert "api_key" not in captured
 
 
 @pytest.mark.asyncio

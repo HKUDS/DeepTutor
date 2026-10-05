@@ -113,6 +113,8 @@ def test_surface_material_upload_and_extension_guards(mu_isolated_root, seed_use
     with as_user(learner["id"], username="student"):
         assert_learning_surface("chat")
         assert_learning_surface("reading")
+        with pytest.raises(PermissionError, match="books surface"):
+            assert_learning_surface("books")
         with pytest.raises(PermissionError, match="knowledge surface"):
             assert_learning_surface("knowledge")
 
@@ -171,6 +173,7 @@ def test_learner_preset_falls_back_to_the_conservative_policy(mu_isolated_root, 
 
     assert policy is not None
     assert policy["default_capability"] == "immersive_reading"
+    assert policy["allowed_surfaces"] == ["chat", "reading"]
     assert policy["reading"] == {
         "allow_upload": False,
         "material_ids": [],

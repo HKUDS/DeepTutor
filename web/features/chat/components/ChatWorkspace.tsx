@@ -1,5 +1,7 @@
 "use client";
 
+import { COMMAND_CONFIRMATION_FAILED } from "@/features/chat/transport/command-delivery";
+
 import { ResourceReuseContext, useResourceReusePolicy } from "@/components/chat/home/ResourceReuse";
 import { retainedKnowledgeBases } from "@/lib/resource-reuse";
 import { knowledgeBaseRef } from "@/lib/knowledge-helpers";
@@ -326,6 +328,12 @@ export default function ChatWorkspace({
   const [knowledgeBasesLoaded, setKnowledgeBasesLoaded] = useState(false);
   const availableKbNames = useMemo(
     () => new Set(knowledgeBases.map(knowledgeBaseRef)),
+    [knowledgeBases],
+  );
+  // Sent-message reference chips show the readable KB name; the snapshot
+  // stores the qualified ref, so the label is resolved through this map.
+  const kbDisplayNames = useMemo(
+    () => Object.fromEntries(knowledgeBases.map((kb) => [knowledgeBaseRef(kb), kb.name])),
     [knowledgeBases],
   );
   // A connected agent to preselect once it loads, from `?agent=<name>` on the
@@ -1904,7 +1912,13 @@ export default function ChatWorkspace({
       // the learner with a turn they can only cancel.
       if (awaitingUserReplyRef.current) {
         if (!content.trim()) return;
-        if (await submitUserReply({ text: content })) return;
+        try {
+          if (await submitUserReply({ text: content })) return;
+        } catch {
+          notify(t(COMMAND_CONFIRMATION_FAILED), { tone: "error" });
+          prefillInputRef.current?.(content);
+          return;
+        }
         // Refused: the turn that asked is gone. Do NOT stop here. The
         // composer has already cleared the box, so returning discarded what
         // they typed — while the error told them to "send a new message",
@@ -2652,6 +2666,9 @@ export default function ChatWorkspace({
                         availableKbNames={
                           knowledgeBasesLoaded ? availableKbNames : undefined
                         }
+                        kbDisplayNames={
+                          knowledgeBasesLoaded ? kbDisplayNames : undefined
+                        }
                       />
                       <div
                         ref={messagesEndRef}
@@ -2891,6 +2908,7 @@ export default function ChatWorkspace({
             />
             <QuestionBankPicker
               open={showQuestionBankPicker}
+              initialSelected={selectedQuestionEntries}
               onClose={handleCloseQuestionBankPicker}
               onApply={handleApplyQuestionEntries}
             />

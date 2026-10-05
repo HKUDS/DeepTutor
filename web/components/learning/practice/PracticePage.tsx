@@ -16,7 +16,7 @@ import { PracticeImport } from "./PracticeImport";
 import { PracticeSession } from "./PracticeSession";
 import { PracticeInsights } from "./PracticeInsights";
 
-/** Shared collections and imports; the library surface omits practice-only tools. */
+/** Shared collections and imports; both surfaces can start a manual practice session. */
 export function PracticePage({ mode = "practice" }: { mode?: "practice" | "library" }) {
   const search = useSearchParams();
   if (mode === "practice" && !search.has("course") && !search.has("question")) return <ReviewHome />;
@@ -137,7 +137,7 @@ function ScopedPracticePage({ mode, initialImport }: { mode: "practice" | "libra
     >
       {!libraryOnly && <div className="mb-4 flex items-center gap-3 text-xs"><a href="/learning/practice" className="underline">{t("All workspaces")}</a><WorkspaceLabel row={{ content_workspace_id: activeWorkspaceId() }} /></div>}
       {session ? (
-        <PracticeSession ids={session} onClose={closeSession} />
+        <PracticeSession ids={session} onClose={closeSession} backLabel={libraryOnly ? t("Back to library") : undefined} />
       ) : (
         <>
           {notice && (
@@ -264,14 +264,10 @@ function ScopedPracticePage({ mode, initialImport }: { mode: "practice" | "libra
               embedded
               onChanged={refresh}
               mistakesOnly={tab === "mistakes"}
-              onPractice={
-                libraryOnly
-                  ? undefined
-                  : ids => {
-                      setSession(ids);
-                      setNotice("");
-                    }
-              }
+              onPractice={ids => {
+                setSession(ids);
+                setNotice("");
+              }}
             />
           </div>
         </>

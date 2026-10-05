@@ -71,11 +71,14 @@ import {
   saveDraft,
 } from "@/features/co-writer/storage/drafts";
 import { useSelectionEdit } from "@/features/co-writer/hooks/useSelectionEdit";
+import type { LLMSelection } from "@/features/chat/model/protocol";
 import { useSplitPane } from "@/features/co-writer/hooks/useSplitPane";
 import { useSynchronizedScroll } from "@/features/co-writer/hooks/useSynchronizedScroll";
 import { useDocumentLifecycle } from "@/features/co-writer/hooks/useDocumentLifecycle";
 import type { NotebookSavePayload } from "@/components/notebook/SaveToNotebookModal";
 import { CO_WRITER_SAMPLE_TEMPLATE } from "@/app/(workspace)/co-writer/sampleTemplate";
+import ModelSelector from "@/components/chat/home/ModelSelector";
+import { useLLMOptions } from "@/hooks/useLLMOptions";
 import Tooltip from "@/shared/ui/Tooltip";
 
 const MarkdownRenderer = dynamic(
@@ -254,6 +257,7 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
   const [selectionInstruction, setSelectionInstruction] = useState("");
   const [selectionMode, setSelectionMode] = useState<SelectionMode>("rewrite");
   const [selectionTools, setSelectionTools] = useState<ToolName[]>([]);
+  const [llmSelection, setLLMSelection] = useState<LLMSelection | null>(null);
   const [isToolMenuOpen, setIsToolMenuOpen] = useState(false);
   const [isModeMenuOpen, setIsModeMenuOpen] = useState(false);
   const [selectionTrace, setSelectionTrace] =
@@ -267,6 +271,18 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingUndoSnapshotRef = useRef<string | null>(null);
   const [hasLoadedDraft, setHasLoadedDraft] = useState(false);
+  const {
+    options: llmOptions,
+    activeDefault: activeLLMDefault,
+    loading: llmOptionsLoading,
+    error: llmOptionsError,
+    refresh: refreshLLMOptions,
+  } = useLLMOptions();
+
+  useEffect(() => {
+    if (llmSelection || !activeLLMDefault) return;
+    setLLMSelection(activeLLMDefault);
+  }, [activeLLMDefault, llmSelection]);
 
   useEffect(() => {
     markdownRef.current = markdown;
@@ -987,6 +1003,7 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
             mode: selectionMode,
             tools: selectionTools,
             kb_name: selectionTools.includes("rag") ? kbName || null : null,
+            llm_selection: llmSelection,
           }),
         },
       );
@@ -1082,6 +1099,7 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
     selectionInstruction,
     selectionMode,
     selectionTools,
+    llmSelection,
     startSelectionRequest,
     t,
     updateSelectionTraceFromEvent,
@@ -1106,6 +1124,7 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
           action,
           source: source === "none" ? null : source,
           kb_name: source === "rag" ? kbName || null : null,
+          llm_selection: llmSelection,
         }),
       });
       const data = await response.json();
@@ -1148,7 +1167,10 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: snapshot }),
+          body: JSON.stringify({
+            text: snapshot,
+            llm_selection: llmSelection,
+          }),
         },
       );
       const data = await response.json();
@@ -2173,6 +2195,19 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
             </div>
           </div>
 
+          <div className="mt-2 flex justify-end">
+            <ModelSelector
+              options={llmOptions}
+              activeDefault={activeLLMDefault}
+              value={llmSelection}
+              loading={llmOptionsLoading}
+              error={llmOptionsError}
+              onChange={setLLMSelection}
+              onRefresh={() => void refreshLLMOptions({ force: true })}
+              placement="top"
+            />
+          </div>
+
           {selectionTools.includes("rag") && (
             <select
               value={kbName}
@@ -2363,6 +2398,22 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
                     ))}
                   </select>
                 </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
+                  {t("Model")}
+                </label>
+                <ModelSelector
+                  options={llmOptions}
+                  activeDefault={activeLLMDefault}
+                  value={llmSelection}
+                  loading={llmOptionsLoading}
+                  error={llmOptionsError}
+                  onChange={setLLMSelection}
+                  onRefresh={() => void refreshLLMOptions({ force: true })}
+                  placement="bottom"
+                />
               </div>
             </div>
 

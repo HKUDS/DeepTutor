@@ -19,7 +19,8 @@
  * one. The action is now the screen itself.
  */
 
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
+import { COMMAND_CONFIRMATION_FAILED } from "@/features/chat/transport/command-delivery";
 import { useTranslation } from "react-i18next";
 
 import StandaloneComposer, {
@@ -71,6 +72,8 @@ export function MasteryComposer({
   useWorkspaceChatActions({ pinnedCapability: MASTERY_CAPABILITY_VALUE });
   const contextBudget = useContextBudget(state.messages);
   const { t } = useTranslation();
+  const fallbackInputRef = useRef<((text: string) => void) | null>(null);
+  const replyInputRef = prefillInputRef ?? fallbackInputRef;
 
   // A turn paused on an ask_user card is still "streaming", but typing an
   // answer is exactly how it moves forward — the composer stays live.
@@ -117,12 +120,15 @@ export function MasteryComposer({
           if (sent) return;
           notify(t(REPLY_SENT_AS_NEW_MESSAGE));
           sendAsNewMessage();
+        }).catch(() => {
+          notify(t(COMMAND_CONFIRMATION_FAILED), { tone: "error" });
+          replyInputRef.current?.(submission.content);
         });
         return;
       }
       sendAsNewMessage();
     },
-    [awaitingUserReply, disabled, sendMessage, submitUserReply, t],
+    [awaitingUserReply, disabled, sendMessage, submitUserReply, replyInputRef, t],
   );
 
   return (
@@ -147,7 +153,7 @@ export function MasteryComposer({
       // question shows the learner a way in.
       inputPlaceholder={askHint || placeholder}
       inputPlaceholderCompletion={askHint}
-      prefillInputRef={prefillInputRef}
+      prefillInputRef={replyInputRef}
       // A tutoring transcript fills a window faster than a chat one — a topic's
       // materials, the map, and the whole history of questions all ride along —
       // so the reading belongs here at least as much as on the chat page.

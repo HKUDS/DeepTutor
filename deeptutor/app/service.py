@@ -133,6 +133,8 @@ class TurnApplicationService:
     #
     # The cap below exists only for a leaked lease; it is not the normal path.
     _POST_DONE_MAX_SECONDS = 30.0
+    _CANCEL_WAIT_INTERVAL_SECONDS = 0.05
+    _ACTIVE_TURN_STATUSES = frozenset({"queued", "running", "waiting_input"})
 
     @staticmethod
     def _done_has_tail(event: dict[str, Any]) -> bool:
@@ -279,6 +281,40 @@ class TurnApplicationService:
         # WebSocket adapter must acknowledge that retry as success so a client
         # that lost the first ACK can retire its durable outbox entry.
         return True
+
+    @workspace_writer
+    async def cancel_turn_and_wait(
+        self,
+        turn_id: str,
+        *,
+        command_id: str | None = None,
+        timeout_seconds: float = 15.0,
+    ) -> bool:
+        """Stop a live turn and wait until its owner has finished teardown."""
+        if not await self.cancel_turn(turn_id, command_id=command_id):
+            return False
+        store, _runtime = self._resolve()
+        deadline = time.monotonic() + max(0.0, float(timeout_seconds))
+        released = False
+        while True:
+            turn = await store.get_turn(turn_id)
+            status = str((turn or {}).get("status") or "")
+            lease = await self.coordinator.get_lease(turn_id)
+            if turn is not None and status not in self._ACTIVE_TURN_STATUSES and lease is None:
+                released = True
+                break
+            if turn is None and lease is None:
+                released = True
+                break
+            if time.monotonic() >= deadline:
+                break
+            await asyncio.sleep(self._CANCEL_WAIT_INTERVAL_SECONDS)
+        if released:
+            # Lease release happens just before the owner's activity guard
+            # exits. Leave one polling interval so deletion does not race that
+            # final unwind.
+            await asyncio.sleep(self._CANCEL_WAIT_INTERVAL_SECONDS)
+        return released
 
     @workspace_writer
     async def submit_user_reply(

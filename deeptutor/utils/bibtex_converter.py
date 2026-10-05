@@ -194,6 +194,9 @@ def _scan_entry(text: str, match: re.Match[str]) -> tuple[_Entry | None, int] | 
     index = match.end()
     brace_depth = 1 if opener == "{" else 0
     paren_depth = 1 if opener == "(" else 0
+    # A double quote only delimits a value at the entry's top level; inside
+    # braces it is literal text, as in the umlaut accent ``{\"u}``.
+    top_level_depth = brace_depth
     quoted = False
     escaped = False
 
@@ -208,7 +211,7 @@ def _scan_entry(text: str, match: re.Match[str]) -> tuple[_Entry | None, int] | 
                 quoted = False
             index += 1
             continue
-        if char == '"':
+        if char == '"' and brace_depth == top_level_depth:
             quoted = True
         elif char == "{":
             brace_depth += 1
