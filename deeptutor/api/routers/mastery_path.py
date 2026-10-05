@@ -14,6 +14,7 @@ from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 from pydantic import ValidationError as PydanticValidationError
 
+from deeptutor.api.routers.mastery_tutor import TutorRequest
 from deeptutor.learning import policy as learning_policy
 from deeptutor.learning import prompts as learning_prompts
 from deeptutor.learning.models import (
@@ -1286,3 +1287,21 @@ async def generate_from_reading(book_id: str, body: GenerateFromReadingRequest):
             records=[NotebookRecordInput(**record) for record in records],
         ),
     )
+
+
+# The network boundary delegates to the built-in tutor tools.
+
+
+@router.get("/tutor-tools")
+async def get_tutor_tools():
+    from deeptutor.api.routers.mastery_tutor import tutor_catalog
+
+    return tutor_catalog()
+
+
+@router.post("/topics/{path_id}/tutor")
+async def invoke_tutor_tool(path_id: str, body: TutorRequest):
+    from deeptutor.api.routers.mastery_tutor import call_tutor
+
+    _validate_book_id(path_id)
+    return await call_tutor(path_id, body)
