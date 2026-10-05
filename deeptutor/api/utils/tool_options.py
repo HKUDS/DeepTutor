@@ -100,8 +100,7 @@ async def build_tool_options(
             # of dropping it from the options without a trace.
             kind, provider_id = provider_identity(tool)
             logger.warning(
-                "tool options skipped %s tool %r (provider %r): "
-                "get_definition() failed: %s",
+                "tool options skipped %s tool %r (provider %r): get_definition() failed: %s",
                 kind or "unknown",
                 type(tool).__name__,
                 provider_id or "unknown",
