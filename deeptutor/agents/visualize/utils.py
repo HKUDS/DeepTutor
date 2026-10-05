@@ -109,6 +109,18 @@ def _strip_outer_fence(text: str) -> str:
     return match.group(1).strip() if match else stripped
 
 
+def _decode_leading_json(text: str) -> object | None:
+    """Parse the first JSON value; ignore trailing prose after it."""
+    stripped = (text or "").lstrip()
+    if not stripped:
+        return None
+    try:
+        parsed, _end = json.JSONDecoder().raw_decode(stripped)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    return parsed
+
+
 def validate_visualization(code: str, render_type: str) -> tuple[bool, str]:
     """Cheap, deterministic, local render-ability check.
 
@@ -144,9 +156,8 @@ def validate_visualization(code: str, render_type: str) -> tuple[bool, str]:
 
     if render_type == "chartjs":
         candidate = _strip_outer_fence(text)
-        try:
-            config = json.loads(candidate)
-        except (json.JSONDecodeError, TypeError):
+        config = _decode_leading_json(candidate)
+        if config is None:
             return False, (
                 "Chart.js config must be strict JSON: double-quoted keys, no "
                 "function callbacks, no comments, no trailing commas."
