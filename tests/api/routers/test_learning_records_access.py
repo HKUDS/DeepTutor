@@ -17,9 +17,9 @@ from __future__ import annotations
 from pathlib import Path
 import types
 
-import pytest
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
+import pytest
 
 from deeptutor.services.auth import TokenPayload
 
@@ -124,9 +124,7 @@ def test_records_stay_within_each_account(records_client: TestClient) -> None:
         token = _install_current_user(_acting_user(user_id))
         try:
             store = LearningStore()
-            store.record_reading_position(
-                material_id, locator=locator, percentage=percentage
-            )
+            store.record_reading_position(material_id, locator=locator, percentage=percentage)
             store.record_reading_activity(
                 material_id,
                 extension_id="sample-ext",
@@ -208,9 +206,7 @@ def test_records_activity_tail_is_bounded_and_most_recent_first(
     finally:
         reset_current_user(bob_token)
 
-    response = records_client.get(
-        RECORDS_URL, headers={"Authorization": "Bearer token-alice"}
-    )
+    response = records_client.get(RECORDS_URL, headers={"Authorization": "Bearer token-alice"})
     assert response.status_code == 200
     body = response.json()
 
@@ -220,9 +216,7 @@ def test_records_activity_tail_is_bounded_and_most_recent_first(
         "the tail must be the 200 most recent activities, newest first"
     )
     created = [row["created_at"] for row in activities]
-    assert created == sorted(created, reverse=True), (
-        "activities must arrive newest first"
-    )
+    assert created == sorted(created, reverse=True), "activities must arrive newest first"
 
     # Progress is a per-material summary, not part of the paginated tail.
     assert len(body["progress"]) == 3
@@ -244,9 +238,7 @@ def test_records_activity_tail_is_bounded_and_most_recent_first(
 def test_records_for_fresh_account_are_empty(records_client: TestClient) -> None:
     """Empty branch: an account with no reading history gets a 200 with empty
     collections — never an error and never another account's data."""
-    response = records_client.get(
-        RECORDS_URL, headers={"Authorization": "Bearer token-bob"}
-    )
+    response = records_client.get(RECORDS_URL, headers={"Authorization": "Bearer token-bob"})
     assert response.status_code == 200
     assert response.json() == {"progress": [], "activities": []}
 
@@ -258,9 +250,7 @@ def test_records_reject_missing_and_invalid_tokens(records_client: TestClient) -
     assert missing.status_code == 401
     assert missing.headers["WWW-Authenticate"] == "Bearer"
 
-    invalid = records_client.get(
-        RECORDS_URL, headers={"Authorization": "Bearer not-a-real-token"}
-    )
+    invalid = records_client.get(RECORDS_URL, headers={"Authorization": "Bearer not-a-real-token"})
     assert invalid.status_code == 401
     assert invalid.headers["WWW-Authenticate"] == "Bearer"
 
@@ -271,9 +261,7 @@ def test_records_reject_wrong_method_and_conflicting_workspace(
     """Invalid input 4xx branches on the records route: the read-only endpoint
     refuses writes with 405, and a request that claims two different
     workspace scopes is refused with 400 instead of silently picking one."""
-    posted = records_client.post(
-        RECORDS_URL, json={"material_id": "rm_alice_book", "locator": 9}
-    )
+    posted = records_client.post(RECORDS_URL, json={"material_id": "rm_alice_book", "locator": 9})
     assert posted.status_code == 405
 
     conflicted = records_client.get(
