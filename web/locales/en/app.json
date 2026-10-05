@@ -5330,5 +5330,16 @@
   "Could not connect to the speech provider. Check the provider URL and network connection.": "Could not connect to the speech provider. Check the provider URL and network connection.",
   "Qwen-Audio TTS requires a Beijing API key. You can set a Beijing workspace URL in the provider connection; the speech endpoint is selected automatically.": "Qwen-Audio TTS requires a Beijing API key. You can set a Beijing workspace URL in the provider connection; the speech endpoint is selected automatically.",
   "Speech was generated, but the audio download failed. Try again or check the network connection.": "Speech was generated, but the audio download failed. Try again or check the network connection.",
-  "Request timeout (seconds)": "Request timeout (seconds)"
+  "Request timeout (seconds)": "Request timeout (seconds)",
+  "Scheduled tasks": "Scheduled tasks",
+  "Control the built-in scheduler that runs reminders and other scheduled jobs. Jobs only call the model when they are due.": "Control the built-in scheduler that runs reminders and other scheduled jobs. Jobs only call the model when they are due.",
+  "Loading scheduled-task settings...": "Loading scheduled-task settings...",
+  "Failed to load scheduled-task settings.": "Failed to load scheduled-task settings.",
+  "Failed to save scheduled-task settings.": "Failed to save scheduled-task settings.",
+  "Scheduler": "Scheduler",
+  "Turning this off stops the periodic scheduler entirely — due jobs stay dormant until it is turned back on, so a quiet deployment consumes no provider quota on a timer.": "Turning this off stops the periodic scheduler entirely — due jobs stay dormant until it is turned back on, so a quiet deployment consumes no provider quota on a timer.",
+  "Enable scheduled tasks": "Enable scheduled tasks",
+  "Applies immediately; no restart needed. Jobs that came due while disabled run once when re-enabled.": "Applies immediately; no restart needed. Jobs that came due while disabled run once when re-enabled.",
+  "Idle re-check interval (seconds)": "Idle re-check interval (seconds)",
+  "How often the scheduler re-checks the job store when nothing is due. Individual job schedules are unaffected.": "How often the scheduler re-checks the job store when nothing is due. Individual job schedules are unaffected."
 }

@@ -5773,5 +5773,16 @@
   "Qwen-Audio TTS speed must be between 0.5 and 2.": "La vitesse de Qwen-Audio TTS doit être comprise entre 0,5 et 2.",
   "Qwen3 TTS uses voices such as Cherry and outputs WAV audio. Match the API key region to the provider URL.": "Qwen3 TTS utilise des voix comme Cherry et produit un audio WAV. Faites correspondre la région de la clé API à l’URL du fournisseur.",
   "Qwen-Audio TTS requires a Beijing API key. You can set a Beijing workspace URL in the provider connection; the speech endpoint is selected automatically.": "Qwen-Audio TTS nécessite une clé API pour la région de Pékin. Vous pouvez définir une URL d’espace de travail de Pékin dans la connexion au fournisseur ; le point de terminaison vocal est sélectionné automatiquement.",
-  "Fetching the model list does not test speech synthesis. Use Preview voice to test this model and voice.": "Récupérer la liste des modèles ne teste pas la synthèse vocale. Utilisez l’aperçu vocal pour tester ce modèle et cette voix."
+  "Fetching the model list does not test speech synthesis. Use Preview voice to test this model and voice.": "Récupérer la liste des modèles ne teste pas la synthèse vocale. Utilisez l’aperçu vocal pour tester ce modèle et cette voix.",
+  "Scheduled tasks": "Tâches planifiées",
+  "Control the built-in scheduler that runs reminders and other scheduled jobs. Jobs only call the model when they are due.": "Contrôlez le planificateur intégré qui exécute les rappels et d’autres tâches planifiées. Les tâches n’appellent le modèle que lorsqu’elles sont dues.",
+  "Loading scheduled-task settings...": "Chargement des paramètres des tâches planifiées...",
+  "Failed to load scheduled-task settings.": "Échec du chargement des paramètres des tâches planifiées.",
+  "Failed to save scheduled-task settings.": "Échec de l’enregistrement des paramètres des tâches planifiées.",
+  "Scheduler": "Planificateur",
+  "Turning this off stops the periodic scheduler entirely — due jobs stay dormant until it is turned back on, so a quiet deployment consumes no provider quota on a timer.": "Désactiver ceci arrête entièrement le planificateur périodique — les tâches dues restent dormantes jusqu’à sa réactivation, de sorte qu’un déploiement silencieux ne consomme aucun quota de fournisseur selon une minuterie.",
+  "Enable scheduled tasks": "Activer les tâches planifiées",
+  "Applies immediately; no restart needed. Jobs that came due while disabled run once when re-enabled.": "Appliqué immédiatement ; aucun redémarrage nécessaire. Les tâches devenues dues pendant la désactivation s’exécutent une fois après la réactivation.",
+  "Idle re-check interval (seconds)": "Intervalle de revérification au repos (secondes)",
+  "How often the scheduler re-checks the job store when nothing is due. Individual job schedules are unaffected.": "Fréquence à laquelle le planificateur revérifie le stockage des tâches lorsque rien n’est dû. Les planifications individuelles des tâches ne sont pas affectées."
 }

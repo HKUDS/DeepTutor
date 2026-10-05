@@ -5346,5 +5346,16 @@
   "Qwen-Audio TTS speed must be between 0.5 and 2.": "Швидкість Qwen-Audio TTS має бути від 0,5 до 2.",
   "Qwen3 TTS uses voices such as Cherry and outputs WAV audio. Match the API key region to the provider URL.": "Qwen3 TTS використовує голоси на кшталт Cherry та створює аудіо WAV. Регіон ключа API має відповідати URL провайдера.",
   "Qwen-Audio TTS requires a Beijing API key. You can set a Beijing workspace URL in the provider connection; the speech endpoint is selected automatically.": "Qwen-Audio TTS потребує ключа API для регіону Пекін. У підключенні провайдера можна задати URL робочого простору для регіону Пекін; кінцева точка мовлення вибирається автоматично.",
-  "Fetching the model list does not test speech synthesis. Use Preview voice to test this model and voice.": "Отримання списку моделей не перевіряє синтез мовлення. Скористайтеся попереднім прослуховуванням голосу, щоб перевірити модель і голос."
+  "Fetching the model list does not test speech synthesis. Use Preview voice to test this model and voice.": "Отримання списку моделей не перевіряє синтез мовлення. Скористайтеся попереднім прослуховуванням голосу, щоб перевірити модель і голос.",
+  "Scheduled tasks": "Заплановані завдання",
+  "Control the built-in scheduler that runs reminders and other scheduled jobs. Jobs only call the model when they are due.": "Керуйте вбудованим планувальником, який виконує нагадування та інші заплановані завдання. Завдання викликають модель лише тоді, коли настане їхній термін.",
+  "Loading scheduled-task settings...": "Завантаження параметрів запланованих завдань...",
+  "Failed to load scheduled-task settings.": "Не вдалося завантажити параметри запланованих завдань.",
+  "Failed to save scheduled-task settings.": "Не вдалося зберегти параметри запланованих завдань.",
+  "Scheduler": "Планувальник",
+  "Turning this off stops the periodic scheduler entirely — due jobs stay dormant until it is turned back on, so a quiet deployment consumes no provider quota on a timer.": "Вимкнення повністю зупиняє періодичний планувальник — завдання, строк яких настав, залишаються неактивними, поки його не буде знову увімкнено, тож тихе розгортання не витрачає квоту провайдера за таймером.",
+  "Enable scheduled tasks": "Увімкнути заплановані завдання",
+  "Applies immediately; no restart needed. Jobs that came due while disabled run once when re-enabled.": "Застосовується негайно; перезавантаження не потрібне. Завдання, строк яких настав під час вимкнення, виконаються один раз після повторного вмикання.",
+  "Idle re-check interval (seconds)": "Інтервал повторної перевірки в режимі очікування (секунди)",
+  "How often the scheduler re-checks the job store when nothing is due. Individual job schedules are unaffected.": "Як часто планувальник повторно перевіряє сховище завдань, коли нічого не належить виконувати. Розклади окремих завдань не змінюються."
 }

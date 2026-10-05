@@ -5330,5 +5330,16 @@
   "Could not connect to the speech provider. Check the provider URL and network connection.": "Der Sprachanbieter konnte nicht erreicht werden. Prüfe die Anbieter-URL und Netzwerkverbindung.",
   "Qwen-Audio TTS requires a Beijing API key. You can set a Beijing workspace URL in the provider connection; the speech endpoint is selected automatically.": "Qwen-Audio TTS erfordert einen API-Schlüssel für Peking. In der Anbieterverbindung kannst du eine Arbeitsbereichs-URL für Peking angeben; der Sprachendpunkt wird automatisch gewählt.",
   "Speech was generated, but the audio download failed. Try again or check the network connection.": "Die Sprache wurde erzeugt, aber der Audiodownload ist fehlgeschlagen. Versuche es erneut oder prüfe die Netzwerkverbindung.",
-  "Request timeout (seconds)": "Zeitlimit für Anfragen (Sekunden)"
+  "Request timeout (seconds)": "Zeitlimit für Anfragen (Sekunden)",
+  "Scheduled tasks": "Geplante Aufgaben",
+  "Control the built-in scheduler that runs reminders and other scheduled jobs. Jobs only call the model when they are due.": "Steuere den integrierten Scheduler, der Erinnerungen und andere geplante Aufgaben ausführt. Aufgaben rufen das Modell nur auf, wenn sie fällig sind.",
+  "Loading scheduled-task settings...": "Einstellungen für geplante Aufgaben werden geladen...",
+  "Failed to load scheduled-task settings.": "Einstellungen für geplante Aufgaben konnten nicht geladen werden.",
+  "Failed to save scheduled-task settings.": "Einstellungen für geplante Aufgaben konnten nicht gespeichert werden.",
+  "Scheduler": "Scheduler",
+  "Turning this off stops the periodic scheduler entirely — due jobs stay dormant until it is turned back on, so a quiet deployment consumes no provider quota on a timer.": "Wenn du dies ausschaltest, wird der periodische Scheduler vollständig gestoppt — fällige Aufgaben bleiben inaktiv, bis er wieder aktiviert wird, sodass eine ruhige Bereitstellung kein Anbieter-Kontingent nach Zeitplan verbraucht.",
+  "Enable scheduled tasks": "Geplante Aufgaben aktivieren",
+  "Applies immediately; no restart needed. Jobs that came due while disabled run once when re-enabled.": "Wird sofort wirksam; kein Neustart nötig. Aufgaben, die während der Deaktivierung fällig wurden, laufen nach dem erneuten Aktivieren einmal aus.",
+  "Idle re-check interval (seconds)": "Prüfintervall bei Leerlauf (Sekunden)",
+  "How often the scheduler re-checks the job store when nothing is due. Individual job schedules are unaffected.": "Wie oft der Scheduler den Auftragsspeicher erneut prüft, wenn nichts fällig ist. Zeitpläne einzelner Aufgaben bleiben unverändert."
 }

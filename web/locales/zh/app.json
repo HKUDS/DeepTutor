@@ -5330,5 +5330,16 @@
   "Could not connect to the speech provider. Check the provider URL and network connection.": "无法连接语音服务，请检查提供方 URL 和网络连接。",
   "Qwen-Audio TTS requires a Beijing API key. You can set a Beijing workspace URL in the provider connection; the speech endpoint is selected automatically.": "Qwen-Audio TTS 需要北京地域的 API Key。可在提供方连接中填写北京业务空间 URL，系统会自动选择合成端点。",
   "Speech was generated, but the audio download failed. Try again or check the network connection.": "语音已生成，但音频下载失败，请重试或检查网络连接。",
-  "Request timeout (seconds)": "请求超时（秒）"
+  "Request timeout (seconds)": "请求超时（秒）",
+  "Scheduled tasks": "定时任务",
+  "Control the built-in scheduler that runs reminders and other scheduled jobs. Jobs only call the model when they are due.": "控制内置调度器，它负责运行提醒等计划任务。任务只在到期时才会调用模型。",
+  "Loading scheduled-task settings...": "正在加载定时任务设置…",
+  "Failed to load scheduled-task settings.": "加载定时任务设置失败。",
+  "Failed to save scheduled-task settings.": "保存定时任务设置失败。",
+  "Scheduler": "调度器",
+  "Turning this off stops the periodic scheduler entirely — due jobs stay dormant until it is turned back on, so a quiet deployment consumes no provider quota on a timer.": "关闭后将完全停止周期性调度——到期的任务会保持休眠，直到重新开启；安静的部署不会按计时消耗模型配额。",
+  "Enable scheduled tasks": "启用定时任务",
+  "Applies immediately; no restart needed. Jobs that came due while disabled run once when re-enabled.": "立即生效，无需重启。禁用期间到期的任务会在重新启用后运行一次。",
+  "Idle re-check interval (seconds)": "空闲重检间隔（秒）",
+  "How often the scheduler re-checks the job store when nothing is due. Individual job schedules are unaffected.": "没有任务到期时调度器重新检查任务存储的频率。不影响单个任务的计划。"
 }
