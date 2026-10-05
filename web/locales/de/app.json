@@ -5337,7 +5337,7 @@
   "Failed to load scheduled-task settings.": "Einstellungen für geplante Aufgaben konnten nicht geladen werden.",
   "Failed to save scheduled-task settings.": "Einstellungen für geplante Aufgaben konnten nicht gespeichert werden.",
   "Scheduler": "Scheduler",
-  "Turning this off stops the periodic scheduler entirely — due jobs stay dormant until it is turned back on, so a quiet deployment consumes no provider quota on a timer.": "Wenn du dies ausschaltest, wird der periodische Scheduler vollständig gestoppt — fällige Aufgaben bleiben inaktiv, bis er wieder aktiviert wird, sodass eine ruhige Bereitstellung kein Anbieter-Kontingent nach Zeitplan verbraucht.",
+  "Turning this off stops the periodic scheduler entirely — due jobs stay dormant until it is turned back on, so a quiet deployment consumes no provider quota on a timer.": "Wenn du dies ausschaltest, wird der periodische Scheduler vollständig gestoppt. Fällige Aufgaben bleiben inaktiv, bis er wieder aktiviert wird, sodass eine ruhige Bereitstellung kein Anbieter-Kontingent nach Zeitplan verbraucht.",
   "Enable scheduled tasks": "Geplante Aufgaben aktivieren",
   "Applies immediately; no restart needed. Jobs that came due while disabled run once when re-enabled.": "Wird sofort wirksam; kein Neustart nötig. Aufgaben, die während der Deaktivierung fällig wurden, laufen nach dem erneuten Aktivieren einmal aus.",
   "Idle re-check interval (seconds)": "Prüfintervall bei Leerlauf (Sekunden)",
