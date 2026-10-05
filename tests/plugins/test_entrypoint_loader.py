@@ -165,9 +165,7 @@ def test_registry_load_plugins_loads_canonical_extensions_group(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_missing_dependency_entry_point_is_skipped_others_still_load(
-    monkeypatch, caplog
-):
+def test_missing_dependency_entry_point_is_skipped_others_still_load(monkeypatch, caplog):
     def _missing_dep():
         raise ModuleNotFoundError("No module named 'plugin_dep'")
 
@@ -201,9 +199,7 @@ def test_load_plugin_capability_propagates_missing_module():
         load_plugin_capability(manifest)
 
 
-def test_legacy_instantiation_error_aborts_remaining_legacy_manifests(
-    monkeypatch, caplog
-):
+def test_legacy_instantiation_error_aborts_remaining_legacy_manifests(monkeypatch, caplog):
     """A legacy manifest that fails to instantiate drops every manifest after it."""
 
     missing_cls = _make_missing_module_capability()
@@ -227,8 +223,7 @@ def test_legacy_instantiation_error_aborts_remaining_legacy_manifests(
     assert isinstance(reg.get("plugin_cap"), _PluginCap)
     assert reg.get("other_cap") is None
     assert any(
-        "Legacy plugin loader unavailable" in record.getMessage()
-        for record in caplog.records
+        "Legacy plugin loader unavailable" in record.getMessage() for record in caplog.records
     )
 
 
@@ -269,22 +264,16 @@ def test_group_read_failure_returns_empty_with_warning(monkeypatch, caplog):
 
     monkeypatch.setattr(ep_module, "entry_points", _broken_reader)
     with caplog.at_level(logging.WARNING, logger=PLUMBING_LOGGER):
-        loaded = ep_module.load_entry_point_group(
-            PLUGINS_GROUP, lambda _name, obj: obj
-        )
+        loaded = ep_module.load_entry_point_group(PLUGINS_GROUP, lambda _name, obj: obj)
     assert loaded == []
-    assert any(
-        PLUGINS_GROUP in record.getMessage() for record in caplog.records
-    )
+    assert any(PLUGINS_GROUP in record.getMessage() for record in caplog.records)
 
 
 def test_coercer_none_rejects_entry_point_without_error(monkeypatch):
     monkeypatch.setattr(
         ep_module,
         "entry_points",
-        _fake_groups(
-            {"g": [_ep("junk", lambda: object()), _ep("keep", lambda: "kept")]}
-        ),
+        _fake_groups({"g": [_ep("junk", lambda: object()), _ep("keep", lambda: "kept")]}),
     )
     loaded = ep_module.load_entry_point_group(
         "g", lambda name, obj: obj if name == "keep" else None
@@ -297,9 +286,7 @@ def test_coercer_none_rejects_entry_point_without_error(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_duplicate_extension_registration_first_wins_with_warning(
-    monkeypatch, caplog
-):
+def test_duplicate_extension_registration_first_wins_with_warning(monkeypatch, caplog):
     monkeypatch.setattr(
         ep_module,
         "entry_points",
@@ -372,9 +359,7 @@ def test_structural_gates_short_circuit_before_resolving_entry():
     gated manifest never triggers its (here broken) entry point."""
 
     empty_entry = PluginManifest(name="t1", type="capability", entry="")
-    tool_script = PluginManifest(
-        name="t2", type="capability", entry="tests/plugins/tool.py"
-    )
+    tool_script = PluginManifest(name="t2", type="capability", entry="tests/plugins/tool.py")
     wrong_type = PluginManifest(
         name="t3",
         type="tool",
