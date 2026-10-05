@@ -10,9 +10,9 @@ started and no product code is changed.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 import signal
 import subprocess
-from pathlib import Path
 from typing import Any
 
 import pytest
