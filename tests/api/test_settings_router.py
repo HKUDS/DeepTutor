@@ -704,6 +704,13 @@ def test_llm_provider_choices_include_futureinfra() -> None:
     assert llm["futureinfra"]["base_url"] == "https://futureinfra.ai/v1/ai"
 
 
+def test_llm_provider_choices_include_opper() -> None:
+    llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
+
+    assert llm["opper"]["label"] == "Opper"
+    assert llm["opper"]["base_url"] == "https://api.opper.ai/v3/compat"
+
+
 def test_llm_provider_choices_include_novita() -> None:
     llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
 

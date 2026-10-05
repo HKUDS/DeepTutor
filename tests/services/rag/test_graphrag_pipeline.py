@@ -226,6 +226,7 @@ def test_build_settings_preserves_embedding_request_options(
         ),
         ("openrouter", "https://openrouter.ai/api/v1/embeddings", "https://openrouter.ai/api/v1"),
         ("orcarouter", "https://api.orcarouter.ai/v1/embeddings", "https://api.orcarouter.ai/v1"),
+        ("opper", "https://api.opper.ai/v3/compat/embeddings", "https://api.opper.ai/v3/compat"),
         ("vllm", "http://localhost:8000/v1/embeddings", "http://localhost:8000/v1"),
         ("jina", "https://api.jina.ai/v1/embeddings", "https://api.jina.ai/v1"),
         ("custom", "https://gateway.test/v1/embeddings", "https://gateway.test/v1"),

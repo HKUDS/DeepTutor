@@ -67,6 +67,7 @@ OPENAI_COMPATIBLE_EMBEDDING_BINDINGS = frozenset(
         "jina",
         "openai",
         "openrouter",
+        "opper",
         "orcarouter",
         "siliconflow",
         "vllm",

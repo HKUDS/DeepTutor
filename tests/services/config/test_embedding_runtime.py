@@ -233,6 +233,33 @@ def test_embedding_orcarouter_binding_uses_default_endpoint() -> None:
     assert resolved.dimension == 3072
 
 
+def test_embedding_opper_binding_uses_default_endpoint() -> None:
+    catalog = _build_catalog(
+        embedding_profile={
+            "id": "embedding-p",
+            "name": "Embedding",
+            "binding": "opper",
+            "base_url": "",
+            "api_key": "opper-key",
+            "api_version": "",
+            "extra_headers": {},
+            "models": [
+                {
+                    "id": "embedding-m",
+                    "name": "opper",
+                    "model": "text-embedding-3-large",
+                    "dimension": "3072",
+                }
+            ],
+        }
+    )
+    resolved = resolve_embedding_runtime_config(catalog=catalog)
+    assert resolved.provider_name == "opper"
+    assert resolved.provider_mode == "standard"
+    assert resolved.effective_url == "https://api.opper.ai/v3/compat/embeddings"
+    assert resolved.dimension == 3072
+
+
 def test_embedding_runtime_preserves_api_key_array() -> None:
     catalog = _build_catalog(
         embedding_profile={
