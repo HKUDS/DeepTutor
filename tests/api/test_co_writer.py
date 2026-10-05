@@ -21,8 +21,7 @@ _dt_config.load_config_with_main = lambda *_a, **_k: {
 
 from deeptutor.api.routers import co_writer as co_writer_router
 from deeptutor.api.routers.co_writer import _validate_doc_id
-from deeptutor.co_writer import docx_converter
-from deeptutor.co_writer import edit_agent
+from deeptutor.co_writer import docx_converter, edit_agent
 from deeptutor.co_writer.docx_converter import (
     DocxConversionError,
     _table_to_markdown,
