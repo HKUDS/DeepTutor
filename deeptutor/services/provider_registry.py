@@ -158,6 +158,8 @@ PROVIDER_ALIASES = {
     "cheaper_inference": "cheaperinference",
     "api route": "api_route",
     "future_infra": "futureinfra",
+    "y-api": "y_api",
+    "yapi": "y_api",
 }
 
 
@@ -340,6 +342,17 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         is_gateway=True,
         detect_by_base_keyword="futureinfra",
         default_api_base="https://futureinfra.ai/v1/ai",
+    ),
+    ProviderSpec(
+        name="y_api",
+        keywords=("y_api", "y-api", "yapi"),
+        env_key="Y_API_KEY",
+        display_name="Y-API",
+        backend="openai_compat",
+        is_gateway=True,
+        detect_by_base_keyword="y-api",
+        default_api_base="https://api.y-api.bestvirtualgoods.com/v1",
+        api_base_by_format=(("anthropic", "https://api.y-api.bestvirtualgoods.com"),),
     ),
     ProviderSpec(
         name="volcengine",
