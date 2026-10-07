@@ -77,15 +77,49 @@ def _matches(model_name: str, patterns: tuple[str, ...]) -> bool:
     return any(pattern.lower() in model_lower for pattern in patterns)
 
 
+def _has_exclude_suffix(model_name: str, suffixes: tuple[str, ...]) -> bool:
+    """Return True if *model_name* ends with any of *suffixes* (case-insensitive).
+
+    Used to narrow overly broad family patterns: ``qwen3`` matches ``Qwen3-235B-A22B``
+    but must NOT match ``Qwen3-VL-30B-A3B-Instruct``, which rejects
+    ``enable_thinking`` entirely (provider error 20015).
+    """
+    normalized = model_name.strip().lower().replace("_", "-")
+    return any(("-" + s.lower()) in normalized or normalized.endswith(s.lower()) for s in suffixes)
+
+
+# Suffixes that mark a model as NOT supporting its family's thinking parameter,
+# even though a naive substring match would include it.
+_THINKING_PARAM_EXCLUDE_SUFFIXES: dict[str, tuple[str, ...]] = {
+    "enable_thinking": ("instruct",),
+    "thinking_type": (),
+}
+
+
 def _custom_thinking_style(model_name: str) -> tuple[str, tuple[str, ...]]:
     for patterns, style in _CUSTOM_MODEL_THINKING_STYLES:
         if _matches(model_name, patterns):
+            excludes = _THINKING_PARAM_EXCLUDE_SUFFIXES.get(style, ())
+            if excludes and _has_exclude_suffix(model_name, excludes):
+                continue
             return style, patterns
     # A model listed as thinking-off needs a style to express that in, but it
     # must NOT inherit the high-effort patterns used by pro/reasoner.
     if any(pattern in model_name.lower() for pattern in _THINKING_DISABLED_BY_DEFAULT_MODELS):
         return "thinking_type", ()
     return "", ()
+
+
+def _model_supports_thinking_param(
+    model_name: str, patterns: tuple[str, ...], thinking_style: str
+) -> bool:
+    """Check if model matches *patterns* AND is not excluded by suffix for *thinking_style*."""
+    if not _matches(model_name, patterns):
+        return False
+    excludes = _THINKING_PARAM_EXCLUDE_SUFFIXES.get(thinking_style, ())
+    if excludes and _has_exclude_suffix(model_name, excludes):
+        return False
+    return True
 
 
 def _disable_thinking_by_default(provider_name: str, model_name: str) -> bool:
@@ -173,7 +207,9 @@ def build_openai_compatible_reasoning_kwargs(
 
     resolved_effort = reasoning_effort
     if resolved_effort is None:
-        if patterns and _matches(model_name, patterns):
+        if patterns and thinking_style and _model_supports_thinking_param(
+            model_name, patterns, thinking_style
+        ):
             resolved_effort = "high"
         else:
             resolved_effort = default_reasoning_effort_for(provider_name, model_name)

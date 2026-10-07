@@ -1096,6 +1096,12 @@ def _resolve_embedding_provider(
         # Compatible embeddings. Recognize that endpoint before a Qwen3 model
         # name is mistaken for a remote embedding vendor (#1568, #1782).
         return "lemonade"
+
+    if _is_local_base_url(api_base) and hint in {None, "custom", "openai"}:
+        if api_base and "11434" in api_base:
+            return "ollama"
+        return "vllm"
+
     if hint and hint in EMBEDDING_PROVIDERS:
         return hint
 
@@ -1184,6 +1190,8 @@ def resolve_embedding_runtime_config(
         # OpenAI-compatible Lemonade connection. Embedding calls need the
         # ``/embeddings`` path or the client rejects them after the key check.
         api_base = normalize_embedding_endpoint_for_display("lemonade", api_base)
+    if not api_key and spec.is_local:
+        api_key = "sk-no-key-required"
     if provider_name == "aliyun":
         # DashScope's SDK derives the endpoint from the model id and ignores any
         # configured URL, so a saved multimodal endpoint would mislead the

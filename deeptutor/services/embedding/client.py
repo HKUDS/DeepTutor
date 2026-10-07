@@ -146,13 +146,6 @@ class EmbeddingClient:
                 input_type=role,
             )
             try:
-                # The spacing lock exists only to keep a configured gap between
-                # requests across threads and event loops (LlamaIndex's pool
-                # gives each thread its own loop, so an asyncio.Lock is not
-                # enough). With the default batch_delay of 0 there is no gap
-                # to protect, and holding the lock around the HTTP call would
-                # flatten every concurrent embed — including LightRAG's — into
-                # one in-flight request (#1779).
                 from time import monotonic as _mono
 
                 if batch_delay > 0:
@@ -160,12 +153,8 @@ class EmbeddingClient:
                         elapsed = _mono() - EmbeddingClient._last_request_monotonic
                         if elapsed < batch_delay:
                             await asyncio.sleep(batch_delay - elapsed)
-                        # The timestamp has to be written inside the lock, or
-                        # overlapping callers overwrite it and the gap collapses.
                         EmbeddingClient._last_request_monotonic = _mono()
-                        response = await self.adapter.embed(request)
-                else:
-                    response = await self.adapter.embed(request)
+                response = await self.adapter.embed(request)
             except Exception as exc:
                 # Capture batch context so the task log stream / KB diagnostics
                 # show actionable info instead of a bare exception string.
@@ -218,10 +207,6 @@ class EmbeddingClient:
                         f"(batch {i + 1}/{total_batches}): {exc}",
                         exc_info=True,
                     )
-
-            # Delay between batches to avoid rate limiting
-            if i < total_batches - 1 and batch_delay > 0:
-                await asyncio.sleep(batch_delay)
 
         self.logger.debug(
             f"Generated {len(all_embeddings)} embeddings using "
@@ -276,6 +261,14 @@ class EmbeddingClient:
                 contents=batch,
                 enable_fusion=False,
             )
+            if self.config.batch_delay > 0:
+                from time import monotonic as _mono
+
+                async with EmbeddingClient._hold_spacing_lock():
+                    elapsed = _mono() - EmbeddingClient._last_request_monotonic
+                    if elapsed < self.config.batch_delay:
+                        await asyncio.sleep(self.config.batch_delay - elapsed)
+                    EmbeddingClient._last_request_monotonic = _mono()
             response = await self.adapter.embed(request)
             validated = validate_embedding_batch(
                 response.embeddings,
@@ -299,9 +292,6 @@ class EmbeddingClient:
                         f"(batch {i + 1}/{total_batches}): {exc}",
                         exc_info=True,
                     )
-
-            if i < total_batches - 1 and self.config.batch_delay > 0:
-                await asyncio.sleep(self.config.batch_delay)
 
         return all_embeddings
 
