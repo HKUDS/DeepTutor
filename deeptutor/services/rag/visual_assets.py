@@ -331,7 +331,7 @@ class VisualAssetStore:
             if existing is None or sha256(existing[0]).hexdigest() != record["image_sha256"]:
                 self._atomic_write(target, loaded[0])
         # Manifest last: it only ever points at image bytes already on disk.
-        self._write_sharded(updated, prior)
+        self._write_sharded(updated)
         for old_id, old_record in prior.items():
             if old_id not in updated:
                 self._path(old_id, str(old_record.get("mime_type"))).unlink(missing_ok=True)
