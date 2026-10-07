@@ -79,7 +79,7 @@ async def test_embedding_client_batches_requests(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_embedding_client_serializes_concurrent_calls_without_blocking_loop(
+async def test_embedding_client_overlaps_calls_when_batch_delay_is_zero(
     monkeypatch,
 ) -> None:
     class _NonBlockingOnlyLock:
@@ -134,6 +134,44 @@ async def test_embedding_client_serializes_concurrent_calls_without_blocking_loo
     )
 
     assert heartbeat.is_set()
+    assert len(first) == len(second) == 1
+    # batch_delay is 0, so the spacing lock must not serialize the HTTP calls.
+    assert _ConcurrentAdapter.max_in_flight == 2
+
+
+@pytest.mark.asyncio
+async def test_embedding_client_serializes_when_batch_delay_is_set(monkeypatch) -> None:
+    class _ConcurrentAdapter(_FakeAdapter):
+        in_flight = 0
+        max_in_flight = 0
+
+        async def embed(self, request):
+            type(self).in_flight += 1
+            type(self).max_in_flight = max(type(self).max_in_flight, type(self).in_flight)
+            try:
+                await asyncio.sleep(0.02)
+                return await super().embed(request)
+            finally:
+                type(self).in_flight -= 1
+
+    _FakeAdapter.instances = []
+    monkeypatch.setattr(
+        "deeptutor.services.embedding.client._resolve_adapter_class",
+        lambda _b: _ConcurrentAdapter,
+    )
+    monkeypatch.setattr(EmbeddingClient, "_spacing_lock", None)
+    monkeypatch.setattr(EmbeddingClient, "_last_request_monotonic", 0.0)
+    _ConcurrentAdapter.in_flight = 0
+    _ConcurrentAdapter.max_in_flight = 0
+    config = _build_config("openai")
+    config.batch_delay = 0.05
+    client = EmbeddingClient(config)
+
+    first, second = await asyncio.wait_for(
+        asyncio.gather(client.embed(["first"]), client.embed(["second"])),
+        timeout=1.0,
+    )
+
     assert len(first) == len(second) == 1
     assert _ConcurrentAdapter.max_in_flight == 1
 
