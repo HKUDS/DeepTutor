@@ -1376,17 +1376,27 @@ async def run_upload_processing_task(
 
 @router.get("/knowledge-bases/health")
 async def health_check():
-    """Health check endpoint"""
+    """Count registered KBs without constructing/probing the catalog (#1711)."""
+    return await asyncio.to_thread(_knowledge_health)
+
+
+def _knowledge_health():
     try:
-        manager = get_kb_manager()
-        config_exists = manager.config_file.exists()
-        kb_count = len(manager.list_knowledge_bases())
+        base_dir = current_kb_base_dir()
+        config_file = base_dir / "kb_config.json"
+        config_exists = config_file.exists()
+        config = (
+            json.loads(config_file.read_text(encoding="utf-8").strip() or "{}")
+            if config_exists
+            else {}
+        )
+        kb_count = len(config.get("knowledge_bases", {}))
         return {
             "status": "ok",
-            "config_file": str(manager.config_file),
+            "config_file": str(config_file),
             "config_exists": config_exists,
-            "base_dir": str(manager.base_dir),
-            "base_dir_exists": manager.base_dir.exists(),
+            "base_dir": str(base_dir),
+            "base_dir_exists": base_dir.exists(),
             "knowledge_bases_count": kb_count,
         }
     except Exception as e:
@@ -2765,6 +2775,11 @@ def _resource_knowledge_bases() -> list[KnowledgeBaseInfo]:
 
 @router.get("/knowledge-bases", response_model=list[KnowledgeBaseInfo])
 async def list_knowledge_bases():
+    """Disk probes must not block the async worker or its other requests (#1711)."""
+    return await asyncio.to_thread(_list_knowledge_bases)
+
+
+def _list_knowledge_bases():
     """List all available knowledge bases with their details."""
     from deeptutor.services.workspace.context import current_workspace_id
     from deeptutor.services.workspace.knowledge import library_request

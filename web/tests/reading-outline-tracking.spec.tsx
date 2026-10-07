@@ -58,10 +58,15 @@ vi.mock("@/components/reading/TextUnitView", () => ({
 vi.mock("@/components/reading/EpubDocumentView", () => ({
   EpubDocumentView: ({
     onVisibleLocatorChange,
+    onProgressChange,
   }: {
     onVisibleLocatorChange?: (locator: number) => void;
+    onProgressChange?: (percentage: number | null) => void;
   }) => (
-    <button type="button" onClick={() => onVisibleLocatorChange?.(5)}>
+    <button type="button" onClick={() => {
+      onVisibleLocatorChange?.(5);
+      onProgressChange?.(0.37);
+    }}>
       turn epub to chapter 5
     </button>
   ),
@@ -87,7 +92,7 @@ describe("the reading outline", () => {
     fireEvent.click(await screen.findByText("turn epub to chapter 5"));
 
     expect(screen.getByText("Second chapter")).toBeInTheDocument();
-    expect(screen.getByText(/21%/)).toBeInTheDocument();
+    expect(screen.getByText(/37%/)).toBeInTheDocument();
     expect(screen.queryByText("chapter 5 / 20")).not.toBeInTheDocument();
   });
 });

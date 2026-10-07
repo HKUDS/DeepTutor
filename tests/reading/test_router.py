@@ -362,6 +362,12 @@ def test_epub_contract_exposes_source_refs_original_and_position(client: TestCli
     )
     assert saved.status_code == 200
     assert client.get(base).json()["source_anchor"] == "epubcfi(/6/2)"
+    # EPUB can save its CFI while text locations are still being generated.
+    # Missing progress must preserve the last known value, not fabricate 0%.
+    resumed = client.put(base, json={"locator": 1, "source_anchor": "epubcfi(/6/4)"})
+    assert resumed.status_code == 200
+    assert resumed.json()["percentage"] == 0.4
+    assert resumed.json()["source_anchor"] == "epubcfi(/6/4)"
     assert client.put(base, json={"locator": 2, "percentage": 0}).status_code == 400
 
 

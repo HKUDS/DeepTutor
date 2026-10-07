@@ -15,6 +15,11 @@ def choices(values: list[str]) -> list[dict]:
     return [{"id": value, "label": value} for value in values]
 
 
+def is_qwen_audio_tts(model: str) -> bool:
+    """Qwen-Audio TTS uses SpeechSynthesizer, unlike Qwen3's multimodal API."""
+    return model.startswith("qwen-audio-") and "-tts-" in model
+
+
 OPENAI_VOICES = choices(
     "alloy ash ballad coral echo fable nova onyx sage shimmer verse marin cedar".split()
 )
@@ -165,7 +170,7 @@ def _tts_models(provider: str) -> tuple[list[dict], str]:
             {"id": "Momo", "label": "茉兔 · Momo"},
             {"id": "Kai", "label": "凯 · Kai"},
         ]
-        return [
+        qwen_models = [
             preset(
                 m,
                 voices=[v for v in qwen_voices if v["id"] in {"Cherry", "Ethan"}]
@@ -176,8 +181,49 @@ def _tts_models(provider: str) -> tuple[list[dict], str]:
                 ),
                 formats=["wav"],
                 instructions="instruct" in m,
+                configuration_note="Qwen3 TTS uses voices such as Cherry and outputs WAV audio. Match the API key region to the provider URL.",
             )
             for m in ["qwen3-tts-flash", "qwen3-tts-instruct-flash", "qwen3-tts-flash-2025-09-18"]
+        ]
+        audio_voices = {
+            "qwen-audio-3.0-tts-plus": [
+                {
+                    "id": "longanlingxin",
+                    "label": "龙安灵心 · longanlingxin",
+                    "languages": ["zh", "en"],
+                },
+                {
+                    "id": "longanlufeng",
+                    "label": "龙安鲁风 · longanlufeng",
+                    "languages": ["zh", "en"],
+                },
+            ],
+            "qwen-audio-3.0-tts-flash": [
+                {
+                    "id": "longanfengyue",
+                    "label": "龙安风悦 · longanfengyue",
+                    "languages": ["zh", "en"],
+                },
+                {
+                    "id": "longanhuan_v3.6",
+                    "label": "龙安欢 · longanhuan_v3.6",
+                    "languages": ["zh", "en"],
+                },
+            ],
+        }
+        return qwen_models + [
+            preset(
+                m,
+                voices=voices,
+                languages=choices(["zh", "en"]),
+                formats=["mp3", "wav", "opus", "pcm"],
+                sample_rates=[8000, 12000, 16000, 24000, 48000],
+                speed={"min": 0.5, "max": 2, "step": 0.05},
+                instructions=True,
+                configuration_note="Qwen-Audio TTS requires a Beijing API key. You can set a Beijing workspace URL in the provider connection; the speech endpoint is selected automatically.",
+                docs_url="https://help.aliyun.com/zh/model-studio/qwen-audio-tts-voice-list",
+            )
+            for m, voices in audio_voices.items()
         ], "https://help.aliyun.com/zh/model-studio/qwen-tts-voice-list"
     if provider == "groq":
         return [
@@ -226,6 +272,7 @@ def voice_options(provider: str, service: str) -> dict:
             fallback = {**deepcopy(models[0]), "id": "", "voices": [], "instructions": False}
         elif provider == "dashscope":
             fallback = {**deepcopy(models[0]), "id": "", "voices": [], "instructions": False}
+            fallback.pop("configuration_note", None)
         elif provider == "groq":
             fallback = preset("", formats=["wav"])
         elif provider == "xiaomi_mimo":

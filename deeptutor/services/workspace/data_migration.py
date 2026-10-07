@@ -51,7 +51,7 @@ FEATURES = {
 def _feature_path(paths, feature: str) -> Path:
     if feature == "attachments":
         if hasattr(paths, "scope"):
-            return paths.get_chat_workspace_root() / "attachments"
+            return paths.scope.content_root / "chat" / "attachments"
         from deeptutor.services.storage.attachment_store import _attachment_root
 
         with workspace_context():
@@ -556,6 +556,16 @@ def migrate_data(
 
     with data_activity(exclusive=True):
         assert_no_pending_recovery()
+        if "chat" in features or "attachments" in features:
+            from deeptutor.services.storage.attachment_store import (
+                LocalDiskAttachmentStore,
+                get_attachment_store,
+            )
+
+            with workspace_context(source_id):
+                attachment_store = get_attachment_store()
+                if isinstance(attachment_store, LocalDiskAttachmentStore):
+                    attachment_store.materialize_all_sessions()
         plan = preview(source_id, target_id, features, session_ids=session_ids)
         if plan["blockers"]:
             raise WorkspaceError(" ".join(plan["blockers"]))

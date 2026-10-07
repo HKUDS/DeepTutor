@@ -334,6 +334,7 @@ class ProviderProbePayload(BaseModel):
     api_format: str = "auto"
     api_version: str = ""
     extra_headers: dict[str, str] | str | None = None
+    proxy: str = ""
     service: Literal["llm", "task", "embedding", "search", "tts", "stt", "imagegen", "videogen"] = (
         "llm"
     )
@@ -1961,7 +1962,9 @@ async def test_provider_connection(payload: ProviderProbePayload):
             status_code=400, detail="Saved credentials were not found. Enter the key again."
         )
     if payload.service == "search":
-        return await probe_search_provider(payload.binding, payload.base_url, key)
+        return await probe_search_provider(
+            payload.binding, payload.base_url, key, proxy=payload.proxy
+        )
     return await probe_provider(
         payload.binding, payload.base_url, key, payload.api_format, headers, payload.api_version
     )
@@ -2173,8 +2176,8 @@ async def update_enabled_tools(update: EnabledToolsUpdate):
 async def preview_voice(payload: VoicePreviewPayload) -> Response:
     """Audition the model being edited without saving or activating its catalog."""
     _require_settings_admin()
-    from deeptutor.services.voice.base import VoiceProviderError
-    from deeptutor.services.voice.preview import synthesize_preview
+    from deeptutor.services.voice.base import VoiceProviderError, VoiceProviderTimeout
+    from deeptutor.services.voice.preview import preview_failure_message, synthesize_preview
 
     service = get_model_catalog_service()
     current = service.load()
@@ -2190,14 +2193,12 @@ async def preview_voice(payload: VoicePreviewPayload) -> Response:
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except VoiceProviderTimeout as exc:
+        raise HTTPException(status_code=504, detail=str(exc)) from exc
     except VoiceProviderError as exc:
-        # Other provider adapters may include raw upstream bodies in their errors.
-        # Never send those bodies (or echoed credentials) back to the browser.
         raise HTTPException(
             status_code=502,
-            detail=(
-                "Voice preview failed. Check the provider credentials, model, voice, language and format."
-            ),
+            detail=preview_failure_message(exc),
         ) from exc
     return Response(audio, media_type=content_type, headers={"Cache-Control": "no-store"})
 

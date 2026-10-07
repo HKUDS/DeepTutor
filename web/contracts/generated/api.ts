@@ -14240,6 +14240,11 @@ export interface components {
       /** Profile Id */
       readonly profile_id?: string | null;
       /**
+       * Proxy
+       * @default
+       */
+      readonly proxy: string;
+      /**
        * Service
        * @default llm
        * @enum {string}

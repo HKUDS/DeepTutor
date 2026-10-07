@@ -32,6 +32,7 @@ import { ReaderDisplayControls } from "./ReaderDisplayControls";
 
 type EpubLocation = {
   start?: { cfi?: string; href?: string; percentage?: number };
+  atEnd?: boolean;
 };
 
 type EpubContents = {
@@ -86,7 +87,10 @@ type EpubBook = {
   package?: { metadata?: { direction?: string } };
   load: (path: string) => Promise<unknown>;
   spine: { get: (target: string | number) => EpubSection | undefined };
-  locations?: { percentageFromCfi?: (cfi: string) => number };
+  locations?: {
+    percentageFromCfi?: (cfi: string) => number | null;
+    generate?: (characters: number) => Promise<unknown>;
+  };
   renderTo: (
     element: Element,
     options: Record<string, unknown>,
@@ -148,6 +152,7 @@ export interface EpubDocumentViewProps {
   onSelection: (payload: SelectionPayload | null) => void;
   onAnnotationClick?: (annotation: AnnotationItem) => void;
   onVisibleLocatorChange?: (locator: number) => void;
+  onProgressChange?: (percentage: number | null) => void;
   onHeadingsChange?: (headings: ReaderHeading[]) => void;
   headingJump?: {
     id: string;
@@ -169,6 +174,7 @@ export function EpubDocumentView({
   onSelection,
   onAnnotationClick,
   onVisibleLocatorChange,
+  onProgressChange,
   onHeadingsChange,
   headingJump,
   onError,
@@ -183,6 +189,7 @@ export function EpubDocumentView({
   const refsRef = useRef(unitRefs);
   const annotationClickRef = useRef(onAnnotationClick);
   const visibleChangeRef = useRef(onVisibleLocatorChange);
+  const progressChangeRef = useRef(onProgressChange);
   const headingsChangeRef = useRef(onHeadingsChange);
   const headingsByLocatorRef = useRef<Map<number, ReaderHeading[]>>(new Map());
   const errorRef = useRef(onError);
@@ -244,6 +251,10 @@ export function EpubDocumentView({
     annotationClickRef.current = onAnnotationClick;
   }, [onAnnotationClick]);
   useEffect(() => {
+    progressChangeRef.current = onProgressChange;
+  }, [onProgressChange]);
+
+  useEffect(() => {
     visibleChangeRef.current = onVisibleLocatorChange;
   }, [onVisibleLocatorChange]);
   useEffect(() => {
@@ -272,21 +283,18 @@ export function EpubDocumentView({
     let book: EpubBook | null = null;
 
     const onRelocated = (raw: unknown) => {
+      if (cancelled) return;
       const location = raw as EpubLocation;
       const href = location.start?.href ?? "";
       const nextLocator = locatorForEpubHref(href, refsRef.current) || 1;
       const cfi = location.start?.cfi ?? "";
-      const percentage = Math.min(
-        1,
-        Math.max(
-          0,
-          Number(
-            location.start?.percentage ??
-              book?.locations?.percentageFromCfi?.(cfi) ??
-              (unitCount > 1 ? (nextLocator - 1) / (unitCount - 1) : 0),
-          ),
-        ),
-      );
+      const observed = location.atEnd ? 1
+        : book?.locations?.percentageFromCfi?.(cfi) ?? location.start?.percentage;
+      const percentage = typeof observed === "number" && Number.isFinite(observed)
+        ? Math.min(1, Math.max(0, observed)) : null;
+      // A spine entry is a chapter, not a fraction of the whole text (#1673).
+      // Until CFI locations are ready, publish uncertainty instead of 100%.
+      progressChangeRef.current?.(percentage);
       locatorRef.current = nextLocator;
       visibleChangeRef.current?.(nextLocator);
       headingsChangeRef.current?.(
@@ -297,7 +305,7 @@ export function EpubDocumentView({
         void saveReadingPosition(materialId, {
           locator: nextLocator,
           source_anchor: cfi,
-          percentage,
+          ...(percentage === null ? {} : { percentage }),
         }).catch(() => {
           // Reading must continue when a background progress write fails.
         });
@@ -455,7 +463,15 @@ export function EpubDocumentView({
               refsRef.current[0]?.source_href,
           );
         }
-        if (!cancelled) setLoading(false);
+        if (cancelled) return;
+        setLoading(false);
+        void book.locations?.generate?.(1600).then(() => {
+          if (cancelled || !rendition) return;
+          const location = rendition.currentLocation();
+          if (location) onRelocated(location);
+        }).catch(() => {
+          // CFI navigation still works when progress cannot be calculated.
+        });
       } catch (error) {
         if (cancelled) return;
         const message =

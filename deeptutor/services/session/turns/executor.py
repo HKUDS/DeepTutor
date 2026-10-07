@@ -321,6 +321,12 @@ class TurnExecutor:
             # but the URL we record here outlives that pruning. Upload errors
             # are non-fatal — extraction still runs from the in-memory base64.
             attachment_store = get_attachment_store()
+            materialize_session = getattr(attachment_store, "materialize_session", None)
+            if callable(materialize_session):
+                try:
+                    await materialize_session(session_id)
+                except OSError as exc:
+                    logger.warning("could not move previous attachments into workspace: %s", exc)
             for record in attachment_records:
                 if record.get("url"):
                     continue  # already hosted (e.g. legacy URL)

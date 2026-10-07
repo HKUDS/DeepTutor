@@ -7696,6 +7696,11 @@
             ],
             "title": "Profile Id"
           },
+          "proxy": {
+            "default": "",
+            "title": "Proxy",
+            "type": "string"
+          },
           "service": {
             "default": "llm",
             "enum": [

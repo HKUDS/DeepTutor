@@ -15,6 +15,7 @@ from deeptutor.services.voice.base import (
     TranscriptCue,
     VoiceProviderError,
     strip_markdown_for_speech,
+    synthesize_with_timeout,
 )
 from deeptutor.services.voice.config import STTConfig, TTSConfig
 
@@ -60,7 +61,7 @@ async def synthesize_speech(
     if not prepared:
         raise VoiceProviderError("Nothing to speak after cleaning the text.")
     adapter = get_tts_adapter(config.adapter)
-    return await adapter.synthesize(prepared, config)
+    return await synthesize_with_timeout(adapter, prepared, config)
 
 
 async def transcribe_audio(

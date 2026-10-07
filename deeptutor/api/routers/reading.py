@@ -321,10 +321,11 @@ class AnnotationInfo(BaseModel):
 class PositionPayload(BaseModel):
     locator: int = Field(ge=1)
     source_anchor: str = Field(default="", max_length=4096)
-    percentage: float = Field(default=0.0, ge=0.0, le=1.0)
+    percentage: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
 class PositionInfo(PositionPayload):
+    percentage: float = 0.0
     updated_at: float = 0.0
 
 
@@ -1417,7 +1418,11 @@ async def save_position(material_id: str, payload: PositionPayload) -> PositionI
             ReadingPosition(
                 locator=payload.locator,
                 source_anchor=payload.source_anchor,
-                percentage=payload.percentage,
+                percentage=(
+                    payload.percentage
+                    if payload.percentage is not None
+                    else store.position(material_id).percentage
+                ),
             ),
         )
         try:

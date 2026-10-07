@@ -164,6 +164,97 @@ def test_failure_detail_is_bounded() -> None:
     assert len(result.detail) <= mineru_local._FAILURE_DETAIL_MAX_CHARS + 1
 
 
+@pytest.mark.parametrize("returncode,artifacts", [(7, ("exam.md",)), (0, ("junk.txt",))])
+def test_failed_replacement_retains_previous_output_and_attempt(
+    pdf: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    returncode: int,
+    artifacts: tuple[str, ...],
+) -> None:
+    output = tmp_path / "out"
+    previous = output / "exam" / "exam.md"
+    previous.parent.mkdir(parents=True)
+    previous.write_text("previous usable parse", encoding="utf-8")
+    _install_fake_popen(monkeypatch, returncode=returncode, artifacts=artifacts)
+
+    result = parse_document_with_mineru_result(pdf, output, cli_command="mineru")
+
+    assert not result.ok
+    assert previous.read_text(encoding="utf-8") == "previous usable parse"
+    attempts = list(output.glob(".mineru-attempt-*"))
+    assert len(attempts) == 1
+    assert (attempts[0] / "output" / artifacts[0]).is_file()
+    assert '"incomplete"' in (attempts[0] / "state.json").read_text(encoding="utf-8")
+
+    _install_fake_popen(monkeypatch, artifacts=("exam.md",))
+    assert parse_document_with_mineru_result(pdf, output, cli_command="mineru").ok
+    assert previous.read_text(encoding="utf-8") == "# parsed"
+    # The successful retry clears its own attempt, not the failed diagnostic output.
+    assert list(output.glob(".mineru-attempt-*")) == attempts
+
+
+def test_failed_publication_restores_previous_output(
+    pdf: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "out"
+    previous = output / "exam" / "exam.md"
+    previous.parent.mkdir(parents=True)
+    previous.write_text("previous", encoding="utf-8")
+    _install_fake_popen(monkeypatch, artifacts=("exam.md",))
+    rename = Path.rename
+
+    def fail_publication(path, target):
+        if path.name == "output":
+            raise OSError("controlled publication failure")
+        return rename(path, target)
+
+    monkeypatch.setattr(Path, "rename", fail_publication)
+    result = parse_document_with_mineru_result(pdf, output, cli_command="mineru")
+    assert result.reason is LocalParseReason.EXCEPTION
+    assert previous.read_text(encoding="utf-8") == "previous"
+
+
+def test_interrupted_attempt_stops_child_and_retains_partial_output(
+    pdf: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class InterruptedProcess:
+        stopped = False
+
+        def __init__(self, cmd, **kwargs):
+            target = Path(cmd[cmd.index("-o") + 1])
+            (target / "partial.md").write_text("partial", encoding="utf-8")
+            self.stdout = self.lines()
+
+        def lines(self):
+            yield "parsing page 2"
+            raise KeyboardInterrupt
+
+        def terminate(self):
+            self.stopped = True
+
+        def wait(self, timeout=None):
+            assert self.stopped
+            return -15
+
+    child = None
+
+    def start(*args, **kwargs):
+        nonlocal child
+        child = InterruptedProcess(*args, **kwargs)
+        return child
+
+    monkeypatch.setattr(mineru_local.subprocess, "Popen", start)
+    with pytest.raises(KeyboardInterrupt):
+        parse_document_with_mineru_result(pdf, tmp_path / "out", cli_command="mineru")
+    assert child.stopped
+    assert len(list((tmp_path / "out").glob(".mineru-attempt-*/output/partial.md"))) == 1
+
+
 # ---------------------------------------------------------------------------
 # backend mapping and legacy contract
 # ---------------------------------------------------------------------------

@@ -233,6 +233,12 @@ export function ReaderPane({
   const [autoJump, setAutoJump] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [currentLocator, setCurrentLocator] = useState(1);
+  const [epubPosition, setEpubPosition] = useState<{
+    materialId: string; percentage: number | null;
+  } | null>(null);
+  const handleEpubProgress = useCallback((percentage: number | null) => {
+    if (material) setEpubPosition({ materialId: material.material_id, percentage });
+  }, [material]);
   const nonceRef = useRef(0);
   const headingLocatorRef = useRef(1);
   const jumpMaterialIdRef = useRef<string | null>(null);
@@ -876,13 +882,9 @@ export function ReaderPane({
   const currentUnitTitle = isEpub
     ? material?.unit_refs.find((row) => row.locator === currentLocator)?.title
     : undefined;
-  const epubProgress = material
-    ? Math.round(
-        material.unit_count > 1
-          ? ((currentLocator - 1) / (material.unit_count - 1)) * 100
-          : 100,
-      )
-    : 0;
+  const epubProgress = epubPosition?.materialId === material?.material_id
+    && epubPosition?.percentage != null
+    ? Math.round(epubPosition.percentage * 100) : null;
   const bookmarkedHere = bookmarks.some(
     (row) => row.locator === currentLocator,
   );
@@ -1002,9 +1004,7 @@ export function ReaderPane({
                   <span className="max-w-[180px] truncate">
                     {currentUnitTitle || material.title}
                   </span>
-                  <span>
-                    {` · ${Math.min(100, Math.max(0, epubProgress))}%`}
-                  </span>
+                  {epubProgress !== null && <span>{` · ${epubProgress}%`}</span>}
                 </>
               ) : (
                 t("{{unit}} {{n}} / {{total}}", {
@@ -1202,6 +1202,7 @@ export function ReaderPane({
                 setActiveAnnotationId(annotation.annotation_id)
               }
               onVisibleLocatorChange={handleVisibleLocator}
+              onProgressChange={handleEpubProgress}
               onHeadingsChange={onHeadingsChange}
               headingJump={headingJump}
               onError={setError}

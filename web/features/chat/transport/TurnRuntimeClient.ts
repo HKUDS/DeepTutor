@@ -19,6 +19,7 @@ import {
   type TurnSocketFactory,
 } from "./socket";
 import { reconnectDelay, shouldReconnect } from "./reconnect-policy";
+import { CommandDeliveryError } from "./command-delivery";
 
 export type RuntimeConnectionState =
   | "idle"
@@ -39,6 +40,7 @@ export interface TurnRuntimeClientOptions {
   random?: () => number;
   maxBufferedGap?: number;
   replayProbeDelayMs?: number;
+  commandAckTimeoutMs?: number;
   onEvent: (event: ServerEvent) => void;
   onStateChange?: (state: RuntimeConnectionState) => void;
   onDiagnostic?: (diagnostic: string) => void;
@@ -53,6 +55,8 @@ interface PendingCommand {
   sentGeneration: number;
   /** Settled with the server's verdict, for callers that await one. */
   settle?: (accepted: boolean) => void;
+  fail?: (error: Error) => void;
+  timeoutHandle?: unknown;
 }
 
 const ACKNOWLEDGED_COMMAND_TYPES = new Set([
@@ -97,6 +101,7 @@ export class TurnRuntimeClient {
       | "random"
       | "maxBufferedGap"
       | "replayProbeDelayMs"
+      | "commandAckTimeoutMs"
     >
   > &
     Omit<
@@ -107,6 +112,7 @@ export class TurnRuntimeClient {
       | "random"
       | "maxBufferedGap"
       | "replayProbeDelayMs"
+      | "commandAckTimeoutMs"
     >;
   private socket: TurnSocket | null = null;
   private reconnectHandle: unknown = null;
@@ -130,6 +136,7 @@ export class TurnRuntimeClient {
       random: Math.random,
       maxBufferedGap: 32,
       replayProbeDelayMs: 5_000,
+      commandAckTimeoutMs: 30_000,
       ...options,
     };
   }
@@ -204,17 +211,31 @@ export class TurnRuntimeClient {
    * waiting, most often because the backend restarted since the question was
    * asked — is otherwise only a console diagnostic, which leaves whatever UI
    * is waiting on it pending forever. Resolves ``false`` for a rejection and
-   * for a client that stops before the acknowledgement arrives; a command
+   * throws a delivery error when no acknowledgement arrives; a command
    * type the protocol never acknowledges resolves ``true`` on dispatch.
    */
   sendAwaitingAck(command: ClientCommand): Promise<boolean> {
-    return new Promise<boolean>((resolve) => {
-      const pending = this.enqueue(command);
-      if (!pending.requiresAck) {
-        resolve(true);
-        return;
+    return new Promise<boolean>((resolve, reject) => {
+      const prepared = prepareCommand(command);
+      const pending: PendingCommand = {
+        ...prepared,
+        acknowledgedAfter: this.lastSeq,
+        sentGeneration: -1,
+        settle: resolve,
+        fail: reject,
+      };
+      if (pending.requiresAck) {
+        // A live connection can still lose its ACK. Reopen the card without
+        // declaring the server's question expired, and don't send a timed-out
+        // answer later behind the learner's back (#1648).
+        pending.timeoutHandle = this.options.scheduler.setTimeout(() => {
+          this.pending = this.pending.filter((item) => item !== pending);
+          reject(new CommandDeliveryError());
+        }, this.options.commandAckTimeoutMs);
       }
-      pending.settle = resolve;
+      this.pending.push(pending);
+      this.flushPending();
+      if (!pending.requiresAck) resolve(true);
     });
   }
 
@@ -228,6 +249,12 @@ export class TurnRuntimeClient {
     this.pending.push(pending);
     this.flushPending();
     return pending;
+  }
+
+  private clearCommandTimeout(pending: PendingCommand): void {
+    if (pending.timeoutHandle === undefined) return;
+    this.options.scheduler.clearTimeout(pending.timeoutHandle);
+    pending.timeoutHandle = undefined;
   }
 
   cancel(command: ClientCommand): void {
@@ -256,7 +283,10 @@ export class TurnRuntimeClient {
     socket?.close(1000, "client stopped");
     // Nobody is left to acknowledge these, so release their waiters rather
     // than leaving the UI that sent them pending forever.
-    for (const pending of this.pending) pending.settle?.(false);
+    for (const pending of this.pending) {
+      this.clearCommandTimeout(pending);
+      pending.fail?.(new CommandDeliveryError());
+    }
     this.pending = [];
     this.buffered.clear();
     this.setState("stopped");
@@ -287,8 +317,10 @@ export class TurnRuntimeClient {
     if (event.type === "command_ack") {
       const remaining: PendingCommand[] = [];
       for (const item of this.pending) {
-        if (item.commandId === event.command_id) item.settle?.(event.accepted);
-        else remaining.push(item);
+        if (item.commandId === event.command_id) {
+          this.clearCommandTimeout(item);
+          item.settle?.(event.accepted);
+        } else remaining.push(item);
       }
       this.pending = remaining;
       if (!event.accepted) {

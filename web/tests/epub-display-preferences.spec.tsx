@@ -27,6 +27,10 @@ const fixture = vi.hoisted(() => {
   };
   return {
     rendition,
+    locations: {
+      generate: vi.fn(async () => []),
+      percentageFromCfi: vi.fn((): number | null => null),
+    },
     renderTo: vi.fn(() => rendition),
     apiFetch: vi.fn(async () => ({
       ok: true,
@@ -41,6 +45,7 @@ vi.mock("epubjs", () => ({
     ready: Promise.resolve(),
     renderTo: fixture.renderTo,
     spine: { get: () => ({ href: "one.xhtml" }) },
+    locations: fixture.locations,
     destroy: vi.fn(),
   }),
 }));
@@ -58,6 +63,7 @@ let publisherParagraph: HTMLParagraphElement | null = null;
 let themeStyle: HTMLStyleElement | null = null;
 
 beforeEach(() => {
+  fixture.locations.percentageFromCfi.mockReturnValue(null);
   fixture.rendition.currentLocation.mockReturnValue({
     start: { cfi: "epubcfi(/6/2)" },
   });
@@ -231,4 +237,24 @@ it("drops a previous book's pending CFI before the next book relayout", async ()
       ([cfi]) => cfi === "epubcfi(/6/old-book)",
     ),
   ).toHaveLength(oldCfiDisplays);
+});
+
+it("reports CFI progress inside the final chapter, including one-chapter books (#1673)", async () => {
+  const progress = vi.fn();
+  const visible = vi.fn();
+  render(<EpubDocumentView materialId="book" unitCount={1}
+    unitRefs={[{ locator: 1, source_href: "one.xhtml", title: "Only chapter" }]}
+    annotations={[]} jump={null} onSelection={() => undefined}
+    onProgressChange={progress} onVisibleLocatorChange={visible} />);
+  await waitFor(() => expect(fixture.locations.generate).toHaveBeenCalledWith(1600));
+  const relocated = fixture.rendition.on.mock.calls.find(([event]) => event === "relocated")?.[1] as unknown as (location: unknown) => void;
+  fixture.locations.percentageFromCfi.mockReturnValue(0.32);
+  relocated({ start: { href: "one.xhtml", cfi: "epubcfi(/6/2)", percentage: 0.32 }, atEnd: false });
+  expect(visible).toHaveBeenLastCalledWith(1);
+  expect(progress).toHaveBeenLastCalledWith(0.32);
+  fixture.locations.percentageFromCfi.mockReturnValue(null);
+  relocated({ start: { href: "one.xhtml", cfi: "epubcfi(/6/2)" } });
+  expect(progress).toHaveBeenLastCalledWith(null);
+  relocated({ start: { href: "one.xhtml", cfi: "epubcfi(/6/2)" }, atEnd: true });
+  expect(progress).toHaveBeenLastCalledWith(1);
 });

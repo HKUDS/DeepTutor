@@ -7,6 +7,7 @@ config resolution.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 from dataclasses import dataclass
 import json
@@ -33,10 +34,12 @@ from deeptutor.services.voice.adapters.openai_compat import (
 from deeptutor.services.voice.audio import normalize_wav, pcm_to_wav
 from deeptutor.services.voice.base import (
     VoiceProviderError,
+    VoiceProviderTimeout,
     build_auth_headers,
     join_audio_path,
     normalize_stt_content_type,
     strip_markdown_for_speech,
+    synthesize_with_timeout,
 )
 from deeptutor.services.voice.config import STTConfig, TTSConfig
 from deeptutor.services.voice.options import voice_options
@@ -365,6 +368,133 @@ async def test_dashscope_tts_posts_native_shape_and_downloads_audio(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "base_url,expected",
+    [
+        (
+            "https://dashscope.aliyuncs.com/api/v1",
+            "https://dashscope.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer",
+        ),
+        (
+            "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            "https://dashscope.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer",
+        ),
+        (
+            "https://workspace.cn-beijing.maas.aliyuncs.com/api/v1",
+            "https://workspace.cn-beijing.maas.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer",
+        ),
+        (
+            "https://gateway.example/audio/tts/SpeechSynthesizer?region=beijing",
+            "https://gateway.example/audio/tts/SpeechSynthesizer?region=beijing",
+        ),
+        (
+            "https://gateway.example/services/aigc/multimodal-generation/generation",
+            "https://gateway.example/services/aigc/multimodal-generation/generation",
+        ),
+    ],
+)
+async def test_qwen_audio_plus_uses_its_own_endpoint_and_speech_parameters(
+    monkeypatch, base_url, expected
+):
+    """The reported Plus/longanlingxin setup must use SpeechSynthesizer, including custom endpoints."""
+    captured = _capture_http(
+        monkeypatch,
+        post=httpx.Response(
+            200, json={"output": {"audio": {"url": "https://cdn.example/audio.mp3"}}}
+        ),
+        get=httpx.Response(200, content=b"ID3audio", headers={"content-type": "audio/mpeg"}),
+    )
+    config = TTSConfig(
+        model="qwen-audio-3.0-tts-plus",
+        base_url=base_url,
+        api_key="key",
+        voice="longanlingxin",
+        response_format="mp3",
+        language="zh",
+        speed=1.2,
+        sample_rate=24000,
+        instructions="温柔地朗读",
+    )
+    audio, content_type = await DashScopeTTSAdapter().synthesize("你好", config)
+    assert audio == b"ID3audio" and content_type == "audio/mpeg"
+    assert captured["posts"][0]["url"] == expected
+    assert captured["posts"][0]["json"] == {
+        "model": "qwen-audio-3.0-tts-plus",
+        "input": {
+            "text": "你好",
+            "voice": "longanlingxin",
+            "format": "mp3",
+            "sample_rate": 24000,
+            "language_hints": ["zh"],
+            "rate": 1.2,
+            "instruction": "温柔地朗读",
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_qwen_audio_pcm_preserves_the_requested_sample_rate_for_playback(monkeypatch):
+    _capture_http(
+        monkeypatch,
+        post=httpx.Response(
+            200, json={"output": {"audio": {"url": "https://cdn.example/audio.pcm"}}}
+        ),
+        get=httpx.Response(
+            200, content=b"\0\0", headers={"content-type": "application/octet-stream"}
+        ),
+    )
+    config = TTSConfig(
+        model="qwen-audio-3.0-tts-flash",
+        base_url="https://dashscope.aliyuncs.com/api/v1",
+        voice="longanfengyue",
+        response_format="pcm",
+        sample_rate=16000,
+    )
+    assert await DashScopeTTSAdapter().synthesize("你好", config) == (
+        b"\0\0",
+        "audio/pcm;rate=16000;channels=1",
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "overrides,diagnosis",
+    [
+        ({"base_url": "https://dashscope-intl.aliyuncs.com/api/v1"}, "only in Beijing"),
+        (
+            {"base_url": "https://workspace.ap-southeast-1.maas.aliyuncs.com/api/v1"},
+            "only in Beijing",
+        ),
+        (
+            {
+                "base_url": "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
+            },
+            "does not match this model",
+        ),
+        ({"model": "qwen3-tts-flash-realtime"}, "Realtime speech models"),
+        ({"response_format": "aac"}, "supports MP3"),
+        ({"response_format": "opus", "sample_rate": 44100}, "sample rate"),
+        ({"voice": ""}, "Enter a voice ID"),
+    ],
+)
+async def test_invalid_qwen_audio_configuration_fails_before_a_provider_call(
+    monkeypatch, overrides, diagnosis
+):
+    captured = _capture_http(monkeypatch, post=None, get=None)
+    config = TTSConfig(
+        **{
+            "model": "qwen-audio-3.0-tts-plus",
+            "base_url": "https://dashscope.aliyuncs.com/api/v1",
+            "voice": "longanlingxin",
+            **overrides,
+        }
+    )
+    with pytest.raises(ValueError, match=diagnosis):
+        await DashScopeTTSAdapter().synthesize("你好", config)
+    assert captured["posts"] == []
+
+
+@pytest.mark.asyncio
 async def test_openrouter_tts_falls_back_to_chat_audio_stream(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -617,6 +747,48 @@ def test_resolve_tts_config_uses_provider_default_base() -> None:
     assert cfg.voice == "FunAudioLLM/CosyVoice2-0.5B:anna"
     assert cfg.response_format == "wav"
     assert cfg.api_key == "sf-key"
+    assert cfg.request_timeout == 60
+
+
+@pytest.mark.parametrize("value", [180, "180"])
+def test_speech_model_timeout_reaches_the_adapter(value, tmp_path) -> None:
+    from deeptutor.services.config.model_catalog import ModelCatalogService
+
+    catalog = _voice_catalog()
+    catalog["services"]["tts"]["profiles"][0]["models"][0]["request_timeout"] = value
+    service = ModelCatalogService(path=tmp_path / "model_catalog.json")
+    service.save(catalog)
+    assert resolve_tts_runtime_config(catalog=service.load()).request_timeout == 180
+
+
+@pytest.mark.parametrize("value", [0, -1, "abc", "12.5", 601, True])
+def test_invalid_speech_timeouts_are_rejected(value) -> None:
+    catalog = _voice_catalog()
+    catalog["services"]["tts"]["profiles"][0]["models"][0]["request_timeout"] = value
+    with pytest.raises(ValueError, match="Speech request timeout"):
+        resolve_tts_runtime_config(catalog=catalog)
+
+
+@pytest.mark.asyncio
+async def test_synthesis_deadline_cancels_an_active_stream() -> None:
+    """The whole synthesis is bounded even if audio chunks keep arriving."""
+
+    class SlowAdapter:
+        cancelled = False
+
+        async def synthesize(self, text, config):
+            try:
+                while True:
+                    await asyncio.sleep(0.005)
+            finally:
+                self.cancelled = True
+
+    adapter = SlowAdapter()
+    with pytest.raises(VoiceProviderTimeout, match="Request timeout"):
+        await synthesize_with_timeout(
+            adapter, "Hello", TTSConfig(model="test", request_timeout=0.02)
+        )
+    assert adapter.cancelled
 
 
 def test_resolve_stt_config_picks_openrouter_base64_style() -> None:

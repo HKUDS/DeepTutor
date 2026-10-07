@@ -11,7 +11,12 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
+from uuid import uuid4
+
+from deeptutor.services.file_io import atomic_write_json
+from deeptutor.services.parsing.cache import load_ir
 
 from .formats import MINERU_SUPPORTED_FORMATS
 
@@ -186,20 +191,21 @@ def parse_document_with_mineru_result(
     source_name = source_file.stem
     output_dir = base_dir / source_name
 
-    if output_dir.exists():
-        print(f"⚠️ Directory already exists, replacing: {output_dir.name}")
-        shutil.rmtree(output_dir)
-
     print(f"📄 Input file: {source_file}")
     print(f"📁 Output directory: {output_dir}")
     print("→ Starting parsing...")
 
+    # Each CLI owns its attempt. Failed/interrupted attempts stay available,
+    # while a prior usable output survives until a validated replacement (#1612).
+    attempt = Path(tempfile.mkdtemp(prefix=".mineru-attempt-", dir=base_dir))
+    temp_output = attempt / "output"
+    temp_output.mkdir()
+    state_path = attempt / "state.json"
+    atomic_write_json(state_path, {"source": source_file.name, "state": "running"})
+    process = None
+    process_finished = False
+    result = LocalParseResult.failure(LocalParseReason.EXCEPTION, "parse interrupted")
     try:
-        temp_output = base_dir / "temp_mineru_output"
-        if temp_output.exists():
-            shutil.rmtree(temp_output)
-        temp_output.mkdir(parents=True, exist_ok=True)
-
         cmd = [mineru_cmd, "-p", str(source_file), "-o", str(temp_output)]
 
         print(f"🔧 Executing command: {' '.join(cmd)}")
@@ -236,55 +242,52 @@ def parse_document_with_mineru_result(
                         # reporting and keep going.
                         on_output = None
         returncode = process.wait()
+        process_finished = True
 
         if returncode != 0:
             print("✗ MinerU parsing failed:")
             print("\n".join(tail))
-            if temp_output.exists():
-                shutil.rmtree(temp_output)
-            return LocalParseResult.failure(
+            result = LocalParseResult.failure(
                 LocalParseReason.NONZERO_EXIT,
                 f"exit code {returncode}\n" + "\n".join(tail),
             )
+            return result
 
         print("✓ MinerU parsing completed!")
 
-        generated_folders = list(temp_output.iterdir())
+        generated_folders = sorted(temp_output.iterdir())
 
         if not generated_folders:
             print("⚠️ Warning: No generated files found in temp directory")
-            if temp_output.exists():
-                shutil.rmtree(temp_output)
-            return LocalParseResult.failure(
+            result = LocalParseResult.failure(
                 LocalParseReason.NO_ARTIFACTS,
                 f"no files were produced in {temp_output}",
             )
+            return result
 
-        source_folder = generated_folders[0] if generated_folders[0].is_dir() else temp_output
+        named_folder = temp_output / source_name
+        source_folder = named_folder if named_folder.is_dir() else temp_output
+        markdown, blocks, _assets = load_ir(source_folder)
+        if not markdown.strip() and not blocks:
+            result = LocalParseResult.failure(
+                LocalParseReason.NO_ARTIFACTS,
+                "MinerU produced no usable markdown or content blocks",
+            )
+            return result
 
-        # Create target directory and move content
-        output_dir.mkdir(parents=True, exist_ok=True)
-
-        # Move MinerU-generated content to target directory
-        if source_folder.exists() and source_folder.is_dir():
-            # If source_folder is the source-named directory, move its contents
-            for item in source_folder.iterdir():
-                dest_item = output_dir / item.name
-                if dest_item.exists():
-                    if dest_item.is_dir():
-                        shutil.rmtree(dest_item)
-                    else:
-                        dest_item.unlink()
-                shutil.move(str(item), str(dest_item))
-            print(f"📦 Files saved to: {output_dir}")
-        else:
-            if output_dir.exists():
-                shutil.rmtree(output_dir)
-            shutil.move(str(source_folder), str(output_dir))
-            print(f"📦 Files saved to: {output_dir}")
-
-        if temp_output.exists():
-            shutil.rmtree(temp_output)
+        backup = base_dir / f".{source_name}.previous-{uuid4().hex}"
+        had_previous = output_dir.exists()
+        if had_previous:
+            output_dir.rename(backup)
+        try:
+            source_folder.rename(output_dir)
+        except BaseException:
+            if had_previous:
+                backup.rename(output_dir)
+            raise
+        if had_previous:
+            shutil.rmtree(backup)
+        print(f"📦 Files saved to: {output_dir}")
 
         print("\n📋 Generated files:")
         for item in output_dir.rglob("*"):
@@ -292,17 +295,43 @@ def parse_document_with_mineru_result(
                 rel_path = item.relative_to(output_dir)
                 print(f"  - {rel_path}")
 
-        return LocalParseResult.success()
+        result = LocalParseResult.success()
+        return result
 
     except Exception as e:
         print(f"✗ Error occurred during parsing: {e!s}")
         import traceback
 
         traceback.print_exc()
-        return LocalParseResult.failure(
+        result = LocalParseResult.failure(
             LocalParseReason.EXCEPTION,
             f"{type(e).__name__}: {e}",
         )
+        return result
+    finally:
+        # Stop an interrupted child before another attempt can publish output.
+        if process is not None and not process_finished:
+            try:
+                process.terminate()
+                process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+        if result.ok:
+            shutil.rmtree(attempt, ignore_errors=True)
+        else:
+            try:
+                atomic_write_json(
+                    state_path,
+                    {
+                        "source": source_file.name,
+                        "state": "incomplete",
+                        "reason": str(result.reason),
+                    },
+                )
+            except OSError:
+                # A diagnostic write must not hide the original failure.
+                pass
 
 
 def parse_document_with_mineru(

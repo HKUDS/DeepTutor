@@ -1,5 +1,7 @@
 "use client";
 
+import { COMMAND_CONFIRMATION_FAILED } from "@/features/chat/transport/command-delivery";
+
 import { ResourceReuseContext, useResourceReusePolicy } from "@/components/chat/home/ResourceReuse";
 import { retainedKnowledgeBases } from "@/lib/resource-reuse";
 import { knowledgeBaseRef } from "@/lib/knowledge-helpers";
@@ -1910,7 +1912,13 @@ export default function ChatWorkspace({
       // the learner with a turn they can only cancel.
       if (awaitingUserReplyRef.current) {
         if (!content.trim()) return;
-        if (await submitUserReply({ text: content })) return;
+        try {
+          if (await submitUserReply({ text: content })) return;
+        } catch {
+          notify(t(COMMAND_CONFIRMATION_FAILED), { tone: "error" });
+          prefillInputRef.current?.(content);
+          return;
+        }
         // Refused: the turn that asked is gone. Do NOT stop here. The
         // composer has already cleared the box, so returning discarded what
         // they typed — while the error told them to "send a new message",

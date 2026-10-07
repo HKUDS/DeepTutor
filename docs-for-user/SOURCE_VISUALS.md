@@ -15,8 +15,11 @@ text embedding model can retrieve it by its caption and context. When `rag`
 retrieves that record in the chat loop, a vision capable answer model receives
 the verified image pixels in its next request. A text only model receives the
 caption and context with an explicit warning that it has not seen the pixels.
-At most 64 images per document are retained, each image is limited to 5 MiB,
-and at most two retrieved images are sent in one model continuation.
+All supported extracted images are retained, each image is limited to 5 MiB,
+and at most two retrieved images are sent in one model continuation. The
+document retention count is independent of this model request budget. A visual
+manifest larger than 16 MiB fails publication explicitly rather than silently
+retaining only an initial subset of the document.
 
 Current extraction coverage depends on the selected parser. MinerU can emit
 structured PDF figures. PyMuPDF4LLM can emit PDF and EPUB images when image
@@ -70,6 +73,22 @@ returned by MinerU, just like the normal parse cache. They are retained until th
 This change versions the cloud parser signature so older merged page indices
 are not reused from the normal parse cache. Existing knowledge-base indexes
 need an explicit rebuild to consume corrected pages.
+
+## Retrying local MinerU documents
+
+Local MinerU retries restart the interrupted document from its beginning;
+the CLI does not expose a reliable checkpoint inside an inference call.
+Compatible completed document parses remain reusable after retry or restart,
+including when only the embedding configuration changes. Empty or unreadable
+cached output is reparsed rather than accepted as complete.
+
+New local output is checked for usable markdown or content blocks before it
+replaces an existing parse. Failed attempts retain their artifacts for
+diagnosis. Within the workspace parse cache these are moved to hidden
+`.failed-` directories beside the affected signature, outside the next retry's
+working directory. They are never treated as completed cache entries. Clearing
+the workspace parse cache also removes these diagnostic artifacts. An interrupted
+local child process is stopped before the caller starts another attempt.
 
 ## Tiny scanned PDF pages with MinerU
 

@@ -238,8 +238,18 @@ def _parse_local(
     )
     if not result.ok:
         reason = result.reason or LocalParseReason.EXCEPTION
+        message = _LOCAL_FAILURE_MESSAGES[reason].format(detail=result.detail or "no output")
+        if reason in {
+            LocalParseReason.NONZERO_EXIT,
+            LocalParseReason.NO_ARTIFACTS,
+            LocalParseReason.EXCEPTION,
+        }:
+            message += (
+                " Retry restarts this document from the beginning; completed compatible "
+                "document parses will be reused. Incomplete output is retained for diagnosis."
+            )
         raise MinerUError(
-            _LOCAL_FAILURE_MESSAGES[reason].format(detail=result.detail or "no output"),
+            message,
             code=str(reason),
             detail=result.detail,
         )

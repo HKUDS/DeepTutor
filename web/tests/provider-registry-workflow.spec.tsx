@@ -17,6 +17,7 @@ import { RegistryProbe } from "@/components/settings/RegistryControls";
 import {
   flattenModels,
   providerRegistry,
+  providerProbeInput,
   reconcileRegistrySave,
 } from "@/lib/provider-registry";
 import { modelTestFingerprint } from "@/lib/model-settings";
@@ -372,6 +373,37 @@ it("discards an in-flight discovery after switching provider credentials", async
   expect(onResult).not.toHaveBeenCalled();
 });
 
+
+it("sends the search proxy and explains JSON rejection from a Docker loopback address", async () => {
+  const catalog = fixture();
+  catalog.services.search.profiles = [{
+    id: "search", name: "Local search", provider: "searxng",
+    base_url: "http://localhost:8888", api_key: "", api_version: "",
+    proxy: "http://proxy:3128", models: [],
+  }];
+  const source = providerRegistry(catalog).find(item => item.provider === "searxng")!;
+  mocks.fetch.mockResolvedValue({
+    ok: true,
+    json: async () => ({ status: "json_forbidden", models: [], http_status: 403 }),
+  });
+  render(<RegistryProbe input={providerProbeInput(source)} onResult={() => {}} />);
+  fireEvent.click(screen.getByRole("button", { name: "Test provider" }));
+  await waitFor(() => expect(screen.getByRole("status").textContent).toContain("search.formats"));
+  expect(screen.getByRole("status").textContent).toContain("HTTP 403");
+  expect(screen.getByRole("status").textContent).toContain("DeepTutor container");
+  expect(JSON.parse(mocks.fetch.mock.calls[0][1].body).proxy).toBe("http://proxy:3128");
+});
+
+it("shows an empty search result as a reachable API with an engine warning", () => {
+  render(<RegistryProbe
+    input={{ service: "search", binding: "searxng", base_url: "http://localhost:8888" }}
+    discovery={{ status: "connected", models: [], warning: "empty_results" }}
+    onResult={() => {}}
+  />);
+  expect(screen.getByRole("status").textContent).toContain("Provider connected");
+  expect(screen.getByRole("status").textContent).toContain("enabled engines");
+  expect(screen.getByRole("status").textContent).not.toContain("DeepTutor container");
+});
 
 it.each([
   ["voice", ["tts", "stt"], ["imagegen", "videogen"], "Text-to-Speech", "Speech-to-Text"],

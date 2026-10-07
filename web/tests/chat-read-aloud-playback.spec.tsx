@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import { PlayAudioButton } from "@/features/chat/messages/ChatMessageList";
 import { apiFetch } from "@/lib/api";
+import { notify } from "@/lib/notifications";
 import { initI18n } from "@/i18n/init";
 
 vi.mock("@/lib/api", async (original) => ({
@@ -12,6 +13,7 @@ vi.mock("@/lib/api", async (original) => ({
 vi.mock("@/hooks/useVoiceAutoplay", () => ({
   useVoiceAutoplay: () => ({ autoplayEnabled: false }),
 }));
+vi.mock("@/lib/notifications", () => ({ notify: vi.fn() }));
 initI18n("en");
 const instances: FakeAudio[] = [];
 class FakeAudio {
@@ -54,4 +56,21 @@ it("does not play a late response body after leaving the chat", async () => {
   await act(async () => { resolve(new Blob(["audio"])); });
   expect(instances).toHaveLength(0);
   expect(URL.createObjectURL).not.toHaveBeenCalled();
+});
+
+it("does not show a late speech error after playback is cancelled", async () => {
+  let resolve!: (body: { detail: string }) => void;
+  const body = new Promise<{ detail: string }>((yes) => { resolve = yes; });
+  vi.mocked(apiFetch).mockResolvedValueOnce({
+    ok: false,
+    status: 504,
+    json: () => body,
+  } as Response);
+  render(<PlayAudioButton content="First" autoPlayFresh={false} />);
+  const user = userEvent.setup();
+  const button = screen.getByRole("button", { name: "Play aloud" });
+  await user.click(button);
+  await user.click(button);
+  await act(async () => { resolve({ detail: "Speech synthesis timed out." }); });
+  expect(notify).not.toHaveBeenCalled();
 });

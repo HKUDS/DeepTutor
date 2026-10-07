@@ -519,7 +519,7 @@ export async function getReadingPosition(
 
 export async function saveReadingPosition(
   materialId: string,
-  position: Pick<ReadingPosition, "locator" | "source_anchor" | "percentage">,
+  position: Pick<ReadingPosition, "locator" | "source_anchor"> & Partial<Pick<ReadingPosition, "percentage">>,
 ): Promise<ReadingPosition> {
   return parseReadingPosition(
     await unwrap(

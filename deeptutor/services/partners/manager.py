@@ -777,6 +777,7 @@ class PartnerManager:
         )
 
         pending: deque[_OMsg] = deque()
+        msg: _OMsg
 
         try:
             event_bus = get_event_bus()
@@ -784,7 +785,7 @@ class PartnerManager:
                 if pending:
                     msg = pending.popleft()
                 else:
-                    msg: _OMsg = await bus.consume_outbound()
+                    msg = await bus.consume_outbound()
 
                 metadata = msg.metadata or {}
                 if metadata.get("_stream_delta") and not metadata.get("_stream_end"):

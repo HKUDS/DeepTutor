@@ -54,6 +54,10 @@ import { apiFetch, apiUrl } from "@/lib/api";
 import { notify } from "@/lib/notifications";
 import { docIconFor } from "@/lib/doc-attachments";
 import { useVoiceAutoplay } from "@/hooks/useVoiceAutoplay";
+import {
+  SPEECH_PLAYBACK_FAILURE_MESSAGE,
+  SPEECH_TIMEOUT_MESSAGE,
+} from "@/lib/voice-settings";
 import { extractMathAnimatorResult } from "@/lib/math-animator-types";
 import {
   extractQuizQuestions,
@@ -1367,8 +1371,9 @@ export function PlayAudioButton({
       if (gen !== genRef.current) return;
       if (!resp.ok) {
         const detail = await ttsErrorMessage(resp);
+        if (gen !== genRef.current) return;
         notify(
-          detail || t("Could not play this reply. Check Text-to-Speech in Settings."),
+          t(detail || (resp.status === 504 ? SPEECH_TIMEOUT_MESSAGE : SPEECH_PLAYBACK_FAILURE_MESSAGE)),
           { tone: "error" },
         );
         stop();
@@ -1392,7 +1397,7 @@ export function PlayAudioButton({
       };
       audio.onerror = () => {
         if (gen !== genRef.current) return;
-        notify(t("Could not play this reply. Check Text-to-Speech in Settings."), {
+        notify(t(SPEECH_PLAYBACK_FAILURE_MESSAGE), {
           tone: "error",
         });
         stop();
@@ -1406,7 +1411,7 @@ export function PlayAudioButton({
     } catch (err) {
       if (gen !== genRef.current) return;
       if (err instanceof Error && err.name === "AbortError") return;
-      notify(t("Could not play this reply. Check Text-to-Speech in Settings."), {
+      notify(t(SPEECH_PLAYBACK_FAILURE_MESSAGE), {
         tone: "error",
       });
       stop();
