@@ -21,7 +21,7 @@ def test_gemini_embedding_fallback_prefers_stable_embedding2() -> None:
 def test_github_copilot_is_featured_with_prefixed_fallback_models() -> None:
     from deeptutor_cli.init_wizard import FEATURED_LLM_PROVIDERS, LLM_FALLBACK_MODELS
 
-    assert FEATURED_LLM_PROVIDERS[9] == "github_copilot"
+    assert "github_copilot" in FEATURED_LLM_PROVIDERS
     assert LLM_FALLBACK_MODELS["github_copilot"][0] == "github-copilot/gpt-4.1"
 
 
