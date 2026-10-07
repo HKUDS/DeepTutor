@@ -17,6 +17,7 @@ import {
 import { MinerUEngineSettings } from "@/components/settings/MinerUEngineSettings";
 import { Toggle } from "@/components/settings/Toggle";
 import { apiFetch, apiUrl } from "@/lib/api";
+import { ImageDescriptionModelSetting } from "./ImageDescriptionModelSetting";
 
 type EngineMeta = {
   id: string;
@@ -30,6 +31,7 @@ type Readiness = { ready: boolean; reason: string; message: string };
 
 type DocumentParsingPayload = {
   engine: string;
+  image_description_model?: { profile_id: string; model_id: string } | null;
   engines: Record<string, Record<string, unknown>>;
   available_engines: EngineMeta[];
   readiness: Record<string, Readiness>;
@@ -138,6 +140,11 @@ export default function DocumentParsingSettingsPage() {
 
       {!loading && data && (
         <>
+          <ImageDescriptionModelSetting
+            value={data.image_description_model ?? null}
+            disabled={busy}
+            onChange={(selection) => putDocumentParsing({ image_description_model: selection })}
+          />
           <section className="mb-10">
             <header className="mb-3">
               <h2 className="text-[15px] font-semibold tracking-tight text-[var(--foreground)]">

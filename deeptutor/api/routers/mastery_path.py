@@ -55,6 +55,12 @@ def get_learning_service() -> LearningService:
     return LearningService(store)
 
 
+def _turn_application_service():
+    from deeptutor.app.container import get_application_container
+
+    return get_application_container().turns
+
+
 def _validate_book_id(book_id: str) -> None:
     """Reject empty or path-traversal-bearing book ids (shared by all endpoints)."""
     if not book_id or ".." in book_id or "/" in book_id or "\\" in book_id or ":" in book_id:
@@ -99,34 +105,45 @@ def _validate_runnable_modules(modules: list[LearningModule], *, status_code: in
 
 
 async def _cancel_active_learning_turn(book_id: str) -> None:
-    from deeptutor.services.session import get_turn_runtime_manager
-
     learning_store = LearningStore()
-    runtime = get_turn_runtime_manager()
+    turns = _turn_application_service()
     lease = await asyncio.to_thread(learning_store.get_path_lease, book_id)
     if lease is not None:
         if lease.session_id == "__path_api__":
             # Another administrative mutation owns the path. The caller's
             # acquisition attempt will return a deterministic HTTP 409.
             return
-        await runtime.cancel_turn(lease.turn_id)
-        # ``cancel_turn`` can finalize a restart orphan without an in-memory
-        # task, so its normal runtime ``finally`` cannot release the lease.
-        await asyncio.to_thread(
-            learning_store.release_path_lease,
-            book_id,
-            turn_id=lease.turn_id,
-        )
+        if await turns.cancel_turn_and_wait(lease.turn_id):
+            # ``cancel_turn`` can finalize a restart orphan without an
+            # in-memory task, so its normal runtime ``finally`` cannot release
+            # the mastery path lease.
+            await asyncio.to_thread(
+                learning_store.release_path_lease,
+                book_id,
+                turn_id=lease.turn_id,
+            )
+        else:
+            raise HTTPException(
+                status_code=409,
+                detail="Active learning turn could not be stopped before changing this path",
+            )
         return
 
     # Compatibility for turns started before explicit path leases existed.
     session_ids = await asyncio.to_thread(learning_store.list_session_ids, book_id)
     if book_id not in session_ids:
         session_ids.append(book_id)
+    from deeptutor.services.session import get_session_store
+
+    session_store = get_session_store()
     for session_id in session_ids:
-        for turn in await runtime.store.list_active_turns(session_id):
+        for turn in await session_store.list_active_turns(session_id):
             if str(turn.get("capability") or "") == "mastery_path":
-                await runtime.cancel_turn(turn["id"])
+                if not await turns.cancel_turn_and_wait(turn["id"]):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Active learning turn could not be stopped before changing this path",
+                    )
 
 
 @asynccontextmanager
@@ -651,6 +668,9 @@ async def edit_topic_map(path_id: str, body: EditTopicMapRequest):
                 strict=True,
                 existing_module_ids=existing_module_ids,
                 existing_objective_ids=existing_objective_ids,
+                existing_objective_counts={
+                    module.id: len(module.knowledge_points) for module in progress.modules
+                },
                 module_limit=MAX_MODULE_LIMIT,
             )
         except TopicGenerationError as exc:

@@ -30,6 +30,12 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _turn_application_service():
+    from deeptutor.app.container import get_application_container
+
+    return get_application_container().turns
+
+
 class SessionRenameRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=100)
 
@@ -480,12 +486,14 @@ async def delete_session(session_id: str):
 
     list_active_turns = getattr(store, "list_active_turns", None)
     if callable(list_active_turns):
-        from deeptutor.services.session import get_turn_runtime_manager
-
-        runtime = get_turn_runtime_manager()
+        turns = _turn_application_service()
         for target in ordered:
             for turn in await list_active_turns(target):
-                await runtime.cancel_turn(turn["id"])
+                if not await turns.cancel_turn_and_wait(turn["id"]):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Active conversation turn could not be stopped before deletion",
+                    )
     for target in reversed(ordered):
         if not await store.delete_session(target):
             raise HTTPException(status_code=409, detail="Unable to delete conversation")

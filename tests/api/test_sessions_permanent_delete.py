@@ -22,8 +22,8 @@ async def test_delete_removes_conversation_descendants_and_messages(tmp_path, mo
     monkeypatch.setattr(router, "LearningStore", lambda: learning)
     reading = SimpleNamespace(forget_session=Mock())
     monkeypatch.setattr(router, "ReadingCatalogStore", lambda: reading)
-    runtime = SimpleNamespace(cancel_turn=AsyncMock())
-    monkeypatch.setattr("deeptutor.services.session.get_turn_runtime_manager", lambda: runtime)
+    turns = SimpleNamespace(cancel_turn_and_wait=AsyncMock(return_value=True))
+    monkeypatch.setattr(router, "_turn_application_service", lambda: turns)
     monkeypatch.setattr(
         store, "list_active_turns", AsyncMock(side_effect=lambda sid: [{"id": f"turn-{sid}"}])
     )
@@ -38,7 +38,7 @@ async def test_delete_removes_conversation_descendants_and_messages(tmp_path, mo
         attachments.delete_session.assert_any_await(sid)
         learning.detach_session.assert_any_call(sid)
         reading.forget_session.assert_any_call(sid)
-        runtime.cancel_turn.assert_any_await(f"turn-{sid}")
+    turns.cancel_turn_and_wait.assert_any_await(f"turn-{sid}")
     assert await store.get_session("other") is not None
     assert len(await store.get_messages("other")) == 1
     assert await store.list_deleted_sessions() == []
@@ -52,6 +52,24 @@ async def test_missing_or_unowned_session_has_no_deletion_side_effects(monkeypat
         await router.delete_session("missing")
     assert exc.value.status_code == 404
     store.delete_session.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_delete_keeps_session_when_turn_cancellation_times_out(tmp_path, monkeypatch):
+    store = SQLiteSessionStore(tmp_path / "sessions.db")
+    await store.create_session(session_id="busy", title="Busy")
+    await store.begin_turn("busy", "mastery_path", turn_id="waiting-turn")
+    await store.update_turn_status("waiting-turn", "waiting_input")
+    monkeypatch.setattr(router, "get_session_store", lambda: store)
+    turns = SimpleNamespace(cancel_turn_and_wait=AsyncMock(return_value=False))
+    monkeypatch.setattr(router, "_turn_application_service", lambda: turns)
+
+    with pytest.raises(HTTPException) as exc:
+        await router.delete_session("busy")
+
+    assert exc.value.status_code == 409
+    assert await store.get_session("busy") is not None
+    assert await store.get_turn("waiting-turn") is not None
 
 
 @pytest.mark.asyncio

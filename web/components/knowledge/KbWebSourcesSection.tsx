@@ -381,6 +381,19 @@ function WebSourceCard({
               {t("Pages")}: {source.page_count}
             </span>
           )}
+          {source.bilingual_pairings && source.bilingual_pairings.length > 0 && (
+            <span
+              className="font-medium text-emerald-600 dark:text-emerald-400"
+              title={source.bilingual_pairings
+                .map(
+                  (p) =>
+                    `${p.source_lang.toUpperCase()} ↔ ${p.target_lang.toUpperCase()}: ${p.source_url} ↔ ${p.target_url}`,
+                )
+                .join("\n")}
+            >
+              {t("Bilingual pairs")}: {source.bilingual_pairings.length}
+            </span>
+          )}
           {lastSync && (
             <span>
               {t("Synced")}: {lastSync}

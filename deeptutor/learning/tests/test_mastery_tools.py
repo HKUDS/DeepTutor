@@ -559,8 +559,10 @@ async def test_quiz_infers_choice_and_normalizes_expected_answer(
     pending = LearningStore().load(path_id).pending_question
     assert pending is not None
     assert pending.question_type == "choice"
-    assert pending.expected_answer == "B"
-    assert pending.choice_map == {"A": "red", "B": "blue"}
+    # Registration shuffles the options (#1691), so labels are asserted through
+    # the bodies they carry instead of the order the model registered.
+    assert set(pending.choice_map.values()) == {"red", "blue"}
+    assert pending.choice_map[pending.expected_answer] == "blue"
 
 
 @pytest.mark.asyncio
@@ -668,17 +670,20 @@ async def test_choice_quiz_accepts_ask_user_key_names(path_id):
     assert result.success is True
     pending = LearningStore().load(path_id).pending_question
     assert pending is not None
-    assert pending.choice_map == {
-        "A": "overwrite the old value",
-        "B": "concatenate both lists",
-        "C": "raise, the reducer rejects a list",
-    }
-    assert pending.expected_answer == "B"
-    assert [option["body"] for option in posed_card(result)["options"]] == [
-        "overwrite the old value",
+    # Shuffled registration: assert through bodies, not registration order.
+    assert sorted(pending.choice_map.values()) == [
         "concatenate both lists",
+        "overwrite the old value",
         "raise, the reducer rejects a list",
     ]
+    assert pending.choice_map[pending.expected_answer] == "concatenate both lists"
+    card_options = posed_card(result)["options"]
+    assert sorted(option["body"] for option in card_options) == [
+        "concatenate both lists",
+        "overwrite the old value",
+        "raise, the reducer rejects a list",
+    ]
+    assert [option["label"] for option in card_options] == ["A", "B", "C"]
 
 
 @pytest.mark.asyncio
@@ -699,8 +704,8 @@ async def test_choice_quiz_rejoins_bare_labels_sent_with_descriptions(path_id):
     pending = LearningStore().load(path_id).pending_question
     assert pending is not None
     assert pending.question_type == "choice"
-    assert pending.choice_map == {"A": "red", "B": "blue"}
-    assert pending.expected_answer == "B"
+    assert set(pending.choice_map.values()) == {"red", "blue"}
+    assert pending.choice_map[pending.expected_answer] == "blue"
 
 
 @pytest.mark.asyncio
@@ -765,7 +770,10 @@ async def test_choice_grade_reads_an_answer_typed_in_the_composer(path_id):
         ],
     )
 
-    grade = await MasteryGradeTool().execute(_mastery_path_id=path_id, answer="选C")
+    # The shuffle re-labels options, so the typed answer targets whatever
+    # label the correct body carries after registration.
+    expected_label = LearningStore().load(path_id).pending_question.expected_answer
+    grade = await MasteryGradeTool().execute(_mastery_path_id=path_id, answer=f"选{expected_label}")
     assert grade.success is True
     assert json.loads(grade.content)["is_correct"] is True
 
@@ -817,13 +825,18 @@ async def test_choice_quiz_preserves_bodies_and_normalizes_answer(path_id, sessi
     )
     assert quiz.success is True
 
+    # Registration shuffles, so the submission targets the correct body's
+    # post-shuffle label and the notebook assertions follow the stored map.
+    pending_after_quiz = LearningStore().load(path_id).pending_question
+    choice_map = pending_after_quiz.choice_map
+    expected_label = pending_after_quiz.expected_answer
     grade = json.loads(
         (
             await MasteryGradeTool().execute(
                 _mastery_path_id=path_id,
                 _session_id=session["id"],
                 _turn_id="turn_choice_1",
-                answer="C",
+                answer=expected_label,
             )
         ).content
     )
@@ -831,14 +844,9 @@ async def test_choice_quiz_preserves_bodies_and_normalizes_answer(path_id, sessi
 
     entries = await session_store.list_notebook_entries()
     entry = entries["items"][0]
-    assert entry["options"] == {
-        "A": "Step 2 — write the first tool",
-        "B": "Step 4 — test one call",
-        "C": "Step 6 — add the stop condition",
-        "D": "Step 7 — add another tool",
-    }
-    assert entry["correct_answer"] == "C"
-    assert entry["user_answer"] == "C"
+    assert entry["options"] == choice_map
+    assert entry["correct_answer"] == expected_label
+    assert entry["user_answer"] == expected_label
     assert entry["is_correct"] is True
 
 
@@ -871,10 +879,9 @@ async def test_pending_choice_status_reuses_public_contract_without_answer(path_
     assert card["question_id"] == pending["question_id"]
     assert card["prompt"] == "Pick a colour"
     assert card["allow_free_text"] is True
-    assert card["options"] == [
-        {"label": "A", "body": "red"},
-        {"label": "B", "body": "blue"},
-    ]
+    card_options = card["options"]
+    assert [option["label"] for option in card_options] == ["A", "B"]
+    assert sorted(option["body"] for option in card_options) == ["blue", "red"]
     assert card["objective"]["id"] == kp_id
     assert card["attempt"] == 1
     # The answer key never travels to the learner.
@@ -1221,12 +1228,15 @@ async def test_grade_recovers_unreadable_choice_answer(path_id):
     assert blocked.success is False
     assert "NOT graded" in blocked.content
 
+    # The shuffle re-labels options, so the recovery answers with whatever
+    # label the correct body ("-8") carries after registration.
+    expected_label = LearningStore().load(path_id).pending_question.expected_answer
     recovered = json.loads(
         (
             await MasteryGradeTool().execute(
                 _mastery_path_id=path_id,
                 question_id=quiz["question_id"],
-                answer="A",
+                answer=expected_label,
             )
         ).content
     )
@@ -1234,7 +1244,7 @@ async def test_grade_recovers_unreadable_choice_answer(path_id):
     graded = LearningStore().get_interaction(path_id, quiz["question_id"])
     assert graded is not None
     assert graded.status == InteractionStatus.GRADED
-    assert graded.user_answer == "A"
+    assert graded.user_answer == expected_label
 
 
 # ── assess: the qualitative gate ─────────────────────────────────────────────

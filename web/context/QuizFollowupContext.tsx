@@ -30,6 +30,10 @@ import { updateNotebookEntry } from "@/lib/notebook-api";
 import { shouldAppendEventContent } from "@/lib/stream";
 import { hasPendingAskUser } from "@/lib/ask-user-state";
 import {
+  SUBMIT_CONNECT_RETRY_INTERVAL_MS,
+  SUBMIT_CONNECT_RETRY_LIMIT,
+} from "@/lib/send-retry";
+import {
   type ChatMessage,
   type LLMSelection,
   type StreamEvent,
@@ -390,7 +394,7 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
       const attempt = options.attempt ?? 0;
       const runner = ensureRunner(key);
       if (!runner.client.connected) {
-        if (attempt >= 10) {
+        if (attempt >= SUBMIT_CONNECT_RETRY_LIMIT) {
           updateThread(key, (prev) => ({
             ...prev,
             isStreaming: false,
@@ -402,7 +406,7 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
         return new Promise<boolean>((resolve) => {
           window.setTimeout(
             () => resolve(send(key, message, { ...options, attempt: attempt + 1 })),
-            200,
+            SUBMIT_CONNECT_RETRY_INTERVAL_MS,
           );
         });
       }

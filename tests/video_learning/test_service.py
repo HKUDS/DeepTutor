@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from deeptutor.video_learning import service
+from deeptutor.video_learning.marks import create_mark
 
 
 class _Paths:
@@ -153,7 +154,10 @@ def test_store_repairs_legacy_caption_entities(isolated: Path) -> None:
             "segments": [
                 {"locator": 7, "start": 0, "end": 1, "text": "Learn&nbsp;&nbsp;&amp; apply"}
             ],
-            "learning": {"last_position": 0},
+            "learning": {
+                "last_position": 0,
+                "marks": [{"locator": 7, "quote": "Learn&nbsp;&nbsp;&amp; apply"}],
+            },
         }
     )
 
@@ -162,6 +166,9 @@ def test_store_repairs_legacy_caption_entities(isolated: Path) -> None:
 
     assert repaired["transcript"]["cues"][0]["text"] == "Learn & apply"
     assert repaired["segments"] == [{"locator": 7, "start": 0, "end": 1, "text": "Learn & apply"}]
+    assert repaired["learning"]["marks"] == [
+        {"locator": 7, "quote": "Learn&nbsp;&nbsp;&amp; apply"}
+    ]
     persisted = json.loads(store._path(material_id).read_text(encoding="utf-8"))
     assert persisted["transcript"]["cues"][0]["text"] == "Learn & apply"
     assert store.get(material_id)["segments"][0]["text"] == "Learn & apply"
@@ -303,6 +310,10 @@ async def test_provider_switch_preserves_material_and_progress(monkeypatch, isol
     first = await service.resolve_material("https://youtu.be/dQw4w9WgXcQ")
     stored = service.get_timed_media_store().get(first["material_id"])
     stored["learning"]["last_position"] = 42
+    mark = create_mark(
+        stored,
+        {"kind": "key_point", "start_seconds": 1, "end_seconds": 12},
+    )
     service.get_timed_media_store().save(stored)
     service.save_video_learning_settings(
         {
@@ -314,6 +325,7 @@ async def test_provider_switch_preserves_material_and_progress(monkeypatch, isol
     second = await service.resolve_material("https://youtu.be/dQw4w9WgXcQ")
     assert second["material_id"] == first["material_id"]
     assert second["learning"]["last_position"] == 42
+    assert second["learning"]["marks"] == [mark]
     assert second["playback"]["provider"] == "invidious"
 
 
@@ -385,7 +397,26 @@ async def test_refresh_invidious_transcript_preserves_playback_and_progress(
             "metadata": {"title": "Retry lesson", "duration_seconds": 120},
             "transcript": {"status": "unavailable", "reason": "unavailable", "cues": []},
             "segments": [],
-            "learning": {"last_position": 42},
+            "learning": {
+                "last_position": 42,
+                "marks": [
+                    {
+                        "mark_id": "0123456789abcdef01234567",
+                        "kind": "review",
+                        "start_seconds": 1,
+                        "end_seconds": 4,
+                        "start_locator": 0,
+                        "end_locator": 0,
+                        "quote": "",
+                        "note": "",
+                        "author": "user",
+                        "source": "immersive",
+                        "metadata": {},
+                        "created_at": "2026-01-01T00:00:00Z",
+                        "updated_at": "2026-01-01T00:00:00Z",
+                    }
+                ],
+            },
             "provider_cache": {
                 "invidious_formats": [{"format_id": "18", "mime_type": "video/mp4"}]
             },
@@ -411,6 +442,7 @@ async def test_refresh_invidious_transcript_preserves_playback_and_progress(
         {"locator": 1, "start": 1, "end": 4, "text": "Recovered caption."}
     ]
     assert refreshed["learning"]["last_position"] == 42
+    assert len(refreshed["learning"]["marks"]) == 1
     assert refreshed["playback"]["format_id"] == "18"
     assert "revision=" in refreshed["playback"]["subtitles_url"]
 

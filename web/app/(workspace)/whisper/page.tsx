@@ -7,6 +7,10 @@ import WhisperComposer from "@/components/whisper/WhisperComposer";
 import WhisperMessageList from "@/components/whisper/WhisperMessageList";
 import WhisperRoomChip from "@/components/whisper/WhisperRoomChip";
 import { useCapabilityFilter } from "@/features/capabilities/useCapabilityCatalog";
+import {
+  SUBMIT_CONNECT_RETRY_INTERVAL_MS,
+  SUBMIT_CONNECT_RETRY_LIMIT,
+} from "@/lib/send-retry";
 import type {
   StartTurnMessage,
   StreamEvent,
@@ -189,7 +193,7 @@ export default function WhisperPage() {
       setEverConnected(true);
       return;
     }
-    if (attempt >= 10) {
+    if (attempt >= SUBMIT_CONNECT_RETRY_LIMIT) {
       setBusy(false);
       setMessages((prev) => [
         ...prev,
@@ -204,7 +208,7 @@ export default function WhisperPage() {
     const timer = setTimeout(() => {
       retryTimersRef.current.delete(timer);
       sendWithRetry(payload, attempt + 1);
-    }, 200);
+    }, SUBMIT_CONNECT_RETRY_INTERVAL_MS);
     retryTimersRef.current.add(timer);
   }
 

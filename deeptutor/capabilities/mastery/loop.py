@@ -15,6 +15,7 @@ it is only ever a clarifying question.
 from __future__ import annotations
 
 from collections.abc import Callable
+import json
 import logging
 import re
 from typing import Any
@@ -406,6 +407,48 @@ class MasteryLoopCapability:
         state["card_posted"] = False
         return ""
 
+    async def pre_loop(
+        self, context: UnifiedContext, stream: Any, *, usage: Any = None
+    ) -> PromptBlock | None:
+        """Read current state once before the first model call, without an LLM.
+
+        This is a fresh read for this turn, never a session cache. Reuse the
+        status tool so objective gates and pending answers have one authority.
+        The loop's pre-pass wrapper falls back to the tool on read failure.
+        """
+        if not self.is_active(context) or not context.metadata.get("mastery_path_id"):
+            return None
+        from deeptutor.capabilities.mastery.tools import MasteryStatusTool
+
+        binding = (
+            context.metadata.get("mastery_path_id"),
+            context.metadata.get("mastery_session_mode"),
+        )
+        result = await MasteryStatusTool().execute(
+            **self.augment_kwargs("mastery_status", {}, context)
+        )
+        if not result.success:
+            return None
+        # A rebind during the read must not seed the new path with old state.
+        current = (
+            context.metadata.get("mastery_path_id"),
+            context.metadata.get("mastery_session_mode"),
+        )
+        if (
+            binding != current
+            or json.loads(result.content).get("path_id") != str(binding[0]).strip()
+        ):
+            return None
+        return PromptBlock(
+            "mastery_status_snapshot",
+            "[Current-turn mastery_status snapshot]\n"
+            "The runtime has already read mastery_status for this turn and active path. "
+            "Use this result directly; do not call mastery_status again just to begin. "
+            "Refresh with mastery_status after changing the path, mode, outline, or progress "
+            "when updated state is needed. Earlier turns' snapshots are historical only.\n"
+            + result.content,
+        )
+
     def pre_loop_seed(self, context: UnifiedContext) -> str:
         """Hand over whatever this turn already settled on the open card.
 
@@ -424,6 +467,25 @@ class MasteryLoopCapability:
         skipped = self._skip_seed(context)
         graded = self._grade_seed(context)
         return "\n\n".join(part for part in (skipped, graded) if part)
+
+    def skip_kb_seed(self, context: UnifiedContext) -> bool:
+        """Don't pre-search the knowledge base with a card answer.
+
+        The message of a card turn is the learner's pick ("A", "True") or a
+        declined question, not a question to look up. The engine grades it
+        against the stored key, and the tutor can still call ``rag`` with the
+        actual question if it needs the material.
+        """
+        if not self.is_active(context):
+            return False
+        meta = context.metadata
+        grade = meta.get("mastery_card_grade")
+        skip = meta.get("mastery_card_skip")
+        return bool(
+            meta.get("mastery_card_answered")
+            or (isinstance(grade, dict) and grade)
+            or (isinstance(skip, dict) and skip.get("skipped"))
+        )
 
     def _skip_seed(self, context: UnifiedContext) -> str:
         """State that the learner's declined question is already gone.

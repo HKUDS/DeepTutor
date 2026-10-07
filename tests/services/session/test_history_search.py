@@ -64,3 +64,19 @@ def test_search_ignores_system_only_matches_and_empty_queries(tmp_path) -> None:
 
     assert run(store.search_sessions("needle")) == {"sessions": [], "total": 0}
     assert run(store.search_sessions("   ")) == {"sessions": [], "total": 0}
+
+
+def test_search_skips_sessions_in_the_recycle_bin(tmp_path) -> None:
+    store = SQLiteSessionStore(tmp_path / "history.db")
+    kept = run(store.create_session(title="Bayes notes", session_id="kept"))
+    recycled = run(store.create_session(title="Bayes draft", session_id="recycled"))
+    run(store.add_message(recycled["id"], "user", "Explain Bayes theorem"))
+    run(store.soft_delete_session(recycled["id"]))
+
+    result = run(store.search_sessions("bayes"))
+
+    assert result["total"] == 1
+    assert [row["session_id"] for row in result["sessions"]] == [kept["id"]]
+
+    run(store.restore_session(recycled["id"]))
+    assert run(store.search_sessions("bayes"))["total"] == 2

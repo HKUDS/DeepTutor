@@ -10,6 +10,7 @@ import {
   type FailedSubmissionRecord,
 } from "@/lib/failed-submissions";
 import { randomUuid } from "@/lib/random-uuid";
+import { newCommandId } from "@/contracts/parse/turn-command";
 
 import React, {
   createContext,
@@ -69,6 +70,10 @@ import {
   tipMessageId,
 } from "@/lib/message-branches";
 import { nextOptimisticId, resolvePersistedMessage } from "@/lib/optimistic-id";
+import {
+  SUBMIT_CONNECT_RETRY_INTERVAL_MS,
+  SUBMIT_CONNECT_RETRY_LIMIT,
+} from "@/lib/send-retry";
 import { reconcileTurnIds } from "@/lib/turn-reconcile";
 import { decideFailedTurnReplay, isFailedTurnVisible } from "@/lib/chat-resend";
 import {
@@ -76,7 +81,7 @@ import {
   recomputeAnswerContent,
   shouldAppendEventContent,
 } from "@/lib/stream";
-import { hasPendingAskUserInMessages } from "@/lib/ask-user-state";
+import { hasPendingAskUserInMessages, pendingAskUserKeyInMessages } from "@/lib/ask-user-state";
 import { notify } from "@/lib/notifications";
 import { forwardReaderAction } from "@/lib/reading-reader-action";
 import {
@@ -1796,6 +1801,7 @@ export function ChatStateAdapterProvider({
       {
         key: string;
         client: UnifiedTurnClient;
+        replyCommand?: { fingerprint: string; commandId: string };
       }
     >
   >(new Map());
@@ -2182,7 +2188,11 @@ export function ChatStateAdapterProvider({
         if (!existing.client.connected) existing.client.connect();
         return existing;
       }
-      const record = {
+      const record: {
+        key: string;
+        client: UnifiedTurnClient;
+        replyCommand?: { fingerprint: string; commandId: string };
+      } = {
         key,
         client: new UnifiedTurnClient(
           (event) => handleRunnerEvent(record.key, event),
@@ -2241,8 +2251,13 @@ export function ChatStateAdapterProvider({
         return Promise.resolve(false);
       }
       const runner = ensureRunner(key);
+      // The transport owns reconnection and queues durable replies. Local
+      // connection retries must not end this already-running turn (#1648).
+      if (options.awaitAck) {
+        return runner.client.sendAwaitingAck(msg as ClientCommand);
+      }
       if (!runner.client.connected) {
-        if (attempt >= 10) {
+        if (attempt >= SUBMIT_CONNECT_RETRY_LIMIT) {
           console.error("WebSocket failed to connect after retries");
           dispatch({
             type: "STREAM_END",
@@ -2276,12 +2291,9 @@ export function ChatStateAdapterProvider({
             resolve(
               dispatchToRunner(key, msg, { ...options, attempt: attempt + 1 }),
             );
-          }, 200);
+          }, SUBMIT_CONNECT_RETRY_INTERVAL_MS);
           retryTimersRef.current.add(timerId);
         });
-      }
-      if (options.awaitAck) {
-        return runner.client.sendAwaitingAck(msg as ClientCommand);
       }
       runner.client.send(msg);
       return Promise.resolve(true);
@@ -3134,9 +3146,20 @@ export function ChatStateAdapterProvider({
         if (typeof reply.text === "string") message.text = reply.text;
         if (Array.isArray(reply.answers)) message.answers = reply.answers;
       }
+      const runner = ensureRunner(key);
+      const fingerprint = JSON.stringify([
+        message, pendingAskUserKeyInMessages(session.messages, turnId),
+      ]);
+      // Retrying an unconfirmed answer reuses its idempotency key. The server
+      // may already have accepted it even if its ACK was lost (#1648).
+      const commandId = runner.replyCommand?.fingerprint === fingerprint
+        ? runner.replyCommand.commandId
+        : newCommandId();
+      runner.replyCommand = { fingerprint, commandId };
+      message.command_id = commandId;
       return sendThroughRunner(key, message, { awaitAck: true });
     },
-    [sendThroughRunner],
+    [ensureRunner, sendThroughRunner],
   );
 
   const regenerateLastMessage = useCallback((replaySnapshot = false) => {

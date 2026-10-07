@@ -3,7 +3,7 @@
 import asyncio
 import base64
 from collections import OrderedDict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from http import HTTPStatus
 import importlib.util
 import inspect
@@ -288,6 +288,26 @@ def _extract_post_text(content_json: dict) -> str:
     return text
 
 
+async def _shutdown_ws_client(client: Any, ws_loop: asyncio.AbstractEventLoop) -> None:
+    """Cancel the SDK WebSocket client's tasks and close its connection.
+
+    ``lark.ws.Client`` has no ``stop()``: its ``start()`` ends in a module-level
+    ``_select()`` that never returns, so a reloaded or disabled channel used to
+    keep a live connection receiving events under a closed-over channel object.
+    Cancelling the loop's tasks makes ``start()`` return to the listener thread.
+    """
+    for task in asyncio.all_tasks(ws_loop):
+        if task is not asyncio.current_task() and not task.done():
+            task.cancel()
+    conn = getattr(client, "_conn", None)
+    if conn is None:
+        return
+    try:
+        await conn.close()
+    except Exception as e:  # noqa: BLE001 - teardown is best effort
+        logger.debug("Error closing Feishu WebSocket connection: {}", e)
+
+
 class FeishuConfig(DeliveryOverrides, StreamingSupport):
     """Feishu/Lark channel configuration using WebSocket long connection."""
 
@@ -300,6 +320,40 @@ class FeishuConfig(DeliveryOverrides, StreamingSupport):
     allow_from: list[str] = Field(default_factory=list)
     react_emoji: str = "THUMBSUP"
     group_policy: Literal["open", "mention"] = "mention"
+
+    # Group chats keep the bot's answer (and its narration/progress) threaded
+    # under the triggering message so one chatty turn does not flood the main
+    # timeline. A p2p chat has no such problem — there a thread is just a panel
+    # the reader has to open — so p2p always gets a plain reply, whatever this
+    # is set to.
+    reply_in_thread: bool = Field(
+        default=True,
+        description=(
+            "Deliver group-chat replies inside the message's thread; "
+            "single chats always get a plain reply."
+        ),
+    )
+
+    # Reasoning output never reaches a channel, so a thinking-heavy turn shows
+    # nothing until the first answer token. The notice is a short message
+    # ("🤔 正在思考…") that is deleted again as soon as the answer starts.
+    thinking_notice: bool = Field(
+        default=True,
+        description=(
+            "Post a brief 'thinking…' notice while the model reasons, removed "
+            "once the answer starts arriving."
+        ),
+    )
+
+    # CardKit renders streamed text with a client-side typewriter effect whose
+    # pace comes from ``streaming_config``. The platform defaults (1 character
+    # per 70 ms ≈ 14 chars/s) sit far below an LLM's output rate, so the card
+    # kept typing long after the turn had finished. Keep the pace ahead of the
+    # model; set either value to 0 to fall back to the platform defaults.
+    # https://open.feishu.cn/document/cardkit-v1/streaming-updates-openapi-overview
+    stream_print_frequency_ms: int = Field(default=30, ge=0, le=2000)
+    stream_print_step: int = Field(default=6, ge=0, le=500)
+    stream_print_strategy: Literal["fast", "delay"] = "fast"
 
 
 _STREAM_ELEMENT_ID = "streaming_md"
@@ -315,6 +369,15 @@ class _FeishuStreamBuf:
     last_edit: float = 0.0
     stream_id: str | None = None
     reply_to_message_id: str | None = None
+    # When the first delta of this segment arrived, so the card's live/closed
+    # logs can show how far behind the reader the stream actually ran.
+    started_at: float = field(default_factory=time.monotonic)
+    updates: int = 0
+    # Card creation failures used to be retried on *every* delta (two blocking
+    # API calls each, no backoff), which turned a reply into a slow dribble.
+    # Count them and give up on live streaming for the segment instead.
+    create_failures: int = 0
+    stream_disabled: bool = False
 
 
 @dataclass
@@ -345,7 +408,14 @@ class FeishuChannel(BaseChannel):
     name = "feishu"
     display_name = "Feishu"
 
-    _STREAM_EDIT_INTERVAL = 0.5  # throttle between CardKit streaming updates
+    # One CardKit content update costs a round trip (~0.5s on a warm
+    # connection, ~2s cold). Coalescing already sends the full text each time,
+    # so a slower cadence keeps the serial outbound lane ahead of the model
+    # instead of queueing updates behind it.
+    _STREAM_EDIT_INTERVAL = 1.0
+    _STREAM_CREATE_RETRY_INTERVAL = 3.0  # min seconds between card-creation retries
+    _MAX_STREAM_CREATE_FAILURES = 3  # then fall back to buffered delivery
+    _MAX_THINKING_NOTICES = 50  # notices awaiting their answer, per channel
     _MAX_CONFIRMED_STREAMS = 1000
     _WORKING_REACTION_TTL = 60 * 60
     _MAX_WORKING_REACTIONS = 1000
@@ -354,6 +424,7 @@ class FeishuChannel(BaseChannel):
     _MODEL_PAGE_SIZE = 6
     _MODEL_PICKER_TTL = 60 * 60
     _MAX_MODEL_PICKERS = 100
+    _WS_SHUTDOWN_TIMEOUT = 3.0
 
     @classmethod
     def default_config(cls) -> dict[str, Any]:
@@ -367,6 +438,7 @@ class FeishuChannel(BaseChannel):
         self._client: Any = None
         self._ws_client: Any = None
         self._ws_thread: threading.Thread | None = None
+        self._ws_loop: asyncio.AbstractEventLoop | None = None
         self._processed_message_ids: OrderedDict[str, None] = OrderedDict()  # Ordered dedup cache
         self._stream_bufs: dict[str, _FeishuStreamBuf] = {}
         self._confirmed_streams: OrderedDict[str, None] = OrderedDict()
@@ -374,6 +446,8 @@ class FeishuChannel(BaseChannel):
         self._reaction_cleanup_tasks: dict[tuple[str, str], asyncio.Task[None]] = {}
         self._reaction_expiry_tasks: dict[str, asyncio.Task[None]] = {}
         self._model_pickers: OrderedDict[str, _ModelPicker] = OrderedDict()
+        # chat_id → message id of the "thinking…" notice awaiting an answer.
+        self._thinking_notices: OrderedDict[str, str] = OrderedDict()
         self._model_picker_lock = Lock()
         self._loop: asyncio.AbstractEventLoop | None = None
 
@@ -426,6 +500,17 @@ class FeishuChannel(BaseChannel):
 
         import lark_oapi as lark
         from lark_oapi.core.const import FEISHU_DOMAIN, LARK_DOMAIN
+
+        from deeptutor.partners.channels.lark_http import install_keep_alive
+
+        # Every sync call would otherwise open a new connection (DNS + TCP +
+        # TLS ≈ 2s per call on a remote host), which the serial outbound lane
+        # pays per message. Verified before it is installed.
+        if not install_keep_alive():
+            logger.warning(
+                "Feishu keep-alive HTTP transport unavailable; every API call "
+                "will pay a fresh connection"
+            )
 
         ws_module = lark.ws.client
 
@@ -492,13 +577,17 @@ class FeishuChannel(BaseChannel):
 
             ws_loop = asyncio.new_event_loop()
             asyncio.set_event_loop(ws_loop)
+            self._ws_loop = ws_loop
             # Patch the module-level loop used by lark's ws Client.start()
             _lark_ws_client.loop = ws_loop
+            ws_client = self._ws_client
             try:
                 while self._running:
                     try:
                         self.set_setup_state("connecting")
-                        self._ws_client.start()
+                        ws_client.start()
+                    except asyncio.CancelledError:
+                        break
                     except Exception as e:
                         logger.warning("Feishu WebSocket error: {}", e)
                         self.set_setup_state(
@@ -508,6 +597,14 @@ class FeishuChannel(BaseChannel):
                     if self._running:
                         time.sleep(5)
             finally:
+                # ``start()`` leaves ping/receive tasks pending; close them and
+                # the socket before the loop dies so Feishu sees this listener
+                # go away instead of keeping a zombie connection.
+                try:
+                    ws_loop.run_until_complete(_shutdown_ws_client(ws_client, ws_loop))
+                except Exception as e:  # noqa: BLE001 - teardown is best effort
+                    logger.debug("Error shutting down Feishu WebSocket: {}", e)
+                self._ws_loop = None
                 ws_loop.close()
 
         self._ws_thread = threading.Thread(target=run_ws, daemon=True)
@@ -521,15 +618,46 @@ class FeishuChannel(BaseChannel):
         while self._running:
             await asyncio.sleep(1)
 
+    def _request_ws_shutdown(self) -> None:
+        """Ask the listener thread's WebSocket client to drop its connection.
+
+        Safe to call from any thread; the SDK's ``start()`` returns once its
+        tasks are cancelled, which lets ``run_ws`` finish and close the socket.
+        """
+        ws_loop = self._ws_loop
+        ws_client = self._ws_client
+        if ws_loop is None or ws_client is None or ws_loop.is_closed():
+            return
+        try:
+            ws_loop.call_soon_threadsafe(
+                lambda: ws_loop.create_task(_shutdown_ws_client(ws_client, ws_loop))
+            )
+        except RuntimeError:
+            return
+
     async def stop(self) -> None:
         """
-        Stop the Feishu bot.
+        Stop the Feishu bot and release its WebSocket long connection.
 
-        Notice: lark.ws.Client does not expose stop method， simply exiting the program will close the client.
+        Notice: lark.ws.Client does not expose stop; the listener loop is ended
+        by cancelling the SDK's pending tasks and closing its connection, so a
+        reload does not leave a second listener subscribed to the same app.
 
         Reference: https://github.com/larksuite/oapi-sdk-python/blob/v2_main/lark_oapi/ws/client.py#L86
         """
         self._running = False
+        self._request_ws_shutdown()
+        thread = self._ws_thread
+        if thread is not None and thread.is_alive():
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, thread.join, self._WS_SHUTDOWN_TIMEOUT)
+            if thread.is_alive():
+                logger.warning(
+                    "Feishu WebSocket listener still running after {}s",
+                    self._WS_SHUTDOWN_TIMEOUT,
+                )
+        self._ws_thread = None
+        self._ws_client = None
         self._confirmed_streams.clear()
         cleanup_tasks = [
             *self._reaction_cleanup_tasks.values(),
@@ -1142,6 +1270,94 @@ class FeishuChannel(BaseChannel):
 
         return None, f"[{msg_type}: download failed]"
 
+    @staticmethod
+    def _is_group_chat(receive_id: str) -> bool:
+        """Group chats are addressed by ``oc_`` chat id; p2p chats by ``ou_`` open id."""
+        return str(receive_id).startswith("oc_")
+
+    def _thread_reply_enabled(self, receive_id: str) -> bool:
+        """Whether this outbound message belongs inside a Feishu thread."""
+        enabled = bool(getattr(self.config, "reply_in_thread", True))
+        return enabled and self._is_group_chat(receive_id)
+
+    # ── thinking notice ─────────────────────────────────────────────
+
+    def _post_notice_sync(self, receive_id: str, content: str) -> str | None:
+        """Post the "thinking…" notice and return its message id.
+
+        Kept separate from ``_send_message_sync`` so the retraction has an id
+        to work with without widening that method's contract.
+        """
+        from lark_oapi.api.im.v1 import CreateMessageRequest, CreateMessageRequestBody
+
+        try:
+            request = (
+                CreateMessageRequest.builder()
+                .receive_id_type("chat_id" if self._is_group_chat(receive_id) else "open_id")
+                .request_body(
+                    CreateMessageRequestBody.builder()
+                    .receive_id(receive_id)
+                    .msg_type("text")
+                    .content(json.dumps({"text": content}, ensure_ascii=False))
+                    .build()
+                )
+                .build()
+            )
+            response = self._client.im.v1.message.create(request)
+            if not response.success():
+                logger.debug(
+                    "Feishu thinking notice rejected: code={}, msg={}",
+                    response.code,
+                    response.msg,
+                )
+                return None
+            message_id = getattr(getattr(response, "data", None), "message_id", None)
+            return message_id if isinstance(message_id, str) and message_id else "posted"
+        except Exception as e:
+            logger.debug("Error posting Feishu thinking notice: {}", e)
+            return None
+
+    def _delete_message_sync(self, message_id: str) -> bool:
+        from lark_oapi.api.im.v1 import DeleteMessageRequest
+
+        try:
+            request = DeleteMessageRequest.builder().message_id(message_id).build()
+            response = self._client.im.v1.message.delete(request)
+            if response.success():
+                return True
+            logger.debug(
+                "Failed to retract Feishu notice {}: code={}, msg={}",
+                message_id,
+                response.code,
+                response.msg,
+            )
+        except Exception as e:
+            logger.debug("Error retracting Feishu notice {}: {}", message_id, e)
+        return False
+
+    def _remember_thinking_notice(self, chat_id: str, message_id: str) -> None:
+        self._thinking_notices[chat_id] = message_id
+        self._thinking_notices.move_to_end(chat_id)
+        while len(self._thinking_notices) > self._MAX_THINKING_NOTICES:
+            self._thinking_notices.popitem(last=False)
+
+    async def _post_thinking_notice(self, chat_id: str, content: str) -> None:
+        """Show the reader that the turn is alive before any answer text exists."""
+        if not bool(getattr(self.config, "thinking_notice", True)) or not self._client:
+            return
+        loop = asyncio.get_running_loop()
+        message_id = await loop.run_in_executor(None, self._post_notice_sync, chat_id, content)
+        if message_id:
+            self._remember_thinking_notice(chat_id, message_id)
+
+    async def _retract_thinking_notice(self, chat_id: str) -> None:
+        """Remove the notice once real output exists (best effort)."""
+        message_id = self._thinking_notices.pop(chat_id, None)
+        if not message_id or not self._client:
+            return
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, self._delete_message_sync, message_id)
+
     def _send_message_sync(
         self,
         receive_id_type: str,
@@ -1149,6 +1365,8 @@ class FeishuChannel(BaseChannel):
         msg_type: str,
         content: str,
         reply_to_message_id: str | None = None,
+        *,
+        reply_in_thread: bool | None = None,
     ) -> bool:
         """Send a message as a real Feishu reply when its source is known."""
         from lark_oapi.api.im.v1 import (
@@ -1156,6 +1374,12 @@ class FeishuChannel(BaseChannel):
             CreateMessageRequestBody,
             ReplyMessageRequest,
             ReplyMessageRequestBody,
+        )
+
+        use_thread = (
+            self._thread_reply_enabled(receive_id)
+            if reply_in_thread is None
+            else bool(reply_in_thread)
         )
 
         try:
@@ -1167,7 +1391,7 @@ class FeishuChannel(BaseChannel):
                         ReplyMessageRequestBody.builder()
                         .msg_type(msg_type)
                         .content(content)
-                        .reply_in_thread(True)
+                        .reply_in_thread(use_thread)
                         .build()
                     )
                     .build()
@@ -1223,17 +1447,60 @@ class FeishuChannel(BaseChannel):
 
     # ── CardKit streaming (send_delta) ───────────────────────────────
 
+    def _streaming_config(self) -> dict[str, Any] | None:
+        """Client-side typewriter pace for streamed text, or ``None`` for defaults.
+
+        Feishu prints streamed markdown character by character; without an
+        explicit ``streaming_config`` the pace is 1 char per 70 ms, which no
+        model-generated answer can be rendered at. Clients older than 7.23
+        ignore these parameters and keep their own defaults.
+        """
+        frequency = int(getattr(self.config, "stream_print_frequency_ms", 0) or 0)
+        step = int(getattr(self.config, "stream_print_step", 0) or 0)
+        if frequency <= 0 or step <= 0:
+            return None
+        strategy = str(getattr(self.config, "stream_print_strategy", "fast") or "fast")
+        return {
+            "print_frequency_ms": {"default": frequency},
+            "print_step": {"default": step},
+            "print_strategy": strategy if strategy in {"fast", "delay"} else "fast",
+        }
+
     def _create_streaming_card_sync(
-        self, receive_id_type: str, chat_id: str, reply_to_message_id: str | None = None
+        self,
+        receive_id_type: str,
+        chat_id: str,
+        reply_to_message_id: str | None = None,
+        initial_text: str = "",
     ) -> str | None:
-        """Create a CardKit streaming card, send it to chat, return card_id."""
+        """Create a CardKit streaming card, send it to chat, return card_id.
+
+        ``initial_text`` rides along in the card JSON so the first chunk of the
+        reply is visible with the card itself: creating an empty entity and then
+        pushing the same text costs one extra round trip (~0.5–2s depending on
+        the connection), and the reader waits for it.
+        """
         from lark_oapi.api.cardkit.v1 import CreateCardRequest, CreateCardRequestBody
 
+        card_config: dict[str, Any] = {
+            "wide_screen_mode": True,
+            "update_multi": True,
+            "streaming_mode": True,
+        }
+        streaming_config = self._streaming_config()
+        if streaming_config is not None:
+            card_config["streaming_config"] = streaming_config
         card_json = {
             "schema": "2.0",
-            "config": {"wide_screen_mode": True, "update_multi": True, "streaming_mode": True},
+            "config": card_config,
             "body": {
-                "elements": [{"tag": "markdown", "content": "", "element_id": _STREAM_ELEMENT_ID}]
+                "elements": [
+                    {
+                        "tag": "markdown",
+                        "content": initial_text,
+                        "element_id": _STREAM_ELEMENT_ID,
+                    }
+                ]
             },
         }
         try:
@@ -1361,7 +1628,7 @@ class FeishuChannel(BaseChannel):
         meta = metadata or {}
         stream_key = self._stream_key(chat_id, meta)
         loop = asyncio.get_running_loop()
-        rid_type = "chat_id" if chat_id.startswith("oc_") else "open_id"
+        rid_type = "chat_id" if self._is_group_chat(chat_id) else "open_id"
         inbound_message_id = str(meta.get("message_id") or "").strip() or None
 
         if meta.get("_stream_end"):
@@ -1397,12 +1664,22 @@ class FeishuChannel(BaseChannel):
                         self._confirm_stream_delivery(stream_key)
                         if reply_to_message_id:
                             await self._finish_reaction(reply_to_message_id)
+                    logger.info(
+                        "Feishu streaming card {} closed for {}: {} chars, {} updates, "
+                        "{:.1f}s after the first delta",
+                        buf.card_id,
+                        stream_key,
+                        len(buf.text),
+                        buf.updates,
+                        time.monotonic() - buf.started_at,
+                    )
                     return
                 logger.warning(
                     "Feishu streaming card {} final update failed, falling back to regular card",
                     buf.card_id,
                 )
             delivered = True
+            await self._retract_thinking_notice(chat_id)
             for chunk in self._split_elements_by_table_limit(self._build_card_elements(buf.text)):
                 card = json.dumps(
                     {"config": {"wide_screen_mode": True}, "elements": chunk},
@@ -1437,25 +1714,54 @@ class FeishuChannel(BaseChannel):
 
         now = time.monotonic()
         if buf.card_id is None:
+            if buf.stream_disabled:
+                # Live streaming gave up on this segment; ``_stream_end``
+                # delivers the buffered text as a regular card instead.
+                return
+            if buf.create_failures and (now - buf.last_edit) < self._STREAM_CREATE_RETRY_INTERVAL:
+                return
             card_id = await loop.run_in_executor(
                 None,
                 self._create_streaming_card_sync,
                 rid_type,
                 chat_id,
                 buf.reply_to_message_id,
+                buf.text,
             )
             if card_id:
                 buf.card_id = card_id
+                # The card was created carrying this text, so the sequence is
+                # already at the first content push.
                 buf.sequence = 1
-                await loop.run_in_executor(
-                    None, self._stream_update_text_sync, card_id, buf.text, 1
-                )
+                buf.create_failures = 0
+                buf.updates += 1
                 buf.last_edit = now
+                # Real output is on screen now — drop the "thinking…" notice.
+                await self._retract_thinking_notice(chat_id)
+                logger.info(
+                    "Feishu streaming card {} live for {} after {:.1f}s ({} chars queued)",
+                    card_id,
+                    stream_key,
+                    now - buf.started_at,
+                    len(buf.text),
+                )
+            else:
+                buf.create_failures += 1
+                buf.last_edit = now
+                if buf.create_failures >= self._MAX_STREAM_CREATE_FAILURES:
+                    buf.stream_disabled = True
+                    logger.warning(
+                        "Feishu live streaming disabled for {} after {} card-creation "
+                        "failures; the reply will be delivered as a regular card",
+                        stream_key,
+                        buf.create_failures,
+                    )
         elif (now - buf.last_edit) >= self._STREAM_EDIT_INTERVAL:
             buf.sequence += 1
             await loop.run_in_executor(
                 None, self._stream_update_text_sync, buf.card_id, buf.text, buf.sequence
             )
+            buf.updates += 1
             buf.last_edit = now
 
     def _prune_model_pickers(self) -> None:
@@ -1813,11 +2119,18 @@ class FeishuChannel(BaseChannel):
             return
 
         try:
-            receive_id_type = "chat_id" if msg.chat_id.startswith("oc_") else "open_id"
+            receive_id_type = "chat_id" if self._is_group_chat(msg.chat_id) else "open_id"
             loop = asyncio.get_running_loop()
             metadata = msg.metadata or {}
             origin_message_id = str(metadata.get("message_id") or "").strip() or None
             reply_to_message_id = str(msg.reply_to or origin_message_id or "").strip() or None
+
+            if metadata.get("_thinking_notice"):
+                await self._post_thinking_notice(msg.chat_id, msg.content)
+                return
+            if not metadata.get("_progress"):
+                # The answer (or any final output) supersedes the placeholder.
+                await self._retract_thinking_notice(msg.chat_id)
 
             picker_message_id = str(metadata.get("_feishu_model_picker_message_id") or "")
             if picker_message_id:

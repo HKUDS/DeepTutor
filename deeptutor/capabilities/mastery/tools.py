@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import random
 import re
 from typing import TYPE_CHECKING, Any
 import uuid
@@ -64,7 +65,7 @@ from deeptutor.learning.objective_relations import (
     RelationRefs,
     normalize_refs,
 )
-from deeptutor.learning.pending import public_pending_question
+from deeptutor.learning.pending import positional_label, public_pending_question
 from deeptutor.learning.policy import (
     QUALITATIVE_TYPES,
     display_mastery,
@@ -284,6 +285,33 @@ def _normalize_quiz_contract(
             "the correct label."
         )
     return question_type, options, resolved_expected
+
+
+def _shuffle_choice_options(
+    options: list[dict[str, str]], expected: str, rng: random.Random
+) -> tuple[list[dict[str, str]], str]:
+    """Reorder choice options so the correct answer is not pinned to one label.
+
+    Models put the correct option first the overwhelming majority of the time,
+    and the registration order is exactly what the card renders — so an unmixed
+    session reads A = correct on quiz after quiz (HKUDS/DeepTutor#1691). The
+    shuffle runs after validation and echo stripping, so every contract
+    invariant still holds on the payload that gets persisted: bodies stay
+    unique, labels are re-issued positionally, and ``expected`` follows its
+    body to the new label — the interactive card and the deterministic grader
+    keep comparing the same representation.
+    """
+    if len(options) < 2:
+        return options, expected
+    expected_body = next(option["body"] for option in options if option["label"] == expected)
+    shuffled = list(options)
+    rng.shuffle(shuffled)
+    remapped = [
+        {"label": positional_label(index), "body": option["body"]}
+        for index, option in enumerate(shuffled)
+    ]
+    new_expected = next(option["label"] for option in remapped if option["body"] == expected_body)
+    return remapped, new_expected
 
 
 async def _resolve_pending_choice(
@@ -670,7 +698,7 @@ async def _unbuilt_status_message(
 
 
 class MasteryStatusTool(BaseTool):
-    """Read the current objective + map snapshot. Call FIRST every turn."""
+    """Read current state, or refresh a current-turn runtime snapshot."""
 
     def get_definition(self) -> ToolDefinition:
         return ToolDefinition(
@@ -679,8 +707,10 @@ class MasteryStatusTool(BaseTool):
                 "Read the learner's mastery path: the next objective to work on "
                 "(decided by a hard mastery gate), any question awaiting an "
                 "answer, due reviews, and a map of every objective's status "
-                "(new / learning / mastered). Call this FIRST on every mastery "
-                "turn — it tells you what to do; never guess the next objective."
+                "(new / learning / mastered). Use the current-turn runtime snapshot "
+                "when supplied; otherwise call this FIRST. Refresh after changing "
+                "the path, mode, outline, or progress when updated state is needed. "
+                "Never guess the next objective or reuse an earlier turn's snapshot."
             ),
             parameters=[],
         )
@@ -914,6 +944,9 @@ class MasteryQuizTool(BaseTool):
         question, echoed_options = strip_echoed_options(
             question, {option["label"]: option["body"] for option in options}
         )
+
+        if q_type == "choice":
+            options, expected = _shuffle_choice_options(options, expected, random.Random())
 
         service = _new_service()
         progress = _load_path(service, path_id)

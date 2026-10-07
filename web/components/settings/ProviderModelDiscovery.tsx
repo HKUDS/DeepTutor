@@ -13,6 +13,7 @@ export type ProviderProbeInput = {
   api_format?: string;
   api_version?: string;
   extra_headers?: Record<string, string> | string;
+  proxy?: string;
   service?: string;
   profile_id?: string;
   connection_id?: string;

@@ -109,6 +109,30 @@ def test_knowledge_origins_selection_and_grants(as_user):
             )
 
 
+def test_inherited_workspace_keeps_account_subagents_without_sharing_kbs(as_user):
+    with as_user("alice"):
+        account_manager = current_kb_manager()
+        account_manager.register_connected_entry(
+            "notes", {"type": "obsidian", "vault_path": "/unused"}
+        )
+        account_manager.register_subagent_connection("my-agent", "codex")
+
+        workspace = ContentWorkspaceService().create_workspace("Research")
+        with workspace_context(workspace["workspace_id"]):
+            assert [item["id"] for item in list_visible_knowledge_bases()] == [
+                "account:kb:my-agent"
+            ]
+            assert resolve_kb("account:kb:my-agent").name == "my-agent"
+
+        ContentWorkspaceService().update_workspace(
+            workspace["workspace_id"], resources={"knowledge_bases": []}
+        )
+        with workspace_context(workspace["workspace_id"]):
+            assert list_visible_knowledge_bases() == []
+            with pytest.raises(HTTPException):
+                resolve_kb("account:kb:my-agent")
+
+
 def test_explicit_learning_sources_allow_reads_without_changing_workspace_or_write_access(as_user):
     from deeptutor.services.workspace.context import current_workspace_id
     from deeptutor.services.workspace.knowledge import learning_source_access

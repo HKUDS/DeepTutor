@@ -83,7 +83,7 @@ function pendingCards(
   events: StreamEvent[] | undefined,
   turnId: string | null | undefined,
   includeMastery: boolean,
-): number {
+): Set<string> {
   const pending = new Set<string>();
   let anonymousCount = 0;
 
@@ -121,7 +121,7 @@ function pendingCards(
     }
   }
 
-  return pending.size;
+  return pending;
 }
 
 /**
@@ -135,7 +135,7 @@ export function hasPendingAskUser(
   events: StreamEvent[] | undefined,
   turnId?: string | null,
 ): boolean {
-  return pendingCards(events, turnId, false) > 0;
+  return pendingCards(events, turnId, false).size > 0;
 }
 
 export function hasPendingAskUserInMessages(
@@ -143,6 +143,16 @@ export function hasPendingAskUserInMessages(
   turnId?: string | null,
 ): boolean {
   return messages.some((message) => hasPendingAskUser(message.events, turnId));
+}
+
+/** Distinguish retries from a later question with the same answer (#1648). */
+export function pendingAskUserKeyInMessages(
+  messages: MessageWithEvents[],
+  turnId?: string | null,
+): string {
+  return JSON.stringify(messages
+    .map((message) => [...pendingCards(message.events, turnId, false)])
+    .filter((keys) => keys.length > 0));
 }
 
 /**
@@ -157,5 +167,5 @@ export function hasPendingUserCard(
   events: StreamEvent[] | undefined,
   turnId?: string | null,
 ): boolean {
-  return pendingCards(events, turnId, true) > 0;
+  return pendingCards(events, turnId, true).size > 0;
 }

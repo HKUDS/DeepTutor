@@ -87,7 +87,20 @@ const PROBE_MESSAGES: Record<string, string> = {
   invalid_url: "Enter a valid HTTP or HTTPS provider address.",
   http_error:
     "The provider returned an error. Check the address or try again later.",
+  json_forbidden:
+    "SearXNG rejected the JSON search request. Enable json in search.formats in its settings.yml and check access rules.",
+  invalid_response:
+    "The search endpoint returned an invalid response. Check that the address serves the SearXNG JSON search API.",
 };
+
+function usesLoopbackAddress(address: string): boolean {
+  try {
+    const host = new URL(address.includes("://") ? address : `http://${address}`).hostname;
+    return host === "localhost" || host.startsWith("127.") || host === "[::1]";
+  } catch {
+    return false;
+  }
+}
 const CATEGORIES = [
   "Language models",
   "Embedding models",
@@ -203,6 +216,17 @@ function ProbeForm({
           className={`text-xs leading-relaxed ${result.status === "connected" ? "text-emerald-700 dark:text-emerald-400" : "text-[var(--muted-foreground)]"}`}
         >
           {t(PROBE_MESSAGES[result.status] || PROBE_MESSAGES.http_error)}
+          {result.http_status != null && ` · HTTP ${result.http_status}`}
+          {result.warning === "empty_results" && (
+            <p className="mt-2">
+              {t("The search API is reachable but returned no results. Check the enabled engines and their network access.")}
+            </p>
+          )}
+          {input.binding === "searxng" && result.status !== "connected" && usesLoopbackAddress(input.base_url) && (
+            <p className="mt-2">
+              {t("This test runs from the DeepTutor backend. In Docker, localhost points to the DeepTutor container. Use a shared-network service name and container port, or host.docker.internal and the published host port.")}
+            </p>
+          )}
           {result.status === "connected" &&
             input.service !== "search" &&
             ` · ${t("{{count}} models available", { count: result.models.length })}`}

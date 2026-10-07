@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import {
   BookmarkPlus,
   Highlighter,
@@ -11,6 +12,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import Tooltip from "@/shared/ui/Tooltip";
+import { useDevice } from "@/hooks/useDevice";
 import {
   ANNOTATION_COLORS,
   ANNOTATION_SWATCH,
@@ -46,13 +48,24 @@ export interface PopoverAiAction {
 /** Chips that fit on the row before the rest go behind ⋯. */
 const INLINE_AI_ACTIONS = 3;
 
+/** How far the sheet must be pulled down before the drag counts as "close". */
+const DRAG_CLOSE_THRESHOLD = 48;
+
 /**
  * Toolbar that appears over a selection.
  *
- * Positioned in fixed coordinates and then clamped to the window after mount, so
- * a selection near the top or right edge still shows the whole toolbar instead of
- * being cut off — the failure people actually hit, since the interesting text is
- * often at the top of a page.
+ * On a desktop it is positioned in fixed coordinates and clamped to the
+ * window after mount, so a selection near the top or right edge still shows
+ * the whole toolbar instead of being cut off — the failure people actually
+ * hit, since the interesting text is often at the top of a page.
+ *
+ * Below 768px it is a bottom card instead (#916): the anchored popover that
+ * a long-press summons competes with the system selection menu for the same
+ * few pixels around the finger, so on a phone the panel drops to the bottom
+ * of the screen. The collapsed rows fit without scrolling; the expanded
+ * states — the note editor, the extra AI actions — get a capped, scrollable
+ * body; and a drag handle offers pull-down-to-dismiss next to Escape and
+ * tapping the page.
  *
  * Dismissal is on Escape and on pointerdown outside. Deliberately not on blur:
  * clicking a colour swatch blurs the toolbar, and a blur-based dismissal would
@@ -70,6 +83,7 @@ export function AnnotationPopover({
   aiActions,
 }: AnnotationPopoverProps) {
   const { t } = useTranslation();
+  const { isMobile } = useDevice();
   const ref = useRef<HTMLDivElement | null>(null);
   const [color, setColor] = useState<AnnotationColor>("yellow");
   const [noteOpen, setNoteOpen] = useState(false);
@@ -79,7 +93,37 @@ export function AnnotationPopover({
   const overflowAi = aiActions?.slice(INLINE_AI_ACTIONS) ?? [];
   const [position, setPosition] = useState({ left: anchor.x, top: anchor.y });
 
+  // -- pull-down-to-dismiss ------------------------------------------------
+  //
+  // Only the handle drags; the body stays live so a scroll or a tap inside
+  // the card never reads as "close". The threshold is generous: an accidental
+  // nudge moves the sheet visually without closing it.
+  const dragRef = useRef<{ id: number; startY: number } | null>(null);
+  const [dragOffset, setDragOffset] = useState(0);
+  const onHandlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    dragRef.current = { id: event.pointerId, startY: event.clientY };
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // jsdom / rare engines without capture: element handlers still fire.
+    }
+  };
+  const onHandlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.id !== event.pointerId) return;
+    setDragOffset(Math.max(0, event.clientY - drag.startY));
+  };
+  const onHandlePointerEnd = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.id !== event.pointerId) return;
+    dragRef.current = null;
+    const travelled = Math.max(0, event.clientY - drag.startY);
+    setDragOffset(0);
+    if (travelled >= DRAG_CLOSE_THRESHOLD) onDismiss();
+  };
+
   useLayoutEffect(() => {
+    if (isMobile) return;
     const element = ref.current;
     if (!element) return;
     const box = element.getBoundingClientRect();
@@ -95,7 +139,7 @@ export function AnnotationPopover({
       left,
       top: Math.min(top, window.innerHeight - box.height - margin),
     });
-  }, [anchor.x, anchor.y, noteOpen, overflowOpen]);
+  }, [anchor.x, anchor.y, isMobile, noteOpen, overflowOpen]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -117,14 +161,14 @@ export function AnnotationPopover({
     };
   }, [onDismiss]);
 
-  return (
-    <div
-      ref={ref}
-      role="dialog"
-      aria-label={t("Annotate selection")}
-      style={{ left: position.left, top: position.top }}
-      className="dt-reader-popover fixed z-[70] w-max max-w-[min(360px,92vw)] rounded-xl border border-[var(--border)] bg-[var(--popover)] p-1.5 shadow-[0_10px_30px_-12px_rgba(0,0,0,0.35)]"
-    >
+  // The rows are shared by both presentations; only the frame they sit in
+  // differs. `expanded` is what makes the body long: the note editor and the
+  // overflow action list are the states whose content can outgrow a thumb's
+  // reach, so they are the ones that switch the body to capped-and-scrollable.
+  const expanded = noteOpen || overflowOpen;
+
+  const body = (
+    <>
       <div className="flex items-center gap-1">
         <div className="flex items-center gap-0.5 pr-1">
           {ANNOTATION_COLORS.map((swatch) => (
@@ -254,6 +298,52 @@ export function AnnotationPopover({
           </div>
         </div>
       )}
+    </>
+  );
+
+  if (isMobile) {
+    return (
+      <div
+        ref={ref}
+        role="dialog"
+        aria-label={t("Annotate selection")}
+        style={{ transform: dragOffset ? `translateY(${dragOffset}px)` : undefined }}
+        className="dt-reader-sheet fixed inset-x-0 bottom-0 z-[70] rounded-t-2xl border-t border-[var(--border)] bg-[var(--popover)] pb-[calc(env(safe-area-inset-bottom)+10px)] shadow-[0_-12px_40px_-16px_rgba(0,0,0,0.45)]"
+      >
+        <div
+          data-testid="sheet-handle"
+          aria-hidden
+          onPointerDown={onHandlePointerDown}
+          onPointerMove={onHandlePointerMove}
+          onPointerUp={onHandlePointerEnd}
+          onPointerCancel={onHandlePointerEnd}
+          className="flex cursor-grab touch-none justify-center pb-0.5 pt-2"
+        >
+          <span className="h-1.5 w-10 rounded-full bg-[var(--muted-foreground)]/40" />
+        </div>
+        <div
+          data-scroll={expanded ? "long" : "short"}
+          className={`px-2 ${
+            expanded
+              ? "max-h-[60dvh] overflow-y-auto overscroll-contain"
+              : ""
+          }`}
+        >
+          {body}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={ref}
+      role="dialog"
+      aria-label={t("Annotate selection")}
+      style={{ left: position.left, top: position.top }}
+      className="dt-reader-popover fixed z-[70] w-max max-w-[min(360px,92vw)] rounded-xl border border-[var(--border)] bg-[var(--popover)] p-1.5 shadow-[0_10px_30px_-12px_rgba(0,0,0,0.35)]"
+    >
+      {body}
     </div>
   );
 }

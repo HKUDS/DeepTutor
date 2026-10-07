@@ -1,6 +1,10 @@
 "use client";
 
 import { browserStorage } from "@/shared/storage";
+import {
+  SUBMIT_CONNECT_RETRY_INTERVAL_MS,
+  SUBMIT_CONNECT_RETRY_LIMIT,
+} from "@/lib/send-retry";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type {
@@ -280,7 +284,7 @@ export default function BookChatPanel({
       client.send(payload);
       return;
     }
-    if (attempt >= 10) {
+    if (attempt >= SUBMIT_CONNECT_RETRY_LIMIT) {
       setBusy(false);
       setMessages((prev) => [
         ...prev,
@@ -294,7 +298,7 @@ export default function BookChatPanel({
     const timer = setTimeout(() => {
       retryTimersRef.current.delete(timer);
       sendWithRetry(client, payload, attempt + 1);
-    }, 200);
+    }, SUBMIT_CONNECT_RETRY_INTERVAL_MS);
     retryTimersRef.current.add(timer);
   }
 

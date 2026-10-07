@@ -1,9 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BookOpenText, Loader2, PencilLine, Sparkles, Square, Volume2, X } from "lucide-react";
+import {
+  BookOpenText,
+  Loader2,
+  PencilLine,
+  Sparkles,
+  Square,
+  Star,
+  Volume2,
+  X,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { fetchAuthStatus } from "@/lib/auth";
+import { randomUuid } from "@/lib/random-uuid";
 import { getOwnLearnerProfile } from "@/lib/profile-api";
 import {
   primaryReadingActionRank,
@@ -17,8 +27,10 @@ import {
   submitReadingQuizAnswers,
   type ReadingExtensionManifest,
   type ReadingExtensionResult,
+  type ReadingQuizReward,
 } from "@/lib/reading-api";
 import { useReadingActions } from "./reading-actions-context";
+import { useReadAloudSpeech } from "./use-read-aloud-speech";
 import Tooltip from "@/shared/ui/Tooltip";
 
 type VocabularyTerm = {
@@ -88,13 +100,8 @@ function ExtensionToolbar({
   const [busy, setBusy] = useState("");
   const [result, setResult] = useState<ReadingExtensionResult | null>(null);
   const [resultLocator, setResultLocator] = useState(locator);
-  const [speaking, setSpeaking] = useState(false);
   const [ageMode, setAgeMode] = useState<ReadingAgeMode>("default");
-
-  function stopSpeaking() {
-    window.speechSynthesis?.cancel();
-    setSpeaking(false);
-  }
+  const { speak, speaking, stop: stopSpeaking } = useReadAloudSpeech();
 
   useEffect(() => {
     let active = true;
@@ -144,12 +151,7 @@ function ExtensionToolbar({
 
   // Speech, on the other hand, must stop the moment the reader navigates
   // away from the passage being read aloud — so this one keeps both keys.
-  useEffect(() => {
-    return () => {
-      window.speechSynthesis?.cancel();
-      setSpeaking(false);
-    };
-  }, [locator, materialId]);
+  useEffect(() => stopSpeaking, [locator, materialId, stopSpeaking]);
 
   const actions = useMemo(
     () =>
@@ -180,17 +182,15 @@ function ExtensionToolbar({
       setResultLocator(requestedLocator);
       if (next.type === "browser_speech") {
         const text = String(next.payload.text || "");
-        if (!("speechSynthesis" in window) || !text) {
+        const played = await speak({
+          materialId,
+          locator: requestedLocator,
+          locale: String(next.payload.locale || i18n.language),
+          fallbackText: text,
+        });
+        if (!played) {
           onError(t("No speech voice is available in this browser."));
-          return;
         }
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = String(next.payload.locale || i18n.language);
-        utterance.onend = () => setSpeaking(false);
-        utterance.onerror = () => setSpeaking(false);
-        window.speechSynthesis.speak(utterance);
-        setSpeaking(true);
       }
     } catch (error) {
       onError(error instanceof Error ? error.message : String(error));
@@ -478,6 +478,7 @@ function QuizQuestions({
   const { t } = useTranslation();
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [verdicts, setVerdicts] = useState<Record<string, boolean>>({});
+  const [reward, setReward] = useState<ReadingQuizReward | null>(null);
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const pendingSubmissions = useRef<Record<string, { selected: number; id: string }>>({});
 
@@ -485,7 +486,7 @@ function QuizQuestions({
     const questionId = question.id || `q_${index + 1}`;
     const key = question.id || String(index);
     const pending = pendingSubmissions.current[key];
-    const submissionId = pending?.selected === choiceIndex ? pending.id : crypto.randomUUID();
+    const submissionId = pending?.selected === choiceIndex ? pending.id : randomUuid();
     pendingSubmissions.current[key] = { selected: choiceIndex, id: submissionId };
     setSaving((current) => ({ ...current, [key]: true }));
     try {
@@ -495,10 +496,11 @@ function QuizQuestions({
         submission_id: submissionId,
         answers: [{ question_id: questionId, selected_index: choiceIndex }],
       });
-      const verdict = results.find((item) => item.question_id === questionId);
+      const verdict = results.answers.find((item) => item.question_id === questionId);
       if (!verdict) throw new Error(t("Failed to save answer. Please try again."));
       setAnswers((current) => ({ ...current, [key]: choiceIndex }));
       setVerdicts((current) => ({ ...current, [key]: verdict.is_correct }));
+      setReward(results.reward ?? null);
       delete pendingSubmissions.current[key];
     } catch (error) {
       onError(error instanceof Error ? error.message : String(error));
@@ -507,57 +509,70 @@ function QuizQuestions({
     }
   }
 
-  return questions.map((question, index) => {
-    const key = question.id || String(index);
-    const selected = answers[key];
-    const correctChoiceIndex = Number.isInteger(question.correct_choice_index)
-      ? Number(question.correct_choice_index)
-      : -1;
-    const canGrade = correctChoiceIndex >= 0 && correctChoiceIndex < question.choices.length;
-    if (!canGrade) {
-      return (
-        <div key={key} className="mt-3">
-          <p className="font-medium">{question.prompt}</p>
-          <ol className="mt-1 list-inside list-[upper-alpha] space-y-0.5 text-[var(--muted-foreground)]">
-            {question.choices.map((choice) => (
-              <li key={choice}>{choice}</li>
-            ))}
-          </ol>
-        </div>
-      );
-    }
-    return (
-      <fieldset key={key} className="mt-3">
-        <legend className="font-medium">{question.prompt}</legend>
-        <div className="mt-1 grid gap-1">
-          {question.choices.map((choice, choiceIndex) => (
-            <button
-              key={choice}
-              type="button"
-              aria-pressed={selected === choiceIndex}
-              disabled={Boolean(saving[key])}
-              onClick={() => {
-                void persistAnswer(question, index, choiceIndex);
-              }}
-              className="rounded-md border border-[var(--border)] px-2 py-1.5 text-left text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] aria-pressed:bg-[var(--muted)] aria-pressed:text-[var(--foreground)]"
-            >
-              {String.fromCharCode(65 + choiceIndex)}. {choice}
-            </button>
-          ))}
-        </div>
-        {selected !== undefined ? (
-          <p
-            role="status"
-            className={`mt-1 font-medium ${
-              verdicts[key]
-                ? "text-emerald-600 dark:text-emerald-400"
-                : "text-amber-600 dark:text-amber-400"
-            }`}
-          >
-            {verdicts[key] ? t("Correct") : t("Incorrect")}
-          </p>
-        ) : null}
-      </fieldset>
-    );
-  });
+  return (
+    <>
+      {questions.map((question, index) => {
+        const key = question.id || String(index);
+        const selected = answers[key];
+        const correctChoiceIndex = Number.isInteger(question.correct_choice_index)
+          ? Number(question.correct_choice_index)
+          : -1;
+        const canGrade = correctChoiceIndex >= 0 && correctChoiceIndex < question.choices.length;
+        if (!canGrade) {
+          return (
+            <div key={key} className="mt-3">
+              <p className="font-medium">{question.prompt}</p>
+              <ol className="mt-1 list-inside list-[upper-alpha] space-y-0.5 text-[var(--muted-foreground)]">
+                {question.choices.map((choice) => (
+                  <li key={choice}>{choice}</li>
+                ))}
+              </ol>
+            </div>
+          );
+        }
+        return (
+          <fieldset key={key} className="mt-3">
+            <legend className="font-medium">{question.prompt}</legend>
+            <div className="mt-1 grid gap-1">
+              {question.choices.map((choice, choiceIndex) => (
+                <button
+                  key={choice}
+                  type="button"
+                  aria-pressed={selected === choiceIndex}
+                  disabled={Boolean(saving[key])}
+                  onClick={() => {
+                    void persistAnswer(question, index, choiceIndex);
+                  }}
+                  className="rounded-md border border-[var(--border)] px-2 py-1.5 text-left text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] aria-pressed:bg-[var(--muted)] aria-pressed:text-[var(--foreground)]"
+                >
+                  {String.fromCharCode(65 + choiceIndex)}. {choice}
+                </button>
+              ))}
+            </div>
+            {selected !== undefined ? (
+              <p
+                role="status"
+                className={`mt-1 font-medium ${
+                  verdicts[key]
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : "text-amber-600 dark:text-amber-400"
+                }`}
+              >
+                {verdicts[key] ? t("Correct") : t("Incorrect")}
+              </p>
+            ) : null}
+          </fieldset>
+        );
+      })}
+      {reward ? (
+        <p
+          role="status"
+          className="mt-3 flex items-center gap-1.5 font-medium text-amber-600 dark:text-amber-400"
+        >
+          <Star size={14} fill="currentColor" aria-hidden="true" />
+          {t("Quiz stars: {{count}}", { count: reward.stars })}
+        </p>
+      ) : null}
+    </>
+  );
 }

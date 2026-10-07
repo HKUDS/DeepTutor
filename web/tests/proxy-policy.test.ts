@@ -45,6 +45,7 @@ test("large knowledge uploads bypass the buffering proxy", () => {
     unstable_doesMiddlewareMatch({ config: proxyConfig, url });
 
   assert.equal(matches("http://localhost/api/knowledge-bases"), false);
+  assert.equal(matches("http://localhost/api/knowledge-bases/list"), true);
   assert.equal(
     matches("http://localhost/api/knowledge-bases/my%20kb/upload"),
     false,

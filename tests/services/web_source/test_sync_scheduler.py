@@ -214,8 +214,10 @@ async def test_scheduler_renews_lease_during_a_long_sync(tmp_path: Path, monkeyp
     await scheduler._synchronize_sources()
     job = repository.list_jobs("local-admin", "kb")[0]
 
+    release_sync = asyncio.Event()
+
     async def slow_sync(**_kwargs):
-        await asyncio.sleep(0.35)
+        await release_sync.wait()
         return WebSyncResult(ok=True)
 
     with patch("deeptutor.services.web_source.sync.sync_source", slow_sync):
@@ -226,5 +228,6 @@ async def test_scheduler_renews_lease_during_a_long_sync(tmp_path: Path, monkeyp
         assert current.lease_until_ms is not None and current.lease_until_ms > int(
             time.time() * 1000
         )
+        release_sync.set()
         await running
     assert repository.get(repository.key(job)).state == "pending"
