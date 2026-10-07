@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 
@@ -79,14 +79,106 @@ function Harness() {
       <button onClick={() => chat.sendMessage("Quiz me")}>Start turn</button>
       <span data-testid="streaming">{String(chat.state.isStreaming)}</span>
       <span data-testid="answer">{last?.content}</span>
-      {card && <AskUserOptions data={card} onSubmit={chat.submitUserReply} />}
+      {card && <AskUserOptions key={card.payload.questions[0]?.prompt} data={card} onSubmit={chat.submitUserReply} />}
     </>
   );
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   TestSocket.instances = [];
+});
+
+async function poseCard() {
+  vi.stubGlobal("WebSocket", TestSocket);
+  const user = userEvent.setup();
+  render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+  await user.click(screen.getByRole("button", { name: "Start turn" }));
+  const socket = TestSocket.instances.at(-1)!;
+  act(() => socket.open());
+  await waitFor(() => expect(socket.sent.some((m) => m.type === "start_turn")).toBe(true));
+  act(() => {
+    socket.frame("turn-quiz", 1, "session");
+    socket.frame("turn-quiz", 2, "tool_result", {
+      tool_call_id: "call-quiz",
+      tool_metadata: { ask_user: { questions: [
+        { id: "q1", prompt: "Which update?", options: [{ label: "Overwrite" }] },
+      ] } },
+    });
+  });
+  await user.click(screen.getByRole("button", { name: /Overwrite/ }));
+  vi.useFakeTimers();
+  return socket;
+}
+
+function acknowledge(socket: TestSocket, commandId: unknown, accepted = true) {
+  act(() => socket.dispatchEvent(new MessageEvent("message", {
+    data: JSON.stringify({
+      protocol_version: "2.0", type: "command_ack", command_type: "submit_user_reply",
+      command_id: commandId, accepted, turn_id: "turn-quiz",
+    }),
+  })));
+}
+
+it("keeps a reply queued through a long reconnect without ending the turn (#1648)", async () => {
+  const socket = await poseCard();
+  act(() => socket.close());
+  fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+  await act(async () => { await vi.advanceTimersByTimeAsync(12_500); });
+  expect(screen.getByText("Sending your answers…")).toBeVisible();
+  expect(screen.getByTestId("streaming")).toHaveTextContent("true");
+  const resumed = TestSocket.instances.at(-1)!;
+  act(() => resumed.open());
+  const reply = resumed.sent.find((m) => m.type === "submit_user_reply")!;
+  expect(reply).toMatchObject({ turn_id: "turn-quiz", text: "Overwrite" });
+  acknowledge(resumed, reply.command_id);
+  await act(async () => { await vi.advanceTimersByTimeAsync(35_000); });
+  expect(screen.queryByText(/Check your connection and retry/)).not.toBeInTheDocument();
+});
+
+it("allows an unconfirmed reply to retry with the same command id (#1648)", async () => {
+  const socket = await poseCard();
+  fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+  const reply = socket.sent.find((m) => m.type === "submit_user_reply")!;
+  await act(async () => { await vi.advanceTimersByTimeAsync(30_001); });
+  expect(screen.getByText("Couldn't confirm your answer. Check your connection and retry.")).toBeVisible();
+  expect(screen.queryByText(/This question is no longer active/)).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Overwrite/ })).toHaveAttribute("aria-pressed", "true");
+  fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+  const replies = socket.sent.filter((m) => m.type === "submit_user_reply");
+  expect(replies).toHaveLength(2);
+  expect(replies[1].command_id).toBe(reply.command_id);
+  acknowledge(socket, reply.command_id, false);
+  await act(async () => { await Promise.resolve(); });
+  expect(screen.getByText(/This question is no longer active/)).toBeVisible();
+});
+
+it("uses a new command id for a later question with identical answers", async () => {
+  const socket = await poseCard();
+  fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+  const first = socket.sent.find((m) => m.type === "submit_user_reply")!;
+  acknowledge(socket, first.command_id);
+  act(() => {
+    socket.frame("turn-quiz", 3, "progress", {
+      ask_user_resolved: true, ask_user_tool_call_id: "call-quiz",
+      answers: [{ questionId: "q1", text: "Overwrite" }],
+    });
+    socket.frame("turn-quiz", 4, "tool_result", {
+      tool_call_id: "call-quiz-2",
+      tool_metadata: { ask_user: { questions: [
+        { id: "q1", prompt: "Which update next?", options: [{ label: "Overwrite" }] },
+      ] } },
+    });
+  });
+  // The card may preserve the choice between identical question shapes.
+  const option = screen.getByRole("button", { name: /Overwrite/ });
+  if (option.getAttribute("aria-pressed") !== "true") fireEvent.click(option);
+  fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+  const replies = socket.sent.filter((m) => m.type === "submit_user_reply");
+  expect(replies).toHaveLength(2);
+  expect(replies[1].command_id).not.toBe(first.command_id);
+  acknowledge(socket, replies[1].command_id);
 });
 
 it("resumes an ask_user in a shorter second turn without skipping its reply or done", async () => {

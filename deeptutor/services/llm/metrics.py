@@ -12,6 +12,7 @@ import time
 from typing import Any
 import uuid
 
+from .usage_estimation import estimate_prompt_tokens
 from .usage_frame import usage_breakdown
 
 
@@ -90,7 +91,7 @@ class CallMeasurement:
         self.last: float | None = None
         self.output_chars = 0
         # Estimate only when the API does not report usage; never persist message text.
-        self.input_chars = len(str(messages or "")) if self.enabled else 0
+        self.estimated_prompt_tokens = estimate_prompt_tokens(messages) if self.enabled else 0
         self.usage: Any = None
         self.finished = False
 
@@ -133,7 +134,7 @@ class CallMeasurement:
                     response_text += str(getattr(message, "reasoning_content", "") or "")
             output = self.output_chars or len(response_text)
             counts = {
-                "prompt_tokens": int(self.input_chars / 3.5),
+                "prompt_tokens": self.estimated_prompt_tokens,
                 "completion_tokens": int(output / 3.5),
             }
             counts["total_tokens"] = sum(counts.values())

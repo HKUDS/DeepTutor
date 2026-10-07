@@ -1376,17 +1376,27 @@ async def run_upload_processing_task(
 
 @router.get("/knowledge-bases/health")
 async def health_check():
-    """Health check endpoint"""
+    """Count registered KBs without constructing/probing the catalog (#1711)."""
+    return await asyncio.to_thread(_knowledge_health)
+
+
+def _knowledge_health():
     try:
-        manager = get_kb_manager()
-        config_exists = manager.config_file.exists()
-        kb_count = len(manager.list_knowledge_bases())
+        base_dir = current_kb_base_dir()
+        config_file = base_dir / "kb_config.json"
+        config_exists = config_file.exists()
+        config = (
+            json.loads(config_file.read_text(encoding="utf-8").strip() or "{}")
+            if config_exists
+            else {}
+        )
+        kb_count = len(config.get("knowledge_bases", {}))
         return {
             "status": "ok",
-            "config_file": str(manager.config_file),
+            "config_file": str(config_file),
             "config_exists": config_exists,
-            "base_dir": str(manager.base_dir),
-            "base_dir_exists": manager.base_dir.exists(),
+            "base_dir": str(base_dir),
+            "base_dir_exists": base_dir.exists(),
             "knowledge_bases_count": kb_count,
         }
     except Exception as e:
@@ -1569,6 +1579,7 @@ class LlamaIndexConfigUpdate(BaseModel):
     chunk_size: int | None = None
     chunk_overlap: int | None = None
     image_description_concurrency: int | None = None
+    image_description_batch_size: int | None = None
     image_description_timeout_seconds: int | None = None
 
 
@@ -2764,11 +2775,21 @@ def _resource_knowledge_bases() -> list[KnowledgeBaseInfo]:
 
 @router.get("/knowledge-bases", response_model=list[KnowledgeBaseInfo])
 async def list_knowledge_bases():
+    """Disk probes must not block the async worker or its other requests (#1711)."""
+    return await asyncio.to_thread(_list_knowledge_bases)
+
+
+def _list_knowledge_bases():
     """List all available knowledge bases with their details."""
+    from deeptutor.services.workspace.context import current_workspace_id
     from deeptutor.services.workspace.knowledge import library_request
     from deeptutor.services.workspace.resources import current_resources
 
-    if library_request.get() or current_resources().knowledge_bases is not None:
+    if (
+        library_request.get()
+        or current_resources().knowledge_bases is not None
+        or current_workspace_id()
+    ):
         return _resource_knowledge_bases()
     try:
         manager = get_kb_manager()
@@ -2937,6 +2958,21 @@ async def list_knowledge_bases():
         error_msg = f"Error listing knowledge bases: {e}"
         logger.error(f"{error_msg}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Failed to list knowledge bases: {e!s}")
+
+
+@router.get(
+    "/knowledge-bases/list",
+    response_model=list[KnowledgeBaseInfo],
+    include_in_schema=False,
+)
+async def list_knowledge_bases_proxy_alias():
+    """Proxy-safe alias for the KB list.
+
+    The collection URL is reserved by the frontend's streaming multipart
+    create route, which bypasses Next's request-buffering proxy. Browser list
+    requests use this path so GET traffic can use the normal backend rewrite.
+    """
+    return await list_knowledge_bases()
 
 
 @router.get("/knowledge-bases/{kb_name}")
@@ -3949,8 +3985,16 @@ async def run_reindex_task(
                     error=error_msg,
                     **failure_metadata,
                 )
-            except Exception:
-                pass
+            except Exception as progress_err:
+                # The task-level error above stays authoritative; degrade loudly
+                # instead of silently, so a stale KB progress view is explainable.
+                logger.warning(
+                    "[%s] Re-index of '%s' failed, and persisting its error progress "
+                    "also failed (%s); the KB progress view may stay stale.",
+                    task_id,
+                    kb_name,
+                    progress_err,
+                )
             task_stream_manager.emit_failed(task_id, error_msg, **failure_metadata)
 
 
@@ -4216,6 +4260,23 @@ async def clear_progress(kb_name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _progress_age_seconds(timestamp: object) -> float | None:
+    """Age of a progress snapshot timestamp in seconds, ``None`` if unknown.
+
+    A malformed timestamp means freshness cannot be determined; callers fall
+    back to their inactive/stale handling, and the anomaly is logged so a
+    corrupt snapshot cannot silently disable liveness detection.
+    """
+    if not timestamp:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(timestamp))
+        return (datetime.now() - parsed).total_seconds()
+    except (TypeError, ValueError) as exc:
+        logger.warning("Cannot determine progress age from timestamp %r: %s", timestamp, exc)
+        return None
+
+
 @ws_router.websocket("/knowledge-bases/{kb_name}/progress")
 async def websocket_progress(websocket: WebSocket, kb_name: str):
     """WebSocket endpoint for real-time progress updates"""
@@ -4342,16 +4403,17 @@ async def websocket_progress(websocket: WebSocket, kb_name: str):
         # Fast path: no active task — send current state and close immediately
         # This prevents infinite polling loops for ready or legacy KBs.
         has_active_task = False
+        initial_ts: object = None
+        initial_age_seconds: float | None = None
         if initial_progress:
             stage = initial_progress.get("stage")
             if stage not in ("completed", "error", None):
                 ts = initial_progress.get("timestamp")
                 if ts:
-                    try:
-                        age = (datetime.now() - datetime.fromisoformat(ts)).total_seconds()
-                        has_active_task = age < 120
-                    except Exception:
-                        pass
+                    initial_ts = ts
+                    initial_age_seconds = _progress_age_seconds(ts)
+                    if initial_age_seconds is not None:
+                        has_active_task = initial_age_seconds < 120
 
         if not has_active_task and not expected_task_id:
             if kb_is_ready:
@@ -4393,14 +4455,16 @@ async def websocket_progress(websocket: WebSocket, kb_name: str):
             elif stage == "error" or not kb_is_ready:
                 should_send = True
             elif stage != "completed" and timestamp:
-                try:
-                    progress_time = datetime.fromisoformat(timestamp)
-                    now = datetime.now()
-                    age_seconds = (now - progress_time).total_seconds()
-                    if age_seconds < 300:
-                        should_send = True
-                except Exception:
-                    pass
+                # The same snapshot timestamp may already have been assessed
+                # above; reuse that result so one corrupt timestamp yields one
+                # warning instead of one per freshness check.
+                age_seconds = (
+                    initial_age_seconds
+                    if timestamp is initial_ts
+                    else _progress_age_seconds(timestamp)
+                )
+                if age_seconds is not None and age_seconds < 300:
+                    should_send = True
 
             if should_send:
                 await websocket.send_json({"type": "progress", "data": initial_progress})
@@ -4477,19 +4541,24 @@ async def websocket_progress(websocket: WebSocket, kb_name: str):
         logger.debug(f"Progress WS error: {e}")
         try:
             await websocket.send_json({"type": "error", "message": str(e)})
-        except Exception:
-            pass
+        except Exception as send_error:
+            # Usually a client that is already gone; trace it so a genuinely
+            # broken send path cannot vanish.
+            logger.debug("Failed to deliver error frame on progress WS: %s", send_error)
     finally:
         await broadcaster.disconnect(subscription_key, websocket)
         try:
             await websocket.close()
-        except Exception:
-            pass
+        except Exception as close_error:
+            # Closing an already-disconnected socket is expected; keep a trace
+            # for anything else.
+            logger.debug("Failed to close progress WS: %s", close_error)
         if user_token is not None:
             try:
                 reset_current_user(user_token)
-            except Exception:
-                pass
+            except Exception as reset_error:
+                # Leaking the user context is a real fault, not a disconnect.
+                logger.warning("Failed to reset user context after progress WS: %s", reset_error)
 
 
 @router.post("/knowledge-bases/{kb_name}/link-folder", response_model=LinkedFolderInfo)
@@ -4682,6 +4751,18 @@ class AddWebSourceRequest(BaseModel):
     max_pages: int = Field(default=200, ge=1, le=200)
 
 
+class BilingualPairingInfo(BaseModel):
+    pairing_id: str
+    source_url: str
+    target_url: str
+    source_file: str = ""
+    target_file: str = ""
+    source_lang: str = ""
+    target_lang: str = ""
+    pairing_method: str = "hreflang"
+    updated_at: int = 0
+
+
 class WebSourceInfo(BaseModel):
     id: str
     url: str
@@ -4696,6 +4777,7 @@ class WebSourceInfo(BaseModel):
     last_sync_error: str | None = None
     added_at: str = ""
     navigation: dict | None = None
+    bilingual_pairings: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class WebSourceScheduleUpdate(BaseModel):
@@ -4834,6 +4916,33 @@ async def get_web_source_sync_jobs(kb_name: str):
         scheduler = get_web_source_sync_scheduler()
         jobs = scheduler.repo.list_jobs(get_current_user().id, resolved_name)
         return [WebSourceSyncJobInfo(**job.public_dict()) for job in jobs]
+
+
+@router.get(
+    "/knowledge-bases/{kb_name}/web-source/{source_id}/pairings",
+    response_model=list[BilingualPairingInfo],
+)
+async def get_web_source_pairings(kb_name: str, source_id: str):
+    with _knowledge_source_errors(kb_name):
+        manager, resolved_name, _ = _writable_kb(kb_name)
+        source = next(
+            (
+                item
+                for item in manager.get_web_sources(resolved_name)
+                if item.get("id") == source_id
+            ),
+            None,
+        )
+        if source is None:
+            raise HTTPException(status_code=404, detail=f"Source '{source_id}' not found")
+        scheduler = get_web_source_sync_scheduler()
+        repo_pairings = scheduler.repo.list_pairings(
+            get_current_user().id, resolved_name, source_id
+        )
+        if repo_pairings:
+            return [BilingualPairingInfo(**p.public_dict()) for p in repo_pairings]
+        meta_pairings = source.get("bilingual_pairings") or []
+        return [BilingualPairingInfo(**p) for p in meta_pairings]
 
 
 @router.put(

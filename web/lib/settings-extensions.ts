@@ -61,9 +61,13 @@ export async function applyExtensionPayload(
   if (!endpoint) throw new Error(`Unknown settings section: ${key}`);
   let body = guardian?.[1] === "materials" ? { book_ids: payload } : payload;
   if (key === "document-parsing") {
-    const { engine, engines } = payload as { engine: string; engines: Record<string, unknown> };
+    const { engine, engines, image_description_model } = payload as {
+      engine: string;
+      engines: Record<string, unknown>;
+      image_description_model?: { profile_id: string; model_id: string } | null;
+    };
     // MinerU has its own draft; never overwrite it with this page's snapshot.
-    body = { engine, engines: Object.fromEntries(Object.entries(engines).filter(([name]) => name !== "mineru")) };
+    body = { engine, image_description_model, engines: Object.fromEntries(Object.entries(engines).filter(([name]) => name !== "mineru")) };
   }
   const response = await apiFetch(apiUrl(endpoint), {
     method: "PUT",

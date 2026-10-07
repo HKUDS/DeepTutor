@@ -12,6 +12,8 @@ from deeptutor.services.voice.adapters.dashscope import (
     DashScopeSTTAdapter,
     DashScopeTTSAdapter,
 )
+from deeptutor.services.voice.adapters.mimo import MiMoTTSAdapter
+from deeptutor.services.voice.adapters.minimax import MiniMaxTTSAdapter
 from deeptutor.services.voice.adapters.openai_compat import (
     OpenAICompatSTTAdapter,
     OpenAICompatTTSAdapter,
@@ -21,6 +23,8 @@ from deeptutor.services.voice.adapters.volcengine import VolcengineSTTAdapter, V
 from deeptutor.services.voice.base import BaseSTTAdapter, BaseTTSAdapter, VoiceProviderError
 
 TTS_ADAPTERS: dict[str, BaseTTSAdapter] = {
+    "mimo_tts": MiMoTTSAdapter(),
+    "minimax": MiniMaxTTSAdapter(),
     "volcengine": VolcengineTTSAdapter(),
     "openai_compat": OpenAICompatTTSAdapter(),
     "openrouter_tts": OpenRouterTTSAdapter(),

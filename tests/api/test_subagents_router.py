@@ -64,7 +64,7 @@ class _FakeKBManager:
 @pytest.fixture
 def client(monkeypatch, tmp_path):
     manager = _FakeKBManager()
-    monkeypatch.setattr(subagents_module, "current_kb_manager", lambda: manager)
+    monkeypatch.setattr(subagents_module, "account_kb_manager", lambda: manager)
     monkeypatch.setattr(
         subagents_module,
         "list_backend_kinds",
@@ -120,6 +120,25 @@ def test_connect_list_and_disconnect_roundtrip(client):
     gone = client.delete("/api/subagents/connections/MyClaude")
     assert gone.status_code == 200
     assert client.get("/api/subagents/connections").json()["connections"] == []
+
+
+def test_connections_stay_in_account_library_inside_workspace(client, monkeypatch, tmp_path):
+    def fail_current_manager():
+        raise AssertionError("connected agents must not use the workspace KB store")
+
+    monkeypatch.setattr(subagents_module, "current_kb_manager", fail_current_manager, raising=False)
+    from deeptutor.services.workspace.context import WorkspaceScope, workspace_context
+
+    scope = WorkspaceScope("ws-research", tmp_path, tmp_path / "workspace")
+    with workspace_context(scope):
+        created = client.post(
+            "/api/subagents/connections",
+            json={"name": "WorkspaceClaude", "agent_kind": "claude_code"},
+        )
+
+    assert created.status_code == 200
+    listed = client.get("/api/subagents/connections").json()["connections"]
+    assert [item["name"] for item in listed] == ["WorkspaceClaude"]
 
 
 def test_connect_rejects_unknown_kind(client):

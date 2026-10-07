@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 
 import pytest
@@ -23,13 +24,16 @@ def _fake_skill_service() -> SimpleNamespace:
 
 
 @pytest.fixture(autouse=True)
-def _isolate_runtime_skills(monkeypatch):
+def _isolate_runtime_services(monkeypatch):
     # Runtime now resolves multiple skill libraries; these turn tests use an
     # empty catalog and must not inspect the developer's real skill folders.
     monkeypatch.setattr(
         "deeptutor.services.skill.runtime.skill_sources",
         lambda **kwargs: [(_fake_skill_service(), None, "account")],
     )
+    # Title generation has its own tests. Fake turn providers must not start
+    # an unrelated online LLM call after emitting their final stream event.
+    monkeypatch.setattr(TurnRuntimeManager, "_maybe_generate_session_title", _noop_async)
 
 
 def _fake_persona_service() -> SimpleNamespace:
@@ -495,8 +499,13 @@ async def test_turn_runtime_persists_llm_selection_in_turn_snapshot(
         }
     )
 
+    execution = runtime._executions[turn["id"]]
+    assert execution.task is not None
     async for _event in runtime.subscribe_turn(turn["id"], after_seq=0):
         pass
+    # A replay subscriber can observe DONE before the runner's finally block.
+    # Model-scope reset is an execution cleanup assertion, not a stream one.
+    await asyncio.wait_for(execution.task, timeout=5)
 
     detail = await store.get_session_with_messages(session["id"])
     assert detail is not None

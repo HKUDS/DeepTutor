@@ -61,6 +61,54 @@ class WebSourceSyncJob:
         }
 
 
+@dataclass(slots=True)
+class WebSourceBilingualPairing:
+    """One durable bilingual pairing between two crawled pages."""
+
+    owner_id: str
+    kb_name: str
+    source_id: str
+    pairing_id: str
+    source_url: str
+    target_url: str
+    source_file: str
+    target_file: str
+    source_lang: str
+    target_lang: str
+    pairing_method: str
+    updated_at_ms: int
+
+    @classmethod
+    def from_row(cls, row: sqlite3.Row) -> "WebSourceBilingualPairing":
+        return cls(
+            owner_id=str(row["owner_id"]),
+            kb_name=str(row["kb_name"]),
+            source_id=str(row["source_id"]),
+            pairing_id=str(row["pairing_id"]),
+            source_url=str(row["source_url"]),
+            target_url=str(row["target_url"]),
+            source_file=str(row["source_file"]),
+            target_file=str(row["target_file"]),
+            source_lang=str(row["source_lang"]),
+            target_lang=str(row["target_lang"]),
+            pairing_method=str(row["pairing_method"]),
+            updated_at_ms=int(row["updated_at_ms"]),
+        )
+
+    def public_dict(self) -> dict[str, Any]:
+        return {
+            "pairing_id": self.pairing_id,
+            "source_url": self.source_url,
+            "target_url": self.target_url,
+            "source_file": self.source_file,
+            "target_file": self.target_file,
+            "source_lang": self.source_lang,
+            "target_lang": self.target_lang,
+            "pairing_method": self.pairing_method,
+            "updated_at": self.updated_at_ms,
+        }
+
+
 class SQLiteWebSourceSyncRepository:
     """WAL-backed job state shared by API requests and the scheduler."""
 
@@ -101,6 +149,29 @@ class SQLiteWebSourceSyncRepository:
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_web_source_sync_due "
                 "ON web_source_sync_jobs(next_run_at_ms, state)"
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS web_source_bilingual_pairings (
+                    owner_id TEXT NOT NULL,
+                    kb_name TEXT NOT NULL,
+                    source_id TEXT NOT NULL,
+                    pairing_id TEXT NOT NULL,
+                    source_url TEXT NOT NULL,
+                    target_url TEXT NOT NULL,
+                    source_file TEXT NOT NULL,
+                    target_file TEXT NOT NULL,
+                    source_lang TEXT NOT NULL,
+                    target_lang TEXT NOT NULL,
+                    pairing_method TEXT NOT NULL,
+                    updated_at_ms INTEGER NOT NULL,
+                    PRIMARY KEY (owner_id, kb_name, source_id, pairing_id)
+                )
+                """
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_web_source_pairings "
+                "ON web_source_bilingual_pairings(owner_id, kb_name, source_id)"
             )
 
     @staticmethod
@@ -144,6 +215,13 @@ class SQLiteWebSourceSyncRepository:
                     connection.execute(
                         """
                         DELETE FROM web_source_sync_jobs
+                        WHERE owner_id=? AND kb_name=? AND source_id=?
+                        """,
+                        (owner_id, kb_name, source_id),
+                    )
+                    connection.execute(
+                        """
+                        DELETE FROM web_source_bilingual_pairings
                         WHERE owner_id=? AND kb_name=? AND source_id=?
                         """,
                         (owner_id, kb_name, source_id),
@@ -419,6 +497,13 @@ class SQLiteWebSourceSyncRepository:
                 """,
                 job_key,
             )
+            connection.execute(
+                """
+                DELETE FROM web_source_bilingual_pairings
+                 WHERE owner_id=? AND kb_name=? AND source_id=?
+                """,
+                job_key,
+            )
             return int(cursor.rowcount or 0) > 0
 
     def retry(self, job_key: tuple[str, str, str]) -> WebSourceSyncJob | None:
@@ -451,5 +536,97 @@ class SQLiteWebSourceSyncRepository:
             ).fetchone()
         return WebSourceSyncJob.from_row(row) if row else None
 
+    def record_pairings(
+        self,
+        owner_id: str,
+        kb_name: str,
+        source_id: str,
+        pairings: list[dict[str, Any]],
+    ) -> list[WebSourceBilingualPairing]:
+        """Atomically replace bilingual pairings for one web source."""
+        now = self._now_ms()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                connection.execute(
+                    """
+                    DELETE FROM web_source_bilingual_pairings
+                     WHERE owner_id=? AND kb_name=? AND source_id=?
+                    """,
+                    (owner_id, kb_name, source_id),
+                )
+                for item in pairings:
+                    connection.execute(
+                        """
+                        INSERT INTO web_source_bilingual_pairings
+                            (owner_id, kb_name, source_id, pairing_id, source_url,
+                             target_url, source_file, target_file, source_lang,
+                             target_lang, pairing_method, updated_at_ms)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            owner_id,
+                            kb_name,
+                            source_id,
+                            str(item["pairing_id"]),
+                            str(item["source_url"]),
+                            str(item["target_url"]),
+                            str(item.get("source_file", "")),
+                            str(item.get("target_file", "")),
+                            str(item.get("source_lang", "")),
+                            str(item.get("target_lang", "")),
+                            str(item.get("pairing_method", "hreflang")),
+                            now,
+                        ),
+                    )
+                connection.execute("COMMIT")
+            except Exception:
+                connection.execute("ROLLBACK")
+                raise
+        return self.list_pairings(owner_id, kb_name, source_id)
 
-__all__ = ["SQLiteWebSourceSyncRepository", "WebSourceSyncJob"]
+    def list_pairings(
+        self,
+        owner_id: str,
+        kb_name: str,
+        source_id: str | None = None,
+    ) -> list[WebSourceBilingualPairing]:
+        with self._connect() as connection:
+            if source_id is not None:
+                rows = connection.execute(
+                    """
+                    SELECT * FROM web_source_bilingual_pairings
+                     WHERE owner_id=? AND kb_name=? AND source_id=?
+                     ORDER BY source_url, target_url
+                    """,
+                    (owner_id, kb_name, source_id),
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    """
+                    SELECT * FROM web_source_bilingual_pairings
+                     WHERE owner_id=? AND kb_name=?
+                     ORDER BY source_id, source_url, target_url
+                    """,
+                    (owner_id, kb_name),
+                ).fetchall()
+        return [WebSourceBilingualPairing.from_row(row) for row in rows]
+
+    def delete_pairings(
+        self,
+        owner_id: str,
+        kb_name: str,
+        source_id: str,
+    ) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                DELETE FROM web_source_bilingual_pairings
+                 WHERE owner_id=? AND kb_name=? AND source_id=?
+                """,
+                (owner_id, kb_name, source_id),
+            )
+            return int(cursor.rowcount or 0)
+
+
+__all__ = ["SQLiteWebSourceSyncRepository", "WebSourceBilingualPairing", "WebSourceSyncJob"]

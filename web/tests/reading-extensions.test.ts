@@ -11,6 +11,10 @@ const pane = readFileSync(
   path.resolve(process.cwd(), "components/reading/ReaderPane.tsx"),
   "utf8",
 );
+const speechHook = readFileSync(
+  path.resolve(process.cwd(), "components/reading/use-read-aloud-speech.ts"),
+  "utf8",
+);
 const api = readFileSync(
   path.resolve(process.cwd(), "lib/reading-api.ts"),
   "utf8",
@@ -50,7 +54,7 @@ test("reading quiz answers send only the selected index", () => {
   assert.match(component, /submitReadingQuizAnswers\(materialId,/);
   assert.match(component, /selected_index: choiceIndex/);
   const persistStart = component.indexOf("function persistAnswer");
-  const persistEnd = component.indexOf("return questions.map", persistStart);
+  const persistEnd = component.indexOf("questions.map", persistStart);
   assert.notEqual(persistStart, -1);
   assert.notEqual(persistEnd, -1);
   assert.doesNotMatch(
@@ -69,15 +73,16 @@ test("a malformed extension catalog cannot crash the whole reader", () => {
 });
 
 test("browser speech is stoppable and cannot continue after navigation", () => {
+  assert.match(component, /useReadAloudSpeech\(\)/);
   assert.match(
     component,
-    /const \[speaking, setSpeaking\] = useState\(false\)/,
+    /useEffect\(\(\) => stopSpeaking, \[locator, materialId, stopSpeaking\]\)/,
   );
-  assert.match(component, /function stopSpeaking\(\)/);
-  assert.match(component, /window\.speechSynthesis\?\.cancel\(\)/);
-  assert.match(component, /utterance\.onend = \(\) => setSpeaking\(false\)/);
-  assert.match(component, /utterance\.onerror = \(\) => setSpeaking\(false\)/);
-  assert.match(component, /\}, \[locator, materialId\]\);/);
+  assert.match(speechHook, /const \[speaking, setSpeaking\] = useState\(false\)/);
+  assert.match(speechHook, /window\.speechSynthesis\?\.cancel\(\)/);
+  assert.match(speechHook, /utterance\.onend = \(\) => \{/);
+  assert.match(speechHook, /utterance\.onerror = \(\) => \{/);
+  assert.match(component, /\[locator, materialId, stopSpeaking\]/);
   assert.match(component, /aria-label=\{t\("Stop reading aloud"\)\}/);
 });
 

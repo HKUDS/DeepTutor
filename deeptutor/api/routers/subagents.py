@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 
 from deeptutor.api.routers.auth import require_admin
 from deeptutor.knowledge.kb_types import SUBAGENT_KB_TYPE
-from deeptutor.multi_user.knowledge_access import current_kb_manager
+from deeptutor.multi_user.knowledge_access import account_kb_manager
 from deeptutor.services.rag.linked_kb import assert_path_allowed
 from deeptutor.services.subagent import (
     detect_all,
@@ -91,7 +91,7 @@ async def sync_backend(kind: str):
 @router.get("/connections")
 async def list_connections():
     """List the current user's connected subagents."""
-    manager = current_kb_manager()
+    manager = account_kb_manager()
     connections = []
     for name in manager.list_knowledge_bases():
         meta = manager.get_metadata(name)
@@ -135,7 +135,7 @@ async def create_connection(payload: ConnectSubagentRequest):
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     try:
-        manager = current_kb_manager()
+        manager = account_kb_manager()
         entry = manager.register_subagent_connection(name, agent_kind, cwd=resolved_cwd)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -155,7 +155,7 @@ async def create_connection(payload: ConnectSubagentRequest):
 @router.delete("/connections/{name}")
 async def delete_connection(name: str):
     """Disconnect a subagent (removes the pointer KB; touches no files)."""
-    manager = current_kb_manager()
+    manager = account_kb_manager()
     meta = manager.get_metadata(name)
     if not isinstance(meta, dict) or meta.get("type") != SUBAGENT_KB_TYPE:
         raise HTTPException(status_code=404, detail=f"No connected subagent named {name!r}.")
@@ -189,7 +189,7 @@ async def message_connection(name: str, payload: SubagentMessageRequest):
     if not message:
         raise HTTPException(status_code=400, detail="A non-empty 'message' is required.")
 
-    manager = current_kb_manager()
+    manager = account_kb_manager()
     meta = manager.get_metadata(name)
     if not isinstance(meta, dict) or meta.get("type") != SUBAGENT_KB_TYPE:
         raise HTTPException(status_code=404, detail=f"No connected subagent named {name!r}.")

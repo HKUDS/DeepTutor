@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+import asyncio
 from dataclasses import dataclass
 import logging
 import re
+
+import httpx
 
 from deeptutor.services.voice.config import (
     AUTH_API_KEY_HEADER,
@@ -21,12 +24,34 @@ logger = logging.getLogger(__name__)
 class VoiceProviderError(RuntimeError):
     """Raised when a TTS/STT provider request fails or is misconfigured."""
 
+    def __init__(self, message: str, *, public_message: str | None = None) -> None:
+        super().__init__(message)
+        # Only application-authored text belongs here, never an upstream body.
+        self.public_message = public_message
+
+
+class VoiceProviderTimeout(VoiceProviderError):
+    """A synthesis deadline or transport timeout, with safe actionable copy."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "Speech synthesis timed out. Increase Request timeout (seconds) in the speech "
+            "model settings or try shorter text."
+        )
+
 
 class VoiceProviderHTTPError(VoiceProviderError):
     """Provider returned a non-2xx HTTP response."""
 
-    def __init__(self, message: str, *, status_code: int, body: str = "") -> None:
-        super().__init__(message)
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int,
+        body: str = "",
+        public_message: str | None = None,
+    ) -> None:
+        super().__init__(message, public_message=public_message)
         self.status_code = status_code
         self.body = body
 
@@ -42,6 +67,23 @@ class BaseTTSAdapter(ABC):
             ``(audio_bytes, content_type)`` — content type is best-effort, e.g.
             ``audio/mpeg`` for mp3.
         """
+
+
+async def synthesize_with_timeout(
+    adapter: BaseTTSAdapter, text: str, config: TTSConfig
+) -> tuple[bytes, str]:
+    """One deadline covers synthesis, streams and audio downloads in every entry point."""
+    try:
+        async with asyncio.timeout(config.request_timeout):
+            return await adapter.synthesize(text, config)
+    except (TimeoutError, httpx.TimeoutException) as exc:
+        raise VoiceProviderTimeout() from exc
+    except VoiceProviderError as exc:
+        # Existing adapters wrap transport errors. Preserve a timeout's identity
+        # so the API can explain how to change the limit without echoing upstream data.
+        if isinstance(exc.__cause__, (TimeoutError, httpx.TimeoutException)):
+            raise VoiceProviderTimeout() from exc
+        raise
 
 
 @dataclass(frozen=True, slots=True)
@@ -145,11 +187,33 @@ _LINK = re.compile(r"\[([^\]]+)\]\([^)]*\)")
 _HEADING = re.compile(r"^\s{0,3}#{1,6}\s*", re.MULTILINE)
 _BLOCKQUOTE = re.compile(r"^\s{0,3}>\s?", re.MULTILINE)
 _LIST_MARKER = re.compile(r"^\s{0,3}(?:[-*+]|\d+[.)])\s+", re.MULTILINE)
-_EMPHASIS = re.compile(r"(\*{1,3}|_{1,3}|~~)(\S.*?\S|\S)\1")
+_BOLD_STARS = re.compile(r"\*\*(.+?)\*\*", re.DOTALL)
+_BOLD_UNDERS = re.compile(r"__(.+?)__", re.DOTALL)
+_STRIKE = re.compile(r"~~(.+?)~~", re.DOTALL)
+_ITALIC_STARS = re.compile(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)", re.DOTALL)
+_ITALIC_UNDERS = re.compile(r"(?<!\w)_(?!_)(.+?)(?<!_)_(?!\w)", re.DOTALL)
 _HTML_TAG = re.compile(r"<[^>]+>")
 _TABLE_PIPE = re.compile(r"^\s*\|.*\|\s*$", re.MULTILINE)
 _WHITESPACE = re.compile(r"[ \t]+")
 _BLANK_LINES = re.compile(r"\n{3,}")
+
+
+def _unwrap_emphasis_for_speech(text: str) -> str:
+    """Turn Markdown bold/italic/strike into plain words.
+
+    Voice models otherwise speak ``*`` as "asterisk". Call this on verbalized
+    math, or only on prose segments when math verbalization is disabled. Leftover unmatched ``**`` markers are dropped; a remaining
+    single ``*`` is turned into a space so "asterisk" is never read.
+    """
+    out = _BOLD_STARS.sub(r"\1", text)
+    out = _BOLD_UNDERS.sub(r"\1", out)
+    out = _STRIKE.sub(r"\1", out)
+    out = _ITALIC_STARS.sub(r"\1", out)
+    out = _ITALIC_UNDERS.sub(r"\1", out)
+    out = out.replace("**", "")
+    out = out.replace("__", "")
+    out = out.replace("*", " ")
+    return out
 
 
 def strip_markdown_for_speech(text: str, *, max_chars: int = 0, math_speak: bool = True) -> str:
@@ -177,8 +241,13 @@ def strip_markdown_for_speech(text: str, *, max_chars: int = 0, math_speak: bool
     # Math before emphasis: TeX uses `_` / `*` as scripts and products, and
     # the emphasis regex would otherwise pair a prose underscore with one
     # inside `$x_i$`.
-    out = verbalize_latex_for_speech(out, math_speak=math_speak)
-    out = _EMPHASIS.sub(r"\2", out)
+    out = verbalize_latex_for_speech(
+        out,
+        math_speak=math_speak,
+        prose_transform=_unwrap_emphasis_for_speech if not math_speak else None,
+    )
+    if math_speak:
+        out = _unwrap_emphasis_for_speech(out)
     out = _WHITESPACE.sub(" ", out)
     out = _BLANK_LINES.sub("\n\n", out).strip()
     if max_chars and len(out) > max_chars:
@@ -193,6 +262,8 @@ __all__ = [
     "TranscriptCue",
     "VoiceProviderError",
     "VoiceProviderHTTPError",
+    "VoiceProviderTimeout",
+    "synthesize_with_timeout",
     "BaseTTSAdapter",
     "BaseSTTAdapter",
     "build_auth_headers",

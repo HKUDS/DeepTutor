@@ -40,7 +40,10 @@ vi.mock("@/context/AppShellContext", () => ({
     codeBlockWrapLongLines: false,
   }),
 }));
-vi.mock("@/lib/llm-options", () => ({ invalidateLLMOptionsCache: vi.fn() }));
+vi.mock("@/lib/llm-options", () => ({
+  invalidateLLMOptionsCache: vi.fn(),
+  listLLMOptions: vi.fn(async () => ({ active: null, options: [] })),
+}));
 let settings: ReturnType<typeof useSettings>;
 let live: ReturnType<typeof defaultCatalog>;
 let stored: any;
@@ -89,13 +92,16 @@ function Capture() {
 function Editor({ name }: { name: string }) {
   const [liveValue, setLiveValue] = useState(resources[name]);
   const [draft, edit] = useStagedSettings(name, liveValue, setLiveValue);
+  const isSubagent = name.startsWith("subagent:");
   return (
     <input
       aria-label={name}
-      value={draft.path ?? draft.provider}
+      value={isSubagent ? draft.model ?? "" : draft.path ?? draft.provider}
       onChange={(e) =>
         edit(
-          name === "workspace"
+          isSubagent
+            ? { model: e.target.value }
+            : name === "workspace"
             ? { path: e.target.value }
             : { provider: e.target.value },
         )
@@ -275,6 +281,37 @@ it("applies a restored draft while its editor is mounted without reverting the d
   await act(() => settings.applyCatalog());
   expect(settings.draftState).toBe("clean");
   expect(screen.getByLabelText("workspace")).toHaveValue("/restored");
+});
+
+it("persists a restored subagent draft before clearing it", async () => {
+  const subagent = { enabled: true, model: "restored-model", effort: "high" };
+  resources["subagent:opencode"] = {};
+  stored = {
+    catalog: live,
+    extensions: { "subagent:opencode": subagent },
+  };
+  render(<App page="subagent:opencode" />);
+  await ready();
+
+  await waitFor(() =>
+    expect(screen.getByLabelText("subagent:opencode")).toHaveValue(
+      "restored-model",
+    ),
+  );
+  await act(() => settings.applyCatalog());
+
+  const subagentWriteIndex = mocks.fetch.mock.calls.findIndex(
+    ([url, init]) =>
+      url === "/api/subagents/settings" && init?.method === "PUT",
+  );
+  const catalogApplyIndex = mocks.fetch.mock.calls.findIndex(
+    ([url, init]) => url === "/api/settings/apply" && init?.method === "POST",
+  );
+  expect(JSON.parse(String(mocks.fetch.mock.calls[subagentWriteIndex][1]?.body)))
+    .toEqual({ backends: { opencode: subagent } });
+  expect(subagentWriteIndex).toBeLessThan(catalogApplyIndex);
+  expect(settings.draftState).toBe("clean");
+  expect(stored).toBeNull();
 });
 
 it("keeps the toolbar available when reverting an already saved draft", async () => {

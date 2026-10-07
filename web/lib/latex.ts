@@ -65,6 +65,26 @@ function looksLikeLatexBlock(lines: string[]): boolean {
   return block.length > 0 && LIKELY_LATEX_BLOCK_RE.test(block);
 }
 
+function countFences(line: string): number {
+  return line.match(/\$\$/g)?.length ?? 0;
+}
+
+/**
+ * The line that closes a display block opened above `start`: the next line
+ * with a single `$$`, at its end. A blank line or a line that opens another
+ * block first means there is nothing to close.
+ */
+function findDisplayClose(lines: string[], start: number): number {
+  for (let j = start; j < lines.length; j++) {
+    const trimmed = lines[j].trim();
+    if (!trimmed) return -1;
+    const fences = countFences(trimmed);
+    if (fences === 0) continue;
+    return fences === 1 && trimmed.endsWith("$$") ? j : -1;
+  }
+  return -1;
+}
+
 function normalizeEditorMdInlineMath(content: string): string {
   return mapMarkdownProse(content, normalizeEditorMdInlineMathInProse);
 }
@@ -91,6 +111,26 @@ function normalizeEditorMdInlineMathInProse(content: string): string {
         for (let j = i + 1; j < endIdx; j++) {
           result.push(lines[j]);
         }
+        result.push("$$");
+        i = endIdx;
+        continue;
+      }
+    }
+
+    // `$$` hugging a formula that spans several lines, e.g.
+    // `$$a = b\\` / `c = d$$` (#1623). remark-math only reads a multi-line
+    // display block with each fence on its own line, so move them there.
+    if (trimmed.startsWith("$$") && countFences(trimmed) === 1) {
+      const endIdx = findDisplayClose(lines, i + 1);
+      const first = trimmed.slice(2).trim();
+      const last = endIdx === -1 ? "" : lines[endIdx].trim().slice(0, -2).trim();
+      if (endIdx !== -1 && (first || last)) {
+        result.push("$$");
+        if (first) result.push(first);
+        for (let j = i + 1; j < endIdx; j++) {
+          result.push(lines[j]);
+        }
+        if (last) result.push(last);
         result.push("$$");
         i = endIdx;
         continue;

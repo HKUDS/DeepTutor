@@ -155,17 +155,24 @@ class ParseService:
 
         hit = cache.lookup(cache_root, source_hash, sig)
         if hit is not None:
-            logger.info("Parse cache hit for %s (%s/%s)", source_path.name, engine_name, sig)
-            markdown, blocks, asset_dir = cache.load_ir(hit)
-            return ParsedDocument(
-                markdown=markdown,
-                blocks=blocks,
-                asset_dir=asset_dir,
-                source_hash=source_hash,
-                parser_signature=sig,
-                engine=engine_name,
-                workdir=hit,
-            )
+            try:
+                markdown, blocks, asset_dir = cache.load_ir(hit)
+            except (OSError, UnicodeError, ValueError):
+                markdown, blocks, asset_dir = "", None, None
+            if markdown.strip() or blocks:
+                logger.info("Parse cache hit for %s (%s/%s)", source_path.name, engine_name, sig)
+                return ParsedDocument(
+                    markdown=markdown,
+                    blocks=blocks,
+                    asset_dir=asset_dir,
+                    source_hash=source_hash,
+                    parser_signature=sig,
+                    engine=engine_name,
+                    workdir=hit,
+                )
+            # A ready stamp alone cannot make missing/empty output usable (#1612).
+            logger.warning("Invalid parse cache for %s; restarting this document", source_path.name)
+            (hit / cache.MANIFEST_FILENAME).unlink(missing_ok=True)
 
         report = parser.is_ready(config)
         if not report.ready:
@@ -176,7 +183,7 @@ class ParseService:
         try:
             parser.parse(source_path, workdir, config=config, on_output=on_output)
             markdown, blocks, asset_dir = cache.load_ir(workdir)
-            if not markdown and not blocks:
+            if not markdown.strip() and not blocks:
                 raise ParserError(
                     f"The '{engine_name}' engine produced no content for {source_path.name}."
                 )

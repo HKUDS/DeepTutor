@@ -5,12 +5,12 @@
 # DeepTutor：終身個人化學習導師
 
 <p align="center">
-  <a href="https://deeptutor.info" target="_blank"><img alt="Docs — deeptutor.info" src="https://img.shields.io/badge/Docs-deeptutor.info%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>&nbsp;
-  <a href="https://deeptutor.info/collaborate/" target="_blank"><img alt="Collaborate — work with us" src="https://img.shields.io/badge/Collaborate-work%20with%20us%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>
+  <a href="https://deeptutor.info" target="_blank"><img alt="文件 — deeptutor.info" src="https://img.shields.io/badge/Docs-deeptutor.info%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>&nbsp;
+  <a href="https://deeptutor.info/collaborate/" target="_blank"><img alt="合作 — 與我們攜手" src="https://img.shields.io/badge/Collaborate-work%20with%20us%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>
 </p>
 
 <p align="center">
-<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending&amp;theme=dark"><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending"><img alt="GitHub Trending Repository of the Day" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" height="55"></picture></a>&#32;<a href="https://trendshift.io/repositories/17099"><img src="https://trendshift.io/api/badge/trendshift/repositories/17099/daily" alt="HKUDS/DeepTutor | Trendshift" width="250" height="55"></a>&#32;<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;theme=dark"><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor"><img alt="Star History Rank" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor" width="185" height="55"></picture></a>
+<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending&amp;theme=dark"><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending"><img alt="GitHub 今日熱門儲存庫" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" height="55"></picture></a>&#32;<a href="https://trendshift.io/repositories/17099"><img src="https://trendshift.io/api/badge/trendshift/repositories/17099/daily" alt="HKUDS/DeepTutor | Trendshift" width="250" height="55"></a>&#32;<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;theme=dark"><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor"><img alt="Star History 排名" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor" width="185" height="55"></picture></a>
 </p>
 
 <p align="center">
@@ -63,7 +63,7 @@ DeepTutor 是代理程式原生的學習工作區，在同一個可擴充系統�
 - **所有模式共用一套執行階段** — Chat、Ask Questions、Quiz、Research、Visualize、Solve、Course Study、Mastery Path、Immersive Reading 與 Immersive Watching 共用同一套能力執行階段與工作階段情境，同時保有針對各自用途設計的迴圈與管線。
 - **Task Board** — 以待辦、進行中與已完成追蹤學習任務，並可加入備註、透過拖放或支援鍵盤操作的移動按鈕調整狀態，也能從封存中還原任務。卡片會保留在目前的工作區，沿用既有的外觀與語言設定；無須設定模型。
 - **相互連結的學習情境** — 知識庫、書籍、Co-Writer 草稿、筆記本、題庫、角色設定與 Memory 可在支援這些內容的工作流程中重複使用，但仍受帳號授權與學習政策限制。
-- **沉浸式影片學習** — 貼上 YouTube 連結，即可使用隱私強化的原生播放、同步字幕、以時間戳為依據的教學，以及可續接的學習進度；管理員也能將播放切換至自架的 Invidious 執行個體，無須重新建立素材。
+- **沉浸式影片學習** — 貼上 YouTube 連結，即可使用隱私強化的原生播放、同步字幕、以時間戳為依據的教學、已儲存的時間戳標記，以及可續接的學習進度；管理員也能將播放切換至自架的 Invidious 執行個體，無須重新建立素材。
 - **子代理程式與 Partners** — 可從 Chat 諮詢即時代理程式執行框架（Claude Code、Codex、Grok CLI、Antigravity、Kimi、opencode、MiMo、Hermes、OpenClaw 或 DeepSeek）或 Partner、匯入過往對話，並讓持續運作的 IM 夥伴共用同一套核心。
 - **多引擎知識系統** — 透過 LlamaIndex、PageIndex、GraphRAG、LightRAG、遠端 LightRAG Server、自架 WeKnora 知識庫、Tencent IMA 或 MarginNote 4 知識庫、連接的 Kiwix ZIM 封存檔，或連結的 Obsidian vault 建立版本化 RAG 知識庫，並支援可插拔的文件解析。請參閱[原生 LightRAG 角色模型](../../deeptutor/services/rag/pipelines/lightrag/README.md)，了解獨立的擷取、查詢與視覺設定、僅預設建立，以及確認後的重建。
 - **可擴充的工具與技能** — 內建工具、MCP 伺服器、CLI 應用程式、影像／影片／語音生成模型，以及可從 EduHub 安裝的社群技能。
@@ -74,6 +74,19 @@ DeepTutor 是代理程式原生的學習工作區，在同一個可擴充系統�
 ## 🚀 開始使用
 
 DeepTutor 提供四種安裝方式，皆共用同一套執行環境目錄配置：私有設定會儲存在啟動目錄下的 `data/user/settings/`（若明確設定 `DEEPTUTOR_HOME` 或 `deeptutor start --home`，則改儲存在該位置）。完整應用程式的建議流程是：**選擇一個執行環境目錄 → 安裝 → `deeptutor init` → `deeptutor start`**。
+
+### 一行指令試用 Docker
+
+若尚未安裝 Docker，請先[安裝 Docker](https://docs.docker.com/get-docker/)。接著無須設定 Python 或 Node.js，即可試用完整應用程式：
+
+```bash
+docker run --rm --name deeptutor \
+  -p 127.0.0.1:3782:3782 \
+  -v deeptutor-data:/app/data \
+  ghcr.io/hkuds/deeptutor:latest
+```
+
+開啟 [http://127.0.0.1:3782](http://127.0.0.1:3782)，在 **Settings → Providers** 設定模型供應商，使用完畢後按下 `Ctrl+C`。具名的 `deeptutor-data` volume 會保留設定與本機資料，供下次執行使用。
 
 ### 內容工作區
 
@@ -307,7 +320,7 @@ deeptutor config show
 <details>
 <summary><b>程式碼執行沙箱（office skills）</b> · 執行模型為 docx／pdf／pptx／xlsx 產生的程式碼</summary>
 
-內建的 office skills（**docx／pdf／pptx／xlsx**）會讓模型撰寫一段簡短的 Python 指令碼（`python-docx`、`reportlab`、`openpyxl` 等），透過唯一的 `exec` 工具執行，再提供下載 URL。只要有啟用中的沙箱後端，該工具就會掛載。DeepTutor 會依下列順序選用已設定的最強後端：
+內建的 office skills（**docx／pdf／pptx／xlsx**）會讓模型撰寫一段簡短的 Python 指令碼（`python-docx`、`reportlab`、`openpyxl` 等），透過唯一的 `exec` 工具執行，再呈現已儲存的工作區檔案。只要有啟用中的沙箱後端，這些工具就會掛載。DeepTutor 會依下列順序選用已設定的最強後端：
 
 - **Runner sidecar：** `DEEPTUTOR_SANDBOX_RUNNER_URL` 會將執行工作導向 `Dockerfile.runner` 所提供、經過強化且採最低權限的服務。
 - **Linux bubblewrap：** 若可使用 `bwrap`，它會隔離處理程序與檔案。
@@ -329,7 +342,7 @@ deeptutor config show
 | `auth.json` | 選用的驗證開關、使用者名稱、密碼雜湊、token／cookie 設定 |
 | `integrations.json` | 選用的 PocketBase 與 sidecar 整合設定 |
 | `interface.json` | UI 與模型輸出語言／主題／側邊欄偏好設定 |
-| `document_parsing.json` | 解析引擎選擇、遠端端點與各引擎專屬選項 |
+| `document_parsing.json` | 解析引擎與影像描述模型選擇、遠端端點及各引擎專屬選項 |
 | `video_learning.json` | 預設 YouTube／Invidious 播放供應商、Invidious 來源與選用的逐字稿介面卡 |
 | `main.yaml` | 執行階段行為預設值與路徑注入 |
 | `agents.yaml` | 能力／工具的 temperature 與 token 設定 |
@@ -349,6 +362,8 @@ Web Search 參考來源預設會經過篩選：只會顯示未內嵌憑證、未
 當 `trusted_domains` 非空時，參考來源只限於這些網域及其子網域；`blocked_domains` 一律優先。
 
 專案根目錄的 `.env` **不會**被讀取為應用程式設定檔。若只需最基本的模型設定，請在 **Settings → Providers** 儲存 Base URL 與 API key，再到 **Language models** 新增並選用 LLM。只有在打算使用 Knowledge Base／RAG 功能時才需要加入 embedding 設定檔。
+
+使用 API Route 時，請在 **Settings → Providers** 選擇 **API Route** 並輸入 API Route 金鑰。預設端點為 `https://global.api-route.com/v1`；接著在 **Language models** 使用 API Route 模型 ID 新增模型。金鑰與模型設定方式請參閱 [API Route 快速入門](https://www.api-route.com/docs/quickstart)。
 
 當供應商支援選擇時，LLM 與任務模型設定檔會提供 **API format** 設定。一般路由與備援請保留 `Auto`，也可以選擇 `OpenAI Chat Completions`、`OpenAI Responses` 或 `Anthropic Messages`；強制使用 Responses 時仍採用失敗即停止（fail-closed）策略。持久化欄位為 `api_format`（`auto`、`openai_chat`、`openai_responses` 或 `anthropic`）；`wire_api` 則是由此衍生出的相容性狀態。每個模型可個別以 `Auto`／`Supported`／`Not supported` 覆寫工具呼叫、影像輸入、JSON 輸出與推理控制等能力。
 
@@ -422,9 +437,9 @@ Chat 是預設能力，也是大多數工作的起點。單一對話可以進行
 
 使用者可切換的工具包括 `brainstorm`、`web_search`、`paper_search`、`zotero_search`、`reason` 與 `geogebra_analysis`；設定對應的生成模型後，還會有 `imagegen` 與 `videogen`。`rag`、`kb_files`、`knowledge_frontier`、`read_source`、`read_memory`、`write_memory`、`read_skill`、`load_tools`、`exec`、`web_fetch`、`ask_user`、`list_notebook`、`write_note`、`question_bank`、`github`、`consult_subagent`、`workspace_list`、`workspace_read`、`workspace_search`、`workspace_present` 與 `workspace_export` 等情境式工具，會在回合具有相符情境時自動掛載。
 
-情境分成兩類：**固定的工作階段情境**（能力、工作區或課程、工具、知識庫、角色設定、模型，以及 Reading／Mastery 狀態）會延續到後續回合；**單次參照**（檔案、聊天記錄、書籍、閱讀章節、筆記本、題庫、匯入的代理程式）則從 `+` 選單加入，只用於單一回合。語音按鈕只會轉錄目前的訊息。
+情境分成兩類：**固定的工作階段情境**（能力、工作區或課程、工具、知識庫、角色設定、模型，以及 Reading／Mastery 狀態）會延續到後續回合；**單次參照**（檔案、聊天記錄、書籍、閱讀章節、筆記本、選定的題庫題目、匯入的代理程式）則從 `+` 選單加入，只用於單一回合。語音按鈕只會轉錄目前的訊息。
 
-Home 讓 **Chat**、**Ask Questions**、**Quiz** 與 **Visualize** 一鍵可達；用於建立附引用報告的 **Research**、提供完整推理解題的 **Solve**，以及 **Immersive Watching**，則位於 *More Capabilities* 之下。**Personalized Learning** 集合 Book、**Mastery Path**、**Immersive Reading**、Watching 與 **Practice**。Reading 提供經驗證的引用、已儲存的筆記、以來源為依據的朗讀／學習指南／詞彙／測驗／翻譯動作，以及擷取至筆記本的功能；Course Study 則保有自己的課程情境。
+Home 讓 **Chat**、**Ask Questions**、**Quiz** 與 **Visualize** 一鍵可達；用於建立附引用報告的 **Research**、提供完整推理解題的 **Solve**，以及 **Immersive Watching**，則位於 *More Capabilities* 之下。**Personalized Learning** 集合 Book、**Mastery Path**、**Immersive Reading**、Watching 與 **Practice**。Reading 提供經驗證的引用、已儲存的筆記、根據來源段落進行的自然朗讀／學習指南／詞彙／測驗／翻譯動作，以及擷取至筆記本的功能；Course Study 則保有自己的課程情境。
 
 </details>
 
@@ -489,7 +504,7 @@ Co-Writer 是用於報告、教學文章、筆記與長篇學習作品的分割�
 <img src="../../assets/figs/web-1.4.6+/co-writer/01-edit%20panel.png" alt="Co-Writer 編輯器與即時預覽" width="900">
 </div>
 
-它的核心概念是**精準編輯**：選取一段內容，請 DeepTutor 改寫、擴寫或縮短。編輯代理程式可以知識庫或 Web 證據作為修改依據，並保留工具呼叫軌跡。若代理程式工作期間草稿未發生變更，結果會直接取代所選文字，且仍可使用 **Undo** 復原。
+它的核心概念是**精準編輯**：選取一段內容，請 DeepTutor 改寫、擴寫或縮短。你可以選擇編輯模型；它可以知識庫或 Web 證據作為修改依據，並保留工具呼叫軌跡。若模型工作期間草稿未發生變更，結果會直接取代所選文字，且仍可使用 **Undo** 復原。
 
 </details>
 
@@ -529,11 +544,17 @@ Book 會將選定來源轉換成互動式**活書**；它不是靜態 PDF，而�
 
 要遷移現有的 Obsidian、Hermes 或 Markdown 知識庫嗎？請參閱 [Knowledge 遷移指南](../../docs-for-user/KNOWLEDGE_MIGRATION.md)，了解連結 vault 與索引副本兩種方式。
 
-建立知識庫時，可以選擇**建立新的知識庫**（上傳文件並建立索引）、**連結現有知識庫**（就地重複使用索引），或**連接 Kiwix**（按需搜尋一個由服務提供的 ZIM 封存檔）。建立時可選擇其儲存工作區；既有知識庫可在預覽後移至其他工作區，並保留指派與已儲存的參照。知識庫也可以追蹤 **GitHub repositories**（repo、branch、glob）或**文件網站 URL**（限制爬取深度與頁面數量，預設每 24 小時重新同步一次）；同步時會以內容雜湊差異識別新增、變更與移除的內容，因此你所追蹤的文件能保持最新，無須重新上傳，**已連結的資料夾**也會在同步時取得新增或變更的本機檔案。重新建立索引時，系統會寫入新的扁平 `version-N` 目錄並保留先前版本，因此可用索引不會在重建途中遭到破壞。即使知識庫處於 **error** 狀態，也能移除單一文件；可直接刪除解析失敗的檔案，無須刪除並重建全部內容。文件解析方式（Text-only、MinerU、Docling、Tika、markitdown、PyMuPDF4LLM 或 LiteParse）可在 **Settings → Knowledge & documents** 選擇，預設不下載本機模型。Docling 也可以在**遠端（remote）**模式下運作，改連線至 Docling Serve 伺服器（無須本機安裝或下載模型），可在同一頁面（設定 `mode=remote`、伺服器基礎 URL 與選用的 API 金鑰）或 `DOCLING_MODE`／`DOCLING_API_BASE_URL`／`DOCLING_API_TOKEN` 環境變數進行設定。Tika 僅支援遠端模式，會連線至該頁面設定的 Apache Tika 伺服器。CLI 也提供對應的完整生命週期指令：`list/info/create/connect-kiwix/add/search/set-default/delete`、來源新增／移除指令、`list-sources` 與 `sync`。
+建立知識庫時，可以選擇**建立新的知識庫**（上傳文件並建立索引）、**連結現有知識庫**（就地重複使用索引），或**連接 Kiwix**（按需搜尋一個由服務提供的 ZIM 封存檔）。建立時可選擇其儲存工作區；既有知識庫可在預覽後移至其他工作區，並保留指派與已儲存的參照。知識庫也可以追蹤 **GitHub repositories**（repo、branch、glob）或**文件網站 URL**（限制爬取深度與頁面數量，預設每 24 小時重新同步一次）；同步時會以內容雜湊差異識別新增、變更與移除的內容，因此你所追蹤的文件能保持最新，無須重新上傳，**已連結的資料夾**也會在同步時取得新增或變更的本機檔案。重新建立索引時，系統會寫入新的扁平 `version-N` 目錄並保留先前版本，因此可用索引不會在重建途中遭到破壞。即使知識庫處於 **error** 狀態，也能移除單一文件；可直接刪除解析失敗的檔案，無須刪除並重建全部內容。文件解析方式（Text-only、MinerU、Docling、Tika、markitdown、PyMuPDF4LLM 或 LiteParse）與選用的影像描述模型可在 **Settings → Knowledge & documents** 選擇，預設不下載本機模型。Docling 也可以在**遠端（remote）**模式下運作，改連線至 Docling Serve 伺服器（無須本機安裝或下載模型），可在同一頁面（設定 `mode=remote`、伺服器基礎 URL 與選用的 API 金鑰）或 `DOCLING_MODE`／`DOCLING_API_BASE_URL`／`DOCLING_API_TOKEN` 環境變數進行設定。Tika 僅支援遠端模式，會連線至該頁面設定的 Apache Tika 伺服器。CLI 也提供對應的完整生命週期指令：`list/info/create/connect-kiwix/add/search/eval/set-default/delete`、來源新增／移除指令、`list-sources` 與 `sync`。
 
 內建的 LightRAG 引擎可透過 `pip install 'deeptutor[rag-lightrag]'` 安裝；此額外套件包含明確支援的 LightRAG SDK，但不會安裝 MinerU。若需要結構化解析，請在 Document Parsing 中另行選擇 MinerU，並設定其雲端模式，或安裝目前的本機 CLI。MinerU 支援 PDF、常見點陣圖格式、DOCX、PPTX 與 XLSX；舊版 `magic-pdf` 仍僅支援 PDF。Text-only 與其他解析引擎不需要 MinerU。
 
 原生 LightRAG 的查詢與增量索引，需要已發布索引所記錄的 embedding 設定，包括模型、維度與端點身分。若該設定有變更，請還原原始設定，或以目前的 embedding 重建索引；未記錄 embedding 身分的索引則必須重建。知識庫詳細資料與索引版本檢視會顯示恢復指引，檔案仍可正常檢視與下載。
+
+**評估知識庫。** 有多種引擎可選擇時，「哪個引擎在這裡檢索得最好？」需要實際測量，而 `deeptutor kb eval` 就能回答這個問題。建立 QA 資料集（每行一個 JSON 物件，包含 `query` 與理想檢索應回傳的 `gold` 段落），再使用 `deeptutor kb eval <name> --dataset qa.jsonl --top-k 5 [--mode hybrid] [--save baseline.json]` 評估知識庫。每個案例都透過與聊天回合相同的路徑檢索，依完全相同的文字或詞彙重疊程度，將排序後的引用與標準段落配對（可用 `--min-ratio` 調整門檻；不評估語意等價性），並回報 **Recall@k／Precision@k／nDCG@k／MRR／MAP／Hit@k**。指標是依排序計算的純函式，無須模型評判輸出，因此分數可重現並可比較差異；儲存基準後，就能在切換 embedding、調整 reranker 或實驗不同區塊大小時，將資料集用作回歸檢查閘道。搜尋失敗的案例（例如缺少索引或憑證錯誤）不會計分，而是另外回報，避免拉低平均值。PageIndex 透過推理進行檢索，不回傳已排序的區塊，因此不納入評估。
+
+```jsonl
+{"query": "Why do transformers scale attention?", "gold": ["Scaling keeps the dot products from growing with the dimension."]}
+```
 
 </details>
 
@@ -544,7 +565,7 @@ Book 會將選定來源轉換成互動式**活書**；它不是靜態 PDF，而�
 <img src="../../assets/figs/web-1.4.6+/learning-space/00-overview.png" alt="DeepTutor Learning Space 中心" width="900">
 </div>
 
-Learning Space 是資源庫、組織與個人化層。**Conversations & Materials** 包含 Chat History、支援搬移紀錄與匯出 Markdown 的筆記本，以及含答案與解說的題庫。Personalized Learning 中的 **Practice** 可將已儲存的題目轉為複習工作階段、錯題追蹤與定期複習。**Personalization** 包含角色設定、技能（`SKILL.md` 操作手冊）、一鍵安裝的 **MCP Services**，以及來自 [CLI-Anything](https://github.com/HKUDS/CLI-Anything) 型錄的 **CLI Apps**，每個應用程式的使用指南會按需載入。獨立的 **My Courses** 工作區會依科目歸納對話與導師討論串；每項資產只會出現在支援它的工作流程中。
+Learning Space 是資源庫、組織與個人化層。**Conversations & Materials** 包含 Chat History、支援搬移紀錄與匯出 Markdown 的筆記本，以及含答案與解說的題庫。從選定的題庫題目或 Personalized Learning 啟動 **Practice**，即可進行複習工作階段、錯題追蹤與定期複習。**Personalization** 包含角色設定、技能（`SKILL.md` 操作手冊）、一鍵安裝的 **MCP Services**，以及來自 [CLI-Anything](https://github.com/HKUDS/CLI-Anything) 型錄的 **CLI Apps**，每個應用程式的使用指南會按需載入。獨立的 **My Courses** 工作區會依科目歸納對話與導師討論串；每項資產只會出現在支援它的工作流程中。
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/learning-space/07-%20download%20skills%20from%20eduhub.png" alt="從 EduHub 匯入技能" width="900">
@@ -579,6 +600,11 @@ Memory Graph 會呈現完整金字塔：L3 綜整位於中央、L2 位於中圈�
 </div>
 
 Settings 是操作控制中心，開啟時會顯示用於設定介面與模型輸出語言的 **General** 頁面。可搜尋的導覽選單連結至各個獨立頁面：**Personal** 包含 Workspaces、Data migration、Appearance 與 Usage statistics；**Learning & conversation** 包含起始提示、附件、Video Learning、學習者與監護人控制、Learning progress，以及 Memory；**Models & services** 包含 Providers、Language models、Task models、Embedding、Search、Voice 與 Multimodal generation；**Features & integrations** 包含工具、能力參數、Partners & agents，以及 Knowledge & documents。**System** 包含 Network、Runtime status 與 About；**Archived chats** 可搜尋、還原或永久刪除已封存的對話。Runtime status 包含後端健康狀況、常駐記憶體，以及評估各項能力阻礙、警告與建議的 **Readiness** 矩陣。Workspaces 讓不同主題的檔案與學習狀態保持獨立，Data migration 則提供經驗證的遷移與匯出功能。**供應商（provider）**保存廠商位址與憑證，供其服務模型重複使用；模型頁面可選擇已儲存的供應商，並設定模型名稱與能力。**任務模型**可為命名對話、撰寫起始提示等背景工作指定小型快速模型；留空時則使用目前的預設模型。Voice 集合語音合成與轉錄；Multimodal generation 集合影像與影片模型。Partners & agents 可設定本機代理程式執行框架與遠端 Hermes gateway。
+
+**Xiaomi MiMo 語音。** 新增 Xiaomi MiMo 供應商，輸入 `https://api.xiaomimimo.com/v1` 與其 API 金鑰，再到 Settings → Voice 新增 `mimo-v2.5-tts`。選擇 `mimo_default`、`冰糖` 或 `苏打` 等預設音色，使用 `wav` 或 `pcm16` 輸出，並在套用前試聽。語音指示可控制風格與語速。此介接器只支援預設音色的語音合成；音色設計與聲音複製需要獨立模型，目前不受支援。若舊的 MiMo 語音模型是透過通用的 OpenAI 相容介接器設定，請使用 Xiaomi MiMo 供應商重新建立語音項目，以採用 chat-completions 協定。請參閱 [MiMo 官方語音指南](https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/speech-synthesis-v2.5)。
+
+**MiniMax 語音** — 在 Settings → Voice 中，為文字轉語音選擇 MiniMax，並選用 `speech-2.8-hd`。設定 MiniMax API 金鑰與系統或自訂音色 ID；預設音色為 `English_expressive_narrator`。API base 預設為 `https://api.minimax.io/v1`；中國地區請使用 `https://api.minimaxi.com/v1`。朗讀與音色預覽使用原生語音端點，支援 MP3、WAV、FLAC 或 PCM 輸出，以及取樣率、語速與語言控制。音色 ID 與帳號可用性請參閱 [MiniMax 語音 API](https://platform.minimax.io/docs/api-reference/speech-t2a-http)。
+
 
 **Video Learning** 位於 Settings → Learning & conversation，預設使用官方隱私強化版 YouTube IFrame Player。若要讓播放保持在本機，請設定由管理員管理的 Invidious API 來源（例如 `http://127.0.0.1:3000`）、進行測試、選擇 Invidious 並儲存。新開啟或重新開啟的影片會立即採用該供應商，同時保留相同的素材 ID 與進度。Invidious 媒體會透過 DeepTutor 的 byte-range proxy 串流；上游 URL 不會暴露給瀏覽器，也不會儲存在磁碟上。若該執行個體發生故障，在學習者明確選擇原生 YouTube 備援前，DeepTutor 將維持離線而不連線至 YouTube。公開字幕教學為選用功能：安裝 `.[video-learning]`；未安裝時仍可繼續播放，但以逐字稿為基礎的 **Explain here** 會停用並顯示原因。
 
@@ -696,7 +722,7 @@ repo 根目錄附有 [`SKILL.md`](../../SKILL.md)，這份約 200 行的交接�
 | `deeptutor run <capability> <message>` | 執行單一能力回合（`chat`、`ask_questions`、`deep_solve`、`deep_question`、`deep_research`、`visualize`、`math_animator`、`mastery_path`、`immersive_reading`、`course_study`、`immersive_watching`、`audio_overview`）；加上 `--format json` 可輸出 NDJSON |
 | `deeptutor chat` | 具備能力、工具、知識庫、筆記本與記錄控制的互動式 REPL |
 | `deeptutor partner list/create/start/stop` | 管理連接 IM 的 partners |
-| `deeptutor kb list/info/create/connect-kiwix/add/search/set-default/delete/list-sources/sync` | 管理知識庫，並同步已註冊的 GitHub／Web 來源（含來源新增／移除指令） |
+| `deeptutor kb list/info/create/connect-kiwix/add/search/eval/set-default/delete/list-sources/sync` | 管理知識庫、連接 Kiwix 封存檔、依 QA 資料集評估檢索品質，並同步已註冊的 GitHub／Web 來源（含來源新增／移除指令） |
 | `deeptutor skill search/install/list/remove/login/logout/publish/update` | 管理技能、從 hub 安裝並發布自己的技能（預設為 `eduhub:<slug>`，請參閱生態系） |
 | `deeptutor memory show/clear` | 檢視 L2／L3 記憶文件，或清除 L1／所有記憶 |
 | `deeptutor session list/show/open/rename/delete` | 管理共享工作階段 |
@@ -795,7 +821,7 @@ deeptutor skill install clawhub:udiedrichsen/stock-analysis
 </p>
 
 <p align="center">
-  代碼 <b><code>DEEPTUTOR20</code></b> — <b>20 美元折扣</b>，適用於首次 <a href="https://developer.pageindex.ai/">PageIndex 訂閱</a>（新客戶 · Standard／Pro／Max）
+  使用代碼：<b><code>DEEPTUTOR20</code></b> — 首次 <a href="https://developer.pageindex.ai/">PageIndex 訂閱</a>可享 20 美元折扣！
 </p>
 
 ## 🌐 社群
@@ -851,7 +877,7 @@ DeepTutor 也站在許多傑出開放原始碼專案的肩膀上；它們同時�
   <picture>
    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&theme=dark" />
    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor" />
-   <img alt="Star History Rank" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor" />
+   <img alt="Star History 排名" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor" />
   </picture>
  </a>
 </p>

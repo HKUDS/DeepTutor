@@ -141,8 +141,109 @@ def test_size_count_and_rebuild_cleanup(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(assets_module, "MAX_IMAGE_BYTES", 5 * 1024 * 1024)
     for index in range(2):
         Image.new("RGB", (3, 2), color=(index * 60, 0, 0)).save(image.parent / f"extra-{index}.png")
-    monkeypatch.setattr(assets_module, "MAX_ASSETS_PER_DOCUMENT", 2)
-    assert len(collect_visual_assets(parsed, source, kb_dir)) == 2
+    assert len(collect_visual_assets(parsed, source, kb_dir)) == 3
+
+
+def test_hundred_figure_textbook_keeps_late_figures_searchable_and_delivers_pixels(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """#1610: document retention must not be truncated by the model image budget.
+
+    A local deterministic embedding tests the storage/retrieval path; it does
+    not measure a provider's semantic or cross-language retrieval quality.
+    """
+    from dataclasses import replace
+    import re
+    import shutil
+
+    from llama_index.core import VectorStoreIndex
+    from llama_index.core.base.embeddings.base import BaseEmbedding
+
+    from deeptutor.multi_user import knowledge_access
+    import deeptutor.services.parsing as parsing
+    from deeptutor.services.rag.pipelines.llamaindex.document_loader import LlamaIndexDocumentLoader
+    from deeptutor.services.rag.pipelines.llamaindex.pipeline import LlamaIndexPipeline
+    from deeptutor.tools import rag_tool
+    from deeptutor.tools.builtin import RAGTool
+
+    kb_dir, source, image, parsed = _fixture(tmp_path)
+    image.unlink()
+    parsed = replace(
+        parsed,
+        markdown="Synthetic textbook with one hundred figures.",
+        blocks=[],
+    )
+    for number in range(1, 101):
+        asset = image.parent / f"figure-{number:03}.png"
+        Image.new("RGB", (8, 6), color=(number, 100, 200)).save(asset)
+        parsed.blocks.append(
+            {
+                "type": "image",
+                "img_path": str(asset),
+                "page_idx": number - 1,
+                "bbox": [10, 20, 80, 60],
+                "image_caption": [f"Figure {number}: learning curve"],
+            }
+        )
+
+    class Parser:
+        def parse(self, _source, **_kwargs):
+            return parsed
+
+    class FigureEmbedding(BaseEmbedding):
+        def _get_text_embedding(self, text):
+            match = re.search(r"Figure (\d+)", text)
+            vector = [0.0] * 101
+            vector[int(match.group(1)) if match else 0] = 1.0
+            return vector
+
+        def _get_query_embedding(self, query):
+            return self._get_text_embedding(query)
+
+        async def _aget_query_embedding(self, query):
+            return self._get_query_embedding(query)
+
+    monkeypatch.setattr(parsing, "get_parse_service", lambda: Parser())
+    candidates = []
+    documents = asyncio.run(
+        LlamaIndexDocumentLoader().load([str(source)], kb_dir=kb_dir, visual_candidates=candidates)
+    )
+    assert len(candidates) == 100
+    visuals = [doc for doc in documents if doc.metadata.get("content_type") == "source_visual"]
+    assert len(visuals) == 100
+    VisualAssetStore(kb_dir).publish(candidates)
+    index = VectorStoreIndex.from_documents(documents, embed_model=FigureEmbedding())
+    retriever = index.as_retriever(similarity_top_k=1)
+    for number in (1, 50, 100):
+        nodes = retriever.retrieve(f"Figure {number}")
+        retrieved = LlamaIndexPipeline._nodes_to_result(None, f"Figure {number}", nodes)
+        record = retrieved["sources"][0]
+        assert record["page"] == number
+        assert record["visual_asset_id"] == candidates[number - 1].record["asset_id"]
+
+    late = candidates[-1]
+    expected_pixels = late.path.read_bytes()
+    # The KB-owned copy survives cache removal and a fresh store instance.
+    shutil.rmtree(image.parent.parent)
+    assert VisualAssetStore(kb_dir).read(late.record["asset_id"])[1] == expected_pixels
+    monkeypatch.setattr(
+        knowledge_access,
+        "resolve_for_rag",
+        lambda _name: SimpleNamespace(name="kb", base_dir=tmp_path),
+    )
+
+    async def search(**_kwargs):
+        return {**retrieved, "answer": "Figure 100 is on page 100."}
+
+    monkeypatch.setattr(rag_tool, "rag_search", search)
+    result = asyncio.run(
+        RAGTool().execute(query="Figure 100", kb_name="kb", _vision_supported=True)
+    )
+    parts = result.model_message["content"]
+    assert sum(part["type"] == "image_url" for part in parts) == 1
+    assert base64.b64decode(parts[1]["image_url"]["url"].split(",", 1)[1]) == expected_pixels
+    assert late.record["asset_id"] in result.sources[0]["visual_asset_url"]
 
 
 @pytest.mark.parametrize("suffix", [".pdf", ".epub"])

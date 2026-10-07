@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import importlib
 import json
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -87,6 +88,11 @@ def _materialized_routes(app: "FastAPI"):
     ("path", "route_path", "surface"),
     [
         ("/api/knowledge-bases", "/api/knowledge-bases", "reading"),
+        (
+            "/api/knowledge-bases/list",
+            "/api/knowledge-bases/list",
+            "reading",
+        ),
         ("/api/knowledge-bases/demo", "/api/knowledge-bases/{kb_name}", "reading"),
         ("/api/knowledge-bases/demo/files", "/api/knowledge-bases/{kb_name}/files", "reading"),
         (
@@ -1915,6 +1921,72 @@ def test_reindex_task_preserves_prepublication_failure(monkeypatch, tmp_path: Pa
     assert task["error"] == "original indexing failure"
 
 
+def test_reindex_task_surfaces_failed_error_progress_write(
+    monkeypatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A failing error-progress write must not vanish silently.
+
+    The rebuild's task-level failure stays authoritative; the router logs the
+    degraded progress write instead of swallowing it with ``except: pass``.
+    """
+    base_dir = tmp_path / "knowledge_bases"
+    raw_dir = base_dir / "kb" / "raw"
+    raw_dir.mkdir(parents=True)
+    (raw_dir / "fixture.txt").write_text("fixture", encoding="utf-8")
+    (base_dir / "kb_config.json").write_text(
+        json.dumps(
+            {
+                "knowledge_bases": {
+                    "kb": {
+                        "path": "kb",
+                        "rag_provider": "lightrag",
+                        "status": "processing",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class _FailingRagService:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        async def initialize(self, *_args, **_kwargs) -> bool:
+            raise RuntimeError("original indexing failure")
+
+    rag_service_module = importlib.import_module("deeptutor.services.rag.service")
+    monkeypatch.setattr(rag_service_module, "RAGService", _FailingRagService)
+
+    class _ErrorWriteFailsTracker(knowledge_router_module.ProgressTracker):
+        def update(self, stage, *args, **kwargs):
+            if stage is knowledge_router_module.ProgressStage.ERROR:
+                raise OSError("synthetic error progress write failure")
+            return super().update(stage, *args, **kwargs)
+
+    monkeypatch.setattr(knowledge_router_module, "ProgressTracker", _ErrorWriteFailsTracker)
+
+    task_id = knowledge_router_module._build_unique_task_id("kb_reindex", "error-progress")
+    with caplog.at_level(logging.WARNING, logger="deeptutor.api.routers.knowledge"):
+        asyncio.run(
+            knowledge_router_module.run_reindex_task(
+                kb_name="kb",
+                base_dir=str(base_dir),
+                task_id=task_id,
+                signature_hash="lightrag",
+            )
+        )
+
+    task = knowledge_router_module.TaskIDManager.get_instance().get_task_metadata(task_id)
+    assert task is not None
+    assert task["status"] == "error"
+    assert task["error"] == "original indexing failure"
+    warnings = [
+        record.getMessage() for record in caplog.records if record.levelno >= logging.WARNING
+    ]
+    assert any("error progress" in message and "kb" in message for message in warnings), warnings
+
+
 @pytest.mark.parametrize("failed_sink", ["progress_file", "central_config"])
 def test_reindex_task_does_not_report_a_published_version_as_failed_when_bookkeeping_fails(
     monkeypatch, tmp_path: Path, failed_sink: str
@@ -3202,3 +3274,48 @@ def test_create_empty_llamaindex_kb_then_upload_and_retry(
         assert len(calls) == (3 if first_upload_fails else 2)
 
     asyncio.run(workflow())
+
+
+@pytest.mark.asyncio
+async def test_slow_catalog_read_leaves_event_loop_responsive(monkeypatch):
+    """The single-worker API can serve other work during disk probes (#1711)."""
+    import asyncio
+    from contextvars import ContextVar
+    from threading import Event
+
+    started, release = Event(), Event()
+    request_scope = ContextVar("test_catalog_scope", default="missing")
+
+    def slow_list():
+        assert request_scope.get() == "workspace-user"
+        started.set()
+        assert release.wait(timeout=2)
+        return []
+
+    monkeypatch.setattr(knowledge_router_module, "_list_knowledge_bases", slow_list)
+    token = request_scope.set("workspace-user")
+    task = asyncio.create_task(knowledge_router_module.list_knowledge_bases())
+    try:
+        await asyncio.wait_for(asyncio.to_thread(started.wait), timeout=1)
+        # This await must run while the filesystem worker is still blocked.
+        await asyncio.sleep(0)
+        assert not task.done()
+    finally:
+        release.set()
+        request_scope.reset(token)
+    assert await task == []
+
+
+@pytest.mark.asyncio
+async def test_health_counts_registry_without_constructing_index_manager(tmp_path, monkeypatch):
+    config = tmp_path / "kb_config.json"
+    config.write_text(json.dumps({"knowledge_bases": {"one": {}, "two": {}}}))
+    monkeypatch.setattr(knowledge_router_module, "current_kb_base_dir", lambda: tmp_path)
+
+    def unexpected_manager():
+        raise AssertionError("health must not initialize or probe indexes")
+
+    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", unexpected_manager)
+    result = await knowledge_router_module.health_check()
+    assert result["status"] == "ok"
+    assert result["knowledge_bases_count"] == 2

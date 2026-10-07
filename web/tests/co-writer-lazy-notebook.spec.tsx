@@ -24,6 +24,15 @@ vi.mock("@/lib/notebook-api", () => ({
   listNotebooks: vi.fn().mockResolvedValue([{ id: "notebook-1", name: "My notebook" }]),
   createNotebook: vi.fn(),
 }));
+vi.mock("@/hooks/useLLMOptions", () => ({
+  useLLMOptions: () => ({
+    options: [],
+    activeDefault: null,
+    loading: false,
+    error: false,
+    refresh: vi.fn(),
+  }),
+}));
 
 it("opens and closes the dynamically loaded notebook picker without changing the draft", async () => {
   vi.stubGlobal(

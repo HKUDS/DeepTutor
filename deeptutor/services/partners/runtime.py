@@ -64,6 +64,11 @@ _MAX_IMAGE_BYTES = 8 * 1024 * 1024
 _MAX_MEDIA_BYTES = 10 * 1024 * 1024
 _TOOL_HINT_MAX_CHARS = 120
 
+# Channels that post the "thinking…" notice and retract it when the answer
+# starts arriving. Opt-in: a channel that cannot retract would leave it behind.
+_THINKING_NOTICE_CHANNELS = frozenset({"feishu"})
+_THINKING_NOTICES = {"zh": "🤔 正在思考…", "en": "🤔 Thinking…"}
+
 
 @dataclass(frozen=True, slots=True)
 class PartnerTurnOptions:
@@ -493,6 +498,19 @@ class PartnerRunner:
             wants_stream = is_im and send_progress and bool(msg.metadata.get("_wants_stream"))
 
             _config, llm_token = activate_llm_selection(selection)
+            logger.info(
+                "Partner %s turn %s on %s: live streaming %s",
+                self.partner_id,
+                turn_id or "-",
+                msg.channel,
+                "on" if wants_stream else "off",
+            )
+            # Reasoning tokens are never delivered to channels, so a
+            # thinking-heavy turn looks like a dead bot until the first answer
+            # token. Give the reader a notice they can watch, and let the
+            # channel retract it once the answer starts arriving.
+            if is_im and send_progress and msg.channel in _THINKING_NOTICE_CHANNELS:
+                await self._publish_thinking_notice(msg)
             if options.conversation_history is None:
                 context.runtime.model_history = store.model_history(
                     session_key=msg.session_key,
@@ -1092,6 +1110,27 @@ class PartnerRunner:
                 metadata={
                     "_progress": True,
                     "_tool_hint": tool_hint,
+                    **_thread_delivery_meta(msg),
+                },
+            )
+        )
+
+    async def _publish_thinking_notice(self, msg: InboundMessage) -> None:
+        """Post a short "thinking…" placeholder before the first answer token.
+
+        Only channels that can retract it (see ``_THINKING_NOTICE_CHANNELS``)
+        are targeted, so a channel that would leave the notice behind is
+        unaffected.
+        """
+        notice = _THINKING_NOTICES[self._language()]
+        await self.bus.publish_outbound(
+            OutboundMessage(
+                channel=msg.channel,
+                chat_id=msg.chat_id,
+                content=notice,
+                metadata={
+                    "_progress": True,
+                    "_thinking_notice": True,
                     **_thread_delivery_meta(msg),
                 },
             )

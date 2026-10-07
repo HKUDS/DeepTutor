@@ -10,6 +10,7 @@ from deeptutor.core.stream import StreamEvent, StreamEventType
 from deeptutor.runtime.coordination import MemoryCoordinator
 from deeptutor.services.session.sqlite_store import SQLiteSessionStore
 from deeptutor.services.session.turn_runtime import TurnRuntimeManager
+from deeptutor.services.workspace.activity import data_activity
 
 
 class _ContextBuilder:
@@ -175,5 +176,66 @@ async def test_remote_worker_reply_reaches_owner_waiter(monkeypatch, tmp_path) -
     done_index = next(i for i, event in enumerate(received) if event["type"] == "done")
     assert all(event["type"] == "session_meta" for event in received[done_index + 1 :])
     assert [event["seq"] for event in received] == list(range(1, len(received) + 1))
+    await runtime_a.close()
+    await runtime_b.close()
+
+
+@pytest.mark.asyncio
+async def test_remote_cancel_waits_for_waiting_turn_teardown(monkeypatch, tmp_path) -> None:
+    waiting = asyncio.Event()
+
+    class Engine:
+        async def execute(self, context):
+            yield StreamEvent(
+                type=StreamEventType.WAIT_FOR_INPUT,
+                source="chat",
+                content="Continue?",
+            )
+            waiting.set()
+            await context.runtime.wait_for_user_reply()
+
+    monkeypatch.setattr("deeptutor.services.llm.config.get_llm_config", lambda: SimpleNamespace())
+    monkeypatch.setattr(
+        "deeptutor.services.session.context_builder.ContextBuilder", _ContextBuilder
+    )
+    coordinator = MemoryCoordinator(lease_ttl_seconds=5)
+    path = tmp_path / "shared.sqlite3"
+    store_a = SQLiteSessionStore(path)
+    store_b = SQLiteSessionStore(path)
+    runtime_a = TurnRuntimeManager(
+        store_a, coordinator=coordinator, owner_id="worker-a", turn_engine=Engine()
+    )
+    runtime_b = TurnRuntimeManager(
+        store_b, coordinator=coordinator, owner_id="worker-b", turn_engine=Engine()
+    )
+
+    async def _noop_title(**_kwargs):
+        return None
+
+    monkeypatch.setattr(runtime_a, "_maybe_generate_session_title", _noop_title)
+    app_a = _application(store_a, runtime_a, coordinator)
+    app_b = _application(store_b, runtime_b, coordinator)
+
+    _session, turn = await app_a.start_turn(_payload())
+    await asyncio.wait_for(waiting.wait(), timeout=2)
+    for _ in range(100):
+        active = await app_b.check_active_turn(turn["session_id"])
+        if active and active["status"] == "waiting_input":
+            break
+        await asyncio.sleep(0.01)
+    assert active is not None
+    assert active["status"] == "waiting_input"
+
+    assert await app_b.cancel_turn_and_wait(
+        turn["id"], command_id="cancel-waiting-from-b", timeout_seconds=3
+    )
+
+    persisted = await store_b.get_turn(turn["id"])
+    assert persisted is not None
+    assert persisted["status"] == "cancelled"
+    assert await coordinator.get_lease(turn["id"]) is None
+    assert turn["id"] not in runtime_a._executions
+    with data_activity(exclusive=True):
+        pass
     await runtime_a.close()
     await runtime_b.close()

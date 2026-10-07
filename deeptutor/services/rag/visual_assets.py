@@ -21,7 +21,6 @@ import warnings
 from deeptutor.services.parsing.types import ParsedDocument
 
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
-MAX_ASSETS_PER_DOCUMENT = 64
 MAX_MODEL_IMAGES = 2
 MAX_IMAGE_PIXELS = 30_000_000
 MAX_MANIFEST_BYTES = 16 * 1024 * 1024
@@ -183,8 +182,6 @@ def collect_visual_assets(
     source_hash = _sha256_file(source)
     candidates: list[VisualAssetCandidate] = []
     for path in sorted(asset_dir.iterdir()):
-        if len(candidates) >= MAX_ASSETS_PER_DOCUMENT:
-            break
         loaded = _image_bytes(path)
         if loaded is None:
             continue

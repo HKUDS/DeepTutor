@@ -74,7 +74,7 @@ async def test_caption_material_media_writes_back(
     store: ReadingStore, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     stub = _StubClient()
-    monkeypatch.setattr(captions_module, "get_llm_client", lambda: stub)
+    monkeypatch.setattr(captions_module, "get_image_description_client", lambda: stub)
 
     written = await captions_module.caption_material_media(_MATERIAL_ID, store=store)
 
@@ -89,7 +89,7 @@ async def test_existing_captions_are_skipped(
     store: ReadingStore, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     stub = _StubClient()
-    monkeypatch.setattr(captions_module, "get_llm_client", lambda: stub)
+    monkeypatch.setattr(captions_module, "get_image_description_client", lambda: stub)
 
     assert await captions_module.caption_material_media(_MATERIAL_ID, store=store) == 3
     stub.calls.clear()
@@ -101,11 +101,37 @@ async def test_existing_captions_are_skipped(
 
 
 @pytest.mark.asyncio
+async def test_missing_captions_reuse_cache_but_force_refreshes(store, monkeypatch, tmp_path):
+    from types import SimpleNamespace
+
+    from deeptutor.services.llm import image_caption_cache
+    from deeptutor.services.llm.config import LLMConfig
+
+    stub = _StubClient()
+    stub.config = LLMConfig(model="vision-test", api_key="test-key")
+    monkeypatch.setattr(captions_module, "get_image_description_client", lambda: stub)
+    monkeypatch.setattr(
+        image_caption_cache,
+        "get_path_service",
+        lambda: SimpleNamespace(get_parse_cache_root=lambda: tmp_path / "cache"),
+    )
+    rows = store.media_items(_MATERIAL_ID)
+    index = tmp_path / "reading" / _MATERIAL_ID / "media.json"
+    assert await captions_module.caption_material_media(_MATERIAL_ID, store=store) == 3
+    index.write_text(json.dumps(rows))  # Retry ingest with the same source images.
+    assert await captions_module.caption_material_media(_MATERIAL_ID, store=store) == 3
+    assert len(stub.calls) == 3
+    # The stub returns identical text, so the store reports no changed rows.
+    assert await captions_module.caption_material_media(_MATERIAL_ID, store=store, force=True) == 0
+    assert len(stub.calls) == 6
+
+
+@pytest.mark.asyncio
 async def test_single_failure_keeps_the_rest(
     store: ReadingStore, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     stub = _StubClient(fail={"image-01.png"})
-    monkeypatch.setattr(captions_module, "get_llm_client", lambda: stub)
+    monkeypatch.setattr(captions_module, "get_image_description_client", lambda: stub)
 
     written = await captions_module.caption_material_media(_MATERIAL_ID, store=store)
 
@@ -121,7 +147,7 @@ async def test_text_only_client_makes_no_calls(
     store: ReadingStore, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     stub = _StubClient(vision=False)
-    monkeypatch.setattr(captions_module, "get_llm_client", lambda: stub)
+    monkeypatch.setattr(captions_module, "get_image_description_client", lambda: stub)
 
     written = await captions_module.caption_material_media(_MATERIAL_ID, store=store)
 

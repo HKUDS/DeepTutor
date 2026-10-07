@@ -12,7 +12,8 @@
  * before the message does, exactly like the retired bespoke textarea did.
  */
 
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
+import { COMMAND_CONFIRMATION_FAILED } from "@/features/chat/transport/command-delivery";
 import { X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -68,6 +69,8 @@ export function ReadingComposer({
   const { capabilities, activeCapabilityValue, selectCapability } =
     useWorkspaceChatActions();
   const { t } = useTranslation();
+  const fallbackInputRef = useRef<((text: string) => void) | null>(null);
+  const replyInputRef = prefillInputRef ?? fallbackInputRef;
 
   const awaitingUserReply = hasPendingAskUser(
     state.messages[state.messages.length - 1]?.events,
@@ -119,6 +122,9 @@ export function ReadingComposer({
           if (sent) return;
           notify(t(REPLY_SENT_AS_NEW_MESSAGE));
           sendAsNewMessage();
+        }).catch(() => {
+          notify(t(COMMAND_CONFIRMATION_FAILED), { tone: "error" });
+          replyInputRef.current?.(submission.content);
         });
         return;
       }
@@ -131,6 +137,7 @@ export function ReadingComposer({
       selection,
       sendMessage,
       submitUserReply,
+      replyInputRef,
       t,
     ],
   );
@@ -165,7 +172,7 @@ export function ReadingComposer({
           />
         ) : null
       }
-      prefillInputRef={prefillInputRef}
+      prefillInputRef={replyInputRef}
     />
   );
 }

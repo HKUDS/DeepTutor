@@ -348,3 +348,65 @@ async def test_run_clips_oversized_seed_passages(monkeypatch: pytest.MonkeyPatch
     # section title, truncation marker, and the trailing template line.
     seed_block = turn_context.split("[Knowledge Base Context]", 1)[1]
     assert len(seed_block) < KB_SEED_CHARS_PER_KB + 400
+
+
+class _SeedPolicyCapability:
+    """A loop capability that only has an opinion on the KB seed."""
+
+    name = "seed_policy"
+
+    def __init__(self, skip: bool | None = None, raise_exc: bool = False) -> None:
+        self._skip = skip
+        self._raise = raise_exc
+
+    def skip_kb_seed(self, _context: UnifiedContext) -> bool:
+        if self._raise:
+            raise RuntimeError("hook broke")
+        return bool(self._skip)
+
+
+@pytest.mark.asyncio
+async def test_capability_can_skip_the_kb_seed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A quiz pick like "A" is not a query (#1624): the capability says so."""
+    registry = _SeedRegistry()
+    client = _ScriptedChatClient([[_llm_chunk(content="Correct.")]])
+    pipeline = _make_pipeline(monkeypatch, registry, client)
+    monkeypatch.setattr(
+        pipeline, "_active_loop_capabilities", lambda _ctx: (_SeedPolicyCapability(skip=True),)
+    )
+
+    context = UnifiedContext(
+        session_id="s1",
+        user_message="A",
+        knowledge_bases=["uc_berkeley"],
+        language="en",
+        metadata={"turn_id": "t1"},
+    )
+    seed = await pipeline._retrieve_kb_seed_block(context, StreamBus())
+
+    assert seed == ""
+    assert registry.executed == []
+
+
+@pytest.mark.asyncio
+async def test_kb_seed_still_runs_when_the_hook_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    registry = _SeedRegistry()
+    client = _ScriptedChatClient([[_llm_chunk(content="Done.")]])
+    pipeline = _make_pipeline(monkeypatch, registry, client)
+    monkeypatch.setattr(
+        pipeline,
+        "_active_loop_capabilities",
+        lambda _ctx: (_SeedPolicyCapability(raise_exc=True), _SeedPolicyCapability(skip=False)),
+    )
+
+    context = UnifiedContext(
+        session_id="s1",
+        user_message="Intended Audience",
+        knowledge_bases=["uc_berkeley"],
+        language="en",
+        metadata={"turn_id": "t1"},
+    )
+    seed = await pipeline._retrieve_kb_seed_block(context, StreamBus())
+
+    assert "[Knowledge Base Context]" in seed
+    assert [e["kwargs"]["query"] for e in registry.executed] == ["Intended Audience"]

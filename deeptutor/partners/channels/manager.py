@@ -28,6 +28,168 @@ _BOOL_CAMEL_ALIASES: dict[str, str] = {
 }
 
 
+def _drain_outbound(bus: Any) -> OutboundMessage | None:
+    """Pop one queued outbound message without waiting, or ``None`` when empty.
+
+    Tolerates buses that only expose the blocking ``consume_outbound`` (tests
+    and embedders): those simply never coalesce.
+    """
+    try_consume = getattr(bus, "try_consume_outbound", None)
+    if callable(try_consume):
+        return try_consume()
+    try:
+        return bus.outbound.get_nowait()
+    except (asyncio.QueueEmpty, AttributeError, NotImplementedError):
+        return None
+
+
+def coalesce_stream_deltas(
+    bus: Any, first_msg: OutboundMessage
+) -> tuple[OutboundMessage, list[OutboundMessage]]:
+    """Merge consecutive ``_stream_delta`` messages for the same stream segment.
+
+    Shared by the channel dispatcher and the partner outbound router so both
+    keep the same delivery contract: an LLM that generates faster than the
+    channel can post must not turn every token into its own API call.
+
+    Returns:
+        tuple of (merged_message, list_of_non_matching_messages)
+    """
+    target_key = (first_msg.channel, first_msg.chat_id)
+    target_stream = (first_msg.metadata or {}).get("_stream_id")
+    combined_content = first_msg.content
+    final_metadata = dict(first_msg.metadata or {})
+    non_matching: list[OutboundMessage] = []
+
+    # Only merge consecutive deltas of the same stream segment. As soon
+    # as we hit any other message, stop and hand that boundary back to
+    # the dispatcher via `pending`.
+    while True:
+        next_msg = _drain_outbound(bus)
+        if next_msg is None:
+            break
+
+        next_meta = next_msg.metadata or {}
+        same_target = (next_msg.channel, next_msg.chat_id) == target_key
+        same_stream = next_meta.get("_stream_id") == target_stream
+        is_delta = bool(next_meta.get("_stream_delta"))
+        is_end = bool(next_meta.get("_stream_end"))
+
+        if same_target and same_stream and is_delta:
+            combined_content += next_msg.content
+            if is_end:
+                final_metadata["_stream_end"] = True
+                if next_meta.get("_stream_final"):
+                    final_metadata["_stream_final"] = True
+                break
+        else:
+            # First non-matching message defines the coalescing boundary.
+            non_matching.append(next_msg)
+            break
+
+    merged = OutboundMessage(
+        channel=first_msg.channel,
+        chat_id=first_msg.chat_id,
+        content=combined_content,
+        # Routing hints belong to the segment, not to one delta: keep the first
+        # message's so a merged frame still replies/threads where it started.
+        reply_to=first_msg.reply_to,
+        media=list(first_msg.media),
+        metadata=final_metadata,
+    )
+    return merged, non_matching
+
+
+def coalesce_progress_messages(
+    bus: Any, first_msg: OutboundMessage
+) -> tuple[OutboundMessage, list[OutboundMessage]]:
+    """Merge consecutive progress messages that are already queued together.
+
+    Narration rounds and tool hints become separate messages, which is what a
+    reader wants while the channel keeps up. When the model outruns the channel
+    they instead pile up in the queue, and every one of them costs a blocking
+    API round trip — post the backlog as one message rather than dribbling it
+    out after the turn has already finished. Nothing waits for a merge: only
+    messages already waiting in the queue are combined.
+    """
+    target_key = (first_msg.channel, first_msg.chat_id)
+    is_tool_hint = bool((first_msg.metadata or {}).get("_tool_hint"))
+    joiner = "\n" if is_tool_hint else "\n\n"
+    combined_content = first_msg.content
+    final_metadata = dict(first_msg.metadata or {})
+    non_matching: list[OutboundMessage] = []
+
+    while True:
+        next_msg = _drain_outbound(bus)
+        if next_msg is None:
+            break
+
+        next_meta = next_msg.metadata or {}
+        mergeable = (
+            (next_msg.channel, next_msg.chat_id) == target_key
+            and bool(next_meta.get("_progress"))
+            and not next_meta.get("_stream_delta")
+            and not next_meta.get("_stream_end")
+            # The "thinking…" notice carries its own lifecycle (it is retracted
+            # once output starts), so it must stay a message of its own.
+            and not next_meta.get("_thinking_notice")
+            and not (first_msg.metadata or {}).get("_thinking_notice")
+            and bool(next_meta.get("_tool_hint")) == is_tool_hint
+        )
+        if not mergeable:
+            non_matching.append(next_msg)
+            break
+        combined_content = f"{combined_content}{joiner}{next_msg.content}"
+
+    merged = OutboundMessage(
+        channel=first_msg.channel,
+        chat_id=first_msg.chat_id,
+        content=combined_content,
+        reply_to=first_msg.reply_to,
+        media=list(first_msg.media),
+        metadata=final_metadata,
+    )
+    return merged, non_matching
+
+
+async def send_with_retry(
+    channel: BaseChannel,
+    msg: OutboundMessage,
+    *,
+    max_attempts: int = 3,
+    retry_delays: tuple[float, ...] = _SEND_RETRY_DELAYS,
+) -> None:
+    """Send a message with retry on failure using exponential backoff.
+
+    Note: CancelledError is re-raised to allow graceful shutdown.
+    """
+    attempts = max(max_attempts, 1)
+
+    for attempt in range(attempts):
+        try:
+            await deliver_outbound(channel, msg)
+            return
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            if attempt == attempts - 1:
+                _logger().exception("Failed to send to {} after {} attempts", msg.channel, attempts)
+                return
+            delay = retry_delays[min(attempt, len(retry_delays) - 1)]
+            _logger().warning(
+                "Send to {} failed (attempt {}/{}): {}, retrying in {}s",
+                msg.channel,
+                attempt + 1,
+                attempts,
+                type(e).__name__,
+                delay,
+            )
+            try:
+                await asyncio.sleep(delay)
+            except asyncio.CancelledError:
+                raise
+
+
 class ChannelManager:
     """
     Manages chat channels and coordinates message routing.
@@ -292,14 +454,13 @@ class ChannelManager:
                 await self._send_with_retry(channel, msg)
 
             except asyncio.TimeoutError:
+                # Idle-poll timeout on an empty queue: the cancelled consume
+                # popped no message (a consume finishing despite the timeout
+                # is returned by wait_for), so nothing is skipped. Channel
+                # send timeouts are retried and logged in _send_with_retry.
                 continue
             except asyncio.CancelledError:
                 break
-
-    @staticmethod
-    async def _send_once(channel: BaseChannel, msg: OutboundMessage) -> None:
-        """Send one outbound message without retry policy."""
-        await deliver_outbound(channel, msg)
 
     def _coalesce_stream_deltas(
         self, first_msg: OutboundMessage
@@ -309,79 +470,18 @@ class ChannelManager:
         Returns:
             tuple of (merged_message, list_of_non_matching_messages)
         """
-        target_key = (first_msg.channel, first_msg.chat_id)
-        target_stream = (first_msg.metadata or {}).get("_stream_id")
-        combined_content = first_msg.content
-        final_metadata = dict(first_msg.metadata or {})
-        non_matching: list[OutboundMessage] = []
-
-        # Only merge consecutive deltas of the same stream segment. As soon
-        # as we hit any other message, stop and hand that boundary back to
-        # the dispatcher via `pending`.
-        while True:
-            try:
-                next_msg = self.bus.outbound.get_nowait()
-            except asyncio.QueueEmpty:
-                break
-
-            next_meta = next_msg.metadata or {}
-            same_target = (next_msg.channel, next_msg.chat_id) == target_key
-            same_stream = next_meta.get("_stream_id") == target_stream
-            is_delta = bool(next_meta.get("_stream_delta"))
-            is_end = bool(next_meta.get("_stream_end"))
-
-            if same_target and same_stream and is_delta:
-                combined_content += next_msg.content
-                if is_end:
-                    final_metadata["_stream_end"] = True
-                    if next_meta.get("_stream_final"):
-                        final_metadata["_stream_final"] = True
-                    break
-            else:
-                # First non-matching message defines the coalescing boundary.
-                non_matching.append(next_msg)
-                break
-
-        merged = OutboundMessage(
-            channel=first_msg.channel,
-            chat_id=first_msg.chat_id,
-            content=combined_content,
-            metadata=final_metadata,
-        )
-        return merged, non_matching
+        return coalesce_stream_deltas(self.bus, first_msg)
 
     async def _send_with_retry(self, channel: BaseChannel, msg: OutboundMessage) -> None:
         """Send a message with retry on failure using exponential backoff.
 
         Note: CancelledError is re-raised to allow graceful shutdown.
         """
-        max_attempts = max(getattr(self.channels_config, "send_max_retries", 3), 1)
-
-        for attempt in range(max_attempts):
-            try:
-                await self._send_once(channel, msg)
-                return
-            except asyncio.CancelledError:
-                raise
-            except Exception as e:
-                if attempt == max_attempts - 1:
-                    _logger().exception(
-                        "Failed to send to {} after {} attempts", msg.channel, max_attempts
-                    )
-                    return
-                delay = _SEND_RETRY_DELAYS[min(attempt, len(_SEND_RETRY_DELAYS) - 1)]
-                _logger().warning(
-                    "Send to {} failed (attempt {}/{}): {}, retrying in {}s",
-                    msg.channel,
-                    attempt + 1,
-                    max_attempts,
-                    type(e).__name__,
-                    delay,
-                )
-                try:
-                    await asyncio.sleep(delay)
-                except asyncio.CancelledError:
-                    raise
+        await send_with_retry(
+            channel,
+            msg,
+            max_attempts=max(getattr(self.channels_config, "send_max_retries", 3), 1),
+        )
 
     def get_channel(self, name: str) -> BaseChannel | None:
         return self.channels.get(name)

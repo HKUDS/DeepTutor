@@ -1,7 +1,9 @@
 """Co-Writer backend tests: doc id validation, storage CRUD, history limits."""
 
 from io import BytesIO
+import logging
 from pathlib import Path
+from types import SimpleNamespace
 import zipfile
 
 from docx import Document as DocxDocument
@@ -19,9 +21,10 @@ _dt_config.load_config_with_main = lambda *_a, **_k: {
 
 from deeptutor.api.routers import co_writer as co_writer_router
 from deeptutor.api.routers.co_writer import _validate_doc_id
-from deeptutor.co_writer import edit_agent
+from deeptutor.co_writer import docx_converter, edit_agent
 from deeptutor.co_writer.docx_converter import (
     DocxConversionError,
+    _table_to_markdown,
     docx_to_markdown,
     markdown_to_docx,
 )
@@ -159,6 +162,137 @@ def test_load_history_survives_corrupt_file(tmp_path, monkeypatch):
     assert edit_agent.load_history() == []
 
 
+def test_llm_selection_defaults_to_admin_active_model(monkeypatch):
+    monkeypatch.setattr(
+        "deeptutor.multi_user.context.get_current_user", lambda: SimpleNamespace(is_admin=True)
+    )
+
+    assert co_writer_router._validated_llm_selection(None) is None
+
+
+def test_llm_selection_uses_first_granted_model_for_ordinary_user(monkeypatch):
+    monkeypatch.setattr(
+        "deeptutor.multi_user.context.get_current_user",
+        lambda: SimpleNamespace(is_admin=False),
+    )
+    monkeypatch.setattr(
+        "deeptutor.multi_user.model_access.has_capability_access", lambda _capability: True
+    )
+    monkeypatch.setattr(
+        "deeptutor.multi_user.model_access.redacted_model_access",
+        lambda: {
+            "llm": [{"profile_id": "profile", "model_id": "granted-model", "available": True}]
+        },
+    )
+    monkeypatch.setattr(
+        "deeptutor.multi_user.model_access.apply_allowed_llm_selection",
+        lambda selection: selection,
+    )
+    monkeypatch.setattr(
+        "deeptutor.multi_user.personal_models.merge_personal_llm_profiles",
+        lambda catalog: catalog,
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.config.get_model_catalog_service",
+        lambda: SimpleNamespace(load=lambda: {}),
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.model_selection.apply_llm_selection_to_catalog",
+        lambda _catalog, selection: selection,
+    )
+
+    selection = co_writer_router._validated_llm_selection(None)
+
+    assert selection == {"profile_id": "profile", "model_id": "granted-model"}
+
+
+def _reject_model_assignment(_selection):
+    raise PermissionError("not assigned")
+
+
+def test_llm_selection_rejects_unassigned_model(monkeypatch):
+    monkeypatch.setattr(
+        "deeptutor.multi_user.context.get_current_user",
+        lambda: SimpleNamespace(is_admin=False),
+    )
+    monkeypatch.setattr(
+        "deeptutor.multi_user.model_access.apply_allowed_llm_selection",
+        _reject_model_assignment,
+    )
+    monkeypatch.setattr(
+        "deeptutor.multi_user.personal_models.merge_personal_llm_profiles",
+        lambda catalog: catalog,
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.config.get_model_catalog_service",
+        lambda: SimpleNamespace(load=lambda: {}),
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.model_selection.apply_llm_selection_to_catalog",
+        lambda _catalog, selection: selection,
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        co_writer_router._validated_llm_selection(
+            co_writer_router.LLMSelectionPayload(profile_id="profile", model_id="unassigned-model")
+        )
+
+    assert exc.value.status_code == 403
+
+
+def test_selected_edit_agent_is_request_scoped(monkeypatch):
+    calls = []
+
+    class ScopedAgent:
+        def __init__(self, language):
+            self.language = language
+            self.model = "scoped-model"
+
+    def activate(selection):
+        calls.append(("activate", selection))
+        return "scoped-config", "scope-token"
+
+    def reset(token):
+        calls.append(("reset", token))
+
+    monkeypatch.setattr(co_writer_router, "activate_llm_selection", activate)
+    monkeypatch.setattr(co_writer_router, "reset_llm_selection", reset)
+    monkeypatch.setattr(edit_agent, "EditAgent", ScopedAgent)
+
+    selection = {"profile_id": "profile", "model_id": "scoped-model"}
+    with co_writer_router._selected_edit_agent(selection, language="zh") as agent:
+        assert agent.model == "scoped-model"
+
+    assert calls == [
+        ("activate", selection),
+        ("reset", "scope-token"),
+    ]
+
+
+def test_selected_edit_agent_keeps_default_singleton_and_resets(monkeypatch):
+    calls = []
+
+    class SharedAgent:
+        model = "default-model"
+
+    monkeypatch.setattr(
+        co_writer_router,
+        "activate_llm_selection",
+        lambda selection: (selection, "default-token"),
+    )
+    monkeypatch.setattr(
+        co_writer_router,
+        "reset_llm_selection",
+        lambda token: calls.append(token),
+    )
+    monkeypatch.setattr(co_writer_router, "get_edit_agent", lambda: SharedAgent())
+
+    with co_writer_router._selected_edit_agent(None, language="en") as agent:
+        assert agent.model == "default-model"
+
+    assert calls == ["default-token"]
+
+
 def test_automark_never_returns_unsupported_rough_notation_markup():
     original = "Deep learning uses neural networks."
     marked = '<span data-rough-notation="circle">Deep learning</span> uses neural networks.'
@@ -239,6 +373,84 @@ def test_docx_to_markdown_rejects_suspicious_zip(monkeypatch):
         archive.writestr("c.xml", "<c/>")
     with pytest.raises(DocxConversionError, match="too many archive members"):
         docx_to_markdown(buf.getvalue(), "bomb.docx")
+
+
+class _TextRow:
+    def __init__(self, texts):
+        self._cells = [SimpleNamespace(text=text) for text in texts]
+
+    @property
+    def cells(self):
+        return self._cells
+
+
+class _BadRow:
+    """Row whose ``cells`` access fails, as with malformed merged cells."""
+
+    @property
+    def cells(self):
+        raise ValueError("simulated merged-cell failure")
+
+
+class _FakeTable:
+    def __init__(self, rows):
+        self.rows = rows
+
+
+def test_table_to_markdown_warns_and_keeps_placeholder_for_unparseable_row(caplog):
+    table = _FakeTable(
+        [
+            _TextRow(["Metric", "Value"]),
+            _BadRow(),
+            _TextRow(["Revenue", "1.2M"]),
+        ]
+    )
+    with caplog.at_level(logging.WARNING, logger="deeptutor.co_writer.docx_converter"):
+        markdown = _table_to_markdown(table, table_ordinal=0)
+
+    assert "| Metric | Value |" in markdown
+    assert "| Revenue | 1.2M |" in markdown
+    assert "(unparseable row)" in markdown
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert warnings, "expected a warning for the unparseable row"
+    assert "table #1" in warnings[0].getMessage()
+    assert "row #2" in warnings[0].getMessage()
+    assert "simulated merged-cell failure" in warnings[0].getMessage()
+
+
+def test_docx_to_markdown_bad_table_row_warns_and_keeps_placeholder(monkeypatch, caplog):
+    document = DocxDocument()
+    table = document.add_table(rows=3, cols=2)
+    table.rows[0].cells[0].text = "Metric"
+    table.rows[0].cells[1].text = "Value"
+    table.rows[1].cells[0].text = "Revenue"
+    table.rows[1].cells[1].text = "1.2M"
+    table.rows[2].cells[0].text = "Profit"
+    table.rows[2].cells[1].text = "0.3M"
+
+    real_cell_text = docx_converter._cell_text
+
+    def flaky_cell_text(cell):
+        if (cell.text or "") == "Revenue":
+            raise ValueError("simulated cell failure")
+        return real_cell_text(cell)
+
+    monkeypatch.setattr(docx_converter, "_cell_text", flaky_cell_text)
+    with caplog.at_level(logging.WARNING, logger="deeptutor.co_writer.docx_converter"):
+        markdown = docx_to_markdown(_docx_bytes_from_document(document), "broken.docx")
+
+    assert "| Metric | Value |" in markdown
+    assert "| Profit | 0.3M |" in markdown
+    assert "Revenue" not in markdown
+    assert "(unparseable row)" in markdown
+    matching = [
+        r
+        for r in caplog.records
+        if r.levelno == logging.WARNING
+        and "table #1" in r.getMessage()
+        and "row #2" in r.getMessage()
+    ]
+    assert matching, "expected a warning naming table #1 row #2"
 
 
 def _client(tmp_path, monkeypatch) -> TestClient:

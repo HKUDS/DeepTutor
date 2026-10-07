@@ -38,20 +38,29 @@ export function initI18n(language?: unknown) {
 
 export async function ensureLanguage(language: AppLanguage) {
   if (i18n.hasResourceBundle(language, "app")) return;
+
   if (language === "zh") {
     const zhApp = (await import("@/locales/zh/app.json")).default;
     i18n.addResourceBundle("zh", "app", zhApp, true, true);
   }
+
   if (language === "fr") {
     const frApp = (await import("@/locales/fr/app.json")).default;
     i18n.addResourceBundle("fr", "app", frApp, true, true);
   }
+
   if (language === "de") {
     const deApp = (await import("@/locales/de/app.json")).default;
     i18n.addResourceBundle("de", "app", deApp, true, true);
   }
+
   if (language === "uk") {
     const ukApp = (await import("@/locales/uk/app.json")).default;
     i18n.addResourceBundle("uk", "app", ukApp, true, true);
+  }
+
+  if (language === "pl") {
+    const plApp = (await import("@/locales/pl/app.json")).default;
+    i18n.addResourceBundle("pl", "app", plApp, true, true);
   }
 }

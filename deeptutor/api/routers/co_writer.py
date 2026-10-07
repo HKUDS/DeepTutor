@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import contextmanager
 from datetime import datetime
 import json
 import logging
@@ -13,7 +14,7 @@ import uuid
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import Response, StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 # ``docx_converter`` imports python-docx lazily, so this stays import-cheap.
 from deeptutor.co_writer.docx_converter import (
@@ -28,6 +29,10 @@ from deeptutor.co_writer.storage import (
 )
 from deeptutor.runtime.stream_bus import StreamBus
 from deeptutor.services.config import PROJECT_ROOT, load_config_with_main
+from deeptutor.services.model_selection.runtime import (
+    activate_llm_selection,
+    reset_llm_selection,
+)
 from deeptutor.services.settings.interface_settings import get_response_language
 
 if TYPE_CHECKING:
@@ -67,6 +72,86 @@ def get_edit_agent() -> EditAgent:
     return _edit_agent
 
 
+class LLMSelectionPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    profile_id: str
+    model_id: str
+    reasoning_effort: str | None = None
+
+
+def _validated_llm_selection(payload: LLMSelectionPayload | None) -> dict[str, str] | None:
+    """Normalize and authorize a Co-Writer model selection.
+
+    Ordinary users must receive a concrete granted model, mirroring Chat turn
+    admission instead of silently falling back to the deployment's admin LLM.
+    """
+    from deeptutor.multi_user.context import get_current_user
+    from deeptutor.multi_user.model_access import (
+        apply_allowed_llm_selection,
+        has_capability_access,
+        redacted_model_access,
+    )
+    from deeptutor.multi_user.personal_models import merge_personal_llm_profiles
+    from deeptutor.services.config import get_model_catalog_service
+    from deeptutor.services.model_selection import (
+        LLMSelection,
+        apply_llm_selection_to_catalog,
+    )
+
+    raw = payload.model_dump(exclude_none=True) if payload is not None else None
+    try:
+        selection = LLMSelection.from_payload(raw)
+        if selection is None and not get_current_user().is_admin:
+            if not has_capability_access("llm"):
+                raise PermissionError(
+                    "No LLM model is assigned to your account. Please contact an administrator."
+                )
+            assigned = next(
+                (item for item in redacted_model_access().get("llm", []) if item.get("available")),
+                None,
+            )
+            if assigned is None:
+                raise PermissionError(
+                    "No LLM model is assigned to your account. Please contact an administrator."
+                )
+            selection = LLMSelection(
+                profile_id=str(assigned["profile_id"]),
+                model_id=str(assigned["model_id"]),
+            )
+
+        if selection is None:
+            return None
+
+        authorized = apply_allowed_llm_selection(selection.to_dict())
+        catalog = merge_personal_llm_profiles(get_model_catalog_service().load())
+        apply_llm_selection_to_catalog(catalog, LLMSelection.from_payload(authorized))
+        return LLMSelection.from_payload(authorized).to_dict()
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from None
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+
+
+@contextmanager
+def _selected_edit_agent(
+    llm_selection: dict[str, str] | None,
+    *,
+    language: str,
+):
+    """Run one edit with a request-scoped LLM configuration."""
+    from deeptutor.co_writer.edit_agent import EditAgent
+
+    _, token = activate_llm_selection(llm_selection)
+    try:
+        # A selected model gets its own agent so concurrent edits cannot race
+        # through the shared singleton's mutable api_key/model attributes.
+        agent = EditAgent(language=language) if llm_selection else get_edit_agent()
+        yield agent
+    finally:
+        reset_llm_selection(token)
+
+
 # Generous ceilings — they exist to stop runaway payloads (OOM / surprise
 # LLM bills), not to constrain normal documents.
 _MAX_DOC_CHARS = 600_000
@@ -82,6 +167,7 @@ class EditRequest(BaseModel):
     action: Literal["rewrite", "shorten", "expand"] = "rewrite"
     source: Literal["rag", "web"] | None = None
     kb_name: str | None = None
+    llm_selection: LLMSelectionPayload | None = None
 
 
 class EditResponse(BaseModel):
@@ -95,6 +181,7 @@ class ReactEditRequest(BaseModel):
     mode: Literal["rewrite", "shorten", "expand", "none"] = "rewrite"
     tools: list[Literal["rag", "web"]] = []
     kb_name: str | None = None
+    llm_selection: LLMSelectionPayload | None = None
 
 
 class ReactEditResponse(BaseModel):
@@ -105,6 +192,7 @@ class ReactEditResponse(BaseModel):
 
 class AutoMarkRequest(BaseModel):
     text: str = Field(max_length=_MAX_DOC_CHARS)
+    llm_selection: LLMSelectionPayload | None = None
 
 
 class AutoMarkResponse(BaseModel):
@@ -244,6 +332,7 @@ async def _run_react_edit(
     request: ReactEditRequest,
     *,
     language: str,
+    llm_selection: dict[str, str] | None = None,
     stream: StreamBus | None = None,
 ) -> dict[str, object]:
     from deeptutor.co_writer.edit_agent import append_history, print_stats
@@ -251,145 +340,148 @@ async def _run_react_edit(
     selected_text, instruction, tools = _prepare_react_edit_request(request, language)
     operation_id = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid.uuid4().hex[:6]
 
-    agent = get_edit_agent()
+    with _selected_edit_agent(llm_selection, language=language) as agent:
+        # Optional reference retrieval before the edit. Each tool degrades to a
+        # plain edit on failure — retrieval must never block the user's edit.
+        query = instruction or selected_text[:400]
+        context_blocks: list[str] = []
+        tools_used: list[str] = []
+        from deeptutor.services.rag.pipelines.pageindex import is_pageindex_kb
 
-    # Optional reference retrieval before the edit. Each tool degrades to a
-    # plain edit on failure — retrieval must never block the user's edit.
-    query = instruction or selected_text[:400]
-    context_blocks: list[str] = []
-    tools_used: list[str] = []
-    from deeptutor.services.rag.pipelines.pageindex import is_pageindex_kb
-
-    pageindex_source = "rag" in tools and is_pageindex_kb(request.kb_name)
-    for tool in tools:
-        kb_name = request.kb_name if tool == "rag" else None
-        if tool == "rag" and not kb_name:
-            continue
-        if tool == "rag" and pageindex_source:
-            # The edit loop below receives PageIndex tools directly.
-            continue
-        if stream is not None:
-            await stream.tool_call(
-                tool,
-                {"query": query, **({"kb_name": kb_name} if kb_name else {})},
-                source="co_writer_react_edit",
-                stage="exploring",
-            )
-        context, _file = await agent.gather_context(
-            source=tool,
-            query=query,
-            kb_name=kb_name,
-            operation_id=operation_id,
-        )
-        if stream is not None:
-            await stream.tool_result(
-                tool,
-                _trace_preview(context) if context else "(no result)",
-                source="co_writer_react_edit",
-                stage="exploring",
-            )
-        if context:
-            context_blocks.append(context)
-            tools_used.append(tool)
-
-    system_prompt = (
-        "You are an expert markdown editor."
-        if not language.startswith("zh")
-        else "你是一个严格的 Markdown 编辑助手。"
-    )
-    prompt = _build_react_edit_prompt(
-        selected_text=selected_text,
-        instruction=instruction,
-        mode=request.mode,
-        language=language,
-        context="\n\n".join(context_blocks),
-    )
-
-    response_chunks: list[str] = []
-    pageindex_sources: list[dict[str, object]] = []
-
-    async def _consume() -> None:
-        if pageindex_source and request.kb_name:
-            from deeptutor.services.rag.pipelines.pageindex.reasoning import (
-                read_pageindex_with_agent,
-            )
-
-            reading = await read_pageindex_with_agent(
-                kb_name=request.kb_name,
-                system_prompt=system_prompt,
-                user_prompt=prompt,
-                stream=stream,
-                source="co_writer_react_edit",
-                stage="responding",
-            )
-            if reading.text:
-                response_chunks.append(reading.text)
-                pageindex_sources.extend(reading.sources)
-                tools_used.append("rag")
-                if stream is not None:
-                    await stream.content(
-                        reading.text,
-                        source="co_writer_react_edit",
-                        stage="responding",
-                    )
-            return
-        async for chunk in agent.stream_llm(
-            user_prompt=prompt,
-            system_prompt=system_prompt,
-            stage=f"react_edit_{request.mode}",
-        ):
-            if not chunk:
+        pageindex_source = "rag" in tools and is_pageindex_kb(request.kb_name)
+        for tool in tools:
+            kb_name = request.kb_name if tool == "rag" else None
+            if tool == "rag" and not kb_name:
                 continue
-            response_chunks.append(chunk)
+            if tool == "rag" and pageindex_source:
+                # The edit loop below receives PageIndex tools directly.
+                continue
             if stream is not None:
-                await stream.content(
-                    chunk,
+                await stream.tool_call(
+                    tool,
+                    {"query": query, **({"kb_name": kb_name} if kb_name else {})},
+                    source="co_writer_react_edit",
+                    stage="exploring",
+                )
+            context, _file = await agent.gather_context(
+                source=tool,
+                query=query,
+                kb_name=kb_name,
+                operation_id=operation_id,
+            )
+            if stream is not None:
+                await stream.tool_result(
+                    tool,
+                    _trace_preview(context) if context else "(no result)",
+                    source="co_writer_react_edit",
+                    stage="exploring",
+                )
+            if context:
+                context_blocks.append(context)
+                tools_used.append(tool)
+
+        system_prompt = (
+            "You are an expert markdown editor."
+            if not language.startswith("zh")
+            else "你是一个严格的 Markdown 编辑助手。"
+        )
+        prompt = _build_react_edit_prompt(
+            selected_text=selected_text,
+            instruction=instruction,
+            mode=request.mode,
+            language=language,
+            context="\n\n".join(context_blocks),
+        )
+
+        response_chunks: list[str] = []
+        pageindex_sources: list[dict[str, object]] = []
+
+        async def _consume() -> None:
+            if pageindex_source and request.kb_name:
+                from deeptutor.services.rag.pipelines.pageindex.reasoning import (
+                    read_pageindex_with_agent,
+                )
+
+                reading = await read_pageindex_with_agent(
+                    kb_name=request.kb_name,
+                    system_prompt=system_prompt,
+                    user_prompt=prompt,
+                    stream=stream,
                     source="co_writer_react_edit",
                     stage="responding",
                 )
+                if reading.text:
+                    response_chunks.append(reading.text)
+                    pageindex_sources.extend(reading.sources)
+                    tools_used.append("rag")
+                    if stream is not None:
+                        await stream.content(
+                            reading.text,
+                            source="co_writer_react_edit",
+                            stage="responding",
+                        )
+                return
+            async for chunk in agent.stream_llm(
+                user_prompt=prompt,
+                system_prompt=system_prompt,
+                stage=f"react_edit_{request.mode}",
+            ):
+                if not chunk:
+                    continue
+                response_chunks.append(chunk)
+                if stream is not None:
+                    await stream.content(
+                        chunk,
+                        source="co_writer_react_edit",
+                        stage="responding",
+                    )
 
-    if stream is not None:
-        async with stream.stage("responding", source="co_writer_react_edit"):
+        if stream is not None:
+            async with stream.stage("responding", source="co_writer_react_edit"):
+                await _consume()
+        else:
             await _consume()
-    else:
-        await _consume()
 
-    edited_text = _clean_react_edit_output(
-        "".join(response_chunks),
-        binding=agent.binding,
-        model=agent.get_model(),
-    )
+        edited_text = _clean_react_edit_output(
+            "".join(response_chunks),
+            binding=agent.binding,
+            model=agent.get_model(),
+        )
 
-    append_history(
-        {
-            "id": operation_id,
-            "timestamp": datetime.now().isoformat(),
-            "action": "react_edit",
-            "mode": request.mode,
-            "tools": tools_used,
-            "kb_name": request.kb_name,
-            "input": {
-                "selected_text": request.selected_text,
-                "instruction": instruction,
-            },
-            "output": {"edited_text": edited_text},
-            "sources": pageindex_sources,
-            "model": agent.get_model(),
+        append_history(
+            {
+                "id": operation_id,
+                "timestamp": datetime.now().isoformat(),
+                "action": "react_edit",
+                "mode": request.mode,
+                "tools": tools_used,
+                "kb_name": request.kb_name,
+                "input": {
+                    "selected_text": request.selected_text,
+                    "instruction": instruction,
+                },
+                "output": {"edited_text": edited_text},
+                "sources": pageindex_sources,
+                "model": agent.get_model(),
+            }
+        )
+        print_stats()
+
+        result = {
+            "edited_text": edited_text,
+            "operation_id": operation_id,
+            "tools_used": tools_used,
         }
-    )
-    print_stats()
-
-    result = {
-        "edited_text": edited_text,
-        "operation_id": operation_id,
-        "tools_used": tools_used,
-    }
-    if stream is not None:
-        await stream.result(result, source="co_writer_react_edit")
-    return result
+        if stream is not None:
+            await stream.result(result, source="co_writer_react_edit")
+        return result
 
 
-async def _stream_react_edit(request: ReactEditRequest) -> AsyncGenerator[str, None]:
+async def _stream_react_edit(
+    request: ReactEditRequest,
+    *,
+    llm_selection: dict[str, str] | None,
+) -> AsyncGenerator[str, None]:
     language = _current_language()
     bus = StreamBus()
     error_holder: dict[str, str] = {}
@@ -398,7 +490,12 @@ async def _stream_react_edit(request: ReactEditRequest) -> AsyncGenerator[str, N
     async def _run() -> None:
         nonlocal result_holder
         try:
-            result_holder = await _run_react_edit(request, language=language, stream=bus)
+            result_holder = await _run_react_edit(
+                request,
+                language=language,
+                llm_selection=llm_selection,
+                stream=bus,
+            )
         except HTTPException as exc:
             error_holder["detail"] = str(exc.detail)
         except Exception as exc:
@@ -427,15 +524,17 @@ async def edit_text(request: EditRequest):
 
     try:
         # Get agent with refreshed LLM configuration from Settings
-        agent = get_edit_agent()
-
-        result = await agent.process(
-            text=request.text,
-            instruction=request.instruction,
-            action=request.action,
-            source=request.source,
-            kb_name=request.kb_name,
-        )
+        with _selected_edit_agent(
+            _validated_llm_selection(request.llm_selection),
+            language=_current_language(),
+        ) as agent:
+            result = await agent.process(
+                text=request.text,
+                instruction=request.instruction,
+                action=request.action,
+                source=request.source,
+                kb_name=request.kb_name,
+            )
 
         # Print token stats
         print_stats()
@@ -450,7 +549,11 @@ async def edit_text(request: EditRequest):
 @router.post("/documents/actions/edit-react", response_model=ReactEditResponse)
 async def edit_text_react(request: ReactEditRequest):
     try:
-        return await _run_react_edit(request, language=_current_language())
+        return await _run_react_edit(
+            request,
+            language=_current_language(),
+            llm_selection=_validated_llm_selection(request.llm_selection),
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -461,11 +564,12 @@ async def edit_text_react(request: ReactEditRequest):
 @router.post("/documents/actions/edit-react/stream")
 async def edit_text_react_stream(request: ReactEditRequest):
     try:
+        llm_selection = _validated_llm_selection(request.llm_selection)
         _prepare_react_edit_request(request, _current_language())
     except HTTPException:
         raise
     return StreamingResponse(
-        _stream_react_edit(request),
+        _stream_react_edit(request, llm_selection=llm_selection),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
@@ -478,9 +582,11 @@ async def auto_mark_text(request: AutoMarkRequest):
 
     try:
         # Get agent with refreshed LLM configuration from Settings
-        agent = get_edit_agent()
-
-        result = await agent.auto_mark(text=request.text)
+        with _selected_edit_agent(
+            _validated_llm_selection(request.llm_selection),
+            language=_current_language(),
+        ) as agent:
+            result = await agent.auto_mark(text=request.text)
 
         # Print token stats
         print_stats()

@@ -1196,20 +1196,67 @@ def _selection_source_excerpt(
         return text
 
     needle = str(selected_text or "").strip()
-    selection_start = text.find(needle) if needle else -1
+    selection_start = _selection_start(text, needle) if needle else -1
     if selection_start < 0:
         return _clip_text(text, limit=limit)
 
     before = max(1_000, (limit - len(needle)) // 2)
     start = max(0, selection_start - before)
     end = min(len(text), start + limit)
-    start = max(0, end - limit)
+    selection_end = min(len(text), selection_start + max(len(needle), 1))
+    if selection_end > end:
+        end = selection_end
+        start = max(0, end - limit)
     excerpt = text[start:end]
     if start > 0:
         excerpt = "[earlier content omitted]\n" + excerpt
     if end < len(text):
         excerpt += "\n[later content omitted]"
     return excerpt
+
+
+def _selected_latex_body(selected: str) -> str | None:
+    """Return the body of a complete Markdown math selection, if any."""
+    match = re.fullmatch(r"\$\$(.+?)\$\$|\$(.+?)\$", selected, flags=re.DOTALL)
+    if not match:
+        return None
+    body = " ".join((match.group(1) or match.group(2) or "").split())
+    if not body:
+        return None
+    # Restrict delimiter equivalence to content that plausibly came from a
+    # rendered formula. Ordinary prose selections still require an exact match.
+    if not re.search(r"\\[A-Za-z]+|[_^=+*/<>-]", body):
+        return None
+    return body
+
+
+def _selection_start(source: str, selected: str) -> int:
+    """Find an exact selection, or its equivalent LaTeX body, in source text."""
+    start = source.find(selected) if selected else -1
+    if start >= 0:
+        return start
+    body = _selected_latex_body(selected)
+    if body is None:
+        return -1
+    pattern = r"\s+".join(re.escape(part) for part in body.split(" "))
+    match = re.search(pattern, source, flags=re.DOTALL)
+    return match.start() if match else -1
+
+
+def _latex_selection_is_grounded(source: str, selected: str) -> bool:
+    """Whether selected KaTeX LaTeX has an equivalent body in the source.
+
+    The browser maps a rendered formula back to Markdown ``$...$`` delimiters.
+    The authoritative message may instead contain multiline ``$$`` fences,
+    bracket/parenthesis delimiters, a code span, or bare LaTeX. Comparing the
+    formula body keeps the check content-bound while allowing those display
+    representations to differ.
+    """
+    body = _selected_latex_body(selected)
+    if body is None:
+        return False
+    normalized_source = " ".join(source.split())
+    return body in normalized_source
 
 
 def _selection_is_grounded(source_text: str, selected_text: str) -> bool:
@@ -1225,7 +1272,9 @@ def _selection_is_grounded(source_text: str, selected_text: str) -> bool:
     # but never accept text that is absent from the authoritative message.
     normalized_source = " ".join(source.split())
     normalized_selected = " ".join(selected.split())
-    return bool(normalized_selected and normalized_selected in normalized_source)
+    if normalized_selected and normalized_selected in normalized_source:
+        return True
+    return _latex_selection_is_grounded(normalized_source, normalized_selected)
 
 
 async def _resolve_selection_tutor_context(

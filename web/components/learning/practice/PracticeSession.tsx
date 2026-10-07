@@ -28,10 +28,12 @@ export function PracticeSession({
   ids,
   questions,
   onClose,
+  backLabel,
 }: {
   ids?: number[]
   questions?: PracticeRef[]
   onClose: () => void
+  backLabel?: string
 }) {
   const [queue, setQueue] = useState<PracticeRef[]>(
     () => questions ?? (ids ?? []).map(id => ({ id }))
@@ -55,7 +57,7 @@ export function PracticeSession({
           className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft size={15} />
-          {t('Back to practice')}
+          {backLabel ?? t('Back to practice')}
         </button>
         <p className="text-xs text-muted-foreground" aria-live="polite">
           {t('{{count}} remaining', { count: total - saved - skipped })}
@@ -91,7 +93,7 @@ export function PracticeSession({
             onClick={onClose}
             className="mt-6 rounded-xl bg-primary px-5 py-2.5 text-sm text-primary-foreground"
           >
-            {t('Back to practice')}
+            {backLabel ?? t('Back to practice')}
           </button>
         </div>
       ) : (

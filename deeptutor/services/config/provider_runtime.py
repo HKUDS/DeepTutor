@@ -31,6 +31,7 @@ from deeptutor.services.voice.config import (
     STT_MULTIPART,
     STTConfig,
     TTSConfig,
+    resolve_tts_request_timeout,
 )
 
 from .embedding_endpoint import (
@@ -319,6 +320,20 @@ class VoiceProviderSpec:
 # Voice providers either use the shared OpenAI-compatible adapter or a native
 # protocol adapter registered by name (DashScope and Volcengine Speech TTS/STT).
 TTS_PROVIDERS: dict[str, VoiceProviderSpec] = {
+    "xiaomi_mimo": VoiceProviderSpec(
+        label="Xiaomi MiMo",
+        default_api_base="https://api.xiaomimimo.com/v1",
+        adapter="mimo_tts",
+        default_model="mimo-v2.5-tts",
+        default_voice="mimo_default",
+    ),
+    "minimax": VoiceProviderSpec(
+        label="MiniMax",
+        default_api_base="https://api.minimax.io/v1",
+        adapter="minimax",
+        default_model="speech-2.8-hd",
+        default_voice="English_expressive_narrator",
+    ),
     "volcengine_speech": VoiceProviderSpec(
         label="Volcengine Speech (Doubao)",
         default_api_base="https://openspeech.bytedance.com/api/v3",
@@ -1190,12 +1205,15 @@ def resolve_tts_runtime_config(
     api_key = _as_str((profile or {}).get("api_key"))
     if not api_key and spec.is_local:
         api_key = "sk-no-key-required"
-    from deeptutor.services.voice.options import voice_model_options
+    from deeptutor.services.voice.options import is_qwen_audio_tts, voice_model_options
 
     options = voice_model_options(provider, "tts", resolved_model)
-    voice = _as_str((model or {}).get("voice")) or (
-        options["voices"][0]["id"] if options["voices"] else spec.default_voice
-    )
+    default_voice = spec.default_voice
+    if options["voices"]:
+        default_voice = options["voices"][0]["id"]
+    elif provider == "dashscope" and is_qwen_audio_tts(resolved_model):
+        default_voice = ""
+    voice = _as_str((model or {}).get("voice")) or default_voice
     response_format = _as_str((model or {}).get("response_format")) or options["formats"][0]
     raw_speed = (model or {}).get("speed")
     speed = _coerce_optional_float(raw_speed)
@@ -1223,6 +1241,7 @@ def resolve_tts_runtime_config(
         sample_rate=int((model or {}).get("sample_rate") or 24000),
         instructions=_as_str((model or {}).get("instructions")),
         max_input_chars=options.get("max_input_chars", 4096),
+        request_timeout=resolve_tts_request_timeout((model or {}).get("request_timeout")),
     )
 
 

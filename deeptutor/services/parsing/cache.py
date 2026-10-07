@@ -6,7 +6,7 @@ the same engine config is a directory lookup; a different engine/version/knob
 lands in a different signature dir and re-parses. Layout::
 
     parse_cache/<hash[:2]>/<source_hash>/<signature>/
-        manifest.json              # written last → presence == "ready"
+        manifest.json              # atomically written last → completed
         <stem>.md
         <stem>_content_list.json   # optional (engines that emit structure)
         images/                    # optional
@@ -23,8 +23,10 @@ import hashlib
 import json
 import logging
 from pathlib import Path
-import shutil
 from typing import Any, Optional
+from uuid import uuid4
+
+from deeptutor.services.file_io import atomic_write_json
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +50,13 @@ def signature_dir(cache_root: Path, source_hash: str, sig_hash: str) -> Path:
 
 
 def is_ready(workdir: Optional[Path]) -> bool:
-    return bool(workdir) and (workdir / MANIFEST_FILENAME).is_file()
+    if workdir is None:
+        return False
+    try:
+        manifest = json.loads((workdir / MANIFEST_FILENAME).read_text(encoding="utf-8"))
+        return isinstance(manifest, dict) and bool(manifest.get("created_at"))
+    except (OSError, ValueError):
+        return False
 
 
 def lookup(cache_root: Path, source_hash: str, sig_hash: str) -> Optional[Path]:
@@ -60,12 +68,14 @@ def lookup(cache_root: Path, source_hash: str, sig_hash: str) -> Optional[Path]:
 def reserve(cache_root: Path, source_hash: str, sig_hash: str) -> Path:
     """Create (or reuse) the signature dir the engine writes its artifacts into.
 
-    Stale incomplete dirs (no manifest, e.g. a previous crash) are cleared so a
-    retry starts clean.
+    Incomplete attempts are retained beside the cache entry for diagnosis, but
+    never reused as completed parser output (#1612).
     """
     target = signature_dir(cache_root, source_hash, sig_hash)
     if target.exists() and not is_ready(target):
-        shutil.rmtree(target, ignore_errors=True)
+        cleanup_failed(target)
+        if target.exists():
+            raise OSError(f"Could not retain incomplete parse output: {target}")
     target.mkdir(parents=True, exist_ok=True)
     return target
 
@@ -77,15 +87,16 @@ def write_manifest(workdir: Path, meta: dict[str, Any]) -> None:
         **meta,
         "created_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat() + "Z",
     }
-    with open(workdir / MANIFEST_FILENAME, "w", encoding="utf-8") as handle:
-        json.dump(payload, handle, indent=2, ensure_ascii=False)
+    atomic_write_json(workdir / MANIFEST_FILENAME, payload)
 
 
 def cleanup_failed(workdir: Path) -> None:
-    """Best-effort removal of an unfinished (manifest-less) cache dir."""
+    """Retain unfinished work outside the active signature directory."""
     try:
         if workdir.is_dir() and not is_ready(workdir):
-            shutil.rmtree(workdir, ignore_errors=True)
+            retained = workdir.with_name(f".{workdir.name}.failed-{uuid4().hex}")
+            workdir.rename(retained)
+            logger.warning("Retained incomplete parse output at %s", retained)
     except Exception as exc:  # pragma: no cover - best-effort
         logger.warning("Could not clean up failed parse dir %s: %s", workdir, exc)
 
