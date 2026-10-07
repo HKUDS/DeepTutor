@@ -140,40 +140,65 @@ async def test_embedding_client_overlaps_calls_when_batch_delay_is_zero(
 
 
 @pytest.mark.asyncio
-async def test_embedding_client_serializes_when_batch_delay_is_set(monkeypatch) -> None:
-    class _ConcurrentAdapter(_FakeAdapter):
-        in_flight = 0
-        max_in_flight = 0
+@pytest.mark.parametrize("multimodal", [False, True])
+async def test_embedding_requests_are_spaced_but_http_can_overlap(monkeypatch, multimodal):
+    from time import monotonic
+
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    starts = []
+
+    class Adapter(_FakeAdapter):
+        def get_model_info(self):
+            return {"multimodal": True}
 
         async def embed(self, request):
-            type(self).in_flight += 1
-            type(self).max_in_flight = max(type(self).max_in_flight, type(self).in_flight)
-            try:
-                await asyncio.sleep(0.02)
-                return await super().embed(request)
-            finally:
-                type(self).in_flight -= 1
+            starts.append(monotonic())
+            if len(starts) == 2:
+                entered.set()
+            await release.wait()
+            items = request.contents or request.texts
+            return type("Resp", (), {"embeddings": [[0.1, 0.2] for _ in items]})()
 
-    _FakeAdapter.instances = []
     monkeypatch.setattr(
-        "deeptutor.services.embedding.client._resolve_adapter_class",
-        lambda _b: _ConcurrentAdapter,
+        "deeptutor.services.embedding.client._resolve_adapter_class", lambda _: Adapter
     )
     monkeypatch.setattr(EmbeddingClient, "_spacing_lock", None)
     monkeypatch.setattr(EmbeddingClient, "_last_request_monotonic", 0.0)
-    _ConcurrentAdapter.in_flight = 0
-    _ConcurrentAdapter.max_in_flight = 0
     config = _build_config("openai")
-    config.batch_delay = 0.05
-    client = EmbeddingClient(config)
-
-    first, second = await asyncio.wait_for(
-        asyncio.gather(client.embed(["first"]), client.embed(["second"])),
-        timeout=1.0,
+    config.batch_delay = 0.02
+    first_client = EmbeddingClient(config)
+    second_client = EmbeddingClient(config)
+    first = asyncio.create_task(first_client.embed(["text"]))
+    second = asyncio.create_task(
+        second_client.embed_contents([{"image": "data:image/png;base64,test"}])
+        if multimodal
+        else second_client.embed(["other"])
     )
+    try:
+        # Both requests must start before either HTTP response is released.
+        await asyncio.wait_for(entered.wait(), timeout=1)
+        assert starts[1] - starts[0] >= config.batch_delay
+    finally:
+        release.set()
+        await asyncio.gather(first, second)
 
-    assert len(first) == len(second) == 1
-    assert _ConcurrentAdapter.max_in_flight == 1
+
+@pytest.mark.asyncio
+async def test_cancelled_spacing_wait_releases_cross_thread_lock(monkeypatch):
+    from time import monotonic
+
+    monkeypatch.setattr(EmbeddingClient, "_spacing_lock", threading.Lock())
+    monkeypatch.setattr(EmbeddingClient, "_last_request_monotonic", monotonic())
+    client = EmbeddingClient(_build_config("openai"))
+    client.config.batch_delay = 60
+    waiting = asyncio.create_task(client._wait_for_request_slot())
+    await asyncio.sleep(0)
+    assert EmbeddingClient._spacing_lock.locked()
+    waiting.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await waiting
+    assert not EmbeddingClient._spacing_lock.locked()
 
 
 @pytest.mark.asyncio

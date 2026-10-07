@@ -1074,9 +1074,9 @@ def _is_legacy_lemonade_endpoint(api_base: str) -> bool:
     """
     try:
         endpoint = urlparse(api_base if "://" in api_base else f"http://{api_base}")
+        if endpoint.port != 13305:
+            return False
     except ValueError:
-        return False
-    if endpoint.port != 13305:
         return False
     if not _is_nonpublic_embedding_host(endpoint.hostname or ""):
         return False
@@ -1190,8 +1190,6 @@ def resolve_embedding_runtime_config(
         # OpenAI-compatible Lemonade connection. Embedding calls need the
         # ``/embeddings`` path or the client rejects them after the key check.
         api_base = normalize_embedding_endpoint_for_display("lemonade", api_base)
-    if not api_key and spec.is_local:
-        api_key = "sk-no-key-required"
     if provider_name == "aliyun":
         # DashScope's SDK derives the endpoint from the model id and ignores any
         # configured URL, so a saved multimodal endpoint would mislead the
