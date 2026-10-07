@@ -183,6 +183,55 @@ def test_explicit_openai_binding_to_local_lemonade_is_keyless() -> None:
     assert get_embedding_config(catalog=catalog).api_key == ""
 
 
+def test_lan_lemonade_openai_binding_is_keyless() -> None:
+    """Unraid/Docker OpenAI-compatible Lemonade roots must not demand a key."""
+    catalog = _build_catalog(
+        embedding_profile={
+            "id": "embedding-p",
+            "binding": "openai",
+            "base_url": "http://192.168.1.40:13305/api/v1",
+            "api_key": "",
+            "models": [
+                {
+                    "id": "embedding-m",
+                    "model": "Qwen3-Embedding-0.6B-GGUF",
+                }
+            ],
+        }
+    )
+
+    resolved = resolve_embedding_runtime_config(catalog=catalog)
+    assert resolved.provider_name == "lemonade"
+    assert resolved.provider_mode == "local"
+    assert resolved.effective_url == "http://192.168.1.40:13305/api/v1/embeddings"
+    assert get_embedding_config(catalog=catalog).api_key == ""
+
+
+def test_docker_host_lemonade_root_is_keyless() -> None:
+    catalog = _build_catalog(
+        embedding_profile={
+            "id": "embedding-p",
+            "binding": "custom",
+            "base_url": "http://host.docker.internal:13305",
+            "api_key": "",
+            "models": [
+                {
+                    "id": "embedding-m",
+                    "model": "Qwen3-Embedding-0.6B-GGUF",
+                }
+            ],
+        }
+    )
+
+    resolved = resolve_embedding_runtime_config(catalog=catalog)
+    assert resolved.provider_name == "lemonade"
+    assert resolved.provider_mode == "local"
+    assert resolved.effective_url == "http://host.docker.internal:13305/v1/embeddings"
+    config = get_embedding_config(catalog=catalog)
+    assert config.api_key == ""
+    assert config.effective_url == "http://host.docker.internal:13305/v1/embeddings"
+
+
 def test_remote_openai_compatible_endpoint_still_requires_key() -> None:
     catalog = _build_catalog(
         embedding_profile={

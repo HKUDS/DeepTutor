@@ -2139,7 +2139,7 @@ class SQLiteSessionStore:
         with self._connect() as conn:
             msg = conn.execute(
                 """
-                SELECT id, session_id, role, attachments_json, created_at
+                SELECT id, session_id, role, attachments_json, metadata_json, created_at, parent_message_id
                 FROM messages
                 WHERE id = ?
                 """,
@@ -2150,7 +2150,7 @@ class SQLiteSessionStore:
                     "deleted": False,
                     "attachment_ids": [],
                     "turn_id": None,
-                    "was_running": False,
+                    "was_active": False,
                 }
 
             role = msg["role"]
@@ -2158,9 +2158,9 @@ class SQLiteSessionStore:
             if role == "user":
                 paired_msg = conn.execute(
                     """
-                    SELECT id, session_id, role, attachments_json, created_at
+                    SELECT id, session_id, role, attachments_json, metadata_json, created_at, parent_message_id
                     FROM messages
-                    WHERE session_id = ? AND role = 'assistant' AND id > ?
+                    WHERE session_id = ? AND role = 'assistant' AND parent_message_id = ?
                     ORDER BY id ASC
                     LIMIT 1
                     """,
@@ -2169,41 +2169,93 @@ class SQLiteSessionStore:
             elif role == "assistant":
                 paired_msg = conn.execute(
                     """
-                    SELECT id, session_id, role, attachments_json, created_at
+                    SELECT id, session_id, role, attachments_json, metadata_json, created_at, parent_message_id
                     FROM messages
-                    WHERE session_id = ? AND role = 'user' AND id < ?
+                    WHERE session_id = ? AND role = 'user' AND id = ?
                     ORDER BY id DESC
+                    LIMIT 1
+                    """,
+                    (session_id, msg["parent_message_id"]),
+                ).fetchone()
+
+            user_msg = msg if role == "user" else paired_msg
+            turn_row = None
+            if role == "assistant":
+                # An assistant row is linked to the turn that produced it,
+                # which stays authoritative when ordering alone cannot tell
+                # (a regenerated answer shares its user row with the old turn).
+                turn_row = conn.execute(
+                    """
+                    SELECT id, status
+                    FROM turns
+                    WHERE session_id = ? AND assistant_message_id = ?
                     LIMIT 1
                     """,
                     (session_id, int(message_id)),
                 ).fetchone()
 
-            user_msg = msg if role == "user" else paired_msg
-            turn_id = None
-            was_running = False
-            if user_msg is not None:
-                user_created_at = user_msg["created_at"]
+            if turn_row is None and user_msg is not None:
+                # Production stamps the owning turn id on the user row
+                # (executor writes metadata.turn_id), including the recovered
+                # worker_lost case that never gets an assistant row.
+                stamped_turn_id = ""
+                metadata = _json_loads(user_msg["metadata_json"], {})
+                if isinstance(metadata, dict):
+                    stamped_turn_id = str(metadata.get("turn_id") or "").strip()
+                if stamped_turn_id:
+                    turn_row = conn.execute(
+                        """
+                        SELECT id, status
+                        FROM turns
+                        WHERE session_id = ? AND id = ?
+                        LIMIT 1
+                        """,
+                        (session_id, stamped_turn_id),
+                    ).fetchone()
+
+            if turn_row is None and user_msg is not None:
+                # Legacy rows predate the stamp: the owning turn is the last
+                # one created at or before the user row. A turn row is always
+                # written before its user row, so a later turn must never match.
                 turn_row = conn.execute(
                     """
                     SELECT id, status
                     FROM turns
-                    WHERE session_id = ? AND created_at >= ?
-                    ORDER BY created_at ASC
+                    WHERE session_id = ? AND created_at <= ?
+                    ORDER BY created_at DESC
                     LIMIT 1
                     """,
-                    (session_id, user_created_at),
+                    (session_id, user_msg["created_at"]),
                 ).fetchone()
-                if turn_row is not None:
-                    turn_id = turn_row["id"]
-                    was_running = turn_row["status"] == "running"
 
-            if was_running:
+            turn_id = None
+            was_active = False
+            if turn_row is not None:
+                turn_id = turn_row["id"]
+                was_active = turn_row["status"] in ACTIVE_TURN_STATUSES
+
+            if was_active:
                 return {
                     "deleted": False,
                     "attachment_ids": [],
                     "turn_id": turn_id,
-                    "was_running": True,
+                    "was_active": True,
                 }
+
+            if role == "assistant" and paired_msg is not None:
+                # Regenerated answers share their question with sibling answers.
+                # Deleting one branch must keep the question those siblings use.
+                sibling = conn.execute(
+                    """
+                    SELECT 1 FROM messages
+                    WHERE session_id = ? AND role = 'assistant'
+                      AND parent_message_id = ? AND id != ?
+                    LIMIT 1
+                    """,
+                    (session_id, paired_msg["id"], int(message_id)),
+                ).fetchone()
+                if sibling is not None:
+                    paired_msg = None
 
             attachment_ids: list[str] = []
             for m in [msg, paired_msg]:
@@ -2264,7 +2316,7 @@ class SQLiteSessionStore:
             "deleted": True,
             "attachment_ids": attachment_ids,
             "turn_id": turn_id,
-            "was_running": was_running,
+            "was_active": was_active,
         }
 
     async def delete_turn_by_message(self, session_id: str, message_id: int) -> dict[str, Any]:

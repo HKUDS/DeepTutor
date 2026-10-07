@@ -5350,5 +5350,8 @@
   "Fetching the model list does not test speech synthesis. Use Preview voice to test this model and voice.": "Отримання списку моделей не перевіряє синтез мовлення. Скористайтеся попереднім прослуховуванням голосу, щоб перевірити модель і голос.",
   "Focus reading companion": "Зосередитися на помічнику з читання",
   "Resize contents navigator": "Змінити ширину змісту",
-  "Exit companion focus": "Вийти з режиму зосередження на помічнику"
+  "Exit companion focus": "Вийти з режиму зосередження на помічнику",
+  "Show API token": "Показати токен API",
+  "Hide API token": "Приховати токен API",
+  "Failed to link this follow-up chat to its notebook entry.": "Не вдалося пов’язати цей додатковий чат із відповідним записом у нотатнику."
 }

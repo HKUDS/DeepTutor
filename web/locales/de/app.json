@@ -5334,5 +5334,8 @@
   "Request timeout (seconds)": "Zeitlimit für Anfragen (Sekunden)",
   "Focus reading companion": "Lesebegleiter fokussieren",
   "Resize contents navigator": "Breite des Inhaltsverzeichnisses ändern",
-  "Exit companion focus": "Fokusmodus des Begleiters beenden"
+  "Exit companion focus": "Fokusmodus des Begleiters beenden",
+  "Show API token": "API-Token anzeigen",
+  "Hide API token": "API-Token ausblenden",
+  "Failed to link this follow-up chat to its notebook entry.": "Dieser Folgechat konnte nicht mit seinem Notizbucheintrag verknüpft werden."
 }

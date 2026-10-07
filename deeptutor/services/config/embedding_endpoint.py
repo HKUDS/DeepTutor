@@ -226,6 +226,10 @@ def normalize_embedding_endpoint_for_display(
             return trimmed
         if trimmed.endswith("/v1"):
             return f"{trimmed}/embeddings"
+        if provider_name == "lemonade":
+            parsed = urlparse(trimmed if "://" in trimmed else f"http://{trimmed}")
+            if parsed.scheme and parsed.netloc and parsed.path.rstrip("/") in {"", "/"}:
+                return _same_origin_url(trimmed, "/v1/embeddings")
     if provider_name == "ollama":
         if trimmed.endswith("/api/embed"):
             return trimmed

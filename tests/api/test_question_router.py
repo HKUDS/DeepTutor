@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from contextlib import contextmanager
 import importlib
+import logging
 from pathlib import Path
 import sys
 import types
@@ -186,10 +187,12 @@ class _FakeMimicWebSocket:
         incoming: list[dict] | None = None,
         fail_send_when=None,
         disconnect_immediately: bool = False,
+        error_send_exc: BaseException | None = None,
     ) -> None:
         self._incoming = list(incoming or [])
         self._fail_send_when = fail_send_when
         self._disconnect_immediately = disconnect_immediately
+        self._error_send_exc = error_send_exc
         self.accepted = False
         self.sent: list[dict] = []
         self.closed = False
@@ -205,6 +208,8 @@ class _FakeMimicWebSocket:
         raise WebSocketDisconnect(code=1000)
 
     async def send_json(self, payload: dict) -> None:
+        if payload.get("type") == "error" and self._error_send_exc is not None:
+            raise self._error_send_exc
         if self._fail_send_when is not None and self._fail_send_when(payload):
             raise RuntimeError("connection is closed")
         self.sent.append(payload)
@@ -420,3 +425,87 @@ async def test_mimic_log_pusher_send_failure_stops_stream_without_breaking_run(
     assert [message["type"] for message in websocket.sent] == ["status", "status", "complete"]
     assert websocket.closed
     assert sys.stdout is terminal
+
+
+async def _run_mimic_endpoint_until_error_send(
+    question_router_module, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, error_send_exc
+) -> _FakeMimicWebSocket:
+    async def _raising_mimic_exam_questions(*_args, **_kwargs):
+        raise RuntimeError("mimic workflow exploded")
+
+    monkeypatch.setattr(
+        question_router_module, "mimic_exam_questions", _raising_mimic_exam_questions
+    )
+    monkeypatch.setattr(
+        question_router_module, "_mimic_output_dir", lambda: tmp_path / "mimic_papers"
+    )
+
+    async def _anonymous_ws_auth(_websocket):
+        return None
+
+    monkeypatch.setattr("deeptutor.api.routers.auth.ws_require_auth", _anonymous_ws_auth)
+
+    websocket = _FakeMimicWebSocket(
+        incoming=[_parsed_mode_config(tmp_path)],
+        error_send_exc=error_send_exc,
+    )
+    await question_router_module.websocket_mimic_generate(websocket)
+    return websocket
+
+
+@pytest.mark.asyncio
+async def test_mimic_error_event_send_failure_is_logged(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    question_router_module = _load_question_router_module(monkeypatch)
+
+    with caplog.at_level(logging.DEBUG, logger="deeptutor.api.routers.question"):
+        websocket = await _run_mimic_endpoint_until_error_send(
+            question_router_module, monkeypatch, tmp_path, ConnectionError("peer reset")
+        )
+
+    assert websocket.closed
+    # The original workflow failure is still logged server-side.
+    assert any(
+        record.levelno == logging.ERROR and "Mimic generation error" in record.getMessage()
+        for record in caplog.records
+    )
+    # The secondary failure to deliver the error event must not be swallowed.
+    assert any(
+        record.levelno >= logging.WARNING and "Failed to send error event" in record.getMessage()
+        for record in caplog.records
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "send_exc",
+    [
+        WebSocketDisconnect(code=1001),
+        RuntimeError('Cannot call "send" once a close message has been sent.'),
+    ],
+)
+async def test_mimic_error_event_send_failure_on_closed_socket_is_not_an_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+    send_exc: BaseException,
+) -> None:
+    question_router_module = _load_question_router_module(monkeypatch)
+
+    with caplog.at_level(logging.DEBUG, logger="deeptutor.api.routers.question"):
+        await _run_mimic_endpoint_until_error_send(
+            question_router_module, monkeypatch, tmp_path, send_exc
+        )
+
+    # A closed/disconnected client is expected during teardown, not a warning.
+    assert not any(
+        record.levelno >= logging.WARNING and "Failed to send error event" in record.getMessage()
+        for record in caplog.records
+    )
+    assert any(
+        record.levelno == logging.DEBUG and "WebSocket closed" in record.getMessage()
+        for record in caplog.records
+    )

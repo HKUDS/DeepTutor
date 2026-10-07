@@ -146,17 +146,25 @@ class EmbeddingClient:
                 input_type=role,
             )
             try:
-                # 全局发帖节流：线程级锁串行化"等待间隔+发帖"，跨线程/跨
-                # event loop 互斥（asyncio 锁在新 loop 模型下失效的教训）。
-                # 非阻塞轮询避免同一 loop 内的并发调用在 acquire() 上互锁。
+                # The spacing lock exists only to keep a configured gap between
+                # requests across threads and event loops (LlamaIndex's pool
+                # gives each thread its own loop, so an asyncio.Lock is not
+                # enough). With the default batch_delay of 0 there is no gap
+                # to protect, and holding the lock around the HTTP call would
+                # flatten every concurrent embed — including LightRAG's — into
+                # one in-flight request (#1779).
                 from time import monotonic as _mono
 
-                async with EmbeddingClient._hold_spacing_lock():
-                    if batch_delay > 0:
+                if batch_delay > 0:
+                    async with EmbeddingClient._hold_spacing_lock():
                         elapsed = _mono() - EmbeddingClient._last_request_monotonic
                         if elapsed < batch_delay:
                             await asyncio.sleep(batch_delay - elapsed)
-                    EmbeddingClient._last_request_monotonic = _mono()
+                        # The timestamp has to be written inside the lock, or
+                        # overlapping callers overwrite it and the gap collapses.
+                        EmbeddingClient._last_request_monotonic = _mono()
+                        response = await self.adapter.embed(request)
+                else:
                     response = await self.adapter.embed(request)
             except Exception as exc:
                 # Capture batch context so the task log stream / KB diagnostics

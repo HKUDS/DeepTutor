@@ -5777,5 +5777,8 @@
   "Fetching the model list does not test speech synthesis. Use Preview voice to test this model and voice.": "Récupérer la liste des modèles ne teste pas la synthèse vocale. Utilisez l’aperçu vocal pour tester ce modèle et cette voix.",
   "Focus reading companion": "Se concentrer sur le compagnon de lecture",
   "Resize contents navigator": "Redimensionner la table des matières",
-  "Exit companion focus": "Quitter le mode concentration du compagnon"
+  "Exit companion focus": "Quitter le mode concentration du compagnon",
+  "Show API token": "Afficher le jeton API",
+  "Hide API token": "Masquer le jeton API",
+  "Failed to link this follow-up chat to its notebook entry.": "Impossible de lier cette conversation de suivi à son entrée dans le carnet."
 }

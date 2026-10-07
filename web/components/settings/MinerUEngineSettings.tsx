@@ -583,7 +583,7 @@ export function MinerUEngineSettings() {
                   value={tokenDraft}
                   onChange={(e) => {
                     const val = e.target.value.trim();
-                    patch({ api_token: val || undefined });
+                    patch({ api_token: val });
                   }}
                 />
                 <button

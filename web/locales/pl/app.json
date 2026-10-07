@@ -5350,5 +5350,8 @@
   "Fetching the model list does not test speech synthesis. Use Preview voice to test this model and voice.": "Pobranie listy modeli nie sprawdza syntezy mowy. Użyj podglądu głosu, aby przetestować model i głos.",
   "Focus reading companion": "Skup się na asystencie czytania",
   "Resize contents navigator": "Zmień szerokość spisu treści",
-  "Exit companion focus": "Wyłącz tryb skupienia na asystencie"
+  "Exit companion focus": "Wyłącz tryb skupienia na asystencie",
+  "Show API token": "Pokaż token API",
+  "Hide API token": "Ukryj token API",
+  "Failed to link this follow-up chat to its notebook entry.": "Nie udało się powiązać tej rozmowy uzupełniającej z wpisem w notatniku."
 }

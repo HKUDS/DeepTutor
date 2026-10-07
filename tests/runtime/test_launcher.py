@@ -14,7 +14,7 @@ import pytest
 from deeptutor.runtime import launcher
 from deeptutor.runtime import process as runtime_process
 from deeptutor.runtime.home import validate_runtime_home
-from deeptutor.services.app_update import UpdateJobStore, update_store_root
+from deeptutor.services.app_update import UpdateJob, UpdateJobStore, update_store_root
 
 
 class _FakeTty:
@@ -189,6 +189,42 @@ def test_launcher_keeps_systemd_service_running_for_pending_update(
     assert launched == []
     assert store.load().status == "failed"
     assert not store.active_path.exists()
+
+
+def test_launcher_handoff_failure_still_logged_when_marking_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A handoff failure must leave a trace even if mark_failed fails too."""
+
+    from deeptutor.services import app_update
+
+    monkeypatch.setattr(app_update, "running_under_systemd_service", lambda: False)
+    store = UpdateJobStore(update_store_root(tmp_path))
+    store.create(current_version="1.6.1", target_version="1.7.0")
+
+    def failing_worker_launcher(_root: Path) -> None:
+        raise RuntimeError("worker spawn boom")
+
+    def broken_mark_failed(_self: UpdateJobStore, _job_id: str, _error: str) -> UpdateJob:
+        raise OSError("state write boom")
+
+    monkeypatch.setattr(UpdateJobStore, "mark_failed", broken_mark_failed)
+    logs: list[str] = []
+    monkeypatch.setattr(launcher, "_log", logs.append)
+
+    assert (
+        launcher._handoff_pending_update(
+            tmp_path,
+            restart_argv=["start", "--home", str(tmp_path.resolve())],
+            worker_launcher=failing_worker_launcher,
+        )
+        is False
+    )
+    assert logs, "double handoff failure vanished without any log"
+    trace = " | ".join(logs)
+    assert "Launcher handoff failed" in trace
+    assert "worker spawn boom" in trace
+    assert "state write boom" in trace
 
 
 def test_launcher_completes_update_only_after_restart(tmp_path: Path) -> None:

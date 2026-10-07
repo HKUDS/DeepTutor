@@ -459,3 +459,45 @@ it("allows incomplete model drafts but blocks Apply before writing any live sett
   expect(writes("/api/settings/workspace")).toHaveLength(0);
   expect(live.services.llm.profiles).toHaveLength(0);
 });
+
+it("preserves the distinction between untouched and explicitly cleared MinerU tokens", async () => {
+  resources.mineru = {
+    settings: { mode: "cloud", api_base_url: "http://mineru" },
+    api_token_set: true,
+  };
+  render(<App page="mineru" />);
+  await ready();
+  const token = await screen.findByPlaceholderText("••••••••••••");
+  fireEvent.click(screen.getByRole("button", { name: "Show API token" }));
+  expect(token).toHaveAttribute("type", "text");
+  expect(settings.hasUnsavedChanges).toBe(false);
+  fireEvent.change(token, { target: { value: "replacement" } });
+  fireEvent.change(token, { target: { value: "" } });
+  expect(settings.hasUnsavedChanges).toBe(true);
+  await act(() => settings.applyCatalog());
+  expect(JSON.parse(String(writes("/api/settings/mineru")[0][1].body))).toHaveProperty("api_token", "");
+});
+
+it("keeps edits made while Apply is pending for the next Apply", async () => {
+  render(<App />);
+  await ready();
+  fireEvent.change(screen.getByLabelText("workspace"), { target: { value: "/first" } });
+  const implementation = mocks.fetch.getMockImplementation()!;
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  mocks.fetch.mockImplementation(async (url, init) => {
+    if (url === "/api/settings/workspace" && init?.method === "PUT") await gate;
+    return implementation(url, init);
+  });
+  let applying!: Promise<void>;
+  act(() => { applying = settings.applyCatalog(); });
+  await waitFor(() => expect(writes("/api/settings/workspace")).toHaveLength(1));
+  fireEvent.change(screen.getByLabelText("workspace"), { target: { value: "/second" } });
+  await act(async () => { release(); await applying; });
+  expect(resources.workspace.path).toBe("/first");
+  expect(screen.getByLabelText("workspace")).toHaveValue("/second");
+  expect(settings.draftState).toBe("unsaved");
+  await act(() => settings.applyCatalog());
+  expect(resources.workspace.path).toBe("/second");
+  expect(settings.draftState).toBe("clean");
+});
