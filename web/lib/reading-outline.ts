@@ -67,13 +67,6 @@ export function extractEpubHeadings(
 }
 
 /**
- * Attach outline entries to source lines without changing a single character.
- *
- * Recogito's TextPosition selectors resolve against ``article.textContent``.
- * Keeping the Markdown markers and the original newline text nodes here makes
- * that DOM text exactly equal to the text used when an annotation was saved.
- */
-/**
  * CommonMark fence tracking shared by the in-page outline and the renderer.
  *
  * A backtick fence whose info string itself contains a backtick is not a
@@ -86,7 +79,7 @@ function stepMarkdownFence(
   fence: string | null,
   line: string,
 ): { fence: string | null; isFence: boolean } {
-  const match = /^\s{0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+  const match = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
   if (!match) return { fence, isFence: false };
   const marker = match[1];
   const info = match[2] ?? "";
@@ -102,6 +95,13 @@ function stepMarkdownFence(
   return { fence, isFence: false };
 }
 
+/**
+ * Attach outline entries to source lines without changing a single character.
+ *
+ * Recogito's TextPosition selectors resolve against ``article.textContent``.
+ * Keeping the Markdown markers and the original newline text nodes here makes
+ * that DOM text exactly equal to the text used when an annotation was saved.
+ */
 export function readerLinesWithHeadings(
   text: string,
   headings: ReaderHeading[],

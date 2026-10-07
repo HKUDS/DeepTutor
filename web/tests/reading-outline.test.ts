@@ -219,3 +219,17 @@ test("lines inside a fenced code block are flagged so the renderer skips Markdow
   );
   assert.equal(lines.map((line) => line.text).join("\n"), sourceText);
 });
+
+
+test("tab-indented fence markers do not open or close fenced blocks", () => {
+  for (const text of [
+    "\t```md\n# Visible\n",
+    "```md\n\t```\n# Hidden\n```\n# Visible",
+  ]) {
+    const headings = extractReaderHeadings([text], 1);
+    assert.deepEqual(headings.map((heading) => heading.title), ["Visible"]);
+    const lines = readerLinesWithHeadings(text, headings);
+    assert.deepEqual(lines.filter((line) => line.heading).map((line) => line.heading?.title), ["Visible"]);
+    assert.equal(lines.map((line) => line.text).join("\n"), text);
+  }
+});
