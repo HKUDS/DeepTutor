@@ -494,3 +494,37 @@ async def test_embed_contents_progress_callback_failure_logged_and_not_fatal(
     warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
     assert any("progress callback" in r.getMessage() for r in warnings)
     assert any("progress sink offline" in r.getMessage() for r in warnings)
+
+
+def test_embedding_spacing_shared_across_thread_event_loops(monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from time import monotonic
+
+    starts = []
+    requests_started = threading.Event()
+    starts_guard = threading.Lock()
+
+    class Adapter(_FakeAdapter):
+        async def embed(self, request):
+            with starts_guard:
+                starts.append(monotonic())
+                if len(starts) == 2:
+                    requests_started.set()
+            deadline = monotonic() + 2
+            while not requests_started.is_set():
+                assert monotonic() < deadline, "HTTP calls serialized across thread loops"
+                await asyncio.sleep(0.005)
+            return await super().embed(request)
+
+    monkeypatch.setattr(
+        "deeptutor.services.embedding.client._resolve_adapter_class", lambda _: Adapter
+    )
+    monkeypatch.setattr(EmbeddingClient, "_spacing_lock", None)
+    monkeypatch.setattr(EmbeddingClient, "_last_request_monotonic", 0.0)
+    config = _build_config("openai")
+    config.batch_delay = 0.02
+    clients = [EmbeddingClient(config), EmbeddingClient(config)]
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(asyncio.run, client.embed(["text"])) for client in clients]
+        assert all(len(future.result(timeout=3)) == 1 for future in futures)
+    assert starts[1] - starts[0] >= config.batch_delay
