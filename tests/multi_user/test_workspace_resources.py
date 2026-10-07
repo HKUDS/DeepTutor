@@ -224,3 +224,36 @@ def test_migration_reports_workspaces_that_reference_the_source(as_user):
         }
         service.update_workspace(row["workspace_id"], resources={"knowledge_bases": []})
         assert knowledge_migration_blockers("") == []
+
+
+@pytest.mark.asyncio
+async def test_delete_kb_file_in_workspace(as_user):
+    from deeptutor.api.routers.knowledge import delete_kb_file
+    from deeptutor.services.workspace import ContentWorkspaceService
+    from deeptutor.services.workspace.context import workspace_context
+
+    with as_user("alice"):
+        service = ContentWorkspaceService()
+        ws = service.create_workspace("Chemistry")
+        ws_id = ws["workspace_id"]
+        kb_name = "初中化学"
+
+        with workspace_context(ws_id):
+            mgr = current_kb_manager()
+            kb_dir = mgr.base_dir / kb_name
+            kb_dir.mkdir(parents=True, exist_ok=True)
+            mgr.config.setdefault("knowledge_bases", {})[kb_name] = {
+                "rag_provider": "llamaindex",
+                "status": "ready",
+            }
+            mgr._save_config()
+            raw_dir = kb_dir / "raw"
+            raw_dir.mkdir(parents=True, exist_ok=True)
+            doc_file = raw_dir / "chapter1.pdf"
+            doc_file.write_text("chemical equations")
+
+        assert doc_file.exists()
+        qualified_ref = f"workspace:{ws_id}:kb:{kb_name}"
+        result = await delete_kb_file(qualified_ref, "chapter1.pdf")
+        assert result["status"] == "ok"
+        assert not doc_file.exists()
