@@ -1585,11 +1585,25 @@ class LlamaIndexConfigUpdate(BaseModel):
 
 @router.get("/knowledge-bases/rag-pipelines/llamaindex/config")
 async def get_llamaindex_pipeline_config():
-    """Read the LlamaIndex engine's retrieval + chunking knobs."""
+    """Read the LlamaIndex engine's retrieval + chunking knobs.
+
+    ``retrieval_profile`` is what is *configured*; ``effective_retrieval_profile``
+    is what would actually run — a hybrid configuration degrades to vector-only
+    when the BM25 package is missing (e.g. Python 3.14 installs, #1792).
+    """
     try:
         from deeptutor.services.config import get_runtime_settings_service
 
-        return get_runtime_settings_service().load_llamaindex()
+        settings = get_runtime_settings_service().load_llamaindex()
+        from deeptutor.services.rag.pipelines.llamaindex.retrievers import (
+            effective_retrieval_profile,
+        )
+
+        payload = dict(settings)
+        payload["effective_retrieval_profile"] = effective_retrieval_profile(
+            settings.get("retrieval_profile")
+        )
+        return payload
     except Exception as e:
         logger.error(f"Error reading LlamaIndex config: {e}")
         raise HTTPException(status_code=500, detail=str(e))
