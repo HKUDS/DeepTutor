@@ -168,7 +168,19 @@ class _Registry:
 
 
 @pytest.fixture(autouse=True)
-def _fake_llm_config(monkeypatch: pytest.MonkeyPatch) -> None:
+def _isolated_runtime(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from deeptutor.capabilities.setup.binding import mark_intro_shown
+    from deeptutor.services.path_service import PathService
+
+    # Exercise the loop in an initialized install, independent of developer
+    # data or whether another test has already created the default workspace.
+    monkeypatch.setenv("DEEPTUTOR_HOME", str(tmp_path))
+    paths = PathService(workspace_root=tmp_path / "data")
+    monkeypatch.setattr(PathService, "_instance", paths)
+    paths.ensure_all_directories()
+    # First-run onboarding legitimately changes the next turn's system prompt.
+    # Replay tests require stable configuration; setup owns onboarding tests.
+    mark_intro_shown()
     monkeypatch.setattr(
         "deeptutor.agents.loop.pipeline.get_llm_config",
         lambda: SimpleNamespace(

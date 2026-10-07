@@ -5331,5 +5331,8 @@
   "Could not connect to the speech provider. Check the provider URL and network connection.": "无法连接语音服务，请检查提供方 URL 和网络连接。",
   "Qwen-Audio TTS requires a Beijing API key. You can set a Beijing workspace URL in the provider connection; the speech endpoint is selected automatically.": "Qwen-Audio TTS 需要北京地域的 API Key。可在提供方连接中填写北京业务空间 URL，系统会自动选择合成端点。",
   "Speech was generated, but the audio download failed. Try again or check the network connection.": "语音已生成，但音频下载失败，请重试或检查网络连接。",
-  "Request timeout (seconds)": "请求超时（秒）"
+  "Request timeout (seconds)": "请求超时（秒）",
+  "Show API token": "显示 API 令牌",
+  "Hide API token": "隐藏 API 令牌",
+  "Failed to link this follow-up chat to its notebook entry.": "无法将此追问对话关联到对应的笔记条目。"
 }

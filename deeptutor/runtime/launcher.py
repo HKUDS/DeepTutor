@@ -141,25 +141,10 @@ def _log(message: str) -> None:
 
 
 def _reset_runtime_singletons() -> None:
-    """Make a just-selected DEEPTUTOR_HOME visible to path/config singletons."""
-    try:
-        from deeptutor.services.path_service import PathService
+    """Compatibility entry point for runtime-home selection."""
+    from deeptutor.runtime.cache_reset import reset_runtime_singletons
 
-        PathService.reset_instance()
-    except Exception:
-        pass
-    try:
-        from deeptutor.services.config.runtime_settings import RuntimeSettingsService
-
-        RuntimeSettingsService._instances.clear()
-    except Exception:
-        pass
-    try:
-        from deeptutor.services.config.model_catalog import ModelCatalogService
-
-        ModelCatalogService._instances.clear()
-    except Exception:
-        pass
+    reset_runtime_singletons()
 
 
 def _get_pgid(pid: int | None) -> int | None:
@@ -1291,8 +1276,11 @@ def _handoff_pending_update(
     except Exception as exc:
         try:
             store.mark_failed(job.id, f"Launcher handoff failed: {exc}")
-        except Exception:
-            pass
+        except Exception as mark_exc:
+            _log(
+                f"Launcher handoff failed for update {job.id}: {exc} "
+                f"(could not record failure: {mark_exc})"
+            )
         return False
     return True
 

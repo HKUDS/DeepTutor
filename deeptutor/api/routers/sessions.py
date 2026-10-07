@@ -554,9 +554,10 @@ async def update_branch_selection(session_id: str, payload: BranchSelectionReque
 async def delete_turn_by_message(session_id: str, message_id: int):
     store = get_sqlite_session_store()
     result = await store.delete_turn_by_message(session_id, message_id)
-    if result["was_running"]:
+    if result["was_active"]:
         raise HTTPException(
-            status_code=409, detail="Cannot delete a message while its turn is running"
+            status_code=409,
+            detail="Cannot delete a message while its turn is running or waiting for input",
         )
     if not result["deleted"]:
         raise HTTPException(status_code=404, detail="Message not found")

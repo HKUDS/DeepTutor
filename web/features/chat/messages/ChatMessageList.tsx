@@ -1841,8 +1841,12 @@ export const UserMessage = memo(function UserMessage({
             />
           </div>
         )}
+        {/* Branch navigation is the only way back to the pre-edit branch
+            after an edit forks the transcript (#1410): it stays on this
+            action row, outside the hover reveal that gates Copy/Edit, so
+            the way back to history is visible without hovering. */}
         {!editing && (onCopy || canEdit || siblingInfo) && msg.content && (
-          <div className="flex h-7 items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+          <div className="flex h-7 items-center justify-end gap-1">
             {siblingInfo && siblingInfo.total > 1 && (
               <BranchNavigator
                 info={siblingInfo}
@@ -1851,15 +1855,19 @@ export const UserMessage = memo(function UserMessage({
                 }
               />
             )}
-            {onCopy && (
-              <CopyActionButton content={msg.content} onCopy={onCopy} />
-            )}
-            {canEdit && (
-              <RoughActionButton
-                icon={Pencil}
-                label={t("Edit")}
-                onClick={startEdit}
-              />
+            {(onCopy || canEdit) && (
+              <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                {onCopy && (
+                  <CopyActionButton content={msg.content} onCopy={onCopy} />
+                )}
+                {canEdit && (
+                  <RoughActionButton
+                    icon={Pencil}
+                    label={t("Edit")}
+                    onClick={startEdit}
+                  />
+                )}
+              </div>
             )}
           </div>
         )}

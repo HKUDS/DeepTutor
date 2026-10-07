@@ -5347,5 +5347,8 @@
   "Qwen-Audio TTS speed must be between 0.5 and 2.": "Prędkość Qwen-Audio TTS musi wynosić od 0,5 do 2.",
   "Qwen3 TTS uses voices such as Cherry and outputs WAV audio. Match the API key region to the provider URL.": "Qwen3 TTS używa głosów takich jak Cherry i generuje audio WAV. Dopasuj region klucza API do adresu URL dostawcy.",
   "Qwen-Audio TTS requires a Beijing API key. You can set a Beijing workspace URL in the provider connection; the speech endpoint is selected automatically.": "Qwen-Audio TTS wymaga klucza API z regionu Pekin. W połączeniu z dostawcą możesz ustawić adres URL przestrzeni roboczej z regionu Pekin; punkt końcowy mowy zostanie wybrany automatycznie.",
-  "Fetching the model list does not test speech synthesis. Use Preview voice to test this model and voice.": "Pobranie listy modeli nie sprawdza syntezy mowy. Użyj podglądu głosu, aby przetestować model i głos."
+  "Fetching the model list does not test speech synthesis. Use Preview voice to test this model and voice.": "Pobranie listy modeli nie sprawdza syntezy mowy. Użyj podglądu głosu, aby przetestować model i głos.",
+  "Show API token": "Pokaż token API",
+  "Hide API token": "Ukryj token API",
+  "Failed to link this follow-up chat to its notebook entry.": "Nie udało się powiązać tej rozmowy uzupełniającej z wpisem w notatniku."
 }

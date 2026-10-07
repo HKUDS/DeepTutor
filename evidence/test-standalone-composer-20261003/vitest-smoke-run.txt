@@ -1,9 +1,0 @@
-
- RUN  v4.1.11 /Users/xzh/services/ai-development/multica-pilot/workspaces/agents-plan-5fede2af789a/agen-444-776ec44ad184/workdir/dt-agen444-wt/web
-
-
- Test Files  1 passed (1)
-      Tests  4 passed (4)
-   Start at  23:25:32
-   Duration  644ms (transform 152ms, setup 78ms, import 211ms, tests 21ms, environment 271ms)
-
