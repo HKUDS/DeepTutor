@@ -3,7 +3,7 @@
 import { useSettings } from "@/features/settings/store/SettingsStore";
 import { useStagedSettings } from "@/features/settings/store/useStagedSettings";
 import { useEffect, useRef, useState } from "react";
-import { CheckCircle2, Loader2, XCircle } from "lucide-react";
+import { CheckCircle2, Eye, EyeOff, Loader2, XCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -69,11 +69,11 @@ function normalizeDraft(payload: MinerUPayload): MinerUSettings {
   const s = payload.settings;
   return {
     mode: s.mode === "cloud" ? "cloud" : "local",
-    api_base_url: s.api_base_url || "https://mineru.net",
+    api_base_url: (s.api_base_url || "https://mineru.net").replace(/\/+$/, ""),
     local_cli_path: s.local_cli_path || "",
     model_download_source:
       s.model_download_source === "modelscope" ? "modelscope" : "huggingface",
-    model_download_endpoint: s.model_download_endpoint || "",
+    model_download_endpoint: (s.model_download_endpoint || "").replace(/\/+$/, ""),
     model_version: s.model_version === "vlm" ? "vlm" : "pipeline",
     language: s.language || "auto",
     enable_formula: Boolean(s.enable_formula),
@@ -91,6 +91,7 @@ export function MinerUEngineSettings() {
   const [draft, setDraft] = useStagedSettings("mineru", liveDraft, setLiveDraft);
   const tokenDraft = draft?.api_token ?? "";
   const tokenTouched = draft?.api_token !== undefined;
+  const [showToken, setShowToken] = useState(false);
   const [loading, setLoading] = useState(true);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{
@@ -568,15 +569,36 @@ export function MinerUEngineSettings() {
                 : t("No token saved yet.")
             }
             control={
-              <input
-                type="password"
-                className={`${inputClass} w-[320px] max-w-[48vw]`}
-                placeholder={tokenSet ? TOKEN_MASK : t("Paste API token")}
-                value={tokenDraft}
-                onChange={(e) => {
-                  patch({ api_token: e.target.value });
-                }}
-              />
+              <div className="relative inline-flex items-center">
+                <input
+                  id="mineru-api-token"
+                  name="mineru_api_token"
+                  type={showToken ? "text" : "password"}
+                  autoComplete="new-password"
+                  spellCheck={false}
+                  data-1p-ignore="true"
+                  data-lpignore="true"
+                  className={`${inputClass} w-[320px] max-w-[48vw] pr-9 font-mono`}
+                  placeholder={tokenSet ? TOKEN_MASK : t("Paste API token")}
+                  value={tokenDraft}
+                  onChange={(e) => {
+                    const val = e.target.value.trim();
+                    patch({ api_token: val || undefined });
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowToken((v) => !v)}
+                  aria-label={showToken ? t("Hide API token") : t("Show API token")}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                >
+                  {showToken ? (
+                    <EyeOff className="h-3.5 w-3.5" />
+                  ) : (
+                    <Eye className="h-3.5 w-3.5" />
+                  )}
+                </button>
+              </div>
             }
           />
           <SettingRow

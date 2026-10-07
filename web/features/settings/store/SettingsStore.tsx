@@ -737,6 +737,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   const clearPending = useCallback(() => {
     pendingRef.current.clear();
+    for (const ext of extensionsRef.current.values()) {
+      ext.dirty = false;
+    }
     syncPendingKeys();
   }, [syncPendingKeys]);
 
