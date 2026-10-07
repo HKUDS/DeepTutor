@@ -25,30 +25,10 @@ from . import init_wizard as wiz
 
 
 def _reset_runtime_singletons() -> None:
-    """Drop cached service instances so the new DEEPTUTOR_HOME takes effect.
+    """Compatibility entry point for runtime-home selection."""
+    from deeptutor.runtime.cache_reset import reset_runtime_singletons
 
-    ``deeptutor init`` may pass ``--home`` to target a different workspace; the
-    singletons cache paths from the *previous* PathService and will silently
-    write to the wrong place if not cleared.
-    """
-    try:
-        from deeptutor.services.path_service import PathService
-
-        PathService.reset_instance()
-    except Exception:
-        pass
-    try:
-        from deeptutor.services.config.runtime_settings import RuntimeSettingsService
-
-        RuntimeSettingsService._instances.clear()
-    except Exception:
-        pass
-    try:
-        from deeptutor.services.config.model_catalog import ModelCatalogService
-
-        ModelCatalogService._instances.clear()
-    except Exception:
-        pass
+    reset_runtime_singletons()
 
 
 def _ensure_model_service(catalog: dict, service_name: str, profile_id: str, model_id: str):

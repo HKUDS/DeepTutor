@@ -698,7 +698,7 @@ async def _unbuilt_status_message(
 
 
 class MasteryStatusTool(BaseTool):
-    """Read the current objective + map snapshot. Call FIRST every turn."""
+    """Read current state, or refresh a current-turn runtime snapshot."""
 
     def get_definition(self) -> ToolDefinition:
         return ToolDefinition(
@@ -707,8 +707,10 @@ class MasteryStatusTool(BaseTool):
                 "Read the learner's mastery path: the next objective to work on "
                 "(decided by a hard mastery gate), any question awaiting an "
                 "answer, due reviews, and a map of every objective's status "
-                "(new / learning / mastered). Call this FIRST on every mastery "
-                "turn — it tells you what to do; never guess the next objective."
+                "(new / learning / mastered). Use the current-turn runtime snapshot "
+                "when supplied; otherwise call this FIRST. Refresh after changing "
+                "the path, mode, outline, or progress when updated state is needed. "
+                "Never guess the next objective or reuse an earlier turn's snapshot."
             ),
             parameters=[],
         )

@@ -790,6 +790,7 @@
   "Chart.js": "Chart.js",
   "SVG": "SVG",
   "Mermaid": "Mermaid",
+  "Mind map": "Mind map",
   "Reference": "Reference",
   "Show code": "Show code",
   "Hide code": "Hide code",
@@ -5330,5 +5331,8 @@
   "Could not connect to the speech provider. Check the provider URL and network connection.": "Could not connect to the speech provider. Check the provider URL and network connection.",
   "Qwen-Audio TTS requires a Beijing API key. You can set a Beijing workspace URL in the provider connection; the speech endpoint is selected automatically.": "Qwen-Audio TTS requires a Beijing API key. You can set a Beijing workspace URL in the provider connection; the speech endpoint is selected automatically.",
   "Speech was generated, but the audio download failed. Try again or check the network connection.": "Speech was generated, but the audio download failed. Try again or check the network connection.",
-  "Request timeout (seconds)": "Request timeout (seconds)"
+  "Request timeout (seconds)": "Request timeout (seconds)",
+  "Show API token": "Show API token",
+  "Hide API token": "Hide API token",
+  "Failed to link this follow-up chat to its notebook entry.": "Failed to link this follow-up chat to its notebook entry."
 }

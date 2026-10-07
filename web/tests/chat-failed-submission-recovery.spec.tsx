@@ -1143,3 +1143,53 @@ it("keeps a stale tab's retry after another tab cleared the same submission ID",
     vi.useRealTimers();
   }
 });
+
+it("resubscribes a parked ask_user turn on load so its card survives a reload", async () => {
+  fixture.session = {
+    ...completedServerSession(),
+    status: "waiting_input",
+    active_turns: [{ turn_id: "turn-parked", status: "waiting_input" }],
+    messages: [
+      {
+        id: 1,
+        session_id: "s1",
+        role: "user",
+        content: "Beach or mountains?",
+        events: [],
+        attachments: [],
+        created_at: 1,
+        parent_message_id: null,
+      },
+    ],
+  };
+
+  render(
+    <ChatStateAdapterProvider>
+      <Harness />
+    </ChatStateAdapterProvider>,
+  );
+  await act(async () => {
+    fireEvent.click(screen.getByText("Load"));
+  });
+
+  const subscribe = (message: Record<string, unknown>) =>
+    message.type === "subscribe_turn" &&
+    message.turn_id === "turn-parked" &&
+    message.after_seq === 0;
+  expect(fixture.sent.some(subscribe)).toBe(true);
+
+  // Re-opening the same parked turn must not subscribe twice; the replayed
+  // stream would otherwise be fetched again on every revalidate.
+  const subscribed = fixture.sent.filter(
+    (message) => message.type === "subscribe_turn",
+  ).length;
+  await act(async () => {
+    fireEvent.click(screen.getByText("Load"));
+  });
+  expect(screen.getByTestId("messages").textContent).toContain(
+    "Beach or mountains?",
+  );
+  expect(
+    fixture.sent.filter((message) => message.type === "subscribe_turn").length,
+  ).toBe(subscribed);
+});

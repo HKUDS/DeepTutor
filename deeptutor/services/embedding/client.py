@@ -146,17 +146,25 @@ class EmbeddingClient:
                 input_type=role,
             )
             try:
-                # 全局发帖节流：线程级锁串行化"等待间隔+发帖"，跨线程/跨
-                # event loop 互斥（asyncio 锁在新 loop 模型下失效的教训）。
-                # 非阻塞轮询避免同一 loop 内的并发调用在 acquire() 上互锁。
+                # The spacing lock exists only to keep a configured gap between
+                # requests across threads and event loops (LlamaIndex's pool
+                # gives each thread its own loop, so an asyncio.Lock is not
+                # enough). With the default batch_delay of 0 there is no gap
+                # to protect, and holding the lock around the HTTP call would
+                # flatten every concurrent embed — including LightRAG's — into
+                # one in-flight request (#1779).
                 from time import monotonic as _mono
 
-                async with EmbeddingClient._hold_spacing_lock():
-                    if batch_delay > 0:
+                if batch_delay > 0:
+                    async with EmbeddingClient._hold_spacing_lock():
                         elapsed = _mono() - EmbeddingClient._last_request_monotonic
                         if elapsed < batch_delay:
                             await asyncio.sleep(batch_delay - elapsed)
-                    EmbeddingClient._last_request_monotonic = _mono()
+                        # The timestamp has to be written inside the lock, or
+                        # overlapping callers overwrite it and the gap collapses.
+                        EmbeddingClient._last_request_monotonic = _mono()
+                        response = await self.adapter.embed(request)
+                else:
                     response = await self.adapter.embed(request)
             except Exception as exc:
                 # Capture batch context so the task log stream / KB diagnostics
@@ -201,8 +209,15 @@ class EmbeddingClient:
             if progress_callback:
                 try:
                     progress_callback(i + 1, total_batches)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    # Progress feedback is best-effort: never fail the embedding
+                    # run, but never lose the failure silently either — index
+                    # progress would read as stalled with no trace why.
+                    self.logger.warning(
+                        f"Embedding progress callback failed "
+                        f"(batch {i + 1}/{total_batches}): {exc}",
+                        exc_info=True,
+                    )
 
             # Delay between batches to avoid rate limiting
             if i < total_batches - 1 and batch_delay > 0:
@@ -276,8 +291,14 @@ class EmbeddingClient:
             if progress_callback:
                 try:
                     progress_callback(i + 1, total_batches)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    # Same contract as embed(): log and continue, so a broken
+                    # progress sink cannot stall multimodal indexing invisibly.
+                    self.logger.warning(
+                        f"Embedding progress callback failed "
+                        f"(batch {i + 1}/{total_batches}): {exc}",
+                        exc_info=True,
+                    )
 
             if i < total_batches - 1 and self.config.batch_delay > 0:
                 await asyncio.sleep(self.config.batch_delay)

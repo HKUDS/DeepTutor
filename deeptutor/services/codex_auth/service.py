@@ -869,8 +869,16 @@ class CodexOAuthService:
                 if credentials is not None:
                     try:
                         await self._oauth.revoke(credentials)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        # Never log credential material: record only the error
+                        # kind and status so operators know the remote token
+                        # may still be valid.
+                        logger.warning(
+                            "Codex token revocation failed during logout; the "
+                            "remote token may still be valid (error=%s, http_status=%s)",
+                            getattr(exc, "code", None) or type(exc).__name__,
+                            getattr(exc, "http_status", None),
+                        )
                     self._store.clear_credentials(expected_generation=credentials.generation)
                 else:
                     self._store.clear_credentials(
