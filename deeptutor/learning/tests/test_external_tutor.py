@@ -10,7 +10,12 @@ import httpx
 
 from deeptutor.api.routers.mastery_path import router
 from deeptutor.api.routers.mastery_tutor import native_tools
-from deeptutor.learning.models import KnowledgePoint, KnowledgeType, LearningModule, LearningProgress
+from deeptutor.learning.models import (
+    KnowledgePoint,
+    KnowledgeType,
+    LearningModule,
+    LearningProgress,
+)
 from deeptutor.learning.storage import LearningStore
 from deeptutor.services.session.sqlite_store import SQLiteSessionStore
 
@@ -80,16 +85,23 @@ class ExternalTutorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.json()["tools"], expected)
 
     async def test_quantitative_and_qualitative_parity_and_retry(self):
-        for answer in ("A", "A", "A", "B"):
+        def answer_for(metadata, is_correct):
+            options = metadata["mastery_quiz"]["pending_question"]["options"]
+            correct_label = next(option["label"] for option in options if option["body"] == "0.5 mol")
+            if is_correct:
+                return correct_label
+            return next(option["label"] for option in options if option["label"] != correct_label)
+
+        for is_correct in (True, True, True, False):
             args = {"knowledge_point_id": "quantity", "question": "22 g CO2 是多少 mol？", "question_type": "choice", "options": ["A: 0.5 mol", "B: 22 mol"], "expected_answer": "A"}
             network, quiz_body = await self.call("mastery_quiz", args)
             self.assertTrue(network["success"], network)
             native = await self.native("mastery_quiz", args)
             native_qid = native.metadata["mastery_quiz"]["question_id"]
             qid = network["metadata"]["mastery_quiz"]["question_id"]
-            result, body = await self.call("mastery_grade", {"question_id": qid, "answer": answer})
+            result, body = await self.call("mastery_grade", {"question_id": qid, "answer": answer_for(network["metadata"], is_correct)})
             self.assertTrue(result["success"], result)
-            await self.native("mastery_grade", {"question_id": native_qid, "answer": answer})
+            await self.native("mastery_grade", {"question_id": native_qid, "answer": answer_for(native.metadata, is_correct)})
             before = self.store.load("network").model_dump()
             replay = await self.client.post("/api/mastery-paths/topics/network/tutor", json=body)
             self.assertTrue(replay.json()["replayed"])
