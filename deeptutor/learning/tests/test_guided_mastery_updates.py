@@ -444,6 +444,95 @@ def test_record_qualitative_multi_turn_repair_does_not_compound_lapses(tmp_path,
     assert state.model_dump() == pytest.approx(replayed.model_dump())
 
 
+def test_qualitative_repair_persists_distinct_turns_and_deduplicates_retries(tmp_path, monkeypatch):
+    store = LearningStore(root=tmp_path)
+    service = LearningService(store)
+    scheduler = SpacedRepetitionScheduler()
+    service.save(_make_progress())
+    start = 1_700_000_000.0
+    moment = [start]
+    monkeypatch.setattr("deeptutor.learning.service.time.time", lambda: moment[0])
+
+    for offset, turn_id, passed in [
+        (0, "turn-1", False),
+        (4 * 60, "turn-2", False),
+        (8 * 60, "turn-3", True),
+    ]:
+        moment[0] = start + offset
+        progress = service.record_qualitative_for_path(
+            "book1",
+            "kp1",
+            passed=passed,
+            evidence=f"assessment {turn_id}",
+            scheduler=scheduler,
+            session_id="session-1",
+            turn_id=turn_id,
+        )
+        if turn_id == "turn-1":
+            first_due = progress.repetition_states["kp1"].next_review_at
+            stability_after_failure = progress.repetition_states["kp1"].stability
+
+    state = progress.repetition_states["kp1"]
+    repair_stability = state.stability
+    assert progress.qualitative_mastery["kp1"] is True
+    assert [event.turn_id for event in progress.learning_evidence] == [
+        "turn-1",
+        "turn-2",
+        "turn-3",
+    ]
+    assert state.review_count == 3
+    assert state.lapse_count == 1
+    assert state.scheduled_after_failure is True
+    assert state.next_review_at == first_due
+    assert repair_stability == stability_after_failure
+
+    moment[0] += 60
+    duplicate = service.record_qualitative_for_path(
+        "book1",
+        "kp1",
+        passed=False,
+        evidence="retried turn",
+        scheduler=scheduler,
+        session_id="session-1",
+        turn_id="turn-2",
+    )
+    assert len(duplicate.learning_evidence) == 3
+    assert duplicate.qualitative_mastery["kp1"] is True
+    assert duplicate.repetition_states["kp1"].lapse_count == 1
+    assert duplicate.repetition_states["kp1"].next_review_at == first_due
+    assert duplicate.repetition_states["kp1"].stability == repair_stability
+
+    moment[0] = first_due + 60
+    after_due = service.record_qualitative_for_path(
+        "book1",
+        "kp1",
+        passed=False,
+        evidence="delayed retrieval",
+        scheduler=scheduler,
+        session_id="session-1",
+        turn_id="turn-4",
+    )
+    state = after_due.repetition_states["kp1"]
+    assert state.lapse_count == 2
+    assert state.stability < repair_stability
+    assert [event.turn_id for event in after_due.learning_evidence] == [
+        "turn-1",
+        "turn-2",
+        "turn-3",
+        "turn-4",
+    ]
+    persisted = store.load("book1")
+    assert persisted is not None
+    assert [event.turn_id for event in persisted.learning_evidence] == [
+        "turn-1",
+        "turn-2",
+        "turn-3",
+        "turn-4",
+    ]
+    replayed = scheduler.replay(KnowledgeType.CONCEPT, persisted.learning_evidence)
+    assert persisted.repetition_states["kp1"].model_dump() == pytest.approx(replayed.model_dump())
+
+
 def test_grade_and_record_retry_correct_uses_weaker_quality(tmp_path):
     store = LearningStore(root=tmp_path)
     service = LearningService(store)
