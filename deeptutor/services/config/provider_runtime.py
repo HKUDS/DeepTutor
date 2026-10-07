@@ -1062,6 +1062,15 @@ def _resolve_embedding_provider(
             lemonade_endpoint = False
         if lemonade_endpoint and hint in {None, "custom", "openai"}:
             return "lemonade"
+
+    # Detect generic localhost URLs (e.g. LM Studio on non-standard ports) before
+    # returning explicit "custom"/"openai" hints, so keyless local endpoints are
+    # treated as local and don't trigger the "Embedding API key not set" error.
+    if _is_local_base_url(api_base) and hint in {None, "custom", "openai"}:
+        if api_base and "11434" in api_base:
+            return "ollama"
+        return "vllm"
+
     if hint and hint in EMBEDDING_PROVIDERS:
         return hint
 
@@ -1145,6 +1154,8 @@ def resolve_embedding_runtime_config(
             api_base = gemini_default_embedding_endpoint(resolved_model)
         elif spec.default_api_base:
             api_base = spec.default_api_base
+    if not api_key and spec.is_local:
+        api_key = "sk-no-key-required"
     if provider_name == "aliyun":
         # DashScope's SDK derives the endpoint from the model id and ignores any
         # configured URL, so a saved multimodal endpoint would mislead the

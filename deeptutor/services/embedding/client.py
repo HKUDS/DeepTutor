@@ -146,18 +146,15 @@ class EmbeddingClient:
                 input_type=role,
             )
             try:
-                # 全局发帖节流：线程级锁串行化"等待间隔+发帖"，跨线程/跨
-                # event loop 互斥（asyncio 锁在新 loop 模型下失效的教训）。
-                # 非阻塞轮询避免同一 loop 内的并发调用在 acquire() 上互锁。
                 from time import monotonic as _mono
 
-                async with EmbeddingClient._hold_spacing_lock():
-                    if batch_delay > 0:
+                if batch_delay > 0:
+                    async with EmbeddingClient._hold_spacing_lock():
                         elapsed = _mono() - EmbeddingClient._last_request_monotonic
                         if elapsed < batch_delay:
                             await asyncio.sleep(batch_delay - elapsed)
-                    EmbeddingClient._last_request_monotonic = _mono()
-                    response = await self.adapter.embed(request)
+                        EmbeddingClient._last_request_monotonic = _mono()
+                response = await self.adapter.embed(request)
             except Exception as exc:
                 # Capture batch context so the task log stream / KB diagnostics
                 # show actionable info instead of a bare exception string.
@@ -203,10 +200,6 @@ class EmbeddingClient:
                     progress_callback(i + 1, total_batches)
                 except Exception:
                     pass
-
-            # Delay between batches to avoid rate limiting
-            if i < total_batches - 1 and batch_delay > 0:
-                await asyncio.sleep(batch_delay)
 
         self.logger.debug(
             f"Generated {len(all_embeddings)} embeddings using "
@@ -261,6 +254,14 @@ class EmbeddingClient:
                 contents=batch,
                 enable_fusion=False,
             )
+            if self.config.batch_delay > 0:
+                from time import monotonic as _mono
+
+                async with EmbeddingClient._hold_spacing_lock():
+                    elapsed = _mono() - EmbeddingClient._last_request_monotonic
+                    if elapsed < self.config.batch_delay:
+                        await asyncio.sleep(self.config.batch_delay - elapsed)
+                    EmbeddingClient._last_request_monotonic = _mono()
             response = await self.adapter.embed(request)
             validated = validate_embedding_batch(
                 response.embeddings,
@@ -278,9 +279,6 @@ class EmbeddingClient:
                     progress_callback(i + 1, total_batches)
                 except Exception:
                     pass
-
-            if i < total_batches - 1 and self.config.batch_delay > 0:
-                await asyncio.sleep(self.config.batch_delay)
 
         return all_embeddings
 
