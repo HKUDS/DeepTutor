@@ -20,6 +20,10 @@ from deeptutor.services.memory.snapshot import adapters
 class _FakePathService:
     def __init__(self, db_path: Path) -> None:
         self._db_path = db_path
+        # Account-level aggregation (#1799) walks the workspace registry,
+        # which may reach for the path service's root; a stub without it
+        # fails the whole scan instead of contributing just this db.
+        self.workspace_root = self._db_path.parent
 
     def get_chat_history_db(self) -> Path:
         return self._db_path

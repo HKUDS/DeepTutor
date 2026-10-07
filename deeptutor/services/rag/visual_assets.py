@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 from io import BytesIO
 import json
+import logging
 import os
 from pathlib import Path
 import re
@@ -20,10 +21,18 @@ import warnings
 
 from deeptutor.services.parsing.types import ParsedDocument
 
+logger = logging.getLogger(__name__)
+
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 MAX_MODEL_IMAGES = 2
 MAX_IMAGE_PIXELS = 30_000_000
+# Hard per-file guard (index, shards, and any legacy manifest). The store
+# shards its manifest long before a shard could approach this (#1802).
 MAX_MANIFEST_BYTES = 16 * 1024 * 1024
+# Per-shard soft target. Shards are built by packing sorted records until
+# adding the next one would cross this, so in practice each shard stays well
+# under MAX_MANIFEST_BYTES (which remains a hard per-file guard).
+SHARD_SOFT_TARGET_BYTES = 8 * 1024 * 1024
 _ID_RE = re.compile(r"^[0-9a-f]{64}$")
 _MARKDOWN_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 _MIME_EXT = {
@@ -220,23 +229,59 @@ def collect_visual_assets(
 
 
 class VisualAssetStore:
-    """KB-scoped immutable image files plus an atomically replaced manifest."""
+    """KB-scoped immutable image files plus an atomically replaced manifest.
+
+    The manifest is **sharded** once it outgrows a single file (#1802): a
+    small index (``manifest.json``, ``{"version": 2, "shards": [...]}``)
+    points at ordered shard files, each far below the per-file size cap, so
+    the store scales with asset count instead of failing whole ingests at a
+    hardcoded ceiling. Legacy single-file manifests (``version: 1`` with
+    inline assets) are still read.
+    """
+
+    SHARD_FORMAT_VERSION = 2
 
     def __init__(self, kb_dir: Path):
         self.kb_dir = Path(kb_dir)
         self.root = self.kb_dir / "visual_assets"
         self.manifest_path = self.root / "manifest.json"
 
+    def _shard_path(self, name: str) -> Path:
+        return self.root / name
+
     def records(self) -> dict[str, dict[str, Any]]:
         if self.root.is_symlink() or not self.root.resolve().is_relative_to(self.kb_dir.resolve()):
             return {}
         try:
-            if self.manifest_path.stat().st_size > MAX_MANIFEST_BYTES:
+            if self.manifest_path.exists():
+                payload = json.loads(self.manifest_path.read_text(encoding="utf-8"))
+            else:
                 return {}
-            payload = json.loads(self.manifest_path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return {}
-        records = payload.get("assets") if isinstance(payload, dict) else None
+        if not isinstance(payload, dict):
+            return {}
+        shard_names = payload.get("shards")
+        if isinstance(shard_names, list) and payload.get("version") == self.SHARD_FORMAT_VERSION:
+            records: dict[str, dict[str, Any]] = {}
+            for name in shard_names:
+                if not isinstance(name, str) or not name.startswith("manifest.shard-"):
+                    return {}
+                try:
+                    shard_payload = json.loads(self._shard_path(name).read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    logger.warning("visual asset shard %s unreadable; its assets are skipped", name)
+                    continue
+                shard_records = (
+                    shard_payload.get("assets") if isinstance(shard_payload, dict) else None
+                )
+                if isinstance(shard_records, dict):
+                    records.update(shard_records)
+            return records
+        # Legacy single-file manifest (version 1, inline assets). Size is no
+        # longer a read gate: an over-limit legacy manifest still resolves the
+        # assets already indexed instead of silently vanishing.
+        records = payload.get("assets") if "shards" not in payload else None
         return records if isinstance(records, dict) else {}
 
     def publish(
@@ -272,11 +317,6 @@ class VisualAssetStore:
                     or self._source_exists(value.get("source_path"))
                 }
         updated = {**remaining, **incoming}
-        manifest = json.dumps(
-            {"version": 1, "assets": updated}, ensure_ascii=False, sort_keys=True
-        ).encode()
-        if len(manifest) > MAX_MANIFEST_BYTES:
-            raise OSError("Visual asset manifest exceeds its size limit")
         for candidate in candidates:
             record = candidate.record
             loaded = _image_bytes(candidate.path)
@@ -290,7 +330,8 @@ class VisualAssetStore:
             existing = _image_bytes(target)
             if existing is None or sha256(existing[0]).hexdigest() != record["image_sha256"]:
                 self._atomic_write(target, loaded[0])
-        self._atomic_write(self.manifest_path, manifest)
+        # Manifest last: it only ever points at image bytes already on disk.
+        self._write_sharded(updated)
         for old_id, old_record in prior.items():
             if old_id not in updated:
                 self._path(old_id, str(old_record.get("mime_type"))).unlink(missing_ok=True)
@@ -324,12 +365,7 @@ class VisualAssetStore:
         }
         if len(updated) == len(prior):
             return
-        self._atomic_write(
-            self.manifest_path,
-            json.dumps(
-                {"version": 1, "assets": updated}, ensure_ascii=False, sort_keys=True
-            ).encode(),
-        )
+        self._write_sharded(updated)
         for old_id, old_record in prior.items():
             if old_id not in updated:
                 self._path(old_id, str(old_record.get("mime_type"))).unlink(missing_ok=True)
@@ -350,12 +386,56 @@ class VisualAssetStore:
                 changed = True
             updated[key] = value
         if changed:
+            self._write_sharded(updated)
+
+    def _write_sharded(self, updated: dict[str, dict[str, Any]]) -> None:
+        """Atomically replace the manifest with a sharded layout (#1802).
+
+        Records are packed in sorted-key order into shards that stay well below
+        the per-file cap, shard files are written first, then the index — so
+        the index never references a shard that is not on disk. Stale shards
+        from a previous, larger layout are removed after the new index lands.
+        """
+        batches: list[dict[str, dict[str, Any]]] = []
+        batch: dict[str, dict[str, Any]] = {}
+        batch_bytes = 0
+        for key in sorted(updated):
+            record_json = json.dumps(updated[key], ensure_ascii=False, sort_keys=True)
+            # Incremental size accounting: re-serializing the whole batch per
+            # record would be quadratic, and record counts reach the tens of
+            # thousands (#1802).
+            batch_bytes += len(record_json.encode("utf-8")) + len(key.encode("utf-8")) + 8
+            batch[key] = updated[key]
+            if batch_bytes >= SHARD_SOFT_TARGET_BYTES:
+                batches.append(batch)
+                batch = {}
+                batch_bytes = 0
+        if batch:
+            batches.append(batch)
+
+        names: list[str] = []
+        for index, chunk in enumerate(batches):
+            name = f"manifest.shard-{index:03d}.json"
             self._atomic_write(
-                self.manifest_path,
+                self._shard_path(name),
                 json.dumps(
-                    {"version": 1, "assets": updated}, ensure_ascii=False, sort_keys=True
+                    {"version": self.SHARD_FORMAT_VERSION, "assets": chunk},
+                    ensure_ascii=False,
+                    sort_keys=True,
                 ).encode(),
             )
+            names.append(name)
+
+        self._atomic_write(
+            self.manifest_path,
+            json.dumps(
+                {"version": self.SHARD_FORMAT_VERSION, "shards": names}, ensure_ascii=False
+            ).encode(),
+        )
+
+        prior_shards = {path.name for path in self.root.glob("manifest.shard-*.json")}
+        for stale in sorted(prior_shards - set(names)):
+            self._shard_path(stale).unlink(missing_ok=True)
 
     def _path(self, asset_id: str, mime: str) -> Path:
         if not _ID_RE.fullmatch(asset_id) or mime not in _MIME_EXT:

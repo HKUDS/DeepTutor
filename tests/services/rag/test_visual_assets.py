@@ -105,23 +105,28 @@ def test_verified_source_visual_contract_and_lifecycle(tmp_path: Path, suffix: s
 
 
 def test_manifest_limit_does_not_replace_existing_assets(tmp_path: Path, monkeypatch):
+    """#1802: the manifest shards past any single-file size, so an over-cap
+    publish no longer fails whole — existing assets must survive unchanged,
+    and even a tiny per-shard soft target keeps the layout working."""
     import deeptutor.services.rag.visual_assets as assets_module
 
     kb_dir, source, image, parsed = _fixture(tmp_path)
     original = collect_visual_assets(parsed, source, kb_dir)[0]
     store = VisualAssetStore(kb_dir)
     store.publish([original])
-    manifest_before = store.manifest_path.read_bytes()
-    monkeypatch.setattr(assets_module, "MAX_MANIFEST_BYTES", len(manifest_before) + 10)
+    # Shrink the per-shard soft target so the manifest must be written as
+    # multiple shards: the sharded layout still publishes.
+    monkeypatch.setattr(assets_module, "SHARD_SOFT_TARGET_BYTES", 512)
     second = assets_module.VisualAssetCandidate(
         path=image,
         record={**original.record, "asset_id": "a" * 64},
     )
-    with pytest.raises(OSError, match="manifest exceeds"):
-        store.publish([second])
-    assert store.manifest_path.read_bytes() == manifest_before
+    store.publish([second])
+
     assert store.read(original.record["asset_id"]) is not None
-    assert store.read(second.record["asset_id"]) is None
+    assert store.read(second.record["asset_id"]) is not None
+    assert store.records()[second.record["asset_id"]]["asset_id"] == "a" * 64
+    assert len(list(store.root.glob("manifest.shard-*.json"))) > 1
 
 
 def test_size_count_and_rebuild_cleanup(tmp_path: Path, monkeypatch):
