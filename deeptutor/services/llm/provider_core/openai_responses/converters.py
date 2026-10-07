@@ -15,7 +15,7 @@ _CHAT_TOKEN_LIMIT_ALIASES = ("max_completion_tokens", "max_tokens")
 
 def convert_messages(messages: list[dict[str, Any]]) -> tuple[str, list[dict[str, Any]]]:
     """Convert Chat Completions messages to Responses API input items."""
-    system_prompt = ""
+    system_prompts: list[str] = []
     input_items: list[dict[str, Any]] = []
 
     for idx, msg in enumerate(messages):
@@ -23,7 +23,10 @@ def convert_messages(messages: list[dict[str, Any]]) -> tuple[str, list[dict[str
         content = msg.get("content")
 
         if role == "system":
-            system_prompt = content if isinstance(content, str) else ""
+            # Compaction summaries and context checkpoints follow the main
+            # prompt; they must not replace its language and runtime rules.
+            if isinstance(content, str) and content:
+                system_prompts.append(content)
             continue
 
         if role == "user":
@@ -76,7 +79,7 @@ def convert_messages(messages: list[dict[str, Any]]) -> tuple[str, list[dict[str
                 {"type": "function_call_output", "call_id": call_id, "output": output_text}
             )
 
-    return system_prompt, input_items
+    return "\n\n".join(system_prompts), input_items
 
 
 def convert_user_message(content: Any) -> dict[str, Any]:
