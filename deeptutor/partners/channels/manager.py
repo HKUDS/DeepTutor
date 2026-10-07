@@ -454,6 +454,10 @@ class ChannelManager:
                 await self._send_with_retry(channel, msg)
 
             except asyncio.TimeoutError:
+                # Idle-poll timeout on an empty queue: the cancelled consume
+                # popped no message (a consume finishing despite the timeout
+                # is returned by wait_for), so nothing is skipped. Channel
+                # send timeouts are retried and logged in _send_with_retry.
                 continue
             except asyncio.CancelledError:
                 break

@@ -790,6 +790,7 @@
   "Chart.js": "Chart.js",
   "SVG": "SVG",
   "Mermaid": "Mermaid",
+  "Mind map": "Mindmap",
   "Reference": "Referenz",
   "Show code": "Code anzeigen",
   "Hide code": "Code ausblenden",
@@ -5330,5 +5331,8 @@
   "Could not connect to the speech provider. Check the provider URL and network connection.": "Der Sprachanbieter konnte nicht erreicht werden. Prüfe die Anbieter-URL und Netzwerkverbindung.",
   "Qwen-Audio TTS requires a Beijing API key. You can set a Beijing workspace URL in the provider connection; the speech endpoint is selected automatically.": "Qwen-Audio TTS erfordert einen API-Schlüssel für Peking. In der Anbieterverbindung kannst du eine Arbeitsbereichs-URL für Peking angeben; der Sprachendpunkt wird automatisch gewählt.",
   "Speech was generated, but the audio download failed. Try again or check the network connection.": "Die Sprache wurde erzeugt, aber der Audiodownload ist fehlgeschlagen. Versuche es erneut oder prüfe die Netzwerkverbindung.",
-  "Request timeout (seconds)": "Zeitlimit für Anfragen (Sekunden)"
+  "Request timeout (seconds)": "Zeitlimit für Anfragen (Sekunden)",
+  "Show API token": "API-Token anzeigen",
+  "Hide API token": "API-Token ausblenden",
+  "Failed to link this follow-up chat to its notebook entry.": "Dieser Folgechat konnte nicht mit seinem Notizbucheintrag verknüpft werden."
 }

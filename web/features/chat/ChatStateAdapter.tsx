@@ -1816,6 +1816,12 @@ export function ChatStateAdapterProvider({
     Map<string, { storageKey: string; sourceStorageKey?: string; submissionId: string; visibleSubmissionIds: string[] }>
   >(new Map());
   const resolvingResendRef = useRef<Set<string>>(new Set());
+  // Parked (``waiting_input``) turns already resubscribed to on load, keyed
+  // ``<sessionKey>:<turnId>``. A parked turn keeps the conversation's lease
+  // while it waits, and its ask_user card exists only in the live event
+  // stream (no assistant row is persisted until the turn settles), so opening
+  // the conversation must replay that stream or the card is unreachable.
+  const resumedParkedTurnsRef = useRef<Set<string>>(new Set());
   const traceCacheRef = useRef<TraceCache>(new TraceCache());
   const traceRequestsRef = useRef<Map<string, AbortController>>(new Map());
   // Forward-declared so ``handleRunnerEvent`` (created above
@@ -2551,7 +2557,8 @@ export function ChatStateAdapterProvider({
           session.preferences?.selected_branches,
         ),
       });
-      if (loadedStatus === "running" && (activeTurn?.turn_id || activeTurn?.id)) {
+      const activeTurnId = activeTurn?.turn_id || activeTurn?.id || "";
+      if (activeTurnId && loadedStatus === "running") {
         // Reached on a revalidate too, when the turn is live on the server but
         // not in this tab (started in another tab, or our socket dropped) —
         // that is exactly the case that still needs a subscribe. A turn we
@@ -2559,13 +2566,33 @@ export function ChatStateAdapterProvider({
         // socket for a turn that will never speak again.
         sendThroughRunner(key, {
           type: "subscribe_turn",
-          turn_id: activeTurn.turn_id || activeTurn.id,
+          turn_id: activeTurnId,
           after_seq: 0,
         });
+      } else if (activeTurnId && String(session.status || "") === "waiting_input") {
+        // A parked turn still owns the conversation's lease, and its ask_user
+        // card only lives in the live event stream: nothing about the pause is
+        // persisted as a message until the turn settles. Without a
+        // resubscribe, a reload loses the card while the turn keeps waiting —
+        // the user can neither answer nor send, and only a backend restart
+        // recovers the conversation. Send through the client's durable queue
+        // rather than ``sendThroughRunner``: its retry gate drops a command
+        // for a session that is not streaming, and a parked turn is exactly
+        // that. Once per turn per tab is enough; the reducer de-duplicates a
+        // replayed stream anyway.
+        const resumeKey = `${key}:${activeTurnId}`;
+        if (!resumedParkedTurnsRef.current.has(resumeKey)) {
+          resumedParkedTurnsRef.current.add(resumeKey);
+          ensureRunner(key).client.send({
+            type: "subscribe_turn",
+            turn_id: activeTurnId,
+            after_seq: 0,
+          });
+        }
       }
       return messages;
     },
-    [hydrateMessages, sendThroughRunner],
+    [ensureRunner, hydrateMessages, sendThroughRunner],
   );
 
   useLayoutEffect(() => {

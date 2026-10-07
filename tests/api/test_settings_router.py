@@ -704,11 +704,11 @@ def test_llm_provider_choices_include_futureinfra() -> None:
     assert llm["futureinfra"]["base_url"] == "https://futureinfra.ai/v1/ai"
 
 
-def test_llm_provider_choices_include_opper() -> None:
+def test_llm_provider_choices_include_y_api() -> None:
     llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
 
-    assert llm["opper"]["label"] == "Opper"
-    assert llm["opper"]["base_url"] == "https://api.opper.ai/v3/compat"
+    assert llm["y_api"]["label"] == "Y-API"
+    assert llm["y_api"]["base_url"] == "https://api.y-api.bestvirtualgoods.com/v1"
 
 
 def test_llm_provider_choices_include_novita() -> None:
@@ -1905,3 +1905,10 @@ async def test_voice_math_speak_persists_without_freezing_defaults(
     loaded = settings_router.load_ui_settings()
     assert loaded["voice_math_speak"] is False
     assert loaded["voice_autoplay"] is False
+
+
+def test_llm_provider_choices_include_opper() -> None:
+    llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
+
+    assert llm["opper"]["label"] == "Opper"
+    assert llm["opper"]["base_url"] == "https://api.opper.ai/v3/compat"

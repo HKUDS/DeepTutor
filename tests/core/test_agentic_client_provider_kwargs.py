@@ -562,6 +562,7 @@ def test_registered_cloud_openai_compat_providers_enable_native_tools() -> None:
         "requesty",
         "futureinfra",
         "opper",
+        "y_api",
         "edenai",
         "novita",
         "volcengine_coding_plan",

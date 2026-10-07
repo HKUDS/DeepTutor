@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import threading
 from typing import Any
 
@@ -78,7 +79,7 @@ async def test_embedding_client_batches_requests(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_embedding_client_serializes_concurrent_calls_without_blocking_loop(
+async def test_embedding_client_overlaps_calls_when_batch_delay_is_zero(
     monkeypatch,
 ) -> None:
     class _NonBlockingOnlyLock:
@@ -133,6 +134,44 @@ async def test_embedding_client_serializes_concurrent_calls_without_blocking_loo
     )
 
     assert heartbeat.is_set()
+    assert len(first) == len(second) == 1
+    # batch_delay is 0, so the spacing lock must not serialize the HTTP calls.
+    assert _ConcurrentAdapter.max_in_flight == 2
+
+
+@pytest.mark.asyncio
+async def test_embedding_client_serializes_when_batch_delay_is_set(monkeypatch) -> None:
+    class _ConcurrentAdapter(_FakeAdapter):
+        in_flight = 0
+        max_in_flight = 0
+
+        async def embed(self, request):
+            type(self).in_flight += 1
+            type(self).max_in_flight = max(type(self).max_in_flight, type(self).in_flight)
+            try:
+                await asyncio.sleep(0.02)
+                return await super().embed(request)
+            finally:
+                type(self).in_flight -= 1
+
+    _FakeAdapter.instances = []
+    monkeypatch.setattr(
+        "deeptutor.services.embedding.client._resolve_adapter_class",
+        lambda _b: _ConcurrentAdapter,
+    )
+    monkeypatch.setattr(EmbeddingClient, "_spacing_lock", None)
+    monkeypatch.setattr(EmbeddingClient, "_last_request_monotonic", 0.0)
+    _ConcurrentAdapter.in_flight = 0
+    _ConcurrentAdapter.max_in_flight = 0
+    config = _build_config("openai")
+    config.batch_delay = 0.05
+    client = EmbeddingClient(config)
+
+    first, second = await asyncio.wait_for(
+        asyncio.gather(client.embed(["first"]), client.embed(["second"])),
+        timeout=1.0,
+    )
+
     assert len(first) == len(second) == 1
     assert _ConcurrentAdapter.max_in_flight == 1
 
@@ -368,3 +407,65 @@ def test_embedding_client_multimodal_detection_uses_model_level_metadata() -> No
     assert text_model.supports_multimodal_contents() is False
     assert vision_model.supports_multimodal_contents() is True
     assert cohere_v3.supports_multimodal_contents() is False
+
+
+@pytest.mark.asyncio
+async def test_embed_progress_callback_failure_logged_and_not_fatal(monkeypatch, caplog) -> None:
+    """A failing progress callback must not break embedding, but the failure
+    cannot stay silent — swallowed errors make KB index progress untrustworthy."""
+
+    def _broken_callback(completed: int, total: int) -> None:
+        raise RuntimeError("progress sink offline")
+
+    _FakeAdapter.instances = []
+    monkeypatch.setattr(
+        "deeptutor.services.embedding.client._resolve_adapter_class", lambda _b: _FakeAdapter
+    )
+    client = EmbeddingClient(_build_config("openai"))
+
+    with caplog.at_level(logging.WARNING, logger="deeptutor.services.embedding.client"):
+        vectors = await client.embed(["a", "b", "c"], progress_callback=_broken_callback)
+
+    assert len(vectors) == 3
+    warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert any("progress callback" in r.getMessage() for r in warnings)
+    assert any("progress sink offline" in r.getMessage() for r in warnings)
+
+
+@pytest.mark.asyncio
+async def test_embed_contents_progress_callback_failure_logged_and_not_fatal(
+    monkeypatch, caplog
+) -> None:
+    class _MultimodalAdapter(_FakeAdapter):
+        def get_model_info(self):
+            return {"multimodal": True}
+
+        async def embed(self, request):
+            self.calls.append(request)
+            items = request.contents or [{"text": t} for t in request.texts]
+            return type(
+                "Resp",
+                (),
+                {"embeddings": [[float(i)] * 2 for i, _ in enumerate(items)]},
+            )()
+
+    def _broken_callback(completed: int, total: int) -> None:
+        raise RuntimeError("progress sink offline")
+
+    _FakeAdapter.instances = []
+    monkeypatch.setattr(
+        "deeptutor.services.embedding.client._resolve_adapter_class",
+        lambda _b: _MultimodalAdapter,
+    )
+    client = EmbeddingClient(_build_config("openai"))
+
+    with caplog.at_level(logging.WARNING, logger="deeptutor.services.embedding.client"):
+        vectors = await client.embed_contents(
+            [{"text": "a"}, {"text": "b"}, {"text": "c"}],
+            progress_callback=_broken_callback,
+        )
+
+    assert len(vectors) == 3
+    warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert any("progress callback" in r.getMessage() for r in warnings)
+    assert any("progress sink offline" in r.getMessage() for r in warnings)

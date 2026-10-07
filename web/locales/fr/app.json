@@ -1151,6 +1151,7 @@
   "Chart.js": "Chart.js",
   "SVG": "SVG",
   "Mermaid": "Mermaid",
+  "Mind map": "Carte mentale",
   "Reference": "Référence",
   "Describe the chart or diagram you want to visualize...": "Décrivez le graphique ou le diagramme à visualiser…",
   "Show code": "Afficher le code",
@@ -5773,5 +5774,8 @@
   "Qwen-Audio TTS speed must be between 0.5 and 2.": "La vitesse de Qwen-Audio TTS doit être comprise entre 0,5 et 2.",
   "Qwen3 TTS uses voices such as Cherry and outputs WAV audio. Match the API key region to the provider URL.": "Qwen3 TTS utilise des voix comme Cherry et produit un audio WAV. Faites correspondre la région de la clé API à l’URL du fournisseur.",
   "Qwen-Audio TTS requires a Beijing API key. You can set a Beijing workspace URL in the provider connection; the speech endpoint is selected automatically.": "Qwen-Audio TTS nécessite une clé API pour la région de Pékin. Vous pouvez définir une URL d’espace de travail de Pékin dans la connexion au fournisseur ; le point de terminaison vocal est sélectionné automatiquement.",
-  "Fetching the model list does not test speech synthesis. Use Preview voice to test this model and voice.": "Récupérer la liste des modèles ne teste pas la synthèse vocale. Utilisez l’aperçu vocal pour tester ce modèle et cette voix."
+  "Fetching the model list does not test speech synthesis. Use Preview voice to test this model and voice.": "Récupérer la liste des modèles ne teste pas la synthèse vocale. Utilisez l’aperçu vocal pour tester ce modèle et cette voix.",
+  "Show API token": "Afficher le jeton API",
+  "Hide API token": "Masquer le jeton API",
+  "Failed to link this follow-up chat to its notebook entry.": "Impossible de lier cette conversation de suivi à son entrée dans le carnet."
 }

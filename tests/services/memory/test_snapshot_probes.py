@@ -52,7 +52,7 @@ def _make_db(path: Path) -> sqlite3.Connection:
 def chat_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> sqlite3.Connection:
     db_path = tmp_path / "chat_history.db"
     conn = _make_db(db_path)
-    monkeypatch.setattr(adapters, "get_path_service", lambda: _FakePathService(db_path))
+    monkeypatch.setattr(adapters, "get_account_path_service", lambda: _FakePathService(db_path))
     yield conn
     conn.close()
 
@@ -135,7 +135,7 @@ def test_probe_returns_empty_without_a_database(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     missing = tmp_path / "nope.db"
-    monkeypatch.setattr(adapters, "get_path_service", lambda: _FakePathService(missing))
+    monkeypatch.setattr(adapters, "get_account_path_service", lambda: _FakePathService(missing))
     assert adapters.probe_chat_entities() == []
 
 

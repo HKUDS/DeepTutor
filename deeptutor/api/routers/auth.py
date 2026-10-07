@@ -668,6 +668,11 @@ def _learning_surface_for_path(
     # prefix match would open too much.
     if route_path and (method.upper(), route_path) in _LEARNER_SETTINGS_WRITE_ROUTES:
         return "chat"
+    # Choosing the model for a chat turn is part of chat. The handler is
+    # already grant-filtered. Match this exact path only: a prefix of
+    # /api/settings would also open catalog writes on the same router (#1222).
+    if method.upper() == "GET" and normalized == "/api/settings/llm-options":
+        return "chat"
     return ""
 
 
