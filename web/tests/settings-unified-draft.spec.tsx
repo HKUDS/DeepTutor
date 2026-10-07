@@ -385,6 +385,54 @@ it("stages MinerU credentials and restores them when revisiting the page", async
   expect(screen.getByPlaceholderText("Paste API token")).toHaveValue("");
 });
 
+it("applies MinerU credentials and clears dirty state cleanly", async () => {
+  resources.mineru = {
+    settings: { mode: "cloud", api_base_url: "http://mineru" },
+    api_token_set: false,
+  };
+  render(<App page="mineru" />);
+  await ready();
+  fireEvent.change(await screen.findByPlaceholderText("Paste API token"), {
+    target: { value: "applied-token" },
+  });
+  expect(settings.draftState).toBe("unsaved");
+  await act(() => settings.applyCatalog());
+  expect(writes("/api/settings/mineru")).toHaveLength(1);
+  expect(resources.mineru.api_token).toBe("applied-token");
+  expect(settings.draftState).toBe("clean");
+  expect(settings.hasUnsavedChanges).toBe(false);
+});
+
+it("applies MinerU credentials from within document-parsing page without leaving unsaved state", async () => {
+  resources["document-parsing"] = {
+    engine: "mineru",
+    engines: {
+      mineru: { mode: "local", api_base_url: "https://mineru.net" },
+    },
+    available_engines: [
+      { id: "mineru", name: "MinerU", available: true },
+    ],
+    readiness: { mineru: { ready: true } },
+    installable: [],
+    mineru: { api_token_set: false },
+  };
+  resources.mineru = {
+    settings: { mode: "local", api_base_url: "https://mineru.net" },
+    api_token_set: false,
+  };
+  render(<App page="document-parsing" />);
+  await ready();
+  fireEvent.click(await screen.findByRole("button", { name: "Cloud API" }));
+  fireEvent.change(await screen.findByPlaceholderText("Paste API token"), {
+    target: { value: "cloud-token-123" },
+  });
+  expect(settings.draftState).toBe("unsaved");
+  await act(() => settings.applyCatalog());
+  expect(writes("/api/settings/mineru")).toHaveLength(1);
+  expect(settings.draftState).toBe("clean");
+  expect(settings.hasUnsavedChanges).toBe(false);
+});
+
 it("allows incomplete model drafts but blocks Apply before writing any live settings", async () => {
   render(<App />);
   await ready();

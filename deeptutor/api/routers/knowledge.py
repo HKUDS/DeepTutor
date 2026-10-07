@@ -3985,8 +3985,16 @@ async def run_reindex_task(
                     error=error_msg,
                     **failure_metadata,
                 )
-            except Exception:
-                pass
+            except Exception as progress_err:
+                # The task-level error above stays authoritative; degrade loudly
+                # instead of silently, so a stale KB progress view is explainable.
+                logger.warning(
+                    "[%s] Re-index of '%s' failed, and persisting its error progress "
+                    "also failed (%s); the KB progress view may stay stale.",
+                    task_id,
+                    kb_name,
+                    progress_err,
+                )
             task_stream_manager.emit_failed(task_id, error_msg, **failure_metadata)
 
 
@@ -4252,6 +4260,23 @@ async def clear_progress(kb_name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _progress_age_seconds(timestamp: object) -> float | None:
+    """Age of a progress snapshot timestamp in seconds, ``None`` if unknown.
+
+    A malformed timestamp means freshness cannot be determined; callers fall
+    back to their inactive/stale handling, and the anomaly is logged so a
+    corrupt snapshot cannot silently disable liveness detection.
+    """
+    if not timestamp:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(timestamp))
+        return (datetime.now() - parsed).total_seconds()
+    except (TypeError, ValueError) as exc:
+        logger.warning("Cannot determine progress age from timestamp %r: %s", timestamp, exc)
+        return None
+
+
 @ws_router.websocket("/knowledge-bases/{kb_name}/progress")
 async def websocket_progress(websocket: WebSocket, kb_name: str):
     """WebSocket endpoint for real-time progress updates"""
@@ -4378,16 +4403,17 @@ async def websocket_progress(websocket: WebSocket, kb_name: str):
         # Fast path: no active task — send current state and close immediately
         # This prevents infinite polling loops for ready or legacy KBs.
         has_active_task = False
+        initial_ts: object = None
+        initial_age_seconds: float | None = None
         if initial_progress:
             stage = initial_progress.get("stage")
             if stage not in ("completed", "error", None):
                 ts = initial_progress.get("timestamp")
                 if ts:
-                    try:
-                        age = (datetime.now() - datetime.fromisoformat(ts)).total_seconds()
-                        has_active_task = age < 120
-                    except Exception:
-                        pass
+                    initial_ts = ts
+                    initial_age_seconds = _progress_age_seconds(ts)
+                    if initial_age_seconds is not None:
+                        has_active_task = initial_age_seconds < 120
 
         if not has_active_task and not expected_task_id:
             if kb_is_ready:
@@ -4429,14 +4455,16 @@ async def websocket_progress(websocket: WebSocket, kb_name: str):
             elif stage == "error" or not kb_is_ready:
                 should_send = True
             elif stage != "completed" and timestamp:
-                try:
-                    progress_time = datetime.fromisoformat(timestamp)
-                    now = datetime.now()
-                    age_seconds = (now - progress_time).total_seconds()
-                    if age_seconds < 300:
-                        should_send = True
-                except Exception:
-                    pass
+                # The same snapshot timestamp may already have been assessed
+                # above; reuse that result so one corrupt timestamp yields one
+                # warning instead of one per freshness check.
+                age_seconds = (
+                    initial_age_seconds
+                    if timestamp is initial_ts
+                    else _progress_age_seconds(timestamp)
+                )
+                if age_seconds is not None and age_seconds < 300:
+                    should_send = True
 
             if should_send:
                 await websocket.send_json({"type": "progress", "data": initial_progress})
@@ -4513,19 +4541,24 @@ async def websocket_progress(websocket: WebSocket, kb_name: str):
         logger.debug(f"Progress WS error: {e}")
         try:
             await websocket.send_json({"type": "error", "message": str(e)})
-        except Exception:
-            pass
+        except Exception as send_error:
+            # Usually a client that is already gone; trace it so a genuinely
+            # broken send path cannot vanish.
+            logger.debug("Failed to deliver error frame on progress WS: %s", send_error)
     finally:
         await broadcaster.disconnect(subscription_key, websocket)
         try:
             await websocket.close()
-        except Exception:
-            pass
+        except Exception as close_error:
+            # Closing an already-disconnected socket is expected; keep a trace
+            # for anything else.
+            logger.debug("Failed to close progress WS: %s", close_error)
         if user_token is not None:
             try:
                 reset_current_user(user_token)
-            except Exception:
-                pass
+            except Exception as reset_error:
+                # Leaking the user context is a real fault, not a disconnect.
+                logger.warning("Failed to reset user context after progress WS: %s", reset_error)
 
 
 @router.post("/knowledge-bases/{kb_name}/link-folder", response_model=LinkedFolderInfo)

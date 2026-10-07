@@ -1160,3 +1160,23 @@ Licensed under the [Apache License 2.0](LICENSE).
 </p>
 
 </div>
+
+### Mastery turn grounding
+
+Mastery turns read the active path's status before the first model request, using
+the same status tool and mastery gates as an explicit tool call. This snapshot is
+fresh for each turn, includes the active session mode, and is never cached across
+turns. A failed read falls back to `mastery_status`; after changing the path, mode,
+outline, or progress, the tutor can refresh through that tool. Card grading and
+its existing handoff remain unchanged.
+
+### Repeated image attachments
+
+The agent loop sends identical inline user images once per request and replaces later
+copies with references to the retained image. Stable request-only labels identify
+the retained inline images across provider translations and appended turns. Unique
+image blocks, remote URLs, differing
+image options, assistant messages, and tool results remain complete. Saved history
+keeps every original attachment; references are rebuilt after history is trimmed.
+This reduces repeated image payloads, but provider-reported usage remains the
+source of truth for billing and cache hits.

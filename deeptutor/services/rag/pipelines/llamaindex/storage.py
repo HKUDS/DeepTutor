@@ -111,16 +111,30 @@ def insert_documents(existing_storage: Path, storage_dir: Path, documents: list[
     return count
 
 
+def _persisted_vector_fault(exc: ValueError) -> str:
+    """Return the concrete fault from a shared-validator error message."""
+    _, _, tail = str(exc).partition("): ")
+    fault = tail.split(". ", 1)[0].rstrip(".")
+    return fault or "unusable embedding data"
+
+
 def _validate_embedding_dict(embedding_dict: Any, *, label: str) -> None:
     if not isinstance(embedding_dict, dict) or not embedding_dict:
         return
 
-    validate_embedding_batch(
-        list(embedding_dict.values()),
-        expected_count=len(embedding_dict),
-        binding="llamaindex",
-        model=f"persisted-index:{label}",
-    )
+    try:
+        validate_embedding_batch(
+            list(embedding_dict.values()),
+            expected_count=len(embedding_dict),
+            binding="llamaindex",
+            model=f"persisted-index:{label}",
+        )
+    except ValueError as exc:
+        # The shared validator blames the embedding provider; persisted
+        # vectors are local data, so restate the fault neutrally.
+        raise ValueError(
+            f"stored vector in {label} failed validation: {_persisted_vector_fault(exc)}"
+        ) from exc
 
 
 def _iter_index_embedding_dicts(index: Any):
@@ -189,9 +203,11 @@ def _validate_persisted_embeddings(index: Any, storage_dir: Path | None = None) 
                 _validate_embedding_dict(embedding_dict, label=label)
     except ValueError as exc:
         raise ValueError(
-            "RAG index contains invalid embedding vectors. Re-index the "
-            "knowledge base with the current embedding provider/model before "
-            f"querying it again. Details: {exc}"
+            "RAG index contains invalid embedding vectors. Rebuild it with "
+            "the knowledge base's 'Re-index' action (Index versions → "
+            "Re-index) using the current embedding provider/model; "
+            "re-uploading documents reuses the damaged store and cannot "
+            f"repair it. Details: {exc}"
         ) from exc
 
 
