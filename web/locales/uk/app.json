@@ -5346,5 +5346,8 @@
   "Qwen-Audio TTS speed must be between 0.5 and 2.": "Швидкість Qwen-Audio TTS має бути від 0,5 до 2.",
   "Qwen3 TTS uses voices such as Cherry and outputs WAV audio. Match the API key region to the provider URL.": "Qwen3 TTS використовує голоси на кшталт Cherry та створює аудіо WAV. Регіон ключа API має відповідати URL провайдера.",
   "Qwen-Audio TTS requires a Beijing API key. You can set a Beijing workspace URL in the provider connection; the speech endpoint is selected automatically.": "Qwen-Audio TTS потребує ключа API для регіону Пекін. У підключенні провайдера можна задати URL робочого простору для регіону Пекін; кінцева точка мовлення вибирається автоматично.",
-  "Fetching the model list does not test speech synthesis. Use Preview voice to test this model and voice.": "Отримання списку моделей не перевіряє синтез мовлення. Скористайтеся попереднім прослуховуванням голосу, щоб перевірити модель і голос."
+  "Fetching the model list does not test speech synthesis. Use Preview voice to test this model and voice.": "Отримання списку моделей не перевіряє синтез мовлення. Скористайтеся попереднім прослуховуванням голосу, щоб перевірити модель і голос.",
+  "Focus reading companion": "Зосередитися на помічнику з читання",
+  "Resize contents navigator": "Змінити ширину змісту",
+  "Exit companion focus": "Вийти з режиму зосередження на помічнику"
 }
