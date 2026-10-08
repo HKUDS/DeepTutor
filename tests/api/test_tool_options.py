@@ -8,6 +8,7 @@ the legacy spelling that must keep working for clients built before them.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import pytest
@@ -160,6 +161,24 @@ async def test_unreadable_tool_is_skipped(stub_registry) -> None:
     # The non-MCP halves of the surface are unaffected.
     assert isinstance(payload["tools"], list)
     assert isinstance(payload["builtin_tools"], list)
+
+
+@pytest.mark.asyncio
+async def test_unreadable_tool_is_skipped_with_warning(stub_registry, caplog) -> None:
+    """A skipped tool must be named in a warning, not vanish silently."""
+    stub_registry([_BrokenTool("mcp_broken_thing"), _McpTool("mcp_notion_search", "notion")])
+
+    with caplog.at_level(logging.WARNING, logger="deeptutor.api.utils.tool_options"):
+        payload = await tool_options_mod.build_tool_options()
+
+    # The warning names the provider the tool came from and the failure reason.
+    warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert any(
+        "broken" in message and "server went away mid-listing" in message for message in warnings
+    ), warnings
+    # Good tools keep flowing and the return structure is unchanged.
+    assert [row["name"] for row in payload["mcp_tools"]] == ["mcp_notion_search"]
+    assert set(payload) == {"tools", "builtin_tools", "mcp_tools"}
 
 
 @pytest.mark.asyncio

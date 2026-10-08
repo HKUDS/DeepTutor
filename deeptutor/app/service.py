@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator
 import contextlib
+import hashlib
+import json
 import time
 from typing import Any
 
@@ -48,9 +50,41 @@ class TurnApplicationService:
             with workspace_context(payload.get("workspace_id")):
                 return await self.start_turn(payload)
         store, runtime = self._resolve()
+        reserve = getattr(store, "reserve_submission", None)
+        submission_turn = getattr(store, "submission_turn", None)
+        if (
+            request.client_submission_id
+            and request.persist_user_message
+            and not request.regenerate
+            and callable(reserve)
+            and callable(submission_turn)
+        ):
+            identity_payload = {
+                key: value
+                for key, value in payload.items()
+                if key not in {"session_id", "workspace_id"}
+            }
+            digest = hashlib.sha256(
+                json.dumps(identity_payload, sort_keys=True, default=str).encode()
+            ).hexdigest()
+            payload["session_id"] = await reserve(
+                request.client_submission_id, digest, request.session_id
+            )
+            prior = await submission_turn(request.client_submission_id)
+            if prior is not None and prior["status"] not in {"failed", "cancelled"}:
+                session = await store.get_session(payload["session_id"])
+                if session is None:
+                    raise RuntimeError("Conversation not found in this workspace.")
+                return session, prior
         try:
             session, turn = await runtime.start_turn(payload)
         except ActiveTurnConflict:
+            if request.client_submission_id and callable(reserve) and callable(submission_turn):
+                prior = await submission_turn(request.client_submission_id)
+                if prior is not None:
+                    session = await store.get_session(prior["session_id"])
+                    if session is not None:
+                        return session, prior
             # Retry once, and only after something was actually reclaimed, so a
             # session busy with a live turn still gets its conflict.
             session_id = str(payload.get("session_id") or "")
