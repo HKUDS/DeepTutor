@@ -97,6 +97,7 @@ function parseLocatorList(body: string): number[] {
     if (range) {
       let from = Number(range[1]);
       let to = Number(range[2]);
+      if (!Number.isSafeInteger(from) || !Number.isSafeInteger(to)) continue;
       if (from > to) [from, to] = [to, from];
       for (let n = from; n <= Math.min(to, from + MAX_RANGE_SPAN); n += 1) {
         if (n >= 1) found.add(n);
@@ -106,7 +107,7 @@ function parseLocatorList(body: string): number[] {
     const single = /^(\d+)$/.exec(piece);
     if (single) {
       const n = Number(single[1]);
-      if (n >= 1) found.add(n);
+      if (Number.isSafeInteger(n) && n >= 1) found.add(n);
     }
   }
   return [...found].sort((a, b) => a - b);
