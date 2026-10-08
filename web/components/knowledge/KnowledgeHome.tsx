@@ -1,5 +1,6 @@
 "use client";
 
+import { FeaturePage, PageHeader, pageActionClass, pageGridClass } from '@/components/layout/FeaturePage'
 import { knowledgeBaseRef } from "@/lib/knowledge-helpers";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -231,27 +232,21 @@ export default function KnowledgeHome({
   );
 
   return (
-    <div className="min-w-0 flex-1 overflow-y-auto bg-[var(--background)]">
-      <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-[19px] font-semibold tracking-tight text-[var(--foreground)]">
-              {t("Knowledge Center")}
-            </h1>
-            <p className="mt-1 text-[12.5px] text-[var(--muted-foreground)]">
-              {t("Manage your knowledge bases and retrieval engines.")}
-            </p>
-          </div>
+    <FeaturePage>
+        <PageHeader
+          title={t("Knowledge Center")}
+          description={t("Manage your knowledge bases and retrieval engines.")}
+          action={
           <button
             type="button"
             onClick={onCreate}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3.5 py-2 text-[12.5px] font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90"
+            className={pageActionClass()}
           >
             <Plus size={14} />
             {t("New knowledge base")}
           </button>
-        </div>
+          }
+        />
 
         <div
           role="tablist"
@@ -360,7 +355,7 @@ export default function KnowledgeHome({
                 {t("No matches")}
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className={pageGridClass(2)}>
                 {filteredKbs.map((kb) => {
                   const docs = kbDocCount(kb);
                   return (
@@ -429,7 +424,7 @@ export default function KnowledgeHome({
                   </p>
                 </div>
               </div>
-              <div className="grid grid-cols-1 items-stretch gap-3 md:grid-cols-2">
+              <div className={pageGridClass(2)}>
                 {groupedProviders.local.map(renderProvider)}
               </div>
             </section>
@@ -446,7 +441,7 @@ export default function KnowledgeHome({
                   </p>
                 </div>
               </div>
-              <div className="grid grid-cols-1 items-stretch gap-3 md:grid-cols-2">
+              <div className={pageGridClass(2)}>
                 {groupedProviders.server.map(renderProvider)}
               </div>
             </section>
@@ -463,7 +458,7 @@ export default function KnowledgeHome({
                   </p>
                 </div>
               </div>
-              <div className="grid grid-cols-1 items-stretch gap-3 md:grid-cols-2">
+              <div className={pageGridClass(2)}>
                 {groupedProviders.cloud.map(renderProvider)}
               </div>
             </section>
@@ -482,13 +477,12 @@ export default function KnowledgeHome({
                   </p>
                 </div>
               </div>
-              <div className="grid grid-cols-1 items-stretch gap-3 md:grid-cols-2">
+              <div className={pageGridClass(2)}>
                 {externalSources.map(renderExternalSource)}
               </div>
             </section>
           </div>
         )}
-      </div>
-    </div>
+    </FeaturePage>
   );
 }

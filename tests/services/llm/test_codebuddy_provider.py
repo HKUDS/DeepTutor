@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import shutil
 import sys
@@ -400,6 +401,98 @@ async def test_codebuddy_session_drains_interrupt_before_tool_result_round(monke
 
 
 @pytest.mark.asyncio
+async def test_codebuddy_interrupt_failure_after_tool_calls_logs_warning(
+    monkeypatch, caplog
+) -> None:
+    """A failed interrupt after tool_calls must warn, not vanish silently.
+
+    The SDK keeps generating in the background when interrupt() fails; without
+    a log the operator only sees the quota drain.
+    """
+
+    class FakeClient:
+        def __init__(self, options):
+            self.options = options
+            self.response_index = 0
+            self.interrupt_calls = 0
+
+        async def connect(self):
+            pass
+
+        async def query(self, _prompt):
+            self.response_index += 1
+
+        async def receive_response(self):
+            yield FakeAssistantMessage(
+                [
+                    FakeToolUseBlock(
+                        "tool-1",
+                        "mcp__deeptutor__web_search",
+                        {"query": "latest news"},
+                    )
+                ]
+            )
+
+        async def interrupt(self):
+            self.interrupt_calls += 1
+            raise RuntimeError("Authorization: Bearer fake-token; prompt=private-user-body")
+
+        async def disconnect(self):
+            pass
+
+    monkeypatch.setitem(
+        sys.modules,
+        "codebuddy_agent_sdk",
+        SimpleNamespace(
+            query=lambda **_kwargs: None,
+            CodeBuddyAgentOptions=FakeOptions,
+            CodeBuddySDKClient=FakeClient,
+            tool=fake_tool,
+            create_sdk_mcp_server=fake_mcp_server,
+        ),
+    )
+    provider = CodeBuddyProvider()
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "web_search",
+                "description": "Search the web",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        }
+    ]
+
+    with caplog.at_level(
+        logging.WARNING,
+        logger="deeptutor.services.llm.provider_core.codebuddy_provider",
+    ):
+        response = await provider.chat(
+            [{"role": "user", "content": "Search"}],
+            tools=tools,
+            deeptutor_session_id="chat-interrupt-fail",
+        )
+
+    assert response.finish_reason == "tool_calls"
+    assert len(response.tool_calls) == 1
+    warnings = [
+        r
+        for r in caplog.records
+        if r.levelno >= logging.WARNING
+        and r.name == "deeptutor.services.llm.provider_core.codebuddy_provider"
+    ]
+    assert any(
+        "interrupt" in r.getMessage().lower() and "RuntimeError" in r.getMessage() for r in warnings
+    ), [r.getMessage() for r in warnings]
+    assert "fake-token" not in caplog.text
+    assert "private-user-body" not in caplog.text
+    assert all(record.exc_info is None for record in warnings)
+    session = provider._sessions["chat-interrupt-fail"]
+    assert session.client.interrupt_calls == 1
+    await provider.aclose()
+
+
+@pytest.mark.asyncio
 async def test_fetch_codebuddy_models_uses_account_catalog(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
@@ -464,3 +557,20 @@ def test_codebuddy_ignores_deeptutor_no_key_placeholder() -> None:
 
 async def _append_async(items: list[str], text: str) -> None:
     items.append(text)
+
+
+@pytest.mark.asyncio
+async def test_interrupted_drain_logs_error_type_without_exception_body(caplog):
+    from deeptutor.services.llm.provider_core.codebuddy_provider import _drain_interrupted_response
+
+    async def broken_stream():
+        yield {"type": "intermediate"}
+        raise RuntimeError("Authorization: Bearer fake-token; prompt=private-user-body")
+
+    with caplog.at_level(logging.WARNING):
+        await _drain_interrupted_response(broken_stream())
+
+    assert "drain failed (RuntimeError)" in caplog.text
+    assert "fake-token" not in caplog.text
+    assert "private-user-body" not in caplog.text
+    assert all(record.exc_info is None for record in caplog.records)

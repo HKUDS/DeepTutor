@@ -3,12 +3,10 @@
 import { Fragment, useEffect, type ReactNode } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { resetReadingTurnState } from '@/lib/reading-turn-state'
-import { resetWatchingTurnState } from '@/lib/watching-turn-state'
 
 function ScopeLifetime({ children }: { children: ReactNode }) {
   useEffect(() => () => {
     resetReadingTurnState()
-    resetWatchingTurnState()
   }, [])
   return children
 }

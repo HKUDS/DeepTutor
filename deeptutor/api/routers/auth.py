@@ -97,6 +97,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 _COOKIE_NAME = "dt_token"
+AUTH_COOKIE_NAME = _COOKIE_NAME
 _COOKIE_MAX_AGE = TOKEN_EXPIRE_HOURS * 3600
 _USER_IMPORT_MAX_BYTES = 2 * 1024 * 1024
 _USER_IMPORT_MAX_ROWS = 500
@@ -496,7 +497,9 @@ def _install_request_workspace(request) -> None:
         catalog_management = library_request.get() or path.startswith(
             ("/api/skills", "/api/space/mcp")
         )
-        management = path.startswith(("/api/settings", "/api/auth", "/api/multi-user"))
+        management = path.startswith(
+            ("/api/settings", "/api/auth", "/api/multi-user", "/api/task-board")
+        )
         selected = install_workspace_scope(
             None if management or catalog_management else header if header is not None else query
         )
@@ -515,7 +518,10 @@ def _install_request_workspace(request) -> None:
         ):
             raise WorkspaceError("Restore this workspace before changing its data.")
         # Management/migration requests acquire their own exclusive lease.
-        if getattr(request, "method", None) is not None and not management:
+        task_board_request = path == "/api/task-board" or path.startswith("/api/task-board/")
+        if getattr(request, "method", None) is not None and (
+            not management or (task_board_request and path != "/api/task-board/events")
+        ):
             from deeptutor.services.workspace.activity import acquire_activity
 
             state = getattr(request, "state", None)
@@ -603,6 +609,8 @@ _LEARNER_KB_READ_ROUTES = frozenset(
         "/api/knowledge-bases/{kb_name}/files/{filename:path}",
         "/api/knowledge-bases/{kb_name}/file-preview-text/{filename:path}",
         "/api/knowledge-bases/{kb_name}/visual-assets/{asset_id}",
+        "/api/knowledge-bases/{kb_name}/indexing-run",
+        "/api/knowledge-bases/{kb_name}/indexing-readiness",
         "/api/knowledge-bases/{kb_name}/progress",
     }
 )
@@ -667,6 +675,11 @@ def _learning_surface_for_path(
     # admin-grade operations (catalog apply, data migration), so a plain
     # prefix match would open too much.
     if route_path and (method.upper(), route_path) in _LEARNER_SETTINGS_WRITE_ROUTES:
+        return "chat"
+    # Choosing the model for a chat turn is part of chat. The handler is
+    # already grant-filtered. Match this exact path only: a prefix of
+    # /api/settings would also open catalog writes on the same router (#1222).
+    if method.upper() == "GET" and normalized == "/api/settings/llm-options":
         return "chat"
     return ""
 
