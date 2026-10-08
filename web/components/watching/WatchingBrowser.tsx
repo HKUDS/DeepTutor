@@ -10,10 +10,8 @@ import {
   LearningSkeleton,
 } from '@/components/learning/LearningShell'
 
-import { WATCHING_HOME } from '@/lib/learning-routes'
 
 import { useEffect, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { useTranslation } from 'react-i18next'
 import { Search, Link2, Play, ListVideo, Rss, Loader2, ArrowLeft } from 'lucide-react'
 import { browserStorage } from '@/shared/storage'
@@ -32,16 +30,13 @@ type BrowserView = 'feed' | 'playlists' | 'search' | 'playlist'
 export function WatchingBrowser({
   onDismiss,
   canDismiss,
-  selectionMode = false,
   onSelectUrl,
 }: {
   onDismiss(): void
   canDismiss: boolean
-  selectionMode?: boolean
-  onSelectUrl?(url: string): void
+  onSelectUrl(url: string): void
 }) {
   const { t } = useTranslation()
-  const router = useRouter()
   const auth = useAuthStatus()
   const [account, setAccount] = useState<InvidiousAccountStatus | null>(null)
   const [view, setView] = useState<BrowserView>('search')
@@ -177,8 +172,7 @@ export function WatchingBrowser({
   }
   function select(url: string) {
     remember(scroll.current?.scrollTop || 0)
-    if (onSelectUrl) onSelectUrl(url)
-    else router.push(scopedUrl(`${WATCHING_HOME}?video=${encodeURIComponent(url)}`))
+    onSelectUrl(url)
     onDismiss()
   }
   return (
@@ -186,14 +180,14 @@ export function WatchingBrowser({
       <LearningShell
         scrollRef={scroll}
         onScroll={() => remember(scroll.current?.scrollTop || 0)}
-        title={t(selectionMode ? 'Browse Invidious' : 'Immersive Watching')}
-        subtitle={t(selectionMode ? 'Choose a video to add to this collection.' : 'Your videos, with room to learn.')}
+        title={t('Browse Invidious')}
+        subtitle={t('Choose a video to add to this collection.')}
         action={
           <div className="flex items-center gap-2 text-sm">
             {canDismiss && (
               <button className="watching-browser-button" onClick={onDismiss}>
                 <ArrowLeft size={16} />
-                {t(selectionMode ? 'Close' : 'Back to video')}
+                {t('Close')}
               </button>
             )}
             <button
