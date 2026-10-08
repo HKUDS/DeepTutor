@@ -549,16 +549,6 @@ class TurnRequestPreparer:
                     ],
                 }
         payload = {**payload, "llm_selection": llm_selection}
-        lease = None
-        if self.coordinator is not None:
-            turn_id = f"turn_{int(time.time() * 1000)}_{uuid.uuid4().hex[:10]}"
-            lease = await self.coordinator.acquire_turn(
-                turn_id,
-                f"{self._coordination_scope}:{session['id']}",
-                self.owner_id,
-            )
-            if lease is None:
-                raise RuntimeError("Session already has an active or recovering turn")
         preference_update: dict[str, Any] = {
             # Auto-routing is a one-turn execution choice; keep the durable
             # preference on what the caller explicitly selected.
@@ -673,9 +663,19 @@ class TurnRequestPreparer:
                     "reading_material_id": "",
                 }
             )
-        if not payload.get("preserve_session_preferences"):
-            await self.store.update_session_preferences(session["id"], preference_update)
+        lease = None
+        if self.coordinator is not None:
+            turn_id = f"turn_{int(time.time() * 1000)}_{uuid.uuid4().hex[:10]}"
+            lease = await self.coordinator.acquire_turn(
+                turn_id,
+                f"{self._coordination_scope}:{session['id']}",
+                self.owner_id,
+            )
+            if lease is None:
+                raise RuntimeError("Session already has an active or recovering turn")
         try:
+            if not payload.get("preserve_session_preferences"):
+                await self.store.update_session_preferences(session["id"], preference_update)
             if lease is None:
                 turn = await self.store.create_turn(session["id"], capability=capability)
             else:
