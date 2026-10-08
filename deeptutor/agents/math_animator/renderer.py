@@ -13,6 +13,7 @@ from typing import Awaitable, Callable
 from deeptutor.services.path_service import get_path_service
 
 from .models import RenderedArtifact, RenderResult
+from .narration import NarrationService
 from .utils import build_repair_error_message, slugify_filename, trim_error_message
 
 YON_IMAGE_PATTERN = re.compile(
@@ -40,6 +41,7 @@ class ManimRenderService:
         *,
         output_dir: str | Path | None = None,
         workspace_root: str | Path | None = None,
+        language: str = "zh",
     ) -> None:
         self.turn_id = turn_id
         self.progress_callback = progress_callback
@@ -56,6 +58,7 @@ class ManimRenderService:
         self.meta_dir = self.base_dir / "meta"
         for path in (self.source_dir, self.artifacts_dir, self.media_dir, self.meta_dir):
             path.mkdir(parents=True, exist_ok=True)
+        self.narration = NarrationService(self.base_dir / "audio", language)
 
     async def render(self, *, code: str, output_mode: str, quality: str) -> RenderResult:
         await self._emit_progress(f"Preparing {output_mode} render workspace (quality={quality}).")
@@ -80,10 +83,16 @@ class ManimRenderService:
         )
 
     async def _render_video(self, *, code_path: Path, quality: str) -> RenderedArtifact:
+        code = code_path.read_text(encoding="utf-8")
+        narrated_code = await self.narration.prepare(code, progress=self._emit_progress)
+        render_path = code_path
+        if narrated_code != code:
+            render_path = self.source_dir / "scene_narrated.py"
+            render_path.write_text(narrated_code, encoding="utf-8")
         scene_name = self._extract_scene_name(code_path.read_text(encoding="utf-8"))
         await self._emit_progress(f"Launching Manim scene `{scene_name}`.")
         await self._run_manim(
-            code_path=code_path, scene_name=scene_name, quality=quality, save_last_frame=False
+            code_path=render_path, scene_name=scene_name, quality=quality, save_last_frame=False
         )
         video_file = self._find_rendered_file(".mp4")
         target_name = slugify_filename(f"{self.turn_id}-{scene_name}.mp4", f"{self.turn_id}.mp4")
