@@ -59,7 +59,15 @@ class ScopedToolRegistry:
         self._overlay: dict[str, BaseTool] = {}
         for tool in overlay:
             name = tool.name
-            if self._base.get(name) is not None:
+            existing = self._base.get(name)
+            same_shared_mcp = (
+                existing is not None
+                and getattr(existing, "provider_kind", "") == "mcp"
+                and getattr(tool, "provider_kind", "") == "mcp"
+                and getattr(existing, "owner", None) == getattr(tool, "owner", None) == "_shared"
+                and getattr(existing, "provider_id", None) == getattr(tool, "provider_id", None)
+            )
+            if existing is not None and not same_shared_mcp:
                 # Two tenants must never resolve one name. The write paths
                 # refuse colliding server names, so reaching here means a
                 # guard upstream is missing — drop the overlay entry rather

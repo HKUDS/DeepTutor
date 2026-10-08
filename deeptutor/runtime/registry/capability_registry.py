@@ -11,8 +11,8 @@ import warnings
 from pydantic import BaseModel
 
 from deeptutor.core.capability_protocol import TurnCapability
-from deeptutor.core.entry_points import load_entry_point_group
 from deeptutor.i18n.metadata_i18n import capability_description_i18n
+from deeptutor.plugins.entry_points import load_entry_point_group
 from deeptutor.runtime.bootstrap.builtin_capabilities import BUILTIN_CAPABILITY_SPECS
 from deeptutor.runtime.capability_catalog import (
     CapabilityCatalog,
@@ -45,7 +45,7 @@ def _turn_factory(loaded: object) -> tuple[TurnCapability, type[TurnCapability]]
             factory = produced
         else:
             instance = produced
-            factory = type(produced)
+            factory = obj
     else:
         instance = obj
         factory = type(obj)
@@ -107,7 +107,11 @@ class CapabilityRegistry:
             if resolved is None:
                 return None
             instance, _factory = resolved
-            if self.catalog.get("turn", instance.name) is not None:
+            existing = self.catalog.get("turn", instance.name)
+            if (
+                existing is not None
+                and getattr(existing.factory, "_plugin_allowed", lambda: True)()
+            ):
                 logger.warning("Turn extension %s is already registered; ignoring", ep_name)
                 return None
             self.register(loaded)
@@ -138,14 +142,39 @@ class CapabilityRegistry:
             logger.debug("Legacy plugin loader unavailable", exc_info=True)
 
     def get(self, name: str) -> TurnCapability | None:
+        if name not in BUILTIN_CAPABILITY_SPECS:
+            from deeptutor.plugins.registry import PluginRegistry
+            from deeptutor.plugins.runtime import PluginWorkerCapability, runtime_plugin_records
+
+            for record in runtime_plugin_records(PluginRegistry()):
+                if (
+                    record.status != "enabled"
+                    or record.manifest is None
+                    or record.installation is None
+                ):
+                    continue
+                if any(
+                    extension.type == "capability" and extension.id == name
+                    for extension in record.manifest.extensions
+                ):
+                    return PluginWorkerCapability(
+                        manifest=record.manifest,
+                        installation=record.installation,
+                        extension_id=name,
+                    )
+        if name not in BUILTIN_CAPABILITY_SPECS:
+            self.load_plugins()
+        entry = self.catalog.get("turn", name)
+        if entry is not None and not getattr(entry.factory, "_plugin_allowed", lambda: True)():
+            return None
         capability = self.catalog.create("turn", name)
         return capability if isinstance(capability, TurnCapability) else None
 
     def list_capabilities(self) -> list[str]:
-        return [entry.name for entry in self.catalog.entries("turn")]
+        return [manifest["name"] for manifest in self.get_manifests()]
 
     def get_manifests(self) -> list[dict[str, Any]]:
-        return [
+        manifests = [
             {
                 "name": entry.name,
                 "kind": entry.kind,
@@ -161,7 +190,32 @@ class CapabilityRegistry:
                 "config_defaults": entry.manifest.config_defaults,
             }
             for entry in self.catalog.entries("turn")
+            if getattr(entry.factory, "_plugin_allowed", lambda: True)()
         ]
+        from deeptutor.plugins.runtime import runtime_plugin_records
+
+        known = {row["name"] for row in manifests}
+        for record in runtime_plugin_records():
+            if record.status != "enabled" or record.manifest is None:
+                continue
+            for extension in record.manifest.extensions:
+                if extension.type != "capability" or extension.id in known:
+                    continue
+                manifests.append(
+                    {
+                        "name": extension.id,
+                        "kind": "turn",
+                        "description": record.description,
+                        "description_i18n": dict(record.manifest.description_i18n),
+                        "stages": [],
+                        "tools_used": [],
+                        "cli_aliases": [],
+                        "request_schema": EmptyConfig.model_json_schema(mode="validation"),
+                        "config_defaults": {},
+                    }
+                )
+                known.add(extension.id)
+        return manifests
 
 
 _default_registry: CapabilityRegistry | None = None

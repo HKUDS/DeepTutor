@@ -725,11 +725,16 @@ class AgenticLoopPipeline:
 
     def _compose_enabled_tools(self, context: UnifiedContext) -> list[str]:
         is_partner = self._is_partner_turn(context)
+        from deeptutor.tools.research_tools import scientific_context
+
         composed = compose_enabled_tools(
             registry=self.tool_lookup,
             requested_tools=context.enabled_tools,
             optional_whitelist=LOOP_OPTIONAL_TOOLS,
             mount_flags=ToolMountFlags(
+                has_scientific_research=scientific_context(
+                    context.user_message, context.active_capability, context.enabled_tools or []
+                ),
                 # PageIndex KBs are read via the preloaded MCP tools, not rag —
                 # a conversation with only PageIndex KBs doesn't mount rag at all.
                 # Excludes KBs owned by an exclusive capability (an Obsidian vault
@@ -1349,8 +1354,11 @@ class AgenticLoopPipeline:
             sandbox_user_id=self._current_user_id(),
         )
         task_dir = Path(runtime_workspace.output_dir) if runtime_workspace is not None else task_dir
-        if tool_name == "rag":
-            kwargs.setdefault("mode", "hybrid")
+        if tool_name in {"rag", "preprint"}:
+            if tool_name == "rag":
+                kwargs.setdefault("mode", "hybrid")
+            else:
+                kwargs["_research_registry"] = self.tool_lookup
             from deeptutor.services.llm.capabilities import supports_vision
 
             kwargs["_vision_supported"] = supports_vision(

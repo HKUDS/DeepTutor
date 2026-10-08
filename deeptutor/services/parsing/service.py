@@ -101,7 +101,35 @@ class ParseService:
         supported = get_parser(engine_name).supported_formats()
         return not supported or _matches_supported_format(source_path, supported)
 
-    def parse(
+    def parse(self, source_path: str | Path, *, engine=None, on_output=None) -> ParsedDocument:
+        from deeptutor.knowledge.indexing_run import _redact, current_run, failure_code
+
+        run = current_run()
+        source = Path(source_path)
+        if run:
+            run.phase("parsing", source=source)
+            run.document(source, "parsing")
+
+        def output(line):
+            if run:
+                run.phase("parsing", source=source, activity=line)
+            if on_output:
+                on_output(line)
+
+        try:
+            result = self._parse(source, engine=engine, on_output=output)
+            if run:
+                run.check()
+                run.document(
+                    source, "parsed", parser=result.engine, parser_signature=result.parser_signature
+                )
+            return result
+        except Exception as exc:
+            if run:
+                run.document(source, "failed", reason=failure_code(exc), detail=_redact(str(exc)))
+            raise
+
+    def _parse(
         self,
         source_path: str | Path,
         *,
@@ -161,6 +189,10 @@ class ParseService:
                 markdown, blocks, asset_dir = "", None, None
             if markdown.strip() or blocks:
                 logger.info("Parse cache hit for %s (%s/%s)", source_path.name, engine_name, sig)
+                from deeptutor.knowledge.indexing_run import current_run
+
+                if run := current_run():
+                    run.document(source_path, "parsed", parse_reused=True)
                 return ParsedDocument(
                     markdown=markdown,
                     blocks=blocks,
