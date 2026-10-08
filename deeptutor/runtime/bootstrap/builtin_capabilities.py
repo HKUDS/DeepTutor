@@ -43,7 +43,6 @@ BUILTIN_CAPABILITY_CLASSES: dict[str, str] = {
     "mastery_path": "deeptutor.capabilities.mastery.capability:MasteryPathCapability",
     "immersive_reading": "deeptutor.capabilities.reading.mode:ImmersiveReadingCapability",
     "course_study": "deeptutor.capabilities.course_study.mode:CourseStudyCapability",
-    "immersive_watching": "deeptutor.capabilities.watching.mode:ImmersiveWatchingCapability",
     "audio_overview": ("deeptutor.capabilities.audio_overview.capability:AudioOverviewCapability"),
 }
 
@@ -112,7 +111,15 @@ BUILTIN_CAPABILITY_SPECS: dict[str, BuiltinCapabilitySpec] = {
             "deep_research",
             "Agentic-loop deep research with iterative report generation.",
             stages=["rephrasing", "decomposing", "researching", "reporting"],
-            tools_used=["rag", "web_search", "paper_search", "exec"],
+            tools_used=[
+                "rag",
+                "web_search",
+                "paper_search",
+                "preprint",
+                "research_audit",
+                "research_lit",
+                "exec",
+            ],
             cli_aliases=["research"],
         ),
     ),
@@ -167,6 +174,7 @@ BUILTIN_CAPABILITY_SPECS: dict[str, BuiltinCapabilitySpec] = {
             tools_used=[
                 "mastery_status",
                 "mastery_quiz",
+                "mastery_note_explained",
                 "mastery_grade",
                 "mastery_skip_question",
                 "mastery_repair_question",
@@ -225,16 +233,6 @@ BUILTIN_CAPABILITY_SPECS: dict[str, BuiltinCapabilitySpec] = {
                 "reason",
             ],
             cli_aliases=["course"],
-        ),
-    ),
-    "immersive_watching": BuiltinCapabilitySpec(
-        BUILTIN_CAPABILITY_CLASSES["immersive_watching"],
-        _manifest(
-            "immersive_watching",
-            "Learn alongside a YouTube video with timestamp-grounded tutoring.",
-            stages=["responding"],
-            tools_used=["web_search", "exec", "reason"],
-            cli_aliases=["watching", "watch"],
         ),
     ),
     "audio_overview": BuiltinCapabilitySpec(

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="FutureInfra">
+  <!-- 파비콘은 16px 에서 알아볼 수 있어야 한다. 획을 최소로.
+       터미널 프롬프트(>_) = 손으로 치는 인프라. 헤더 로고의 마크와 같은 그림이다
+       (2026-09-14 로고 교체). 두 벌로 두면 어느 날 한쪽만 바뀐다. -->
+  <rect width="32" height="32" rx="7.5" fill="#E11D48"/>
+  <g fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M10 11.5 14.5 16 10 20.5"/>
+    <path d="M17.5 21.5h5"/>
+  </g>
+</svg>

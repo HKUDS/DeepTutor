@@ -96,7 +96,6 @@ export default function QuestionBankSection({
     <div className="space-y-3">
       {!embedded && (
         <SpaceSectionHeader
-          icon={ClipboardList}
           title={t("Question Bank")}
           description={t(
             "Review and organize quiz questions across sessions. Bookmark items, group them into categories, and jump back to the original chat.",
