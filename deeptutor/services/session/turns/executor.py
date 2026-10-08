@@ -51,8 +51,6 @@ from .._turn_runtime_shared import (
     _retracted_round_call_id,
     _should_capture_assistant_content,
     _stamp_content_offset,
-    _timed_media_id,
-    _timed_media_viewport,
     _topic_material_manifest,
     _TurnExecution,
     _workspace_mode,
@@ -240,6 +238,7 @@ class TurnExecutor:
             from deeptutor.agents.notebook import NotebookAnalysisAgent
             from deeptutor.book.context import build_book_context
             from deeptutor.core.context import Attachment, TurnRuntimeContext, UnifiedContext
+            from deeptutor.services.learning_journal import get_learning_journal_store
             from deeptutor.services.memory import get_memory_store
             from deeptutor.services.model_selection.runtime import (
                 activate_llm_selection,
@@ -561,6 +560,15 @@ class TurnExecutor:
             )
             memory_store = get_memory_store()
             memory_context = memory_store.read_l3_concat() if memory_references else ""
+
+            # One snapshot per turn; selected-text tutoring stays independent
+            # of an unrelated mission from earlier conversations (#1407).
+            learning_journal_context = ""
+            if not selection_tutor_context:
+                try:
+                    learning_journal_context = get_learning_journal_store().injection_markdown()
+                except (OSError, ValueError):
+                    logger.exception("Unable to read the learning journal; preserving its file")
 
             # Persona: at most one behaviour preset per turn, eagerly
             # injected (a persona must shape the voice from the first
@@ -887,6 +895,17 @@ class TurnExecutor:
                     **parent_kwargs,
                 )
 
+            if not selection_tutor_context:
+                from deeptutor.services.task_board import get_task_board_store
+                from deeptutor.services.workspace.context import current_workspace_id
+
+                task_context = await asyncio.to_thread(
+                    get_task_board_store(migrate_legacy=False).context_text,
+                    current_workspace_id(),
+                    session_id,
+                )
+                source_manifest_text += task_context
+
             context = UnifiedContext(
                 session_id=session_id,
                 user_message=effective_user_message,
@@ -901,6 +920,7 @@ class TurnExecutor:
                 config_overrides=request_config,
                 language=payload.get("language", "en"),
                 memory_context=memory_context,
+                learning_journal_context=learning_journal_context,
                 persona_context=persona_context,
                 sidebar_context=sidebar_system_context,
                 skills_manifest=skills_manifest,
@@ -967,10 +987,6 @@ class TurnExecutor:
                     ),
                     "immersive_reading_mode": workspace_mode == WORKSPACE_MODE_READING,
                     "reading_viewport": _reading_viewport(payload.get("reading_viewport")),
-                    "timed_media_id": _timed_media_id(payload.get("timed_media_id")),
-                    "timed_media_viewport": _timed_media_viewport(
-                        payload.get("timed_media_viewport")
-                    ),
                     "book_context": book_context,
                     "book_context_warnings": book_context_result.warnings,
                     "memory_references": memory_references,
@@ -1158,10 +1174,13 @@ class TurnExecutor:
             # Attach the persisted row ids so the frontend can reconcile its
             # optimistic (negative) message ids with a targeted in-place swap
             # instead of refetching and re-rendering the whole session.
+            accepted_user_message_id = new_user_message_id
+            if accepted_user_message_id is None and is_regenerate:
+                accepted_user_message_id = payload.get("regenerated_from_message_id")
             persisted_ids = {
                 key: value
                 for key, value in (
-                    ("user_message_id", new_user_message_id),
+                    ("user_message_id", accepted_user_message_id),
                     ("assistant_message_id", assistant_message_id),
                 )
                 if value

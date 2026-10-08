@@ -21,12 +21,15 @@ import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 
+import httpx
+
 from deeptutor.runtime.home import get_runtime_data_root
 from deeptutor.services.rag.provider_binding import load_kb_config_entry
 
 from . import media as media_ops
 from . import sources as source_policy
 from .config import ImaNotConfiguredError, resolve_kb_config
+from .envelope import ImaAuthError, ImaRateLimitError
 
 logger = logging.getLogger(__name__)
 
@@ -78,14 +81,33 @@ class ImaPipeline:
             client = self._client(config)
             page = await client.search_knowledge(query, limit=self._top_k(kwargs))
         except Exception as exc:
-            self.logger.error("IMA search failed for '%s': %s", kb_name, exc)
+            self.logger.error("IMA search failed for '%s' (%s)", kb_name, type(exc).__name__)
             return self._error_result(query, exc, error_type="retrieval_error")
 
         matched = source_policy.documents_to_sources(page.documents)
-        await self._hydrate(client, matched)
+        hydration_failures = await self._hydrate(client, matched)
         # A title match without a snippet or readable media is useful for
         # hydration, but it is not evidence that the rag tool may cite (#1500).
         sources = [source for source in matched if str(source.get("content") or "").strip()]
+        diagnostics = {
+            "knowledge_base": kb_name,
+            "matched_documents": len(matched),
+            "readable_documents": len(sources),
+            "unreadable_documents": len(matched) - len(sources),
+            "unverified_documents": page.unverified_documents + len(page.documents) - len(matched),
+            "hydration_failures": hydration_failures,
+        }
+        if diagnostics["unverified_documents"] and not matched:
+            return {
+                "query": query,
+                "answer": "Tencent IMA returned matches without usable source identifiers. No source passage could be verified.",
+                "content": "",
+                "sources": [],
+                "provider": PROVIDER,
+                "error_type": "unverified_sources",
+                "retrieval_status": "unverified_sources",
+                "diagnostics": diagnostics,
+            }
         if matched and not sources:
             return {
                 "query": query,
@@ -97,17 +119,33 @@ class ImaPipeline:
                 "sources": [],
                 "provider": PROVIDER,
                 "error_type": "content_unavailable",
+                "retrieval_status": "content_unavailable",
+                "diagnostics": diagnostics,
             }
         content = source_policy.render_context(sources)
+        status = "ready"
+        if not matched:
+            status = "no_matches"
+            content = f"Tencent IMA returned no matching passages for this query in '{kb_name}'."
+        elif (
+            len(sources) < len(matched) or hydration_failures or diagnostics["unverified_documents"]
+        ):
+            status = "partial"
+            content += (
+                "\n\nSome IMA matches could not be read in full. Use only the returned "
+                "passages as evidence; do not invent missing source text or locations."
+            )
         return {
             "query": query,
             "answer": content,
             "content": content,
             "sources": sources,
             "provider": PROVIDER,
+            "retrieval_status": status,
+            "diagnostics": diagnostics,
         }
 
-    async def _hydrate(self, client, sources: list[dict[str, Any]]) -> None:
+    async def _hydrate(self, client, sources: list[dict[str, Any]]) -> list[dict[str, str]]:
         """Replace thin or missing snippets with real source text, concurrently.
 
         Each fetch is independent, so they run together — a search that needs
@@ -117,11 +155,12 @@ class ImaPipeline:
         """
         targets = source_policy.hydration_targets(sources)
         if not targets:
-            return
+            return []
         results = await asyncio.gather(
             *(self._fetch_text(client, sources[index]) for index in targets),
             return_exceptions=True,
         )
+        failures = []
         for index, result in zip(targets, results):
             if isinstance(result, BaseException):
                 # HTTP errors may embed a signed COS URL; log only the error
@@ -131,8 +170,16 @@ class ImaPipeline:
                     sources[index]["chunk_id"],
                     type(result).__name__,
                 )
+                failures.append(
+                    {"source_id": sources[index]["chunk_id"], "error_type": type(result).__name__}
+                )
             elif result:
                 sources[index]["content"] = result
+            else:
+                failures.append(
+                    {"source_id": sources[index]["chunk_id"], "error_type": "content_unavailable"}
+                )
+        return failures
 
     @staticmethod
     async def _fetch_text(client, source: dict[str, Any]) -> str:
@@ -144,13 +191,29 @@ class ImaPipeline:
         )
 
     def _error_result(self, query: str, exc: Exception, *, error_type: str) -> Dict[str, Any]:
+        # #1500: preserve observable failure classes without exposing signed
+        # media URLs or credentials carried by transport exceptions.
+        message = str(exc)
+        if isinstance(exc, ImaAuthError):
+            error_type = "authentication_error"
+            message = "Tencent IMA rejected the credentials or library access. Check this account's IMA connection and permissions."
+        elif isinstance(exc, ImaRateLimitError):
+            error_type = "rate_limited"
+            message = "Tencent IMA rate limit reached. Wait before retrying this search."
+        elif isinstance(exc, httpx.TimeoutException):
+            error_type = "timeout"
+            message = "Tencent IMA did not respond in time. Retry the search."
+        elif isinstance(exc, httpx.TransportError):
+            error_type = "network_error"
+            message = "Tencent IMA could not be reached. Check the connection and retry."
         return {
             "query": query,
-            "answer": str(exc),
+            "answer": message,
             "content": "",
             "sources": [],
             "provider": PROVIDER,
             "error_type": error_type,
+            "retrieval_status": "failed",
         }
 
     # ----- indexing (not applicable — owned by IMA) ------------------------

@@ -184,6 +184,20 @@ class CodexCredentialStore:
         with self._locked():
             return int(self._read_state_unlocked()["generation"])
 
+    def mark_authentication_rejected(self, generation: int) -> None:
+        """Remember a rejected grant across turns, workers and restarts (#1454)."""
+        with self._locked():
+            state = self._read_state_unlocked()
+            if state["generation"] != generation:
+                return  # an old request must never invalidate a newly signed-in session
+            _atomic_write_json(self.state_path, {**state, "rejected_generation": generation})
+
+    def authentication_rejected(self, generation: int) -> bool:
+        with self._locked():
+            state = self._read_state_unlocked()
+            rejected = state.get("rejected_generation")
+            return type(rejected) is int and rejected == generation == state["generation"]
+
     def load_credentials(self) -> CodexCredentials | None:
         with self._locked():
             state_generation = int(self._read_state_unlocked()["generation"])
@@ -220,6 +234,7 @@ class CodexCredentialStore:
                 "schema_version": _SCHEMA_VERSION,
                 "generation": next_generation,
             }
+            next_state.pop("rejected_generation", None)
             _atomic_write_json(self.state_path, next_state)
             _atomic_write_json(self.credentials_path, committed.to_dict())
             return committed
@@ -231,6 +246,7 @@ class CodexCredentialStore:
             if expected_generation is not None and current_generation != expected_generation:
                 raise self._generation_changed()
             next_generation = current_generation + 1
+            state.pop("rejected_generation", None)
             _atomic_write_json(
                 self.state_path,
                 {

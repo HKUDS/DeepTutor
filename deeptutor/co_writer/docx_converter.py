@@ -9,9 +9,12 @@ from __future__ import annotations
 
 from collections import deque
 from io import BytesIO
+import logging
 import re
 from typing import Any, Iterator
 import zipfile
+
+logger = logging.getLogger(__name__)
 
 _OOXML_MAGIC = b"PK\x03\x04"
 _OLE_MAGIC = b"\xd0\xcf\x11\xe0"
@@ -60,6 +63,8 @@ _MD_QUOTE_RE = re.compile(r"^>\s?(.*)$")
 _MD_HR_RE = re.compile(r"^(-{3,}|\*{3,}|_{3,})$")
 _MD_TABLE_SEP_RE = re.compile(r"^\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$")
 _MD_FENCE_RE = re.compile(r"^```")
+
+_UNPARSEABLE_ROW_CELL = "(unparseable row)"
 _INLINE_RE = re.compile(
     r"\[(?P<link_text>[^\]\n]*)\]\((?P<link_href>[^)\s]*)\)"
     r"|`(?P<code>[^`\n]+)`"
@@ -120,7 +125,14 @@ def docx_to_markdown(data: bytes, filename: str = "document.docx") -> str:
         docx = _docx_module()
         document = docx.Document(BytesIO(data))
         numbering = _numbering_formats(document)
-        blocks = [_block_to_markdown(block, numbering) for block in _iter_blocks(document)]
+        tables_seen = 0
+        blocks = []
+        for block in _iter_blocks(document):
+            table_ordinal = None
+            if type(block).__name__ == "Table":
+                table_ordinal = tables_seen
+                tables_seen += 1
+            blocks.append(_block_to_markdown(block, numbering, table_ordinal))
         markdown = _join_blocks(blocks)
     except DocxConversionError:
         raise
@@ -223,9 +235,13 @@ def _iter_blocks(document: Any) -> Iterator[Any]:
             yield docx.table.Table(child, document)
 
 
-def _block_to_markdown(block: Any, numbering: dict[tuple[str, str], str]) -> str:
+def _block_to_markdown(
+    block: Any,
+    numbering: dict[tuple[str, str], str],
+    table_ordinal: int | None = None,
+) -> str:
     if type(block).__name__ == "Table":
-        return _table_to_markdown(block)
+        return _table_to_markdown(block, table_ordinal)
     return _paragraph_to_markdown(block, numbering)
 
 
@@ -348,12 +364,21 @@ def _run_to_markdown(run: Any) -> str:
     return out
 
 
-def _table_to_markdown(table: Any) -> str:
+def _table_to_markdown(table: Any, table_ordinal: int | None = None) -> str:
     rows: list[list[str]] = []
-    for row in table.rows:
+    for row_index, row in enumerate(table.rows):
         try:
             cells = [_cell_text(cell) for cell in row.cells]
-        except Exception:
+        except Exception as exc:
+            where = f"row #{row_index + 1}"
+            if table_ordinal is not None:
+                where = f"table #{table_ordinal + 1} {where}"
+            logger.warning(
+                "DOCX %s could not be parsed; kept a placeholder row (%s)",
+                where,
+                exc,
+            )
+            rows.append([_UNPARSEABLE_ROW_CELL])
             continue
         if any(cell.strip() for cell in cells):
             rows.append(cells)
