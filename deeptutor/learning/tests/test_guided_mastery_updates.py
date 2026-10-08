@@ -397,6 +397,53 @@ def test_qualitative_live_state_matches_evidence_replay(tmp_path, monkeypatch):
     assert live.model_dump() == pytest.approx(replayed.model_dump())
 
 
+def test_record_qualitative_multi_turn_repair_does_not_compound_lapses(tmp_path, monkeypatch):
+    """Regression test for #1781 through LearningService.record_qualitative_in_memory."""
+    store = LearningStore(root=tmp_path)
+    service = LearningService(store)
+    scheduler = SpacedRepetitionScheduler()
+    progress = _make_progress()
+    moment = [1_700_000_000.0]
+    monkeypatch.setattr("deeptutor.learning.service.time.time", lambda: moment[0])
+
+    # Turn 1: initial incomplete explanation
+    service.record_qualitative_in_memory(
+        progress, "kp1", passed=False, evidence="incomplete concept", scheduler=scheduler
+    )
+    state = progress.repetition_states["kp1"]
+    assert state.lapse_count == 1
+    assert state.review_count == 1
+    stability_after_fail = state.stability
+    due_after_fail = state.next_review_at
+
+    # Turn 2: 3 minutes later, formative clarification still incomplete
+    moment[0] += 3 * 60
+    service.record_qualitative_in_memory(
+        progress, "kp1", passed=False, evidence="partial clarification", scheduler=scheduler
+    )
+    assert state.lapse_count == 1
+    assert state.review_count == 2
+    assert state.stability == stability_after_fail
+    assert state.next_review_at == due_after_fail
+
+    # Turn 3: 7 minutes from start, completed explanation
+    moment[0] += 4 * 60
+    service.record_qualitative_in_memory(
+        progress, "kp1", passed=True, evidence="complete explanation", scheduler=scheduler
+    )
+    assert progress.qualitative_mastery["kp1"] is True
+    assert progress.mastery_levels["kp1"] == 1.0
+    assert state.lapse_count == 1
+    assert state.review_count == 3
+    assert state.stability == stability_after_fail
+    assert state.next_review_at == due_after_fail
+    assert state.retrievability == 1.0
+
+    # Ensure replay produces the exact same state
+    replayed = scheduler.replay(KnowledgeType.CONCEPT, progress.learning_evidence)
+    assert state.model_dump() == pytest.approx(replayed.model_dump())
+
+
 def test_grade_and_record_retry_correct_uses_weaker_quality(tmp_path):
     store = LearningStore(root=tmp_path)
     service = LearningService(store)

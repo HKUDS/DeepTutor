@@ -108,6 +108,7 @@ class AssessmentRecord(BaseModel):
     created_at: float = Field(default_factory=time.time)
     updated_at: float = Field(default_factory=time.time)
     bookmarked: bool = False
+    visual_context: dict[str, Any] = Field(default_factory=dict)
     resolved: bool | None = None
     attempt_id: str = ""
 

@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 import { ChatMessageList } from '@/features/chat/messages'
 import type { StreamEvent } from '@/features/chat/model/protocol'
 import { compactTracePreview } from '@/features/chat/trace/memory'
-import { WatchingProvider } from '@/context/WatchingContext'
 import { initI18n } from '@/i18n/init'
 
 initI18n('en')
@@ -57,14 +56,14 @@ function lessonEvents(extraTool: boolean, legacyCard: boolean): StreamEvent[] {
 
 function conversation(events: StreamEvent[], isStreaming: boolean) {
   return (
-    <WatchingProvider>
+
       <ChatMessageList
         messages={[{ id: 1, role: 'assistant', content: preamble + teaching, parentMessageId: null, events }]}
         isStreaming={isStreaming}
         onCopyAssistantMessage={async () => undefined}
         onRegenerateMessage={() => undefined}
       />
-    </WatchingProvider>
+
   )
 }
 

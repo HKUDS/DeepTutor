@@ -100,6 +100,26 @@ def _launch_restart(job: UpdateJob, *, log_path: Path) -> None:
         )
 
 
+def _log_aborted_recovery(
+    store: UpdateJobStore, *, original: Exception, load_error: Exception
+) -> None:
+    """Leave a durable record when recovery cannot even read the job state."""
+
+    message = (
+        "update worker: recovery aborted; update state could not be loaded "
+        f"({type(load_error).__name__}: {load_error}). "
+        f"Original failure: {type(original).__name__}: {original}. "
+        "The job state was left untouched; inspect it before restarting DeepTutor.\n"
+    )
+    try:
+        with store.log_path.open("a", encoding="utf-8") as log:
+            log.write(message)
+    except OSError:
+        # The launcher redirects worker stderr into this same log file; if the
+        # file itself is unreachable there is nowhere durable left to report.
+        print(message, file=sys.stderr)
+
+
 def run_update_worker(
     *,
     store_root: Path,
@@ -134,6 +154,13 @@ def run_update_worker(
     except Exception as exc:
         try:
             current = store.load()
+        except Exception as load_error:
+            # Corrupt or unreadable state: both mark_failed and the trusted
+            # restart vector come from it, so record why and skip this round
+            # instead of exiting silently.
+            _log_aborted_recovery(store, original=exc, load_error=load_error)
+            return 1
+        try:
             if current.status not in {"succeeded", "failed"}:
                 current = store.mark_failed(current.id, str(exc) or type(exc).__name__)
             if current.restart_home and current.restart_argv:
