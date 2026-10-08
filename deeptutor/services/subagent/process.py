@@ -89,11 +89,20 @@ async def stream_process_lines(
             await queue.put(None)
             return
         try:
+            pending = bytearray()
             while True:
-                raw = await stream.readline()
+                # JSONL backends can emit whole answers or tool results in one
+                # frame, exceeding StreamReader.readline's default 64 KiB limit.
+                raw = await stream.read(65536)
                 if not raw:
                     break
-                await queue.put((channel, raw.decode("utf-8", "replace").rstrip("\r\n")))
+                pending.extend(raw)
+                while (boundary := pending.find(b"\n")) != -1:
+                    line = bytes(pending[:boundary])
+                    del pending[: boundary + 1]
+                    await queue.put((channel, line.decode("utf-8", "replace").rstrip("\r\n")))
+            if pending:
+                await queue.put((channel, pending.decode("utf-8", "replace").rstrip("\r\n")))
         except Exception:  # pragma: no cover - defensive: a broken pipe must not hang the queue
             logger.debug("subagent %s pump failed", channel, exc_info=True)
         finally:
