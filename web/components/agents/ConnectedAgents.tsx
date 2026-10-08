@@ -1,5 +1,6 @@
 "use client";
 
+import { pageActionClass, pageGridClass } from '@/components/layout/FeaturePage'
 import Tooltip from "@/shared/ui/Tooltip";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -97,7 +98,6 @@ export default function ConnectedAgents() {
   return (
     <section className="space-y-4">
       <SpaceSectionHeader
-        icon={Plug}
         title={tr({ zh: "连接的智能体", en: "Connected agents" })}
         description={tr({
           zh: "把本机智能体或已配置的远程 Hermes 网关接进来，在对话中选中后直接向它提问——运行过程会实时展示。",
@@ -108,7 +108,7 @@ export default function ConnectedAgents() {
             <button
               type="button"
               onClick={() => setModalOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--foreground)] px-3 py-1.5 text-[12px] font-medium text-[var(--background)] shadow-sm transition-opacity hover:opacity-90"
+              className={pageActionClass()}
             >
               <Plus className="h-3.5 w-3.5" />
               {tr({ zh: "连接智能体", en: "Connect agent" })}
@@ -137,7 +137,7 @@ export default function ConnectedAgents() {
           })}
         </div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className={pageGridClass(2)}>
           {connections.map((conn) => {
             const Glyph = agentGlyph(conn.agent_kind);
             return (

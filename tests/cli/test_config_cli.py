@@ -30,7 +30,7 @@ def test_config_show_handles_missing_embedding(monkeypatch) -> None:
             model="gpt-4o-mini",
             effective_url="https://api.openai.com/v1",
             api_version=None,
-            extra_headers={},
+            extra_headers={"Authorization": "header-secret"},
             api_key="",
         ),
     )
@@ -63,3 +63,5 @@ def test_config_show_handles_missing_embedding(monkeypatch) -> None:
     assert result.exit_code == 0, result.output
     assert '"status": "not_configured"' in result.output
     assert "No active embedding model is configured." in result.output
+    assert "header-secret" not in result.output
+    assert '"Authorization": "***"' in result.output

@@ -53,11 +53,18 @@ function bindingPrefix(sessionId: string): string {
   return BINDING_PREFIX + encodeURIComponent(sessionId) + ":";
 }
 
+function hasSubmissionPayload(content: string, snapshot: unknown): boolean {
+  if (content.trim()) return true;
+  if (!snapshot || typeof snapshot !== "object") return false;
+  const attachments = (snapshot as Record<string, unknown>).attachments;
+  return Array.isArray(attachments) && attachments.length > 0;
+}
+
 function isRecord(value: unknown): value is FailedSubmissionRecord {
   if (!value || typeof value !== "object") return false;
   const record = value as Partial<FailedSubmissionRecord>;
   return typeof record.content === "string" &&
-    record.content.trim() !== "" &&
+    hasSubmissionPayload(record.content, record.requestSnapshot) &&
     Boolean(record.requestSnapshot) &&
     typeof record.savedAt === "number";
 }
@@ -207,6 +214,9 @@ function persistRecord(sessionId: string, record: FailedSubmissionRecord): Persi
   // Each submission has its own key. A large attachment or a concurrent tab
   // can never overwrite a different pending message's local record.
   const sessionFull = browserStorage.writeRaw("session", key, full);
+  // A media-only submission has no useful text fallback. Never report an
+  // empty, attachment-free record as safely recoverable (#1793).
+  if (!record.content.trim()) return sessionFull ? "session_full" : null;
   const textOnly = JSON.stringify(textOnlyRecord(record));
   if (browserStorage.writeRaw("local", key, textOnly)) {
     // Retain the full same-tab copy if it fits, so retry can keep attachments
@@ -277,7 +287,7 @@ export function storeFailedSubmission(
     priorMatchingUserIds?: string[];
   },
 ): string | null {
-  if (!sessionId || submission.content.trim() === "") return null;
+  if (!sessionId || !hasSubmissionPayload(submission.content, submission.requestSnapshot)) return null;
   const submissionId = submission.submissionId ?? randomUuid();
   const record: FailedSubmissionRecord = {
     content: submission.content,

@@ -136,6 +136,14 @@ rules_mermaid: |
   - Keep labels short and readable; check the diagram type keyword matches the
     structure you're describing.
 
+rules_mindmap: |
+  Render type: Mermaid mind map. Output valid Mermaid `mindmap` DSL only:
+  - The first non-empty line is exactly `mindmap`.
+  - Use one root node, then indent each hierarchy level consistently. Include at
+    least one child branch and no sibling roots.
+  - Prefer short noun labels and no more than three levels. Do not use Markdown
+    fences, flowchart arrows, or diagram syntax from another Mermaid type.
+
 rules_html: |
   Render type: HTML. Output one complete, self-contained single-file HTML page
   for an interactive explainer, stepper, mockup, or clickable demo.
@@ -177,4 +185,5 @@ user_template: |
   - SVG: ```svg ... ```
   - Chart.js: ```javascript ... ```
   - Mermaid: ```mermaid ... ```
+  - Mind map: ```mermaid ... ```
   - HTML: ```html ... ```

@@ -6,6 +6,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 import sys
+from typing import TextIO
 
 from deeptutor.utils.secret_files import ensure_private_directory, ensure_private_file
 
@@ -36,7 +37,9 @@ def _remove_managed_handlers(root: logging.Logger) -> None:
             handler.close()
 
 
-def configure_logging(force: bool = False) -> LoggingConfig:
+def configure_logging(
+    force: bool = False, *, console_stream: TextIO | None = None
+) -> LoggingConfig:
     """Configure stdlib logging once for the whole process."""
     global _CONFIGURED
 
@@ -52,7 +55,9 @@ def configure_logging(force: bool = False) -> LoggingConfig:
     root.setLevel(logging.DEBUG)
 
     if config.console_output:
-        console = _managed(logging.StreamHandler(sys.stdout))
+        console = _managed(
+            logging.StreamHandler(console_stream if console_stream is not None else sys.stdout)
+        )
         console.setLevel(level)
         console.setFormatter(ConsoleFormatter())
         root.addHandler(console)

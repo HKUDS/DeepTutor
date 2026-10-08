@@ -436,12 +436,27 @@ class ModelCatalogService:
             if field in connection and profile.get(field) != connection[field]:
                 profile[field] = deepcopy(connection[field])
                 changed = True
-        base_url = str(connection.get("base_url") or "").strip()
+        overrides = connection.get("service_overrides")
+        override = (
+            overrides.get("llm" if service_name == "task" else service_name)
+            if isinstance(overrides, dict)
+            else None
+        )
+        if not isinstance(override, dict) or not override.get("enabled"):
+            override = {}
+        if override.get("binding"):
+            field = "provider" if service_name == "search" else "binding"
+            if profile.get(field) != override["binding"]:
+                profile[field] = override["binding"]
+                changed = True
+        base_url = str(override.get("base_url") or connection.get("base_url") or "").strip()
         if base_url:
             # Gemini's native embedding endpoint carries the model in its path,
             # so it is not derivable from an API base — leave those alone.
-            if service_name == "embedding" and is_gemini_native_embedding_endpoint(
-                profile.get("base_url")
+            if (
+                not override.get("base_url")
+                and service_name == "embedding"
+                and is_gemini_native_embedding_endpoint(profile.get("base_url"))
             ):
                 return changed
             resolved = _connection_base_url_for(service_name, base_url)

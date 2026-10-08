@@ -1,5 +1,6 @@
 'use client'
 
+import { pageGridClass } from '@/components/layout/FeaturePage'
 import { useEffect, useState } from 'react'
 import { BookOpen, Route } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -111,7 +112,7 @@ export function LearningDashboard() {
               <h2 id="learning-todos" className="mb-3 text-[13.5px] font-semibold">
                 {t('What needs your attention')}
               </h2>
-              <div className="grid gap-3 md:grid-cols-2">
+              <div className={pageGridClass(2)}>
                 {todos.reviews.map(topic => (
                   <LearningCard
                     key={`${topic.content_workspace_id}:${topic.path_id}`}
@@ -158,7 +159,7 @@ export function LearningDashboard() {
               <h2 id="learning-recent" className="mb-3 text-[13.5px] font-semibold">
                 {t('Recent activity')}
               </h2>
-              <div className="grid gap-3 md:grid-cols-2">
+              <div className={pageGridClass(2)}>
                 {recent.map(item => {
                   const surface = learningSurface(item.kind)
                   return (

@@ -1,6 +1,6 @@
-import { BookOpen, BookText, Clapperboard, ClipboardCheck, Route, type LucideIcon } from 'lucide-react'
+import { BookOpen, BookText, ClipboardCheck, Route, type LucideIcon } from 'lucide-react'
 import type { LearningKind } from '@/lib/learning-dashboard'
-import { BOOKS_HOME, MASTERY_HOME, PRACTICE_HOME, READING_HOME, WATCHING_HOME } from '@/lib/learning-routes'
+import { BOOKS_HOME, MASTERY_HOME, PRACTICE_HOME, READING_HOME } from '@/lib/learning-routes'
 
 export interface LearningSurface {
   kind: LearningKind | "practice"
@@ -87,23 +87,8 @@ export const LEARNING_SURFACES: readonly LearningSurface[] = [
     icon: BookText,
     accent: 'bg-sky-500/10 text-sky-600 dark:text-sky-400',
   },
-  {
-    kind: 'watching',
-    href: WATCHING_HOME,
-    title: 'Immersive Watching',
-    description: 'Watch videos with a grounded AI companion.',
-    intro:
-      'Play a video with the tutor watching alongside you, and ask about whatever is on screen as it runs.',
-    highlights: [
-      'Ask about any moment while the video plays',
-      'Jump straight to a line of the transcript',
-      'Notes are stamped with the moment you took them',
-    ],
-    unit: '{{count}} videos',
-    icon: Clapperboard,
-    accent: 'bg-violet-500/10 text-violet-600 dark:text-violet-400',
-  },
+
 ] as const
 
 export const learningSurface = (kind: LearningKind): LearningSurface =>
-  LEARNING_SURFACES.find(surface => surface.kind === kind)!
+  LEARNING_SURFACES.find(surface => surface.kind === (kind === "watching" ? "reading" : kind))!

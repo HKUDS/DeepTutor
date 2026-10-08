@@ -39,7 +39,15 @@ class DeepResearchCapability(TurnCapability):
         name="deep_research",
         description="Agentic-loop deep research with iterative report generation.",
         stages=["rephrasing", "decomposing", "researching", "reporting"],
-        tools_used=["rag", "web_search", "paper_search", "exec"],
+        tools_used=[
+            "rag",
+            "web_search",
+            "paper_search",
+            "preprint",
+            "research_audit",
+            "research_lit",
+            "exec",
+        ],
         cli_aliases=["research"],
         request_schema=get_capability_request_schema("deep_research"),
     )
