@@ -62,17 +62,27 @@ class AsyncSingleFlightTTLCache(Generic[K, V]):
 
         pending = self.inflight.get(key)
         if pending is None or pending.done():
-            pending = asyncio.ensure_future(factory())
-            self.inflight[key] = pending
-        try:
-            value = await pending
-        finally:
-            if self.inflight.get(key) is pending:
-                self.inflight.pop(key, None)
 
-        if cache_when(value):
-            self.remember(key, value)
-        return value
+            async def produce() -> V:
+                """Own cache insertion and cleanup even when every waiter leaves."""
+                try:
+                    value = await factory()
+                    if cache_when(value):
+                        self.remember(key, value)
+                    return value
+                finally:
+                    if self.inflight.get(key) is asyncio.current_task():
+                        self.inflight.pop(key, None)
+
+            def consume_failure(task: asyncio.Task[V]) -> None:
+                """Retrieve failures when no request remains to await the task."""
+                if not task.cancelled():
+                    task.exception()
+
+            pending = asyncio.create_task(produce())
+            self.inflight[key] = pending
+            pending.add_done_callback(consume_failure)
+        return await asyncio.shield(pending)
 
 
 __all__ = ["AsyncSingleFlightTTLCache"]
