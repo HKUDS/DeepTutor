@@ -60,10 +60,10 @@
 
 DeepTutor एक agent-native learning workspace है जो tutoring, problem solving, quiz generation, research, visualization, और mastery practice को एक extensible system में जोड़ता है।
 
-- **हर मोड के लिए एक रनटाइम** — Chat, Ask Questions, Quiz, Research, Visualize, Solve, Course Study, Mastery Path, Immersive Reading और Immersive Watching एक ही capability runtime और session context share करते हैं, जबकि हर उद्देश्य के लिए बने loops और pipelines बनाए रखते हैं।
+- **हर मोड के लिए एक रनटाइम** — Chat, Ask Questions, Quiz, Research, Visualize, Solve, Course Study, Mastery Path, Immersive Reading और Audio Overview एक ही capability runtime और session context share करते हैं, जबकि हर उद्देश्य के लिए बने loops और pipelines बनाए रखते हैं।
 - **Task Board** — पढ़ाई के tasks को To do, In progress और Done में track करें, notes, drag-and-drop या keyboard से सुलभ move buttons, और restore किए जा सकने वाले archive के साथ। Cards current workspace में रहते हैं और मौजूदा appearance और language settings का पालन करते हैं; किसी model configuration की जरूरत नहीं है।
 - **जुड़ा हुआ लर्निंग कॉन्टेक्स्ट** — Knowledge bases, books, Co-Writer drafts, notebooks, question banks, personas, और Memory को उन workflows में reuse किया जा सकता है जो उन्हें support करते हैं, account grants और learning policies के अधीन।
-- **इमर्सिव वीडियो लर्निंग** — privacy-enhanced native playback, synchronized captions, timestamp-grounded tutoring, सहेजे गए timestamp marks और resumable progress के लिए एक YouTube link paste करें; administrators materials को rebuild किए बिना playback को self-hosted Invidious instance पर switch कर सकते हैं।
+- **इमर्सिव वीडियो लर्निंग** — native playback, transcript search, timestamp-grounded tutoring, saved notes और resumable progress के लिए Reading में YouTube या Bilibili links जोड़ें; YouTube captions और browsing के लिए administrator द्वारा configured Invidious instance उपयोग किया जा सकता है।
 - **सब-एजेंट और Partners** — Chat से एक live agent harness (Claude Code, Codex, Grok CLI, Antigravity, Kimi, opencode, MiMo, Hermes, OpenClaw, या DeepSeek) या एक Partner से सलाह लें, पिछली conversations import करें, और same brain पर persistent IM companions चलाएं।
 - **मल्टी-इंजन नॉलेज** — LlamaIndex, PageIndex, GraphRAG, LightRAG, एक remote LightRAG Server, एक self-hosted WeKnora knowledge base, एक Tencent IMA या MarginNote 4 library, एक connected Kiwix ZIM archive, या एक linked Obsidian vault के साथ versioned RAG libraries, pluggable document parsing के साथ। independent extraction, query और vision settings, default-only creation और confirmed rebuilds के लिए [native LightRAG role models](../../deeptutor/services/rag/pipelines/lightrag/README.md) देखें।
 - **एक्सटेंसिबल टूल्स और स्किल्स** — built-in tools, MCP servers, CLI apps, image / video / voice generation models, और EduHub से installable community skills।
@@ -72,6 +72,22 @@ DeepTutor एक agent-native learning workspace है जो tutoring, problem
 ---
 
 ## 🚀 शुरू करें
+
+### अपने एजेंट से DeepTutor सेटअप करवाएं
+
+यह prompt अपने terminal-capable AI agent (जैसे Codex या Claude Code) में copy करें:
+
+```text
+Help me install and configure DeepTutor locally from https://github.com/HKUDS/DeepTutor.
+Clone the repository, or reuse my existing checkout, and read SKILL.md and
+docs-for-user/AGENT_SETUP.md first. Follow that guide to prepare the environment,
+configure my model provider, verify the setup, and start the Web app.
+Ask me for any missing provider, model, or credential-source information;
+do not print API keys. Preserve my existing files and settings, and finish
+with the access URL and the results of your checks.
+```
+
+[Agent Setup guide](../../docs-for-user/AGENT_SETUP.md) में पूरी प्रक्रिया दी गई है, जिसमें non-interactive CLI configuration भी शामिल है। खुद install करने के लिए नीचे दिए गए paths में से एक चुनें।
 
 DeepTutor चार installation paths के साथ आता है। वे सभी एक runtime-home layout साझा करते हैं: private settings उस directory के नीचे `data/user/settings/` में रहती हैं जहां से आप launch करते हैं (या `DEEPTUTOR_HOME` / `deeptutor start --home` के नीचे अगर आप explicitly set करते हैं)। पूरे app के लिए, recommended flow है **एक runtime-home directory चुनें → install करें → `deeptutor init` → `deeptutor start`**।
 
@@ -343,7 +359,7 @@ Built-in office skills — **docx / pdf / pptx / xlsx** — model द्वा�
 | `integrations.json` | Optional PocketBase और sidecar integration settings |
 | `interface.json` | UI और model output language / theme / sidebar preferences |
 | `document_parsing.json` | Parsing engine और image-description model का चयन, remote endpoints और engine-specific options |
-| `video_learning.json` | Default YouTube/Invidious playback provider, Invidious origins, और optional transcript adapter |
+| `video_learning.json` | YouTube caption provider, Invidious origins और account access, तथा transcript settings |
 | `main.yaml` | Runtime behavior defaults और path injection |
 | `agents.yaml` | Capability/tool temperature और token settings |
 
@@ -439,7 +455,7 @@ User-toggleable tools हैं `brainstorm`, `web_search`, `paper_search`, `zot
 
 Context दो प्रकार की होती है: **sticky session context** (capability, workspace या course, tools, knowledge bases, persona, model, और Reading / Mastery state) turns के पार persist करती है; **एक-बार references** (files, chat history, books, reading sections, notebooks, चुनी हुई question-bank entries, imported agents) एक single turn के लिए `+` menu से आते हैं। Voice button केवल current message को transcribe करता है।
 
-Home **Chat**, **Ask Questions**, **Quiz**, और **Visualize** को एक क्लिक की दूरी पर रखता है; cited reports के लिए **Research**, worked reasoning के लिए **Solve**, और **Immersive Watching** *More Capabilities* के नीचे रहते हैं। **Personalized Learning** में Book, **Mastery Path**, **Immersive Reading**, Watching और **Practice** एक साथ हैं; Reading verified citations, saved notes, source passages का स्वाभाविक read-aloud / study guidance / vocabulary / quiz / translation actions, और notebook capture जोड़ता है, जबकि Course Study अपना course-bound context बनाए रखता है।
+Home **Chat**, **Ask Questions**, **Quiz**, और **Visualize** को एक क्लिक की दूरी पर रखता है; cited reports के लिए **Research** और worked reasoning के लिए **Solve** *More Capabilities* के नीचे रहते हैं। **Personalized Learning** में Book, **Mastery Path**, **Immersive Reading** और **Practice** एक साथ हैं; Reading documents, video और audio को verified citations, saved notes, source passages / study guidance / vocabulary / quiz / translation actions के स्वाभाविक read-aloud, और notebook capture के साथ जोड़ता है, जबकि Course Study अपना course-bound context बनाए रखता है।
 
 </details>
 
@@ -603,9 +619,9 @@ Settings operational control plane है, जो interface और model output 
 
 **Xiaomi MiMo वाक् संश्लेषण।** `https://api.xiaomimimo.com/v1` और उसकी API key के साथ Xiaomi MiMo provider जोड़ें, फिर Settings → Voice में `mimo-v2.5-tts` जोड़ें। `mimo_default`, `冰糖` या `苏打` जैसा preset चुनें, `wav` या `pcm16` output उपयोग करें, और apply करने से पहले उसकी आवाज़ सुनकर जांचें। Voice instructions शैली और बोलने की गति नियंत्रित करते हैं। यह adapter केवल preset speech support करता है; voice design और voice cloning के लिए अलग models चाहिए और वे supported नहीं हैं। अगर पुराना MiMo speech model generic OpenAI-compatible adapter से configure किया गया था, तो Xiaomi MiMo provider से उसकी speech entry फिर बनाएं ताकि वह chat-completions protocol उपयोग करे। [आधिकारिक MiMo वाक् संश्लेषण गाइड](https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/speech-synthesis-v2.5) देखें।
 
-**MiniMax वाक् संश्लेषण** — Settings → Voice में text-to-speech के लिए MiniMax चुनें और `speech-2.8-hd` select करें। MiniMax API key और system या custom voice ID configure करें; default voice `English_expressive_narrator` है। Default API base `https://api.minimax.io/v1` है; China region के लिए `https://api.minimaxi.com/v1` उपयोग करें। Read-aloud और voice previews native speech endpoint उपयोग करते हैं, जिसमें MP3, WAV, FLAC या PCM output, sample rate, speed और language controls उपलब्ध हैं। Voice IDs और account availability के लिए [MiniMax speech API](https://platform.minimax.io/docs/api-reference/speech-t2a-http) देखें।
+**MiniMax वाक् संश्लेषण** — Settings → Voice में text-to-speech के लिए MiniMax चुनें और `speech-2.8-hd` select करें। MiniMax API key configure करें और स्पष्ट रूप से कोई system voice चुनें या custom voice ID दर्ज करें। Default API base `https://api.minimax.io/v1` है; China region के लिए `https://api.minimaxi.com/v1` उपयोग करें। Read-aloud और voice previews native speech endpoint उपयोग करते हैं, जिसमें MP3, WAV, FLAC या PCM output, sample rate, speed और language controls उपलब्ध हैं। Voice IDs और account availability के लिए [MiniMax speech API](https://platform.minimax.io/docs/api-reference/speech-t2a-http) देखें।
 
-Settings → Learning & conversation के तहत **Video Learning** default रूप से official privacy-enhanced YouTube IFrame Player उपयोग करता है। Playback को local रखने के लिए administrator-managed Invidious API origin (उदाहरण के लिए `http://127.0.0.1:3000`) set करें, इसे test करें, Invidious select करें, और save करें। नई या फिर से खोली गई videos वही material ID और progress रखते हुए तुरंत provider अपना लेती हैं। Invidious media DeepTutor के byte-range proxy से stream होता है; upstream URLs न browser के सामने expose होते हैं, न disk पर store किए जाते हैं। अगर instance fail हो जाए, तो learner के explicitly native YouTube fallback चुनने तक DeepTutor YouTube से offline रहता है। Public-caption tutoring optional है: `.[video-learning]` install करें; इसके बिना playback जारी रहता है, जबकि transcript-based **Explain here** कारण के साथ disabled रहता है।
+Settings → Learning & conversation के तहत **Video Learning**, Reading के लिए YouTube captions और Invidious access configure करता है। Invidious उपयोग करने के लिए administrator द्वारा managed backend API origin (उदाहरण के लिए `http://127.0.0.1:3000`) और browser से accessible public origin set करें, connection test करें, Invidious select करें, और save करें। Reading के add-material dialog में **Browse Invidious** से videos खोजे जा सकते हैं और connected subscriptions तथा playlists खोली जा सकती हैं। YouTube playback official privacy-enhanced player उपयोग करता है; captions न होने की स्थिति दिखाई जाती है और tutor के evidence को सीमित करती है, लेकिन native playback को नहीं रोकती। Default YouTube caption loader के लिए `.[video-learning]` install करें। Existing Watching links conversation history, compatible transcripts, notes और progress को बनाए रखते हुए Reading में migrate होते हैं; नए timestamp notes Reading annotations होते हैं। Bilibili अपनी playback और caption प्रक्रिया उपयोग करता है।
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="DeepTutor appearance settings और themes" width="900">
@@ -703,7 +719,7 @@ SID=$(deeptutor run deep_research "Survey 2026 papers on RAG" \
 deeptutor run deep_question "Quiz me on that survey" --session "$SID" --format json
 ```
 
-Repo एक root [`SKILL.md`](../../SKILL.md) ship करता है — एक ~200-line handover doc जो किसी भी tool-using LLM को एक read में पूरा surface सिखाता है। इसे Claude Code, Codex, या OpenCode को दें (वे `SKILL.md` automatically pick up करते हैं), या `deeptutor run` को LangChain / AutoGen loop में एक tool के रूप में wrap करें। पूरे recipes: [Agent Handoff](https://deeptutor.info/docs/cli/agent-handoff/)।
+Repo एक root [`SKILL.md`](../../SKILL.md) ship करता है — CLI के लिए एक संक्षिप्त handover doc। अपने agent से इसे स्पष्ट रूप से पढ़ने को कहें; इसकी [Agent Setup guide](../../docs-for-user/AGENT_SETUP.md) में installation और configuration दिए गए हैं। आप `deeptutor run` को LangChain / AutoGen loop में एक tool के रूप में भी wrap कर सकते हैं। पूरे recipes: [Agent Handoff](https://deeptutor.info/docs/cli/agent-handoff/)।
 
 </details>
 
@@ -712,13 +728,13 @@ Repo एक root [`SKILL.md`](../../SKILL.md) ship करता है — ए�
 
 | कमांड | विवरण |
 |:---|:---|
-| `deeptutor init` | Current runtime home में `data/user/settings` create या update करें |
+| `deeptutor init [--non-interactive] [--home PATH]` | Setup wizard चलाएं, या बिना prompts के missing defaults बनाएं |
 | `deeptutor doctor [--online]` | Check करें कि runtime session शुरू करने के लिए ready है या नहीं; `--online` configured model provider को भी probe करता है, `--format json` report print करता है |
 | `deeptutor start [--home PATH] [--dev] [--detach] [--no-browser]` | Backend + frontend को एक साथ launch करें; वैकल्पिक रूप से detach करें या browser खुलना रोकें |
 | `deeptutor stop [--home PATH]` | `--detach` से शुरू किए launcher को stop करें |
 | `deeptutor serve [--port PORT]` | केवल FastAPI backend start करें |
 | `deeptutor workspace show/set/reset` | Per-user Content Workspace inspect, select, या restore करें |
-| `deeptutor run <capability> <message>` | एक single capability turn run करें (`chat`, `ask_questions`, `deep_solve`, `deep_question`, `deep_research`, `visualize`, `math_animator`, `mastery_path`, `immersive_reading`, `course_study`, `immersive_watching`, `audio_overview`); NDJSON output के लिए `--format json` add करें |
+| `deeptutor run <capability> <message>` | एक single capability turn run करें (`chat`, `ask_questions`, `deep_solve`, `deep_question`, `deep_research`, `visualize`, `math_animator`, `mastery_path`, `immersive_reading`, `course_study`, `audio_overview`); NDJSON output के लिए `--format json` add करें |
 | `deeptutor chat` | capability, tool, KB, notebook, और history controls के साथ interactive REPL |
 | `deeptutor partner list/create/start/stop` | IM-connected partners manage करें |
 | `deeptutor kb list/info/create/connect-kiwix/add/search/eval/set-default/delete/list-sources/sync` | Knowledge bases manage करें, Kiwix archives connect करें, QA set के आधार पर retrieval quality मापें, और registered GitHub/web sources sync करें (source add/remove commands के साथ) |
@@ -727,9 +743,26 @@ Repo एक root [`SKILL.md`](../../SKILL.md) ship करता है — ए�
 | `deeptutor session list/show/open/rename/delete` | Shared sessions manage करें |
 | `deeptutor notebook list/create/show/add-md/replace-md/remove-record` | Markdown files से notebooks manage करें |
 | `deeptutor book list/health/refresh-fingerprints` | Books inspect करें और source fingerprints refresh करें |
-| `deeptutor plugin list/info` | Registered tools और capabilities inspect करें |
-| `deeptutor config show` | Configuration summary print करें |
-| `deeptutor provider login <provider>` | Provider auth (`openai-codex` OAuth login; `github-copilot` existing Copilot auth session validate करता है; `codebuddy` CodeBuddy SDK auth validate करता है और ज़रूरत पड़ने पर login शुरू करता है) |
+| `deeptutor plugin list/info/state/search/show/install/approve/enable/disable/rollback/uninstall` | Tools और capabilities inspect करें; reviewed plugin packages और उनकी permission approvals manage करें |
+| `deeptutor config show [--home PATH]` | Credentials छिपाकर resolved runtime configuration दिखाएं |
+| `deeptutor config providers` | Supported setup providers और defaults को JSON के रूप में list करें |
+| `deeptutor config apply FILE [--check] [--home PATH]` | बिना prompts के setup JSON apply करें, या settings लिखे बिना उसे validate करें |
+| `deeptutor provider login <provider>` | Provider auth (`openai-codex` OAuth login; `github-copilot` GitHub device login; `codebuddy` CodeBuddy SDK auth validate करता है और ज़रूरत पड़ने पर login शुरू करता है) |
+
+GitHub Copilot credentials signed-in DeepTutor owner के होते हैं और केवल
+`<runtime-home>/data/system/user-secrets/<owner-id>/private/github-copilot/credentials.v1.json`
+में sandbox workspaces के बाहर रहते हैं। CLI/admin partners administrator के credentials उपयोग करते हैं;
+अन्य users अलग से sign in करते हैं, और Copilot profiles model grants के जरिए share नहीं की जा सकतीं।
+External nanobot/Copilot token files कभी import नहीं की जातीं: upgrade के बाद
+`deeptutor provider login github-copilot` फिर से चलाएं।
+
+Login वर्तमान में discovered model के साथ inference validate करता है; `init` selected
+model validate करता है और failure पर draft configuration save किए बिना रुक जाता है। केवल सफल GitHub
+authentication से Copilot model access की पुष्टि नहीं होती (validation fail होने पर saved login बना रहता है)।
+Runtime requests token exchange से मिले API endpoint का पालन करती हैं, refreshes के दौरान भी,
+और हर model के Responses/Chat Completions endpoint metadata का सम्मान करती हैं।
+
+Copilot-specific Responses compatibility stored history को rewrite किए बिना dispatch के समय apply की जाती है।
 
 </details>
 
@@ -890,3 +923,22 @@ DeepTutor outstanding open-source projects के कंधों पर खड�
 </p>
 
 </div>
+
+### Mastery turns का आधारभूत संदर्भ
+
+Mastery turns पहली model request से पहले active path का status पढ़ते हैं, उसी
+status tool और mastery gates का उपयोग करते हुए जो explicit tool call में लागू होते हैं।
+यह snapshot हर turn के लिए नया होता है, इसमें active session mode शामिल रहता है,
+और इसे turns के बीच cache नहीं किया जाता। Read fail होने पर `mastery_status` fallback है;
+path, mode, outline या progress बदलने के बाद tutor उसी tool से status refresh कर सकता है।
+Card grading और उसका existing handoff अपरिवर्तित रहते हैं।
+
+### बार-बार जोड़ी गई image attachments
+
+Agent loop हर request में समान inline user images एक बार भेजता है और बाद की
+copies को रखी गई image के references से बदल देता है। केवल request के लिए बने stable labels,
+provider translations और बाद में जोड़े गए turns में retained inline images की पहचान करते हैं।
+Unique image blocks, remote URLs, अलग image options, assistant messages और tool results पूरे रखे जाते हैं।
+Saved history में हर original attachment बनी रहती है; history trim होने के बाद references फिर बनाए जाते हैं।
+इससे repeated image payloads कम होते हैं, लेकिन billing और cache hits के लिए provider द्वारा
+report किया गया usage ही source of truth रहता है।

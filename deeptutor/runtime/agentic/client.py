@@ -124,7 +124,7 @@ def _build_openai_client(
     config: LLMClientConfig,
     *,
     disable_ssl_verify: bool,
-    sdk_max_retries: int | None = None,
+    sdk_max_retries: int | None = 0,
 ) -> Any:
     # A stale SSL_CERT_FILE (common with cloned conda envs) makes httpx's
     # create_ssl_context raise FileNotFoundError mid-__init__, aborting client
@@ -531,6 +531,7 @@ class _ProviderOpenAIStream:
     async def close(self) -> None:
         if self._task and not self._task.done():
             self._task.cancel()
+            await asyncio.gather(self._task, return_exceptions=True)
 
     def _raise_for_error_response(self, response: Any) -> None:
         """Turn an error-shaped response back into the exception it describes.

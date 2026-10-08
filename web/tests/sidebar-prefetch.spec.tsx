@@ -11,6 +11,18 @@ const fixture = vi.hoisted(() => ({
   setCollapsed: vi.fn(),
 }));
 
+vi.mock("@/hooks/useAuthStatus", () => ({
+  useAuthStatus: () => ({
+    enabled: false,
+    authenticated: false,
+    isAdmin: false,
+    userId: null,
+    statusAvailable: true,
+    loading: false,
+    learningPolicy: null,
+  }),
+}));
+
 vi.mock("next/link", () => ({
   default: ({
     children,

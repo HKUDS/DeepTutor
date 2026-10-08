@@ -162,12 +162,30 @@ export function providerUsage(
       ) === source.id,
   ).length;
 }
+export const PROVIDER_SERVICES: ServiceName[] = ["llm", "embedding", "tts", "stt", "imagegen", "videogen", "search"];
+
+export function providerServiceSupport(
+  source: ProviderSource, service: ServiceName,
+  targets: ConnectionTarget[], providers: Record<ServiceName, ProviderOption[]>,
+): { enabled: boolean; evidence: "manual" | "detected" | "builtin" | "unknown" } {
+  const kind = service === "task" ? "llm" : service;
+  const override = source.source.service_overrides?.[kind];
+  if (override) return { enabled: override.enabled, evidence: "manual" };
+  const detected = source.source.discovery?.status === "connected" && source.source.discovery.capabilities?.some(c => c.category === kind && c.evidence === "metadata");
+  const known = Boolean((source.provider !== "custom" && targets.find(t => t.provider === source.provider)?.services[kind]) ||
+    providers[kind]?.some(p => p.value === source.provider && (source.provider !== "custom" || kind === "llm") && p.value !== "none" && p.status !== "deprecated") || (source.service === "task" ? "llm" : source.service) === kind);
+  // Search has no general-purpose compatibility protocol.
+  return { enabled: known || Boolean(detected && kind !== "search"), evidence: detected ? "detected" : known ? "builtin" : "unknown" };
+}
+
 export function providerAdapter(
   source: ProviderSource,
   service: ServiceName,
   targets: ConnectionTarget[],
   providers: Record<ServiceName, ProviderOption[]>,
 ) {
+  const kind = service === "task" ? "llm" : service;
+  const override = source.source.service_overrides?.[kind];
   const target = targets.find((t) => t.provider === source.provider)?.services[
     service === "task" ? "llm" : service
   ];
@@ -177,6 +195,7 @@ export function providerAdapter(
   // generic adapter, so it keeps the vendor's own name and gets rejected by name
   // rather than masquerading as an OpenAI-compatible search engine.
   const binding =
+    (override?.enabled && override.binding) ||
     target?.provider ||
     exact?.value ||
     (service === "llm" ||
@@ -188,7 +207,7 @@ export function providerAdapter(
   return {
     ...source.ref,
     binding,
-    default_base_url: target?.base_url || exact?.base_url || "",
+    default_base_url: (override?.enabled && override.base_url) || target?.base_url || exact?.base_url || "",
   };
 }
 export function providerProbeInput(source: ProviderSource, fallbackUrl = "") {
@@ -216,7 +235,7 @@ export function updateProvider(
   )?.source;
   if (!source) return;
   Object.assign(source, { [field]: value });
-  if (!["name", "discovery"].includes(field)) delete source.discovery;
+  if (!["name", "discovery", "service_overrides"].includes(field)) delete source.discovery;
 }
 
 /** Three-way, entity-scoped reconciliation: edits made while a save was in
