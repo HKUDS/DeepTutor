@@ -700,6 +700,13 @@ export default memo(function ChatComposer({
 
   const doSend = useCallback(
     (content: string) => {
+      // Keyboard and button submissions share the same admission checks.
+      // A refused submission must leave the draft in the input.
+      if (isStreaming && !awaitingUserReply) return false;
+      if (capabilityNeedsConfig && !capabilityConfigConfirmed) {
+        onRequestConfigConfirm();
+        return false;
+      }
       onSend(content);
       if (!restoreFailedRef.current) {
         void saveWorkspaceDraft({ text: "", attachments: [] }).catch(() => {});
@@ -710,8 +717,10 @@ export default memo(function ChatComposer({
       // composer into the conversation layout. Restore it after that update
       // so the user can keep typing, including after switching back to the tab.
       focusTextarea();
+      return true;
     },
-    [focusTextarea, onSend],
+    [awaitingUserReply, capabilityConfigConfirmed, capabilityNeedsConfig,
+      focusTextarea, isStreaming, onRequestConfigConfirm, onSend],
   );
 
   const { board: taskBoard } = useTaskBoard();
@@ -1120,7 +1129,7 @@ export default memo(function ChatComposer({
             ref={inputHandleRef}
             textareaRef={textareaRef}
             isVisualizeMode={isVisualizeMode}
-            isStreaming={isStreaming}
+            isStreaming={streamingBlocksSend}
             canSendEmpty={hasReferences}
             onSend={doSend}
             onInputChange={handleInputChange}

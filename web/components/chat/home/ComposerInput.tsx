@@ -30,7 +30,7 @@ interface ComposerInputProps {
   // send even if the text body is empty. Without this, Enter would silently
   // do nothing for an attachment-only message.
   canSendEmpty: boolean;
-  onSend: (content: string) => void;
+  onSend: (content: string) => boolean | void;
   onInputChange: (content: string) => void;
   onPaste: (e: React.ClipboardEvent) => void;
   selectedCounts: ChatSpaceSelectionCounts;
@@ -326,7 +326,7 @@ export const ComposerInput = memo(
       // references queued (canSendEmpty). This matches the send-button's
       // own enablement logic in ChatComposer (`canSend`).
       if (!content && !canSendEmpty) return;
-      onSend(content);
+      if (onSend(content) === false) return;
       setInputBoth("");
       onInputChange("");
       setShowAtPopup(false);
