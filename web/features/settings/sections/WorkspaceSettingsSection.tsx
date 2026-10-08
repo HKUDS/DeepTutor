@@ -182,7 +182,7 @@ export default function WorkspaceSettingsSection() {
           <SettingSection title={t('Storage location')} description={t('Workspaces default to root / workspace ID. Changing root migrates folders that follow it; custom locations stay in place. Remote deployments use server folders.')}>
             <form className="space-y-3 py-4" onSubmit={async event => { event.preventDefault(); await run(() => migrateWorkspace(root.trim())) }}>
               <label className="block text-sm">{t('Workspace root folder')}<input className={`${inputClass} mt-2 font-mono`} value={root} onChange={event => setRoot(event.target.value)} required /></label>
-              {root.trim() !== catalog.root && <div className="flex flex-wrap items-center gap-3"><button type="submit" disabled={!root.trim()} className={primaryClass}>{t('Migrate to new root')}</button><p className="text-xs text-[var(--muted-foreground)]">{t('Old folders are kept as a backup. Finish running conversations before migrating.')}</p></div>}
+              {(root ?? '').trim() !== (catalog.root ?? '').trim() && <div className="flex flex-wrap items-center gap-3"><button type="submit" disabled={!(root ?? '').trim()} className={primaryClass}>{t('Migrate to new root')}</button><p className="text-xs text-[var(--muted-foreground)]">{t('Old folders are kept as a backup. Finish running conversations before migrating.')}</p></div>}
             </form>
           </SettingSection>
         </fieldset>

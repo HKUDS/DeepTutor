@@ -463,7 +463,7 @@ test('TOUR_STEPS walk the settings navigator in order with complete steps', () =
 test('RESPONSE_LANGUAGE_OPTIONS covers the supported response languages exactly once each', () => {
   const options = settingsContext.RESPONSE_LANGUAGE_OPTIONS
 
-  assert.equal(options.length, 15)
+  assert.equal(options.length, 16)
   const values = options.map(option => option.value)
   assert.equal(new Set(values).size, values.length, 'no duplicated codes')
   for (const value of values) {
@@ -471,7 +471,7 @@ test('RESPONSE_LANGUAGE_OPTIONS covers the supported response languages exactly 
     assert.ok(option_label(options, value).length > 0, 'every option has a label')
   }
   assert.equal(values[0], 'en', 'English is the first option')
-  for (const expected of ['zh', 'zh-tw', 'ja', 'ar', 'ms']) {
+  for (const expected of ['zh', 'zh-tw', 'ja', 'ar', 'ms', 'vi']) {
     assert.ok(values.includes(expected as (typeof values)[number]))
   }
 })
