@@ -45,6 +45,9 @@ AUTO_MOUNTED_TOOLS: frozenset[str] = frozenset(CONFIGURABLE_BUILTIN_TOOL_NAMES)
 # declared built-in is dropped when its gate is unmet — e.g. ``rag`` without a KB).
 # Insertion order fixes the default surface's conditional-tool order.
 _CONDITIONAL_MOUNT_FLAGS: dict[str, str] = {
+    "preprint": "has_scientific_research",
+    "research_audit": "has_scientific_research",
+    "research_lit": "has_scientific_research",
     "rag": "has_kb",
     "kb_files": "has_kb",
     "knowledge_frontier": "has_kb",
@@ -155,6 +158,7 @@ class ToolMountFlags:
     has_question_bank: bool = False
     has_skills: bool = False
     has_deferred_tools: bool = False
+    has_scientific_research: bool = False
     has_exec: bool = False
     #: The learner has at least one mastery topic to be sent back to.
     has_mastery_nav: bool = False
@@ -190,7 +194,7 @@ def compose_enabled_tools(
        KB is attached, ``read_source`` if a source index exists, …).
     3. Active loop capabilities' *owned* tools (``capability_owned``) — the
        capability's own tools, added on top.
-    4. Always-on auto-mounts (``write_memory`` / ``web_fetch`` / ``github`` /
+    4. Always-on auto-mounts (``write_memory`` / ``learning_status`` / ``learning_update`` / ``web_fetch`` / ``github`` /
        ``ask_user`` / ``cron``).
 
     A loop capability (solve, mastery) reuses the *full* chat surface and only
@@ -259,7 +263,15 @@ def compose_enabled_tools(
         if getattr(mount_flags, flag) and _builtin_allowed(tool_name):
             composed.append(tool_name)
     composed.extend(str(name) for name in capability_owned if str(name).strip())
-    for always_on in ("write_memory", "web_fetch", "github", "ask_user", "cron"):
+    for always_on in (
+        "write_memory",
+        "learning_status",
+        "learning_update",
+        "web_fetch",
+        "github",
+        "ask_user",
+        "cron",
+    ):
         if _builtin_allowed(always_on):
             composed.append(always_on)
     return _finalize([*WORKSPACE_BASELINE_TOOLS, *composed], forced, suppressed)

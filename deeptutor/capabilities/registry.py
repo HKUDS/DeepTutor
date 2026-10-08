@@ -13,7 +13,7 @@ import warnings
 
 from deeptutor.capabilities.protocol import LoopExtension
 from deeptutor.core.context import UnifiedContext
-from deeptutor.core.entry_points import load_entry_point_group
+from deeptutor.plugins.entry_points import load_entry_point_group
 from deeptutor.runtime.capability_catalog import EmptyConfig, get_capability_catalog
 
 logger = logging.getLogger(__name__)
@@ -72,10 +72,6 @@ BUILTIN_LOOP_CAPABILITY_SPECS: tuple[LoopCapabilitySpec, ...] = (
         "deeptutor.capabilities.course_study.capability:CourseStudyLoopCapability",
     ),
     LoopCapabilitySpec(
-        "immersive_watching",
-        "deeptutor.capabilities.watching.capability:WatchingCapability",
-    ),
-    LoopCapabilitySpec(
         "explore_context",
         "deeptutor.capabilities.explore_context.capability:ExploreContextCapability",
     ),
@@ -132,7 +128,7 @@ def _coerce_loop_factory(loaded: object) -> tuple[LoopExtension, LoopFactory] | 
             instance = produced()
         else:
             instance = produced
-            factory = type(produced)
+            factory = obj
     else:
         instance = obj
         factory = type(obj)
@@ -150,7 +146,7 @@ def _coerce_loop_factory(loaded: object) -> tuple[LoopExtension, LoopFactory] | 
 
 
 @cache
-def discover_external_loop_capabilities() -> tuple[tuple[str, LoopFactory], ...]:
+def _discover_external_loop_capabilities() -> tuple[tuple[str, LoopFactory], ...]:
     """Discover factory specs from canonical and one-version legacy groups."""
 
     seen = {spec.name for spec in BUILTIN_LOOP_CAPABILITY_SPECS}
@@ -179,6 +175,18 @@ def discover_external_loop_capabilities() -> tuple[tuple[str, LoopFactory], ...]
             stacklevel=2,
         )
     return tuple([*canonical, *legacy])
+
+
+def discover_external_loop_capabilities():
+    return tuple(
+        item
+        for item in _discover_external_loop_capabilities()
+        if getattr(item[1], "_plugin_allowed", lambda: True)()
+    )
+
+
+# Preserve the public reset hook while checking plugin revocation on every discovery.
+discover_external_loop_capabilities.cache_clear = _discover_external_loop_capabilities.cache_clear  # type: ignore[attr-defined]
 
 
 def _register_loop_entry(name: str, factory: LoopFactory) -> None:

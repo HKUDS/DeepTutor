@@ -1,5 +1,6 @@
 'use client'
 
+import { PageContainer } from '@/components/layout/FeaturePage'
 import { useEffect, useRef, useState } from 'react'
 import { browserStorage } from '@/shared/storage'
 import { usePathname, useRouter } from 'next/navigation'
@@ -9,7 +10,6 @@ import SettingsNav from './SettingsNav'
 import { SettingsToolbar } from './SettingsToolbar'
 import { SettingsLoadStatusBanner } from './SettingsLoadStatusBanner'
 import { SETTINGS_RETURN_KEY } from './SettingsReturnTracker'
-import { isWideSettingsPage } from '@/features/settings/navigation/settings-pages'
 import Modal from '@/components/common/Modal'
 import { useSettings } from '@/features/settings/store/SettingsStore'
 
@@ -57,20 +57,13 @@ export default function SettingsMain({ children }: { children: React.ReactNode }
   )
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-[var(--background)]" data-settings-shell>
-      <aside className="hidden w-[248px] shrink-0 flex-col border-r border-border/60 bg-[var(--background)] md:flex">
+    <div className="fixed inset-0 flex h-dvh overflow-hidden bg-[var(--background)]" data-settings-shell>
+      <aside className="hidden w-[248px] shrink-0 flex-col border-r border-border/60 bg-[color-mix(in_srgb,var(--muted)_25%,var(--background))] md:flex">
         <div className="px-2.5 pb-1.5 pt-4">{returnButton}</div>
         <SettingsNav />
       </aside>
-      {/* Master–detail pages publish a wider content box; the save toolbar
-          below reads the same variable so the two stay aligned. */}
       <main
         className="flex min-w-0 flex-1 flex-col overflow-hidden"
-        style={
-          {
-            '--settings-content': isWideSettingsPage(section) ? '1280px' : '960px',
-          } as React.CSSProperties
-        }
       >
         <div className="flex h-14 shrink-0 items-center justify-between border-b border-border/50 px-3 md:hidden">
           {returnButton}
@@ -89,14 +82,14 @@ export default function SettingsMain({ children }: { children: React.ReactNode }
           data-settings-scroll
           className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]"
         >
-          <div
+          <PageContainer
             ref={content}
             tabIndex={-1}
-            className="mx-auto w-full max-w-[var(--settings-content,960px)] px-5 pb-20 pt-8 outline-none sm:px-10 md:pt-12 lg:px-14"
+            className="pb-20 outline-none"
           >
             <SettingsLoadStatusBanner />
             {children}
-          </div>
+          </PageContainer>
         </div>
         <SettingsToolbar />
       </main>

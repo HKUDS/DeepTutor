@@ -3,11 +3,46 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from pathlib import Path
 import tempfile
+import threading
 import time
 from typing import Any
+
+logger = logging.getLogger(__name__)
+
+# fsync failures weaken the durability promise but do not corrupt the write:
+# the replacement below still publishes complete content. Warn about them,
+# rate-limited, so a failing disk fills the log once per interval instead of
+# once per write.
+_FSYNC_WARNING_INTERVAL_SECONDS = 60.0
+_last_fsync_warning_at: float | None = None
+_fsync_warning_lock = threading.Lock()
+
+
+def _sync_to_disk(handle: Any, path: Path) -> None:
+    """fsync *handle*, surfacing a failure as a rate-limited warning."""
+    global _last_fsync_warning_at
+    try:
+        os.fsync(handle.fileno())
+    except OSError as exc:
+        now = time.monotonic()
+        with _fsync_warning_lock:
+            should_warn = (
+                _last_fsync_warning_at is None
+                or now - _last_fsync_warning_at >= _FSYNC_WARNING_INTERVAL_SECONDS
+            )
+            if should_warn:
+                _last_fsync_warning_at = now
+        if should_warn:
+            logger.warning(
+                "fsync failed while writing %s; the write succeeded but is not"
+                " guaranteed durable on disk (%r)",
+                path,
+                exc,
+            )
 
 
 def _atomic_replace(src: Path, dst: Path, *, max_retries: int = 5) -> None:
@@ -50,10 +85,7 @@ def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
             json.dump(payload, handle, indent=2, ensure_ascii=False)
             handle.write("\n")
             handle.flush()
-            try:
-                os.fsync(handle.fileno())
-            except OSError:
-                pass
+            _sync_to_disk(handle, path)
         _atomic_replace(temporary_path, path)
     finally:
         if temporary_path is not None:
@@ -75,10 +107,7 @@ def atomic_write_text(path: Path, text: str) -> None:
             temporary_path = Path(handle.name)
             handle.write(text)
             handle.flush()
-            try:
-                os.fsync(handle.fileno())
-            except OSError:
-                pass
+            _sync_to_disk(handle, path)
         _atomic_replace(temporary_path, path)
     finally:
         if temporary_path is not None:

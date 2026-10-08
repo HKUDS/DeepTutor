@@ -20,6 +20,12 @@ export interface WorkspaceMenuItem {
   active?: boolean;
   disabled?: boolean;
   spinning?: boolean;
+  /**
+   * Shown below the `md` breakpoint only — a control the converged mobile
+   * header moved into this menu (#916). Desktop keeps it where it was, so
+   * the menu does not offer it twice.
+   */
+  mobileOnly?: boolean;
   onSelect: () => void;
 }
 

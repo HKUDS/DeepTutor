@@ -531,6 +531,67 @@ def test_loader_embeds_images_with_qwen38_max_vision_capability(
     assert captured["llm_kwargs"]["image_mime_type"] == "image/png"
 
 
+def test_loader_logs_and_continues_when_image_progress_callback_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    pytest.importorskip("llama_index.core")
+    from llama_index.core.schema import ImageNode
+
+    from deeptutor.services.rag.pipelines.llamaindex import document_loader as loader_module
+
+    image_paths = []
+    for name in ("photo-1.png", "photo-2.png"):
+        path = tmp_path / name
+        path.write_bytes(b"\x89PNG\r\n")
+        image_paths.append(path)
+
+    class _MultimodalEmbeddingClient:
+        config = type("Config", (), {"binding": "siliconflow", "model": "qwen3-vl"})()
+
+        def supports_multimodal_contents(self) -> bool:
+            return True
+
+        async def embed_contents(self, contents):
+            return [[0.1, 0.2, 0.3] for _ in contents]
+
+    class _VisionClient:
+        config = type("Config", (), {"binding": "openai", "model": "gpt-4o"})()
+
+        def supports_multimodal_images(self) -> bool:
+            return True
+
+        async def complete(self, prompt, **kwargs):
+            return "Stub description."
+
+    monkeypatch.setattr(loader_module, "get_embedding_client", lambda: _MultimodalEmbeddingClient())
+    monkeypatch.setattr(loader_module, "get_image_description_client", lambda: _VisionClient())
+
+    calls: list[tuple[int, int]] = []
+
+    def _flaky_callback(completed: int, total: int) -> None:
+        calls.append((completed, total))
+        if completed == 1:
+            raise RuntimeError("progress sink is down")
+
+    with caplog.at_level("WARNING"):
+        documents = asyncio.run(
+            loader_module.LlamaIndexDocumentLoader().load(
+                [str(path) for path in image_paths],
+                image_progress_callback=_flaky_callback,
+            )
+        )
+
+    # The callback stays invoked for every image even after one failure.
+    assert calls == [(1, 2), (2, 2)]
+    # A failing callback must not abort the batch: both images still load.
+    assert len(documents) == 2
+    assert all(isinstance(doc, ImageNode) for doc in documents)
+    assert "Image progress callback failed" in caplog.text
+    assert "progress sink is down" in caplog.text
+
+
 def test_loader_skips_images_when_llm_is_text_only(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
