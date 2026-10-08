@@ -170,6 +170,32 @@ def test_llm_selection_defaults_to_admin_active_model(monkeypatch):
     assert co_writer_router._validated_llm_selection(None) is None
 
 
+@pytest.mark.parametrize("endpoint", ["edit", "automark"])
+@pytest.mark.parametrize("status", [403, 422])
+def test_edit_actions_preserve_model_selection_errors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, endpoint: str, status: int
+) -> None:
+    """Expected model-selection failures keep their HTTP status and detail."""
+    monkeypatch.setattr(
+        "deeptutor.multi_user.context.get_current_user",
+        lambda: SimpleNamespace(is_admin=False),
+    )
+    monkeypatch.setattr(
+        "deeptutor.multi_user.model_access.has_capability_access", lambda _capability: False
+    )
+    client, _storage = _client(tmp_path, monkeypatch)
+    payload = {"text": "A passage", "instruction": "Rewrite"}
+    if status == 422:
+        payload["llm_selection"] = {"profile_id": "profile", "model_id": ""}
+    response = client.post(f"/documents/actions/{endpoint}", json=payload)
+    assert response.status_code == status
+    assert response.json()["detail"] == (
+        "No LLM model is assigned to your account. Please contact an administrator."
+        if status == 403
+        else "Invalid LLM selection: profile_id and model_id are required."
+    )
+
+
 def test_llm_selection_uses_first_granted_model_for_ordinary_user(monkeypatch):
     monkeypatch.setattr(
         "deeptutor.multi_user.context.get_current_user",
