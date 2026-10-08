@@ -26,7 +26,7 @@ that produced the corrupted-notebook reports.
 
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from dataclasses import replace as dataclass_replace
 import hashlib
 import json
@@ -205,7 +205,7 @@ class ReadingStore:
         if not db_path.is_file():
             return None
         try:
-            with sqlite3.connect(db_path, timeout=30) as conn:
+            with closing(sqlite3.connect(db_path, timeout=30)) as conn:
                 conn.row_factory = sqlite3.Row
                 return conn.execute(
                     "SELECT * FROM reading_materials WHERE material_id = ?",

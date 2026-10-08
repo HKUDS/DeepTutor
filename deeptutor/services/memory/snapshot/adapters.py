@@ -13,6 +13,7 @@ across refreshes.
 
 from __future__ import annotations
 
+from contextlib import closing
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -470,7 +471,7 @@ def read_chat_entities() -> list[Entity]:
         if not db_path.exists():
             continue
         try:
-            with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as conn:
+            with closing(sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)) as conn:
                 conn.row_factory = sqlite3.Row
                 sessions = conn.execute(
                     "SELECT id, title, created_at, updated_at FROM sessions ORDER BY updated_at DESC"
@@ -522,7 +523,7 @@ def read_quiz_entities() -> list[Entity]:
         if not db_path.exists():
             continue
         try:
-            with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as conn:
+            with closing(sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)) as conn:
                 conn.row_factory = sqlite3.Row
                 rows = conn.execute(
                     "SELECT id, session_id, turn_id, question_id, question, "
@@ -602,7 +603,7 @@ def probe_chat_entities() -> list[EntityStamp]:
         if not db_path.exists():
             continue
         try:
-            with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as conn:
+            with closing(sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)) as conn:
                 conn.row_factory = sqlite3.Row
                 last_msg_id: dict[str, int] = {
                     row["session_id"]: row["id"]

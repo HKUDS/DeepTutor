@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 import sqlite3
@@ -126,7 +127,7 @@ class SQLiteWebSourceSyncRepository:
         return connection
 
     def _initialize(self) -> None:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS web_source_sync_jobs (
@@ -189,7 +190,7 @@ class SQLiteWebSourceSyncRepository:
     ) -> None:
         """Reconcile only owners whose source inventory was read successfully."""
         now = self._now_ms()
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 rows = connection.execute(
@@ -234,7 +235,7 @@ class SQLiteWebSourceSyncRepository:
     def ensure_source(self, source_key: tuple[str, str, str]) -> WebSourceSyncJob:
         """Create a due job for one source without touching unrelated rows."""
         now = self._now_ms()
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             connection.execute(
                 """
                 INSERT OR IGNORE INTO web_source_sync_jobs
@@ -252,7 +253,7 @@ class SQLiteWebSourceSyncRepository:
     def recover_interrupted(self, runner_id: str) -> None:
         """Mark jobs left running by a prior process or expired lease as retryable."""
         now = self._now_ms()
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             connection.execute(
                 """
                 UPDATE web_source_sync_jobs
@@ -269,7 +270,7 @@ class SQLiteWebSourceSyncRepository:
             )
 
     def list_jobs(self, owner_id: str, kb_name: str) -> list[WebSourceSyncJob]:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             rows = connection.execute(
                 """
                 SELECT * FROM web_source_sync_jobs
@@ -282,7 +283,7 @@ class SQLiteWebSourceSyncRepository:
 
     def due_jobs(self, now_ms: int | None = None) -> list[WebSourceSyncJob]:
         now = self._now_ms() if now_ms is None else now_ms
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             rows = connection.execute(
                 """
                 SELECT * FROM web_source_sync_jobs
@@ -303,7 +304,7 @@ class SQLiteWebSourceSyncRepository:
     ) -> WebSourceSyncJob | None:
         """Claim one job only when its durable state still matches."""
         now = self._now_ms()
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 row = connection.execute(
@@ -348,7 +349,7 @@ class SQLiteWebSourceSyncRepository:
     def renew_lease(self, job: WebSourceSyncJob, lease_until_ms: int) -> bool:
         """Extend only the still-owned, unexpired claim."""
         now = self._now_ms()
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             cursor = connection.execute(
                 """
                 UPDATE web_source_sync_jobs
@@ -372,7 +373,7 @@ class SQLiteWebSourceSyncRepository:
         assignments.append("updated_at_ms")
         values = list(fields.values())
         set_sql = ", ".join(f"{name}=?" for name in assignments)
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             cursor = connection.execute(
                 f"""
                 UPDATE web_source_sync_jobs
@@ -429,7 +430,7 @@ class SQLiteWebSourceSyncRepository:
 
     def mark_cancelled(self, job: WebSourceSyncJob, next_run_at_ms: int | None = None) -> None:
         now = self._now_ms()
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             connection.execute(
                 """
                 UPDATE web_source_sync_jobs
@@ -444,7 +445,7 @@ class SQLiteWebSourceSyncRepository:
 
     def request_cancel(self, job_key: tuple[str, str, str]) -> bool:
         now = self._now_ms()
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 row = connection.execute(
@@ -489,7 +490,7 @@ class SQLiteWebSourceSyncRepository:
 
     def delete(self, job_key: tuple[str, str, str]) -> bool:
         """Remove a job after its source has been deleted."""
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             cursor = connection.execute(
                 """
                 DELETE FROM web_source_sync_jobs
@@ -508,7 +509,7 @@ class SQLiteWebSourceSyncRepository:
 
     def retry(self, job_key: tuple[str, str, str]) -> WebSourceSyncJob | None:
         now = self._now_ms()
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             cursor = connection.execute(
                 """
                 UPDATE web_source_sync_jobs
@@ -526,7 +527,7 @@ class SQLiteWebSourceSyncRepository:
         return self.get(job_key)
 
     def get(self, job_key: tuple[str, str, str]) -> WebSourceSyncJob | None:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             row = connection.execute(
                 """
                 SELECT * FROM web_source_sync_jobs
@@ -545,7 +546,7 @@ class SQLiteWebSourceSyncRepository:
     ) -> list[WebSourceBilingualPairing]:
         """Atomically replace bilingual pairings for one web source."""
         now = self._now_ms()
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 connection.execute(
@@ -591,7 +592,7 @@ class SQLiteWebSourceSyncRepository:
         kb_name: str,
         source_id: str | None = None,
     ) -> list[WebSourceBilingualPairing]:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             if source_id is not None:
                 rows = connection.execute(
                     """
@@ -618,7 +619,7 @@ class SQLiteWebSourceSyncRepository:
         kb_name: str,
         source_id: str,
     ) -> int:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             cursor = connection.execute(
                 """
                 DELETE FROM web_source_bilingual_pairings
