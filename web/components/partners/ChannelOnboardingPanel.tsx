@@ -88,22 +88,26 @@ export default function ChannelOnboardingPanel({
     [applySession, partnerId, t],
   );
 
+  const sessionId = session?.session_id;
+  const sessionStatus = session?.status;
+  const pollIntervalSeconds = session?.poll_interval_seconds;
+
   useEffect(() => {
-    if (!session || session.status !== "pending_scan") return;
+    if (!sessionId || sessionStatus !== "pending_scan") return;
     let cancelled = false;
     const pollOnce = async () => {
-      if (!cancelled) await poll(session.session_id);
+      if (!cancelled) await poll(sessionId);
     };
     void pollOnce();
     const timer = setInterval(
       () => void pollOnce(),
-      Math.max(1, session.poll_interval_seconds) * 1_000,
+      Math.max(1, pollIntervalSeconds ?? 1) * 1_000,
     );
     return () => {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [poll, session]);
+  }, [poll, sessionId, sessionStatus, pollIntervalSeconds]);
 
   const start = useCallback(async () => {
     setBusy(true);
