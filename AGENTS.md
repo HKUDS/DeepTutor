@@ -76,9 +76,8 @@ Multi-stage pipelines that own the turn:
 | `visualize`      | analyzing → generating → reviewing (SVG / Chart.js / Mermaid / HTML; or routes to Manim sub-stages via `render_type`) |
 | `math_animator`  | concept_analysis → concept_design → code_generation → code_retry → summary → render_output |
 | `mastery_path`   | responding (Guided Learning — chat loop + mastery tools, gated per topic type) |
-| `immersive_reading` | responding (document-grounded reading loop)        |
+| `immersive_reading` | responding (document- or timestamp-grounded media reading loop) |
 | `course_study`   | responding (course-state sensing and hand-off loop)   |
-| `immersive_watching` | responding (timestamp-grounded video loop)         |
 
 All capabilities converge on `emit_capability_result()` in
 `deeptutor/capabilities/_shared.py` so every turn emits the same envelope

@@ -100,6 +100,7 @@ export const MasteryQuestionCard = memo(function MasteryQuestionCard({
   submittedAnswer,
   onSubmit,
   onSkip,
+  onChallenge,
 }: {
   question: MasteryQuestion;
   /** The gate's ruling, once it has been made. */
@@ -117,10 +118,12 @@ export const MasteryQuestionCard = memo(function MasteryQuestionCard({
   /** Drop this question and let the tutor move on. Absent where the surface
    *  cannot start a turn of its own, which hides the control entirely. */
   onSkip?: (questionId: string) => void | boolean | Promise<void | boolean>;
+  onChallenge?: (questionId: string) => void | boolean | Promise<void | boolean>;
 }) {
   const { t } = useTranslation();
   const [picked, setPicked] = useState<string>("");
   const [skipping, setSkipping] = useState(false);
+  const [sourceUnavailable, setSourceUnavailable] = useState(false);
   const [freeText, setFreeText] = useState("");
   const [freeSelected, setFreeSelected] = useState(false);
   const { sending, failed: sendFailed, submit } = useCardSubmission(onSubmit);
@@ -136,6 +139,7 @@ export const MasteryQuestionCard = memo(function MasteryQuestionCard({
   // Skipping settles the card exactly as answering does: the engine closed the
   // question, so there is nothing left on it to send.
   const settled = answered || skipped === true;
+  const ungraded = grade?.result === "ungraded";
   const locked = settled || sending || skipping;
 
   const handleSkip = useCallback(() => {
@@ -148,12 +152,12 @@ export const MasteryQuestionCard = memo(function MasteryQuestionCard({
   }, [locked, onSkip, question.questionId]);
 
   const handleSubmit = useCallback(() => {
-    if (locked || !answer) return;
+    if (locked || !answer || sourceUnavailable) return;
     void submit({
       text: answer,
       answers: [{ questionId: question.questionId, text: answer }],
     });
-  }, [answer, locked, submit, question.questionId]);
+  }, [answer, locked, sourceUnavailable, submit, question.questionId]);
 
   // Which answer to treat as the learner's, preferring what the graded record
   // committed over what this browser happens to remember.
@@ -168,7 +172,7 @@ export const MasteryQuestionCard = memo(function MasteryQuestionCard({
   ].filter(Boolean);
 
   // The rule down the left margin is the whole status indicator.
-  const rule = grade
+  const rule = ungraded ? "border-dashed border-[var(--border)]" : grade
     ? grade.isCorrect
       ? "border-[var(--primary)]"
       : "border-[var(--destructive)]"
@@ -180,6 +184,7 @@ export const MasteryQuestionCard = memo(function MasteryQuestionCard({
 
   const optionState = (option: { label: string }): OptionState => {
     if (grade) {
+      if (ungraded) return "idle";
       if (option.label && option.label === grade.correctLabel) return "correct";
       if (option.label && option.label === learnerAnswer && !grade.isCorrect)
         return "wrong";
@@ -200,6 +205,17 @@ export const MasteryQuestionCard = memo(function MasteryQuestionCard({
       <div className="mt-0.5 font-serif text-[15.5px] font-semibold leading-relaxed tracking-[-0.01em] text-[var(--foreground)]">
         <InlineMarkdown content={question.prompt} />
       </div>
+      {question.visual && <div className="mt-3 space-y-2 text-xs text-[var(--muted-foreground)]">
+        <p>{grade?.independent === false || question.visual.hintsUsed || question.visual.answerCues !== "none" ? t("Guided visual practice — this does not demonstrate independent mastery.") : t("Visual practice with the original source.")}</p>
+        {sourceUnavailable && <p role="alert">{t("The source image is unavailable. Open the source or ask your tutor to inspect its current version.")}</p>}
+        {question.visual.keyStatus !== "verified" && <p>{t("The reference key is uncertain. This practice will remain ungraded.")}</p>}
+        {question.visual.pixelsInspected === false && <p>{t("Current model input has no verified source pixels. Retrieve the image again with a vision-capable model before grading.")}</p>}
+        {question.visual.sources.map((source, index) => <figure key={`${source.imageUrl}-${index}`}>
+          {/* Authenticated source endpoints need the browser's own cookies. */}
+          <a href={source.imageUrl} target="_blank" rel="noreferrer"><img src={source.imageUrl} alt={t("Original source evidence")} onError={() => setSourceUnavailable(true)} className="max-h-80 max-w-full object-contain" /></a>
+          <figcaption><a className="underline" href={source.url} target="_blank" rel="noreferrer">{source.sourcePath}{source.page ? ` · ${t("Page")} ${source.page}` : ""}</a></figcaption>
+        </figure>)}
+      </div>}
 
       {hasChoices ? (
         <div className="mt-2.5 flex flex-col gap-0.5">
@@ -254,14 +270,14 @@ export const MasteryQuestionCard = memo(function MasteryQuestionCard({
             <span
               className={
                 "font-semibold " +
-                (grade.isCorrect
+                (ungraded ? "text-[var(--muted-foreground)]" : grade.isCorrect
                   ? "text-[var(--primary)]"
                   : "text-[var(--destructive)]")
               }
             >
-              {grade.isCorrect ? t("Correct") : t("Not quite")}
+              {ungraded ? t("Ungraded — mastery unchanged") : grade.isCorrect ? t("Correct") : t("Not quite")}
             </span>
-            {!grade.isCorrect && grade.correctLabel ? (
+            {!ungraded && !grade.isCorrect && grade.correctLabel ? (
               <span className="text-[var(--foreground)]">
                 {" · "}
                 {t("Answer: {{label}}", { label: grade.correctLabel })}
@@ -273,6 +289,7 @@ export const MasteryQuestionCard = memo(function MasteryQuestionCard({
               <InlineMarkdown content={grade.explanation} />
             </div>
           ) : null}
+          {onChallenge && <button type="button" className="mt-2 text-xs underline" onClick={() => onChallenge(question.questionId)}>{t("Review or challenge this assessment")}</button>}
         </div>
       ) : null}
 
@@ -312,7 +329,7 @@ export const MasteryQuestionCard = memo(function MasteryQuestionCard({
             <button
               type="button"
               onClick={handleSubmit}
-              disabled={locked || !answer}
+              disabled={locked || !answer || sourceUnavailable}
               className="rounded-md bg-[var(--primary)] px-3 py-1.5 text-[12px] font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {t("Submit")}
