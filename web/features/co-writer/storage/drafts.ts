@@ -62,6 +62,15 @@ export function loadDraft(
     const legacyContent = storage.getItem(legacyKey);
     if (legacyContent === null) return null;
     const migrated = saveDraft(storage, docId, legacyContent, 0);
+    if (!migrated) {
+      return {
+        version: DRAFT_STORAGE_VERSION,
+        docId,
+        content: legacyContent,
+        revision: 0,
+        updatedAt: Date.now(),
+      };
+    }
     storage.removeItem(legacyKey);
     return migrated;
   } catch {
