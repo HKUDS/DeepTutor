@@ -447,7 +447,14 @@ async def test_missing_binding_returns_actionable_search_error(catalog, tmp_path
 
 
 @pytest.mark.asyncio
-async def test_unidentified_legacy_graph_index_keeps_its_existing_runtime(catalog, tmp_path):
+async def test_unidentified_legacy_graph_index_keeps_its_existing_runtime(
+    catalog, tmp_path, monkeypatch
+):
+    from deeptutor.services.rag import index_probe
+
+    monkeypatch.setattr(
+        index_probe, "latest_ready_provider_version", lambda *args: {"version": "version-1"}
+    )
     from deeptutor.services.embedding.config import scoped_embedding_config
 
     write_entry(
@@ -528,7 +535,7 @@ async def test_real_llamaindex_create_search_append_and_rebuild_use_bound_model(
     assert read_entry(tmp_path)["embedding_signature"] == original
     assert await service.initialize("kb", ["first", "second"], embedding_selection=selection("b"))
     assert read_entry(tmp_path)["embedding_selection"] == selection("b")
-    assert len(list((tmp_path / "kb").glob("version-*"))) == 2
+    assert len(list((tmp_path / "kb").glob("version-*"))) == 3
     assert (await service.search("study", "kb"))["sources"]
     clients.reset_embedding_client()
     clear_index_cache()

@@ -529,7 +529,6 @@ export function AddMaterialsDialog({
 
       {showInvidious && (
         <WatchingBrowser
-          selectionMode
           canDismiss
           onSelectUrl={(url) => void importInvidiousUrl(url)}
           onDismiss={() => setShowInvidious(false)}

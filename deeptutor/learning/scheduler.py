@@ -264,18 +264,24 @@ class SpacedRepetitionScheduler:
             _SAME_SESSION_DAYS,
             self._interval_from_stability(previous_stability, DEFAULT_DESIRED_RETENTION) * 0.5,
         )
-        if (
-            quality >= _FAIL_QUALITY
-            and state.last_review_at is not None
-            and elapsed_days < same_session_days
-        ):
-            # Repeated practice refreshes recall, but must not repeatedly
-            # multiply stability or postpone the original review deadline.
-            state.review_count += 1
-            state.last_review_at = moment
-            state.retrievability = 1.0
-            state.consecutive_wrong = 0
-            return state
+        if state.last_review_at is not None and elapsed_days < same_session_days:
+            if quality >= _FAIL_QUALITY:
+                # Repeated practice refreshes recall, but must not repeatedly
+                # multiply stability or postpone the original review deadline.
+                state.review_count += 1
+                state.last_review_at = moment
+                state.retrievability = 1.0
+                state.consecutive_wrong = 0
+                return state
+            if state.scheduled_after_failure and (
+                evidence.result == "partial" or evidence.assessment_type == "qualitative"
+            ):
+                # Formative follow-ups within an active repair episode do not count
+                # as repeated independent lapses or compound stability loss (#1781).
+                state.review_count += 1
+                state.last_review_at = moment
+                state.retrievability = max(quality, 0.2)
+                return state
         spacing_ratio = min(elapsed_days / previous_stability, 4.0)
 
         # Difficulty is an item/learner estimate, not the knowledge-type

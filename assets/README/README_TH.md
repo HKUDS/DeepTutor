@@ -60,10 +60,10 @@
 
 DeepTutor คือ workspace การเรียนรู้แบบ agent-native ที่เชื่อมต่อการสอนพิเศษ, การแก้ปัญหา, การสร้าง quiz, การวิจัย, การสร้างภาพ และการฝึกความเชี่ยวชาญในระบบที่ขยายได้หนึ่งเดียว
 
-- **รันไทม์เดียวสำหรับทุกโหมด** — Chat, Ask Questions, Quiz, Research, Visualize, Solve, Course Study, Mastery Path, Immersive Reading และ Immersive Watching ใช้ capability runtime และบริบท session ชุดเดียวกัน โดยยังคงลูปและ pipeline ที่ออกแบบมาเฉพาะสำหรับแต่ละวัตถุประสงค์
+- **รันไทม์เดียวสำหรับทุกโหมด** — Chat, Ask Questions, Quiz, Research, Visualize, Solve, Course Study, Mastery Path, Immersive Reading และ Audio Overview ใช้ capability runtime และบริบท session ชุดเดียวกัน โดยยังคงลูปและ pipeline ที่ออกแบบมาเฉพาะสำหรับแต่ละวัตถุประสงค์
 - **Task Board** — ติดตามงานการเรียนใน To do, In progress และ Done พร้อมโน้ต การลากและวางหรือปุ่มย้ายที่ใช้ได้ด้วยแป้นพิมพ์ และรายการที่เก็บถาวรซึ่งกู้คืนได้ การ์ดจะอยู่ใน workspace ปัจจุบันและใช้การตั้งค่ารูปลักษณ์และภาษาเดิม โดยไม่ต้องกำหนดค่า model
 - **บริบทการเรียนรู้ที่เชื่อมต่อกัน** — ฐานความรู้, หนังสือ, ร่าง Co-Writer, สมุดบันทึก, คลังคำถาม, บุคลิกภาพ และ Memory สามารถนำมาใช้ซ้ำในเวิร์กโฟลว์ที่รองรับ โดยอยู่ภายใต้สิทธิ์ของบัญชีและนโยบายการเรียนรู้
-- **การเรียนรู้ผ่านวิดีโออย่างดื่มด่ำ** — วางลิงก์ YouTube เพื่อเล่นวิดีโอแบบ native ที่เพิ่มความเป็นส่วนตัว พร้อมคำบรรยายที่ซิงค์กัน, การสอนพิเศษที่อ้างอิง timestamp, จุดเวลาที่บันทึกไว้ และความคืบหน้าที่กลับมาเรียนต่อได้; ผู้ดูแลระบบสามารถเปลี่ยนการเล่นเป็น Invidious instance ที่ self-hosted ได้โดยไม่ต้องสร้างสื่อขึ้นใหม่
+- **การเรียนรู้ผ่านวิดีโออย่างดื่มด่ำ** — เพิ่มลิงก์ YouTube หรือ Bilibili ใน Reading เพื่อเล่นวิดีโอแบบ native, ค้นหา transcript, รับการสอนพิเศษที่อ้างอิง timestamp, บันทึกโน้ต และกลับมาเรียนต่อจากความคืบหน้าเดิม; คำบรรยายและการเรียกดู YouTube สามารถใช้ Invidious instance ที่ผู้ดูแลระบบกำหนดค่าไว้ได้
 - **ซับเอเจนต์และ Partners** — จาก Chat คุณสามารถปรึกษา agent harness แบบสด (Claude Code, Codex, Grok CLI, Antigravity, Kimi, opencode, MiMo, Hermes, OpenClaw หรือ DeepSeek) หรือ Partner, นำเข้าบทสนทนาในอดีต และรันเพื่อนถาวรบน IM ด้วยสมองเดียวกัน
 - **ความรู้หลายเอ็นจิน** — ไลบรารี RAG แบบเวอร์ชันผ่าน LlamaIndex, PageIndex, GraphRAG, LightRAG, LightRAG Server ระยะไกล, WeKnora deployment แบบ self-hosted, ไลบรารี Tencent IMA หรือ MarginNote 4, คลัง Kiwix ZIM ที่เชื่อมต่อ หรือ Obsidian vault ที่เชื่อมโยง พร้อมการแยกวิเคราะห์เอกสารแบบ pluggable ดู [native LightRAG role models](../../deeptutor/services/rag/pipelines/lightrag/README.md) สำหรับการตั้งค่า extraction, query และ vision ที่เป็นอิสระจากกัน, การสร้างแบบใช้ค่าเริ่มต้นเท่านั้น และการสร้างใหม่ที่ต้องมีการยืนยัน
 - **เครื่องมือและทักษะที่ขยายได้** — เครื่องมือในตัว, เซิร์ฟเวอร์ MCP, แอป CLI, โมเดลสร้างรูปภาพ/วิดีโอ/เสียง และทักษะชุมชนที่ติดตั้งได้จาก EduHub
@@ -72,6 +72,22 @@ DeepTutor คือ workspace การเรียนรู้แบบ agent-n
 ---
 
 ## 🚀 เริ่มต้น
+
+### ให้ Agent ของคุณตั้งค่า DeepTutor
+
+คัดลอก prompt นี้ไปยัง AI agent ที่ใช้ terminal ได้ (เช่น Codex หรือ Claude Code):
+
+```text
+Help me install and configure DeepTutor locally from https://github.com/HKUDS/DeepTutor.
+Clone the repository, or reuse my existing checkout, and read SKILL.md and
+docs-for-user/AGENT_SETUP.md first. Follow that guide to prepare the environment,
+configure my model provider, verify the setup, and start the Web app.
+Ask me for any missing provider, model, or credential-source information;
+do not print API keys. Preserve my existing files and settings, and finish
+with the access URL and the results of your checks.
+```
+
+[คู่มือ Agent Setup](../../docs-for-user/AGENT_SETUP.md) ครอบคลุมขั้นตอนทั้งหมด รวมถึงการกำหนดค่าผ่าน CLI แบบไม่โต้ตอบ หากต้องการติดตั้งด้วยตัวเอง ให้เลือกหนึ่งในเส้นทางด้านล่าง
 
 DeepTutor มีเส้นทางการติดตั้งสี่เส้นทาง ทั้งหมดแชร์ layout runtime home เดียวกัน: การตั้งค่าส่วนตัวอยู่ใน `data/user/settings/` ภายใต้ไดเร็กทอรีที่คุณเปิดตัว (หรือภายใต้ `DEEPTUTOR_HOME` / `deeptutor start --home` หากคุณตั้งค่าไว้อย่างชัดเจน) สำหรับแอปเต็มรูปแบบ ขั้นตอนที่แนะนำคือ **เลือกไดเร็กทอรี runtime home → ติดตั้ง → `deeptutor init` → `deeptutor start`**
 
@@ -351,7 +367,7 @@ office skills ที่ติดตั้งมา — **docx / pdf / pptx / xls
 | `integrations.json` | การตั้งค่า PocketBase แบบเสริมและการรวม sidecar |
 | `interface.json` | ความชอบภาษา UI และภาษา output ของ model / ธีม / แถบด้านข้างของ UI |
 | `document_parsing.json` | การเลือกเอ็นจินแยกวิเคราะห์และโมเดลอธิบายรูปภาพ, remote endpoints และตัวเลือกเฉพาะเอ็นจิน |
-| `video_learning.json` | provider การเล่น YouTube/Invidious เริ่มต้น, ต้นทาง Invidious และ transcript adapter แบบเสริม |
+| `video_learning.json` | provider คำบรรยาย YouTube, origins และการเข้าถึงบัญชี Invidious และการตั้งค่า transcript |
 | `main.yaml` | ค่าเริ่มต้นพฤติกรรม runtime และการ inject path |
 | `agents.yaml` | การตั้งค่า temperature และ token ของ capability/tool |
 
@@ -447,7 +463,7 @@ Chat คือความสามารถเริ่มต้นและส
 
 บริบทมีสองประเภท: **บริบท session ที่คงอยู่** (capability, workspace หรือ course, tools, knowledge bases, persona, model และสถานะ Reading / Mastery) คงอยู่ตลอด turns; **การอ้างอิงครั้งเดียว** (ไฟล์, ประวัติ chat, หนังสือ, ส่วนการอ่าน, notebooks, รายการคำถามที่เลือกจาก question bank, imported agents) มาจากเมนู `+` สำหรับ turn เดียว ปุ่ม voice ทำหน้าที่ถอดเสียงเฉพาะข้อความปัจจุบัน
 
-Home ทำให้ **Chat**, **Ask Questions**, **Quiz** และ **Visualize** อยู่ห่างเพียงคลิกเดียว; **Research** สำหรับรายงานที่มีการอ้างอิง, **Solve** สำหรับการให้เหตุผลแบบละเอียด และ **Immersive Watching** อยู่ภายใต้ *More Capabilities* **Personalized Learning** รวม Book, **Mastery Path**, **Immersive Reading**, Watching และ **Practice**; Reading เพิ่ม citations ที่ตรวจสอบแล้ว, notes ที่บันทึกไว้, การอ่านออกเสียงอย่างเป็นธรรมชาติจากข้อความต้นฉบับ / คำแนะนำการเรียน / คำศัพท์ / quiz / การแปล และการบันทึกลง notebook ขณะที่ Course Study มีบริบทที่ผูกกับ course ของตัวเอง
+Home ทำให้ **Chat**, **Ask Questions**, **Quiz** และ **Visualize** อยู่ห่างเพียงคลิกเดียว; **Research** สำหรับรายงานที่มีการอ้างอิงและ **Solve** สำหรับการให้เหตุผลแบบละเอียดอยู่ภายใต้ *More Capabilities* **Personalized Learning** รวม Book, **Mastery Path**, **Immersive Reading** และ **Practice**; Reading รวมเอกสาร วิดีโอ และเสียงไว้ด้วยกัน พร้อม citations ที่ตรวจสอบแล้ว, notes ที่บันทึกไว้, การอ่านออกเสียงอย่างเป็นธรรมชาติจากข้อความต้นฉบับ / คำแนะนำการเรียน / คำศัพท์ / quiz / การแปล และการบันทึกลง notebook ขณะที่ Course Study มีบริบทที่ผูกกับ course ของตัวเอง
 
 </details>
 
@@ -631,10 +647,10 @@ Settings คือศูนย์ควบคุมการทำงาน โ�
 
 **เสียงพูด Xiaomi MiMo** เพิ่ม Xiaomi MiMo provider ด้วย `https://api.xiaomimimo.com/v1` และ API key จากนั้นเพิ่ม `mimo-v2.5-tts` ใน Settings → Voice เลือก preset เช่น `mimo_default`, `冰糖` หรือ `苏打`, ใช้ output แบบ `wav` หรือ `pcm16` และทดลองฟังก่อนนำไปใช้ คำสั่งเสียงควบคุมรูปแบบและความเร็วในการพูด adapter นี้รองรับเฉพาะเสียง preset; การออกแบบเสียงและการโคลนเสียงต้องใช้โมเดลแยกต่างหากและไม่รองรับใน adapter นี้ หากเคยกำหนดค่าโมเดลเสียง MiMo รุ่นเก่าผ่าน adapter ทั่วไปที่เข้ากันได้กับ OpenAI ให้สร้างรายการเสียงใหม่โดยใช้ Xiaomi MiMo provider เพื่อให้ใช้ protocol chat-completions ดู[คู่มือเสียง MiMo อย่างเป็นทางการ](https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/speech-synthesis-v2.5)
 
-**เสียงพูด MiniMax** — ใน Settings → Voice เลือก MiniMax สำหรับ text-to-speech และเลือก `speech-2.8-hd` กำหนดค่า MiniMax API key และ voice ID ของระบบหรือที่กำหนดเอง; เสียงเริ่มต้นคือ `English_expressive_narrator` API base เริ่มต้นคือ `https://api.minimax.io/v1`; สำหรับภูมิภาคจีนใช้ `https://api.minimaxi.com/v1` การอ่านออกเสียงและการทดลองเสียงใช้ native speech endpoint พร้อม output แบบ MP3, WAV, FLAC หรือ PCM รวมถึงตัวควบคุม sample rate, ความเร็ว และภาษา ดู[MiniMax speech API](https://platform.minimax.io/docs/api-reference/speech-t2a-http)สำหรับ voice IDs และความพร้อมใช้งานของบัญชี
+**เสียงพูด MiniMax** — ใน Settings → Voice เลือก MiniMax สำหรับ text-to-speech และเลือก `speech-2.8-hd` กำหนดค่า MiniMax API key แล้วเลือกเสียงของระบบอย่างชัดเจนหรือกรอก voice ID ที่กำหนดเอง API base เริ่มต้นคือ `https://api.minimax.io/v1`; สำหรับภูมิภาคจีนใช้ `https://api.minimaxi.com/v1` การอ่านออกเสียงและการทดลองเสียงใช้ native speech endpoint พร้อม output แบบ MP3, WAV, FLAC หรือ PCM รวมถึงตัวควบคุม sample rate, ความเร็ว และภาษา ดู[MiniMax speech API](https://platform.minimax.io/docs/api-reference/speech-t2a-http)สำหรับ voice IDs และความพร้อมใช้งานของบัญชี
 
 
-**Video Learning** ภายใต้ Settings → Learning & conversation ใช้ YouTube IFrame Player อย่างเป็นทางการที่เพิ่มความเป็นส่วนตัวเป็นค่าเริ่มต้น หากต้องการให้การเล่นอยู่ในระบบ local ให้ตั้งค่า Invidious API origin ที่ผู้ดูแลระบบจัดการ (ตัวอย่างเช่น `http://127.0.0.1:3000`), ทดสอบ, เลือก Invidious แล้วบันทึก วิดีโอใหม่หรือวิดีโอที่เปิดอีกครั้งจะใช้ provider ทันทีโดยมี material ID และความคืบหน้าเดิม สื่อ Invidious จะ stream ผ่าน byte-range proxy ของ DeepTutor; upstream URLs จะไม่ถูกเปิดเผยต่อเบราว์เซอร์หรือเก็บไว้บนดิสก์ หาก instance ล้มเหลว DeepTutor จะยังคงออฟไลน์จาก YouTube จนกว่าผู้เรียนจะเลือก fallback ไปยัง native YouTube อย่างชัดเจน การสอนพิเศษจากคำบรรยายสาธารณะเป็นทางเลือก: ติดตั้ง `.[video-learning]`; การเล่นยังคงทำงานได้หากไม่มี ส่วน **Explain here** ที่อิง transcript จะถูกปิดใช้งานพร้อมระบุเหตุผล
+**Video Learning** ภายใต้ Settings → Learning & conversation กำหนดค่าคำบรรยาย YouTube และการเข้าถึง Invidious สำหรับ Reading หากต้องการใช้ Invidious ให้ตั้งค่า backend API origin ที่ผู้ดูแลระบบจัดการ (ตัวอย่างเช่น `http://127.0.0.1:3000`) และ public origin ที่เบราว์เซอร์เข้าถึงได้ ทดสอบการเชื่อมต่อ เลือก Invidious แล้วบันทึก **Browse Invidious** ในกล่องเพิ่มสื่อของ Reading ใช้ค้นหาวิดีโอและเข้าถึง subscriptions และ playlists ที่เชื่อมต่อไว้ การเล่น YouTube ใช้ player อย่างเป็นทางการที่เพิ่มความเป็นส่วนตัว; หากไม่มีคำบรรยาย ระบบจะแสดงสถานะนี้และจำกัดหลักฐานที่ tutor ใช้ โดยไม่ปิดกั้นการเล่นแบบ native ติดตั้ง `.[video-learning]` สำหรับตัวโหลดคำบรรยาย YouTube เริ่มต้น ลิงก์ Watching ที่มีอยู่จะย้ายเข้า Reading โดยรักษาประวัติการสนทนา transcript ที่เข้ากันได้ notes และความคืบหน้าไว้; notes ที่อ้างอิง timestamp รายการใหม่จะเป็น annotations ของ Reading ส่วน Bilibili ใช้เส้นทางการเล่นและคำบรรยายของตัวเอง
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="การตั้งค่ารูปลักษณ์และธีมของ DeepTutor" width="900">
@@ -732,7 +748,7 @@ SID=$(deeptutor run deep_research "Survey 2026 papers on RAG" \
 deeptutor run deep_question "Quiz me on that survey" --session "$SID" --format json
 ```
 
-repo มี root [`SKILL.md`](../../SKILL.md) — เอกสาร handover ~200 บรรทัดที่สอน LLM ที่ใช้เครื่องมือใด ๆ ให้รู้จัก surface ทั้งหมดในการอ่านครั้งเดียว ส่งให้ Claude Code, Codex หรือ OpenCode (พวกเขาหยิบ `SKILL.md` โดยอัตโนมัติ) หรือ wrap `deeptutor run` เป็นเครื่องมือใน LangChain / AutoGen loop สูตรเต็ม: [Agent Handoff](https://deeptutor.info/docs/cli/agent-handoff/)
+repo มี root [`SKILL.md`](../../SKILL.md) — เอกสาร handover แบบกระชับสำหรับ CLI ขอให้ agent ของคุณอ่านไฟล์นี้อย่างชัดเจน; [คู่มือ Agent Setup](../../docs-for-user/AGENT_SETUP.md) ครอบคลุมการติดตั้งและการกำหนดค่า คุณยังสามารถ wrap `deeptutor run` เป็นเครื่องมือใน LangChain / AutoGen loop ได้ด้วย สูตรเต็ม: [Agent Handoff](https://deeptutor.info/docs/cli/agent-handoff/)
 
 </details>
 
@@ -741,13 +757,13 @@ repo มี root [`SKILL.md`](../../SKILL.md) — เอกสาร handover ~2
 
 | คำสั่ง | คำอธิบาย |
 |:---|:---|
-| `deeptutor init` | สร้างหรืออัพเดต `data/user/settings` ใน runtime home ปัจจุบัน |
+| `deeptutor init [--non-interactive] [--home PATH]` | รันตัวช่วยตั้งค่า หรือสร้างค่าเริ่มต้นที่ยังขาดโดยไม่แสดง prompt |
 | `deeptutor doctor [--online]` | ตรวจสอบว่า runtime พร้อมเริ่ม session หรือไม่; `--online` ยังตรวจสอบ model provider ที่กำหนดค่าไว้ด้วย, `--format json` พิมพ์รายงานออกมา |
 | `deeptutor start [--home PATH] [--dev] [--detach] [--no-browser]` | เปิดตัว backend + frontend ด้วยกัน; เลือก detach หรือปิดการเปิดเบราว์เซอร์ได้ |
 | `deeptutor stop [--home PATH]` | หยุด launcher ที่เริ่มด้วย `--detach` |
 | `deeptutor serve [--port PORT]` | เริ่มเฉพาะ FastAPI backend |
 | `deeptutor workspace show/set/reset` | ตรวจสอบ, เลือก หรือคืนค่า Content Workspace ต่อผู้ใช้ |
-| `deeptutor run <capability> <message>` | รัน capability turn เดียว (`chat`, `ask_questions`, `deep_solve`, `deep_question`, `deep_research`, `visualize`, `math_animator`, `mastery_path`, `immersive_reading`, `course_study`, `immersive_watching`, `audio_overview`); เพิ่ม `--format json` สำหรับ NDJSON output |
+| `deeptutor run <capability> <message>` | รัน capability turn เดียว (`chat`, `ask_questions`, `deep_solve`, `deep_question`, `deep_research`, `visualize`, `math_animator`, `mastery_path`, `immersive_reading`, `course_study`, `audio_overview`); เพิ่ม `--format json` สำหรับ NDJSON output |
 | `deeptutor chat` | Interactive REPL พร้อม capability, tool, KB, notebook และ history controls |
 | `deeptutor partner list/create/start/stop` | จัดการ partners ที่เชื่อมต่อผ่าน IM |
 | `deeptutor kb list/info/create/connect-kiwix/add/search/eval/set-default/delete/list-sources/sync` | จัดการ knowledge bases, เชื่อมต่อคลัง Kiwix, ประเมินคุณภาพ retrieval เทียบกับชุด QA และ sync GitHub/web sources ที่ลงทะเบียนไว้ (พร้อมคำสั่งเพิ่ม/ลบ source) |
@@ -756,9 +772,26 @@ repo มี root [`SKILL.md`](../../SKILL.md) — เอกสาร handover ~2
 | `deeptutor session list/show/open/rename/delete` | จัดการ shared sessions |
 | `deeptutor notebook list/create/show/add-md/replace-md/remove-record` | จัดการ notebooks จากไฟล์ Markdown |
 | `deeptutor book list/health/refresh-fingerprints` | ตรวจสอบ books และรีเฟรช source fingerprints |
-| `deeptutor plugin list/info` | ตรวจสอบเครื่องมือและ capabilities ที่ลงทะเบียน |
-| `deeptutor config show` | พิมพ์สรุปการกำหนดค่า |
-| `deeptutor provider login <provider>` | Provider auth (OAuth login สำหรับ `openai-codex`; `github-copilot` ตรวจสอบ session auth Copilot ที่มีอยู่; `codebuddy` ตรวจสอบ auth ของ CodeBuddy SDK และเริ่ม login เมื่อจำเป็น) |
+| `deeptutor plugin list/info/state/search/show/install/approve/enable/disable/rollback/uninstall` | ตรวจสอบเครื่องมือและ capabilities; จัดการแพ็คเกจ plugin ที่ผ่านการตรวจทานและการอนุมัติสิทธิ์ของแพ็คเกจเหล่านั้น |
+| `deeptutor config show [--home PATH]` | แสดงการกำหนดค่า runtime ที่ resolve แล้ว โดยปกปิด credentials |
+| `deeptutor config providers` | แสดงรายการ setup providers ที่รองรับและค่าเริ่มต้นในรูปแบบ JSON |
+| `deeptutor config apply FILE [--check] [--home PATH]` | ใช้ setup JSON โดยไม่แสดง prompt หรือตรวจสอบความถูกต้องโดยไม่เขียน settings |
+| `deeptutor provider login <provider>` | Provider auth (OAuth login สำหรับ `openai-codex`; GitHub device login สำหรับ `github-copilot`; `codebuddy` ตรวจสอบ auth ของ CodeBuddy SDK และเริ่ม login เมื่อจำเป็น) |
+
+credentials ของ GitHub Copilot เป็นของเจ้าของบัญชี DeepTutor ที่ลงชื่อเข้าใช้ และเก็บไว้เฉพาะที่
+`<runtime-home>/data/system/user-secrets/<owner-id>/private/github-copilot/credentials.v1.json`
+ซึ่งอยู่นอก sandbox workspaces Partners ที่ใช้ผ่าน CLI/admin ใช้ credentials ของผู้ดูแลระบบ;
+ผู้ใช้อื่นต้องลงชื่อเข้าใช้แยกกัน และไม่สามารถแชร์โปรไฟล์ Copilot ผ่าน model grants ได้
+ระบบจะไม่นำเข้าไฟล์ token ของ nanobot/Copilot ภายนอก: หลังอัพเกรด ให้รัน
+`deeptutor provider login github-copilot` อีกครั้ง
+
+การ login จะตรวจสอบ inference ด้วย model ที่ค้นพบในขณะนั้น; `init` จะตรวจสอบ model ที่เลือก
+และยกเลิกเมื่อไม่สำเร็จโดยไม่บันทึกการกำหนดค่าฉบับร่าง การยืนยันตัวตนกับ GitHub สำเร็จเพียงอย่างเดียว
+ไม่ได้รับรองว่าเข้าถึง model ของ Copilot ได้ (การ login ที่บันทึกไว้จะยังคงอยู่หากการตรวจสอบไม่สำเร็จ)
+requests ขณะรันจะใช้ API endpoint ที่ส่งกลับจากการแลก token รวมถึงเมื่อ refresh
+และปฏิบัติตาม metadata ของ Responses/Chat Completions endpoint ของแต่ละ model
+
+การปรับ compatibility ของ Responses เฉพาะ Copilot จะเกิดขึ้นตอนส่ง request โดยไม่เขียนประวัติที่เก็บไว้ใหม่
 
 </details>
 
@@ -919,3 +952,22 @@ DeepTutor ยังยืนอยู่บนไหล่ของโปรเ�
 </p>
 
 </div>
+
+### การอ้างอิงสถานะใน Mastery turn
+
+Mastery turn จะอ่านสถานะของเส้นทางที่ใช้งานอยู่ก่อนส่ง request แรกไปยัง model
+โดยใช้เครื่องมือ status และเงื่อนไขการเข้าถึง mastery เดียวกับการเรียกเครื่องมือโดยตรง
+snapshot นี้จะอ่านใหม่ในแต่ละ turn รวมโหมด session ที่ใช้งานอยู่ และไม่ถูก cache ข้าม turns
+หากอ่านไม่สำเร็จ จะใช้ `mastery_status` เป็น fallback; หลังเปลี่ยนเส้นทาง โหมด
+outline หรือความคืบหน้า tutor สามารถรีเฟรชผ่านเครื่องมือนี้ได้ การให้คะแนนการ์ด
+และ handoff ที่มีอยู่ยังคงเดิม
+
+### ไฟล์แนบรูปภาพที่ซ้ำกัน
+
+agent loop จะส่ง inline images ของผู้ใช้ที่เหมือนกันเพียงครั้งเดียวต่อ request และแทนที่สำเนาที่ตามมา
+ด้วยการอ้างอิงถึงภาพที่เก็บไว้ ป้ายกำกับที่คงที่และใช้เฉพาะใน request จะระบุ inline images
+ที่เก็บไว้อย่างต่อเนื่องเมื่อแปลงรูปแบบระหว่าง providers และเพิ่ม turns ส่วน image blocks ที่ไม่ซ้ำกัน,
+remote URLs, ตัวเลือกภาพที่แตกต่างกัน, ข้อความ assistant และผลลัพธ์เครื่องมือจะยังคงครบถ้วน
+ประวัติที่บันทึกจะเก็บไฟล์แนบต้นฉบับทั้งหมด; การอ้างอิงจะถูกสร้างใหม่หลังตัดทอนประวัติ
+วิธีนี้ลด image payloads ที่ซ้ำกัน แต่ usage ที่ provider รายงานยังคงเป็น
+แหล่งข้อมูลอ้างอิงหลักสำหรับการคิดค่าใช้จ่ายและ cache hits

@@ -67,7 +67,7 @@ def migrate_legacy_bindings() -> int:
     with data_activity(exclusive=True), workspace_context():
         from deeptutor.services.workspace.data_migration import assert_no_pending_recovery
 
-        assert_no_pending_recovery()
+        assert_no_pending_recovery(reject_unreadable=True)
         if marker.exists():
             return 0
         paths = get_path_service()

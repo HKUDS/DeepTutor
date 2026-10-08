@@ -52,14 +52,6 @@ logger = logging.getLogger(__name__)
 MANAGED_BY = "openai_codex_oauth"
 CODEX_PROFILE_ID = "llm-profile-openai-codex-managed"
 
-# After a refresh the provider rejects, get_token stays terminal for this
-# long instead of calling the token endpoint again on every turn (#1454).
-# A revoked / de-authorized session used to surface a fresh reauth per
-# message; one acknowledged failure now fails fast with a clear error, and
-# the short window leaves room for a transient outage to clear before the
-# next attempt instead of permanently locking the credential.
-CODE_AUTH_FAILURE_COOLDOWN_S = 60
-
 
 @dataclass(frozen=True)
 class CatalogSyncResult:
@@ -468,7 +460,6 @@ class CodexOAuthService:
         self._inference_lock = asyncio.Lock()
         self._active_inferences = 0
         self._logging_out = False
-        self._reauth_until: float | None = None
 
     @staticmethod
     async def _start_default_callback(expected_state: str) -> LoopbackCallback:
@@ -639,7 +630,6 @@ class CodexOAuthService:
             self._last_snapshot = snapshot
             operation.activated = sync_result.activated
             operation.operation_state = "completed"
-            self._clear_reauth_required()
         except CodexAuthError as exc:
             operation.error_code = exc.code
             if exc.code == "login_cancelled":
@@ -727,11 +717,11 @@ class CodexOAuthService:
                     "Sign in to Codex before using this model.",
                     401,
                 )
-            if self._reauth_required():
-                # A recent refresh was rejected — the stored session no
+            if self._store.authentication_rejected(credentials.generation):
+                # A refresh was rejected — the stored session no
                 # longer refreshes (revoked, de-authorized). Fail fast with a
                 # terminal error instead of asking the token endpoint again
-                # on this turn or the next (#1454).
+                # on this turn, after a cooldown, or after restart (#1454).
                 raise CodexAuthError(
                     "authentication_required",
                     "Codex sign-in could not be renewed. Sign in to Codex again.",
@@ -802,7 +792,7 @@ class CodexOAuthService:
             # Only a rejected refresh grant means the user must sign in again.
             # Transport failures and provider 5xx responses are transient.
             if exc.code == "token_refresh_rejected":
-                self._mark_reauth_required()
+                self._store.mark_authentication_rejected(credentials.generation)
             raise
         refreshed = self._credentials_from_payload(
             payload,
@@ -819,7 +809,6 @@ class CodexOAuthService:
             refreshed,
             expected_generation=credentials.generation,
         )
-        self._clear_reauth_required()
         # Generation matching invalidates model data without discarding the
         # same account's successful catalog client version.
         return committed
@@ -835,6 +824,12 @@ class CodexOAuthService:
                 )
             if credentials.generation != generation:
                 return
+            if self._store.authentication_rejected(generation):
+                raise CodexAuthError(
+                    "authentication_required",
+                    "Codex sign-in could not be renewed. Sign in to Codex again.",
+                    401,
+                )
             await self._refresh_credentials(credentials)
 
     @asynccontextmanager
@@ -869,8 +864,16 @@ class CodexOAuthService:
                 if credentials is not None:
                     try:
                         await self._oauth.revoke(credentials)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        # Never log credential material: record only the error
+                        # kind and status so operators know the remote token
+                        # may still be valid.
+                        logger.warning(
+                            "Codex token revocation failed during logout; the "
+                            "remote token may still be valid (error=%s, http_status=%s)",
+                            getattr(exc, "code", None) or type(exc).__name__,
+                            getattr(exc, "http_status", None),
+                        )
                     self._store.clear_credentials(expected_generation=credentials.generation)
                 else:
                     self._store.clear_credentials(
@@ -883,7 +886,6 @@ class CodexOAuthService:
                     pass
                 self._last_snapshot = None
                 self._operation = None
-                self._clear_reauth_required()
                 return self.public_status()
         finally:
             async with self._inference_lock:
@@ -943,28 +945,24 @@ class CodexOAuthService:
             self._model_catalog.update(mutate)
             return self.public_status()
 
-    def _mark_reauth_required(self) -> None:
-        self._reauth_until = self._clock() + CODE_AUTH_FAILURE_COOLDOWN_S
-
-    def _clear_reauth_required(self) -> None:
-        self._reauth_until = None
-
-    def _reauth_required(self) -> bool:
-        deadline = self._reauth_until
-        return deadline is not None and self._clock() < deadline
-
     def public_status(self) -> dict[str, Any]:
         operation = self._operation
         credentials: CodexCredentials | None = None
         storage_error: str | None = None
         try:
             credentials = self._store.load_credentials()
+            if credentials is not None and self._store.authentication_rejected(
+                credentials.generation
+            ):
+                storage_error = "authentication_required"
         except CodexAuthError as exc:
             storage_error = exc.code
 
         active_operation = self._operation_is_active()
         if active_operation:
             connection = "authorizing"
+        elif storage_error is not None:
+            connection = "error"
         elif credentials is not None:
             connection = "connected"
         elif operation is not None and operation.operation_state == "failed":

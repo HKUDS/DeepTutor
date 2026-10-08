@@ -15,14 +15,14 @@ import { inputClass, subPanelClass } from "./shared";
 // on press and shows a real focus ring. Disabled buttons keep pointer events —
 // several of them explain why they are disabled through `title`.
 const registryButtonBase =
-  "inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border px-3 text-xs font-medium outline-none transition-[background-color,border-color,color,box-shadow,transform] duration-150 active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)] disabled:opacity-40 disabled:active:scale-100";
+  "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border px-3 text-[13px] font-medium outline-none transition-[background-color,border-color,color,box-shadow,transform] duration-150 active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)] disabled:opacity-40 disabled:active:scale-100";
 export const registryButton =
   `${registryButtonBase} border-[var(--border)] hover:border-[color-mix(in_srgb,var(--foreground)_20%,var(--border))] hover:bg-[var(--accent)] disabled:hover:border-[var(--border)] disabled:hover:bg-transparent`;
 /** Destructive action: reads as neutral until you reach for it. */
 export const registryDanger =
   `${registryButtonBase} border-[var(--border)] text-[var(--muted-foreground)] hover:border-red-300 hover:bg-red-50 hover:text-red-600 disabled:hover:border-[var(--border)] disabled:hover:bg-transparent disabled:hover:text-[var(--muted-foreground)] dark:hover:border-red-900 dark:hover:bg-red-950 dark:hover:text-red-400`;
 export const registryPrimary =
-  "inline-flex min-h-9 items-center justify-center gap-2 rounded-lg bg-[var(--foreground)] px-4 text-xs font-medium text-[var(--background)] outline-none transition-[background-color,box-shadow,transform] duration-150 hover:bg-[color-mix(in_srgb,var(--foreground)_86%,var(--background))] active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)] disabled:opacity-40 disabled:hover:bg-[var(--foreground)] disabled:active:scale-100";
+  "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-[var(--foreground)] px-4 text-[13px] font-medium text-[var(--background)] outline-none transition-[background-color,box-shadow,transform] duration-150 hover:bg-[color-mix(in_srgb,var(--foreground)_86%,var(--background))] active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)] disabled:opacity-40 disabled:hover:bg-[var(--foreground)] disabled:active:scale-100";
 
 export function EditableRegistryName({
   name,
@@ -51,7 +51,7 @@ export function EditableRegistryName({
   return (
     <div className="flex min-w-0 items-center gap-2">
       <h3
-        className="min-w-0 break-all text-base font-semibold"
+        className="min-w-0 break-all text-[18px] font-semibold tracking-tight"
         onDoubleClick={() => {
           setEditing(true);
         }}
@@ -116,12 +116,14 @@ export function RegistryProbe({
   onResult,
   listing = false,
   hints = [],
+  showCapabilities = true,
 }: {
   input: ProviderProbeInput;
   discovery?: Discovery;
   onResult: (result: Discovery) => void;
   listing?: boolean;
   hints?: string[];
+  showCapabilities?: boolean;
 }) {
   // Credentials are only an in-memory request signature, never rendered or persisted.
   return (
@@ -132,6 +134,7 @@ export function RegistryProbe({
       onResult={onResult}
       listing={listing}
       hints={hints}
+      showCapabilities={showCapabilities}
     />
   );
 }
@@ -141,23 +144,26 @@ function ProbeForm({
   onResult,
   listing,
   hints,
+  showCapabilities,
 }: {
   input: ProviderProbeInput;
   discovery?: Discovery;
   onResult: (result: Discovery) => void;
   listing: boolean;
   hints: string[];
+  showCapabilities: boolean;
 }) {
   const { t } = useTranslation();
   const [result, setResult] = useState(discovery);
   const [pending, setPending] = useState(false);
   const controller = useRef<AbortController | null>(null);
-  useEffect(() => () => controller.current?.abort(), []);
+  useEffect(() => () => { controller.current?.abort(); controller.current = null; }, []);
   const probe = async () => {
     controller.current?.abort();
     const request = new AbortController();
     controller.current = request;
     setPending(true);
+    const timeout = setTimeout(() => request.abort(), 35000);
     try {
       const response = await apiFetch(apiUrl("/api/settings/test-provider"), {
         method: "POST",
@@ -173,10 +179,14 @@ function ProbeForm({
       setResult(next);
       onResult(next);
     } catch {
-      if (!request.signal.aborted)
-        setResult({ status: "unreachable", models: [] });
+      if (controller.current === request) {
+        const failed: Discovery = { status: request.signal.aborted ? "timeout" : "unreachable", models: [], checked_at: new Date().toISOString() };
+        setResult(failed);
+        onResult(failed);
+      }
     } finally {
-      if (!request.signal.aborted) setPending(false);
+      clearTimeout(timeout);
+      if (controller.current === request) setPending(false);
     }
   };
   return (
@@ -186,7 +196,7 @@ function ProbeForm({
           <p className="text-sm font-medium">
             {t(listing ? "Provider model list" : "Provider connection")}
           </p>
-          <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+          <p className="mt-1 text-[13px] text-[var(--muted-foreground)]">
             {t(
               listing
                 ? "Choose a listed model or enter any model ID below."
@@ -213,9 +223,10 @@ function ProbeForm({
       {result && (
         <div
           role="status"
-          className={`text-xs leading-relaxed ${result.status === "connected" ? "text-emerald-700 dark:text-emerald-400" : "text-[var(--muted-foreground)]"}`}
+          className={`text-[13px] leading-relaxed ${result.status === "connected" ? "text-emerald-700 dark:text-emerald-400" : "text-[var(--muted-foreground)]"}`}
         >
-          {t(PROBE_MESSAGES[result.status] || PROBE_MESSAGES.http_error)}
+          {t(result.status === "connected" && input.service !== "search" ? "settings.providerServices.catalogListed" : PROBE_MESSAGES[result.status] || PROBE_MESSAGES.http_error)}
+          {result.warning === "partial_models" && <p className="mt-2">{t("settings.providerServices.partial")}</p>}
           {result.http_status != null && ` · HTTP ${result.http_status}`}
           {result.warning === "empty_results" && (
             <p className="mt-2">
@@ -232,7 +243,7 @@ function ProbeForm({
             ` · ${t("{{count}} models available", { count: result.models.length })}`}
         </div>
       )}
-      {!listing && (
+      {!listing && showCapabilities && (
         <>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {CATEGORIES.map((label, i) => {
@@ -250,15 +261,15 @@ function ProbeForm({
                   key={label}
                   className="rounded-lg border border-[color-mix(in_srgb,var(--border)_70%,transparent)] bg-[var(--background)] px-3 py-2"
                 >
-                  <p className="text-xs font-medium">{t(label)}</p>
-                  <p className="mt-1 text-[11px] text-[var(--muted-foreground)]">
+                  <p className="text-[13px] font-medium">{t(label)}</p>
+                  <p className="mt-1 text-[12px] text-[var(--muted-foreground)]">
                     {t(status)}
                   </p>
                 </div>
               );
             })}
           </div>
-          <p className="text-[11px] leading-relaxed text-[var(--muted-foreground)]">
+          <p className="text-[12px] leading-relaxed text-[var(--muted-foreground)]">
             {t(
               "Detected describes model modalities, not API compatibility. Provider support indicates an available integration; test a specific model to verify your account access.",
             )}
@@ -286,7 +297,7 @@ export function RegistryField({
   const id = useId();
   return (
     <div className="space-y-1.5">
-      <label htmlFor={id} className="block text-xs font-medium">
+      <label htmlFor={id} className="block text-[13px] font-medium">
         {label}
       </label>
       <input
@@ -398,7 +409,7 @@ export function RegistryModelIdField({
 
   return (
     <div ref={box} className="space-y-1.5">
-      <label htmlFor={id} className="block text-xs font-medium">
+      <label htmlFor={id} className="block text-[13px] font-medium">
         {label}
       </label>
       <div className="relative">

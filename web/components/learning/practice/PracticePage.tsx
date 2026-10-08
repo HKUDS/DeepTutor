@@ -293,7 +293,6 @@ function PracticePageShell({
     return (
       <>
         <SpaceSectionHeader
-          icon={ClipboardList}
           title={t("Question Bank")}
           description={t("Questions from every source, together with your own imports.")}
           action={action}

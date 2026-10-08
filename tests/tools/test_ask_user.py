@@ -463,6 +463,18 @@ def test_prompt_decodes_dense_unicode_escapes() -> None:
     assert payload.questions[0].prompt == "「数制转换」"
 
 
+def test_option_label_decodes_escaped_emoji() -> None:
+    """Escaped emoji arrive as surrogate pairs and must decode to UTF-8 text."""
+    escaped = "\\ud83d\\udc4d\\u662f\\u7684"
+    payload, err = build_ask_user_payload(
+        questions=[{"prompt": "Ready?", "options": [escaped, "No"]}],
+    )
+    assert err is None
+    assert payload is not None
+    label = payload.questions[0].options[0].label
+    assert label == "👍是的"
+
+
 # --------------------------- streaming previews ---------------------------
 
 _STREAMED = (

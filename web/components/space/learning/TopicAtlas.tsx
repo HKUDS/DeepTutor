@@ -1,5 +1,6 @@
 'use client'
 
+import { pageGridClass } from '@/components/layout/FeaturePage'
 import {
   LearningShell,
   LearningEmptyState,
@@ -119,7 +120,7 @@ export function TopicAtlas({
       ) : activeTopics.length > 0 ? (
         <section
           aria-label={t('Active learning topics')}
-          className="mt-9 grid gap-6 md:grid-cols-2 xl:grid-cols-3"
+          className={`mt-9 ${pageGridClass(3)}`}
         >
           {activeTopics.map(topic => (
             <TopicMapCard key={libraryItemKey(topic, topic.path_id)} topic={topic} />
