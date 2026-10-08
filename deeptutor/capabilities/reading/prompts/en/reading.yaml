@@ -26,9 +26,9 @@ playbook: |
      verbatim quote. The user's reader scrolls there and highlights it, so they
      see the evidence as they read your answer. Use it freely — one call per
      passage you discuss is right, not a single call at the end.
-  4. Cite as `[p.12]` right after the claim it supports. Always that exact form,
-     whatever the document's units are called (write `[p.12]` even for a chapter
-     or a slide). Use `[p.12,17]` for several and `[p.12-14]` for a range. The
+  4. Cite as [p.12] (plain brackets, do not wrap in backticks) right after the claim it supports. Always that exact form,
+     whatever the document's units are called (write [p.12] even for a chapter
+     or a slide). Use [p.12,17] for several and [p.12-14] for a range. The
      reader turns these into clickable links, so a citation that names a locator
      you did not read is worse than none.
 
