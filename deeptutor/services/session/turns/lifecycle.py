@@ -56,6 +56,7 @@ class TurnLifecycle:
         self._lock = asyncio.Lock()
         self._executions: dict[str, _TurnExecution] = {}
         self._accepting_turns = True
+        self._closed = False
         # Per-turn reply queues used by tools that pause the agentic
         # loop (e.g. ``ask_user``). Queue is created in ``_run_turn``
         # before the orchestrator is invoked and cleaned up in the
@@ -71,6 +72,7 @@ class TurnLifecycle:
     async def close(self, *, drain_timeout_seconds: float = 0.0) -> None:
         """Stop accepting work and deterministically release runtime resources."""
         async with self._lock:
+            self._closed = True
             self._accepting_turns = False
             executions = list(self._executions.values())
             reply_queues = list(self._reply_queues.values())
@@ -165,6 +167,8 @@ class TurnLifecycle:
         }
 
     def _turns_blocked_for_update_locked(self) -> bool:
+        if self._closed:
+            return True
         if self._accepting_turns:
             return False
         if not self._managed_update_is_active():
@@ -174,6 +178,8 @@ class TurnLifecycle:
 
     async def _ensure_accepting_turns(self) -> None:
         async with self._lock:
+            if self._closed:
+                raise RuntimeError("Turn runtime is closed")
             if self._turns_blocked_for_update_locked():
                 raise RuntimeError(
                     "DeepTutor is preparing an update; try again after it reconnects"
