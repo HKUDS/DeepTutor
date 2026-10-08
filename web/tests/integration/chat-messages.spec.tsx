@@ -3,7 +3,6 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { ChatMessageList } from '@/features/chat/messages'
 import type { StreamEvent } from '@/features/chat/model/protocol'
-import { WatchingProvider } from '@/context/WatchingContext'
 import { initI18n } from '@/i18n/init'
 
 initI18n('en')
@@ -155,7 +154,7 @@ describe('chat message feature', () => {
     })
 
     const { container } = render(
-      <WatchingProvider>
+
         <ChatMessageList
           messages={[
             {
@@ -193,7 +192,7 @@ describe('chat message feature', () => {
           onCopyAssistantMessage={async () => undefined}
           onRegenerateMessage={() => undefined}
         />
-      </WatchingProvider>
+
     )
 
     const fold = container.querySelector('div.grid')
@@ -241,13 +240,13 @@ describe('empty reply outcomes', () => {
       type: 'error', source: 'chat', stage: '', content, timestamp: 0,
       metadata: status === 'legacy' ? {} : { turn_terminal: true, status },
     }];
-    render(<WatchingProvider><ChatMessageList
+    render(<ChatMessageList
       messages={[{ id: 1, role: 'user', content: 'hi' }, { id: 2, role: 'assistant', content: '', events }]}
       isStreaming={false}
       onCopyAssistantMessage={async () => undefined}
       onRegenerateMessage={() => undefined}
       onDeleteTurn={() => undefined}
-    /></WatchingProvider>);
+    />);
     expect(screen.getByText(expected)).toBeVisible();
     if (status === 'cancelled') expect(screen.queryByRole('alert')).toBeNull();
   });

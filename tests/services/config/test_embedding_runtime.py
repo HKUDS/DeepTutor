@@ -183,6 +183,55 @@ def test_explicit_openai_binding_to_local_lemonade_is_keyless() -> None:
     assert get_embedding_config(catalog=catalog).api_key == ""
 
 
+def test_lan_lemonade_openai_binding_is_keyless() -> None:
+    """Unraid/Docker OpenAI-compatible Lemonade roots must not demand a key."""
+    catalog = _build_catalog(
+        embedding_profile={
+            "id": "embedding-p",
+            "binding": "openai",
+            "base_url": "http://192.168.1.40:13305/api/v1",
+            "api_key": "",
+            "models": [
+                {
+                    "id": "embedding-m",
+                    "model": "Qwen3-Embedding-0.6B-GGUF",
+                }
+            ],
+        }
+    )
+
+    resolved = resolve_embedding_runtime_config(catalog=catalog)
+    assert resolved.provider_name == "lemonade"
+    assert resolved.provider_mode == "local"
+    assert resolved.effective_url == "http://192.168.1.40:13305/api/v1/embeddings"
+    assert get_embedding_config(catalog=catalog).api_key == ""
+
+
+def test_docker_host_lemonade_root_is_keyless() -> None:
+    catalog = _build_catalog(
+        embedding_profile={
+            "id": "embedding-p",
+            "binding": "custom",
+            "base_url": "http://host.docker.internal:13305",
+            "api_key": "",
+            "models": [
+                {
+                    "id": "embedding-m",
+                    "model": "Qwen3-Embedding-0.6B-GGUF",
+                }
+            ],
+        }
+    )
+
+    resolved = resolve_embedding_runtime_config(catalog=catalog)
+    assert resolved.provider_name == "lemonade"
+    assert resolved.provider_mode == "local"
+    assert resolved.effective_url == "http://host.docker.internal:13305/v1/embeddings"
+    config = get_embedding_config(catalog=catalog)
+    assert config.api_key == ""
+    assert config.effective_url == "http://host.docker.internal:13305/v1/embeddings"
+
+
 def test_remote_openai_compatible_endpoint_still_requires_key() -> None:
     catalog = _build_catalog(
         embedding_profile={
@@ -206,13 +255,13 @@ def test_remote_openai_compatible_endpoint_still_requires_key() -> None:
         get_embedding_config(catalog=catalog)
 
 
-def test_embedding_orcarouter_binding_uses_default_endpoint() -> None:
+def test_embedding_orcarouter_uses_explicit_custom_endpoint() -> None:
     catalog = _build_catalog(
         embedding_profile={
             "id": "embedding-p",
             "name": "Embedding",
-            "binding": "orcarouter",
-            "base_url": "",
+            "binding": "custom",
+            "base_url": "https://api.orcarouter.ai/v1/embeddings",
             "api_key": "sk-orca-test-key",
             "api_version": "",
             "extra_headers": {},
@@ -227,9 +276,36 @@ def test_embedding_orcarouter_binding_uses_default_endpoint() -> None:
         }
     )
     resolved = resolve_embedding_runtime_config(catalog=catalog)
-    assert resolved.provider_name == "orcarouter"
-    assert resolved.provider_mode == "standard"
+    assert resolved.provider_name == "custom"
+    assert resolved.provider_mode == "direct"
     assert resolved.effective_url == "https://api.orcarouter.ai/v1/embeddings"
+    assert resolved.dimension == 3072
+
+
+def test_embedding_opper_binding_uses_default_endpoint() -> None:
+    catalog = _build_catalog(
+        embedding_profile={
+            "id": "embedding-p",
+            "name": "Embedding",
+            "binding": "opper",
+            "base_url": "",
+            "api_key": "opper-key",
+            "api_version": "",
+            "extra_headers": {},
+            "models": [
+                {
+                    "id": "embedding-m",
+                    "name": "opper",
+                    "model": "openai/text-embedding-3-large",
+                    "dimension": "3072",
+                }
+            ],
+        }
+    )
+    resolved = resolve_embedding_runtime_config(catalog=catalog)
+    assert resolved.provider_name == "opper"
+    assert resolved.provider_mode == "standard"
+    assert resolved.effective_url == "https://api.opper.ai/v3/compat/embeddings"
     assert resolved.dimension == 3072
 
 
@@ -560,3 +636,51 @@ def test_embedding_provider_profile_key() -> None:
     resolved = resolve_embedding_runtime_config(catalog=catalog)
     assert resolved.provider_name == "cohere"
     assert resolved.api_key == "cohere-test-key"
+
+
+@pytest.mark.parametrize("binding", ["openai", "custom"])
+def test_generic_local_embedding_endpoint_accepts_empty_key(binding):
+    catalog = _build_catalog(
+        embedding_profile={
+            "id": "embedding-p",
+            "binding": binding,
+            "base_url": "http://localhost:1234/v1/embeddings",
+            "api_key": "",
+            "models": [{"id": "embedding-m", "model": "local-embedding"}],
+        }
+    )
+    config = get_embedding_config(catalog=catalog)
+    assert config.provider_mode == "local"
+    assert config.api_key == ""
+    assert config.effective_url == "http://localhost:1234/v1/embeddings"
+
+
+def test_invalid_lemonade_port_does_not_raise_during_detection():
+    from deeptutor.services.config.provider_runtime import _is_legacy_lemonade_endpoint
+
+    assert not _is_legacy_lemonade_endpoint("http://localhost:not-a-port/v1")
+
+
+@pytest.mark.parametrize(
+    "endpoint, expected",
+    [
+        ("http://localhost:11434/v1/embeddings", "vllm"),
+        ("http://localhost:1234/v1/embeddings?model=11434", "vllm"),
+        ("http://localhost:11434/api/embed", "ollama"),
+        ("http://localhost:9000/api/embed", "ollama"),
+    ],
+)
+def test_local_embedding_protocol_follows_endpoint_path(endpoint, expected):
+    catalog = _build_catalog(
+        embedding_profile={
+            "id": "embedding-p",
+            "binding": "openai",
+            "base_url": endpoint,
+            "api_key": "",
+            "models": [{"id": "embedding-m", "model": "nomic-embed-text"}],
+        }
+    )
+    config = get_embedding_config(catalog=catalog)
+    assert config.binding == expected
+    assert config.effective_url == endpoint
+    assert config.api_key == ""

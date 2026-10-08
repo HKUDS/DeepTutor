@@ -1,6 +1,7 @@
 """Co-Writer backend tests: doc id validation, storage CRUD, history limits."""
 
 from io import BytesIO
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 import zipfile
@@ -20,9 +21,10 @@ _dt_config.load_config_with_main = lambda *_a, **_k: {
 
 from deeptutor.api.routers import co_writer as co_writer_router
 from deeptutor.api.routers.co_writer import _validate_doc_id
-from deeptutor.co_writer import edit_agent
+from deeptutor.co_writer import docx_converter, edit_agent
 from deeptutor.co_writer.docx_converter import (
     DocxConversionError,
+    _table_to_markdown,
     docx_to_markdown,
     markdown_to_docx,
 )
@@ -371,6 +373,84 @@ def test_docx_to_markdown_rejects_suspicious_zip(monkeypatch):
         archive.writestr("c.xml", "<c/>")
     with pytest.raises(DocxConversionError, match="too many archive members"):
         docx_to_markdown(buf.getvalue(), "bomb.docx")
+
+
+class _TextRow:
+    def __init__(self, texts):
+        self._cells = [SimpleNamespace(text=text) for text in texts]
+
+    @property
+    def cells(self):
+        return self._cells
+
+
+class _BadRow:
+    """Row whose ``cells`` access fails, as with malformed merged cells."""
+
+    @property
+    def cells(self):
+        raise ValueError("simulated merged-cell failure")
+
+
+class _FakeTable:
+    def __init__(self, rows):
+        self.rows = rows
+
+
+def test_table_to_markdown_warns_and_keeps_placeholder_for_unparseable_row(caplog):
+    table = _FakeTable(
+        [
+            _TextRow(["Metric", "Value"]),
+            _BadRow(),
+            _TextRow(["Revenue", "1.2M"]),
+        ]
+    )
+    with caplog.at_level(logging.WARNING, logger="deeptutor.co_writer.docx_converter"):
+        markdown = _table_to_markdown(table, table_ordinal=0)
+
+    assert "| Metric | Value |" in markdown
+    assert "| Revenue | 1.2M |" in markdown
+    assert "(unparseable row)" in markdown
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert warnings, "expected a warning for the unparseable row"
+    assert "table #1" in warnings[0].getMessage()
+    assert "row #2" in warnings[0].getMessage()
+    assert "simulated merged-cell failure" in warnings[0].getMessage()
+
+
+def test_docx_to_markdown_bad_table_row_warns_and_keeps_placeholder(monkeypatch, caplog):
+    document = DocxDocument()
+    table = document.add_table(rows=3, cols=2)
+    table.rows[0].cells[0].text = "Metric"
+    table.rows[0].cells[1].text = "Value"
+    table.rows[1].cells[0].text = "Revenue"
+    table.rows[1].cells[1].text = "1.2M"
+    table.rows[2].cells[0].text = "Profit"
+    table.rows[2].cells[1].text = "0.3M"
+
+    real_cell_text = docx_converter._cell_text
+
+    def flaky_cell_text(cell):
+        if (cell.text or "") == "Revenue":
+            raise ValueError("simulated cell failure")
+        return real_cell_text(cell)
+
+    monkeypatch.setattr(docx_converter, "_cell_text", flaky_cell_text)
+    with caplog.at_level(logging.WARNING, logger="deeptutor.co_writer.docx_converter"):
+        markdown = docx_to_markdown(_docx_bytes_from_document(document), "broken.docx")
+
+    assert "| Metric | Value |" in markdown
+    assert "| Profit | 0.3M |" in markdown
+    assert "Revenue" not in markdown
+    assert "(unparseable row)" in markdown
+    matching = [
+        r
+        for r in caplog.records
+        if r.levelno == logging.WARNING
+        and "table #1" in r.getMessage()
+        and "row #2" in r.getMessage()
+    ]
+    assert matching, "expected a warning naming table #1 row #2"
 
 
 def _client(tmp_path, monkeypatch) -> TestClient:
