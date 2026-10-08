@@ -1,10 +1,10 @@
 "use client";
 
+import { PageHeader, pageActionClass, pageGridClass } from '@/components/layout/FeaturePage'
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import {
   ArrowRight,
-  Brain,
   Layers,
   Network,
   RefreshCw,
@@ -86,26 +86,16 @@ export default function MemoryHub() {
   const latestBackup = overview?.backups?.[overview.backups.length - 1] ?? null;
 
   return (
-    <div className="space-y-10">
-      <header className="space-y-3">
-        <div className="flex items-center gap-3">
-          <span className="grid h-10 w-10 place-items-center rounded-xl bg-[var(--primary)]/10 text-[var(--primary)]">
-            <Brain className="h-5 w-5" />
-          </span>
-          <h1 className="font-serif text-[28px] font-semibold tracking-tight text-[var(--foreground)] md:text-[32px]">
-            {t("Memory")}
-          </h1>
-        </div>
-        <p className="max-w-2xl text-[14px] text-[var(--muted-foreground)] md:text-[15px]">
-          {t(
-            "Everything DeepTutor remembers about you, organised across three layers. Click into any layer to inspect or curate it.",
-          )}
-        </p>
+    <div className="space-y-9">
+      <PageHeader
+        title={t("Memory")}
+        description={t("Everything DeepTutor remembers about you, organised across three layers. Click into any layer to inspect or curate it.")}
+        action={
         <div className="flex items-center gap-3 text-[12px] text-[var(--muted-foreground)]">
           <button
             type="button"
             onClick={() => void load()}
-            className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--background)] px-2.5 py-1 transition hover:bg-[var(--muted)]"
+            className={pageActionClass('secondary')}
           >
             <RefreshCw
               className={loading ? "h-3 w-3 animate-spin" : "h-3 w-3"}
@@ -119,9 +109,10 @@ export default function MemoryHub() {
             {t("Memory settings")}
           </Link>
         </div>
-      </header>
+        }
+      />
 
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+      <div className={pageGridClass(3)}>
         <LayerCard
           href="/memory/l1"
           icon={Layers}

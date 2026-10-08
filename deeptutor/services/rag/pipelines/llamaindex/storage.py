@@ -15,9 +15,8 @@ from typing import Any
 from deeptutor.services.embedding.validation import validate_embedding_batch
 from deeptutor.services.rag.index_versioning import (
     EmbeddingSignature,
-    find_matching_version,
     resolve_storage_dir_for_read,
-    resolve_storage_dir_for_write,
+    resolve_storage_dir_for_rebuild,
 )
 
 from . import ingestion, retrievers, vector_store
@@ -59,31 +58,11 @@ def cleanup_failed_version_dir(storage_dir: Path) -> bool:
 
 def resolve_add_storage_plan(kb_dir: Path, signature: EmbeddingSignature | None) -> AddStoragePlan:
     """Choose existing/new storage dirs for incremental adds."""
-    matching_version = find_matching_version(kb_dir, signature) if signature is not None else None
-    existing_storage = (
-        _storage_path_from_version_entry(matching_version) if matching_version else None
+    existing = resolve_storage_dir_for_read(kb_dir, signature)
+    return AddStoragePlan(
+        existing_storage=existing,
+        storage_dir=resolve_storage_dir_for_rebuild(kb_dir, signature, publication_guard=True),
     )
-
-    if matching_version and existing_storage and matching_version.get("layout") == "flat":
-        return AddStoragePlan(existing_storage=existing_storage, storage_dir=existing_storage)
-
-    if matching_version and existing_storage:
-        return AddStoragePlan(
-            existing_storage=existing_storage,
-            storage_dir=resolve_storage_dir_for_write(kb_dir, signature),
-        )
-
-    fallback_storage = resolve_storage_dir_for_read(kb_dir, signature)
-    existing_storage = fallback_storage
-    fallback_is_flat = (
-        fallback_storage is not None
-        and fallback_storage.parent == kb_dir
-        and fallback_storage.name.startswith("version-")
-    )
-    storage_dir = (
-        fallback_storage if fallback_is_flat else resolve_storage_dir_for_write(kb_dir, signature)
-    )
-    return AddStoragePlan(existing_storage=existing_storage, storage_dir=storage_dir)
 
 
 def create_index(
@@ -111,16 +90,30 @@ def insert_documents(existing_storage: Path, storage_dir: Path, documents: list[
     return count
 
 
+def _persisted_vector_fault(exc: ValueError) -> str:
+    """Return the concrete fault from a shared-validator error message."""
+    _, _, tail = str(exc).partition("): ")
+    fault = tail.split(". ", 1)[0].rstrip(".")
+    return fault or "unusable embedding data"
+
+
 def _validate_embedding_dict(embedding_dict: Any, *, label: str) -> None:
     if not isinstance(embedding_dict, dict) or not embedding_dict:
         return
 
-    validate_embedding_batch(
-        list(embedding_dict.values()),
-        expected_count=len(embedding_dict),
-        binding="llamaindex",
-        model=f"persisted-index:{label}",
-    )
+    try:
+        validate_embedding_batch(
+            list(embedding_dict.values()),
+            expected_count=len(embedding_dict),
+            binding="llamaindex",
+            model=f"persisted-index:{label}",
+        )
+    except ValueError as exc:
+        # The shared validator blames the embedding provider; persisted
+        # vectors are local data, so restate the fault neutrally.
+        raise ValueError(
+            f"stored vector in {label} failed validation: {_persisted_vector_fault(exc)}"
+        ) from exc
 
 
 def _iter_index_embedding_dicts(index: Any):
@@ -189,9 +182,11 @@ def _validate_persisted_embeddings(index: Any, storage_dir: Path | None = None) 
                 _validate_embedding_dict(embedding_dict, label=label)
     except ValueError as exc:
         raise ValueError(
-            "RAG index contains invalid embedding vectors. Re-index the "
-            "knowledge base with the current embedding provider/model before "
-            f"querying it again. Details: {exc}"
+            "RAG index contains invalid embedding vectors. Rebuild it with "
+            "the knowledge base's 'Re-index' action (Index versions → "
+            "Re-index) using the current embedding provider/model; "
+            "re-uploading documents reuses the damaged store and cannot "
+            f"repair it. Details: {exc}"
         ) from exc
 
 
@@ -300,3 +295,26 @@ def delete_kb_dir(kb_dir: Path) -> bool:
         shutil.rmtree(kb_dir)
         return True
     return False
+
+
+def verify_persisted_index(storage_dir: Path) -> None:
+    index = vector_store.load_index(storage_dir)
+    _validate_persisted_embeddings(index, storage_dir)
+    if not index.docstore.docs:
+        raise ValueError("Persisted index contains no retrievable nodes.")
+    if not getattr(index, "index_struct", None):
+        raise ValueError("Persisted index has no index structure.")
+    vectors = [values for _, values in _iter_index_embedding_dicts(index) if values]
+    if vectors:
+        sample = next(iter(vectors[0].values()))
+    else:
+        client = getattr(index.vector_store, "client", None)
+        if client is None or not getattr(client, "ntotal", 0):
+            raise ValueError("Persisted index contains no embedding vectors.")
+        sample = client.reconstruct(0).tolist()
+    from llama_index.core.schema import QueryBundle
+
+    if not index.as_retriever(similarity_top_k=1).retrieve(
+        QueryBundle(query_str="", embedding=sample)
+    ):
+        raise ValueError("Persisted index failed a retrieval probe with a stored vector.")
