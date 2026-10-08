@@ -40,8 +40,10 @@ function HandoffPageContent() {
     const code = searchParams.get("code")?.trim() ?? "";
     window.history.replaceState(null, "", window.location.pathname);
     if (!code || started.current) return;
-    started.current = true;
     const timer = window.setTimeout(() => {
+      // Effect cleanup may cancel this deferred start before it runs.
+      // Mark the exchange as started only when it actually begins.
+      started.current = true;
       void finish(code);
     }, 0);
     return () => window.clearTimeout(timer);
