@@ -1,5 +1,6 @@
 "use client";
 
+import { FeaturePage, PageHeader, PAGE_SECTION_TITLE_CLASS } from '@/components/layout/FeaturePage'
 import {
   ArrowRight,
   BookOpen,
@@ -38,7 +39,6 @@ import { activeWorkspaceId, scopedUrl } from "@/lib/workspace-scope";
 
 import { AddMaterialsDialog } from "./AddMaterialsDialog";
 import { FolderDialog } from "./FolderDialog";
-import { FolderGlyph } from "./FolderGlyph";
 import { DeleteCollectionDialog } from "./ReadingLibrary";
 import { MaterialGlyph, materialDetail, relativeDate } from "./shared";
 
@@ -173,23 +173,11 @@ export function ReadingFolderPage({ folderId }: { folderId: string }) {
         <span className="truncate text-[var(--foreground)]">{folder.title}</span>
       </nav>
 
-      <header className="mt-6 flex flex-col gap-5 sm:flex-row sm:items-end">
-        <FolderGlyph
-          color={folder.color}
-          files={files.length}
-          size={84}
-          className="shrink-0"
-        />
-        <div className="min-w-0 flex-1">
-          <h1 className="font-serif text-[26px] font-semibold leading-tight tracking-[-0.02em] md:text-[28px]">
-            {folder.title}
-          </h1>
-          <p className="mt-1.5 text-[12.5px] text-[var(--muted-foreground)]">
-            {t("{{count}} files", { count: files.length })}
-            {" · "}
-            {t("Stored in {{workspace}}", { workspace: workspaceLabel })}
-          </p>
-        </div>
+      <div className="mt-5">
+      <PageHeader
+        title={folder.title}
+        description={<>{t("{{count}} files", { count: files.length })}{" · "}{t("Stored in {{workspace}}", { workspace: workspaceLabel })}</>}
+        action={
         <div className="relative flex shrink-0 items-center gap-2">
           {files.length ? (
             <Link
@@ -255,7 +243,9 @@ export function ReadingFolderPage({ folderId }: { folderId: string }) {
             </>
           )}
         </div>
-      </header>
+        }
+      />
+      </div>
 
       {error && (
         <p role="alert" className="mt-4 text-[12px] text-[var(--destructive)]">
@@ -369,18 +359,12 @@ export function ReadingFolderPage({ folderId }: { folderId: string }) {
 }
 
 function FolderFrame({ children }: { children: React.ReactNode }) {
-  return (
-    <section className="h-full min-h-0 w-full overflow-y-auto bg-[var(--background)] text-[var(--foreground)]">
-      <div className="mx-auto w-full max-w-[920px] px-6 py-7 md:px-9 lg:py-9">
-        {children}
-      </div>
-    </section>
-  );
+  return <FeaturePage>{children}</FeaturePage>;
 }
 
 function SectionHeading({ label, count }: { label: string; count: number }) {
   return (
-    <h2 className="flex items-center gap-1.5 px-1 text-[11.5px] font-medium text-[var(--muted-foreground)]">
+    <h2 className={`mb-3 flex items-center gap-1.5 ${PAGE_SECTION_TITLE_CLASS}`}>
       {label}
       <span className="tabular-nums opacity-70">{count}</span>
     </h2>

@@ -1,5 +1,6 @@
 "use client";
 
+import { PageHeader, pageGridClass } from '@/components/layout/FeaturePage'
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
@@ -117,22 +118,14 @@ export default function CoursesShelf() {
 
   return (
     <section aria-labelledby="courses-shelf-title">
-      <div className="mb-4">
-        <h1
-          id="courses-shelf-title"
-          className="font-serif text-[22px] font-semibold tracking-tight text-[var(--foreground)]"
-        >
-          {t("My courses")}
-        </h1>
-        <p className="mt-1 text-[12.5px] text-[var(--muted-foreground)]">
-          {t(
-            "One subject's material, paths, notes and conversations, all in one place.",
-          )}
-        </p>
-      </div>
+      <PageHeader
+        titleId="courses-shelf-title"
+        title={t("My courses")}
+        description={t("One subject's material, paths, notes and conversations, all in one place.")}
+      />
 
       {loading ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className={pageGridClass(3)}>
           {[0, 1, 2].map((item) => (
             <div
               key={item}
@@ -156,7 +149,7 @@ export default function CoursesShelf() {
           </span>
         </div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className={pageGridClass(3)}>
           {active.map((course) => (
             <Link
               key={course.id}

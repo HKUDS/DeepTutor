@@ -66,7 +66,9 @@ def build_question_card(
     until the answer is committed, and this payload is rendered to the learner.
     """
     public = public_pending_question(pending)
-    return {
+    from deeptutor.learning.visual_practice import public_visual
+
+    payload = {
         "question_id": public.question_id,
         "prompt": public.prompt,
         "question_type": public.question_type,
@@ -81,6 +83,9 @@ def build_question_card(
         # tap a letter cannot say "I don't know" or show their work.
         "allow_free_text": True,
     }
+    if pending.visual_context:
+        payload["visual"] = public_visual(pending.visual_context)
+    return payload
 
 
 def build_grade_result(
@@ -91,6 +96,8 @@ def build_grade_result(
     correct_label: str,
     choice_options: dict[str, str],
     explanation: str,
+    result: str = "",
+    independent: bool | None = None,
 ) -> dict[str, Any]:
     """What the answered card shows once the gate has ruled on it.
 
@@ -99,7 +106,7 @@ def build_grade_result(
     it is graded — which is exactly when they are worth reading.
     """
     label = str(correct_label or "").strip()
-    return {
+    payload = {
         "question_id": str(question_id or ""),
         "is_correct": bool(is_correct),
         "learner_answer": str(learner_answer or ""),
@@ -107,6 +114,11 @@ def build_grade_result(
         "correct_body": str(choice_options.get(label) or "") if label else "",
         "explanation": str(explanation or ""),
     }
+    if result:
+        payload["result"] = result
+    if independent is not None:
+        payload["independent"] = independent
+    return payload
 
 
 __all__ = [

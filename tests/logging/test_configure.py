@@ -4,6 +4,7 @@ import logging
 import os
 from pathlib import Path
 import stat
+import sys
 
 import pytest
 
@@ -21,6 +22,18 @@ def _clean_logging_handlers():
 def _flush_root_handlers() -> None:
     for handler in logging.getLogger().handlers:
         handler.flush()
+
+
+def test_cli_console_logs_can_use_stderr_without_polluting_stdout(monkeypatch, capsys):
+    configure_module = importlib.import_module("deeptutor.logging.configure")
+    monkeypatch.setattr(
+        configure_module, "load_logging_config", lambda: LoggingConfig(file_output=False)
+    )
+    configure_module.configure_logging(force=True, console_stream=sys.stderr)
+    logging.getLogger("deeptutor.tests.cli").info("setup diagnostic")
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "setup diagnostic" in captured.err
 
 
 def test_configure_logging_writes_jsonl_and_respects_level(monkeypatch, tmp_path: Path):
