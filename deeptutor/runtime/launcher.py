@@ -6,6 +6,7 @@ import atexit
 from dataclasses import dataclass
 import hashlib
 import json
+import logging
 import os
 from pathlib import Path
 import secrets
@@ -34,6 +35,8 @@ from deeptutor.services.app_update import LAUNCHER_PID_ENV
 
 BACKEND_READY_TIMEOUT_ENV = "DEEPTUTOR_BACKEND_READY_TIMEOUT"
 FRONTEND_READY_TIMEOUT_ENV = "DEEPTUTOR_FRONTEND_READY_TIMEOUT"
+
+logger = logging.getLogger(__name__)
 
 
 def _ready_timeout(env_name: str, default: int) -> int:
@@ -138,25 +141,10 @@ def _log(message: str) -> None:
 
 
 def _reset_runtime_singletons() -> None:
-    """Make a just-selected DEEPTUTOR_HOME visible to path/config singletons."""
-    try:
-        from deeptutor.services.path_service import PathService
+    """Compatibility entry point for runtime-home selection."""
+    from deeptutor.runtime.cache_reset import reset_runtime_singletons
 
-        PathService.reset_instance()
-    except Exception:
-        pass
-    try:
-        from deeptutor.services.config.runtime_settings import RuntimeSettingsService
-
-        RuntimeSettingsService._instances.clear()
-    except Exception:
-        pass
-    try:
-        from deeptutor.services.config.model_catalog import ModelCatalogService
-
-        ModelCatalogService._instances.clear()
-    except Exception:
-        pass
+    reset_runtime_singletons()
 
 
 def _get_pgid(pid: int | None) -> int | None:
@@ -237,13 +225,17 @@ def _send_tree_signal(pid: int | None, pgid: int | None, sig: signal.Signals | i
         cmd = ["taskkill", "/PID", str(pid), "/T"]
         if sig == KILL_SIGNAL:
             cmd.append("/F")
-        subprocess.run(
+        completed = subprocess.run(
             cmd,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             check=False,
             **_no_window_kwargs(),
         )
+        # Exit code 128 is taskkill's "process not found": the tree is
+        # already gone, which is what the caller wanted anyway.
+        if completed.returncode not in (0, 128):
+            raise RuntimeError(f"taskkill {pid} failed with exit code {completed.returncode}")
         return
     if os.name != "nt" and pgid is not None:
         os.killpg(pgid, sig)
@@ -251,21 +243,50 @@ def _send_tree_signal(pid: int | None, pgid: int | None, sig: signal.Signals | i
         os.kill(pid, sig)
 
 
+def _signal_target(
+    pid: int | None,
+    pgid: int | None,
+    sig: signal.Signals | int,
+    *,
+    target: str,
+) -> None:
+    """Deliver ``sig`` to a process tree, logging failures instead of
+    swallowing them.
+
+    A target that is already gone (ESRCH on POSIX, taskkill's "process not
+    found" on Windows) has reached the intended end state, so it is not a
+    delivery failure. Any other failure is logged with its cause; the
+    caller's escalation ladder is unchanged.
+    """
+    try:
+        _send_tree_signal(pid, pgid, sig)
+    except ProcessLookupError:
+        return
+    except Exception:
+        logger.warning(
+            "failed to send %s to %s",
+            getattr(sig, "name", sig),
+            target,
+            exc_info=True,
+        )
+
+
 def _terminate(proc: ManagedProcess | None) -> None:
+    """Stop ``proc`` with the SIGTERM -> SIGKILL ladder.
+
+    A signal that could not be delivered is logged rather than silently
+    dropped, so a surviving child can be traced back to its failed
+    termination.
+    """
     if proc is None or proc.process.poll() is not None:
         return
     _log(_t("start.stopping", name=proc.name, pid=proc.process.pid))
-    try:
-        _send_tree_signal(proc.process.pid, proc.pgid, signal.SIGTERM)
-    except Exception:
-        pass
+    target = f"{proc.name} (pid={proc.process.pid})"
+    _signal_target(proc.process.pid, proc.pgid, signal.SIGTERM, target=target)
     try:
         proc.process.wait(timeout=8)
     except subprocess.TimeoutExpired:
-        try:
-            _send_tree_signal(proc.process.pid, proc.pgid, KILL_SIGNAL)
-        except Exception:
-            pass
+        _signal_target(proc.process.pid, proc.pgid, KILL_SIGNAL, target=target)
 
 
 def _relax_console_encoding(streams: tuple[object, ...] | None = None) -> None:
@@ -496,23 +517,33 @@ def _prompt_new_ports(
     return new_backend, new_frontend
 
 
-def _kill_port_listeners(listeners: dict[int, list[tuple[int, str]]]) -> None:
+def _kill_port_listeners(
+    listeners: dict[int, list[tuple[int, str]]],
+    *,
+    listener_guard: Callable[[int, int], bool] | None = None,
+) -> None:
+    """Signal every port listener with the SIGTERM -> SIGKILL ladder.
+
+    One unreachable listener does not stop the others from being signalled,
+    and each failed delivery leaves a warning in the log instead of a silent
+    zombie.
+    """
     for port, entries in listeners.items():
         for pid, command in entries:
+            if listener_guard is not None and not listener_guard(port, pid):
+                continue
             _log(_t("start.port_killing", pid=pid, command=command))
-            try:
-                _send_tree_signal(pid, None, signal.SIGTERM)
-            except Exception:
-                pass
+            target = f"port {port} listener (pid={pid})"
+            _signal_target(pid, None, signal.SIGTERM, target=target)
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline and _port_accepts_connection(port):
             time.sleep(0.2)
         if _port_accepts_connection(port):
             for pid, _command in entries:
-                try:
-                    _send_tree_signal(pid, None, KILL_SIGNAL)
-                except Exception:
-                    pass
+                if listener_guard is not None and not listener_guard(port, pid):
+                    continue
+                target = f"port {port} listener (pid={pid})"
+                _signal_target(pid, None, KILL_SIGNAL, target=target)
             deadline = time.monotonic() + 3
             while time.monotonic() < deadline and _port_accepts_connection(port):
                 time.sleep(0.2)
@@ -523,18 +554,72 @@ def _kill_port_listeners(listeners: dict[int, list[tuple[int, str]]]) -> None:
             _log(_t("start.port_freed", port=port))
 
 
+def _owned_orphan_started_at(
+    pid: int, *, role: str, runtime_home: Path, frontend_cwd: Path | None
+) -> float | None:
+    """Identify this deployment's abandoned listener without trusting its title.
+
+    #1795: an unattended restart may reclaim only a launcher-owned child whose
+    supervisor is gone. Unknown metadata, another home, or a live supervisor
+    must preserve the existing port-conflict failure.
+    """
+    import psutil
+
+    try:
+        process = psutil.Process(pid)
+        env = process.environ()
+        home = env.get(DEEPTUTOR_HOME_ENV)
+        if not home or Path(home).resolve() != runtime_home.resolve():
+            return None
+        supervisor = int(env.get(LAUNCHER_PID_ENV) or env.get(SUPERVISOR_PID_ENV) or "0")
+        if supervisor <= 0 or _is_pid_alive(supervisor):
+            return None
+        if role == "start.backend":
+            # Multiprocess uvicorn workers have spawn command lines; their
+            # parent carries the exact application command and interpreter.
+            for candidate in [process, *process.parents()]:
+                if candidate.pid <= 1:
+                    break
+                args = candidate.cmdline()
+                if any(
+                    args[i : i + 3] == ["-m", "uvicorn", "deeptutor.api.main:app"]
+                    for i in range(len(args) - 2)
+                ):
+                    if (
+                        Path(candidate.exe()).resolve() == Path(sys.executable).resolve()
+                        and Path(candidate.cwd()).resolve() == runtime_home.resolve()
+                    ):
+                        return process.create_time()
+        elif frontend_cwd is not None:
+            cwd = Path(process.cwd()).resolve()
+            args = process.cmdline()
+            if cwd != frontend_cwd.resolve() or Path(process.exe()).stem.lower() != "node":
+                return None
+            if any(arg.startswith("next-server (") for arg in args) or any(
+                Path(arg).name == "server.js" and (cwd / arg).resolve() == cwd / "server.js"
+                for arg in args
+            ):
+                return process.create_time()
+    except (psutil.Error, OSError, ValueError):
+        return None
+    return None
+
+
 def _resolve_port_conflicts(
     *,
     backend_port: int,
     frontend_port: int,
     check_frontend: bool,
     settings_dir: Path,
+    runtime_home: Path | None = None,
+    frontend_cwd: Path | None = None,
 ) -> tuple[int, int]:
     """Return free ``(backend_port, frontend_port)``, resolving conflicts interactively.
 
-    When stdin is not a TTY (Docker, CI), falls back to exiting with the
-    historical ``start.port_in_use`` message.
+    Without a TTY, reclaim verified orphaned children of this deployment once;
+    unknown or foreign listeners retain the historical port-conflict failure.
     """
+    reclaimed = False
     while True:
         roles = [("start.backend", backend_port)]
         if check_frontend:
@@ -554,6 +639,38 @@ def _resolve_port_conflicts(
                 _log(_t("start.port_conflict_proc", pid=pid, command=command))
 
         if sys.stdin is None or not sys.stdin.isatty():
+            if not reclaimed and runtime_home is not None:
+                roles_by_port = {port: key for key, port in occupied}
+                identities = {
+                    (port, pid): _owned_orphan_started_at(
+                        pid,
+                        role=roles_by_port[port],
+                        runtime_home=runtime_home,
+                        frontend_cwd=frontend_cwd,
+                    )
+                    for port, entries in listeners.items()
+                    for pid, _command in entries
+                }
+                if (
+                    all(listeners.values())
+                    and identities
+                    and all(started is not None for started in identities.values())
+                ):
+
+                    def still_owned(port: int, pid: int) -> bool:
+                        return (
+                            _owned_orphan_started_at(
+                                pid,
+                                role=roles_by_port[port],
+                                runtime_home=runtime_home,
+                                frontend_cwd=frontend_cwd,
+                            )
+                            == identities[(port, pid)]
+                        )
+
+                    _kill_port_listeners(listeners, listener_guard=still_owned)
+                    reclaimed = True
+                    continue
             joined = ", ".join(str(port) for _key, port in occupied)
             raise SystemExit(_t("start.port_in_use", ports=joined))
 
@@ -1253,8 +1370,11 @@ def _handoff_pending_update(
     except Exception as exc:
         try:
             store.mark_failed(job.id, f"Launcher handoff failed: {exc}")
-        except Exception:
-            pass
+        except Exception as mark_exc:
+            _log(
+                f"Launcher handoff failed for update {job.id}: {exc} "
+                f"(could not record failure: {mark_exc})"
+            )
         return False
     return True
 
@@ -1360,6 +1480,8 @@ def start(
         frontend_port=frontend_port,
         check_frontend=existing_frontend is None,
         settings_dir=settings.settings_dir,
+        runtime_home=runtime_home,
+        frontend_cwd=frontend.cwd,
     )
     if (resolved_backend, resolved_frontend) != (backend_port, frontend_port):
         backend_port, frontend_port = resolved_backend, resolved_frontend
@@ -1504,8 +1626,10 @@ def start(
         if cleanup_started:
             return
         cleanup_started = True
-        _terminate(web)
-        _terminate(backend)
+        try:
+            _terminate(backend)
+        finally:
+            _terminate(web)
         if detached_paths is not None:
             _clear_detached_runtime(detached_paths, detached_token)
 

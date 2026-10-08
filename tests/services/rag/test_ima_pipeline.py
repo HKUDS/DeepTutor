@@ -648,6 +648,16 @@ class _SearchStub:
 
 
 class TestPipelineSearch:
+    @pytest.mark.parametrize(
+        ("status", "error"), [(401, ImaAuthError), (403, ImaAuthError), (503, ImaAPIError)]
+    )
+    def test_http_failure_cannot_be_accepted_as_an_empty_success(self, status, error):
+        def handler(_request):
+            return httpx.Response(status, json={"code": 0, "data": {"info_list": []}})
+
+        with pytest.raises(error):
+            asyncio.run(_client(handler).search_knowledge("multiplication", limit=5))
+
     def test_search_shapes_snippets_into_context_and_sources(self, tmp_path) -> None:
         base = _kb_config(
             tmp_path,
@@ -863,7 +873,10 @@ class TestPipelineSearch:
         stub = _SearchStub([{"highlight_content": "orphan"}])
         pipeline = ImaPipeline(kb_base_dir=base, client_factory=lambda _c: stub)
 
-        assert asyncio.run(pipeline.search("q", "IMA"))["sources"] == []
+        result = asyncio.run(pipeline.search("q", "IMA"))
+        assert result["sources"] == []
+        assert result["retrieval_status"] == "unverified_sources"
+        assert result["diagnostics"]["unverified_documents"] == 1
 
     def test_top_k_is_clamped(self, tmp_path) -> None:
         base = _kb_config(
@@ -910,6 +923,59 @@ class TestPipelineSearch:
         assert result["error_type"] == "not_configured"
         assert result["content"] == ""
         assert result["sources"] == []
+
+    @pytest.mark.parametrize(
+        ("error", "kind"),
+        [
+            (ImaAuthError("rejected"), "authentication_error"),
+            (ImaRateLimitError("too many calls"), "rate_limited"),
+            (httpx.ReadTimeout("https://media.example/?token=private"), "timeout"),
+            (httpx.ConnectError("https://media.example/?token=private"), "network_error"),
+        ],
+    )
+    def test_failure_states_are_actionable_without_exposing_transport_urls(
+        self, tmp_path, error, kind
+    ):
+        base = _kb_config(
+            tmp_path, {"client_id": "cid", "api_key": "key", "knowledge_base_id": "kb-1"}
+        )
+        pipeline = ImaPipeline(kb_base_dir=base, client_factory=lambda _: _SearchStub(error=error))
+        result = asyncio.run(pipeline.search("multiplication", "IMA"))
+        assert result["error_type"] == kind
+        assert result["retrieval_status"] == "failed"
+        assert result["sources"] == []
+        assert "private" not in json.dumps(result)
+        assert result["answer"]
+
+    def test_partial_retrieval_keeps_real_passages_and_reports_unreadable_matches(self, tmp_path):
+        base = _kb_config(
+            tmp_path, {"client_id": "cid", "api_key": "key", "knowledge_base_id": "kb-1"}
+        )
+        stub = _SearchStub(
+            [
+                {
+                    "media_id": "readable",
+                    "title": "Math",
+                    "highlight_content": _thick("Three groups of four make twelve."),
+                },
+                {"media_id": "missing", "title": "Unavailable chapter"},
+            ],
+            media_error=ImaAuthError("forbidden"),
+        )
+        result = asyncio.run(
+            ImaPipeline(kb_base_dir=base, client_factory=lambda _: stub).search(
+                "multiplication", "IMA"
+            )
+        )
+        assert result["retrieval_status"] == "partial"
+        assert [source["chunk_id"] for source in result["sources"]] == ["readable"]
+        assert "Three groups of four" in result["content"]
+        assert "do not invent" in result["answer"]
+        assert result["diagnostics"]["matched_documents"] == 2
+        assert result["diagnostics"]["readable_documents"] == 1
+        assert result["diagnostics"]["hydration_failures"] == [
+            {"source_id": "missing", "error_type": "ImaAuthError"}
+        ]
 
     def test_transport_failure_reports_retrieval_error(self, tmp_path) -> None:
         base = _kb_config(

@@ -1,6 +1,6 @@
 short_description: "Retrieve relevant passages from one of the attached knowledge bases."
 when_to_use: "Use when the answer is likely covered by the attached knowledge bases — definitions, formulas, concepts, or textbook explanations."
 input_format: "{\"query\": \"non-empty natural-language query\", \"kb_name\": \"one of the attached knowledge base names\"}."
-guideline: "Prefer RAG before external search when the task is course-aligned. To consult multiple knowledge bases, call rag once per kb_name (the system runs them in parallel)."
-note: "The query must be non-empty; if the first retrieval is weak, revise the query from another angle before giving up."
+guideline: "Prefer RAG before external search for course material. For concept discovery, query in the source language too when needed. For an exact figure, use figure plus source_path from kb_files; for a vector diagram, sparse caption, table or unreadable labels use source_path/page and optionally region=[x0,y0,x1,y1] normalized to 0..1. Reuse asset_id or source_hash from a citation for follow-ups; retrieve actual pixels again before detailed visual claims. Compare two sources with separate bounded calls."
+note: "The query must be non-empty. Keep figure/table numbers and source boundaries exact. Ambiguity, missing pixels, unsupported pages or conflicting evidence require source selection, page inspection or abstention; never substitute a related figure. Distinguish visible observations, caption-only interpretation and general background. A citation and original image must support each source-specific claim."
 phase: "exploration"

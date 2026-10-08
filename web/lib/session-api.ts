@@ -306,6 +306,11 @@ export async function getSession(
   return expectJson<SessionDetail>(response);
 }
 
+/** Opening an old Watching conversation is the explicit migration boundary. */
+export async function migrateWatchingSession(sessionId: string): Promise<SessionDetail> {
+  return expectJson<SessionDetail>(await apiFetch(apiUrl(`/api/sessions/${encodeURIComponent(sessionId)}/migrate-watching`), { method: "POST" }));
+}
+
 /**
  * One line the user is likely to type next, for the home composer's
  * placeholder — "" when there is nothing worth offering (no exchange yet,

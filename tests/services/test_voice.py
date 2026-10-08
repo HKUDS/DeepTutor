@@ -815,7 +815,7 @@ def test_resolve_dashscope_voice_configs() -> None:
     assert tts.provider_name == "dashscope"
     assert tts.adapter == "dashscope"
     assert tts.model == "qwen3-tts-flash"
-    assert tts.voice == "Cherry"
+    assert tts.voice == ""  # Voice IDs must be selected explicitly.
     assert tts.base_url == "https://dashscope.aliyuncs.com/api/v1"
     assert stt.provider_name == "dashscope"
     assert stt.adapter == "dashscope"

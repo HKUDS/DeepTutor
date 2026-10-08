@@ -13,6 +13,7 @@ RenderType = Literal[
     "svg",
     "chartjs",
     "mermaid",
+    "mindmap",
     "html",
     "manim_video",
     "manim_image",
