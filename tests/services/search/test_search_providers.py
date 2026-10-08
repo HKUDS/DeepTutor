@@ -497,3 +497,16 @@ def test_serply_rejects_an_unknown_mode() -> None:
 
     with pytest.raises(ValueError, match="mode"):
         SerplyProvider(api_key="k").search("q", mode="images")
+
+
+def test_perplexity_client_sends_integration_header() -> None:
+    from perplexity._models import FinalRequestOptions
+
+    from deeptutor.services.search.providers.perplexity import PerplexityProvider
+
+    client = PerplexityProvider(api_key="test").client
+    request = client._build_request(
+        FinalRequestOptions.construct(method="post", url="/chat/completions", json_data={})
+    )
+    assert request.url.host == "api.perplexity.ai"
+    assert request.headers["X-Pplx-Integration"] == "deeptutor"
