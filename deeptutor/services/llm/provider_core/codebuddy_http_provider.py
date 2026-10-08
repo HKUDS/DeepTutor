@@ -80,6 +80,13 @@ class CodeBuddyHTTPProvider(OpenAICompatProvider):
     def get_default_model(self) -> str:
         return self.default_model or DEFAULT_CODEBUDDY_MODEL
 
+    @staticmethod
+    def _handle_error(exc: Exception) -> LLMResponse:
+        """Keep authentication failures available to the credential reload seam."""
+        if isinstance(exc, AuthenticationError):
+            raise exc
+        return OpenAICompatProvider._handle_error(exc)
+
     def _apply_token(self, token: str) -> None:
         self.api_key = token
         self._client.api_key = token
