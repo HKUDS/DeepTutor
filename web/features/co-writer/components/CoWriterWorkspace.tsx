@@ -178,6 +178,10 @@ export interface CoWriterWorkspaceProps {
 }
 
 export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
+  return <DocumentWorkspace key={docId} docId={docId} />;
+}
+
+function DocumentWorkspace({ docId }: CoWriterWorkspaceProps) {
   const { t } = useTranslation();
   const router = useRouter();
   const draftRevisionRef = useRef(0);
