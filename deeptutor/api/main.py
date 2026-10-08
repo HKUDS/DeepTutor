@@ -553,6 +553,7 @@ from deeptutor.api.routers import (
     quiz_judge,
     reading,
     reading_extensions,
+    sequence,
     sessions,
     settings,
     skills,
@@ -681,6 +682,12 @@ app.include_router(
     practice.router,
     prefix="/api/question-notebook/practice",
     tags=["practice"],
+    dependencies=_auth,
+)
+app.include_router(
+    sequence.router,
+    prefix="/api/learning/sequence",
+    tags=["solution-sequence"],
     dependencies=_auth,
 )
 # Public UI-settings read (auth pages bootstrap the interface language
