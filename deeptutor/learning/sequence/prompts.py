@@ -44,9 +44,7 @@ def user_prompt(topic: str, corpus: str, *, rejection: str = "") -> str:
     body = f"Topic:\n{topic}\n\nSource:\n{corpus}"
     if rejection:
         body += (
-            "\n\nThe previous JSON was rejected:\n"
-            f"{rejection}\n"
-            "Return one corrected JSON object."
+            f"\n\nThe previous JSON was rejected:\n{rejection}\nReturn one corrected JSON object."
         )
     return body
 

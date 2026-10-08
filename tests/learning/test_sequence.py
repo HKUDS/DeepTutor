@@ -158,7 +158,9 @@ def test_hint_that_copies_the_next_expression_is_replaced():
 @pytest.mark.asyncio
 async def test_public_problem_hides_the_order_until_it_is_solved(tmp_path):
     store, view = await _generate(tmp_path)
-    saved = json.loads((tmp_path / "sessions" / f"{view['problem_id']}.json").read_text(encoding="utf-8"))
+    saved = json.loads(
+        (tmp_path / "sessions" / f"{view['problem_id']}.json").read_text(encoding="utf-8")
+    )
     assert "correct_ids" not in view
     assert view["explanation"] is None
     assert {step["id"] for step in view["steps"]} == {step["id"] for step in saved["steps"]}
@@ -182,7 +184,9 @@ async def test_public_problem_hides_the_order_until_it_is_solved(tmp_path):
 @pytest.mark.asyncio
 async def test_removing_an_earlier_step_drops_the_broken_tail(tmp_path):
     store, view = await _generate(tmp_path)
-    saved = json.loads((tmp_path / "sessions" / f"{view['problem_id']}.json").read_text(encoding="utf-8"))
+    saved = json.loads(
+        (tmp_path / "sessions" / f"{view['problem_id']}.json").read_text(encoding="utf-8")
+    )
     first, second = saved["correct_ids"][:2]
     place_step(store, view["problem_id"], first, 0)
     place_step(store, view["problem_id"], second, 1)
@@ -204,7 +208,9 @@ async def test_hint_uses_the_server_copy_and_not_the_next_step(tmp_path):
 @pytest.mark.asyncio
 async def test_progress_counts_a_topic_once_per_problem(tmp_path):
     store, first = await _generate(tmp_path)
-    saved = json.loads((tmp_path / "sessions" / f"{first['problem_id']}.json").read_text(encoding="utf-8"))
+    saved = json.loads(
+        (tmp_path / "sessions" / f"{first['problem_id']}.json").read_text(encoding="utf-8")
+    )
     for index, step_id in enumerate(saved["correct_ids"]):
         place_step(store, first["problem_id"], step_id, index)
     _store, second = await _generate(tmp_path)

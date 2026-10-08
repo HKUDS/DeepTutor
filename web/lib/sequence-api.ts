@@ -1,6 +1,6 @@
 import { apiFetch, apiUrl } from "@/lib/api";
 
-const ROOT = "/api/learning/sequence";
+const ROOT = "/api/solution-sequence";
 
 export interface SequenceStep {
   id: string;

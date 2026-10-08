@@ -8,7 +8,9 @@ returned to the caller.
 from __future__ import annotations
 
 
-def placement_accepted(correct_ids: list[str], placed_ids: list[str], step_id: str, index: int) -> bool:
+def placement_accepted(
+    correct_ids: list[str], placed_ids: list[str], step_id: str, index: int
+) -> bool:
     if index < 0 or index > len(placed_ids):
         return False
     if index >= len(correct_ids):

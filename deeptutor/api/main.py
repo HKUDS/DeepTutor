@@ -686,7 +686,7 @@ app.include_router(
 )
 app.include_router(
     sequence.router,
-    prefix="/api/learning/sequence",
+    prefix="/api/solution-sequence",
     tags=["solution-sequence"],
     dependencies=_auth,
 )
