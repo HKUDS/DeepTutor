@@ -66,6 +66,32 @@ def test_worker_failure_is_durable_and_restores_app(tmp_path: Path) -> None:
     assert restarted and restarted[0].status == "failed"
 
 
+def test_worker_recovery_reports_and_skips_on_corrupt_state(tmp_path: Path) -> None:
+    store, _job = _handoff_job(tmp_path)
+    restarted: list[UpdateJob] = []
+    corrupt_state = "{ not valid json"
+
+    def run_and_corrupt(command: list[str], cwd: Path, log_path: Path) -> int:
+        store.state_path.write_text(corrupt_state, encoding="utf-8")
+        return 7
+
+    result = run_update_worker(
+        store_root=store.root,
+        parent_pid=123,
+        wait_for_parent=lambda _pid: None,
+        command_runner=run_and_corrupt,
+        restart_launcher=lambda value, _log: restarted.append(value),
+    )
+
+    assert result == 1
+    assert restarted == []
+    assert store.state_path.read_text(encoding="utf-8") == corrupt_state
+    log = store.log_path.read_text(encoding="utf-8")
+    assert "recovery aborted" in log
+    assert "could not be loaded" in log
+    assert "pip exited with status 7" in log
+
+
 def test_update_command_rejects_non_stable_or_injected_versions() -> None:
     with pytest.raises(ValueError):
         build_update_command("1.7.0rc1")

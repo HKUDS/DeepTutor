@@ -51,6 +51,66 @@ def test_edit_reorder_preserves_existing_module_and_objective_ids() -> None:
     assert [module.order for module in modules] == [0, 1]
 
 
+@pytest.mark.parametrize(
+    "module_id, counts, count, accepted",
+    [
+        ("topic_m0", {"topic_m0": 8}, 8, True),
+        ("topic_m0", {"topic_m0": 8}, 9, False),
+        ("draft-new", {"topic_m0": 8}, 8, False),
+        ("draft-new", {"draft-new": 8}, 8, False),
+        ("topic_m0", {"topic_m0": 3}, 8, False),
+        ("topic_m0", None, 8, False),
+    ],
+)
+def test_legacy_edit_budget_is_bound_to_the_existing_region(
+    module_id: str, counts: dict[str, int] | None, count: int, accepted: bool
+) -> None:
+    points = [(f"kp{index}", f"Objective {index}") for index in range(count)]
+    if not accepted:
+        with pytest.raises(TopicGenerationError, match="at most .* waypoints"):
+            materialize_modules(
+                "topic",
+                [_module(module_id, *points)],
+                strict=True,
+                existing_module_ids={"topic_m0"},
+                existing_objective_ids={point_id for point_id, _ in points},
+                existing_objective_counts=counts,
+            )
+        return
+
+    modules = materialize_modules(
+        "topic",
+        [_module(module_id, *reversed(points))],
+        strict=True,
+        existing_module_ids={"topic_m0"},
+        existing_objective_ids={point_id for point_id, _ in points},
+        existing_objective_counts=counts,
+    )
+    assert [point.id for point in modules[0].knowledge_points] == [
+        point_id for point_id, _ in reversed(points)
+    ]
+
+
+def test_duplicate_region_id_does_not_reuse_the_legacy_edit_budget() -> None:
+    points = [(f"kp{index}", f"Objective {index}") for index in range(8)]
+    raw = [_module("topic_m0", *points), _module("topic_m0", *points)]
+    with pytest.raises(TopicGenerationError, match="region 2 may have at most 7 waypoints"):
+        materialize_modules(
+            "topic",
+            raw,
+            strict=True,
+            existing_module_ids={"topic_m0"},
+            existing_objective_ids={point_id for point_id, _ in points},
+            existing_objective_counts={"topic_m0": 8},
+        )
+
+
+def test_new_draft_regions_keep_the_generation_limit() -> None:
+    points = [(f"kp{index}", f"Objective {index}") for index in range(8)]
+    modules = materialize_modules("topic", [_module("draft", *points)])
+    assert len(modules[0].knowledge_points) == 7
+
+
 def test_new_objective_never_reuses_an_existing_or_deleted_position_id() -> None:
     raw = [
         _module(

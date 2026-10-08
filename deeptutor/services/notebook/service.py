@@ -150,7 +150,15 @@ class NotebookManager:
             try:
                 with open(path, encoding="utf-8") as f:
                     notebook = json.load(f)
-            except Exception:
+            except Exception as exc:
+                # The file is left untouched on disk, so the damage stays
+                # visible and repairable: list_notebooks() re-adopts it as an
+                # ``unreadable`` entry instead of the notebook quietly vanishing.
+                logger.warning(
+                    "notebook file %s is unreadable (%s); excluded from the rebuilt index",
+                    path,
+                    exc,
+                )
                 continue
             entries.append(self._index_row(notebook))
         return entries

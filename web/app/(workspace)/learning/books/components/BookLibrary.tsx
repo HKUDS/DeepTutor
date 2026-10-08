@@ -1,5 +1,6 @@
 'use client'
 
+import { pageGridClass } from '@/components/layout/FeaturePage'
 import { useLibraryFilter, WorkspaceLabel } from '@/components/learning/LibraryWorkspace'
 import { libraryItemKey } from '@/lib/learning-library'
 import { LearningCardContent } from '@/components/learning/LearningCard'
@@ -202,7 +203,7 @@ export default function BookLibrary({
             {t('No books match “{{query}}”.', { query })}
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <div className={pageGridClass(3)}>
             {filtered.map(book => {
               const isPendingDelete = pendingDeleteId === libraryItemKey(book, book.id)
               const status = STATUS_STYLES[book.status] || STATUS_STYLES.draft

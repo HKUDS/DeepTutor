@@ -10,7 +10,9 @@ import pytest
 
 from deeptutor.api.routers.mastery_path import router, ws_router
 from deeptutor.learning.models import (
+    KnowledgePoint,
     KnowledgeType,
+    LearningModule,
     LearningProgress,
     PendingQuestion,
     QuizAttempt,
@@ -370,6 +372,81 @@ class TestTopicProductApi:
         assert progress is not None
         assert progress.mastery_levels == {first_id: 0.2, third_id: 0.9}
         assert [attempt.question_id for attempt in progress.quiz_attempts] == ["third-evidence"]
+
+    def test_edit_legacy_topic_map_preserves_all_objectives_and_evidence(self, client, app):
+        module = LearningModule(
+            id="legacy-module",
+            name="Legacy region",
+            order=0,
+            knowledge_points=[
+                KnowledgePoint(
+                    id=f"legacy-kp-{index}",
+                    name=f"Objective {index}",
+                    type=KnowledgeType.CONCEPT,
+                    module_id="legacy-module",
+                )
+                for index in range(8)
+            ],
+        )
+        progress = LearningProgress(book_id="legacy-path", name="Legacy route", modules=[module])
+        last_id = module.knowledge_points[-1].id
+        progress.mastery_levels[last_id] = 0.9
+        progress.quiz_attempts.append(
+            QuizAttempt(
+                question_id="legacy-evidence",
+                knowledge_point_id=last_id,
+                module_id=module.id,
+                is_correct=True,
+            )
+        )
+        store = LearningStore(root=app.state.learning_root)
+        store.save(progress)
+        edited = module.model_dump(mode="json")
+        edited["knowledge_points"][0]["type"] = "memory"
+        edited["knowledge_points"].reverse()
+
+        response = client.put(
+            "/api/mastery-paths/topics/legacy-path/map", json={"modules": [edited]}
+        )
+
+        assert response.status_code == 200, response.text
+        reloaded = store.load("legacy-path")
+        assert reloaded is not None
+        updated_points = reloaded.modules[0].knowledge_points
+        assert [point.id for point in updated_points[:-1]] == [
+            point.id for point in reversed(module.knowledge_points[1:])
+        ]
+        assert updated_points[-1].id != module.knowledge_points[0].id
+        assert updated_points[-1].type == KnowledgeType.MEMORY
+        assert reloaded.mastery_levels[last_id] == 0.9
+        assert [attempt.question_id for attempt in reloaded.quiz_attempts] == ["legacy-evidence"]
+
+    def test_edit_legacy_topic_map_cannot_add_a_ninth_objective(self, client, app):
+        points = [
+            KnowledgePoint(
+                id=f"legacy-kp-{index}",
+                name=f"Objective {index}",
+                type=KnowledgeType.CONCEPT,
+                module_id="legacy-module",
+            )
+            for index in range(8)
+        ]
+        module = LearningModule(
+            id="legacy-module", name="Legacy region", order=0, knowledge_points=points
+        )
+        store = LearningStore(root=app.state.learning_root)
+        store.save(LearningProgress(book_id="legacy-path", modules=[module]))
+        edited = module.model_dump(mode="json")
+        edited["knowledge_points"].append({"name": "New objective", "type": "concept"})
+
+        response = client.put(
+            "/api/mastery-paths/topics/legacy-path/map", json={"modules": [edited]}
+        )
+
+        assert response.status_code == 422
+        reloaded = store.load("legacy-path")
+        assert reloaded is not None
+        assert len(reloaded.modules[0].knowledge_points) == 8
 
     def test_edit_topic_map_rejects_empty_region_instead_of_silently_dropping_it(self, client):
         created = client.post(

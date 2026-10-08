@@ -60,21 +60,21 @@ export default function SettingsNav({ onNavigate }: { onNavigate?: () => void })
         <Search
           size={14}
           strokeWidth={1.8}
-          className="pointer-events-none absolute left-2.5 top-[9px] text-[var(--muted-foreground)]"
+          className="pointer-events-none absolute left-2.5 top-3 text-[var(--muted-foreground)]"
         />
         <input
           aria-label={t('Search settings')}
           placeholder={t('Search settings')}
           value={query}
           onChange={event => setQuery(event.target.value)}
-          className="w-full rounded-full bg-[var(--muted)] py-1.5 pl-8 pr-7 text-[13px] ring-1 ring-inset ring-transparent outline-none placeholder:text-muted-foreground/70 focus:ring-[var(--ring)]"
+          className="w-full rounded-full bg-[var(--muted)] py-2.5 pl-8 pr-7 text-[13px] ring-1 ring-inset ring-transparent outline-none placeholder:text-muted-foreground/70 focus:ring-[var(--ring)]"
         />
         {query && (
           <button
             type="button"
             aria-label={t('Clear')}
             onClick={() => setQuery('')}
-            className="absolute right-1.5 top-[7px] rounded p-0.5 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+            className="absolute right-1.5 top-2.5 rounded p-0.5 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
           >
             <X size={14} />
           </button>
@@ -85,7 +85,7 @@ export default function SettingsNav({ onNavigate }: { onNavigate?: () => void })
           .filter(group => group.pages.length)
           .map(group => (
             <div key={group.label.en} className="mb-0.5">
-              <p className="px-2.5 pb-1 pt-3.5 text-[11px] font-medium text-muted-foreground">
+              <p className="px-2.5 pb-1.5 pt-5 text-[12px] font-medium text-muted-foreground">
                 {tr(group.label)}
               </p>
               <div className="space-y-0.5">
@@ -100,7 +100,7 @@ export default function SettingsNav({ onNavigate }: { onNavigate?: () => void })
                         onClick={onNavigate}
                         aria-current={active ? 'page' : undefined}
                         data-tour={`tour-nav-${page.key}`}
-                        className={`flex min-h-8 items-center gap-2 rounded-md px-2.5 py-1.5 text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${active ? 'bg-[var(--accent)] font-medium text-[var(--foreground)]' : 'text-[var(--foreground)] hover:bg-accent/60'}`}
+                        className={`flex min-h-9 items-center gap-2 rounded-lg px-2.5 py-2 text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${active ? 'bg-[var(--accent)] font-medium text-[var(--foreground)]' : 'text-[var(--foreground)] hover:bg-accent/60'}`}
                       >
                         <Icon size={15} strokeWidth={1.8} className="shrink-0" />
                         <span>
