@@ -203,6 +203,27 @@ def test_a_delta_that_is_not_worth_shipping_is_skipped(tmp_path: Path) -> None:
     assert (out / "1.6.11-macos-aarch64.delta.tar.gz").is_file()
 
 
+def test_a_delta_built_from_extracted_tarballs_records_the_build_root(tmp_path: Path) -> None:
+    """CI diffs *unpacked* release tarballs; the recorded roots must be the ones
+    baked into the pack, not the runner's scratch directory."""
+
+    build_root = tmp_path / "runner" / "work" / "stage-1.6.10"
+    build_root.mkdir(parents=True)
+    (build_root / "venv").mkdir()
+    (build_root / "venv" / "pyvenv.cfg").write_text(
+        f"home = {build_root}/python/bin\n", encoding="utf-8"
+    )
+    extracted = tmp_path / "base"
+    extracted.mkdir()
+    with tarfile.open(tmp_path / "pack.tar.gz", "w:gz") as handle:
+        handle.add(build_root, arcname="stage")
+    with tarfile.open(tmp_path / "pack.tar.gz") as handle:
+        # Same filter the builder uses; the default is deprecated in 3.14.
+        handle.extractall(extracted, filter="fully_trusted")
+
+    assert build_delta.build_root(extracted / "stage") == build_root
+
+
 def _incompressible_pair(tmp_path: Path) -> tuple[Path, Path]:
     """Two stages whose delta is most of the archive."""
 
