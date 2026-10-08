@@ -58,6 +58,7 @@ export default function McpServerForm({
   );
   const [cwd, setCwd] = useState(initialConfig.cwd);
   const [url, setUrl] = useState(initialConfig.url);
+  const [allowPrivateNetwork, setAllowPrivateNetwork] = useState(initialConfig.allow_private_network ?? false);
   const [headerPairs, setHeaderPairs] = useState<McpKvPair[]>(
     dictToPairs(initialConfig.headers),
   );
@@ -84,6 +85,7 @@ export default function McpServerForm({
           headerPairs,
           toolTimeout,
           enabledToolsText,
+          allowPrivateNetwork,
         },
         initialConfig,
       ),
@@ -97,6 +99,7 @@ export default function McpServerForm({
       headerPairs,
       toolTimeout,
       enabledToolsText,
+      allowPrivateNetwork,
       initialConfig,
     ],
   );
@@ -284,6 +287,12 @@ export default function McpServerForm({
               autoComplete="off"
             />
           </div>
+          <label className="flex items-start gap-2 text-xs">
+            <input type="checkbox" checked={allowPrivateNetwork} onChange={(event) => setAllowPrivateNetwork(event.target.checked)} />
+            <span>{surface.writes === "registry" ? t("Approve this MCP origin for private-network connections") : t("Use an administrator-approved private MCP origin")}
+              <span className="mt-1 block text-[var(--muted-foreground)]">{t("Only this scheme, host and port can use private Docker or LAN addresses. Metadata addresses remain blocked.")}</span>
+            </span>
+          </label>
           <KeyValueEditor
             label={t("HTTP headers")}
             pairs={headerPairs}
