@@ -1047,7 +1047,10 @@ class TelegramChannel(BaseChannel):
                     "metadata": metadata,
                     "session_key": session_key,
                 }
-                self._start_typing(str_chat_id)
+                # Only start typing for allowed senders: a denied sender
+                # never gets a reply, so nobody would stop the loop.
+                if self.is_allowed(sender_id):
+                    self._start_typing(str_chat_id)
             buf = self._media_group_buffers[key]
             if content and content != "[empty message]":
                 buf["contents"].append(content)
@@ -1056,8 +1059,10 @@ class TelegramChannel(BaseChannel):
                 self._media_group_tasks[key] = asyncio.create_task(self._flush_media_group(key))
             return
 
-        # Start typing indicator before processing
-        self._start_typing(str_chat_id)
+        # Start typing indicator before processing, but only for allowed
+        # senders: a denied sender never gets a reply to stop the loop.
+        if self.is_allowed(sender_id):
+            self._start_typing(str_chat_id)
 
         # Forward to the message bus
         await self._handle_message(
@@ -1075,6 +1080,10 @@ class TelegramChannel(BaseChannel):
             await asyncio.sleep(0.6)
             if not (buf := self._media_group_buffers.pop(key, None)):
                 return
+            # Release the task slot before dispatching: an album item arriving
+            # mid-dispatch then schedules its own follow-up flush instead of
+            # being buffered forever with no task to forward it.
+            self._media_group_tasks.pop(key, None)
             content = "\n".join(buf["contents"]) or "[empty message]"
             await self._handle_message(
                 sender_id=buf["sender_id"],
@@ -1085,7 +1094,10 @@ class TelegramChannel(BaseChannel):
                 session_key=buf.get("session_key"),
             )
         finally:
-            self._media_group_tasks.pop(key, None)
+            # Drop only this task's own registration: a straggler may already
+            # have scheduled a fresh flush task under the same key.
+            if self._media_group_tasks.get(key) is asyncio.current_task():
+                self._media_group_tasks.pop(key, None)
 
     def _start_typing(self, chat_id: str) -> None:
         """Start sending 'typing...' indicator for a chat."""

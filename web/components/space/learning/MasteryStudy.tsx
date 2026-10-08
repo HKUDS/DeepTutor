@@ -809,6 +809,11 @@ export function MasteryStudy({
                       onSubmitUserReply={submitUserReply}
                       onAnswerMasteryQuestion={answerMasteryQuestion}
                       onSkipMasteryQuestion={skipMasteryQuestion}
+                      onChallengeMasteryQuestion={(questionId) => {
+                        if (state.isStreaming || sessionLoading || sessionError) return false;
+                        sendMessage(t('Please review assessment {{questionId}} against its original source evidence. If it is unsupported, invalidate it and recompute learning state. Do not grant mastery merely because I challenged it.', { questionId }));
+                        return true;
+                      }}
                       onPreviewAttachment={handlePreviewMessageAttachment}
                       onConfirmOutline={confirmResearchOutline}
                       onLoadMessageTrace={(messageId) =>

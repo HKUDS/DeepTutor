@@ -13,6 +13,7 @@ import {
 import { readingCollectionRoute, readingFolderRoute } from "@/lib/learning-routes";
 
 import Link from "next/link";
+import InvidiousAccountFeedback from "./InvidiousAccountFeedback";
 import { useRouter } from "next/navigation";
 import {
   BookOpen,
@@ -170,6 +171,7 @@ export function ReadingLibraryPage() {
       onAction={() => create()}
       scopeChip={scope ? <CourseScopeChip scope={scope} /> : null}
     >
+      <InvidiousAccountFeedback />
       <div className="mt-5 flex flex-col gap-3 border-b border-[var(--border)] pb-3 sm:flex-row sm:items-center">
         <label className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg border border-[var(--border)] px-2.5 sm:max-w-[330px]">
           <Search

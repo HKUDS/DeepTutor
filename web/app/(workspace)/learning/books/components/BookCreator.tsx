@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { PageContainer, PageHeader } from '@/components/layout/FeaturePage'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ChevronUp, Database, Loader2, Pencil, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAppShell } from '@/context/AppShellContext'
@@ -58,6 +59,7 @@ const DEPTH_OPTIONS: Array<{ value: BookDepth; label: string; hint: string }> = 
 ]
 
 export interface BookCreatorProps {
+  back?: ReactNode
   onCreate: (payload: {
     source_refs: TopicSourceInput[]
     user_intent: string
@@ -80,6 +82,7 @@ export interface BookCreatorProps {
 }
 
 export default function BookCreator({
+  back,
   onCreate,
   loading = false,
   book = null,
@@ -158,17 +161,10 @@ export default function BookCreator({
     : []
 
   return (
-    <div className="mx-auto w-full max-w-4xl space-y-5 p-6">
-      <div className="space-y-1.5">
-        <h1 className="font-serif text-2xl font-semibold text-[var(--foreground)]">
-          {t('Create a new book')}
-        </h1>
-        <p className="text-sm text-[var(--muted-foreground)]">
-          {t(
-            'Describe what you want to learn, then pick the knowledge sources to fuse into a structured, interactive book.'
-          )}
-        </p>
-      </div>
+    <PageContainer>
+      {back && <div className="mb-5">{back}</div>}
+      <PageHeader title={t('Create a new book')} description={t('Describe what you want to learn, then pick the knowledge sources to fuse into a structured, interactive book.')} />
+      <div className="space-y-5">
 
       <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] shadow-sm">
         <button
@@ -338,7 +334,8 @@ export default function BookCreator({
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </PageContainer>
   )
 }
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { PageContainer, PAGE_DESCRIPTION_CLASS } from '@/components/layout/FeaturePage'
 import { scopedUrl } from "@/lib/workspace-scope";
 import { MASTERY_HOME, masterySessionRoute as existingMasterySessionRoute, masterySessionsRoute } from "@/lib/learning-routes";
 
@@ -318,7 +319,7 @@ export default function MasteryTopicPage() {
     // no second column to balance, and a fixed-height stack there would just
     // be three tiny scrollers.
     <main className="mastery-shell flex h-full flex-col overflow-y-auto [scrollbar-gutter:stable]">
-      <div className="mx-auto flex w-full min-h-0 max-w-[1180px] flex-1 flex-col px-4 pb-40 pt-6 sm:px-7 sm:pb-10 lg:px-8 lg:py-8">
+      <PageContainer className="flex min-h-0 flex-1 flex-col pb-40 sm:pb-10">
         <div className="flex items-center justify-between gap-3">
           <Link
             href={scopedUrl(MASTERY_HOME)}
@@ -365,7 +366,7 @@ export default function MasteryTopicPage() {
           </div>
         </div>
 
-        <header className="mt-6 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+        <header className="dt-page-header mt-5 mb-6 flex flex-col gap-4">
           <div className="min-w-0">
             <div className="flex items-center gap-3">
               <div className="min-w-0">
@@ -374,13 +375,13 @@ export default function MasteryTopicPage() {
                   storedName={topic.name}
                   onRename={handleRename}
                 />
-                <p className="mt-1 max-w-3xl text-sm text-[var(--muted-foreground)]">
+                <p className={PAGE_DESCRIPTION_CLASS}>
                   {topic.metadata.description || topic.metadata.goal}
                 </p>
               </div>
             </div>
             {sourceLabels.length > 0 && (
-              <div className="mt-4 flex flex-wrap items-center gap-2 pl-0 sm:pl-[60px]">
+              <div className="mt-4 flex flex-wrap items-center gap-2">
                 {sourceLabels.map((source) => (
                   <span
                     key={source.id}
@@ -630,7 +631,7 @@ export default function MasteryTopicPage() {
             />
           </div>
         </div>
-      </div>
+      </PageContainer>
       {editorOpen && (
         <EditTopicRouteDialog
           topic={topic}
