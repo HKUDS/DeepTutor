@@ -72,7 +72,7 @@ try {
       if (error.code !== "ENOENT") throw error;
     }
 
-    if (current === generated) continue;
+    if (current?.replaceAll("\r\n", "\n") === generated) continue;
     hasDrift = true;
     if (check) {
       console.error(`Generated contract is stale: contracts/generated/${output.name}`);
