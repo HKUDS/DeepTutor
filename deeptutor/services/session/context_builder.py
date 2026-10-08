@@ -528,19 +528,25 @@ class ContextBuilder:
         recent_budget = self._recent_budget(budget)
 
         stored_summary = str(session.get("compressed_summary", "") or "").strip()
-        summary_up_to_msg_id = int(session.get("summary_up_to_msg_id", 0) or 0)
+        summary_up_to_msg_id = session.get("summary_up_to_msg_id", 0) or 0
         # Branch guard: the watermark must sit on this turn's ancestor chain.
         # After an edit-branch switch it may point into a sibling branch — the
         # stored summary would then carry content this branch never saw.
         # Discard both and rebuild from this branch's own messages.
-        if summary_up_to_msg_id > 0 and not any(
-            int(item.get("id", 0) or 0) == summary_up_to_msg_id for item in messages
-        ):
+        summary_position = next(
+            (
+                index
+                for index, item in enumerate(messages)
+                if summary_up_to_msg_id and str(item.get("id")) == str(summary_up_to_msg_id)
+            ),
+            None,
+        )
+        if summary_up_to_msg_id and summary_position is None:
             stored_summary = ""
             summary_up_to_msg_id = 0
-        unsummarized = [
-            item for item in messages if int(item.get("id", 0) or 0) > summary_up_to_msg_id
-        ]
+        unsummarized = (
+            messages[summary_position + 1 :] if summary_position is not None else messages
+        )
 
         current_history = self._build_history(stored_summary, unsummarized)
         current_tokens = self._model_tokens(unsummarized, stored_summary)
@@ -629,7 +635,7 @@ class ContextBuilder:
             # past turns that were not actually folded in.
             up_to_msg_id = summary_up_to_msg_id
             if prefix_messages:
-                up_to_msg_id = max(summary_up_to_msg_id, int(prefix_messages[-1].get("id", 0) or 0))
+                up_to_msg_id = prefix_messages[-1].get("id", 0) or 0
             await self.store.update_summary(session_id, new_summary, up_to_msg_id)
             stored_summary = new_summary
             retained_rows = recent_messages

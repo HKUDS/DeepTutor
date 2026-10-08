@@ -247,7 +247,9 @@ class SessionStoreProtocol(SessionRepository, TurnRepository, MessageRepository,
         session_ids: list[str],
     ) -> list[dict[str, Any]]: ...
 
-    async def update_summary(self, session_id: str, summary: str, up_to_msg_id: int) -> bool: ...
+    async def update_summary(
+        self, session_id: str, summary: str, up_to_msg_id: int | str
+    ) -> bool: ...
 
     async def update_session_preferences(
         self, session_id: str, preferences: dict[str, Any]
