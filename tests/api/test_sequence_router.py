@@ -73,3 +73,92 @@ def test_place_rejects_without_revealing_the_expected_step(monkeypatch):
     body = response.json()
     assert body["accepted"] is False
     assert "correct" not in body
+
+
+def test_missing_outline_uses_the_not_read_message(monkeypatch):
+    def fake_read(_store, knowledge_base):
+        assert knowledge_base == "calculus"
+        raise SequenceError(404, "This knowledge base has not been read yet.")
+
+    monkeypatch.setattr(sequence, "read_outline", fake_read)
+    response = _client().get(
+        "/api/solution-sequence/outlines",
+        params={"knowledge_base": "calculus"},
+    )
+    assert response.status_code == 404
+    assert response.json()["detail"] == "This knowledge base has not been read yet."
+
+
+def test_create_outline_returns_the_service_payload(monkeypatch):
+    async def fake_build(knowledge_base, _store):
+        assert knowledge_base == "calculus"
+        return {
+            "knowledge_base": "calculus",
+            "source": "files",
+            "modules": [
+                {
+                    "id": "m_abc",
+                    "category": "Course",
+                    "name": "Chain rule",
+                    "topic": "chain rule",
+                    "solved": 0,
+                    "goal": 5,
+                }
+            ],
+        }
+
+    monkeypatch.setattr(sequence, "build_outline", fake_build)
+    response = _client().post(
+        "/api/solution-sequence/outlines",
+        json={"knowledge_base": "calculus"},
+    )
+    assert response.status_code == 200
+    assert response.json()["source"] == "files"
+    assert "correct_ids" not in response.json()
+
+
+def test_check_returns_marks_without_the_answer_key(monkeypatch):
+    def fake_check(_store, problem_id, step_ids):
+        assert problem_id == "problem-000000000001"
+        assert step_ids == ["s_wrong"]
+        return {
+            "solved": False,
+            "marks": ["incorrect"],
+            "problem": {
+                "problem_id": problem_id,
+                "placed_ids": [],
+                "solved": False,
+                "explanation": None,
+            },
+        }
+
+    monkeypatch.setattr(sequence, "check_answer", fake_check)
+    response = _client().post(
+        "/api/solution-sequence/problems/problem-000000000001/check",
+        json={"step_ids": ["s_wrong"]},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["marks"] == ["incorrect"]
+    assert "correct_ids" not in body
+
+
+def test_hint_body_is_optional(monkeypatch):
+    seen = {}
+
+    async def fake_hint(_store, problem_id, step_ids=None):
+        seen["problem_id"] = problem_id
+        seen["step_ids"] = step_ids
+        return {"hint": "Look at the outer function."}
+
+    monkeypatch.setattr(sequence, "hint", fake_hint)
+    client = _client()
+    empty = client.post("/api/solution-sequence/problems/problem-000000000001/hint")
+    assert empty.status_code == 200
+    assert seen["step_ids"] is None
+    sent = client.post(
+        "/api/solution-sequence/problems/problem-000000000001/hint",
+        json={"step_ids": ["s_one"]},
+    )
+    assert sent.status_code == 200
+    assert seen["step_ids"] == ["s_one"]

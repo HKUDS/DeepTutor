@@ -1,6 +1,7 @@
 import { apiFetch, apiUrl } from "@/lib/api";
 
 const ROOT = "/api/solution-sequence";
+const NOT_READ = "This knowledge base has not been read yet.";
 
 export interface SequenceStep {
   id: string;
@@ -20,9 +21,40 @@ export interface SequenceProblem {
   sources: { title: string }[];
 }
 
+export interface SequenceModule {
+  id: string;
+  category: string;
+  name: string;
+  topic: string;
+  solved: number;
+  goal: number;
+}
+
+export interface SequenceOutline {
+  knowledge_base: string;
+  source: "files" | "retrieval";
+  modules: SequenceModule[];
+}
+
+export interface SequenceCheckResult {
+  solved: boolean;
+  marks: Array<"correct" | "incorrect">;
+  problem: SequenceProblem;
+}
+
 export interface PlaceResult {
   accepted: boolean;
   problem: SequenceProblem;
+}
+
+export class SequenceRequestError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "SequenceRequestError";
+    this.status = status;
+  }
 }
 
 async function readDetail(response: Response, fallback: string): Promise<string> {
@@ -35,14 +67,18 @@ async function readDetail(response: Response, fallback: string): Promise<string>
   return fallback;
 }
 
-async function request<T>(path: string, body?: unknown): Promise<T> {
+async function request<T>(path: string, body?: unknown, method: "GET" | "POST" = "POST"): Promise<T> {
   const response = await apiFetch(apiUrl(`${ROOT}${path}`), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+    method,
+    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
+    cache: method === "GET" ? "no-store" : undefined,
   });
   if (!response.ok) {
-    throw new Error(await readDetail(response, "The solution sequence request failed."));
+    throw new SequenceRequestError(
+      response.status,
+      await readDetail(response, "The request failed."),
+    );
   }
   return response.json() as Promise<T>;
 }
@@ -64,8 +100,38 @@ export function removeSequenceStep(problemId: string, stepId: string) {
   });
 }
 
-export function requestSequenceHint(problemId: string) {
-  return request<{ hint: string }>(`/problems/${encodeURIComponent(problemId)}/hint`);
+/** Null means this knowledge base has not been read yet. */
+export async function getSequenceOutline(knowledgeBase: string): Promise<SequenceOutline | null> {
+  const query = new URLSearchParams({ knowledge_base: knowledgeBase });
+  try {
+    return await request<SequenceOutline>(`/outlines?${query.toString()}`, undefined, "GET");
+  } catch (error) {
+    if (
+      error instanceof SequenceRequestError &&
+      error.status === 404 &&
+      error.message.trim() === NOT_READ
+    ) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export function rebuildSequenceOutline(knowledgeBase: string) {
+  return request<SequenceOutline>("/outlines", { knowledge_base: knowledgeBase });
+}
+
+export function checkSequenceAnswer(problemId: string, stepIds: readonly string[]) {
+  return request<SequenceCheckResult>(`/problems/${encodeURIComponent(problemId)}/check`, {
+    step_ids: [...stepIds],
+  });
+}
+
+export function requestSequenceHint(problemId: string, stepIds?: readonly string[]) {
+  return request<{ hint: string }>(
+    `/problems/${encodeURIComponent(problemId)}/hint`,
+    stepIds === undefined ? undefined : { step_ids: [...stepIds] },
+  );
 }
 
 export function explainSequenceStep(problemId: string, stepId: string) {

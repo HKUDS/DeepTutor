@@ -5541,5 +5541,18 @@
   "Could not explain this step.": "Dieser Schritt ließ sich nicht erklären.",
   "One moment.": "Einen Moment.",
   "That step does not belong there.": "Dieser Schritt gehört dort nicht hin.",
-  "Could not check that step.": "Dieser Schritt ließ sich nicht prüfen."
+  "Could not check that step.": "Dieser Schritt ließ sich nicht prüfen.",
+  "Guided practice": "Geführtes Üben",
+  "Rebuild a worked solution, then check each step.": "Baue eine ausgearbeitete Lösung wieder auf und prüfe dann jeden Schritt.",
+  "Choose a knowledge base. DeepTutor reads its modules, then you rebuild one worked solution and check every step.": "Wähle eine Knowledge Base. DeepTutor liest ihre Module, dann baust du eine ausgearbeitete Lösung wieder auf und prüfst jeden Schritt.",
+  "Reading the modules in this knowledge base…": "Module in dieser Knowledge Base werden gelesen …",
+  "Read again": "Noch einmal lesen",
+  "Or name your own topic": "Oder nenne ein eigenes Thema",
+  "Check answer": "Antwort prüfen",
+  "Correct. Well done.": "Richtig. Gut gemacht.",
+  "Not quite. Try again.": "Noch nicht ganz. Versuch es noch einmal.",
+  "Could not read the modules in that knowledge base.": "Die Module in dieser Knowledge Base ließen sich nicht lesen.",
+  "Choose a knowledge base. DeepTutor reads its modules, then you place the steps in order, including steps that do not belong.": "Wähle eine Knowledge Base. DeepTutor liest ihre Module, dann setzt du die Schritte in die richtige Reihenfolge, einschließlich der Schritte, die nicht dazugehören.",
+  "Solved {{count}} of {{goal}}": "{{count}} von {{goal}} gelöst",
+  "Click a step to add it. A step that does not belong stays until you remove it.": "Klicke einen Schritt an, um ihn hinzuzufügen. Ein Schritt, der nicht dazugehört, bleibt, bis du ihn entfernst."
 }

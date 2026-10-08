@@ -74,10 +74,10 @@ export const LEARNING_SURFACES: readonly LearningSurface[] = [
   {
     kind: 'sequence',
     href: SEQUENCE_HOME,
-    title: 'Solution sequence',
-    description: 'Put a worked solution back in order.',
+    title: 'Guided practice',
+    description: 'Rebuild a worked solution, then check each step.',
     intro:
-      'Choose a knowledge base and a topic. DeepTutor retrieves that material and writes one problem. You place the steps in order, including steps that do not belong.',
+      'Choose a knowledge base. DeepTutor reads its modules, then you place the steps in order, including steps that do not belong.',
     highlights: [
       'The problem is written from your knowledge base',
       'Correct steps are mixed with plausible mistakes',

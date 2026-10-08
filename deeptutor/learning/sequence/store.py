@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -30,6 +31,12 @@ def _atomic_write(path: Path, payload: Any) -> None:
     temporary.replace(path)
 
 
+def _outline_path(root: Path, kb_name: str) -> Path:
+    # Hash the name so it cannot escape the outlines directory.
+    token = hashlib.sha256(kb_name.strip().encode("utf-8")).hexdigest()[:24]
+    return root / "outlines" / f"{token}.json"
+
+
 class SequenceStore:
     def __init__(self, root: Path) -> None:
         self.root = root
@@ -50,6 +57,24 @@ class SequenceStore:
         if not path.is_file():
             return None
         data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else None
+
+    def save_outline(self, kb_name: str, outline: dict[str, Any]) -> None:
+        cleaned = kb_name.strip()
+        if not cleaned:
+            raise ValueError("Invalid knowledge base.")
+        with _lock_for(self.root):
+            _atomic_write(_outline_path(self.root, cleaned), outline)
+
+    def load_outline(self, kb_name: str) -> dict[str, Any] | None:
+        path = _outline_path(self.root, kb_name)
+        with _lock_for(self.root):
+            if not path.is_file():
+                return None
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                return None
         return data if isinstance(data, dict) else None
 
     def progress(self, kb_name: str, topic: str) -> int:

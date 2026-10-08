@@ -2,17 +2,22 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 
 import pytest
 
 from deeptutor.learning.sequence.corpus import build_corpus
 from deeptutor.learning.sequence.grading import placement_accepted, sequence_complete
+from deeptutor.learning.sequence.outline import modules_from_files
 from deeptutor.learning.sequence.schema import SequenceError, parse_problem
 from deeptutor.learning.sequence.service import (
+    build_outline,
+    check_answer,
     generate_problem,
     hint,
     place_step,
+    read_outline,
     remove_step,
     scrub_hint,
 )
@@ -203,6 +208,240 @@ async def test_hint_uses_the_server_copy_and_not_the_next_step(tmp_path):
 
     result = await hint(store, view["problem_id"], complete_text=complete_text)
     assert "sin" not in result["hint"].casefold()
+
+
+def _forbidden_keys(value):
+    found: set[str] = set()
+    if isinstance(value, dict):
+        found.update(value)
+        for item in value.values():
+            found.update(_forbidden_keys(item))
+    elif isinstance(value, list):
+        for item in value:
+            found.update(_forbidden_keys(item))
+    return found
+
+
+def test_modules_from_files_groups_a_nested_pdf_and_a_root_md():
+    paths = [
+        "figures/plot.png",
+        "calculus/chain_rule.pdf",
+        "limits-and-continuity.md",
+        ".draft/notes.txt",
+    ]
+    first = modules_from_files(paths)
+    second = modules_from_files(list(reversed(paths)))
+    assert first == second
+    assert [item["category"] for item in first] == ["calculus", "Course"]
+    assert [item["name"] for item in first] == ["chain rule", "limits and continuity"]
+    assert [item["topic"] for item in first] == ["chain rule", "limits and continuity"]
+    assert first[0]["id"] == "m_" + hashlib.sha256(b"calculus/chain_rule.pdf").hexdigest()[:12]
+    assert first[1]["id"] == "m_" + hashlib.sha256(b"limits-and-continuity.md").hexdigest()[:12]
+    many = [f"unit/lesson_{index:02d}.md" for index in range(40)]
+    assert len(modules_from_files(many)) == 36
+
+
+@pytest.mark.asyncio
+async def test_build_outline_saves_the_file_outline(tmp_path):
+    store = SequenceStore(tmp_path)
+    paths = [
+        "figures/plot.png",
+        "calculus/chain_rule.pdf",
+        "limits-and-continuity.md",
+    ]
+
+    def lister(kb_name: str) -> list[str]:
+        assert kb_name == "calculus"
+        return paths
+
+    async def search(*_args, **_kwargs):
+        raise AssertionError("a file outline must not search")
+
+    first = await build_outline("calculus", store, list_documents=lister, search=search)
+    second = await build_outline(" calculus ", store, list_documents=lister, search=search)
+    assert second == first
+    assert first["source"] == "files"
+    assert first["knowledge_base"] == "calculus"
+    assert [item["name"] for item in first["modules"]] == ["chain rule", "limits and continuity"]
+    assert first["modules"][0]["solved"] == 0
+    assert first["modules"][0]["goal"] == 5
+    digest = hashlib.sha256(b"calculus").hexdigest()[:24]
+    saved = json.loads((tmp_path / "outlines" / f"{digest}.json").read_text(encoding="utf-8"))
+    assert saved["source"] == "files"
+    assert "correct_ids" not in _forbidden_keys(saved)
+    again = read_outline(store, "calculus")
+    assert again["modules"][0]["id"] == first["modules"][0]["id"]
+    assert "solved" in again["modules"][0]
+
+
+@pytest.mark.asyncio
+async def test_retrieval_outline_assigns_ids_and_rejects_a_bad_quote(tmp_path):
+    store = SequenceStore(tmp_path)
+    calls = {"n": 0}
+
+    async def search(query, _kb_name):
+        assert query == "course modules, chapters, and topics"
+        return _search_result()
+
+    async def complete_json(_prompt, _system):
+        calls["n"] += 1
+        return {
+            "modules": [
+                {
+                    "id": "from-the-model",
+                    "category": "Derivatives",
+                    "name": "Chain rule",
+                    "topic": "chain rule",
+                    "evidence": "The chain rule says",
+                },
+                {
+                    "category": "Derivatives",
+                    "name": "Outer function",
+                    "topic": "outer function",
+                    "evidence": "identifying the outer and inner functions",
+                },
+                {
+                    "category": "Derivatives",
+                    "name": "Inner derivative",
+                    "topic": "inner derivative",
+                    "evidence": "times g prime of x",
+                },
+            ]
+        }
+
+    outline = await build_outline(
+        "calculus",
+        store,
+        list_documents=lambda _kb: [],
+        language="en",
+        search=search,
+        complete_json=complete_json,
+    )
+    assert calls["n"] == 1
+    assert outline["source"] == "retrieval"
+    assert len(outline["modules"]) == 3
+    assert all(item["id"].startswith("m_") and len(item["id"]) == 10 for item in outline["modules"])
+    assert "from-the-model" not in {item["id"] for item in outline["modules"]}
+    assert "evidence" not in _forbidden_keys(outline)
+    assert outline["modules"][0]["goal"] == 5
+
+    async def rejected(_prompt, _system):
+        return {
+            "modules": [
+                {
+                    "category": "Derivatives",
+                    "name": "Chain rule",
+                    "topic": "chain rule",
+                    "evidence": "this quote was never retrieved",
+                },
+                {
+                    "category": "Derivatives",
+                    "name": "Outer function",
+                    "topic": "outer function",
+                    "evidence": "The chain rule says",
+                },
+                {
+                    "category": "Derivatives",
+                    "name": "Inner derivative",
+                    "topic": "inner derivative",
+                    "evidence": "times g prime of x",
+                },
+            ]
+        }
+
+    with pytest.raises(SequenceError, match="not supported") as exc:
+        await build_outline(
+            "other-course",
+            store,
+            list_documents=lambda _kb: [],
+            language="en",
+            search=search,
+            complete_json=rejected,
+        )
+    assert exc.value.status == 422
+    assert store.load_outline("other-course") is None
+
+
+def test_missing_outline_says_the_knowledge_base_has_not_been_read(tmp_path):
+    with pytest.raises(SequenceError, match="has not been read yet") as exc:
+        read_outline(SequenceStore(tmp_path), "calculus")
+    assert exc.value.status == 404
+
+
+@pytest.mark.asyncio
+async def test_check_marks_a_leading_distractor_without_saving(tmp_path):
+    store, view = await _generate(tmp_path)
+    saved = store.load(view["problem_id"])
+    wrong = next(step["id"] for step in saved["steps"] if step["role"] == "distractor")
+    result = check_answer(store, view["problem_id"], [wrong])
+    assert result["solved"] is False
+    assert result["marks"] == ["incorrect"]
+    assert result["problem"]["placed_ids"] == []
+    assert result["problem"]["explanation"] is None
+    assert "correct_ids" not in _forbidden_keys(result)
+    assert "role" not in _forbidden_keys(result["problem"])
+    assert "evidence" not in _forbidden_keys(result["problem"])
+    assert store.load(view["problem_id"])["placed_ids"] == []
+    assert store.load(view["problem_id"])["solved"] is False
+
+
+@pytest.mark.asyncio
+async def test_check_exact_order_solves_and_returns_the_explanation(tmp_path):
+    store, view = await _generate(tmp_path)
+    correct_ids = list(store.load(view["problem_id"])["correct_ids"])
+    result = check_answer(store, view["problem_id"], correct_ids)
+    assert result["solved"] is True
+    assert result["marks"] == ["correct"] * len(correct_ids)
+    assert result["problem"]["explanation"]
+    assert result["problem"]["progress"]["solved"] == 1
+    assert result["problem"]["placed_ids"] == correct_ids
+    assert "correct_ids" not in _forbidden_keys(result)
+    assert "role" not in _forbidden_keys(result["problem"])
+    assert "evidence" not in _forbidden_keys(result["problem"])
+    saved = store.load(view["problem_id"])
+    assert saved["solved"] is True
+    assert saved["placed_ids"] == correct_ids
+    with pytest.raises(SequenceError, match="already complete") as exc:
+        check_answer(store, view["problem_id"], correct_ids)
+    assert exc.value.status == 409
+
+
+@pytest.mark.asyncio
+async def test_check_rejects_an_unknown_or_repeated_step(tmp_path):
+    store, view = await _generate(tmp_path)
+    first = store.load(view["problem_id"])["correct_ids"][0]
+    with pytest.raises(SequenceError, match="not part") as unknown:
+        check_answer(store, view["problem_id"], ["missing-step"])
+    assert unknown.value.status == 422
+    with pytest.raises(SequenceError, match="only once") as repeated:
+        check_answer(store, view["problem_id"], [first, first])
+    assert repeated.value.status == 422
+    assert store.load(view["problem_id"])["placed_ids"] == []
+
+
+@pytest.mark.asyncio
+async def test_hint_uses_assembled_ids_and_scrubs_only_the_next_step(tmp_path):
+    store, view = await _generate(tmp_path)
+    saved = store.load(view["problem_id"])
+    correct_ids = saved["correct_ids"]
+    by_id = {step["id"]: step for step in saved["steps"]}
+    seen = {}
+
+    async def leak_later(**kwargs):
+        seen["prompt"] = kwargs["prompt"]
+        return "The later move is $2x\\cos(x^2)$."
+
+    later = await hint(store, view["problem_id"], [correct_ids[0]], complete_text=leak_later)
+    assert "2x" in later["hint"]
+    assert by_id[correct_ids[0]]["math"] in seen["prompt"]
+    assert by_id[correct_ids[1]]["math"] not in seen["prompt"]
+    assert store.load(view["problem_id"])["placed_ids"] == []
+
+    async def leak_next(**_kwargs):
+        return "Try $\\cos(x^2)$ next."
+
+    scrubbed = await hint(store, view["problem_id"], [correct_ids[0]], complete_text=leak_next)
+    assert "cos" not in scrubbed["hint"].casefold()
 
 
 @pytest.mark.asyncio

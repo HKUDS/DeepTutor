@@ -5541,5 +5541,18 @@
   "Could not explain this step.": "无法解释这一步。",
   "One moment.": "请稍候。",
   "That step does not belong there.": "这一步不属于这里。",
-  "Could not check that step.": "无法核对这一步。"
+  "Could not check that step.": "无法核对这一步。",
+  "Guided practice": "引导练习",
+  "Rebuild a worked solution, then check each step.": "把一道完整解答重新排好，然后核对每一步。",
+  "Choose a knowledge base. DeepTutor reads its modules, then you rebuild one worked solution and check every step.": "选择一个知识库。DeepTutor 会读取其中的模块，然后你重新排出一道完整解答并核对每一步。",
+  "Reading the modules in this knowledge base…": "正在读取这个知识库中的模块…",
+  "Read again": "重新读取",
+  "Or name your own topic": "或者自己写一个主题",
+  "Check answer": "核对答案",
+  "Correct. Well done.": "正确。做得好。",
+  "Not quite. Try again.": "还不太对。再试一次。",
+  "Could not read the modules in that knowledge base.": "无法读取该知识库中的模块。",
+  "Choose a knowledge base. DeepTutor reads its modules, then you place the steps in order, including steps that do not belong.": "选择一个知识库。DeepTutor 会读取其中的模块，然后你把步骤按顺序放好，其中也包括不该出现的步骤。",
+  "Solved {{count}} of {{goal}}": "已解出 {{count}} / {{goal}}",
+  "Click a step to add it. A step that does not belong stays until you remove it.": "点击一个步骤即可加入。不属于这里的步骤会留着，直到你把它移出。"
 }
