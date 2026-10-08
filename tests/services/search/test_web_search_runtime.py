@@ -419,6 +419,40 @@ def test_web_search_filters_provider_results_before_consolidation(monkeypatch) -
     )
 
 
+def test_web_search_consolidates_every_result_the_user_asked_for(monkeypatch) -> None:
+    class _ManyResultsProvider(_FakeProvider):
+        def search(self, query: str, **kwargs):
+            return WebSearchResponse(
+                query=query,
+                answer="",
+                provider=self.name,
+                citations=[],
+                search_results=[
+                    SearchResult(title=f"Result {i}", url=f"https://site{i}.example/", snippet="s")
+                    for i in range(1, kwargs["max_results"] + 1)
+                ],
+            )
+
+    _patch_runtime(
+        monkeypatch,
+        ResolvedSearchConfig(
+            provider="brave",
+            requested_provider="brave",
+            api_key="brave-key",
+            max_results=8,
+        ),
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.search.get_provider",
+        lambda name, **kwargs: _ManyResultsProvider(name),
+    )
+
+    result = web_search("education")
+
+    assert len(result["search_results"]) == 8
+    assert "**[8] Result 8**" in result["answer"]
+
+
 def test_web_search_filters_answer_provider_citations_with_renumbering(monkeypatch) -> None:
     class _AnswerProvider(_FakeProvider):
         def __init__(self, name: str):

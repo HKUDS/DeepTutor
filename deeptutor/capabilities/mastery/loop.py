@@ -425,6 +425,25 @@ class MasteryLoopCapability:
         graded = self._grade_seed(context)
         return "\n\n".join(part for part in (skipped, graded) if part)
 
+    def skip_kb_seed(self, context: UnifiedContext) -> bool:
+        """Don't pre-search the knowledge base with a card answer.
+
+        The message of a card turn is the learner's pick ("A", "True") or a
+        declined question, not a question to look up. The engine grades it
+        against the stored key, and the tutor can still call ``rag`` with the
+        actual question if it needs the material.
+        """
+        if not self.is_active(context):
+            return False
+        meta = context.metadata
+        grade = meta.get("mastery_card_grade")
+        skip = meta.get("mastery_card_skip")
+        return bool(
+            meta.get("mastery_card_answered")
+            or (isinstance(grade, dict) and grade)
+            or (isinstance(skip, dict) and skip.get("skipped"))
+        )
+
     def _skip_seed(self, context: UnifiedContext) -> str:
         """State that the learner's declined question is already gone.
 

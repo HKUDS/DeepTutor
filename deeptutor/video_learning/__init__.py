@@ -7,6 +7,18 @@ from .invidious_account import (
     invidious_account_status,
     invidious_redirect_uri,
 )
+from .marks import (
+    MARK_AUTHORS,
+    MARK_KINDS,
+    MarkNotFound,
+    create_mark,
+    delete_mark,
+    get_mark,
+    marks_list,
+    normalize_mark,
+    suggest_marks,
+    update_mark,
+)
 from .service import (
     PROVIDER_RESOLVERS,
     ProviderResolution,
@@ -46,4 +58,14 @@ __all__ = [
     "resolve_material",
     "save_video_learning_settings",
     "test_invidious_connection",
+    "MARK_AUTHORS",
+    "MARK_KINDS",
+    "MarkNotFound",
+    "create_mark",
+    "delete_mark",
+    "get_mark",
+    "marks_list",
+    "normalize_mark",
+    "suggest_marks",
+    "update_mark",
 ]

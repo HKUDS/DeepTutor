@@ -39,6 +39,13 @@ MAX_SUMMARY_OUTPUT_TOKENS = 16_384
 MAX_RAW_REBUILD_TOKENS = 131_072
 
 
+# Planning allowance per image, not provider-reported usage. Counting encoded
+# image bytes as text can exhaust the entire history budget on one screenshot.
+# Reserve nonzero headroom for vision while keeping it independent of PNG/JPEG
+# compression and URL length. Repeated images each consume this allowance.
+IMAGE_CONTEXT_TOKEN_ESTIMATE = 4096
+
+
 def count_tokens(text: str) -> int:
     """Estimate token count with tiktoken when available."""
     if not text:
@@ -50,6 +57,37 @@ def count_tokens(text: str) -> int:
         return len(encoding.encode(text))
     except Exception:
         return max(1, len(text) // 4)
+
+
+def _count_model_context_tokens(value: Any) -> int:
+    """Measure a temporary accounting view; never alter the replay payload.
+
+    Keep all text, tool arguments/results and provider replay state in the
+    existing serialized-text estimate. Only recognized multimodal image blocks
+    use a separate allowance; their encoded bytes/URLs are not language tokens.
+    This is a context-planning heuristic, not an exact vision billing counter.
+    """
+    image_count = 0
+
+    def accounting_view(item: Any) -> Any:
+        nonlocal image_count
+        if isinstance(item, dict):
+            kind = item.get("type")
+            is_image = (
+                (kind == "image_url" and "image_url" in item)
+                or (kind == "input_image" and ("image_url" in item or "file_id" in item))
+                or (kind == "image" and "source" in item)
+            )
+            if is_image:
+                image_count += 1
+                return {"type": "image"}
+            return {key: accounting_view(child) for key, child in item.items()}
+        if isinstance(item, list):
+            return [accounting_view(child) for child in item]
+        return item
+
+    serialized = json.dumps(accounting_view(value), ensure_ascii=False)
+    return count_tokens(serialized) + image_count * IMAGE_CONTEXT_TOKEN_ESTIMATE
 
 
 def trim_incomplete_tail(text: str) -> str:
@@ -270,7 +308,7 @@ class ContextBuilder:
 
     def _model_tokens(self, messages: list[dict[str, Any]], summary: str = "") -> int:
         if any(model_turn(row) is not None for row in messages):
-            return count_tokens(json.dumps(replay_history(messages, summary), ensure_ascii=False))
+            return _count_model_context_tokens(replay_history(messages, summary))
         return count_tokens(build_history_text(self._build_history(summary, messages))) + sum(
             _provider_response_state_tokens(row) for row in messages
         )

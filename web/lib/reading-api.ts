@@ -65,6 +65,8 @@ export interface OutlineRow {
   title: string;
   level: number;
   synthesised: boolean;
+  source_href?: string;
+  source_anchor?: string;
 }
 
 export interface MaterialDetail extends MaterialInfo {
@@ -385,6 +387,39 @@ export async function runReadingExtension(
   );
 }
 
+/**
+ * Fetch natural speech for a stored reading unit.
+ *
+ * The request deliberately carries no text: the server re-reads the material
+ * unit and is the only side that can decide what restricted learners may hear.
+ */
+export async function readReadingAloudAudio(
+  materialId: string,
+  context: { locator: number },
+): Promise<Blob> {
+  const response = await apiFetch(
+    apiUrl(`${BASE}/materials/${materialId}/read-aloud`),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(context),
+    },
+  );
+  if (response.ok) return response.blob();
+
+  let detail = `Request failed: ${response.status}`;
+  try {
+    const body = (await response.json()) as { detail?: unknown };
+    if (typeof body?.detail === "string" && body.detail) detail = body.detail;
+    else if (typeof body?.detail === "object" && body.detail !== null && "message" in body.detail) {
+      detail = String((body.detail as { message: unknown }).message);
+    }
+  } catch {
+    // Binary and proxy error bodies both fall back to the status message.
+  }
+  throw new Error(detail);
+}
+
 export interface ReadingQuizAnswer {
   question_id: string;
   selected_index: number;
@@ -394,6 +429,13 @@ export interface ReadingQuizAnswerVerdict {
   question_id: string;
   is_correct: boolean;
   result: "correct" | "incorrect" | "partial" | "ungraded";
+}
+
+export interface ReadingQuizReward {
+  locator: number;
+  stars: number;
+  updated_at: number;
+  awarded: boolean;
 }
 
 /**
@@ -413,8 +455,14 @@ export async function submitReadingQuizAnswers(
     submission_id?: string;
     answers: ReadingQuizAnswer[];
   },
-): Promise<ReadingQuizAnswerVerdict[]> {
-  const data = await unwrap<{ answers?: ReadingQuizAnswerVerdict[] }>(
+): Promise<{
+  answers: ReadingQuizAnswerVerdict[];
+  reward?: ReadingQuizReward;
+}> {
+  const data = await unwrap<{
+    answers?: ReadingQuizAnswerVerdict[];
+    reward?: ReadingQuizReward;
+  }>(
     await apiFetch(
       apiUrl(`${BASE}/materials/${materialId}/extensions/quiz/answers`),
       {
@@ -435,7 +483,17 @@ export async function submitReadingQuizAnswers(
       },
     ),
   );
-  return data.answers ?? [];
+  return { answers: data.answers ?? [], reward: data.reward };
+}
+
+export async function listReadingQuizRewards(
+  materialId: string,
+): Promise<{ rewards: ReadingQuizReward[]; total_stars: number }> {
+  return unwrap(
+    await apiFetch(apiUrl(`${BASE}/materials/${materialId}/quiz/rewards`), {
+      cache: "no-store",
+    }),
+  );
 }
 
 /** URL of the original bytes. Served with Range support so pdf.js can stream. */
@@ -461,7 +519,7 @@ export async function getReadingPosition(
 
 export async function saveReadingPosition(
   materialId: string,
-  position: Pick<ReadingPosition, "locator" | "source_anchor" | "percentage">,
+  position: Pick<ReadingPosition, "locator" | "source_anchor"> & Partial<Pick<ReadingPosition, "percentage">>,
 ): Promise<ReadingPosition> {
   return parseReadingPosition(
     await unwrap(

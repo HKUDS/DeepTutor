@@ -637,12 +637,15 @@ class PocketBaseSessionStore:
         def _search() -> dict[str, Any]:
             pb = _pb()
             records = pb.collection("sessions").get_full_list(
-                query_params={"filter": _workspace_filter(f"user_id={json.dumps(uid)}")}
+                query_params={
+                    "filter": _workspace_filter(f"user_id={json.dumps(uid)} && deleted_at = null")
+                }
             )
             records = [
                 record
                 for record in records
                 if _in_workspace(record)
+                and not _to_float(getattr(record, "deleted_at", None))
                 and not str(getattr(record, "session_id", "") or "").startswith("imported_")
             ]
             records.sort(

@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { browserStorage } from "@/shared/storage";
 import Tooltip from "@/shared/ui/Tooltip";
 
@@ -40,7 +41,6 @@ import {
 import { AnnotationList } from "./AnnotationList";
 import { AnnotationPopover, type PopoverAiAction } from "./AnnotationPopover";
 import { passagePrompts } from "@/lib/reading-passage-prompts";
-import { EpubDocumentView } from "./EpubDocumentView";
 import {
   PdfDocumentView,
   type JumpRequest,
@@ -68,6 +68,20 @@ import {
   type ReadingLocationEntry,
   type ReadingLocationHistory,
 } from "@/lib/reading-location-history";
+
+function EpubLoading() {
+  const { t } = useTranslation();
+  return (
+    <div role="status" aria-label={t("Loading")} className="flex h-full items-center justify-center">
+      <Loader2 aria-hidden="true" className="h-5 w-5 animate-spin text-[var(--muted-foreground)]" />
+    </div>
+  );
+}
+
+const EpubDocumentView = dynamic(
+  () => import("./EpubDocumentView").then(module => module.EpubDocumentView),
+  { ssr: false, loading: EpubLoading },
+);
 
 /** Event the reader dispatches to prefill the composer from a selection. */
 export const READER_ASK_EVENT = "dt:reader-ask";
@@ -219,6 +233,12 @@ export function ReaderPane({
   const [autoJump, setAutoJump] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [currentLocator, setCurrentLocator] = useState(1);
+  const [epubPosition, setEpubPosition] = useState<{
+    materialId: string; percentage: number | null;
+  } | null>(null);
+  const handleEpubProgress = useCallback((percentage: number | null) => {
+    if (material) setEpubPosition({ materialId: material.material_id, percentage });
+  }, [material]);
   const nonceRef = useRef(0);
   const headingLocatorRef = useRef(1);
   const jumpMaterialIdRef = useRef<string | null>(null);
@@ -858,6 +878,13 @@ export function ReaderPane({
 
   const showAnnotations = annotationPanel ?? annotations.length > 0;
   const unitWord = material ? t(unitLabel(material.unit)) : "";
+  const isEpub = material?.render_mode === "epub";
+  const currentUnitTitle = isEpub
+    ? material?.unit_refs.find((row) => row.locator === currentLocator)?.title
+    : undefined;
+  const epubProgress = epubPosition?.materialId === material?.material_id
+    && epubPosition?.percentage != null
+    ? Math.round(epubPosition.percentage * 100) : null;
   const bookmarkedHere = bookmarks.some(
     (row) => row.locator === currentLocator,
   );
@@ -972,11 +999,20 @@ export function ReaderPane({
                 code, not for a line of UI copy; tabular figures alone stop the
                 number from jittering as the learner scrolls. */}
             <span className="hidden shrink-0 whitespace-nowrap px-1 text-[11.5px] tabular-nums text-[var(--muted-foreground)] md:inline">
-              {t("{{unit}} {{n}} / {{total}}", {
-                unit: unitWord,
-                n: currentLocator,
-                total: material.unit_count,
-              })}
+              {isEpub ? (
+                <>
+                  <span className="max-w-[180px] truncate">
+                    {currentUnitTitle || material.title}
+                  </span>
+                  {epubProgress !== null && <span>{` · ${epubProgress}%`}</span>}
+                </>
+              ) : (
+                t("{{unit}} {{n}} / {{total}}", {
+                  unit: unitWord,
+                  n: currentLocator,
+                  total: material.unit_count,
+                })
+              )}
             </span>
             {onToggleBookmark && (
               <HeaderButton
@@ -1166,6 +1202,7 @@ export function ReaderPane({
                 setActiveAnnotationId(annotation.annotation_id)
               }
               onVisibleLocatorChange={handleVisibleLocator}
+              onProgressChange={handleEpubProgress}
               onHeadingsChange={onHeadingsChange}
               headingJump={headingJump}
               onError={setError}

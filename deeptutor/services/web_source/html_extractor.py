@@ -579,3 +579,65 @@ def _clean_markdown(md: str) -> str:
     md = "\n".join(lines)
     md = re.sub(r"\n{3,}", "\n\n", md)
     return md.strip()
+
+
+def extract_page_language_and_alternates(
+    raw_html: str,
+    base_url: str = "",
+) -> tuple[str, dict[str, str]]:
+    """Extract page language attribute and alternate hreflang URLs.
+
+    Returns:
+        tuple of (language_code, {normalized_hreflang: absolute_url})
+    """
+    from urllib.parse import urldefrag, urljoin
+
+    from lxml import html as lxml_html  # nosec B410 - HTML parser, not XML
+
+    from deeptutor.services.web_source.bilingual import normalize_language
+
+    language = ""
+    alternates: dict[str, str] = {}
+
+    if not raw_html:
+        return language, alternates
+
+    try:
+        tree = lxml_html.fromstring(raw_html)
+    except Exception:
+        return language, alternates
+
+    # 1. Page language from <html lang="..."> or <html xml:lang="...">
+    html_lang = tree.get("lang") or tree.get("xml:lang") or ""
+    if html_lang:
+        language = normalize_language(html_lang)
+
+    # 2. Fall back to <meta http-equiv="content-language" content="..."> or <meta name="language" content="...">
+    if not language:
+        meta_nodes = tree.xpath("//meta[@http-equiv or @name]")
+        for meta in meta_nodes:
+            equiv = (meta.get("http-equiv") or meta.get("name") or "").strip().lower()
+            if equiv in ("content-language", "language"):
+                content = (meta.get("content") or "").strip()
+                if content:
+                    language = normalize_language(content)
+                    break
+
+    # 3. Alternate links: <link rel="alternate" hreflang="..." href="...">
+    link_nodes = tree.xpath("//link[contains(@rel, 'alternate') and @hreflang and @href]")
+    for link in link_nodes:
+        hreflang = (link.get("hreflang") or "").strip()
+        href = (link.get("href") or "").strip()
+        if not hreflang or not href or hreflang.lower() in ("x-default", "default"):
+            continue
+        norm_lang = normalize_language(hreflang)
+        if not norm_lang:
+            continue
+        href, _ = urldefrag(href)
+        if base_url:
+            resolved = urljoin(base_url, href)
+        else:
+            resolved = href
+        alternates[norm_lang] = resolved
+
+    return language, alternates

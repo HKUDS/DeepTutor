@@ -11,7 +11,7 @@ test("all account roles retain distinct display labels", () => {
   assert.equal(accountRoleLabelKey("student"), "Student");
   assert.equal(accountRoleLabelKey("user"), "User");
 
-  for (const language of ["en", "zh", "de", "fr", "uk"]) {
+  for (const language of ["en", "zh", "de", "fr", "uk", "pl"]) {
     const labels = JSON.parse(
       readFileSync(path.resolve(process.cwd(), `locales/${language}/app.json`), "utf8"),
     ) as Record<string, string>;

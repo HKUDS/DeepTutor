@@ -6,6 +6,7 @@ export {
   listGitHubSources,
   listLinkedFolders,
   listWebSources,
+  listWebSourcePairings,
   listWebSourceSyncJobs,
   removeGitHubSource,
   removeWebSource,
@@ -20,6 +21,7 @@ export {
 export type {
   AddGitHubSourcePayload,
   AddWebSourcePayload,
+  BilingualPairing,
   GitHubSource,
   GitHubSyncResult,
   LinkedFolderInfo,

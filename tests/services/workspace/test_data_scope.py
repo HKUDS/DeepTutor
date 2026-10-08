@@ -77,6 +77,57 @@ async def test_sessions_and_turns_are_not_accessible_from_other_workspaces(accou
 
 
 @pytest.mark.asyncio
+async def test_chat_attachments_are_searchable_in_selected_workspace(account):
+    from deeptutor.services.storage.attachment_store import (
+        _legacy_attachment_root,
+        get_attachment_store,
+    )
+
+    selected = account.create_workspace("Selected")["workspace_id"]
+    for workspace_id in ("", selected):
+        binding = (
+            account.general_binding() if not workspace_id else account.binding_by_id(workspace_id)
+        )
+        with workspace_context(workspace_id):
+            store = get_attachment_store()
+            assert store.root == binding.root / "chat" / "attachments"
+            await store.put(
+                session_id="chat-one",
+                attachment_id="new",
+                filename="current-notes.txt",
+                data=b"current attachment",
+            )
+            assert account.search(binding, "current-notes.txt") == [
+                {
+                    "path": "chat/attachments/chat-one/new_current-notes.txt",
+                    "line": None,
+                    "preview": "new_current-notes.txt",
+                }
+            ]
+
+            legacy = _legacy_attachment_root() / "chat-one" / "old_previous-notes.txt"
+            legacy.parent.mkdir(parents=True, exist_ok=True)
+            legacy.write_bytes(b"previous attachment")
+            assert (
+                store.resolve_path(
+                    session_id="chat-one", attachment_id="old", filename="previous-notes.txt"
+                )
+                == legacy
+            )
+            await store.materialize_session("chat-one")
+            assert not legacy.exists()
+            assert (
+                store.resolve_path(
+                    session_id="chat-one", attachment_id="old", filename="previous-notes.txt"
+                )
+                == binding.root / "chat" / "attachments" / "chat-one" / "old_previous-notes.txt"
+            )
+            assert account.search(binding, "previous-notes.txt")[0]["path"].startswith(
+                "chat/attachments/chat-one/"
+            )
+
+
+@pytest.mark.asyncio
 async def test_background_task_and_thread_keep_original_workspace(account):
     a, b = account.create_workspace("A"), account.create_workspace("B")
     ready = asyncio.Event()

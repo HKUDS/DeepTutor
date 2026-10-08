@@ -9,7 +9,7 @@ import re
 from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response, status
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from deeptutor.learning.storage import LearningStore
@@ -24,6 +24,8 @@ from deeptutor.reading.extensions import (
     get_reading_extension_registry,
 )
 from deeptutor.services.llm.exceptions import LLMError
+from deeptutor.services.voice import VoiceProviderError, synthesize_speech
+from deeptutor.services.voice.audio import _parse_pcm_content_type, _pcm16_to_wav
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +55,10 @@ class ActionPayload(BaseModel):
     locator: int = Field(ge=1)
     selection: str = Field(default="", max_length=10_000)
     locale: str = Field(default="en", max_length=32)
+
+
+class ReadAloudAudioPayload(BaseModel):
+    locator: int = Field(ge=1)
 
 
 class QuizAnswerItem(BaseModel):
@@ -140,6 +146,50 @@ async def list_extensions() -> list[dict[str, Any]]:
         for extension in get_reading_extension_registry().all()
         if allowed is None or extension.manifest.id in allowed
     ]
+
+
+@router.post("/materials/{material_id}/read-aloud")
+async def read_material_aloud(material_id: str, payload: ReadAloudAudioPayload) -> Response:
+    """Synthesize one assigned material unit with the active server voice."""
+    try:
+        assert_learning_material(material_id)
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+
+    allowed = allowed_reading_extensions()
+    if allowed is not None and "read_aloud" not in allowed:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="This reading extension is not allowed."
+        )
+
+    extension = get_reading_extension_registry().get("read_aloud")
+    if extension is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Reading extension not found."
+        )
+
+    try:
+        text = ReadingStore().unit_text(material_id, payload.locator)
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    try:
+        audio, content_type = await synthesize_speech(text)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except VoiceProviderError as exc:
+        logger.warning("Reading TTS provider error for %s: %s", material_id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="The speech provider is unavailable. Browser speech will be used instead.",
+        ) from exc
+
+    pcm_info = _parse_pcm_content_type(content_type)
+    if pcm_info:
+        sample_rate, channels = pcm_info
+        audio = _pcm16_to_wav(audio, sample_rate=sample_rate, channels=channels)
+        content_type = "audio/wav"
+    return Response(content=audio, media_type=content_type, headers={"Cache-Control": "no-store"})
 
 
 @router.post("/materials/{material_id}/extensions/{extension_id}/actions/{action}")
@@ -288,6 +338,12 @@ def _material_title(material_id: str) -> str:
     return str(getattr(manifest, "title", "") or getattr(manifest, "filename", "") or "")
 
 
+def _assert_quiz_extension_allowed() -> None:
+    allowed = allowed_reading_extensions()
+    if allowed is not None and "quiz" not in allowed:
+        raise HTTPException(status_code=403, detail="This reading extension is not allowed.")
+
+
 async def _persist_reading_quiz_pending(
     material_id: str, locator: int, payload: dict[str, Any]
 ) -> None:
@@ -308,6 +364,7 @@ async def _persist_reading_quiz_pending(
 async def submit_quiz_answers(material_id: str, payload: QuizAnswersPayload) -> dict[str, Any]:
     try:
         assert_learning_material(material_id)
+        _assert_quiz_extension_allowed()
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
 
@@ -321,7 +378,8 @@ async def submit_quiz_answers(material_id: str, payload: QuizAnswersPayload) -> 
 
     store = get_sqlite_session_store()
     question_ids = [item.question_id.strip() for item in payload.answers]
-    pending = await store.get_reading_quiz_pending(material_id, payload.locator, question_ids)
+    pending_quiz = await store.get_reading_quiz_pending(material_id, payload.locator)
+    pending = {qid: pending_quiz[qid] for qid in question_ids if qid in pending_quiz}
     missing = [qid for qid in question_ids if qid not in pending]
     if missing:
         raise HTTPException(status_code=409, detail="This reading quiz has expired.")
@@ -408,7 +466,33 @@ async def submit_quiz_answers(material_id: str, payload: QuizAnswersPayload) -> 
                 "result": result,
             }
         )
-    return {"answers": graded}
+    response: dict[str, Any] = {"answers": graded}
+    current_question_ids = list(pending_quiz)
+    best_results = await store.best_reading_quiz_results(
+        material_id, payload.locator, current_question_ids
+    )
+    if current_question_ids and all(
+        best_results.get(qid, {}).get("attempted") for qid in current_question_ids
+    ):
+        stars = max(1, sum(bool(best_results[qid].get("correct")) for qid in current_question_ids))
+        response["reward"] = await store.upsert_reading_quiz_reward(
+            material_id, payload.locator, stars
+        )
+    return response
+
+
+@router.get("/materials/{material_id}/quiz/rewards")
+async def list_quiz_rewards(material_id: str) -> dict[str, Any]:
+    try:
+        assert_learning_material(material_id)
+        _assert_quiz_extension_allowed()
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+    from deeptutor.services.session import get_sqlite_session_store
+
+    rewards = await get_sqlite_session_store().list_reading_quiz_rewards(material_id)
+    return {"rewards": rewards, "total_stars": sum(row["stars"] for row in rewards)}
 
 
 __all__ = ["router"]

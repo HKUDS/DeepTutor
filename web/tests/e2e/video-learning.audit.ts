@@ -102,6 +102,7 @@ for (const mobile of [false, true]) {
         current = 0
         duration = 120
         rate = 1
+        ready = false
         element: HTMLElement
         options: Record<string, unknown>
 
@@ -124,6 +125,7 @@ for (const mobile of [false, true]) {
               onReady?: (event: { target: FakePlayer }) => void
             }
             events.onReady?.({ target: this })
+            this.ready = true
           })
         }
 
@@ -475,6 +477,9 @@ for (const mobile of [false, true]) {
       .poll(() => transcriptList.evaluate(element => element.scrollTop))
       .toBeGreaterThan(pausedScrollTop)
 
+    const previousPlayer = await page.evaluateHandle(() => (
+      window as typeof window & { __fakePlayers: Array<object> }
+    ).__fakePlayers.at(-1))
     if (mobile) await page.getByRole('button', { name: 'Conversation', exact: true }).click()
     await page.locator('textarea').fill('Explain the video')
     await page.locator('textarea').press('Enter')
@@ -484,6 +489,17 @@ for (const mobile of [false, true]) {
       workspace_mode: 'immersive_watching',
       timed_media_id: MATERIAL_ID,
     })
+    // The URL changes before the session bridge restores its player. Wait
+    // for the replacement controller so the seek cannot land on the old one.
+    await expect.poll(() => page.evaluate(previous => {
+      const current = (
+        window as typeof window & {
+          __fakePlayers: Array<{ ready: boolean; element: HTMLElement }>
+        }
+      ).__fakePlayers.at(-1)
+      return !!current && current !== previous && current.ready && current.element.isConnected
+    }, previousPlayer)).toBe(true)
+    await previousPlayer.dispose()
     if (mobile) await page.getByRole('button', { name: 'Video', exact: true }).click()
     await page.evaluate(() => {
       const player = (

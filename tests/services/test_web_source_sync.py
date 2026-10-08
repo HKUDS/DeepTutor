@@ -489,3 +489,53 @@ async def test_sync_persists_navigation(tmp_path: Path):
     assert len(nav["nodes"]) >= 1
 
     assert sources_after[0]["page_count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_sync_persists_bilingual_pairings(tmp_path: Path):
+    base_dir, kb_dir = _make_kb(tmp_path)
+    from deeptutor.knowledge.manager import KnowledgeBaseManager
+
+    mgr = KnowledgeBaseManager(base_dir=base_dir)
+    source = mgr.add_web_source("kb", "https://example.com/docs/")
+
+    mock_result = CrawlResult(
+        pages=[
+            CrawledPage(
+                url="https://example.com/docs/en/intro",
+                title="Intro",
+                markdown="# Intro",
+                content_hash="aaa",
+                language="en",
+            ),
+            CrawledPage(
+                url="https://example.com/docs/zh/intro",
+                title="介绍",
+                markdown="# 介绍",
+                content_hash="bbb",
+                language="zh",
+            ),
+        ],
+    )
+
+    with patch(
+        "deeptutor.services.web_source.crawler.crawl_docs_site", new_callable=AsyncMock
+    ) as mock_crawl:
+        mock_crawl.return_value = mock_result
+        with patch(
+            "deeptutor.knowledge.add_documents.add_documents", new_callable=AsyncMock
+        ) as mock_add:
+            mock_add.return_value = 2
+            result = await sync_source("kb", source, base_dir=base_dir)
+
+    assert result.ok is True
+    assert result.bilingual_pairs_count == 1
+
+    sources_after = mgr.get_web_sources("kb")
+    assert len(sources_after) == 1
+    pairings = sources_after[0].get("bilingual_pairings", [])
+    assert len(pairings) == 1
+    assert pairings[0]["source_url"] == "https://example.com/docs/en/intro"
+    assert pairings[0]["target_url"] == "https://example.com/docs/zh/intro"
+    assert pairings[0]["source_lang"] == "en"
+    assert pairings[0]["target_lang"] == "zh"

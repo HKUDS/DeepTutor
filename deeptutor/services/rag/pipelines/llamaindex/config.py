@@ -160,6 +160,14 @@ def chunk_geometry() -> tuple[int, int]:
         return 512, 50
 
 
+def image_description_batch_size() -> int:
+    """Opt-in images per LlamaIndex caption request; one preserves legacy calls."""
+    try:
+        return min(8, max(1, int(_load_runtime_settings().get("image_description_batch_size", 1))))
+    except (TypeError, ValueError):
+        return 1
+
+
 def image_description_limits() -> tuple[int, float]:
     """Return the configured vision-call concurrency and per-image timeout."""
     try:
@@ -182,6 +190,7 @@ __all__ = [
     "chunk_geometry",
     "default_top_k",
     "image_description_limits",
+    "image_description_batch_size",
     "normalize_retrieval_profile",
     "normalize_reranker_model",
     "retrieval_config_from_env",

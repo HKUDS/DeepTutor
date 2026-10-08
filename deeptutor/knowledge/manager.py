@@ -6,6 +6,7 @@ Manages multiple knowledge bases and provides utilities for accessing them.
 """
 
 from contextlib import contextmanager
+from copy import deepcopy
 from datetime import datetime, timedelta
 import hashlib
 import json
@@ -15,6 +16,8 @@ from pathlib import Path
 import shutil
 import stat
 import sys
+from threading import RLock
+import time
 from typing import Any
 from urllib.parse import urlparse
 
@@ -79,6 +82,10 @@ def _assert_move_id_available(base_dir: Path, name: str) -> None:
 # let a list-call mid-creation racy-delete the entry. 60s is comfortably longer
 # than the create handshake while still keeping multi-day zombies out.
 _ORPHAN_PRUNE_GRACE_SECONDS = 60
+
+# External/manual index changes are re-probed within this interval (#1711).
+# Normal indexing writes kb_config.json, which invalidates the snapshot at once.
+_CATALOG_CACHE_SECONDS = 2.0
 
 
 def _entry_updated_after(kb_entry: dict | None, cutoff: datetime) -> bool:
@@ -324,6 +331,9 @@ class KnowledgeBaseManager:
 
         # Config file to track knowledge bases
         self.config_file = self.base_dir / "kb_config.json"
+        self._catalog_lock = RLock()
+        self._config_cache = None
+        self._info_cache: dict[tuple, tuple] = {}
         self.config = self._load_config()
 
         # PocketBase sync — enabled when integrations.pocketbase_url is set.
@@ -333,7 +343,42 @@ class KnowledgeBaseManager:
 
         self._pb_enabled = is_pocketbase_enabled()
 
+    def _catalog_revision(self) -> tuple:
+        from deeptutor.multi_user.context import get_current_user_or_none
+        from deeptutor.services.rag.embedding_signature import signature_from_embedding_config
+        from deeptutor.services.workspace.context import current_workspace_id
+
+        try:
+            stat_result = self.config_file.stat()
+            revision = (stat_result.st_ino, stat_result.st_mtime_ns, stat_result.st_size)
+        except FileNotFoundError:
+            revision = None
+        signature = signature_from_embedding_config()
+        user = get_current_user_or_none()
+        return (
+            revision,
+            signature.hash() if signature is not None else None,
+            user.id if user is not None else None,
+            current_workspace_id(),
+        )
+
     def _load_config(self) -> dict:
+        # The registry is atomic; one stat detects writes by other processes.
+        # Single-flight the expensive reconciliation on slow volumes (#1711).
+        with self._catalog_lock:
+            revision = self._catalog_revision()
+            cached = self._config_cache
+            if cached and cached[0] == revision and time.monotonic() < cached[1]:
+                return deepcopy(cached[2])
+            config = self._read_and_reconcile_config()
+            self._config_cache = (
+                self._catalog_revision(),
+                time.monotonic() + _CATALOG_CACHE_SECONDS,
+                deepcopy(config),
+            )
+            return config
+
+    def _read_and_reconcile_config(self) -> dict:
         """Load knowledge base configuration from the canonical kb_config.json file."""
         if self.config_file.exists():
             try:
@@ -421,7 +466,10 @@ class KnowledgeBaseManager:
         ever see the previous or the new file — ``open(..., "w")`` used to
         truncate the config before the lock was even acquired.
         """
-        atomic_write_json(self.config_file, self.config)
+        with self._catalog_lock:
+            atomic_write_json(self.config_file, self.config)
+            self._config_cache = None
+            self._info_cache.clear()
 
     def _sync_kb_to_pb(self, name: str, kb_entry: dict) -> None:
         """
@@ -595,6 +643,10 @@ class KnowledgeBaseManager:
         }
 
     def list_knowledge_bases(self) -> list[str]:
+        with self._catalog_lock:
+            return self._list_knowledge_bases()
+
+    def _list_knowledge_bases(self) -> list[str]:
         """List all available knowledge bases.
 
         This method:
@@ -1369,6 +1421,39 @@ class KnowledgeBaseManager:
         return {}
 
     def get_info(
+        self,
+        name: str | None = None,
+        *,
+        refresh_config: bool = True,
+        default_name: str | None = None,
+    ) -> dict:
+        if refresh_config:
+            return self._get_info(name, default_name=default_name)
+        with self._catalog_lock:
+            key = (name, default_name)
+            revision = (
+                self._catalog_revision(),
+                json.dumps(
+                    self.config.get("knowledge_bases", {}).get(name or default_name, {}),
+                    sort_keys=True,
+                    default=str,
+                ),
+            )
+            cached = self._info_cache.get(key)
+            if cached and cached[0] == revision and time.monotonic() < cached[1]:
+                return deepcopy(cached[2])
+            info = self._get_info(name, refresh_config=False, default_name=default_name)
+            # Keep only the current catalog's entries, including connected KBs.
+            if len(self._info_cache) >= max(1, len(self.config.get("knowledge_bases", {})) * 2):
+                self._info_cache.clear()
+            self._info_cache[key] = (
+                revision,
+                time.monotonic() + _CATALOG_CACHE_SECONDS,
+                deepcopy(info),
+            )
+            return info
+
+    def _get_info(
         self,
         name: str | None = None,
         *,

@@ -997,6 +997,7 @@ const InteractiveAskUserCard = memo(function InteractiveAskUserCard({
   const {
     sending: submitted,
     failed: submitFailed,
+    failureMessage: submitFailureMessage,
     submit,
   } = useCardSubmission(onSubmit);
   // Same lock, two reasons: answers are in flight, or the question is not
@@ -1193,7 +1194,7 @@ const InteractiveAskUserCard = memo(function InteractiveAskUserCard({
     : submitted
       ? t("Sending your answers…")
       : submitFailed
-        ? t(REPLY_NOT_DELIVERED)
+        ? t(submitFailureMessage ?? REPLY_NOT_DELIVERED)
         : null;
 
   return (

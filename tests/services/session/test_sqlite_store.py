@@ -763,6 +763,43 @@ def test_entries_follow_a_session_into_and_out_of_the_recycle_bin(
     assert detached["items"][0]["origin_ref"] == session["id"]
 
 
+def test_bank_counts_skip_entries_of_recycled_sessions(store: SQLiteSessionStore) -> None:
+    """The rail's counts, material chips and category badges match the list."""
+    kept = asyncio.run(store.create_session())
+    recycled = asyncio.run(store.create_session())
+    category = asyncio.run(store.create_category("Algebra"))
+    for session, material in ((kept, "book-a"), (recycled, "book-b")):
+        item = _make_items(("q1", "Q?", False))[0]
+        item.update(material_id=material, material_title=material)
+        asyncio.run(store.upsert_notebook_entries(session["id"], [item]))
+        entry = asyncio.run(store.find_notebook_entry(session["id"], "q1"))
+        asyncio.run(store.update_notebook_entry(entry["id"], {"bookmarked": True}))
+        asyncio.run(store.add_entry_to_category(entry["id"], category["id"]))
+
+    asyncio.run(store.soft_delete_session(recycled["id"]))
+
+    assert asyncio.run(store.list_notebook_entries())["total"] == 1
+    assert asyncio.run(store.question_bank_stats()) == {
+        "total": 1,
+        "wrong": 1,
+        "unresolved": 1,
+        "bookmarked": 1,
+        "uncategorized": 0,
+    }
+    materials = asyncio.run(store.list_question_bank_materials())
+    assert [m["material_id"] for m in materials] == ["book-a"]
+    assert asyncio.run(store.list_categories())[0]["entry_count"] == 1
+    # Scoped counts (a course's sessions) follow the same rule.
+    scope = [kept["id"], recycled["id"]]
+    assert asyncio.run(store.question_bank_stats(scope))["total"] == 1
+    assert asyncio.run(store.list_categories(scope))[0]["entry_count"] == 1
+
+    assert asyncio.run(store.restore_session(recycled["id"]))
+    assert asyncio.run(store.question_bank_stats())["total"] == 2
+    assert len(asyncio.run(store.list_question_bank_materials())) == 2
+    assert asyncio.run(store.list_categories())[0]["entry_count"] == 2
+
+
 def test_entries_keep_provenance_when_a_session_is_deleted_outright(
     store: SQLiteSessionStore,
 ) -> None:

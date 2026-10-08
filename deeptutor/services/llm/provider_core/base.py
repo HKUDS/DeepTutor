@@ -8,6 +8,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 import inspect
 import json
+import re
 from typing import Any
 
 from loguru import logger
@@ -74,12 +75,7 @@ class LLMProvider(ABC):
 
     _CHAT_RETRY_DELAYS = (1, 2, 4)
     _TRANSIENT_ERROR_MARKERS = (
-        "429",
         "rate limit",
-        "500",
-        "502",
-        "503",
-        "504",
         "overloaded",
         "timeout",
         "timed out",
@@ -90,6 +86,23 @@ class LLMProvider(ABC):
         "connection",
         "server error",
         "temporarily unavailable",
+    )
+    _RETRYABLE_HTTP_STATUS_CODES = frozenset({408, 429, 500, 502, 503, 504})
+    _HTTP_STATUS_PATTERNS = (
+        re.compile(r"\bHTTP(?:/\d+(?:\.\d+)?)?\s+(?P<code>[1-5]\d{2})\b", re.IGNORECASE),
+        re.compile(
+            r"\b(?:error\s+code|http_status|status(?:\s+code)?|status_code)\s*[:=]\s*['\"]?"
+            r"(?P<code>[1-5]\d{2})\b|"
+            r"['\"](?:code|status|status_code|http_status)['\"]\s*:\s*['\"]?"
+            r"(?P<json_code>[1-5]\d{2})\b",
+            re.IGNORECASE,
+        ),
+        re.compile(
+            r"^\s*(?:Error(?: calling LLM)?[: ]\s*)?(?P<code>[1-5]\d{2})\s+"
+            r"(?:Bad Request|Unauthorized|Forbidden|Not Found|Too Many Requests|"
+            r"Internal Server Error|Bad Gateway|Service Unavailable|Gateway Timeout)\b",
+            re.IGNORECASE,
+        ),
     )
     _SENTINEL = object()
 
@@ -271,8 +284,51 @@ class LLMProvider(ABC):
         return response
 
     @classmethod
-    def _is_transient_error(cls, content: str | None) -> bool:
+    def _status_code_from_exception(cls, exc: Exception) -> int | None:
+        """Return an HTTP status carried by the exception or its response."""
+        response = getattr(exc, "response", None)
+        for value in (getattr(exc, "status_code", None), getattr(response, "status_code", None)):
+            if isinstance(value, bool):
+                continue
+            if isinstance(value, int):
+                status_code = value
+            elif isinstance(value, str) and value.strip().isdigit():
+                status_code = int(value.strip())
+            else:
+                continue
+            if 100 <= status_code <= 599:
+                return status_code
+        return None
+
+    @classmethod
+    def _status_code_from_message(cls, content: str) -> int | None:
+        """Parse only explicit HTTP status fields and conventional status lines."""
+        matches: list[tuple[int, int]] = []
+        for pattern in cls._HTTP_STATUS_PATTERNS:
+            match = pattern.search(content)
+            if match is None:
+                continue
+            raw_code = match.groupdict().get("code") or match.groupdict().get("json_code")
+            if raw_code is not None:
+                matches.append((match.start(), int(raw_code)))
+        return min(matches)[1] if matches else None
+
+    @classmethod
+    def _is_transient_error(
+        cls,
+        content: str | None,
+        *,
+        status_code: int | None = None,
+        exception: Exception | None = None,
+    ) -> bool:
+        if status_code is not None:
+            return status_code in cls._RETRYABLE_HTTP_STATUS_CODES
         err = (content or "").lower()
+        message_status = cls._status_code_from_message(err)
+        if message_status is not None:
+            return message_status in cls._RETRYABLE_HTTP_STATUS_CODES
+        if isinstance(exception, (TimeoutError, ConnectionError)):
+            return True
         return any(marker in err for marker in cls._TRANSIENT_ERROR_MARKERS)
 
     async def _call_with_retry(
@@ -312,6 +368,8 @@ class LLMProvider(ABC):
 
         while True:
             attempt += 1
+            status_code = None
+            caught_exception = None
             try:
                 response = await measured_call(
                     messages=messages,
@@ -326,6 +384,8 @@ class LLMProvider(ABC):
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
+                status_code = self._status_code_from_exception(exc)
+                caught_exception = exc
                 response = LLMResponse(
                     content=f"Error calling LLM: {exc}",
                     finish_reason="error",
@@ -334,7 +394,11 @@ class LLMProvider(ABC):
             if response.finish_reason != "error":
                 return response
 
-            if not self._is_transient_error(response.content):
+            if not self._is_transient_error(
+                response.content,
+                status_code=status_code,
+                exception=caught_exception,
+            ):
                 # Stage-2 vision fallback: only degrade to text-only when the
                 # caller opted in (model is *not* in the known-vision
                 # allowlist). For allowlisted models we trust the images and

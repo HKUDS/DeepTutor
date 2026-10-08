@@ -23,12 +23,48 @@ from .config import (
     resolve_mineru_config,
 )
 from .formats import MINERU_PDF_FORMATS, MINERU_SUPPORTED_FORMATS
+from .local import LocalParseReason, parse_document_with_mineru_result
 
 logger = logging.getLogger(__name__)
 
 # PATH-lookup order matches ``check_mineru_installed`` in local.py so the
 # probe reports the same command the parse subprocess will actually use.
 _LOCAL_CLI_COMMANDS = ("mineru", "magic-pdf")
+
+#: One actionable message per local-parse failure reason. The install/cloud
+#: hint is deliberately limited to ``CLI_MISSING``: a runtime failure must not
+#: be reported as a missing installation (issue #1612, outcome 4).
+_LOCAL_FAILURE_MESSAGES: dict[LocalParseReason, str] = {
+    LocalParseReason.CLI_MISSING: (
+        "Local MinerU parsing failed. Ensure MinerU is installed "
+        "(`pip install -U 'mineru[all]>=3.4.5'`) or switch to cloud mode in "
+        "Settings → MinerU."
+    ),
+    LocalParseReason.INPUT_MISSING: (
+        "MinerU could not read the source file ({detail}). It may have been "
+        "moved or deleted before parsing started."
+    ),
+    LocalParseReason.UNSUPPORTED_INPUT: (
+        "MinerU does not support this input type ({detail}). Supported inputs "
+        "are PDF, common raster images, DOCX, PPTX, and XLSX."
+    ),
+    LocalParseReason.LEGACY_CLI_INPUT: (
+        "The legacy magic-pdf CLI only accepts PDF files. Install the current "
+        "MinerU CLI (`pip install -U 'mineru[all]>=3.4.5'`) to parse images, "
+        "DOCX, PPTX, or XLSX."
+    ),
+    LocalParseReason.NONZERO_EXIT: (
+        "Local MinerU parsing failed at runtime (the CLI is installed). Last "
+        "output:\n{detail}\nCheck the source file, local model files and "
+        "available memory, or switch to cloud mode in Settings → MinerU."
+    ),
+    LocalParseReason.NO_ARTIFACTS: (
+        "MinerU finished but produced no output files ({detail}). Check that "
+        "local models are downloaded and the output directory is writable, or "
+        "switch to cloud mode in Settings → MinerU."
+    ),
+    LocalParseReason.EXCEPTION: "Local MinerU parsing was interrupted: {detail}",
+}
 
 
 def parse_document_to_workdir(
@@ -57,9 +93,11 @@ def parse_document_to_workdir(
 
     if cfg.is_cloud:
         from .cloud import parse_cloud
+        from .normalization import working_copy
 
         logger.info("Parsing %s via MinerU cloud API", source_path.name)
-        return parse_cloud(source_path, output_base, cfg, on_progress=on_output)
+        with working_copy(source_path, output_base, cfg, on_output) as upload_path:
+            return parse_cloud(upload_path, output_base, cfg, on_progress=on_output)
 
     return _parse_local(source_path, output_base, config=cfg, on_output=on_output)
 
@@ -154,7 +192,6 @@ def _parse_local(
 ) -> Path:
     """Local-CLI branch: delegate to the existing subprocess parser and return
     the deterministic output directory it writes to (``<base>/<stem>``)."""
-    from .local import parse_document_with_mineru
     from .models import model_env_overrides, render_env_overrides
 
     cli_command = None
@@ -163,7 +200,8 @@ def _parse_local(
         if not probe["found"]:
             raise MinerUError(
                 f"Configured MinerU CLI path is not an executable file: {probe['path']}. "
-                "Fix it in Settings → MinerU (or clear it to auto-detect from PATH)."
+                "Fix it in Settings → MinerU (or clear it to auto-detect from PATH).",
+                code=str(LocalParseReason.CLI_MISSING),
             )
         cli_command = probe["path"]
     else:
@@ -179,7 +217,8 @@ def _parse_local(
         raise MinerUError(
             "The legacy magic-pdf CLI only accepts PDF files. Install the current "
             "MinerU CLI (`pip install -U 'mineru[all]>=3.4.5'`) to parse images, "
-            "DOCX, PPTX, or XLSX."
+            "DOCX, PPTX, or XLSX.",
+            code=str(LocalParseReason.LEGACY_CLI_INPUT),
         )
 
     # A lazy first-parse model download must honor the configured source and
@@ -190,18 +229,29 @@ def _parse_local(
     subprocess_env = {**download_env, **render_env_overrides()}
 
     logger.info("Parsing %s via local MinerU CLI (%s)", source_path.name, cli_command or "PATH")
-    ok = parse_document_with_mineru(
+    result = parse_document_with_mineru_result(
         str(source_path),
         str(output_base),
         on_output=on_output,
         cli_command=cli_command,
         extra_env=subprocess_env,
     )
-    if not ok:
+    if not result.ok:
+        reason = result.reason or LocalParseReason.EXCEPTION
+        message = _LOCAL_FAILURE_MESSAGES[reason].format(detail=result.detail or "no output")
+        if reason in {
+            LocalParseReason.NONZERO_EXIT,
+            LocalParseReason.NO_ARTIFACTS,
+            LocalParseReason.EXCEPTION,
+        }:
+            message += (
+                " Retry restarts this document from the beginning; completed compatible "
+                "document parses will be reused. Incomplete output is retained for diagnosis."
+            )
         raise MinerUError(
-            "Local MinerU parsing failed. Ensure MinerU is installed "
-            "(`pip install -U 'mineru[all]>=3.4.5'`) or switch to cloud mode in "
-            "Settings → MinerU."
+            message,
+            code=str(reason),
+            detail=result.detail,
         )
     working_dir = output_base / source_path.stem
     if not working_dir.is_dir():

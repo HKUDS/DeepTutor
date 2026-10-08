@@ -35,6 +35,7 @@ class WebSyncResult:
     pages_removed: int = 0
     pages_unchanged: int = 0
     error: str = ""
+    bilingual_pairs_count: int = 0
 
     @property
     def total_changes(self) -> int:
@@ -185,16 +186,33 @@ async def sync_source(
         last_sync_status="success",
         last_sync_error=None,
         navigation=diff.navigation,
+        bilingual_pairings=diff.pairings,
     )
 
+    try:
+        from deeptutor.multi_user.context import get_current_user
+        from deeptutor.services.web_source.scheduler import get_web_source_sync_scheduler
+
+        user = get_current_user()
+        scheduler = get_web_source_sync_scheduler()
+        scheduler.repo.record_pairings(
+            owner_id=user.id,
+            kb_name=kb_name,
+            source_id=source["id"],
+            pairings=diff.pairings,
+        )
+    except Exception:
+        logger.debug("Failed to record pairings in SQLite repo", exc_info=True)
+
     logger.info(
-        "Web sync %s: +%d ~%d -%d (%d unchanged), %d indexed",
+        "Web sync %s: +%d ~%d -%d (%d unchanged), %d indexed, %d bilingual pairs",
         diff.url,
         len(diff.pages_added),
         len(diff.pages_updated),
         removed_count,
         len(diff.pages_unchanged),
         indexed,
+        len(diff.pairings),
     )
 
     return WebSyncResult(
@@ -203,6 +221,7 @@ async def sync_source(
         pages_updated=len(diff.pages_updated),
         pages_removed=removed_count,
         pages_unchanged=len(diff.pages_unchanged),
+        bilingual_pairs_count=len(diff.pairings),
     )
 
 

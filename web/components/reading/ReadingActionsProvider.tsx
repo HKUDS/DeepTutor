@@ -16,6 +16,7 @@ import {
 } from "@/lib/reading-api";
 import { CHAT_ROUTED_READING_ACTIONS } from "@/lib/reading-passage-prompts";
 import { builtInActionLabel } from "./ReadingExtensionBar";
+import { useReadAloudSpeech } from "./use-read-aloud-speech";
 import {
   ReadingActionsContext,
   type ReadingActionCard,
@@ -53,7 +54,7 @@ export function ReadingActionsProvider({
   const [ageMode, setAgeMode] = useState<ReadingAgeMode>("default");
   const [cards, setCards] = useState<ReadingActionCard[]>([]);
   const [busyKey, setBusyKey] = useState("");
-  const [speaking, setSpeaking] = useState(false);
+  const { speak, speaking, stop: stopSpeaking } = useReadAloudSpeech();
   const onStartRef = useRef(onStart);
   onStartRef.current = onStart;
 
@@ -93,11 +94,6 @@ export function ReadingActionsProvider({
     };
   }, []);
 
-  const stopSpeaking = useCallback(() => {
-    window.speechSynthesis?.cancel();
-    setSpeaking(false);
-  }, []);
-
   // A card answers a question about one document; switching documents leaves
   // it describing a page that is no longer on screen.
   useEffect(() => {
@@ -106,13 +102,7 @@ export function ReadingActionsProvider({
 
   // Speech stops the moment the reader leaves the passage being read, the
   // same promise the standalone toolbar makes.
-  useEffect(
-    () => () => {
-      window.speechSynthesis?.cancel();
-      setSpeaking(false);
-    },
-    [locator, materialId],
-  );
+  useEffect(() => stopSpeaking, [locator, materialId, stopSpeaking]);
 
   const actions = useMemo<ReadingActionEntry[]>(
     () =>
@@ -193,20 +183,18 @@ export function ReadingActionsProvider({
         );
         if (next.type === "browser_speech") {
           const text = String(next.payload.text || "");
-          if (!("speechSynthesis" in window) || !text) {
+          const played = await speak({
+            materialId,
+            locator: requestedLocator,
+            locale: String(next.payload.locale || i18n.language),
+            fallbackText: text,
+          });
+          if (!played) {
             settle({
               status: "error",
               error: t("No speech voice is available in this browser."),
             });
-            return;
           }
-          window.speechSynthesis.cancel();
-          const utterance = new SpeechSynthesisUtterance(text);
-          utterance.lang = String(next.payload.locale || i18n.language);
-          utterance.onend = () => setSpeaking(false);
-          utterance.onerror = () => setSpeaking(false);
-          window.speechSynthesis.speak(utterance);
-          setSpeaking(true);
           return;
         }
         settle({ status: "done", result: next });
@@ -219,7 +207,7 @@ export function ReadingActionsProvider({
         setBusyKey((current) => (current === entry.key ? "" : current));
       }
     },
-    [i18n.language, locator, materialId, t],
+    [i18n.language, locator, materialId, speak, t],
   );
 
   const dismiss = useCallback((cardId: string) => {

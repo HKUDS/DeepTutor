@@ -15,8 +15,10 @@ import PickerHeader from "@/components/common/PickerHeader";
 import {
   listCategories,
   listNotebookEntries,
+  listQuestionBankMaterials,
   type NotebookCategory,
   type NotebookEntry,
+  type QuestionBankMaterial,
 } from "@/lib/notebook-api";
 
 export interface SelectedQuestionEntry {
@@ -38,6 +40,7 @@ function provenanceLabel(entry: NotebookEntry): string {
 
 interface QuestionBankPickerProps {
   open: boolean;
+  initialSelected: SelectedQuestionEntry[];
   onClose: () => void;
   onApply: (entries: SelectedQuestionEntry[]) => void;
 }
@@ -52,26 +55,47 @@ const FILTER_MODES: { value: FilterMode; label: string }[] = [
 
 export default function QuestionBankPicker({
   open,
+  initialSelected,
   onClose,
   onApply,
 }: QuestionBankPickerProps) {
   const { t } = useTranslation();
   const [entries, setEntries] = useState<NotebookEntry[]>([]);
   const [categories, setCategories] = useState<NotebookCategory[]>([]);
+  const [materials, setMaterials] = useState<QuestionBankMaterial[]>([]);
   const [filter, setFilter] = useState<FilterMode>("all");
   const [activeCategoryId, setActiveCategoryId] = useState<number | null>(null);
-  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [activeMaterialId, setActiveMaterialId] = useState("");
+  const [selectedById, setSelectedById] = useState<Map<number, SelectedQuestionEntry>>(
+    () => new Map(),
+  );
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setSelectedById(new Map(initialSelected.map((entry) => [entry.id, entry])));
+    }
+  }, [open, initialSelected]);
 
   useEffect(() => {
     if (!open) return;
     let mounted = true;
     void (async () => {
       try {
-        setCategories(await listCategories());
+        const [nextCategories, nextMaterials] = await Promise.all([
+          listCategories(),
+          listQuestionBankMaterials(),
+        ]);
+        if (mounted) {
+          setCategories(nextCategories);
+          setMaterials(nextMaterials);
+        }
       } catch {
-        if (mounted) setCategories([]);
+        if (mounted) {
+          setCategories([]);
+          setMaterials([]);
+        }
       }
     })();
     return () => {
@@ -85,14 +109,23 @@ export default function QuestionBankPicker({
     setLoading(true);
     void (async () => {
       try {
-        const result = await listNotebookEntries({
-          bookmarked: filter === "bookmarked" ? true : undefined,
-          is_correct: filter === "wrong" ? false : undefined,
-          category_id: activeCategoryId ?? undefined,
-          limit: 200,
-        });
+        const items: NotebookEntry[] = [];
+        let total = 0;
+        do {
+          const result = await listNotebookEntries({
+            bookmarked: filter === "bookmarked" ? true : undefined,
+            is_correct: filter === "wrong" ? false : undefined,
+            category_id: activeCategoryId ?? undefined,
+            material_id: activeMaterialId || undefined,
+            limit: 200,
+            offset: items.length,
+          });
+          items.push(...result.items);
+          total = result.total;
+          if (!result.items.length) break;
+        } while (items.length < total && mounted);
         if (!mounted) return;
-        setEntries(result.items);
+        setEntries(items);
       } catch {
         if (!mounted) return;
         setEntries([]);
@@ -103,7 +136,7 @@ export default function QuestionBankPicker({
     return () => {
       mounted = false;
     };
-  }, [open, filter, activeCategoryId]);
+  }, [open, filter, activeCategoryId, activeMaterialId]);
 
   const filteredEntries = useMemo(() => {
     const keyword = query.trim().toLowerCase();
@@ -115,26 +148,33 @@ export default function QuestionBankPicker({
     });
   }, [entries, query]);
 
-  const toggleEntry = (entryId: number) => {
-    setSelectedIds((prev) =>
-      prev.includes(entryId)
-        ? prev.filter((id) => id !== entryId)
-        : [...prev, entryId],
-    );
+  const asSelected = (entry: NotebookEntry): SelectedQuestionEntry => ({
+    id: entry.id,
+    question: entry.question,
+    session_title: entry.session_title,
+    is_correct: entry.is_correct,
+    difficulty: entry.difficulty || "",
+  });
+
+  const toggleEntry = (entry: NotebookEntry) => {
+    setSelectedById((prev) => {
+      const next = new Map(prev);
+      if (next.has(entry.id)) next.delete(entry.id);
+      else next.set(entry.id, asSelected(entry));
+      return next;
+    });
+  };
+
+  const selectVisible = () => {
+    setSelectedById((prev) => {
+      const next = new Map(prev);
+      filteredEntries.forEach((entry) => next.set(entry.id, asSelected(entry)));
+      return next;
+    });
   };
 
   const handleApply = () => {
-    const selectedSet = new Set(selectedIds);
-    const selectedEntries = entries
-      .filter((entry) => selectedSet.has(entry.id))
-      .map((entry) => ({
-        id: entry.id,
-        question: entry.question,
-        session_title: entry.session_title,
-        is_correct: entry.is_correct,
-        difficulty: entry.difficulty || "",
-      }));
-    onApply(selectedEntries);
+    onApply([...selectedById.values()]);
     onClose();
   };
 
@@ -203,6 +243,22 @@ export default function QuestionBankPicker({
             })}
           </div>
 
+          <div className="mb-3">
+            <select
+              value={activeMaterialId}
+              onChange={(event) => setActiveMaterialId(event.target.value)}
+              aria-label={t("Material")}
+              className="w-full rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 text-[12px] text-[var(--foreground)] outline-none sm:max-w-xs"
+            >
+              <option value="">{t("All Materials")}</option>
+              {materials.map((material) => (
+                <option key={`${material.source}:${material.material_id}`} value={material.material_id}>
+                  {material.material_title}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div className="mb-4 flex items-center gap-2">
             <div className="relative flex-1">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
@@ -214,7 +270,16 @@ export default function QuestionBankPicker({
               />
             </div>
             <button
-              onClick={() => setSelectedIds([])}
+              type="button"
+              onClick={selectVisible}
+              disabled={loading || !filteredEntries.length || filteredEntries.every((entry) => selectedById.has(entry.id))}
+              className="rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 text-[12px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {t("Select all")} ({filteredEntries.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedById(new Map())}
               className="rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 text-[12px] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
             >
               {t("Clear")}
@@ -229,11 +294,12 @@ export default function QuestionBankPicker({
             ) : filteredEntries.length ? (
               <div className="divide-y divide-[var(--border)]">
                 {filteredEntries.map((entry) => {
-                  const selected = selectedIds.includes(entry.id);
+                  const selected = selectedById.has(entry.id);
                   return (
                     <button
                       key={entry.id}
-                      onClick={() => toggleEntry(entry.id)}
+                      onClick={() => toggleEntry(entry)}
+                      aria-pressed={selected}
                       className={`flex w-full items-start gap-3 px-4 py-3 text-left transition-colors ${
                         selected
                           ? "bg-[var(--primary)]/8"
@@ -310,16 +376,19 @@ export default function QuestionBankPicker({
 
           <div className="mt-4 flex items-center justify-between gap-3">
             <div className="text-[12px] text-[var(--muted-foreground)]">
-              {selectedIds.length === 1
+              {selectedById.size === 1
                 ? t("1 question selected")
-                : t("{{n}} questions selected", { n: selectedIds.length })}
+                : t("{{n}} questions selected", { n: selectedById.size })}
             </div>
             <button
+              type="button"
               onClick={handleApply}
-              disabled={!selectedIds.length}
+              disabled={!selectedById.size && !initialSelected.length}
               className="btn-primary rounded-xl bg-[var(--primary)] px-4 py-2.5 text-[13px] font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {t("Use Selected Questions ({{n}})", { n: selectedIds.length })}
+              {selectedById.size
+                ? t("Use Selected Questions ({{n}})", { n: selectedById.size })
+                : t("Clear selection")}
             </button>
           </div>
         </div>

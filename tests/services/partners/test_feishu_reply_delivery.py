@@ -23,8 +23,10 @@ def _response(*, ok: bool = True, data: object | None = None) -> SimpleNamespace
     )
 
 
-def _channel() -> FeishuChannel:
-    channel = FeishuChannel({"enabled": True, "appId": "app", "appSecret": "secret"}, MessageBus())
+def _channel(**config: object) -> FeishuChannel:
+    channel = FeishuChannel(
+        {"enabled": True, "appId": "app", "appSecret": "secret", **config}, MessageBus()
+    )
     message = SimpleNamespace(create=MagicMock(return_value=_response()))
     message.reply = MagicMock(return_value=_response())
     reaction = SimpleNamespace(
@@ -72,6 +74,71 @@ def test_uncertain_reply_transport_error_does_not_send_duplicate() -> None:
     channel._client.im.v1.message.reply.side_effect = TimeoutError("response lost")
 
     assert not channel._send_message_sync("chat_id", "oc_group", "text", '{"text":"hi"}', "om_user")
+    channel._client.im.v1.message.create.assert_not_called()
+
+
+def test_single_chat_reply_is_not_threaded() -> None:
+    """A p2p thread is a panel the reader has to open for no benefit."""
+    pytest.importorskip("lark_oapi")
+    channel = _channel()
+
+    assert channel._send_message_sync("open_id", "ou_user", "text", '{"text":"hi"}', "om_user")
+
+    request = channel._client.im.v1.message.reply.call_args.args[0]
+    assert request.request_body.reply_in_thread is False
+
+
+def test_group_threading_can_be_switched_off() -> None:
+    pytest.importorskip("lark_oapi")
+    channel = _channel(reply_in_thread=False)
+
+    assert channel._send_message_sync("chat_id", "oc_group", "text", '{"text":"hi"}', "om_user")
+
+    request = channel._client.im.v1.message.reply.call_args.args[0]
+    assert request.request_body.reply_in_thread is False
+
+
+def test_group_threading_is_on_by_default() -> None:
+    pytest.importorskip("lark_oapi")
+    channel = _channel()
+
+    assert channel.config.reply_in_thread is True
+    assert channel._send_message_sync("chat_id", "oc_group", "text", '{"text":"hi"}', "om_user")
+
+    request = channel._client.im.v1.message.reply.call_args.args[0]
+    assert request.request_body.reply_in_thread is True
+
+
+@pytest.mark.asyncio
+async def test_streaming_card_follows_the_thread_setting() -> None:
+    pytest.importorskip("lark_oapi")
+    channel = _channel()
+    channel._stream_update_text_sync = MagicMock(return_value=True)
+
+    await channel.send_delta("ou_user", "Narration", {"_stream_id": "n", "message_id": "om_user"})
+
+    request = channel._client.im.v1.message.reply.call_args.args[0]
+    assert request.request_body.msg_type == "interactive"
+    assert request.request_body.reply_in_thread is False
+
+
+@pytest.mark.asyncio
+async def test_p2p_answer_is_a_plain_reply() -> None:
+    pytest.importorskip("lark_oapi")
+    channel = _channel()
+
+    await channel.send(
+        OutboundMessage(
+            channel="feishu",
+            chat_id="ou_user",
+            content="Answer",
+            metadata={"message_id": "om_user"},
+        )
+    )
+
+    request = channel._client.im.v1.message.reply.call_args.args[0]
+    assert request.paths["message_id"] == "om_user"
+    assert request.request_body.reply_in_thread is False
     channel._client.im.v1.message.create.assert_not_called()
 
 

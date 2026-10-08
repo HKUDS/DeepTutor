@@ -242,6 +242,21 @@ export function MasteryStudy({
     () => buildChatOutline(state.messages, state.selectedBranches),
     [state.messages, state.selectedBranches],
   );
+  // The study composer lists KB sources by label, but the stored request
+  // snapshot keeps the qualified ref — resolve it so sent-message reference
+  // chips read the same way.
+  const kbDisplayNames = useMemo(
+    () =>
+      Object.fromEntries(
+        (topic?.sources ?? [])
+          .filter(
+            (source) =>
+              source.kind === "knowledge_base" && source.source_id && source.label,
+          )
+          .map((source) => [source.source_id as string, source.label]),
+      ),
+    [topic],
+  );
   const jumpToTurn = useCallback(
     (key: string) => {
       if (
@@ -807,6 +822,7 @@ export function MasteryStudy({
                         }
                       }}
                       availableKbNames={new Set(knowledgeBases)}
+                      kbDisplayNames={kbDisplayNames}
                       showModeBadge={false}
                     />
                   </div>

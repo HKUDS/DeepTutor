@@ -99,3 +99,58 @@ def test_schedule_rejects_out_of_range_interval(client) -> None:
         json={"auto_sync_enabled": True, "sync_interval_hours": 0},
     )
     assert response.status_code == 422
+
+
+def test_web_source_pairings_api(client) -> None:
+    test_client, manager = client
+    source = manager.add_web_source("kb", "https://example.com/docs/")
+    source_id = source["id"]
+
+    # Initial web-sources listing has empty pairings
+    list_res = test_client.get("/api/knowledge-bases/kb/web-sources")
+    assert list_res.status_code == 200
+    sources = list_res.json()
+    assert len(sources) == 1
+    assert "bilingual_pairings" in sources[0]
+    assert sources[0]["bilingual_pairings"] == []
+
+    # Initial pairings endpoint returns empty
+    pair_res = test_client.get(f"/api/knowledge-bases/kb/web-source/{source_id}/pairings")
+    assert pair_res.status_code == 200
+    assert pair_res.json() == []
+
+    # Record pairings into repo
+    scheduler_module._scheduler.repo.record_pairings(
+        "local-admin",
+        "kb",
+        source_id,
+        [
+            {
+                "pairing_id": "pair-1",
+                "source_url": "https://example.com/docs/intro",
+                "target_url": "https://example.com/zh/docs/intro",
+                "source_file": "_web/s/docs/intro.md",
+                "target_file": "_web/s/zh/docs/intro.md",
+                "source_lang": "en",
+                "target_lang": "zh",
+                "pairing_method": "hreflang",
+            }
+        ],
+    )
+
+    pair_res = test_client.get(f"/api/knowledge-bases/kb/web-source/{source_id}/pairings")
+    assert pair_res.status_code == 200
+    pairings = pair_res.json()
+    assert len(pairings) == 1
+    assert pairings[0]["pairing_id"] == "pair-1"
+    assert pairings[0]["source_lang"] == "en"
+    assert pairings[0]["target_lang"] == "zh"
+
+    # Non-existent source returns 404
+    missing_res = test_client.get("/api/knowledge-bases/kb/web-source/nonexistent/pairings")
+    assert missing_res.status_code == 404
+
+    # Deleting source removes pairings
+    del_res = test_client.delete(f"/api/knowledge-bases/kb/web-source/{source_id}")
+    assert del_res.status_code == 200
+    assert scheduler_module._scheduler.repo.list_pairings("local-admin", "kb", source_id) == []

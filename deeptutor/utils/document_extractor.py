@@ -191,6 +191,8 @@ class EpubOutlineItem:
     locator: int
     title: str
     level: int = 1
+    source_href: str = ""
+    source_anchor: str = ""
 
 
 def is_document_extension(filename: str) -> bool:
@@ -841,10 +843,15 @@ def _epub_package_navigation(
 
     locator_by_member = {member: index for index, member in enumerate(spine_members, start=1)}
 
-    def resolve_locator(href: str, base_member: str) -> int:
-        path = unquote(href.split("#", 1)[0])
+    def resolve_target(href: str, base_member: str) -> tuple[int, str, str]:
+        raw_path, separator, raw_anchor = href.partition("#")
+        path = unquote(raw_path)
         member = posixpath.normpath(posixpath.join(posixpath.dirname(base_member), path))
-        return locator_by_member.get(member, 0)
+        return (
+            locator_by_member.get(member, 0),
+            member,
+            unquote(raw_anchor) if separator else "",
+        )
 
     rows: list[EpubOutlineItem] = []
     if nav_member:
@@ -875,9 +882,19 @@ def _epub_package_navigation(
                         )
                         href = str(link.get("href") or "") if link is not None else ""
                         title = _epub_element_text(link) if link is not None else ""
-                        locator = resolve_locator(href, nav_member) if href else 0
+                        locator, source_href, source_anchor = (
+                            resolve_target(href, nav_member) if href else (0, "", "")
+                        )
                         if locator and title:
-                            rows.append(EpubOutlineItem(locator, title, max(1, level)))
+                            rows.append(
+                                EpubOutlineItem(
+                                    locator,
+                                    title,
+                                    max(1, level),
+                                    source_href,
+                                    source_anchor,
+                                )
+                            )
                         for item in child:
                             if _local_name(item.tag) == "ol":
                                 walk_nav(item, level + 1)
@@ -905,9 +922,19 @@ def _epub_package_navigation(
                     )
                     title = _epub_element_text(label) if label is not None else ""
                     href = str(content.get("src") or "") if content is not None else ""
-                    locator = resolve_locator(href, ncx_member) if href else 0
+                    locator, source_href, source_anchor = (
+                        resolve_target(href, ncx_member) if href else (0, "", "")
+                    )
                     if locator and title:
-                        rows.append(EpubOutlineItem(locator, title, max(1, level)))
+                        rows.append(
+                            EpubOutlineItem(
+                                locator,
+                                title,
+                                max(1, level),
+                                source_href,
+                                source_anchor,
+                            )
+                        )
                     walk_ncx(point, level + 1)
 
             nav_map = next(

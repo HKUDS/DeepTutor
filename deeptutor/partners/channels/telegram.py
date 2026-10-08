@@ -6,11 +6,11 @@ import asyncio
 from dataclasses import dataclass
 import re
 import time
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 import unicodedata
 
 from loguru import logger
-from pydantic import Field
+from pydantic import Field, model_validator
 from telegram import BotCommand, ReplyParameters, Update
 from telegram.error import BadRequest, TimedOut
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
@@ -19,7 +19,7 @@ from telegram.request import HTTPXRequest
 from deeptutor.partners.bus.events import OutboundMessage
 from deeptutor.partners.bus.queue import MessageBus
 from deeptutor.partners.channels.base import BaseChannel
-from deeptutor.partners.config.schema import DeliveryOverrides, StreamingSupport
+from deeptutor.partners.config.schema import Base, DeliveryOverrides, StreamingSupport
 from deeptutor.partners.helpers import (
     is_markdown_table_separator_row,
     split_markdown_table_row,
@@ -48,13 +48,71 @@ class _StreamBuf:
     stream_id: str | None = None
 
 
+class TelegramChatPolicy(Base):
+    """Per-chat inbound response policy."""
+
+    chat_id: int = Field(description="Telegram chat id this rule applies to.")
+    policy: Literal["open", "mention", "topics_only"] = Field(
+        description=(
+            "open responds to every message; mention requires an explicit mention or bot reply; "
+            "topics_only responds without a mention only in allowed_topics."
+        )
+    )
+    allowed_topics: list[int] = Field(
+        default_factory=list,
+        description="Telegram message_thread_id values that may receive automatic replies.",
+    )
+
+    @model_validator(mode="after")
+    def _require_allowed_topics(self) -> "TelegramChatPolicy":
+        if self.policy == "topics_only" and not self.allowed_topics:
+            raise ValueError("topics_only policy requires at least one allowed topic")
+        return self
+
+
+_FENCE_OPEN_RE = re.compile(r"^[ \t]*(`{3,}|~{3,})(.*)$")
+_INLINE_FENCE_RE = re.compile(r"```[\w]*\n?([\s\S]*?)```")
+
+
+def _replace_fenced_code(text: str, replace: Callable[[str], str]) -> str:
+    """Replace fenced code blocks with ``replace(code)``.
+
+    A block opens on a ``` or ~~~ line (a backtick fence's info string cannot
+    contain a backtick) and closes on a line holding only a run of the same
+    character that is at least as long, so tilde fences work, an info string
+    such as ``c++`` stays out of the code, and a ```` fence can show a ```
+    example. What remains (one-line ```code``` and unclosed fences) keeps the
+    previous regex handling.
+    """
+    lines = text.split("\n")
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        match = _FENCE_OPEN_RE.match(lines[i])
+        if match and not (match.group(1)[0] == "`" and "`" in match.group(2)):
+            fence = match.group(1)
+            for j in range(i + 1, len(lines)):
+                closing = lines[j].strip()
+                if closing == fence[0] * len(closing) and len(closing) >= len(fence):
+                    out.append(replace("".join(line + "\n" for line in lines[i + 1 : j])))
+                    i = j + 1
+                    break
+            else:
+                out.append(lines[i])
+                i += 1
+            continue
+        out.append(lines[i])
+        i += 1
+    return _INLINE_FENCE_RE.sub(lambda m: replace(m.group(1)), "\n".join(out))
+
+
 def _strip_md_block(text: str) -> str:
     """Strip block-level and inline markdown for readable plain-text preview.
 
     Used during streaming mid-edits so users see clean text instead of raw
     markdown syntax while the response is still being generated.
     """
-    text = re.sub(r"```[\w]*\n?([\s\S]*?)```", r"\1", text)
+    text = _replace_fenced_code(text, lambda code: code)
     text = re.sub(r"^#{1,6}\s+(.+)$", r"\1", text, flags=re.MULTILINE)
     text = re.sub(r"^>\s*(.*)$", r"\1", text, flags=re.MULTILINE)
     text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
@@ -116,11 +174,11 @@ def _markdown_to_telegram_html(text: str) -> str:
     # 1. Extract and protect code blocks (preserve content from other processing)
     code_blocks: list[str] = []
 
-    def save_code_block(m: re.Match) -> str:
-        code_blocks.append(m.group(1))
+    def save_code_block(code: str) -> str:
+        code_blocks.append(code)
         return f"\x00CB{len(code_blocks) - 1}\x00"
 
-    text = re.sub(r"```[\w]*\n?([\s\S]*?)```", save_code_block, text)
+    text = _replace_fenced_code(text, save_code_block)
 
     # 1.5. Convert markdown tables to box-drawing (reuse code_block placeholders)
     lines = text.split("\n")
@@ -201,6 +259,10 @@ class TelegramConfig(DeliveryOverrides, StreamingSupport):
     proxy: str | None = None
     reply_to_message: bool = False
     group_policy: Literal["open", "mention"] = "mention"
+    chat_policies: list[TelegramChatPolicy] = Field(
+        default_factory=list,
+        description="Per-chat overrides; the first matching chat_id wins.",
+    )
     # Outbound API connection pool; long-polling uses its own small pool so
     # getUpdates never starves sends.
     connection_pool_size: int = 16
@@ -746,6 +808,12 @@ class TelegramChannel(BaseChannel):
             return None
         return f"telegram:{message.chat_id}:topic:{message_thread_id}"
 
+    def _matching_chat_policy(self, chat_id: int) -> TelegramChatPolicy | None:
+        for rule in self.config.chat_policies:
+            if rule.chat_id == chat_id:
+                return rule
+        return None
+
     @staticmethod
     def _build_message_metadata(message, user) -> dict:
         """Build common Telegram inbound metadata payload."""
@@ -865,7 +933,17 @@ class TelegramChannel(BaseChannel):
 
     async def _is_group_message_for_bot(self, message) -> bool:
         """Allow group messages when policy is open, @mentioned, or replying to the bot."""
-        if message.chat.type == "private" or self.config.group_policy == "open":
+        if message.chat.type == "private":
+            return True
+
+        chat_policy = self._matching_chat_policy(message.chat_id)
+        policy = chat_policy.policy if chat_policy is not None else self.config.group_policy
+        if policy == "open":
+            return True
+        if (
+            policy == "topics_only"
+            and getattr(message, "message_thread_id", None) in chat_policy.allowed_topics
+        ):
             return True
 
         bot_id, bot_username = await self._ensure_bot_identity()
