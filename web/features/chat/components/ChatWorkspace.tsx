@@ -6,12 +6,7 @@ import { ResourceReuseContext, useResourceReusePolicy } from "@/components/chat/
 import { retainedKnowledgeBases } from "@/lib/resource-reuse";
 import { knowledgeBaseRef } from "@/lib/knowledge-helpers";
 import { scopedUrl } from "@/lib/workspace-scope";
-import { WATCHING_HOME, watchingRoute } from "@/lib/learning-routes";
-
-import {
-  WatchingSessionBridge,
-  WatchingSurface,
-} from "@/components/watching/WatchingWorkspace";
+import { watchingRoute } from "@/lib/learning-routes";
 
 import { useChatWorkspaces } from "@/hooks/useChatWorkspaces";
 import { useComposerResources } from "@/hooks/useComposerResources";
@@ -77,7 +72,6 @@ import { useAppShell } from "@/context/AppShellContext";
 import { readStoredResponseLanguage } from "@/context/app-shell-storage";
 import { RESPONSE_LANGUAGE_OPTIONS } from "@/features/settings/store";
 
-import { WATCHING_ASK_EVENT } from "@/components/watching/WatchingPane";
 import type { FilePreviewSource } from "@/components/chat/preview/previewerFor";
 import type { LLMSelection, StreamEvent } from "@/features/chat/model/protocol";
 import { selectAttachmentProcessing } from "@/features/chat/selectors/attachment-processing";
@@ -259,11 +253,7 @@ interface KnowledgeBase {
 /*  Chat page                                                         */
 /* ------------------------------------------------------------------ */
 
-export default function ChatWorkspace({
-  watching = false,
-}: {
-  watching?: boolean;
-}) {
+export default function ChatWorkspace() {
   const { router, sessionId: sessionIdParam } = useChatRouteSession();
   const searchParams = useSearchParams();
   const requestedWorkspaceId = searchParams.get("dt_workspace") ?? searchParams.get("workspace") ?? null;
@@ -363,6 +353,11 @@ export default function ChatWorkspace({
   // What the composer's skill / MCP pickers may offer, clipped to what this
   // conversation's workspace already allows.
   const resourceCatalog = useComposerResources(state.workspaceId, workspaces);
+  const [draftTaskSelections, setDraftTaskSelections] = useState<Record<string, string[]>>({});
+  const draftTaskIds = useMemo(
+    () => draftTaskSelections[state.sessionKey] ?? [],
+    [draftTaskSelections, state.sessionKey],
+  );
   const activeWorkspace = useMemo(
     () =>
       state.workspaceId
@@ -651,28 +646,6 @@ export default function ChatWorkspace({
     return () => window.removeEventListener("dt:visualize-prompt", onVizPrompt);
   }, [handlePrefillComposer]);
 
-  useEffect(() => {
-    const onWatchingAsk = (event: Event) => {
-      const detail = (
-        event as CustomEvent<{ timeSeconds?: number; text?: string }>
-      ).detail;
-      const text = (detail?.text || "").trim();
-      if (!text) return;
-      const total = Math.max(0, Math.floor(Number(detail?.timeSeconds) || 0));
-      const hours = Math.floor(total / 3600);
-      const minutes = Math.floor((total % 3600) / 60);
-      const seconds = total % 60;
-      const timestamp = hours
-        ? `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
-        : `${minutes}:${String(seconds).padStart(2, "0")}`;
-      handlePrefillComposer(
-        `> [${timestamp}] ${text}\n\n${t("Explain this part of the video")}: `,
-      );
-    };
-    window.addEventListener(WATCHING_ASK_EVENT, onWatchingAsk);
-    return () => window.removeEventListener(WATCHING_ASK_EVENT, onWatchingAsk);
-  }, [handlePrefillComposer, t]);
-
   const activeCap = useMemo(
     () =>
       capabilities.find(
@@ -683,19 +656,11 @@ export default function ChatWorkspace({
   const isQuizMode = activeCap.value === "deep_question";
   const isVisualizeMode = activeCap.value === "visualize";
   const isResearchMode = activeCap.value === "deep_research";
-  const isWatchingMode = watching;
   useEffect(() => {
-    if (!sessionIdParam || state.sessionId !== sessionIdParam) return;
-    if (!watching && state.workspaceMode === "immersive_watching") {
-      router.replace(watchingRoute(sessionIdParam), {
-        scroll: false,
-      });
-    } else if (watching && state.workspaceMode !== "immersive_watching") {
-      router.replace(scopedUrl(`/chat/${encodeURIComponent(sessionIdParam)}`), {
-        scroll: false,
-      });
+    if (sessionIdParam && state.sessionId === sessionIdParam && state.activeCapability === "immersive_watching") {
+      router.replace(watchingRoute(sessionIdParam, state.workspaceId || ""), { scroll: false });
     }
-  }, [watching, state.workspaceMode, state.sessionId, sessionIdParam, router]);
+  }, [state.activeCapability, state.sessionId, state.workspaceId, sessionIdParam, router]);
   const capabilityNeedsConfig = isQuizMode || isVisualizeMode || isResearchMode;
   const returnedResearchTurnRef = useRef<string | null>(null);
 
@@ -1100,8 +1065,8 @@ export default function ChatWorkspace({
   /* ---- URL-driven session loading ---- */
 
   const navigateToHome = useCallback(() => {
-    router.replace(scopedUrl(watching ? WATCHING_HOME : "/chat"), { scroll: false });
-  }, [router, watching]);
+    router.replace(scopedUrl("/chat"), { scroll: false });
+  }, [router]);
 
   /** Abort in-flight load + navigate home. */
   const cancelSessionLoad = useCallback(() => {
@@ -1206,15 +1171,7 @@ export default function ChatWorkspace({
     if (sessionIdParam) {
       startSessionLoad(sessionIdParam);
     } else {
-      newSession(
-        watching
-          ? {
-              capability: "immersive_watching",
-              workspaceMode: "immersive_watching",
-              workspaceId: requestedWorkspaceId,
-            }
-          : { workspaceId: requestedWorkspaceId },
-      );
+      newSession({ workspaceId: requestedWorkspaceId });
     }
     return () => {
       initialLoadRef.current = false;
@@ -1226,10 +1183,10 @@ export default function ChatWorkspace({
   useEffect(() => {
     if (prevWorkspaceParam.current === requestedWorkspaceId) return;
     prevWorkspaceParam.current = requestedWorkspaceId;
-    if (!sessionIdParam && !watching && state.workspaceId !== requestedWorkspaceId) {
+    if (!sessionIdParam && state.workspaceId !== requestedWorkspaceId) {
       newSession({ workspaceId: requestedWorkspaceId });
     }
-  }, [requestedWorkspaceId, sessionIdParam, watching, newSession, state.workspaceId]);
+  }, [requestedWorkspaceId, sessionIdParam, newSession, state.workspaceId]);
 
   const prevSessionIdParam = useRef(sessionIdParam);
   useEffect(() => {
@@ -1246,19 +1203,11 @@ export default function ChatWorkspace({
       }
       startSessionLoad(sessionIdParam);
     } else {
-      newSession(
-        watching
-          ? {
-              capability: "immersive_watching",
-              workspaceMode: "immersive_watching",
-              workspaceId: requestedWorkspaceId,
-            }
-          : { workspaceId: requestedWorkspaceId },
-      );
+      newSession({ workspaceId: requestedWorkspaceId });
       setSessionLoading(false);
       setSessionLoadFailed(false);
     }
-  }, [sessionIdParam, startSessionLoad, newSession, state.sessionId, watching, requestedWorkspaceId]);
+  }, [sessionIdParam, startSessionLoad, newSession, state.sessionId, requestedWorkspaceId]);
 
   // When a new session_id is assigned by the server, update the URL
   useEffect(() => {
@@ -1267,11 +1216,11 @@ export default function ChatWorkspace({
       !sessionIdParam &&
       state.sessionId !== entrySessionId.current
     ) {
-      router.replace(scopedUrl(watching ? watchingRoute(state.sessionId) : `/chat/${encodeURIComponent(state.sessionId)}`, state.workspaceId || ""), {
+      router.replace(scopedUrl(`/chat/${encodeURIComponent(state.sessionId)}`, state.workspaceId || ""), {
         scroll: false,
       });
     }
-  }, [state.sessionId, state.workspaceId, sessionIdParam, router, watching]);
+  }, [state.sessionId, state.workspaceId, sessionIdParam, router]);
 
   useEffect(() => {
     setActiveSessionId(state.sessionId || sessionIdParam || null);
@@ -1488,11 +1437,6 @@ export default function ChatWorkspace({
 
   const handleSelectCapability = useCallback(
     (value: string) => {
-      if (value === "immersive_watching" && !watching) {
-        router.push(scopedUrl(WATCHING_HOME));
-        return;
-      }
-      if (watching && value !== "immersive_watching") return;
       const cap =
         capabilities.find((capability) => capability.value === value) ??
         capabilities[0] ??
@@ -1512,7 +1456,7 @@ export default function ChatWorkspace({
       setCapabilityConfigConfirmed(false);
       setCapMenuOpen(false);
     },
-    [capabilities, setCapability, setTools, userEnabledTools, watching, router],
+    [capabilities, setCapability, setTools, userEnabledTools],
   );
 
   const fileToAttachment = fileToPendingAttachment;
@@ -2015,6 +1959,9 @@ export default function ChatWorkspace({
         _persistent_knowledge_bases: retainedKnowledgeBases(state.knowledgeBases, agentNameSet, resourceReuse.policy),
       };
 
+      if (!state.sessionId && draftTaskIds.length) {
+        config = { ...(config ?? {}), linked_task_ids: draftTaskIds };
+      }
       const memoryPayload = [...memoryReferencesPayload];
       const messageContent =
         content ||
@@ -2063,7 +2010,7 @@ export default function ChatWorkspace({
       if (!resourceReuse.policy.memory) setSelectedMemoryFiles([]);
     },
     [
-      resourceReuse, state.knowledgeBases, state.resourceSelection, agentNameSet, setKBs, setPersonaSelection, setResourceSelection,
+      draftTaskIds, state.sessionId, resourceReuse, state.knowledgeBases, state.resourceSelection, agentNameSet, setKBs, setPersonaSelection, setResourceSelection,
       attachments,
       bookReferencesPayload,
       courseId,
@@ -2427,21 +2374,7 @@ export default function ChatWorkspace({
           messages={state.messages}
           viewerPanelRef={viewerPanelRef}
         />
-        <div
-          className="relative h-full overflow-hidden"
-          data-watching-workspace={watching ? "true" : undefined}
-        >
-          {watching &&
-            state.workspaceMode === "immersive_watching" &&
-            (!sessionIdParam || state.sessionId === sessionIdParam) && (
-              <WatchingSessionBridge
-                sessionKey={state.sessionId || "draft"}
-                sourceUrl={!sessionIdParam ? searchParams.get("video") : null}
-                materialId={state.timedMediaId}
-                onMaterial={configureSession}
-              />
-            )}
-          {watching && <WatchingSurface />}
+        <div className="relative h-full overflow-hidden">
           <div
             // When the preview drawer is open AND the viewport is wide enough,
             // push the chat content to the left by the drawer's width so the two
@@ -2452,7 +2385,6 @@ export default function ChatWorkspace({
             // hand-tune it without fighting Tailwind's arbitrary-value parser.
             data-preview-open={previewSource ? "true" : "false"}
             data-viewer-open={viewerPanelOpen ? "true" : "false"}
-            data-watching-open={isWatchingMode ? "true" : "false"}
             className="chat-preview-shell flex h-full flex-col overflow-hidden bg-[var(--background)]"
           >
             <div className="mx-auto flex w-full max-w-[960px] flex-wrap items-center justify-between gap-x-3 gap-y-1.5 px-6 pt-3 pb-0">
@@ -2653,6 +2585,7 @@ export default function ChatWorkspace({
                         onSubmitUserReply={submitUserReply}
                         onAnswerMasteryQuestion={answerMasteryQuestion}
                         onSkipMasteryQuestion={skipMasteryQuestion}
+                        onChallengeMasteryQuestion={(questionId) => handleSend(t('Please review assessment {{questionId}} against its original source evidence. If it is unsupported, invalidate it and recompute learning state. Do not grant mastery merely because I challenged it.', { questionId }))}
                         onLoadMessageTrace={(messageId) =>
                           state.sessionId
                             ? loadMessageTrace(state.sessionId, messageId)
@@ -2756,7 +2689,7 @@ export default function ChatWorkspace({
                 // Immersive modes own their own material; a workspace binding
                 // there would compete with it, so they get no pill.
                 onSelectWorkspace={
-                  !watching && !state.workspaceMode
+                  !state.workspaceMode
                     ? handleSelectWorkspace
                     : undefined
                 }
@@ -2800,17 +2733,15 @@ export default function ChatWorkspace({
                 capabilityNeedsConfig={capabilityNeedsConfig}
                 capabilityConfigConfirmed={capabilityConfigConfirmed}
                 onRequestConfigConfirm={ensureActivityPanelOpen}
-                capabilities={
-                  watching
-                    ? visibleCapabilities.filter(
-                        (cap) => cap.value === "immersive_watching",
-                      )
-                    : visibleCapabilities
-                }
+                capabilities={visibleCapabilities}
                 onSetCapMenuOpen={setCapMenuOpen}
                 onSetSpaceMenuOpen={setSpaceMenuOpen}
                 onToggleKB={handleToggleKB}
                 onSelectLLM={setLLMSelection}
+                taskSessionId={state.sessionId}
+                draftTaskIds={draftTaskIds}
+                onDraftTaskIdsChange={ids => setDraftTaskSelections(value => ({ ...value, [state.sessionKey]: ids }))}
+                onTasksLinked={ensureActivityPanelOpen}
                 onSelectNotebookPicker={handleSelectNotebookPicker}
                 onSelectBookPicker={handleSelectBookPicker}
                 onSelectReadingPicker={handleSelectReadingPicker}
@@ -2930,6 +2861,8 @@ export default function ChatWorkspace({
               onClose={handleClosePreview}
             />
             <SessionViewerPanel
+              taskDraftIds={draftTaskIds}
+              onTaskDraftChange={ids => setDraftTaskSelections(value => ({ ...value, [state.sessionKey]: ids }))}
               ref={viewerPanelRef}
               open={viewerPanelOpen && previewSource === null}
               sessionId={state.sessionId}

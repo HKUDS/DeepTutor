@@ -9,6 +9,13 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
+# Internal admission fields shared by the store and turn runtime. The runtime
+# consumes them before returning a public turn receipt (#1793).
+SUBMISSION_REPLAY_FIELD = "_submission_replay"
+SUBMISSION_USER_FIELD = "_submission_user_message_id"
+SUBMISSION_ASSISTANT_FIELD = "_submission_assistant_message_id"
+SUBMISSION_PREVIOUS_TURN_FIELD = "_submission_previous_turn_id"
+
 
 class ActiveTurnConflict(RuntimeError):
     """A session already owns a turn that has not reached a terminal state.

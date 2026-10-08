@@ -8,6 +8,14 @@ import {
 import type { StartTurnInput } from "../features/chat/model/start-turn";
 import { ApiError } from "../shared/api/errors";
 
+test("media-only turns are valid while a completely empty turn is rejected", () => {
+  const attachments = [{ type: "image" as const, filename: "figure.png", base64: "YWJj" }];
+  const wire = buildStartTurnInput({ content: "", attachments });
+  assert.equal(wire.content, "");
+  assert.deepEqual(wire.attachments, attachments);
+  assert.throws(() => buildStartTurnInput({ content: "", attachments: [] }), /must not be empty/);
+});
+
 test("plain, quiz, research, and visualize turns use one typed mapper", () => {
   const matrix: StartTurnInput[] = [
     { content: "hello", capability: "chat" },
@@ -38,7 +46,7 @@ test("plain, quiz, research, and visualize turns use one typed mapper", () => {
   }
 });
 
-test("course, Reading, Watching, Mastery, references, edit, and budget are explicit", () => {
+test("course, Reading, Mastery, references, edit, and budget are explicit", () => {
   const wire = buildStartTurnInput({
     content: "continue",
     sessionId: "session-1",
@@ -49,8 +57,6 @@ test("course, Reading, Watching, Mastery, references, edit, and budget are expli
     readingMaterialId: "material-1",
     readingMaterialRevision: 2,
     readingViewport: { locator: 4, selection: "proof" },
-    timedMediaId: "video-1",
-    timedMediaViewport: { time_seconds: 12.5 },
     parentMessageId: 9,
     subagentConsultBudget: 3,
     notebookReferences: [{ notebook_id: "nb", record_ids: ["r1"] }],
@@ -64,7 +70,6 @@ test("course, Reading, Watching, Mastery, references, edit, and budget are expli
   assert.equal(wire.parent_message_id, 9);
   assert.equal(wire.subagent_consult_budget, 3);
   assert.equal(wire.reading_viewport?.locator, 4);
-  assert.equal(wire.timed_media_viewport?.time_seconds, 12.5);
 });
 
 test("waiting-input replies stay commands and runtime config cannot leak into capability config", () => {

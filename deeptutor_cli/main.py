@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import sys
 
 import typer
 
@@ -26,7 +27,7 @@ from .skill import register as register_skill
 from .workspace_cmd import register as register_workspace
 
 set_mode(RunMode.CLI)
-configure_logging()
+configure_logging(console_stream=sys.stderr)
 
 app = typer.Typer(
     name="deeptutor",
@@ -41,7 +42,7 @@ kb_app = typer.Typer(help="Manage knowledge bases.")
 skill_app = typer.Typer(help="Manage skills and install from hubs (ClawHub, …).")
 memory_app = typer.Typer(help="View and manage lightweight memory.")
 plugin_app = typer.Typer(help="List plugins.")
-config_app = typer.Typer(help="Inspect configuration.")
+config_app = typer.Typer(help="Inspect and apply configuration.")
 session_app = typer.Typer(help="Manage shared sessions.")
 notebook_app = typer.Typer(help="Manage notebooks and imported markdown records.")
 provider_app = typer.Typer(help="Manage provider OAuth login.")

@@ -56,7 +56,7 @@ export default function KbTaskLogs({
             />
           </div>
           <span className="text-[11px] text-[var(--muted-foreground)]">
-            {percent}%
+            {t("Current phase")}: {percent}%
           </span>
         </div>
       )}
