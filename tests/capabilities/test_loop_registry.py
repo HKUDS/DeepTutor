@@ -8,7 +8,7 @@ import pytest
 
 from deeptutor.capabilities.registry import LOOP_CAPABILITIES, discover_external_loop_capabilities
 from deeptutor.core.context import UnifiedContext
-import deeptutor.core.entry_points as ep_module
+import deeptutor.plugins.entry_points as ep_module
 
 
 @pytest.fixture(autouse=True)

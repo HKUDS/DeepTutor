@@ -9,7 +9,7 @@ See ``deeptutor/agents/loop/prompt_blocks.py:_runtime_context_block``.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -27,7 +27,12 @@ PROMPTS_NO_RUNTIME = {
     "loop": {"system": "loop"},
 }
 
-FIXED_NOW = datetime(2026, 8, 17, 12, tzinfo=timezone(timedelta(hours=8)))
+# Naive on purpose: ``datetime.now()`` (which ``_runtime_context_block`` calls)
+# returns a naive datetime; ``.astimezone()`` then only attaches the host's
+# local timezone without shifting the calendar date. Freezing an aware
+# datetime instead made ``astimezone()`` convert across zones, so west-of-UTC
+# hosts rendered the frozen instant as the previous day.
+FIXED_NOW = datetime(2026, 8, 17, 12)
 
 
 class FrozenDateTime(datetime):

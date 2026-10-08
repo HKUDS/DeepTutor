@@ -89,6 +89,9 @@ class KnowledgePoint(BaseModel):
     # Selected non-goal sources that justify this objective. They are curriculum
     # provenance, not proof of factual correctness or retrieval permission.
     topic_source_ids: list[str] = Field(default_factory=list)
+    required_visual_tasks: list[
+        Literal["identification", "relationship", "table_graph", "comparison"]
+    ] = Field(default_factory=list)
 
 
 class LearningModule(BaseModel):
@@ -132,6 +135,8 @@ class QuizAttempt(BaseModel):
     # attempts are excluded from mastery, errors, and spaced repetition.
     voided: bool = False
     void_reason: str = ""
+    independent: bool = True
+    visual_context: dict[str, Any] = Field(default_factory=dict)
 
 
 class RetryAttempt(BaseModel):
@@ -181,6 +186,7 @@ class LearningEvidence(BaseModel):
     response_time: float | None = None
     session_id: str = ""
     turn_id: str = ""
+    visual_context: dict[str, Any] = Field(default_factory=dict)
 
 
 class RepetitionState(BaseModel):
@@ -267,6 +273,8 @@ class PendingQuestion(BaseModel):
     explanation: str = ""
     difficulty: str = ""
     created_at: float = Field(default_factory=time.time)
+    visual_context: dict[str, Any] = Field(default_factory=dict)
+    accepted_answers: list[str] = Field(default_factory=list)
 
     @field_validator("options", mode="before")
     @classmethod
@@ -570,6 +578,7 @@ class LearningProgress(BaseModel):
     # Temporarily skipped objectives. These never count as mastered; routing
     # just prefers any other eligible waypoint until only deferred ones remain.
     deferred_objectives: dict[str, DeferredObjective] = Field(default_factory=dict)
+    explained_objectives: dict[str, dict[str, Any]] = Field(default_factory=dict)
     # A single outstanding question; grading reads its expected answer so the
     # model never has to recall it across turns.
     pending_question: PendingQuestion | None = None

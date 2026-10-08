@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 import logging
+import threading
 from typing import Any, Dict, List, Optional
 
 from deeptutor.services.config.embedding_endpoint import (
@@ -43,19 +44,13 @@ class EmbeddingClient:
     # 创建时的 loop，跨 loop 既不互斥还会挂死。必须用线程级锁。
     _spacing_lock: Any = None
     _last_request_monotonic: float = 0.0
-    _thread_guard: Any = None
+    _thread_guard = threading.Lock()
 
     @classmethod
     def _global_spacing_lock(cls):
-        import threading
-
-        if cls._spacing_lock is None:
-            cls._thread_guard = threading.Lock()
-            with cls._thread_guard:
-                if cls._spacing_lock is None:
-                    from threading import Lock as _TLock
-
-                    cls._spacing_lock = _TLock()
+        with cls._thread_guard:
+            if cls._spacing_lock is None:
+                cls._spacing_lock = threading.Lock()
         return cls._spacing_lock
 
     @staticmethod
@@ -71,6 +66,24 @@ class EmbeddingClient:
             yield
         finally:
             lock.release()
+
+    async def _wait_for_request_slot(self) -> None:
+        """Space request starts across threads/loops without serializing HTTP.
+
+        Text and multimodal calls share the same clock. No delay means no
+        throttling; adapters still enforce their own concurrency/retry policy.
+        """
+        import asyncio
+        from time import monotonic
+
+        delay = self.config.batch_delay
+        if delay <= 0:
+            return
+        async with EmbeddingClient._hold_spacing_lock():
+            remaining = delay - (monotonic() - EmbeddingClient._last_request_monotonic)
+            if remaining > 0:
+                await asyncio.sleep(remaining)
+            EmbeddingClient._last_request_monotonic = monotonic()
 
     def __init__(self, config: Optional[EmbeddingConfig] = None):
         self.config = config or get_embedding_config()
@@ -118,8 +131,6 @@ class EmbeddingClient:
         # silently invalidate the indexes built from it.
         role = input_type if getattr(self.adapter, "SUPPORTS_INPUT_TYPE", False) else None
 
-        import asyncio
-
         # Clamp configured batch size against the provider's per-request item
         # cap. SiliconFlow Qwen3 family caps at 32; DashScope at 20; others
         # have generous defaults. Without this clamp, indexing a doc with many
@@ -133,7 +144,6 @@ class EmbeddingClient:
                 f"(provider '{self.config.binding}' max={provider_max})"
             )
         all_embeddings: List[List[float]] = []
-        batch_delay = self.config.batch_delay
         expected_dim: int | None = None
 
         total_batches = (len(texts) + batch_size - 1) // batch_size
@@ -146,18 +156,8 @@ class EmbeddingClient:
                 input_type=role,
             )
             try:
-                # 全局发帖节流：线程级锁串行化"等待间隔+发帖"，跨线程/跨
-                # event loop 互斥（asyncio 锁在新 loop 模型下失效的教训）。
-                # 非阻塞轮询避免同一 loop 内的并发调用在 acquire() 上互锁。
-                from time import monotonic as _mono
-
-                async with EmbeddingClient._hold_spacing_lock():
-                    if batch_delay > 0:
-                        elapsed = _mono() - EmbeddingClient._last_request_monotonic
-                        if elapsed < batch_delay:
-                            await asyncio.sleep(batch_delay - elapsed)
-                    EmbeddingClient._last_request_monotonic = _mono()
-                    response = await self.adapter.embed(request)
+                await self._wait_for_request_slot()
+                response = await self.adapter.embed(request)
             except Exception as exc:
                 # Capture batch context so the task log stream / KB diagnostics
                 # show actionable info instead of a bare exception string.
@@ -201,12 +201,15 @@ class EmbeddingClient:
             if progress_callback:
                 try:
                     progress_callback(i + 1, total_batches)
-                except Exception:
-                    pass
-
-            # Delay between batches to avoid rate limiting
-            if i < total_batches - 1 and batch_delay > 0:
-                await asyncio.sleep(batch_delay)
+                except Exception as exc:
+                    # Progress feedback is best-effort: never fail the embedding
+                    # run, but never lose the failure silently either — index
+                    # progress would read as stalled with no trace why.
+                    self.logger.warning(
+                        f"Embedding progress callback failed "
+                        f"(batch {i + 1}/{total_batches}): {exc}",
+                        exc_info=True,
+                    )
 
         self.logger.debug(
             f"Generated {len(all_embeddings)} embeddings using "
@@ -244,8 +247,6 @@ class EmbeddingClient:
                 "Configured embedding provider/model does not support multimodal contents."
             )
 
-        import asyncio
-
         spec = EMBEDDING_PROVIDERS.get(self.config.binding)
         provider_max = spec.max_batch_items if spec else 256
         batch_size = max(1, min(self.config.batch_size, provider_max))
@@ -261,6 +262,7 @@ class EmbeddingClient:
                 contents=batch,
                 enable_fusion=False,
             )
+            await self._wait_for_request_slot()
             response = await self.adapter.embed(request)
             validated = validate_embedding_batch(
                 response.embeddings,
@@ -276,11 +278,14 @@ class EmbeddingClient:
             if progress_callback:
                 try:
                     progress_callback(i + 1, total_batches)
-                except Exception:
-                    pass
-
-            if i < total_batches - 1 and self.config.batch_delay > 0:
-                await asyncio.sleep(self.config.batch_delay)
+                except Exception as exc:
+                    # Same contract as embed(): log and continue, so a broken
+                    # progress sink cannot stall multimodal indexing invisibly.
+                    self.logger.warning(
+                        f"Embedding progress callback failed "
+                        f"(batch {i + 1}/{total_batches}): {exc}",
+                        exc_info=True,
+                    )
 
         return all_embeddings
 

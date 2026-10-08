@@ -171,6 +171,13 @@ def build_openai_compatible_reasoning_kwargs(
             if not patterns:
                 patterns = custom_patterns
 
+    # Qwen Instruct variants do not implement thinking controls, even when a
+    # caller explicitly requests an effort. Do not replace the unsupported
+    # native parameter with the equally unsupported top-level effort field.
+    model_tokens = model_name.lower().replace("_", "-").split("-")
+    if thinking_style == "enable_thinking" and "instruct" in model_tokens:
+        return {}
+
     resolved_effort = reasoning_effort
     if resolved_effort is None:
         if patterns and _matches(model_name, patterns):
