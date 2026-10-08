@@ -123,3 +123,23 @@ test("draft storage failures are nonfatal", () => {
   assert.equal(saveDraft(broken, "doc", "text", 1), null);
   assert.equal(clearDraft(broken, "doc"), false);
 });
+
+test("failed legacy migration preserves the unsaved text for loading and retry", () => {
+  const storage = new MemoryStorage();
+  const legacyKey = `${LEGACY_DRAFT_STORAGE_PREFIX}doc/a`;
+  storage.setItem(legacyKey, "unsaved draft text");
+  const write = storage.setItem.bind(storage);
+  storage.setItem = () => {
+    throw new DOMException("Storage is full", "QuotaExceededError");
+  };
+
+  assert.equal(loadDraft(storage, "doc/a")?.content, "unsaved draft text");
+  assert.equal(storage.getItem(legacyKey), "unsaved draft text");
+  assert.equal(storage.getItem(`${DRAFT_STORAGE_PREFIX}doc%2Fa`), null);
+  assert.equal(loadDraft(storage, "doc/a")?.content, "unsaved draft text");
+
+  storage.setItem = write;
+  assert.equal(loadDraft(storage, "doc/a")?.content, "unsaved draft text");
+  assert.equal(storage.getItem(legacyKey), null);
+  assert.notEqual(storage.getItem(`${DRAFT_STORAGE_PREFIX}doc%2Fa`), null);
+});
