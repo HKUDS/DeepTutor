@@ -26,7 +26,7 @@ import { Search } from "lucide-react";
  */
 
 const CARD_BASE =
-  "group relative w-full rounded-xl border px-3.5 py-3 text-left outline-none transition-[background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]";
+  "group relative w-full rounded-xl border px-4 py-3.5 text-left outline-none transition-[background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]";
 
 /** Row in a workspace rail. `active` is the row being edited, not the runtime default. */
 export function workspaceCardClass(active: boolean): string {
@@ -45,7 +45,7 @@ export function WorkspaceSplit({
   detail: ReactNode;
 }) {
   return (
-    <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,286px)_minmax(0,1fr)] xl:gap-6">
+    <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,272px)_minmax(0,1fr)] xl:gap-6">
       {rail}
       {detail}
     </div>
@@ -202,7 +202,7 @@ export function WorkspaceRail({
           value={search.value}
           onChange={(event) => search.onChange(event.target.value)}
           placeholder={search.placeholder}
-          className="w-full rounded-lg border border-[var(--border)] bg-transparent py-2 pl-8 pr-3 text-[13px] outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-[color-mix(in_srgb,var(--muted-foreground)_60%,transparent)] hover:border-[color-mix(in_srgb,var(--foreground)_22%,var(--border))] focus:border-[var(--ring)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--ring)_16%,transparent)]"
+          className="min-h-10 w-full rounded-lg border border-[var(--border)] bg-transparent py-2.5 pl-8 pr-3 text-[13px] outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-[color-mix(in_srgb,var(--muted-foreground)_75%,transparent)] hover:border-[color-mix(in_srgb,var(--foreground)_22%,var(--border))] focus:border-[var(--ring)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--ring)_16%,transparent)]"
         />
       </div>
       {filter}

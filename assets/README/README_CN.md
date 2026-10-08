@@ -30,12 +30,12 @@
 
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![Next.js 16](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org/)
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square)](LICENSE)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square)](../../LICENSE)
 [![GitHub release](https://img.shields.io/github/v/release/HKUDS/DeepTutor?style=flat-square&color=brightgreen)](https://github.com/HKUDS/DeepTutor/releases)
 [![arXiv](https://img.shields.io/badge/arXiv-2604.26962-b31b1b?style=flat-square&logo=arxiv&logoColor=white)](https://arxiv.org/abs/2604.26962)
 
 [![Discord](https://img.shields.io/badge/Discord-社区-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/eRsjPgMU4t)
-[![Feishu](https://img.shields.io/badge/飞书-交流群-00D4AA?style=flat-square&logo=feishu&logoColor=white)](./Communication.md)
+[![Feishu](https://img.shields.io/badge/飞书-交流群-00D4AA?style=flat-square&logo=feishu&logoColor=white)](../../Communication.md)
 [![WeChat](https://img.shields.io/badge/微信-交流群-07C160?style=flat-square&logo=wechat&logoColor=white)](https://github.com/HKUDS/DeepTutor/issues/78)
 
 [核心功能](#-核心功能) · [快速开始](#-快速开始) · [功能探索](#-探索-deeptutor) · [CLI 命令行](#️-deeptutor-cli--智能体原生界面) · [生态系统](#-生态系统--eduhub-与技能社区) · [社区](#-社区)
@@ -44,7 +44,7 @@
 
 ---
 
-> 🤝 **欢迎各种形式的贡献！** 在 [`路线图`](https://github.com/HKUDS/DeepTutor/issues/498) 为议题投票或提出新建议，详见 [贡献指南](CONTRIBUTING.md)，了解分支策略、编码规范及参与方式。
+> 🤝 **欢迎各种形式的贡献！** 在 [`Roadmap`](https://github.com/HKUDS/DeepTutor/issues/498) 为议题投票或提出新建议，详见 [贡献指南](../../CONTRIBUTING.md)，了解分支策略、编码规范及参与方式。
 
 ### 📰 新闻动态
 
@@ -60,10 +60,10 @@
 
 DeepTutor 是一个智能体原生的学习工作区，将辅导、解题、测验生成、研究、可视化和掌握度练习整合在一个可扩展的系统中。
 
-- **统一的运行时** — Chat、Ask Questions、Quiz、Research、Visualize、Solve、Course Study、Mastery Path、Immersive Reading 和 Immersive Watching 共享同一套能力运行时与会话上下文，同时保留各自为特定用途设计的循环和流水线。
+- **统一的运行时** — Chat、Ask Questions、Quiz、Research、Visualize、Solve、Course Study、Mastery Path、Immersive Reading 和 Audio Overview 共享同一套能力运行时与会话上下文，同时保留各自为特定用途设计的循环和流水线。
 - **Task Board** — 在待办、进行中和已完成三个状态中追踪学习任务，支持添加备注、拖放或使用键盘可操作的移动按钮，并可从归档中恢复任务。卡片保留在当前工作区，沿用现有的外观和语言设置，无需配置模型。
 - **互联的学习上下文** — 知识库、书籍、Co-Writer 草稿、笔记本、题库、人格预设和 Memory 可在支持它们的工作流中复用，并受账号授权与学习策略约束。
-- **沉浸式视频学习** — 粘贴 YouTube 链接，即可使用隐私增强的原生播放、同步字幕、基于时间戳的辅导、已保存的时间戳标记和可续接的学习进度；管理员可以将播放切换到自托管的 Invidious 实例，无需重新构建素材。
+- **沉浸式视频学习** — 将 YouTube 或 Bilibili 链接添加到 Reading，即可使用原生播放、转录搜索、基于时间戳的辅导、已保存的笔记和可续接的进度；YouTube 字幕和浏览功能可以使用由管理员配置的 Invidious 实例。
 - **子智能体与 Partners** — 在 Chat 中调用实时智能体运行框架（Claude Code、Codex、Grok CLI、Antigravity、Kimi、opencode、MiMo、Hermes、OpenClaw 或 DeepSeek）或 Partner、导入历史对话，并让持久化 IM 伴侣运行在同一套大脑之上。
 - **多引擎知识库** — 跨 LlamaIndex、PageIndex、GraphRAG、LightRAG、远程 LightRAG Server、自托管的 WeKnora 知识库、Tencent IMA 或 MarginNote 4 知识库、已连接的 Kiwix ZIM 归档，或链接的 Obsidian vault 的版本化 RAG 知识库，支持可插拔的文档解析。详见[原生 LightRAG 角色模型](../../deeptutor/services/rag/pipelines/lightrag/README.md)，了解独立的抽取、查询与视觉设置、仅默认创建以及确认后的重建。
 - **可扩展工具与技能** — 内置工具、MCP 服务器、CLI 应用、图像 / 视频 / 语音生成模型，以及从 EduHub 安装的社区技能。
@@ -72,6 +72,22 @@ DeepTutor 是一个智能体原生的学习工作区，将辅导、解题、测�
 ---
 
 ## 🚀 快速开始
+
+### 让你的智能体配置 DeepTutor
+
+将以下提示复制给可使用终端的 AI 智能体（例如 Codex 或 Claude Code）：
+
+```text
+Help me install and configure DeepTutor locally from https://github.com/HKUDS/DeepTutor.
+Clone the repository, or reuse my existing checkout, and read SKILL.md and
+docs-for-user/AGENT_SETUP.md first. Follow that guide to prepare the environment,
+configure my model provider, verify the setup, and start the Web app.
+Ask me for any missing provider, model, or credential-source information;
+do not print API keys. Preserve my existing files and settings, and finish
+with the access URL and the results of your checks.
+```
+
+[智能体配置指南](../../docs-for-user/AGENT_SETUP.md) 涵盖完整流程，包括非交互式 CLI 配置。若要自行安装，请选择下方的一种方式。
 
 DeepTutor 提供四种安装方式，四者共享同一套运行时主目录布局：私有设置存储在启动目录下的 `data/user/settings/` 中（如果显式指定了 `DEEPTUTOR_HOME` / `deeptutor start --home`，则存储在该位置）。完整应用的推荐流程为：**选定运行时主目录 → 安装 → `deeptutor init` → `deeptutor start`**。
 
@@ -343,7 +359,7 @@ deeptutor config show
 | `integrations.json` | 可选的 PocketBase 和 sidecar 集成设置 |
 | `interface.json` | UI 语言与模型输出语言 / 主题 / 侧边栏偏好 |
 | `document_parsing.json` | 解析引擎与图像描述模型选择、远程端点与引擎专属选项 |
-| `video_learning.json` | 默认的 YouTube/Invidious 播放提供商、Invidious 来源和可选的转录适配器 |
+| `video_learning.json` | YouTube 字幕提供商、Invidious 来源与账号访问，以及转录设置 |
 | `main.yaml` | 运行时行为默认值和路径注入 |
 | `agents.yaml` | 能力/工具的 temperature 和 token 设置 |
 
@@ -439,7 +455,7 @@ Chat 是默认能力，也是大多数工作的起点。单个对话线程可以
 
 上下文分为两类：**粘性会话上下文**（能力、工作区或课程、工具、知识库、人格预设、模型，以及 Reading / Mastery 状态）会在各轮次间持续保留；**一次性引用**（文件、聊天历史、书籍、阅读章节、笔记本、选中的题库条目、导入的智能体）通过 `+` 菜单添加，仅用于单次对话轮次。语音按钮只会转录当前消息。
 
-主页让 **Chat**、**Ask Questions**、**Quiz** 和 **Visualize** 一键可达；用于生成引用报告的 **Research**、用于展示完整推理过程的 **Solve** 和 **Immersive Watching** 位于 *更多能力* 之下。**个性化学习**汇集 Book、**Mastery Path**、**Immersive Reading**、Watching 和**练习**；Reading 提供经过验证的引用、已保存的笔记、对来源段落的自然朗读 / 学习指导 / 词汇 / 测验 / 翻译操作，以及笔记本摘录，而 Course Study 则保留与课程绑定的上下文。
+主页让 **Chat**、**Ask Questions**、**Quiz** 和 **Visualize** 一键可达；用于生成引用报告的 **Research** 和用于展示完整推理过程的 **Solve** 位于 *更多能力* 之下。**个性化学习**汇集 Book、**Mastery Path**、**Immersive Reading** 和**练习**；Reading 将文档、视频和音频整合在一起，提供经过验证的引用、已保存的笔记、来源段落 / 学习指导 / 词汇 / 测验 / 翻译操作的自然朗读，以及笔记本摘录，而 Course Study 则保留与课程绑定的上下文。
 
 </details>
 
@@ -603,9 +619,9 @@ Settings 是操作控制面板，首页**通用**用于设置界面与模型输�
 
 **Xiaomi MiMo 语音。** 添加 Xiaomi MiMo 提供商，填写 `https://api.xiaomimimo.com/v1` 和 API Key，然后在 Settings → Voice 中添加 `mimo-v2.5-tts`。选择 `mimo_default`、`冰糖` 或 `苏打` 等预设音色，使用 `wav` 或 `pcm16` 输出，并在应用前试听。语音指令可控制风格和语速。该适配器仅支持预设语音；声音设计与声音克隆需要独立模型，目前不受支持。如果旧的 MiMo 语音模型通过通用的 OpenAI 兼容适配器配置，请使用 Xiaomi MiMo 提供商重新创建语音条目，使其采用 chat-completions 协议。详见 [MiMo 官方语音指南](https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/speech-synthesis-v2.5)。
 
-**MiniMax 语音** — 在 Settings → Voice 中，将文本转语音提供商选为 MiniMax，并选择 `speech-2.8-hd`。配置 MiniMax API Key 和系统或自定义音色 ID；默认音色为 `English_expressive_narrator`。API 基础地址默认为 `https://api.minimax.io/v1`；中国地区使用 `https://api.minimaxi.com/v1`。朗读与音色预览使用原生语音端点，支持 MP3、WAV、FLAC 或 PCM 输出，以及采样率、语速和语言控制。音色 ID 和账号可用性详见 [MiniMax 语音 API](https://platform.minimax.io/docs/api-reference/speech-t2a-http)。
+**MiniMax 语音** — 在 Settings → Voice 中，将文本转语音提供商选为 MiniMax，并选择 `speech-2.8-hd`。配置 MiniMax API Key，并明确选择系统音色或输入自定义音色 ID。API 基础地址默认为 `https://api.minimax.io/v1`；中国地区使用 `https://api.minimaxi.com/v1`。朗读与音色预览使用原生语音端点，支持 MP3、WAV、FLAC 或 PCM 输出，以及采样率、语速和语言控制。音色 ID 和账号可用性详见 [MiniMax 语音 API](https://platform.minimax.io/docs/api-reference/speech-t2a-http)。
 
-Settings → Learning & conversation 下的 **Video Learning** 默认使用 YouTube 官方的隐私增强型 IFrame Player。若要让播放保持在本地，请设置由管理员管理的 Invidious API 来源（例如 `http://127.0.0.1:3000`），测试后选择 Invidious 并保存。新建或重新打开的视频会立即采用该提供商，同时保留相同的素材 ID 和进度。Invidious 媒体通过 DeepTutor 的字节范围代理进行流式传输；上游 URL 既不会暴露给浏览器，也不会存储到磁盘。如果实例发生故障，DeepTutor 将保持与 YouTube 离线，直到学习者明确选择原生 YouTube 回退方案。公共字幕辅导是可选功能：安装 `.[video-learning]`；即使未安装，播放仍会继续，但基于转录的 **在此解释** 功能会被禁用并说明原因。
+Settings → Learning & conversation 下的 **Video Learning** 为 Reading 配置 YouTube 字幕和 Invidious 访问。使用 Invidious 时，请设置由管理员管理的后端 API 来源（例如 `http://127.0.0.1:3000`）和浏览器可访问的公开来源，测试连接后选择 Invidious 并保存。Reading 添加素材对话框中的 **Browse Invidious** 可搜索视频，并访问已连接的订阅和播放列表。YouTube 播放使用官方隐私增强型播放器；字幕缺失时会明确显示，并限制导师可用的证据，但不会阻止原生播放。安装 `.[video-learning]` 可使用默认的 YouTube 字幕加载器。已有 Watching 链接会迁移到 Reading，保留对话历史、兼容的转录、笔记和进度；新的时间戳笔记会保存为 Reading 批注。Bilibili 使用独立的播放和字幕路径。
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="DeepTutor 外观设置与主题" width="900">
@@ -703,7 +719,7 @@ SID=$(deeptutor run deep_research "Survey 2026 papers on RAG" \
 deeptutor run deep_question "Quiz me on that survey" --session "$SID" --format json
 ```
 
-仓库根目录附带 [`SKILL.md`](SKILL.md) — 约 200 行的交接文档，让任何支持工具调用的 LLM 一次性掌握所有接口。将其传递给 Claude Code、Codex 或 OpenCode（它们会自动读取 `SKILL.md`），或将 `deeptutor run` 包装为 LangChain / AutoGen 循环中的工具。完整示例：[Agent Handoff](https://deeptutor.info/docs/cli/agent-handoff/)。
+仓库根目录附带 [`SKILL.md`](../../SKILL.md) — 一份简洁的 CLI 交接文档。请明确要求你的智能体阅读它；其[智能体配置指南](../../docs-for-user/AGENT_SETUP.md) 涵盖安装与配置。你也可以将 `deeptutor run` 包装为 LangChain / AutoGen 循环中的工具。完整示例：[Agent Handoff](https://deeptutor.info/docs/cli/agent-handoff/)。
 
 </details>
 
@@ -712,13 +728,13 @@ deeptutor run deep_question "Quiz me on that survey" --session "$SID" --format j
 
 | 命令 | 说明 |
 |:---|:---|
-| `deeptutor init` | 在当前运行时主目录中创建或更新 `data/user/settings` |
+| `deeptutor init [--non-interactive] [--home PATH]` | 运行配置向导，或无需提示地创建缺失的默认配置 |
 | `deeptutor doctor [--online]` | 检查运行时是否已准备好启动会话；`--online` 还会探测已配置的模型提供商，`--format json` 打印报告 |
 | `deeptutor start [--home PATH] [--dev] [--detach] [--no-browser]` | 同时启动后端 + 前端；可选择后台运行或禁止自动打开浏览器 |
 | `deeptutor stop [--home PATH]` | 停止通过 `--detach` 启动的启动器 |
 | `deeptutor serve [--port PORT]` | 仅启动 FastAPI 后端 |
 | `deeptutor workspace show/set/reset` | 查看、选择或还原当前用户的内容工作区 |
-| `deeptutor run <capability> <message>` | 运行单次能力对话（`chat`、`ask_questions`、`deep_solve`、`deep_question`、`deep_research`、`visualize`、`math_animator`、`mastery_path`、`immersive_reading`、`course_study`、`immersive_watching`、`audio_overview`）；添加 `--format json` 可获得 NDJSON 输出 |
+| `deeptutor run <capability> <message>` | 运行单次能力对话（`chat`、`ask_questions`、`deep_solve`、`deep_question`、`deep_research`、`visualize`、`math_animator`、`mastery_path`、`immersive_reading`、`course_study`、`audio_overview`）；添加 `--format json` 可获得 NDJSON 输出 |
 | `deeptutor chat` | 交互式 REPL，支持能力、工具、知识库、笔记本和历史控制 |
 | `deeptutor partner list/create/start/stop` | 管理 IM 连接的 Partners |
 | `deeptutor kb list/info/create/connect-kiwix/add/search/eval/set-default/delete/list-sources/sync` | 管理知识库、连接 Kiwix 归档、用 QA 数据集评估检索质量，并同步已注册的 GitHub/Web 来源（包含来源添加/移除命令） |
@@ -727,9 +743,26 @@ deeptutor run deep_question "Quiz me on that survey" --session "$SID" --format j
 | `deeptutor session list/show/open/rename/delete` | 管理共享会话 |
 | `deeptutor notebook list/create/show/add-md/replace-md/remove-record` | 从 Markdown 文件管理笔记本 |
 | `deeptutor book list/health/refresh-fingerprints` | 查看书籍并刷新来源指纹 |
-| `deeptutor plugin list/info` | 查看已注册的工具和能力 |
-| `deeptutor config show` | 打印配置摘要 |
-| `deeptutor provider login <provider>` | 提供商认证（`openai-codex` OAuth 登录；`github-copilot` 验证现有 Copilot 认证会话；`codebuddy` 验证 CodeBuddy SDK 认证并在需要时启动登录） |
+| `deeptutor plugin list/info/state/search/show/install/approve/enable/disable/rollback/uninstall` | 查看工具与能力；管理经过审核的插件包及其权限审批 |
+| `deeptutor config show [--home PATH]` | 显示已解析的运行时配置，并隐去凭证 |
+| `deeptutor config providers` | 以 JSON 列出配置时支持的提供商及其默认值 |
+| `deeptutor config apply FILE [--check] [--home PATH]` | 无需提示地应用配置 JSON，或只验证而不写入设置 |
+| `deeptutor provider login <provider>` | 提供商认证（`openai-codex` OAuth 登录；`github-copilot` GitHub 设备登录；`codebuddy` 验证 CodeBuddy SDK 认证并在需要时启动登录） |
+
+GitHub Copilot 凭证属于已登录的 DeepTutor 所有者，仅保存在
+`<runtime-home>/data/system/user-secrets/<owner-id>/private/github-copilot/credentials.v1.json`，
+位于沙箱工作区之外。CLI/管理员的 Partners 使用管理员凭证；
+其他用户需单独登录，Copilot 配置不能通过模型授权共享。
+外部 nanobot/Copilot 令牌文件绝不会被导入：升级后，请重新运行
+`deeptutor provider login github-copilot`。
+
+登录会使用当前发现的模型验证推理；`init` 验证所选模型，
+失败时中止且不保存配置草稿。仅成功完成 GitHub
+认证并不代表获得 Copilot 模型访问权限（即使验证失败，已保存的登录仍会保留）。
+运行时请求遵循令牌交换返回的 API 端点，包括刷新后的端点，
+并遵守各模型的 Responses/Chat Completions 端点元数据。
+
+Copilot 专属的 Responses 兼容处理在分发请求时应用，不会改写已保存的历史记录。
 
 </details>
 
@@ -859,7 +892,7 @@ DeepTutor 也站在众多优秀开源项目的肩膀上，它们给予了我们�
 
 ### 🗺️ 路线图与贡献
 
-我们希望 DeepTutor 持续迭代与进步 — 并最终成为我们回馈开源社区的礼物。我们的[**路线图**](https://github.com/HKUDS/DeepTutor/issues/498)持续更新；欢迎在那里为议题投票或提出新想法。如果你想贡献，请查看[**贡献指南**](CONTRIBUTING.md)，了解分支策略、编码规范及参与方式。
+我们希望 DeepTutor 持续迭代与进步 — 并最终成为我们回馈开源社区的礼物。我们的[**路线图**](https://github.com/HKUDS/DeepTutor/issues/498)持续更新；欢迎在那里为议题投票或提出新想法。如果你想贡献，请查看[**贡献指南**](../../CONTRIBUTING.md)，了解分支策略、编码规范及参与方式。
 
 <div align="center">
 
@@ -883,10 +916,26 @@ DeepTutor 也站在众多优秀开源项目的肩膀上，它们给予了我们�
 
 <div align="center">
 
-基于 [Apache License 2.0](LICENSE) 许可证。
+基于 [Apache License 2.0](../../LICENSE) 许可证。
 
 <p>
   <img src="https://visitor-badge.laobi.icu/badge?page_id=HKUDS.DeepTutor&style=for-the-badge&color=00d4ff" alt="访问量">
 </p>
 
 </div>
+
+### Mastery 轮次的状态依据
+
+Mastery 在每轮首次请求模型之前读取当前路径的状态，使用与显式工具调用
+相同的状态工具和掌握度门控。每轮都会获取新的快照，其中包含当前会话模式，
+绝不跨轮缓存。读取失败时会回退到 `mastery_status`；更改路径、模式、
+大纲或进度后，导师可以通过该工具刷新状态。卡片评分和现有的交接流程保持不变。
+
+### 重复的图片附件
+
+智能体循环在每次请求中只发送一次相同的用户内联图片，后续副本则替换为
+对保留图片的引用。仅作用于本次请求的稳定标签，使这些保留的内联图片在
+提供商格式转换和追加轮次中保持可识别。不同的图片块、远程 URL、不同的
+图片选项、助手消息和工具结果均保持完整。已保存的历史记录保留每份原始附件；
+历史被裁剪后会重新构建引用。这样可以减少重复的图片载荷，但计费和缓存命中
+仍以提供商报告的用量为准。
