@@ -52,6 +52,10 @@ from deeptutor.api.routers.auth import _learning_surface_for_path
         ("/api/knowledge-bases/kb1/files/a.pdf", "DELETE", ""),
         # Everything else still default-denies.
         ("/api/settings", "GET", ""),
+        # Model choice for a chat turn. Not a prefix: other settings stay denied.
+        ("/api/settings/llm-options", "GET", "chat"),
+        ("/api/settings/llm-options", "POST", ""),
+        ("/api/settings/llm-options/extra", "GET", ""),
         ("/api/system/status", "GET", ""),
         ("/api/dashboard/learning-library/chats", "GET", ""),
         ("/api/dashboard/learning-library/materials-private", "GET", ""),

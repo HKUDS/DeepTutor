@@ -434,6 +434,13 @@ class MCPConnectionManager:
         conn = self._connections.get((owner, server_name))
         if conn is None or conn.session is None or conn.status != "connected":
             return f"(MCP server {server_name!r} is not connected)"
+        if not conn.config.tool_allowed(tool_name, wrapped_tool_name(server_name, tool_name)):
+            return "(MCP tool is no longer enabled; no tool was invoked)"
+        if owner != SHARED_OWNER and conn.config.allow_private_network:
+            from deeptutor.services.mcp.network import approved_private_origin
+
+            if approved_private_origin(conn.config.url) is None:
+                return "(Private-network MCP origin approval was revoked; no tool was invoked)"
         try:
             return await self._call_watching_connection(
                 conn, tool_name, arguments, timeout, on_progress
@@ -781,14 +788,49 @@ class MCPConnectionManager:
             read, write = await stack.enter_async_context(stdio_client(params))
             return read, write
 
-        if self_service:
-            # Re-validated here, not only where the server was saved: DNS can
-            # change between the two, and this is the last point before a socket.
-            from deeptutor.services.mcp.network import validate_mcp_url_async
+        from deeptutor.services.mcp.network import (
+            approved_private_origin,
+            mcp_origin,
+            validate_mcp_url_async,
+        )
 
-            ok, error = await validate_mcp_url_async(cfg.url, strict=True)
-            if not ok:
-                raise ValueError(error)
+        trusted_origin = (
+            (approved_private_origin(cfg.url) if self_service else mcp_origin(cfg.url))
+            if cfg.allow_private_network
+            else None
+        )
+        strict_network = self_service
+        if self_service and cfg.allow_private_network and trusted_origin is None:
+            raise ValueError("Private-network MCP origin is not approved by an administrator")
+        ok, error = await validate_mcp_url_async(
+            cfg.url, strict=strict_network, trusted_origin=trusted_origin
+        )
+        if not ok:
+            raise ValueError(error)
+
+        async def network_guard(request):
+            # Revalidate every request/redirect and recheck revocable admin trust.
+            current_origin = (
+                (approved_private_origin(cfg.url) if self_service else mcp_origin(cfg.url))
+                if cfg.allow_private_network
+                else None
+            )
+            if self_service and cfg.allow_private_network and current_origin is None:
+                raise ValueError("Private-network MCP origin approval was revoked")
+            allowed, detail = await validate_mcp_url_async(
+                str(request.url),
+                strict=(
+                    self_service
+                    or (
+                        cfg.allow_private_network
+                        and mcp_origin(str(request.url)) != mcp_origin(cfg.url)
+                    )
+                ),
+                trusted_origin=current_origin,
+            )
+            if not allowed:
+                raise ValueError(detail)
+
         follow_redirects = not self_service
 
         # OAuth, when the server declares it. Non-interactive here on purpose:
@@ -818,6 +860,7 @@ class MCPConnectionManager:
                 return httpx.AsyncClient(
                     headers=merged or None,
                     follow_redirects=follow_redirects,
+                    event_hooks={"request": [network_guard]},
                     timeout=timeout,
                     # The transport supplies its own auth for some flows; ours
                     # wins when the server is OAuth-backed.
@@ -835,6 +878,7 @@ class MCPConnectionManager:
                 httpx.AsyncClient(
                     headers=cfg.headers or None,
                     follow_redirects=follow_redirects,
+                    event_hooks={"request": [network_guard]},
                     timeout=httpx.Timeout(60.0, connect=10.0),
                     auth=oauth_auth,
                 )

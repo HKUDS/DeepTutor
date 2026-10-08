@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import importlib
 import json
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -1918,6 +1919,72 @@ def test_reindex_task_preserves_prepublication_failure(monkeypatch, tmp_path: Pa
     assert task is not None
     assert task["status"] == "error"
     assert task["error"] == "original indexing failure"
+
+
+def test_reindex_task_surfaces_failed_error_progress_write(
+    monkeypatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A failing error-progress write must not vanish silently.
+
+    The rebuild's task-level failure stays authoritative; the router logs the
+    degraded progress write instead of swallowing it with ``except: pass``.
+    """
+    base_dir = tmp_path / "knowledge_bases"
+    raw_dir = base_dir / "kb" / "raw"
+    raw_dir.mkdir(parents=True)
+    (raw_dir / "fixture.txt").write_text("fixture", encoding="utf-8")
+    (base_dir / "kb_config.json").write_text(
+        json.dumps(
+            {
+                "knowledge_bases": {
+                    "kb": {
+                        "path": "kb",
+                        "rag_provider": "lightrag",
+                        "status": "processing",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class _FailingRagService:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        async def initialize(self, *_args, **_kwargs) -> bool:
+            raise RuntimeError("original indexing failure")
+
+    rag_service_module = importlib.import_module("deeptutor.services.rag.service")
+    monkeypatch.setattr(rag_service_module, "RAGService", _FailingRagService)
+
+    class _ErrorWriteFailsTracker(knowledge_router_module.ProgressTracker):
+        def update(self, stage, *args, **kwargs):
+            if stage is knowledge_router_module.ProgressStage.ERROR:
+                raise OSError("synthetic error progress write failure")
+            return super().update(stage, *args, **kwargs)
+
+    monkeypatch.setattr(knowledge_router_module, "ProgressTracker", _ErrorWriteFailsTracker)
+
+    task_id = knowledge_router_module._build_unique_task_id("kb_reindex", "error-progress")
+    with caplog.at_level(logging.WARNING, logger="deeptutor.api.routers.knowledge"):
+        asyncio.run(
+            knowledge_router_module.run_reindex_task(
+                kb_name="kb",
+                base_dir=str(base_dir),
+                task_id=task_id,
+                signature_hash="lightrag",
+            )
+        )
+
+    task = knowledge_router_module.TaskIDManager.get_instance().get_task_metadata(task_id)
+    assert task is not None
+    assert task["status"] == "error"
+    assert task["error"] == "original indexing failure"
+    warnings = [
+        record.getMessage() for record in caplog.records if record.levelno >= logging.WARNING
+    ]
+    assert any("error progress" in message and "kb" in message for message in warnings), warnings
 
 
 @pytest.mark.parametrize("failed_sink", ["progress_file", "central_config"])

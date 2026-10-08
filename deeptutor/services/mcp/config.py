@@ -50,6 +50,8 @@ class MCPServerConfig(BaseModel):
     # Blocklist applied after ``enabled_tools`` — for "everything except X".
     disabled_tools: list[str] = Field(default_factory=list)
     enabled: bool = True
+    # Self-service exception requires a matching administrator-approved origin.
+    allow_private_network: bool = False
     # authentication
     #: ``"oauth"`` when this server requires an OAuth 2.1 authorization the
     #: account has to grant interactively; ``""`` when a static credential in

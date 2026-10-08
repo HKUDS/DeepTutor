@@ -10,6 +10,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from datetime import datetime, timezone
 import json
+import logging
 import os
 from pathlib import Path
 import re
@@ -22,6 +23,8 @@ import uuid
 from deeptutor.multi_user.context import get_current_user
 from deeptutor.services.workspace.models import WorkspaceBinding, WorkspaceError
 from deeptutor.utils.secret_files import ensure_private_directory
+
+logger = logging.getLogger(__name__)
 
 _INTERNAL_DIR = ".deeptutor"
 
@@ -133,6 +136,28 @@ class WorkspaceCatalogMixin:
         root = Path(row["path"]).expanduser().resolve()
         self._assert_allowed_root(root)
         return WorkspaceBinding(row["workspace_id"], root, row["display_name"])
+
+    def registered_bindings(self) -> list[WorkspaceBinding]:
+        """All non-default workspaces registered for the current owner.
+
+        Read-only enumeration for account-level aggregation (e.g. Memory L1
+        snapshots, #1799). Bindings whose storage moved or grew symlinks are
+        skipped rather than raised: one broken registration must not blank an
+        account-wide scan.
+        """
+        out: list[WorkspaceBinding] = []
+        for row in self._catalog():
+            try:
+                binding = self._registered_binding(row)
+            except WorkspaceError:
+                logger.warning(
+                    "workspace %s skipped during enumeration: storage unavailable",
+                    row.get("workspace_id"),
+                )
+                continue
+            if not binding.is_default:
+                out.append(binding)
+        return out
 
     def _catalog_metadata(self, key: str) -> Any:
         if not self._catalog_file().exists():

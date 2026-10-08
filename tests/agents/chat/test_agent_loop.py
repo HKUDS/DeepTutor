@@ -168,7 +168,19 @@ class _Registry:
 
 
 @pytest.fixture(autouse=True)
-def _fake_llm_config(monkeypatch: pytest.MonkeyPatch) -> None:
+def _isolated_runtime(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from deeptutor.capabilities.setup.binding import mark_intro_shown
+    from deeptutor.services.path_service import PathService
+
+    # Exercise the loop in an initialized install, independent of developer
+    # data or whether another test has already created the default workspace.
+    monkeypatch.setenv("DEEPTUTOR_HOME", str(tmp_path))
+    paths = PathService(workspace_root=tmp_path / "data")
+    monkeypatch.setattr(PathService, "_instance", paths)
+    paths.ensure_all_directories()
+    # First-run onboarding legitimately changes the next turn's system prompt.
+    # Replay tests require stable configuration; setup owns onboarding tests.
+    mark_intro_shown()
     monkeypatch.setattr(
         "deeptutor.agents.loop.pipeline.get_llm_config",
         lambda: SimpleNamespace(
@@ -191,6 +203,205 @@ async def _run(pipeline: AgenticChatPipeline, context: UnifiedContext):
     await bus.close()
     await consumer
     return events
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("evidence", ["available", "text_only", "missing", "inaccessible"])
+async def test_active_mastery_retrieves_verified_pixels_without_persisting_them(
+    monkeypatch, tmp_path, evidence
+):
+    """#1611: exercise the active Mastery loop, real RAG tool and verified store."""
+    import base64
+
+    from deeptutor.multi_user import knowledge_access
+    from deeptutor.services.rag.visual_assets import VisualAssetStore, collect_visual_assets
+    from deeptutor.tools import rag_tool
+    from deeptutor.tools.builtin import RAGTool
+    from tests.services.rag.test_visual_assets import _fixture
+
+    kb_dir, source, image, parsed = _fixture(tmp_path)
+    candidate = collect_visual_assets(parsed, source, kb_dir)[0]
+    store = VisualAssetStore(kb_dir)
+    store.publish([candidate])
+    if evidence == "missing":
+        (store.root / (candidate.record["asset_id"] + ".png")).unlink()
+    monkeypatch.setattr(
+        knowledge_access,
+        "resolve_for_rag",
+        lambda _name: (
+            None if evidence == "inaccessible" else SimpleNamespace(name="kb", base_dir=tmp_path)
+        ),
+    )
+
+    async def search(**_kwargs):
+        return {
+            "content": "The source contains a learning curve.",
+            "sources": [{"visual_asset_id": candidate.record["asset_id"]}],
+        }
+
+    monkeypatch.setattr(rag_tool, "rag_search", search)
+
+    class Registry(_Registry):
+        def build_openai_schemas(self, _enabled):
+            schemas = super().build_openai_schemas(_enabled)
+            return [
+                *schemas,
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "rag",
+                        "description": "Search selected sources",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "query": {"type": "string"},
+                                "kb_name": {"type": "string"},
+                            },
+                            "required": ["query", "kb_name"],
+                        },
+                    },
+                },
+            ]
+
+        async def execute(self, name, **kwargs):
+            if name == "rag":
+                return await RAGTool().execute(**kwargs)
+            return await super().execute(name, **kwargs)
+
+    client = _ScriptedChatClient(
+        [
+            [
+                _llm_chunk(
+                    tool_calls=[
+                        {
+                            "id": "figure",
+                            "name": "rag",
+                            "arguments": '{"query":"curve","kb_name":"kb"}',
+                        },
+                        {"id": "other", "name": "web_search", "arguments": '{"query":"context"}'},
+                    ],
+                    finish_reason="tool_calls",
+                )
+            ],
+            [_llm_chunk(content="Source-backed explanation.", finish_reason="stop")],
+        ]
+    )
+    pipeline = MasteryLoopPipeline(language="en")
+    pipeline.model = "gpt-3.5-turbo" if evidence == "text_only" else "gpt-4o"
+    pipeline.registry = Registry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _: ["rag", "web_search"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    monkeypatch.setattr(pipeline, "_capability_finish_instruction", lambda *_: None)
+    context = UnifiedContext(session_id="s", user_message="Explain the original figure.")
+    events = await _run(pipeline, context)
+
+    request = client.calls[1]["messages"]
+    images = [
+        part
+        for msg in request
+        if isinstance(msg.get("content"), list)
+        for part in msg["content"]
+        if part.get("type") == "image_url"
+    ]
+    if evidence == "available":
+        assert len(images) == 1
+        assert context.extension("source_visual_evidence")["image_hashes"] == [
+            candidate.record["image_sha256"]
+        ]
+        assert (
+            base64.b64decode(images[0]["image_url"]["url"].split(",", 1)[1]) == image.read_bytes()
+        )
+        tool_positions = [i for i, msg in enumerate(request) if msg.get("role") == "tool"]
+        image_position = next(
+            i
+            for i, msg in enumerate(request)
+            if msg.get("content") and isinstance(msg["content"], list)
+        )
+        assert image_position > max(tool_positions)
+        assert candidate.record["asset_id"] in str(request[image_position])
+    else:
+        assert images == []
+        assert context.extension("source_visual_evidence")["image_hashes"] == []
+        tool_text = next(msg["content"] for msg in request if msg.get("tool_call_id") == "figure")
+        assert (
+            "cannot inspect source image pixels"
+            if evidence == "text_only"
+            else "unavailable for pixel inspection"
+        ) in tool_text
+    assert "base64" not in json.dumps(context.runtime.model_turn)
+    assert "data:image" not in str(events)
+
+
+@pytest.mark.asyncio
+async def test_active_loop_bounds_source_images_across_rounds_and_retains_fallback(monkeypatch):
+    """Private source evidence is bounded and rejected pixels are not retried each round."""
+    from copy import deepcopy
+
+    from deeptutor.services.llm.multimodal import has_image_parts
+
+    class Registry(_Registry):
+        async def execute(self, name, **kwargs):
+            result = await super().execute(name, **kwargs)
+            count = len(self.executed)
+            result.model_message = {
+                "role": "user",
+                "content": [
+                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{count}{i}"}}
+                    for i in range(2)
+                ],
+            }
+            return result
+
+    client = _ScriptedChatClient(
+        [
+            [
+                _llm_chunk(
+                    tool_calls=[
+                        {"id": "one", "name": "web_search", "arguments": '{"query":"one"}'}
+                    ],
+                    finish_reason="tool_calls",
+                )
+            ],
+            [
+                _llm_chunk(
+                    tool_calls=[
+                        {"id": "two", "name": "web_search", "arguments": '{"query":"two"}'}
+                    ],
+                    finish_reason="tool_calls",
+                )
+            ],
+            [_llm_chunk(content="Continue.", finish_reason="length")],
+            [_llm_chunk(content="Done.", finish_reason="stop")],
+        ]
+    )
+    create = client.chat.completions.create
+    attempts = []
+
+    async def reject_latest_images(**kwargs):
+        attempts.append(deepcopy(kwargs["messages"]))
+        if client.call_count == 2 and has_image_parts(kwargs["messages"]):
+            raise RuntimeError("image input is not supported")
+        return await create(**kwargs)
+
+    client.chat.completions.create = reject_latest_images
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.model = "gpt-3.5-turbo"
+    pipeline.registry = Registry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _: ["web_search"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    context = UnifiedContext(session_id="s", user_message="Explain source figures.")
+    await _run(pipeline, context)
+    images = [
+        part["image_url"]["url"]
+        for msg in attempts[2]
+        if isinstance(msg.get("content"), list)
+        for part in msg["content"]
+        if part.get("type") == "image_url"
+    ]
+    assert images == ["data:image/png;base64,20", "data:image/png;base64,21"]
+    assert not has_image_parts(attempts[3])
+    assert not has_image_parts(attempts[4])
+    assert "base64" not in json.dumps(context.runtime.model_turn)
 
 
 @pytest.mark.asyncio
@@ -2180,6 +2391,55 @@ async def test_midloop_transport_failure_retries_current_round(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("phase", ["connect", "stream", "partial_stream"])
+async def test_cold_start_stalled_provider_settles_with_bounded_retries(monkeypatch, phase):
+    """#1421: a provider that never raises its own timeout cannot hold discovery forever."""
+    attempts = []
+    stopped = []
+
+    async def stalled_stream():
+        try:
+            if phase == "partial_stream":
+                yield _llm_chunk(content="Partial answer.")
+            await asyncio.Event().wait()
+            yield _llm_chunk(content="unreachable")
+        finally:
+            stopped.append(True)
+
+    async def create(**_kwargs):
+        attempts.append(True)
+        if phase == "connect":
+            await asyncio.Event().wait()
+        return stalled_stream()
+
+    client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = _Registry()
+    monkeypatch.setattr(agent_loop_mod, "_PROVIDER_RETRY_DELAYS", (0, 0))
+    monkeypatch.setattr(agent_loop_mod, "_STREAM_IDLE_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _: ["web_search"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    bus = StreamBus()
+    events, consumer = await _collect_bus_events(bus)
+    try:
+        with pytest.raises(LLMProviderTransportError) as failure:
+            await asyncio.wait_for(
+                pipeline.run(UnifiedContext(session_id="cold", user_message="Hello"), bus), 1
+            )
+        assert failure.value.retryable
+        assert len(attempts) == (1 if phase == "partial_stream" else 3)
+        assert failure.value.partial_response is (phase == "partial_stream")
+        if phase != "connect":
+            assert len(stopped) == len(attempts)
+        assert (
+            sum(event.metadata.get("error_code") == "provider_transport" for event in events) >= 1
+        )
+    finally:
+        await bus.close()
+        await consumer
+
+
+@pytest.mark.asyncio
 async def test_first_round_transport_failure_retries_then_becomes_structured_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3492,3 +3752,81 @@ async def test_truncated_tool_call_says_the_output_hit_the_limit(
     # The notice is a report, not a control-flow change: the round is handled
     # exactly as before and the turn still finishes.
     assert _answer_text(events) == "答案"
+
+
+@pytest.mark.asyncio
+async def test_wire_deduplicates_user_images_without_mutating_model_history(monkeypatch):
+    from copy import deepcopy
+
+    image = {"type": "image_url", "image_url": {"url": "data:image/png;base64,YWJj"}}
+    messages = [
+        {"role": "user", "content": [image]},
+        {"role": "assistant", "content": "answer"},
+        {"role": "user", "content": [deepcopy(image)]},
+    ]
+    original = deepcopy(messages)
+    client = _ScriptedChatClient([[_llm_chunk(content="answer")]])
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = _Registry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: [])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    pipeline._model_turn_start = 0
+    monkeypatch.setattr(pipeline, "_build_loop_messages", lambda *_args, **_kwargs: messages)
+    await _run(pipeline, UnifiedContext(session_id="s", user_message="again"))
+    wire = client.calls[0]["messages"]
+    assert wire[0]["content"][-1] == original[0]["content"][0]
+    assert "Repeated image" in wire[2]["content"][0]["text"]
+    assert [message["content"] for message in messages[:3]] == [
+        message["content"] for message in original
+    ]
+
+
+@pytest.mark.asyncio
+async def test_image_fallback_strips_all_canonical_copies_after_wire_deduplication(monkeypatch):
+    from copy import deepcopy
+
+    from deeptutor.services.llm.multimodal import has_image_parts
+
+    image = {"type": "image_url", "image_url": {"url": "data:image/png;base64,YWJj"}}
+    messages = [
+        {"role": "user", "content": [image]},
+        {"role": "user", "content": [deepcopy(image)]},
+    ]
+    client = _ScriptedChatClient(
+        [
+            [
+                _llm_chunk(
+                    tool_calls=[
+                        {"id": "search-1", "name": "web_search", "arguments": '{"query":"text"}'}
+                    ],
+                    finish_reason="tool_calls",
+                )
+            ],
+            [_llm_chunk(content="Text answer.")],
+        ]
+    )
+    create = client.chat.completions.create
+    attempted = []
+
+    async def reject_images(**kwargs):
+        attempted.append(deepcopy(kwargs["messages"]))
+        if has_image_parts(kwargs["messages"]):
+            raise RuntimeError("image input is not supported")
+        return await create(**kwargs)
+
+    client.chat.completions.create = reject_images
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.model = "gpt-3.5-turbo"
+    pipeline.registry = _Registry()
+    pipeline._model_turn_start = 0
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["web_search"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    monkeypatch.setattr(pipeline, "_build_loop_messages", lambda *_args, **_kwargs: messages)
+    context = UnifiedContext(session_id="s", user_message="again")
+    await _run(pipeline, context)
+    assert len(attempted) == 3
+    assert not has_image_parts(attempted[1])
+    assert not has_image_parts(attempted[2])
+    assert not has_image_parts(messages)
+    assert context.extension("source_visual_evidence")["image_hashes"] == []
+    assert "Repeated image" not in str(messages)
