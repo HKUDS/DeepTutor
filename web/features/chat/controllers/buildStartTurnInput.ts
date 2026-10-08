@@ -49,7 +49,9 @@ function capabilityConfig(input: StartTurnInput): Record<string, unknown> {
 }
 
 export function buildStartTurnInput(input: StartTurnInput): StartTurnCommand {
-  if (!input.content.trim()) invalid("Turn content must not be empty");
+  if (!input.content.trim() && !input.attachments?.length) {
+    invalid("Turn content must not be empty");
+  }
   if (input.subagentConsultBudget != null && input.subagentConsultBudget < 0) {
     invalid("Subagent consult budget must be non-negative");
   }

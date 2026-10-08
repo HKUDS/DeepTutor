@@ -14,7 +14,10 @@ range.
 **Self-service servers** (a user's own, ``strict=True``) additionally lose
 loopback and private ranges. The request is made by the *app process*, which
 holds every provider API key and shares a network with PocketBase and the
-sandbox runner; a URL a user supplies must not be able to aim it inward. This
+sandbox runner; a URL a user supplies must not be able to aim it inward. An explicit
+``allow_private_network`` selection can use RFC1918 addresses only for an
+origin approved in the administrator-owned registry; metadata and loopback
+remain blocked for self-service callers. This
 is what makes per-user MCP configuration safe to offer at all.
 
 Validation is deliberately re-run at connect time, not only when a server is
@@ -31,7 +34,10 @@ from urllib.parse import urlparse
 _BLOCKED_NETWORKS = [
     ipaddress.ip_network("0.0.0.0/8"),
     ipaddress.ip_network("169.254.0.0/16"),  # link-local / cloud metadata
-    ipaddress.ip_network("fe80::/10"),  # link-local v6
+    ipaddress.ip_network("fe80::/10"),
+    ipaddress.ip_network("fd00:ec2::254/128"),
+    ipaddress.ip_network("100.100.100.200/32"),
+    ipaddress.ip_network("::/128"),  # link-local v6
 ]
 
 # Additionally blocked for user-supplied URLs: everything that points back at
@@ -66,7 +72,9 @@ def _is_blocked(
     return any(normalized in net for net in networks)
 
 
-def validate_mcp_url(url: str, *, strict: bool = False) -> tuple[bool, str]:
+def validate_mcp_url(
+    url: str, *, strict: bool = False, trusted_origin: str | None = None
+) -> tuple[bool, str]:
     """Validate a remote MCP server URL: scheme, hostname, resolved IPs.
 
     ``strict`` applies the self-service posture (see the module docstring): a
@@ -81,31 +89,46 @@ def validate_mcp_url(url: str, *, strict: bool = False) -> tuple[bool, str]:
 
     if parsed.scheme not in ("http", "https"):
         return False, f"Only http/https allowed, got {parsed.scheme or 'none'!r}"
+    try:
+        _ = parsed.port
+    except ValueError as exc:
+        return False, str(exc)
     hostname = parsed.hostname
     if not hostname:
         return False, "Missing hostname"
 
+    if parsed.username or parsed.password or parsed.fragment:
+        return False, "MCP URLs must not contain embedded credentials or fragments"
+    private_allowed = trusted_origin is not None and mcp_origin(url) == trusted_origin
     try:
         infos = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
     except socket.gaierror:
         return False, f"Cannot resolve hostname: {hostname}"
 
+    resolved = False
     for info in infos:
         try:
             addr = ipaddress.ip_address(info[4][0])
         except ValueError:
             continue
-        if _is_blocked(addr, strict=strict):
+        resolved = True
+        normalized = _normalize_addr(addr)
+        approved_rfc1918 = private_allowed and any(normalized in network for network in _RFC1918)
+        if _is_blocked(addr, strict=False) or (
+            _is_blocked(addr, strict=strict) and not approved_rfc1918
+        ):
             return False, (
                 f"Blocked: {hostname} resolves to a disallowed address ({addr}). "
                 "A server you configure yourself must be reachable on the public internet."
                 if strict
                 else f"Blocked: {hostname} resolves to link-local/metadata address {addr}"
             )
-    return True, ""
+    return (True, "") if resolved else (False, "No usable address resolved for this MCP host")
 
 
-async def validate_mcp_url_async(url: str, *, strict: bool = False) -> tuple[bool, str]:
+async def validate_mcp_url_async(
+    url: str, *, strict: bool = False, trusted_origin: str | None = None
+) -> tuple[bool, str]:
     """:func:`validate_mcp_url` off the event loop.
 
     The check resolves DNS with a blocking call, which on a slow or dead
@@ -115,7 +138,48 @@ async def validate_mcp_url_async(url: str, *, strict: bool = False) -> tuple[boo
     """
     import asyncio
 
-    return await asyncio.to_thread(validate_mcp_url, url, strict=strict)
+    return await asyncio.to_thread(
+        validate_mcp_url, url, strict=strict, trusted_origin=trusted_origin
+    )
 
 
 __all__ = ["validate_mcp_url", "validate_mcp_url_async"]
+
+
+_RFC1918 = tuple(
+    ipaddress.ip_network(value) for value in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
+)
+
+
+def mcp_origin(url: str) -> str:
+    parsed = urlparse(url)
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+    ):
+        raise ValueError(
+            "A trusted MCP origin must be an http(s) server without embedded credentials"
+        )
+    host = parsed.hostname.casefold().rstrip(".")
+    if ":" in host:
+        host = f"[{host}]"
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    return f"{parsed.scheme}://{host}:{port}"
+
+
+def approved_private_origin(url: str) -> str | None:
+    """An admin-owned server approval grants only its exact scheme/host/port."""
+    from deeptutor.services.mcp.config import load_mcp_config
+
+    origin = mcp_origin(url)
+    for cfg in load_mcp_config().servers.values():
+        if not cfg.allow_private_network or cfg.resolved_type() not in {"sse", "streamableHttp"}:
+            continue
+        try:
+            if mcp_origin(cfg.url) == origin:
+                return origin
+        except ValueError:
+            continue
+    return None

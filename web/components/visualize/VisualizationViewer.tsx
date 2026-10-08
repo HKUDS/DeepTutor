@@ -449,7 +449,7 @@ function CanvasVisualization({ result }: { result: VisualizeCanvasResult }) {
   if (renderer === "svg") {
     return <SvgRenderer svg={result.code.content} />;
   }
-  if (renderer === "mermaid") {
+  if (renderer === "mermaid" || renderer === "mindmap") {
     return <Mermaid chart={result.code.content} />;
   }
   if (renderer === "html") {
@@ -499,6 +499,9 @@ function visualizationLabel(result: VisualizeCanvasResult): string {
   }
   if (renderer === "mermaid") {
     return `Mermaid · ${result.analysis.chart_type || "diagram"}`;
+  }
+  if (renderer === "mindmap") {
+    return `Mind map · ${result.presentation.title || "topics"}`;
   }
   return result.presentation.title
     ? `${result.renderer.id} · ${result.presentation.title}`

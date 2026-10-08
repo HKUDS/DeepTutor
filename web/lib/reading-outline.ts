@@ -67,6 +67,35 @@ export function extractEpubHeadings(
 }
 
 /**
+ * CommonMark fence tracking shared by the in-page outline and the renderer.
+ *
+ * A backtick fence whose info string itself contains a backtick is not a
+ * fence (it is inline code such as ```inline```). A closing line must be a
+ * bare run of the same character at least as long as the opener, so ```py
+ * inside a block stays content and does not swallow every later heading
+ * (#1641).
+ */
+function stepMarkdownFence(
+  fence: string | null,
+  line: string,
+): { fence: string | null; isFence: boolean } {
+  const match = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+  if (!match) return { fence, isFence: false };
+  const marker = match[1];
+  const info = match[2] ?? "";
+  if (!fence) {
+    if (marker.startsWith("`") && info.includes("`")) {
+      return { fence: null, isFence: false };
+    }
+    return { fence: marker, isFence: true };
+  }
+  if (marker[0] === fence[0] && marker.length >= fence.length && info.trim() === "") {
+    return { fence: null, isFence: true };
+  }
+  return { fence, isFence: false };
+}
+
+/**
  * Attach outline entries to source lines without changing a single character.
  *
  * Recogito's TextPosition selectors resolve against ``article.textContent``.
@@ -80,14 +109,14 @@ export function readerLinesWithHeadings(
   let fence: string | null = null;
   let headingIndex = 0;
   return text.split("\n").map((line) => {
-    const fenceMatch = /^\s*(`{3,}|~{3,})/.exec(line);
-    if (fenceMatch) {
+    const next = stepMarkdownFence(fence, line);
+    if (next.isFence) {
       // The fence delimiter line itself is reported as `fence: true` too, so
       // the renderer never runs Markdown formatting over a stray ``` marker.
-      if (!fence) fence = fenceMatch[1];
-      else if (line.trim().startsWith(fence)) fence = null;
+      fence = next.fence;
       return { text: line, heading: null, fence: true };
     }
+    fence = next.fence;
     if (fence) return { text: line, heading: null, fence: true };
 
     const parsed = readerHeadingLine(line);
@@ -114,13 +143,9 @@ export function extractReaderHeadings(
     if (!source) continue;
     let fence: string | null = null;
     for (const line of source.split(/\r?\n/)) {
-      const fenceMatch = /^\s*(`{3,}|~{3,})/.exec(line);
-      if (fenceMatch) {
-        if (!fence) fence = fenceMatch[1];
-        else if (line.trim().startsWith(fence)) fence = null;
-        continue;
-      }
-      if (fence) continue;
+      const next = stepMarkdownFence(fence, line);
+      fence = next.fence;
+      if (next.isFence || fence) continue;
       const heading = readerHeadingLine(line);
       if (heading) {
         headings.push({
