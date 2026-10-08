@@ -1,18 +1,21 @@
 """Native Matrix SDK error responses must reach the shared retry boundary."""
 
 from aiohttp import web
-from nio import AsyncClient, AsyncClientConfig
 import pytest
 
 from deeptutor.partners.bus.events import OutboundMessage
 from deeptutor.partners.bus.queue import MessageBus
 from deeptutor.partners.channels.manager import send_with_retry
-from deeptutor.partners.channels.matrix import MatrixChannel
 
 
 @pytest.mark.asyncio
 async def test_matrix_error_response_is_retried() -> None:
     """Exercise the native SDK against a local server, without a Matrix account."""
+    pytest.importorskip("nio")
+    from nio import AsyncClient, AsyncClientConfig
+
+    from deeptutor.partners.channels.matrix import MatrixChannel
+
     requests = 0
     delivered: list[str] = []
 
