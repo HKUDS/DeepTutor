@@ -95,7 +95,11 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
   const [error, setErrorState] = useState<string | null>(null);
   // Guards against a slow open landing after the user opened something else.
   const openTokenRef = useRef(0);
-  useEffect(() => () => { openTokenRef.current += 1; }, []);
+  const annotationScopeRef = useRef(0);
+  useEffect(() => () => {
+    openTokenRef.current += 1;
+    annotationScopeRef.current += 1;
+  }, []);
 
   // Mirror the open document into the turn-state cell, which is what the chat
   // reads when it sends. One effect rather than writes scattered through the
@@ -122,6 +126,7 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
         if (token !== openTokenRef.current) return false;
         const marks = await listAnnotations(detail.material_id);
         if (token !== openTokenRef.current) return false;
+        annotationScopeRef.current += 1;
         setMaterial(detail);
         setAnnotations(marks);
         return true;
@@ -143,6 +148,7 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
   const closeMaterial = useCallback(() => {
     // Bump the token so an open still in flight cannot resurrect the document.
     openTokenRef.current += 1;
+    annotationScopeRef.current += 1;
     setMaterial(null);
     setAnnotations([]);
     setErrorState(null);
@@ -183,19 +189,19 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
     async (annotation: AnnotationItem) => {
       const materialId = material?.material_id;
       if (!materialId) return;
-      let previous: AnnotationItem[] = [];
-      setAnnotations((current) => {
-        previous = current;
-        return current.filter(
-          (row) => row.annotation_id !== annotation.annotation_id,
-        );
-      });
+      const scope = annotationScopeRef.current;
+      setAnnotations((current) => current.filter(
+        (row) => row.annotation_id !== annotation.annotation_id,
+      ));
       try {
         await deleteAnnotationApi(materialId, annotation.annotation_id);
       } catch {
+        if (scope !== annotationScopeRef.current) return;
         // Put it back: pretending a failed delete succeeded would lose the mark
         // on the next reload.
-        setAnnotations(previous);
+        setAnnotations((current) => current.some(
+          (row) => row.annotation_id === annotation.annotation_id,
+        ) ? current : [...current, annotation]);
         setErrorState("That annotation could not be removed.");
       }
     },
