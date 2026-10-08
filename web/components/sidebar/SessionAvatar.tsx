@@ -202,6 +202,7 @@ export function SessionAvatar({
           speed={LIVE_SPEED}
           box={size}
           tone="live"
+          paused={!running}
         />
       </span>
       <span
