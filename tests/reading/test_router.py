@@ -504,6 +504,36 @@ def test_unit_text_is_addressed_by_locator(client: TestClient) -> None:
     assert "scaled dot-product" in body["text"]
 
 
+@pytest.mark.parametrize("headings", [True, False])
+def test_large_markdown_upload_keeps_every_unit_accessible_through_the_api(client, headings):
+    """#1641: heading/fence fallback must never make the end of a document unreachable."""
+    chunks = ["# Opening\n\n"]
+    for index in range(24):
+        if headings:
+            chunks.append(f"## Section {index}\n\n")
+        chunks.append(f"Document paragraph {index}. " * 100 + "\n\n")
+        if index == 5:
+            chunks.append("````markdown\n```python\n# Code, not an outline heading\n```\n````\n\n")
+    chunks.append("END-OF-DOCUMENT-SENTINEL")
+    source = "".join(chunks)
+    response = client.post(
+        "/api/reading/materials", files={"file": ("long.md", source.encode(), "text/markdown")}
+    )
+    assert response.status_code == 200
+    material = response.json()
+    assert material["unit_count"] > 1
+    detail = client.get(f"/api/reading/materials/{material['material_id']}").json()
+    assert detail["unit_count"] == material["unit_count"]
+    units = []
+    for locator in range(1, material["unit_count"] + 1):
+        unit = client.get(f"/api/reading/materials/{material['material_id']}/units/{locator}")
+        assert unit.status_code == 200
+        units.append(unit.json()["text"])
+    assert "END-OF-DOCUMENT-SENTINEL" in units[-1]
+    # Section boundaries may normalize whitespace, but cannot discard source characters.
+    assert "".join("".join(units).split()) == "".join(source.split())
+
+
 def test_unit_text_out_of_range_is_a_400_with_the_real_range(client: TestClient) -> None:
     material = _upload(client)
 

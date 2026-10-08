@@ -24,7 +24,7 @@ test("Watching links retain their owning workspace, including legacy sessions", 
   );
   assert.equal(
     normalizeWorkspaceMode("", "immersive_watching"),
-    "immersive_watching",
+    "immersive_reading",
   );
   assert.equal(capabilityForPath("/learning/watching/lesson"), "llm");
   assert.equal(capabilityForPath("/watching-other"), null);

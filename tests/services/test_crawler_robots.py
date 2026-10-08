@@ -158,3 +158,19 @@ async def test_concurrent_requests_fetch_robots_once_and_keep_minimum_pacing(cra
     assert all(
         b[1] - a[1] >= robots.DEFAULT_REQUEST_INTERVAL_S for a, b in zip(requested, requested[1:])
     )
+
+
+def test_absurd_crawl_delay_is_ignored_not_honored() -> None:
+    """A hostile robots.txt can otherwise park every request to this host on
+    one unbounded sleep; RFC 9309 lets crawlers cap unreasonable values."""
+    policy = robots.parse_robots_txt(
+        """
+User-agent: *
+Disallow: /private
+Crawl-delay: 1000000
+User-agent: deeptutor
+Crawl-delay: 45
+"""
+    )
+    assert policy.crawl_delay_s == 45
+    assert policy.permits("https://example.com/docs/open")
