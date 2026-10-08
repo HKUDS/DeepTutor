@@ -905,10 +905,14 @@ class PartnerManager:
             self._load_auto_start(partner_id, default=True) if preserve_auto_start else False
         )
 
-        for task in instance.tasks:
+        tasks = [
+            *instance.tasks,
+            *(turn.task for turn in instance.live_turns.values() if turn.task is not None),
+        ]
+        for task in tasks:
             if not task.done():
                 task.cancel()
-        for task in instance.tasks:
+        for task in tasks:
             try:
                 await asyncio.wait_for(asyncio.shield(task), timeout=5.0)
             except (asyncio.CancelledError, asyncio.TimeoutError):
@@ -1319,6 +1323,15 @@ class PartnerManager:
                 self._drive_web_turn(partner_id, session_key, content, media or [], turn),
                 name=f"partner:{partner_id}:webturn",
             )
+
+            def finish_cancelled(task: asyncio.Task) -> None:
+                # A task cancelled before its first step never enters the
+                # driver's try/except, but subscribers and its lease still need
+                # the terminal notification.
+                if task.cancelled() and not turn.done:
+                    turn.finish([{"type": "stopped"}])
+
+            turn.task.add_done_callback(finish_cancelled)
         except Exception:
             turn.finish([])
             instance.live_turns.pop(session_key, None)
