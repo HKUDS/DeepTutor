@@ -169,7 +169,9 @@ def render_view(doc: Document) -> LineView:
 # ── Apply edits ─────────────────────────────────────────────────────────
 
 
-def apply_edits(doc: Document, edits: Iterable[Edit]) -> tuple[Document, EditReport]:
+def apply_edits(
+    doc: Document, edits: Iterable[Edit], *, view: LineView | None = None
+) -> tuple[Document, EditReport]:
     """Apply a batch of edits, in reverse line order, to a fresh copy.
 
     Returns ``(new_doc, report)``. ``new_doc`` is always returned; if
@@ -180,7 +182,9 @@ def apply_edits(doc: Document, edits: Iterable[Edit]) -> tuple[Document, EditRep
     Reverse order avoids line-number drift: removing line 5 does not
     affect the meaning of "line 3" since 3 < 5 and we process 5 first.
     """
-    view = render_view(doc)
+    # Chunked callers retain the view from which all model prompts were built.
+    # Its entry IDs keep later edits anchored after earlier lines are deleted.
+    view = view if view is not None else render_view(doc)
     edit_list = _sort_reverse(list(edits))
     report = EditReport()
 
