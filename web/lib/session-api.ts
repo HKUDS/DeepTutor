@@ -167,7 +167,7 @@ export interface SessionDetail {
     "idle" | "running" | "completed" | "failed" | "cancelled" | "rejected";
   active_turn_id?: string;
   compressed_summary?: string;
-  summary_up_to_msg_id?: number;
+  summary_up_to_msg_id?: number | string;
   preferences?: SessionPreferences;
   messages: SessionMessage[];
   active_turns?: ActiveTurnSummary[];
