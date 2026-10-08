@@ -44,7 +44,7 @@
 
 ---
 
-> 🤝 **あらゆる形の貢献を歓迎します！** [`ロードマップ`](https://github.com/HKUDS/DeepTutor/issues/498) でアイテムに投票したり新しいアイデアを提案したりできます。ブランチ戦略、コーディング基準、参加方法については [貢献ガイド](../../CONTRIBUTING.md) をご覧ください。
+> 🤝 **あらゆる形の貢献を歓迎します！** [`Roadmap`](https://github.com/HKUDS/DeepTutor/issues/498) でアイテムに投票したり新しいアイデアを提案したりできます。ブランチ戦略、コーディング基準、参加方法については [貢献ガイド](../../CONTRIBUTING.md) をご覧ください。
 
 ### 📰 ニュース
 
@@ -60,10 +60,10 @@
 
 DeepTutorは、個別指導、問題解決、クイズ生成、研究、ビジュアライゼーション、習熟度練習を1つの拡張可能なシステムに統合したエージェントネイティブな学習ワークスペースです。
 
-- **すべてのモードで1つのランタイム** — Chat、Ask Questions、Quiz、Research、Visualize、Solve、Course Study、Mastery Path、Immersive Reading、Immersive Watchingは、同じ機能ランタイムとセッションコンテキストを共有しながら、用途別に設計されたループとパイプラインを維持します。
+- **すべてのモードで1つのランタイム** — Chat、Ask Questions、Quiz、Research、Visualize、Solve、Course Study、Mastery Path、Immersive Reading、Audio Overviewは、同じ機能ランタイムとセッションコンテキストを共有しながら、用途別に設計されたループとパイプラインを維持します。
 - **Task Board** — 学習タスクをTo do、In progress、Doneで管理できます。メモ、ドラッグ＆ドロップやキーボードで操作できる移動ボタン、復元可能なアーカイブを備えます。カードは現在のワークスペースに保存され、既存の外観と言語の設定に従います。モデル設定は不要です。
 - **接続された学習コンテキスト** — 知識ベース、本、Co-Writerの下書き、ノートブック、問題バンク、ペルソナ、Memoryは、アカウントのグラントと学習ポリシーに従い、それらをサポートするワークフロー間で再利用できます。
-- **没入型動画学習** — YouTubeリンクを貼り付けるだけで、プライバシー強化ネイティブ再生、同期字幕、タイムスタンプに基づく個別指導、タイムスタンプのマークの保存、再開可能な進捗を利用できます。管理者は教材を再構築せずに、再生をセルフホストのInvidiousインスタンスへ切り替えられます。
+- **没入型動画学習** — YouTubeやBilibiliのリンクをReadingに追加すると、ネイティブ再生、文字起こしの検索、タイムスタンプに基づく個別指導、ノートの保存、再開可能な進捗を利用できます。YouTubeの字幕取得と動画の閲覧には、管理者が設定したInvidiousインスタンスを使用できます。
 - **サブエージェントとPartners** — Chatからライブエージェントハーネス（Claude Code、Codex、Grok CLI、Antigravity、Kimi、opencode、MiMo、Hermes、OpenClaw、DeepSeek）またはPartnerに相談し、過去の会話をインポートし、同じブレインで永続的なIMコンパニオンを実行できます。
 - **マルチエンジン知識** — LlamaIndex、PageIndex、GraphRAG、LightRAG、リモートのLightRAG Server、セルフホストのWeKnora知識ベース、Tencent IMAまたはMarginNote 4ライブラリ、接続されたKiwix ZIMアーカイブ、あるいはリンクされたObsidianボールトにまたがるバージョン管理されたRAGライブラリ（プラグ可能なドキュメント解析付き）。独立した抽出・クエリ・ビジョン設定、デフォルトのみの作成、確認付き再構築については[ネイティブLightRAGロールモデル](../../deeptutor/services/rag/pipelines/lightrag/README.md)を参照してください。
 - **拡張可能なツールとスキル** — 組み込みツール、MCPサーバー、CLIアプリ、画像/ビデオ/音声生成モデル、EduHubからインストール可能なコミュニティスキル。
@@ -72,6 +72,22 @@ DeepTutorは、個別指導、問題解決、クイズ生成、研究、ビジ�
 ---
 
 ## 🚀 はじめに
+
+### エージェントにDeepTutorのセットアップを任せる
+
+次のプロンプトを、ターミナルを操作できるAIエージェント（CodexやClaude Codeなど）にコピーしてください：
+
+```text
+Help me install and configure DeepTutor locally from https://github.com/HKUDS/DeepTutor.
+Clone the repository, or reuse my existing checkout, and read SKILL.md and
+docs-for-user/AGENT_SETUP.md first. Follow that guide to prepare the environment,
+configure my model provider, verify the setup, and start the Web app.
+Ask me for any missing provider, model, or credential-source information;
+do not print API keys. Preserve my existing files and settings, and finish
+with the access URL and the results of your checks.
+```
+
+[エージェントセットアップガイド](../../docs-for-user/AGENT_SETUP.md)は、対話なしでのCLI設定を含む一連の手順を説明しています。自分でインストールする場合は、以下の方法から選んでください。
 
 DeepTutorは4つのインストールパスを提供しています。どれも同じランタイムホームのレイアウトを共有します。プライベート設定は、起動元のディレクトリ（または明示的に設定した場合は`DEEPTUTOR_HOME`/`deeptutor start --home`）配下の`data/user/settings/`に保存されます。フルアプリの場合、推奨されるフローは **ランタイムホームディレクトリの選択 → インストール → `deeptutor init` → `deeptutor start`** です。
 
@@ -343,7 +359,7 @@ deeptutor config show
 | `integrations.json` | オプションのPocketBaseとサイドカー統合設定 |
 | `interface.json` | UIの言語とモデル出力言語/テーマ/サイドバー設定 |
 | `document_parsing.json` | 解析エンジンと画像説明モデルの選択、リモートエンドポイント、エンジン固有のオプション |
-| `video_learning.json` | デフォルトのYouTube/Invidious再生プロバイダー、Invidiousオリジン、オプションの文字起こしアダプター |
+| `video_learning.json` | YouTube字幕プロバイダー、Invidiousオリジンとアカウントアクセス、文字起こし設定 |
 | `main.yaml` | ランタイム動作のデフォルトとパス注入 |
 | `agents.yaml` | 機能/ツールのtemperatureとトークン設定 |
 
@@ -439,7 +455,7 @@ Chatはデフォルト機能であり、ほとんどの作業が始まる場所�
 
 コンテキストには2種類あります：**スティッキーセッションコンテキスト**（機能、ワークスペースまたはコース、ツール、知識ベース、ペルソナ、モデル、Reading / Masteryの状態）はターンをまたいで持続します。**ワンタイム参照**（ファイル、チャット履歴、本、読書セクション、ノートブック、問題バンクから選択した項目、インポートしたエージェント）は単一のターンのために`+`メニューから追加します。音声ボタンが文字起こしするのは現在のメッセージだけです。
 
-Homeでは**Chat**、**Ask Questions**、**Quiz**、**Visualize**にワンクリックでアクセスできます。引用付きレポートの**Research**、手順を追った推論の**Solve**、**Immersive Watching**は*その他の機能*の下にあります。**個別学習**にはBook、**Mastery Path**、**Immersive Reading**、Watching、**練習**がまとまっています。Readingには検証済みの引用、保存したノート、ソースの文章からの自然な読み上げ / 学習ガイダンス / 語彙 / クイズ / 翻訳アクション、ノートブックへの取り込みがあり、Course Studyはコースに紐づいたコンテキストを維持します。
+Homeでは**Chat**、**Ask Questions**、**Quiz**、**Visualize**にワンクリックでアクセスできます。引用付きレポートの**Research**と手順を追った推論の**Solve**は*その他の機能*の下にあります。**個別学習**にはBook、**Mastery Path**、**Immersive Reading**、**練習**がまとまっています。Readingは文書、動画、音声をまとめ、検証済みの引用、保存したノート、ソースの文章からの自然な読み上げ / 学習ガイダンス / 語彙 / クイズ / 翻訳アクション、ノートブックへの取り込みを提供します。Course Studyはコースに紐づいたコンテキストを維持します。
 
 </details>
 
@@ -603,9 +619,9 @@ Settingsはオペレーションコントロールプレーンで、最初に表
 
 **Xiaomi MiMoの音声合成。** `https://api.xiaomimimo.com/v1`とAPIキーを指定してXiaomi MiMoプロバイダーを追加し、Settings → Voiceで`mimo-v2.5-tts`を追加します。`mimo_default`、`冰糖`、`苏打`などのプリセットを選び、出力形式を`wav`または`pcm16`にして、適用前に試聴してください。音声指示でスタイルと読み上げ速度を調整できます。このアダプターはプリセット音声のみをサポートします。音声デザインと音声クローンには別のモデルが必要で、このアダプターでは利用できません。以前のMiMo音声モデルを汎用のOpenAI互換アダプターで設定していた場合は、Xiaomi MiMoプロバイダーを使って音声エントリーを作成し直し、chat-completionsプロトコルを使うようにしてください。[MiMo公式音声ガイド](https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/speech-synthesis-v2.5)を参照してください。
 
-**MiniMaxの音声合成** — Settings → Voiceでテキスト読み上げにMiniMaxを選択し、`speech-2.8-hd`を選びます。MiniMaxのAPIキーと、システム音声またはカスタム音声のIDを設定してください。デフォルトの音声は`English_expressive_narrator`です。APIベースのデフォルトは`https://api.minimax.io/v1`で、中国リージョンでは`https://api.minimaxi.com/v1`を使用します。読み上げと音声プレビューはネイティブの音声エンドポイントを使用し、MP3、WAV、FLAC、PCMの出力形式、サンプルレート、速度、言語を調整できます。音声IDとアカウントでの利用可否については、[MiniMax音声API](https://platform.minimax.io/docs/api-reference/speech-t2a-http)を参照してください。
+**MiniMaxの音声合成** — Settings → Voiceでテキスト読み上げにMiniMaxを選択し、`speech-2.8-hd`を選びます。MiniMaxのAPIキーを設定し、システム音声を明示的に選択するか、カスタム音声のIDを入力してください。APIベースのデフォルトは`https://api.minimax.io/v1`で、中国リージョンでは`https://api.minimaxi.com/v1`を使用します。読み上げと音声プレビューはネイティブの音声エンドポイントを使用し、MP3、WAV、FLAC、PCMの出力形式、サンプルレート、速度、言語を調整できます。音声IDとアカウントでの利用可否については、[MiniMax音声API](https://platform.minimax.io/docs/api-reference/speech-t2a-http)を参照してください。
 
-Settings → Learning & conversationの**Video Learning**は、デフォルトで公式のプライバシー強化YouTube IFrame Playerを使用します。再生をローカルに保つには、管理者が管理するInvidious APIオリジン（例：`http://127.0.0.1:3000`）を設定してテストし、Invidiousを選択して保存します。新規または再度開いた動画には、同じ教材IDと進捗のままプロバイダーが直ちに反映されます。InvidiousメディアはDeepTutorのバイトレンジプロキシ経由でストリーミングされ、アップストリームURLがブラウザに公開されたりディスクに保存されたりすることはありません。インスタンスに障害が発生した場合、学習者がネイティブのYouTubeフォールバックを明示的に選択するまで、DeepTutorはYouTubeへ接続しないままです。公開字幕による個別指導はオプションです：`.[video-learning]`をインストールしてください。未インストールでも再生は続行しますが、文字起こしに基づく**Explain here**は理由とともに無効になります。
+Settings → Learning & conversationの**Video Learning**では、Reading用のYouTube字幕とInvidiousへのアクセスを設定します。Invidiousを使用するには、管理者が管理するバックエンドAPIオリジン（例：`http://127.0.0.1:3000`）とブラウザからアクセスできる公開オリジンを設定し、接続をテストして、Invidiousを選択して保存します。Readingの教材追加ダイアログにある**Browse Invidious**から動画を検索し、接続済みの登録チャンネルやプレイリストにアクセスできます。YouTubeの再生には公式のプライバシー強化プレーヤーを使用します。字幕がない場合もその状態が表示され、チューターが参照できる根拠は制限されますが、ネイティブ再生は妨げられません。デフォルトのYouTube字幕ローダーを使用するには`.[video-learning]`をインストールしてください。既存のWatchingリンクは、会話履歴、互換性のある文字起こし、ノート、進捗を保持してReadingに移行されます。新しいタイムスタンプ付きノートはReadingの注釈として保存されます。Bilibiliは独自の再生と字幕取得の経路を使用します。
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="DeepTutor外観設定とテーマ" width="900">
@@ -659,7 +675,7 @@ data/
 
 **有効化：** `data/user/settings/auth.json`で認証をオンにし、`deeptutor start`を再起動し、`/register`で最初の管理者を登録し、`/admin/users`からユーザーを追加し、グラントを通じてモデル、KB、スキル、Partner、ツール/MCP/CLIアプリポリシー、コード実行アクセスを割り当てます。各ユーザーの**Book access**パネルで共有Bookを設定してください。
 
-プライベート/パブリックのオリジンを分離する場合は、パスワードサインインと登録を表示してよいプライベートなフロントエンドホストを`auth.private_login_hosts`（または`AUTH_PRIVATE_LOGIN_HOSTS`）に設定します。フロントエンドは受信したHTTPの`Host`をフロントエンドホストのアサーションとしてバックエンドに転送します。リバースプロキシを通してブラウザの`Host`を保持し、公開側のイングレスがプライベートホストを名乗るリクエストを拒否するようにしてください。任意の`Host`値を受け付ける生のNext.jsポートを公開してはいけません。HTTPの`Host`は直接のクライアントによって偽装できるため、プライベートホストの認可はそのイングレス境界に依存します。バックエンドはデフォルトでループバックからのフロントエンドホストアサーションのみを受け付けます。Webフロントエンドが別のコンテナまたはホストから接続する場合は、そのフロントエンドプロキシの正確なIPアドレスをバックエンドプロセスの`AUTH_TRUSTED_FRONTEND_PROXY_IPS`に設定してください（複数ある場合はコンマ区切り）。バックエンドAPIはフロントエンドプロキシのみに対して非公開のままにし、このリストに一般的なクライアントネットワークを含めないでください。ループバックは常に許可されます。リストが空でない場合、プライベートオリジン上の認証済みユーザーは**Profile → Public device sign-in**を開き、HTTPSパブリックオリジン向けの短命でホストに紐づいたペアリングリンクを作成できます。公開の`/handoff`ページはワンタイムコードをPOSTボディ内の同様に短命な`JWE`チケットと交換し、そのチケットを一度だけ消費して、通常の`HttpOnly`セッションクッキーを受け取ります。
+プライベート/パブリックのオリジンを分離する場合は、パスワードサインインと登録を表示してよいプライベートなフロントエンドホストを`auth.private_login_hosts`（または`AUTH_PRIVATE_LOGIN_HOSTS`）に設定します。フロントエンドは受信したHTTPの`Host`をフロントエンドホストのアサーションとしてバックエンドに転送します。リバースプロキシを通してブラウザの`Host`を保持し、公開側のイングレスがプライベートホストを名乗るリクエストを拒否するようにしてください。任意の`Host`値を受け付ける生のNext.jsポートを公開してはいけません。HTTPの`Host`は直接のクライアントによって偽装できるため、プライベートホストの認可はそのイングレス境界に依存します。バックエンドはデフォルトでループバックからのフロントエンドホストアサーションのみを受け付けます。Webフロントエンドが別のコンテナまたはホストから接続する場合は、そのフロントエンドプロキシの正確なIPアドレスをバックエンドプロセスの`AUTH_TRUSTED_FRONTEND_PROXY_IPS`に設定してください（複数ある場合はコンマ区切り）。バックエンドAPIはフロントエンドプロキシのみに対して非公開のままにし、このリストに一般的なクライアントネットワークを含めないでください。ループバックは常に許可されます。リストが空でない場合、プライベートオリジン上の認証済みユーザーは**Profile → Public device sign-in**を開き、HTTPSパブリックオリジン向けの短命でホストに紐づいたペアリングリンクを作成できます。公開の`/handoff`ページはワンタイムコードをPOSTボディ内の同様に短命なJWEチケットと交換し、そのチケットを一度だけ消費して、通常のHttpOnlyセッションクッキーを受け取ります。
 
 > PocketBaseはシングルユーザー統合のままです — 外部ユーザーストアを組み込まない限り、マルチユーザーデプロイメントでは`integrations.pocketbase_url`を空白にしてください。
 
@@ -703,7 +719,7 @@ SID=$(deeptutor run deep_research "Survey 2026 papers on RAG" \
 deeptutor run deep_question "Quiz me on that survey" --session "$SID" --format json
 ```
 
-リポジトリにはルートの[`SKILL.md`](../../SKILL.md)が含まれています — ツール使用可能なLLMにサーフェス全体を1回の読み取りで教える約200行のハンドオーバードキュメント。Claude Code、Codex、OpenCodeに渡してください（これらは`SKILL.md`を自動的に取得します）、または`deeptutor run`をLangChain / AutoGenループのツールとしてラップしてください。完全なレシピ：[Agent Handoff](https://deeptutor.info/docs/cli/agent-handoff/)。
+リポジトリには、CLIの簡潔な引き継ぎドキュメントであるルートの[`SKILL.md`](../../SKILL.md)が含まれています。エージェントに明示的に読み取るよう依頼してください。[エージェントセットアップガイド](../../docs-for-user/AGENT_SETUP.md)では、インストールと設定を説明しています。`deeptutor run`をLangChain / AutoGenループのツールとしてラップすることもできます。完全なレシピ：[Agent Handoff](https://deeptutor.info/docs/cli/agent-handoff/)。
 
 </details>
 
@@ -712,13 +728,13 @@ deeptutor run deep_question "Quiz me on that survey" --session "$SID" --format j
 
 | コマンド | 説明 |
 |:---|:---|
-| `deeptutor init` | 現在のランタイムホームの`data/user/settings`を作成または更新 |
+| `deeptutor init [--non-interactive] [--home PATH]` | セットアップウィザードを実行、または入力を求めずに不足しているデフォルト設定を作成 |
 | `deeptutor doctor [--online]` | ランタイムがセッションを開始できる状態か確認；`--online`は設定済みのモデルプロバイダーもプローブし、`--format json`はレポートを出力 |
 | `deeptutor start [--home PATH] [--dev] [--detach] [--no-browser]` | バックエンド + フロントエンドを一緒に起動。必要に応じてデタッチ、またはブラウザを開かないようにできます |
 | `deeptutor stop [--home PATH]` | `--detach`で起動したランチャーを停止 |
 | `deeptutor serve [--port PORT]` | FastAPIバックエンドのみ起動 |
 | `deeptutor workspace show/set/reset` | ユーザーごとのContent Workspaceを検査、選択、または復元 |
-| `deeptutor run <capability> <message>` | 単一機能ターンを実行（`chat`、`ask_questions`、`deep_solve`、`deep_question`、`deep_research`、`visualize`、`math_animator`、`mastery_path`、`immersive_reading`、`course_study`、`immersive_watching`、`audio_overview`）；`--format json`でNDJSON出力 |
+| `deeptutor run <capability> <message>` | 単一機能ターンを実行（`chat`、`ask_questions`、`deep_solve`、`deep_question`、`deep_research`、`visualize`、`math_animator`、`mastery_path`、`immersive_reading`、`course_study`、`audio_overview`）；`--format json`でNDJSON出力 |
 | `deeptutor chat` | 機能、ツール、KB、ノートブック、履歴コントロール付きインタラクティブREPL |
 | `deeptutor partner list/create/start/stop` | IM接続Partnersを管理 |
 | `deeptutor kb list/info/create/connect-kiwix/add/search/eval/set-default/delete/list-sources/sync` | 知識ベースを管理し、Kiwixアーカイブへ接続し、QAセットに対する検索品質を採点し、登録済みGitHub/Webソースを同期（ソースの追加/削除コマンドを含む） |
@@ -727,9 +743,17 @@ deeptutor run deep_question "Quiz me on that survey" --session "$SID" --format j
 | `deeptutor session list/show/open/rename/delete` | 共有セッションを管理 |
 | `deeptutor notebook list/create/show/add-md/replace-md/remove-record` | Markdownファイルからノートブックを管理 |
 | `deeptutor book list/health/refresh-fingerprints` | 本を検査してソースフィンガープリントを更新 |
-| `deeptutor plugin list/info` | 登録済みツールと機能を検査 |
-| `deeptutor config show` | 設定サマリーを出力 |
-| `deeptutor provider login <provider>` | プロバイダー認証（`openai-codex` OAuthログイン；`github-copilot`は既存のCopilot認証セッションを検証；`codebuddy`はCodeBuddy SDK認証を検証し、必要に応じてログインを開始） |
+| `deeptutor plugin list/info/state/search/show/install/approve/enable/disable/rollback/uninstall` | ツールと機能を検査し、レビュー済みプラグインパッケージとその権限承認を管理 |
+| `deeptutor config show [--home PATH]` | 認証情報を伏せて、解決済みのランタイム設定を表示 |
+| `deeptutor config providers` | 対応するセットアップ用プロバイダーとデフォルト値をJSONで一覧表示 |
+| `deeptutor config apply FILE [--check] [--home PATH]` | 入力を求めずにセットアップ用JSONを適用、または設定を書き込まずに検証 |
+| `deeptutor provider login <provider>` | プロバイダー認証（`openai-codex` OAuthログイン；`github-copilot`はGitHubのデバイスログイン；`codebuddy`はCodeBuddy SDK認証を検証し、必要に応じてログインを開始） |
+
+GitHub Copilotの認証情報はサインインしたDeepTutorの所有者に属し、サンドボックスのワークスペースの外にある`<runtime-home>/data/system/user-secrets/<owner-id>/private/github-copilot/credentials.v1.json`にのみ保存されます。CLIや管理者のPartnerは管理者の認証情報を使用します。その他のユーザーは個別にサインインし、Copilotのプロフィールはモデルのグラントを通じて共有できません。外部のnanobot/Copilotトークンファイルはインポートされません。アップグレード後は`deeptutor provider login github-copilot`を再度実行してください。
+
+ログインは現在検出されているモデルで推論を検証します。`init`は選択したモデルを検証し、失敗した場合は下書きの設定を保存せずに中止します。GitHub認証の成功だけではCopilotモデルへのアクセスは確認できません（検証に失敗しても保存済みのログインは保持されます）。ランタイムのリクエストは、更新時も含めトークン交換で返されたAPIエンドポイントに従い、各モデルのResponses/Chat Completionsエンドポイントのメタデータを尊重します。
+
+Copilot固有のResponses互換処理は、保存済みの履歴を書き換えず、リクエストの送信時に適用されます。
 
 </details>
 
@@ -890,3 +914,11 @@ DeepTutorがコミュニティへのギフトになることを願っていま�
 </p>
 
 </div>
+
+### Masteryターンのグラウンディング
+
+Masteryターンでは、最初のモデルリクエストの前に、明示的なツール呼び出しと同じステータスツールと習熟度ゲートを使って、アクティブなパスの状態を読み取ります。このスナップショットはターンごとに更新され、アクティブなセッションモードを含み、ターンをまたいでキャッシュされることはありません。読み取りに失敗した場合は`mastery_status`にフォールバックします。パス、モード、アウトライン、進捗を変更した後も、チューターはこのツールで状態を更新できます。カードの採点と既存の引き継ぎは変わりません。
+
+### 重複する画像添付
+
+エージェントループは、同一のユーザーのインライン画像をリクエストごとに1回だけ送信し、後続のコピーを保持した画像への参照に置き換えます。リクエスト内だけで使われる安定したラベルにより、プロバイダー向けの変換やターンの追加をまたいで、保持したインライン画像を識別します。重複しない画像ブロック、リモートURL、画像オプションが異なるもの、アシスタントメッセージ、ツールの結果は完全なまま保持されます。保存済みの履歴には元の添付ファイルがすべて残り、履歴が短縮された後に参照が再構築されます。これにより重複する画像ペイロードが減りますが、請求とキャッシュヒットについては引き続きプロバイダーが報告する使用量を正とします。

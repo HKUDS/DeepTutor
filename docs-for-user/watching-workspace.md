@@ -1,66 +1,23 @@
-# Immersive Watching workspace
+# Video learning in Immersive Reading
 
-Open **Immersive Watching** in the sidebar, or visit `/watching`. Paste a YouTube URL and open the video. The first question creates a conversation at `/watching/{sessionId}`. Desktop shows video beside the conversation; smaller screens have Video and Conversation buttons that preserve the mounted player.
+Open **Reading** under Learning, add a YouTube or Bilibili URL to a collection, and study it beside the tutor. Videos use the same reading material, transcript, annotations and conversation stores as documents. The media stage supports transcript search and follow, timestamp citations, fullscreen viewing and the current/next caption lines. Missing captions or unsupported playback are shown explicitly; a tutor must not claim to have watched footage from transcript text alone.
 
-The workspace reuses the chat runtime and the existing timed-media APIs. Session preferences store `workspace_mode: "immersive_watching"` and `timed_media_id`; material access is checked against the current user's store. Existing Watching conversations recover their material from their latest recorded turn when the preference is absent. Browser-global recent-video storage is no longer a source of session identity. A new draft starts empty; send a question to save it as a conversation.
+New timestamped notes are Reading annotations. Their location is captured when the editor opens, so playback moving while you write does not move the note. Failed saves keep the draft for retry; an older save finishing does not erase newer text.
+
+## Existing Watching conversations
+
+Standalone Watching is retired. Existing `/watching/{sessionId}` and `/learning/watching/{sessionId}` links open a compatibility route that explicitly migrates the conversation into Reading. The conversation ID and messages stay the same. Legacy video JSON remains a provider/cache record; existing **Video Learning** notebook records remain readable and are not rewritten. Compatible transcripts, notes and saved positions are copied into Reading idempotently, and an existing Reading position wins over an older imported position.
+
+Session listing and inspection do not create materials. Migration happens when the learner opens the legacy conversation or continues a legacy turn. If the legacy video cache is missing, its conversation remains available as ordinary chat with the unavailable-video state recorded; another video is never silently substituted. Other migration failures preserve the original preferences and offer retry.
 
 ## Configure Invidious
 
-In administrator settings, open the video-learning section, enter the existing instance's backend API origin and public origin, test the connection, and select Invidious as the default provider. Settings are persisted by the application's administrator path service as `video_learning.json`; do not put them in the project `.env` or hard-code them in frontend code.
+In administrator settings, open video-learning settings, enter the instance's backend API origin and public origin, test the connection, and select Invidious as the default provider. Reading's YouTube-caption loader uses that configured provider. Bilibili remains independent. An unavailable caption service does not make a natively playable video unusable, but the missing transcript is visible and the tutor's evidence remains limited.
 
-- `invidious.api_base_url`: an origin reachable by the DeepTutor backend. Loopback is suitable only when the backend and instance share a host network. Containers must use an appropriate service or host address.
-- `invidious.public_base_url`: the same instance's origin reachable by the user's browser/device.
-Private HTTP origins include loopback, LAN and RFC 6598 shared addresses used by overlays such as Tailscale. Public instances must use HTTPS.
+`invidious.api_base_url` must be reachable by the backend; `invidious.public_base_url` must be reachable by the browser. Private HTTP origins can use loopback, LAN or overlay addresses under the existing configured-instance policy. Public instances require HTTPS. Keep settings in `video_learning.json`; project `.env` files are ignored.
 
-- `default_provider`: `invidious` or `youtube`.
+Use **Browse Invidious** in the add-material dialog to search or select from an account's subscriptions and playlists. Account tokens remain owner-private. Older tokens without `GET:feed`, `GET:playlists` and `GET:playlists/*` require reconnection; no subscription or playlist mutations are requested. DeepTutor never asks for the Invidious password. Authorization occurs on the configured instance, and callback feedback returns to Reading without placing a token in the redirect target. Disconnect failure preserves the token for retry.
 
-DeepTutor continues to proxy media through its authenticated video-learning endpoints. Do not replace the player with an Invidious iframe or relax the stream proxy's allowed-origin checks. Invidious failure remains visible; switching to native YouTube requires the user's explicit action.
+## Verification and recovery
 
-## Verify and troubleshoot
-
-1. Open a captioned video and check actual playback and seeking, not just the instance status endpoint. Media requests should support byte ranges (`206` where applicable).
-2. Click a caption, use Explain here, follow an answer's timestamp, and save/reopen a timestamped note.
-3. Refresh the conversation URL, visit another conversation, and return. Confirm both the material and saved progress; ordinary Chat and Reading must retain their own context.
-4. Repeat with a narrow viewport, missing captions, an unavailable instance, and a user who cannot access the material.
-
-If metadata works but playback fails, inspect the authenticated stream response and the configured instance's media/companion service. If captions are unavailable, use Retry captions; do not silently substitute a different provider. A missing or unauthorized saved video leaves an error and an empty video surface rather than another conversation's video.
-
-## Deployment and rollback
-
-Before deployment, record the running commit, save the tracked working-tree diff, and back up the video settings and service launch configuration. Build a separate release directory containing the existing deployment changes plus the reviewed Watching patch. Keep the existing data directory and owner identity; do not copy user data into Git.
-
-Run frontend type, contract, lint, translation and build checks, the Watching browser tests, and `pytest tests/video_learning`. Switch service paths only after the release is ready. Check `/watching`, `/reading`, `/chat` and real Invidious playback. On failure, restore the previous service paths and video settings, restart the old release, and verify readiness. Leave the previous working tree and its uncommitted changes intact.
-
-## Connected Invidious browsing
-
-Watching can search videos without an Invidious account. Connect an account from
-Watching to read its subscription feed and playlists, including private playlists.
-Video selection uses the existing timed-media resolver and opens a fresh Watching
-conversation; older conversations retain their original material.
-
-The account workflow reuses the owner-private account store and transport adapter.
-The additional scopes are `GET:feed`, `GET:playlists`, and `GET:playlists/*`.
-Older tokens require reconnection; subscription and playlist mutations are not requested.
-DeepTutor never asks for the Invidious password. Sign in and consent on the configured
-Invidious site. Revocation failures retain the saved token so disconnect can be retried.
-
-Set the administrator's `api_base_url` to an address reachable by the backend and
-`public_base_url` to the same instance's browser-reachable origin. Set
-`DEEPTUTOR_PUBLIC_URL` in the backend service environment to DeepTutor's canonical
-external origin. Restart the backend after changing that environment variable.
-Authorization uses the public instance origin; API requests use the internal origin.
-The callback returns to Watching with a non-sensitive outcome and no token in the
-redirect target. An expired application login must be renewed before reconnecting.
-
-For diagnosis, verify search first, then authorize, inspect subscription feed and
-playlist contents, select a video, and verify actual playback and seeking. An empty
-feed can mean that the account has no subscriptions. Expired/revoked tokens require
-reconnection; an unavailable instance offers retry. Provider failure never selects
-YouTube playback automatically.
-
-Before deploying, back up service definitions, video settings, and owner-private
-account files with their original restrictive permissions. Build in an isolated
-release directory and verify Reading and ordinary chat as well as Watching. Roll
-back service paths, environment, and settings to the previous release if acceptance
-fails; do not overwrite user data created after deployment. Preserve newly issued
-tokens until they can be explicitly revoked on the instance.
+Check playback, seeking, transcript search/follow, timestamp citations, and note save/edit/retry. Reopen a migrated conversation and confirm that its message history and source identity remain unchanged. Also check missing captions, an unavailable provider, narrow screens and owner access boundaries. Preserve the existing data directory and owner identity during deployment or rollback; do not overwrite newer user data with a backup merely to undo a frontend change.
