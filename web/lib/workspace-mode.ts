@@ -1,5 +1,5 @@
 export type WorkspaceMode =
-  "immersive_reading" | "mastery_path" | "immersive_watching";
+  "immersive_reading" | "mastery_path";
 
 export const READING_WORKSPACE_MODE = "immersive_reading" as const;
 export const MASTERY_WORKSPACE_MODE = "mastery_path" as const;
@@ -23,17 +23,19 @@ export function normalizeWorkspaceMode(
 ): WorkspaceMode | null {
   if (
     value === READING_WORKSPACE_MODE ||
-    value === MASTERY_WORKSPACE_MODE ||
-    value === "immersive_watching"
+    value === MASTERY_WORKSPACE_MODE
   ) {
     return value;
   }
+  if (value === "immersive_watching") return READING_WORKSPACE_MODE;
   if (
     legacyCapability === READING_WORKSPACE_MODE ||
     legacyCapability === MASTERY_WORKSPACE_MODE ||
     legacyCapability === "immersive_watching"
   ) {
-    return legacyCapability;
+    return legacyCapability === "immersive_watching"
+      ? READING_WORKSPACE_MODE
+      : legacyCapability;
   }
   return null;
 }

@@ -3,13 +3,25 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
+
+_LOGGER = logging.getLogger(__name__)
 
 MODES = {
     "mastery_path": "learning",
     "immersive_reading": "reading",
     "immersive_watching": "timed_media",
 }
+
+
+def _warn(warnings: list[str] | None, message: str) -> None:
+    """Unreadable sources stay skipped, but each skip is surfaced exactly once."""
+    if warnings is not None and message in warnings:
+        return
+    _LOGGER.warning("%s", message)
+    if warnings is not None:
+        warnings.append(message)
 
 
 def _preferences(row):
@@ -24,13 +36,20 @@ def _preferences(row):
 
 
 def dependency_closure(
-    paths, sessions: list[dict], features: list[str], *, session_ids: set[str] | None = None
+    paths,
+    sessions: list[dict],
+    features: list[str],
+    *,
+    session_ids: set[str] | None = None,
+    warnings: list[str] | None = None,
 ) -> tuple[set[str], set[str]]:
     """Move connected stores together so sources left behind keep valid links."""
-    sessions = _with_historical_references(paths, sessions)
-    selected, ids = _forward_closure(paths, sessions, features, session_ids=session_ids)
+    sessions = _with_historical_references(paths, sessions, warnings)
+    selected, ids = _forward_closure(
+        paths, sessions, features, session_ids=session_ids, warnings=warnings
+    )
     groups = [
-        _forward_closure(paths, sessions, [feature])
+        _forward_closure(paths, sessions, [feature], warnings=warnings)
         for feature in (
             "book",
             "learning",
@@ -78,7 +97,11 @@ def dependency_closure(
                 reverse_ids.add(sid)
         if reverse_ids - ids:
             related, related_ids = _forward_closure(
-                paths, sessions, list(selected - {"chat"}), session_ids=ids | reverse_ids
+                paths,
+                sessions,
+                list(selected - {"chat"}),
+                session_ids=ids | reverse_ids,
+                warnings=warnings,
             )
             selected |= related
             ids |= related_ids
@@ -87,7 +110,12 @@ def dependency_closure(
 
 
 def _forward_closure(
-    paths, sessions: list[dict], features: list[str], *, session_ids: set[str] | None = None
+    paths,
+    sessions: list[dict],
+    features: list[str],
+    *,
+    session_ids: set[str] | None = None,
+    warnings: list[str] | None = None,
 ) -> tuple[set[str], set[str]]:
     selected = set(features)
     all_chats = "chat" in selected and session_ids is None
@@ -102,7 +130,8 @@ def _forward_closure(
             continue
         try:
             book = json.loads(path.read_text())
-        except (OSError, ValueError):
+        except (OSError, ValueError) as exc:
+            _warn(warnings, f"Skipping unreadable book manifest {path}: {exc}")
             continue
         books.append(book)
         if book.get("chat_session_id"):
@@ -211,7 +240,8 @@ def _forward_closure(
             for path in (paths.get_workspace_dir() / feature).rglob("*.json"):
                 try:
                     document = json.loads(path.read_text())
-                except (OSError, ValueError):
+                except (OSError, ValueError) as exc:
+                    _warn(warnings, f"Skipping unreadable {feature} document {path}: {exc}")
                     continue
                 _collect_references(document, prefs, ids, selected)
         if previous == (frozenset(selected), frozenset(ids)):
@@ -283,7 +313,9 @@ def _question_sessions(paths, entry_ids=None) -> set[str]:
         }
 
 
-def _with_historical_references(paths, sessions: list[dict]) -> list[dict]:
+def _with_historical_references(
+    paths, sessions: list[dict], warnings: list[str] | None = None
+) -> list[dict]:
     """Old request snapshots retain references no longer selected by the last turn."""
     prefs = {row["id"]: _preferences(row) for row in sessions}
     aliases = {
@@ -324,7 +356,11 @@ def _with_historical_references(paths, sessions: list[dict]) -> list[dict]:
                 if sid in prefs and raw:
                     try:
                         collect(json.loads(raw), prefs[sid])
-                    except (ValueError, TypeError):
+                    except (ValueError, TypeError) as exc:
+                        _warn(
+                            warnings,
+                            f"Skipping unreadable message metadata for session {sid}: {exc}",
+                        )
                         continue
             for sid, followup in conn.execute(
                 "SELECT session_id,followup_session_id FROM notebook_entries"
@@ -342,7 +378,12 @@ def _with_historical_references(paths, sessions: list[dict]) -> list[dict]:
             if isinstance(value, str):
                 try:
                     value = json.loads(value)
-                except ValueError:
+                except ValueError as exc:
+                    sid = row.get("session_id") or "unknown"
+                    _warn(
+                        warnings,
+                        f"Skipping unreadable PocketBase message metadata for session {sid}: {exc}",
+                    )
                     continue
             if row.get("session_id") in prefs:
                 collect(value, prefs[row["session_id"]])
