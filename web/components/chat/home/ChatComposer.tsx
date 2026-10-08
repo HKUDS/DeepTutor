@@ -930,14 +930,18 @@ export default memo(function ChatComposer({
       ),
     });
   }
-  if (knowledgeBases.length > 0) {
+  if (onToggleKB) {
     resourceItems.push({
       key: "knowledge",
       group: "Reference materials",
       summary: selectedKnowledgeBases.length
         ? `${selectedKnowledgeBases.length} ${t("selected")}`
-        : t("Default"),
-      onClear: () => [...selectedKnowledgeBases].forEach(onToggleKB),
+        : knowledgeBases.length > 0
+          ? t("Default")
+          : t("No KB"),
+      onClear: selectedKnowledgeBases.length
+        ? () => [...selectedKnowledgeBases].forEach(onToggleKB)
+        : undefined,
       label: t("Knowledge"),
       icon: Database,
       count: selectedKnowledgeBases.length,
