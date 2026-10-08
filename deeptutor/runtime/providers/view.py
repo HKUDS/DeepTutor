@@ -109,6 +109,19 @@ async def _build(
         await manager.ensure_started()
 
     shared_pool = list(base_registry.deferred_tools())
+    adapters_for = getattr(manager, "adapters_for", None)
+    if callable(adapters_for):
+        from deeptutor.services.mcp.manager import SHARED_OWNER
+
+        shared_pool = [
+            tool
+            for tool in shared_pool
+            if not (
+                getattr(tool, "provider_kind", "") == "mcp"
+                and getattr(tool, "owner", None) == SHARED_OWNER
+            )
+        ]
+        shared_pool.extend(adapters_for(SHARED_OWNER))
     owned_pool = (
         await _owned_tools(manager, scope)
         if scope.workspace_mcp is None or any(r.startswith("account:") for r in scope.workspace_mcp)
@@ -159,7 +172,12 @@ async def _build(
         # Owner-scoped tools live only in this turn's overlay — they are never
         # published to the process registry, so two accounts whose servers share
         # a name cannot resolve to each other's session.
-        overlay=[*owned_pool, *cli_pool, *overlay_tools],
+        overlay=[
+            *(tool for tool in shared_pool if getattr(tool, "provider_kind", "") == "mcp"),
+            *owned_pool,
+            *cli_pool,
+            *overlay_tools,
+        ],
         allowed=allowed,
         refusal_message=refusal_message,
     )

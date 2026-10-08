@@ -107,6 +107,15 @@ class KnowledgeBaseInitializer:
         metadata["last_indexed_count"] = len(
             FileTypeRouter.collect_supported_files(self.raw_dir, recursive=True)
         )
+        if provider == "llamaindex":
+            from deeptutor.knowledge.indexing_run import load_run
+
+            receipt = load_run(self.kb_dir)
+            if receipt:
+                metadata["last_indexed_count"] = sum(
+                    doc.get("status") == "completed" for doc in receipt["documents"].values()
+                )
+                metadata["indexing_state"] = receipt["state"]
         metadata["last_indexed_action"] = "create"
 
         atomic_write_json(metadata_file, metadata)
@@ -238,6 +247,7 @@ class KnowledgeBaseInitializer:
             success = await rag_service.initialize(
                 kb_name=self.kb_name,
                 file_paths=file_paths,
+                task_id=self.progress_tracker.task_id,
                 progress_callback=_on_progress,
                 image_progress_callback=_on_image_progress,
                 indexing_snapshot=self.indexing_snapshot,
