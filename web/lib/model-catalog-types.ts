@@ -8,7 +8,7 @@ export type ProviderRef = {
 };
 export type Discovery = {
   status: string;
-  models: { id: string }[];
+  models: { id: string; services?: ServiceName[] }[];
   capabilities?: { category: string; evidence: string }[];
   checked_at?: string;
   http_status?: number | null;
@@ -88,7 +88,12 @@ export type LlmContextWindowDetection = {
   detectedAt?: string;
 };
 
+/** User-selected service access. Missing entries follow registry/live metadata. */
+export type ProviderServiceOverride = { enabled: boolean; binding?: string; base_url?: string };
+export type ProviderServiceOverrides = Partial<Record<ServiceName, ProviderServiceOverride>>;
+
 export type CatalogProfile = {
+  service_overrides?: ProviderServiceOverrides;
   user_name?: string;
   provider_ref?: ProviderRef;
   provider_only?: boolean;
@@ -159,6 +164,7 @@ export type TaskKindInfo = { id: string; group: string };
  * they were typed, not how they resolve.
  */
 export type CatalogConnection = {
+  service_overrides?: ProviderServiceOverrides;
   source_service?: ServiceName;
   discovery?: Discovery;
   api_format?: ApiFormat;

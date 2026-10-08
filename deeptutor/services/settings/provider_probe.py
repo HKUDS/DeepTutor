@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from urllib.parse import urlsplit
+from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 import aiohttp
 import requests
@@ -12,54 +13,99 @@ from deeptutor.services.llm.cloud_provider import _auth_binding, _get_aiohttp_co
 from deeptutor.services.llm.utils import build_auth_headers, collect_model_names
 
 
+def model_services(item: dict) -> list[str]:
+    """Classify explicit metadata, never a model name or a vision input alone.
+
+    Sources: OpenRouter /models architecture; Aliyun /api/v1/models capabilities.
+    This describes model types, not protocol compatibility or account access.
+    """
+    detected = set()
+
+    def values(value):
+        return value if isinstance(value, list) else []
+
+    architecture = item.get("architecture")
+    architecture = architecture if isinstance(architecture, dict) else {}
+    metadata = item.get("inference_metadata")
+    metadata = metadata if isinstance(metadata, dict) else {}
+    outputs = {
+        str(value).lower()
+        for value in [
+            *values(architecture.get("output_modalities")),
+            *values(item.get("output_modalities")),
+            *values(metadata.get("response_modality")),
+        ]
+    }
+    methods = values(
+        item.get("supportedGenerationMethods", item.get("supported_generation_methods"))
+    )
+    kinds = set(str(value) for value in values(item.get("capabilities")))
+    if any(
+        isinstance(method, str)
+        and method in {"generateContent", "generateMessage", "chat", "completion"}
+        for method in methods
+    ) or kinds & {"TG", "Reasoning"}:
+        detected.add("llm")
+    if (
+        any(
+            isinstance(method, str)
+            and method in {"embedContent", "batchEmbedContents", "embedText", "embedding"}
+            for method in methods
+        )
+        or item.get("type") == "embedding"
+        or "embeddings" in outputs
+        or kinds & {"ME", "TR"}
+    ):
+        detected.add("embedding")
+    if "text" in outputs and "embedding" not in detected and not kinds & {"ASR", "Realtime-ASR"}:
+        detected.add("llm")
+    if "audio" in outputs or kinds & {"TTS", "Realtime-Text-to-Speech"}:
+        detected.add("tts")
+    # Audio understanding does not establish a transcription endpoint.
+    if kinds & {"ASR", "Realtime-ASR"} or item.get("type") in ("transcription", "speech-to-text"):
+        detected.add("stt")
+    if "image" in outputs or "IG" in kinds:
+        detected.add("imagegen")
+    if "video" in outputs or "VG" in kinds:
+        detected.add("videogen")
+    return sorted(detected)
+
+
 def detect_capabilities(items: list) -> list[dict]:
-    """Only explicit metadata establishes support. Model names are not proof."""
     detected = set()
     for item in items:
         if not isinstance(item, dict):
             continue
-        methods = item.get(
-            "supportedGenerationMethods", item.get("supported_generation_methods", [])
-        )
-        architecture = item.get("architecture") or {}
-        if not isinstance(architecture, dict):
-            architecture = {}
-
-        def values(value):
-            return value if isinstance(value, list) else []
-
-        input_values = [
-            *values(architecture.get("input_modalities")),
-            *values(item.get("input_modalities")),
-        ]
-        output_values = [
-            *values(architecture.get("output_modalities")),
-            *values(item.get("output_modalities")),
-        ]
-        inputs = {str(value).lower() for value in input_values}
-        outputs = {str(value).lower() for value in output_values}
-        if isinstance(methods, list):
-            if any(
-                method in {"generateContent", "generateMessage", "chat", "completion"}
-                for method in methods
-            ):
-                detected.add("llm")
-            if any(
-                method in {"embedContent", "batchEmbedContents", "embedText", "embedding"}
-                for method in methods
-            ):
-                detected.add("embedding")
-        # Understanding an image/video is not evidence of generating one.
-        # Audio input/output is reported separately from visual generation.
-        if "audio" in inputs | outputs:
+        services = model_services(item)
+        detected.update(services)
+        if {"tts", "stt"} & set(services):
             detected.add("voice")
-        if outputs & {"image", "video"}:
+        if {"imagegen", "videogen"} & set(services):
             detected.add("generation")
-        if "text" in outputs and item.get("type") != "embedding":
-            detected.add("llm")
-        if item.get("type") == "embedding":
-            detected.add("embedding")
     return [{"category": category, "evidence": "metadata"} for category in sorted(detected)]
+
+
+def discovery_request(binding: str, base_url: str, api_version: str = "") -> tuple[str, dict]:
+    """Use vendor metadata on the configured host only; never infer another region."""
+    parsed = urlsplit(base_url)
+    path = parsed.path.rstrip("/")
+    params: dict[str, str | int] = (
+        {"api-version": api_version} if api_version and binding in {"azure", "azure_openai"} else {}
+    )
+    if binding == "ollama":
+        path = path.removesuffix("/v1") + "/api/tags"
+    elif binding == "dashscope" and (parsed.hostname or "").endswith(".aliyuncs.com"):
+        # The official native catalog includes capability metadata and pagination.
+        path = path.replace("/compatible-mode/v1", "/api/v1")
+        if "/services/" in path:
+            path = path.split("/services/", 1)[0]
+        path += "/models"
+        params = {"page_no": 1, "page_size": 100}
+    else:
+        path += "/models"
+        if binding == "openrouter":
+            params["output_modalities"] = "all"
+    return urlunsplit(parsed._replace(path=path, query="", fragment="")), params
 
 
 def test_search_access(
@@ -70,6 +116,7 @@ def test_search_access(
     proxy: str = "",
     max_results: int = 1,
     require_results: bool = True,
+    query: str = "DeepTutor configuration health check",
 ):
     """Test exactly one search adapter, never a fallback or live credentials."""
     from deeptutor.services.config.provider_runtime import (
@@ -87,9 +134,7 @@ def test_search_access(
     kwargs = {"api_key": api_key or "", "base_url": base_url, "max_results": max_results}
     if proxy:
         kwargs["proxy"] = proxy
-    response = get_provider(binding, **kwargs).search(
-        "DeepTutor configuration health check", **kwargs
-    )
+    response = get_provider(binding, **kwargs).search(query, **kwargs)
     if require_results and not (response.answer or response.search_results):
         raise ValueError("Search provider returned no answer or results.")
     return response
@@ -189,55 +234,115 @@ async def probe_provider(
     headers = build_auth_headers(api_key, _auth_binding(binding, api_format))
     headers.pop("Content-Type", None)
     headers.update(extra_headers or {})
-    url = f"{base_url}/models"
-    params = (
-        {"api-version": api_version}
-        if api_version and binding in {"azure", "azure_openai"}
-        else None
-    )
-    if binding == "ollama":
-        url = f"{base_url.removesuffix('/v1')}/api/tags"
+    url, params = discovery_request(binding, base_url, api_version)
     try:
-        async with aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=20),
-            connector=_get_aiohttp_connector(),
-            trust_env=True,
-        ) as session:
-            # Do not forward custom credentials to another host on a redirect.
-            async with session.get(
-                url, headers=headers, params=params, allow_redirects=False
-            ) as response:
-                if response.status in {401, 403}:
-                    return {"status": "auth_error", "models": [], "http_status": response.status}
-                if response.status in {404, 405, 501}:
-                    return {"status": "unavailable", "models": [], "http_status": response.status}
-                if response.status == 429:
-                    return {"status": "rate_limited", "models": [], "http_status": 429}
-                if response.status != 200:
-                    return {"status": "http_error", "models": [], "http_status": response.status}
-                try:
-                    payload = await response.json()
-                except (ValueError, aiohttp.ContentTypeError):
-                    return {"status": "unavailable", "models": []}
-                items = (
-                    payload
-                    if isinstance(payload, list)
-                    else (
-                        payload.get("data", payload.get("models"))
-                        if isinstance(payload, dict)
-                        else None
+        async with (
+            asyncio.timeout(30),
+            aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=20),
+                connector=_get_aiohttp_connector(),
+                trust_env=True,
+            ) as session,
+        ):
+            all_items = []
+            seen = set()
+            warning = None
+            for _page in range(30):
+                async with session.get(
+                    url, headers=headers, params=dict(params) or None, allow_redirects=False
+                ) as response:
+                    if response.status in {401, 403}:
+                        return {
+                            "status": "auth_error",
+                            "models": [],
+                            "http_status": response.status,
+                        }
+                    if response.status in {404, 405, 501}:
+                        return {
+                            "status": "unavailable",
+                            "models": [],
+                            "http_status": response.status,
+                        }
+                    if response.status == 429:
+                        return {"status": "rate_limited", "models": [], "http_status": 429}
+                    if response.status != 200:
+                        return {
+                            "status": "http_error",
+                            "models": [],
+                            "http_status": response.status,
+                        }
+                    try:
+                        payload = await response.json()
+                    except (ValueError, aiohttp.ContentTypeError):
+                        return {"status": "unavailable", "models": []}
+                    output = payload.get("output") if isinstance(payload, dict) else None
+                    native = isinstance(output, dict) and isinstance(output.get("models"), list)
+                    items = (
+                        output["models"]
+                        if native
+                        else (
+                            payload
+                            if isinstance(payload, list)
+                            else payload.get("data", payload.get("models"))
+                            if isinstance(payload, dict)
+                            else None
+                        )
                     )
-                )
-                if not isinstance(items, list):
-                    return {"status": "unavailable", "models": []}
-                models = list(dict.fromkeys(collect_model_names(items)))
-                if items and not models:
-                    return {"status": "unavailable", "models": []}
-                result = {"status": "connected", "models": [{"id": model} for model in models]}
-                capabilities = detect_capabilities(items)
-                if capabilities:
-                    result["capabilities"] = capabilities
-                return result
+                    if not isinstance(items, list) or (
+                        isinstance(payload, dict) and payload.get("success") is False
+                    ):
+                        return {"status": "unavailable", "models": []}
+                    normalized = [
+                        {**item, "id": item.get("id") or item.get("model")}
+                        if isinstance(item, dict)
+                        else item
+                        for item in items
+                    ]
+                    names = list(dict.fromkeys(collect_model_names(normalized)))
+                    if items and not names:
+                        return {"status": "unavailable", "models": []}
+                    if items and all(name in seen for name in names):
+                        warning = "partial_models"
+                        break
+                    all_items.extend(normalized)
+                    seen.update(names)
+                    if native:
+                        total = output.get("total")
+                        if not isinstance(total, (int, float)) or len(seen) >= total or not items:
+                            break
+                        params["page_no"] = (
+                            int(output.get("page_no") or params.get("page_no", 1)) + 1
+                        )
+                    elif isinstance(payload, dict) and payload.get("has_more"):
+                        cursor = payload.get("last_id")
+                        if (
+                            not isinstance(cursor, str)
+                            or not cursor
+                            or params.get("after_id") == cursor
+                        ):
+                            warning = "partial_models"
+                            break
+                        params["after_id"] = cursor
+                    else:
+                        break
+            else:
+                warning = "partial_models"
+            models = {}
+            for item in all_items:
+                names = collect_model_names([item])
+                for name in names:
+                    entry: dict[str, Any] = {"id": name}
+                    kinds = model_services(item) if isinstance(item, dict) else []
+                    if kinds:
+                        entry["services"] = kinds
+                    models[name] = entry
+            result = {"status": "connected", "models": list(models.values())}
+            capabilities = detect_capabilities(all_items)
+            if capabilities:
+                result["capabilities"] = capabilities
+            if warning:
+                result["warning"] = warning
+            return result
     except (asyncio.TimeoutError, TimeoutError):
         return {"status": "timeout", "models": []}
     except (aiohttp.ClientError, ValueError, OSError):

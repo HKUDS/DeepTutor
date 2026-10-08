@@ -1,7 +1,8 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import TaskBoardRuntime from '@/components/tasks/TaskBoardRuntime'
 import KanbanPage from '@/app/(workspace)/kanban/page'
-import type { TaskBoard } from '@/lib/task-board-api'
+import { DEFAULT_TASK_COLORS, type TaskBoard } from '@/lib/task-board-api'
 import translations from '@/locales/en/app.json'
 
 vi.mock('react-i18next', () => ({
@@ -14,14 +15,15 @@ let board: TaskBoard
 let failSave: boolean
 
 beforeEach(() => {
-  board = { cards: [] }
+  board = { cards: [], colors: DEFAULT_TASK_COLORS, session_links: [], revision: 0 }
   failSave = false
   window.history.replaceState({}, '', '/kanban?dt_workspace=study')
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: string, init?: RequestInit) => {
       const url = new URL(input, window.location.origin)
-      expect(url.searchParams.get('dt_workspace')).toBe('study')
+      if (url.pathname.includes('/settings/workspace/registrations')) return Response.json({ workspaces: [] })
+      expect(url.searchParams.get('dt_workspace')).toBeNull()
       expect(init?.credentials).toBe('include')
       if (init?.method === 'POST') {
         if (failSave) return Response.json({}, { status: 500 })
@@ -30,6 +32,7 @@ beforeEach(() => {
           id: 'task-1',
           title: payload.title,
           note: '',
+          workspace_id: null,
           status: 'todo',
           archived: false,
           created_at: '2026-01-01',
@@ -39,6 +42,7 @@ beforeEach(() => {
         if (failSave) return Response.json({}, { status: 500 })
         board.cards[0] = { ...board.cards[0], ...JSON.parse(String(init.body)) }
       }
+      if (init?.method) board.revision++
       return Response.json(board)
     })
   )
@@ -60,7 +64,7 @@ async function addTask() {
 
 describe('Task Board', () => {
   it('creates, edits, moves, archives and restores cards through the scoped API', async () => {
-    render(<KanbanPage />)
+    render(<TaskBoardRuntime><KanbanPage /></TaskBoardRuntime>)
     await addTask()
     fireEvent.click(screen.getByRole('button', { name: 'Review derivatives' }))
     fireEvent.change(screen.getByRole('textbox', { name: 'Task note' }), {
@@ -87,7 +91,7 @@ describe('Task Board', () => {
   })
 
   it('moves a dragged card and reads it again after remounting', async () => {
-    const view = render(<KanbanPage />)
+    const view = render(<TaskBoardRuntime><KanbanPage /></TaskBoardRuntime>)
     await addTask()
     const dataTransfer = { setData: vi.fn(), effectAllowed: '' }
     fireEvent.dragStart(screen.getByRole('article'), { dataTransfer })
@@ -98,7 +102,7 @@ describe('Task Board', () => {
       ).toBeInTheDocument()
     )
     view.unmount()
-    render(<KanbanPage />)
+    render(<TaskBoardRuntime><KanbanPage /></TaskBoardRuntime>)
     await waitFor(() =>
       expect(
         within(screen.getByRole('region', { name: 'Done' })).getByText('Review derivatives')
@@ -107,7 +111,7 @@ describe('Task Board', () => {
   })
 
   it('keeps the draft and existing card when saving fails', async () => {
-    render(<KanbanPage />)
+    render(<TaskBoardRuntime><KanbanPage /></TaskBoardRuntime>)
     await addTask()
     fireEvent.click(screen.getByRole('button', { name: 'Review derivatives' }))
     fireEvent.change(screen.getByRole('textbox', { name: 'Task note' }), {
@@ -122,13 +126,16 @@ describe('Task Board', () => {
 
   it('disables creation during loading and lets a failed load retry', async () => {
     let rejectLoad!: (error: Error) => void
-    vi.mocked(fetch).mockImplementationOnce(
-      () =>
-        new Promise((_resolve, reject) => {
-          rejectLoad = reject
-        })
-    )
-    render(<KanbanPage />)
+    const normalFetch = vi.mocked(fetch).getMockImplementation()!
+    let firstLoad = true
+    vi.mocked(fetch).mockImplementation((input, init) => {
+      if (firstLoad && new URL(String(input), window.location.origin).pathname === '/api/task-board' && !init?.method) {
+        firstLoad = false
+        return new Promise((_resolve, reject) => { rejectLoad = reject })
+      }
+      return normalFetch(input, init)
+    })
+    render(<TaskBoardRuntime><KanbanPage /></TaskBoardRuntime>)
     expect(screen.getByRole('status')).toHaveTextContent('Loading task board')
     expect(screen.getByRole('button', { name: 'Add' })).toBeDisabled()
     await act(async () => rejectLoad(new Error('Offline')))

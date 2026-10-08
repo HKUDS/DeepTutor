@@ -23,6 +23,7 @@ export interface LearningKnowledgePoint {
   id: string;
   name: string;
   type: string;
+  required_visual_tasks?: string[];
 }
 
 export interface LearningModule {
@@ -233,6 +234,7 @@ export async function fetchProgressEvents(
 // Mirrors deeptutor/learning/policy.py objective_report.
 
 export interface ObjectiveAttempt {
+  independent?: boolean;
   question_id: string;
   prompt: string;
   answer: string;
@@ -268,6 +270,7 @@ export interface LearningEvidence {
   response_time: number | null;
   session_id: string;
   turn_id: string;
+  visual_context?: { task?: string; sources?: { image_url: string; url: string; source_path: string }[]; hints_used?: number };
 }
 
 export interface ObjectiveErrorRecord {
@@ -288,6 +291,9 @@ export interface ObjectiveReport {
   gate: "quantitative" | "qualitative";
   mastered: boolean;
   assessed_mastered: boolean;
+  explained?: { summary: string; timestamp: number };
+  required_visual_tasks?: string[];
+  demonstrated_visual_tasks?: string[];
   mastery_source: "system" | "learner" | "";
   override_note: string;
   mastery: number;

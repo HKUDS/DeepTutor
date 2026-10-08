@@ -18,7 +18,13 @@ def test_snapshot_reader_closes_connection(tmp_path: Path, monkeypatch, reader: 
     database = tmp_path / "history.db"
     SQLiteSessionStore(database)
     monkeypatch.setattr(
-        adapters, "get_path_service", lambda: SimpleNamespace(get_chat_history_db=lambda: database)
+        adapters,
+        "get_account_path_service",
+        lambda: SimpleNamespace(get_chat_history_db=lambda: database),
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.workspace.get_content_workspace_service",
+        lambda: SimpleNamespace(registered_bindings=lambda: []),
     )
     connect = sqlite3.connect
     connections = []

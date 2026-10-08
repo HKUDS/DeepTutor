@@ -2,6 +2,71 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Feature-page standards. Queries measure usable content after the sidebar
+   and gutters, so the same cards behave consistently in both route groups. */
+.dt-page-container {
+  container: feature-page / inline-size;
+}
+
+.dt-page-title {
+  font-size: 27px;
+}
+
+.dt-page-action,
+[data-page-actions] > button,
+[data-page-actions] > a,
+[data-page-actions] > div > button,
+[data-page-actions] > div > a {
+  min-height: 44px;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.dt-page-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+
+.dt-page-grid > * {
+  min-width: 0;
+}
+
+@container feature-page (min-width: 520px) {
+  .dt-page-grid-2,
+  .dt-page-grid-3,
+  .dt-page-grid-5 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container feature-page (min-width: 640px) {
+  .dt-page-title { font-size: 30px; }
+  .dt-page-header {
+    flex-direction: row;
+    align-items: flex-end;
+    justify-content: space-between;
+  }
+  .dt-page-action,
+  [data-page-actions] > button,
+  [data-page-actions] > a,
+  [data-page-actions] > div > button,
+  [data-page-actions] > div > a { min-height: 36px; }
+}
+
+@container feature-page (min-width: 800px) {
+  .dt-page-grid-3,
+  .dt-page-grid-5,
+  .dt-page-grid-board {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@container feature-page (min-width: 1040px) {
+  .dt-page-grid-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+}
+
 @layer base {
   /* ────────────────────────────────────────────────────────────────────────
      Theme palettes — four families:
@@ -1016,7 +1081,7 @@ body[data-picker-open] .dt-breathing-text {
   }
 }
 
-/* ----- Immersive watching -----------------------------------------------
+/* ----- Reading media source browser -------------------------------------
    Watching shares the conversation renderer and owns its responsive video surface. */
 .dt-watching-shell {
   position: absolute;
