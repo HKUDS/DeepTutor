@@ -3312,16 +3312,14 @@ class SQLiteSessionStore:
                 item = {**item, "attempt_count": count}
                 attempt = {**attempt, "attempt_count": count}
             latest = conn.execute(
-                "SELECT occurred_at, attempt_id FROM assessment_attempts "
+                "SELECT occurred_at FROM assessment_attempts "
                 "WHERE origin_type = ? AND origin_ref = ? AND turn_id = ? AND question_id = ? "
-                "ORDER BY occurred_at DESC, attempt_id DESC LIMIT 1",
+                "ORDER BY occurred_at DESC, rowid DESC LIMIT 1",
                 (origin_type, origin_ref, turn_id, question_id),
             ).fetchone()
             occurred_at = float(attempt.get("occurred_at") or time.time())
-            is_latest = latest is None or (occurred_at, attempt_id) >= (
-                float(latest["occurred_at"]),
-                str(latest["attempt_id"]),
-            )
+            # Equal timestamps follow insertion order, not opaque submission ids.
+            is_latest = latest is None or occurred_at >= float(latest["occurred_at"])
             conn.execute(
                 """
                 INSERT INTO assessment_attempts (

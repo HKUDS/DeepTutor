@@ -232,10 +232,16 @@ def test_reanswer_keeps_immutable_attempts_and_updates_latest_projection(
     assert [attempt["result"] for attempt in attempts] == ["incorrect", "correct"]
 
 
-def test_old_submission_retry_cannot_overwrite_newer_answer(store: SQLiteSessionStore) -> None:
+@pytest.mark.parametrize("created_at", [None, 100.0])
+def test_old_submission_retry_cannot_overwrite_newer_answer(
+    store: SQLiteSessionStore, created_at: float | None
+) -> None:
     asyncio.run(store.create_session(title="S", session_id="session-1"))
-    wrong = _mastery_record(attempt_id="old", user_answer="3", result="incorrect")
-    right = _mastery_record(attempt_id="new", user_answer="4", result="correct", is_correct=True)
+    timestamp = {} if created_at is None else {"created_at": created_at}
+    wrong = _mastery_record(attempt_id="old", user_answer="3", result="incorrect", **timestamp)
+    right = _mastery_record(
+        attempt_id="new", user_answer="4", result="correct", is_correct=True, **timestamp
+    )
     asyncio.run(record_assessment(wrong))
     asyncio.run(record_assessment(right))
     retried = asyncio.run(record_assessment(wrong))
