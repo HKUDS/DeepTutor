@@ -172,10 +172,14 @@ async def probe_version(cmd: Sequence[str], *, timeout: float = 8.0) -> tuple[bo
     except Exception as exc:  # pragma: no cover - defensive
         return False, str(exc)
     try:
-        out, _ = await asyncio.wait_for(process.communicate(), timeout=timeout)
-    except (TimeoutError, asyncio.TimeoutError):
+        try:
+            out, _ = await asyncio.wait_for(process.communicate(), timeout=timeout)
+        except (TimeoutError, asyncio.TimeoutError):
+            return False, "probe timed out"
+    finally:
+        # Cancellation is a BaseException and must also reap the child before
+        # the caller finishes. Successful probes are already exited.
         await _terminate(process)
-        return False, "probe timed out"
     text = (out or b"").decode("utf-8", "replace").strip()
     return process.returncode == 0, text
 

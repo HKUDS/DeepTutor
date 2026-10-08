@@ -38,6 +38,7 @@ import re
 from typing import Any
 
 from deeptutor.services.subagent.process import (
+    _terminate,
     not_found_detail,
     probe_version,
     resolve_cli_command,
@@ -289,6 +290,7 @@ async def _list_cli_models(cli_command: str, *, refresh: bool = False) -> list[M
     if refresh:
         cmd.append("--refresh")
     cmd = resolve_cli_command(cmd)
+    process = None
     try:
         process = await asyncio.create_subprocess_exec(
             *cmd,
@@ -304,6 +306,9 @@ async def _list_cli_models(cli_command: str, *, refresh: bool = False) -> list[M
     except Exception:  # pragma: no cover - defensive
         logger.warning("failed to enumerate %s models", cli_command, exc_info=True)
         return []
+    finally:
+        if process is not None:
+            await _terminate(process)
     models: list[ModelOption] = []
     for raw in (out or b"").decode("utf-8", "replace").splitlines():
         slug = raw.strip()
