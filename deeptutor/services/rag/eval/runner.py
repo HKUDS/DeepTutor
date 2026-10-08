@@ -103,6 +103,8 @@ def _error_message(result: Mapping[str, Any]) -> str:
     if result.get("error_type"):
         message = result.get("answer") or result.get("content") or result["error_type"]
         return str(message)
+    if result.get("error"):
+        return str(result["error"])
     return ""
 
 
