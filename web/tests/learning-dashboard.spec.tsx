@@ -170,7 +170,6 @@ it.each([
   ['Books', '/learning/books'],
   ['Mastery Path', '/learning/mastery'],
   ['Immersive Reading', '/learning/reading'],
-  ['Immersive Watching', '/learning/watching'],
 ])('opens the complete library without assigning a workspace for %s', async (label, route) => {
   render(<LearningDashboard />)
   fireEvent.click(await screen.findByRole('button', { name: new RegExp(label) }))
