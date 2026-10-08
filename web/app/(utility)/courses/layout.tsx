@@ -1,3 +1,5 @@
+import { FeaturePage } from "@/components/layout/FeaturePage";
+
 /**
  * Page shell for the Courses surface.
  *
@@ -11,8 +13,6 @@ export default function CoursesLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <div className="h-full overflow-y-auto bg-[var(--background)] [scrollbar-gutter:stable]">
-      <div className="mx-auto max-w-5xl px-8 py-8 pb-12">{children}</div>
-    </div>
+    <FeaturePage>{children}</FeaturePage>
   );
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { PageHeader } from '@/components/layout/FeaturePage'
 import type {
   CatalogProfile,
   ServiceName,
@@ -22,9 +23,9 @@ import { getLocale } from "@/lib/datetime";
 // control sits on a line box, so the parent's strut left a few pixels above it
 // that a control in a differently-worded column did not have.
 export const fieldControlClass =
-  "block w-full rounded-lg border border-[var(--border)] px-3 py-2 text-[14px] leading-5 text-[var(--foreground)] outline-none transition-[border-color,box-shadow,background-color] duration-150 hover:border-[color-mix(in_srgb,var(--foreground)_22%,var(--border))] focus:border-[var(--ring)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--ring)_16%,transparent)] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-[var(--border)]";
+  "block min-h-10 w-full rounded-lg border border-[var(--border)] px-3 py-2.5 text-[14px] leading-5 text-[var(--foreground)] outline-none transition-[border-color,box-shadow,background-color] duration-150 hover:border-[color-mix(in_srgb,var(--foreground)_22%,var(--border))] focus:border-[var(--ring)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--ring)_16%,transparent)] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-[var(--border)]";
 
-export const inputClass = `${fieldControlClass} bg-transparent placeholder:text-[color-mix(in_srgb,var(--muted-foreground)_55%,transparent)]`;
+export const inputClass = `${fieldControlClass} bg-transparent placeholder:text-[color-mix(in_srgb,var(--muted-foreground)_75%,transparent)]`;
 
 export const nativeSelectClass = `${fieldControlClass} bg-[var(--background)] cursor-pointer`;
 
@@ -39,7 +40,7 @@ export const selectOptionClass =
 // nothing at all for a hex custom property — so the panels had no fill and the
 // pages read as a stack of hairlines. color-mix does compile.
 export const subPanelClass =
-  "rounded-xl border border-[color-mix(in_srgb,var(--border)_85%,transparent)] bg-[color-mix(in_srgb,var(--muted)_40%,transparent)]";
+  "rounded-xl border border-[color-mix(in_srgb,var(--border)_60%,transparent)] bg-[color-mix(in_srgb,var(--muted)_30%,transparent)]";
 
 export function stringifyExtraHeaders(
   value: CatalogProfile["extra_headers"],
@@ -148,13 +149,13 @@ export function SettingRow({
   control: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:gap-6 border-t border-[color-mix(in_srgb,var(--border)_50%,transparent)] py-3.5 first:border-t-0">
+    <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:gap-6 border-t border-[color-mix(in_srgb,var(--border)_50%,transparent)] py-5 first:border-t-0">
       <div className="min-w-0 flex-1">
-        <div className="text-[13.5px] font-medium text-[var(--foreground)]">
+        <div className="text-[14px] font-medium text-[var(--foreground)]">
           {title}
         </div>
         {description && (
-          <p className="mt-1 text-[12px] leading-relaxed text-[var(--muted-foreground)]">
+          <p className="mt-1 text-[13px] leading-relaxed text-[var(--muted-foreground)]">
             {description}
           </p>
         )}
@@ -175,13 +176,13 @@ export function SettingSection({
   children: React.ReactNode;
 }) {
   return (
-    <section className="mb-8">
-      <header className="mb-2">
+    <section className="mb-10">
+      <header className="mb-3">
         <h2 className="text-[15px] font-semibold tracking-tight text-[var(--foreground)]">
           {title}
         </h2>
         {description && (
-          <p className="mt-1 text-[12.5px] leading-relaxed text-[var(--muted-foreground)]">
+          <p className="mt-1 text-[13px] leading-relaxed text-[var(--muted-foreground)]">
             {description}
           </p>
         )}
@@ -215,23 +216,6 @@ export function SettingsPageHeader({
   actions?: React.ReactNode;
 }) {
   return (
-    <header className="mb-7 flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
-      <div className="min-w-0">
-        <h1
-          data-tour="tour-page-heading"
-          className="text-[26px] font-semibold tracking-tight text-[var(--foreground)]"
-        >
-          {title}
-        </h1>
-        {description && (
-          <p className="mt-1.5 max-w-[62ch] text-[13px] leading-relaxed text-[var(--muted-foreground)]">
-            {description}
-          </p>
-        )}
-      </div>
-      {actions && (
-        <div className="flex shrink-0 items-center gap-2">{actions}</div>
-      )}
-    </header>
+    <PageHeader title={title} description={description} action={actions} headingTour="tour-page-heading" />
   );
 }

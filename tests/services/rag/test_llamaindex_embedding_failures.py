@@ -249,3 +249,95 @@ async def test_rag_service_hides_low_level_invalid_index_error_in_raw_logs(
         for event_type, message, _ in events
         if event_type == "status"
     )
+
+
+@pytest.mark.asyncio
+async def test_search_answer_names_reason_and_reindex_action(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from deeptutor.services.rag.pipelines.llamaindex import storage as storage_module
+    from deeptutor.services.rag.pipelines.llamaindex.pipeline import LlamaIndexPipeline
+
+    storage_dir = tmp_path / "kb" / "version-1"
+    storage_dir.mkdir(parents=True)
+    (storage_dir / "docstore.json").write_text("{}", encoding="utf-8")
+    (storage_dir / "default__vector_store.json").write_text(
+        json.dumps({"embedding_dict": {"bad-node": [0.1, None, 0.3]}}),
+        encoding="utf-8",
+    )
+
+    # The in-memory index looks healthy; the invalid vectors live in the
+    # persisted vector-store file (the upgrade scenario from issue #440).
+    fake_index = SimpleNamespace(
+        vector_store=SimpleNamespace(data=SimpleNamespace(embedding_dict={}))
+    )
+    monkeypatch.setattr(storage_module.vector_store, "load_index", lambda _dir: fake_index)
+    monkeypatch.setattr(LlamaIndexPipeline, "_configure_settings", lambda self: None)
+
+    pipeline = LlamaIndexPipeline(kb_base_dir=str(tmp_path), signature_provider=lambda: None)
+
+    result = await pipeline.search("what is this?", "kb")
+
+    assert result["error_type"] == "invalid_embedding_index"
+    assert result["needs_reindex"] is True
+    assert "invalid embedding vectors" in result["answer"]
+    assert "dimension 1 is null" in result["answer"]
+    assert "default__vector_store.json" in result["answer"]
+    assert "stored vector in default__vector_store.json" in result["answer"]
+    assert "embedding provider returned invalid" not in result["answer"].lower()
+    assert "Re-index" in result["answer"]
+    assert "Index versions" in result["answer"]
+    assert "re-uploading" in result["answer"].lower()
+
+
+def test_invalid_index_error_names_reindex_action_and_reupload_caveat(tmp_path) -> None:
+    from deeptutor.services.rag.pipelines.llamaindex import storage as storage_module
+
+    storage_dir = tmp_path / "kb" / "version-1"
+    storage_dir.mkdir(parents=True)
+    (storage_dir / "default__vector_store.json").write_text(
+        json.dumps({"embedding_dict": {"bad-node": [0.1, None, 0.3]}}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError) as excinfo:
+        storage_module.validate_storage_embeddings(storage_dir)
+
+    message = str(excinfo.value)
+    assert "RAG index contains invalid embedding vectors" in message
+    assert "dimension 1 is null" in message
+    assert "stored vector in default__vector_store.json" in message
+    assert "embedding provider returned invalid" not in message.lower()
+    assert "Re-index" in message
+    assert "re-uploading" in message.lower()
+
+
+@pytest.mark.asyncio
+async def test_search_answer_keeps_reindex_steps_without_low_level_details(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from deeptutor.services.rag.pipelines.llamaindex import storage as storage_module
+    from deeptutor.services.rag.pipelines.llamaindex.pipeline import LlamaIndexPipeline
+
+    storage_dir = tmp_path / "kb" / "version-1"
+    storage_dir.mkdir(parents=True)
+    (storage_dir / "docstore.json").write_text("{}", encoding="utf-8")
+
+    monkeypatch.setattr(LlamaIndexPipeline, "_configure_settings", lambda self: None)
+    monkeypatch.setattr(
+        storage_module,
+        "retrieve_nodes",
+        lambda storage_dir, query, top_k=5: (_ for _ in ()).throw(
+            TypeError("unsupported operand type(s) for *: 'NoneType' and 'float'")
+        ),
+    )
+
+    pipeline = LlamaIndexPipeline(kb_base_dir=str(tmp_path), signature_provider=lambda: None)
+
+    result = await pipeline.search("what is this?", "kb")
+
+    assert result["error_type"] == "invalid_embedding_index"
+    assert "Re-index" in result["answer"]
+    assert "Index versions" in result["answer"]
+    assert "unsupported operand" not in result["answer"]
+    assert "Details" not in result["answer"]

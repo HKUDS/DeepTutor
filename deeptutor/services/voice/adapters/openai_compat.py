@@ -219,7 +219,7 @@ class OpenRouterTTSAdapter(BaseTTSAdapter):
             ],
             "modalities": ["text", "audio"],
             "audio": {
-                "voice": config.voice or "alloy",
+                "voice": config.voice,
                 "format": audio_format,
             },
             "stream": True,

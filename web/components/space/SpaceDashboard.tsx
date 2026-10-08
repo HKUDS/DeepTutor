@@ -1,5 +1,6 @@
 "use client";
 
+import { PageHeader, PAGE_SECTION_TITLE_CLASS, pageGridClass } from '@/components/layout/FeaturePage'
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useTranslation } from "react-i18next";
@@ -27,6 +28,7 @@ import { listNotebooks, listNotebookEntries } from "@/lib/notebook-api";
 import { listPersonas } from "@/lib/personas-api";
 import { listKnowledgeBases } from "@/features/knowledge/api/catalog";
 import { listSkills } from "@/lib/skills-api";
+import { scopedUrl } from "@/lib/workspace-scope";
 
 /**
  * Learning Space dashboard — the hub of `/space`.
@@ -44,6 +46,7 @@ type DashKey =
   | "memory"
   | "chat_history"
   | "notebooks"
+  | "journal"
   | "question_bank"
   | "personas"
   | "skills"
@@ -115,6 +118,14 @@ const GROUPS: DashboardGroup[] = [
         unit: { zh: "个笔记本", en: "notebooks" },
         tile: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
         load: async () => (await listNotebooks()).length,
+      },
+      {
+        key: "journal",
+        href: "/space/journal",
+        icon: NotebookPen,
+        title: { zh: "学习日志", en: "Learning journal" },
+        blurb: { zh: "查看当前目标、上次会话交接和已确认的学习记录。", en: "Inspect your mission, session handoff and confirmed records." },
+        tile: "bg-teal-500/10 text-teal-600 dark:text-teal-400",
       },
       {
         key: "question_bank",
@@ -304,25 +315,21 @@ export default function SpaceDashboard() {
 
   return (
     <div>
-      <header className="mb-8">
-        <h1 className="font-serif text-[24px] font-semibold leading-tight tracking-tight text-[var(--foreground)]">
-          {tr({ zh: "学习空间", en: "Learning Space" })}
-        </h1>
-        <p className="mt-1.5 max-w-xl text-[13px] leading-relaxed text-[var(--muted-foreground)]">
-          {tr({
+      <PageHeader
+        title={tr({ zh: "学习空间", en: "Learning Space" })}
+        description={tr({
             zh: "你的对话、智能体、笔记与题目，集中在一处 —— 从这里进入。",
             en: "Your conversations, agents, notebooks, and questions in one place — enter from here.",
           })}
-        </p>
-      </header>
+      />
 
       <div className="space-y-9">
         {groups.map(group => (
           <section key={group.label.en}>
-            <h2 className="mb-3 px-0.5 font-serif text-[16px] font-semibold tracking-tight text-[var(--foreground)]">
+            <h2 className={`mb-3 ${PAGE_SECTION_TITLE_CLASS}`}>
               {tr(group.label)}
             </h2>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className={pageGridClass(2)}>
               {group.items.map(item => (
                 <DashboardCard
                   key={item.key}
@@ -357,7 +364,7 @@ function DashboardCard({
 
   return (
     <Link
-      href={item.href}
+      href={item.key === "journal" ? scopedUrl(item.href) : item.href}
       className="group relative flex flex-col rounded-xl border border-[var(--border)] bg-[var(--card)] p-4 transition-all duration-150 hover:-translate-y-0.5 hover:border-[var(--foreground)]/20 hover:shadow-[0_6px_20px_-12px_rgba(0,0,0,0.25)]"
     >
       <div className="flex items-start gap-3">

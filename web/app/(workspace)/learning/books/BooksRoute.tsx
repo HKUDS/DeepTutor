@@ -1075,10 +1075,8 @@ function BookPageInner() {
 
           {displayView === 'creator' && (
             <div className="h-full overflow-y-auto [scrollbar-gutter:stable]">
-              <div className="mx-auto max-w-4xl px-6 pt-6">
-                <button type="button" onClick={() => void handleSelectBook(null)} className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"><ArrowLeft size={14} />{t('All books')}</button>
-              </div>
               <BookCreator
+                back={<button type="button" onClick={() => void handleSelectBook(null)} className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"><ArrowLeft size={14} />{t('All books')}</button>}
                 book={pendingBook}
                 onCreate={handleCreate}
                 loading={creating}

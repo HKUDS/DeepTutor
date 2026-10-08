@@ -47,6 +47,7 @@ FEATURED_LLM_PROVIDERS: tuple[str, ...] = (
     "gemini",
     "siliconflow",
     "openrouter",
+    "github_copilot",
     "ollama",
 )
 
@@ -54,6 +55,11 @@ FEATURED_LLM_PROVIDERS: tuple[str, ...] = (
 # provider is "custom". Live fetch is preferred — keep these short, just enough
 # to unblock common cases.
 LLM_FALLBACK_MODELS: dict[str, tuple[str, ...]] = {
+    "github_copilot": (
+        "github-copilot/gpt-4.1",
+        "github-copilot/gpt-4o",
+        "github-copilot/claude-sonnet-4",
+    ),
     "openai": ("gpt-4o-mini", "gpt-4o", "o4-mini", "gpt-4.1", "gpt-4.1-mini"),
     "anthropic": (
         "claude-sonnet-4-6",
@@ -73,12 +79,6 @@ LLM_FALLBACK_MODELS: dict[str, tuple[str, ...]] = {
         "openai/gpt-4o-mini",
         "anthropic/claude-sonnet-4-6",
         "deepseek/deepseek-chat",
-    ),
-    "orcarouter": (
-        "orcarouter/auto",
-        "anthropic/claude-sonnet-4-6",
-        "deepseek/deepseek-v4-pro",
-        "openai/gpt-4o",
     ),
     "ollama": ("llama3.2", "qwen2.5", "mistral"),
 }
@@ -115,7 +115,6 @@ EMBEDDING_FALLBACK_MODELS: dict[str, tuple[str, ...]] = {
     "jina": ("jina-embeddings-v3", "jina-embeddings-v2-base-en"),
     "cohere": ("embed-v4.0", "embed-multilingual-v3.0", "embed-english-v3.0"),
     "openrouter": ("openai/text-embedding-3-large",),
-    "orcarouter": ("openai/text-embedding-3-large",),
     "vllm": ("BAAI/bge-m3",),
     "ollama": ("nomic-embed-text", "mxbai-embed-large", "snowflake-arctic-embed"),
 }

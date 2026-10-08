@@ -36,7 +36,7 @@ class MiMoTTSAdapter(BaseTTSAdapter):
         payload = {
             "model": config.model,
             "messages": messages,
-            "audio": {"format": audio_format, "voice": config.voice or "mimo_default"},
+            "audio": {"format": audio_format, "voice": config.voice},
             "stream": False,
         }
         headers = {
