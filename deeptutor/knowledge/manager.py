@@ -1816,9 +1816,6 @@ class KnowledgeBaseManager:
         # in an external resource the user manages. Leaving it behind would also
         # resurrect every paired device the moment a library of the same name is
         # connected again.
-        if entry.get("type") == MARGINNOTE4_KB_TYPE:
-            self._delete_marginnote4_store(name, entry)
-
         if not confirm:
             # Ask for confirmation in CLI
             print(f"⚠️  Warning: This will permanently delete the knowledge base '{name}'")
@@ -1827,6 +1824,9 @@ class KnowledgeBaseManager:
             if response.lower() != "yes":
                 print("Deletion cancelled.")
                 return False
+
+        if entry.get("type") == MARGINNOTE4_KB_TYPE:
+            self._delete_marginnote4_store(name, entry)
 
         if dir_exists:
 
