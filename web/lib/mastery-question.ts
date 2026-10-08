@@ -44,6 +44,7 @@ export interface MasteryQuestion {
   attempt: number;
   options: MasteryQuestionOption[];
   allowFreeText: boolean;
+  visual?: { task: string; answerCues: string; keyStatus: string; hintsUsed: number; pixelsInspected?: boolean; sources: { imageUrl: string; url: string; sourcePath: string; page: number | null }[] };
 }
 
 export interface MasteryGradeResult {
@@ -53,6 +54,8 @@ export interface MasteryGradeResult {
   correctLabel: string;
   correctBody: string;
   explanation: string;
+  result?: string;
+  independent?: boolean;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -82,6 +85,10 @@ function parseQuestion(value: unknown): MasteryQuestion | null {
         .filter((option) => option.label)
     : [];
   const attempt = Number(raw.attempt);
+  const visual = asRecord(raw.visual);
+  const visualSources = Array.isArray(visual?.sources) ? visual.sources.map(asRecord).filter((ref): ref is Record<string, unknown> => ref !== null)
+    .filter((ref) => text(ref.image_url).startsWith("/api/knowledge-bases/") && text(ref.url).startsWith("/api/knowledge-bases/"))
+    .map((ref) => ({ imageUrl: text(ref.image_url), url: text(ref.url), sourcePath: text(ref.source_path), page: typeof ref.page === "number" ? ref.page : null })) : [];
   return {
     questionId,
     prompt: text(raw.prompt),
@@ -91,6 +98,7 @@ function parseQuestion(value: unknown): MasteryQuestion | null {
     attempt: Number.isFinite(attempt) && attempt > 0 ? Math.floor(attempt) : 1,
     options,
     allowFreeText: raw.allow_free_text !== false,
+    ...(visual ? { visual: { task: text(visual.task), answerCues: text(visual.answer_cues), keyStatus: text(visual.key_status), hintsUsed: Number(visual.hints_used) || 0, pixelsInspected: visual.pixels_inspected === true, sources: visualSources } } : {}),
   };
 }
 
@@ -106,6 +114,8 @@ function parseGrade(value: unknown): MasteryGradeResult | null {
     correctLabel: text(raw.correct_label),
     correctBody: text(raw.correct_body),
     explanation: text(raw.explanation),
+    ...(text(raw.result) ? { result: text(raw.result) } : {}),
+    ...(typeof raw.independent === "boolean" ? { independent: raw.independent } : {}),
   };
 }
 

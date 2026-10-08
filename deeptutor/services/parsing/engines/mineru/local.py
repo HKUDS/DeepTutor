@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from uuid import uuid4
 
@@ -24,6 +25,8 @@ from .formats import MINERU_SUPPORTED_FORMATS
 # progress that universal-newline decoding turns into many lines per second;
 # without a floor the trace panel gets flooded during model downloads.
 _ON_OUTPUT_MIN_INTERVAL = 0.5
+_LOCAL_PARSE_IDLE_TIMEOUT_SECONDS = 600
+_LOCAL_PARSE_TIMEOUT_SECONDS = 7200
 
 #: Upper bound on the failure excerpt carried back to callers: long enough for
 #: a useful stderr tail, short enough to fit inside an error message.
@@ -49,6 +52,8 @@ class LocalParseReason(StrEnum):
     INPUT_MISSING = "input_missing"
     UNSUPPORTED_INPUT = "unsupported_input"
     LEGACY_CLI_INPUT = "legacy_cli_input"
+    TIMEOUT = "timeout"
+    CANCELLED = "cancelled"
     NONZERO_EXIT = "nonzero_exit"
     NO_ARTIFACTS = "no_artifacts"
     EXCEPTION = "exception"
@@ -204,6 +209,9 @@ def parse_document_with_mineru_result(
     atomic_write_json(state_path, {"source": source_file.name, "state": "running"})
     process = None
     process_finished = False
+    watchdog_stop = threading.Event()
+    watchdog = None
+    interrupted: list[LocalParseReason] = []
     result = LocalParseResult.failure(LocalParseReason.EXCEPTION, "parse interrupted")
     try:
         cmd = [mineru_cmd, "-p", str(source_file), "-o", str(temp_output)]
@@ -225,11 +233,44 @@ def parse_document_with_mineru_result(
         )
         tail: deque[str] = deque(maxlen=40)
         last_emit = 0.0
+        from deeptutor.knowledge.indexing_run import IndexingCancelled, current_run
+
+        run = current_run()
+        activity = [time.monotonic()]
+        if run is not None:
+            started = activity[0]
+
+            def watch():
+                while not watchdog_stop.wait(0.25):
+                    try:
+                        run.check()
+                    except IndexingCancelled:
+                        interrupted.append(LocalParseReason.CANCELLED)
+                    except OSError:
+                        interrupted.append(LocalParseReason.EXCEPTION)
+                    if (
+                        time.monotonic() - activity[0] > _LOCAL_PARSE_IDLE_TIMEOUT_SECONDS
+                        or time.monotonic() - started > _LOCAL_PARSE_TIMEOUT_SECONDS
+                    ):
+                        interrupted.append(LocalParseReason.TIMEOUT)
+                    if interrupted:
+                        try:
+                            process.terminate()
+                            process.wait(timeout=3)
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+                        except OSError:
+                            pass
+                        return
+
+            watchdog = threading.Thread(target=watch, daemon=True)
+            watchdog.start()
         assert process.stdout is not None
         for raw_line in process.stdout:
             line = raw_line.strip()
             if not line:
                 continue
+            activity[0] = time.monotonic()
             tail.append(line)
             if on_output is not None:
                 now = time.monotonic()
@@ -244,6 +285,12 @@ def parse_document_with_mineru_result(
         returncode = process.wait()
         process_finished = True
 
+        if interrupted:
+            result = LocalParseResult.failure(
+                interrupted[0],
+                "Cancellation or parse time limit reached; completed checkpoints remain reusable.",
+            )
+            return result
         if returncode != 0:
             print("✗ MinerU parsing failed:")
             print("\n".join(tail))
@@ -309,6 +356,9 @@ def parse_document_with_mineru_result(
         )
         return result
     finally:
+        watchdog_stop.set()
+        if watchdog is not None:
+            watchdog.join(timeout=4)
         # Stop an interrupted child before another attempt can publish output.
         if process is not None and not process_finished:
             try:
