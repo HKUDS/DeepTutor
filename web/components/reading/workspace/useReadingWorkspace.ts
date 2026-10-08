@@ -156,9 +156,15 @@ export function useReadingWorkspace(
       return;
     let attempt = 0;
     let timer = 0;
+    let cancelled = false;
     const tick = () => {
       attempt += 1;
-      void refresh().finally(() => {
+      void refresh().catch((caught) => {
+        if (!cancelled) setNotice(
+          caught instanceof Error ? caught.message : t("This collection could not be opened."),
+        );
+      }).finally(() => {
+        if (cancelled) return;
         timer = window.setTimeout(
           tick,
           Math.min(2500 * 2 ** Math.floor(attempt / 4), 30_000),
@@ -166,8 +172,11 @@ export function useReadingWorkspace(
       });
     };
     timer = window.setTimeout(tick, 2500);
-    return () => window.clearTimeout(timer);
-  }, [refresh, workspace]);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [refresh, t, workspace]);
 
   useEffect(() => {
     if (!workspace || loading) return;
