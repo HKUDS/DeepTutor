@@ -112,6 +112,7 @@ export function WorkspaceMenu({
                       active={item.active}
                       spinning={item.spinning}
                       disabled={item.disabled}
+                      mobileOnly={item.mobileOnly}
                       onClick={() => {
                         // A toggle stays open so the learner sees it flip.
                         if (item.active === undefined) setOpen(false);

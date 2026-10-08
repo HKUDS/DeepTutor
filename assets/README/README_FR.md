@@ -60,10 +60,10 @@
 
 DeepTutor est un espace de travail d'apprentissage natif à l'agent qui connecte le tutorat, la résolution de problèmes, la génération de quiz, la recherche, la visualisation et la pratique de maîtrise dans un système extensible.
 
-- **Un seul runtime pour chaque mode** — Chat, Ask Questions, Quiz, Research, Visualize, Solve, Course Study, Mastery Path, Immersive Reading et Immersive Watching partagent le même runtime de capacités et le même contexte de session, tout en conservant des boucles et des pipelines conçus pour chaque usage.
+- **Un seul runtime pour chaque mode** — Chat, Ask Questions, Quiz, Research, Visualize, Solve, Course Study, Mastery Path, Immersive Reading et Audio Overview partagent le même runtime de capacités et le même contexte de session, tout en conservant des boucles et des pipelines conçus pour chaque usage.
 - **Task Board** — Suivez vos tâches d'étude dans les colonnes À faire, En cours et Terminé, avec des notes, un déplacement par glisser-déposer ou au moyen de boutons accessibles au clavier, et une archive depuis laquelle vous pouvez les restaurer. Les cartes restent dans l'espace de travail actuel et suivent les paramètres d'apparence et de langue existants ; aucune configuration de modèle n'est nécessaire.
 - **Contexte d'apprentissage connecté** — Les bases de connaissances, les livres, les brouillons Co-Writer, les carnets, les banques de questions, les personas et la Memory peuvent être réutilisés dans les flux de travail qui les prennent en charge, sous réserve des attributions du compte et des politiques d'apprentissage.
-- **Apprentissage vidéo immersif** — collez un lien YouTube pour une lecture native avec protection renforcée de la confidentialité, des sous-titres synchronisés, un tutorat ancré dans les horodatages, des repères temporels enregistrés et une progression reprenable ; les administrateurs peuvent basculer la lecture vers une instance Invidious auto-hébergée sans reconstruire les supports.
+- **Apprentissage vidéo immersif** — ajoutez des liens YouTube ou Bilibili à Reading pour profiter de la lecture native, de la recherche dans les transcriptions, d’un tutorat ancré dans les horodatages, de notes enregistrées et d’une progression reprenable ; les sous-titres et la navigation YouTube peuvent utiliser une instance Invidious configurée par un administrateur.
 - **Sous-agents et Partners** — depuis Chat, consultez un harness d'agent en direct (Claude Code, Codex, Grok CLI, Antigravity, Kimi, opencode, MiMo, Hermes, OpenClaw ou DeepSeek) ou un Partner, importez des conversations passées et exécutez des compagnons IM persistants sur le même cerveau.
 - **Connaissances multi-moteur** — bibliothèques RAG versionnées via LlamaIndex, PageIndex, GraphRAG, LightRAG, un LightRAG Server distant, un déploiement WeKnora auto-hébergé, une bibliothèque Tencent IMA ou MarginNote 4, une archive ZIM Kiwix connectée, ou un vault Obsidian lié, avec une analyse de documents enfichable. Consultez les [modèles de rôle LightRAG natifs](../../deeptutor/services/rag/pipelines/lightrag/README.md) pour des paramètres d'extraction, de requête et de vision indépendants, une création limitée aux valeurs par défaut, et des reconstructions confirmées.
 - **Outils et compétences extensibles** — outils intégrés, serveurs MCP, applications CLI, modèles de génération d'images / vidéos / voix, et compétences communautaires installables depuis EduHub.
@@ -72,6 +72,22 @@ DeepTutor est un espace de travail d'apprentissage natif à l'agent qui connecte
 ---
 
 ## 🚀 Démarrage
+
+### Laissez votre agent configurer DeepTutor
+
+Copiez cette consigne dans votre agent IA capable d’utiliser un terminal (comme Codex ou Claude Code) :
+
+```text
+Help me install and configure DeepTutor locally from https://github.com/HKUDS/DeepTutor.
+Clone the repository, or reuse my existing checkout, and read SKILL.md and
+docs-for-user/AGENT_SETUP.md first. Follow that guide to prepare the environment,
+configure my model provider, verify the setup, and start the Web app.
+Ask me for any missing provider, model, or credential-source information;
+do not print API keys. Preserve my existing files and settings, and finish
+with the access URL and the results of your checks.
+```
+
+Le [guide de configuration par un agent](../../docs-for-user/AGENT_SETUP.md) décrit tout le parcours, y compris la configuration CLI non interactive. Pour l’installer vous-même, choisissez l’une des méthodes ci-dessous.
 
 DeepTutor propose quatre chemins d'installation. Ils partagent tous une même structure de répertoire d'exécution : les paramètres privés résident dans `data/user/settings/` sous le répertoire depuis lequel vous lancez l'application (ou sous `DEEPTUTOR_HOME` / `deeptutor start --home` si vous en définissez un explicitement). Pour l'application complète, le flux recommandé est **choisir un répertoire d'exécution → installer → `deeptutor init` → `deeptutor start`**.
 
@@ -353,7 +369,7 @@ Tout ce qui se trouve sous `data/user/settings/` est du JSON/YAML brut. La page 
 | `integrations.json` | Paramètres d'intégration PocketBase et sidecar optionnels |
 | `interface.json` | Langue de l'interface et de sortie du modèle / thème / préférences de barre latérale |
 | `document_parsing.json` | Choix du moteur d'analyse et du modèle de description d'images, points de terminaison distants et options propres à chaque moteur |
-| `video_learning.json` | Fournisseur de lecture YouTube/Invidious par défaut, origines Invidious et adaptateur de transcription optionnel |
+| `video_learning.json` | Fournisseur de sous-titres YouTube, origines Invidious et accès au compte, et paramètres de transcription |
 | `main.yaml` | Valeurs par défaut du comportement d'exécution et injection de chemin |
 | `agents.yaml` | Paramètres de température et de jetons pour les capacités/outils |
 
@@ -449,7 +465,7 @@ Les outils basculables par l'utilisateur sont `brainstorm`, `web_search`, `paper
 
 Le contexte se présente en deux types : le **contexte de session persistant** (capacité, espace de travail ou cours, outils, bases de connaissances, persona, modèle et état Reading / Mastery) persiste entre les tours ; les **références ponctuelles** (fichiers, historique de chat, livres, sections de lecture, carnets, entrées sélectionnées de la banque de questions, agents importés) proviennent du menu `+` pour un seul tour. Le bouton vocal ne transcrit que le message en cours.
 
-L'accueil garde **Chat**, **Ask Questions**, **Quiz** et **Visualize** accessibles en un clic ; **Research** pour les rapports cités, **Solve** pour le raisonnement guidé et **Immersive Watching** se trouvent sous *Plus de Capacités*. **Apprentissage personnalisé** regroupe Book, **Mastery Path**, **Immersive Reading**, Watching et **Practice** ; Reading ajoute des citations vérifiées, des notes enregistrées, une lecture à voix haute naturelle à partir des passages sources et des actions d'accompagnement d'étude / vocabulaire / quiz / traduction, ainsi que la capture dans les carnets, tandis que Course Study conserve son contexte lié au cours.
+L'accueil garde **Chat**, **Ask Questions**, **Quiz** et **Visualize** accessibles en un clic ; **Research** pour les rapports cités et **Solve** pour le raisonnement guidé se trouvent sous *Plus de Capacités*. **Apprentissage personnalisé** regroupe Book, **Mastery Path**, **Immersive Reading** et **Practice** ; Reading réunit les documents, la vidéo et l’audio avec des citations vérifiées, des notes enregistrées, une lecture à voix haute naturelle à partir des passages sources et des actions d'accompagnement d'étude / vocabulaire / quiz / traduction, ainsi que la capture dans les carnets, tandis que Course Study conserve son contexte lié au cours.
 
 </details>
 
@@ -613,10 +629,10 @@ Settings est le plan de contrôle opérationnel et s'ouvre sur **Général**, po
 
 **Synthèse vocale Xiaomi MiMo.** Ajoutez un fournisseur Xiaomi MiMo avec `https://api.xiaomimimo.com/v1` et sa clé API, puis ajoutez `mimo-v2.5-tts` dans Paramètres → Voix. Choisissez un préréglage tel que `mimo_default`, `冰糖` ou `苏打`, utilisez une sortie `wav` ou `pcm16`, puis écoutez un aperçu avant de l'appliquer. Les instructions vocales contrôlent le style et la vitesse de parole. Cet adaptateur ne prend en charge que les voix prédéfinies ; la conception et le clonage de voix nécessitent des modèles distincts et ne sont pas pris en charge. Si un ancien modèle vocal MiMo était configuré via l'adaptateur générique compatible OpenAI, recréez son entrée vocale avec le fournisseur Xiaomi MiMo afin qu'elle utilise le protocole chat-completions. Consultez le [guide officiel de synthèse vocale MiMo](https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/speech-synthesis-v2.5).
 
-**Synthèse vocale MiniMax** — dans Paramètres → Voix, choisissez MiniMax pour la synthèse vocale et sélectionnez `speech-2.8-hd`. Configurez une clé API MiniMax et un identifiant de voix système ou personnalisé ; la voix par défaut est `English_expressive_narrator`. L'URL de base de l'API est `https://api.minimax.io/v1` par défaut ; pour la région Chine, utilisez `https://api.minimaxi.com/v1`. La lecture à voix haute et les aperçus vocaux utilisent le point de terminaison vocal natif, avec une sortie MP3, WAV, FLAC ou PCM et des contrôles de fréquence d'échantillonnage, de vitesse et de langue. Consultez l'[API de synthèse vocale MiniMax](https://platform.minimax.io/docs/api-reference/speech-t2a-http) pour les identifiants de voix et la disponibilité selon le compte.
+**Synthèse vocale MiniMax** — dans Paramètres → Voix, choisissez MiniMax pour la synthèse vocale et sélectionnez `speech-2.8-hd`. Configurez une clé API MiniMax et sélectionnez explicitement une voix système ou saisissez un identifiant de voix personnalisé. L'URL de base de l'API est `https://api.minimax.io/v1` par défaut ; pour la région Chine, utilisez `https://api.minimaxi.com/v1`. La lecture à voix haute et les aperçus vocaux utilisent le point de terminaison vocal natif, avec une sortie MP3, WAV, FLAC ou PCM et des contrôles de fréquence d'échantillonnage, de vitesse et de langue. Consultez l'[API de synthèse vocale MiniMax](https://platform.minimax.io/docs/api-reference/speech-t2a-http) pour les identifiants de voix et la disponibilité selon le compte.
 
 
-**Video Learning** sous Paramètres → Apprentissage & conversation utilise par défaut le YouTube IFrame Player officiel avec protection renforcée de la confidentialité. Pour conserver la lecture locale, définissez l'origine de l'API Invidious gérée par l'administrateur (par exemple `http://127.0.0.1:3000`), testez-la, sélectionnez Invidious, puis enregistrez. Les vidéos nouvelles ou rouvertes adoptent immédiatement le fournisseur tout en conservant le même ID de support et la même progression. Les médias Invidious sont diffusés via le proxy byte-range de DeepTutor ; les URL en amont ne sont ni exposées au navigateur ni stockées sur disque. En cas de défaillance de l'instance, DeepTutor reste hors connexion à YouTube jusqu'à ce que l'apprenant choisisse explicitement la solution de repli YouTube native. Le tutorat basé sur les sous-titres publics est optionnel : installez `.[video-learning]` ; la lecture continue sans cet extra, tandis que la fonction **Explain here** basée sur les transcriptions est désactivée avec une explication.
+**Video Learning** sous Paramètres → Apprentissage & conversation configure les sous-titres YouTube et l’accès à Invidious pour Reading. Pour utiliser Invidious, définissez son origine d’API backend gérée par l’administrateur (par exemple `http://127.0.0.1:3000`) et son origine publique accessible au navigateur, testez la connexion, sélectionnez Invidious, puis enregistrez. **Parcourir Invidious**, dans la boîte de dialogue d’ajout de supports de Reading, permet de rechercher des vidéos et d’accéder aux abonnements et listes de lecture connectés. La lecture YouTube utilise le lecteur officiel avec protection renforcée de la confidentialité ; l’absence de sous-titres reste visible et limite les éléments dont dispose le tuteur sans bloquer la lecture native. Installez `.[video-learning]` pour le chargeur de sous-titres YouTube par défaut. Les liens Watching existants migrent vers Reading en conservant l’historique des conversations, les transcriptions compatibles, les notes et la progression ; les nouvelles notes horodatées sont des annotations Reading. Bilibili utilise son propre parcours de lecture et de sous-titres.
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="Paramètres d'apparence et thèmes DeepTutor" width="900">
@@ -714,7 +730,7 @@ SID=$(deeptutor run deep_research "Survey 2026 papers on RAG" \
 deeptutor run deep_question "Quiz me on that survey" --session "$SID" --format json
 ```
 
-Le dépôt inclut un [`SKILL.md`](../../SKILL.md) racine — un document de passation de ~200 lignes qui enseigne à tout LLM utilisant des outils la totalité de la surface en une seule lecture. Remettez-le à Claude Code, Codex ou OpenCode (ils récupèrent `SKILL.md` automatiquement), ou enveloppez `deeptutor run` comme un outil dans une boucle LangChain / AutoGen. Recettes complètes : [Agent Handoff](https://deeptutor.info/docs/cli/agent-handoff/).
+Le dépôt inclut un [`SKILL.md`](../../SKILL.md) racine — un document de passation concis pour la CLI. Demandez explicitement à votre agent de le lire ; son [guide de configuration par un agent](../../docs-for-user/AGENT_SETUP.md) couvre l’installation et la configuration. Vous pouvez aussi envelopper `deeptutor run` comme un outil dans une boucle LangChain / AutoGen. Recettes complètes : [Agent Handoff](https://deeptutor.info/docs/cli/agent-handoff/).
 
 </details>
 
@@ -723,13 +739,13 @@ Le dépôt inclut un [`SKILL.md`](../../SKILL.md) racine — un document de pass
 
 | Commande | Description |
 |:---|:---|
-| `deeptutor init` | Créer ou mettre à jour `data/user/settings` dans le répertoire d'exécution actuel |
+| `deeptutor init [--non-interactive] [--home PATH]` | Exécuter l’assistant de configuration, ou créer les valeurs par défaut manquantes sans invite |
 | `deeptutor doctor [--online]` | Vérifier si l'environnement d'exécution est prêt à démarrer une session ; `--online` sonde aussi le fournisseur de modèle configuré, `--format json` affiche le rapport |
 | `deeptutor start [--home PATH] [--dev] [--detach] [--no-browser]` | Lancer le backend + frontend ensemble ; éventuellement détacher le processus ou empêcher l'ouverture du navigateur |
 | `deeptutor stop [--home PATH]` | Arrêter un lanceur démarré avec `--detach` |
 | `deeptutor serve [--port PORT]` | Démarrer uniquement le backend FastAPI |
 | `deeptutor workspace show/set/reset` | Inspecter, sélectionner ou restaurer le Content Workspace par utilisateur |
-| `deeptutor run <capability> <message>` | Exécuter un seul tour de capacité (`chat`, `ask_questions`, `deep_solve`, `deep_question`, `deep_research`, `visualize`, `math_animator`, `mastery_path`, `immersive_reading`, `course_study`, `immersive_watching`, `audio_overview`) ; ajoutez `--format json` pour la sortie NDJSON |
+| `deeptutor run <capability> <message>` | Exécuter un seul tour de capacité (`chat`, `ask_questions`, `deep_solve`, `deep_question`, `deep_research`, `visualize`, `math_animator`, `mastery_path`, `immersive_reading`, `course_study`, `audio_overview`) ; ajoutez `--format json` pour la sortie NDJSON |
 | `deeptutor chat` | REPL interactif avec contrôles de capacité, outil, KB, carnet et historique |
 | `deeptutor partner list/create/start/stop` | Gérer les partners connectés à IM |
 | `deeptutor kb list/info/create/connect-kiwix/add/search/eval/set-default/delete/list-sources/sync` | Gérer les bases de connaissances, connecter des archives Kiwix, évaluer la qualité de récupération avec un jeu de questions-réponses et synchroniser les sources GitHub/web enregistrées (avec les commandes d'ajout et de suppression de sources) |
@@ -738,9 +754,26 @@ Le dépôt inclut un [`SKILL.md`](../../SKILL.md) racine — un document de pass
 | `deeptutor session list/show/open/rename/delete` | Gérer les sessions partagées |
 | `deeptutor notebook list/create/show/add-md/replace-md/remove-record` | Gérer les carnets depuis des fichiers Markdown |
 | `deeptutor book list/health/refresh-fingerprints` | Inspecter les livres et actualiser les empreintes des sources |
-| `deeptutor plugin list/info` | Inspecter les outils et capacités enregistrés |
-| `deeptutor config show` | Afficher le résumé de configuration |
-| `deeptutor provider login <provider>` | Authentification du fournisseur (`openai-codex` via OAuth ; `github-copilot` valide une session d'authentification Copilot existante ; `codebuddy` valide l'authentification du SDK CodeBuddy et lance la connexion si nécessaire) |
+| `deeptutor plugin list/info/state/search/show/install/approve/enable/disable/rollback/uninstall` | Inspecter les outils et les capacités ; gérer les paquets de plugins examinés et l’approbation de leurs permissions |
+| `deeptutor config show [--home PATH]` | Afficher la configuration d’exécution résolue en masquant les identifiants |
+| `deeptutor config providers` | Lister les fournisseurs pris en charge pour la configuration et leurs valeurs par défaut en JSON |
+| `deeptutor config apply FILE [--check] [--home PATH]` | Appliquer une configuration JSON sans invite, ou la valider sans écrire de paramètres |
+| `deeptutor provider login <provider>` | Authentification du fournisseur (`openai-codex` via OAuth ; `github-copilot` via la connexion d’appareil GitHub ; `codebuddy` valide l'authentification du SDK CodeBuddy et lance la connexion si nécessaire) |
+
+Les identifiants GitHub Copilot appartiennent au propriétaire DeepTutor connecté et résident uniquement dans
+`<runtime-home>/data/system/user-secrets/<owner-id>/private/github-copilot/credentials.v1.json`,
+en dehors des espaces de travail du sandbox. Les Partners CLI/administrateur utilisent les identifiants de l’administrateur ;
+les autres utilisateurs se connectent séparément et les profils Copilot ne peuvent pas être partagés via les attributions de modèles.
+Les fichiers de jetons nanobot/Copilot externes ne sont jamais importés : après une mise à niveau, exécutez de nouveau
+`deeptutor provider login github-copilot`.
+
+La connexion valide l’inférence avec un modèle actuellement découvert ; `init` valide le modèle sélectionné
+et s’interrompt en cas d’échec sans enregistrer le brouillon de configuration. Une authentification GitHub réussie
+ne suffit pas à établir l’accès aux modèles Copilot (la connexion enregistrée est conservée si la validation échoue).
+Les requêtes d’exécution suivent le point de terminaison API renvoyé par l’échange de jetons,
+y compris lors des renouvellements, et respectent les métadonnées des points de terminaison Responses/Chat Completions de chaque modèle.
+
+La compatibilité Responses propre à Copilot s’applique à l’envoi des requêtes sans réécrire l’historique enregistré.
 
 </details>
 
@@ -901,3 +934,22 @@ Sous licence [Apache License 2.0](../../LICENSE).
 </p>
 
 </div>
+
+### Ancrage des tours Mastery
+
+Les tours Mastery lisent l’état du parcours actif avant la première requête au modèle,
+en utilisant le même outil d’état et les mêmes contrôles de maîtrise qu’un appel d’outil explicite.
+Cet instantané est actualisé à chaque tour, inclut le mode de session actif et n’est jamais mis en cache
+entre les tours. En cas d’échec de lecture, le système se rabat sur `mastery_status` ; après un changement
+de parcours, de mode, de plan ou de progression, le tuteur peut actualiser l’état avec cet outil.
+La notation des cartes et son transfert existant restent inchangés.
+
+### Pièces jointes d’image répétées
+
+La boucle d’agent n’envoie les images utilisateur intégrées identiques qu’une fois par requête et remplace
+les copies suivantes par des références à l’image conservée. Des libellés stables, propres à la requête,
+identifient les images intégrées conservées lors des adaptations aux fournisseurs et des tours ajoutés.
+Les blocs d’image uniques, les URL distantes, les options d’image différentes, les messages de l’assistant
+et les résultats d’outils restent complets. L’historique enregistré conserve chaque pièce jointe d’origine ;
+les références sont reconstruites après la réduction de l’historique. Cela réduit les données d’image répétées,
+mais l’utilisation déclarée par le fournisseur reste la source de vérité pour la facturation et les accès au cache.

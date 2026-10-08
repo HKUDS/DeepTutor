@@ -561,3 +561,180 @@ class TestRetentionBaseline:
         assert [task.knowledge_point_id for task in tasks] == ["kp_risk", "kp_safe"]
         assert tasks[0].forgetting_risk > tasks[1].forgetting_risk
         assert "retrievability" in tasks[0].reason
+
+
+# ── qualitative repair follow-ups (#1781) ───────────────────────────────────
+
+
+class TestQualitativeRepairFollowups:
+    def test_formative_partial_followups_do_not_compound_lapses_or_stability_loss(self, scheduler):
+        """Regression test for #1781: multiple partial clarifications during one
+        short qualitative repair episode must not repeatedly increment lapse_count
+        or compound stability loss.
+        """
+        start = 1_700_000_000.0
+        # Start with an already-due concept objective matching the issue:
+        # stability 2.0 days, difficulty 0.4, desired retention 0.7, retrievability 0.7.
+        state = RepetitionState(
+            interval_index=0,
+            consecutive_correct=0,
+            consecutive_wrong=0,
+            next_review_at=start,
+            difficulty=0.4,
+            stability=2.0,
+            retrievability=0.7,
+            desired_retention=0.7,
+            review_count=1,
+            lapse_count=0,
+            last_review_at=start - (-2.0 * math.log(0.7)) * 86400,
+            last_scheduled_at=start,
+            scheduled_after_failure=False,
+        )
+        assert scheduler.retrievability(state, now=start) == pytest.approx(0.7)
+
+        # +0 min: first partial explanation -> records lapse and reschedules
+        ev1 = LearningEvidence(
+            knowledge_point_id="kp1",
+            timestamp=start,
+            quality=0.2,
+            result="partial",
+            assessment_type="qualitative",
+        )
+        scheduler.schedule_review(state, KnowledgeType.CONCEPT, ev1, now=start)
+        assert state.lapse_count == 1
+        assert state.review_count == 2
+        assert state.stability == pytest.approx(0.6585, rel=1e-3)
+        assert state.scheduled_after_failure is True
+        initial_due = state.next_review_at
+        assert (initial_due - start) / 60 == pytest.approx(169.107, rel=1e-3)
+
+        # +4 min: second partial explanation during repair -> must NOT compound lapse or stability
+        ev2 = LearningEvidence(
+            knowledge_point_id="kp1",
+            timestamp=start + 4 * 60,
+            quality=0.2,
+            result="partial",
+            assessment_type="qualitative",
+        )
+        scheduler.schedule_review(state, KnowledgeType.CONCEPT, ev2, now=ev2.timestamp)
+        assert state.lapse_count == 1
+        assert state.review_count == 3
+        assert state.stability == pytest.approx(0.6585, rel=1e-3)
+        assert state.next_review_at == initial_due
+        assert state.retrievability == pytest.approx(0.2)
+
+        # +8 min: completed explanation -> same-session success refreshes recall without inflating interval
+        ev3 = LearningEvidence(
+            knowledge_point_id="kp1",
+            timestamp=start + 8 * 60,
+            quality=1.0,
+            result="correct",
+            assessment_type="qualitative",
+        )
+        scheduler.schedule_review(state, KnowledgeType.CONCEPT, ev3, now=ev3.timestamp)
+        assert state.lapse_count == 1
+        assert state.review_count == 4
+        assert state.stability == pytest.approx(0.6585, rel=1e-3)
+        assert state.next_review_at == initial_due
+        assert state.retrievability == 1.0
+        assert state.consecutive_wrong == 0
+
+    def test_qualitative_repair_replays_consistently(self, scheduler):
+        start = 1_700_000_000.0
+        events = [
+            LearningEvidence(
+                knowledge_point_id="kp1",
+                timestamp=start,
+                quality=0.2,
+                result="partial",
+                assessment_type="qualitative",
+            ),
+            LearningEvidence(
+                knowledge_point_id="kp1",
+                timestamp=start + 3 * 60,
+                quality=0.2,
+                result="partial",
+                assessment_type="qualitative",
+            ),
+            LearningEvidence(
+                knowledge_point_id="kp1",
+                timestamp=start + 7 * 60,
+                quality=1.0,
+                result="correct",
+                assessment_type="qualitative",
+            ),
+        ]
+        live = scheduler.get_initial_state(KnowledgeType.CONCEPT, now=start, desired_retention=0.7)
+        for ev in events:
+            scheduler.schedule_review(live, KnowledgeType.CONCEPT, ev, now=ev.timestamp)
+
+        replayed = scheduler.replay(KnowledgeType.CONCEPT, events, desired_retention=0.7)
+        assert replayed.stability == pytest.approx(live.stability)
+        assert replayed.lapse_count == live.lapse_count == 1
+        assert replayed.review_count == live.review_count == 3
+        assert replayed.next_review_at == pytest.approx(live.next_review_at)
+        assert replayed.scheduled_after_failure == live.scheduled_after_failure
+
+    def test_delayed_retrieval_after_qualitative_repair_succeeds_or_fails_independently(
+        self, scheduler
+    ):
+        start = 1_700_000_000.0
+        state = scheduler.get_initial_state(KnowledgeType.CONCEPT, now=start, desired_retention=0.7)
+        ev1 = LearningEvidence(
+            knowledge_point_id="kp1",
+            timestamp=start,
+            quality=0.2,
+            result="partial",
+            assessment_type="qualitative",
+        )
+        scheduler.schedule_review(state, KnowledgeType.CONCEPT, ev1, now=start)
+        ev2 = LearningEvidence(
+            knowledge_point_id="kp1",
+            timestamp=start + 4 * 60,
+            quality=0.2,
+            result="partial",
+            assessment_type="qualitative",
+        )
+        scheduler.schedule_review(state, KnowledgeType.CONCEPT, ev2, now=ev2.timestamp)
+        ev3 = LearningEvidence(
+            knowledge_point_id="kp1",
+            timestamp=start + 8 * 60,
+            quality=1.0,
+            result="correct",
+            assessment_type="qualitative",
+        )
+        scheduler.schedule_review(state, KnowledgeType.CONCEPT, ev3, now=ev3.timestamp)
+        assert state.lapse_count == 1
+        post_repair_stability = state.stability
+        due_time = state.next_review_at
+
+        # Test A: Successful delayed retrieval at due time (e.g. 3 hours later)
+        success_state = state.model_copy(deep=True)
+        ev_success = LearningEvidence(
+            knowledge_point_id="kp1",
+            timestamp=due_time + 60,
+            quality=1.0,
+            result="correct",
+            assessment_type="qualitative",
+        )
+        scheduler.schedule_review(
+            success_state, KnowledgeType.CONCEPT, ev_success, now=ev_success.timestamp
+        )
+        assert success_state.lapse_count == 1
+        assert success_state.stability > post_repair_stability
+        assert success_state.scheduled_after_failure is False
+        assert success_state.next_review_at > due_time + 60
+
+        # Test B: Independent failure at due time counts as a genuine new lapse
+        fail_state = state.model_copy(deep=True)
+        ev_fail = LearningEvidence(
+            knowledge_point_id="kp1",
+            timestamp=due_time + 60,
+            quality=0.2,
+            result="partial",
+            assessment_type="qualitative",
+        )
+        scheduler.schedule_review(fail_state, KnowledgeType.CONCEPT, ev_fail, now=ev_fail.timestamp)
+        assert fail_state.lapse_count == 2
+        assert fail_state.stability < post_repair_stability
+        assert fail_state.scheduled_after_failure is True

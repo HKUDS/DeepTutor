@@ -1,11 +1,13 @@
 "use client";
 
+import { scrollToSettingsElement } from "@/features/settings/navigation/settings-scroll";
 import Tooltip from "@/shared/ui/Tooltip";
 import { stageRegistryAction, type RegistryEdit } from "@/lib/provider-registry";
 import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { Check, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { formatConfiguredProviderName } from "@/lib/provider-branding";
 import ProviderIcon from "@/components/common/ProviderIcon";
 import {
   useSettings,
@@ -20,12 +22,15 @@ import {
   providerIdentity,
   providerProbeInput,
   providerRegistry,
+  providerServiceSupport,
   SERVICE_TITLES,
   type ProviderSource,
 } from "@/lib/provider-registry";
 import { voiceModelOptions } from "@/lib/voice-settings";
+import { VoiceDiscoveryField } from "./VoiceDiscoveryField";
 import { VoiceModelFields } from "./VoiceModelFields";
 import { VoicePreviewPanel } from "./VoicePreviewPanel";
+import { ServicePreviewPanel } from "./ServicePreviewPanel";
 import { ModelTestPanel } from "./ModelTestPanel";
 import EmbeddingModelUsage from "./EmbeddingModelUsage";
 import {
@@ -61,7 +66,8 @@ export function ModelsWorkspace({
   page: ModelPage;
   initialService?: ServiceName;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const uiLanguage = i18n?.resolvedLanguage ?? i18n?.language ?? "en";
   const {
     draft,
     providers,
@@ -96,10 +102,7 @@ export function ModelsWorkspace({
   const revealDetail = () => {
     if (window.matchMedia("(max-width: 1279px)").matches)
       requestAnimationFrame(() =>
-        editorRef.current?.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        }),
+        scrollToSettingsElement(editorRef.current),
       );
   };
   const selectModel = (key: string) => {
@@ -110,33 +113,9 @@ export function ModelsWorkspace({
   const selectedRow = rows.find((r) => r.key === selected);
   // Providers and models can be created together in the same draft.
   const sources = providerRegistry(draft);
-  /** Whether a built-in adapter is on record for this vendor and service. */
-  const declared = (source: ProviderSource, service: ServiceName) => {
-    const adapterService = service === "task" ? "llm" : service;
-    const exact = providers[adapterService]?.some(
-      (option) =>
-        option.value === source.provider &&
-        option.value !== "none" &&
-        option.status !== "deprecated",
-    );
-    const mapped = connectionTargets.find(
-      (target) => target.provider === source.provider,
-    )?.services[adapterService];
-    return Boolean(
-      exact ||
-      mapped ||
-      (service !== "search" && source.service === service) ||
-      (service === "task" && source.service === "llm") ||
-      (service !== "search" && source.provider === "custom"),
-    );
-  };
-  // Not being on record is not a veto for any service. Whether a vendor serves
-  // a given model type is not knowable from its registry entry — plenty of
-  // OpenAI-compatible endpoints serve embeddings or speech without appearing in
-  // that service's table — so every provider is selectable, the ones with no
-  // adapter on record are only grouped apart, and a wrong pick is reported by
-  // the model test rather than pre-empted here. Managed credentials stay out:
-  // that is not a capability judgement, their models arrive with them.
+  const declared = (source: ProviderSource, service: ServiceName) =>
+    providerServiceSupport(source, service, connectionTargets, providers).enabled;
+  // Keep compatible custom connections available behind an explicit choice.
   const selectable = sources.filter(
     (source) => !("managed_by" in source.source && source.source.managed_by),
   );
@@ -183,7 +162,7 @@ export function ModelsWorkspace({
                   provider_ref: ref,
                   ...(newService === "tts"
                     ? {
-                        voice: target?.default_voice || "",
+                        voice: "",
                         response_format: voiceModelOptions(target?.voice_options, target?.default_model || "")?.formats[0] || "mp3",
                       }
                     : {}),
@@ -248,10 +227,10 @@ export function ModelsWorkspace({
               </button>
             }
             search={{
-              label: t("Find model"),
+              label: t(page === "search" ? "settings.serviceConfig.findSearch" : "Find model"),
               value: query,
               onChange: setQuery,
-              placeholder: t("Search by model or provider"),
+              placeholder: t(page === "search" ? "settings.serviceConfig.findSearch" : "Search by model or provider"),
             }}
             filter={
               page === "voice" || page === "multimodal" ? (
@@ -274,8 +253,8 @@ export function ModelsWorkspace({
               filtered.length
                 ? undefined
                 : rows.length
-                  ? t("No models match your search.")
-                  : t("No models configured yet.")
+                  ? t(page === "search" ? "settings.serviceConfig.noSearchMatch" : "No models match your search.")
+                  : t(page === "search" ? "settings.serviceConfig.noSearch" : "No models configured yet.")
             }
           >
             {filtered.map((row) => {
@@ -296,7 +275,7 @@ export function ModelsWorkspace({
                 row.model?.model ||
                 row.profile.display_name ||
                 (row.model ? t("New model") : row.profile.name);
-              const providerName = provider?.name || t("Provider unavailable");
+              const providerName = provider ? formatConfiguredProviderName(provider.provider, provider.name, uiLanguage) : t("Provider unavailable");
               const editing = !adding && row.key === selected;
               return (
                 <button
@@ -315,19 +294,19 @@ export function ModelsWorkspace({
                       provider={provider?.provider || "custom"}
                       size={15}
                     />
-                    <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium">
+                    <span className="min-w-0 flex-1 truncate text-[14px] font-medium">
                       {label}
                     </span>
                     {isDefault && (
                       <span
-                        className="inline-flex shrink-0 items-center gap-0.5 text-[10px] text-[var(--primary)]"
+                        className="inline-flex shrink-0 items-center gap-0.5 text-[11px] text-[var(--primary)]"
                       >
                         <Check size={13} />
-                        {t("Default model")}
+                        {t(row.service === "search" ? "settings.serviceConfig.defaultSearch" : "Default model")}
                       </span>
                     )}
                   </span>
-                  <span className="mt-1 flex items-center gap-1.5 pl-[23px] text-[11px] text-[var(--muted-foreground)]">
+                  <span className="mt-1 flex items-center gap-1.5 pl-[23px] text-[12px] text-[var(--muted-foreground)]">
                     <span className="max-w-[45%] truncate">{providerName}</span>
                     {row.model?.model && (
                       <>
@@ -337,7 +316,7 @@ export function ModelsWorkspace({
                     )}
                   </span>
                   {(page === "voice" || page === "multimodal" || row.service === "task") && (
-                    <span className="mt-1.5 ml-[23px] inline-flex rounded-md bg-[color-mix(in_srgb,var(--muted)_70%,transparent)] px-1.5 py-0.5 text-[10px] text-[var(--muted-foreground)]">
+                    <span className="mt-1.5 ml-[23px] inline-flex rounded-md bg-[color-mix(in_srgb,var(--muted)_70%,transparent)] px-1.5 py-0.5 text-[11px] text-[var(--muted-foreground)]">
                       {t(SERVICE_TITLES[row.service])}
                     </span>
                   )}
@@ -380,7 +359,7 @@ export function ModelsWorkspace({
                 icon={<SlidersHorizontal size={17} />}
                 title={t("Nothing selected")}
                 hint={t(
-                  "Select a model to view its settings and connection test.",
+                  page === "search" ? "settings.serviceConfig.selectSearch" : "Select a model to view its settings and connection test.",
                 )}
               />
             )}
@@ -391,11 +370,7 @@ export function ModelsWorkspace({
   );
 }
 
-/**
- * Provider options for one service. Vendors with no adapter on record are
- * offered rather than hidden — they are only separated out, so the list still
- * says which ones are a known quantity without deciding for you.
- */
+/** Group known adapters before explicitly requested custom connections. */
 function ProviderOptions({
   sources,
   declared,
@@ -403,10 +378,11 @@ function ProviderOptions({
   sources: ProviderSource[];
   declared: (source: ProviderSource) => boolean;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const uiLanguage = i18n?.resolvedLanguage ?? i18n?.language ?? "en";
   const option = (p: ProviderSource) => (
     <option key={p.id} value={p.id}>
-      {p.name}
+      {formatConfiguredProviderName(p.provider, p.name, uiLanguage)}
     </option>
   );
   const unverified = sources.filter((source) => !declared(source));
@@ -453,6 +429,8 @@ function AddModelPanel({
   onCancel: () => void;
 }) {
   const { t } = useTranslation();
+  const [custom, setCustom] = useState(false);
+  const visible = sources.filter(source => declared(source) || (service !== "search" && custom && source.source.service_overrides?.[service === "task" ? "llm" : service]?.enabled !== false));
   const title = t(
     page === "search" ? "Add search configuration" : "Add model",
   );
@@ -462,14 +440,14 @@ function AddModelPanel({
         <h3 className="text-base font-semibold">{title}</h3>
         <Link
           href="/settings/connections"
-          className="shrink-0 text-xs text-[var(--muted-foreground)] underline underline-offset-4 transition-colors hover:text-[var(--foreground)]"
+          className="shrink-0 text-[13px] text-[var(--muted-foreground)] underline underline-offset-4 transition-colors hover:text-[var(--foreground)]"
         >
           {t("Manage providers")}
         </Link>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         {(page === "voice" || page === "multimodal") && (
-          <label className="space-y-1.5 text-xs font-medium">
+          <label className="space-y-1.5 text-[13px] font-medium">
             <span className="block">{t("Model type")}</span>
             <select
               className={selectClass}
@@ -484,7 +462,7 @@ function AddModelPanel({
             </select>
           </label>
         )}
-        <label className="space-y-1.5 text-xs font-medium">
+        <label className="space-y-1.5 text-[13px] font-medium">
           <span className="block">{t("Configured provider")}</span>
           <select
             aria-label={t("Configured provider")}
@@ -493,21 +471,21 @@ function AddModelPanel({
             onChange={(e) => onProvider(e.target.value)}
           >
             <option value="">{t("Choose a provider")}</option>
-            <ProviderOptions sources={sources} declared={declared} />
+            <ProviderOptions sources={visible} declared={declared} />
           </select>
         </label>
       </div>
-      <p className="mt-3 text-xs leading-relaxed text-[var(--muted-foreground)]">
-        {t(
-          service === "search"
-            ? "Every provider is selectable. Search has no generic adapter, so a provider without a search API of its own is rejected by the search test — that is where a wrong pick shows up."
-            : "Every provider is selectable. One with no adapter on record for this model type is called as an OpenAI-compatible endpoint derived from its provider URL — add the model, then run the model test to see whether it answers.",
-        )}
+      {service !== "search" && sources.some(source => !declared(source)) && <label className="mt-3 flex items-center gap-2 text-[13px]">
+        <input type="checkbox" checked={custom} onChange={e => { setCustom(e.target.checked); onProvider(""); }} />
+        {t("settings.serviceConfig.custom")}
+      </label>}
+      <p className="mt-3 text-[13px] leading-relaxed text-[var(--muted-foreground)]">
+        {t(service === "search" ? "settings.serviceConfig.search" : service === "videogen" ? "settings.serviceConfig.video" : "settings.serviceConfig.providers")}
       </p>
       <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-[color-mix(in_srgb,var(--border)_70%,transparent)] pt-4">
         <button
           type="button"
-          disabled={!provider}
+          disabled={!provider || !visible.some(source => source.id === provider)}
           onClick={onCreate}
           className={registryPrimary}
         >
@@ -533,7 +511,9 @@ function ModelEditor({
   declared: (source: ProviderSource) => boolean;
   onRemoved: () => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const uiLanguage = i18n?.resolvedLanguage ?? i18n?.language ?? "en";
+  const [custom, setCustom] = useState(false);
   const {
     draft,
     providers,
@@ -547,12 +527,13 @@ function ModelEditor({
   };
   const { service, profile, model } = row;
   const provider = modelProvider(draft, service, profile, model);
-  const speechProvider = model?.provider_ref?.binding || profile.provider_ref?.binding || provider?.provider || profile.binding || "custom";
+  const visible = sources.filter(source => declared(source) || source.id === provider?.id || (service !== "search" && custom && source.source.service_overrides?.[service === "task" ? "llm" : service]?.enabled !== false));
+  const speechProvider = (provider?.source.service_overrides?.[service]?.enabled && provider.source.service_overrides[service]?.binding) || model?.provider_ref?.binding || profile.provider_ref?.binding || provider?.provider || profile.binding || "custom";
   const speechOptions = providers[service]?.find(p => p.value === speechProvider)?.voice_options;
   const speechPreset = voiceModelOptions(speechOptions, model?.model ?? "");
   const [listed, setListed] = useState<{
     provider: string;
-    models: { id: string }[];
+    models: { id: string; services?: ServiceName[] }[];
   } | null>(null);
   const name = model
     ? model.name || model.model || t("New model")
@@ -588,8 +569,6 @@ function ModelEditor({
         const before = voiceModelOptions(speechOptions, target.model);
         const after = voiceModelOptions(speechOptions, String(value));
         if (after && after !== speechOptions?.fallback) {
-          if (before?.voices.some(v => v.id === target.voice) && !after.voices.some(v => v.id === target.voice))
-            target.voice = after.voices[0]?.id ?? "";
           if (before?.formats.includes(target.response_format ?? "") && !after.formats.includes(target.response_format ?? ""))
             target.response_format = after.formats[0] ?? "";
           if (before?.languages.some(l => l.id === target.language) && !after.languages.some(l => l.id === target.language))
@@ -621,10 +600,9 @@ function ModelEditor({
     else updateSearch("provider_ref", ref);
     setListed(null);
   };
-  const list =
-    listed && listed.provider === provider?.id
-      ? listed.models
-      : provider?.source.discovery?.models || [];
+  const list = (listed && listed.provider === provider?.id
+      ? listed.models : provider?.source.discovery?.models || [])
+      .filter(item => !item.services?.length || item.services.includes(service === "task" ? "llm" : service));
   const remove = async () => {
     await stageRegistry({ kind: "model", service, profile_id: profile.id, model_id: model?.id, delete: true });
     onRemoved();
@@ -638,8 +616,8 @@ function ModelEditor({
       className="min-w-0 overflow-clip rounded-2xl border border-[color-mix(in_srgb,var(--primary)_35%,var(--border))]"
     >
       {/* Opaque on purpose: it stays put over the scrolling body. */}
-      <header className="sticky top-14 z-10 border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--primary)_4%,var(--background))] px-5 py-4 lg:top-0">
-        <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px]">
+      <header className="sticky top-14 z-10 border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--primary)_4%,var(--background))] px-4 py-5 sm:px-6 lg:top-0">
+        <div className="mb-2 flex flex-wrap items-center gap-2 text-[12px]">
           <span className="font-medium text-[var(--primary)]">
             {t("Currently configuring")}
           </span>
@@ -654,28 +632,28 @@ function ModelEditor({
         </div>
         <EditableRegistryName
           name={name}
-          label={t("Rename model")}
+          label={t(service === "search" ? "settings.serviceConfig.renameSearch" : "Rename model")}
           onChange={(value) =>
             model ? update("name", value) : updateSearch("display_name", value)
           }
         />
-        <div className="mt-2 flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
+        <div className="mt-2 flex items-center gap-2 text-[13px] text-[var(--muted-foreground)]">
           <ProviderIcon provider={provider?.provider || "custom"} size={16} />
           <span className="break-all">
-            {provider?.name || t("Provider unavailable")}
+            {provider ? formatConfiguredProviderName(provider.provider, provider.name, uiLanguage) : t("Provider unavailable")}
           </span>
         </div>
         {model?.model && (
-          <p className="mt-2 break-all font-mono text-[11px] text-[var(--muted-foreground)]">
+          <p className="mt-2 break-all font-mono text-[12px] text-[var(--muted-foreground)]">
             {model.model}
           </p>
         )}
       </header>
-      <div className="space-y-5 p-5">
+      <div className="space-y-6 p-4 sm:p-6">
         {service === "embedding" && model && <EmbeddingModelUsage key={JSON.stringify([profile.id, model.id])} profileId={profile.id} modelId={model.id} />}
         <div className="grid gap-x-5 gap-y-4 lg:grid-cols-2">
           <div className="space-y-2">
-            <label className="block space-y-1.5 text-xs font-medium">
+            <label className="block space-y-1.5 text-[13px] font-medium">
               <span className="block">{t("Configured provider")}</span>
               <select
                 aria-label={t("Configured provider")}
@@ -688,25 +666,29 @@ function ModelEditor({
                   {t("Choose a provider")}
                 </option>
                 {provider && !sources.some((p) => p.id === provider.id) && (
-                  <option value={provider.id}>{provider.name}</option>
+                  <option value={provider.id}>{formatConfiguredProviderName(provider.provider, provider.name, uiLanguage)}</option>
                 )}
-                <ProviderOptions sources={sources} declared={declared} />
+                <ProviderOptions sources={visible} declared={declared} />
               </select>
             </label>
+            {service !== "search" && sources.some(source => !declared(source) && source.id !== provider?.id) && <label className="flex items-center gap-2 text-[13px]">
+              <input type="checkbox" checked={custom} disabled={managed} onChange={e => setCustom(e.target.checked)} />
+              {t("settings.serviceConfig.custom")}
+            </label>}
             {/* Why the test below matters more here: nothing vouches for this
                 pairing yet, so say what request it will actually make. */}
             {provider && !declared(provider) && (
-              <p className="text-xs leading-relaxed text-[var(--muted-foreground)]">
+              <p className="text-[13px] leading-relaxed text-[var(--muted-foreground)]">
                 {t(
                   service === "search"
-                    ? "No search adapter is on record for this provider, and search has no OpenAI-compatible fallback. Run the test below — it will say so rather than search with the wrong engine."
-                    : "No adapter for this model type is on record for this provider. DeepTutor calls it as an OpenAI-compatible endpoint derived from the provider URL; run the model test below to confirm it answers.",
+                    ? "settings.serviceConfig.unsupportedSearch"
+                    : service === "videogen" ? "settings.serviceConfig.video" : "settings.serviceConfig.providers",
                 )}
               </p>
             )}
             <Link
               href={`/settings/connections${provider ? `?provider=${encodeURIComponent(provider.id)}` : ""}`}
-              className="inline-block text-xs text-[var(--muted-foreground)] underline underline-offset-4 transition-colors hover:text-[var(--foreground)]"
+              className="inline-block text-[13px] text-[var(--muted-foreground)] underline underline-offset-4 transition-colors hover:text-[var(--foreground)]"
             >
               {t("Manage provider connection")}
             </Link>
@@ -721,7 +703,7 @@ function ModelEditor({
                 onChange={(value) => update("model", value)}
                 placeholder={t("Choose a listed model or enter a model ID")}
               />
-              <p className="text-xs leading-relaxed text-[var(--muted-foreground)]">
+              <p className="text-[13px] leading-relaxed text-[var(--muted-foreground)]">
                 {t(
                   "The display name is used in chat. Double-click the name above or use the edit button to rename it.",
                 )}
@@ -741,7 +723,7 @@ function ModelEditor({
                   )
                 }
               />
-              <p className="text-xs leading-relaxed text-[var(--muted-foreground)]">
+              <p className="text-[13px] leading-relaxed text-[var(--muted-foreground)]">
                 {t(
                   "Search APIs use an engine configuration rather than a model ID or context window.",
                 )}
@@ -750,6 +732,8 @@ function ModelEditor({
           )}
         </div>
         {model && provider && !managed && service !== "search" && (
+          <details open={service === "llm" || service === "task" || service === "embedding"}>
+          <summary className="mb-3 cursor-pointer text-[13px] text-[var(--muted-foreground)]">{t("settings.serviceConfig.discovery")}</summary>
           <RegistryProbe
             input={providerProbeInput(
               provider,
@@ -765,12 +749,18 @@ function ModelEditor({
               setListed({ provider: provider.id, models: result.models })
             }
           />
+          </details>
         )}
+        {service === "tts" && model && <VoiceDiscoveryField profileId={profile.id} modelId={model.id} value={model.voice || ""} update={value => update("voice", value)} disabled={managed} />}
         {model && (service === "tts" || service === "stt") ? (
           <VoiceModelFields service={service} provider={speechProvider} model={model}
             options={speechOptions} preset={speechPreset} update={update} disabled={managed} />
         ) : model && <ModelParameters service={service} model={model} update={update} managed={managed} />}
-        {service === "tts" && model ? <VoicePreviewPanel profileId={profile.id} modelId={model.id} maxChars={Math.min(500, speechPreset?.max_input_chars ?? 500)} /> : <ModelTestPanel service={service} profile={profile} model={model} />}
+        {service === "tts" && model ? <VoicePreviewPanel profileId={profile.id} modelId={model.id} maxChars={Math.min(500, speechPreset?.max_input_chars ?? 500)} /> : (service === "search" || service === "stt" || service === "imagegen" || service === "videogen") ? <ServicePreviewPanel service={service} profile={profile} model={model} /> : <ModelTestPanel service={service} profile={profile} model={model} />}
+        {(service === "search" || service === "imagegen" || service === "videogen") && <p className="text-[13px] leading-relaxed text-[var(--muted-foreground)]">
+          {t("settings.serviceConfig.tools")} {" "}
+          <Link href="/settings/tools" className="underline underline-offset-4">{t("settings.serviceConfig.openTools")}</Link>
+        </p>}
         <div className="flex flex-wrap items-center gap-2 border-t border-[var(--border)] pt-4">
 
           <button
@@ -787,12 +777,12 @@ function ModelEditor({
             className={registryButton}
           >
             {active && <Check size={13} />}{" "}
-            {t(active ? "Default model" : "Set as default")}
+            {t(active ? (service === "search" ? "settings.serviceConfig.defaultSearch" : "Default model") : "Set as default")}
           </button>
-          <Tooltip label={assignedToTask ? t("Choose another background task model before removing this model.") : t("Remove model")} side="top">
+          <Tooltip label={assignedToTask ? t("Choose another background task model before removing this model.") : t(service === "search" ? "settings.serviceConfig.removeSearch" : "Remove model")} side="top">
             <button
               type="button"
-              aria-label={t("Remove model")}
+              aria-label={t(service === "search" ? "settings.serviceConfig.removeSearch" : "Remove model")}
               disabled={applying || managed || assignedToTask}
               onClick={() => void remove()}
               className={`${registryDanger} ml-auto`}
@@ -861,7 +851,7 @@ function ModelParameters({
                   below the select beside it, so the pair never lined up. */}
               <div className="space-y-1.5">
                 <div className="flex min-h-5 flex-wrap items-center justify-between gap-2">
-                  <label htmlFor={contextId} className="text-xs font-medium">
+                  <label htmlFor={contextId} className="text-[13px] font-medium">
                     {t("Context length (tokens)")}
                   </label>
                   <button
@@ -871,7 +861,7 @@ function ModelParameters({
                       managed ||
                       !(model.context_window || model.context_window_tokens)
                     }
-                    className="rounded text-xs text-[var(--muted-foreground)] underline underline-offset-4 transition-colors hover:text-[var(--foreground)] disabled:opacity-40 disabled:hover:text-[var(--muted-foreground)]"
+                    className="rounded text-[13px] text-[var(--muted-foreground)] underline underline-offset-4 transition-colors hover:text-[var(--foreground)] disabled:opacity-40 disabled:hover:text-[var(--muted-foreground)]"
                   >
                     {t("Use default")}
                   </button>
@@ -889,14 +879,14 @@ function ModelParameters({
                   placeholder={t("Default")}
                 />
               </div>
-              <p className="text-xs leading-relaxed text-[var(--muted-foreground)]">
+              <p className="text-[13px] leading-relaxed text-[var(--muted-foreground)]">
                 {t(
                   "Keep the default, enter a custom value, or use the detected value after testing. Testing does not overwrite your choice.",
                 )}
               </p>
             </div>
             <div className="space-y-1.5">
-              <p className="flex min-h-5 items-center text-xs font-medium">
+              <p className="flex min-h-5 items-center text-[13px] font-medium">
                 {t("Reasoning effort")}
               </p>
               <select
@@ -928,13 +918,13 @@ function ModelParameters({
             </div>
           </div>
           <details className={`p-3.5 ${subPanelClass}`}>
-            <summary className="cursor-pointer select-none rounded text-xs font-medium marker:text-[var(--muted-foreground)]">
+            <summary className="cursor-pointer select-none rounded text-[13px] font-medium marker:text-[var(--muted-foreground)]">
               {t("Model capabilities")}
             </summary>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
               {(["tools", "vision", "json_output", "reasoning"] as const).map(
                 (key) => (
-                  <label key={key} className="space-y-1.5 text-xs">
+                  <label key={key} className="space-y-1.5 text-[13px]">
                     <span className="block">
                       {t(
                         {
@@ -985,7 +975,7 @@ function ModelParameters({
         </div>
       )}
       {service === "embedding" && (
-        <label className="block space-y-1.5 text-xs font-medium">
+        <label className="block space-y-1.5 text-[13px] font-medium">
           <span className="block">{t("Send dimensions in embedding requests")}</span>
           <select
             className={selectClass}
@@ -1008,7 +998,7 @@ function ModelParameters({
         </label>
       )}
       {managed && (
-        <p className="text-xs text-[var(--muted-foreground)]">
+        <p className="text-[13px] text-[var(--muted-foreground)]">
           {t(
             "This signed-in provider manages model IDs, context, and capabilities. You can rename the model and choose its reasoning effort.",
           )}

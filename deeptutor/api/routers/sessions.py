@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -28,6 +29,7 @@ from deeptutor.services.storage.attachment_store import get_attachment_store
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+_LEGACY_TIMED_MEDIA_ID = re.compile(r"^[0-9a-f]{16,64}$")
 
 
 def _turn_application_service():
@@ -113,6 +115,94 @@ def _format_quiz_results_message(answers: list[QuizResultItem]) -> str:
         lines.append(f"{idx}. {qid}Q: {question} -> Answered: {user_answer}{suffix}")
     lines.append(f"Score: {correct}/{total} ({score_pct}%)")
     return "\n".join(lines)
+
+
+def _legacy_watching_media_id(preferences: dict[str, Any]) -> str:
+    watching = (
+        preferences.get("workspace_mode") == "immersive_watching"
+        or preferences.get("capability") == "immersive_watching"
+        or preferences.get("session_kind") == "immersive_watching"
+    )
+    if not watching:
+        return ""
+    candidate = str(preferences.get("timed_media_id") or "").strip().lower()
+    return candidate if _LEGACY_TIMED_MEDIA_ID.fullmatch(candidate) else ""
+
+
+async def _normalize_legacy_watching_session(
+    store: Any,
+    session: dict[str, Any],
+    *,
+    persist: bool,
+) -> bool:
+    preferences = session.get("preferences") if isinstance(session.get("preferences"), dict) else {}
+    from deeptutor.video_learning.service import TimedMediaNotFound
+
+    timed_media_id = _legacy_watching_media_id(preferences)
+    if not timed_media_id:
+        for message in reversed(session.get("messages") or []):
+            metadata = message.get("metadata") or {}
+            snapshot = metadata.get("request_snapshot") or metadata.get("requestSnapshot") or {}
+            recovered = snapshot.get("timedMediaId") or snapshot.get("timed_media_id")
+            candidate = _legacy_watching_media_id({**preferences, "timed_media_id": recovered})
+            if candidate:
+                timed_media_id = candidate
+                break
+    if not timed_media_id:
+        normalized = {
+            **preferences,
+            "capability": "chat",
+            "workspace_mode": "",
+            "session_kind": "chat",
+            "legacy_watching_unavailable": True,
+        }
+        session["preferences"] = normalized
+        if persist:
+            await store.update_session_preferences(str(session.get("id")), normalized)
+        return True
+    try:
+        from deeptutor.video_learning.reading_migration import WatchingToReadingMigration
+
+        migrated = await WatchingToReadingMigration().migrate(
+            timed_media_id,
+            session_id=str(session.get("id") or ""),
+            session_title=str(session.get("title") or "Imported video conversation"),
+        )
+    except TimedMediaNotFound:
+        normalized = {
+            **preferences,
+            "capability": "chat",
+            "workspace_mode": "",
+            "session_kind": "chat",
+            "legacy_watching_unavailable": True,
+        }
+        normalized.pop("timed_media_viewport", None)
+        session["preferences"] = normalized
+        if persist:
+            await store.update_session_preferences(str(session.get("id")), normalized)
+        return True
+    except Exception:
+        logger.warning(
+            "Could not migrate legacy Watching session %s to Reading",
+            session.get("id"),
+            exc_info=True,
+        )
+        return False
+    normalized = {
+        **preferences,
+        "capability": "chat",
+        "workspace_mode": "immersive_reading",
+        "session_kind": "immersive_reading",
+        "reading_workspace_id": migrated.reading_workspace_id,
+        "reading_material_id": migrated.reading_material_id,
+        # Kept as provenance and a provider-cache pointer; it is no longer routing state.
+        "timed_media_id": timed_media_id,
+    }
+    normalized.pop("timed_media_viewport", None)
+    session["preferences"] = normalized
+    if persist:
+        await store.update_session_preferences(str(session.get("id")), normalized)
+    return True
 
 
 @router.get("")
@@ -288,6 +378,31 @@ async def list_recycle_bin(
     store = get_session_store()
     sessions = await store.list_deleted_sessions(limit=limit, offset=offset)
     return {"sessions": sessions}
+
+
+@router.post("/{session_id}/migrate-watching")
+async def migrate_watching_session(session_id: str):
+    from deeptutor.services.workspace.activity import workspace_writer
+
+    @workspace_writer
+    async def migrate():
+        store = get_session_store()
+        session = await store.get_session_with_messages(session_id)
+        if session is None:
+            raise HTTPException(status_code=404, detail="Session not found")
+        preferences = session.get("preferences") or {}
+        if any(
+            preferences.get(key) == "immersive_watching"
+            for key in ("capability", "workspace_mode", "session_kind")
+        ):
+            if not await _normalize_legacy_watching_session(store, session, persist=True):
+                raise HTTPException(
+                    status_code=409,
+                    detail="The legacy video could not be opened in Reading. The original conversation is preserved.",
+                )
+        return await get_session(session_id)
+
+    return await migrate()
 
 
 @router.get("/{session_id}")
@@ -533,6 +648,14 @@ async def purge_session(session_id: str):
     if not purged:
         raise HTTPException(status_code=404, detail="Session not found in recycle bin")
     await _cleanup_deleted_session(session_id)
+    from deeptutor.services.task_board import get_task_board_store
+    from deeptutor.services.workspace.context import current_workspace_id
+
+    await asyncio.to_thread(
+        get_task_board_store(migrate_legacy=False).remove_session,
+        current_workspace_id(),
+        session_id,
+    )
     return {"purged": True, "session_id": session_id}
 
 
@@ -554,9 +677,10 @@ async def update_branch_selection(session_id: str, payload: BranchSelectionReque
 async def delete_turn_by_message(session_id: str, message_id: int):
     store = get_sqlite_session_store()
     result = await store.delete_turn_by_message(session_id, message_id)
-    if result["was_running"]:
+    if result["was_active"]:
         raise HTTPException(
-            status_code=409, detail="Cannot delete a message while its turn is running"
+            status_code=409,
+            detail="Cannot delete a message while its turn is running or waiting for input",
         )
     if not result["deleted"]:
         raise HTTPException(status_code=404, detail="Message not found")
