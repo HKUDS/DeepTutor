@@ -200,6 +200,14 @@ class RunManager:
         run._cancel_flag.set()
         if run._task is not None and not run._task.done():
             run._task.cancel()
+        # A task cancelled before its first step never enters _drive's finally.
+        # Publish the terminal state here so replay and new starts can proceed.
+        if run.status == "queued":
+            run.status = "cancelled"
+            run.ended_at = _now_iso()
+            await self._emit(run, {"stage": "cancelled"})
+            await self._emit(run, {"stage": "run_ended", "status": run.status})
+            self._active.pop((run.layer, run.key), None)
         return True
 
     async def undo_last(self, run_id: str) -> RunEvent | None:
