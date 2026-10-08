@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
 from pathlib import Path
 from types import SimpleNamespace
 import zipfile
@@ -104,24 +105,64 @@ def test_verified_source_visual_contract_and_lifecycle(tmp_path: Path, suffix: s
     assert not persisted.exists()
 
 
-def test_manifest_limit_does_not_replace_existing_assets(tmp_path: Path, monkeypatch):
+def test_large_existing_manifest_remains_readable_and_accepts_more_figures(tmp_path: Path):
+    """#1802: a corpus beyond the old 16 MiB limit must retain every reference."""
     import deeptutor.services.rag.visual_assets as assets_module
 
     kb_dir, source, image, parsed = _fixture(tmp_path)
     original = collect_visual_assets(parsed, source, kb_dir)[0]
     store = VisualAssetStore(kb_dir)
     store.publish([original])
-    manifest_before = store.manifest_path.read_bytes()
-    monkeypatch.setattr(assets_module, "MAX_MANIFEST_BYTES", len(manifest_before) + 10)
+    # Model a legacy manifest from a figure-heavy KB without 15,000 image copies.
+    records = {
+        f"{index:064x}": {**original.record, "asset_id": f"{index:064x}", "context": "x" * 1000}
+        for index in range(11000)
+    }
+    records[original.record["asset_id"]] = original.record
+    store.manifest_path.write_text(json.dumps({"version": 1, "assets": records}), encoding="utf-8")
+    assert store.manifest_path.stat().st_size > 16 * 1024 * 1024
+    assert store.read(original.record["asset_id"]) is not None
     second = assets_module.VisualAssetCandidate(
         path=image,
         record={**original.record, "asset_id": "a" * 64},
     )
-    with pytest.raises(OSError, match="manifest exceeds"):
-        store.publish([second])
-    assert store.manifest_path.read_bytes() == manifest_before
+    store.publish([second])
+    assert len(store.records()) == len(records) + 1
     assert store.read(original.record["asset_id"]) is not None
-    assert store.read(second.record["asset_id"]) is None
+    assert store.read(second.record["asset_id"]) is not None
+
+
+@pytest.mark.parametrize("operation", ["publish", "remove_source", "move_source"])
+def test_unreadable_manifest_is_reported_and_never_overwritten(tmp_path: Path, caplog, operation):
+    kb_dir, source, _image, parsed = _fixture(tmp_path)
+    candidate = collect_visual_assets(parsed, source, kb_dir)[0]
+    store = VisualAssetStore(kb_dir)
+    store.publish([candidate])
+    store.manifest_path.write_bytes(b"{broken manifest")
+    before = store.manifest_path.read_bytes()
+    assert store.read(candidate.record["asset_id"]) is None
+    assert "Cannot read source figures for KB 'kb'" in caplog.text
+    with pytest.raises(OSError, match="Cannot read visual asset manifest"):
+        if operation == "publish":
+            store.publish([candidate])
+        elif operation == "remove_source":
+            store.remove_source(source.name)
+        else:
+            store.move_source(source.name, "moved.pdf")
+    assert store.manifest_path.read_bytes() == before
+
+
+def test_changed_image_does_not_replace_existing_manifest(tmp_path: Path):
+    kb_dir, source, image, parsed = _fixture(tmp_path)
+    candidate = collect_visual_assets(parsed, source, kb_dir)[0]
+    store = VisualAssetStore(kb_dir)
+    store.publish([candidate])
+    before = store.manifest_path.read_bytes()
+    image.write_bytes(b"not an image anymore")
+    with pytest.raises(OSError, match="Source image changed"):
+        store.publish([candidate])
+    assert store.manifest_path.read_bytes() == before
+    assert store.read(candidate.record["asset_id"]) is not None
 
 
 def test_size_count_and_rebuild_cleanup(tmp_path: Path, monkeypatch):
@@ -610,7 +651,7 @@ def test_visual_message_reaches_next_model_request_without_stream_leak(tmp_path:
 
 
 def test_visual_messages_follow_complete_tool_reply_batch():
-    from deeptutor.runtime.agentic.loop import _with_transient_model_messages
+    from deeptutor.runtime.agentic.messages import with_transient_model_messages
 
     messages = [
         {"role": "assistant", "tool_calls": [{"id": "rag"}, {"id": "other"}]},
@@ -624,7 +665,7 @@ def test_visual_messages_follow_complete_tool_reply_batch():
             "_after_tool_call_id": "rag",
         }
     ]
-    request = _with_transient_model_messages(messages, transient)
+    request = with_transient_model_messages(messages, transient)
     assert [item["role"] for item in request] == ["assistant", "tool", "tool", "user"]
     assert request[-1]["content"] == transient[0]["content"]
     assert messages[-1]["role"] == "tool"  # canonical history was not changed

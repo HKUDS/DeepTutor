@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 
 import pytest
 
 from deeptutor.app.container import RuntimeRegistry
 from deeptutor.app.service import TurnApplicationService
+from deeptutor.core.stream import StreamEvent, StreamEventType
 from deeptutor.runtime.coordination import MemoryCoordinator
 from deeptutor.services.session.sqlite_store import SQLiteSessionStore
 from deeptutor.services.session.turn_runtime import _TurnExecution
@@ -29,6 +31,116 @@ def _service(
         TurnApplicationService(_FixedStoreProvider(store), registry, coordinator),
         registry,
     )
+
+
+@pytest.fixture
+def submission_service(monkeypatch, tmp_path):
+    from deeptutor.services.path_service import PathService
+    from deeptutor.services.session.turns.title_service import SessionTitleService
+
+    monkeypatch.setenv("DEEPTUTOR_HOME", str(tmp_path))
+    monkeypatch.setattr(PathService, "_instance", PathService(workspace_root=tmp_path / "data"))
+    calls = {"count": 0, "fail": False}
+
+    class Builder:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def build(self, **kwargs):
+            return SimpleNamespace(
+                conversation_history=[],
+                conversation_summary="",
+                context_text="",
+                token_count=0,
+                budget=0,
+            )
+
+    class Orchestrator:
+        async def handle(self, context):
+            calls["count"] += 1
+            if calls["fail"]:
+                from deeptutor.services.llm.exceptions import LLMProviderTransportError
+
+                raise LLMProviderTransportError("controlled upstream failure")
+            yield StreamEvent(
+                type=StreamEventType.CONTENT,
+                content="Recovered answer",
+                source="chat",
+                metadata={"call_kind": "llm_final_response"},
+            )
+            yield StreamEvent(type=StreamEventType.DONE, source="chat")
+
+    async def noop(*args, **kwargs):
+        pass
+
+    monkeypatch.setattr("deeptutor.services.llm.config.get_llm_config", lambda: SimpleNamespace())
+    monkeypatch.setattr("deeptutor.services.session.context_builder.ContextBuilder", Builder)
+    monkeypatch.setattr("deeptutor.runtime.orchestrator.ChatOrchestrator", Orchestrator)
+    monkeypatch.setattr(
+        "deeptutor.services.memory.get_memory_store", lambda: SimpleNamespace(emit=noop)
+    )
+    monkeypatch.setattr(SessionTitleService, "_maybe_generate_session_title", noop)
+    store = SQLiteSessionStore(tmp_path / "submissions.db")
+    coordinator = MemoryCoordinator(lease_ttl_seconds=30)
+    service, registry = _service(store, coordinator, "worker-a")
+    return service, store, coordinator, registry, calls
+
+
+@pytest.mark.asyncio
+async def test_lost_first_session_ack_replays_the_same_submission_after_worker_restart(
+    submission_service,
+):
+    service, store, coordinator, _registry, calls = submission_service
+    payload = {"content": "Hello", "client_submission_id": "lost-first-ack"}
+    first_session, first_turn = await service.start_turn(payload)
+    [event async for event in service.subscribe_turn(first_turn["id"])]
+    restarted_store = SQLiteSessionStore(store.db_path)
+    restarted, _ = _service(restarted_store, coordinator, "worker-b")
+    second_session, second_turn = await restarted.start_turn(payload)
+    assert second_session["id"] == first_session["id"]
+    assert second_turn["id"] == first_turn["id"]
+    assert calls["count"] == 1
+    assert len(await store.list_sessions()) == 1
+    assert [row["role"] for row in await store.get_messages(first_session["id"])] == [
+        "user",
+        "assistant",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_failed_first_submission_resends_in_its_original_conversation_without_a_duplicate_user(
+    submission_service,
+):
+    service, store, _coordinator, _registry, calls = submission_service
+    payload = {"content": "Hello", "client_submission_id": "failed-first-ack"}
+    calls["fail"] = True
+    first_session, failed_turn = await service.start_turn(payload)
+    [event async for event in service.subscribe_turn(failed_turn["id"])]
+    original_user = await store.get_last_message(first_session["id"], role="user")
+    assert original_user is not None
+    calls["fail"] = False
+    session, retried_turn = await service.start_turn(payload)
+    events = [event async for event in service.subscribe_turn(retried_turn["id"])]
+    assert session["id"] == first_session["id"]
+    assert retried_turn["id"] != failed_turn["id"]
+    rows = await store.get_messages(session["id"])
+    assert [row["role"] for row in rows] == ["user", "assistant"]
+    assert rows[0]["id"] == original_user["id"]
+    done = next(event for event in events if event["type"] == "done")
+    assert done["metadata"]["user_message_id"] == original_user["id"]
+    assert calls["count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_submission_key_cannot_be_reused_for_different_content(submission_service):
+    service, store, _coordinator, _registry, calls = submission_service
+    payload = {"content": "Hello", "client_submission_id": "same-key"}
+    session, turn = await service.start_turn(payload)
+    [event async for event in service.subscribe_turn(turn["id"])]
+    with pytest.raises(RuntimeError, match="different request"):
+        await service.start_turn({**payload, "content": "Changed input"})
+    assert len(await store.list_sessions()) == 1
+    assert calls["count"] == 1
 
 
 @pytest.mark.asyncio
