@@ -73,9 +73,11 @@ from deeptutor.learning.policy import (
     gate_kind,
     gate_threshold,
     is_mastered,
+    learning_stage,
     map_summary,
     next_objective,
     path_display_name,
+    visual_achievements,
 )
 from deeptutor.learning.question_card import (
     QUESTION_CARD_KEY,
@@ -93,6 +95,7 @@ if TYPE_CHECKING:
 MASTERY_TOOL_NAMES: tuple[str, ...] = (
     "mastery_status",
     "mastery_quiz",
+    "mastery_note_explained",
     "mastery_grade",
     "mastery_skip_question",
     "mastery_repair_question",
@@ -392,6 +395,7 @@ async def _sync_mastery_attempt_to_question_bank(
         confidence=confidence,
         response_time=response_time,
         quality=quality,
+        visual_context=pending.visual_context,
     )
     try:
         await asyncio.wait_for(record_assessment(record), timeout=5.0)
@@ -698,7 +702,7 @@ async def _unbuilt_status_message(
 
 
 class MasteryStatusTool(BaseTool):
-    """Read the current objective + map snapshot. Call FIRST every turn."""
+    """Read current state, or refresh a current-turn runtime snapshot."""
 
     def get_definition(self) -> ToolDefinition:
         return ToolDefinition(
@@ -707,8 +711,10 @@ class MasteryStatusTool(BaseTool):
                 "Read the learner's mastery path: the next objective to work on "
                 "(decided by a hard mastery gate), any question awaiting an "
                 "answer, due reviews, and a map of every objective's status "
-                "(new / learning / mastered). Call this FIRST on every mastery "
-                "turn — it tells you what to do; never guess the next objective."
+                "(new / learning / mastered). Use the current-turn runtime snapshot "
+                "when supplied; otherwise call this FIRST. Refresh after changing "
+                "the path, mode, outline, or progress when updated state is needed. "
+                "Never guess the next objective or reuse an earlier turn's snapshot."
             ),
             parameters=[],
         )
@@ -768,6 +774,23 @@ class MasteryStatusTool(BaseTool):
             "next": next_objective(progress).to_dict(),
             "map": map_summary(progress),
             **_profile_status(progress),
+            "learning_stages": {
+                kp.id: learning_stage(progress, kp.id)
+                for module in progress.modules
+                for kp in module.knowledge_points
+            }
+            if progress
+            else {},
+            "visual_requirements": {
+                kp.id: {
+                    "required": kp.required_visual_tasks,
+                    "demonstrated": visual_achievements(progress, kp.id),
+                }
+                for module in progress.modules
+                for kp in module.knowledge_points
+            }
+            if progress
+            else {},
         }
         interaction = service.store.get_active_interaction(path_id)
         if interaction is not None:
@@ -800,6 +823,65 @@ class MasteryStatusTool(BaseTool):
         return _json_result(payload, meta_key="mastery_status")
 
 
+class MasteryNoteExplainedTool(BaseTool):
+    """Record teaching without pretending that explanation is an assessment."""
+
+    def get_definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name="mastery_note_explained",
+            description="After explaining an objective at the requested level, record what was taught. This does not assess, grant mastery or schedule a review. Respect explanation-only requests; a quiz is optional until the learner wants practice.",
+            parameters=[
+                ToolParameter(
+                    name="knowledge_point_id",
+                    type="string",
+                    description="Exact objective ID from mastery_status.",
+                ),
+                ToolParameter(
+                    name="summary",
+                    type="string",
+                    description="What was actually explained, including prerequisites and source limitations.",
+                ),
+            ],
+        )
+
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        refusal = _wrong_mode_result("mastery_note_explained", kwargs)
+        if refusal is not None:
+            return refusal
+        path_id = _resolve_path_id(kwargs)
+        if not path_id:
+            return _no_path_result()
+        kp_id = str(kwargs.get("knowledge_point_id") or "")
+        summary = str(kwargs.get("summary") or "").strip()[:2000]
+        if not summary:
+            return ToolResult(content="A teaching summary is required.", success=False)
+        service = _new_service()
+        if _load_path(service, path_id) is None:
+            return _no_built_path_result("mastery_note_explained")
+
+        def note(tx):
+            import time
+
+            if find_knowledge_point(tx.progress, kp_id)[0] is None:
+                raise ValueError("Unknown objective; refresh mastery_status.")
+            tx.progress.explained_objectives[kp_id] = {
+                "summary": summary,
+                "timestamp": time.time(),
+                "session_id": _resolve_session_id(kwargs),
+                "turn_id": _resolve_turn_id(kwargs),
+            }
+            tx.emit("objective.explained", {"knowledge_point_id": kp_id, "summary": summary})
+
+        try:
+            await asyncio.to_thread(service.store.mutate, path_id, note)
+        except (ValueError, FileNotFoundError) as exc:
+            return ToolResult(content=str(exc), success=False)
+        return _json_result(
+            {"knowledge_point_id": kp_id, "stage": "explained", "mastery_credit": False},
+            meta_key="mastery_note_explained",
+        )
+
+
 class MasteryQuizTool(BaseTool):
     """Register an objective-type question; the engine holds the answer."""
 
@@ -819,6 +901,13 @@ class MasteryQuizTool(BaseTool):
                 "mastery_assess instead."
             ),
             parameters=[
+                ToolParameter(
+                    name="visual",
+                    type="object",
+                    required=False,
+                    sensitive=True,
+                    description="Optional source-grounded task: {task: identification|relationship|table_graph|comparison, sources:[{kb_name, asset_id OR source_path/page, source_hash?, region?}], reference_quote, accepted_answers: verified equivalent terms (including other languages), key_status: verified|unverified, answer_cues: none|visible|unverified, hints_used}. Retrieve and inspect original pixels first. reference_quote and expected_answer must use the source-grounded canonical terminology; accepted_answers may add verified translations for learner replies. Uncertain or conflicting keys stay ungraded. Visible or unknown cues mean guided practice, not independent mastery. Do not invent masks or regions.",
+                ),
                 ToolParameter(
                     name="knowledge_point_id",
                     type="string",
@@ -959,6 +1048,34 @@ class MasteryQuizTool(BaseTool):
                 content=f"Unknown objective {kp_id!r}; call mastery_status for valid ids.",
                 success=False,
             )
+        visual_context: dict[str, Any] = {}
+        accepted_answers: list[str] = []
+        if kwargs.get("visual") is not None:
+            from deeptutor.learning.visual_practice import prepare_visual
+
+            if not isinstance(kwargs["visual"], dict):
+                return ToolResult(
+                    content="visual must be an object with exact source references.", success=False
+                )
+            try:
+                visual_context, accepted_answers = await asyncio.to_thread(
+                    prepare_visual,
+                    kwargs["visual"],
+                    expected_answer=expected,
+                    options={option["label"]: option["body"] for option in options},
+                    attached_kbs=kwargs.get("_attached_kb_names"),
+                    inspected_image_hashes=kwargs.get("_inspected_image_hashes", []),
+                )
+                from deeptutor.learning.visual_practice import account_for_recent_assistance
+
+                visual_context = account_for_recent_assistance(
+                    visual_context, progress.quiz_attempts, kp_id
+                )
+            except (OSError, ValueError, TypeError) as exc:
+                return ToolResult(
+                    content=f"Visual practice is unavailable: {exc}. Inspect/clarify the source; no assessment was created.",
+                    success=False,
+                )
         pending = PendingQuestion(
             question_id=uuid.uuid4().hex,
             knowledge_point_id=kp_id,
@@ -969,6 +1086,8 @@ class MasteryQuizTool(BaseTool):
             options=options,
             explanation=str(kwargs.get("explanation") or "").strip()[:2000],
             difficulty=_normalize_difficulty(kwargs.get("difficulty")),
+            visual_context=visual_context,
+            accepted_answers=accepted_answers,
         )
         from deeptutor.learning.service import MasteryInteractionError
 
@@ -1195,6 +1314,7 @@ class MasteryGradeTool(BaseTool):
                 item
                 for item in reversed(evidence_items)
                 if getattr(item, "knowledge_point_id", "") == pending.knowledge_point_id
+                and getattr(item, "question_id", "") == pending.question_id
             ),
             None,
         )
@@ -1218,6 +1338,7 @@ class MasteryGradeTool(BaseTool):
             if evidence is not None
             else None,
             quality=getattr(evidence, "quality", None) if evidence is not None else None,
+            result=str(interaction.result.get("result") or ""),
         )
         mastered = bool(kp and is_mastered(progress, kp))
         gate = gate_kind(kp) if kp else ""
@@ -1246,6 +1367,8 @@ class MasteryGradeTool(BaseTool):
                 "exposed, and when you pose the next question with "
                 "mastery_quiz put that call last, since it ends the turn."
             )
+        if interaction.result.get("result") == "ungraded":
+            next_move = "going with source clarification or an explanation. This was ungraded, created no negative evidence and did not change mastery. Do not turn uncertainty into a wrong answer."
         payload = {
             "is_correct": is_correct,
             "replayed": replayed,
@@ -1266,9 +1389,19 @@ class MasteryGradeTool(BaseTool):
                 question_id=pending.question_id,
                 is_correct=is_correct,
                 learner_answer=interaction.user_answer or answer,
-                correct_label=expected_answer,
+                correct_label=expected_answer
+                if interaction.result.get("result") != "ungraded"
+                else "",
                 choice_options=choice_options,
-                explanation=pending.explanation,
+                explanation=(
+                    str(interaction.result.get("diagnosis"))
+                    if interaction.result.get("result") == "ungraded"
+                    else pending.explanation
+                ),
+                result=str(interaction.result.get("result") or ""),
+                independent=interaction.result.get("independent")
+                if pending.visual_context
+                else None,
             ),
             # A graded card is not an answer to the learner. The verdict and
             # the explanation are now on it, so the model that stops here
@@ -2577,6 +2710,7 @@ def _revise_points(
                 module_id=module.id,
                 prerequisite_ids=relation_values(raw, "prerequisite_ids", kp.prerequisite_ids),
                 topic_source_ids=relation_values(raw, "topic_source_ids", kp.topic_source_ids),
+                required_visual_tasks=raw.get("required_visual_tasks", kp.required_visual_tasks),
             )
         )
         rewrite_ids[kp.id] = points[-1].id
@@ -2607,6 +2741,9 @@ def _revise_points(
                     if isinstance(raw, dict)
                     else []
                 ),
+                required_visual_tasks=(raw.get("required_visual_tasks") or [])
+                if isinstance(raw, dict)
+                else [],
             )
         )
 
@@ -2674,6 +2811,9 @@ def _parse_modules_with_refs(
                     name=kp_name,
                     type=KnowledgeType(kp_type),
                     module_id=module_id,
+                    required_visual_tasks=(raw_kp.get("required_visual_tasks") or [])
+                    if isinstance(raw_kp, dict)
+                    else [],
                 )
             )
             relation_refs[kps[-1].id] = RelationRefs(
@@ -2708,6 +2848,7 @@ def _parse_modules(
 
 MASTERY_TOOL_TYPES: tuple[type[BaseTool], ...] = (
     MasteryStatusTool,
+    MasteryNoteExplainedTool,
     MasteryQuizTool,
     MasteryGradeTool,
     MasterySkipQuestionTool,
@@ -2734,6 +2875,7 @@ __all__ = [
     "MasteryLeaveTool",
     "MasteryPathsTool",
     "MasteryModeTool",
+    "MasteryNoteExplainedTool",
     "MasteryProfileTool",
     "MasteryQuizTool",
     "MasteryRepairQuestionTool",
