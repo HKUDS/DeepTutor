@@ -173,7 +173,7 @@ async def _migrate_workspaces(path: str, workspace_id: str | None = None) -> dic
         from deeptutor.services.workspace.data_migration import assert_no_pending_recovery
 
         with data_activity(exclusive=True):
-            assert_no_pending_recovery()
+            assert_no_pending_recovery(reject_unreadable=True)
             return await migrate_location()
 
     async def migrate_location() -> dict:
@@ -259,7 +259,7 @@ async def update_registered_workspace(workspace_id: str, payload: UpdateWorkspac
         from deeptutor.services.workspace.data_migration import assert_no_pending_recovery
 
         with data_activity(exclusive=True):
-            assert_no_pending_recovery()
+            assert_no_pending_recovery(reject_unreadable=True)
             workspace = get_content_workspace_service().update_workspace(
                 workspace_id, **payload.model_dump(exclude_unset=True)
             )

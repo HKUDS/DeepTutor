@@ -341,10 +341,10 @@ async def test_invalid_addresses_are_actionable_without_network_requests(monkeyp
     "inputs,outputs,expected",
     [
         (["image", "video"], ["text"], {"llm"}),
-        (["text"], ["audio"], {"voice"}),
-        (["audio"], ["text"], {"llm", "voice"}),
-        (["text"], ["image"], {"generation"}),
-        (["image"], ["video", "audio"], {"generation", "voice"}),
+        (["text"], ["audio"], {"tts", "voice"}),
+        (["audio"], ["text"], {"llm"}),
+        (["text"], ["image"], {"generation", "imagegen"}),
+        (["image"], ["video", "audio"], {"generation", "videogen", "tts", "voice"}),
         (["IMAGE"], ["TEXT"], {"llm"}),
     ],
 )
@@ -353,3 +353,110 @@ def test_voice_and_visual_generation_detection_are_independent(inputs, outputs, 
         [{"architecture": {"input_modalities": inputs, "output_modalities": outputs}}]
     )
     assert {item["category"] for item in result} == expected
+
+
+@pytest.mark.asyncio
+async def test_openrouter_requests_all_output_types_without_guessing_model_names(monkeypatch):
+    session = install(
+        monkeypatch,
+        Response(
+            payload={
+                "data": [
+                    {"id": "image-looking-name"},
+                    {"id": "actual-image", "architecture": {"output_modalities": ["image"]}},
+                ]
+            }
+        ),
+    )
+    result = await provider_probe.probe_provider(
+        "openrouter", "https://openrouter.ai/api/v1", "key"
+    )
+    assert session.requests[0][1]["params"] == {"output_modalities": "all"}
+    assert result["models"] == [
+        {"id": "image-looking-name"},
+        {"id": "actual-image", "services": ["imagegen"]},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_aliyun_catalog_paginates_on_configured_region_with_explicit_types(monkeypatch):
+    session = install(monkeypatch, None)
+    pages = [
+        Response(payload={"output": {"total": 2, "page_no": page, "models": [model]}})
+        for page, model in enumerate(
+            [
+                {"model": "speech", "capabilities": ["TTS"]},
+                {
+                    "model": "transcribe",
+                    "capabilities": ["ASR"],
+                    "inference_metadata": {"response_modality": ["Text"]},
+                },
+            ],
+            1,
+        )
+    ]
+
+    def get(url, **kwargs):
+        session.requests.append((url, kwargs))
+        return pages.pop(0)
+
+    session.get = get
+    result = await provider_probe.probe_provider(
+        "dashscope", "https://dashscope-intl.aliyuncs.com/compatible-mode/v1", "key"
+    )
+    assert [request[0] for request in session.requests] == [
+        "https://dashscope-intl.aliyuncs.com/api/v1/models"
+    ] * 2
+    assert [request[1]["params"]["page_no"] for request in session.requests] == [1, 2]
+    assert all(
+        request[1]["headers"]["Authorization"] == "Bearer key" for request in session.requests
+    )
+    assert result["models"] == [
+        {"id": "speech", "services": ["tts"]},
+        {"id": "transcribe", "services": ["stt"]},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_custom_anthropic_catalog_follows_cursors_and_uses_messages_auth(monkeypatch):
+    session = install(monkeypatch, None)
+    pages = [
+        Response(payload={"data": [{"id": "first"}], "has_more": True, "last_id": "first"}),
+        Response(payload={"data": [{"id": "second"}], "has_more": False}),
+    ]
+
+    def get(url, **kwargs):
+        session.requests.append((url, kwargs))
+        return pages.pop(0)
+
+    session.get = get
+    result = await provider_probe.probe_provider(
+        "custom", "https://gateway.test/v1", "key", api_format="anthropic"
+    )
+    assert result["models"] == [{"id": "first"}, {"id": "second"}]
+    assert session.requests[1][1]["params"] == {"after_id": "first"}
+    assert session.requests[0][1]["headers"]["x-api-key"] == "key"
+    assert not session.requests[0][1]["allow_redirects"]
+
+
+@pytest.mark.asyncio
+async def test_broken_pagination_stops_with_partial_warning(monkeypatch):
+    session = install(
+        monkeypatch,
+        Response(payload={"output": {"total": 20, "page_no": 1, "models": [{"model": "one"}]}}),
+    )
+    result = await provider_probe.probe_provider(
+        "dashscope", "https://dashscope.aliyuncs.com/compatible-mode/v1", "key"
+    )
+    assert result["models"] == [{"id": "one"}]
+    assert result["warning"] == "partial_models"
+    assert len(session.requests) == 2
+
+
+def test_malformed_metadata_is_ignored():
+    assert (
+        provider_probe.model_services(
+            {"type": {}, "capabilities": None, "supportedGenerationMethods": [{}]}
+        )
+        == []
+    )

@@ -668,6 +668,9 @@ async def edit_topic_map(path_id: str, body: EditTopicMapRequest):
                 strict=True,
                 existing_module_ids=existing_module_ids,
                 existing_objective_ids=existing_objective_ids,
+                existing_objective_counts={
+                    module.id: len(module.knowledge_points) for module in progress.modules
+                },
                 module_limit=MAX_MODULE_LIMIT,
             )
         except TopicGenerationError as exc:

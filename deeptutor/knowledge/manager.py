@@ -612,10 +612,19 @@ class KnowledgeBaseManager:
                 kb_dir = self.base_dir / name
                 if kb_dir.is_dir():
                     kb_config["index_versions"] = inspect_kb_versions(kb_dir, provider)
-            except Exception:  # pragma: no cover - best-effort metadata
-                pass
+            except Exception as exc:  # best-effort metadata
+                logger.warning(
+                    f"Failed to refresh embedding/index metadata for KB '{name}' "
+                    f"on ready transition: {exc}"
+                )
 
-        self._save_config()
+        try:
+            self._save_config()
+        except Exception as exc:
+            logger.error(
+                f"Failed to persist KB status update for '{name}' (status='{status}'): {exc}"
+            )
+            raise
         self._sync_kb_to_pb(name, kb_config)
 
     def get_kb_entry(self, name: str) -> dict | None:
@@ -2212,8 +2221,14 @@ class KnowledgeBaseManager:
                             if p.exists():
                                 mtime = datetime.fromtimestamp(p.stat().st_mtime)
                                 file_states[file_path] = mtime.isoformat()
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        # Recording failed: leave the file un-recorded so the
+                        # next scan re-syncs it instead of trusting a missing
+                        # mtime, and make the degradation visible in logs.
+                        logger.warning(
+                            f"Failed to record sync state for '{file_path}' in folder "
+                            f"'{folder_id}' of KB '{kb_name}': {exc}"
+                        )
 
                 folder["synced_files"] = file_states
                 folder["file_count"] = len(file_states)

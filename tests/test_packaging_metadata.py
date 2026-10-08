@@ -190,6 +190,7 @@ def test_lightrag_extra_is_the_exact_native_sdk_without_parser_transitives() -> 
 @pytest.mark.parametrize(
     "expected",
     [
+        "packaging>=24.2",
         "loguru>=0.7.3,<1.0.0",
         "json-repair>=0.57.0,<1.0.0",
         "pyte>=0.8.1",
