@@ -190,8 +190,12 @@ async def _build_multimodal_user_content(
             try:
                 parsed = urlparse(url)
                 parts = (parsed.path or url).strip("/").split("/")
-                # Expected shape: api/attachments/{sid}/{aid}/{name}
-                if len(parts) >= 5 and parts[0] == "api" and parts[1] == "attachments":
+                # Current store URLs use files/attachments; keep older saved
+                # api/attachments references readable as well.
+                if len(parts) >= 5 and parts[:2] in (
+                    ["files", "attachments"],
+                    ["api", "attachments"],
+                ):
                     sid = unquote(parts[2])
                     aid = unquote(parts[3])
                     name = unquote("/".join(parts[4:]))
