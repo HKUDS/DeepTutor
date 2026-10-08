@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 import uuid
 
 from deeptutor.learning.grading import classify_error, grade_answer
@@ -82,6 +82,7 @@ def _reserved_objective_ids(progress: LearningProgress) -> set[str]:
     ids.update(progress.feynman_retries)
     ids.update(progress.feynman_explanations)
     ids.update(progress.deferred_objectives)
+    ids.update(progress.explained_objectives)
     ids.update(attempt.knowledge_point_id for attempt in progress.quiz_attempts)
     ids.update(record.knowledge_point_id for record in progress.error_records)
     ids.update(task.knowledge_point_id for task in progress.review_queue)
@@ -173,6 +174,8 @@ def _update_quiz_evidence_for_attempts(
         attempt = unmatched.pop(match_index)
         event.result = "correct" if attempt.is_correct else "incorrect"
         event.quality = 1.0 if attempt.is_correct else 0.0
+        if event.hints_used and attempt.is_correct:
+            event.quality = min(event.quality, 0.6)
 
 
 def assign_objective_identities(
@@ -351,6 +354,9 @@ class LearningService:
         for key in list(progress.deferred_objectives.keys()):
             if key not in new_kp_ids:
                 del progress.deferred_objectives[key]
+        for key in list(progress.explained_objectives):
+            if key not in new_kp_ids:
+                del progress.explained_objectives[key]
         progress.error_records = [
             r for r in progress.error_records if r.knowledge_point_id in new_kp_ids
         ]
@@ -459,7 +465,7 @@ class LearningService:
         correctness = [
             a.is_correct
             for a in progress.quiz_attempts
-            if a.knowledge_point_id == kp_id and not a.voided
+            if a.knowledge_point_id == kp_id and not a.voided and a.independent
         ]
         return compute_mastery(correctness)
 
@@ -520,6 +526,7 @@ class LearningService:
         scheduler: SpacedRepetitionScheduler | None = None,
         session_id: str = "",
         turn_id: str = "",
+        visual_context: dict[str, Any] | None = None,
     ) -> bool:
         """Mutate one aggregate with a grade without performing I/O."""
         is_correct = bool(expected_answer) and grade_answer(
@@ -544,6 +551,8 @@ class LearningService:
                 user_answer=user_answer,
                 self_attribution=self_attribution,
                 error_type=None if is_correct else classify_error(user_answer),
+                independent=not visual_context or not visual_context.get("hints_used"),
+                visual_context=visual_context or {},
             ),
         )
         evidence = None
@@ -559,6 +568,11 @@ class LearningService:
                 turn_id=turn_id,
                 assessment_type="review" if already_scheduled else "quiz",
             )
+            if visual_context:
+                evidence.visual_context = visual_context
+                evidence.hints_used = int(visual_context.get("hints_used") or 0)
+                if evidence.hints_used and is_correct:
+                    evidence.quality = min(evidence.quality or 1.0, 0.6)
             self.update_mastery(
                 progress, knowledge_point_id, self.calculate_mastery(progress, knowledge_point_id)
             )
@@ -920,17 +934,46 @@ class LearningService:
                 ]
                 pending.expected_answer = authoritative_answer
                 interaction.question = pending
-            is_correct = self._apply_grade(
-                tx.progress,
-                question_id=pending.question_id,
-                knowledge_point_id=pending.knowledge_point_id,
-                module_id=pending.module_id,
-                user_answer=graded_answer,
-                expected_answer=authoritative_answer,
-                question_type=pending.question_type,
-                scheduler=scheduler,
-                session_id=session_id,
-                turn_id=turn_id,
+            visual_result = ""
+            visual_diagnosis = ""
+            if pending.visual_context:
+                from deeptutor.learning.visual_practice import (
+                    account_for_recent_assistance,
+                    evaluate_visual,
+                )
+
+                pending.visual_context = account_for_recent_assistance(
+                    pending.visual_context, tx.progress.quiz_attempts, pending.knowledge_point_id
+                )
+                visual_result, visual_diagnosis = evaluate_visual(pending, raw_answer)
+                if (
+                    tx.progress.explained_objectives.get(pending.knowledge_point_id, {}).get(
+                        "timestamp", 0
+                    )
+                    > pending.created_at
+                ):
+                    pending.visual_context["hints_used"] = max(
+                        1, pending.visual_context.get("hints_used", 0)
+                    )
+                    pending.visual_context["teaching_after_question"] = True
+                if visual_result == "correct":
+                    graded_answer = authoritative_answer
+            is_correct = (
+                None
+                if visual_result == "ungraded"
+                else self._apply_grade(
+                    tx.progress,
+                    question_id=pending.question_id,
+                    knowledge_point_id=pending.knowledge_point_id,
+                    module_id=pending.module_id,
+                    user_answer=graded_answer,
+                    expected_answer=authoritative_answer,
+                    question_type=pending.question_type,
+                    scheduler=scheduler,
+                    session_id=session_id,
+                    turn_id=turn_id,
+                    visual_context=pending.visual_context,
+                )
             )
             if (
                 tx.progress.pending_question is not None
@@ -945,9 +988,18 @@ class LearningService:
                 "is_correct": is_correct,
                 "knowledge_point_id": pending.knowledge_point_id,
             }
+            if pending.visual_context:
+                interaction.result.update(
+                    {
+                        "result": visual_result,
+                        "diagnosis": visual_diagnosis,
+                        "visual_context": pending.visual_context,
+                        "independent": not bool(pending.visual_context.get("hints_used")),
+                    }
+                )
             tx.put_interaction(interaction)
             tx.emit(
-                "attempt.recorded",
+                "practice.ungraded" if visual_result == "ungraded" else "attempt.recorded",
                 {
                     "interaction_id": interaction.interaction_id,
                     "knowledge_point_id": pending.knowledge_point_id,
@@ -956,7 +1008,7 @@ class LearningService:
                 session_id=interaction.session_id,
                 turn_id=interaction.turn_id,
             )
-            if tx.progress.learning_evidence:
+            if visual_result != "ungraded" and tx.progress.learning_evidence:
                 latest = tx.progress.learning_evidence[-1]
                 if latest.knowledge_point_id == pending.knowledge_point_id:
                     tx.emit(
@@ -1317,6 +1369,7 @@ class LearningService:
             progress.review_queue = []
             progress.learner_mastery_overrides = {}
             progress.deferred_objectives = {}
+            progress.explained_objectives = {}
             progress.pending_question = None
             progress.feynman_retries = {}
             progress.feynman_explanations = {}
@@ -1494,6 +1547,34 @@ class LearningService:
             question_type = question.question_type if question is not None else "short"
             previous_expected = question.expected_answer if question is not None else ""
             previous_is_correct = attempts[0].is_correct if attempts else None
+            if action_name == "correct" and question is not None and question.visual_context:
+                from deeptutor.learning.visual_practice import prepare_visual
+
+                candidate_answer = str(expected_answer or question.expected_answer)
+                if not question.visual_context.get("pixels_inspected"):
+                    raise MasteryInteractionError(
+                        "This visual practice had no verified pixel inspection. Void it and pose a supported replacement; a challenge cannot create mastery evidence."
+                    )
+                try:
+                    corrected_visual, corrected_aliases = prepare_visual(
+                        {
+                            **question.visual_context,
+                            "accepted_answers": [],
+                            "key_status": "verified",
+                        },
+                        expected_answer=candidate_answer,
+                        options=question.choice_map,
+                    )
+                except (OSError, ValueError, TypeError) as exc:
+                    raise MasteryInteractionError(
+                        "Visual correction lacks current source support; void the assessment and pose a supported replacement."
+                    ) from exc
+                if corrected_visual["key_status"] != "verified":
+                    raise MasteryInteractionError(
+                        "Visual correction lacks a source-supported key; void the assessment instead of granting unsupported mastery."
+                    )
+                question.accepted_answers = corrected_aliases
+                question.visual_context = corrected_visual
             user_answer = (interaction.user_answer if interaction is not None else "") or (
                 str(attempts[0].user_answer or "") if attempts else ""
             )

@@ -10,7 +10,11 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import { saveWorkspaceDraft, readWorkspaceDraft } from "@/lib/workspace-drafts";
+import {
+  saveWorkspaceDraft,
+  readWorkspaceDraft,
+  type WorkspaceDraft,
+} from "@/lib/workspace-drafts";
 import {
   ArrowUp,
   BookMarked,
@@ -69,6 +73,10 @@ import PersonaSelector from "./PersonaSelector";
 import ResourceSelector from "./ResourceSelector";
 import type { ComposerResourceCatalog } from "@/hooks/useComposerResources";
 import type { ResourceSelection } from "@/features/chat/ChatStateAdapter";
+
+import TaskLinkSelector from "@/components/tasks/TaskLinkSelector";
+import { useTaskBoard } from "@/lib/task-board-store";
+import { sessionTaskLinks } from "@/lib/task-board-api";
 
 type SpaceSelectionCounts = {
   attachments: number;
@@ -186,6 +194,10 @@ const SEND_STATE_CLASS: Record<SendState, string> = {
 };
 
 export default memo(function ChatComposer({
+  taskSessionId,
+  draftTaskIds = [],
+  onDraftTaskIdsChange,
+  onTasksLinked,
   composerRef,
   capMenuRef,
   capBtnRef,
@@ -292,6 +304,10 @@ export default memo(function ChatComposer({
   inputHeader,
   showCapabilityChip = true,
 }: {
+  taskSessionId?: string | null;
+  draftTaskIds?: string[];
+  onDraftTaskIdsChange?: (ids: string[]) => void;
+  onTasksLinked?: () => void;
   composerRef: RefObject<HTMLDivElement | null>;
   capMenuRef: RefObject<HTMLDivElement | null>;
   capBtnRef: RefObject<HTMLButtonElement | null>;
@@ -517,6 +533,7 @@ export default memo(function ChatComposer({
     addDraftFilesRef.current = onAddFiles;
   }, [onAddFiles]);
   const restoredDraftRef = useRef(false);
+  const restoreFailedRef = useRef(false);
   useEffect(() => {
     let alive = true;
     const restore = readWorkspaceDraft();
@@ -542,22 +559,51 @@ export default memo(function ChatComposer({
             });
           if (files.length) addDraftFilesRef.current(files);
         })
-        .catch(() => {});
+        .catch((error) => {
+          if (!alive) return;
+          restoreFailedRef.current = true;
+          console.warn(
+            "[ChatComposer] workspace draft restore failed; keeping the stored draft untouched",
+            error,
+          );
+        });
     }
+    const collectDraft = () => ({
+      text: inputHandleRef.current?.getValue() || "",
+      attachments: draftAttachmentsRef.current.map(
+        ({ filename, base64, mimeType }) => ({ filename, base64, mimeType }),
+      ),
+    });
+    // The stored draft never made it into the composer, so saving the composer
+    // as-is could clobber it. Skip when nothing new was typed; otherwise merge
+    // the new input on top of the stored draft. If even the re-read fails,
+    // reject the switch (as on main) instead of losing the new input.
+    let storedDraft: WorkspaceDraft | undefined | null = null;
+    const saveAfterFailedRestore = () => {
+      restoreFailedRef.current = true;
+      const draft = collectDraft();
+      if (!draft.text && !draft.attachments.length) return Promise.resolve();
+      const merge = (stored?: WorkspaceDraft) =>
+        saveWorkspaceDraft({
+          text: [stored?.text, draft.text].filter(Boolean).join("\n"),
+          attachments: [...(stored?.attachments ?? []), ...draft.attachments],
+        });
+      // Re-read only once per mount so a retried switch merges the original
+      // stored draft instead of re-appending the composer to itself.
+      if (storedDraft !== null) return merge(storedDraft);
+      return readWorkspaceDraft().then((stored) => {
+        storedDraft = stored ?? { text: "", attachments: [] };
+        return merge(stored);
+      });
+    };
     const save = (event: Event) => {
       (event as CustomEvent<Promise<void>[]>).detail.push(
-        restore.then(() =>
-          saveWorkspaceDraft({
-            text: inputHandleRef.current?.getValue() || "",
-            attachments: draftAttachmentsRef.current.map(
-              ({ filename, base64, mimeType }) => ({
-                filename,
-                base64,
-                mimeType,
-              }),
+        restoreFailedRef.current
+          ? saveAfterFailedRestore()
+          : restore.then(
+              () => saveWorkspaceDraft(collectDraft()),
+              saveAfterFailedRestore,
             ),
-          }),
-        ),
       );
     };
     window.addEventListener("deeptutor:before-workspace-switch", save);
@@ -655,7 +701,9 @@ export default memo(function ChatComposer({
   const doSend = useCallback(
     (content: string) => {
       onSend(content);
-      void saveWorkspaceDraft({ text: "", attachments: [] }).catch(() => {});
+      if (!restoreFailedRef.current) {
+        void saveWorkspaceDraft({ text: "", attachments: [] }).catch(() => {});
+      }
       setHasContent(false);
       inputHandleRef.current?.clear();
       // Sending can move focus to the button or rerender the empty-state
@@ -666,7 +714,21 @@ export default memo(function ChatComposer({
     [focusTextarea, onSend],
   );
 
+  const { board: taskBoard } = useTaskBoard();
+  const linkedTaskIds = taskSessionId
+    ? sessionTaskLinks(taskBoard, taskSessionId, workspaceId ?? "")?.task_ids ?? []
+    : draftTaskIds;
+  const taskPanelPending = useRef(false);
+  useEffect(() => {
+    // Let users finish selecting tasks before the viewer changes the layout.
+    if (taskPanelPending.current && !spaceMenuOpen && !personaSelectorOpen) {
+      taskPanelPending.current = false;
+      onTasksLinked?.();
+    }
+  }, [spaceMenuOpen, personaSelectorOpen, onTasksLinked]);
+
   const hasReferences =
+    !!linkedTaskIds.length ||
     !!attachments.length ||
     !!selectedBookReferences.length ||
     !!selectedReadingReferences.length ||
@@ -847,6 +909,27 @@ export default memo(function ChatComposer({
   const selectedSkills = resourceSelection?.skills ?? [];
   const selectedMcp = resourceSelection?.mcp ?? [];
   const resourceItems: ComposerResourceItem[] = [];
+  if (taskSessionId || onDraftTaskIdsChange) {
+    resourceItems.push({
+      key: "tasks",
+      group: "Reference materials",
+      label: t("tasks.linked"),
+      icon: ClipboardList,
+      count: linkedTaskIds.length,
+      summary: linkedTaskIds.length ? `${linkedTaskIds.length} ${t("selected")}` : undefined,
+      node: (
+        <TaskLinkSelector
+          sessionId={taskSessionId}
+          workspaceId={workspaceId ?? ""}
+          draftTaskIds={draftTaskIds}
+          onDraftChange={onDraftTaskIdsChange}
+          onLinked={() => {
+            taskPanelPending.current = true;
+          }}
+        />
+      ),
+    });
+  }
   if (knowledgeBases.length > 0) {
     resourceItems.push({
       key: "knowledge",
@@ -983,7 +1066,7 @@ export default memo(function ChatComposer({
   return (
     <div
       ref={composerRef}
-      className={`relative z-20 mx-auto w-full shrink-0 px-6 pb-5 ${hasMessages ? "pt-1 max-w-[960px]" : "max-w-[768px]"}`}
+      className={`relative ${spaceMenuOpen || personaSelectorOpen ? "z-[61]" : "z-20"} mx-auto w-full shrink-0 px-6 pb-5 ${hasMessages ? "pt-1 max-w-[960px]" : "max-w-[768px]"}`}
       style={{
         transition: "max-width 650ms cubic-bezier(0.16, 1, 0.3, 1)",
       }}

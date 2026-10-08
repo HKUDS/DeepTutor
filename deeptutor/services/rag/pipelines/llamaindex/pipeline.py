@@ -209,7 +209,7 @@ class LlamaIndexPipeline:
         )
 
         signature = self._current_signature()
-        storage_dir = resolve_storage_dir_for_rebuild(kb_dir, signature)
+        storage_dir = resolve_storage_dir_for_rebuild(kb_dir, signature, publication_guard=True)
 
         try:
             await self._verify_embedding_connectivity()
@@ -229,6 +229,10 @@ class LlamaIndexPipeline:
                 f"(chunking + embedding)..."
             )
 
+            # #1802: validate and publish pixels before persisting nodes that
+            # reference them. Failed indexing can leave unused immutable assets;
+            # failed asset publication must not leave a partially accepted index.
+            VisualAssetStore(kb_dir).publish(visual_candidates, prune_missing=True)
             await _run_with_stall_guard(
                 lambda: storage.create_index(
                     documents, storage_dir, show_progress=should_show_progress()
@@ -238,9 +242,7 @@ class LlamaIndexPipeline:
             )
 
             self.logger.info(f"Index persisted to {storage_dir}")
-            VisualAssetStore(kb_dir).publish(visual_candidates, prune_missing=True)
-            if signature is not None:
-                write_version_meta(kb_dir, signature, storage_dir=storage_dir)
+            await self._publish_verified(kb_dir, storage_dir, signature, documents)
 
             indexed_file_callback = kwargs.get("indexed_file_callback")
             if indexed_file_callback is not None:
@@ -423,6 +425,7 @@ class LlamaIndexPipeline:
                 self.logger.warning("No valid documents to add")
                 return False
 
+            VisualAssetStore(kb_dir).publish(visual_candidates)
             if plan.existing_storage is not None:
                 self.logger.info(f"Loading existing index from {plan.existing_storage}...")
                 num_added = await _run_with_stall_guard(
@@ -433,9 +436,7 @@ class LlamaIndexPipeline:
                     worker_key=str(kb_dir.resolve()),
                 )
                 self.logger.info(f"Added {num_added} documents to existing index")
-                VisualAssetStore(kb_dir).publish(visual_candidates)
-                if signature is not None and plan.storage_dir != plan.existing_storage:
-                    write_version_meta(kb_dir, signature, storage_dir=plan.storage_dir)
+
             else:
                 self.logger.info(f"Creating new index with {len(documents)} documents...")
                 plan.storage_dir.mkdir(parents=True, exist_ok=True)
@@ -447,10 +448,8 @@ class LlamaIndexPipeline:
                     worker_key=str(kb_dir.resolve()),
                 )
                 self.logger.info(f"Created new index with {num_added} documents")
-                VisualAssetStore(kb_dir).publish(visual_candidates)
-                if signature is not None:
-                    write_version_meta(kb_dir, signature, storage_dir=plan.storage_dir)
 
+            await self._publish_verified(kb_dir, plan.storage_dir, signature, documents)
             self.logger.info(f"Successfully added documents to KB '{kb_name}'")
             return True
 
@@ -464,6 +463,35 @@ class LlamaIndexPipeline:
             raise
         finally:
             set_progress_callback(None)
+
+    async def _publish_verified(self, kb_dir, storage_dir, signature, documents):
+        from deeptutor.knowledge.indexing_run import current_run
+        from deeptutor.services.file_io import atomic_write_json
+
+        run = current_run()
+        if run:
+            run.phase("verifying")
+        await asyncio.to_thread(storage.verify_persisted_index, storage_dir)
+        if run:
+            await asyncio.to_thread(run.verify_sources)
+        if signature is not None:
+            write_version_meta(kb_dir, signature, storage_dir=storage_dir)
+        else:
+            atomic_write_json(
+                storage_dir / "meta.json",
+                {
+                    "version": storage_dir.name,
+                    "provider": "llamaindex",
+                    "state": "published",
+                    "readiness_verified": True,
+                },
+            )
+        if run:
+            run.data["usable_version"] = storage_dir.name
+            for document in documents:
+                path = (getattr(document, "metadata", None) or {}).get("file_path")
+                if path:
+                    run.document(Path(path), "completed")
 
     async def delete(self, kb_name: str) -> bool:
         kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)

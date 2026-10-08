@@ -4,6 +4,18 @@ import { SidebarShell } from "@/components/sidebar/SidebarShell";
 
 const fixture = vi.hoisted(() => ({ push: vi.fn(), close: vi.fn() }));
 
+vi.mock("@/hooks/useAuthStatus", () => ({
+  useAuthStatus: () => ({
+    enabled: false,
+    authenticated: false,
+    isAdmin: false,
+    userId: null,
+    statusAvailable: true,
+    loading: false,
+    learningPolicy: null,
+  }),
+}));
+
 vi.mock("@/hooks/useChatWorkspaces", () => ({ useChatWorkspaces: () => ({ workspaces: [], error: "" }) }));
 
 vi.mock("next/navigation", () => ({

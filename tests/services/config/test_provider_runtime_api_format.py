@@ -111,8 +111,10 @@ def test_minimax_anthropic_format_uses_the_vendor_anthropic_endpoint() -> None:
     )
     # The profile left base_url blank, so the vendor default for *this format*
     # is what the runtime should fall back to.
+    assert resolved.effective_url == "https://api.minimax.io/anthropic"
     provider = provider_factory._build_runtime_provider(_runtime_config(resolved))
     assert isinstance(provider, AnthropicProvider)
+    assert str(provider._client.base_url).rstrip("/") == "https://api.minimax.io/anthropic"
 
 
 def test_openai_profile_with_api_version_is_an_azure_deployment() -> None:

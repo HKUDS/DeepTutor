@@ -244,6 +244,21 @@ class VoicePreviewPayload(BaseModel):
     text: str = Field(min_length=1, max_length=500)
 
 
+class VoiceDiscoveryPayload(BaseModel):
+    catalog: dict[str, Any]
+    profile_id: str
+    model_id: str
+
+
+class ServicePreviewPayload(BaseModel):
+    catalog: dict[str, Any]
+    profile_id: str
+    model_id: str | None = None
+    text: str = Field(default="", max_length=2000)
+    audio: str = Field(default="", max_length=11184812)
+    content_type: str = ""
+
+
 class CatalogPayload(BaseModel):
     catalog: dict[str, Any]
 
@@ -1972,18 +1987,20 @@ async def test_provider_connection(payload: ProviderProbePayload):
 
 @router.post("/fetch-models")
 async def fetch_models_from_provider(payload: FetchModelsPayload):
-    """List the model IDs an OpenAI-compatible provider exposes.
+    """List selectable model IDs using the provider's own authentication.
 
     Thin HTTP surface over ``factory.fetch_models`` so the settings UI can
-    populate a model picker from ``base_url`` + ``api_key`` instead of making
-    the user type model IDs by hand.
+    populate a model picker. Copilot uses the caller's owner-private CLI login,
+    not the profile's API key or base URL.
     """
     _require_settings_admin()
     from deeptutor.services.llm.factory import fetch_models as fetch_llm_models
+    from deeptutor.services.provider_registry import canonical_provider_name
 
     base_url = (payload.base_url or "").strip()
     binding = (payload.binding or "").strip().lower() or "openai"
-    if not base_url and binding != "codebuddy":
+    is_copilot = canonical_provider_name(binding) == "github_copilot"
+    if not base_url and binding != "codebuddy" and not is_copilot:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="base_url is required for this provider.",
@@ -1991,7 +2008,9 @@ async def fetch_models_from_provider(payload: FetchModelsPayload):
 
     api_key = payload.api_key
     api_format = (payload.api_format or "").strip().lower()
-    if payload.profile_id and (api_key == CATALOG_SECRET_MASK or not api_format):
+    if is_copilot:
+        base_url, api_key, api_format = "", None, "auto"
+    elif payload.profile_id and (api_key == CATALOG_SECRET_MASK or not api_format):
         service = get_model_catalog_service().load().get("services", {}).get(payload.service, {})
         profile = next(
             (item for item in service.get("profiles", []) if item.get("id") == payload.profile_id),
@@ -2005,6 +2024,18 @@ async def fetch_models_from_provider(payload: FetchModelsPayload):
     try:
         model_ids = await fetch_llm_models(binding, base_url, api_key, api_format or "auto")
     except Exception as exc:  # noqa: BLE001 — surface any provider error as 502
+        if is_copilot:
+            # OAuth exceptions can contain credential-bearing URLs or responses.
+            # Never echo or log their raw text at this public HTTP boundary.
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=(
+                    "Could not list GitHub Copilot models. "
+                    "Run: deeptutor provider login github-copilot "
+                    "for this account in the server's DeepTutor home, "
+                    "then retry. If already logged in, check Copilot access and connectivity."
+                ),
+            ) from None
         logger.exception("Failed to fetch models from %s", base_url)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -2168,6 +2199,26 @@ async def update_enabled_tools(update: EnabledToolsUpdate):
     return {"enabled_optional_tools": sanitized}
 
 
+@router.post("/voice/voices")
+async def list_voice_choices(payload: VoiceDiscoveryPayload):
+    """Read live account voices for a draft selection, without applying it."""
+    _require_settings_admin()
+    from deeptutor.services.voice.discovery import discover_voices
+
+    service = get_model_catalog_service()
+    current = service.load()
+    saved = get_settings_draft_service().load().get("catalog")
+    source = restore_catalog_secrets(saved, current) if isinstance(saved, dict) else current
+    catalog = service.resolve_connections(restore_catalog_secrets(payload.catalog, source))
+    try:
+        result = await discover_voices(catalog, payload.profile_id, payload.model_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return Response(
+        json.dumps(result), media_type="application/json", headers={"Cache-Control": "no-store"}
+    )
+
+
 @router.post(
     "/voice/preview",
     response_class=Response,
@@ -2201,6 +2252,45 @@ async def preview_voice(payload: VoicePreviewPayload) -> Response:
             detail=preview_failure_message(exc),
         ) from exc
     return Response(audio, media_type=content_type, headers={"Cache-Control": "no-store"})
+
+
+@router.post("/services/{service}/preview")
+async def preview_service(service: str, payload: ServicePreviewPayload):
+    """Stream a real result from the selected draft without applying it."""
+    _require_settings_admin()
+    from deeptutor.services.settings.service_preview import preview_events, validate_input
+    from deeptutor.services.voice.discovery import selected_catalog
+
+    try:
+        audio = validate_input(service, payload.text, payload.audio, payload.content_type)
+        catalog_service = get_model_catalog_service()
+        current = catalog_service.load()
+        saved = get_settings_draft_service().load().get("catalog")
+        source = restore_catalog_secrets(saved, current) if isinstance(saved, dict) else current
+        catalog = catalog_service.resolve_connections(
+            restore_catalog_secrets(payload.catalog, source)
+        )
+        selected_catalog(catalog, service, payload.profile_id, payload.model_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    async def stream():
+        async for event in preview_events(
+            catalog,
+            service,
+            payload.profile_id,
+            payload.model_id,
+            payload.text,
+            audio,
+            payload.content_type,
+        ):
+            yield json.dumps(event, ensure_ascii=False) + "\n"
+
+    return StreamingResponse(
+        stream(),
+        media_type="application/x-ndjson",
+        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/tests/{service}/start")
