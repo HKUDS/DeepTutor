@@ -10,7 +10,7 @@ import { pickerFlight } from "@/lib/picker-origin";
 import ToolbarLabel from "./ToolbarLabel";
 import { useLingerExpand } from "@/hooks/use-linger-expand";
 import { ResourceReuseControl } from "./ResourceReuse";
-import type { ResourceKind } from "@/lib/resource-reuse";
+import { RESOURCE_KINDS, type ResourceKind } from "@/lib/resource-reuse";
 import {
   useEffect,
   useId,
@@ -378,11 +378,13 @@ export default function ComposerResources({
                           </button>
                         </div>
                       )}
-                      <div className="px-2 py-1.5">
-                        <ResourceReuseControl
-                          kind={current.key as ResourceKind}
-                        />
-                      </div>
+                      {RESOURCE_KINDS.includes(current.key as ResourceKind) && (
+                        <div className="px-2 py-1.5">
+                          <ResourceReuseControl
+                            kind={current.key as ResourceKind}
+                          />
+                        </div>
+                      )}
                       {current.node}
                     </div>
                   ) : (
