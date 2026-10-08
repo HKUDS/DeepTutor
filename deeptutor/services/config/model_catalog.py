@@ -289,7 +289,7 @@ class ModelCatalogService:
             return {}
         try:
             loaded = json.loads(self.path.read_text(encoding="utf-8"))
-        except Exception:
+        except (json.JSONDecodeError, UnicodeDecodeError):
             return {}
         return loaded if isinstance(loaded, dict) else {}
 
