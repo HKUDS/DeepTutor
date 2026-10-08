@@ -1,5 +1,6 @@
 'use client'
 
+import { pageGridClass } from '@/components/layout/FeaturePage'
 import Link from 'next/link'
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -37,7 +38,7 @@ export function LearningWays() {
         <h2 id={id} className="sr-only">
           {t('Ways to learn')}
         </h2>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        <div className={pageGridClass(5)}>
           {LEARNING_SURFACES.map(surface => {
             const opened = openKind === surface.kind
             return (

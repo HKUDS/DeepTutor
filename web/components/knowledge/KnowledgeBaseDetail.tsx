@@ -42,6 +42,7 @@ import type { TaskState } from "@/hooks/useKnowledgeProgress";
 import type { HistoryEntry } from "@/hooks/useKnowledgeHistory";
 import KbStatusBadge from "./KbStatusBadge";
 import KbTaskLogs from "./KbTaskLogs";
+import KbIndexingRun from "./KbIndexingRun";
 import KbFilesTab from "./KbFilesTab";
 import KbDocumentsSection from "./KbDocumentsSection";
 import KbIndexVersionsSection from "./KbIndexVersionsSection";
@@ -311,6 +312,7 @@ export default function KnowledgeBaseDetail({
 
       {/* Body */}
       <KbTaskLogs key={knowledgeBaseRef(kb)} kb={kb} task={task} />
+      <KbIndexingRun key={`run-${knowledgeBaseRef(kb)}`} kbName={knowledgeBaseRef(kb)} readOnly={kb.read_only} />
       <div className="min-h-0 flex-1 overflow-hidden">
         {activeSection === "files" ? (
           <KbFilesTab key={knowledgeBaseRef(kb)} kb={kb} task={task} />

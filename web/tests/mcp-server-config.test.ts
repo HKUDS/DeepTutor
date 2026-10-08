@@ -287,3 +287,13 @@ test("a disabled server reads Disabled, not a stuck Connecting", () => {
   assert.equal(mcpRowStatus(enabled, row("connected")), "connected");
   assert.equal(mcpRowStatus(enabled, row("error")), "error");
 });
+
+test("private-network selection survives normalization and form edits without changing legacy defaults", () => {
+  const selected = normalizeServerConfig({ url: "http://research.internal:8080/mcp", allow_private_network: true });
+  assert.equal(selected.allow_private_network, true);
+  const unchanged = buildMcpServerConfig(draftFrom(selected), selected);
+  assert.equal(unchanged.allow_private_network, true);
+  const revoked = buildMcpServerConfig({ ...draftFrom(selected), allowPrivateNetwork: false }, selected);
+  assert.equal(revoked.allow_private_network, false);
+  assert.equal(normalizeServerConfig({ url: "https://example.com/mcp" }).allow_private_network, undefined);
+});

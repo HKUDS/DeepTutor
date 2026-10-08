@@ -1,0 +1,160 @@
+{
+  "checked_at": "2026-10-07",
+  "note": "Brand marks identify their respective services. Existing SVGs were vendored from LobeHub; additions below were checked against provider websites.",
+  "assets": {
+    "alibabacloud-color.svg": {
+      "url": "https://unpkg.com/@lobehub/icons-static-svg@1.95.1/icons/alibabacloud-color.svg",
+      "sha256": "73ea97baf919edb3d888a77cd45b21574e190a80124a59e199ea6953a28a959c",
+      "source": "@lobehub/icons-static-svg 1.95.1 (MIT)"
+    },
+    "atlascloud.svg": {
+      "url": "https://unpkg.com/@lobehub/icons-static-svg@1.95.1/icons/atlascloud.svg",
+      "sha256": "f4b4170259c722a970176763fd9f3b18fe34a661e063afb88ae340f4c7ff1474",
+      "source": "@lobehub/icons-static-svg 1.95.1 (MIT)"
+    },
+    "bailian-color.svg": {
+      "url": "https://unpkg.com/@lobehub/icons-static-svg@1.95.1/icons/bailian-color.svg",
+      "sha256": "5cc26dc961b2ecd0912f4e023c8ce745bcc52ac45b1c4baeadd7201f6b60de25",
+      "source": "@lobehub/icons-static-svg 1.95.1 (MIT)"
+    },
+    "bocha-color.svg": {
+      "url": "https://unpkg.com/@lobehub/icons-static-svg@1.95.1/icons/bocha-color.svg",
+      "sha256": "bf96c5c287da443c310570db48a270121af57d559f849227aea27cc61b86f244",
+      "source": "@lobehub/icons-static-svg 1.95.1 (MIT)"
+    },
+    "firecrawl-color.svg": {
+      "url": "https://unpkg.com/@lobehub/icons-static-svg@1.95.1/icons/firecrawl-color.svg",
+      "sha256": "98993b111d1cb75edd0b1ce3a1e8bd3f85dcf5548072ffb959ac97ffe69ade59",
+      "source": "@lobehub/icons-static-svg 1.95.1 (MIT)"
+    },
+    "novita-official.svg": {
+      "url": "https://novita.ai/logo/logo_small.svg",
+      "sha256": "21f50cd74ca927d57102f255f234791d8f8008837362a9b32c5f32688f01df06",
+      "source": "Official website asset"
+    },
+    "codebuddy-official.svg": {
+      "url": "https://download.codebuddy.cn/web/website/a156fee78f35e874d407848198e5f96a4cf383ef/assets/logo.svg",
+      "sha256": "149baa45b9f9370c15f20d599afe381aa138e4fc13acf503f435c571ac93ecf5",
+      "source": "Official website asset"
+    },
+    "byteplus.png": {
+      "url": "https://sf-bpcms.bytepluscdn.com/obj/byteplus-public-aiso/portal/assets/favicon.png",
+      "sha256": "64fc512a00a7e955b1fc678cc72485aaba3af7a7fa5d915aaccd79daa8474b76",
+      "source": "Official website asset"
+    },
+    "edenai.png": {
+      "url": "https://cdn.prod.website-files.com/61e7d259b7746e2d1df0b68d/6a63231f2ab1f7b73d0013f5_eden%20ai%20logo%20light.png",
+      "sha256": "f251b436e413d6826192c84dcf230eb52bc58733ddba8f3e6e1463bfdd0fc96c",
+      "source": "Official website asset"
+    },
+    "edenai-dark.png": {
+      "url": "https://cdn.prod.website-files.com/61e7d259b7746e2d1df0b68d/6a6323282ab1f7b73d00154d_eden%20ai%20logo%20dark.png",
+      "sha256": "eb5d1dc22c62d60cc630aecc6dddb36dbb3a85d73d689f5bd7516fb49e5e1447",
+      "source": "Official website asset"
+    },
+    "orcarouter.png": {
+      "url": "https://www.orcarouter.ai/orca-icon-192.png",
+      "sha256": "98337616ec54835112a68e9b151afe342521d38b7d2cf9748b73265b40a03830",
+      "source": "Official website asset"
+    },
+    "unifically.webp": {
+      "url": "https://unifically.com/_next/image?url=%2Fstatic%2Fbrand%2Flogo.png&w=128&q=75",
+      "sha256": "9c2c3136a449208fef31780b0c3b6cab9c887a5bc28c4aac2a84bfa683e47ae6",
+      "source": "Official website asset"
+    },
+    "requesty.png": {
+      "url": "https://www.requesty.ai/icon.png?icon.18acj9ydjf3a1.png",
+      "sha256": "797c91229b6c937ed9c8e831bf978fc9c2df5275defc9ed9d7530de196801306",
+      "source": "Official website asset"
+    },
+    "futureinfra.svg": {
+      "url": "https://futureinfra.ai/assets/favicon.svg",
+      "sha256": "a94504cf888fd0f54ce8690a039a93009f1e48e300e9fe4712e3006f65205582",
+      "source": "Official website asset",
+      "note": "Line endings normalized to LF; brand artwork unchanged."
+    },
+    "lemonade.ico": {
+      "url": "https://lemonade-server.ai/favicon.ico",
+      "sha256": "84c98ff6a18935e6749854bce8922a3db66cb573199f467bebf1df1d0a511005",
+      "source": "Official website asset"
+    },
+    "serper.png": {
+      "url": "https://serper.dev/apple-touch-icon.png",
+      "sha256": "d7ad3d558791116fe3017a422500d9abe7e20ecd7f2c71c8898b2604b70cbf65",
+      "source": "Official website asset"
+    },
+    "serply.png": {
+      "url": "https://serply.io/favicon/apple-touch-icon.png",
+      "sha256": "0a787846df588d136932f3bb373d5d796b28f0a545ff603cb013136148525922",
+      "source": "Official website asset"
+    },
+    "cheaperinference.svg": {
+      "url": "https://www.cheaperinference.com/icon.svg?7b25e69112bc955e",
+      "sha256": "4c0bf6572d9077fd66fe338b80c18e4d227adb6a44bc176bf5eb5ea1271bf9d0",
+      "source": "Official website asset"
+    },
+    "api-route.png": {
+      "url": "https://www.api-route.com/apple-touch-icon.png?v=2",
+      "sha256": "28866bf8b7c0913c634a34d2839a3201b0eab2019b926e556411a72f4c969e42",
+      "source": "Official website asset"
+    },
+    "openvino.ico": {
+      "url": "https://docs.openvino.ai/2026/_static/favicon.ico",
+      "sha256": "54a174ab11c78b2e380c3805956df6f7ea2dccf9ba5d5ebbf312b322b124f328",
+      "source": "Official website asset"
+    },
+    "doubao.png": {
+      "url": "https://lf-flow-web-cdn.doubao.com/obj/flow-doubao/favicon/new-doubao/128x128.png",
+      "sha256": "bf8e41bcc864c00099a98080825ea42aba7cf481303dad3312f44a5da68c3f3b",
+      "source": "Official website asset"
+    },
+    "llama-cpp.svg": {
+      "url": "https://raw.githubusercontent.com/ggml-org/llama.brand/master/icon/icon-light.svg",
+      "sha256": "ce48c0f8e98aa4099b6f04a65b76bc32bc00c8fa39d58f15da9b73905f1918f1",
+      "source": "Official website asset",
+      "attribution": "ggml-org/llama.brand — official brand assets, CC BY-NC 4.0 with redistribution permission in BRAND-USAGE.md",
+      "usage": "https://github.com/ggml-org/llama.brand/blob/master/BRAND-USAGE.md"
+    },
+    "llama-cpp-dark.svg": {
+      "url": "https://raw.githubusercontent.com/ggml-org/llama.brand/master/icon/icon-dark.svg",
+      "sha256": "78bbb16ce08f25baf0bc2c8f0c765e85d933f537ba92625b844528cb02aa249b",
+      "source": "Official website asset",
+      "attribution": "ggml-org/llama.brand — official brand assets, CC BY-NC 4.0 with redistribution permission in BRAND-USAGE.md",
+      "usage": "https://github.com/ggml-org/llama.brand/blob/master/BRAND-USAGE.md"
+    },
+    "opper.png": {
+      "url": "https://opper.ai/images/icon-dark.png",
+      "sha256": "86e4cec6dd1912124e72c2aff8d7d3623a44fd940429a7a520732f0ab7e34149",
+      "source": "Official website asset"
+    },
+    "opper-dark.png": {
+      "url": "https://opper.ai/images/icon-light.png",
+      "sha256": "c2b8011772dd1ca9299200a30dc915c5a2d636a1b4ba4a3c4c54234be438f70b",
+      "source": "Official website asset"
+    }
+  },
+  "chinese_names": {
+    "deepseek": "https://www.deepseek.com/",
+    "moonshot": "https://www.moonshot.cn/",
+    "aihubmix": "https://aihubmix.com/blog/zh-CN",
+    "siliconflow": "https://siliconflow.cn/",
+    "dashscope": "https://bailian.console.aliyun.com/",
+    "aliyun_iqs": "https://iqs.console.aliyun.com/",
+    "volcengine": "https://www.volcengine.com/",
+    "volcengine_speech": "https://www.volcengine.com/product/voice-tech",
+    "zhipu": "https://www.bigmodel.cn/",
+    "stepfun": "https://platform.stepfun.com/",
+    "xiaomi_mimo": "https://platform.xiaomimimo.com/",
+    "codebuddy": "https://www.codebuddy.cn/",
+    "qianfan": "https://cloud.baidu.com/product-s/qianfan_home",
+    "bocha": "https://bocha.cn/",
+    "doubao": "https://www.doubao.com/",
+    "minimax": "https://www1.hkexnews.hk/app/sehk/2025/107986/a128500/sehk25122100301_c.pdf"
+  },
+  "providers_without_verified_icons": {
+    "y_api": {
+      "checked_url": "https://api.y-api.bestvirtualgoods.com",
+      "reason": "Configured service root returns HTTP 404; no verified official brand asset found. Uses the generic provider icon."
+    }
+  }
+}

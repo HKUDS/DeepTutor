@@ -9,7 +9,11 @@ import {
   FileAudio,
   Maximize2,
   Minimize2,
+  Pencil,
   Search,
+  StickyNote,
+  Trash2,
+  X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -30,6 +34,9 @@ import {
   type ReaderActionPayload,
 } from "@/lib/reading-reader-action";
 import { setReadingViewport } from "@/lib/reading-turn-state";
+import Tooltip from "@/shared/ui/Tooltip";
+import { useReading } from "@/context/ReadingContext";
+import type { AnnotationItem } from "@/lib/reading-api";
 import {
   bilibiliOfficialUrl,
   parseBilibiliSource,
@@ -67,6 +74,7 @@ export function MediaReadingStage({
   onLocatorChange: (locator: number) => void;
 }) {
   const { t } = useTranslation();
+  const { annotations, saveMark, removeMark } = useReading();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const controllerRef = useRef<ReadingMediaController | null>(null);
@@ -94,6 +102,13 @@ export function MediaReadingStage({
   const [transcriptQuery, setTranscriptQuery] = useState("");
   const [selectedTranscriptMatch, setSelectedTranscriptMatch] = useState(-1);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [noteDraft, setNoteDraft] = useState("");
+  const [noteSaving, setNoteSaving] = useState(false);
+  const [noteError, setNoteError] = useState("");
+  const noteRevision = useRef(0);
+  const noteTarget = useRef<{ materialId: string; locator: number; quote: string; seconds: number; annotation?: AnnotationItem } | null>(null);
+  const [editingNoteId, setEditingNoteId] = useState("");
+  const [noteEditorOpen, setNoteEditorOpen] = useState(false);
   const activeRef = refs.find((row) => row.locator === activeLocator);
   const normalizedTranscriptQuery = transcriptQuery.trim();
   const transcriptMatches = useMemo(
@@ -104,6 +119,9 @@ export function MediaReadingStage({
     (row) => row.locator === activeLocator,
   );
   const activeCue = activeTranscriptIndex >= 0 ? transcript[activeTranscriptIndex] : null;
+  const activeNotes = annotations.filter(
+    (row) => row.locator === activeLocator && row.kind === "note",
+  );
   const nextCue =
     activeTranscriptIndex >= 0 ? transcript[activeTranscriptIndex + 1] : null;
   const timedRefs = useMemo(
@@ -149,6 +167,50 @@ export function MediaReadingStage({
       );
     }
   }, [t]);
+
+  const startNote = useCallback(() => {
+    if (!activeCue) return;
+    noteRevision.current += 1;
+    noteTarget.current = { materialId: material.material_id, locator: activeCue.locator,
+      quote: activeCue.text, seconds: controllerRef.current?.tracksPosition ? controllerRef.current.currentTime() : (timeFromSourceHref(activeCue.sourceHref) ?? time) };
+    setEditingNoteId(""); setNoteDraft(""); setNoteError(""); setNoteEditorOpen(true);
+  }, [activeCue, material.material_id, time]);
+
+  const editNote = useCallback((annotation: AnnotationItem) => {
+    noteRevision.current += 1;
+    noteTarget.current = { materialId: material.material_id, locator: annotation.locator,
+      quote: annotation.quote, seconds: timeFromSourceHref(annotation.source_anchor) ?? 0, annotation };
+    setEditingNoteId(annotation.annotation_id); setNoteDraft(annotation.note); setNoteError(""); setNoteEditorOpen(true);
+  }, [material.material_id]);
+
+  const cancelNote = useCallback(() => {
+    noteRevision.current += 1; noteTarget.current = null;
+    setNoteDraft(""); setEditingNoteId(""); setNoteError(""); setNoteEditorOpen(false);
+  }, []);
+
+  useEffect(() => { cancelNote(); }, [material.material_id, cancelNote]);
+
+  const saveNote = useCallback(async () => {
+    const target = noteTarget.current;
+    if (!target || target.materialId !== material.material_id || !noteDraft.trim() || noteSaving) return;
+    const revision = noteRevision.current;
+    const editing = target.annotation;
+    const now = Date.now() / 1000;
+    const draft = { annotation_id: editing?.annotation_id, locator: target.locator,
+      kind: "note" as const, quote: target.quote, note: noteDraft.trim(), source_anchor: `#t=${target.seconds}` };
+    const optimistic: AnnotationItem = { ...draft, annotation_id: editing?.annotation_id || `pending-${Date.now()}`,
+      material_revision: editing?.material_revision ?? 1, color: editing?.color || "yellow",
+      rects: [], selectors: [], author: editing?.author || "user", created_at: editing?.created_at || now, updated_at: now };
+    setNoteSaving(true); setNoteError("");
+    try {
+      const saved = await saveMark(draft, optimistic);
+      if (revision !== noteRevision.current) return;
+      if (saved) cancelNote();
+      else setNoteError(t("That annotation could not be saved."));
+    } catch {
+      if (revision === noteRevision.current) setNoteError(t("That annotation could not be saved."));
+    } finally { setNoteSaving(false); }
+  }, [material.material_id, noteDraft, noteSaving, saveMark, cancelNote, t]);
 
   const selectCue = useCallback(
     (row: TranscriptRow) => {
@@ -679,6 +741,18 @@ export function MediaReadingStage({
               )}
             </div>
             <div className="flex items-center gap-1">
+              <Tooltip label={t("Add segment note")}>
+<button
+                type="button"
+                onClick={startNote}
+                disabled={!activeCue}
+                aria-label={t("Add segment note")}
+
+                className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--primary)] disabled:opacity-40"
+              >
+                <StickyNote size={12} />
+              </button>
+</Tooltip>
               <button
                 type="button"
                 onClick={() => onLocatorChange(Math.max(1, activeLocator - 1))}
@@ -698,6 +772,112 @@ export function MediaReadingStage({
                 {t("Next")}
               </button>
             </div>
+          </div>
+
+          <div className="mt-3 rounded-xl border border-[var(--border)] bg-[var(--card)] dark:border-[var(--border)] dark:bg-[var(--card)]">
+            {noteEditorOpen && (
+              <div className="border-b border-[var(--border)] p-3 dark:border-[var(--border)]">
+                <label className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--muted-foreground)]">
+                  {editingNoteId ? t("Edit note") : t("New note")}
+                </label>
+                <textarea
+                  value={noteDraft}
+                  data-testid="media-note-input"
+                  onChange={(event) => { noteRevision.current += 1; setNoteDraft(event.target.value); }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      cancelNote();
+                    }
+                  }}
+                  rows={3}
+                  className="mt-2 w-full resize-y rounded-lg border border-[var(--border)] bg-[var(--background)] p-2 text-[11.5px] leading-relaxed outline-none focus:border-[var(--primary)]"
+                />
+                {noteError && <p role="alert" className="mt-2 text-xs text-destructive">{noteError}</p>}
+                <div className="mt-2 flex justify-end gap-1">
+                  <button
+                    type="button"
+                    onClick={cancelNote}
+                    className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10.5px] text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+                  >
+                    <X size={11} />
+                    {t("Cancel")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={saveNote}
+                    disabled={!noteDraft.trim() || noteSaving}
+                    data-testid="media-note-save"
+                    className="inline-flex items-center gap-1 rounded-lg bg-[var(--primary)] px-2 py-1 text-[10.5px] font-medium text-[var(--primary-foreground)] disabled:opacity-40"
+                  >
+                    <StickyNote size={11} />
+                    {t("Save note")}
+                  </button>
+                </div>
+              </div>
+            )}
+            {activeNotes.length ? (
+              <ul className="divide-y divide-[var(--border)] dark:divide-[var(--border)]">
+                {activeNotes.map((annotation) => (
+                  <li
+                    key={annotation.annotation_id}
+                    className="flex items-start gap-3 px-3 py-2"
+                  >
+                    <StickyNote
+                      size={12}
+                      className="mt-0.5 shrink-0 text-[var(--primary)]"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p
+                        data-testid="media-note-body"
+                        className="text-[11.5px] leading-relaxed"
+                      >
+                        {annotation.note}
+                      </p>
+                      <p className="mt-1 line-clamp-2 text-[10px] text-[var(--muted-foreground)]">
+                        {annotation.quote}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <Tooltip label={t("Edit note")}>
+<button
+                        type="button"
+                        onClick={() => editNote(annotation)}
+                        aria-label={t("Edit note")}
+
+                        className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--primary)]"
+                      >
+                        <Pencil size={11} />
+                      </button>
+</Tooltip>
+                      <Tooltip label={t("Delete note")}>
+<button
+                        type="button"
+                        onClick={() => void removeMark(annotation)}
+                        aria-label={t("Delete note")}
+
+                        className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--destructive)]"
+                      >
+                        <Trash2 size={11} />
+                      </button>
+</Tooltip>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+                !noteEditorOpen && (
+                <button
+                  type="button"
+                  onClick={startNote}
+                  disabled={!activeCue}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] text-[var(--muted-foreground)] hover:text-[var(--foreground)] disabled:opacity-40"
+                >
+                  <StickyNote size={12} />
+                  {t("Add a note for this segment")}
+                </button>
+              )
+            )}
           </div>
 
           <div className="mt-4 rounded-xl border border-[var(--border)] bg-[var(--card)] dark:border-[var(--border)] dark:bg-[var(--card)]">

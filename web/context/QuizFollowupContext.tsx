@@ -26,6 +26,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useTranslation } from "react-i18next";
 import { updateNotebookEntry } from "@/lib/notebook-api";
 import { shouldAppendEventContent } from "@/lib/stream";
 import { hasPendingAskUser } from "@/lib/ask-user-state";
@@ -220,6 +221,7 @@ interface ProviderProps {
 }
 
 export function QuizFollowupProvider({ children }: ProviderProps) {
+  const { t } = useTranslation();
   const [threads, setThreads] = useState<Record<string, FollowupThreadState>>(
     {},
   );
@@ -260,6 +262,30 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
     [],
   );
 
+  const persistFollowupSessionId = useCallback(
+    (key: string, entryId: number, sessionId: string) => {
+      const write = () =>
+        updateNotebookEntry(entryId, { followup_session_id: sessionId });
+      void (async () => {
+        try {
+          await write();
+        } catch {
+          try {
+            await write();
+          } catch {
+            updateThread(key, (prev) => ({
+              ...prev,
+              error:
+                prev.error ||
+                t("Failed to link this follow-up chat to its notebook entry."),
+            }));
+          }
+        }
+      })();
+    },
+    [t, updateThread],
+  );
+
   const handleThreadEvent = useCallback(
     (key: string, event: StreamEvent) => {
       if (event.type === "session") {
@@ -279,9 +305,7 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
         if (runner) runner.questionKey = nextSessionId;
         const entryId = entryIdsRef.current.get(key);
         if (entryId) {
-          void updateNotebookEntry(entryId, {
-            followup_session_id: nextSessionId,
-          }).catch(() => {});
+          persistFollowupSessionId(key, entryId, nextSessionId);
         }
         return;
       }
@@ -348,7 +372,7 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
         return next;
       });
     },
-    [updateThread],
+    [persistFollowupSessionId, updateThread],
   );
 
   const ensureRunner = useCallback(

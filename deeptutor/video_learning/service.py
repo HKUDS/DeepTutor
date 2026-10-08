@@ -327,6 +327,10 @@ class TimedMediaStore:
             raise TimedMediaNotFound("Timed media material was not found.")
         return payload
 
+    def peek(self, material_id: str) -> dict[str, Any]:
+        """Read original legacy bytes without repair writes during migration (#1378)."""
+        return self._load(material_id)
+
     @staticmethod
     def _repair_transcript_text(material: dict[str, Any]) -> bool:
         """Repair legacy machine-generated captions without touching user content."""
