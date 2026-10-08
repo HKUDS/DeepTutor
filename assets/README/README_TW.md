@@ -60,10 +60,10 @@
 
 DeepTutor 是代理程式原生的學習工作區，在同一個可擴充系統中串聯教學、解題、測驗生成、研究、視覺化與精熟練習。
 
-- **所有模式共用一套執行階段** — Chat、Ask Questions、Quiz、Research、Visualize、Solve、Course Study、Mastery Path、Immersive Reading 與 Immersive Watching 共用同一套能力執行階段與工作階段情境，同時保有針對各自用途設計的迴圈與管線。
+- **所有模式共用一套執行階段** — Chat、Ask Questions、Quiz、Research、Visualize、Solve、Course Study、Mastery Path、Immersive Reading 與 Audio Overview 共用同一套能力執行階段與工作階段情境，同時保有針對各自用途設計的迴圈與管線。
 - **Task Board** — 以待辦、進行中與已完成追蹤學習任務，並可加入備註、透過拖放或支援鍵盤操作的移動按鈕調整狀態，也能從封存中還原任務。卡片會保留在目前的工作區，沿用既有的外觀與語言設定；無須設定模型。
 - **相互連結的學習情境** — 知識庫、書籍、Co-Writer 草稿、筆記本、題庫、角色設定與 Memory 可在支援這些內容的工作流程中重複使用，但仍受帳號授權與學習政策限制。
-- **沉浸式影片學習** — 貼上 YouTube 連結，即可使用隱私強化的原生播放、同步字幕、以時間戳為依據的教學、已儲存的時間戳標記，以及可續接的學習進度；管理員也能將播放切換至自架的 Invidious 執行個體，無須重新建立素材。
+- **沉浸式影片學習** — 將 YouTube 或 Bilibili 連結加入 Reading，即可使用原生播放、逐字稿搜尋、以時間戳為依據的教學、已儲存的筆記與可續接的學習進度；YouTube 字幕與瀏覽功能可使用管理員設定的 Invidious 執行個體。
 - **子代理程式與 Partners** — 可從 Chat 諮詢即時代理程式執行框架（Claude Code、Codex、Grok CLI、Antigravity、Kimi、opencode、MiMo、Hermes、OpenClaw 或 DeepSeek）或 Partner、匯入過往對話，並讓持續運作的 IM 夥伴共用同一套核心。
 - **多引擎知識系統** — 透過 LlamaIndex、PageIndex、GraphRAG、LightRAG、遠端 LightRAG Server、自架 WeKnora 知識庫、Tencent IMA 或 MarginNote 4 知識庫、連接的 Kiwix ZIM 封存檔，或連結的 Obsidian vault 建立版本化 RAG 知識庫，並支援可插拔的文件解析。請參閱[原生 LightRAG 角色模型](../../deeptutor/services/rag/pipelines/lightrag/README.md)，了解獨立的擷取、查詢與視覺設定、僅預設建立，以及確認後的重建。
 - **可擴充的工具與技能** — 內建工具、MCP 伺服器、CLI 應用程式、影像／影片／語音生成模型，以及可從 EduHub 安裝的社群技能。
@@ -72,6 +72,22 @@ DeepTutor 是代理程式原生的學習工作區，在同一個可擴充系統�
 ---
 
 ## 🚀 開始使用
+
+### 讓你的代理程式設定 DeepTutor
+
+將這段提示複製到可使用終端機的 AI 代理程式（例如 Codex 或 Claude Code）：
+
+```text
+Help me install and configure DeepTutor locally from https://github.com/HKUDS/DeepTutor.
+Clone the repository, or reuse my existing checkout, and read SKILL.md and
+docs-for-user/AGENT_SETUP.md first. Follow that guide to prepare the environment,
+configure my model provider, verify the setup, and start the Web app.
+Ask me for any missing provider, model, or credential-source information;
+do not print API keys. Preserve my existing files and settings, and finish
+with the access URL and the results of your checks.
+```
+
+[代理程式設定指南](../../docs-for-user/AGENT_SETUP.md)涵蓋完整流程，包括非互動式 CLI 設定。若要自行安裝，請選擇下列其中一種方式。
 
 DeepTutor 提供四種安裝方式，皆共用同一套執行環境目錄配置：私有設定會儲存在啟動目錄下的 `data/user/settings/`（若明確設定 `DEEPTUTOR_HOME` 或 `deeptutor start --home`，則改儲存在該位置）。完整應用程式的建議流程是：**選擇一個執行環境目錄 → 安裝 → `deeptutor init` → `deeptutor start`**。
 
@@ -343,7 +359,7 @@ deeptutor config show
 | `integrations.json` | 選用的 PocketBase 與 sidecar 整合設定 |
 | `interface.json` | UI 與模型輸出語言／主題／側邊欄偏好設定 |
 | `document_parsing.json` | 解析引擎與影像描述模型選擇、遠端端點及各引擎專屬選項 |
-| `video_learning.json` | 預設 YouTube／Invidious 播放供應商、Invidious 來源與選用的逐字稿介面卡 |
+| `video_learning.json` | YouTube 字幕供應商、Invidious 來源與帳號存取權，以及逐字稿設定 |
 | `main.yaml` | 執行階段行為預設值與路徑注入 |
 | `agents.yaml` | 能力／工具的 temperature 與 token 設定 |
 
@@ -439,7 +455,7 @@ Chat 是預設能力，也是大多數工作的起點。單一對話可以進行
 
 情境分成兩類：**固定的工作階段情境**（能力、工作區或課程、工具、知識庫、角色設定、模型，以及 Reading／Mastery 狀態）會延續到後續回合；**單次參照**（檔案、聊天記錄、書籍、閱讀章節、筆記本、選定的題庫題目、匯入的代理程式）則從 `+` 選單加入，只用於單一回合。語音按鈕只會轉錄目前的訊息。
 
-Home 讓 **Chat**、**Ask Questions**、**Quiz** 與 **Visualize** 一鍵可達；用於建立附引用報告的 **Research**、提供完整推理解題的 **Solve**，以及 **Immersive Watching**，則位於 *More Capabilities* 之下。**Personalized Learning** 集合 Book、**Mastery Path**、**Immersive Reading**、Watching 與 **Practice**。Reading 提供經驗證的引用、已儲存的筆記、根據來源段落進行的自然朗讀／學習指南／詞彙／測驗／翻譯動作，以及擷取至筆記本的功能；Course Study 則保有自己的課程情境。
+Home 讓 **Chat**、**Ask Questions**、**Quiz** 與 **Visualize** 一鍵可達；用於建立附引用報告的 **Research** 與提供完整推理解題的 **Solve**，則位於 *More Capabilities* 之下。**Personalized Learning** 集合 Book、**Mastery Path**、**Immersive Reading** 與 **Practice**。Reading 整合文件、影片與音訊，提供經驗證的引用、已儲存的筆記、透過來源段落／學習指南／詞彙／測驗／翻譯動作進行自然朗讀，以及擷取至筆記本的功能；Course Study 則保有自己的課程情境。
 
 </details>
 
@@ -603,10 +619,10 @@ Settings 是操作控制中心，開啟時會顯示用於設定介面與模型�
 
 **Xiaomi MiMo 語音。** 新增 Xiaomi MiMo 供應商，輸入 `https://api.xiaomimimo.com/v1` 與其 API 金鑰，再到 Settings → Voice 新增 `mimo-v2.5-tts`。選擇 `mimo_default`、`冰糖` 或 `苏打` 等預設音色，使用 `wav` 或 `pcm16` 輸出，並在套用前試聽。語音指示可控制風格與語速。此介接器只支援預設音色的語音合成；音色設計與聲音複製需要獨立模型，目前不受支援。若舊的 MiMo 語音模型是透過通用的 OpenAI 相容介接器設定，請使用 Xiaomi MiMo 供應商重新建立語音項目，以採用 chat-completions 協定。請參閱 [MiMo 官方語音指南](https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/speech-synthesis-v2.5)。
 
-**MiniMax 語音** — 在 Settings → Voice 中，為文字轉語音選擇 MiniMax，並選用 `speech-2.8-hd`。設定 MiniMax API 金鑰與系統或自訂音色 ID；預設音色為 `English_expressive_narrator`。API base 預設為 `https://api.minimax.io/v1`；中國地區請使用 `https://api.minimaxi.com/v1`。朗讀與音色預覽使用原生語音端點，支援 MP3、WAV、FLAC 或 PCM 輸出，以及取樣率、語速與語言控制。音色 ID 與帳號可用性請參閱 [MiniMax 語音 API](https://platform.minimax.io/docs/api-reference/speech-t2a-http)。
+**MiniMax 語音** — 在 Settings → Voice 中，為文字轉語音選擇 MiniMax，並選用 `speech-2.8-hd`。設定 MiniMax API 金鑰，並明確選擇系統音色或輸入自訂音色 ID。API base 預設為 `https://api.minimax.io/v1`；中國地區請使用 `https://api.minimaxi.com/v1`。朗讀與音色預覽使用原生語音端點，支援 MP3、WAV、FLAC 或 PCM 輸出，以及取樣率、語速與語言控制。音色 ID 與帳號可用性請參閱 [MiniMax 語音 API](https://platform.minimax.io/docs/api-reference/speech-t2a-http)。
 
 
-**Video Learning** 位於 Settings → Learning & conversation，預設使用官方隱私強化版 YouTube IFrame Player。若要讓播放保持在本機，請設定由管理員管理的 Invidious API 來源（例如 `http://127.0.0.1:3000`）、進行測試、選擇 Invidious 並儲存。新開啟或重新開啟的影片會立即採用該供應商，同時保留相同的素材 ID 與進度。Invidious 媒體會透過 DeepTutor 的 byte-range proxy 串流；上游 URL 不會暴露給瀏覽器，也不會儲存在磁碟上。若該執行個體發生故障，在學習者明確選擇原生 YouTube 備援前，DeepTutor 將維持離線而不連線至 YouTube。公開字幕教學為選用功能：安裝 `.[video-learning]`；未安裝時仍可繼續播放，但以逐字稿為基礎的 **Explain here** 會停用並顯示原因。
+**Video Learning** 位於 Settings → Learning & conversation，可設定 Reading 使用的 YouTube 字幕與 Invidious 存取。若要使用 Invidious，請設定由管理員管理的後端 API 來源（例如 `http://127.0.0.1:3000`）與瀏覽器可存取的公開來源、測試連線、選擇 Invidious 並儲存。Reading 新增素材對話框中的 **Browse Invidious** 可搜尋影片，並存取已連接的訂閱與播放清單。YouTube 播放使用官方隱私強化版播放器；缺少字幕的狀態會明確顯示，並限制導師可用的證據，但不會阻擋原生播放。安裝 `.[video-learning]` 可使用預設的 YouTube 字幕載入器。既有的 Watching 連結會遷移至 Reading，保留對話記錄、相容的逐字稿、筆記與進度；新的時間戳筆記則是 Reading 註解。Bilibili 使用自己的播放與字幕路徑。
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="DeepTutor 外觀設定與主題" width="900">
@@ -704,7 +720,7 @@ SID=$(deeptutor run deep_research "Survey 2026 papers on RAG" \
 deeptutor run deep_question "Quiz me on that survey" --session "$SID" --format json
 ```
 
-repo 根目錄附有 [`SKILL.md`](../../SKILL.md)，這份約 200 行的交接文件能讓任何支援工具呼叫的 LLM 一次掌握完整介面。將它交給 Claude Code、Codex 或 OpenCode（它們會自動讀取 `SKILL.md`），或在 LangChain／AutoGen 迴圈中將 `deeptutor run` 包裝成工具。完整作法請參閱 [Agent Handoff](https://deeptutor.info/docs/cli/agent-handoff/)。
+repo 根目錄附有 [`SKILL.md`](../../SKILL.md)，這是一份精簡的 CLI 交接文件。請明確要求代理程式讀取它；其中的[代理程式設定指南](../../docs-for-user/AGENT_SETUP.md)涵蓋安裝與設定。你也可以在 LangChain／AutoGen 迴圈中將 `deeptutor run` 包裝成工具。完整作法請參閱 [Agent Handoff](https://deeptutor.info/docs/cli/agent-handoff/)。
 
 </details>
 
@@ -713,13 +729,13 @@ repo 根目錄附有 [`SKILL.md`](../../SKILL.md)，這份約 200 行的交接�
 
 | 指令 | 說明 |
 |:---|:---|
-| `deeptutor init` | 在目前的執行環境目錄中建立或更新 `data/user/settings` |
+| `deeptutor init [--non-interactive] [--home PATH]` | 執行設定精靈，或不經提示建立缺少的預設設定 |
 | `deeptutor doctor [--online]` | 檢查此執行環境是否已就緒可開始工作階段；`--online` 也會探測目前設定的模型供應商，`--format json` 會輸出 JSON 格式報告 |
 | `deeptutor start [--home PATH] [--dev] [--detach] [--no-browser]` | 同時啟動後端與前端；可選擇 detached 模式或不開啟瀏覽器 |
 | `deeptutor stop [--home PATH]` | 停止以 `--detach` 啟動的 launcher |
 | `deeptutor serve [--port PORT]` | 只啟動 FastAPI 後端 |
 | `deeptutor workspace show/set/reset` | 檢視、選擇或還原每位使用者的內容工作區 |
-| `deeptutor run <capability> <message>` | 執行單一能力回合（`chat`、`ask_questions`、`deep_solve`、`deep_question`、`deep_research`、`visualize`、`math_animator`、`mastery_path`、`immersive_reading`、`course_study`、`immersive_watching`、`audio_overview`）；加上 `--format json` 可輸出 NDJSON |
+| `deeptutor run <capability> <message>` | 執行單一能力回合（`chat`、`ask_questions`、`deep_solve`、`deep_question`、`deep_research`、`visualize`、`math_animator`、`mastery_path`、`immersive_reading`、`course_study`、`audio_overview`）；加上 `--format json` 可輸出 NDJSON |
 | `deeptutor chat` | 具備能力、工具、知識庫、筆記本與記錄控制的互動式 REPL |
 | `deeptutor partner list/create/start/stop` | 管理連接 IM 的 partners |
 | `deeptutor kb list/info/create/connect-kiwix/add/search/eval/set-default/delete/list-sources/sync` | 管理知識庫、連接 Kiwix 封存檔、依 QA 資料集評估檢索品質，並同步已註冊的 GitHub／Web 來源（含來源新增／移除指令） |
@@ -728,9 +744,25 @@ repo 根目錄附有 [`SKILL.md`](../../SKILL.md)，這份約 200 行的交接�
 | `deeptutor session list/show/open/rename/delete` | 管理共享工作階段 |
 | `deeptutor notebook list/create/show/add-md/replace-md/remove-record` | 從 Markdown 檔案管理筆記本 |
 | `deeptutor book list/health/refresh-fingerprints` | 檢視書籍並更新來源 fingerprint |
-| `deeptutor plugin list/info` | 檢視已註冊的工具與能力 |
-| `deeptutor config show` | 顯示設定摘要 |
-| `deeptutor provider login <provider>` | 供應商驗證（`openai-codex` OAuth 登入；`github-copilot` 會驗證既有 Copilot 登入工作階段；`codebuddy` 會驗證 CodeBuddy SDK 驗證狀態，並在需要時開始登入） |
+| `deeptutor plugin list/info/state/search/show/install/approve/enable/disable/rollback/uninstall` | 檢視工具與能力；管理已審查的外掛套件及其權限核准 |
+| `deeptutor config show [--home PATH]` | 顯示解析後的執行階段設定，並遮蔽憑證 |
+| `deeptutor config providers` | 以 JSON 列出支援的設定供應商與預設值 |
+| `deeptutor config apply FILE [--check] [--home PATH]` | 不經提示套用設定 JSON，或僅驗證而不寫入設定 |
+| `deeptutor provider login <provider>` | 供應商驗證（`openai-codex` OAuth 登入；`github-copilot` GitHub 裝置登入；`codebuddy` 會驗證 CodeBuddy SDK 驗證狀態，並在需要時開始登入） |
+
+GitHub Copilot 憑證屬於已登入的 DeepTutor 擁有者，只會儲存在
+`<runtime-home>/data/system/user-secrets/<owner-id>/private/github-copilot/credentials.v1.json`，
+位於沙箱工作區之外。CLI／管理員的 Partners 使用管理員憑證；
+其他使用者須分別登入，Copilot 設定檔也不能透過模型授權分享。
+系統絕不匯入外部 nanobot／Copilot token 檔案；升級後，請重新執行
+`deeptutor provider login github-copilot`。
+
+登入時會使用目前探索到的模型驗證推理；`init` 會驗證所選模型，
+若失敗便中止且不儲存設定草稿。GitHub 驗證成功不代表能存取 Copilot 模型
+（若驗證失敗，已儲存的登入仍會保留）。執行階段請求會使用 token 交換
+所回傳的 API 端點（包括更新後的端點），並遵循各模型的 Responses／Chat Completions 端點中繼資料。
+
+Copilot 專屬的 Responses 相容性處理會在派送時套用，不會改寫已儲存的記錄。
 
 </details>
 
@@ -891,3 +923,20 @@ DeepTutor 也站在許多傑出開放原始碼專案的肩膀上；它們同時�
 </p>
 
 </div>
+
+### Mastery 回合的情境依據
+
+Mastery 回合會在第一次向模型發出請求前，讀取目前路徑的狀態，
+使用與明確工具呼叫相同的狀態工具與精熟度閘道。此快照在每個回合
+都會重新取得，包含目前的工作階段模式，而且絕不跨回合快取。
+若讀取失敗，則改用 `mastery_status`；變更路徑、模式、大綱或進度後，
+導師可以透過該工具重新整理。卡片評分與既有交接流程維持不變。
+
+### 重複的影像附件
+
+代理程式迴圈會在每次請求中只傳送一次相同的使用者內嵌影像，並將後續副本
+替換為保留影像的參照。僅用於請求的穩定標籤，可在供應商格式轉換與附加回合
+之間識別保留的內嵌影像。獨特的影像區塊、遠端 URL、不同的影像選項、
+助理訊息與工具結果都會完整保留。儲存的記錄會保留每一份原始附件；
+裁剪記錄後會重新建立參照。這能減少重複的影像負載，但計費與快取命中
+仍以供應商回報的用量為準。

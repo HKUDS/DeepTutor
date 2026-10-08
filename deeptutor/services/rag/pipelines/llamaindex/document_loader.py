@@ -172,6 +172,30 @@ class LlamaIndexDocumentLoader:
         for file_path_str in classification.unsupported:
             self.logger.warning(f"Skipped unsupported file: {Path(file_path_str).name}")
 
+        from deeptutor.knowledge.indexing_run import current_run
+
+        if run := current_run():
+            accepted = {
+                str(Path(doc.metadata["file_path"]).resolve())
+                for doc in documents
+                if isinstance(getattr(doc, "metadata", None), dict)
+                and doc.metadata.get("file_path")
+            }
+            for name in (
+                classification.parser_files + classification.text_files + classification.image_files
+            ):
+                source = Path(name)
+                if str(source.resolve()) in accepted:
+                    run.document(source, "embedding")
+                elif (
+                    run.data["documents"].get(run.source_key(source), {}).get("status") != "failed"
+                ):
+                    run.document(
+                        source,
+                        "failed",
+                        reason="invalid_output",
+                        detail="No usable document content.",
+                    )
         return documents
 
     def _parse_document(
@@ -210,11 +234,12 @@ class LlamaIndexDocumentLoader:
 
         text = parsed.markdown.strip() or self._text_from_blocks(parsed.blocks)
         images = self._collect_asset_images(parsed.asset_dir, origin=file_path)
-        if kb_dir is not None and images:
-            by_path = {
-                candidate.path.resolve(): candidate
-                for candidate in collect_visual_assets(parsed, file_path, kb_dir)
-            }
+        if kb_dir is not None:
+            from deeptutor.services.rag.visual_coverage import record_coverage
+
+            candidates = collect_visual_assets(parsed, file_path, kb_dir)
+            record_coverage(parsed, file_path, kb_dir, candidates)
+            by_path = {candidate.path.resolve(): candidate for candidate in candidates}
             images = [
                 _ImageSource(
                     path=image.path, origin=image.origin, visual=by_path[image.path.resolve()]
@@ -241,6 +266,10 @@ class LlamaIndexDocumentLoader:
             text = f"[Source visual] {image.origin.name}: {caption}"
             if context:
                 text += f"\nContext: {context}"
+            if record.get("table_html"):
+                text += f"\nStructured table: {record['table_html']}"
+            if record.get("section"):
+                text += f"\nSection: {record['section']}"
             documents.append(
                 Document(
                     text=text,
@@ -402,8 +431,13 @@ class LlamaIndexDocumentLoader:
                 if image_progress_callback:
                     try:
                         image_progress_callback(completed, total)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        self.logger.warning(
+                            "Image progress callback failed (completed=%s, total=%s): %s",
+                            completed,
+                            total,
+                            exc,
+                        )
             return result
 
         # gather preserves input order, so embedded/descriptions/contents stay
