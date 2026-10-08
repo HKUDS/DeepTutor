@@ -1,5 +1,6 @@
 "use client";
 
+import { pageGridClass } from '@/components/layout/FeaturePage'
 import { navigateTask } from "@/lib/workspace-scope";
 import { sessionWorkspaceId } from "@/lib/session-api";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -285,7 +286,6 @@ export default function ChatHistorySection({
   return (
     <div className="space-y-6">
       <SpaceSectionHeader
-        icon={HeaderIcon}
         title={headerTitle}
         description={headerDescription}
         meta={
@@ -325,7 +325,7 @@ export default function ChatHistorySection({
           {/* Course filter temporarily hidden pending further product work;
               courseFilter stays at its "all" default so filteredSessions is
               unaffected. */}
-          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+          <div className={`mt-2 ${pageGridClass(2)}`}>
             <label className="sr-only" htmlFor="history-kind-filter">
               {t("Filter by conversation type")}
             </label>

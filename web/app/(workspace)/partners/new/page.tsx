@@ -7,6 +7,7 @@
  * partner's Channels tab.
  */
 
+import { PageContainer, PageHeader } from '@/components/layout/FeaturePage'
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -294,29 +295,9 @@ export default function NewPartnerPage() {
 
       {/* Step body */}
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div
-          key={step}
-          className="mx-auto w-full max-w-2xl px-6 pb-8 pt-10 animate-fade-in"
-        >
-          <header className="mb-7 flex items-start gap-4">
-            {step === "identity" || step === "review" ? (
-              <PartnerAvatar
-                name={name || "?"}
-                emoji={face.emoji}
-                color={face.color}
-                image={face.avatar}
-                size={48}
-              />
-            ) : null}
-            <div>
-              <h1 className="text-[22px] font-semibold tracking-tight text-[var(--foreground)]">
-                {stepTitle[step].title}
-              </h1>
-              <p className="mt-1 text-[13.5px] leading-relaxed text-[var(--muted-foreground)]">
-                {stepTitle[step].subtitle}
-              </p>
-            </div>
-          </header>
+        <PageContainer key={step} className="animate-fade-in">
+          <PageHeader title={stepTitle[step].title} description={stepTitle[step].subtitle} />
+          <div className="max-w-2xl">
 
           {step === "identity" && (
             <div className="space-y-5">
@@ -503,12 +484,14 @@ export default function NewPartnerPage() {
               )}
             </div>
           )}
-        </div>
+          </div>
+        </PageContainer>
       </div>
 
       {/* Footer actions */}
-      <div className="border-t border-[var(--border)] px-6 py-3.5">
-        <div className="mx-auto flex w-full max-w-2xl items-center justify-between">
+      <div className="border-t border-[var(--border)]">
+        <PageContainer spacing="toolbar">
+        <div className="flex w-full max-w-2xl items-center justify-between">
           <button
             type="button"
             onClick={goBack}
@@ -544,6 +527,7 @@ export default function NewPartnerPage() {
             </button>
           )}
         </div>
+        </PageContainer>
       </div>
     </div>
   );

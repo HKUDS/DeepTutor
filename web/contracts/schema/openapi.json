@@ -473,6 +473,20 @@
         "title": "ApplyOpsRequest",
         "type": "object"
       },
+      "ApprovalRequest": {
+        "properties": {
+          "snapshot_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Snapshot Digest",
+            "type": "string"
+          }
+        },
+        "required": [
+          "snapshot_digest"
+        ],
+        "title": "ApprovalRequest",
+        "type": "object"
+      },
       "AssetAddRequest": {
         "properties": {
           "knowledge_bases": {
@@ -770,7 +784,7 @@
       "Body_admin_import_users_api_auth_users_import_post": {
         "properties": {
           "file": {
-            "contentMediaType": "application/octet-stream",
+            "format": "binary",
             "title": "File",
             "type": "string"
           }
@@ -791,7 +805,7 @@
           "files": {
             "default": [],
             "items": {
-              "contentMediaType": "application/octet-stream",
+              "format": "binary",
               "type": "string"
             },
             "title": "Files",
@@ -849,7 +863,7 @@
       "Body_import_docx_api_documents_import_docx_post": {
         "properties": {
           "file": {
-            "contentMediaType": "application/octet-stream",
+            "format": "binary",
             "title": "File",
             "type": "string"
           }
@@ -869,7 +883,7 @@
             "type": "string"
           },
           "file": {
-            "contentMediaType": "application/octet-stream",
+            "format": "binary",
             "title": "File",
             "type": "string"
           },
@@ -892,7 +906,7 @@
       "Body_import_visualizer_api_visualizers_import_post": {
         "properties": {
           "file": {
-            "contentMediaType": "application/octet-stream",
+            "format": "binary",
             "title": "File",
             "type": "string"
           }
@@ -906,8 +920,8 @@
       "Body_library_add": {
         "properties": {
           "file": {
-            "contentMediaType": "application/octet-stream",
             "description": "Raw file bytes",
+            "format": "binary",
             "title": "File",
             "type": "string"
           },
@@ -932,7 +946,7 @@
       "Body_preview_office_upload_api_file_preview_pdf_post": {
         "properties": {
           "file": {
-            "contentMediaType": "application/octet-stream",
+            "format": "binary",
             "title": "File",
             "type": "string"
           }
@@ -967,7 +981,7 @@
       "Body_speech_to_text_api_voice_stt_post": {
         "properties": {
           "file": {
-            "contentMediaType": "application/octet-stream",
+            "format": "binary",
             "title": "File",
             "type": "string"
           },
@@ -992,7 +1006,7 @@
       "Body_upload_avatar_api_auth_profile_avatar_put": {
         "properties": {
           "file": {
-            "contentMediaType": "application/octet-stream",
+            "format": "binary",
             "title": "File",
             "type": "string"
           }
@@ -1011,7 +1025,7 @@
           },
           "files": {
             "items": {
-              "contentMediaType": "application/octet-stream",
+              "format": "binary",
               "type": "string"
             },
             "title": "Files",
@@ -1050,7 +1064,7 @@
       "Body_upload_material_api_reading_materials_post": {
         "properties": {
           "file": {
-            "contentMediaType": "application/octet-stream",
+            "format": "binary",
             "title": "File",
             "type": "string"
           }
@@ -2332,7 +2346,6 @@
       },
       "CreateCard": {
         "additionalProperties": false,
-        "description": "A learner-authored task; identifiers and timestamps are server-owned.",
         "properties": {
           "note": {
             "default": "",
@@ -4349,6 +4362,23 @@
         "title": "InstallPayload",
         "type": "object"
       },
+      "InstallRequest": {
+        "properties": {
+          "allow_deprecated": {
+            "default": false,
+            "title": "Allow Deprecated",
+            "type": "boolean"
+          },
+          "version": {
+            "default": "latest",
+            "maxLength": 64,
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "title": "InstallRequest",
+        "type": "object"
+      },
       "InstallSkillRequest": {
         "description": "Install a hub skill into the caller's own skill layer.\n\n``ref`` is a ``<hub>:<slug>[@version]`` reference (the bare hub prefix\ndefaults to ``eduhub``). The web \"import from EduHub\" flow always builds an\n``eduhub:`` ref so a spoofed bridge message can't redirect the install to an\narbitrary registry.",
         "properties": {
@@ -5266,6 +5296,50 @@
         "title": "LinkFolderRequest",
         "type": "object"
       },
+      "LinkStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "workspace_id": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "LinkStatus",
+        "type": "object"
+      },
+      "LinkTasks": {
+        "additionalProperties": false,
+        "properties": {
+          "task_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Task Ids",
+            "type": "array"
+          },
+          "workspace_id": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_ids"
+        ],
+        "title": "LinkTasks",
+        "type": "object"
+      },
       "LinkedFolderInfo": {
         "description": "Response model for linked folder information.",
         "properties": {
@@ -5554,6 +5628,11 @@
       "MCPServerConfig": {
         "description": "One MCP server entry.\n\n``type`` is auto-detected when omitted: ``command`` ⇒ stdio; a ``url``\nending in ``/sse`` ⇒ sse; any other ``url`` ⇒ streamableHttp.",
         "properties": {
+          "allow_private_network": {
+            "default": false,
+            "title": "Allow Private Network",
+            "type": "boolean"
+          },
           "args": {
             "items": {
               "type": "string"
@@ -7188,8 +7267,6 @@
           },
           "percentage": {
             "default": 0.0,
-            "maximum": 1.0,
-            "minimum": 0.0,
             "title": "Percentage",
             "type": "number"
           },
@@ -7219,11 +7296,17 @@
             "type": "integer"
           },
           "percentage": {
-            "default": 0.0,
-            "maximum": 1.0,
-            "minimum": 0.0,
-            "title": "Percentage",
-            "type": "number"
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percentage"
           },
           "source_anchor": {
             "default": "",
@@ -8923,6 +9006,53 @@
         "title": "ServerPayload",
         "type": "object"
       },
+      "ServicePreviewPayload": {
+        "properties": {
+          "audio": {
+            "default": "",
+            "maxLength": 11184812,
+            "title": "Audio",
+            "type": "string"
+          },
+          "catalog": {
+            "additionalProperties": true,
+            "title": "Catalog",
+            "type": "object"
+          },
+          "content_type": {
+            "default": "",
+            "title": "Content Type",
+            "type": "string"
+          },
+          "model_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Id"
+          },
+          "profile_id": {
+            "title": "Profile Id",
+            "type": "string"
+          },
+          "text": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "catalog",
+          "profile_id"
+        ],
+        "title": "ServicePreviewPayload",
+        "type": "object"
+      },
       "SessionBranchBody": {
         "properties": {
           "new_key": {
@@ -9239,6 +9369,36 @@
         "title": "SessionSummary",
         "type": "object"
       },
+      "SessionTaskLinks": {
+        "properties": {
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "status_link_enabled": {
+            "default": true,
+            "title": "Status Link Enabled",
+            "type": "boolean"
+          },
+          "task_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Task Ids",
+            "type": "array"
+          },
+          "workspace_id": {
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace_id",
+          "session_id"
+        ],
+        "title": "SessionTaskLinks",
+        "type": "object"
+      },
       "SetRoleRequest": {
         "description": "Payload for the PUT /users/{username}/role endpoint.",
         "properties": {
@@ -9536,6 +9696,31 @@
           "content"
         ],
         "title": "SoulUpdateBody",
+        "type": "object"
+      },
+      "StatusColors": {
+        "additionalProperties": false,
+        "properties": {
+          "doing": {
+            "default": "#a16207",
+            "pattern": "^#[0-9a-fA-F]{6}$",
+            "title": "Doing",
+            "type": "string"
+          },
+          "done": {
+            "default": "#15803d",
+            "pattern": "^#[0-9a-fA-F]{6}$",
+            "title": "Done",
+            "type": "string"
+          },
+          "todo": {
+            "default": "#2563eb",
+            "pattern": "^#[0-9a-fA-F]{6}$",
+            "title": "Todo",
+            "type": "string"
+          }
+        },
+        "title": "StatusColors",
         "type": "object"
       },
       "SubagentMessageRequest": {
@@ -9986,13 +10171,27 @@
         "type": "object"
       },
       "TaskBoard": {
-        "description": "A consistent snapshot of the current workspace's board.",
         "properties": {
           "cards": {
             "items": {
               "$ref": "#/components/schemas/TaskCard"
             },
             "title": "Cards",
+            "type": "array"
+          },
+          "colors": {
+            "$ref": "#/components/schemas/StatusColors"
+          },
+          "revision": {
+            "default": 0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "session_links": {
+            "items": {
+              "$ref": "#/components/schemas/SessionTaskLinks"
+            },
+            "title": "Session Links",
             "type": "array"
           }
         },
@@ -10004,7 +10203,6 @@
       },
       "TaskCard": {
         "additionalProperties": false,
-        "description": "Persisted card returned to the board, including archived cards.",
         "properties": {
           "archived": {
             "title": "Archived",
@@ -10042,6 +10240,17 @@
           "updated_at": {
             "title": "Updated At",
             "type": "string"
+          },
+          "workspace_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Id"
           }
         },
         "required": [
@@ -11293,7 +11502,6 @@
       },
       "UpdateCard": {
         "additionalProperties": false,
-        "description": "Only supplied fields change, preserving concurrent edits to other fields.",
         "properties": {
           "archived": {
             "anyOf": [
@@ -11346,6 +11554,18 @@
               }
             ],
             "title": "Title"
+          },
+          "workspace_id": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Id"
           }
         },
         "title": "UpdateCard",
@@ -12564,6 +12784,30 @@
           "voice_autoplay"
         ],
         "title": "VoiceAutoplayUpdate",
+        "type": "object"
+      },
+      "VoiceDiscoveryPayload": {
+        "properties": {
+          "catalog": {
+            "additionalProperties": true,
+            "title": "Catalog",
+            "type": "object"
+          },
+          "model_id": {
+            "title": "Model Id",
+            "type": "string"
+          },
+          "profile_id": {
+            "title": "Profile Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "catalog",
+          "profile_id",
+          "model_id"
+        ],
+        "title": "VoiceDiscoveryPayload",
         "type": "object"
       },
       "VoiceMathSpeakUpdate": {
@@ -20727,7 +20971,7 @@
     },
     "/api/knowledge-bases": {
       "get": {
-        "description": "List all available knowledge bases with their details.",
+        "description": "Disk probes must not block the async worker or its other requests (#1711).",
         "operationId": "list_knowledge_bases_api_knowledge_bases_get",
         "parameters": [
           {
@@ -21793,7 +22037,7 @@
     },
     "/api/knowledge-bases/health": {
       "get": {
-        "description": "Health check endpoint",
+        "description": "Count registered KBs without constructing/probing the catalog (#1711).",
         "operationId": "health_check_api_knowledge_bases_health_get",
         "parameters": [
           {
@@ -23243,7 +23487,7 @@
     },
     "/api/knowledge-bases/rag-pipelines/llamaindex/config": {
       "get": {
-        "description": "Read the LlamaIndex engine's retrieval + chunking knobs.",
+        "description": "Read the LlamaIndex engine's retrieval + chunking knobs.\n\n``retrieval_profile`` is what is *configured*; ``effective_retrieval_profile``\nis what would actually run — a hybrid configuration degrades to vector-only\nwhen the BM25 package is missing (e.g. Python 3.14 installs, #1792).",
         "operationId": "get_llamaindex_pipeline_config_api_knowledge_bases_rag_pipelines_llamaindex_config_get",
         "parameters": [
           {
@@ -25067,6 +25311,232 @@
         ]
       }
     },
+    "/api/knowledge-bases/{kb_name}/indexing-readiness": {
+      "get": {
+        "operationId": "get_indexing_readiness_api_knowledge_bases__kb_name__indexing_readiness_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kb_name",
+            "required": true,
+            "schema": {
+              "title": "Kb Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Indexing Readiness",
+        "tags": [
+          "knowledge-bases"
+        ]
+      }
+    },
+    "/api/knowledge-bases/{kb_name}/indexing-run": {
+      "get": {
+        "description": "Pure durable diagnostics; reading never recreates a task or retries work.",
+        "operationId": "get_indexing_run_api_knowledge_bases__kb_name__indexing_run_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kb_name",
+            "required": true,
+            "schema": {
+              "title": "Kb Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Indexing Run",
+        "tags": [
+          "knowledge-bases"
+        ]
+      }
+    },
+    "/api/knowledge-bases/{kb_name}/indexing-run/{task_id}/cancel": {
+      "post": {
+        "operationId": "cancel_indexing_run_api_knowledge_bases__kb_name__indexing_run__task_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kb_name",
+            "required": true,
+            "schema": {
+              "title": "Kb Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Indexing Run",
+        "tags": [
+          "knowledge-bases"
+        ]
+      }
+    },
     "/api/knowledge-bases/{kb_name}/link-folder": {
       "post": {
         "description": "Link a local folder to a knowledge base.\n\nThis allows syncing documents from a local folder (which can be\nsynced with SharePoint, Google Drive, OneLake, etc.) to the KB.\n\nThe folder path supports:\n- Absolute paths: /Users/name/Documents or C:\\Users\\name\\Documents\n- Home directory: ~/Documents\n- Relative paths (resolved from server working directory)",
@@ -25709,6 +26179,117 @@
         ]
       }
     },
+    "/api/knowledge-bases/{kb_name}/source-page": {
+      "get": {
+        "operationId": "kb_source_page_api_knowledge_bases__kb_name__source_page_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kb_name",
+            "required": true,
+            "schema": {
+              "title": "Kb Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source_path",
+            "required": true,
+            "schema": {
+              "title": "Source Path",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source_hash",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Source Hash",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "region",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Region",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Kb Source Page",
+        "tags": [
+          "knowledge-bases"
+        ]
+      }
+    },
     "/api/knowledge-bases/{kb_name}/sync-folder/{folder_id}": {
       "post": {
         "description": "Sync files from a linked folder to the knowledge base.\n\nThis scans the linked folder for supported documents and processes\nany new files that haven't been added yet.",
@@ -26098,6 +26679,111 @@
           }
         },
         "summary": "Serve Kb Visual Asset",
+        "tags": [
+          "knowledge-bases"
+        ]
+      }
+    },
+    "/api/knowledge-bases/{kb_name}/visual-coverage": {
+      "get": {
+        "operationId": "kb_visual_coverage_api_knowledge_bases__kb_name__visual_coverage_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kb_name",
+            "required": true,
+            "schema": {
+              "title": "Kb Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source_path",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Source Path",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Kb Visual Coverage",
         "tags": [
           "knowledge-bases"
         ]
@@ -26763,6 +27449,69 @@
         "summary": "Get Web Sources",
         "tags": [
           "knowledge-bases"
+        ]
+      }
+    },
+    "/api/learning-journal": {
+      "get": {
+        "operationId": "overview_api_learning_journal_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Overview",
+        "tags": [
+          "learning-journal"
         ]
       }
     },
@@ -39752,6 +40501,511 @@
         ]
       }
     },
+    "/api/plugins/catalog": {
+      "get": {
+        "operationId": "plugin_catalog_api_plugins_catalog_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Plugin Catalog",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
+    "/api/plugins/extensions": {
+      "get": {
+        "operationId": "list_extensions_api_plugins_extensions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Extensions Api Plugins Extensions Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Extensions",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
+    "/api/plugins/state": {
+      "get": {
+        "operationId": "plugin_state_api_plugins_state_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Plugin State",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
+    "/api/plugins/{plugin_id}/approve": {
+      "post": {
+        "operationId": "approve_plugin_api_plugins__plugin_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plugin_id",
+            "required": true,
+            "schema": {
+              "title": "Plugin Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve Plugin",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
+    "/api/plugins/{plugin_id}/disable": {
+      "post": {
+        "operationId": "disable_plugin_api_plugins__plugin_id__disable_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plugin_id",
+            "required": true,
+            "schema": {
+              "title": "Plugin Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Disable Plugin",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
+    "/api/plugins/{plugin_id}/enable": {
+      "post": {
+        "operationId": "enable_plugin_api_plugins__plugin_id__enable_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plugin_id",
+            "required": true,
+            "schema": {
+              "title": "Plugin Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Enable Plugin",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
+    "/api/plugins/{plugin_id}/info": {
+      "get": {
+        "operationId": "plugin_info_api_plugins__plugin_id__info_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plugin_id",
+            "required": true,
+            "schema": {
+              "title": "Plugin Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Plugin Info",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
+    "/api/plugins/{plugin_id}/install": {
+      "post": {
+        "operationId": "install_plugin_api_plugins__plugin_id__install_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plugin_id",
+            "required": true,
+            "schema": {
+              "title": "Plugin Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstallRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Install Plugin",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
+    "/api/plugins/{plugin_id}/installation": {
+      "delete": {
+        "operationId": "uninstall_plugin_api_plugins__plugin_id__installation_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plugin_id",
+            "required": true,
+            "schema": {
+              "title": "Plugin Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Uninstall Plugin",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
+    "/api/plugins/{plugin_id}/pages/{extension_id}": {
+      "get": {
+        "operationId": "redirect_plugin_frontend_page_api_plugins__plugin_id__pages__extension_id__get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Redirect Plugin Frontend Page",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
+    "/api/plugins/{plugin_id}/pages/{extension_id}/": {
+      "get": {
+        "operationId": "get_plugin_frontend_page_api_plugins__plugin_id__pages__extension_id___get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Plugin Frontend Page",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
+    "/api/plugins/{plugin_id}/pages/{extension_id}/assets/{asset_path}": {
+      "get": {
+        "operationId": "get_plugin_frontend_asset_api_plugins__plugin_id__pages__extension_id__assets__asset_path__get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Plugin Frontend Asset",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
+    "/api/plugins/{plugin_id}/rollback": {
+      "post": {
+        "operationId": "rollback_plugin_api_plugins__plugin_id__rollback_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plugin_id",
+            "required": true,
+            "schema": {
+              "title": "Plugin Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rollback Plugin",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
+    "/api/plugins/{plugin_id}/{plugin_path}": {
+      "delete": {
+        "operationId": "dispatch_plugin_route_delete",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Dispatch Plugin Route",
+        "tags": [
+          "plugins"
+        ]
+      },
+      "get": {
+        "operationId": "dispatch_plugin_route_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Dispatch Plugin Route",
+        "tags": [
+          "plugins"
+        ]
+      },
+      "patch": {
+        "operationId": "dispatch_plugin_route_patch",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Dispatch Plugin Route",
+        "tags": [
+          "plugins"
+        ]
+      },
+      "post": {
+        "operationId": "dispatch_plugin_route_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Dispatch Plugin Route",
+        "tags": [
+          "plugins"
+        ]
+      },
+      "put": {
+        "operationId": "dispatch_plugin_route_put",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Dispatch Plugin Route",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
     "/api/question-notebook/categories": {
       "get": {
         "description": "Categories, with their counts scoped the same way the listing is.\n\nWithout the scope the rail would offer \"Address translation 3\" inside a\ncourse holding none of those three.",
@@ -47432,6 +48686,78 @@
         ]
       }
     },
+    "/api/sessions/{session_id}/migrate-watching": {
+      "post": {
+        "operationId": "migrate_watching_session_api_sessions__session_id__migrate_watching_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Migrate Watching Session",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
     "/api/sessions/{session_id}/organization": {
       "patch": {
         "operationId": "update_session_organization_api_sessions__session_id__organization_patch",
@@ -49578,7 +50904,7 @@
     },
     "/api/settings/fetch-models": {
       "post": {
-        "description": "List the model IDs an OpenAI-compatible provider exposes.\n\nThin HTTP surface over ``factory.fetch_models`` so the settings UI can\npopulate a model picker from ``base_url`` + ``api_key`` instead of making\nthe user type model IDs by hand.",
+        "description": "List selectable model IDs using the provider's own authentication.\n\nThin HTTP surface over ``factory.fetch_models`` so the settings UI can\npopulate a model picker. Copilot uses the caller's owner-private CLI login,\nnot the profile's API key or base URL.",
         "operationId": "fetch_models_from_provider_api_settings_fetch_models_post",
         "parameters": [
           {
@@ -51966,6 +53292,89 @@
         ]
       }
     },
+    "/api/settings/services/{service}/preview": {
+      "post": {
+        "description": "Stream a real result from the selected draft without applying it.",
+        "operationId": "preview_service_api_settings_services__service__preview_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "service",
+            "required": true,
+            "schema": {
+              "title": "Service",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServicePreviewPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Service",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
     "/api/settings/sidebar": {
       "get": {
         "operationId": "get_sidebar_settings_api_settings_sidebar_get",
@@ -53456,6 +54865,80 @@
           }
         },
         "summary": "Preview Voice",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/voice/voices": {
+      "post": {
+        "description": "Read live account voices for a draft selection, without applying it.",
+        "operationId": "list_voice_choices_api_settings_voice_voices_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoiceDiscoveryPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Voice Choices",
         "tags": [
           "settings"
         ]
@@ -58527,7 +60010,6 @@
     },
     "/api/task-board": {
       "get": {
-        "description": "Return active and archived cards in the current workspace.",
         "operationId": "get_board_api_task_board_get",
         "parameters": [
           {
@@ -58593,7 +60075,6 @@
     },
     "/api/task-board/cards": {
       "post": {
-        "description": "Create a task in the To do column.",
         "operationId": "create_card_api_task_board_cards_post",
         "parameters": [
           {
@@ -58669,7 +60150,6 @@
     },
     "/api/task-board/cards/{card_id}": {
       "patch": {
-        "description": "Edit, move, archive or restore an existing task.",
         "operationId": "update_card_api_task_board_cards__card_id__patch",
         "parameters": [
           {
@@ -58747,6 +60227,312 @@
           }
         },
         "summary": "Update Card",
+        "tags": [
+          "task-board"
+        ]
+      }
+    },
+    "/api/task-board/colors": {
+      "put": {
+        "operationId": "update_colors_api_task_board_colors_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StatusColors"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskBoard"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Colors",
+        "tags": [
+          "task-board"
+        ]
+      }
+    },
+    "/api/task-board/events": {
+      "get": {
+        "operationId": "board_events_api_task_board_events_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Board Events",
+        "tags": [
+          "task-board"
+        ]
+      }
+    },
+    "/api/task-board/sessions/{session_id}": {
+      "put": {
+        "operationId": "link_tasks_api_task_board_sessions__session_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkTasks"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskBoard"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Link Tasks",
+        "tags": [
+          "task-board"
+        ]
+      }
+    },
+    "/api/task-board/sessions/{session_id}/status": {
+      "patch": {
+        "operationId": "link_status_api_task_board_sessions__session_id__status_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkStatus"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskBoard"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Link Status",
         "tags": [
           "task-board"
         ]
