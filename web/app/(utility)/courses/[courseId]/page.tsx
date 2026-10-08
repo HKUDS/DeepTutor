@@ -16,6 +16,7 @@ import {
 import { useTranslation } from "react-i18next";
 import CourseConventions from "@/components/courses/CourseConventions";
 import CourseDialog from "@/components/courses/CourseDialog";
+import CourseMaterials from "@/components/courses/CourseMaterials";
 import CourseNextStep from "@/components/courses/CourseNextStep";
 import CourseProgress from "@/components/courses/CourseProgress";
 import CourseResources from "@/components/courses/CourseResources";
@@ -326,6 +327,7 @@ export default function CourseDetailPage() {
 
       <div className="mt-4">
         <CourseSyllabus
+          courseId={courseId}
           state={state}
           onSave={saveSyllabus}
           onToggle={toggleUnit}
@@ -333,6 +335,11 @@ export default function CourseDetailPage() {
       </div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <CourseMaterials
+          course={course}
+          courseId={courseId}
+          className="lg:col-span-2"
+        />
         <CourseResources
           courseId={course.id}
           resources={state?.resources ?? []}

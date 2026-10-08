@@ -3,13 +3,13 @@
 import Tooltip from "@/shared/ui/Tooltip";
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Archive, ArchiveRestore, Folder, FolderInput, Globe2, Pencil, Plus, Settings2 } from 'lucide-react'
+import { Archive, ArchiveRestore, Folder, FolderInput, Globe2, Pencil, Plus, Settings2, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { SettingSection, SettingsPageHeader, inputClass, subPanelClass } from '@/components/settings/shared'
 import { WorkspaceResourcePicker } from '@/components/workspaces/WorkspaceResourcePicker'
 import { SystemWorkspaceSnapshot } from '@/components/workspaces/SystemWorkspaceSnapshot'
 import {
-  getWorkspaceCatalog, saveWorkspace, migrateWorkspace, workspaceChatHref, inheritedWorkspaceResources,
+  getWorkspaceCatalog, saveWorkspace, deleteWorkspace, migrateWorkspace, workspaceChatHref, inheritedWorkspaceResources,
   type WorkspaceCatalog, type ChatWorkspaceRegistration,
 } from '@/lib/workspaces-api'
 
@@ -25,7 +25,9 @@ function WorkspaceRow({ row, run, busy }: { row: ChatWorkspaceRegistration; run:
   const [name, setName] = useState(row.display_name)
   const [moving, setMoving] = useState(false)
   const [destination, setDestination] = useState('')
-  const custom = row.kind === 'workspace'
+  const [deleting, setDeleting] = useState(false)
+  const locked = Boolean(row.locked)
+  const custom = row.kind === 'workspace' && !locked
   const Icon = row.kind === 'system' ? Settings2 : row.kind === 'general' ? Globe2 : Folder
   const label = row.kind === 'system' ? t('System workspace') : row.kind === 'general' ? t('Default workspace') : row.display_name
   return (
@@ -33,6 +35,7 @@ function WorkspaceRow({ row, run, busy }: { row: ChatWorkspaceRegistration; run:
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <Icon size={18} strokeWidth={1.6} className="shrink-0 text-[var(--muted-foreground)]" />
         <h3 className="min-w-0 flex-1 break-words text-[14px] font-medium">{label}</h3>
+        {locked && <span className="rounded bg-[var(--muted)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--muted-foreground)]">{t('Locked')}</span>}
         {row.archived && <span className="text-xs text-[var(--muted-foreground)]">{t('Archived')}</span>}
         <div className="flex items-center gap-0.5 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
           {row.kind !== 'system' && !row.archived && row.status === 'ready' && !busy && (
@@ -42,18 +45,21 @@ function WorkspaceRow({ row, run, busy }: { row: ChatWorkspaceRegistration; run:
           )}
           {row.kind !== 'system' && !row.archived && <button type="button" className={actionClass} onClick={() => { setResources(row.resources ?? inheritedWorkspaceResources()); setResourcesOpen(!resourcesOpen) }}><Settings2 size={14} />{t('Assigned resources')}</button>}
           {custom && <Tooltip label={t('Rename workspace')} side="top">
-            <button type="button" className={actionClass} aria-label={t('Rename workspace')} onClick={() => { setName(row.display_name); setEditing(!editing); setMoving(false) }}><Pencil size={14} /></button>
+            <button type="button" className={actionClass} aria-label={t('Rename workspace')} onClick={() => { setName(row.display_name); setEditing(!editing); setMoving(false); setDeleting(false) }}><Pencil size={14} /></button>
           </Tooltip>}
-          <Tooltip label={t('Move folder')} side="top">
-            <button type="button" className={actionClass} aria-label={t('Move folder')}  onClick={() => { setMoving(!moving); setEditing(false); setDestination('') }}><FolderInput size={14} /></button>
-          </Tooltip>
+          {!locked && <Tooltip label={t('Move folder')} side="top">
+            <button type="button" className={actionClass} aria-label={t('Move folder')}  onClick={() => { setMoving(!moving); setEditing(false); setDeleting(false); setDestination('') }}><FolderInput size={14} /></button>
+          </Tooltip>}
           {custom && <Tooltip label={row.archived ? t('Restore workspace') : t('Archive workspace')} side="top">
-            <button type="button" className={actionClass} aria-label={row.archived ? t('Restore workspace') : t('Archive workspace')} onClick={() => void run(() => saveWorkspace({ archived: !row.archived }, row.workspace_id))}>{row.archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}</button>
+            <button type="button" className={actionClass} aria-label={row.archived ? t('Restore workspace') : t('Archive workspace')} onClick={() => { setDeleting(false); void run(() => saveWorkspace({ archived: !row.archived }, row.workspace_id)) }}>{row.archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}</button>
+          </Tooltip>}
+          {custom && row.archived && <Tooltip label={t('Delete permanently')} side="top">
+            <button type="button" className="inline-flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-2 text-xs text-[var(--destructive)] transition-colors hover:bg-[var(--destructive)]/10 disabled:opacity-50" aria-label={t('Delete permanently')} onClick={() => { setDeleting(!deleting); setEditing(false); setMoving(false) }}><Trash2 size={14} /></button>
           </Tooltip>}
         </div>
       </div>
       <div className="mt-1.5 min-w-0 sm:pl-[30px]">
-        {!custom && <p className="mb-2 text-[12.5px] leading-relaxed text-[var(--muted-foreground)]">{row.kind === 'system' ? t('Sanitized configuration snapshots, Skill files and MCP inventory. API keys and tokens remain in private configuration.') : t('Conversations without a selected workspace share files in this folder.')}</p>}
+        {!custom && <p className="mb-2 text-[12.5px] leading-relaxed text-[var(--muted-foreground)]">{row.kind === 'system' ? t('Sanitized configuration snapshots, Skill files and MCP inventory. API keys and tokens remain in private configuration.') : (row.kind === 'general' ? t('Conversations without a selected workspace share files in this folder.') : t('Deployment workspace root provided by the server environment.'))}</p>}
         <p className="select-all break-all font-mono text-[11.5px] leading-relaxed text-[var(--muted-foreground)]">{row.path}</p>
         {row.archived && <p className="mt-1 text-xs text-[var(--muted-foreground)]">{t('Archived. Existing conversations and files are kept.')}</p>}
         {resourcesOpen && (
@@ -77,6 +83,34 @@ function WorkspaceRow({ row, run, busy }: { row: ChatWorkspaceRegistration; run:
             <p className="text-xs leading-relaxed text-[var(--muted-foreground)]">{t('Copy and verify before switching. The workspace ID and conversation bindings stay unchanged; the old folder is kept as a backup.')}</p>
             <div className="flex gap-2"><button type="submit" disabled={!destination.trim()} className={primaryClass}>{t('Start migration')}</button><button type="button" className={actionClass} onClick={() => setMoving(false)}>{t('Cancel')}</button></div>
           </form>
+        )}
+        {deleting && (
+          <div className={`${subPanelClass} mt-3 space-y-3 p-4 border border-[var(--destructive)]/40`}>
+            <p className="text-xs font-medium text-[var(--destructive)]">
+              {t('Are you sure you want to permanently delete this workspace? All files and database entries will be removed. This cannot be undone.')}
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={busy}
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-[var(--destructive)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50"
+                onClick={async () => {
+                  if (await run(() => deleteWorkspace(row.workspace_id))) {
+                    setDeleting(false)
+                  }
+                }}
+              >
+                {t('Permanently delete')}
+              </button>
+              <button
+                type="button"
+                className={actionClass}
+                onClick={() => setDeleting(false)}
+              >
+                {t('Cancel')}
+              </button>
+            </div>
+          </div>
         )}
         {row.error && <p role="alert" className="mt-2 text-xs text-[var(--destructive)]">{row.error}</p>}
         {row.kind === 'system' && <SystemWorkspaceSnapshot />}

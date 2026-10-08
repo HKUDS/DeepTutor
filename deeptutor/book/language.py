@@ -22,6 +22,7 @@ _LANGUAGE_CUES: tuple[tuple[str, str], ...] = (
     ("de", r"(?:auf\s+deutsch|in\s+german|用(?:德语|德文))"),
     ("pt", r"(?:em\s+português|em\s+portugues|in\s+portuguese|用(?:葡萄牙语|葡萄牙文))"),
     ("it", r"(?:in\s+italiano|in\s+italian|用(?:意大利语|意大利文))"),
+    ("vi", r"(?:bằng\s+tiếng\s+việt|tiếng\s+việt|in\s+vietnamese|用(?:越南语|越南文))"),
     ("en", r"(?:in\s+english|英語で|用(?:英语|英文)|en\s+anglais|en\s+inglés)"),
 )
 

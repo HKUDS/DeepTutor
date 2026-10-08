@@ -45,6 +45,16 @@ export interface SyllabusUnit {
   title: string;
   topics: string[];
   covered: boolean;
+  video_url?: string;
+  slide_url?: string;
+  video_status?: "available" | "upcoming";
+  slide_status?: "available" | "upcoming";
+  media?: {
+    video_url?: string;
+    slide_url?: string;
+    video_status?: "available" | "upcoming" | "ready";
+    slide_status?: "available" | "upcoming";
+  };
 }
 
 export type CourseStatus = "active" | "archived";

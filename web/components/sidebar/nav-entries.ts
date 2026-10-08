@@ -7,6 +7,7 @@ import {
   LayoutGrid,
   ListTodo,
   PenLine,
+  School,
   Settings,
   type LucideIcon,
 } from 'lucide-react'
@@ -46,6 +47,12 @@ export const PRIMARY_NAV: NavEntry[] = [
     label: 'Personalized Learning',
     icon: GraduationCap,
     tooltipKey: 'One tutor, your own way to learn.',
+  },
+  {
+    href: '/courses',
+    label: 'Courses',
+    icon: School,
+    tooltipKey: 'Courses',
   },
   { href: '/space', label: 'Learning Space', icon: LayoutGrid, tooltipKey: 'Space tooltip' },
   { href: '/kanban', label: 'Task Board', icon: ListTodo, tooltipKey: 'kanban.intro' },

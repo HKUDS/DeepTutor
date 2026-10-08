@@ -75,7 +75,10 @@ def _compose_command(args: list[str]) -> list[str]:
     docker = shutil.which("docker")
     if not docker:
         raise SystemExit("docker was not found on PATH")
-    return [docker, "compose", "--env-file", str(DOCKER_ENV_PATH), *args]
+    file_flags: list[str] = []
+    if not any(arg == "-f" or arg.startswith("-f=") or arg == "--file" or arg.startswith("--file=") for arg in args):
+        file_flags = ["-f", "docker-compose.yml"]
+    return [docker, "compose", "--env-file", str(DOCKER_ENV_PATH), *file_flags, *args]
 
 
 def ensure_workspace_host(raw_path: str | None = None) -> Path:

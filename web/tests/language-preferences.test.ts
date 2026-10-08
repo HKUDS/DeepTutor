@@ -7,7 +7,7 @@ import { resolveResponseLanguage } from "../context/app-shell-storage";
 import { APP_LANGUAGES, isAppLanguage, normalizeLanguage } from "../i18n/languages";
 
 test("the locale registry accepts every supported language", () => {
-  assert.deepEqual(APP_LANGUAGES.map(({ code }) => code), ["en", "zh", "fr", "de", "uk", "pl"]);
+  assert.deepEqual(APP_LANGUAGES.map(({ code }) => code), ["en", "zh", "fr", "de", "uk", "pl", "vi"]);
   for (const { code } of APP_LANGUAGES) assert.equal(isAppLanguage(code), true);
   assert.equal(isAppLanguage("xx"), false);
   assert.equal(normalizeLanguage("uk-UA"), "uk");
@@ -16,6 +16,9 @@ test("the locale registry accepts every supported language", () => {
   assert.equal(normalizeLanguage("pl-PL"), "pl");
   assert.equal(normalizeLanguage("Polish"), "pl");
   assert.equal(normalizeLanguage("Polski"), "pl");
+  assert.equal(normalizeLanguage("vi-VN"), "vi");
+  assert.equal(normalizeLanguage("Vietnamese"), "vi");
+  assert.equal(normalizeLanguage("vi"), "vi");
 });
 
 test("response language remains independent from the interface language", () => {
@@ -35,6 +38,8 @@ test("response language accepts and normalizes the extended registry", () => {
   assert.equal(resolveResponseLanguage("pt-BR", "en"), "pt");
   assert.equal(resolveResponseLanguage("ms-MY", "en"), "ms");
   assert.equal(resolveResponseLanguage("Malay", "en"), "ms");
+  assert.equal(resolveResponseLanguage("vi", "en"), "vi");
+  assert.equal(resolveResponseLanguage("Vietnamese", "en"), "vi");
   assert.equal(resolveResponseLanguage("klingon", "zh"), "zh");
 });
 

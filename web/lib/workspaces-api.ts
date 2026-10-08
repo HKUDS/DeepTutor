@@ -38,6 +38,7 @@ export interface ChatWorkspaceRegistration {
   display_name: string
   path: string
   archived: boolean
+  locked?: boolean
   created_at: string
   status: 'ready' | 'invalid'
   error: string
@@ -79,6 +80,18 @@ export async function saveWorkspace(
   invalidateClientCache('knowledge:')
   notifySessionsChanged()
   return result.workspace
+}
+
+export async function deleteWorkspace(workspaceId: string, deleteFiles = true): Promise<void> {
+  await request<{ deleted: boolean; workspace_id: string }>(
+    `${endpoint}/${encodeURIComponent(workspaceId)}?delete_files=${deleteFiles}`,
+    {
+      method: 'DELETE',
+    }
+  )
+  invalidateClientCache('workspaces:')
+  invalidateClientCache('knowledge:')
+  notifySessionsChanged()
 }
 
 export function workspaceChatHref(workspaceId: string): string {

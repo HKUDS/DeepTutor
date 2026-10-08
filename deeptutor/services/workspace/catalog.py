@@ -148,9 +148,33 @@ class WorkspaceCatalogMixin:
         rows = {row["workspace_id"]: row for row in self._catalog()}
         for kind, name in (("system", "System workspace"), ("general", "General workspace")):
             workspace_id = self._builtin_id(kind)
-            if workspace_id in rows:
-                continue
             root = self._managed_root() / workspace_id
+            if workspace_id in rows:
+                row = rows[workspace_id]
+                current_path = Path(row["path"])
+                needs_heal = False
+                try:
+                    if not current_path.exists():
+                        needs_heal = True
+                    elif row.get("follows_root") and current_path.resolve() != root.resolve():
+                        needs_heal = True
+                except Exception:
+                    needs_heal = True
+
+                if needs_heal:
+                    ensure_private_directory(root)
+                    row["path"] = str(root)
+                    with self._catalog_connection() as conn:
+                        conn.execute(
+                            "UPDATE workspaces SET payload = ? WHERE id = ?",
+                            (json.dumps(row, ensure_ascii=False), workspace_id),
+                        )
+                    if kind == "system":
+                        try:
+                            self._write_system_snapshot(root)
+                        except Exception:
+                            pass
+                continue
             # Publish a built-in only after its initial files are ready.
             # Concurrent requests must not race the one-time skill import.
             with self._catalog_connection() as conn:
@@ -248,11 +272,27 @@ class WorkspaceCatalogMixin:
                         "created_at": _utc_now(),
                     }
                 )
+        deployment = self._deployment_root()
+        deployment_resolved = deployment.resolve() if deployment else None
+
         result = []
         for row in self._catalog():
             if row.get("kind") == "session":
                 continue
             status = self.validate(row["path"])
+            is_locked = False
+            if deployment_resolved is not None:
+                try:
+                    is_locked = Path(row["path"]).expanduser().resolve() == deployment_resolved
+                except Exception:
+                    is_locked = False
+            if is_locked and row.get("archived"):
+                row["archived"] = False
+                with self._catalog_connection() as conn:
+                    conn.execute(
+                        "UPDATE workspaces SET payload = ? WHERE id = ?",
+                        (json.dumps(row, ensure_ascii=False), row["workspace_id"]),
+                    )
             result.append(
                 {
                     "workspace_id": row["workspace_id"],
@@ -261,6 +301,7 @@ class WorkspaceCatalogMixin:
                     "kind": row["kind"],
                     "follows_root": bool(row.get("follows_root", False)),
                     "archived": bool(row.get("archived")),
+                    "locked": is_locked,
                     "created_at": row["created_at"],
                     "status": status["status"],
                     "error": status.get("error", ""),
@@ -346,8 +387,11 @@ class WorkspaceCatalogMixin:
                 or row.get("kind") not in {"workspace", "general"}
             ):
                 raise WorkspaceError("Workspace not found.")
-            if row["kind"] == "general" and (name is not None or archived is not None):
-                raise WorkspaceError("The default workspace cannot be renamed or archived.")
+            deployment = self._deployment_root()
+            target_path = Path(row["path"]).expanduser().resolve()
+            is_deployment = deployment is not None and target_path == deployment.resolve()
+            if (row["kind"] == "general" or is_deployment) and (name is not None or archived is not None):
+                raise WorkspaceError("The default or deployment workspace cannot be renamed or archived.")
             if resources is not None:
                 row["resources"] = resources
             if name is not None:
@@ -359,6 +403,63 @@ class WorkspaceCatalogMixin:
                 (json.dumps(row, ensure_ascii=False), workspace_id),
             )
         return next(row for row in self.list_workspaces() if row["workspace_id"] == workspace_id)
+
+    def delete_workspace(
+        self, workspace_id: str, *, delete_files: bool = True
+    ) -> dict[str, Any]:
+        self.assert_available()
+        with self._catalog_connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            record = conn.execute(
+                "SELECT payload FROM workspaces WHERE id = ?", (workspace_id,)
+            ).fetchone()
+            row = json.loads(record[0]) if record else None
+            if not row or row.get("owner_id") != _owner_id():
+                raise WorkspaceError("Workspace not found.")
+            if row.get("kind") in {"system", "general"}:
+                raise WorkspaceError("Built-in workspaces cannot be deleted.")
+            deployment = self._deployment_root()
+            target_path = Path(row["path"]).expanduser().resolve()
+            if deployment is not None and target_path == deployment.resolve():
+                raise WorkspaceError("The deployment workspace is locked and cannot be deleted.")
+            if not row.get("archived", False):
+                raise WorkspaceError(
+                    "Workspace must be archived before it can be permanently deleted."
+                )
+
+            conn.execute("DELETE FROM workspaces WHERE id = ?", (workspace_id,))
+
+        if delete_files:
+            managed_root = self._managed_root().resolve()
+            try:
+                is_within_managed = (
+                    target_path != managed_root and managed_root in target_path.parents
+                )
+            except Exception:
+                is_within_managed = False
+
+            if is_within_managed and target_path.is_dir():
+                shutil.rmtree(target_path, ignore_errors=True)
+
+        try:
+            settings_path = self._paths().get_settings_file("content_workspace")
+            if settings_path.exists():
+                from deeptutor.services.settings.interface_settings import atomic_update
+
+                def _prune(settings: dict[str, Any]) -> dict[str, Any]:
+                    if settings.get("active_workspace_id") == workspace_id:
+                        settings["active_workspace_id"] = ""
+                    bindings = settings.get("bindings") or []
+                    settings["bindings"] = [
+                        b for b in bindings if isinstance(b, dict) and b.get("id") != workspace_id
+                    ]
+                    return settings
+
+                atomic_update(settings_path, _prune)
+        except Exception:
+            pass
+
+        return {"deleted": True, "workspace_id": workspace_id}
 
     def validate_chat_binding(
         self, workspace_id: str, *, existing: bool = False

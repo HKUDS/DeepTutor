@@ -268,6 +268,25 @@ async def update_registered_workspace(workspace_id: str, payload: UpdateWorkspac
     return {"workspace": workspace}
 
 
+@settings_router.delete("/registrations/{workspace_id}")
+async def delete_registered_workspace(
+    workspace_id: str,
+    delete_files: bool = True,
+) -> dict:
+    try:
+        from deeptutor.services.workspace.activity import data_activity
+        from deeptutor.services.workspace.data_migration import assert_no_pending_recovery
+
+        with data_activity(exclusive=True):
+            assert_no_pending_recovery()
+            result = get_content_workspace_service().delete_workspace(
+                workspace_id, delete_files=delete_files
+            )
+    except WorkspaceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return result
+
+
 @settings_router.get("")
 async def get_workspace_settings() -> dict:
     return get_content_workspace_service().describe_current()

@@ -285,3 +285,6 @@ dmypy.json
 *.mp3
 *.wav
 *.ogg
+
+# CodeGraph
+.codegraph/

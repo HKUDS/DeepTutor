@@ -619,6 +619,12 @@ class ResolvedLLMConfig:
     context_window: int | None = None
     # The active model's explicit capability overrides (see MODEL_CAPABILITY_KEYS).
     capabilities: dict[str, bool] = field(default_factory=dict)
+    temperature: float = 0.7
+    max_tokens: int = 4096
+
+    def get_api_key(self) -> str:
+        return primary_api_key(self.api_key) or ""
+
 
 
 @dataclass(slots=True)

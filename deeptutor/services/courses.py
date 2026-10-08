@@ -185,7 +185,7 @@ def _parse_syllabus(raw: object) -> list[SyllabusUnit]:
                 position=int(row.get("position") or index),
                 title=title[:160],
                 topics=[
-                    " ".join(str(topic).split()).strip()[:80]
+                    " ".join(str(topic).split()).strip()[:200]
                     for topic in (topics if isinstance(topics, list) else [])
                     if str(topic).strip()
                 ][:20],

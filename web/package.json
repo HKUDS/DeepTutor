@@ -44,6 +44,7 @@
     "html2canvas": "^1.4.1",
     "i18next": "^25.8.0",
     "jspdf": "^4.2.0",
+    "katex": "^0.16.21",
     "lucide-react": "^0.562.0",
     "mdast-util-from-markdown": "^2.0.2",
     "mermaid": "^11.14.0",
