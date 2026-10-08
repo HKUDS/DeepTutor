@@ -59,6 +59,7 @@ class ImaKnowledgePage:
 
     next_cursor: str = ""
     is_end: bool = False
+    unverified_documents: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,6 +130,7 @@ def parse_knowledge_page(data: Mapping[str, Any]) -> ImaKnowledgePage:
     folders: list[ImaFolder] = []
     seen_documents: set[str] = set()
     seen_folders: set[str] = set()
+    unverified = 0
 
     for raw in _entries(data, _DOCUMENT_KEYS):
         # A folder can appear inside the document array (search matches folder
@@ -142,6 +144,8 @@ def parse_knowledge_page(data: Mapping[str, Any]) -> ImaKnowledgePage:
                 folders.append(folder)
             continue
         document = _document_from(raw)
+        if document is None:
+            unverified += 1
         if document is not None and document.media_id not in seen_documents:
             seen_documents.add(document.media_id)
             documents.append(document)
@@ -158,6 +162,7 @@ def parse_knowledge_page(data: Mapping[str, Any]) -> ImaKnowledgePage:
         path=_breadcrumb(data.get("current_path")),
         next_cursor=str(data.get("next_cursor") or ""),
         is_end=bool(data.get("is_end")),
+        unverified_documents=unverified,
     )
 
 

@@ -56,7 +56,7 @@ export interface ReadingContextValue {
   saveMark: (
     draft: AnnotationDraft,
     optimistic: AnnotationItem,
-  ) => Promise<void>;
+  ) => Promise<boolean>;
   /** Remove an annotation, optimistically. */
   removeMark: (annotation: AnnotationItem) => Promise<void>;
   /** Accept a mark the assistant just made (arrives via a tool result). */
@@ -80,7 +80,7 @@ const ReadingContext = createContext<ReadingContextValue>({
   error: null,
   openMaterial: async () => false,
   closeMaterial: noop,
-  saveMark: async () => {},
+  saveMark: async () => false,
   removeMark: async () => {},
   mergeMark: noop,
   dismissError: noop,
@@ -152,31 +152,25 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
   const saveMark = useCallback(
     async (draft: AnnotationDraft, optimistic: AnnotationItem) => {
       const materialId = material?.material_id;
-      if (!materialId) return;
-      // Shown immediately: waiting for a round trip before any ink appears
-      // makes highlighting feel broken.
-      setAnnotations((current) => [...current, optimistic]);
+      if (!materialId) return false;
+      const token = openTokenRef.current;
+      const previous = annotations.find(row => row.annotation_id === optimistic.annotation_id);
+      setAnnotations(current => previous
+        ? current.map(row => row.annotation_id === optimistic.annotation_id ? optimistic : row)
+        : [...current, optimistic]);
       try {
         const saved = await saveAnnotation(materialId, draft);
-        setAnnotations((current) =>
-          current.map((row) =>
-            row.annotation_id === optimistic.annotation_id ? saved : row,
-          ),
-        );
+        if (token === openTokenRef.current) setAnnotations(current => current.map(row => row.annotation_id === optimistic.annotation_id ? saved : row));
+        return true;
       } catch (caught) {
-        setAnnotations((current) =>
-          current.filter(
-            (row) => row.annotation_id !== optimistic.annotation_id,
-          ),
-        );
-        setErrorState(
-          caught instanceof Error
-            ? caught.message
-            : "That annotation could not be saved.",
-        );
+        if (token !== openTokenRef.current) return false;
+        setAnnotations(current => previous
+          ? current.map(row => row.annotation_id === optimistic.annotation_id ? previous : row)
+          : current.filter(row => row.annotation_id !== optimistic.annotation_id));
+        setErrorState(caught instanceof Error ? caught.message : "That annotation could not be saved.");
+        return false;
       }
-    },
-    [material],
+    }, [material, annotations],
   );
 
   const removeMark = useCallback(

@@ -1,5 +1,6 @@
 "use client";
 
+import { PageHeader, pageActionClass, pageGridClass } from '@/components/layout/FeaturePage'
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -56,6 +57,8 @@ export default function CourseDetailPage() {
   const [loading, setLoading] = useState(true);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
 
   const load = useCallback(async () => {
@@ -175,6 +178,24 @@ export default function CourseDetailPage() {
     [load, t],
   );
 
+  const confirmDelete = useCallback(async () => {
+    if (!course) return;
+    setDeleteBusy(true);
+    setDeleteError(null);
+    try {
+      await deleteCourse(course.id);
+      router.push("/courses");
+    } catch (error) {
+      setDeleteError(
+        error instanceof Error && error.message
+          ? error.message
+          : t("Delete failed"),
+      );
+    } finally {
+      setDeleteBusy(false);
+    }
+  }, [course, router, t]);
+
   if (loading) {
     return (
       <div className="space-y-4" aria-label={t("Loading course")}>
@@ -220,33 +241,15 @@ export default function CourseDetailPage() {
           {t("Courses")}
         </Link>
       </div>
-      <header className="relative overflow-visible rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6">
-        <div className="flex items-start justify-between gap-5">
-          <div className="min-w-0">
-            <h1 className="flex items-center gap-2.5 font-serif text-[28px] font-semibold leading-tight tracking-tight text-[var(--foreground)]">
-              <span
-                className="h-2 w-2 shrink-0 rounded-full"
-                style={{ backgroundColor: course.color }}
-                aria-hidden
-              />
-              {course.name}
-              {course.status === "archived" ? (
-                <span className="rounded-full border border-[var(--border)] px-2 py-0.5 text-[11px] font-normal tracking-normal text-[var(--muted-foreground)]">
-                  {t("Archived")}
-                </span>
-              ) : null}
-            </h1>
-            <p className="mt-2 max-w-2xl text-[13px] leading-relaxed text-[var(--muted-foreground)]">
-              {course.description || t("A focused home for this subject.")}
-            </p>
-            <p className="mt-3 text-[11px] text-[var(--muted-foreground)]/75">
-              {t("{{count}} active conversations", { count: rootCount })}
-            </p>
-          </div>
+      <PageHeader
+        title={course.name}
+        description={course.description || t("A focused home for this subject.")}
+        meta={course.status === "archived" ? <span className="rounded-full border border-[var(--border)] px-2 py-0.5 text-[11px] text-[var(--muted-foreground)]">{t("Archived")}</span> : null}
+        action={
           <div className="relative flex shrink-0 items-center gap-2">
             <Link
               href={`/chat?course=${encodeURIComponent(course.id)}&capability=course_study`}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--foreground)] px-3 py-2 text-[12px] font-medium text-[var(--background)] hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+              className={pageActionClass()}
             >
               <Signpost size={14} />
               {t("Start course study")}
@@ -304,6 +307,7 @@ export default function CourseDetailPage() {
                   type="button"
                   onClick={() => {
                     setMenuOpen(false);
+                    setDeleteError(null);
                     setDeleteOpen(true);
                   }}
                   className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-[var(--destructive)] hover:bg-[var(--muted)]"
@@ -313,8 +317,11 @@ export default function CourseDetailPage() {
               </div>
             ) : null}
           </div>
-        </div>
-      </header>
+        }
+      />
+      <p className="-mt-3 mb-6 text-[11px] text-[var(--muted-foreground)]">
+        {t("{{count}} active conversations", { count: rootCount })}
+      </p>
 
       <div className="mt-4">
         <CourseNextStep state={state} courseId={courseId} />
@@ -332,7 +339,7 @@ export default function CourseDetailPage() {
         />
       </div>
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+      <div className={`mt-4 ${pageGridClass(2)}`}>
         <CourseResources
           courseId={course.id}
           resources={state?.resources ?? []}
@@ -409,14 +416,19 @@ export default function CourseDetailPage() {
         title={t("Delete course?")}
         confirmLabel={t("Delete course")}
         tone="danger"
+        busy={deleteBusy}
+        busyLabel={t("Deleting…")}
         onCancel={() => setDeleteOpen(false)}
-        onConfirm={() => {
-          void deleteCourse(course.id).then(() => router.push("/courses"));
-        }}
+        onConfirm={confirmDelete}
       >
         {t(
           "Conversations will not be deleted. They will move to Unclassified.",
         )}
+        {deleteError ? (
+          <p role="alert" className="mt-2 text-[var(--destructive)]">
+            {deleteError}
+          </p>
+        ) : null}
       </ConfirmDialog>
     </div>
   );
