@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import closing
 import json
 import sqlite3
 
@@ -164,7 +165,7 @@ def _forward_closure(
             scanned.add("learning")
             db = paths.get_workspace_dir() / "learning" / "mastery" / "mastery.sqlite3"
             if db.exists():
-                with sqlite3.connect(db) as conn:
+                with closing(sqlite3.connect(db)) as conn, conn:
                     tables = {
                         row[0]
                         for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
@@ -193,7 +194,7 @@ def _forward_closure(
             scanned.add("reading")
             db = paths.get_workspace_dir() / "reading" / "_catalog.sqlite3"
             if db.exists():
-                with sqlite3.connect(db) as conn:
+                with closing(sqlite3.connect(db)) as conn, conn:
                     if conn.execute(
                         "SELECT 1 FROM sqlite_master WHERE name='reading_workspace_sessions'"
                     ).fetchone():
@@ -263,7 +264,7 @@ def _question_sessions(paths, entry_ids=None) -> set[str]:
     db = paths.get_chat_history_db()
     if not db.exists():
         return set()
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         if not conn.execute("SELECT 1 FROM sqlite_master WHERE name='notebook_entries'").fetchone():
             return set()
         if entry_ids:
@@ -319,7 +320,7 @@ def _with_historical_references(paths, sessions: list[dict]) -> list[dict]:
 
     db = paths.get_chat_history_db()
     if db.exists():
-        with sqlite3.connect(db) as conn:
+        with closing(sqlite3.connect(db)) as conn, conn:
             for sid, raw in conn.execute("SELECT session_id,metadata_json FROM messages"):
                 if sid in prefs and raw:
                     try:

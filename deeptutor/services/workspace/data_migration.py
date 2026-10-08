@@ -8,6 +8,7 @@ in an account-private recovery directory after a successful transfer.
 
 from __future__ import annotations
 
+from contextlib import closing
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -130,7 +131,7 @@ def _empty_scaffold(root: Path) -> bool:
             database = handle.read(16) == b"SQLite format 3\x00"
         if not database:
             return False
-        with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as conn:
+        with closing(sqlite3.connect(f"file:{path}?mode=ro", uri=True)) as conn, conn:
             for (name,) in conn.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
             ).fetchall():
@@ -157,8 +158,9 @@ def _snapshot(source: Path, target: Path, *, included: set[str] | None = None) -
             database = handle.read(16) == b"SQLite format 3\x00"
         if database:
             with (
-                sqlite3.connect(f"file:{path}?mode=ro", uri=True) as original,
-                sqlite3.connect(destination) as copy,
+                closing(sqlite3.connect(f"file:{path}?mode=ro", uri=True)) as original,
+                closing(sqlite3.connect(destination)) as copy,
+                copy,
             ):
                 original.backup(copy)
                 if copy.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
@@ -178,7 +180,7 @@ def _sqlite_sessions(paths) -> list[dict]:
     db = paths.get_chat_history_db()
     if not db.exists():
         return []
-    with sqlite3.connect(f"file:{db}?mode=ro", uri=True) as conn:
+    with closing(sqlite3.connect(f"file:{db}?mode=ro", uri=True)) as conn, conn:
         conn.row_factory = sqlite3.Row
         return [dict(row) for row in conn.execute("SELECT id,title,preferences_json FROM sessions")]
 
@@ -342,7 +344,7 @@ def preview(
             blockers.append("Choose a custom workspace to retain historical archives.")
         for paths in (source, target):
             if paths.get_chat_history_db().exists():
-                with sqlite3.connect(paths.get_chat_history_db()) as conn:
+                with closing(sqlite3.connect(paths.get_chat_history_db())) as conn, conn:
                     if conn.execute(
                         "SELECT 1 FROM turns WHERE status IN ('queued','running','waiting_input') LIMIT 1"
                     ).fetchone():
@@ -370,7 +372,7 @@ def preview(
             root = _feature_path(source, feature)
             artifacts[feature] = [path.relative_to(root).as_posix() for path in _files(root)]
         if _backend() == "sqlite" and session_ids and target.get_chat_history_db().exists():
-            with sqlite3.connect(source.get_chat_history_db()) as conn:
+            with closing(sqlite3.connect(source.get_chat_history_db())) as conn, conn:
                 conn.execute("ATTACH DATABASE ? AS target", (str(target.get_chat_history_db()),))
                 placeholders = ",".join("?" for _ in session_ids)
                 for table, owner in (
@@ -443,7 +445,7 @@ def _selected_artifact_files(paths, session_ids: set[str]) -> dict[str, list[str
                 )
     db = paths.get_chat_history_db()
     if db.exists():
-        with sqlite3.connect(db) as conn:
+        with closing(sqlite3.connect(db)) as conn, conn:
             identifiers.update(
                 row[0]
                 for row in conn.execute("SELECT id,session_id FROM turns")
@@ -810,7 +812,7 @@ def _rebind_feature_urls(root: Path, target_id: str, *, included: set[str] | Non
             if original != updated:
                 atomic_write_text(path, updated)
         elif path.suffix in {".sqlite3", ".sqlite", ".db"}:
-            with sqlite3.connect(path) as conn:
+            with closing(sqlite3.connect(path)) as conn, conn:
                 tables = conn.execute(
                     "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
                 ).fetchall()
@@ -836,7 +838,11 @@ def _restore_database(snapshot: Path, destination: Path) -> None:
     if not snapshot.exists():
         return
     destination.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(snapshot) as original, sqlite3.connect(destination) as restored:
+    with (
+        closing(sqlite3.connect(snapshot)) as original,
+        closing(sqlite3.connect(destination)) as restored,
+        restored,
+    ):
         original.backup(restored)
 
 
@@ -862,7 +868,7 @@ def _remove_installed(result: dict, target) -> None:
 
 
 def _prune_session_snapshot(database: Path, session_ids: set[str]) -> None:
-    with sqlite3.connect(database) as conn:
+    with closing(sqlite3.connect(database)) as conn, conn:
         conn.execute("PRAGMA foreign_keys=ON")
         conn.execute("CREATE TEMP TABLE retained_sessions (id TEXT PRIMARY KEY)")
         conn.executemany(

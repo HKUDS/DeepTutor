@@ -111,7 +111,7 @@ class SQLiteCronRepository:
         return connection
 
     def _initialize(self, initial: Iterable[dict[str, Any]]) -> None:
-        with self._migration_lock(), self._connect() as connection:
+        with self._migration_lock(), contextlib.closing(self._connect()) as connection:
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS cron_jobs (
@@ -181,19 +181,19 @@ class SQLiteCronRepository:
         )
 
     def revision(self) -> int:
-        with self._connect() as connection:
+        with contextlib.closing(self._connect()) as connection:
             row = connection.execute("SELECT revision FROM cron_meta WHERE singleton=1").fetchone()
         return int(row[0]) if row else 0
 
     def list_payloads(self) -> list[dict[str, Any]]:
-        with self._connect() as connection:
+        with contextlib.closing(self._connect()) as connection:
             rows = connection.execute(
                 "SELECT payload FROM cron_jobs ORDER BY COALESCE(next_run_at_ms, 0), id"
             ).fetchall()
         return [json.loads(str(row[0])) for row in rows]
 
     def upsert(self, payload: dict[str, Any]) -> None:
-        with self._connect() as connection:
+        with contextlib.closing(self._connect()) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 self._upsert_row(connection, payload)
@@ -204,7 +204,7 @@ class SQLiteCronRepository:
                 raise
 
     def delete(self, job_id: str, *, owner_key: str | None = None) -> bool:
-        with self._connect() as connection:
+        with contextlib.closing(self._connect()) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 if owner_key is None:
@@ -226,7 +226,7 @@ class SQLiteCronRepository:
                 raise
 
     def delete_owner(self, owner_key: str) -> int:
-        with self._connect() as connection:
+        with contextlib.closing(self._connect()) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 cursor = connection.execute("DELETE FROM cron_jobs WHERE owner_key=?", (owner_key,))
