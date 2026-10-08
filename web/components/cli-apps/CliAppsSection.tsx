@@ -87,7 +87,6 @@ export default function CliAppsSection() {
   return (
     <div className="space-y-6">
       <SpaceSectionHeader
-        icon={Terminal}
         title={t("CLI Apps")}
         description={t(
           "Command-line tools from the CLI-Anything catalog. Once enabled, the chat agent can call them directly.",

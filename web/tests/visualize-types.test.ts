@@ -41,3 +41,16 @@ test("keeps legacy SVG results renderable", () => {
   assert.equal(result.renderer.native_renderer, "svg");
   assert.equal(result.payload.data, "<svg viewBox='0 0 10 10'></svg>");
 });
+
+test("keeps legacy mindmap results renderable with Mermaid", () => {
+  const result = extractVisualizeResult({
+    render_type: "mindmap",
+    code: { language: "mermaid", content: "mindmap\n  Root\n    Child" },
+  });
+
+  assert.ok(result && !isManimResult(result));
+  if (!result || isManimResult(result)) return;
+  assert.equal(result.renderer.id, "mindmap");
+  assert.equal(result.renderer.native_renderer, "mermaid");
+  assert.equal(result.code.language, "mermaid");
+});

@@ -60,10 +60,10 @@
 
 DeepTutor هو بيئة تعلم أصيلة للوكلاء تربط التدريس وحل المشكلات وتوليد الاختبارات والبحث والتصور وممارسة الإتقان في نظام واحد قابل للتوسيع.
 
-- **بيئة تشغيل واحدة لجميع الأوضاع** — تشترك Chat وAsk Questions وQuiz وResearch وVisualize وSolve وCourse Study وMastery Path وImmersive Reading وImmersive Watching في بيئة تشغيل واحدة للقدرات وسياق الجلسة، مع احتفاظ كل منها بحلقات وخطوط أنابيب مصممة لغرضها.
+- **بيئة تشغيل واحدة لجميع الأوضاع** — تشترك Chat وAsk Questions وQuiz وResearch وVisualize وSolve وCourse Study وMastery Path وImmersive Reading وAudio Overview في بيئة تشغيل واحدة للقدرات وسياق الجلسة، مع احتفاظ كل منها بحلقات وخطوط أنابيب مصممة لغرضها.
 - **Task Board** — تتبّع مهام الدراسة ضمن «للإنجاز» و«قيد التنفيذ» و«مكتمل»، مع ملاحظات وسحب وإفلات أو أزرار نقل يمكن استخدامها بلوحة المفاتيح، وأرشيف يمكنك الاستعادة منه. تبقى البطاقات في مساحة العمل الحالية وتتبع إعدادات المظهر واللغة القائمة؛ ولا يلزم تهيئة أي نموذج.
 - **سياق تعلم متصل** — يمكن إعادة استخدام قواعد المعرفة والكتب ومسودات Co-Writer ودفاتر الملاحظات وبنوك الأسئلة والشخصيات والذاكرة عبر سير العمل التي تدعمها، وفقاً لمنح الحساب وسياسات التعلّم.
-- **التعلّم الغامر بالفيديو** — ألصق رابط YouTube لتشغيل أصلي معزَّز الخصوصية، وترجمات متزامنة، وتدريس مرتكز على الطوابع الزمنية، وعلامات محفوظة للطوابع الزمنية، وتقدّم قابل للاستئناف؛ ويمكن للمشرفين تحويل التشغيل إلى نسخة Invidious ذاتية الاستضافة دون إعادة بناء المواد.
+- **التعلّم الغامر بالفيديو** — أضف روابط YouTube أو Bilibili إلى Reading للتشغيل الأصلي والبحث في النصوص المفرّغة والتدريس المرتكز على الطوابع الزمنية والملاحظات المحفوظة والتقدّم القابل للاستئناف؛ ويمكن استخدام نسخة Invidious يهيئها المشرف لجلب ترجمات YouTube وتصفّحه.
 - **الوكلاء الفرعيون والشركاء** — من داخل Chat، استشر مُشغِّل وكيل حيّاً (Claude Code أو Codex أو Grok CLI أو Antigravity أو Kimi أو opencode أو MiMo أو Hermes أو OpenClaw أو DeepSeek) أو Partner، واستورد المحادثات السابقة، وشغّل رفاق IM دائمين على نفس الدماغ.
 - **معرفة متعددة المحركات** — مكتبات RAG مُصدَّرة عبر LlamaIndex وPageIndex وGraphRAG وLightRAG، أو LightRAG Server عن بُعد، أو قاعدة معرفة WeKnora ذاتية الاستضافة، أو مكتبة Tencent IMA أو MarginNote 4، أو أرشيف Kiwix ZIM متصل، أو مخزن Obsidian مرتبط، مع تحليل مستندات قابل للتوصيل. راجع [نماذج أدوار LightRAG الأصلية](../../deeptutor/services/rag/pipelines/lightrag/README.md) لإعدادات مستقلة للاستخراج والاستعلام والرؤية، والإنشاء بالنماذج الافتراضية فقط، وإعادة البناء بعد التأكيد.
 - **أدوات ومهارات قابلة للتوسيع** — أدوات مدمجة وخوادم MCP وتطبيقات CLI ونماذج توليد الصور/الفيديو/الصوت ومهارات مجتمع قابلة للتثبيت من EduHub.
@@ -72,6 +72,22 @@ DeepTutor هو بيئة تعلم أصيلة للوكلاء تربط التدري
 ---
 
 ## 🚀 البدء
+
+### دع وكيلك يُعِدّ DeepTutor
+
+انسخ هذا الطلب إلى وكيل الذكاء الاصطناعي الذي يمكنه استخدام الطرفية (مثل Codex أو Claude Code):
+
+```text
+Help me install and configure DeepTutor locally from https://github.com/HKUDS/DeepTutor.
+Clone the repository, or reuse my existing checkout, and read SKILL.md and
+docs-for-user/AGENT_SETUP.md first. Follow that guide to prepare the environment,
+configure my model provider, verify the setup, and start the Web app.
+Ask me for any missing provider, model, or credential-source information;
+do not print API keys. Preserve my existing files and settings, and finish
+with the access URL and the results of your checks.
+```
+
+يغطي [دليل إعداد الوكيل](../../docs-for-user/AGENT_SETUP.md) التدفق كاملاً، بما فيه التهيئة غير التفاعلية عبر CLI. لتثبيته بنفسك، اختر أحد المسارات أدناه.
 
 يأتي DeepTutor بأربعة مسارات تثبيت. وكلها تشترك في تخطيط واحد لمساحة عمل وقت التشغيل: تعيش الإعدادات الخاصة في `data/user/settings/` تحت الدليل الذي تُطلق منه التطبيق (أو تحت `DEEPTUTOR_HOME` / `deeptutor start --home` إذا حددت واحداً صراحةً). للتطبيق الكامل، التدفق الموصى به هو **اختر دليل مساحة عمل وقت التشغيل → تثبيت → `deeptutor init` → `deeptutor start`**.
 
@@ -343,7 +359,7 @@ deeptutor config show
 | `integrations.json` | إعدادات تكامل PocketBase والمرافق الاختيارية |
 | `interface.json` | تفضيلات لغة واجهة المستخدم ولغة مخرجات النموذج / الثيمة / الشريط الجانبي |
 | `document_parsing.json` | اختيار محرك التحليل ونموذج وصف الصور ونقاط النهاية البعيدة والخيارات الخاصة بكل محرك |
-| `video_learning.json` | مزود تشغيل YouTube/Invidious الافتراضي، ومصادر Invidious، ومحوّل اختياري للنصوص المفرّغة |
+| `video_learning.json` | مزود ترجمات YouTube، وأصول Invidious والوصول إلى الحساب، وإعدادات النصوص المفرّغة |
 | `main.yaml` | افتراضيات سلوك وقت التشغيل وحقن المسار |
 | `agents.yaml` | إعدادات درجة حرارة القدرة/الأداة والرمز |
 
@@ -439,7 +455,7 @@ Chat هي القدرة الافتراضية والمكان الذي يبدأ ف�
 
 يأتي السياق في نوعين: يستمر **السياق الثابت للجلسة** (القدرة، ومساحة العمل أو الدورة، والأدوات، وقواعد المعرفة، والشخصية، والنموذج، وحالة Reading / Mastery) عبر الأدوار؛ وتأتي **المراجع لمرة واحدة** (الملفات وتاريخ المحادثة والكتب وأقسام القراءة ودفاتر الملاحظات ومدخلات بنك الأسئلة المحددة والوكلاء المستوردون) من قائمة `+` لدور واحد. ولا يفعل زر الصوت سوى تفريغ الرسالة الحالية نصياً.
 
-تُبقي الصفحة الرئيسية **Chat** و**Ask Questions** و**Quiz** و**Visualize** على بُعد نقرة واحدة؛ وتقع **Research** للتقارير المستشهَد بها و**Solve** للاستدلال المشروح و**Immersive Watching** تحت *المزيد من القدرات*. يجمع **التعلم المخصص** كلاً من Book و**Mastery Path** و**Immersive Reading** وWatching و**التدريب**؛ وتضيف Reading استشهادات موثَّقة، وملاحظات محفوظة، وقراءة طبيعية بصوت عالٍ من مقاطع المصدر / إرشاد دراسي / مفردات / اختبار / ترجمة، والتقاطاً إلى دفتر الملاحظات، بينما يحتفظ Course Study بسياقه المرتبط بالدورة.
+تُبقي الصفحة الرئيسية **Chat** و**Ask Questions** و**Quiz** و**Visualize** على بُعد نقرة واحدة؛ وتقع **Research** للتقارير المستشهَد بها و**Solve** للاستدلال المشروح تحت *المزيد من القدرات*. يجمع **التعلم المخصص** كلاً من Book و**Mastery Path** و**Immersive Reading** و**التدريب**؛ وتجمع Reading المستندات والفيديو والصوت مع استشهادات موثَّقة وملاحظات محفوظة وقراءة طبيعية بصوت عالٍ من مقاطع المصدر / إجراءات الإرشاد الدراسي / المفردات / الاختبار / الترجمة، والتقاط إلى دفتر الملاحظات، بينما يحتفظ Course Study بسياقه المرتبط بالدورة.
 
 </details>
 
@@ -603,10 +619,10 @@ Co-Writer هو مساحة عمل Markdown ذات عرض مقسَّم للتقا�
 
 **الكلام عبر Xiaomi MiMo.** أضف مزود Xiaomi MiMo بعنوان `https://api.xiaomimimo.com/v1` ومفتاح API الخاص به، ثم أضف `mimo-v2.5-tts` ضمن الإعدادات ← الصوت. اختر صوتاً مسبقاً مثل `mimo_default` أو `冰糖` أو `苏打`، واستخدم إخراج `wav` أو `pcm16`، وجرّبه قبل تطبيقه. تتحكم تعليمات الصوت في الأسلوب وسرعة الكلام. يدعم هذا الموائم الكلام بالأصوات المسبقة فقط؛ ويتطلب تصميم الأصوات واستنساخها نماذج منفصلة ولا يدعمهما. إذا كان نموذج MiMo صوتي قديم مهيّأً عبر الموائم العام المتوافق مع OpenAI، فأعد إنشاء مدخل الكلام باستخدام مزود Xiaomi MiMo كي يستخدم بروتوكول chat-completions. راجع [دليل MiMo الرسمي لتوليد الكلام](https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/speech-synthesis-v2.5).
 
-**الكلام عبر MiniMax** — في الإعدادات ← الصوت، اختر MiniMax لتحويل النص إلى كلام وحدّد `speech-2.8-hd`. هيّئ مفتاح API لـ MiniMax ومعرّف صوت من أصوات النظام أو صوت مخصص؛ والصوت الافتراضي هو `English_expressive_narrator`. عنوان API الأساسي الافتراضي هو `https://api.minimax.io/v1`؛ ولمنطقة الصين استخدم `https://api.minimaxi.com/v1`. تستخدم القراءة بصوت عالٍ ومعاينات الصوت نقطة نهاية الكلام الأصلية، مع إخراج MP3 أو WAV أو FLAC أو PCM، وعناصر تحكم في معدل أخذ العينات والسرعة واللغة. راجع [واجهة API للكلام في MiniMax](https://platform.minimax.io/docs/api-reference/speech-t2a-http) لمعرّفات الأصوات وتوفرها للحساب.
+**الكلام عبر MiniMax** — في الإعدادات ← الصوت، اختر MiniMax لتحويل النص إلى كلام وحدّد `speech-2.8-hd`. هيّئ مفتاح API لـ MiniMax واختر صراحةً صوتاً من أصوات النظام أو أدخل معرّف صوت مخصص. عنوان API الأساسي الافتراضي هو `https://api.minimax.io/v1`؛ ولمنطقة الصين استخدم `https://api.minimaxi.com/v1`. تستخدم القراءة بصوت عالٍ ومعاينات الصوت نقطة نهاية الكلام الأصلية، مع إخراج MP3 أو WAV أو FLAC أو PCM، وعناصر تحكم في معدل أخذ العينات والسرعة واللغة. راجع [واجهة API للكلام في MiniMax](https://platform.minimax.io/docs/api-reference/speech-t2a-http) لمعرّفات الأصوات وتوفرها للحساب.
 
 
-يستخدم **Video Learning** ضمن الإعدادات ← التعلم والمحادثة مشغّل YouTube IFrame الرسمي المعزَّز للخصوصية افتراضياً. لإبقاء التشغيل محلياً، اضبط مصدر Invidious API الذي يديره المشرف (مثلاً `http://127.0.0.1:3000`)، واختبره، وحدد Invidious، ثم احفظ. تلتقط مقاطع الفيديو الجديدة أو التي يُعاد فتحها المزود فوراً مع الاحتفاظ بمعرّف المادة والتقدّم نفسيهما. تُبث وسائط Invidious عبر وكيل النطاق البايتّي في DeepTutor؛ فلا تُكشف عناوين URL المصدرية للمتصفح ولا تُخزَّن على القرص. إذا تعطلت النسخة، يظل DeepTutor غير متصل بـ YouTube حتى يختار المتعلم صراحةً الرجوع إلى تشغيل YouTube الأصلي. التدريس بالترجمات العامة اختياري: ثبّت `.[video-learning]`؛ ويستمر التشغيل من دونه، بينما تُعطَّل ميزة **اشرح هنا** المعتمدة على النص المفرّغ مع توضيح السبب.
+**Video Learning** ضمن الإعدادات ← التعلم والمحادثة يهيّئ ترجمات YouTube والوصول إلى Invidious لاستخدامهما في Reading. لاستخدام Invidious، اضبط أصل API الخلفية الذي يديره المشرف (مثلاً `http://127.0.0.1:3000`) والأصل العام الذي يمكن للمتصفح الوصول إليه، واختبر الاتصال، واختر Invidious، ثم احفظ. يبحث **تصفّح Invidious** في مربع حوار إضافة المواد في Reading عن مقاطع الفيديو ويتيح الوصول إلى الاشتراكات وقوائم التشغيل المتصلة. يستخدم تشغيل YouTube المشغّل الرسمي المعزَّز للخصوصية؛ ويظل غياب الترجمات ظاهراً ويحدّ من الأدلة المتاحة للمدرّس دون تعطيل التشغيل الأصلي. ثبّت `.[video-learning]` لاستخدام مُحمِّل ترجمات YouTube الافتراضي. تنتقل روابط Watching الموجودة إلى Reading مع الحفاظ على سجل المحادثة والنصوص المفرّغة المتوافقة والملاحظات والتقدّم؛ وتصبح الملاحظات الزمنية الجديدة تعليقات Reading التوضيحية. يستخدم Bilibili مساره الخاص للتشغيل والترجمات.
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="إعدادات المظهر والثيمات في DeepTutor" width="900">
@@ -704,7 +720,7 @@ SID=$(deeptutor run deep_research "Survey 2026 papers on RAG" \
 deeptutor run deep_question "Quiz me on that survey" --session "$SID" --format json
 ```
 
-يشحن المستودع بملف [`SKILL.md`](../../SKILL.md) في الجذر — وثيقة تسليم بنحو 200 سطر تعلّم أي LLM يستخدم الأدوات السطح بأكمله في قراءة واحدة. سلّمها إلى Claude Code أو Codex أو OpenCode (يلتقطون `SKILL.md` تلقائياً)، أو لفّ `deeptutor run` كأداة في حلقة LangChain / AutoGen. الوصفات الكاملة: [Agent Handoff](https://deeptutor.info/docs/cli/agent-handoff/).
+يأتي المستودع بملف [`SKILL.md`](../../SKILL.md) في الجذر — وثيقة تسليم موجزة لواجهة CLI. اطلب من وكيلك قراءته صراحةً؛ ويغطي [دليل إعداد الوكيل](../../docs-for-user/AGENT_SETUP.md) التثبيت والتهيئة. يمكنك أيضاً تغليف `deeptutor run` كأداة في حلقة LangChain / AutoGen. الوصفات الكاملة: [Agent Handoff](https://deeptutor.info/docs/cli/agent-handoff/).
 
 </details>
 
@@ -713,13 +729,13 @@ deeptutor run deep_question "Quiz me on that survey" --session "$SID" --format j
 
 | الأمر | الوصف |
 |:---|:---|
-| `deeptutor init` | إنشاء أو تحديث `data/user/settings` في مساحة عمل وقت التشغيل الحالية |
+| `deeptutor init [--non-interactive] [--home PATH]` | تشغيل معالج الإعداد، أو إنشاء القيم الافتراضية الناقصة دون مطالبات |
 | `deeptutor doctor [--online]` | التحقق مما إذا كان وقت التشغيل جاهزاً لبدء جلسة؛ `--online` يفحص أيضاً مزود النموذج المهيَّأ، و`--format json` يطبع التقرير |
 | `deeptutor start [--home PATH] [--dev] [--detach] [--no-browser]` | تشغيل الخلفية + الواجهة الأمامية معاً؛ مع خيار العمل منفصلاً أو منع فتح المتصفح |
 | `deeptutor stop [--home PATH]` | إيقاف مُشغِّل بدأ باستخدام `--detach` |
 | `deeptutor serve [--port PORT]` | تشغيل خلفية FastAPI فقط |
 | `deeptutor workspace show/set/reset` | فحص مساحة عمل المحتوى الخاصة بالمستخدم، أو اختيارها، أو استعادتها |
-| `deeptutor run <capability> <message>` | تشغيل دور قدرة واحدة (`chat` و`ask_questions` و`deep_solve` و`deep_question` و`deep_research` و`visualize` و`math_animator` و`mastery_path` و`immersive_reading` و`course_study` و`immersive_watching` و`audio_overview`)؛ أضف `--format json` لإخراج NDJSON |
+| `deeptutor run <capability> <message>` | تشغيل دور قدرة واحدة (`chat` و`ask_questions` و`deep_solve` و`deep_question` و`deep_research` و`visualize` و`math_animator` و`mastery_path` و`immersive_reading` و`course_study` و`audio_overview`)؛ أضف `--format json` لإخراج NDJSON |
 | `deeptutor chat` | REPL تفاعلي مع تحكمات القدرة والأداة وقاعدة المعرفة ودفتر الملاحظات والتاريخ |
 | `deeptutor partner list/create/start/stop` | إدارة الشركاء المتصلين بـ IM |
 | `deeptutor kb list/info/create/connect-kiwix/add/search/eval/set-default/delete/list-sources/sync` | إدارة قواعد المعرفة، وتوصيل أرشيفات Kiwix، وتقييم جودة الاسترجاع مقابل مجموعة أسئلة وأجوبة، ومزامنة مصادر GitHub/الويب المسجَّلة (مع أوامر إضافة المصادر وإزالتها) |
@@ -728,9 +744,21 @@ deeptutor run deep_question "Quiz me on that survey" --session "$SID" --format j
 | `deeptutor session list/show/open/rename/delete` | إدارة الجلسات المشتركة |
 | `deeptutor notebook list/create/show/add-md/replace-md/remove-record` | إدارة دفاتر الملاحظات من ملفات Markdown |
 | `deeptutor book list/health/refresh-fingerprints` | فحص الكتب وتحديث بصمات المصادر |
-| `deeptutor plugin list/info` | فحص الأدوات والقدرات المسجلة |
-| `deeptutor config show` | طباعة ملخص التهيئة |
-| `deeptutor provider login <provider>` | مصادقة المزود (`openai-codex` OAuth login؛ `github-copilot` يتحقق من جلسة مصادقة Copilot موجودة؛ `codebuddy` يتحقق من مصادقة CodeBuddy SDK ويبدأ تسجيل الدخول عند الحاجة) |
+| `deeptutor plugin list/info/state/search/show/install/approve/enable/disable/rollback/uninstall` | فحص الأدوات والقدرات؛ وإدارة حزم الإضافات التي خضعت للمراجعة والموافقات على أذوناتها |
+| `deeptutor config show [--home PATH]` | عرض تهيئة وقت التشغيل الفعلية مع حجب بيانات الاعتماد |
+| `deeptutor config providers` | سرد مزودي الإعداد المدعومين وقيمهم الافتراضية بصيغة JSON |
+| `deeptutor config apply FILE [--check] [--home PATH]` | تطبيق إعداد JSON دون مطالبات، أو التحقق منه دون كتابة الإعدادات |
+| `deeptutor provider login <provider>` | مصادقة المزود (`openai-codex` تسجيل دخول OAuth؛ `github-copilot` تسجيل دخول GitHub عبر الجهاز؛ `codebuddy` يتحقق من مصادقة CodeBuddy SDK ويبدأ تسجيل الدخول عند الحاجة) |
+
+تخص بيانات اعتماد GitHub Copilot مالك DeepTutor المسجَّل دخوله، وتُحفَظ فقط في
+`<runtime-home>/data/system/user-secrets/<owner-id>/private/github-copilot/credentials.v1.json`،
+خارج مساحات عمل صندوق الأمان. يستخدم الشركاء العاملون عبر CLI أو بحساب المشرف بيانات اعتماد المشرف؛ ويسجّل المستخدمون الآخرون دخولهم بصورة منفصلة، ولا يمكن مشاركة ملفات تعريف Copilot عبر منح النماذج.
+لا تُستورد ملفات رموز nanobot/Copilot الخارجية أبداً: بعد الترقية، شغّل
+`deeptutor provider login github-copilot` مجدداً.
+
+يتحقق تسجيل الدخول من الاستدلال باستخدام نموذج مكتشَف حالياً؛ ويتحقق `init` من النموذج المحدد ويتوقف عند الفشل دون حفظ مسودة التهيئة. نجاح مصادقة GitHub وحده لا يثبت إمكانية الوصول إلى نماذج Copilot (يُحتفَظ بتسجيل الدخول المحفوظ إذا فشل التحقق). تتبع طلبات وقت التشغيل نقطة نهاية API التي تعيدها عملية تبادل الرموز، بما في ذلك التجديدات، وتحترم بيانات نقطة النهاية الوصفية الخاصة بـ Responses/Chat Completions لكل نموذج.
+
+يُطبَّق توافق Responses الخاص بـ Copilot عند إرسال الطلب دون إعادة كتابة السجل المحفوظ.
 
 </details>
 
@@ -891,3 +919,11 @@ DeepTutor هو مشروع مفتوح المصدر تقوده [Bingxi Zhao](https
 </p>
 
 </div>
+
+### إسناد أدوار الإتقان إلى حالة المسار
+
+تقرأ أدوار Mastery حالة المسار النشط قبل الطلب الأول إلى النموذج، باستخدام أداة الحالة نفسها وبوابات الإتقان نفسها المستخدمة عند استدعاء الأداة صراحةً. تكون هذه اللقطة حديثة لكل دور، وتتضمن وضع الجلسة النشط، ولا تُخزَّن مؤقتاً عبر الأدوار. عند فشل القراءة، يُرجَع إلى `mastery_status`؛ وبعد تغيير المسار أو الوضع أو المخطط أو التقدّم، يستطيع المدرّس تحديث الحالة عبر تلك الأداة. يظل تقييم البطاقات وآلية التسليم الحالية دون تغيير.
+
+### مرفقات الصور المتكررة
+
+ترسل حلقة الوكيل صور المستخدم المضمنة المتطابقة مرة واحدة لكل طلب، وتستبدل النسخ اللاحقة بمراجع إلى الصورة المحتفَظ بها. تحدد تسميات ثابتة خاصة بالطلب الصور المضمنة المحتفَظ بها عبر تحويلات المزودين والأدوار المُلحقة. تبقى كتل الصور الفريدة وعناوين URL البعيدة وخيارات الصور المختلفة ورسائل المساعد ونتائج الأدوات كاملة. يحتفظ السجل المحفوظ بكل مرفق أصلي؛ وتُعاد صياغة المراجع بعد تقليص السجل. يقلل ذلك حمولات الصور المتكررة، لكن الاستخدام الذي يبلّغ عنه المزود يظل مصدر الحقيقة للفوترة وإصابات الذاكرة المؤقتة.

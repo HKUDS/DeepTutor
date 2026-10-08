@@ -16,7 +16,7 @@ from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, Field, model_validator
 
-from deeptutor.core.entry_points import load_entry_point_group
+from deeptutor.plugins.entry_points import load_entry_point_group
 
 logger = logging.getLogger(__name__)
 ENTRY_POINT_GROUP = "deeptutor.reading_extensions"
@@ -122,10 +122,18 @@ class ReadingExtensionRegistry:
         self._timed_out: set[str] = set()
 
     def all(self) -> list[ReadingExtension]:
-        return sorted(self._extensions.values(), key=lambda row: row.manifest.id)
+        return sorted(
+            (
+                row
+                for row in self._extensions.values()
+                if getattr(row, "_plugin_allowed", lambda: True)()
+            ),
+            key=lambda row: row.manifest.id,
+        )
 
     def get(self, extension_id: str) -> ReadingExtension | None:
-        return self._extensions.get(extension_id)
+        row = self._extensions.get(extension_id)
+        return row if row is not None and getattr(row, "_plugin_allowed", lambda: True)() else None
 
     def begin_action(self, extension_id: str, *, circuit_break: bool = True) -> bool:
         """Reserve one extension worker unless it is busy or circuit-broken.
