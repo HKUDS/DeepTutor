@@ -4,7 +4,7 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { APP_LANGUAGES, isAppLanguage, type AppLanguage } from "@/i18n/init";
-import SettingsPresetsPanel from "@/components/settings/SettingsPresetsPanel";
+import AgentSetupHelp from "@/components/settings/AgentSetupHelp";
 import {
   SettingRow,
   SettingSection,
@@ -96,11 +96,11 @@ export default function SettingsOverview() {
           }
         />
       </SettingSection>
-      {catalogEditable === true && <SettingsPresetsPanel enabled={true} />}
       {catalogEditable && <SettingSection
         title={t("Set up chat first")}
         description={t("Connect a provider and choose a language model. Other services are optional.")}
       >
+        <AgentSetupHelp />
         {[
           {
             href: "/settings/connections",

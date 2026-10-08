@@ -15,6 +15,7 @@ it is only ever a clarifying question.
 from __future__ import annotations
 
 from collections.abc import Callable
+import json
 import logging
 import re
 from typing import Any
@@ -265,6 +266,10 @@ class MasteryLoopCapability:
                 state["quiz_awaiting_grade"] = False
                 state["quiz_graded"] = True
             updated["_mastery_path_id"] = path_id
+            updated["_attached_kb_names"] = list(context.knowledge_bases)
+            updated["_inspected_image_hashes"] = list(
+                context.extension("source_visual_evidence").get("image_hashes", [])
+            )
             # Raw, not normalised: "this conversation never recorded a mode"
             # has to survive down to the tools, or every pre-modes conversation
             # (and every CLI / SDK turn, which pass none) would be enforced as
@@ -405,6 +410,48 @@ class MasteryLoopCapability:
             return None
         state["card_posted"] = False
         return ""
+
+    async def pre_loop(
+        self, context: UnifiedContext, stream: Any, *, usage: Any = None
+    ) -> PromptBlock | None:
+        """Read current state once before the first model call, without an LLM.
+
+        This is a fresh read for this turn, never a session cache. Reuse the
+        status tool so objective gates and pending answers have one authority.
+        The loop's pre-pass wrapper falls back to the tool on read failure.
+        """
+        if not self.is_active(context) or not context.metadata.get("mastery_path_id"):
+            return None
+        from deeptutor.capabilities.mastery.tools import MasteryStatusTool
+
+        binding = (
+            context.metadata.get("mastery_path_id"),
+            context.metadata.get("mastery_session_mode"),
+        )
+        result = await MasteryStatusTool().execute(
+            **self.augment_kwargs("mastery_status", {}, context)
+        )
+        if not result.success:
+            return None
+        # A rebind during the read must not seed the new path with old state.
+        current = (
+            context.metadata.get("mastery_path_id"),
+            context.metadata.get("mastery_session_mode"),
+        )
+        if (
+            binding != current
+            or json.loads(result.content).get("path_id") != str(binding[0]).strip()
+        ):
+            return None
+        return PromptBlock(
+            "mastery_status_snapshot",
+            "[Current-turn mastery_status snapshot]\n"
+            "The runtime has already read mastery_status for this turn and active path. "
+            "Use this result directly; do not call mastery_status again just to begin. "
+            "Refresh with mastery_status after changing the path, mode, outline, or progress "
+            "when updated state is needed. Earlier turns' snapshots are historical only.\n"
+            + result.content,
+        )
 
     def pre_loop_seed(self, context: UnifiedContext) -> str:
         """Hand over whatever this turn already settled on the open card.

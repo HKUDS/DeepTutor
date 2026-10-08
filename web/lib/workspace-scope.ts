@@ -13,6 +13,11 @@ export function scopedUrl(path: string, workspaceId = activeWorkspaceId()): stri
   if (!path.startsWith('/') && !absolute) return path
   const url = new URL(path, origin)
   if (url.origin !== origin) return path
+  if (url.pathname === '/kanban' || url.pathname === '/api/task-board' || url.pathname.startsWith('/api/task-board/')) {
+    url.searchParams.delete('dt_workspace')
+    url.searchParams.delete('workspace')
+    return absolute ? url.toString() : `${url.pathname}${url.search}${url.hash}`
+  }
   if (!url.searchParams.has('dt_workspace'))
     url.searchParams.set('dt_workspace', url.searchParams.get('workspace') ?? workspaceId)
   return absolute ? url.toString() : `${url.pathname}${url.search}${url.hash}`

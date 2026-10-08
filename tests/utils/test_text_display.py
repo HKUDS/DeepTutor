@@ -18,3 +18,15 @@ def test_leaves_short_ascii_runs_alone() -> None:
 def test_empty_and_plain_text_passthrough() -> None:
     assert decode_escaped_unicode_for_display("") == ""
     assert decode_escaped_unicode_for_display("hello") == "hello"
+
+
+def test_joins_surrogate_pairs_into_one_character() -> None:
+    # ``json.dumps`` escapes characters outside the BMP as surrogate pairs.
+    escaped = "\\u597d\\u7684\\ud83d\\udc4d"
+    decoded = decode_escaped_unicode_for_display(escaped)
+    assert decoded == "好的👍"
+
+
+def test_leaves_runs_with_unpaired_surrogates_escaped() -> None:
+    text = "\\u4f60\\u597d\\ud83d"
+    assert decode_escaped_unicode_for_display(text) == text

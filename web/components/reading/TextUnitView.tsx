@@ -492,11 +492,15 @@ export function TextUnitView({
           the new value on press, which the silent spans never did), and the
           position is the header's to state, since that is the one line that is
           there in every render mode. What is left here is what you can *do*. */}
-      <div className="flex items-center justify-between gap-2 overflow-x-auto border-b border-[var(--border)] px-2 py-2 sm:px-3">
-        <ReaderDisplayControls
-          preferences={{ fontSize, lineWidth, serif, readerTheme, spreadMode }}
-          onChange={updatePreferences}
-        />
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--border)] px-2 py-2 sm:px-3">
+        {/* #1641: scroll display controls independently so a narrow reader
+            never hides the only way to reach the next section. */}
+        <div className="min-w-0 flex-1 overflow-x-auto">
+          <ReaderDisplayControls
+            preferences={{ fontSize, lineWidth, serif, readerTheme, spreadMode }}
+            onChange={updatePreferences}
+          />
+        </div>
         <div className="flex shrink-0 items-center gap-0.5">
           <PreferenceButton
             label={t("Previous {{unit}}", { unit: t(unitLabel(unit)) })}

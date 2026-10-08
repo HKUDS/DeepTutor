@@ -125,6 +125,9 @@ RESEARCH_BLOCK_TOOL_ALLOWLIST: frozenset[str] = frozenset(
         "rag",
         "web_search",
         "paper_search",
+        "preprint",
+        "research_audit",
+        "research_lit",
         "exec",
         "workspace_list",
         "workspace_read",
@@ -545,6 +548,7 @@ class ResearchPipeline:
 
         try:
             await self._prepare_pageindex_tools()
+            await self._prepare_research_providers(context)
             return await self._run_inner(
                 context=context,
                 topic=topic,
@@ -2072,6 +2076,31 @@ class ResearchPipeline:
         if self._pageindex_tool_context is not None:
             self.registry = self._pageindex_tool_context.registry
 
+    async def _prepare_research_providers(self, context):
+        from deeptutor.multi_user.paths import current_owner_id
+        from deeptutor.runtime.providers.scope import ToolScope
+        from deeptutor.runtime.providers.view import build_tool_view
+        from deeptutor.services.workspace.resources import current_resources
+        from deeptutor.tools.research_tools import scientific_mcp_tool
+
+        selected = current_resources().mcp
+        raw_filter = (context.metadata or {}).get("mcp_tools_filter")
+        scope = ToolScope(
+            owner_id=current_owner_id(),
+            session_id=context.session_id,
+            workspace_mcp=frozenset(selected) if selected is not None else None,
+            is_partner=(context.metadata or {}).get("source") == "partner",
+            caller_whitelist=frozenset(str(name) for name in raw_filter)
+            if isinstance(raw_filter, list)
+            else None,
+            exclusive_capability=bool(self._is_obsidian_kb),
+        )
+        view = await build_tool_view(
+            base_registry=self.registry, scope=scope, language=self.language
+        )
+        self.registry = view.registry
+        self._scientific_mcp_names = [tool.name for tool in view.pool if scientific_mcp_tool(tool)]
+
     def _pageindex_tool_names(self) -> list[str]:
         tool_context = getattr(self, "_pageindex_tool_context", None)
         return [tool.name for tool in tool_context.tools] if tool_context is not None else []
@@ -2098,6 +2127,7 @@ class ResearchPipeline:
             requested_tools=self.enabled_tools,
             optional_whitelist=RESEARCH_OPTIONAL_TOOLS,
             mount_flags=ToolMountFlags(
+                has_scientific_research=True,
                 has_kb=bool(
                     self.kb_name
                     and not self._is_obsidian_kb
@@ -2121,6 +2151,7 @@ class ResearchPipeline:
                 if name in RESEARCH_BLOCK_TOOL_ALLOWLIST and self._tool_in_registry(name)
             )
         names.extend(self._pageindex_tool_names())
+        names.extend(getattr(self, "_scientific_mcp_names", []))
         return list(dict.fromkeys(names))
 
     def _build_block_tool_schemas(
@@ -2165,6 +2196,11 @@ class ResearchPipeline:
             context,
             fallback_task_dir=task_dir,
         )
+        if tool_name == "preprint":
+            from deeptutor.services.llm.capabilities import supports_vision
+
+            kwargs["_vision_supported"] = supports_vision(self.binding, self.model)
+            kwargs["_research_registry"] = self.registry
         if tool_name == "rag":
             kwargs.setdefault("mode", "hybrid")
             if self.kb_name:
