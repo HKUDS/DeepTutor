@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, HttpUrl
 
 from deeptutor.services.courses import (
     COURSE_COLORS,
@@ -50,6 +52,10 @@ class SyllabusUnitRequest(BaseModel):
     title: str
     topics: list[str] = Field(default_factory=list)
     covered: bool = False
+    video_url: HttpUrl | None = None
+    slide_url: HttpUrl | None = None
+    video_status: Literal["available", "upcoming"] | None = None
+    slide_status: Literal["available", "upcoming"] | None = None
 
 
 class SetSyllabusRequest(BaseModel):
@@ -128,13 +134,17 @@ async def set_course_syllabus(
     service = get_course_service()
     try:
         course = service.get(course_id)
-        covered_by_id = {unit.id: unit.covered for unit in course.syllabus}
+        existing_by_id = {unit.id: unit for unit in course.syllabus}
         units = []
         for request_unit in payload.units:
             unit = request_unit.model_dump(exclude_unset=True)
             unit_id = str(unit.get("id") or "").strip()
-            if unit_id in covered_by_id:
-                unit["covered"] = covered_by_id[unit_id]
+            if unit_id in existing_by_id:
+                unit["covered"] = existing_by_id[unit_id].covered
+                existing = existing_by_id[unit_id]
+                for field in ("video_url", "slide_url", "video_status", "slide_status"):
+                    if field not in unit:
+                        unit[field] = getattr(existing, field)
             units.append(unit)
         course = service.set_syllabus(course_id, units)
     except CourseNotFoundError as exc:

@@ -5580,5 +5580,19 @@
   "No durable indexing run recorded yet.": "Chưa có lượt chạy lập chỉ mục bền vững nào được ghi lại.",
   "Approve this MCP origin for private-network connections": "Phê duyệt nguồn MCP này cho các kết nối mạng nội bộ riêng",
   "Use an administrator-approved private MCP origin": "Sử dụng nguồn MCP mạng riêng đã được quản trị viên phê duyệt",
-  "Only this scheme, host and port can use private Docker or LAN addresses. Metadata addresses remain blocked.": "Chỉ lược đồ, máy chủ và cổng này mới có thể sử dụng địa chỉ Docker nội bộ hoặc LAN. Địa chỉ siêu dữ liệu vẫn bị chặn."
+  "Only this scheme, host and port can use private Docker or LAN addresses. Metadata addresses remain blocked.": "Chỉ lược đồ, máy chủ và cổng này mới có thể sử dụng địa chỉ Docker nội bộ hoặc LAN. Địa chỉ siêu dữ liệu vẫn bị chặn.",
+  "Stanford publishes the schedule; DeepTutor authored the expanded Units and Concepts.": "Stanford công bố lịch học; DeepTutor biên soạn thêm các Unit và Concept.",
+  "Related transformer reference material. The GitHub PDF is a cheatsheet, not a copy of Stanford's lecture slides.": "Tài liệu tham khảo bổ sung về Transformer. PDF trên GitHub là cheatsheet, không phải bản sao slide bài giảng Stanford.",
+  "Stanford hosts the slide PDFs. The GitHub PDF is a separate cheatsheet, not a slide mirror.": "Stanford lưu trữ các PDF slide. PDF GitHub là cheatsheet riêng, không phải bản sao slide.",
+  "Open the Immersive Reading transcript when captions are available.": "Mở bản chép lời trong Immersive Reading khi video có phụ đề.",
+  "{{covered}} / {{total}} lectures completed": "Đã hoàn thành {{covered}} / {{total}} bài giảng",
+  "{{covered}} / {{total}} exams": "Đã hoàn thành {{covered}} / {{total}} kỳ thi",
+  "Preparing the transcript workspace…": "Đang chuẩn bị không gian đọc bản chép lời…",
+  "Could not open this video transcript.": "Không thể mở bản chép lời video này.",
+  "Open video on YouTube": "Mở video trên YouTube",
+  "Back to Immersive Reading": "Quay lại Immersive Reading",
+  "Open related cheatsheet (GitHub)": "Mở cheatsheet liên quan trên GitHub",
+  "Cheatsheet": "Cheatsheet",
+  "Open cheatsheet repository on GitHub (opens in new tab)": "Mở kho cheatsheet trên GitHub (mở trong tab mới)",
+  "Primary textbooks, lecture slide decks, YouTube recordings, and related study resources for {{courseName}}.": "Giáo trình chính, slide PDF, video YouTube và tài liệu học tập liên quan cho {{courseName}}."
 }

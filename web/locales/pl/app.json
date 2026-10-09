@@ -5596,5 +5596,19 @@
   "Slide có sẵn": "Slajdy dostępne",
   "Lịch học sắp tới": "Wkrótce",
   "Thi giữa kỳ": "Egzamin śródsemestralny",
-  "Thi kết thúc môn": "Egzamin końcowy"
+  "Thi kết thúc môn": "Egzamin końcowy",
+  "Stanford publishes the schedule; DeepTutor authored the expanded Units and Concepts.": "Stanford publikuje harmonogram; rozszerzone Units i Concepts opracował DeepTutor.",
+  "Related transformer reference material. The GitHub PDF is a cheatsheet, not a copy of Stanford's lecture slides.": "Dodatkowe materiały referencyjne o transformerach. PDF z GitHub to ściąga, a nie kopia slajdów Stanforda.",
+  "Stanford hosts the slide PDFs. The GitHub PDF is a separate cheatsheet, not a slide mirror.": "Pliki PDF ze slajdami udostępnia Stanford. PDF z GitHub to osobna ściąga, a nie kopia slajdów.",
+  "Open the Immersive Reading transcript when captions are available.": "Otwórz transkrypcję w Immersive Reading, gdy dostępne są napisy.",
+  "{{covered}} / {{total}} lectures completed": "Ukończone wykłady: {{covered}} / {{total}}",
+  "{{covered}} / {{total}} exams": "Ukończone egzaminy: {{covered}} / {{total}}",
+  "Preparing the transcript workspace…": "Przygotowywanie przestrzeni transkrypcji…",
+  "Could not open this video transcript.": "Nie udało się otworzyć transkrypcji tego filmu.",
+  "Open video on YouTube": "Otwórz film w YouTube",
+  "Back to Immersive Reading": "Wróć do Immersive Reading",
+  "Open related cheatsheet (GitHub)": "Otwórz powiązaną ściągę (GitHub)",
+  "Cheatsheet": "Ściąga",
+  "Open cheatsheet repository on GitHub (opens in new tab)": "Otwórz repozytorium ściągi w GitHub (nowa karta)",
+  "Primary textbooks, lecture slide decks, YouTube recordings, and related study resources for {{courseName}}.": "Główne podręczniki, pliki PDF ze slajdami, nagrania na YouTube i powiązane materiały do nauki dla kursu {{courseName}}."
 }

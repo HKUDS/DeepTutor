@@ -5580,5 +5580,19 @@
   "Slide có sẵn": "课件已发布",
   "Lịch học sắp tới": "即将开始",
   "Thi giữa kỳ": "期中考试",
-  "Thi kết thúc môn": "期末考试"
+  "Thi kết thúc môn": "期末考试",
+  "Stanford publishes the schedule; DeepTutor authored the expanded Units and Concepts.": "Stanford 发布课程安排；扩展的 Unit 和 Concept 由 DeepTutor 编写。",
+  "Related transformer reference material. The GitHub PDF is a cheatsheet, not a copy of Stanford's lecture slides.": "相关的 Transformer 参考资料。GitHub PDF 是速查表，并非 Stanford 讲义的副本。",
+  "Stanford hosts the slide PDFs. The GitHub PDF is a separate cheatsheet, not a slide mirror.": "讲义 PDF 由 Stanford 托管。GitHub PDF 是独立的速查表，并非讲义镜像。",
+  "Open the Immersive Reading transcript when captions are available.": "字幕可用时，在沉浸式阅读中打开视频文字稿。",
+  "{{covered}} / {{total}} lectures completed": "已完成 {{covered}} / {{total}} 节讲座",
+  "{{covered}} / {{total}} exams": "已完成 {{covered}} / {{total}} 场考试",
+  "Preparing the transcript workspace…": "正在准备文字稿工作区…",
+  "Could not open this video transcript.": "无法打开此视频文字稿。",
+  "Open video on YouTube": "在 YouTube 上打开视频",
+  "Back to Immersive Reading": "返回沉浸式阅读",
+  "Open related cheatsheet (GitHub)": "打开相关速查表（GitHub）",
+  "Cheatsheet": "速查表",
+  "Open cheatsheet repository on GitHub (opens in new tab)": "在 GitHub 上打开速查表仓库（在新标签页中打开）",
+  "Primary textbooks, lecture slide decks, YouTube recordings, and related study resources for {{courseName}}.": "课程 {{courseName}} 的主要教材、讲义 PDF、YouTube 录制视频及相关学习资源。"
 }

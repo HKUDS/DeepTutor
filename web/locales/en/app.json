@@ -5580,5 +5580,19 @@
   "Slide có sẵn": "Slide available",
   "Lịch học sắp tới": "Upcoming",
   "Thi giữa kỳ": "Midterm Exam",
-  "Thi kết thúc môn": "Final Exam"
+  "Thi kết thúc môn": "Final Exam",
+  "Stanford publishes the schedule; DeepTutor authored the expanded Units and Concepts.": "Stanford publishes the schedule; DeepTutor authored the expanded Units and Concepts.",
+  "Related transformer reference material. The GitHub PDF is a cheatsheet, not a copy of Stanford's lecture slides.": "Related transformer reference material. The GitHub PDF is a cheatsheet, not a copy of Stanford's lecture slides.",
+  "Stanford hosts the slide PDFs. The GitHub PDF is a separate cheatsheet, not a slide mirror.": "Stanford hosts the slide PDFs. The GitHub PDF is a separate cheatsheet, not a slide mirror.",
+  "Open the Immersive Reading transcript when captions are available.": "Open the Immersive Reading transcript when captions are available.",
+  "{{covered}} / {{total}} lectures completed": "{{covered}} / {{total}} lectures completed",
+  "{{covered}} / {{total}} exams": "{{covered}} / {{total}} exams",
+  "Preparing the transcript workspace…": "Preparing the transcript workspace…",
+  "Could not open this video transcript.": "Could not open this video transcript.",
+  "Open video on YouTube": "Open video on YouTube",
+  "Back to Immersive Reading": "Back to Immersive Reading",
+  "Open related cheatsheet (GitHub)": "Open related cheatsheet (GitHub)",
+  "Cheatsheet": "Cheatsheet",
+  "Open cheatsheet repository on GitHub (opens in new tab)": "Open cheatsheet repository on GitHub (opens in new tab)",
+  "Primary textbooks, lecture slide decks, YouTube recordings, and related study resources for {{courseName}}.": "Primary textbooks, lecture slide decks, YouTube recordings, and related study resources for {{courseName}}."
 }

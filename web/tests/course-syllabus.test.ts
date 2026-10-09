@@ -7,6 +7,7 @@ import {
   unitsToText,
   textToUnits,
   parseLectureTitle,
+  getSyllabusProgress,
 } from "../components/courses/CourseSyllabus";
 import type { SyllabusUnit } from "../lib/courses-api";
 
@@ -73,6 +74,10 @@ test("getLectureMedia resolves Lecture 1 video and slide links", () => {
     title: "Lecture 1 (25/09/2026): Transformers [Video có sẵn]",
     topics: [],
     covered: false,
+    video_url: "https://www.youtube.com/watch?v=114i2Kz-LZA",
+    slide_url: "https://cme295.stanford.edu/slides/fall26-cme295-lecture1.pdf",
+    video_status: "available",
+    slide_status: "available",
   };
   const media = getLectureMedia(unit);
   assert.equal(media.videoUrl, "https://www.youtube.com/watch?v=114i2Kz-LZA");
@@ -81,12 +86,8 @@ test("getLectureMedia resolves Lecture 1 video and slide links", () => {
     "https://cme295.stanford.edu/slides/fall26-cme295-lecture1.pdf",
   );
   assert.equal(
-    media.mirrorSlideUrl,
+    media.cheatsheetUrl,
     "https://raw.githubusercontent.com/afshinea/stanford-cme-295-transformers-large-language-models/main/en/cheatsheet-transformers-large-language-models.pdf",
-  );
-  assert.equal(
-    media.readingWorkspaceUrl,
-    "/learning/reading/rw_3f8b01ffbee24ecf9ad3f21e1d2f11ae",
   );
   assert.equal(media.isVideoUpcoming, false);
 });
@@ -98,6 +99,9 @@ test("getLectureMedia resolves Lecture 2 slide and upcoming video badge", () => 
     title: "Lecture 2 (02/10/2026): Large Language Models [Slide có sẵn]",
     topics: [],
     covered: false,
+    slide_url: "https://cme295.stanford.edu/slides/fall26-cme295-lecture2.pdf",
+    video_status: "upcoming",
+    slide_status: "available",
   };
   const media = getLectureMedia(unit);
   assert.equal(media.videoUrl, undefined);
@@ -116,6 +120,8 @@ test("getLectureMedia resolves upcoming slide status for Lecture 3 without broke
     title: "Lecture 3 (09/10/2026): Training & Scaling Laws",
     topics: [],
     covered: false,
+    video_status: "upcoming",
+    slide_status: "upcoming",
   };
   const media = getLectureMedia(unit);
   assert.equal(media.slideUrl, undefined);
@@ -123,7 +129,7 @@ test("getLectureMedia resolves upcoming slide status for Lecture 3 without broke
   assert.equal(media.isSlideUpcoming, true);
 });
 
-test("getLectureMedia falls back by title matching when unit.id is generic", () => {
+test("getLectureMedia does not guess media from lecture title", () => {
   const unit: SyllabusUnit = {
     id: "random_id_123",
     position: 0,
@@ -132,11 +138,41 @@ test("getLectureMedia falls back by title matching when unit.id is generic", () 
     covered: false,
   };
   const media = getLectureMedia(unit);
-  assert.equal(media.videoUrl, "https://www.youtube.com/watch?v=114i2Kz-LZA");
-  assert.equal(
-    media.slideUrl,
-    "https://cme295.stanford.edu/slides/fall26-cme295-lecture1.pdf",
-  );
+  assert.equal(media.videoUrl, undefined);
+  assert.equal(media.slideUrl, undefined);
+  assert.equal(media.isVideoUpcoming, false);
+  assert.equal(media.isSlideUpcoming, false);
+});
+
+test("syllabus progress reports lectures and exams separately", () => {
+  const units: SyllabusUnit[] = [
+    ...Array.from({ length: 9 }, (_, index) => ({
+      id: `lecture_${index + 1}`,
+      position: index,
+      title: `Lecture ${index + 1}`,
+      topics: [],
+      covered: index < 2,
+    })),
+    {
+      id: "midterm_exam",
+      position: 9,
+      title: "Midterm Exam",
+      topics: [],
+      covered: true,
+    },
+    {
+      id: "final_exam",
+      position: 10,
+      title: "Final Exam",
+      topics: [],
+      covered: false,
+    },
+  ];
+
+  assert.deepEqual(getSyllabusProgress(units), {
+    lectures: { covered: 2, total: 9 },
+    exams: { covered: 1, total: 2 },
+  });
 });
 
 test("unitsToText and textToUnits preserve IDs and topics", () => {

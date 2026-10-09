@@ -3,12 +3,51 @@ import { describe, expect, it } from "vitest";
 
 import CourseMaterials from "@/components/courses/CourseMaterials";
 import { initI18n } from "@/i18n/init";
+import type { StudyCourse } from "@/lib/courses-api";
 
 initI18n("en");
 
 describe("CourseMaterials", () => {
-  it("renders official syllabus link, slides, videos, cheatsheet, and textbook", () => {
-    render(<CourseMaterials />);
+  it("does not show Stanford materials for an unrelated course", () => {
+    render(
+      <CourseMaterials
+        course={{ id: "course_other", name: "DeBERTa fine-tuning" } as StudyCourse}
+      />,
+    );
+    expect(
+      screen.queryByRole("link", { name: /official syllabus website/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders syllabus media from course data and labels the GitHub PDF as a cheatsheet", () => {
+    const course = {
+      id: "course_stanford",
+      name: "Stanford CME 295",
+      syllabus: [
+        {
+          id: "lecture_1_transformers",
+          position: 0,
+          title: "Lecture 1: Transformers",
+          topics: [],
+          covered: false,
+          video_url: "https://www.youtube.com/watch?v=abc12345678",
+          slide_url: "https://example.org/lecture-one.pdf",
+          video_status: "available",
+          slide_status: "available",
+        },
+        {
+          id: "lecture_2_llms",
+          position: 1,
+          title: "Lecture 2: LLMs",
+          topics: [],
+          covered: false,
+          slide_url: "https://example.org/lecture-two.pdf",
+          video_status: "upcoming",
+          slide_status: "available",
+        },
+      ],
+    } as unknown as StudyCourse;
+    render(<CourseMaterials course={course} />);
 
     // 1. Official Syllabus Website link
     const syllabusLink = screen.getByRole("link", {
@@ -19,45 +58,34 @@ describe("CourseMaterials", () => {
       "https://cme295.stanford.edu/syllabus/",
     );
 
-    // 2. Lecture Slides (PDF) directory & fallback mirrors
-    expect(screen.getByText("fall26-cme295-lecture1.pdf")).toBeInTheDocument();
-    expect(screen.getByText("fall26-cme295-lecture2.pdf")).toBeInTheDocument();
-    const mirrorLinks = screen.getAllByRole("link", {
-      name: /GitHub mirror/i,
-    });
-    expect(mirrorLinks.length).toBeGreaterThanOrEqual(1);
-    expect(mirrorLinks[0]).toHaveAttribute(
+    // 2. Slide and cheatsheet links come from the syllabus and reference data.
+    const slideLinks = screen.getAllByRole("link", { name: /Download or view/i });
+    expect(slideLinks[0]).toHaveAttribute("href", "https://example.org/lecture-one.pdf");
+    expect(slideLinks[1]).toHaveAttribute("href", "https://example.org/lecture-two.pdf");
+    const cheatsheetLinks = screen.getAllByRole("link", { name: /Cheatsheet/i });
+    expect(cheatsheetLinks.length).toBeGreaterThanOrEqual(2);
+    expect(cheatsheetLinks[0]).toHaveAttribute(
       "href",
       "https://raw.githubusercontent.com/afshinea/stanford-cme-295-transformers-large-language-models/main/en/cheatsheet-transformers-large-language-models.pdf",
     );
-    const readOnDeepTutorLink = screen.getByRole("link", {
-      name: /Read on DeepTutor/i,
-    });
-    expect(readOnDeepTutorLink).toHaveAttribute(
-      "href",
-      "/learning/reading/rw_3f8b01ffbee24ecf9ad3f21e1d2f11ae",
-    );
-    expect(
-      screen.getByText(
-        /If Stanford server times out, use GitHub mirror or DeepTutor reading workspace/i,
-      ),
-    ).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /GitHub mirror/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/DeepTutor authored the expanded Units and Concepts/i)).toBeInTheDocument();
 
     // 3. Video & Lectures: YouTube ID & Timed Transcript
-    expect(screen.getByText(/YouTube: 114i2Kz-LZA/i)).toBeInTheDocument();
+    expect(screen.getByText(/YouTube: abc12345678/i)).toBeInTheDocument();
     const youtubeLink = screen.getByRole("link", {
       name: /YouTube \(opens in new tab\)/i,
     });
     expect(youtubeLink).toHaveAttribute(
       "href",
-      "https://www.youtube.com/watch?v=114i2Kz-LZA",
+      "https://www.youtube.com/watch?v=abc12345678",
     );
     const transcriptLink = screen.getByRole("link", {
       name: /timed media transcript/i,
     });
     expect(transcriptLink).toHaveAttribute(
       "href",
-      "/learning/watching?video=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3D114i2Kz-LZA",
+      "/learning/watching?video=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3Dabc12345678&title=Lecture%201%3A%20Transformers",
     );
 
     // 4. VIP Cheatsheet & Code
@@ -70,7 +98,7 @@ describe("CourseMaterials", () => {
     );
 
     const githubLink = screen.getByRole("link", {
-      name: /VIP cheatsheet and code repository on GitHub/i,
+      name: /Open cheatsheet repository on GitHub/i,
     });
     expect(githubLink).toHaveAttribute(
       "href",

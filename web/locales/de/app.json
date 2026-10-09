@@ -5580,5 +5580,19 @@
   "Slide có sẵn": "Folien verfügbar",
   "Lịch học sắp tới": "Demnächst",
   "Thi giữa kỳ": "Zwischenprüfung",
-  "Thi kết thúc môn": "Abschlussprüfung"
+  "Thi kết thúc môn": "Abschlussprüfung",
+  "Stanford publishes the schedule; DeepTutor authored the expanded Units and Concepts.": "Stanford veröffentlicht den Zeitplan; DeepTutor hat die erweiterten Units und Concepts erstellt.",
+  "Related transformer reference material. The GitHub PDF is a cheatsheet, not a copy of Stanford's lecture slides.": "Ergänzendes Referenzmaterial zu Transformern. Das GitHub-PDF ist ein Spickzettel, keine Kopie der Stanford-Folien.",
+  "Stanford hosts the slide PDFs. The GitHub PDF is a separate cheatsheet, not a slide mirror.": "Stanford hostet die Folien-PDFs. Das GitHub-PDF ist ein separater Spickzettel und kein Folienmirror.",
+  "Open the Immersive Reading transcript when captions are available.": "Das Transkript in Immersive Reading öffnen, sofern Untertitel verfügbar sind.",
+  "{{covered}} / {{total}} lectures completed": "{{covered}} / {{total}} Vorlesungen abgeschlossen",
+  "{{covered}} / {{total}} exams": "{{covered}} / {{total}} Prüfungen",
+  "Preparing the transcript workspace…": "Transkript-Arbeitsbereich wird vorbereitet…",
+  "Could not open this video transcript.": "Das Videotranskript konnte nicht geöffnet werden.",
+  "Open video on YouTube": "Video auf YouTube öffnen",
+  "Back to Immersive Reading": "Zurück zu Immersive Reading",
+  "Open related cheatsheet (GitHub)": "Zugehörigen Spickzettel auf GitHub öffnen",
+  "Cheatsheet": "Spickzettel",
+  "Open cheatsheet repository on GitHub (opens in new tab)": "Spickzettel-Repository auf GitHub öffnen (neuer Tab)",
+  "Primary textbooks, lecture slide decks, YouTube recordings, and related study resources for {{courseName}}.": "Zentrale Lehrbücher, Folien-PDFs, YouTube-Aufzeichnungen und ergänzende Lernmaterialien für {{courseName}}."
 }

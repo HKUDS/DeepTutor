@@ -5958,5 +5958,19 @@
   "Slide có sẵn": "Diapositives disponibles",
   "Lịch học sắp tới": "À venir",
   "Thi giữa kỳ": "Examen partiel",
-  "Thi kết thúc môn": "Examen final"
+  "Thi kết thúc môn": "Examen final",
+  "Stanford publishes the schedule; DeepTutor authored the expanded Units and Concepts.": "Stanford publie le calendrier ; DeepTutor a rédigé les unités et concepts détaillés.",
+  "Related transformer reference material. The GitHub PDF is a cheatsheet, not a copy of Stanford's lecture slides.": "Documentation de référence sur les transformers. Le PDF GitHub est une fiche mémo, pas une copie des diapositives de Stanford.",
+  "Stanford hosts the slide PDFs. The GitHub PDF is a separate cheatsheet, not a slide mirror.": "Stanford héberge les PDF des diapositives. Le PDF GitHub est une fiche mémo distincte, pas un miroir des diapositives.",
+  "Open the Immersive Reading transcript when captions are available.": "Ouvrir la transcription dans Immersive Reading lorsque des sous-titres sont disponibles.",
+  "{{covered}} / {{total}} lectures completed": "{{covered}} / {{total}} cours terminés",
+  "{{covered}} / {{total}} exams": "{{covered}} / {{total}} examens",
+  "Preparing the transcript workspace…": "Préparation de l’espace de transcription…",
+  "Could not open this video transcript.": "Impossible d’ouvrir la transcription de cette vidéo.",
+  "Open video on YouTube": "Ouvrir la vidéo sur YouTube",
+  "Back to Immersive Reading": "Retour à Immersive Reading",
+  "Open related cheatsheet (GitHub)": "Ouvrir la fiche mémo associée (GitHub)",
+  "Cheatsheet": "Fiche mémo",
+  "Open cheatsheet repository on GitHub (opens in new tab)": "Ouvrir le dépôt de fiches mémo sur GitHub (nouvel onglet)",
+  "Primary textbooks, lecture slide decks, YouTube recordings, and related study resources for {{courseName}}.": "Manuels principaux, PDF des diapositives, enregistrements YouTube et ressources d’étude associées pour {{courseName}}."
 }

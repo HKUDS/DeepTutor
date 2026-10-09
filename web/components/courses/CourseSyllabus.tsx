@@ -126,57 +126,25 @@ export function parseUnitTopic(rawTopic: string): ParsedUnitTopic {
 export interface LectureMediaInfo {
   videoUrl?: string;
   slideUrl?: string;
-  mirrorSlideUrl?: string;
+  cheatsheetUrl?: string;
   readingWorkspaceUrl?: string;
   isVideoUpcoming?: boolean;
   isSlideUpcoming?: boolean;
 }
 
-const KNOWN_LECTURE_MEDIA: Record<string, LectureMediaInfo> = {
+const KNOWN_LECTURE_RESOURCES: Record<
+  string,
+  Pick<LectureMediaInfo, "cheatsheetUrl" | "readingWorkspaceUrl">
+> = {
   lecture_1_transformers: {
-    videoUrl: "https://www.youtube.com/watch?v=114i2Kz-LZA",
-    slideUrl: "https://cme295.stanford.edu/slides/fall26-cme295-lecture1.pdf",
-    mirrorSlideUrl:
+    cheatsheetUrl:
       "https://raw.githubusercontent.com/afshinea/stanford-cme-295-transformers-large-language-models/main/en/cheatsheet-transformers-large-language-models.pdf",
     readingWorkspaceUrl:
       "/learning/reading/rw_3f8b01ffbee24ecf9ad3f21e1d2f11ae",
-    isVideoUpcoming: false,
-    isSlideUpcoming: false,
   },
   lecture_2_llms: {
-    slideUrl: "https://cme295.stanford.edu/slides/fall26-cme295-lecture2.pdf",
-    mirrorSlideUrl:
+    cheatsheetUrl:
       "https://raw.githubusercontent.com/afshinea/stanford-cme-295-transformers-large-language-models/main/en/cheatsheet-transformers-large-language-models.pdf",
-    isVideoUpcoming: true,
-    isSlideUpcoming: false,
-  },
-  lecture_3_training: {
-    isVideoUpcoming: true,
-    isSlideUpcoming: true,
-  },
-  lecture_4_rl: {
-    isVideoUpcoming: true,
-    isSlideUpcoming: true,
-  },
-  lecture_5_systems: {
-    isVideoUpcoming: true,
-    isSlideUpcoming: true,
-  },
-  lecture_6_agents: {
-    isVideoUpcoming: true,
-    isSlideUpcoming: true,
-  },
-  lecture_7_eval: {
-    isVideoUpcoming: true,
-    isSlideUpcoming: true,
-  },
-  lecture_8_diffusion: {
-    isVideoUpcoming: true,
-    isSlideUpcoming: true,
-  },
-  lecture_9_trending: {
-    isVideoUpcoming: true,
-    isSlideUpcoming: true,
   },
 };
 
@@ -184,47 +152,23 @@ export function getLectureMedia(unit: SyllabusUnit): LectureMediaInfo {
   const explicit = unit as unknown as {
     video_url?: string;
     slide_url?: string;
-    mirror_slide_url?: string;
     reading_workspace_url?: string;
     video_status?: "available" | "upcoming";
     slide_status?: "available" | "upcoming";
     media?: {
       video_url?: string;
       slide_url?: string;
-      mirror_slide_url?: string;
+      cheatsheet_url?: string;
       reading_workspace_url?: string;
       video_status?: string;
       slide_status?: string;
     };
   };
 
-  let known = KNOWN_LECTURE_MEDIA[unit.id];
+  const known = KNOWN_LECTURE_RESOURCES[unit.id];
 
-  if (!known) {
-    const lectureNumMatch = unit.title.match(/Lecture\s+(\d+)/i);
-    if (lectureNumMatch) {
-      const num = parseInt(lectureNumMatch[1], 10);
-      if (num === 1) {
-        known = KNOWN_LECTURE_MEDIA["lecture_1_transformers"];
-      } else if (num === 2) {
-        known = KNOWN_LECTURE_MEDIA["lecture_2_llms"];
-      } else if (num >= 3 && num <= 9) {
-        known = {
-          isVideoUpcoming: true,
-          isSlideUpcoming: true,
-        };
-      }
-    }
-  }
-
-  const videoUrl =
-    explicit.video_url || explicit.media?.video_url || known?.videoUrl;
-  const slideUrl =
-    explicit.slide_url || explicit.media?.slide_url || known?.slideUrl;
-  const mirrorSlideUrl =
-    explicit.mirror_slide_url ||
-    explicit.media?.mirror_slide_url ||
-    known?.mirrorSlideUrl;
+  const videoUrl = explicit.video_url || explicit.media?.video_url;
+  const slideUrl = explicit.slide_url || explicit.media?.slide_url;
   const readingWorkspaceUrl =
     explicit.reading_workspace_url ||
     explicit.media?.reading_workspace_url ||
@@ -239,8 +183,6 @@ export function getLectureMedia(unit: SyllabusUnit): LectureMediaInfo {
       explicit.media?.video_status === "upcoming"
     ) {
       isVideoUpcoming = true;
-    } else if (known?.isVideoUpcoming !== undefined) {
-      isVideoUpcoming = known.isVideoUpcoming;
     } else if (
       /slide\s*(?:có\s*sẵn|available)|lịch\s*học|sắp\s*tới|upcoming/i.test(unit.title)
     ) {
@@ -255,8 +197,6 @@ export function getLectureMedia(unit: SyllabusUnit): LectureMediaInfo {
       explicit.media?.slide_status === "upcoming"
     ) {
       isSlideUpcoming = true;
-    } else if (known?.isSlideUpcoming !== undefined) {
-      isSlideUpcoming = known.isSlideUpcoming;
     } else if (/lịch\s*học|sắp\s*tới|upcoming/i.test(unit.title)) {
       isSlideUpcoming = true;
     }
@@ -265,10 +205,29 @@ export function getLectureMedia(unit: SyllabusUnit): LectureMediaInfo {
   return {
     videoUrl,
     slideUrl,
-    mirrorSlideUrl,
+    cheatsheetUrl: explicit.media?.cheatsheet_url || known?.cheatsheetUrl,
     readingWorkspaceUrl,
     isVideoUpcoming,
     isSlideUpcoming,
+  };
+}
+
+export function getSyllabusProgress(units: SyllabusUnit[]) {
+  const isExam = (unit: SyllabusUnit) =>
+    /exam|midterm|final|thi\s*(?:giữa|cuối)?\s*kỳ|kỳ\s*thi/i.test(
+      `${unit.id} ${unit.title}`,
+    );
+  const exams = units.filter(isExam);
+  const lectures = units.filter((unit) => !isExam(unit));
+  return {
+    lectures: {
+      covered: lectures.filter((unit) => unit.covered).length,
+      total: lectures.length,
+    },
+    exams: {
+      covered: exams.filter((unit) => unit.covered).length,
+      total: exams.length,
+    },
   };
 }
 
@@ -402,6 +361,7 @@ export default function CourseSyllabus({
     units: [],
   };
   const units = syllabus.units ?? [];
+  const progress = getSyllabusProgress(units);
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
@@ -515,13 +475,13 @@ export default function CourseSyllabus({
           </h2>
           <p className="mt-0.5 text-[11.5px] leading-relaxed text-[var(--muted-foreground)]">
             {syllabus.total > 0
-              ? t(
-                  "{{covered}} / {{total}} lectures completed (Course -> Lecture -> Unit -> Concepts)",
-                  {
-                    covered: syllabus.covered,
-                    total: syllabus.total,
-                  },
-                )
+              ? <>
+                  {t("{{covered}} / {{total}} lectures completed", progress.lectures)}
+                  {progress.exams.total > 0
+                    ? ` · ${t("{{covered}} / {{total}} exams", progress.exams)}`
+                    : null}
+                  {" (Course -> Lecture -> Unit -> Concepts)"}
+                </>
               : t(
                   "What this course should cover. Without it, progress has no denominator.",
                 )}
@@ -608,7 +568,7 @@ export default function CourseSyllabus({
             const {
               videoUrl,
               slideUrl,
-              mirrorSlideUrl,
+              cheatsheetUrl,
               readingWorkspaceUrl,
               isVideoUpcoming,
               isSlideUpcoming,
@@ -722,16 +682,16 @@ export default function CourseSyllabus({
                             />
                             <span>{t("View Slide PDF")}</span>
                           </a>
-                          {mirrorSlideUrl ? (
+                          {cheatsheetUrl ? (
                             <a
-                              href={mirrorSlideUrl}
+                              href={cheatsheetUrl}
                               target="_blank"
                               rel="noopener noreferrer"
                               onClick={(e) => e.stopPropagation()}
                               className="inline-flex items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--card)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:bg-[var(--secondary)] transition-colors"
-                              aria-label={t("Mirror PDF (GitHub)")}
+                              aria-label={t("Open related cheatsheet (GitHub)")}
                             >
-                              <span>{t("Mirror PDF")}</span>
+                              <span>{t("Cheatsheet")}</span>
                             </a>
                           ) : null}
                         </div>
@@ -875,15 +835,15 @@ export default function CourseSyllabus({
                               <span>{t("View Slide PDF")}</span>
                             </a>
                           ) : null}
-                          {mirrorSlideUrl ? (
+                          {cheatsheetUrl ? (
                             <a
-                              href={mirrorSlideUrl}
+                              href={cheatsheetUrl}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] px-2.5 py-1 text-[11.5px] font-medium text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:bg-[var(--secondary)] transition-colors"
                             >
                               <FileText size={13} aria-hidden="true" />
-                              <span>{t("Mirror PDF (GitHub)")}</span>
+                              <span>{t("Cheatsheet")}</span>
                             </a>
                           ) : null}
                           {readingWorkspaceUrl ? (

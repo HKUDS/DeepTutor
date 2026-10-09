@@ -323,6 +323,46 @@ def test_put_syllabus_preserves_covered_for_existing_id(
     assert unit["covered"] is True
 
 
+def test_syllabus_video_url_survives_storage_and_title_edit(
+    course_service: CourseService,
+) -> None:
+    video_url = "https://www.youtube.com/watch?v=nvBXf7s7vTI"
+    slide_url = "https://example.org/lecture.pdf"
+    with TestClient(_build_app()) as client:
+        course = _create_course(client)
+        syllabus_url = f"/api/courses/{course['id']}/syllabus"
+        created = client.put(
+            syllabus_url,
+            json={
+                "units": [
+                    {
+                        "id": "lecture_trainer",
+                        "title": "Trainer",
+                        "video_url": video_url,
+                        "slide_url": slide_url,
+                        "video_status": "available",
+                        "slide_status": "available",
+                    }
+                ]
+            },
+        )
+        edited = client.put(
+            syllabus_url,
+            json={"units": [{"id": "lecture_trainer", "title": "Trainer API"}]},
+        )
+        listed = client.get("/api/courses").json()["courses"]
+
+    assert created.status_code == edited.status_code == 200
+    assert created.json()["course"]["syllabus"][0]["video_url"] == video_url
+    assert edited.json()["course"]["syllabus"][0]["video_url"] == video_url
+    assert listed[0]["syllabus"][0]["video_url"] == video_url
+    for course_payload in (created.json()["course"], edited.json()["course"], listed[0]):
+        unit = course_payload["syllabus"][0]
+        assert unit["slide_url"] == slide_url
+        assert unit["video_status"] == "available"
+        assert unit["slide_status"] == "available"
+
+
 def test_patch_syllabus_unit_toggles_and_unknown_is_404(
     course_service: CourseService,
 ) -> None:

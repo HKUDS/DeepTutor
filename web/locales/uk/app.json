@@ -5596,5 +5596,19 @@
   "Slide có sẵn": "Слайди доступні",
   "Lịch học sắp tới": "Незабаром",
   "Thi giữa kỳ": "Проміжний іспит",
-  "Thi kết thúc môn": "Підсумковий іспит"
+  "Thi kết thúc môn": "Підсумковий іспит",
+  "Stanford publishes the schedule; DeepTutor authored the expanded Units and Concepts.": "Stanford публікує розклад; розширені Unit і Concept уклав DeepTutor.",
+  "Related transformer reference material. The GitHub PDF is a cheatsheet, not a copy of Stanford's lecture slides.": "Додатковий довідник із трансформерів. PDF на GitHub — це шпаргалка, а не копія слайдів Stanford.",
+  "Stanford hosts the slide PDFs. The GitHub PDF is a separate cheatsheet, not a slide mirror.": "PDF зі слайдами розміщує Stanford. PDF на GitHub — окрема шпаргалка, а не дзеркало слайдів.",
+  "Open the Immersive Reading transcript when captions are available.": "Відкрити транскрипт в Immersive Reading, якщо доступні субтитри.",
+  "{{covered}} / {{total}} lectures completed": "Завершено лекцій: {{covered}} / {{total}}",
+  "{{covered}} / {{total}} exams": "Завершено іспитів: {{covered}} / {{total}}",
+  "Preparing the transcript workspace…": "Підготовка робочого простору транскрипту…",
+  "Could not open this video transcript.": "Не вдалося відкрити транскрипт цього відео.",
+  "Open video on YouTube": "Відкрити відео на YouTube",
+  "Back to Immersive Reading": "Назад до Immersive Reading",
+  "Open related cheatsheet (GitHub)": "Відкрити пов’язану шпаргалку (GitHub)",
+  "Cheatsheet": "Шпаргалка",
+  "Open cheatsheet repository on GitHub (opens in new tab)": "Відкрити репозиторій шпаргалок на GitHub (у новій вкладці)",
+  "Primary textbooks, lecture slide decks, YouTube recordings, and related study resources for {{courseName}}.": "Основні підручники, PDF зі слайдами, записи на YouTube та інші навчальні матеріали для курсу {{courseName}}."
 }

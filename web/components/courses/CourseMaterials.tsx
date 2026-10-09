@@ -22,7 +22,7 @@ export interface LectureSlideItem {
   title: string;
   filename: string;
   url: string;
-  mirrorUrl?: string;
+  cheatsheetUrl?: string;
   readingWorkspaceUrl?: string;
   description?: string;
 }
@@ -73,50 +73,15 @@ const DEFAULT_CME295_MATERIALS: CourseMaterialsData = {
   syllabusTitle: "Official Syllabus Website",
   syllabusDescription:
     "Course schedule, grading policies, lecture calendar, and prerequisites at Stanford CME 295.",
-  slides: [
-    {
-      id: "lecture-1-slide",
-      lectureNumber: 1,
-      title: "Lecture 1: Transformers & Self-Attention",
-      filename: "fall26-cme295-lecture1.pdf",
-      url: "https://cme295.stanford.edu/slides/fall26-cme295-lecture1.pdf",
-      mirrorUrl:
-        "https://raw.githubusercontent.com/afshinea/stanford-cme-295-transformers-large-language-models/main/en/cheatsheet-transformers-large-language-models.pdf",
-      readingWorkspaceUrl:
-        "/learning/reading/rw_3f8b01ffbee24ecf9ad3f21e1d2f11ae",
-      description: "Architecture breakdown, multi-head attention, and layer normalization.",
-    },
-    {
-      id: "lecture-2-slide",
-      lectureNumber: 2,
-      title: "Lecture 2: Large Language Models & Scaling",
-      filename: "fall26-cme295-lecture2.pdf",
-      url: "https://cme295.stanford.edu/slides/fall26-cme295-lecture2.pdf",
-      mirrorUrl:
-        "https://raw.githubusercontent.com/afshinea/stanford-cme-295-transformers-large-language-models/main/en/cheatsheet-transformers-large-language-models.pdf",
-      description: "Compute scaling laws, tokenization strategies, and autoregressive training.",
-    },
-  ],
-  videos: [
-    {
-      id: "lecture-1-video",
-      lectureNumber: 1,
-      title: "Lecture 1: Transformers",
-      youtubeId: "114i2Kz-LZA",
-      youtubeUrl: "https://www.youtube.com/watch?v=114i2Kz-LZA",
-      transcriptUrl:
-        "/learning/watching?video=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3D114i2Kz-LZA",
-      description:
-        "Full 1h 44m lecture recording with interactive synchronized transcript.",
-    },
-  ],
+  slides: [],
+  videos: [],
   cheatsheetUrl:
     "https://github.com/afshinea/stanford-cme-295-transformers-large-language-models",
   cheatsheetPdfUrl:
     "https://raw.githubusercontent.com/afshinea/stanford-cme-295-transformers-large-language-models/main/en/cheatsheet-transformers-large-language-models.pdf",
-  cheatsheetTitle: "VIP Cheatsheet & Code",
+  cheatsheetTitle: "Transformers Cheatsheet",
   cheatsheetDescription:
-    "Official GitHub repository with transformer cheatsheets, PyTorch implementations, and lab exercises.",
+    "Related transformer reference material. The GitHub PDF is a cheatsheet, not a copy of Stanford's lecture slides.",
   textbookUrl: "https://superstudy.guide",
   textbookTitle: "Super Study Guide",
   textbookDescription:
@@ -135,12 +100,53 @@ export default function CourseMaterials({
     return {
       ...DEFAULT_CME295_MATERIALS,
       ...customMaterials,
+      slides:
+        customMaterials?.slides ??
+        (course?.syllabus ?? [])
+          .filter((unit) => Boolean(unit.slide_url))
+          .map((unit) => ({
+            id: unit.id,
+            lectureNumber: Number(unit.id.match(/lecture_(\d+)/i)?.[1] ?? unit.position + 1),
+            title: unit.title,
+            filename: unit.slide_url!.split("/").pop()?.split("?")[0] || unit.title,
+            url: unit.slide_url!,
+            cheatsheetUrl: DEFAULT_CME295_MATERIALS.cheatsheetPdfUrl,
+            readingWorkspaceUrl:
+              unit.id === "lecture_1_transformers"
+                ? "/learning/reading/rw_3f8b01ffbee24ecf9ad3f21e1d2f11ae"
+                : undefined,
+          })),
+      videos:
+        customMaterials?.videos ??
+        (course?.syllabus ?? [])
+          .filter((unit) => Boolean(unit.video_url))
+          .map((unit) => {
+            const youtubeUrl = unit.video_url!;
+            const youtubeId =
+              youtubeUrl.match(/[?&]v=([^&]+)/)?.[1] ??
+              youtubeUrl.match(/youtu\.be\/([^/?]+)/)?.[1] ??
+              "";
+            return {
+              id: unit.id,
+              lectureNumber: Number(unit.id.match(/lecture_(\d+)/i)?.[1] ?? unit.position + 1),
+              title: unit.title,
+              youtubeId,
+              youtubeUrl,
+              transcriptUrl: `/learning/watching?video=${encodeURIComponent(youtubeUrl)}&title=${encodeURIComponent(unit.title)}`,
+              description: "Open the Immersive Reading transcript when captions are available.",
+            };
+          }),
     };
-  }, [customMaterials]);
+  }, [course?.syllabus, customMaterials]);
 
   const courseDisplayName =
     course?.name ||
     (courseId ? `Course ${courseId}` : "Stanford CME 295");
+
+  // The built-in directory belongs to CME 295; other courses use their attached resources.
+  if (course && !customMaterials && !course.syllabus?.some((unit) => unit.id === "lecture_1_transformers")) {
+    return null;
+  }
 
   return (
     <section
@@ -163,9 +169,12 @@ export default function CourseMaterials({
           </div>
           <p className="mt-1 text-[12px] leading-relaxed text-[var(--muted-foreground)]">
             {t(
-              "Primary textbooks, lecture slide decks, YouTube video recordings, timed transcripts, and code repositories for {{courseName}}.",
+              "Primary textbooks, lecture slide decks, YouTube recordings, and related study resources for {{courseName}}.",
               { courseName: courseDisplayName },
             )}
+          </p>
+          <p className="mt-1 text-[11px] leading-relaxed text-[var(--muted-foreground)]">
+            {t("Stanford publishes the schedule; DeepTutor authored the expanded Units and Concepts.")}
           </p>
         </div>
       </div>
@@ -253,16 +262,16 @@ export default function CourseMaterials({
                         <span>{t("PDF")}</span>
                         <ExternalLink size={10} aria-hidden="true" />
                       </a>
-                      {slide.mirrorUrl ? (
+                      {slide.cheatsheetUrl ? (
                         <a
-                          href={slide.mirrorUrl}
+                          href={slide.cheatsheetUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          aria-label={`${t("GitHub mirror")} ${slide.filename} (opens in new tab)`}
+                          aria-label={`${t("Cheatsheet")} for ${slide.title} (opens in new tab)`}
                           className="inline-flex shrink-0 items-center gap-1 rounded border border-[var(--border)] bg-[var(--card)] px-1.5 py-1 text-[11px] font-medium text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:bg-[var(--secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
                         >
                           <Github size={10} aria-hidden="true" />
-                          <span>{t("GitHub mirror")}</span>
+                          <span>{t("Cheatsheet")}</span>
                         </a>
                       ) : null}
                       {slide.readingWorkspaceUrl ? (
@@ -281,7 +290,7 @@ export default function CourseMaterials({
               ))}
             </ul>
             <p className="mt-3 text-[11px] leading-relaxed text-[var(--muted-foreground)] border-t border-[var(--border)]/40 pt-2">
-              {t("If Stanford server times out, use GitHub mirror or DeepTutor reading workspace.")}
+              {t("Stanford hosts the slide PDFs. The GitHub PDF is a separate cheatsheet, not a slide mirror.")}
             </p>
           </div>
         </div>
@@ -384,7 +393,7 @@ export default function CourseMaterials({
               href={data.cheatsheetUrl}
               target="_blank"
               rel="noopener noreferrer"
-              aria-label={t("Open VIP cheatsheet and code repository on GitHub (opens in new tab)")}
+                aria-label={t("Open cheatsheet repository on GitHub (opens in new tab)")}
               className="group inline-flex items-center gap-1.5 text-[12px] font-medium text-[var(--primary)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] rounded"
             >
               <Github size={13} aria-hidden="true" />

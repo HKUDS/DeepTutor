@@ -100,6 +100,10 @@ class SyllabusUnit:
     title: str
     topics: list[str] = field(default_factory=list)
     covered: bool = False
+    video_url: str = ""
+    slide_url: str = ""
+    video_status: str = ""
+    slide_status: str = ""
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -190,6 +194,18 @@ def _parse_syllabus(raw: object) -> list[SyllabusUnit]:
                     if str(topic).strip()
                 ][:20],
                 covered=bool(row.get("covered")),
+                video_url=str(row.get("video_url") or "").strip(),
+                slide_url=str(row.get("slide_url") or "").strip(),
+                video_status=(
+                    str(row.get("video_status"))
+                    if row.get("video_status") in {"available", "upcoming"}
+                    else ""
+                ),
+                slide_status=(
+                    str(row.get("slide_status"))
+                    if row.get("slide_status") in {"available", "upcoming"}
+                    else ""
+                ),
             )
         )
     units.sort(key=lambda unit: unit.position)
