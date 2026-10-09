@@ -5520,5 +5520,18 @@
   "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading, Course Study and standard visualizations. Changes take effect on the next turn.": "适用于对话、解题、主动提问、引导学习、沉浸式阅读、课程学习和常规可视化。从下一轮开始生效。",
   "Clear instructions": "清空提示词",
   "{{used}} / {{limit}} characters": "{{used}} / {{limit}} 字符",
-  "contextBudget.segment.workspace_instructions": "工作区提示词"
+  "contextBudget.segment.workspace_instructions": "工作区提示词",
+  "Strategy": "复习策略",
+  "rounds (days)": "轮次（天）",
+  "Use 1-16 non-decreasing whole-day rounds from 0-365 in every row.": "每行请使用 1-16 个 0-365 天内不递减的整数轮次。",
+  "Save as custom": "保存为自定义",
+  "Delete and use default": "删除并使用默认",
+  "Edit strategy": "编辑策略",
+  "Duplicate": "创建副本",
+  "No custom strategies yet": "还没有自定义策略",
+  "Close strategy editor": "关闭策略编辑器",
+  "Could not load review strategies. Try again.": "无法加载复习策略，请重试。",
+  "Could not save review strategy. Try again.": "无法保存复习策略，请重试。",
+  "Could not duplicate review strategy. Try again.": "无法复制复习策略，请重试。",
+  "Could not delete review strategy. Try again.": "无法删除复习策略，请重试。"
 }

@@ -5536,5 +5536,18 @@
   "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading, Course Study and standard visualizations. Changes take effect on the next turn.": "Dotyczy czatu, rozwiązywania, pytań, nauki z przewodnikiem, czytania, kursów i standardowych wizualizacji. Zmiany obowiązują od następnej tury.",
   "Clear instructions": "Wyczyść instrukcje",
   "{{used}} / {{limit}} characters": "{{used}} / {{limit}} znaków",
-  "contextBudget.segment.workspace_instructions": "Instrukcje obszaru roboczego"
+  "contextBudget.segment.workspace_instructions": "Instrukcje obszaru roboczego",
+  "Strategy": "Strategia",
+  "rounds (days)": "rundy (dni)",
+  "Use 1-16 non-decreasing whole-day rounds from 0-365 in every row.": "W każdym wierszu użyj 1-16 nierosnąco uporządkowanych pełnodniowych rund z zakresu 0-365.",
+  "Save as custom": "Zapisz jako niestandardową",
+  "Delete and use default": "Usuń i użyj domyślnej",
+  "Edit strategy": "Edytuj strategię",
+  "Duplicate": "Duplikuj",
+  "No custom strategies yet": "Brak niestandardowych strategii",
+  "Close strategy editor": "Zamknij edytor strategii",
+  "Could not load review strategies. Try again.": "Nie udało się wczytać strategii powtórek. Spróbuj ponownie.",
+  "Could not save review strategy. Try again.": "Nie udało się zapisać strategii powtórek. Spróbuj ponownie.",
+  "Could not duplicate review strategy. Try again.": "Nie udało się zduplikować strategii powtórek. Spróbuj ponownie.",
+  "Could not delete review strategy. Try again.": "Nie udało się usunąć strategii powtórek. Spróbuj ponownie."
 }

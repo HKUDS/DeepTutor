@@ -39,6 +39,7 @@ from deeptutor.learning.models import (
     ReadingActivityRecord,
     ReadingLearningRecords,
     ReadingProgressRecord,
+    ReviewStrategyTemplate,
     TopicMetadata,
     TopicSource,
 )
@@ -581,6 +582,19 @@ class LearningStore:
                     );
                     CREATE INDEX IF NOT EXISTS idx_reading_activities_recent
                         ON reading_activities(created_at DESC, activity_id DESC);
+
+                    -- Learner-created review interval strategies. Preset
+                    -- templates live in code and are never stored here; a
+                    -- path's binding snapshots whatever it needs, so deleting
+                    -- a row never corrupts existing scheduling.
+                    CREATE TABLE IF NOT EXISTS mastery_review_strategies (
+                        template_id TEXT PRIMARY KEY,
+                        strategy_json TEXT NOT NULL,
+                        created_at REAL NOT NULL,
+                        updated_at REAL NOT NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_mastery_review_strategies_created
+                        ON mastery_review_strategies(created_at DESC);
                     """
                 )
                 self._converge_single_membership(conn)
@@ -1310,6 +1324,91 @@ class LearningStore:
             path.stem for path in Path(self._root).glob("*.json") if not path.name.startswith(".")
         }
         return sorted(stored | legacy)
+
+    # ---- account review interval strategies -------------------------------
+
+    @staticmethod
+    def _strategy_from_row(row: sqlite3.Row) -> ReviewStrategyTemplate:
+        template = ReviewStrategyTemplate.model_validate(json.loads(row["strategy_json"]))
+        template.builtin = False
+        return template
+
+    def list_review_strategies(self) -> list[ReviewStrategyTemplate]:
+        """Learner-created strategies, newest first. Presets live in code."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM mastery_review_strategies
+                ORDER BY created_at DESC, template_id
+                """
+            ).fetchall()
+        return [self._strategy_from_row(row) for row in rows]
+
+    def get_review_strategy(self, template_id: str) -> ReviewStrategyTemplate | None:
+        template_id = self._validate_id(template_id)
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM mastery_review_strategies WHERE template_id = ?",
+                (template_id,),
+            ).fetchone()
+        return self._strategy_from_row(row) if row is not None else None
+
+    def save_review_strategy(self, template: ReviewStrategyTemplate) -> ReviewStrategyTemplate:
+        """Insert or update one custom strategy.
+
+        Preset templates cannot be shadowed or persisted: their ids are
+        reserved so a binding always resolves to the code-defined preset.
+        """
+        from deeptutor.learning.review_strategy import BUILTIN_TEMPLATE_IDS
+
+        if template.builtin or template.template_id in BUILTIN_TEMPLATE_IDS:
+            raise ValueError(
+                f"template_id {template.template_id!r} is reserved for a built-in preset"
+            )
+        now = time.time()
+        stored = template.model_copy(
+            update={"builtin": False, "updated_at": now},
+        )
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO mastery_review_strategies (
+                        template_id, strategy_json, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?)
+                    ON CONFLICT(template_id) DO UPDATE SET
+                        strategy_json = excluded.strategy_json,
+                        updated_at = excluded.updated_at
+                    """,
+                    (
+                        stored.template_id,
+                        json.dumps(stored.model_dump(mode="json"), ensure_ascii=False),
+                        stored.created_at,
+                        now,
+                    ),
+                )
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+        return stored
+
+    def delete_review_strategy(self, template_id: str) -> bool:
+        """Remove one custom strategy. Paths bound to it keep their snapshot."""
+        template_id = self._validate_id(template_id)
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                cursor = conn.execute(
+                    "DELETE FROM mastery_review_strategies WHERE template_id = ?",
+                    (template_id,),
+                )
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+        return cursor.rowcount == 1
 
     # ---- account Reading learning records --------------------------------
 

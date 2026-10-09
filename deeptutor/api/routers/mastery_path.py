@@ -24,6 +24,7 @@ from deeptutor.learning.models import (
     MasteryInteraction,
     MasteryTopic,
     ReadingLearningRecords,
+    ReviewStrategyTemplate,
     TopicMetadata,
     TopicSource,
     TopicSourceKind,
@@ -220,6 +221,26 @@ class ReviewSettingsRequest(BaseModel):
     desired_retention: float = Field(..., ge=0.7, le=0.99, allow_inf_nan=False)
 
 
+class ReviewStrategyRequest(BaseModel):
+    """Create/edit a custom review strategy: per-round intervals per type."""
+
+    name: str = Field(..., min_length=1, max_length=120)
+    description: str = Field(default="", max_length=500)
+    #: Optional recall target applied when the strategy is bound to a path.
+    desired_retention: float | None = Field(default=None, ge=0.7, le=0.99, allow_inf_nan=False)
+    intervals: dict[KnowledgeType, list[int]]
+
+
+class DuplicateReviewStrategyRequest(BaseModel):
+    name: str = Field(default="", max_length=120)
+
+
+class PathReviewStrategyRequest(BaseModel):
+    """Bind a path to a strategy; an empty template_id restores the default."""
+
+    template_id: str = ""
+
+
 class ChapterImport(BaseModel):
     title: str
     knowledge_points: list[str] = []
@@ -330,10 +351,11 @@ def _relation_refs(
 
 
 def _review_queue(progress, *, now: float | None = None) -> list[dict]:
-    from deeptutor.learning.scheduler import SpacedRepetitionScheduler, review_sort_key
+    from deeptutor.learning.review_strategy import scheduler_for_progress
+    from deeptutor.learning.scheduler import review_sort_key
 
     moment = time.time() if now is None else now
-    scheduler = SpacedRepetitionScheduler()
+    scheduler = scheduler_for_progress(progress)
     names = {kp.id: kp.name for module in progress.modules for kp in module.knowledge_points}
     return [
         {
@@ -369,11 +391,13 @@ def _review_queue(progress, *, now: float | None = None) -> list[dict]:
 
 def _read_projection(progress, *, now: float | None = None):
     """Build a fresh queue for reads without persisting hydration or time drift."""
-    from deeptutor.learning.scheduler import SpacedRepetitionScheduler
+    from deeptutor.learning.review_strategy import scheduler_for_progress
 
     projected = progress.model_copy(deep=True)
     moment = time.time() if now is None else now
-    projected.review_queue = SpacedRepetitionScheduler().build_review_queue(projected, now=moment)
+    projected.review_queue = scheduler_for_progress(projected).build_review_queue(
+        projected, now=moment
+    )
     return projected
 
 
@@ -392,6 +416,27 @@ def _next_step_from_interaction(
         progress,
         pending_session_id=interaction.session_id if interaction is not None else "",
     ).to_dict()
+
+
+def _review_settings_payload(progress: LearningProgress) -> dict:
+    binding = progress.review_strategy
+    strategy = None
+    if binding is not None:
+        strategy = {
+            "template_id": binding.template_id,
+            "name": binding.name,
+            "builtin": binding.builtin,
+            "desired_retention": binding.desired_retention,
+            "intervals": {
+                knowledge_type.value: list(rounds)
+                for knowledge_type, rounds in binding.intervals.items()
+            },
+        }
+    return {
+        "desired_retention": progress.desired_retention,
+        "scope": "path",
+        "strategy": strategy,
+    }
 
 
 def _topic_payload_from_snapshot(
@@ -416,10 +461,7 @@ def _topic_payload_from_snapshot(
         ).to_dict(),
         "map": learning_policy.map_summary(projected, now=moment),
         "reviews": _review_queue(projected, now=moment),
-        "review_settings": {
-            "desired_retention": progress.desired_retention,
-            "scope": "path",
-        },
+        "review_settings": _review_settings_payload(progress),
         # Who this goal is for. Null until intake has happened, which is also
         # what the dashboard renders as "not asked yet".
         "learner_profile": (
@@ -611,7 +653,7 @@ async def get_review_settings(path_id: str):
     progress = await asyncio.to_thread(LearningStore().load, path_id)
     if progress is None:
         raise HTTPException(status_code=404, detail="Mastery topic not found")
-    return {"desired_retention": progress.desired_retention, "scope": "path"}
+    return _review_settings_payload(progress)
 
 
 @router.put("/topics/{path_id}/review-settings")
@@ -623,18 +665,205 @@ async def update_review_settings(path_id: str, body: ReviewSettingsRequest):
         store = LearningStore()
 
         def update(tx):
-            from deeptutor.learning.scheduler import SpacedRepetitionScheduler
+            from deeptutor.learning.review_strategy import scheduler_for_progress
 
             if tx.progress.desired_retention == body.desired_retention and all(
                 state.desired_retention == body.desired_retention
                 for state in tx.progress.repetition_states.values()
             ):
                 return
-            SpacedRepetitionScheduler().set_desired_retention(tx.progress, body.desired_retention)
+            scheduler_for_progress(tx.progress).set_desired_retention(
+                tx.progress, body.desired_retention
+            )
             tx.touch()
             tx.emit(
                 "review.settings_changed",
                 {"desired_retention": tx.progress.desired_retention},
+            )
+
+        try:
+            await asyncio.to_thread(store.mutate, path_id, update)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Mastery topic not found") from exc
+    return await asyncio.to_thread(_topic_payload, LearningStore(), path_id)
+
+
+# ── Review strategy templates (#1908) ─────────────────────────────────────────
+
+
+def _strategy_payload(template: ReviewStrategyTemplate) -> dict:
+    return template.model_dump(mode="json")
+
+
+def _resolve_review_strategy(
+    store: LearningStore, template_id: str
+) -> ReviewStrategyTemplate | None:
+    """Find a strategy by id: preset templates in code, custom ones in the store."""
+    from deeptutor.learning.review_strategy import builtin_templates
+
+    builtin = builtin_templates().get(template_id)
+    if builtin is not None:
+        return builtin
+    try:
+        return store.get_review_strategy(template_id)
+    except ValueError:
+        # Ids that cannot be a stored template are simply unknown ones.
+        return None
+
+
+def _build_custom_template(
+    body: ReviewStrategyRequest, *, template_id: str
+) -> ReviewStrategyTemplate:
+    try:
+        return ReviewStrategyTemplate(
+            template_id=template_id,
+            name=body.name,
+            description=body.description,
+            desired_retention=body.desired_retention,
+            intervals=body.intervals,
+        )
+    except PydanticValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc.errors())) from exc
+
+
+@router.get("/review-strategies")
+async def list_review_strategies():
+    """Every strategy the learner can bind: presets first, then their own."""
+    from deeptutor.learning.review_strategy import BUILTIN_TEMPLATE_IDS, builtin_templates
+
+    store = LearningStore()
+    presets = builtin_templates()
+    customs = await asyncio.to_thread(store.list_review_strategies)
+    strategies = [presets[template_id] for template_id in BUILTIN_TEMPLATE_IDS]
+    strategies.extend(customs)
+    return {"strategies": [_strategy_payload(template) for template in strategies]}
+
+
+@router.post("/review-strategies", status_code=201)
+async def create_review_strategy(body: ReviewStrategyRequest):
+    store = LearningStore()
+    template = _build_custom_template(body, template_id=f"custom-{uuid.uuid4().hex[:12]}")
+    try:
+        saved = await asyncio.to_thread(store.save_review_strategy, template)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return _strategy_payload(saved)
+
+
+@router.get("/review-strategies/{template_id}")
+async def get_review_strategy(template_id: str):
+    template = await asyncio.to_thread(_resolve_review_strategy, LearningStore(), template_id)
+    if template is None:
+        raise HTTPException(status_code=404, detail="Review strategy not found")
+    return _strategy_payload(template)
+
+
+@router.put("/review-strategies/{template_id}")
+async def update_review_strategy(template_id: str, body: ReviewStrategyRequest):
+    from deeptutor.learning.review_strategy import BUILTIN_TEMPLATE_IDS
+
+    if template_id in BUILTIN_TEMPLATE_IDS:
+        raise HTTPException(status_code=403, detail="Built-in preset strategies cannot be edited")
+    store = LearningStore()
+
+    def _load_existing() -> ReviewStrategyTemplate | None:
+        try:
+            return store.get_review_strategy(template_id)
+        except ValueError:
+            return None
+
+    existing = await asyncio.to_thread(_load_existing)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Review strategy not found")
+    replacement = _build_custom_template(body, template_id=template_id)
+    replacement.created_at = existing.created_at
+    try:
+        saved = await asyncio.to_thread(store.save_review_strategy, replacement)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return _strategy_payload(saved)
+
+
+@router.post("/review-strategies/{template_id}/duplicate", status_code=201)
+async def duplicate_review_strategy(template_id: str, body: DuplicateReviewStrategyRequest):
+    source = await asyncio.to_thread(_resolve_review_strategy, LearningStore(), template_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="Review strategy not found")
+    copy = ReviewStrategyTemplate(
+        template_id=f"custom-{uuid.uuid4().hex[:12]}",
+        name=body.name.strip() or f"{source.name} (copy)",
+        description=source.description,
+        desired_retention=source.desired_retention,
+        intervals=source.intervals,
+    )
+    saved = await asyncio.to_thread(LearningStore().save_review_strategy, copy)
+    return _strategy_payload(saved)
+
+
+@router.delete("/review-strategies/{template_id}")
+async def delete_review_strategy(template_id: str):
+    from deeptutor.learning.review_strategy import BUILTIN_TEMPLATE_IDS
+
+    if template_id in BUILTIN_TEMPLATE_IDS:
+        raise HTTPException(status_code=403, detail="Built-in preset strategies cannot be deleted")
+
+    def _delete() -> bool:
+        try:
+            return LearningStore().delete_review_strategy(template_id)
+        except ValueError:
+            return False
+
+    if not await asyncio.to_thread(_delete):
+        raise HTTPException(status_code=404, detail="Review strategy not found")
+    return {"deleted": True}
+
+
+@router.put("/topics/{path_id}/review-strategy")
+async def update_path_review_strategy(path_id: str, body: PathReviewStrategyRequest):
+    """Bind which strategy a mastery path schedules with.
+
+    The binding snapshots the template's intervals onto the path, so later
+    edits to the template do not rewrite existing schedules. A strategy that
+    carries a recall target applies it. Every bind or switch replays durable
+    evidence under the new interval snapshot; unbinding keeps the learner's
+    current target.
+    """
+    _validate_book_id(path_id)
+    store = LearningStore()
+    if not await asyncio.to_thread(store.exists, path_id):
+        raise HTTPException(status_code=404, detail="Mastery topic not found")
+    template: ReviewStrategyTemplate | None = None
+    if body.template_id:
+        template = await asyncio.to_thread(_resolve_review_strategy, store, body.template_id)
+        if template is None:
+            raise HTTPException(status_code=404, detail="Review strategy not found")
+    async with _exclusive_path_mutation(path_id):
+        store = LearningStore()
+
+        def update(tx):
+            from deeptutor.learning.review_strategy import scheduler_for_progress
+
+            retention = None
+            replacement = template.as_binding() if template is not None else None
+            if tx.progress.review_strategy == replacement and (
+                retention is None or retention == tx.progress.desired_retention
+            ):
+                return
+            if template is None:
+                tx.progress.review_strategy = None
+            else:
+                tx.progress.review_strategy = replacement
+                retention = template.desired_retention
+            if retention is not None:
+                tx.progress.desired_retention = retention
+            scheduler_for_progress(tx.progress).rebuild_from_evidence(tx.progress)
+            tx.touch()
+            tx.emit(
+                "review.strategy_changed",
+                {
+                    "template_id": template.template_id if template is not None else "",
+                    "name": template.name if template is not None else "",
+                },
             )
 
         try:

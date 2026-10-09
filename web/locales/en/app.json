@@ -5520,5 +5520,18 @@
   "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading, Course Study and standard visualizations. Changes take effect on the next turn.": "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading, Course Study and standard visualizations. Changes take effect on the next turn.",
   "Clear instructions": "Clear instructions",
   "{{used}} / {{limit}} characters": "{{used}} / {{limit}} characters",
-  "contextBudget.segment.workspace_instructions": "Workspace instructions"
+  "contextBudget.segment.workspace_instructions": "Workspace instructions",
+  "Strategy": "Strategy",
+  "rounds (days)": "rounds (days)",
+  "Use 1-16 non-decreasing whole-day rounds from 0-365 in every row.": "Use 1-16 non-decreasing whole-day rounds from 0-365 in every row.",
+  "Save as custom": "Save as custom",
+  "Delete and use default": "Delete and use default",
+  "Edit strategy": "Edit strategy",
+  "Duplicate": "Duplicate",
+  "No custom strategies yet": "No custom strategies yet",
+  "Close strategy editor": "Close strategy editor",
+  "Could not load review strategies. Try again.": "Could not load review strategies. Try again.",
+  "Could not save review strategy. Try again.": "Could not save review strategy. Try again.",
+  "Could not duplicate review strategy. Try again.": "Could not duplicate review strategy. Try again.",
+  "Could not delete review strategy. Try again.": "Could not delete review strategy. Try again."
 }

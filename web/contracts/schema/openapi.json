@@ -10,7 +10,7 @@
             "type": "string"
           },
           "locator": {
-            "minimum": 1.0,
+            "minimum": 1,
             "title": "Locator",
             "type": "integer"
           },
@@ -152,15 +152,15 @@
         "properties": {
           "max_depth": {
             "default": 3,
-            "maximum": 5.0,
-            "minimum": 1.0,
+            "maximum": 5,
+            "minimum": 1,
             "title": "Max Depth",
             "type": "integer"
           },
           "max_pages": {
             "default": 200,
-            "maximum": 200.0,
-            "minimum": 1.0,
+            "maximum": 200,
+            "minimum": 1,
             "title": "Max Pages",
             "type": "integer"
           },
@@ -332,7 +332,7 @@
             "type": "string"
           },
           "locator": {
-            "minimum": 1.0,
+            "minimum": 1,
             "title": "Locator",
             "type": "integer"
           },
@@ -1135,7 +1135,7 @@
             "type": "string"
           },
           "created_at": {
-            "default": 0.0,
+            "default": 0,
             "title": "Created At",
             "type": "number"
           },
@@ -1146,7 +1146,7 @@
             "type": "string"
           },
           "locator": {
-            "minimum": 1.0,
+            "minimum": 1,
             "title": "Locator",
             "type": "integer"
           },
@@ -1189,7 +1189,7 @@
             "type": "string"
           },
           "locator": {
-            "minimum": 1.0,
+            "minimum": 1,
             "title": "Locator",
             "type": "integer"
           },
@@ -1481,7 +1481,7 @@
           "expected_revision": {
             "anyOf": [
               {
-                "minimum": 1.0,
+                "minimum": 1,
                 "type": "integer"
               },
               {
@@ -1593,26 +1593,26 @@
         "description": "Chat attachment policy (size caps + extraction budgets).\n\nBounds mirror the normalization clamps in\n``runtime_settings.CHAT_ATTACHMENT_*_RANGE`` so the API rejects loudly\nwhat the file layer would silently clamp.",
         "properties": {
           "max_chars_per_doc": {
-            "maximum": 5000000.0,
-            "minimum": 10000.0,
+            "maximum": 5000000,
+            "minimum": 10000,
             "title": "Max Chars Per Doc",
             "type": "integer"
           },
           "max_chars_total": {
-            "maximum": 5000000.0,
-            "minimum": 10000.0,
+            "maximum": 5000000,
+            "minimum": 10000,
             "title": "Max Chars Total",
             "type": "integer"
           },
           "max_file_mb": {
-            "maximum": 1024.0,
-            "minimum": 1.0,
+            "maximum": 1024,
+            "minimum": 1,
             "title": "Max File Mb",
             "type": "integer"
           },
           "max_total_mb": {
-            "maximum": 2048.0,
-            "minimum": 1.0,
+            "maximum": 2048,
+            "minimum": 1,
             "title": "Max Total Mb",
             "type": "integer"
           }
@@ -1727,8 +1727,8 @@
       "ChatResponseTimeoutUpdate": {
         "properties": {
           "chat_response_timeout": {
-            "maximum": 1800.0,
-            "minimum": 30.0,
+            "maximum": 1800,
+            "minimum": 30,
             "title": "Chat Response Timeout",
             "type": "integer"
           }
@@ -1743,8 +1743,8 @@
         "description": "How much recent activity shapes the home screen's starting points.\n\nBounds mirror ``starter_settings.TRACE_COUNT_RANGE`` so the API rejects\nloudly what the file layer would silently clamp.",
         "properties": {
           "trace_count": {
-            "maximum": 100.0,
-            "minimum": 3.0,
+            "maximum": 100,
+            "minimum": 3,
             "title": "Trace Count",
             "type": "integer"
           }
@@ -1818,7 +1818,7 @@
           "expected_revision": {
             "anyOf": [
               {
-                "minimum": 1.0,
+                "minimum": 1,
                 "type": "integer"
               },
               {
@@ -1932,7 +1932,7 @@
           "expected_revision": {
             "anyOf": [
               {
-                "minimum": 1.0,
+                "minimum": 1,
                 "type": "integer"
               },
               {
@@ -1988,7 +1988,7 @@
           "expected_revision": {
             "anyOf": [
               {
-                "minimum": 1.0,
+                "minimum": 1,
                 "type": "integer"
               },
               {
@@ -2834,8 +2834,8 @@
             "type": "string"
           },
           "time_seconds": {
-            "maximum": 86400.0,
-            "minimum": 0.0,
+            "maximum": 86400,
+            "minimum": 0,
             "title": "Time Seconds",
             "type": "number"
           }
@@ -3017,7 +3017,7 @@
           "expected_revision": {
             "anyOf": [
               {
-                "minimum": 1.0,
+                "minimum": 1,
                 "type": "integer"
               },
               {
@@ -3056,7 +3056,7 @@
           "expected_revision": {
             "anyOf": [
               {
-                "minimum": 1.0,
+                "minimum": 1,
                 "type": "integer"
               },
               {
@@ -3095,8 +3095,8 @@
         "description": "Admin payload for issuing a local ordinary-user device credential.",
         "properties": {
           "daily_limit_minutes": {
-            "maximum": 1440.0,
-            "minimum": 5.0,
+            "maximum": 1440,
+            "minimum": 5,
             "title": "Daily Limit Minutes",
             "type": "integer"
           },
@@ -3107,8 +3107,8 @@
             "type": "string"
           },
           "expires_in_days": {
-            "maximum": 365.0,
-            "minimum": 1.0,
+            "maximum": 365,
+            "minimum": 1,
             "title": "Expires In Days",
             "type": "integer"
           },
@@ -3426,6 +3426,18 @@
           }
         },
         "title": "DuplicateFileQuery",
+        "type": "object"
+      },
+      "DuplicateReviewStrategyRequest": {
+        "properties": {
+          "name": {
+            "default": "",
+            "maxLength": 120,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "title": "DuplicateReviewStrategyRequest",
         "type": "object"
       },
       "EditRequest": {
@@ -4310,7 +4322,7 @@
           "expected_revision": {
             "anyOf": [
               {
-                "minimum": 1.0,
+                "minimum": 1,
                 "type": "integer"
               },
               {
@@ -4743,8 +4755,8 @@
           "age": {
             "anyOf": [
               {
-                "maximum": 120.0,
-                "minimum": 3.0,
+                "maximum": 120,
+                "minimum": 3,
                 "type": "integer"
               },
               {
@@ -5120,8 +5132,8 @@
         "properties": {
           "max_async": {
             "default": 4,
-            "maximum": 32.0,
-            "minimum": 1.0,
+            "maximum": 32,
+            "minimum": 1,
             "title": "Max Async",
             "type": "integer"
           },
@@ -5167,8 +5179,8 @@
           },
           "timeout": {
             "default": 240,
-            "maximum": 3600.0,
-            "minimum": 1.0,
+            "maximum": 3600,
+            "minimum": 1,
             "title": "Timeout",
             "type": "integer"
           }
@@ -5237,8 +5249,8 @@
         "properties": {
           "max_async": {
             "default": 4,
-            "maximum": 32.0,
-            "minimum": 1.0,
+            "maximum": 32,
+            "minimum": 1,
             "title": "Max Async",
             "type": "integer"
           },
@@ -5285,8 +5297,8 @@
           },
           "timeout": {
             "default": 240,
-            "maximum": 3600.0,
-            "minimum": 1.0,
+            "maximum": 3600,
+            "minimum": 1,
             "title": "Timeout",
             "type": "integer"
           }
@@ -5411,8 +5423,8 @@
           },
           "limit": {
             "default": 20,
-            "maximum": 50.0,
-            "minimum": 1.0,
+            "maximum": 50,
+            "minimum": 1,
             "title": "Limit",
             "type": "integer"
           }
@@ -5711,8 +5723,8 @@
           },
           "tool_timeout": {
             "default": 30,
-            "maximum": 600.0,
-            "minimum": 1.0,
+            "maximum": 600,
+            "minimum": 1,
             "title": "Tool Timeout",
             "type": "integer"
           },
@@ -5772,13 +5784,13 @@
         "properties": {
           "end_locator": {
             "default": 0,
-            "minimum": 0.0,
+            "minimum": 0,
             "title": "End Locator",
             "type": "integer"
           },
           "end_seconds": {
-            "maximum": 86400.0,
-            "minimum": 0.0,
+            "maximum": 86400,
+            "minimum": 0,
             "title": "End Seconds",
             "type": "number"
           },
@@ -5807,13 +5819,13 @@
           },
           "start_locator": {
             "default": 0,
-            "minimum": 0.0,
+            "minimum": 0,
             "title": "Start Locator",
             "type": "integer"
           },
           "start_seconds": {
-            "maximum": 86400.0,
-            "minimum": 0.0,
+            "maximum": 86400,
+            "minimum": 0,
             "title": "Start Seconds",
             "type": "number"
           }
@@ -5831,7 +5843,7 @@
           "end_locator": {
             "anyOf": [
               {
-                "minimum": 0.0,
+                "minimum": 0,
                 "type": "integer"
               },
               {
@@ -5843,8 +5855,8 @@
           "end_seconds": {
             "anyOf": [
               {
-                "maximum": 86400.0,
-                "minimum": 0.0,
+                "maximum": 86400,
+                "minimum": 0,
                 "type": "number"
               },
               {
@@ -5915,7 +5927,7 @@
           "start_locator": {
             "anyOf": [
               {
-                "minimum": 0.0,
+                "minimum": 0,
                 "type": "integer"
               },
               {
@@ -5927,8 +5939,8 @@
           "start_seconds": {
             "anyOf": [
               {
-                "maximum": 86400.0,
-                "minimum": 0.0,
+                "maximum": 86400,
+                "minimum": 0,
                 "type": "number"
               },
               {
@@ -5944,9 +5956,9 @@
       "MarkSuggestionRequest": {
         "properties": {
           "time_seconds": {
-            "default": 0.0,
-            "maximum": 86400.0,
-            "minimum": 0.0,
+            "default": 0,
+            "maximum": 86400,
+            "minimum": 0,
             "title": "Time Seconds",
             "type": "number"
           }
@@ -6036,7 +6048,7 @@
             "type": "string"
           },
           "created_at": {
-            "default": 0.0,
+            "default": 0,
             "title": "Created At",
             "type": "number"
           },
@@ -6161,7 +6173,7 @@
             "type": "string"
           },
           "created_at": {
-            "default": 0.0,
+            "default": 0,
             "title": "Created At",
             "type": "number"
           },
@@ -6548,7 +6560,7 @@
           "expected_revision": {
             "anyOf": [
               {
-                "minimum": 1.0,
+                "minimum": 1,
                 "type": "integer"
               },
               {
@@ -6610,8 +6622,8 @@
       "NetworkSettingsUpdate": {
         "properties": {
           "backend_port": {
-            "maximum": 65535.0,
-            "minimum": 1.0,
+            "maximum": 65535,
+            "minimum": 1,
             "title": "Backend Port",
             "type": "integer"
           },
@@ -6623,8 +6635,8 @@
             "type": "array"
           },
           "frontend_port": {
-            "maximum": 65535.0,
-            "minimum": 1.0,
+            "maximum": 65535,
+            "minimum": 1,
             "title": "Frontend Port",
             "type": "integer"
           },
@@ -7262,6 +7274,18 @@
         "title": "PartnerSeatRetryRequest",
         "type": "object"
       },
+      "PathReviewStrategyRequest": {
+        "description": "Bind a path to a strategy; an empty template_id restores the default.",
+        "properties": {
+          "template_id": {
+            "default": "",
+            "title": "Template Id",
+            "type": "string"
+          }
+        },
+        "title": "PathReviewStrategyRequest",
+        "type": "object"
+      },
       "PauseBookRequest": {
         "properties": {
           "book_id": {
@@ -7271,7 +7295,7 @@
           "expected_revision": {
             "anyOf": [
               {
-                "minimum": 1.0,
+                "minimum": 1,
                 "type": "integer"
               },
               {
@@ -7290,12 +7314,12 @@
       "PositionInfo": {
         "properties": {
           "locator": {
-            "minimum": 1.0,
+            "minimum": 1,
             "title": "Locator",
             "type": "integer"
           },
           "percentage": {
-            "default": 0.0,
+            "default": 0,
             "title": "Percentage",
             "type": "number"
           },
@@ -7306,7 +7330,7 @@
             "type": "string"
           },
           "updated_at": {
-            "default": 0.0,
+            "default": 0,
             "title": "Updated At",
             "type": "number"
           }
@@ -7320,15 +7344,15 @@
       "PositionPayload": {
         "properties": {
           "locator": {
-            "minimum": 1.0,
+            "minimum": 1,
             "title": "Locator",
             "type": "integer"
           },
           "percentage": {
             "anyOf": [
               {
-                "maximum": 1.0,
-                "minimum": 0.0,
+                "maximum": 1,
+                "minimum": 0,
                 "type": "number"
               },
               {
@@ -7904,7 +7928,7 @@
             "type": "string"
           },
           "selected_index": {
-            "minimum": 0.0,
+            "minimum": 0,
             "title": "Selected Index",
             "type": "integer"
           }
@@ -7927,7 +7951,7 @@
             "type": "array"
           },
           "locator": {
-            "minimum": 1.0,
+            "minimum": 1,
             "title": "Locator",
             "type": "integer"
           },
@@ -8205,7 +8229,7 @@
       "ReadAloudAudioPayload": {
         "properties": {
           "locator": {
-            "minimum": 1.0,
+            "minimum": 1,
             "title": "Locator",
             "type": "integer"
           }
@@ -8236,7 +8260,7 @@
             "type": "string"
           },
           "locator": {
-            "minimum": 1.0,
+            "minimum": 1,
             "title": "Locator",
             "type": "integer"
           },
@@ -8291,24 +8315,24 @@
         "description": "One material's Reading progress in an account's learning records.",
         "properties": {
           "furthest_locator": {
-            "minimum": 1.0,
+            "minimum": 1,
             "title": "Furthest Locator",
             "type": "integer"
           },
           "furthest_percentage": {
-            "maximum": 1.0,
-            "minimum": 0.0,
+            "maximum": 1,
+            "minimum": 0,
             "title": "Furthest Percentage",
             "type": "number"
           },
           "latest_locator": {
-            "minimum": 1.0,
+            "minimum": 1,
             "title": "Latest Locator",
             "type": "integer"
           },
           "latest_percentage": {
-            "maximum": 1.0,
-            "minimum": 0.0,
+            "maximum": 1,
+            "minimum": 0,
             "title": "Latest Percentage",
             "type": "number"
           },
@@ -8476,7 +8500,7 @@
           "expected_revision": {
             "anyOf": [
               {
-                "minimum": 1.0,
+                "minimum": 1,
                 "type": "integer"
               },
               {
@@ -8505,7 +8529,7 @@
           "expected_revision": {
             "anyOf": [
               {
-                "minimum": 1.0,
+                "minimum": 1,
                 "type": "integer"
               },
               {
@@ -8754,7 +8778,7 @@
           "expected_revision": {
             "anyOf": [
               {
-                "minimum": 1.0,
+                "minimum": 1,
                 "type": "integer"
               },
               {
@@ -8801,7 +8825,7 @@
             "type": "boolean"
           },
           "version": {
-            "minimum": 0.0,
+            "minimum": 0,
             "title": "Version",
             "type": "integer"
           }
@@ -8828,6 +8852,55 @@
           "desired_retention"
         ],
         "title": "ReviewSettingsRequest",
+        "type": "object"
+      },
+      "ReviewStrategyRequest": {
+        "description": "Create/edit a custom review strategy: per-round intervals per type.",
+        "properties": {
+          "description": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Description",
+            "type": "string"
+          },
+          "desired_retention": {
+            "anyOf": [
+              {
+                "maximum": 0.99,
+                "minimum": 0.7,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Desired Retention"
+          },
+          "intervals": {
+            "additionalProperties": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/KnowledgeType"
+            },
+            "title": "Intervals",
+            "type": "object"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "intervals"
+        ],
+        "title": "ReviewStrategyRequest",
         "type": "object"
       },
       "RoundSummaryRequest": {
@@ -9886,7 +9959,7 @@
           "expected_revision": {
             "anyOf": [
               {
-                "minimum": 1.0,
+                "minimum": 1,
                 "type": "integer"
               },
               {
@@ -10422,12 +10495,12 @@
       "TextPositionSelectorPayload": {
         "properties": {
           "end": {
-            "exclusiveMinimum": 0.0,
+            "exclusiveMinimum": 0,
             "title": "End",
             "type": "integer"
           },
           "start": {
-            "minimum": 0.0,
+            "minimum": 0,
             "title": "Start",
             "type": "integer"
           },
@@ -11571,7 +11644,7 @@
           "expected_revision": {
             "anyOf": [
               {
-                "minimum": 1.0,
+                "minimum": 1,
                 "type": "integer"
               },
               {
@@ -13073,8 +13146,8 @@
           },
           "sync_interval_hours": {
             "default": 24,
-            "maximum": 168.0,
-            "minimum": 1.0,
+            "maximum": 168,
+            "minimum": 1,
             "title": "Sync Interval Hours",
             "type": "integer"
           },
@@ -13098,8 +13171,8 @@
           },
           "sync_interval_hours": {
             "default": 24,
-            "maximum": 168.0,
-            "minimum": 1.0,
+            "maximum": 168,
+            "minimum": 1,
             "title": "Sync Interval Hours",
             "type": "integer"
           }
@@ -13498,14 +13571,14 @@
         "properties": {
           "duration_seconds": {
             "default": 0,
-            "maximum": 86400.0,
-            "minimum": 0.0,
+            "maximum": 86400,
+            "minimum": 0,
             "title": "Duration Seconds",
             "type": "number"
           },
           "time_seconds": {
-            "maximum": 86400.0,
-            "minimum": 0.0,
+            "maximum": 86400,
+            "minimum": 0,
             "title": "Time Seconds",
             "type": "number"
           }
@@ -29246,6 +29319,445 @@
         ]
       }
     },
+    "/api/mastery-paths/review-strategies": {
+      "get": {
+        "description": "Every strategy the learner can bind: presets first, then their own.",
+        "operationId": "list_review_strategies_api_mastery_paths_review_strategies_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Review Strategies",
+        "tags": [
+          "mastery-path"
+        ]
+      },
+      "post": {
+        "operationId": "create_review_strategy_api_mastery_paths_review_strategies_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewStrategyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Review Strategy",
+        "tags": [
+          "mastery-path"
+        ]
+      }
+    },
+    "/api/mastery-paths/review-strategies/{template_id}": {
+      "delete": {
+        "operationId": "delete_review_strategy_api_mastery_paths_review_strategies__template_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "title": "Template Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Review Strategy",
+        "tags": [
+          "mastery-path"
+        ]
+      },
+      "get": {
+        "operationId": "get_review_strategy_api_mastery_paths_review_strategies__template_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "title": "Template Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Review Strategy",
+        "tags": [
+          "mastery-path"
+        ]
+      },
+      "put": {
+        "operationId": "update_review_strategy_api_mastery_paths_review_strategies__template_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "title": "Template Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewStrategyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Review Strategy",
+        "tags": [
+          "mastery-path"
+        ]
+      }
+    },
+    "/api/mastery-paths/review-strategies/{template_id}/duplicate": {
+      "post": {
+        "operationId": "duplicate_review_strategy_api_mastery_paths_review_strategies__template_id__duplicate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "title": "Template Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DuplicateReviewStrategyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Duplicate Review Strategy",
+        "tags": [
+          "mastery-path"
+        ]
+      }
+    },
     "/api/mastery-paths/topics": {
       "get": {
         "operationId": "list_topics_api_mastery_paths_topics_get",
@@ -29992,6 +30504,89 @@
           }
         },
         "summary": "Update Review Settings",
+        "tags": [
+          "mastery-path"
+        ]
+      }
+    },
+    "/api/mastery-paths/topics/{path_id}/review-strategy": {
+      "put": {
+        "description": "Bind which strategy a mastery path schedules with.\n\nThe binding snapshots the template's intervals onto the path, so later\nedits to the template do not rewrite existing schedules. A strategy that\ncarries a recall target applies it. Every bind or switch replays durable\nevidence under the new interval snapshot; unbinding keeps the learner's\ncurrent target.",
+        "operationId": "update_path_review_strategy_api_mastery_paths_topics__path_id__review_strategy_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "path_id",
+            "required": true,
+            "schema": {
+              "title": "Path Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PathReviewStrategyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Path Review Strategy",
         "tags": [
           "mastery-path"
         ]
