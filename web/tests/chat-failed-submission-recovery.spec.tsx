@@ -11,9 +11,6 @@ import {
   setReadingWorkspace,
 } from "@/lib/reading-turn-state";
 import {
-  resetWatchingTurnState, setWatchingMaterial, setWatchingViewport,
-} from "@/lib/watching-turn-state";
-import {
   clearFailedSubmission,
   moveFailedSubmissions,
   readFailedSubmission,
@@ -144,6 +141,7 @@ function Harness() {
       <button onClick={() => void loadSession("new-session")}>Load new</button>
       <button onClick={() => sendMessage("Hello offline")}>Send</button>
       <button onClick={() => sendMessage("Second offline")}>Send another</button>
+      <button onClick={() => sendMessage("", [{ type: "image", filename: "figure.png", base64: "YWJj" }])}>Send image only</button>
       <button onClick={() => void resendLastMessage()}>Resend</button>
       <button onClick={cancelStreamingTurn}>Stop</button>
       <button onClick={() => {
@@ -162,11 +160,6 @@ function Harness() {
         setReadingMaterial("deadbeef", 2);
         setReadingViewport({ locator: 7, selection: "old passage", timeSeconds: 12 });
       }}>Prepare reading</button>
-      <button onClick={() => {
-        configureSession({ capability: "immersive_watching", workspaceMode: "immersive_watching" });
-        setWatchingMaterial("video-a");
-        setWatchingViewport(42);
-      }}>Prepare watching</button>
       <div data-testid="submissionFailed">
         {String(state.submissionFailed)}
       </div>
@@ -223,7 +216,6 @@ beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
   resetReadingTurnState();
-  resetWatchingTurnState();
   fixture.connected = false;
   fixture.sent = [];
   fixture.emit = undefined;
@@ -231,6 +223,20 @@ beforeEach(() => {
 });
 
 afterEach(() => vi.restoreAllMocks());
+
+it("tracks attachment-only submissions with a stable identity for resend", async () => {
+  fixture.connected = true;
+  render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+  fireEvent.click(screen.getByRole("button", { name: "Send image only" }));
+  await act(async () => {});
+  const sent = fixture.sent.find((message) => message.type === "start_turn");
+  expect(sent?.client_submission_id).toBeTruthy();
+  const draft = readFailedSubmissions("draft:general");
+  expect(draft).toHaveLength(1);
+  expect(draft[0].submissionId).toBe(sent?.client_submission_id);
+  const snapshot = draft[0].requestSnapshot as { attachments: Array<{ filename: string }> };
+  expect(snapshot.attachments[0].filename).toBe("figure.png");
+});
 
 it("restores a persisted worker loss and retries the same mastery answer snapshot", async () => {
   fixture.session = {
@@ -599,25 +605,6 @@ it("retries the original reading viewport after the live document changes", asyn
   }
 });
 
-it("retries the original watching position after the live video changes", async () => {
-  vi.useFakeTimers();
-  try {
-    render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
-    fireEvent.click(screen.getByText("Prepare watching"));
-    fireEvent.click(screen.getByText("Send"));
-    await act(async () => { await vi.advanceTimersByTimeAsync(GIVE_UP_MS); });
-    setWatchingMaterial("video-b");
-    setWatchingViewport(99);
-    fixture.connected = true;
-    await act(async () => { fireEvent.click(screen.getByText("Resend")); });
-    expect(fixture.sent.at(-1)).toMatchObject({
-      type: "start_turn", timed_media_id: "video-a",
-      timed_media_viewport: { time_seconds: 42 },
-    });
-  } finally {
-    vi.useRealTimers();
-  }
-});
 
 it("Stop before admission cannot erase another tab's newer same-ID retry", async () => {
   vi.useFakeTimers();
@@ -1142,4 +1129,54 @@ it("keeps a stale tab's retry after another tab cleared the same submission ID",
   } finally {
     vi.useRealTimers();
   }
+});
+
+it("resubscribes a parked ask_user turn on load so its card survives a reload", async () => {
+  fixture.session = {
+    ...completedServerSession(),
+    status: "waiting_input",
+    active_turns: [{ turn_id: "turn-parked", status: "waiting_input" }],
+    messages: [
+      {
+        id: 1,
+        session_id: "s1",
+        role: "user",
+        content: "Beach or mountains?",
+        events: [],
+        attachments: [],
+        created_at: 1,
+        parent_message_id: null,
+      },
+    ],
+  };
+
+  render(
+    <ChatStateAdapterProvider>
+      <Harness />
+    </ChatStateAdapterProvider>,
+  );
+  await act(async () => {
+    fireEvent.click(screen.getByText("Load"));
+  });
+
+  const subscribe = (message: Record<string, unknown>) =>
+    message.type === "subscribe_turn" &&
+    message.turn_id === "turn-parked" &&
+    message.after_seq === 0;
+  expect(fixture.sent.some(subscribe)).toBe(true);
+
+  // Re-opening the same parked turn must not subscribe twice; the replayed
+  // stream would otherwise be fetched again on every revalidate.
+  const subscribed = fixture.sent.filter(
+    (message) => message.type === "subscribe_turn",
+  ).length;
+  await act(async () => {
+    fireEvent.click(screen.getByText("Load"));
+  });
+  expect(screen.getByTestId("messages").textContent).toContain(
+    "Beach or mountains?",
+  );
+  expect(
+    fixture.sent.filter((message) => message.type === "subscribe_turn").length,
+  ).toBe(subscribed);
 });

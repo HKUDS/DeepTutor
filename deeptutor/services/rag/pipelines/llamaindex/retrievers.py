@@ -15,6 +15,7 @@ from .config import (
     HYBRID_PROFILE,
     VECTOR_PROFILE,
     RetrievalConfig,
+    normalize_retrieval_profile,
     retrieval_config_from_settings,
 )
 from .rerank import rerank_nodes
@@ -52,6 +53,29 @@ def _corpus_size(index: Any) -> int | None:
     return None
 
 
+def bm25_available() -> bool:
+    """Whether LlamaIndex's BM25 retriever package is importable.
+
+    Exposed so status surfaces can distinguish the *configured* retrieval
+    profile from the *effective* one: on Python 3.14 the BM25 dependency is
+    marker-excluded, and a deployment configured for hybrid then runs
+    vector-only without any signal otherwise (#1792).
+    """
+    return _import_bm25_retriever() is not None
+
+
+def effective_retrieval_profile(profile: str | None) -> str:
+    """The retrieval profile that would actually run, given BM25 availability.
+
+    A hybrid configuration degrades to vector-only when the BM25 package is
+    missing; vector-only configurations are unaffected.
+    """
+    normalized = normalize_retrieval_profile(profile)
+    if normalized == HYBRID_PROFILE and not bm25_available():
+        return VECTOR_PROFILE
+    return normalized
+
+
 def build_bm25_retriever(index: Any, storage_dir: Path, *, top_k: int) -> Any | None:
     """Build or load LlamaIndex's official BM25 retriever if available."""
     top_k = max(1, int(top_k))
@@ -64,8 +88,14 @@ def build_bm25_retriever(index: Any, storage_dir: Path, *, top_k: int) -> Any | 
         top_k = min(top_k, corpus_size)
     bm25_cls = _import_bm25_retriever()
     if bm25_cls is None:
-        logger.info(
-            "LlamaIndex BM25 retriever package is not installed; falling back to vector retrieval."
+        # #1792: an INFO line was invisible in normal runs, so deployments on
+        # Python 3.14 (where the BM25 dependency is marker-excluded) ran
+        # vector-only without ever knowing. The configured profile is not the
+        # effective one — say so at warning level.
+        logger.warning(
+            "LlamaIndex BM25 retriever package is not installed; configured "
+            "retrieval profile will run vector-only. Install "
+            "'llama-index-retrievers-bm25' to restore hybrid retrieval."
         )
         return None
 
@@ -133,6 +163,14 @@ def build_retriever(
     bm25_top_k = retrieval_config.candidate_top_k(top_k, retrieval_config.bm25_top_k_multiplier)
     bm25_retriever = build_bm25_retriever(index, storage_dir, top_k=bm25_top_k)
     if bm25_retriever is None:
+        # Only reachable for non-vector profiles: the configured stack
+        # degrades to vector-only here, and the operator must know (#1792).
+        logger.warning(
+            "Retrieval profile %r requires BM25 but it is unavailable; "
+            "running vector-only. Install 'llama-index-retrievers-bm25' "
+            "or switch the profile to 'vector'.",
+            retrieval_config.profile,
+        )
         return index.as_retriever(similarity_top_k=top_k)
 
     if retrieval_config.profile == HYBRID_PROFILE:
@@ -182,8 +220,10 @@ def retrieve_nodes(
 
 __all__ = [
     "BM25_PERSIST_DIRNAME",
+    "bm25_available",
     "build_bm25_retriever",
     "build_retriever",
+    "effective_retrieval_profile",
     "persist_bm25_retriever",
     "retrieve_nodes",
 ]

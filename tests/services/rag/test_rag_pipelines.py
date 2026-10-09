@@ -43,7 +43,12 @@ class _FakePipeline:
 
 
 @pytest.fixture
-def fake_service(tmp_path) -> tuple[RAGService, _FakePipeline]:
+def fake_service(tmp_path, monkeypatch) -> tuple[RAGService, _FakePipeline]:
+    from deeptutor.services.rag import index_probe
+
+    monkeypatch.setattr(
+        index_probe, "latest_ready_provider_version", lambda *args: {"version": "fake"}
+    )
     pipeline = _FakePipeline()
     service = RAGService(kb_base_dir=str(tmp_path))
     # No metadata.json under tmp_path → KBs resolve to the default provider.

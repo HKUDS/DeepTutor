@@ -1,5 +1,6 @@
 "use client";
 
+import { pageActionClass, pageGridClass } from '@/components/layout/FeaturePage'
 import Tooltip from "@/shared/ui/Tooltip";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -272,7 +273,7 @@ export default function MyAgentsSection() {
   return (
     <div className="space-y-6">
       <SpaceSectionHeader
-        icon={Bot}
+        level={2}
         title={t("Imported conversations")}
         description={t(
           "Import ChatGPT exports or connect Claude Code and Codex folders. Open any imported conversation to keep chatting.",
@@ -282,7 +283,7 @@ export default function MyAgentsSection() {
             <button
               type="button"
               onClick={() => setWizardOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--foreground)] px-3 py-1.5 text-[12px] font-medium text-[var(--background)] shadow-sm transition-opacity hover:opacity-90"
+              className={pageActionClass()}
             >
               <Plus className="h-3.5 w-3.5" />
               {t("Import conversations")}
@@ -295,7 +296,7 @@ export default function MyAgentsSection() {
         <EmptyState onAdd={() => setWizardOpen(true)} />
       ) : (
         <>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className={pageGridClass(2)}>
             {cards.map((card) =>
               card.kind === "agent" ? (
                 <AgentCard

@@ -32,6 +32,7 @@ export function MenuItem({
   hint,
   active,
   spinning,
+  mobileOnly = false,
 }: {
   icon: typeof StickyNote;
   label: string;
@@ -42,6 +43,8 @@ export function MenuItem({
   /** A setting that is on. Toggles report it; plain actions leave it unset. */
   active?: boolean;
   spinning?: boolean;
+  /** Below `md` only: a desktop control the converged mobile header moved here. */
+  mobileOnly?: boolean;
 }) {
   return (
     <button
@@ -50,7 +53,7 @@ export function MenuItem({
       disabled={disabled}
       role={active === undefined ? undefined : "menuitemcheckbox"}
       aria-checked={active}
-      className="flex w-full items-start gap-2 rounded-md px-2.5 py-2 text-left text-[var(--foreground)] transition hover:bg-[var(--muted)] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent"
+      className={`${mobileOnly ? "md:hidden " : ""}flex w-full items-start gap-2 rounded-md px-2.5 py-2 text-left text-[var(--foreground)] transition hover:bg-[var(--muted)] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent`}
     >
       <Icon
         size={13}
