@@ -165,9 +165,11 @@ export function SequencePage() {
       setBanner(null);
     } catch (error) {
       if (view.current !== viewId) return;
+      // The server answers with fixed English sentences that double as i18n
+      // keys; a model-authored detail has no key and passes through as-is.
       setMessage(
         error instanceof Error && error.message
-          ? error.message
+          ? t(error.message)
           : t("Could not write a problem from that material. Try a more specific topic."),
       );
     } finally {
@@ -237,7 +239,9 @@ export function SequencePage() {
       }
     } catch (error) {
       if (view.current !== viewId) return;
-      setMessage(error instanceof Error && error.message ? error.message : t("Could not check that step."));
+      setMessage(
+        error instanceof Error && error.message ? t(error.message) : t("Could not check that step."),
+      );
     } finally {
       setBusy(false);
     }
