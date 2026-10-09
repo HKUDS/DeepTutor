@@ -1821,6 +1821,7 @@
   "This step needs credentials": "This step needs credentials",
   "Close tab": "Close tab",
   "Close viewer": "Close viewer",
+  "Back to conversation": "Back to conversation",
   "Loading {{host}}…": "Loading {{host}}…",
   "Many sites refuse to embed for security reasons. If the page below stays blank, use “Open in browser”.": "Many sites refuse to embed for security reasons. If the page below stays blank, use “Open in browser”.",
   "Open URL": "Open URL",
