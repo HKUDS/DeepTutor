@@ -59,7 +59,11 @@ class SequenceStore:
         path = self.sessions / f"{problem_id}.json"
         if not path.is_file():
             return None
-        data = json.loads(path.read_text(encoding="utf-8"))
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            # A damaged session reads as missing, the way a damaged outline does.
+            return None
         return data if isinstance(data, dict) else None
 
     def mutate(self, problem_id: str, fn: Callable[[dict[str, Any]], Any]) -> Any:
