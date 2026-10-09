@@ -41,7 +41,9 @@ export function SequenceModules({
     <div className="space-y-8">
       {groups.map(group => (
         <section key={group.category}>
-          <h2 className="mb-3 text-base font-semibold text-[var(--primary)]">{group.category}</h2>
+          <h2 className="mb-3 text-base font-semibold text-[var(--primary)]">
+            {group.category || t("Course")}
+          </h2>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
             {group.modules.map(module => (
               <button

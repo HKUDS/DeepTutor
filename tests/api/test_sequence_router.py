@@ -98,7 +98,7 @@ def test_create_outline_returns_the_service_payload(monkeypatch):
             "modules": [
                 {
                     "id": "m_abc",
-                    "category": "Course",
+                    "category": "",
                     "name": "Chain rule",
                     "topic": "chain rule",
                     "solved": 0,
@@ -114,6 +114,9 @@ def test_create_outline_returns_the_service_payload(monkeypatch):
     )
     assert response.status_code == 200
     assert response.json()["source"] == "files"
+    # The outline leaves an empty category empty; the client names it, so the
+    # label reaches the learner in their own language.
+    assert response.json()["modules"][0]["category"] == ""
     assert "correct_ids" not in response.json()
 
 

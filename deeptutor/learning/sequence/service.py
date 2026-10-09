@@ -256,7 +256,7 @@ def _outline_view(
         rows.append(
             {
                 "id": module_id,
-                "category": category or "Course",
+                "category": category,
                 "name": name or topic,
                 "topic": topic,
                 "solved": store.progress(kb_name, topic),

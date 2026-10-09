@@ -244,7 +244,7 @@ def test_modules_from_files_groups_a_nested_pdf_and_a_root_md():
     first = modules_from_files(paths)
     second = modules_from_files(list(reversed(paths)))
     assert first == second
-    assert [item["category"] for item in first] == ["calculus", "Course"]
+    assert [item["category"] for item in first] == ["calculus", ""]
     assert [item["name"] for item in first] == ["chain rule", "limits and continuity"]
     assert [item["topic"] for item in first] == ["chain rule", "limits and continuity"]
     assert first[0]["id"] == "m_" + hashlib.sha256(b"calculus/chain_rule.pdf").hexdigest()[:12]

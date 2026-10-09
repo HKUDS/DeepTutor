@@ -70,7 +70,7 @@ def modules_from_files(paths: list[str]) -> list[dict[str, str]]:
                 posix,
                 {
                     "id": "m_" + hashlib.sha256(posix.encode("utf-8")).hexdigest()[:12],
-                    "category": parts[0] if len(parts) > 1 else "Course",
+                    "category": parts[0] if len(parts) > 1 else "",
                     "name": label,
                     "topic": label,
                 },
