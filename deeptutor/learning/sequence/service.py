@@ -366,6 +366,22 @@ def _require(store: SequenceStore, problem_id: str) -> dict[str, Any]:
     return record
 
 
+def _mutate(store: SequenceStore, problem_id: str, fn: Callable[[dict[str, Any]], Any]) -> Any:
+    """Run one read-modify-write cycle under the store lock.
+
+    A missing or malformed problem id is the same 404 a plain read gives, and
+    a ``SequenceError`` raised inside ``fn`` reaches the learner with the
+    session file left exactly as it was.
+    """
+    try:
+        result = store.mutate(problem_id, fn)
+    except ValueError as exc:
+        raise SequenceError(404, "That problem is no longer available.") from exc
+    if result is None:
+        raise SequenceError(404, "That problem is no longer available.")
+    return result
+
+
 def _step(record: dict[str, Any], step_id: str) -> dict[str, str]:
     for step in record.get("steps") or []:
         if step.get("id") == step_id:
@@ -374,21 +390,78 @@ def _step(record: dict[str, Any], step_id: str) -> dict[str, str]:
 
 
 def place_step(store: SequenceStore, problem_id: str, step_id: str, index: int) -> dict[str, Any]:
-    record = _require(store, problem_id)
-    if record.get("solved"):
-        raise SequenceError(409, "This solution is already complete.")
-    step = _step(record, step_id)
-    placed = list(record.get("placed_ids") or [])
-    if step_id in placed:
-        raise SequenceError(409, "That step is already in your solution.")
-    if not isinstance(index, int) or isinstance(index, bool):
-        raise SequenceError(422, "Say where the step should go.")
-    correct_ids = list(record.get("correct_ids") or [])
-    accepted = placement_accepted(correct_ids, placed, step["id"], index)
-    if accepted:
-        placed = placed[:index] + [step["id"]] + placed[index:]
-        record["placed_ids"] = placed
-        if sequence_complete(correct_ids, placed):
+    def apply(record: dict[str, Any]) -> dict[str, Any]:
+        if record.get("solved"):
+            raise SequenceError(409, "This solution is already complete.")
+        step = _step(record, step_id)
+        placed = list(record.get("placed_ids") or [])
+        if step_id in placed:
+            raise SequenceError(409, "That step is already in your solution.")
+        if not isinstance(index, int) or isinstance(index, bool):
+            raise SequenceError(422, "Say where the step should go.")
+        correct_ids = list(record.get("correct_ids") or [])
+        accepted = placement_accepted(correct_ids, placed, step["id"], index)
+        if accepted:
+            placed = placed[:index] + [step["id"]] + placed[index:]
+            record["placed_ids"] = placed
+            if sequence_complete(correct_ids, placed):
+                record["solved"] = True
+                record["progress_solved"] = store.mark_solved(
+                    record["kb_name"],
+                    record["topic"],
+                    record["id"],
+                    goal=GOAL,
+                )
+            else:
+                record["progress_solved"] = store.progress(record["kb_name"], record["topic"])
+        else:
+            record["progress_solved"] = store.progress(record["kb_name"], record["topic"])
+        return {"accepted": accepted, "problem": public_problem(record)}
+
+    return _mutate(store, problem_id, apply)
+
+
+def remove_step(store: SequenceStore, problem_id: str, step_id: str) -> dict[str, Any]:
+    def apply(record: dict[str, Any]) -> dict[str, Any]:
+        if record.get("solved"):
+            raise SequenceError(409, "This solution is already complete.")
+        _step(record, step_id)
+        correct_ids = list(record.get("correct_ids") or [])
+        remaining = [item for item in record.get("placed_ids") or [] if item != step_id]
+        kept: list[str] = []
+        for item in remaining:
+            if len(kept) < len(correct_ids) and correct_ids[len(kept)] == item:
+                kept.append(item)
+            else:
+                break
+        record["placed_ids"] = kept
+        record["progress_solved"] = store.progress(record["kb_name"], record["topic"])
+        return public_problem(record)
+
+    return _mutate(store, problem_id, apply)
+
+
+def check_answer(store: SequenceStore, problem_id: str, step_ids: list[str]) -> dict[str, Any]:
+    """Grade one attempt. A miss is not stored, and the key is not returned."""
+
+    def apply(record: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(step_ids, list) or len(step_ids) > _MAX_ATTEMPT:
+            raise SequenceError(422, "Submit at most 12 steps.")
+        known = {step.get("id") for step in record.get("steps") or []}
+        if any(not isinstance(step_id, str) or step_id not in known for step_id in step_ids):
+            raise SequenceError(422, "That step is not part of this problem.")
+        if len(set(step_ids)) != len(step_ids):
+            raise SequenceError(422, "Each step can appear only once.")
+        if record.get("solved"):
+            raise SequenceError(409, "This solution is already complete.")
+        correct_ids = list(record.get("correct_ids") or [])
+        marks = [
+            "correct" if index < len(correct_ids) and correct_ids[index] == step_id else "incorrect"
+            for index, step_id in enumerate(step_ids)
+        ]
+        solved = bool(correct_ids) and step_ids == correct_ids
+        if solved:
+            record["placed_ids"] = list(step_ids)
             record["solved"] = True
             record["progress_solved"] = store.mark_solved(
                 record["kb_name"],
@@ -396,64 +469,9 @@ def place_step(store: SequenceStore, problem_id: str, step_id: str, index: int) 
                 record["id"],
                 goal=GOAL,
             )
-        else:
-            record["progress_solved"] = store.progress(record["kb_name"], record["topic"])
-        store.save(record)
-    else:
-        record["progress_solved"] = store.progress(record["kb_name"], record["topic"])
-    view = public_problem(record)
-    return {"accepted": accepted, "problem": view}
+        return {"solved": solved, "marks": marks, "problem": public_problem(record)}
 
-
-def remove_step(store: SequenceStore, problem_id: str, step_id: str) -> dict[str, Any]:
-    record = _require(store, problem_id)
-    if record.get("solved"):
-        raise SequenceError(409, "This solution is already complete.")
-    _step(record, step_id)
-    correct_ids = list(record.get("correct_ids") or [])
-    remaining = [item for item in record.get("placed_ids") or [] if item != step_id]
-    kept: list[str] = []
-    for item in remaining:
-        if len(kept) < len(correct_ids) and correct_ids[len(kept)] == item:
-            kept.append(item)
-        else:
-            break
-    record["placed_ids"] = kept
-    record["progress_solved"] = store.progress(record["kb_name"], record["topic"])
-    store.save(record)
-    return public_problem(record)
-
-
-def check_answer(store: SequenceStore, problem_id: str, step_ids: list[str]) -> dict[str, Any]:
-    """Grade one attempt. A miss is not stored, and the key is not returned."""
-    record = _require(store, problem_id)
-    if not isinstance(step_ids, list) or len(step_ids) > _MAX_ATTEMPT:
-        raise SequenceError(422, "Submit at most 12 steps.")
-    known = {step.get("id") for step in record.get("steps") or []}
-    if any(not isinstance(step_id, str) or step_id not in known for step_id in step_ids):
-        raise SequenceError(422, "That step is not part of this problem.")
-    if len(set(step_ids)) != len(step_ids):
-        raise SequenceError(422, "Each step can appear only once.")
-    if record.get("solved"):
-        raise SequenceError(409, "This solution is already complete.")
-    correct_ids = list(record.get("correct_ids") or [])
-    marks = [
-        "correct" if index < len(correct_ids) and correct_ids[index] == step_id else "incorrect"
-        for index, step_id in enumerate(step_ids)
-    ]
-    solved = bool(correct_ids) and step_ids == correct_ids
-    if solved:
-        record["placed_ids"] = list(step_ids)
-        record["solved"] = True
-        record["progress_solved"] = store.mark_solved(
-            record["kb_name"],
-            record["topic"],
-            record["id"],
-            goal=GOAL,
-        )
-        store.save(record)
-    view = public_problem(record)
-    return {"solved": solved, "marks": marks, "problem": view}
+    return _mutate(store, problem_id, apply)
 
 
 def _next_correct_math(record: dict[str, Any]) -> str:

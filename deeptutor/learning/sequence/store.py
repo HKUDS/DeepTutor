@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 import hashlib
 import json
 from pathlib import Path
@@ -11,15 +12,17 @@ from typing import Any
 
 _ID_RE = re.compile(r"^[A-Za-z0-9_-]{16,80}$")
 _LOCKS_GUARD = threading.Lock()
-_LOCKS: dict[str, threading.Lock] = {}
+# Reentrant so one writer can nest the store's own reads (progress, mark_solved)
+# inside a mutate cycle while other threads still see one writer at a time.
+_LOCKS: dict[str, Any] = {}
 
 
-def _lock_for(root: Path) -> threading.Lock:
+def _lock_for(root: Path) -> Any:
     key = str(root)
     with _LOCKS_GUARD:
         lock = _LOCKS.get(key)
         if lock is None:
-            lock = threading.Lock()
+            lock = threading.RLock()
             _LOCKS[key] = lock
         return lock
 
@@ -58,6 +61,24 @@ class SequenceStore:
             return None
         data = json.loads(path.read_text(encoding="utf-8"))
         return data if isinstance(data, dict) else None
+
+    def mutate(self, problem_id: str, fn: Callable[[dict[str, Any]], Any]) -> Any:
+        """Apply ``fn`` to the stored session, then save it, all under one lock.
+
+        Holding the root lock across load-modify-save keeps two rapid writers
+        from losing each other's placements. ``fn``'s result is returned; a
+        missing session returns ``None`` without calling ``fn``; an exception
+        from ``fn`` propagates and leaves the session file untouched.
+        """
+        if not _ID_RE.fullmatch(problem_id):
+            raise ValueError("Invalid problem id.")
+        with _lock_for(self.root):
+            record = self.load(problem_id)
+            if record is None:
+                return None
+            result = fn(record)
+            _atomic_write(self.sessions / f"{problem_id}.json", record)
+            return result
 
     def save_outline(self, kb_name: str, outline: dict[str, Any]) -> None:
         cleaned = kb_name.strip()
