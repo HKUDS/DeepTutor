@@ -519,6 +519,25 @@ def scrub_hint(hint: str, next_math: str) -> str:
     return text[:600]
 
 
+def scrub_explanation(text: str, stored: str, unplaced_math: list[str]) -> str:
+    """Drop an explanation that repeats the math of a step not yet placed.
+
+    Same normalized-containment check ``scrub_hint`` uses: a leak falls back
+    to the stored explanation for the step being explained, which the learner
+    has already earned by placing it.
+    """
+    body = " ".join(str(text or "").split())
+    normalized = evidence_key(body)
+    for math in unplaced_math:
+        secret = evidence_key(str(math or ""))
+        if secret and len(secret) > 8 and secret in normalized:
+            body = ""
+            break
+    if not body:
+        body = " ".join(str(stored or "").split())
+    return body[:800]
+
+
 async def hint(
     store: SequenceStore,
     problem_id: str,
@@ -587,7 +606,7 @@ async def explain_step(
         max_tokens=500,
         max_retries=0,
     )
-    body = " ".join(str(text or "").split())
-    if not body:
-        body = step["explanation"]
-    return {"explanation": body[:800]}
+    unplaced_math = [
+        _math_for(record, correct_id) for correct_id in correct_ids if correct_id not in placed
+    ]
+    return {"explanation": scrub_explanation(text, step["explanation"], unplaced_math)}
