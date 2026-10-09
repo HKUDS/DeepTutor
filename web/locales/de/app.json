@@ -1821,6 +1821,7 @@
   "This step needs credentials": "Dieser Schritt erfordert Anmeldedaten",
   "Close tab": "Tab schließen",
   "Close viewer": "Viewer schließen",
+  "Back to conversation": "Zurück zur Unterhaltung",
   "Loading {{host}}…": "{{host}} wird geladen…",
   "Many sites refuse to embed for security reasons. If the page below stays blank, use “Open in browser”.": "Viele Websites verweigern das Einbetten aus Sicherheitsgründen. Wenn die Seite unten leer bleibt, nutze „Im Browser öffnen“.",
   "Open URL": "URL öffnen",

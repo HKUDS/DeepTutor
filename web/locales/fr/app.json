@@ -2323,6 +2323,7 @@
   "This step needs credentials": "Cette étape nécessite des identifiants",
   "Close tab": "Fermer l'onglet",
   "Close viewer": "Fermer la visionneuse",
+  "Back to conversation": "Retour à la conversation",
   "Loading {{host}}…": "Chargement de {{host}}…",
   "Many sites refuse to embed for security reasons. If the page below stays blank, use “Open in browser”.": "De nombreux sites refusent l'intégration pour des raisons de sécurité. Si la page ci-dessous reste vide, utilisez « Ouvrir dans le navigateur ».",
   "Open URL": "Ouvrir une URL",

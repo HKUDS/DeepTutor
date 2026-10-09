@@ -1821,6 +1821,7 @@
   "This step needs credentials": "这一步需要凭据",
   "Close tab": "关闭标签页",
   "Close viewer": "关闭查看器",
+  "Back to conversation": "返回对话",
   "Loading {{host}}…": "正在加载 {{host}}…",
   "Many sites refuse to embed for security reasons. If the page below stays blank, use “Open in browser”.": "出于安全原因，许多网站拒绝嵌入。如果下方页面保持空白，请使用「在浏览器中打开」。",
   "Open URL": "打开 URL",

@@ -1784,6 +1784,7 @@
   "This step needs credentials": "Цей крок потребує облікових даних",
   "Close tab": "Закрити вкладку",
   "Close viewer": "Закрити переглядач",
+  "Back to conversation": "Повернутися до розмови",
   "Loading {{host}}…": "Завантаження {{host}}…",
   "Many sites refuse to embed for security reasons. If the page below stays blank, use “Open in browser”.": "Багато сайтів відмовляються вбудовуватися з міркувань безпеки. Якщо сторінка нижче залишається порожньою, скористайтеся «Відкрити в браузері».",
   "Open URL": "Відкрити URL",
