@@ -1047,7 +1047,15 @@ class AgentLoop:
         tool_choice: str | None = None,
     ) -> LLMCallResult:
         request_messages = with_transient_model_messages(messages, self._transient_model_messages)
-        await self.pipeline._guard_context_window(request_messages, self.stream)
+        # Guard the same request representation we send. Raw repeated images
+        # must not cause tool evidence to be snipped before image projection.
+        projected_messages = deduplicate_user_images(
+            [
+                {key: value for key, value in message.items() if key != "_context_snapshot"}
+                for message in request_messages
+            ]
+        )
+        await self.pipeline._guard_context_window(projected_messages, self.stream)
         stage = self.stage
         call_id = new_call_id(f"{self.source}-{stage}")
         trace_meta = build_trace_metadata(
@@ -1071,12 +1079,7 @@ class AgentLoop:
 
         kwargs: dict[str, Any] = {
             "model": self.pipeline.model,
-            "messages": deduplicate_user_images(
-                [
-                    {key: value for key, value in message.items() if key != "_context_snapshot"}
-                    for message in request_messages
-                ]
-            ),
+            "messages": projected_messages,
             "stream": True,
             **self.pipeline._completion_kwargs(max_tokens=max_tokens),
         }

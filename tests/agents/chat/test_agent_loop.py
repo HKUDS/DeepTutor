@@ -3782,6 +3782,66 @@ async def test_wire_deduplicates_user_images_without_mutating_model_history(monk
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("distinct", [False, True])
+async def test_request_guard_budgets_projected_images_and_preserves_tool_history(
+    monkeypatch, distinct
+):
+    from copy import deepcopy
+
+    messages = []
+    for turn in range(4):
+        images = [
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/png;base64,image-{4 * turn + i if distinct else i}"
+                },
+            }
+            for i in range(4)
+        ]
+        messages.extend(
+            [
+                {"role": "user", "content": images},
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": f"call-{turn}",
+                            "type": "function",
+                            "function": {"name": "web_search", "arguments": '{"query":"source"}'},
+                        }
+                    ],
+                },
+                {"role": "tool", "tool_call_id": f"call-{turn}", "content": f"evidence {turn}"},
+                {"role": "assistant", "content": "answer"},
+            ]
+        )
+    original = deepcopy(messages)
+    client = _ScriptedChatClient([[_llm_chunk(content="answer")]])
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.llm_config = SimpleNamespace(context_window=60000, max_tokens=4096)
+    pipeline.registry = _Registry()
+    pipeline._model_turn_start = 0
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: [])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    monkeypatch.setattr(pipeline, "_build_loop_messages", lambda *_args, **_kwargs: messages)
+
+    await _run(pipeline, UnifiedContext(session_id="s", user_message="again"))
+
+    wire_tools = [
+        message["content"] for message in client.calls[0]["messages"] if message["role"] == "tool"
+    ]
+    expected = (
+        [pipeline._tool_result_snip_marker()] * 4
+        if distinct
+        else [f"evidence {turn}" for turn in range(4)]
+    )
+    assert wire_tools == expected
+    assert messages[: len(original)] == original
+
+
+@pytest.mark.asyncio
 async def test_image_fallback_strips_all_canonical_copies_after_wire_deduplication(monkeypatch):
     from copy import deepcopy
 
