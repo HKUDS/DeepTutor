@@ -96,7 +96,12 @@ export function LearningDashboard() {
       {failed.length > 0 && (
         <LearningErrorState
           message={t('Some learning activity could not be loaded: {{sources}}.', {
-            sources: LEARNING_SURFACES.filter(surface => surface.kind !== "practice" && failed.includes(surface.kind))
+            sources: LEARNING_SURFACES.filter(
+              surface =>
+                surface.kind !== "practice" &&
+                surface.kind !== "sequence" &&
+                failed.includes(surface.kind),
+            )
               .map(surface => t(surface.title))
               .join(t('source list separator')),
           })}

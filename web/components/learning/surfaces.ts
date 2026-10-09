@@ -1,9 +1,9 @@
-import { BookOpen, BookText, ClipboardCheck, Route, type LucideIcon } from 'lucide-react'
+import { BookOpen, BookText, ClipboardCheck, ListOrdered, Route, type LucideIcon } from 'lucide-react'
 import type { LearningKind } from '@/lib/learning-dashboard'
-import { BOOKS_HOME, MASTERY_HOME, PRACTICE_HOME, READING_HOME } from '@/lib/learning-routes'
+import { BOOKS_HOME, MASTERY_HOME, PRACTICE_HOME, READING_HOME, SEQUENCE_HOME } from '@/lib/learning-routes'
 
 export interface LearningSurface {
-  kind: LearningKind | "practice"
+  kind: LearningKind | "practice" | "sequence"
   href: string
   /** Product copy — every field here is a translation key, never rendered raw. */
   title: string
@@ -70,6 +70,22 @@ export const LEARNING_SURFACES: readonly LearningSurface[] = [
     unit: '{{count}} questions',
     icon: ClipboardCheck,
     accent: 'bg-sky-500/10 text-sky-600 dark:text-sky-400',
+  },
+  {
+    kind: 'sequence',
+    href: SEQUENCE_HOME,
+    title: 'Guided practice',
+    description: 'Rebuild a worked solution, then check each step.',
+    intro:
+      'Choose a knowledge base. DeepTutor reads its modules, then you place the steps in order, including steps that do not belong.',
+    highlights: [
+      'The problem is written from your knowledge base',
+      'Correct steps are mixed with plausible mistakes',
+      'The correct order stays on the server until you solve it',
+    ],
+    unit: 'Practice problems',
+    icon: ListOrdered,
+    accent: 'bg-violet-500/10 text-violet-600 dark:text-violet-400',
   },
   {
     kind: 'reading',
