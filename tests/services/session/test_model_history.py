@@ -176,6 +176,84 @@ async def test_summary_instruction_is_appended_after_original_messages_and_tools
 
 
 @pytest.mark.asyncio
+async def test_summary_replay_projects_duplicate_images_without_losing_provider_state(monkeypatch):
+    captured = {}
+
+    async def stream(_self, **kwargs):
+        captured.update(kwargs)
+        yield "Summary"
+
+    monkeypatch.setattr(_ContextSummaryAgent, "stream_llm", stream)
+    record = turn_record()
+    image = {"type": "image_url", "image_url": {"url": "data:image/png;base64,YWJj"}}
+    record["messages"][0]["content"] = [image]
+    record["messages"][-1]["thinking_blocks"] = [
+        {"type": "thinking", "thinking": "private thought", "signature": "signed"}
+    ]
+    request = {
+        "messages": [
+            {"role": "system", "content": record["system"]},
+            *record["messages"],
+            {"role": "user", "content": [deepcopy(image)]},
+        ],
+        "tools": record["tools"],
+    }
+    original = deepcopy(request)
+
+    await ContextBuilder(MagicMock())._summarize(
+        session_id="s",
+        language="en",
+        source_text="fallback transcript",
+        summary_budget=256,
+        replay_request=request,
+    )
+
+    messages = captured["messages"]
+    assert messages[1]["content"][-1] == image
+    assert all(part["type"] == "text" for part in messages[-2]["content"])
+    assert "Repeated image" in messages[-2]["content"][0]["text"]
+    assert messages[2:5] == record["messages"][1:]
+    assert captured["tools"] == record["tools"]
+    assert messages[-1]["role"] == "user"
+    assert request == original
+
+
+@pytest.mark.asyncio
+async def test_budget_uses_the_replayed_route_and_preserves_stored_signed_state():
+    record = turn_record()
+    record["messages"][-1]["thinking_blocks"] = [
+        {"type": "thinking", "thinking": "private thought " * 4000, "signature": "signed"}
+    ]
+    records = rows(record)
+    before = deepcopy(records)
+    store = MagicMock()
+    store.get_session = AsyncMock(
+        return_value={"compressed_summary": "", "summary_up_to_msg_id": 0}
+    )
+    store.get_messages_for_context = AsyncMock(return_value=records)
+    store.update_summary = AsyncMock()
+    builder = ContextBuilder(store)
+    builder._summarize = AsyncMock(return_value=("Summary", []))
+
+    switched = await builder.build(
+        session_id="s",
+        llm_config=SimpleNamespace(binding="openai", model="other-model", context_window=16000),
+    )
+
+    builder._summarize.assert_not_awaited()
+    assert switched.token_count < switched.budget
+    assert "thinking_blocks" not in switched.model_history[-1]
+    assert switched.model_history[2]["content"] == "tool evidence"
+
+    await builder.build(
+        session_id="s",
+        llm_config=SimpleNamespace(binding="openai", model="gpt-test", context_window=16000),
+    )
+    builder._summarize.assert_awaited_once()
+    assert records == before
+
+
+@pytest.mark.asyncio
 async def test_branch_replay_and_public_export_are_isolated(tmp_path):
     from deeptutor.services.session.sqlite_store import SQLiteSessionStore
 
