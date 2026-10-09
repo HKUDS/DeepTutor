@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 
 import pytest
 
@@ -14,11 +15,13 @@ from deeptutor.learning.sequence.schema import SequenceError, parse_problem
 from deeptutor.learning.sequence.service import (
     build_outline,
     check_answer,
+    explain_step,
     generate_problem,
     hint,
     place_step,
     read_outline,
     remove_step,
+    scrub_explanation,
     scrub_hint,
 )
 from deeptutor.learning.sequence.store import SequenceStore
@@ -158,6 +161,15 @@ def test_placement_requires_the_right_step_at_that_index():
 def test_hint_that_copies_the_next_expression_is_replaced():
     leaked = "Try $2x\\cos(x^2)$ next."
     assert "cos" not in scrub_hint(leaked, "$2x\\cos(x^2)$").casefold()
+
+
+def test_explanation_that_copies_an_unplaced_expression_is_replaced():
+    leaked = "Then the derivative finishes at $2x\\cos(x^2)$."
+    stored = "Identify the outer function and the inner function."
+    assert scrub_explanation(leaked, stored, ["$2x\\cos(x^2)$"]) == stored
+    echoed = "This rewrites the step as $f(u)=\\sin u$ before continuing."
+    assert scrub_explanation(echoed, stored, ["$2x\\cos(x^2)$"]) == echoed
+    assert scrub_explanation("", stored, []) == stored
 
 
 @pytest.mark.asyncio
@@ -454,3 +466,229 @@ async def test_progress_counts_a_topic_once_per_problem(tmp_path):
         place_step(store, first["problem_id"], step_id, index)
     _store, second = await _generate(tmp_path)
     assert second["progress"]["solved"] == 1
+
+
+@pytest.mark.asyncio
+async def test_explain_needs_a_correctly_placed_step(tmp_path):
+    store, view = await _generate(tmp_path)
+    saved = store.load(view["problem_id"])
+    distractor = next(step["id"] for step in saved["steps"] if step["role"] == "distractor")
+
+    async def complete_text(**_kwargs):
+        return "The outer function is differentiated first."
+
+    with pytest.raises(SequenceError, match="before asking why") as unplaced:
+        await explain_step(
+            store, view["problem_id"], saved["correct_ids"][0], complete_text=complete_text
+        )
+    assert unplaced.value.status == 409
+    with pytest.raises(SequenceError, match="before asking why") as rejected:
+        await explain_step(store, view["problem_id"], distractor, complete_text=complete_text)
+    assert rejected.value.status == 409
+    with pytest.raises(SequenceError, match="not part") as unknown:
+        await explain_step(store, view["problem_id"], "missing-step", complete_text=complete_text)
+    assert unknown.value.status == 404
+
+
+@pytest.mark.asyncio
+async def test_explain_answers_for_a_step_the_learner_placed(tmp_path):
+    store, view = await _generate(tmp_path)
+    saved = store.load(view["problem_id"])
+    first = saved["correct_ids"][0]
+    place_step(store, view["problem_id"], first, 0)
+
+    async def complete_text(**_kwargs):
+        return "The outer function is differentiated first."
+
+    result = await explain_step(store, view["problem_id"], first, complete_text=complete_text)
+    assert result["explanation"] == "The outer function is differentiated first."
+    assert "correct_ids" not in _forbidden_keys(result)
+    assert "role" not in _forbidden_keys(result)
+    assert "evidence" not in _forbidden_keys(result)
+
+
+@pytest.mark.asyncio
+async def test_explain_keeps_the_eight_hundred_character_bound(tmp_path):
+    store, view = await _generate(tmp_path)
+    saved = store.load(view["problem_id"])
+    first = saved["correct_ids"][0]
+    place_step(store, view["problem_id"], first, 0)
+
+    async def complete_text(**_kwargs):
+        return "word " * 200
+
+    result = await explain_step(store, view["problem_id"], first, complete_text=complete_text)
+    assert len(result["explanation"]) == 800
+
+
+@pytest.mark.asyncio
+async def test_explain_falls_back_to_the_stored_explanation(tmp_path):
+    store, view = await _generate(tmp_path)
+    saved = store.load(view["problem_id"])
+    by_id = {step["id"]: step for step in saved["steps"]}
+    first = saved["correct_ids"][0]
+    place_step(store, view["problem_id"], first, 0)
+
+    async def complete_text(**_kwargs):
+        return ""
+
+    result = await explain_step(store, view["problem_id"], first, complete_text=complete_text)
+    assert result["explanation"] == by_id[first]["explanation"]
+
+
+@pytest.mark.asyncio
+async def test_explain_that_leaks_an_unplaced_step_is_replaced(tmp_path):
+    store, view = await _generate(tmp_path)
+    saved = store.load(view["problem_id"])
+    by_id = {step["id"]: step for step in saved["steps"]}
+    correct_ids = saved["correct_ids"]
+    place_step(store, view["problem_id"], correct_ids[0], 0)
+
+    async def leaky(**_kwargs):
+        return f"From here the solution reaches {by_id[correct_ids[2]]['math']}."
+
+    result = await explain_step(store, view["problem_id"], correct_ids[0], complete_text=leaky)
+    assert result["explanation"] == by_id[correct_ids[0]]["explanation"]
+    assert "2x" not in result["explanation"]
+
+    async def echoes_placed(**_kwargs):
+        return f"This rewrites the step as {by_id[correct_ids[0]]['math']} before continuing."
+
+    kept = await explain_step(
+        store, view["problem_id"], correct_ids[0], complete_text=echoes_placed
+    )
+    assert kept["explanation"] == "This rewrites the step as $f(u)=\\sin u$ before continuing."
+
+
+def test_mutate_holds_the_root_lock_across_the_callback(tmp_path):
+    store = SequenceStore(tmp_path)
+    store.save({"id": "problem-000000000001", "placed_ids": []})
+    inside = threading.Event()
+    release = threading.Event()
+    order: list[str] = []
+    results = {}
+
+    def slow(record):
+        order.append("first")
+        inside.set()
+        assert release.wait(5)
+        record["placed_ids"] = ["s_one"]
+        return "first-done"
+
+    def quick(record):
+        order.append("second")
+        return "second-done"
+
+    def run_slow():
+        results["first"] = store.mutate("problem-000000000001", slow)
+
+    def run_quick():
+        results["second"] = store.mutate("problem-000000000001", quick)
+
+    holder = threading.Thread(target=run_slow)
+    holder.start()
+    try:
+        assert inside.wait(5)
+        competitor = threading.Thread(target=run_quick)
+        competitor.start()
+        competitor.join(timeout=0.3)
+        # Still blocked: the lock covers the whole load-modify-save cycle.
+        assert competitor.is_alive()
+        release.set()
+        holder.join(timeout=5)
+        competitor.join(timeout=5)
+        assert not holder.is_alive() and not competitor.is_alive()
+    finally:
+        release.set()
+        holder.join(timeout=5)
+    assert order == ["first", "second"]
+    assert results == {"first": "first-done", "second": "second-done"}
+    assert store.load("problem-000000000001")["placed_ids"] == ["s_one"]
+
+
+def test_mutate_callback_exception_leaves_the_session_untouched(tmp_path):
+    store = SequenceStore(tmp_path)
+    store.save({"id": "problem-000000000001", "placed_ids": [], "solved": False})
+
+    def reject(record):
+        record["placed_ids"] = ["s_bogus"]
+        raise SequenceError(409, "This solution is already complete.")
+
+    with pytest.raises(SequenceError, match="already complete"):
+        store.mutate("problem-000000000001", reject)
+    assert store.load("problem-000000000001")["placed_ids"] == []
+    # The exception released the lock: a later write still goes through.
+    store.save({"id": "problem-000000000001", "placed_ids": ["s_one"], "solved": False})
+    assert store.load("problem-000000000001")["placed_ids"] == ["s_one"]
+
+
+def test_mutate_returns_none_for_a_missing_session(tmp_path):
+    store = SequenceStore(tmp_path)
+    calls = []
+
+    def never(record):
+        calls.append(record)
+
+    assert store.mutate("problem-000000000002", never) is None
+    assert calls == []
+
+
+def test_store_rejects_ids_that_are_not_url_safe(tmp_path):
+    store = SequenceStore(tmp_path)
+    with pytest.raises(ValueError, match="Invalid problem id"):
+        store.save({"id": "../evil"})
+    with pytest.raises(ValueError, match="Invalid problem id"):
+        store.mutate("../evil", lambda record: record)
+    assert store.load("../evil") is None
+    assert store.load("tooshort") is None
+    assert store.load("id with spaces-00000") is None
+
+
+def test_place_with_a_malformed_problem_id_is_a_404(tmp_path):
+    store = SequenceStore(tmp_path)
+    with pytest.raises(SequenceError, match="no longer available") as exc:
+        place_step(store, "../evil", "s_one", 0)
+    assert exc.value.status == 404
+
+
+@pytest.mark.asyncio
+async def test_two_placements_through_mutate_are_both_saved(tmp_path):
+    store, view = await _generate(tmp_path)
+    saved = store.load(view["problem_id"])
+    first, second = saved["correct_ids"][:2]
+    assert place_step(store, view["problem_id"], first, 0)["accepted"] is True
+    assert place_step(store, view["problem_id"], second, 1)["accepted"] is True
+    assert store.load(view["problem_id"])["placed_ids"] == [first, second]
+
+
+@pytest.mark.asyncio
+async def test_remove_after_solve_is_a_conflict(tmp_path):
+    store, view = await _generate(tmp_path)
+    saved = store.load(view["problem_id"])
+    for index, step_id in enumerate(saved["correct_ids"]):
+        place_step(store, view["problem_id"], step_id, index)
+    with pytest.raises(SequenceError, match="already complete") as exc:
+        remove_step(store, view["problem_id"], saved["correct_ids"][0])
+    assert exc.value.status == 409
+    assert store.load(view["problem_id"])["solved"] is True
+
+
+@pytest.mark.asyncio
+async def test_check_rejects_more_than_twelve_steps(tmp_path):
+    store, view = await _generate(tmp_path)
+    with pytest.raises(SequenceError, match="at most 12") as exc:
+        check_answer(store, view["problem_id"], [f"step-{index}" for index in range(13)])
+    assert exc.value.status == 422
+    assert store.load(view["problem_id"])["placed_ids"] == []
+    assert store.load(view["problem_id"])["solved"] is False
+
+
+def test_load_treats_a_corrupt_session_as_missing(tmp_path):
+    store = SequenceStore(tmp_path)
+    sessions = tmp_path / "sessions"
+    sessions.mkdir(parents=True, exist_ok=True)
+    (sessions / "corrupt-session-000001.json").write_text("{not json", encoding="utf-8")
+    assert store.load("corrupt-session-000001") is None
+    with pytest.raises(SequenceError, match="no longer available") as exc:
+        place_step(store, "corrupt-session-000001", "s_one", 0)
+    assert exc.value.status == 404
