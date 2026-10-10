@@ -712,6 +712,13 @@ def test_llm_provider_choices_include_y_api() -> None:
     assert llm["y_api"]["base_url"] == "https://api.y-api.bestvirtualgoods.com/v1"
 
 
+def test_llm_provider_choices_include_onomeo() -> None:
+    llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
+
+    assert llm["onomeo"]["label"] == "onomeo"
+    assert llm["onomeo"]["base_url"] == "https://onomeo.com/v1"
+
+
 def test_llm_provider_choices_include_novita() -> None:
     llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
 
