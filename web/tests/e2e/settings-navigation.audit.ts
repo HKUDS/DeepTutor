@@ -508,7 +508,8 @@ test("provider discovery stays staged and model choices preserve existing models
   await page.goto("/settings/connections?provider=llm:legacy", { waitUntil: "domcontentloaded" });
   await page.getByLabel("API key", { exact: true }).fill("new-unsaved-key");
   await page.getByRole("button", { name: "Test provider", exact: true }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Provider connected" })).toBeVisible();
+  // A connected non-search probe reports the catalog, not a bare "connected".
+  await expect(page.getByRole("status").filter({ hasText: "Model list retrieved" })).toBeVisible();
   expect(probes[0]).toMatchObject({ api_key: "new-unsaved-key", profile_id: "legacy", service: "llm", extra_headers: { "X-Custom-Header": "preserve-me" } });
   expect(probes[0]).not.toHaveProperty("model");
   expect(state.writes).toEqual([]);
@@ -564,7 +565,8 @@ test("a delayed probe cannot attach results to changed credentials or another pr
   await expect(page.getByRole("heading", { name: "Other provider", exact: true })).toBeVisible();
   finish!();
   await expect(page.getByRole("button", { name: "Test provider", exact: true })).toBeEnabled();
-  await expect(page.getByText(/Provider connected/)).toHaveCount(0);
+  // The stale probe's success message must never surface on the new selection.
+  await expect(page.getByText(/Model list retrieved/)).toHaveCount(0);
   await page.getByRole("button", { name: "Save draft", exact: true }).click();
   await expect(page.getByText("Draft not applied yet", { exact: true })).toBeVisible();
   expect(state.draft().catalog.services.llm.profiles.every((profile: any) => !profile.discovery)).toBe(true);
@@ -602,12 +604,23 @@ test("a new provider can be tested with only a key and supplies discovered model
   });
   await page.goto("/settings/connections", { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "Add provider", exact: true }).click();
-  await page.getByLabel("Provider type", { exact: true }).selectOption("openai");
+  // The provider picker is a radiogroup of cards now, not a native select.
+  // Click the card rather than its sr-only input — the card's icon overlays
+  // the input, and the label forwards the activation anyway.
+  await page
+    .getByRole("radiogroup", { name: "Provider type", exact: true })
+    .locator("label")
+    .filter({ hasText: "OpenAI" })
+    .click();
+  await expect(
+    page.getByRole("radio", { name: "OpenAI", exact: true }),
+  ).toBeChecked();
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(page.getByLabel("Provider URL", { exact: true })).toHaveValue("");
   await page.getByLabel("API key", { exact: true }).fill("new-key");
   await page.getByRole("button", { name: "Test provider", exact: true }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Provider connected" })).toBeVisible();
+  // A connected non-search probe reports the catalog, not a bare "connected".
+  await expect(page.getByRole("status").filter({ hasText: "Model list retrieved" })).toBeVisible();
   expect(probes[0]).toMatchObject({ api_key: "new-key", base_url: "https://api.openai.com/v1" });
   await page.getByRole("region", { name: "Provider settings" }).getByRole("link", { name: "Language models", exact: true }).click();
   await page.getByRole("button", { name: "Add model", exact: true }).click();
