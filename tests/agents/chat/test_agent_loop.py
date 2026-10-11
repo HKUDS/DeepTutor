@@ -2423,20 +2423,25 @@ async def test_cold_start_stalled_provider_settles_with_bounded_retries(monkeypa
     events, consumer = await _collect_bus_events(bus)
     try:
         with pytest.raises(LLMProviderTransportError) as failure:
+            # The outer bound only proves the loop is finite (the default idle
+            # timeout alone would be 3x90s). Five seconds leaves room for cold
+            # one-time init on slow hosts without weakening that property.
             await asyncio.wait_for(
-                pipeline.run(UnifiedContext(session_id="cold", user_message="Hello"), bus), 1
+                pipeline.run(UnifiedContext(session_id="cold", user_message="Hello"), bus), 5
             )
-        assert failure.value.retryable
-        assert len(attempts) == (1 if phase == "partial_stream" else 3)
-        assert failure.value.partial_response is (phase == "partial_stream")
-        if phase != "connect":
-            assert len(stopped) == len(attempts)
-        assert (
-            sum(event.metadata.get("error_code") == "provider_transport" for event in events) >= 1
-        )
     finally:
         await bus.close()
         await consumer
+    assert failure.value.retryable
+    assert len(attempts) == (1 if phase == "partial_stream" else 3)
+    assert failure.value.partial_response is (phase == "partial_stream")
+    if phase != "connect":
+        assert len(stopped) == len(attempts)
+    # Asserted only after the consumer drained: the final provider_transport
+    # progress is emitted right before run() raises, and the collector task
+    # appends it once scheduled — checking earlier races it (deterministically
+    # missing the event on Python 3.12+).
+    assert sum(event.metadata.get("error_code") == "provider_transport" for event in events) >= 1
 
 
 @pytest.mark.asyncio
