@@ -876,6 +876,23 @@ class AgenticLoopPipeline:
                 )
         return False
 
+    def _capability_settlement_recovery(
+        self, context: UnifiedContext,
+    ) -> tuple[str, tuple[str, ...]] | None:
+        """Ask for a receipt-backed, restricted final tool action after settlement."""
+        for cap in self._active_loop_capabilities(context):
+            hook = getattr(cap, "settlement_recovery", None)
+            if not callable(hook):
+                continue
+            try:
+                recovery = hook(context)
+            except Exception:
+                logger.warning("Settlement recovery failed for %s", cap.name, exc_info=True)
+                continue
+            if recovery is not None:
+                return recovery
+        return None
+
     def _capability_finish_instruction(self, context: UnifiedContext, final_text: str) -> str:
         """Let an active capability reject a narrow tool-less finish once.
 

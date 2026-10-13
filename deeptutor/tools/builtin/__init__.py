@@ -104,7 +104,7 @@ def _rag_sources(result: dict[str, Any], *, query: str, kb_name: str) -> list[di
 
 class RAGTool(_PromptHintsMixin, BaseTool):
     def get_definition(self) -> ToolDefinition:
-        return ToolDefinition(
+        definition = ToolDefinition(
             name="rag",
             description=(
                 "Retrieve relevant passages from one of the knowledge bases the "
@@ -155,10 +155,50 @@ class RAGTool(_PromptHintsMixin, BaseTool):
                     required=False,
                     description="Source document ID from an earlier citation; rejects changed source-page references.",
                 ),
+                ToolParameter(
+                    name="presentation", type="string", required=False,
+                    description="In Guided Learning, inspect (default) keeps source evidence private. Use teaching only to intentionally show an exact source view while explaining it; reveal requests a source view after answering. The server checks pending questions and records assistance. Preparation never displays a page automatically.",
+                    enum=["inspect", "teaching", "reveal"],
+                ),
             ],
         )
+        schema = definition.to_openai_schema()["function"]["parameters"]
+        schema["properties"]["presentation"]["type"] = ["string", "null"]
+        schema["properties"]["presentation"]["enum"].append(None)
+        definition.raw_parameters = schema
+        return definition
 
     async def execute(self, **kwargs: Any) -> ToolResult:
+        result = await self._retrieve(**kwargs)
+        if kwargs.get("_mastery_source_context"):
+            result.public_result = {"content": "Source evidence inspected privately."}
+            presentation = kwargs.get("presentation") or "inspect"
+            if presentation != "inspect":
+                presenter = kwargs.get("_present_mastery_sources")
+                if presentation not in {"teaching", "reveal"} or not callable(presenter):
+                    result.success = False
+                    result.content += "\nSource presentation is unavailable; no source was displayed."
+                elif not result.success or not result.metadata.get("presentation_sources"):
+                    result.success = False
+                    result.content += "\nPresentation requires an exact verified PDF view; retrieve its source_path and page."
+                else:
+                    from deeptutor.learning.service import MasteryInteractionError
+
+                    try:
+                        sources = await presenter(result.metadata["presentation_sources"], presentation)
+                        result.public_result = {
+                            "content": "Selected source view presented.",
+                            "sources": [{**row, "presentation": presentation} for row in sources],
+                        }
+                        result.content += "\nThe selected source view was publicly presented."
+                    except (ValueError, MasteryInteractionError) as exc:
+                        result.success = False
+                        result.content += f"\nSource presentation was withheld: {exc}"
+            if not result.success:
+                result.public_result["content"] = "Source evidence could not be presented or verified."
+        return result
+
+    async def _retrieve(self, **kwargs: Any) -> ToolResult:
         from deeptutor.tools.rag_tool import rag_search
 
         query = str(kwargs.get("query") or "").strip()
@@ -167,7 +207,7 @@ class RAGTool(_PromptHintsMixin, BaseTool):
         kb_name = str(kwargs.get("kb_name") or "").strip()
         if not kb_name:
             raise ValueError("RAG requires an explicit kb_name.")
-        event_sink = kwargs.get("event_sink")
+        event_sink = None if kwargs.get("_mastery_source_context") else kwargs.get("event_sink")
         vision_supported = bool(kwargs.get("_vision_supported", False))
         from deeptutor.services.rag.source_visuals import figure_labels, retrieve_visual
 
@@ -193,9 +233,22 @@ class RAGTool(_PromptHintsMixin, BaseTool):
                 )
             except (OSError, ValueError, TypeError) as exc:
                 return ToolResult(content=f"Source visual inspection failed: {exc}", success=False)
-            content = evidence.content
+            content = (evidence.private_content or evidence.content) if kwargs.get("_mastery_source_context") else evidence.content
             if not vision_supported and evidence.images:
                 content += "\nThe selected model cannot inspect pixels; interpret only the text evidence. Open the source or select a vision-capable model for visual claims."
+            presentation_sources = []
+            if kwargs.get("_mastery_source_context") and kwargs.get("presentation") in {"teaching", "reveal"}:
+                from deeptutor.services.rag.source_pages import SourceRef, public_source
+
+                for record, _pixels in evidence.images:
+                    if not record.get("page_number") or not str(record.get("source_path", "")).lower().endswith(".pdf"):
+                        continue
+                    ref = SourceRef(kb_ref=kb_name, document_key=record["source_path"],
+                        source_digest=record["source_document_id"], page_index=record["page_number"] - 1,
+                        crop=record.get("region"))
+                    row = public_source(ref)
+                    row.pop("url", None)
+                    presentation_sources.append(row)
             return ToolResult(
                 content=content,
                 sources=evidence.sources,
@@ -203,13 +256,15 @@ class RAGTool(_PromptHintsMixin, BaseTool):
                 metadata={
                     "evidence_kind": "exact_source_visual",
                     "error_type": evidence.error or None,
+                    "presentation_sources": presentation_sources,
                 },
                 model_message=evidence.model_message() if vision_supported else None,
             )
         extra_kwargs = {
             key: value
             for key, value in kwargs.items()
-            if key not in {"query", "kb_name", "event_sink", "_vision_supported"}
+            if key not in {"query", "kb_name", "event_sink", "_vision_supported", "presentation",
+                           "_mastery_source_context", "_present_mastery_sources"}
         }
 
         result = await rag_search(
@@ -959,6 +1014,8 @@ class ReadSourceTool(_PromptHintsMixin, BaseTool):
         return ToolResult(
             content=str(full_text),
             metadata={"source_id": source_id, "char_count": len(str(full_text))},
+            public_result={"content": "Attached source inspected privately."}
+            if kwargs.get("_mastery_source_context") else None,
         )
 
 

@@ -82,11 +82,14 @@ import {
   type MessageSegment,
 } from "@/components/chat/home/AskUserOptions";
 import { MasteryQuestionCard } from "@/components/chat/home/MasteryQuestionCard";
+import { MasterySourcePresentation } from "@/components/chat/home/MasterySourcePresentation";
 import {
+  collectMasteryAnswerRejections,
   collectMasteryGrades,
   collectMasterySkips,
   extractMasteryQuestion,
   type MasteryGradeResult,
+  type MasteryAnswerRejection,
   type MasteryQuestion,
 } from "@/lib/mastery-question";
 import { SetupCredentialCard } from "@/components/chat/home/SetupCredentialCard";
@@ -648,6 +651,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   onTraceToggle,
   masteryGrades,
   masterySkips,
+  masteryAnswerRejections,
 }: {
   msg: {
     id?: number;
@@ -666,6 +670,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   /** Every question the learner dropped, by id — collected the same way and
    *  for the same reason: the skip lands on a later turn than the card. */
   masterySkips?: Set<string>;
+  masteryAnswerRejections?: Map<string, MasteryAnswerRejection>;
   outlineStatus?: "editing" | "researching" | "done" | "failed";
   sessionId?: string | null;
   language?: string;
@@ -704,6 +709,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   onAnswerMasteryQuestion?: (answer: {
     questionId: string;
     text: string;
+    answers?: Array<{ questionId: string; text: string }>;
   }) => void | boolean | Promise<void | boolean>;
   /** Drop a question the learner does not want to answer. Same turn-starting
    *  shape as answering it, because the engine holds one open question per
@@ -809,14 +815,16 @@ export const AssistantMessage = memo(function AssistantMessage({
         <MasteryQuestionCard
           question={question}
           grade={grade}
-          answered={Boolean(grade)}
+          answered={Boolean(grade) && grade?.complete !== false && grade?.final !== false}
           skipped={masterySkips?.has(question.questionId) ?? false}
           submittedAnswer={grade?.learnerAnswer ?? ""}
-          onSubmit={({ text }) =>
+          rejectionKey={!grade || grade.complete === false || grade.final === false ? masteryAnswerRejections?.get(question.questionId)?.retryKey : undefined}
+          onSubmit={({ text, answers }) =>
             onAnswerMasteryQuestion
               ? onAnswerMasteryQuestion({
                   questionId: question.questionId,
                   text: String(text ?? ""),
+                  ...(question.questionType === "group" ? { answers } : {}),
                 })
               : false
           }
@@ -828,6 +836,7 @@ export const AssistantMessage = memo(function AssistantMessage({
     [
       masteryGrades,
       masterySkips,
+      masteryAnswerRejections,
       onAnswerMasteryQuestion,
       onSkipMasteryQuestion,
   onChallengeMasteryQuestion,
@@ -1167,6 +1176,7 @@ export const AssistantMessage = memo(function AssistantMessage({
           events={events}
         />
       )}
+      <MasterySourcePresentation events={events} />
       {/* Non-default branches (quiz, math animator, visualize) keep the
           card below the body. The default branch inlines it via
           ``messageSegments``; the research branch renders its own card
@@ -1979,6 +1989,7 @@ export const ChatMessageList = memo(function ChatMessageList({
   onAnswerMasteryQuestion?: (answer: {
     questionId: string;
     text: string;
+    answers?: Array<{ questionId: string; text: string }>;
   }) => void | boolean | Promise<void | boolean>;
   /** Drop a question instead of answering it; also starts a turn. */
   onSkipMasteryQuestion?: (
@@ -2084,6 +2095,10 @@ export const ChatMessageList = memo(function ChatMessageList({
   );
   const masterySkips = useMemo(
     () => collectMasterySkips(visibleMessages),
+    [visibleMessages],
+  );
+  const masteryAnswerRejections = useMemo(
+    () => collectMasteryAnswerRejections(visibleMessages),
     [visibleMessages],
   );
 
@@ -2327,6 +2342,7 @@ export const ChatMessageList = memo(function ChatMessageList({
                 onTraceToggle={handleTraceToggle}
                 masteryGrades={masteryGrades}
                 masterySkips={masterySkips}
+                masteryAnswerRejections={masteryAnswerRejections}
               />
             </InlineFileCardProvider>
             <GeneratedFileCards

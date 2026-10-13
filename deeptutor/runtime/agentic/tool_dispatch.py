@@ -198,6 +198,9 @@ async def dispatch_tool_calls(
         display_args = {
             k: v for k, v in exec_args.items() if not k.startswith("_") and k not in withheld
         }
+        if exec_args.get("_mastery_source_context"):
+            # Retrieval queries themselves can quote an answer being verified.
+            display_args = {"presentation": exec_args.get("presentation") or "inspect"}
         await stream.tool_call(
             tool_name=tool_name,
             args=display_args,
@@ -248,7 +251,7 @@ async def dispatch_tool_calls(
                 retrieve_meta_factory(
                     per_tool_trace_meta[tool_index],
                     tool_name,
-                    exec_args,
+                    {} if exec_args.get("_mastery_source_context") else exec_args,
                 )
                 if retrieve_meta_factory
                 else None
@@ -705,7 +708,9 @@ async def execute_tool_call(
     if status_meta is not None:
         running_message = ""
         if retrieve_meta is not None:
-            query = str(retrieve_meta.get("query") or tool_args.get("query") or "").strip()
+            query = "" if tool_args.get("_mastery_source_context") else str(
+                retrieve_meta.get("query") or tool_args.get("query") or ""
+            ).strip()
             running_message = f"Query: {query}" if query else start_retrieval_message
         await stream.progress(
             running_message,
@@ -779,6 +784,7 @@ async def execute_tool_call(
             "terminate_turn": getattr(result, "terminate_turn", False),
             "pause_for_user": getattr(result, "pause_for_user", None),
             "model_message": getattr(result, "model_message", None),
+            "public_result": getattr(result, "public_result", None),
         }
     except Exception as exc:
         # Unknown tool names arrive here too (the registry raises KeyError), so
@@ -860,21 +866,25 @@ async def _collect_outcome(
         result_text = str(result["result_text"])
         tool_meta = per_tool_trace_meta[tool_index]
         tool_extra_meta = result.get("metadata") if isinstance(result, dict) else None
+        public_result = result.get("public_result")
+        projected = isinstance(public_result, dict)
+        public_text = str(public_result.get("content", "")) if projected else result_text
+        public_meta = public_result.get("metadata") if projected else tool_extra_meta
         result_event_meta = merge_trace_metadata(tool_meta, {"trace_kind": "tool_result"})
-        if isinstance(tool_extra_meta, dict) and tool_extra_meta:
+        if isinstance(public_meta, dict) and public_meta:
             result_event_meta = merge_trace_metadata(
                 result_event_meta,
-                {"tool_metadata": dict(tool_extra_meta)},
+                {"tool_metadata": dict(public_meta)},
             )
         if tool_index not in suppress_ui_indices:
             await stream.tool_result(
                 tool_name=tool_name,
-                result=result_text,
+                result=public_text,
                 source=source,
                 stage=stage,
                 metadata=result_event_meta,
             )
-        aggregated_sources.extend(result.get("sources") or [])
+        aggregated_sources.extend((public_result if projected else result).get("sources") or [])
         tool_messages.append(
             {
                 "role": "tool",

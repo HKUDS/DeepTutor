@@ -1712,6 +1712,97 @@ async def test_mastery_card_promise_repair_uses_real_question_tool(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("recovery", ["success", "unsupported", "rogue", "failed_prepare", "stale"])
+async def test_mastery_preparation_at_settlement_boundary_gets_one_delivery_round(
+    recovery: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A successful source repair gets one restricted chance to deliver its card."""
+    from deeptutor.capabilities.mastery.tools import MasteryPrepareLessonTool
+    from deeptutor.learning import semantic_assessment
+
+    monkeypatch.setenv("DEEPTUTOR_WORKSPACE_ROOT", str(tmp_path))
+
+    def init_store(self, root=None):
+        self._root = tmp_path / "learning"
+        self._root.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(LearningStore, "__init__", init_store)
+    LearningStore().save(LearningProgress(book_id="p1", modules=[LearningModule(
+        id="m1", name="Synthetic", order=0, knowledge_points=[KnowledgePoint(
+            id="kp1", name="Synthetic objective", type="memory", module_id="m1"
+        )]
+    )]))
+    prepared = False
+
+    async def verify(_store, _progress, _questions, config=None):
+        if not prepared or recovery == "unsupported":
+            raise semantic_assessment.AssessmentUnavailable("Synthetic unsupported source contract.")
+
+    monkeypatch.setattr(semantic_assessment, "bind_questions", verify)
+    quiz_args = {"questions": [
+        {"knowledge_point_id": "kp1", "question": "Synthetic first?", "expected_answer": "one"},
+        {"knowledge_point_id": "kp1", "question": "Synthetic second?", "expected_answer": "two"},
+    ]}
+
+    class Registry(_Registry):
+        def build_openai_schemas(self, _enabled):
+            return [tool.get_definition().to_openai_schema() for tool in (
+                MasteryQuizTool(), MasteryPrepareLessonTool()
+            )]
+
+        async def execute(self, name, **kwargs):
+            nonlocal prepared
+            self.executed.append({"name": name, "kwargs": kwargs})
+            if name == "mastery_quiz":
+                return await MasteryQuizTool().execute(**kwargs)
+            assert name == "mastery_prepare_lesson"
+            if recovery == "failed_prepare":
+                return ToolResult(content="Synthetic preparation unavailable.", success=False)
+            prepared = True
+            kwargs["_bind_lesson_objective"]("kp1")
+            if recovery == "stale":
+                progress = LearningStore().load("p1")
+                LearningStore().save(progress)
+            return ToolResult(content="Synthetic source preparation succeeded.", success=True)
+
+    def tool(name, args, call_id):
+        return [_llm_chunk(tool_calls=[{"id": call_id, "name": name,
+                                       "arguments": json.dumps(args)}], finish_reason="tool_calls")]
+
+    script = [tool("mastery_quiz", quiz_args, "quiz-1"),
+              tool("mastery_quiz", quiz_args, "quiz-2"),
+              [_llm_chunk(content="Done.", finish_reason="stop")],
+              tool("mastery_prepare_lesson", {"knowledge_point_id": "kp1"}, "repair")]
+    if recovery not in {"failed_prepare", "stale"}:
+        script.append(tool("mastery_prepare_lesson", {"knowledge_point_id": "kp1"}, "rogue")
+                      if recovery == "rogue" else tool("mastery_quiz", quiz_args, "delivery"))
+    client, registry = _ScriptedChatClient(script), Registry()
+    pipeline = MasteryLoopPipeline(language="en")
+    pipeline._max_rounds = 1
+    pipeline.registry = registry
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _ctx: ["mastery_quiz", "mastery_prepare_lesson"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    context = UnifiedContext(session_id="s1", user_message="Give me two practice questions.",
+                             allowed_builtin_tools=["mastery_quiz", "mastery_prepare_lesson"], metadata={
+        "mastery_mode": True, "mastery_path_id": "p1", "mastery_session_mode": "study", "turn_id": "repair-turn"
+    })
+    events = await _run(pipeline, context)
+    assert client.call_count == (4 if recovery in {"failed_prepare", "stale"} else 5)
+    if client.call_count == 5:
+        assert [schema["function"]["name"] for schema in client.calls[-1]["tools"]] == ["mastery_quiz"]
+    assert [row["name"] for row in registry.executed].count("mastery_prepare_lesson") == 1
+    assert _result(events).metadata["completed"] is (recovery == "success")
+    pending = LearningStore().load("p1").pending_question
+    if recovery == "success":
+        assert pending is not None and len(pending.questions) == 2
+        cards = [event for event in events if event.type == StreamEventType.TOOL_RESULT
+                 and "mastery_question" in event.metadata.get("tool_metadata", {})]
+        assert len(cards) == 1
+    else:
+        assert pending is None
+
+
+@pytest.mark.asyncio
 async def test_truncated_pure_reasoning_round_is_told_to_act_not_continue(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

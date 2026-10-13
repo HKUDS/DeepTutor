@@ -4,7 +4,7 @@ from enum import Enum
 import time
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 _KNOWLEDGE_TYPE_LEGACY: dict[str, str] = {
     "记忆型": "memory",
@@ -126,6 +126,7 @@ class QuizAttempt(BaseModel):
     knowledge_point_id: str
     module_id: str = ""
     is_correct: bool
+    result: Literal["correct", "partial", "incorrect"] | None = None
     user_answer: Any = None
     error_type: ErrorType | None = None
     self_attribution: str = ""
@@ -137,6 +138,12 @@ class QuizAttempt(BaseModel):
     void_reason: str = ""
     independent: bool = True
     visual_context: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _legacy_result(self):
+        if self.result is None:
+            self.result = "correct" if self.is_correct else "incorrect"
+        return self
 
 
 class RetryAttempt(BaseModel):
@@ -183,6 +190,8 @@ class LearningEvidence(BaseModel):
     hints_used: int = 0
     attempt_count: int = 1
     confidence: float | None = None
+    learner_answer: str = ""
+    feedback: str = ""
     response_time: float | None = None
     session_id: str = ""
     turn_id: str = ""
@@ -272,9 +281,49 @@ class PendingQuestion(BaseModel):
     # later instead of a bare right/wrong.
     explanation: str = ""
     difficulty: str = ""
+    # Server-side provenance snapshot; never projected onto an answer card.
+    source_evidence: dict[str, Any] = Field(default_factory=dict)
+    # Server-owned exposure evidence, independent of visual-task metadata.
+    # Never included in the learner's question/answer-key projection.
+    assistance_used: bool = False
+    # Native registration identity; later teaching must not contaminate an
+    # unrelated question merely because it cites the same physical page.
+    assistance_context: dict[str, str] = Field(default_factory=dict)
     created_at: float = Field(default_factory=time.time)
     visual_context: dict[str, Any] = Field(default_factory=dict)
     accepted_answers: list[str] = Field(default_factory=list)
+    # One active interaction can present multiple independent questions. The
+    # parent owns lifecycle only; answer keys and credit remain on its leaves.
+    questions: list[PendingQuestion] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_group(self) -> PendingQuestion:
+        if self.question_type != "group":
+            if self.questions:
+                raise ValueError("Only a group may contain questions")
+            return self
+        if not 2 <= len(self.questions) <= 4:
+            raise ValueError("A question group needs two to four questions")
+        ids = [q.question_id for q in self.questions]
+        if len(set(ids)) != len(ids) or self.question_id in ids or not all(ids):
+            raise ValueError("Group question ids must be distinct and nonempty")
+        question_keys = {(q.knowledge_point_id, q.prompt.strip()) for q in self.questions}
+        if len(question_keys) != len(self.questions):
+            raise ValueError(
+                "A group needs distinct questions, not copies of the same objective prompt"
+            )
+        if any(
+            q.question_type not in {"choice", "short", "open"}
+            or q.questions
+            or not q.expected_answer.strip()
+            or not q.prompt.strip()
+            or not q.knowledge_point_id.strip()
+            for q in self.questions
+        ):
+            raise ValueError("Group leaves need independent, non-nested answer contracts")
+        if self.expected_answer or self.options or self.visual_context:
+            raise ValueError("A group parent cannot carry an answer key or visual task")
+        return self
 
     @field_validator("options", mode="before")
     @classmethod
@@ -327,6 +376,7 @@ class MasteryInteraction(BaseModel):
     session_id: str = ""
     turn_id: str = ""
     user_answer: str = ""
+    answers: dict[str, str] = Field(default_factory=dict)
     result: dict[str, Any] = Field(default_factory=dict)
     created_at: float = Field(default_factory=time.time)
     updated_at: float = Field(default_factory=time.time)
@@ -561,6 +611,11 @@ class LearningProgress(BaseModel):
     # The quantitative ``mastery_levels`` gate covers MEMORY / PROCEDURE.
     qualitative_mastery: dict[str, bool] = Field(default_factory=dict)
     knowledge_types: dict[str, KnowledgeType] = Field(default_factory=dict)
+    lesson_evidence: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    source_grounded: bool = False
+    # Exact pages authorized for learner display, kept with the native path.
+    # A private retrieval or lesson packet is not a public exposure receipt.
+    source_exposures: list[dict[str, Any]] = Field(default_factory=list)
     quiz_attempts: list[QuizAttempt] = Field(default_factory=list)
     error_records: list[ErrorRecord] = Field(default_factory=list)
     # Durable review history used to recompute retention. Distinct from

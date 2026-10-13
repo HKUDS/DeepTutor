@@ -46,7 +46,7 @@ class ToolParameter:
         """Convert to JSON Schema property dict."""
         schema: dict[str, Any] = {"type": self.type, "description": self.description}
         if self.enum:
-            schema["enum"] = self.enum
+            schema["enum"] = list(self.enum)
         if self.type == "array":
             schema["items"] = self.items if self.items is not None else {"type": "string"}
         return schema
@@ -165,6 +165,10 @@ class ToolResult:
     # Private model-only follow-up (for example verified source image parts).
     # Never copy this into stream events, citation rows, or persisted metadata.
     model_message: dict[str, Any] | None = field(default=None, repr=False)
+    # Optional public stream projection. Omitted fields are withheld, not
+    # inherited from private content/sources/metadata. The inference result
+    # remains intact in the tool message and internal model trace.
+    public_result: dict[str, Any] | None = field(default=None, repr=False)
 
     def __str__(self) -> str:
         return self.content
