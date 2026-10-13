@@ -518,6 +518,22 @@ class AgenticLoopPipeline:
             if isinstance(item.get("_context_snapshot"), str)
         }
         snapshots = dict(self._runtime_snapshots)
+        # The rolling summary is a runtime fact like any other: it is rewritten
+        # when compaction runs, so it must reach the model as a *trailing*
+        # snapshot rather than a leading system message. Appended last, a
+        # rewrite (and the compaction that causes it) only ever adds bytes after
+        # everything the previous request already sent, keeping that request a
+        # prompt-cache hit; the snapshot tag makes the unchanged case a no-op on
+        # later turns instead of re-appending a fresh copy every turn.
+        from deeptutor.services.session.model_history import (
+            SUMMARY_SNAPSHOT_NAME,
+            summary_snapshot,
+        )
+
+        metadata = context.metadata if isinstance(context.metadata, dict) else {}
+        summary_row = summary_snapshot(str(metadata.get("conversation_summary") or ""))
+        if summary_row is not None:
+            snapshots[SUMMARY_SNAPSHOT_NAME] = summary_row["content"]
         for name in sorted(previous_snapshots.keys() - snapshots.keys()):
             snapshots[name] = (
                 f"[Runtime context: {name}]\nThis section is now empty; earlier values no longer apply."

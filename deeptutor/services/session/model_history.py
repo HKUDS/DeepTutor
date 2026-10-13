@@ -154,14 +154,38 @@ def replay_group(
     return messages
 
 
+#: Snapshot name the rolling summary rides under when it is replayed.
+SUMMARY_SNAPSHOT_NAME = "conversation_summary"
+
+
+def summary_snapshot(summary: str) -> dict[str, Any] | None:
+    """Render the rolling summary as a replayable trailing context snapshot."""
+    cleaned = (summary or "").strip()
+    if not cleaned:
+        return None
+    return {
+        "role": "user",
+        "content": f"[Conversation summary]\n{cleaned}",
+        "_context_snapshot": SUMMARY_SNAPSHOT_NAME,
+    }
+
+
 def replay_history(
     rows: list[dict[str, Any]],
     summary: str = "",
     route: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
-    messages = (
-        [{"role": "system", "content": f"[Conversation summary]\n{summary}"}] if summary else []
-    )
+    """Replay the retained model turns. ``summary`` is *not* injected here.
+
+    The rolling summary is delivered by the answer loop as a trailing runtime
+    snapshot instead (see :data:`SUMMARY_SNAPSHOT_NAME`, emitted from
+    ``context.metadata["conversation_summary"]``). Prepending it — or even
+    appending it to this list — would still place it ahead of the newest turn's
+    own messages, so a later rewrite would invalidate everything behind it.
+    Emitted as a snapshot after those bytes, a rewrite is a plain append and
+    the previous request stays a cache hit.
+    """
+    messages: list[dict[str, Any]] = []
     for group in history_groups(rows):
         messages.extend(replay_group(group, route))
     return messages

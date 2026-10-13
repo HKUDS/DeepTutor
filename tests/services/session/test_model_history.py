@@ -142,7 +142,11 @@ async def test_compaction_preserves_whole_tool_turns_and_reuses_the_old_prefix()
     ]
     assert request["tools"] == recent["tools"]
     store.update_summary.assert_awaited_once_with("s", "Summary preserving the evidence", 2)
-    assert result.model_history[1:] == recent["messages"]
+    # The summary no longer occupies model_history[0]: the answer loop delivers
+    # it as a trailing runtime snapshot, so the replayed history starts at the
+    # oldest retained turn while the summary still reaches the model.
+    assert result.model_history == recent["messages"]
+    assert result.conversation_summary == "Summary preserving the evidence"
     assert result.conversation_history[-1]["content"] == "Displayed answer"
 
 
