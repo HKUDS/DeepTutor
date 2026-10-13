@@ -196,27 +196,26 @@ def account_for_recent_assistance(context: dict[str, Any], attempts, kp_id: str)
     return context
 
 
-def evaluate_visual(pending, answer: str) -> tuple[str, str]:
-    """Return (result, diagnosis); uncertainty produces no mastery evidence."""
+def verified_visual_images(pending) -> list[dict]:
+    """Revalidate the original visual authority and return its current pixels."""
     from deeptutor.multi_user.knowledge_access import resolve_for_rag
     from deeptutor.services.rag.kb_paths import resolve_kb_dir
     from deeptutor.services.rag.source_visuals import retrieve_visual
 
     visual = pending.visual_context
     if not visual.get("pixels_inspected"):
-        return (
-            "ungraded",
-            "No matching source pixels were verified in the tutor's model input. Re-retrieve the original image with a vision-capable model; this attempt does not lower mastery.",
+        raise ValueError(
+            "No matching source pixels were verified in the tutor's model input. Re-retrieve the original image with a vision-capable model; this attempt does not lower mastery."
         )
     if visual.get("key_status") != "verified" or not visual.get("sources"):
-        return (
-            "ungraded",
-            "The reference key is not independently supported by source text; clarify it before grading.",
+        raise ValueError(
+            "The reference key is not independently supported by source text; clarify it before grading."
         )
+    images = []
     for ref in visual.get("sources", []):
         resource = resolve_for_rag(ref["kb_name"])
         if resource is None:
-            return "ungraded", "Source access is unavailable; this attempt does not lower mastery."
+            raise ValueError("Source access is unavailable; this attempt does not lower mastery.")
         selectors = {
             key: ref[key]
             for key in ("asset_id", "source_path", "page", "region", "source_hash")
@@ -226,14 +225,35 @@ def evaluate_visual(pending, answer: str) -> tuple[str, str]:
             resolve_kb_dir(resource.base_dir, resource.name), ref["kb_name"], **selectors
         )
         if evidence.error or not evidence.images:
-            return (
-                "ungraded",
-                "Original source evidence changed or is unavailable; clarify the source before assessment.",
+            raise ValueError(
+                "Original source evidence changed or is unavailable; clarify the source before assessment."
             )
+        if (
+            ref.get("image_sha256")
+            and sha256(evidence.images[0][1]).hexdigest() != ref["image_sha256"]
+        ):
+            raise ValueError("Original source pixels changed; prepare the question again.")
+        images.extend(evidence.model_message()["content"])
+    return images
+
+
+def evaluate_visual(pending, answer: str) -> tuple[str, str]:
+    """Return (result, diagnosis); uncertainty produces no mastery evidence."""
+    try:
+        verified_visual_images(pending)
+    except ValueError as exc:
+        return "ungraded", str(exc)
     normalized = normalized_answer(answer)
-    aliases = {normalized_answer(alias) for alias in pending.accepted_answers}
-    if normalized in aliases:
-        return "correct", "Accepted source-specific equivalent terminology."
+    reference = normalized_answer(
+        pending.choice_map.get(pending.expected_answer, pending.expected_answer)
+    )
+    # Caller-supplied aliases are not independent proof of equivalence. Only
+    # harmless article normalization is exact; translations and paraphrases
+    # go through the bounded source/pixel semantic evaluator.
+    if reference and re.sub(r"^(?:a|an|the)\s+", "", normalized) == re.sub(
+        r"^(?:a|an|the)\s+", "", reference
+    ):
+        return "correct", "Accepted exact reference terminology."
     if pending.question_type == "choice":
         from deeptutor.learning.pending import is_readable_choice_answer, resolve_choice_submission
 

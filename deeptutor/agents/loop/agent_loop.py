@@ -450,6 +450,10 @@ class AgentLoop:
                     tool_choice=(self.pipeline.initial_tool_choice if state.rounds == 0 else None),
                 )
             except Exception as exc:
+                from deeptutor.learning.lesson_evidence import LessonUnavailable
+
+                if isinstance(exc, LessonUnavailable):
+                    raise
                 # A mid-loop LLM failure (timeout / transient network) must not
                 # discard a turn that already gathered useful work. Salvage it
                 # with a forced finish; only a failure on the very first round
@@ -886,6 +890,10 @@ class AgentLoop:
             # prevents callers from offering an accurate retry action.
             raise
         except Exception as exc:
+            from deeptutor.learning.lesson_evidence import LessonUnavailable
+
+            if isinstance(exc, LessonUnavailable):
+                raise
             # The salvage call itself failed (e.g. the provider is still
             # returning unusable data). Don't bubble up and lose the turn —
             # emit the graceful fallback answer instead.
@@ -1046,8 +1054,19 @@ class AgentLoop:
         defer_visible_output: bool = False,
         tool_choice: str | None = None,
     ) -> LLMCallResult:
+        prepare = getattr(self.pipeline, "prepare_model_request", None)
+        lesson_messages = await prepare(self.context, self.stream, messages) if prepare else []
         request_messages = with_transient_model_messages(messages, self._transient_model_messages)
-        await self.pipeline._guard_context_window(request_messages, self.stream)
+        # Current tool pixels take precedence over cached lesson pages. Neither
+        # belongs in the durable dialogue; the hook runs again on forced finish.
+        if lesson_messages and not has_image_parts(self._transient_model_messages):
+            request_messages = [*request_messages, *lesson_messages]
+        projected_messages = deduplicate_user_images([
+            {key: value for key, value in message.items()
+             if key not in {"_context_snapshot", "_lesson_packet"}}
+            for message in request_messages
+        ])
+        await self.pipeline._guard_context_window(projected_messages, self.stream)
         stage = self.stage
         call_id = new_call_id(f"{self.source}-{stage}")
         trace_meta = build_trace_metadata(
@@ -1071,12 +1090,7 @@ class AgentLoop:
 
         kwargs: dict[str, Any] = {
             "model": self.pipeline.model,
-            "messages": deduplicate_user_images(
-                [
-                    {key: value for key, value in message.items() if key != "_context_snapshot"}
-                    for message in request_messages
-                ]
-            ),
+            "messages": projected_messages,
             "stream": True,
             **self.pipeline._completion_kwargs(max_tokens=max_tokens),
         }

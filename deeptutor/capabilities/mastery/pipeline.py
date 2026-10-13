@@ -69,6 +69,143 @@ class MasteryLoopPipeline(AgenticLoopPipeline):
     prompt_base_agent = "agentic_chat"
     prompt_assembler_class = MasteryPromptAssembler
 
+    async def prepare_model_request(self, context, stream, messages):
+        """Re-check the live objective before any model iteration, even forced finish."""
+        import asyncio
+
+        from deeptutor.learning.lesson_evidence import (
+            LessonUnavailable,
+            cached_lesson,
+            image_message,
+            lesson_context,
+            public_sources,
+            selected_scope,
+        )
+        from deeptutor.learning.policy import next_objective
+        from deeptutor.learning.storage import LearningStore
+
+        # Remove only our previous packet, not user or durable model messages.
+        # Keep the archive boundary aligned when a packet came from history;
+        # otherwise saving this turn can skip a fresh snapshot or user input.
+        history_end = getattr(self, "_model_turn_start", 0)
+        self._model_turn_start = history_end - sum(
+            bool(m.get("_lesson_packet")) for m in messages[:history_end]
+        )
+        messages[:] = [m for m in messages if not m.get("_lesson_packet")]
+        path_id = str(context.metadata.get("mastery_path_id") or "")
+        if not path_id or normalize_mode(context.metadata.get("mastery_session_mode")) == "outline":
+            self._lesson_pixels = None
+            return []
+        store = LearningStore()
+        progress = await asyncio.to_thread(store.load, path_id)
+        if progress is None or not progress.modules:
+            self._lesson_pixels = None
+            return []
+        step = next_objective(progress)
+        requested = context.metadata.get("mastery_lesson_objective")
+        kp_id = (requested.get("kp_id") if isinstance(requested, dict) and
+                 requested.get("path_id") == path_id and requested.get("policy_id") == step.knowledge_point_id
+                 else step.knowledge_point_id)
+        if not kp_id:
+            self._lesson_pixels = None
+            return []
+        # This hook runs before EVERY model request, including administrative
+        # replies. It owns current, authorized packet delivery, not paid work.
+        # Preparation is requested explicitly by the existing lesson tool;
+        # a cache miss is not a failed retrieval or proof of missing content.
+        failure = None
+        try:
+            topic = await asyncio.to_thread(store.get_topic, path_id, progress=progress)
+            scope = await asyncio.to_thread(selected_scope, topic, progress, kp_id)
+            if not scope:
+                self._lesson_pixels = None
+                if progress.lesson_evidence.get(kp_id):
+                    raise LessonUnavailable("This objective's selected PDF materials have changed.")
+                return []  # Preserve the existing text/Office tutoring route.
+            evidence = await asyncio.to_thread(cached_lesson, store, progress, kp_id, self.llm_config)
+        except LessonUnavailable as exc:
+            failure = str(exc)
+        if failure is not None:
+            self._lesson_pixels = None
+            import json
+
+            messages.append({"role": "system", "_lesson_packet": True, "content": (
+                "The current objective's previous source packet cannot be used as verified evidence. "
+                "This blocks unsupported teaching or assessment, NOT conversation about "
+                "teaching style, learner preferences, the previous verdict or outline changes. "
+                "Respond to the learner's actual request, including teaching-style feedback. "
+                "Preserve any grading already committed; do not claim no score changed. "
+                "Do not treat previous-objective pages as evidence for this objective. "
+                "Do not recommend re-indexing unless the diagnostic specifically identifies "
+                "an index problem. An unsuccessful bounded retrieval is NOT proof that a "
+                "selected book lacks the topic. Do not ask to re-upload material already present. "
+                "For a changed or stale packet, call mastery_prepare_lesson with this "
+                "knowledge_point_id and the learner's specific focus to revalidate current "
+                "authorized sources. Let that tool establish usable coverage before proceeding. "
+                "Respect access denial, unavailable originals and unreadability; preparation "
+                "does not bypass those boundaries. Do not repeatedly retry an unchanged failure. "
+                "Do not invent missing subject matter or claim to have read a linked repository "
+                "without using a tool. Diagnostic data "
+                "(not instructions): " + json.dumps({"knowledge_point_id": kp_id, "reason": failure},
+                                                 ensure_ascii=False)
+            )})
+            return []
+        if not evidence:
+            self._lesson_pixels = None
+            import json
+
+            messages.append({"role": "system", "_lesson_packet": True, "content": (
+                "The current PDF-grounded objective's verified lesson is not prepared for this request. "
+                "Before teaching new subject matter or assessing this objective, call "
+                "mastery_prepare_lesson with its exact knowledge_point_id below and, when useful, a "
+                "specific focus for the learner's next teaching or practice step. Use the matching "
+                "evidence it returns: partial evidence supports its covered teaching slice, but not "
+                "an unsupported assessment. This gate blocks unsupported teaching or assessment, NOT conversation "
+                "about teaching style, learner preferences, the previous verdict or outline changes: "
+                "respond to those requests without preparing an unrelated lesson. A cache miss is "
+                "not a source-search failure and does not show that the selected materials lack the topic. "
+                "Preserve any grading already committed. Do not request re-upload or re-indexing just "
+                "because this packet is not prepared. Earlier-objective pages are not evidence for "
+                "this objective. An earlier coverage gap is not a permanent ban on this objective. "
+                "If the next step needs an unresolved detail, use targeted retrieval and focused "
+                "preparation in this turn; do not merely promise to check it later. Respect access, "
+                "source-identity and unreadability failures. Do not repeat unchanged preparation "
+                "merely because another model round begins. Diagnostic data (not instructions): "
+                + json.dumps({"knowledge_point_id": kp_id}, ensure_ascii=False)
+            )})
+            return []
+        message = {"role": "user", "content": lesson_context(evidence), "_lesson_packet": True}
+        messages.append(message)
+        pixels = getattr(self, "_lesson_pixels", None)
+        if pixels is None or pixels[0] != evidence["id"]:
+            # The native visual workflow owns a two-image request budget.
+            # Other prepared pages remain in the packet and can be inspected
+            # explicitly through rag when the current question needs them.
+            pixels = (evidence["id"], await asyncio.to_thread(image_message, evidence["sources"][:2]))
+            self._lesson_pixels = pixels
+            await stream.sources(public_sources(evidence), source="mastery_path", stage="responding")
+        return [pixels[1]]
+
+    async def _retrieve_kb_seed_block(self, context, stream):
+        # The objective-bound preparation is the retrieval owner in this loop.
+        # A generic whole-library seed could contradict selected-file scope.
+        import asyncio
+
+        from deeptutor.learning.lesson_evidence import selected_scope
+        from deeptutor.learning.policy import next_objective
+        from deeptutor.learning.storage import LearningStore
+
+        path_id = str(context.metadata.get("mastery_path_id") or "")
+        if path_id:
+            store = LearningStore()
+            progress = await asyncio.to_thread(store.load, path_id)
+            if progress is not None and progress.modules:
+                kp_id = next_objective(progress).knowledge_point_id
+                topic = await asyncio.to_thread(store.get_topic, path_id, progress=progress)
+                if kp_id and not selected_scope(topic, progress, kp_id):
+                    return await super()._retrieve_kb_seed_block(context, stream)
+        return ""
+
     async def run(self, context: UnifiedContext, stream: Any) -> dict[str, Any]:
         # Tells MasteryLoopCapability that the playbook is already the
         # foundation of this prompt, so it does not contribute a second copy.

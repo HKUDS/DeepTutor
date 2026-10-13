@@ -24,6 +24,7 @@ _MESSAGE_KEYS = frozenset(
         "thinking_blocks",
         "_provider_response_state",
         "_context_snapshot",
+        "_lesson_packet",
     }
 )
 

@@ -232,14 +232,18 @@ class PublicPendingQuestion:
     prompt: str
     question_type: str
     options: tuple[PublicPendingOption, ...] = ()
+    questions: tuple[PublicPendingQuestion, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        result = {
             "question_id": self.question_id,
             "prompt": self.prompt,
             "question_type": self.question_type,
             "options": [option.to_dict() for option in self.options],
         }
+        if self.questions:
+            result["questions"] = [question.to_dict() for question in self.questions]
+        return result
 
 
 def public_pending_question(pending: PendingQuestion) -> PublicPendingQuestion:
@@ -256,6 +260,7 @@ def public_pending_question(pending: PendingQuestion) -> PublicPendingQuestion:
         question_id=pending.question_id,
         prompt=decode_escaped_unicode_for_display(pending.prompt),
         question_type=pending.question_type,
+        questions=tuple(public_pending_question(q) for q in pending.questions),
         options=tuple(
             PublicPendingOption(
                 id=option.id,
