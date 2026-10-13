@@ -66,6 +66,38 @@ def test_replay_preserves_exact_protocol_without_duplicating_the_display_rows():
     assert source[-1]["metadata"] == {}
 
 
+def test_replay_replaces_only_marked_runtime_snapshots_and_keeps_dialogue():
+    first = turn_record()
+    first["messages"].insert(0, {
+        "role": "user", "content": "old runtime state", "_context_snapshot": "memory",
+    })
+    second = turn_record()
+    second["messages"].insert(0, {
+        "role": "user", "content": "new runtime state", "_context_snapshot": "memory",
+    })
+    original = rows(first) + rows(second, start=3)
+    before = deepcopy(original)
+    result = replay_history(original)
+    assert sum(m.get("_context_snapshot") == "memory" for m in result) == 1
+    assert result[4]["content"] == "new runtime state"
+    assert sum(m.get("content") == "Original answer" for m in result) == 2
+    assert original == before
+
+
+def test_legacy_mastery_suffix_is_removed_but_literal_user_quote_is_preserved():
+    import json
+
+    from deeptutor.services.session.model_history import _MASTERY_SNAPSHOT_NOTICE
+
+    suffix = _MASTERY_SNAPSHOT_NOTICE + json.dumps({"path_id": "p", "map": {"name": "Course"}})
+    record = turn_record()
+    record["messages"][0]["content"] = "Question\n" + suffix
+    source = rows(record)
+    assert replay_history(source)[0]["content"] == "Question"
+    source[0]["content"] = "Please explain this literal quotation:\n" + suffix
+    assert replay_history(source)[0]["content"] == record["messages"][0]["content"]
+
+
 def test_invalid_or_incomplete_protocol_uses_display_history():
     record = turn_record()
     record["messages"].pop(2)
@@ -148,6 +180,7 @@ async def test_compaction_preserves_whole_tool_turns_and_reuses_the_old_prefix()
 
 @pytest.mark.asyncio
 async def test_summary_instruction_is_appended_after_original_messages_and_tools(monkeypatch):
+    monkeypatch.setattr("deeptutor.agents.base_agent.get_agent_params", lambda _module: {})
     captured = {}
 
     async def stream(_self, **kwargs):

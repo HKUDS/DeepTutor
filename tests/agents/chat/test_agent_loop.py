@@ -520,7 +520,13 @@ async def test_persisted_tool_turn_extends_request_prefix_after_resume(monkeypat
     await _run(pipeline(), second)
     previous, resumed = client.calls[1], client.calls[2]
     assert previous["tools"] == resumed["tools"]
-    assert resumed["messages"][: len(previous["messages"])] == previous["messages"]
+    # The fresh workspace slot replaces its obsolete runtime snapshot while
+    # durable dialogue, reasoning, and tool protocol remain an exact prefix.
+    retained = [
+        message for message in previous["messages"]
+        if not str(message.get("content", "")).startswith("[Runtime context: workspace]")
+    ]
+    assert resumed["messages"][:len(retained)] == retained
     assert "outputs/turn-1" not in resumed["messages"][0]["content"]
     assert "outputs/turn-2" in resumed["messages"][-2]["content"]
     assert resumed["messages"][-3]["reasoning_content"] == "private finish"

@@ -704,6 +704,45 @@ async def _unbuilt_status_message(
 class MasteryStatusTool(BaseTool):
     """Read current state, or refresh a current-turn runtime snapshot."""
 
+    @staticmethod
+    def _working_brief(payload: dict, progress: LearningProgress, focus_id: str = "") -> dict:
+        """Project relevant state; this never alters the stored path or transcript."""
+        from deeptutor.learning.policy import due_reviews
+
+        selected = {payload["next"]["knowledge_point_id"], focus_id} - {""}
+        reviews = due_reviews(progress)
+        selected.update(task.knowledge_point_id for task in reviews[:3])
+        if progress.pending_question is not None:
+            selected.add(progress.pending_question.knowledge_point_id)
+            selected.update(q.knowledge_point_id for q in getattr(progress.pending_question, "questions", ()))
+        points = {kp.id: kp for module in progress.modules for kp in module.knowledge_points}
+        # Preserve the prerequisite closure, even across module boundaries.
+        todo = list(selected)
+        while todo:
+            point = points.get(todo.pop())
+            for prerequisite in point.prerequisite_ids if point else ():
+                if prerequisite not in selected:
+                    selected.add(prerequisite)
+                    todo.append(prerequisite)
+        overview = payload["map"]
+        payload["map"] = {**overview, "modules": [
+            {**module, "knowledge_points": [kp for kp in module["knowledge_points"] if kp["id"] in selected]}
+            for module in overview["modules"]
+            if any(kp["id"] in selected for kp in module["knowledge_points"])
+        ]}
+        for key in ("learning_stages", "visual_requirements"):
+            payload[key] = {kp: value for kp, value in payload[key].items() if kp in selected}
+        payload["due_review_ids"] = [task.knowledge_point_id for task in reviews[:3]]
+        payload["state_scope"] = "working_brief"
+        payload["inspection_instruction"] = (
+            "This is the current working brief, not the full outline. Counts describe the whole path; "
+            "only the current/focused objective, pending group, prerequisites and first three due "
+            "reviews are expanded. Call mastery_status for the full map before selecting an omitted "
+            "lesson or editing the outline. "
+            "Current learner requests and fresh corrections override historical summaries."
+        )
+        return payload
+
     def get_definition(self) -> ToolDefinition:
         return ToolDefinition(
             name="mastery_status",
@@ -714,7 +753,9 @@ class MasteryStatusTool(BaseTool):
                 "(new / learning / mastered). Use the current-turn runtime snapshot "
                 "when supplied; otherwise call this FIRST. Refresh after changing "
                 "the path, mode, outline, or progress when updated state is needed. "
-                "Never guess the next objective or reuse an earlier turn's snapshot."
+                "Never guess the next objective or reuse an earlier turn's snapshot. "
+                "The automatic working brief omits unrelated outline details; call this tool "
+                "for the full map before selecting another lesson or editing the outline."
             ),
             parameters=[],
         )
@@ -820,6 +861,8 @@ class MasteryStatusTool(BaseTool):
                     "call ends the turn."
                 )
             payload["pending_interaction"] = pending_interaction
+        if kwargs.get("_working_brief"):
+            payload = self._working_brief(payload, progress)
         return _json_result(payload, meta_key="mastery_status")
 
 

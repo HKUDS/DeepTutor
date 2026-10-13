@@ -73,7 +73,7 @@ class TurnExecutor:
         _executions: dict[str, _TurnExecution]
         _reply_queues: dict[str, asyncio.Queue[dict[str, Any] | None]]
 
-        def _create_context_builder(self) -> Any: ...
+        def _create_context_builder(self, *, tutoring: bool = False) -> Any: ...
 
         async def _publish_live_event(
             self,
@@ -544,7 +544,7 @@ class TurnExecutor:
                     )
 
             llm_config, llm_scope_token = activate_llm_selection(payload.get("llm_selection"))
-            builder = self._create_context_builder()
+            builder = self._create_context_builder(tutoring=True) if workspace_mode == WORKSPACE_MODE_MASTERY else self._create_context_builder()
 
             async def _emit_context_event(event: StreamEvent) -> None:
                 if event.source in {"context", "context_builder"}:
@@ -1010,7 +1010,10 @@ class TurnExecutor:
                     # ``MasteryLoopCapability.augment_kwargs``). Kept separate
                     # from ``source_index`` so topic materials never trigger
                     # explore_context's forced pre-pass.
-                    "mastery_topic_source_index": mastery_topic_source_index,
+                    "mastery_topic_source_index": {
+                        **mastery_topic_source_index,
+                        **getattr(history_result, "history_sources", {}),
+                    },
                 },
             )
 

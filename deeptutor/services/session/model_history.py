@@ -13,6 +13,14 @@ from typing import Any
 
 MODEL_TURN_KEY = "model_turn"
 MODEL_TURN_VERSION = 1
+# Exact legacy runtime envelope, not a general delimiter in user text.
+_MASTERY_SNAPSHOT_NOTICE = (
+    "[Current-turn mastery_status snapshot]\n"
+    "The runtime has already read mastery_status for this turn and active path. "
+    "Use this result directly; do not call mastery_status again just to begin. "
+    "Refresh with mastery_status after changing the path, mode, outline, or progress "
+    "when updated state is needed. Earlier turns' snapshots are historical only.\n"
+)
 _MESSAGE_KEYS = frozenset(
     {
         "role",
@@ -131,6 +139,23 @@ def replay_group(
         record = model_turn(rows[-1])
         if record is not None:
             messages = record["messages"]
+            original_input = str(rows[0].get("content") or "")
+            for message in messages:
+                content = message.get("content")
+                if message.get("role") != "user" or not isinstance(content, str):
+                    continue
+                # Older prepared inputs fused a fresh status read with the
+                # learner's words. Remove only that exact valid suffix, never
+                # a literal quotation present in the original user message.
+                if _MASTERY_SNAPSHOT_NOTICE not in original_input:
+                    prefix, separator, payload = content.rpartition(_MASTERY_SNAPSHOT_NOTICE)
+                    if separator:
+                        try:
+                            state = json.loads(payload)
+                        except (ValueError, TypeError):
+                            state = None
+                        if isinstance(state, dict) and isinstance(state.get("path_id"), str):
+                            message["content"] = prefix.rstrip()
             if route and record.get("route") and record["route"] != route:
                 # Signed thinking/encrypted response items belong to the route
                 # that produced them. Tool evidence and public text are portable.
@@ -164,7 +189,26 @@ def replay_history(
     )
     for group in history_groups(rows):
         messages.extend(replay_group(group, route))
-    return messages
+    # Runtime snapshots are current state, not learning history. Keep the
+    # latest per section; keep every user exchange and tool protocol pair.
+    latest: dict[str, int] = {}
+    for index, message in enumerate(messages):
+        if message.get("role") != "user":
+            continue
+        name = message.get("_context_snapshot")
+        if isinstance(name, str):
+            latest[name] = index
+    return [
+        message for index, message in enumerate(messages)
+        if not (
+            message.get("role") == "user"
+            and (
+                (isinstance(message.get("_context_snapshot"), str)
+                 and latest[message["_context_snapshot"]] != index)
+
+            )
+        )
+    ]
 
 
 def complete_tool_results(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:

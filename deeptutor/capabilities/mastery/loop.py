@@ -420,8 +420,10 @@ class MasteryLoopCapability:
         status tool so objective gates and pending answers have one authority.
         The loop's pre-pass wrapper falls back to the tool on read failure.
         """
+        context.extension("mastery").pop("status_snapshot", None)
         if not self.is_active(context) or not context.metadata.get("mastery_path_id"):
             return None
+        from deeptutor.capabilities.mastery.mode import normalize_mode
         from deeptutor.capabilities.mastery.tools import MasteryStatusTool
 
         binding = (
@@ -429,7 +431,8 @@ class MasteryLoopCapability:
             context.metadata.get("mastery_session_mode"),
         )
         result = await MasteryStatusTool().execute(
-            **self.augment_kwargs("mastery_status", {}, context)
+            **self.augment_kwargs("mastery_status", {}, context),
+            _working_brief=normalize_mode(context.metadata.get("mastery_session_mode")) != "outline",
         )
         if not result.success:
             return None
@@ -443,7 +446,7 @@ class MasteryLoopCapability:
             or json.loads(result.content).get("path_id") != str(binding[0]).strip()
         ):
             return None
-        return PromptBlock(
+        block = PromptBlock(
             "mastery_status_snapshot",
             "[Current-turn mastery_status snapshot]\n"
             "The runtime has already read mastery_status for this turn and active path. "
@@ -452,6 +455,8 @@ class MasteryLoopCapability:
             "when updated state is needed. Earlier turns' snapshots are historical only.\n"
             + result.content,
         )
+        context.extension("mastery")["status_snapshot"] = block.content
+        return block
 
     def pre_loop_seed(self, context: UnifiedContext) -> str:
         """Hand over whatever this turn already settled on the open card.
