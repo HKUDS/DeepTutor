@@ -277,6 +277,21 @@ DEFAULT_PAGEINDEX_SETTINGS: dict[str, Any] = {
     "api_key": "",
 }
 
+# Query-rewrite layer for retrieval (``RAGService.search``). Disabled by
+# default so behaviour is unchanged until an operator opts in; ``strategy``
+# reserves the ``multi_query`` slot for a follow-up PR.
+DEFAULT_QUERY_REWRITE_SETTINGS: dict[str, Any] = {
+    "version": 1,
+    "enabled": False,
+    "strategy": "standalone",
+    "model": "",
+    "timeout_seconds": 5.0,
+    "min_query_chars": 12,
+}
+
+#: Strategies the query-rewrite layer accepts.
+QUERY_REWRITE_STRATEGIES = ("off", "standalone")
+
 # Tencent IMA. The credential pair (``client_id`` + ``api_key``, issued at
 # https://ima.qq.com/agent-interface) identifies one IMA account, and every
 # library in that account is reachable with it — so it belongs here, beside the
@@ -621,6 +636,21 @@ class RuntimeSettingsService:
         _atomic_write_json(self.path_for("pageindex"), payload)
         return payload
 
+    def load_query_rewrite(self, *, include_process_overrides: bool = True) -> dict[str, Any]:
+        payload = self._load_or_create(
+            "query_rewrite",
+            DEFAULT_QUERY_REWRITE_SETTINGS,
+            self._normalize_query_rewrite,
+        )
+        if include_process_overrides:
+            payload = self._apply_query_rewrite_process_overrides(payload)
+        return payload
+
+    def save_query_rewrite(self, settings: dict[str, Any]) -> dict[str, Any]:
+        payload = self._normalize_query_rewrite({**DEFAULT_QUERY_REWRITE_SETTINGS, **settings})
+        _atomic_write_json(self.path_for("query_rewrite"), payload)
+        return payload
+
     def load_ima(self, *, include_process_overrides: bool = True) -> dict[str, Any]:
         payload = self._load_or_create("ima", DEFAULT_IMA_SETTINGS, self._normalize_ima)
         if include_process_overrides:
@@ -697,6 +727,7 @@ class RuntimeSettingsService:
         self.load_pageindex(include_process_overrides=False)
         self.load_ima(include_process_overrides=False)
         self.load_llamaindex(include_process_overrides=False)
+        self.load_query_rewrite(include_process_overrides=False)
         self.load_graphrag()
         self.load_lightrag()
         self.load_lightrag_server()
@@ -953,6 +984,43 @@ class RuntimeSettingsService:
         return {
             "version": 1,
             "api_key": _string(settings.get("api_key")),
+        }
+
+    def _apply_query_rewrite_process_overrides(self, settings: dict[str, Any]) -> dict[str, Any]:
+        payload = dict(settings)
+        if value := self._process_env_value("DEEPTUTOR_QUERY_REWRITE_ENABLED"):
+            payload["enabled"] = value
+        if value := self._process_env_value("DEEPTUTOR_QUERY_REWRITE_STRATEGY"):
+            payload["strategy"] = value
+        if value := self._process_env_value("DEEPTUTOR_QUERY_REWRITE_MODEL"):
+            payload["model"] = value
+        if value := self._process_env_value("DEEPTUTOR_QUERY_REWRITE_TIMEOUT_SECONDS"):
+            payload["timeout_seconds"] = value
+        if value := self._process_env_value("DEEPTUTOR_QUERY_REWRITE_MIN_QUERY_CHARS"):
+            payload["min_query_chars"] = value
+        return self._normalize_query_rewrite(payload)
+
+    def _normalize_query_rewrite(self, settings: dict[str, Any]) -> dict[str, Any]:
+        strategy = str(settings.get("strategy") or "standalone").strip().lower()
+        if strategy not in QUERY_REWRITE_STRATEGIES:
+            strategy = "standalone"
+        try:
+            timeout = float(settings.get("timeout_seconds", 5.0))
+        except (TypeError, ValueError):
+            timeout = 5.0
+        timeout = min(max(timeout, 0.5), 60.0)
+        try:
+            min_chars = int(settings.get("min_query_chars", 12))
+        except (TypeError, ValueError):
+            min_chars = 12
+        min_chars = min(max(min_chars, 0), 500)
+        return {
+            "version": 1,
+            "enabled": _coerce_bool(settings.get("enabled"), False),
+            "strategy": strategy,
+            "model": str(settings.get("model") or "").strip(),
+            "timeout_seconds": timeout,
+            "min_query_chars": min_chars,
         }
 
     def _apply_ima_process_overrides(self, settings: dict[str, Any]) -> dict[str, Any]:
@@ -1488,6 +1556,10 @@ def load_graphrag_settings() -> dict[str, Any]:
     return get_runtime_settings_service().load_graphrag()
 
 
+def load_query_rewrite_settings() -> dict[str, Any]:
+    return get_runtime_settings_service().load_query_rewrite()
+
+
 def load_lightrag_settings() -> dict[str, Any]:
     return get_runtime_settings_service().load_lightrag()
 
@@ -1518,6 +1590,7 @@ __all__ = [
     "DEFAULT_LLAMAINDEX_SETTINGS",
     "DEFAULT_MINERU_SETTINGS",
     "DEFAULT_PAGEINDEX_SETTINGS",
+    "DEFAULT_QUERY_REWRITE_SETTINGS",
     "DEFAULT_SYSTEM_SETTINGS",
     "DOCUMENT_PARSING_ENGINE_DOCLING",
     "DOCUMENT_PARSING_ENGINE_LITEPARSE",
@@ -1531,6 +1604,7 @@ __all__ = [
     "LITEPARSE_IMAGE_MODES",
     "MINERU_MODE_CLOUD",
     "MINERU_MODE_LOCAL",
+    "QUERY_REWRITE_STRATEGIES",
     "SETTINGS_DERIVED_ENV_KEYS",
     "ChatAttachmentLimits",
     "RuntimeSettingsService",
@@ -1548,5 +1622,6 @@ __all__ = [
     "load_lightrag_server_settings",
     "load_llamaindex_settings",
     "load_mineru_settings",
+    "load_query_rewrite_settings",
     "load_system_settings",
 ]

@@ -207,3 +207,56 @@ def test_eval_json_with_save_keeps_stdout_machine_readable(eval_env, tmp_path):
     assert result.exit_code == 0, result.output
     assert json.loads(result.stdout) == json.loads(target.read_text())
     assert "Report written to" in result.stderr
+
+
+def test_eval_defers_rewrite_to_settings_when_flag_omitted(eval_env: SimpleNamespace) -> None:
+    result = runner.invoke(app, ["kb", "eval", "kb1", "--dataset", str(eval_env.set_path)])
+
+    assert result.exit_code == 0, result.output
+    assert eval_env.calls[0]["rewrite"] is None
+    assert "rewrite=" not in result.output
+
+
+def test_eval_rewrite_standalone_forces_the_layer_on(eval_env: SimpleNamespace) -> None:
+    result = runner.invoke(
+        app, ["kb", "eval", "kb1", "--dataset", str(eval_env.set_path), "--rewrite", "standalone"]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert eval_env.calls[0]["rewrite"] is True
+    assert "rewrite=standalone" in result.output
+
+
+def test_eval_rewrite_off_forces_the_layer_off(eval_env: SimpleNamespace) -> None:
+    result = runner.invoke(
+        app, ["kb", "eval", "kb1", "--dataset", str(eval_env.set_path), "--rewrite", "off"]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert eval_env.calls[0]["rewrite"] is False
+    assert "rewrite=off" in result.output
+
+
+def test_eval_rejects_an_unknown_rewrite_strategy(eval_env: SimpleNamespace) -> None:
+    result = runner.invoke(
+        app, ["kb", "eval", "kb1", "--dataset", str(eval_env.set_path), "--rewrite", "bogus"]
+    )
+
+    assert result.exit_code != 0
+    assert "unknown rewrite strategy" in result.output
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [(None, None), ("off", False), ("standalone", True)],
+)
+def test_parse_rewrite_flag_maps_known_strategies(value: str | None, expected: bool | None) -> None:
+    from deeptutor_cli.kb import _parse_rewrite_flag
+
+    assert _parse_rewrite_flag(value) is expected
+
+
+def test_parse_rewrite_flag_is_case_insensitive() -> None:
+    from deeptutor_cli.kb import _parse_rewrite_flag
+
+    assert _parse_rewrite_flag("  Standalone ") is True
