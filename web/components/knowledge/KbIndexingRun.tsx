@@ -14,6 +14,8 @@ interface Run {
   last_progress_at: number;
   phase_current?: number;
   phase_total?: number;
+  current_document?: string;
+  activity?: string;
   usable_version?: string;
   cancel_requested: boolean;
   recovery: string;
@@ -67,6 +69,8 @@ export default function KbIndexingRun({ kbName, readOnly = false }: { kbName: st
         <p>{t("Run state")}: {t(`indexingState.${run.state}`, { defaultValue: run.state })} · {t("Current phase")}: {t(`indexingPhase.${run.phase}`, { defaultValue: run.phase })}</p>
         <p>{t("Runtime")}: {Math.max(0, Math.floor((run.finished_at || now) - run.started_at))}s · {t("Since activity")}: {Math.max(0, Math.floor(now - run.last_activity_at))}s · {t("Since measurable progress")}: {Math.max(0, Math.floor(now - run.last_progress_at))}s</p>
         <p>{run.phase_total ? `${run.phase_current || 0}/${run.phase_total}` : t("Phase progress is indeterminate.")} {t("Phase completion does not mean the whole index is ready.")}</p>
+        {run.current_document && <p className="break-words">{t("Document")}: {run.current_document}</p>}
+        {run.activity && <p className="break-words">{t("Activity")}: {run.activity}</p>}
         {run.usable_version && <p>{t("Verified index version")}: {run.usable_version}</p>}
         <p>{t("Retry reuses validated parser outputs. Interrupted embedding stages restart.")}</p>
         <ul>{Object.entries(run.documents).map(([name, doc]) => <li className="break-words" key={name}>{name}: {t(`indexingDocument.${doc.status}`, { defaultValue: doc.status })}{doc.parse_reused ? ` · ${t("Parse cache reused")}` : ""}{doc.reason ? ` · ${doc.reason}` : ""}{doc.detail ? ` · ${doc.detail}` : ""}</li>)}</ul>

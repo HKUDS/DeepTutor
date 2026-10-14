@@ -8,6 +8,7 @@ unchanged bool contract of the legacy helpers.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from pathlib import Path
 import subprocess
 
@@ -51,10 +52,16 @@ def _install_fake_popen(
                 path.write_text("# parsed", encoding="utf-8")
             self.stdout = iter(lines)
 
-        def wait(self) -> int:
+        def poll(self) -> int:
             return returncode
 
-    monkeypatch.setattr(mineru_local.subprocess, "Popen", FakeProcess)
+    @contextmanager
+    def fake_cli_process(cmd, log_path, env):
+        process = FakeProcess(cmd)
+        log_path.write_text("\n".join(lines), encoding="utf-8")
+        yield process
+
+    monkeypatch.setattr(mineru_local, "cli_process", fake_cli_process)
 
 
 # ---------------------------------------------------------------------------
@@ -228,10 +235,8 @@ def test_interrupted_attempt_stops_child_and_retains_partial_output(
         def __init__(self, cmd, **kwargs):
             target = Path(cmd[cmd.index("-o") + 1])
             (target / "partial.md").write_text("partial", encoding="utf-8")
-            self.stdout = self.lines()
 
-        def lines(self):
-            yield "parsing page 2"
+        def poll(self):
             raise KeyboardInterrupt
 
         def terminate(self):
@@ -243,12 +248,18 @@ def test_interrupted_attempt_stops_child_and_retains_partial_output(
 
     child = None
 
-    def start(*args, **kwargs):
+    @contextmanager
+    def start(cmd, log_path, env):
         nonlocal child
-        child = InterruptedProcess(*args, **kwargs)
-        return child
+        child = InterruptedProcess(cmd)
+        log_path.write_text("parsing page 2\n", encoding="utf-8")
+        try:
+            yield child
+        finally:
+            child.terminate()
+            child.wait()
 
-    monkeypatch.setattr(mineru_local.subprocess, "Popen", start)
+    monkeypatch.setattr(mineru_local, "cli_process", start)
     with pytest.raises(KeyboardInterrupt):
         parse_document_with_mineru_result(pdf, tmp_path / "out", cli_command="mineru")
     assert child.stopped

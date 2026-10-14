@@ -35,3 +35,15 @@ it("read-only libraries have no cancellation action", async () => {
   await screen.findByText(/book.pdf/);
   expect(screen.queryByRole("button", { name: "Cancel indexing" })).not.toBeInTheDocument();
 });
+
+it("shows parser activity without inventing a percent or claiming completion", async () => {
+  const parsing = { ...run, phase: "parsing", phase_current: null, phase_total: null,
+    current_document: "book.pdf", activity: "Layout analysis: 12/80 pages" };
+  vi.mocked(apiFetch).mockResolvedValue(new Response(JSON.stringify({ run: parsing })));
+  render(<KbIndexingRun kbName="kb" />);
+  fireEvent.click(screen.getByText("Indexing recovery details"));
+  expect(await screen.findByText(/Layout analysis: 12\/80 pages/)).toBeInTheDocument();
+  expect(screen.getByText(/^Document:/)).toHaveTextContent("book.pdf");
+  expect(screen.getByText(/Phase progress is indeterminate/)).toBeInTheDocument();
+  expect(screen.queryByText(/Verified index version/)).not.toBeInTheDocument();
+});
