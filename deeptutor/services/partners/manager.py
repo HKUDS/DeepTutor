@@ -1754,8 +1754,8 @@ the classroom.
 )
 
 # Verbatim texts of retired seeds (including the TutorBot-era variants).
-# A library entry that still matches one of these — or that sits on a seed
-# id and still mentions TutorBot — is an untouched old seed: safe to swap
+# A library entry that still matches one of these on a known seed
+# id is an untouched old seed: safe to swap
 # for the current template without losing any user writing.
 _TUTORBOT_SEED = (
     "# Soul\n\nI am TutorBot, a personal learning companion.\n\n"
@@ -1803,9 +1803,7 @@ _LEGACY_SOUL_ID_ALIASES = {"default-tutorbot": "companion", "default": "companio
 
 def _is_stale_seed(entry: dict[str, str]) -> bool:
     content = str(entry.get("content") or "")
-    return content.strip() in {c.strip() for c in _SUPERSEDED_SOUL_CONTENTS} or (
-        "tutorbot" in content.lower()
-    )
+    return content.strip() in {c.strip() for c in _SUPERSEDED_SOUL_CONTENTS}
 
 
 def _refresh_stale_default_souls(
