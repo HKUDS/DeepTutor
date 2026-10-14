@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Literal
 import warnings
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator, model_validator
 
 from deeptutor.core.response_languages import validate_reply_language_override
 
@@ -91,6 +91,18 @@ class MasteryCardAnswer(BaseModel):
 
     question_id: str = Field(min_length=1)
     text: str = Field(min_length=1)
+    answers: dict[str, StrictStr] | None = Field(default=None, min_length=1, max_length=4)
+
+    @field_validator("answers")
+    @classmethod
+    def validate_group_answers(cls, value: dict[str, str] | None) -> dict[str, str] | None:
+        if value is not None:
+            for question_id, answer in value.items():
+                if not question_id.strip() or len(question_id) > 200:
+                    raise ValueError("group answers require bounded nonempty question IDs")
+                if not answer.strip() or len(answer) > 8000:
+                    raise ValueError("group answers require bounded nonempty answer text")
+        return value
 
 
 class MasteryCardSkip(BaseModel):

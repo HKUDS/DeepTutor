@@ -79,6 +79,7 @@ class LearningTurnAdapter:
         turn_id: str,
         question_id: str,
         answer: str,
+        answers: dict[str, str] | None = None,
     ) -> None:
         """Record an answer submitted from a card that outlived its turn.
 
@@ -102,6 +103,7 @@ class LearningTurnAdapter:
                 interaction_id=question_id,
                 session_id=session_id,
                 turn_id=turn_id,
+                **({"answers": answers} if answers is not None else {}),
             )
 
         try:
@@ -141,7 +143,8 @@ class LearningTurnAdapter:
         """
         question_id = str((answer or {}).get("question_id") or "").strip()
         text = str((answer or {}).get("text") or "")
-        if not path_id or not question_id or not text:
+        answers = (answer or {}).get("answers")
+        if not path_id or not question_id or (not text and answers is None):
             return None
         # Grading is one deterministic engine operation and this tool is its
         # only entry point; calling it here keeps that logic in one place
@@ -154,7 +157,7 @@ class LearningTurnAdapter:
                 _session_id=execution.session_id,
                 _turn_id=execution.turn_id,
                 question_id=question_id,
-                answer=text,
+                **({"answers": answers} if answers is not None else {"answer": text}),
             )
         except Exception:
             logger.warning(
@@ -163,9 +166,11 @@ class LearningTurnAdapter:
                 question_id,
                 exc_info=True,
             )
+            await self._publish_mastery_group_rejection(execution, question_id)
             return None
         payload = (result.metadata or {}).get("mastery_grade")
         if not result.success or not isinstance(payload, dict):
+            await self._publish_mastery_group_rejection(execution, question_id)
             return None
         # One complete trace group, the same shape the dispatcher emits for a
         # tool the model called: a lone result with no terminal status renders
@@ -208,6 +213,47 @@ class LearningTurnAdapter:
             ),
         )
         return payload
+
+    async def _publish_mastery_group_rejection(
+        self, execution: _TurnExecution, question_id: str
+    ) -> None:
+        """Reopen an optimistically submitted card without fabricating a verdict."""
+        call_id = f"mastery-grade-{execution.turn_id}-{question_id}"
+        trace = build_trace_metadata(
+            call_id=call_id,
+            phase="grading",
+            label="Mastery Grade",
+            call_kind="tool_call",
+            trace_id=call_id,
+            tool="mastery_grade",
+        )
+        message = "These answers could not be submitted. Please review or retry."
+        await self._publish_live_event(
+            execution,
+            StreamEvent(
+                type=StreamEventType.TOOL_RESULT,
+                source="mastery",
+                stage="grading",
+                content=message,
+                metadata={
+                    **trace,
+                    "trace_kind": "tool_result",
+                    "tool_metadata": {
+                        "mastery_answer_rejected": {"question_id": question_id, "message": message}
+                    },
+                },
+            ),
+        )
+        await self._publish_live_event(
+            execution,
+            StreamEvent(
+                type=StreamEventType.PROGRESS,
+                source="mastery",
+                stage="grading",
+                content="",
+                metadata={**trace, "trace_kind": "call_status", "call_state": "error"},
+            ),
+        )
 
     async def _skip_card_question(
         self,

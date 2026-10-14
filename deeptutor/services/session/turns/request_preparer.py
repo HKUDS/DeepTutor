@@ -113,6 +113,7 @@ class TurnRequestPreparer:
             turn_id: str,
             question_id: str,
             answer: str,
+            answers: dict[str, str] | None = None,
         ) -> None: ...
 
         async def _acquire_mastery_path_lease(
@@ -829,6 +830,11 @@ class TurnRequestPreparer:
                         turn_id=turn["id"],
                         question_id=str(card_answer.get("question_id") or ""),
                         answer=str(card_answer.get("text") or ""),
+                        **(
+                            {"answers": card_answer["answers"]}
+                            if card_answer.get("answers") is not None
+                            else {}
+                        ),
                     )
             except Exception as exc:
                 async with self._lock:

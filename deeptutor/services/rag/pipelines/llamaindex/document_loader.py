@@ -71,6 +71,7 @@ class LlamaIndexDocumentLoader:
     def __init__(self, logger=None, image_concurrency: int = 6) -> None:
         self.logger = logger or logging.getLogger(__name__)
         self.image_concurrency = max(1, int(image_concurrency))
+        self._pdf_documents: dict[str, list[Any]] = {}
 
     async def load(
         self,
@@ -117,13 +118,14 @@ class LlamaIndexDocumentLoader:
                         len(extracted_images),
                     )
             if not scanned_pdf_needs_ocr:
-                self._append_if_nonempty(
-                    documents,
-                    file_path,
-                    text,
-                    parse_engine=parse_engine,
-                    extracted_image_count=len(extracted_images),
-                )
+                page_documents = self._pdf_documents.pop(str(file_path), [])
+                if page_documents:
+                    documents.extend(page_documents)
+                else:
+                    self._append_if_nonempty(
+                        documents, file_path, text, parse_engine=parse_engine,
+                        extracted_image_count=len(extracted_images),
+                    )
                 image_sources.extend(extracted_images)
                 self._append_visual_documents(documents, extracted_images, visual_candidates)
 
@@ -233,6 +235,10 @@ class LlamaIndexDocumentLoader:
             return "", [], ""
 
         text = parsed.markdown.strip() or self._text_from_blocks(parsed.blocks)
+        if kb_dir is not None and file_path.suffix.lower() == ".pdf":
+            from deeptutor.services.rag.source_pages import build_pdf_documents
+
+            self._pdf_documents[str(file_path)] = build_pdf_documents(file_path, parsed, kb_dir)
         images = self._collect_asset_images(parsed.asset_dir, origin=file_path)
         if kb_dir is not None:
             from deeptutor.services.rag.visual_coverage import record_coverage

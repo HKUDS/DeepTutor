@@ -33,6 +33,17 @@ beforeEach(() => {
   });
 });
 
+it("shows partial and ungraded results without labeling them incorrect", async () => {
+  vi.mocked(listNotebookEntries).mockResolvedValue({
+    items: [{ ...entry(1), result: "partial" }, { ...entry(2), result: "ungraded" }],
+    total: 2,
+  });
+  render(<QuestionBankPicker open initialSelected={[]} onApply={vi.fn()} onClose={vi.fn()} />);
+  expect(await screen.findByText("Partially Correct")).toBeVisible();
+  expect(screen.getByText("Not Graded")).toBeVisible();
+  expect(screen.queryByText("Incorrect")).not.toBeInTheDocument();
+});
+
 it("keeps selections across material and text filters, then applies and restores them on reopen", async () => {
   const onApply = vi.fn();
   const onClose = vi.fn();

@@ -13677,6 +13677,13 @@ export interface components {
      *     recover the pairing from prose.
      */
     readonly MasteryCardAnswer: {
+      /**
+       * Answers
+       * @default null
+       */
+      readonly answers: {
+        readonly [key: string]: string;
+      } | null;
       /** Question Id */
       readonly question_id: string;
       /** Text */
