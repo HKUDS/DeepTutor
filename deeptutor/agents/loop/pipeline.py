@@ -1624,6 +1624,7 @@ class AgenticLoopPipeline:
         self,
         messages: list[dict[str, Any]],
         stream: StreamBus,
+        tool_schemas: list[dict[str, Any]] | None = None,
     ) -> None:
         try:
             window = resolve_effective_context_window(
@@ -1636,19 +1637,31 @@ class AgenticLoopPipeline:
         if not window or window <= 0:
             return
         budget = int(window * CONTEXT_WINDOW_GUARD_RATIO)
-        if self._estimate_messages_tokens(messages) <= budget:
+        # Each message is counted once; the running total moves as tool results are snipped.
+        counts = [self._request_message_tokens(msg) for msg in messages]
+        total = sum(counts) + self._tool_schema_tokens(tool_schemas)
+        if total <= budget:
             return
+        marker = self._tool_result_snip_marker()
         snipped = False
-        for msg in messages:
-            if msg.get("role") != "tool":
-                continue
-            marker = self._tool_result_snip_marker()
-            if msg.get("content") == marker:
+        for index, msg in enumerate(messages):
+            if msg.get("role") != "tool" or msg.get("content") == marker:
                 continue
             msg["content"] = marker
             snipped = True
-            if self._estimate_messages_tokens(messages) <= budget:
+            after = self._request_message_tokens(msg)
+            total += after - counts[index]
+            counts[index] = after
+            if total <= budget:
                 break
+        if total > budget:
+            logger.warning(
+                "Context-window guard: request is about %d tokens against a %d-token budget "
+                "(window %d) and no tool results are left to trim; sending it as-is",
+                total,
+                budget,
+                window,
+            )
         if snipped:
             await stream.progress(
                 self._t("notices.context_window_guard"),
@@ -1688,21 +1701,26 @@ class AgenticLoopPipeline:
             return 0
 
     @staticmethod
-    def _estimate_messages_tokens(messages: list[dict[str, Any]]) -> int:
-        from deeptutor.services.session.context_builder import count_tokens
+    def _request_message_tokens(message: dict[str, Any]) -> int:
+        """Tokens one message costs in the request, counted as history planning counts it."""
+        from deeptutor.services.session.context_builder import _count_model_context_tokens
 
-        total = 0
-        for msg in messages:
-            content = msg.get("content")
-            if isinstance(content, str):
-                total += count_tokens(content)
-            elif isinstance(content, list):
-                for part in content:
-                    if isinstance(part, dict) and part.get("type") == "text":
-                        total += count_tokens(str(part.get("text") or ""))
-                    elif isinstance(part, dict) and part.get("type") == "image_url":
-                        total += IMAGE_TOKEN_GUARD_RESERVE
-        return total
+        # ``_call_llm`` strips this bookkeeping key before the provider sees the message.
+        sent = {key: value for key, value in message.items() if key != "_context_snapshot"}
+        return _count_model_context_tokens(sent)
+
+    @staticmethod
+    def _tool_schema_tokens(tool_schemas: list[dict[str, Any]] | None) -> int:
+        """Tokens the ``tools`` payload costs when the request carries it."""
+        if not tool_schemas:
+            return 0
+        from deeptutor.services.session.context_builder import _count_model_context_tokens
+
+        return _count_model_context_tokens(tool_schemas)
+
+    @staticmethod
+    def _estimate_messages_tokens(messages: list[dict[str, Any]]) -> int:
+        return sum(AgenticLoopPipeline._request_message_tokens(msg) for msg in messages)
 
     # ---- LLM client ------------------------------------------------------
 

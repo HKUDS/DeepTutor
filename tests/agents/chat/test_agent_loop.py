@@ -441,6 +441,46 @@ async def test_rejected_forced_choice_keeps_schemas_for_all_later_rounds(monkeyp
 
 
 @pytest.mark.asyncio
+async def test_context_guard_is_told_which_tool_schemas_each_request_carries(monkeypatch):
+    client = _ScriptedChatClient(
+        [
+            [
+                _llm_chunk(
+                    tool_calls=[{"id": "a", "name": "web_search", "arguments": '{"query":"test"}'}],
+                    finish_reason="tool_calls",
+                )
+            ],
+            [_llm_chunk(content="Answer", finish_reason="stop")],
+        ]
+    )
+    accepted_create = client.chat.completions.create
+    sent_tools = []
+
+    async def create(**kwargs):
+        sent_tools.append(kwargs.get("tools") or None)
+        return await accepted_create(**kwargs)
+
+    client.chat.completions.create = create
+    pipeline = AgenticChatPipeline(language="en", initial_tool_choice="web_search")
+    pipeline.registry = _Registry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _: ["web_search"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    guard = pipeline._guard_context_window
+    guarded_tools = []
+
+    async def recording_guard(messages, stream, **kwargs):
+        guarded_tools.append(kwargs.get("tool_schemas") or None)
+        await guard(messages, stream, **kwargs)
+
+    monkeypatch.setattr(pipeline, "_guard_context_window", recording_guard)
+    context = UnifiedContext(session_id="s", user_message="Search")
+    events = await _run(pipeline, context)
+    assert _answer_text(events) == "Answer"
+    assert sent_tools[0]
+    assert guarded_tools == sent_tools
+
+
+@pytest.mark.asyncio
 async def test_persisted_tool_turn_extends_request_prefix_after_resume(monkeypatch, tmp_path):
     """A new pipeline/database read must preserve seed, reasoning and tools."""
     from deeptutor.core.context import WorkspaceRuntimeContext

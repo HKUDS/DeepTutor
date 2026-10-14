@@ -1047,7 +1047,9 @@ class AgentLoop:
         tool_choice: str | None = None,
     ) -> LLMCallResult:
         request_messages = with_transient_model_messages(messages, self._transient_model_messages)
-        await self.pipeline._guard_context_window(request_messages, self.stream)
+        await self.pipeline._guard_context_window(
+            request_messages, self.stream, tool_schemas=tool_schemas
+        )
         stage = self.stage
         call_id = new_call_id(f"{self.source}-{stage}")
         trace_meta = build_trace_metadata(
