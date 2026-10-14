@@ -2219,9 +2219,43 @@ class MasteryReviseTool(BaseTool):
                 "SEVERAL modules, pass them together as modules=[{module_id, "
                 "rewrite, add, remove}, ...] in ONE call — they are applied, "
                 "validated and reported as a single atomic revision, instead "
-                "of one full-outline round per module."
+                "of one full-outline round per module. For coordinated outline "
+                "edits, action=preview returns the exact proposed state changes "
+                "without saving. Review them, then use action=commit with only "
+                "that preview_id in a later model round. Omit action for the "
+                "existing immediate content revision behavior. To change the "
+                "displayed module sequence, use action=preview with module_order "
+                "containing every existing module ID exactly once; content edits "
+                "are optional. Reordering preserves objective IDs and evidence; "
+                "it does not abandon an unanswered question or change the active "
+                "objective. Never report an order change from a content-only edit "
+                "or from an uncommitted preview."
             ),
             parameters=[
+                ToolParameter(
+                    name="action",
+                    type="string",
+                    enum=["preview", "commit"],
+                    description="Preview before a reviewed commit; omit for a direct revision.",
+                    required=False,
+                ),
+                ToolParameter(
+                    name="preview_id",
+                    type="integer",
+                    description="Commit only: the identifier returned by the reviewed preview.",
+                    required=False,
+                ),
+                ToolParameter(
+                    name="module_order",
+                    type="array",
+                    items={"type": "string"},
+                    description=(
+                        "Preview only: complete requested sequence of existing module IDs. "
+                        "Omit to keep order unchanged; may be used without content edits. "
+                        "Does not rename modules, waive prerequisites, or move the current objective."
+                    ),
+                    required=False,
+                ),
                 ToolParameter(
                     name="module_id",
                     type="string",
@@ -2297,75 +2331,88 @@ class MasteryReviseTool(BaseTool):
         if not path_id:
             return _no_path_result()
 
-        specs, spec_error = _revise_specs(kwargs)
-        if spec_error is not None:
-            return ToolResult(content=spec_error, success=False)
+        from deeptutor.learning.storage import LearningConflictError
 
+        action = kwargs.get("action")
+        if action not in (None, "preview", "commit"):
+            return ToolResult(content="Use action preview or commit, or omit it.", success=False)
         service = _new_service()
+        if action == "commit":
+            if any(
+                kwargs.get(key) is not None
+                for key in ("module_id", "modules", "rewrite", "add", "remove", "module_order")
+            ):
+                return ToolResult(
+                    content="Commit takes only preview_id; omit all revision edits.", success=False
+                )
+            try:
+                progress, receipt = service.commit_module_revision(
+                    path_id,
+                    kwargs.get("preview_id"),
+                    session_id=_resolve_session_id(kwargs),
+                    turn_id=_resolve_turn_id(kwargs),
+                    request_id=str(kwargs.get("_revision_request_id") or ""),
+                )
+            except (ValueError, TypeError, KeyError, LearningConflictError) as exc:
+                return ToolResult(content=f"Revision not saved: {exc}", success=False)
+            return _json_result(
+                {
+                    "status": "committed",
+                    **receipt,
+                    "path_revision": progress.version,
+                    "current_module_order": [module.id for module in progress.modules],
+                    "map": map_summary(progress),
+                },
+                meta_key="mastery_revise",
+            )
+        if kwargs.get("preview_id") is not None:
+            return ToolResult(content="Use preview_id only with action commit.", success=False)
+
+        module_order = kwargs.get("module_order")
+        if module_order is not None and action != "preview":
+            return ToolResult(
+                content="Module reordering requires action preview followed by a reviewed commit.",
+                success=False,
+            )
+        specs = {}
+        if module_order is None or any(
+            kwargs.get(key) is not None
+            for key in ("module_id", "modules", "rewrite", "add", "remove")
+        ):
+            specs, spec_error = _revise_specs(kwargs)
+            if spec_error is not None:
+                return ToolResult(content=spec_error, success=False)
+
         progress = _load_path(service, path_id)
         if progress is None or not progress.modules:
             return _no_built_path_result("mastery_revise")
 
-        known_modules = {m.id: m for m in progress.modules}
-        targets: list[LearningModule] = []
-        for module_id in specs:
-            target = known_modules.get(module_id)
-            if target is None:
-                known = ", ".join(f"{m.id!r} ({m.name})" for m in progress.modules)
-                return ToolResult(
-                    content=(
-                        f"No module {module_id!r} in this mastery goal. Revise one of: {known}."
-                    ),
-                    success=False,
+        try:
+            applied, targets, revised_by_module, resets_by_module = _plan_module_revision(
+                progress, specs, module_order=module_order
+            )
+        except (ValueError, TypeError) as exc:
+            return ToolResult(content=str(exc), success=False)
+        if action == "preview":
+            try:
+                result, proposed = service.preview_module_revision(
+                    path_id,
+                    applied,
+                    expected_revision=progress.version,
+                    session_id=_resolve_session_id(kwargs),
+                    request_id=str(kwargs.get("_revision_request_id") or ""),
                 )
-            targets.append(target)
-
-        removals = {
-            str(raw or "").strip() for spec in specs.values() for raw in (spec.get("remove") or [])
-        }
-        blocked_by = [
-            f"{point.name!r} ({point.id})"
-            for module in progress.modules
-            for point in module.knowledge_points
-            if point.id not in removals and any(ref in removals for ref in point.prerequisite_ids)
-        ]
-        if blocked_by:
-            return ToolResult(
-                content=(
-                    "Those knowledge points are still required by: "
-                    + ", ".join(blocked_by)
-                    + ". Remove or change those prerequisites first."
-                ),
-                success=False,
+            except (ValueError, TypeError, KeyError, LearningConflictError) as exc:
+                return ToolResult(content=f"Revision not saved: {exc}", success=False)
+            return _json_result(
+                {
+                    "status": "preview_only_not_saved",
+                    **result,
+                    "proposed_map": map_summary(proposed),
+                    "next_step": "Review every change and objective reset. Commit this preview_id in a later model round if coherent and within the learner's request; otherwise correct the edits and preview again.",
+                },
+                meta_key="mastery_revision_preview",
             )
-
-        taken = {kp.id for m in progress.modules for kp in m.knowledge_points}
-        revised_by_module: dict[str, list[KnowledgePoint]] = {}
-        resets_by_module: dict[str, list[str]] = {}
-        rewrite_ids: dict[str, str] = {}
-        for target in targets:
-            revised, error, resets, rewrites = _revise_points(
-                progress, target, specs[target.id], taken=taken
-            )
-            if error:
-                # First rejection refuses the whole request: a coordinated
-                # edit must not half-apply because its third module was bad.
-                return ToolResult(content=error, success=False)
-            revised_by_module[target.id] = revised
-            resets_by_module[target.id] = resets
-            rewrite_ids.update(rewrites)
-
-        applied = [
-            module.model_copy(deep=True, update={"knowledge_points": revised_by_module[module.id]})
-            if module.id in revised_by_module
-            else module.model_copy(deep=True)
-            for module in sorted(progress.modules, key=lambda m: m.order)
-        ]
-        for module in applied:
-            for point in module.knowledge_points:
-                point.prerequisite_ids = [
-                    rewrite_ids.get(ref, ref) for ref in point.prerequisite_ids
-                ]
         try:
             progress = service.replace_modules_for_path(
                 path_id,
@@ -2700,6 +2747,72 @@ def _revised_point_id(module_id: str, taken: set[str]) -> str:
             taken.add(candidate)
             return candidate
         index += 1
+
+
+def _plan_module_revision(
+    progress: LearningProgress,
+    specs: dict[str, dict[str, Any]],
+    *,
+    module_order: list[str] | None = None,
+):
+    """Shared planner for direct and reviewed revisions; never mutates stored state."""
+    known_modules = {m.id: m for m in progress.modules}
+    targets: list[LearningModule] = []
+    for module_id in specs:
+        target = known_modules.get(module_id)
+        if target is None:
+            known = ", ".join(f"{m.id!r} ({m.name})" for m in progress.modules)
+            raise ValueError(
+                f"No module {module_id!r} in this mastery goal. Revise one of: {known}."
+            )
+        targets.append(target)
+
+    removals = {
+        str(raw or "").strip() for spec in specs.values() for raw in (spec.get("remove") or [])
+    }
+    blocked_by = [
+        f"{point.name!r} ({point.id})"
+        for module in progress.modules
+        for point in module.knowledge_points
+        if point.id not in removals and any(ref in removals for ref in point.prerequisite_ids)
+    ]
+    if blocked_by:
+        raise ValueError(
+            "Those knowledge points are still required by: "
+            + ", ".join(blocked_by)
+            + ". Remove or change those prerequisites first."
+        )
+
+    taken = {kp.id for m in progress.modules for kp in m.knowledge_points}
+    revised_by_module: dict[str, list[KnowledgePoint]] = {}
+    resets_by_module: dict[str, list[str]] = {}
+    rewrite_ids: dict[str, str] = {}
+    for target in targets:
+        revised, error, resets, rewrites = _revise_points(
+            progress, target, specs[target.id], taken=taken
+        )
+        if error:
+            # First rejection refuses the whole request: a coordinated
+            # edit must not half-apply because its third module was bad.
+            raise ValueError(error)
+        revised_by_module[target.id] = revised
+        resets_by_module[target.id] = resets
+        rewrite_ids.update(rewrites)
+
+    applied = [
+        module.model_copy(deep=True, update={"knowledge_points": revised_by_module[module.id]})
+        if module.id in revised_by_module
+        else module.model_copy(deep=True)
+        for module in sorted(progress.modules, key=lambda m: m.order)
+    ]
+    for module in applied:
+        for point in module.knowledge_points:
+            point.prerequisite_ids = [rewrite_ids.get(ref, ref) for ref in point.prerequisite_ids]
+    if module_order is not None:
+        from deeptutor.learning.outline_revision import reorder_modules
+
+        applied = reorder_modules(applied, module_order)
+    return applied, targets, revised_by_module, resets_by_module
 
 
 def _revise_specs(kwargs: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], str | None]:

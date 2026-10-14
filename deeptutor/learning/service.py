@@ -1063,134 +1063,173 @@ class LearningService:
         edits that already carry durable IDs. Position never establishes identity.
         """
 
-        def replace(tx):
-            if name.strip() and not tx.progress.name.strip():
-                tx.progress.name = name.strip()[:_MAX_PATH_NAME_LEN]
-            applied_modules = [module.model_copy(deep=True) for module in modules]
-            identity_map: dict[str, list[str] | str] = {
-                "mode": "append" if append else ("fresh" if fresh_identity else identity_mode),
-                "preserved": [],
-                "minted": [],
-                "dropped": [],
-            }
-            if append:
+        progress, _ = self._store.mutate(
+            book_id,
+            lambda tx: self._replace_module_set(
+                tx,
+                modules,
+                append=append,
+                name=name,
+                event_type=event_type,
+                session_id=session_id,
+                turn_id=turn_id,
+                identity_mode=identity_mode,
+                relation_refs=relation_refs,
+                source_aliases=source_aliases,
+                topic_sources=topic_sources,
+                fresh_identity=fresh_identity,
+            ),
+            create=True,
+        )
+        return progress
+
+    def _replace_module_set(
+        self,
+        tx,
+        modules: list[LearningModule],
+        *,
+        append: bool = False,
+        name: str = "",
+        event_type: str = "path.modules_replaced",
+        session_id: str = "",
+        turn_id: str = "",
+        identity_mode: str = "explicit",
+        relation_refs: dict[str, RelationRefs] | None = None,
+        source_aliases: dict[str, str] | None = None,
+        topic_sources: list[TopicSource] | None = None,
+        fresh_identity: bool = False,
+        dry_run: bool = False,
+    ) -> dict[str, Any]:
+        """Shared identity, relation and question effects for preview and save."""
+        book_id = tx.progress.book_id
+        if name.strip() and not tx.progress.name.strip():
+            tx.progress.name = name.strip()[:_MAX_PATH_NAME_LEN]
+        applied_modules = [module.model_copy(deep=True) for module in modules]
+        identity_map: dict[str, list[str] | str] = {
+            "mode": "append" if append else ("fresh" if fresh_identity else identity_mode),
+            "preserved": [],
+            "minted": [],
+            "dropped": [],
+        }
+        if append:
+            reserved = _reserved_objective_ids(tx.progress)
+            offset = len(tx.progress.modules)
+            minted: list[str] = []
+            for index, module in enumerate(applied_modules, start=offset):
+                module.id = f"{book_id}_m{index}"
+                module.order = index
+                for kp_index, kp in enumerate(module.knowledge_points):
+                    kp.module_id = module.id
+                    candidate = f"{module.id}_kp{kp_index}"
+                    if candidate in reserved:
+                        kp.id = _new_objective_id(module.id, reserved)
+                    else:
+                        kp.id = candidate
+                        reserved.add(candidate)
+                    tx.progress.knowledge_types[kp.id] = kp.type
+                    minted.append(kp.id)
+            identity_map["minted"] = minted
+            existing_modules = tx.progress.modules
+            self._resolve_final_relations(
+                applied_modules,
+                modules,
+                relation_refs or {},
+                source_aliases or {},
+                tx.topic_sources() if topic_sources is None else topic_sources,
+                existing_modules=existing_modules,
+            )
+            validate_objective_relations(
+                [*existing_modules, *applied_modules],
+                tx.topic_sources() if topic_sources is None else topic_sources,
+            )
+            tx.progress.modules.extend(applied_modules)
+            if not tx.progress.current_module_id and applied_modules:
+                tx.progress.current_module_id = applied_modules[0].id
+                tx.progress.current_kp_index = 0
+        else:
+            current_kp_id = ""
+            for current_module in tx.progress.modules:
+                if current_module.id != tx.progress.current_module_id:
+                    continue
+                if 0 <= tx.progress.current_kp_index < len(current_module.knowledge_points):
+                    current_kp_id = current_module.knowledge_points[tx.progress.current_kp_index].id
+                break
+            pending_kp_id = (
+                tx.progress.pending_question.knowledge_point_id
+                if tx.progress.pending_question is not None
+                else ""
+            )
+            active_interaction = tx.active_interaction()
+            active_kp_id = (
+                active_interaction.question.knowledge_point_id
+                if active_interaction is not None
+                else ""
+            )
+
+            if fresh_identity:
                 reserved = _reserved_objective_ids(tx.progress)
-                offset = len(tx.progress.modules)
-                minted: list[str] = []
-                for index, module in enumerate(applied_modules, start=offset):
-                    module.id = f"{book_id}_m{index}"
-                    module.order = index
-                    for kp_index, kp in enumerate(module.knowledge_points):
+                for module in applied_modules:
+                    for kp in module.knowledge_points:
+                        kp.id = _new_objective_id(module.id, reserved)
                         kp.module_id = module.id
-                        candidate = f"{module.id}_kp{kp_index}"
-                        if candidate in reserved:
-                            kp.id = _new_objective_id(module.id, reserved)
-                        else:
-                            kp.id = candidate
-                            reserved.add(candidate)
-                        tx.progress.knowledge_types[kp.id] = kp.type
-                        minted.append(kp.id)
-                identity_map["minted"] = minted
-                existing_modules = tx.progress.modules
-                self._resolve_final_relations(
-                    applied_modules,
-                    modules,
-                    relation_refs or {},
-                    source_aliases or {},
-                    tx.topic_sources() if topic_sources is None else topic_sources,
-                    existing_modules=existing_modules,
+                identity_map["minted"] = [
+                    kp.id for module in applied_modules for kp in module.knowledge_points
+                ]
+                identity_map["dropped"] = sorted(
+                    {kp.id for module in tx.progress.modules for kp in module.knowledge_points}
                 )
-                validate_objective_relations(
-                    [*existing_modules, *applied_modules],
-                    tx.topic_sources() if topic_sources is None else topic_sources,
-                )
-                tx.progress.modules.extend(applied_modules)
-                if not tx.progress.current_module_id and applied_modules:
-                    tx.progress.current_module_id = applied_modules[0].id
-                    tx.progress.current_kp_index = 0
             else:
-                current_kp_id = ""
-                for current_module in tx.progress.modules:
-                    if current_module.id != tx.progress.current_module_id:
-                        continue
-                    if 0 <= tx.progress.current_kp_index < len(current_module.knowledge_points):
-                        current_kp_id = current_module.knowledge_points[
-                            tx.progress.current_kp_index
-                        ].id
-                    break
-                pending_kp_id = (
-                    tx.progress.pending_question.knowledge_point_id
-                    if tx.progress.pending_question is not None
-                    else ""
-                )
-                active_interaction = tx.active_interaction()
-                active_kp_id = (
-                    active_interaction.question.knowledge_point_id
-                    if active_interaction is not None
-                    else ""
-                )
-
-                if fresh_identity:
-                    reserved = _reserved_objective_ids(tx.progress)
-                    for module in applied_modules:
-                        for kp in module.knowledge_points:
-                            kp.id = _new_objective_id(module.id, reserved)
-                            kp.module_id = module.id
-                    identity_map["minted"] = [
-                        kp.id for module in applied_modules for kp in module.knowledge_points
-                    ]
-                    identity_map["dropped"] = sorted(
-                        {kp.id for module in tx.progress.modules for kp in module.knowledge_points}
-                    )
-                else:
-                    identity_map = assign_objective_identities(
-                        tx.progress,
-                        applied_modules,
-                        identity_mode=identity_mode,
-                    )
-                sources = tx.topic_sources() if topic_sources is None else topic_sources
-                self._resolve_final_relations(
+                identity_map = assign_objective_identities(
+                    tx.progress,
                     applied_modules,
-                    modules,
-                    relation_refs or {},
-                    source_aliases or {},
-                    sources,
+                    identity_mode=identity_mode,
                 )
-                validate_objective_relations(applied_modules, sources)
-                self.replace_modules(tx.progress, applied_modules)
-                objective_locations = {
-                    kp.id: (module.id, kp_index)
-                    for module in applied_modules
-                    for kp_index, kp in enumerate(module.knowledge_points)
-                }
+            sources = tx.topic_sources() if topic_sources is None else topic_sources
+            self._resolve_final_relations(
+                applied_modules,
+                modules,
+                relation_refs or {},
+                source_aliases or {},
+                sources,
+            )
+            validate_objective_relations(applied_modules, sources)
+            self.replace_modules(tx.progress, applied_modules)
+            objective_locations = {
+                kp.id: (module.id, kp_index)
+                for module in applied_modules
+                for kp_index, kp in enumerate(module.knowledge_points)
+            }
 
-                if current_kp_id in objective_locations:
-                    (
-                        tx.progress.current_module_id,
-                        tx.progress.current_kp_index,
-                    ) = objective_locations[current_kp_id]
-                elif applied_modules:
-                    tx.progress.current_module_id = applied_modules[0].id
-                    tx.progress.current_kp_index = 0
+            if current_kp_id in objective_locations:
+                (
+                    tx.progress.current_module_id,
+                    tx.progress.current_kp_index,
+                ) = objective_locations[current_kp_id]
+            elif applied_modules:
+                tx.progress.current_module_id = applied_modules[0].id
+                tx.progress.current_kp_index = 0
+            else:
+                tx.progress.current_module_id = ""
+                tx.progress.current_kp_index = 0
+
+            if tx.progress.pending_question is not None:
+                if pending_kp_id not in objective_locations:
+                    tx.progress.pending_question = None
                 else:
-                    tx.progress.current_module_id = ""
-                    tx.progress.current_kp_index = 0
+                    pending_module_id, _ = objective_locations[pending_kp_id]
+                    tx.progress.pending_question.module_id = pending_module_id
 
-                if tx.progress.pending_question is not None:
-                    if pending_kp_id not in objective_locations:
-                        tx.progress.pending_question = None
-                    else:
-                        pending_module_id, _ = objective_locations[pending_kp_id]
-                        tx.progress.pending_question.module_id = pending_module_id
-
-                if active_interaction is not None:
-                    if active_kp_id not in objective_locations:
+            if active_interaction is not None:
+                if active_kp_id not in objective_locations:
+                    if not dry_run:
                         tx.abandon_active_interactions()
-                    else:
-                        active_module_id, _ = objective_locations[active_kp_id]
-                        if active_interaction.question.module_id != active_module_id:
-                            active_interaction.question.module_id = active_module_id
+                else:
+                    active_module_id, _ = objective_locations[active_kp_id]
+                    if active_interaction.question.module_id != active_module_id:
+                        active_interaction.question.module_id = active_module_id
+                        if not dry_run:
                             tx.put_interaction(active_interaction)
+        if not dry_run:
             tx.touch()
             tx.emit(
                 event_type,
@@ -1205,9 +1244,125 @@ class LearningService:
                 session_id=session_id,
                 turn_id=turn_id,
             )
+        return {
+            "identity_map": identity_map,
+            "active_interaction_removed": bool(
+                active_kp_id and active_kp_id not in objective_locations
+            )
+            if not append
+            else False,
+        }
 
-        progress, _ = self._store.mutate(book_id, replace, create=True)
-        return progress
+    def preview_module_revision(
+        self,
+        book_id: str,
+        modules: list[LearningModule],
+        *,
+        expected_revision: int,
+        session_id: str,
+        request_id: str = "",
+    ) -> tuple[dict[str, Any], LearningProgress]:
+        """Run the real replacement engine on a copy, then record the reviewed draft."""
+        from deeptutor.learning.outline_revision import exact_diff, state_digest
+        from deeptutor.learning.storage import LearningConflictError
+
+        with self._store.transaction(book_id) as tx:
+            if tx.base_revision != expected_revision:
+                raise LearningConflictError(book_id, expected_revision, tx.base_revision)
+            original = tx.progress
+            tx.progress = original.model_copy(deep=True)
+            try:
+                effects = self._replace_module_set(tx, modules, dry_run=True)
+                proposed = tx.progress.model_copy(deep=True)
+            finally:
+                tx.progress = original
+            # Save-time bookkeeping is not a curriculum change or progress reset.
+            exclude = {"version", "updated_at"}
+            changes = exact_diff(
+                original.model_dump(mode="json", exclude=exclude),
+                proposed.model_dump(mode="json", exclude=exclude),
+            )
+            if not changes:
+                raise ValueError("This plan changes nothing. Leave the current outline in place.")
+            payload = {
+                "base_revision": expected_revision,
+                "request_id": request_id,
+                "before_digest": state_digest(original),
+                "after_digest": state_digest(proposed),
+                "modules": [module.model_dump(mode="json") for module in proposed.modules],
+                "changes": changes,
+                "effects": effects,
+                "before_module_order": [module.id for module in original.modules],
+                "proposed_module_order": [module.id for module in proposed.modules],
+            }
+            preview_id = tx.record_module_preview(payload, session_id=session_id)
+        return {
+            "preview_id": preview_id,
+            "base_revision": expected_revision,
+            "changes": changes,
+            "effects": effects,
+            "before_module_order": payload["before_module_order"],
+            "proposed_module_order": payload["proposed_module_order"],
+            "module_order_changed": (
+                payload["before_module_order"] != payload["proposed_module_order"]
+            ),
+        }, proposed
+
+    def commit_module_revision(
+        self,
+        book_id: str,
+        preview_id: int,
+        *,
+        session_id: str,
+        turn_id: str = "",
+        request_id: str = "",
+    ) -> tuple[LearningProgress, dict[str, Any]]:
+        """Apply only the persisted draft; stale state rolls back instead of overwriting."""
+        from deeptutor.learning.outline_revision import state_digest
+        from deeptutor.learning.storage import LearningConflictError
+
+        with self._store.transaction(book_id) as tx:
+            draft = tx.module_preview(preview_id, session_id=session_id)
+            replayed = draft["committed_revision"] is not None
+            if not replayed:
+                if draft.get("request_id") and (
+                    not request_id or request_id == draft["request_id"]
+                ):
+                    raise ValueError(
+                        "Inspect this preview in a later model round before committing it."
+                    )
+                expected = int(draft["base_revision"])
+                if expected != tx.base_revision:
+                    raise LearningConflictError(book_id, expected, tx.base_revision)
+                if state_digest(tx.progress) != draft["before_digest"]:
+                    raise ValueError(
+                        "The outline state changed. Create and review a fresh preview."
+                    )
+                self._replace_module_set(
+                    tx,
+                    [LearningModule.model_validate(m) for m in draft["modules"]],
+                    session_id=session_id,
+                    turn_id=turn_id,
+                )
+                if state_digest(tx.progress) != draft["after_digest"]:
+                    raise ValueError(
+                        "The preview no longer matches the engine result. Nothing was saved."
+                    )
+                tx.emit(
+                    "path.modules_revision_committed",
+                    {"preview_id": preview_id},
+                    session_id=session_id,
+                    turn_id=turn_id,
+                )
+            receipt = {
+                "preview_id": preview_id,
+                "replayed": replayed,
+                "applied_revision": draft["committed_revision"]
+                if replayed
+                else tx.base_revision + 1,
+                "applied_module_order": [module["id"] for module in draft["modules"]],
+            }
+        return tx.progress, receipt
 
     def create_topic(
         self,
