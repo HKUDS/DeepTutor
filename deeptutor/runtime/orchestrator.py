@@ -139,6 +139,22 @@ class ChatOrchestrator:
             terminal_error_metadata: dict[str, Any] = {}
             try:
                 await capability.run(context, bus)
+                if bus.result_completion is False:
+                    status = "failed"
+                    terminal_error_metadata = {
+                        "error_code": "capability_incomplete",
+                        "retryable": True,
+                    }
+                    await bus.error(
+                        "The requested operation did not complete. Please retry; "
+                        "previously saved work is preserved.",
+                        source=cap_name,
+                        metadata={
+                            "turn_terminal": True,
+                            "status": status,
+                            **terminal_error_metadata,
+                        },
+                    )
             except Exception as exc:
                 status = "failed"
                 logger.error("Capability %s failed: %s", cap_name, exc, exc_info=True)
