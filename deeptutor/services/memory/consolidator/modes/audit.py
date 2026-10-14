@@ -8,10 +8,8 @@ Algorithm
    contiguous slice of lines whose bullet entries get **annotated with
    their full source content** (no truncation).
 3. Per chunk: LLM call → parse edits → apply against the in-memory doc
-   in reverse line order. Across chunks, edits stack — but because we
-   slice on whole-line boundaries and apply per-chunk before the next
-   chunk runs, the line numbers the next chunk sees are still the ones
-   the LLM was given.
+    in reverse line order. All chunks use the original line view, whose
+    entry IDs anchor edits after earlier chunks change line positions.
 4. Atomic flush.
 
 The chunker is deliberately char-based (same as update) so chunk size
@@ -142,6 +140,7 @@ async def _run_audit_l2(
         return AuditResult(layer="L2", key=surface, chunks_processed=0, no_doc=True)
 
     doc = load_doc(l2_path, default_title=f"{surface} memory")
+    audit_view = render_view(doc)
     entity_lookup = {ent.id: ent for ent in snap.read_snapshot(surface)}
     prompt = load_prompt("audit_l2", language)
     focus, _sections = surface_focus(language, surface)
@@ -194,7 +193,7 @@ async def _run_audit_l2(
                 {"stage": "facts_extracted", "turn": chunk.index + 1, "edits": 0},
             )
             continue
-        doc, report = apply_edits(doc, edits)
+        doc, report = apply_edits(doc, edits, view=audit_view)
         edits_applied += len(report.applied)
         edits_rejected += len(report.rejected)
         if report.applied:
@@ -228,8 +227,6 @@ async def _run_audit_l2(
                     "detail": res.detail,
                 },
             )
-        # Refresh annotation for the next chunk — line numbers shifted.
-        annotated_text, line_ranges = _build_annotated_l2(doc, surface, entity_lookup)
 
     await emit(
         on_event,
@@ -283,6 +280,7 @@ async def _run_audit_l3(
         return AuditResult(layer="L3", key=slot, chunks_processed=0, no_doc=True)
 
     doc = load_doc(l3_path, default_title=f"{slot} memory")
+    audit_view = render_view(doc)
     l2_lookup = _build_l2_entry_lookup()
     prompt = load_prompt("audit_l3", language)
     focus, _sections = slot_focus(language, slot)
@@ -335,7 +333,7 @@ async def _run_audit_l3(
                 {"stage": "facts_extracted", "turn": chunk.index + 1, "edits": 0},
             )
             continue
-        doc, report = apply_edits(doc, edits)
+        doc, report = apply_edits(doc, edits, view=audit_view)
         edits_applied += len(report.applied)
         edits_rejected += len(report.rejected)
         if report.applied:
@@ -369,7 +367,6 @@ async def _run_audit_l3(
                     "detail": res.detail,
                 },
             )
-        annotated_text, _ranges = _build_annotated_l3(doc, l2_lookup)
 
     await emit(
         on_event,
