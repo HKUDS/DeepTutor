@@ -19,16 +19,18 @@ export type DayGroupKey = "today" | "yesterday" | "last_7_days" | "earlier";
 export function getDayGroupKey(timestamp: number): DayGroupKey {
   const now = new Date();
   const date = new Date(timestamp * 1000);
-  const startOfToday = new Date(
+  // Compare local calendar dates on a uniform UTC axis: a local day can
+  // contain 23 or 25 hours when daylight-saving time changes.
+  const startOfToday = Date.UTC(
     now.getFullYear(),
     now.getMonth(),
     now.getDate(),
-  ).getTime();
-  const startOfItemDay = new Date(
+  );
+  const startOfItemDay = Date.UTC(
     date.getFullYear(),
     date.getMonth(),
     date.getDate(),
-  ).getTime();
+  );
   const diffDays = Math.floor((startOfToday - startOfItemDay) / 86400000);
   if (diffDays <= 0) return "today";
   if (diffDays === 1) return "yesterday";
