@@ -829,7 +829,7 @@ class MasteryNoteExplainedTool(BaseTool):
     def get_definition(self) -> ToolDefinition:
         return ToolDefinition(
             name="mastery_note_explained",
-            description="After explaining an objective at the requested level, record what was taught. This does not assess, grant mastery or schedule a review. Respect explanation-only requests; a quiz is optional until the learner wants practice.",
+            description="After publicly explaining part of an objective, record that delivered explanation with an exact quote. Never record a planned explanation or treat this as complete-objective coverage, assessment or mastery. A quiz is optional until the learner wants practice.",
             parameters=[
                 ToolParameter(
                     name="knowledge_point_id",
@@ -840,6 +840,11 @@ class MasteryNoteExplainedTool(BaseTool):
                     name="summary",
                     type="string",
                     description="What was actually explained, including prerequisites and source limitations.",
+                ),
+                ToolParameter(
+                    name="explanation_quote",
+                    type="string",
+                    description="Exact 24-2000 character excerpt of explanation already publicly delivered in this turn; not source text, reasoning or a future plan.",
                 ),
             ],
         )
@@ -855,6 +860,47 @@ class MasteryNoteExplainedTool(BaseTool):
         summary = str(kwargs.get("summary") or "").strip()[:2000]
         if not summary:
             return ToolResult(content="A teaching summary is required.", success=False)
+        quote = kwargs.get("explanation_quote")
+        if not isinstance(quote, str) or not 24 <= len(quote.strip()) <= 2000:
+            return ToolResult(content="Provide an exact 24-2000 character excerpt of the explanation already delivered publicly in this turn.", success=False)
+        quote = quote.strip()
+        read_delivery = kwargs.get("_teaching_delivery")
+        delivery = read_delivery() if callable(read_delivery) else None
+        expected_scope = {
+            "path_id": path_id,
+            "session_id": _resolve_session_id(kwargs),
+            "turn_id": _resolve_turn_id(kwargs),
+        }
+        if (
+            not isinstance(delivery, dict)
+            or not all(expected_scope.values())
+            or any(delivery.get(key) != value for key, value in expected_scope.items())
+        ):
+            return ToolResult(content="Teaching must be bound to the active runtime path, session and turn; no explanation was recorded.", success=False)
+        segments = delivery.get("segments")
+        if not isinstance(segments, tuple) or any(
+            not isinstance(segment, tuple) or len(segment) != 3
+            or not isinstance(segment[0], int) or not isinstance(segment[1], (int, float))
+            or not isinstance(segment[2], str)
+            for segment in segments
+        ):
+            return ToolResult(content="Published explanation evidence is unavailable; no explanation was recorded.", success=False)
+        published = "".join(segment[2] for segment in segments)
+        start = published.rfind(quote)
+        if start < 0:
+            return ToolResult(content="That excerpt has not been publicly delivered in this turn. Explain first, then record only what was taught; do not record a future plan.", success=False)
+        offset = 0
+        matched = []
+        for segment in segments:
+            end = offset + len(segment[2])
+            if offset < start + len(quote) and end > start:
+                matched.append(segment)
+            offset = end
+        provenance = {
+            **expected_scope,
+            "event_seq_range": [matched[0][0], matched[-1][0]],
+            "event_timestamp_range": [matched[0][1], matched[-1][1]],
+        }
         service = _new_service()
         if _load_path(service, path_id) is None:
             return _no_built_path_result("mastery_note_explained")
@@ -866,18 +912,24 @@ class MasteryNoteExplainedTool(BaseTool):
                 raise ValueError("Unknown objective; refresh mastery_status.")
             tx.progress.explained_objectives[kp_id] = {
                 "summary": summary,
+                "explanation_quote": quote,
+                "delivery": provenance,
+                "coverage": "partial",
                 "timestamp": time.time(),
                 "session_id": _resolve_session_id(kwargs),
                 "turn_id": _resolve_turn_id(kwargs),
             }
-            tx.emit("objective.explained", {"knowledge_point_id": kp_id, "summary": summary})
+            tx.emit("objective.explained", {
+                "knowledge_point_id": kp_id, "summary": summary,
+                "explanation_quote": quote, "delivery": provenance, "coverage": "partial",
+            }, session_id=_resolve_session_id(kwargs), turn_id=_resolve_turn_id(kwargs))
 
         try:
             await asyncio.to_thread(service.store.mutate, path_id, note)
         except (ValueError, FileNotFoundError) as exc:
             return ToolResult(content=str(exc), success=False)
         return _json_result(
-            {"knowledge_point_id": kp_id, "stage": "explained", "mastery_credit": False},
+            {"knowledge_point_id": kp_id, "stage": "partially_explained", "coverage": "partial", "mastery_credit": False},
             meta_key="mastery_note_explained",
         )
 

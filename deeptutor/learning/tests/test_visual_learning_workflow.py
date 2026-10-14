@@ -21,6 +21,7 @@ from deeptutor.learning.policy import is_assessed_mastered, visual_achievements
 from deeptutor.learning.scheduler import SpacedRepetitionScheduler
 from deeptutor.learning.service import LearningService
 from deeptutor.learning.storage import LearningStore
+from deeptutor.runtime.stream_bus import StreamBus
 from deeptutor.services.parsing.types import ParsedDocument
 from deeptutor.services.rag.visual_assets import VisualAssetStore, collect_visual_assets
 from deeptutor.services.session.sqlite_store import SQLiteSessionStore
@@ -149,10 +150,19 @@ async def pose(lesson, **overrides):
 
 @pytest.mark.asyncio
 async def test_teach_then_source_visual_practice_equivalent_answer_and_restart(lesson):
+    explanation = "An artery has a thicker wall than a vein; structure 1 is the artery in this source."
+    stream = StreamBus(assign_seq=True)
+    await stream.content(explanation, source="mastery_path", stage="responding")
     explained = await tools.MasteryNoteExplainedTool().execute(
         _mastery_path_id="visual",
+        _session_id="s", _turn_id="teaching",
         knowledge_point_id="identify",
         summary="Explained artery/vein prerequisites concisely at beginner level using the numbered source.",
+        explanation_quote=explanation,
+        _teaching_delivery=lambda: {
+            "path_id": "visual", "session_id": "s", "turn_id": "teaching",
+            "segments": stream.public_content_snapshot(source="mastery_path", stage="responding"),
+        },
     )
     assert explained.success
     before = lesson.store.load("visual")
@@ -385,11 +395,21 @@ async def test_pdf_region_can_assess_relationship_without_displaying_the_referen
 @pytest.mark.asyncio
 async def test_help_after_question_is_assisted_and_deferral_never_claims_mastery(lesson):
     card = await pose(lesson)
-    await tools.MasteryNoteExplainedTool().execute(
+    explanation = "The thick-walled vessel is an artery; compare the two vessel walls in the source."
+    stream = StreamBus(assign_seq=True)
+    await stream.content(explanation, source="mastery_path", stage="responding")
+    explained = await tools.MasteryNoteExplainedTool().execute(
         _mastery_path_id="visual",
+        _session_id="s", _turn_id="hint",
         knowledge_point_id="identify",
         summary="Gave a source-based hint after the learner asked for help with structure 1.",
+        explanation_quote=explanation,
+        _teaching_delivery=lambda: {
+            "path_id": "visual", "session_id": "s", "turn_id": "hint",
+            "segments": stream.public_content_snapshot(source="mastery_path", stage="responding"),
+        },
     )
+    assert explained.success, explained.content
     progress, _interaction, _ = lesson.service.grade_interaction(
         "visual", answer="artery", question_id=card["question_id"]
     )

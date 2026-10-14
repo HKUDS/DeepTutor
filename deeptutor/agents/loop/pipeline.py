@@ -1126,6 +1126,12 @@ class AgenticLoopPipeline:
         iteration_index: int,
         stage: str = "exploring",
     ) -> DispatchOutcome:
+        # Capabilities may bind records to text the turn has actually published.
+        # Model messages also contain discarded/private prose and are not proof
+        # of delivery. The callback reads the existing bus; it adds no ledger.
+        context.extension("published_assistant_content")["snapshot"] = (
+            lambda: stream.public_content_snapshot(source=self.event_source, stage=stage)
+        )
         too_many = None
         if len(tool_calls) > MAX_PARALLEL_TOOL_CALLS:
             too_many = self._t(
