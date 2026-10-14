@@ -213,9 +213,7 @@ def detect_kb_drift(
     # to the book.
     new_kbs = [k for k in current if k not in stored and k in book.knowledge_bases]
     removed_kbs = [k for k in stored if k not in current and k in book.knowledge_bases]
-    changed_kbs = [
-        k for k, v in current.items() if k in stored and stored[k] and v and stored[k] != v
-    ]
+    changed_kbs = [k for k, v in current.items() if k in stored and stored[k] and stored[k] != v]
 
     has_drift = bool(new_kbs or removed_kbs or changed_kbs)
     changed_documents: dict[str, list[str]] = {}
