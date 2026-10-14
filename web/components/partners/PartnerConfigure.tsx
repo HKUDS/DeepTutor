@@ -89,6 +89,7 @@ export default function PartnerConfigure({
   // Soul
   const [soul, setSoul] = useState("");
   const [soulLoaded, setSoulLoaded] = useState(false);
+  const [soulError, setSoulError] = useState<string | null>(null);
   const [savingSoul, setSavingSoul] = useState(false);
 
   // Model
@@ -124,13 +125,19 @@ export default function PartnerConfigure({
   });
   const [addingAssets, setAddingAssets] = useState(false);
 
+  const loadSoul = useCallback(async () => {
+    setSoulLoaded(false);
+    setSoulError(null);
+    try {
+      setSoul(await getPartnerSoul(partnerId));
+      setSoulLoaded(true);
+    } catch (error) {
+      setSoulError(error instanceof Error ? error.message : String(error));
+    }
+  }, [partnerId]);
+
   useEffect(() => {
-    void getPartnerSoul(partnerId)
-      .then((content) => {
-        setSoul(content);
-        setSoulLoaded(true);
-      })
-      .catch(() => setSoulLoaded(true));
+    void loadSoul();
     void getPartnerAssets(partnerId)
       .then(setAssets)
       .catch(() => {});
@@ -163,7 +170,7 @@ export default function PartnerConfigure({
       })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [partnerId]);
+  }, [partnerId, loadSoul]);
 
   const saveWorkspace = async (workspaceId: string) => {
     setSavingWorkspace(true);
@@ -398,6 +405,14 @@ export default function PartnerConfigure({
           </button>
         }
       >
+        {soulError && (
+          <div className="mb-3 flex items-center gap-2 text-[12px] text-red-500">
+            <span>{soulError}</span>
+            <button type="button" onClick={() => void loadSoul()}>
+              {t("Retry")}
+            </button>
+          </div>
+        )}
         <SoulEditor value={soul} onChange={setSoul} heightClass="h-[280px]" />
       </Section>
 
