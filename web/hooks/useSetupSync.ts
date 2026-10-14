@@ -46,6 +46,15 @@ export function useSetupSync(
   messages: ReadonlyArray<{ events?: StreamEvent[] }> | undefined,
 ): void {
   const handledRef = useRef<Set<string>>(new Set());
+  const requestRevisionRef = useRef(0);
+  const mountedRef = useRef(false);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     const fresh = collectAppliedSettingIds(messages).filter(
@@ -54,17 +63,19 @@ export function useSetupSync(
     if (fresh.length === 0) return;
     for (const id of fresh) handledRef.current.add(id);
 
-    let cancelled = false;
+    // Message deltas must not cancel the refresh already attached to this
+    // tool call. Only a newer settings write or unmount makes it obsolete.
+    const requestRevision = ++requestRevisionRef.current;
     void (async () => {
       try {
         const res = await apiFetch(apiUrl("/api/settings/ui"));
-        if (!res.ok || cancelled) return;
+        if (!res.ok || !mountedRef.current || requestRevision !== requestRevisionRef.current) return;
         const payload = (await res.json()) as {
           language?: unknown;
           response_language?: unknown;
           theme?: unknown;
         };
-        if (cancelled) return;
+        if (!mountedRef.current || requestRevision !== requestRevisionRef.current) return;
         if (isAppLanguage(payload.language)) {
           writeStoredLanguage(payload.language);
           writeStoredResponseLanguage(
@@ -83,10 +94,6 @@ export function useSetupSync(
         // stored server-side and the next load picks it up.
       }
     })();
-
-    return () => {
-      cancelled = true;
-    };
   }, [messages]);
 }
 
