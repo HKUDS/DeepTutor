@@ -444,6 +444,32 @@ class DeferredObjective(BaseModel):
     created_at: float = Field(default_factory=time.time)
 
 
+class TeachingPreference(BaseModel):
+    """An explicit path-local request, independent of other preferences."""
+
+    model_config = ConfigDict(extra="forbid")
+    text: str = Field(min_length=1, max_length=400)
+    evidence: str = Field(min_length=1, max_length=300)
+    session_id: str = ""
+    turn_id: str = ""
+    updated_at: float = Field(default_factory=time.time)
+
+
+class TeachingObservation(BaseModel):
+    """A teaching attempt or difficulty; never an assessment of mastery."""
+
+    model_config = ConfigDict(extra="forbid")
+    knowledge_point_id: str = Field(min_length=1, max_length=200)
+    text: str = Field(min_length=1, max_length=400)
+    basis: Literal["learner_report", "tentative"] = "tentative"
+    strategy: str = Field(default="", max_length=300)
+    outcome: Literal["unknown", "helped", "not_helped"] = "unknown"
+    evidence: str = Field(default="", max_length=300)
+    session_id: str = ""
+    turn_id: str = ""
+    updated_at: float = Field(default_factory=time.time)
+
+
 class LearnerProfile(BaseModel):
     """Who is learning this goal — collected once, honoured every turn.
 
@@ -477,6 +503,8 @@ class LearnerProfile(BaseModel):
     teaching_strategy: Literal["probe_first", "teach_first"] = "probe_first"
     #: Anything else worth carrying that the four fields above do not hold.
     notes: str = ""
+    teaching_preferences: dict[str, TeachingPreference] = Field(default_factory=dict)
+    teaching_observations: dict[str, TeachingObservation] = Field(default_factory=dict)
     updated_at: float = Field(default_factory=time.time)
 
     def is_empty(self) -> bool:
@@ -489,6 +517,7 @@ class LearnerProfile(BaseModel):
                 self.preferences.strip(),
                 self.teaching_strategy != "probe_first",
                 self.notes.strip(),
+                self.teaching_preferences,
             )
         )
 

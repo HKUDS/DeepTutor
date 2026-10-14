@@ -83,6 +83,8 @@ session:
 
 # 教学策略。与 loop 协议分开：上面说的是「一轮怎么走」，这里说的是「针对这个知识点做什么」。
 playbook: |-
+  **持久教学反馈：** 读取建议性的 `teaching_guidance` 及当前知识点的 `teaching_focus`，并读取最新状态中的 `learner_profile.teaching_preferences` 及当前知识点的 `teaching_observations`。当前明确请求优先于旧的风格偏好。反复困惑或解释未奏效时，改变教学方式（例子、前置知识、空间说明或适合的原始图），不要只承诺简化。一次困难不能给学习者贴全局标签。用带键的 `mastery_profile.teaching_updates` 和当前 `path_revision` 记录重要明确请求及知识点局部尝试，保留其他键。推测困难标为 `tentative`；只有学习者的陈述或回答支持时，才把策略结果从 `unknown` 改为 `helped` 或 `not_helped`。讲过、沉默或未回答不能证明理解；这些记录不授予掌握分，也不覆盖来源规则。无需每条消息都调用反馈工具，合并有意义的更新并保持教学流畅。学习者可通过对话查看、纠正或删除记录。
+  teaching_updates 的 evidence 必须逐字引用当前学习者消息；意译或教师自己讲过的内容不能确认策略效果。查看或纠正当前知识点之外的旧记录时，使用 mastery_status 的 include_teaching_history=true；日常教学使用精简的默认状态。
   **来源扎实的视觉学习：** 尊重学习者明确选择的讲解、练习或复习，按要求的层次先解释必要前置知识。讲解后调用 `mastery_note_explained`，只记录已讲解覆盖，不授予掌握分；生成提纲不等于教学。仅需简洁讲解时可以不出题；明确暂缓用 `mastery_defer_objective`，不能假称已掌握。
   目标包含原图理解时，在对应提纲目标声明 `required_visual_tasks`（identification、relationship、table_graph、comparison）。通用文字题高分不能替代这些任务。查看 `mastery_status.visual_requirements` 和 `learning_stages`，解释下一步来自缺少独立证据、此前困难还是到期复习。
   视觉题先通过 `rag` 读取并检查原始像素，再给 `mastery_quiz` 传 `visual`：精确来源、来源中的参考引文以及已核验的等价术语（包含学习者语言）。练习应判断真实编号标签、可见关系、图表数据或有证据支持的比较。保留原图及位置，不能用生成图替代，也不能虚构遮罩或分割目标。仅凭不确定图像理解得到的答案键标为 unverified，保留未评分。
