@@ -87,6 +87,75 @@ def submission_service(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_replacement_endpoint_workflow_starts_once_and_branches_admitted_user(
+    submission_service,
+):
+    service, store, _, _, calls = submission_service
+    session, original_turn = await service.start_turn(
+        {"content": "Original", "client_submission_id": "already-admitted"}
+    )
+    [event async for event in service.subscribe_turn(original_turn["id"])]
+    payload = {
+        "content": "Edited",
+        "client_submission_id": "branch-edit",
+        "session_id": session["id"],
+    }
+    receipt = await service.replace_submission("already-admitted", payload, start=True)
+    assert receipt["status"] == "started"
+    [event async for event in service.subscribe_turn(receipt["turn"]["id"])]
+    replay = await service.replace_submission("already-admitted", payload, start=True)
+    assert replay["turn"]["id"] == receipt["turn"]["id"]
+    users = [row for row in await store.get_messages(session["id"]) if row["role"] == "user"]
+    assert [row["content"] for row in users] == ["Original", "Edited"]
+    assert users[0]["parent_message_id"] == users[1]["parent_message_id"]
+    assert calls["count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_edit_admitted_before_user_persistence_waits_for_cancellation(submission_service):
+    service, store, _, _, calls = submission_service
+    sid = await store.reserve_submission("before-user", "original-digest")
+    original = await store.begin_turn(sid, submission_id="before-user")
+    receipt = await service.replace_submission(
+        "before-user",
+        {
+            "content": "Edited",
+            "client_submission_id": "edit-before-user",
+            "session_id": sid,
+        },
+        start=True,
+    )
+    assert (await store.get_turn(original["id"]))["status"] in {"cancelled", "failed"}
+    [event async for event in service.subscribe_turn(receipt["turn"]["id"])]
+    assert calls["count"] == 1
+    assert [row["content"] for row in await store.get_messages(sid) if row["role"] == "user"] == [
+        "Edited"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_reserved_edit_replays_exact_request_after_lost_receipt(submission_service):
+    service, store, _, _, calls = submission_service
+    payload = {
+        "content": "Edited",
+        "client_submission_id": "edited",
+        "tools": ["reason"],
+        "config": {},
+        "attachments": [],
+    }
+    receipt = await service.replace_submission("unsent", payload)
+    assert await service.replace_submission("unsent", payload) == receipt
+    with pytest.raises(RuntimeError, match="superseded"):
+        await service.start_turn({"content": "Original", "client_submission_id": "unsent"})
+    session, turn = await service.start_turn({**payload, "session_id": receipt["session_id"]})
+    [event async for event in service.subscribe_turn(turn["id"])]
+    replay_session, replay_turn = await service.start_turn(payload)
+    assert replay_session["id"] == session["id"]
+    assert replay_turn["id"] == turn["id"]
+    assert calls["count"] == 1
+
+
+@pytest.mark.asyncio
 async def test_lost_first_session_ack_replays_the_same_submission_after_worker_restart(
     submission_service,
 ):

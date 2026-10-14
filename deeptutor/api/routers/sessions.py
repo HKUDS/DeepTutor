@@ -12,6 +12,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator
 
+from deeptutor.core.turn_request import TurnRequest
 from deeptutor.learning.storage import LearningStore
 from deeptutor.reading.catalog_store import ReadingCatalogStore
 from deeptutor.response_languages import validate_reply_language_override
@@ -36,6 +37,29 @@ def _turn_application_service():
     from deeptutor.app.container import get_application_container
 
     return get_application_container().turns
+
+
+class SubmissionReplacementRequest(BaseModel):
+    original_submission_id: str = Field(min_length=1, max_length=100)
+    request: TurnRequest
+
+
+class SubmissionReplacementResponse(BaseModel):
+    status: Literal["started"]
+    session_id: str
+    submission_id: str
+    turn: dict[str, Any]
+
+
+@router.post("/submission-replacement", response_model=SubmissionReplacementResponse)
+async def replace_submission(body: SubmissionReplacementRequest):
+    """Resolve admission atomically before an edited retry is sent."""
+    try:
+        return await _turn_application_service().replace_submission(
+            body.original_submission_id, body.request, start=True
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 class SessionRenameRequest(BaseModel):

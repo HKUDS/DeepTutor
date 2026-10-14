@@ -1,4 +1,8 @@
 {
+  "The edit could not be sent. Your draft is still here; please retry.": "La modification n’a pas pu être envoyée. Votre brouillon est conservé ; réessayez.",
+  "Discard unsent draft": "Supprimer le brouillon non envoyé",
+  "Discarding…": "Suppression…",
+  "This draft could not be discarded. Please retry or copy it before leaving.": "Ce brouillon n’a pas pu être supprimé. Réessayez ou copiez-le avant de quitter cette page.",
   "language.english": "English",
   "language.chinese": "中文",
   "language.french": "Français",

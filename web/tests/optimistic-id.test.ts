@@ -30,10 +30,10 @@ test("optimistic ids are negative and strictly decreasing", () => {
 // loadSession just returned instead of immediately reading the stale ref.
 test("an optimistic message resolves from the returned refresh snapshot", async () => {
   const optimistic = [
-    { id: -100, role: "user", content: "question", parentMessageId: 10 },
+    { id: -100, role: "user", content: "question", parentMessageId: 10, failedSubmissionId: "ours" },
   ];
   const persisted = [
-    { id: 11, role: "user", content: "question", parentMessageId: 10 },
+    { id: 11, role: "user", content: "question", parentMessageId: 10, failedSubmissionId: "ours" },
   ];
 
   const resolved = await resolvePersistedMessage(
@@ -51,11 +51,11 @@ test("an optimistic message resolves from the returned refresh snapshot", async 
 // edit path). Both mutations must trust the refresh snapshot's id.
 test("deleteTurn-style resolution keeps working when the state ref is stale", async () => {
   const staleRef = [
-    { id: -42, role: "user", content: "to delete", parentMessageId: 1 },
+    { id: -42, role: "user", content: "to delete", parentMessageId: 1, failedSubmissionId: "delete-ours" },
     { id: -43, role: "assistant", content: "reply", parentMessageId: -42 },
   ];
   const serverSnapshot = [
-    { id: 201, role: "user", content: "to delete", parentMessageId: 1 },
+    { id: 201, role: "user", content: "to delete", parentMessageId: 1, metadata: { client_submission_id: "delete-ours" } },
     { id: 202, role: "assistant", content: "reply", parentMessageId: 201 },
   ];
 
@@ -68,6 +68,15 @@ test("deleteTurn-style resolution keeps working when the state ref is stale", as
 
   assert.equal(target?.id, 201);
   assert.equal(staleRef[0].id, -42);
+});
+
+test("optimistic mutations follow causal identity across reordered identical rows", async () => {
+  const original: Array<{ id: number; role: string; failedSubmissionId?: string; metadata?: Record<string, unknown> }> =
+    [{ id: -1, role: "user", failedSubmissionId: "ours" }];
+  const remote = [{ id: 99, role: "user", metadata: { client_submission_id: "theirs" } },
+    { id: 100, role: "user", metadata: { client_submission_id: "ours" } }];
+  assert.equal((await resolvePersistedMessage(original, -1, "user", async () => remote))?.id, 100);
+  assert.equal(await resolvePersistedMessage(original, -1, "user", async () => remote.slice(0, 1)), undefined);
 });
 
 // Issue #698: the user row and the assistant placeholder are minted

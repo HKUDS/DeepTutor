@@ -1,4 +1,8 @@
 {
+  "The edit could not be sent. Your draft is still here; please retry.": "Nie udało się wysłać zmiany. Szkic został zachowany; spróbuj ponownie.",
+  "Discard unsent draft": "Usuń niewysłany szkic",
+  "Discarding…": "Usuwanie…",
+  "This draft could not be discarded. Please retry or copy it before leaving.": "Nie udało się usunąć tego szkicu. Spróbuj ponownie lub skopiuj go przed opuszczeniem strony.",
   "Review rebuild": "Przegląd przebudowy",
   "language.english": "Angielski",
   "language.chinese": "中文",

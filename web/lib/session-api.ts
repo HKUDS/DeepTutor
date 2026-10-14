@@ -306,6 +306,21 @@ export async function getSession(
   return expectJson<SessionDetail>(response);
 }
 
+export type SubmissionReplacementReceipt = {
+  status: "started"; session_id: string; submission_id: string;
+  turn: { id: string; status: string };
+};
+
+export async function replaceSubmission(
+  originalSubmissionId: string, request: Record<string, unknown>,
+): Promise<SubmissionReplacementReceipt> {
+  const { type: _type, protocol_version: _version, ...payload } = request;
+  return expectJson<SubmissionReplacementReceipt>(await apiFetch(apiUrl("/api/sessions/submission-replacement"), {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ original_submission_id: originalSubmissionId, request: payload }),
+  }));
+}
+
 /** Opening an old Watching conversation is the explicit migration boundary. */
 export async function migrateWatchingSession(sessionId: string): Promise<SessionDetail> {
   return expectJson<SessionDetail>(await apiFetch(apiUrl(`/api/sessions/${encodeURIComponent(sessionId)}/migrate-watching`), { method: "POST" }));

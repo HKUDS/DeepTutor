@@ -19,6 +19,82 @@ from .contracts import TurnRequest
 
 
 class TurnApplicationService:
+    @staticmethod
+    def _submission_digest(payload: dict[str, Any]) -> str:
+        identity = {
+            key: value
+            for key, value in payload.items()
+            if key not in {"session_id", "workspace_id"}
+        }
+        return hashlib.sha256(
+            json.dumps(identity, sort_keys=True, default=str).encode()
+        ).hexdigest()
+
+    @workspace_writer
+    async def replace_submission(
+        self, original_id: str, payload: TurnRequest | dict[str, Any], *, start: bool = False
+    ) -> dict[str, Any]:
+        request = (
+            payload if isinstance(payload, TurnRequest) else TurnRequest.model_validate(payload)
+        )
+        if (
+            not request.client_submission_id
+            or not request.persist_user_message
+            or request.regenerate
+        ):
+            raise RuntimeError("An edited submission requires a new user message identity.")
+        from deeptutor.services.workspace.context import get_workspace_scope, workspace_context
+
+        wire = request.to_payload()
+        if get_workspace_scope() is None and "workspace_id" in wire:
+            with workspace_context(wire.get("workspace_id")):
+                return await self.replace_submission(original_id, request, start=start)
+        store, _ = self._resolve()
+        replace = getattr(store, "replace_submission", None)
+        if not callable(replace):
+            raise RuntimeError("This session store does not support submission replacement.")
+        receipt = await replace(
+            original_id,
+            request.client_submission_id,
+            self._submission_digest(wire),
+            request.session_id,
+        )
+        if (
+            receipt["status"] == "admitted"
+            and receipt["turn"]["status"] in self._ACTIVE_TURN_STATUSES
+        ):
+            if not await self.cancel_turn_and_wait(receipt["turn"]["id"]):
+                raise RuntimeError("The original turn has not stopped yet. Please retry the edit.")
+            # Re-read only after the owner finishes: user persistence and
+            # cancellation can overlap before the original row exists.
+            receipt = await replace(
+                original_id,
+                request.client_submission_id,
+                self._submission_digest(wire),
+                receipt["session_id"],
+            )
+        if not start:
+            return receipt
+        wire["session_id"] = receipt["session_id"]
+        if receipt["status"] == "admitted":
+            if receipt["user_message_id"] is not None:
+                messages = await store.get_messages(receipt["session_id"])
+                original = next(
+                    (row for row in messages if row["id"] == receipt["user_message_id"]), None
+                )
+                if original is None:
+                    raise RuntimeError("The original message changed. Refresh before editing it.")
+                wire["parent_message_id"] = original.get("parent_message_id")
+            elif receipt["turn"]["status"] not in {"failed", "cancelled"}:
+                raise RuntimeError("The admitted message is not yet available for editing.")
+        session, turn = await self.start_turn(wire)
+        return {
+            "status": "started",
+            "session_id": session["id"],
+            "submission_id": request.client_submission_id,
+            "turn": turn,
+        }
+
     def __init__(
         self,
         store_provider: Any,
@@ -59,14 +135,7 @@ class TurnApplicationService:
             and callable(reserve)
             and callable(submission_turn)
         ):
-            identity_payload = {
-                key: value
-                for key, value in payload.items()
-                if key not in {"session_id", "workspace_id"}
-            }
-            digest = hashlib.sha256(
-                json.dumps(identity_payload, sort_keys=True, default=str).encode()
-            ).hexdigest()
+            digest = self._submission_digest(payload)
             payload["session_id"] = await reserve(
                 request.client_submission_id, digest, request.session_id
             )

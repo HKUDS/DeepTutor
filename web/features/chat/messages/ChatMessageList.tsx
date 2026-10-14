@@ -1570,6 +1570,8 @@ export const UserMessage = memo(function UserMessage({
   onPreviewAttachment,
   onCopy,
   onEdit,
+  onDiscardFailedSubmission,
+  onRetryFailedSubmission,
   editDisabled,
   siblingInfo,
   onSwitchBranch,
@@ -1582,7 +1584,9 @@ export const UserMessage = memo(function UserMessage({
   index: number;
   onPreviewAttachment?: (attachment: MessageAttachment) => void;
   onCopy?: CopyHandler;
-  onEdit?: (messageId: number, newContent: string) => void;
+  onEdit?: (messageId: number, newContent: string) => void | boolean | Promise<void | boolean>;
+  onDiscardFailedSubmission?: (messageId: number) => boolean | Promise<boolean>;
+  onRetryFailedSubmission?: (messageId: number) => boolean | Promise<boolean>;
   editDisabled?: boolean;
   siblingInfo?: SiblingInfo;
   onSwitchBranch?: (parentMessageId: number | null, childId: number) => void;
@@ -1599,6 +1603,11 @@ export const UserMessage = memo(function UserMessage({
   const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(msg.content);
+  const [discarding, setDiscarding] = useState(false);
+  const [discardFailed, setDiscardFailed] = useState(false);
+  const [submittingEdit, setSubmittingEdit] = useState(false);
+  const [editFailed, setEditFailed] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const { isComposingRef, onCompositionStart, onCompositionEnd } =
     useImeComposing();
   // Connected subagents ride in knowledge_bases (same selection path) but are
@@ -1614,6 +1623,18 @@ export const UserMessage = memo(function UserMessage({
   // real id before submitting the branch.
   const canEdit =
     Boolean(onEdit) && typeof msg.id === "number" && !editDisabled;
+  const discardDraft = async () => {
+    if (!onDiscardFailedSubmission || typeof msg.id !== "number" || editDisabled || discarding) return;
+    setDiscarding(true);
+    setDiscardFailed(false);
+    try {
+      if (!await onDiscardFailedSubmission(msg.id)) setDiscardFailed(true);
+    } catch {
+      setDiscardFailed(true);
+    } finally {
+      setDiscarding(false);
+    }
+  };
   const startEdit = () => {
     if (!canEdit) return;
     setDraft(msg.content);
@@ -1623,15 +1644,24 @@ export const UserMessage = memo(function UserMessage({
     setEditing(false);
     setDraft(msg.content);
   };
-  const submitEdit = () => {
+  const submitEdit = async () => {
+    if (submittingEdit) return;
     const trimmed = draft.trim();
     if (!trimmed || trimmed === msg.content) {
       cancelEdit();
       return;
     }
     if (typeof msg.id !== "number") return;
-    onEdit?.(msg.id, trimmed);
-    setEditing(false);
+    setSubmittingEdit(true);
+    setEditFailed(false);
+    try {
+      if (await onEdit?.(msg.id, trimmed) === false) setEditFailed(true);
+      else setEditing(false);
+    } catch {
+      setEditFailed(true);
+    } finally {
+      setSubmittingEdit(false);
+    }
   };
 
   // Everything this turn carried — file attachments plus the request
@@ -1771,6 +1801,7 @@ export const UserMessage = memo(function UserMessage({
             <textarea
               autoFocus
               value={draft}
+              disabled={submittingEdit}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Escape") {
@@ -1797,6 +1828,7 @@ export const UserMessage = memo(function UserMessage({
                 <button
                   type="button"
                   onClick={cancelEdit}
+                  disabled={submittingEdit}
                   className="rounded-md px-2 py-0.5 text-[11px] font-medium text-[var(--muted-foreground)] hover:bg-[var(--muted)]/40"
                 >
                   {t("Cancel")}
@@ -1804,13 +1836,14 @@ export const UserMessage = memo(function UserMessage({
                 <button
                   type="button"
                   onClick={submitEdit}
-                  disabled={!draft.trim() || draft.trim() === msg.content}
+                  disabled={submittingEdit || !draft.trim() || draft.trim() === msg.content}
                   className="rounded-md bg-[var(--primary)] px-2.5 py-0.5 text-[11px] font-medium text-[var(--primary-foreground)] hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {t("Send")}
                 </button>
               </div>
             </div>
+            {editFailed && <p role="alert" className="text-xs text-[var(--destructive)]">{t("The edit could not be sent. Your draft is still here; please retry.")}</p>}
           </div>
         ) : (
           <div
@@ -1844,8 +1877,24 @@ export const UserMessage = memo(function UserMessage({
           >
             <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />
             {t("Not sent")}
+            {onRetryFailedSubmission && typeof msg.id === "number" && (
+              <button type="button" disabled={editDisabled || retrying} onClick={async () => {
+                if (retrying || typeof msg.id !== "number") return;
+                setRetrying(true);
+                try { await onRetryFailedSubmission(msg.id); } finally { setRetrying(false); }
+              }} className="ml-2 rounded-md px-2 py-1 disabled:opacity-40">{t("Retry")}</button>
+            )}
+            {onDiscardFailedSubmission && typeof msg.id === "number" && msg.id < 0 && (
+              <button type="button" onClick={() => void discardDraft()} disabled={editDisabled || discarding}
+                className="ml-2 rounded-md px-2 py-1 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/50 disabled:cursor-not-allowed disabled:opacity-40">
+                {discarding ? t("Discarding…") : t("Discard unsent draft")}
+              </button>
+            )}
           </div>
         ) : null}
+        {discardFailed && <p role="alert" className="max-w-full text-right text-xs text-[var(--destructive)]">
+          {t("This draft could not be discarded. Please retry or copy it before leaving.")}
+        </p>}
         {!editing && refTreeItems.length > 0 && (
           <div className="pr-1">
             <ContextReferenceTree
@@ -1930,6 +1979,8 @@ export const ChatMessageList = memo(function ChatMessageList({
   onPreviewAttachment,
   onOpenConsultation,
   onDeleteTurn,
+  onDiscardFailedSubmission,
+  onRetryFailedSubmission,
   selectedBranches,
   onEditMessage,
   onSwitchBranch,
@@ -1962,9 +2013,11 @@ export const ChatMessageList = memo(function ChatMessageList({
   onPreviewAttachment?: (attachment: MessageAttachment) => void;
   onOpenConsultation?: (events: StreamEvent[]) => void;
   onDeleteTurn?: (messageId: number) => void;
+  onDiscardFailedSubmission?: (messageId: number) => boolean | Promise<boolean>;
+  onRetryFailedSubmission?: (messageId: number) => boolean | Promise<boolean>;
   /** Edit-branching: selected sibling at each branch point. */
   selectedBranches?: Record<string, number>;
-  onEditMessage?: (messageId: number, newContent: string) => void;
+  onEditMessage?: (messageId: number, newContent: string) => void | boolean | Promise<void | boolean>;
   onSwitchBranch?: (parentMessageId: number | null, childId: number) => void;
   /**
    * Deliver an ``ask_user`` reply back to the backend so the agentic
@@ -2232,6 +2285,8 @@ export const ChatMessageList = memo(function ChatMessageList({
                 onPreviewAttachment={onPreviewAttachment}
                 onCopy={onCopyAssistantMessage}
                 onEdit={onEditMessage}
+                onDiscardFailedSubmission={onDiscardFailedSubmission}
+                onRetryFailedSubmission={onRetryFailedSubmission}
                 editDisabled={isStreaming}
                 siblingInfo={sib}
                 onSwitchBranch={onSwitchBranch}
