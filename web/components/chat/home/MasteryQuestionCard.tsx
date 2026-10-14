@@ -24,9 +24,10 @@ import { useTranslation } from "react-i18next";
 import InlineMarkdown from "@/components/common/InlineMarkdown";
 import { useCardSubmission } from "@/hooks/use-card-submission";
 import { REPLY_NOT_DELIVERED } from "@/lib/ask-user-state";
-import type {
-  MasteryGradeResult,
-  MasteryQuestion,
+import {
+  MASTERY_ANSWER_REJECTED_MESSAGE,
+  type MasteryGradeResult,
+  type MasteryQuestion,
 } from "@/lib/mastery-question";
 
 /** Difficulty is a three-point scale; anything else is not shown. */
@@ -92,16 +93,7 @@ function OptionRow({
   );
 }
 
-export const MasteryQuestionCard = memo(function MasteryQuestionCard({
-  question,
-  grade,
-  answered,
-  skipped,
-  submittedAnswer,
-  onSubmit,
-  onSkip,
-  onChallenge,
-}: {
+interface MasteryQuestionCardProps {
   question: MasteryQuestion;
   /** The gate's ruling, once it has been made. */
   grade: MasteryGradeResult | null;
@@ -111,6 +103,8 @@ export const MasteryQuestionCard = memo(function MasteryQuestionCard({
   skipped?: boolean;
   /** What they answered, when the transcript knows it. */
   submittedAnswer: string;
+  /** Unique server rejection event; changes reopen an optimistically sent card. */
+  rejectionKey?: string;
   onSubmit: (payload: {
     text?: string;
     answers?: Array<{ questionId: string; text: string }>;
@@ -119,14 +113,25 @@ export const MasteryQuestionCard = memo(function MasteryQuestionCard({
    *  cannot start a turn of its own, which hides the control entirely. */
   onSkip?: (questionId: string) => void | boolean | Promise<void | boolean>;
   onChallenge?: (questionId: string) => void | boolean | Promise<void | boolean>;
-}) {
+}
+
+/** The same native controls, with submission owned by their group instead. */
+interface GroupInput {
+  locked: boolean;
+  onChange: (questionId: string, answer: string, sourceAvailable: boolean) => void;
+}
+
+const SingleMasteryQuestionCard = memo(function SingleMasteryQuestionCard({
+  question, grade, answered, skipped, submittedAnswer, onSubmit, onSkip,
+  onChallenge, groupInput, rejectionKey,
+}: MasteryQuestionCardProps & { groupInput?: GroupInput }) {
   const { t } = useTranslation();
   const [picked, setPicked] = useState<string>("");
   const [skipping, setSkipping] = useState(false);
   const [sourceUnavailable, setSourceUnavailable] = useState(false);
   const [freeText, setFreeText] = useState("");
   const [freeSelected, setFreeSelected] = useState(false);
-  const { sending, failed: sendFailed, submit } = useCardSubmission(onSubmit);
+  const { sending, failed: sendFailed, submit } = useCardSubmission(onSubmit, rejectionKey);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -140,7 +145,12 @@ export const MasteryQuestionCard = memo(function MasteryQuestionCard({
   // question, so there is nothing left on it to send.
   const settled = answered || skipped === true;
   const ungraded = grade?.result === "ungraded";
-  const locked = settled || sending || skipping;
+  const locked = settled || sending || skipping || groupInput?.locked === true;
+
+  const onGroupChange = groupInput?.onChange;
+  useEffect(() => {
+    onGroupChange?.(question.questionId, answer, !sourceUnavailable);
+  }, [onGroupChange, question.questionId, answer, sourceUnavailable]);
 
   const handleSkip = useCallback(() => {
     if (locked || !onSkip) return;
@@ -240,6 +250,7 @@ export const MasteryQuestionCard = memo(function MasteryQuestionCard({
           {freeSelected || !hasChoices ? (
             <textarea
               ref={textareaRef}
+              aria-label={question.prompt}
               value={freeText}
               onChange={(event) => setFreeText(event.target.value)}
               placeholder={t("Write your answer…")}
@@ -294,7 +305,7 @@ export const MasteryQuestionCard = memo(function MasteryQuestionCard({
       ) : null}
 
       {/* Footer: only while the question is still the learner's move. */}
-      {!settled ? (
+      {!groupInput && (!settled ? (
         <div className="mt-3 flex items-center justify-between gap-3">
           <span
             className={
@@ -307,7 +318,7 @@ export const MasteryQuestionCard = memo(function MasteryQuestionCard({
             {sending
               ? t("Sending your answers…")
               : sendFailed
-                ? t(REPLY_NOT_DELIVERED)
+                ? t(rejectionKey ? MASTERY_ANSWER_REJECTED_MESSAGE : REPLY_NOT_DELIVERED)
                 : hasChoices
                   ? t("Pick the option you think is right.")
                   : t("Write your answer to continue.")}
@@ -344,9 +355,86 @@ export const MasteryQuestionCard = memo(function MasteryQuestionCard({
         <div className="mt-2.5 text-[11px] text-[var(--muted-foreground)]">
           {t("Answer submitted — your tutor is checking it.")}
         </div>
-      ) : null}
+      ) : null)}
     </div>
   );
+});
+
+function GroupedMasteryQuestionCard({
+  question, grade, answered, skipped, onSubmit, onSkip, onChallenge, rejectionKey,
+}: MasteryQuestionCardProps) {
+  const { t } = useTranslation();
+  const [answers, setAnswers] = useState<Record<string, { text: string; available: boolean }>>({});
+  const [skipping, setSkipping] = useState(false);
+  const [skipFailed, setSkipFailed] = useState(false);
+  const questions = question.questions ?? [];
+  const acknowledgementKey = grade ? JSON.stringify((grade.results ?? []).map((part) => part.questionId)) : undefined;
+  const { sending, failed, submit } = useCardSubmission(onSubmit, rejectionKey, acknowledgementKey);
+  const settled = answered || (Boolean(grade) && grade?.complete !== false) || skipped === true;
+  const locked = settled || sending || skipping;
+  const remaining = questions.filter((part) => !grade?.results?.some((result) => result.questionId === part.questionId));
+  const drafted = remaining.filter((part) => Boolean(answers[part.questionId]?.text));
+  const ready = questions.length >= 2 && drafted.length > 0 && drafted.every((part) => answers[part.questionId]?.available);
+
+  const updateAnswer = useCallback((questionId: string, text: string, available: boolean) => {
+    setAnswers((current) => current[questionId]?.text === text && current[questionId]?.available === available
+      ? current : { ...current, [questionId]: { text, available } });
+  }, []);
+
+  const handleSubmit = () => {
+    if (locked || !ready) return;
+    const parts = drafted.map((part) => ({ questionId: part.questionId, text: answers[part.questionId].text }));
+    void submit({ text: parts.map((part) => `${questions.findIndex((question) => question.questionId === part.questionId) + 1}. ${part.text}`).join("\n"), answers: parts });
+  };
+
+  const handleSkip = async () => {
+    if (locked || !onSkip) return;
+    setSkipping(true);
+    setSkipFailed(false);
+    try {
+      if (await onSkip(question.questionId) === false) {
+        setSkipping(false);
+        setSkipFailed(true);
+      }
+    } catch {
+      setSkipping(false);
+      setSkipFailed(true);
+    }
+  };
+
+  return <section className="my-4" aria-label={question.prompt}>
+    {question.prompt && <div className="font-serif font-semibold"><InlineMarkdown content={question.prompt} /></div>}
+    {questions.map((part) => {
+      const partGrade = grade?.results?.find((result) => result.questionId === part.questionId) ?? null;
+      return <SingleMasteryQuestionCard key={part.questionId} question={part} grade={partGrade}
+        answered={settled || Boolean(partGrade)} skipped={skipped} submittedAnswer={partGrade?.learnerAnswer ?? ""}
+        onSubmit={onSubmit} onChallenge={onChallenge} groupInput={{ locked, onChange: updateAnswer }} />;
+    })}
+    {!settled ? <div className="mt-3 flex items-center justify-between gap-3">
+      <span className={failed || skipFailed ? "text-xs text-[var(--destructive)]" : "text-xs text-[var(--muted-foreground)]"}>
+        {sending ? t("Sending your answers…") : failed || skipFailed
+          ? t(failed && rejectionKey ? MASTERY_ANSWER_REJECTED_MESSAGE : REPLY_NOT_DELIVERED)
+          : t("Write your answer to continue.")}
+      </span>
+      <div className="flex shrink-0 items-center gap-1">
+        {onSkip && <button type="button" onClick={() => void handleSkip()} disabled={locked}
+          className="rounded-md px-2 py-1.5 text-xs text-[var(--muted-foreground)] disabled:opacity-40">
+          {skipping ? t("Skipping…") : t("Skip this one")}
+        </button>}
+        <button type="button" onClick={handleSubmit} disabled={locked || !ready}
+          className="rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)] disabled:opacity-40">
+          {t("Submit")}
+        </button>
+      </div>
+    </div> : skipped ? <p className="text-xs text-[var(--muted-foreground)]">{t("Skipped — no attempt was recorded for this question.")}</p>
+      : !grade ? <p className="text-xs text-[var(--muted-foreground)]">{t("Answer submitted — your tutor is checking it.")}</p> : null}
+  </section>;
+}
+
+export const MasteryQuestionCard = memo(function MasteryQuestionCard(props: MasteryQuestionCardProps) {
+  return props.question.questionType === "group"
+    ? <GroupedMasteryQuestionCard key={props.question.questionId} {...props} />
+    : <SingleMasteryQuestionCard {...props} />;
 });
 
 export default MasteryQuestionCard;

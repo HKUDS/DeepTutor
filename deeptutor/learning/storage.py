@@ -155,14 +155,17 @@ class LearningTransaction:
     def _interaction_from_row(row: sqlite3.Row | None) -> MasteryInteraction | None:
         if row is None:
             return None
+        question = json.loads(row["question_json"])
+        grouped = question.get("question_type") == "group"
         return MasteryInteraction(
             interaction_id=row["interaction_id"],
             path_id=row["path_id"],
-            question=json.loads(row["question_json"]),
+            question=question,
             status=InteractionStatus(row["status"]),
             session_id=row["session_id"] or "",
             turn_id=row["turn_id"] or "",
-            user_answer=row["user_answer"] or "",
+            user_answer="" if grouped else row["user_answer"] or "",
+            answers=json.loads(row["user_answer"] or "{}") if grouped else {},
             result=json.loads(row["result_json"] or "{}"),
             created_at=float(row["created_at"]),
             updated_at=float(row["updated_at"]),
@@ -229,7 +232,9 @@ class LearningTransaction:
                 json.dumps(interaction.question.model_dump(mode="json"), ensure_ascii=False),
                 interaction.session_id,
                 interaction.turn_id,
-                interaction.user_answer,
+                json.dumps(interaction.answers, ensure_ascii=False)
+                if interaction.question.questions
+                else interaction.user_answer,
                 json.dumps(interaction.result, ensure_ascii=False),
                 interaction.created_at,
                 now,

@@ -654,8 +654,11 @@ class LearningService:
     def register_question(
         self,
         book_id: str,
-        pending: PendingQuestion,
+        pending: PendingQuestion | None,
         *,
+        pending_action: str = "retain",
+        replace_question_id: str = "",
+        resume_question_id: str = "",
         session_id: str = "",
         turn_id: str = "",
     ) -> tuple[LearningProgress, MasteryInteraction, bool]:
@@ -664,6 +667,14 @@ class LearningService:
         Retrying ``mastery_quiz`` while a question is active returns the
         existing interaction instead of overwriting its expected answer.
         """
+
+        if pending_action not in {"retain", "replace", "resume"}:
+            raise MasteryInteractionError("pending_action must be retain, replace or resume")
+        if pending_action == "resume":
+            if pending is not None or replace_question_id or not resume_question_id:
+                raise MasteryInteractionError("Resume needs only the exact pending parent question_id")
+        elif pending is None or resume_question_id:
+            raise MasteryInteractionError("A new question contract cannot include resume_question_id")
 
         def register(tx):
             active = tx.active_interaction()
@@ -686,21 +697,67 @@ class LearningService:
                         active = persisted
                     else:
                         tx.put_interaction(active)
-            if active is not None:
-                return active, False
+            if pending_action == "resume":
+                if active is None or active.interaction_id != resume_question_id:
+                    raise StaleInteractionError(
+                        resume_question_id, active.interaction_id if active else ""
+                    )
+                if active.status not in {
+                    InteractionStatus.REGISTERED, InteractionStatus.AWAITING_INPUT,
+                }:
+                    raise MasteryInteractionError("This question is no longer awaiting input; refresh mastery_status")
 
-            known_kp = next(
-                (
-                    kp
-                    for module in tx.progress.modules
-                    for kp in module.knowledge_points
-                    if kp.id == pending.knowledge_point_id
-                ),
-                None,
-            )
-            if known_kp is None:
-                raise MasteryInteractionError(
-                    f"Unknown objective {pending.knowledge_point_id!r}; refresh mastery_status"
+                graded_ids = {
+                    result["question_id"] for result in (active.result or {}).get("results", [])
+                }
+                if set(active.answers) - graded_ids:
+                    raise MasteryInteractionError(
+                        "Grade the committed answers before re-presenting the remaining card"
+                    )
+                known_ids = {kp.id for module in tx.progress.modules for kp in module.knowledge_points}
+                for question in active.question.questions or [active.question]:
+                    if question.question_id not in graded_ids and question.knowledge_point_id not in known_ids:
+                        raise MasteryInteractionError("The pending objective changed; refresh mastery_status")
+                return active, False
+            if active is not None and pending_action == "retain":
+                if bool(pending.questions) != bool(active.question.questions):
+                    raise MasteryInteractionError(
+                        "An incompatible question is already pending; retain it or explicitly "
+                        "replace its question_id before creating a group"
+                    )
+                if pending.questions and self._group_contract(pending) != self._group_contract(
+                    active.question
+                ):
+                    raise MasteryInteractionError(
+                        "A different group is already pending; explicitly replace its question_id"
+                    )
+                return active, False
+            if pending_action == "replace" and (
+                active is None or active.interaction_id != replace_question_id
+            ):
+                raise StaleInteractionError(
+                    replace_question_id, active.interaction_id if active else ""
+                )
+
+            leaves = pending.questions or [pending]
+            known_ids = {kp.id for module in tx.progress.modules for kp in module.knowledge_points}
+            for question in leaves:
+                if question.knowledge_point_id not in known_ids:
+                    raise MasteryInteractionError(
+                        f"Unknown objective {question.knowledge_point_id!r}; refresh mastery_status"
+                    )
+            if active is not None:
+                active.status = InteractionStatus.ABANDONED
+                tx.put_interaction(active)
+                tx.emit(
+                    "interaction.abandoned",
+                    {
+                        "interaction_id": active.interaction_id,
+                        "reason": "explicit_replacement",
+                        "replacement_id": pending.question_id,
+                    },
+                    session_id=session_id,
+                    turn_id=turn_id,
                 )
 
             interaction = MasteryInteraction(
@@ -712,7 +769,8 @@ class LearningService:
                 turn_id=turn_id,
             )
             tx.progress.pending_question = pending
-            tx.progress.deferred_objectives.pop(pending.knowledge_point_id, None)
+            for question in leaves:
+                tx.progress.deferred_objectives.pop(question.knowledge_point_id, None)
             tx.put_interaction(interaction)
             from deeptutor.learning.pending import public_pending_question
 
@@ -778,6 +836,7 @@ class LearningService:
         book_id: str,
         answer: str,
         *,
+        answers: dict[str, str] | None = None,
         interaction_id: str = "",
         session_id: str = "",
         turn_id: str = "",
@@ -799,6 +858,27 @@ class LearningService:
                 return None
             if interaction_id and interaction.interaction_id != interaction_id:
                 raise StaleInteractionError(interaction_id, interaction.interaction_id)
+            if interaction.question.questions:
+                if interaction.status == InteractionStatus.ABANDONED:
+                    raise NoPendingInteractionError("The question was abandoned")
+                submitted = self._merge_group_answers(interaction, answers)
+                if submitted == interaction.answers:
+                    return interaction
+                interaction.answers = submitted
+                complete = len(submitted) == len(interaction.question.questions)
+                interaction.status = (
+                    InteractionStatus.ANSWERED if complete else InteractionStatus.AWAITING_INPUT
+                )
+                interaction.session_id = session_id or interaction.session_id
+                interaction.turn_id = turn_id or interaction.turn_id
+                tx.put_interaction(interaction)
+                tx.emit(
+                    "interaction.answered" if complete else "interaction.answers_recorded",
+                    {"interaction_id": interaction.interaction_id, "complete": complete},
+                    session_id=interaction.session_id,
+                    turn_id=interaction.turn_id,
+                )
+                return interaction
             if interaction.status in {
                 InteractionStatus.REGISTERED,
                 InteractionStatus.AWAITING_INPUT,
@@ -849,6 +929,7 @@ class LearningService:
         *,
         answer: str,
         question_id: str = "",
+        answers: dict[str, str] | None = None,
         answer_for_grading: str | None = None,
         expected_answer: str | None = None,
         resolved_choice_options: dict[str, str] | None = None,
@@ -882,99 +963,34 @@ class LearningService:
             if question_id and interaction.interaction_id != question_id:
                 raise StaleInteractionError(question_id, interaction.interaction_id)
             if interaction.status == InteractionStatus.GRADED:
+                if interaction.question.questions and answers is not None:
+                    self._merge_group_answers(interaction, answers)
                 return interaction, True
             if interaction.status == InteractionStatus.ABANDONED:
                 raise NoPendingInteractionError("The question was abandoned")
 
-            pending = interaction.question
-            raw_answer = str(answer or "")
-            if interaction.status == InteractionStatus.ANSWERED:
-                stored = str(interaction.user_answer or "")
-                if pending.question_type == "choice":
-                    from deeptutor.learning.pending import (
-                        has_option_bodies,
-                        is_readable_choice_answer,
-                        resolve_choice_submission,
-                    )
-
-                    option_map = pending.choice_map
-                    if is_readable_choice_answer(stored, option_map):
-                        raw_answer = stored
-                    elif is_readable_choice_answer(raw_answer, option_map):
-                        # Prior commit was unreadable clarifying text (#1004) —
-                        # accept the fresh readable answer and rewrite storage.
-                        interaction.user_answer = raw_answer
-                    else:
-                        raw_answer = stored
-                    if has_option_bodies(option_map):
-                        graded_answer = (
-                            resolve_choice_submission(raw_answer, option_map) or raw_answer
-                        )
-                    else:
-                        # Legacy questions may need option bodies recovered by
-                        # the trusted tool adapter from the original turn.
-                        graded_answer = (
-                            raw_answer if answer_for_grading is None else answer_for_grading
-                        )
-                else:
-                    raw_answer = stored
-                    graded_answer = raw_answer
-            else:
-                graded_answer = raw_answer if answer_for_grading is None else answer_for_grading
-            authoritative_answer = (
-                pending.expected_answer if expected_answer is None else expected_answer
-            )
-            if pending.question_type == "choice" and resolved_choice_options:
-                # Bodies recovered for a legacy question (see the tool
-                # adapter): store them in the structured form so nothing has
-                # to recover them again.
-                pending.options = [
-                    PendingOption(label=label, body=body)
-                    for label, body in resolved_choice_options.items()
-                ]
-                pending.expected_answer = authoritative_answer
-                interaction.question = pending
-            visual_result = ""
-            visual_diagnosis = ""
-            if pending.visual_context:
-                from deeptutor.learning.visual_practice import (
-                    account_for_recent_assistance,
-                    evaluate_visual,
-                )
-
-                pending.visual_context = account_for_recent_assistance(
-                    pending.visual_context, tx.progress.quiz_attempts, pending.knowledge_point_id
-                )
-                visual_result, visual_diagnosis = evaluate_visual(pending, raw_answer)
-                if (
-                    tx.progress.explained_objectives.get(pending.knowledge_point_id, {}).get(
-                        "timestamp", 0
-                    )
-                    > pending.created_at
-                ):
-                    pending.visual_context["hints_used"] = max(
-                        1, pending.visual_context.get("hints_used", 0)
-                    )
-                    pending.visual_context["teaching_after_question"] = True
-                if visual_result == "correct":
-                    graded_answer = authoritative_answer
-            is_correct = (
-                None
-                if visual_result == "ungraded"
-                else self._apply_grade(
-                    tx.progress,
-                    question_id=pending.question_id,
-                    knowledge_point_id=pending.knowledge_point_id,
-                    module_id=pending.module_id,
-                    user_answer=graded_answer,
-                    expected_answer=authoritative_answer,
-                    question_type=pending.question_type,
+            if interaction.question.questions:
+                return self._grade_group(
+                    tx,
+                    interaction,
+                    answers=answers,
                     scheduler=scheduler,
                     session_id=session_id,
                     turn_id=turn_id,
-                    visual_context=pending.visual_context,
                 )
+
+            raw_answer, is_correct, visual_result, visual_diagnosis = self._evaluate_question(
+                tx,
+                interaction,
+                answer=answer,
+                answer_for_grading=answer_for_grading,
+                expected_answer=expected_answer,
+                resolved_choice_options=resolved_choice_options,
+                scheduler=scheduler,
+                session_id=session_id,
+                turn_id=turn_id,
             )
+            pending = interaction.question
             if (
                 tx.progress.pending_question is not None
                 and tx.progress.pending_question.question_id == pending.question_id
@@ -1033,6 +1049,306 @@ class LearningService:
         progress, result = self._store.mutate(book_id, grade)
         interaction, replayed = result
         return progress, interaction, replayed
+
+    @staticmethod
+    def _group_contract(pending: PendingQuestion) -> list[tuple]:
+        # Choice shuffling changes labels, not the answer contract. Ignore new
+        # generated ids when a duplicate tool call re-presents the same group.
+        return [
+            (
+                q.knowledge_point_id,
+                q.prompt,
+                q.question_type,
+                tuple(sorted(q.choice_map.values())),
+                q.choice_map.get(q.expected_answer, q.expected_answer),
+                q.explanation,
+                q.difficulty,
+                q.visual_context,
+            )
+            for q in pending.questions
+        ]
+
+    @staticmethod
+    def _validate_group_answers(pending: PendingQuestion, answers: Any) -> dict[str, str]:
+        ids = {question.question_id for question in pending.questions}
+        if (
+            not isinstance(answers, dict)
+            or not answers
+            or not set(answers).issubset(ids)
+            or any(
+                not isinstance(value, str) or not value.strip() or len(value) > 10000
+                for value in answers.values()
+            )
+        ):
+            raise MasteryInteractionError(
+                "Supply at least one actual answer using its exact group question_id"
+            )
+        from deeptutor.learning.pending import resolve_choice_submission
+
+        for question in pending.questions:
+            if (
+                question.question_id in answers
+                and question.question_type == "choice"
+                and not resolve_choice_submission(answers[question.question_id], question.choice_map)
+            ):
+                raise MasteryInteractionError(
+                    "Choose one unambiguous option for each choice question"
+                )
+        return {key: value.strip() for key, value in answers.items()}
+
+    def _merge_group_answers(self, interaction: MasteryInteraction, answers: Any) -> dict[str, str]:
+        submitted = self._validate_group_answers(
+            interaction.question, interaction.answers if answers is None else answers
+        )
+        if any(
+            key in interaction.answers and interaction.answers[key] != value
+            for key, value in submitted.items()
+        ):
+            raise MasteryInteractionError("This group already has a different committed answer")
+        return {**interaction.answers, **submitted}
+
+    @staticmethod
+    def _group_result(pending: PendingQuestion, results: list[dict]) -> dict:
+        values = [result["is_correct"] for result in results]
+        graded_ids = {result["question_id"] for result in results}
+        remaining = [q.question_id for q in pending.questions if q.question_id not in graded_ids]
+        complete = not remaining
+        return {
+            "question_id": pending.question_id,
+            "question_type": "group",
+            "results": results,
+            "complete": complete,
+            "remaining_question_ids": remaining,
+            "is_correct": None if not complete or None in values else all(values),
+            "result": "ungraded"
+            if not complete or all(value is None for value in values)
+            else "mixed"
+            if len(set(values)) > 1
+            else "correct"
+            if all(values)
+            else "incorrect",
+        }
+
+    def _grade_group(
+        self,
+        tx,
+        interaction: MasteryInteraction,
+        *,
+        answers,
+        scheduler=None,
+        session_id="",
+        turn_id="",
+    ) -> tuple[MasteryInteraction, bool]:
+        """Commit new replies once; unanswered siblings remain awaiting input."""
+        pending = interaction.question
+        submitted = self._merge_group_answers(interaction, answers)
+        known_ids = {kp.id for module in tx.progress.modules for kp in module.knowledge_points}
+        if any(q.knowledge_point_id not in known_ids for q in pending.questions):
+            raise MasteryInteractionError("An objective changed; refresh the question group")
+        from deeptutor.learning.question_card import build_grade_result
+
+        leaves = []
+        for question in pending.questions:
+            if question.question_id not in submitted:
+                continue
+            stored = tx.get_interaction(question.question_id)
+            if stored is not None and (
+                stored.result.get("group_question_id") != pending.question_id
+                or stored.question.knowledge_point_id != question.knowledge_point_id
+                or stored.user_answer != submitted[question.question_id]
+            ):
+                raise MasteryInteractionError("This child belongs to another interaction or reply")
+            leaves.append((question, stored))
+
+        results = []
+        new_results = False
+        for question, stored in leaves:
+            if stored is not None and stored.status == InteractionStatus.GRADED:
+                results.append(self._group_leaf_result(stored))
+                continue
+            new_results = True
+            leaf = MasteryInteraction(
+                interaction_id=question.question_id,
+                path_id=interaction.path_id,
+                question=question,
+                status=InteractionStatus.ANSWERED,
+                user_answer=submitted[question.question_id],
+            )
+            raw, correct, visual_result, diagnosis = self._evaluate_question(
+                tx,
+                leaf,
+                answer=submitted[question.question_id],
+                scheduler=scheduler,
+                session_id=session_id,
+                turn_id=turn_id,
+            )
+            result = build_grade_result(
+                question_id=question.question_id,
+                is_correct=bool(correct),
+                learner_answer=raw,
+                correct_label=question.expected_answer if correct is not None else "",
+                choice_options=question.choice_map,
+                explanation=question.explanation if correct is not None else diagnosis,
+                result=visual_result,
+                independent=not bool(question.visual_context.get("hints_used"))
+                if question.visual_context
+                else None,
+            )
+            result["is_correct"] = correct
+            result["knowledge_point_id"] = question.knowledge_point_id
+            if diagnosis:
+                result["diagnosis"] = diagnosis
+            results.append(result)
+            leaf.session_id = session_id or interaction.session_id
+            leaf.turn_id = turn_id or interaction.turn_id
+            leaf.status = InteractionStatus.GRADED
+            leaf.result = {**result, "group_question_id": pending.question_id}
+            tx.put_interaction(leaf)
+            tx.emit(
+                "practice.ungraded" if correct is None else "attempt.recorded",
+                {
+                    "interaction_id": interaction.interaction_id,
+                    "question_id": question.question_id,
+                    "knowledge_point_id": question.knowledge_point_id,
+                    "is_correct": correct,
+                },
+                session_id=session_id,
+                turn_id=turn_id,
+            )
+            if correct is not None:
+                evidence = tx.progress.learning_evidence[-1]
+                tx.emit(
+                    "evidence.recorded",
+                    {
+                        "knowledge_point_id": evidence.knowledge_point_id,
+                        "assessment_type": evidence.assessment_type,
+                        "result": evidence.result,
+                        "quality": evidence.quality,
+                    },
+                    session_id=session_id,
+                    turn_id=turn_id,
+                )
+        if not new_results:
+            return interaction, True
+        interaction.result = self._group_result(pending, results)
+        complete = interaction.result["complete"]
+        interaction.status = (
+            InteractionStatus.GRADED if complete else InteractionStatus.AWAITING_INPUT
+        )
+        interaction.answers = submitted
+        interaction.session_id = session_id or interaction.session_id
+        interaction.turn_id = turn_id or interaction.turn_id
+        if complete:
+            tx.progress.pending_question = None
+        tx.put_interaction(interaction)
+        tx.emit(
+            "interaction.graded" if complete else "interaction.partially_graded",
+            dict(interaction.result),
+            session_id=interaction.session_id,
+            turn_id=interaction.turn_id,
+        )
+        return interaction, False
+
+    def _evaluate_question(
+        self,
+        tx,
+        interaction: MasteryInteraction,
+        *,
+        answer: str,
+        answer_for_grading: str | None = None,
+        expected_answer: str | None = None,
+        resolved_choice_options: dict[str, str] | None = None,
+        scheduler: SpacedRepetitionScheduler | None = None,
+        session_id: str = "",
+        turn_id: str = "",
+    ) -> tuple[str, bool | None, str, str]:
+        """Shared leaf grader: never creates a parent attempt or commits separately."""
+        pending = interaction.question
+        raw_answer = str(answer or "")
+        if interaction.status == InteractionStatus.ANSWERED:
+            stored = str(interaction.user_answer or "")
+            if pending.question_type == "choice":
+                from deeptutor.learning.pending import (
+                    has_option_bodies,
+                    is_readable_choice_answer,
+                    resolve_choice_submission,
+                )
+
+                option_map = pending.choice_map
+                if is_readable_choice_answer(stored, option_map):
+                    raw_answer = stored
+                elif is_readable_choice_answer(raw_answer, option_map):
+                    # Prior commit was unreadable clarifying text (#1004) —
+                    # accept the fresh readable answer and rewrite storage.
+                    interaction.user_answer = raw_answer
+                else:
+                    raw_answer = stored
+                if has_option_bodies(option_map):
+                    graded_answer = resolve_choice_submission(raw_answer, option_map) or raw_answer
+                else:
+                    # Legacy questions may need option bodies recovered by
+                    # the trusted tool adapter from the original turn.
+                    graded_answer = raw_answer if answer_for_grading is None else answer_for_grading
+            else:
+                raw_answer = stored
+                graded_answer = raw_answer
+        else:
+            graded_answer = raw_answer if answer_for_grading is None else answer_for_grading
+        authoritative_answer = (
+            pending.expected_answer if expected_answer is None else expected_answer
+        )
+        if pending.question_type == "choice" and resolved_choice_options:
+            # Bodies recovered for a legacy question (see the tool
+            # adapter): store them in the structured form so nothing has
+            # to recover them again.
+            pending.options = [
+                PendingOption(label=label, body=body)
+                for label, body in resolved_choice_options.items()
+            ]
+            pending.expected_answer = authoritative_answer
+            interaction.question = pending
+        visual_result = ""
+        visual_diagnosis = ""
+        if pending.visual_context:
+            from deeptutor.learning.visual_practice import (
+                account_for_recent_assistance,
+                evaluate_visual,
+            )
+
+            pending.visual_context = account_for_recent_assistance(
+                pending.visual_context, tx.progress.quiz_attempts, pending.knowledge_point_id
+            )
+            visual_result, visual_diagnosis = evaluate_visual(pending, raw_answer)
+            if (
+                tx.progress.explained_objectives.get(pending.knowledge_point_id, {}).get(
+                    "timestamp", 0
+                )
+                > pending.created_at
+            ):
+                pending.visual_context["hints_used"] = max(
+                    1, pending.visual_context.get("hints_used", 0)
+                )
+                pending.visual_context["teaching_after_question"] = True
+            if visual_result == "correct":
+                graded_answer = authoritative_answer
+        is_correct = (
+            None
+            if visual_result == "ungraded"
+            else self._apply_grade(
+                tx.progress,
+                question_id=pending.question_id,
+                knowledge_point_id=pending.knowledge_point_id,
+                module_id=pending.module_id,
+                user_answer=graded_answer,
+                expected_answer=authoritative_answer,
+                question_type=pending.question_type,
+                scheduler=scheduler,
+                session_id=session_id,
+                turn_id=turn_id,
+                visual_context=pending.visual_context,
+            )
+        )
+        return raw_answer, is_correct, visual_result, visual_diagnosis
 
     def replace_modules_for_path(
         self,
@@ -1177,19 +1493,41 @@ class LearningService:
                     tx.progress.current_kp_index = 0
 
                 if tx.progress.pending_question is not None:
-                    if pending_kp_id not in objective_locations:
+                    pending_leaves = tx.progress.pending_question.questions or [
+                        tx.progress.pending_question
+                    ]
+                    if pending_kp_id not in objective_locations or any(
+                        q.knowledge_point_id not in objective_locations for q in pending_leaves
+                    ):
                         tx.progress.pending_question = None
                     else:
                         pending_module_id, _ = objective_locations[pending_kp_id]
                         tx.progress.pending_question.module_id = pending_module_id
+                        for question in pending_leaves:
+                            question.module_id = objective_locations[question.knowledge_point_id][0]
 
                 if active_interaction is not None:
-                    if active_kp_id not in objective_locations:
+                    active_leaves = active_interaction.question.questions or [
+                        active_interaction.question
+                    ]
+                    if active_kp_id not in objective_locations or any(
+                        q.knowledge_point_id not in objective_locations for q in active_leaves
+                    ):
                         tx.abandon_active_interactions()
                     else:
                         active_module_id, _ = objective_locations[active_kp_id]
-                        if active_interaction.question.module_id != active_module_id:
-                            active_interaction.question.module_id = active_module_id
+                        active_changed = (
+                            active_interaction.question.module_id != active_module_id
+                            or any(
+                                question.module_id
+                                != objective_locations[question.knowledge_point_id][0]
+                                for question in active_leaves
+                            )
+                        )
+                        active_interaction.question.module_id = active_module_id
+                        for question in active_leaves:
+                            question.module_id = objective_locations[question.knowledge_point_id][0]
+                        if active_changed:
                             tx.put_interaction(active_interaction)
             tx.touch()
             tx.emit(
@@ -1538,6 +1876,10 @@ class LearningService:
                 if attempt.question_id == resolved_id
             ]
             question = interaction.question if interaction is not None else pending
+            if question is not None and question.questions:
+                raise MasteryInteractionError(
+                    "A group has no aggregate answer key; review or challenge an individual child question_id"
+                )
             kp_id = (question.knowledge_point_id if question is not None else "") or (
                 attempts[0].knowledge_point_id if attempts else ""
             )
@@ -1662,6 +2004,8 @@ class LearningService:
                 )
 
             self._recompute_objective_state(tx.progress, kp_id, scheduler)
+            if interaction is not None and interaction.result.get("group_question_id"):
+                self._refresh_group_result(tx, interaction)
             tx.touch()
             tx.emit(
                 "assessment.voided" if action_name == "void" else "assessment.corrected",
@@ -1700,6 +2044,56 @@ class LearningService:
         progress, details = self._store.mutate(book_id, repair)
         return progress, details
 
+    @staticmethod
+    def _group_leaf_result(stored: MasteryInteraction) -> dict:
+        """Project a committed leaf, including later repairs, without regrading."""
+        from deeptutor.learning.question_card import build_grade_result
+
+        correct = None if stored.result.get("voided") else stored.result.get("is_correct")
+        result = build_grade_result(
+            question_id=stored.interaction_id,
+            is_correct=bool(correct),
+            learner_answer=stored.user_answer,
+            correct_label=stored.question.expected_answer if correct is not None else "",
+            choice_options=stored.question.choice_map,
+            explanation=stored.question.explanation
+            if correct is not None
+            else str(stored.result.get("reason") or stored.result.get("diagnosis") or ""),
+            result="ungraded" if correct is None else "",
+            independent=stored.result.get("independent")
+            if stored.question.visual_context
+            else None,
+        )
+        result.update(
+            {"is_correct": correct, "knowledge_point_id": stored.question.knowledge_point_id}
+        )
+        if stored.result.get("diagnosis"):
+            result["diagnosis"] = stored.result["diagnosis"]
+        return result
+
+    def _refresh_group_result(self, tx, leaf: MasteryInteraction) -> None:
+        """Keep a complete or partial parent consistent after a native leaf repair."""
+        parent = tx.get_interaction(leaf.result["group_question_id"])
+        if parent is None:
+            return
+        results = []
+        questions = []
+        for question in parent.question.questions:
+            stored = tx.get_interaction(question.question_id)
+            if stored is None or stored.result.get("group_question_id") != parent.interaction_id:
+                questions.append(question)
+                continue
+            questions.append(stored.question)
+            results.append(self._group_leaf_result(stored))
+        parent.question.questions = questions
+        parent.result = self._group_result(parent.question, results)
+        if (
+            tx.progress.pending_question is not None
+            and tx.progress.pending_question.question_id == parent.interaction_id
+        ):
+            tx.progress.pending_question = parent.question
+        tx.put_interaction(parent)
+
     def defer_objective(
         self,
         book_id: str,
@@ -1730,11 +2124,16 @@ class LearningService:
                 )
             abandoned = False
             pending = tx.progress.pending_question
-            if pending is not None and pending.knowledge_point_id == target_id:
+            if pending is not None and any(
+                q.knowledge_point_id == target_id for q in pending.questions or [pending]
+            ):
                 tx.progress.pending_question = None
                 abandoned = True
             active = tx.active_interaction()
-            if active is not None and active.question.knowledge_point_id == target_id:
+            if active is not None and any(
+                q.knowledge_point_id == target_id
+                for q in active.question.questions or [active.question]
+            ):
                 tx.abandon_active_interactions()
                 abandoned = True
             tx.progress.deferred_objectives[target_id] = DeferredObjective(

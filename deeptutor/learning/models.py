@@ -4,7 +4,7 @@ from enum import Enum
 import time
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 _KNOWLEDGE_TYPE_LEGACY: dict[str, str] = {
     "记忆型": "memory",
@@ -275,6 +275,38 @@ class PendingQuestion(BaseModel):
     created_at: float = Field(default_factory=time.time)
     visual_context: dict[str, Any] = Field(default_factory=dict)
     accepted_answers: list[str] = Field(default_factory=list)
+    # One active interaction can present multiple independent questions. The
+    # parent owns lifecycle only; answer keys and credit remain on its leaves.
+    questions: list[PendingQuestion] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_group(self) -> PendingQuestion:
+        if self.question_type != "group":
+            if self.questions:
+                raise ValueError("Only a group may contain questions")
+            return self
+        if not 2 <= len(self.questions) <= 4:
+            raise ValueError("A question group needs two to four questions")
+        ids = [q.question_id for q in self.questions]
+        if len(set(ids)) != len(ids) or self.question_id in ids or not all(ids):
+            raise ValueError("Group question ids must be distinct and nonempty")
+        question_keys = {(q.knowledge_point_id, q.prompt.strip()) for q in self.questions}
+        if len(question_keys) != len(self.questions):
+            raise ValueError(
+                "A group needs distinct questions, not copies of the same objective prompt"
+            )
+        if any(
+            q.question_type not in {"choice", "short", "open"}
+            or q.questions
+            or not q.expected_answer.strip()
+            or not q.prompt.strip()
+            or not q.knowledge_point_id.strip()
+            for q in self.questions
+        ):
+            raise ValueError("Group leaves need independent, non-nested answer contracts")
+        if self.expected_answer or self.options or self.visual_context:
+            raise ValueError("A group parent cannot carry an answer key or visual task")
+        return self
 
     @field_validator("options", mode="before")
     @classmethod
@@ -327,6 +359,7 @@ class MasteryInteraction(BaseModel):
     session_id: str = ""
     turn_id: str = ""
     user_answer: str = ""
+    answers: dict[str, str] = Field(default_factory=dict)
     result: dict[str, Any] = Field(default_factory=dict)
     created_at: float = Field(default_factory=time.time)
     updated_at: float = Field(default_factory=time.time)

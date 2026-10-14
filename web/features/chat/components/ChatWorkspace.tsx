@@ -2099,7 +2099,7 @@ export default function ChatWorkspace() {
   // and ``masteryAnswer`` tells the backend which question it settles so the
   // engine has the answer committed before the tutor reads anything.
   const answerMasteryQuestion = useCallback(
-    (answer: { questionId: string; text: string }) => {
+    (answer: { questionId: string; text: string; answers?: Array<{ questionId: string; text: string }> }) => {
       const text = answer.text.trim();
       // One live turn per path: submitting into a running one is refused, and
       // ``false`` reopens the card rather than surfacing that refusal.
@@ -2111,7 +2111,11 @@ export default function ChatWorkspace() {
         undefined,
         undefined,
         {
-          masteryAnswer: { question_id: answer.questionId, text },
+          masteryAnswer: {
+            question_id: answer.questionId,
+            text,
+            ...(answer.answers ? { answers: Object.fromEntries(answer.answers.map((item) => [item.questionId, item.text])) } : {}),
+          },
         },
       );
       shouldAutoScrollRef.current = true;

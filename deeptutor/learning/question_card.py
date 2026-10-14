@@ -85,6 +85,8 @@ def build_question_card(
     }
     if pending.visual_context:
         payload["visual"] = public_visual(pending.visual_context)
+    if pending.questions:
+        payload["questions"] = [build_question_card(q) for q in pending.questions]
     return payload
 
 
