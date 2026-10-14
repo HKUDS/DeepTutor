@@ -3077,8 +3077,8 @@ class SQLiteSessionStore:
             conn.commit()
         return cur.rowcount > 0
 
-    async def update_summary(self, session_id: str, summary: str, up_to_msg_id: int) -> bool:
-        return await self._run(self._update_summary_sync, session_id, summary, up_to_msg_id)
+    async def update_summary(self, session_id: str, summary: str, up_to_msg_id: int | str) -> bool:
+        return await self._run(self._update_summary_sync, session_id, summary, int(up_to_msg_id))
 
     def _update_session_preferences_sync(
         self, session_id: str, preferences: dict[str, Any]

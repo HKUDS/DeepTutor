@@ -117,7 +117,7 @@ async def build_inventory(
     store: SessionStoreProtocol,
     *,
     session_id: str,
-    leaf_message_id: int | None,
+    leaf_message_id: int | str | None,
     current_turn_ordinal: int,
     fresh_attachment_records: Sequence[dict[str, Any]],
     fresh_notebook_records: Sequence[dict[str, Any]],
@@ -448,7 +448,7 @@ async def _add_historical(
     *,
     store: SessionStoreProtocol,
     session_id: str,
-    leaf_message_id: int | None,
+    leaf_message_id: int | str | None,
     language: str = "en",
 ) -> None:
     """Walk the active branch's ancestor user messages and pull in
@@ -663,7 +663,7 @@ async def _collect_from_user_message(
 async def _load_lineage(
     store: SessionStoreProtocol,
     session_id: str,
-    leaf_message_id: int | None,
+    leaf_message_id: int | str | None,
 ) -> list[dict[str, Any]]:
     """Return the active branch's ancestor user/assistant messages in
     chronological order. When ``leaf_message_id`` is ``None`` (legacy
@@ -676,21 +676,21 @@ async def _load_lineage(
     all_msgs = await store.get_messages(session_id)
     if leaf_message_id is None:
         return all_msgs
-    by_id: dict[int, dict[str, Any]] = {}
+    by_id: dict[str, dict[str, Any]] = {}
     for m in all_msgs:
         mid = m.get("id")
         if mid is not None:
-            by_id[int(mid)] = m
+            by_id[str(mid)] = m
     chain: list[dict[str, Any]] = []
-    current: int | None = int(leaf_message_id)
+    current: str | None = str(leaf_message_id)
     safety = 10_000
     while current is not None and safety > 0:
-        m = by_id.get(int(current))
+        m = by_id.get(current)
         if m is None:
             break
         chain.append(m)
         parent = m.get("parent_message_id")
-        current = int(parent) if parent is not None else None
+        current = str(parent) if parent is not None else None
         safety -= 1
     chain.reverse()
     return chain
@@ -713,7 +713,7 @@ async def collect_prior_image_attachments(
     store: SessionStoreProtocol,
     *,
     session_id: str,
-    leaf_message_id: int | None,
+    leaf_message_id: int | str | None,
     exclude_urls: set[str] | None = None,
     limit: int | None = None,
 ) -> list[dict[str, Any]]:
