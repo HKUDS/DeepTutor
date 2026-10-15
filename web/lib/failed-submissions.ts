@@ -148,7 +148,7 @@ export function serverContainsFailedSubmission(
     content: string;
     metadata?: Record<string, unknown>;
   }[],
-  record: FailedSubmissionRecord,
+  record: Pick<FailedSubmissionRecord, "submissionId">,
 ): boolean {
   return Boolean(record.submissionId) && messages.some(
     (message) => message.role === "user" &&

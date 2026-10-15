@@ -251,3 +251,43 @@ describe('empty reply outcomes', () => {
     if (status === 'cancelled') expect(screen.queryByRole('alert')).toBeNull();
   });
 });
+
+
+describe('unsent message recovery actions', () => {
+  const pending = [
+    { id: -1, role: 'user' as const, content: 'same outline request', parentMessageId: null, failedSubmission: true },
+    { id: -2, role: 'user' as const, content: 'same outline request', parentMessageId: -1, failedSubmission: true },
+  ];
+
+  it('offers discard for each pending record and retries only the visible tail', async () => {
+    const discard = vi.fn();
+    const retry = vi.fn();
+    const edit = vi.fn();
+    render(<ChatMessageList messages={pending} isStreaming={false}
+      onCopyAssistantMessage={vi.fn()} onRegenerateMessage={vi.fn()}
+      canResendLastTurn onResendLastTurn={retry}
+      onDiscardFailedSubmission={discard} onEditMessage={edit} />);
+    expect(screen.getAllByText('Not sent')).toHaveLength(2);
+    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+    const user = userEvent.setup();
+    await user.click(screen.getAllByRole('button', { name: 'Discard' })[0]);
+    expect(discard).toHaveBeenCalledWith(-1);
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(retry).toHaveBeenCalledOnce();
+  });
+
+  it('blocks recovery mutations while streaming and unsafe retries of incomplete snapshots', () => {
+    const { rerender } = render(<ChatMessageList messages={pending} isStreaming
+      onCopyAssistantMessage={vi.fn()} onRegenerateMessage={vi.fn()}
+      canResendLastTurn onResendLastTurn={vi.fn()} onDiscardFailedSubmission={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    for (const button of screen.getAllByRole('button', { name: 'Discard' })) {
+      expect(button).toBeDisabled();
+    }
+    rerender(<ChatMessageList messages={[{ ...pending[0], failedSubmissionNeedsReview: true }]}
+      isStreaming={false} onCopyAssistantMessage={vi.fn()} onRegenerateMessage={vi.fn()}
+      canResendLastTurn onResendLastTurn={vi.fn()} onDiscardFailedSubmission={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Discard' })).toBeEnabled();
+  });
+});

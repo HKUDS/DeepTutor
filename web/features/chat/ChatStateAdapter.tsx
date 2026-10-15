@@ -338,6 +338,8 @@ export interface MessageItem {
 interface SessionEntry extends Omit<ChatState, "sessionKey"> {
   key: string;
   status: SessionRuntimeStatus;
+  /** Runtime status underneath locally restored unsent messages. */
+  submissionBaseStatus: SessionRuntimeStatus;
   activeTurnId: string | null;
   lastSeq: number;
   updatedAt: number;
@@ -362,6 +364,7 @@ interface SessionSnapshot {
   messages: MessageItem[];
   activeTurnId?: string | null;
   status?: SessionRuntimeStatus;
+  serverStatus?: SessionRuntimeStatus;
   tools?: string[];
   capability?: string | null;
   workspaceMode?: WorkspaceMode | null;
@@ -404,6 +407,7 @@ type Action =
       failedSubmissionId?: string;
     }
   | { type: "SET_SUBMISSION_PERSISTENCE"; key: string; submissionId: string; saved: boolean }
+  | { type: "DISCARD_FAILED_SUBMISSION"; key: string; messageId: number }
   | { type: "POP_LAST_ASSISTANT"; key: string }
   | { type: "RESTORE_ASSISTANT"; key: string; message: MessageItem }
   | { type: "STREAM_START"; key: string; startedAt: number }
@@ -500,6 +504,7 @@ function createSessionEntry(
       typeof window === "undefined" ? "en" : readStoredResponseLanguage(),
     replyLanguageOverride: null,
     status: "idle",
+    submissionBaseStatus: "idle",
     activeTurnId: null,
     lastSeq: 0,
     updatedAt: Date.now(),
@@ -746,6 +751,9 @@ function reducer(state: ProviderState, action: Action): ProviderState {
           ...state.sessions,
           [action.key]: {
             ...session,
+            submissionBaseStatus: session.messages.some(message => message.failedSubmission)
+              ? session.submissionBaseStatus
+              : session.status,
             messages: [
               ...session.messages,
               {
@@ -788,6 +796,41 @@ function reducer(state: ProviderState, action: Action): ProviderState {
               message.failedSubmissionId === action.submissionId
                 ? { ...message, failedSubmissionNotSaved: !action.saved }
                 : message),
+          },
+        },
+      };
+    }
+    case "DISCARD_FAILED_SUBMISSION": {
+      const session = state.sessions[action.key];
+      if (!session || session.isStreaming) return state;
+      const target = session.messages.find(message =>
+        message.id === action.messageId && message.role === "user" &&
+        message.failedSubmission && action.messageId < 0);
+      if (!target) return state;
+      // Pending rows form a chain after server history. Removing an earlier
+      // one must leave later recoverable submissions on the visible branch.
+      const messages = session.messages
+        .filter(message => message !== target)
+        .map(message => message.parentMessageId === target.id
+          ? { ...message, parentMessageId: target.parentMessageId ?? null }
+          : message);
+      const selectedBranches = { ...session.selectedBranches };
+      const parentKey = String(target.parentMessageId ?? "null");
+      if (selectedBranches[parentKey] === target.id) {
+        const child = selectedBranches[String(target.id)];
+        if (child !== undefined) selectedBranches[parentKey] = child;
+        else delete selectedBranches[parentKey];
+      }
+      delete selectedBranches[String(target.id)];
+      return {
+        ...state,
+        sessions: {
+          ...state.sessions,
+          [action.key]: {
+            ...session, messages, selectedBranches,
+            status: messages.some(message => message.failedSubmission)
+              ? session.status : session.submissionBaseStatus,
+            updatedAt: Date.now(),
           },
         },
       };
@@ -1077,6 +1120,7 @@ function reducer(state: ProviderState, action: Action): ProviderState {
             isStreaming: false,
             currentStage: "",
             status: action.status ?? "completed",
+            submissionBaseStatus: action.status ?? "completed",
             activeTurnId:
               action.status === "running" || pendingAskUser
                 ? action.turnId ||
@@ -1195,6 +1239,7 @@ function reducer(state: ProviderState, action: Action): ProviderState {
             // turn from the start rather than trusting a cached cursor.
             lastSeq: 0,
             status: action.status || "idle",
+            submissionBaseStatus: action.serverStatus ?? action.status ?? "idle",
             language: action.language ?? existing.language,
             replyLanguageOverride:
               action.replyLanguageOverride !== undefined
@@ -1531,6 +1576,8 @@ interface ChatContextValue {
    *  original request snapshot (attachments, capability, tools, KB, etc.)
    *  so the new turn runs with the same context as the failed one. */
   resendLastMessage: () => void;
+  /** Discard a local unsent row without mutating server history. */
+  discardFailedSubmission: (messageId: number) => void;
   deleteTurn: (messageId: number) => Promise<void>;
   /** Re-send a user message under a new branch (sibling of the original).
    *  Uses the composer's current capability / refs — only the text is
@@ -2462,23 +2509,42 @@ export function ChatStateAdapterProvider({
       // was accepted; equal text from another tab is not enough.
       let restoredMessages = messages;
       let restoredStatus = loadedStatus;
-      if (!options?.revalidate && loadedStatus !== "running") {
-        for (const failedRecord of readFailedSubmissions(key)) {
-          if (serverContainsFailedSubmission(session.messages ?? [], failedRecord)) {
-            clearFailedSubmission(key, failedRecord.submissionId);
-          } else {
-            restoredMessages = [
-              ...restoredMessages,
-              restoredFailedMessage(
-                failedRecord,
-                tipMessageId(buildVisiblePath(
-                  restoredMessages,
-                  normalizeSelectedBranches(session.preferences?.selected_branches),
-                ).messages),
-              ),
-            ];
-            restoredStatus = "failed";
-          }
+      const pendingRecords = readFailedSubmissions(key).filter(record => {
+        if (!serverContainsFailedSubmission(session.messages ?? [], record)) return true;
+        clearFailedSubmission(key, record.submissionId);
+        return false;
+      });
+      // A background refresh must reconcile pending records exactly like a
+      // foreground load; otherwise they vanish until the next full reload.
+      if (loadedStatus !== "running") {
+        for (const failedRecord of pendingRecords) {
+          restoredMessages = [
+            ...restoredMessages,
+            restoredFailedMessage(
+              failedRecord,
+              tipMessageId(buildVisiblePath(
+                restoredMessages,
+                normalizeSelectedBranches(session.preferences?.selected_branches),
+              ).messages),
+            ),
+          ];
+          restoredStatus = "failed";
+        }
+      }
+      if (loadedStatus !== "running") {
+        for (const local of stateRef.current.sessions[key]?.messages ?? []) {
+          if (!local.failedSubmission || !local.failedSubmissionNotSaved ||
+              !local.failedSubmissionId ||
+              serverContainsFailedSubmission(session.messages ?? [], { submissionId: local.failedSubmissionId }) ||
+              restoredMessages.some(message => message.failedSubmissionId === local.failedSubmissionId)) continue;
+          restoredMessages = [...restoredMessages, {
+            ...local,
+            parentMessageId: tipMessageId(buildVisiblePath(
+              restoredMessages,
+              normalizeSelectedBranches(session.preferences?.selected_branches),
+            ).messages),
+          }];
+          restoredStatus = "failed";
         }
       }
       dispatch({
@@ -2489,6 +2555,7 @@ export function ChatStateAdapterProvider({
         messages: restoredMessages,
         activeTurnId: activeTurn?.turn_id || activeTurn?.id || null,
         status: restoredStatus,
+        serverStatus: loadedStatus,
         tools: Array.isArray(session.preferences?.tools)
           ? session.preferences.tools
           : [],
@@ -3582,6 +3649,20 @@ export function ChatStateAdapterProvider({
     [],
   );
 
+  const discardFailedSubmission = useCallback((messageId: number) => {
+    const current = stateRef.current;
+    const key = current.selectedKey;
+    if (!key) return;
+    const session = current.sessions[key];
+    const message = session?.messages.find(item => item.id === messageId);
+    if (!session || session.isStreaming || message?.role !== "user" ||
+        !message.failedSubmission || messageId >= 0) return;
+    if (message.failedSubmissionId) {
+      clearFailedSubmission(session.sessionId ?? draftFailedSubmissionKey(), message.failedSubmissionId);
+    }
+    dispatch({ type: "DISCARD_FAILED_SUBMISSION", key, messageId });
+  }, []);
+
   const deleteTurn = useCallback(
     async (messageId: number) => {
       const generation = runtimeGeneration.current;
@@ -3646,6 +3727,7 @@ export function ChatStateAdapterProvider({
       submitUserReply,
       regenerateLastMessage,
       resendLastMessage,
+      discardFailedSubmission,
       deleteTurn,
       editMessage,
       switchBranch,
@@ -3678,6 +3760,7 @@ export function ChatStateAdapterProvider({
       submitUserReply,
       regenerateLastMessage,
       resendLastMessage,
+      discardFailedSubmission,
       deleteTurn,
       editMessage,
       switchBranch,

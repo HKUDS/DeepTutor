@@ -1,3 +1,4 @@
+import { clearFailedSubmission } from "@/lib/failed-submissions";
 import { scopedUrl } from "@/lib/workspace-scope";
 import { notifySessionsChanged } from "@/lib/session-events";
 import { apiFetch, apiUrl } from "@/lib/api";
@@ -416,7 +417,9 @@ export async function deleteSession(sessionId: string, workspaceId?: string): Pr
   const response = await apiFetch(apiUrl(scopedUrl(`/api/sessions/${sessionId}`, workspaceId)), {
     method: "DELETE",
   });
-  await expectJson<{ deleted: boolean }>(response);
+  const data = await expectJson<{ deleted: boolean }>(response);
+  if (!data.deleted) throw new Error("Session was not deleted");
+  clearFailedSubmission(sessionId);
   invalidateClientCache("sessions:");
   notifySessionsChanged();
 }

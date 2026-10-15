@@ -151,6 +151,7 @@ interface ChatMessageItem {
   /** The server never accepted this submission (#1594) — rendered as an
    *  unsent message, not an ordinary sent one. */
   failedSubmission?: boolean;
+  failedSubmissionNeedsReview?: boolean;
   orphanedFailedTurn?: OrphanedFailedTurn;
 }
 
@@ -1577,6 +1578,8 @@ export const UserMessage = memo(function UserMessage({
   kbDisplayNames,
   showModeBadge,
   onOpenConsultation,
+  onDiscardFailedSubmission,
+  onRetryFailedSubmission,
 }: {
   msg: ChatMessageItem;
   index: number;
@@ -1595,6 +1598,8 @@ export const UserMessage = memo(function UserMessage({
    *  already names the mode in its own chrome. */
   showModeBadge?: boolean;
   onOpenConsultation?: () => void;
+  onDiscardFailedSubmission?: (messageId: number) => void;
+  onRetryFailedSubmission?: () => void;
 }) {
   const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
@@ -1613,7 +1618,7 @@ export const UserMessage = memo(function UserMessage({
   // the optimistic case by triggering a session reload to resolve the
   // real id before submitting the branch.
   const canEdit =
-    Boolean(onEdit) && typeof msg.id === "number" && !editDisabled;
+    Boolean(onEdit) && typeof msg.id === "number" && !editDisabled && !msg.failedSubmission;
   const startEdit = () => {
     if (!canEdit) return;
     setDraft(msg.content);
@@ -1834,16 +1839,29 @@ export const UserMessage = memo(function UserMessage({
             <div className="whitespace-pre-wrap">{msg.content}</div>
           </div>
         )}
-        {/* Unsent marker (#1594): this text never reached the server, so the
-            bubble must not read as an ordinary sent message. The error and
-            retry live next to the composer, not on an assistant bubble. */}
+        {/* Recovery records are local to this browser. Keep their actions
+            visible so an old pending submission can be resolved in place. */}
         {!editing && msg.failedSubmission ? (
           <div
             data-unsent="true"
             className="flex items-center gap-1 pr-1 text-[11px] font-medium text-[var(--destructive)]"
           >
             <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />
-            {t("Not sent")}
+            <span>{t("Not sent")}</span>
+            {onRetryFailedSubmission && !msg.failedSubmissionNeedsReview && (
+              <button type="button" onClick={onRetryFailedSubmission}
+                disabled={editDisabled}
+                className="ml-1 rounded-md px-1.5 py-0.5 hover:bg-[var(--muted)] disabled:opacity-35">
+                {t("Retry")}
+              </button>
+            )}
+            {onDiscardFailedSubmission && typeof msg.id === "number" && msg.id < 0 && (
+              <button type="button" onClick={() => onDiscardFailedSubmission(msg.id!)}
+                disabled={editDisabled}
+                className="rounded-md px-1.5 py-0.5 hover:bg-[var(--muted)] disabled:opacity-35">
+                {t("Discard")}
+              </button>
+            )}
           </div>
         ) : null}
         {!editing && refTreeItems.length > 0 && (
@@ -1926,6 +1944,7 @@ export const ChatMessageList = memo(function ChatMessageList({
   onRegenerateMessage,
   canResendLastTurn = false,
   onResendLastTurn,
+  onDiscardFailedSubmission,
   onConfirmOutline,
   onPreviewAttachment,
   onOpenConsultation,
@@ -1953,6 +1972,7 @@ export const ChatMessageList = memo(function ChatMessageList({
    *  stopped. Drives the Resend affordance on the trailing assistant. */
   canResendLastTurn?: boolean;
   onResendLastTurn?: () => void;
+  onDiscardFailedSubmission?: (messageId: number) => void;
   onConfirmOutline?: (
     outline: Array<{ title: string; overview: string }>,
     topic: string,
@@ -2233,6 +2253,9 @@ export const ChatMessageList = memo(function ChatMessageList({
                 onCopy={onCopyAssistantMessage}
                 onEdit={onEditMessage}
                 editDisabled={isStreaming}
+                onDiscardFailedSubmission={onDiscardFailedSubmission}
+                onRetryFailedSubmission={!isStreaming && canResendLastTurn &&
+                  rowIndex === messageRows.length - 1 ? onResendLastTurn : undefined}
                 siblingInfo={sib}
                 onSwitchBranch={onSwitchBranch}
                 availableKbNames={availableKbNames}
