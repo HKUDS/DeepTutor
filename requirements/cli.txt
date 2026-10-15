@@ -82,3 +82,6 @@ pageindex>=0.2.10,<0.3.0
 
 # --- Partner channel QR onboarding (WeChat, WeCom, Feishu; core) ---
 qrcode>=7.4.0,<9.0.0
+
+# --- IANA time zone data for zoneinfo (Windows has no system database) ---
+tzdata>=2024.1

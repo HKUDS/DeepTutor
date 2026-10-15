@@ -48,6 +48,11 @@ dependencies = [
     # without it the browser renders no code at all — the operator sees a
     # button that does nothing, with no error to explain why.
     "qrcode>=7.4.0,<9.0.0",
+    # IANA time zone database for `zoneinfo`. Windows ships none, so without
+    # it every named zone (even "UTC") is unknown there and usage statistics,
+    # practice reviews and cron schedules reject every timezone they are given.
+    # On Linux/macOS `zoneinfo` keeps preferring the system database.
+    "tzdata>=2024.1",
     # Full app dependencies included by default for `pip install deeptutor`.
     "anthropic>=0.30.0",
     "dashscope>=1.14.0",

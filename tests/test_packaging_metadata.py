@@ -214,3 +214,18 @@ def test_cli_runtime_dependencies_match_every_install_surface(expected: str) -> 
         .splitlines()
     ]
     assert requirement_lines.count(expected) == 1
+
+
+def test_timezone_database_is_installed_on_every_install_surface() -> None:
+    """Windows has no system zoneinfo database, so named zones need ``tzdata``.
+
+    Without it ``ZoneInfo("UTC")`` raises on Windows and the usage statistics,
+    practice review and cron features reject every timezone (issue #1907).
+    """
+    expected = "tzdata>=2024.1"
+    root = _project(REPOSITORY_ROOT / "pyproject.toml")
+    cli_package = _project(REPOSITORY_ROOT / "packaging" / "deeptutor-cli" / "pyproject.toml")
+
+    assert root["dependencies"].count(expected) == 1
+    assert cli_package["dependencies"].count(expected) == 1
+    assert _cli_requirement_lines().count(expected) == 1
