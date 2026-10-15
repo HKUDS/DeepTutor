@@ -34,6 +34,17 @@ class ToolParameter:
     default: Any = None
     enum: list[str] | None = None
     items: dict[str, Any] | None = None
+    #: Emit ``"type": [<type>, "null"]`` so a strictly-required property still
+    #: has a genuine absence value. Endpoints that normalise optional
+    #: properties into required fields reject ``null`` otherwise, and the model
+    #: falls back to placeholder values (issue #1928).
+    nullable: bool = False
+    #: Numeric bounds and array length bounds are emitted verbatim so the
+    #: advertised contract matches what execution enforces.
+    minimum: float | None = None
+    maximum: float | None = None
+    min_items: int | None = None
+    max_items: int | None = None
     #: Keep this argument's value out of the ``tool_call`` event the trace
     #: renders. The model still sends it and the tool still receives it — this
     #: only stops it from being shown back to the person the tool is acting
@@ -44,9 +55,20 @@ class ToolParameter:
 
     def to_schema(self) -> dict[str, Any]:
         """Convert to JSON Schema property dict."""
-        schema: dict[str, Any] = {"type": self.type, "description": self.description}
+        schema: dict[str, Any] = {
+            "type": [self.type, "null"] if self.nullable else self.type,
+            "description": self.description,
+        }
         if self.enum:
             schema["enum"] = self.enum
+        if self.minimum is not None:
+            schema["minimum"] = self.minimum
+        if self.maximum is not None:
+            schema["maximum"] = self.maximum
+        if self.min_items is not None:
+            schema["minItems"] = self.min_items
+        if self.max_items is not None:
+            schema["maxItems"] = self.max_items
         if self.type == "array":
             schema["items"] = self.items if self.items is not None else {"type": "string"}
         return schema

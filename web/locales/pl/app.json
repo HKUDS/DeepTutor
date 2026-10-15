@@ -1820,6 +1820,7 @@
   "This step needs credentials": "Ten krok wymaga poświadczeń",
   "Close tab": "Zamknij kartę",
   "Close viewer": "Zamknij widok",
+  "Back to conversation": "Powrót do rozmowy",
   "Loading {{host}}…": "Ładowanie {{host}}…",
   "Many sites refuse to embed for security reasons. If the page below stays blank, use “Open in browser”.": "Wiele stron odmawia wbudowywania ze względów bezpieczeństwa. Jeśli poniższa strona pozostanie pusta, użyj „Otwórz w przeglądarce”.",
   "Open URL": "Otwórz adres URL",
@@ -5599,5 +5600,12 @@
   "Submit at most 12 steps.": "Prześlij maksymalnie 12 kroków.",
   "Each step can appear only once.": "Każdy krok może wystąpić tylko raz.",
   "Place this step correctly before asking why.": "Umieść ten krok poprawnie, zanim zapytasz dlaczego.",
-  "Say which steps are already assembled.": "Wskaż, które kroki są już złożone."
+  "Say which steps are already assembled.": "Wskaż, które kroki są już złożone.",
+  "Workspace instructions": "Instrukcje obszaru roboczego",
+  "Set learning goals, teaching style and response preferences for this workspace. Leave blank to use the default behavior.": "Ustaw cele nauki, styl nauczania i preferencje odpowiedzi dla tego obszaru. Pozostaw puste, aby używać domyślnego zachowania.",
+  "For example: I am learning linear algebra. Explain the geometric intuition before introducing formulas, and give hints before complete solutions.": "Na przykład: uczę się algebry liniowej. Wyjaśniaj intuicję geometryczną przed wzorami i dawaj wskazówki przed pełnymi rozwiązaniami.",
+  "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading, Course Study and standard visualizations. Changes take effect on the next turn.": "Dotyczy czatu, rozwiązywania, pytań, nauki z przewodnikiem, czytania, kursów i standardowych wizualizacji. Zmiany obowiązują od następnej tury.",
+  "Clear instructions": "Wyczyść instrukcje",
+  "{{used}} / {{limit}} characters": "{{used}} / {{limit}} znaków",
+  "contextBudget.segment.workspace_instructions": "Instrukcje obszaru roboczego"
 }

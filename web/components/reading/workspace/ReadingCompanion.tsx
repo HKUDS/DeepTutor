@@ -45,7 +45,6 @@ import { useChatAutoScroll } from "@/hooks/useChatAutoScroll";
 import { useMeasuredHeight } from "@/hooks/useMeasuredHeight";
 import { useResearchOutlineContinuation } from "@/hooks/useResearchOutlineContinuation";
 import { buildChatOutline, scrollToChatTurn } from "@/lib/chat-outline";
-import { downloadChatMarkdown } from "@/lib/chat-export";
 import { copyText } from "@/lib/clipboard";
 import { buildConversationNotebookSave } from "@/lib/conversation-notebook-save";
 import { setReadingViewport } from "@/lib/reading-turn-state";
@@ -281,8 +280,9 @@ export function ReadingCompanion({
     [state.messages],
   );
 
-  const downloadMarkdown = useCallback(() => {
+  const downloadMarkdown = useCallback(async () => {
     if (!state.messages.length) return;
+    const { downloadChatMarkdown } = await import("@/lib/chat-export");
     downloadChatMarkdown(state.messages, {
       title:
         activeConversation?.title ||

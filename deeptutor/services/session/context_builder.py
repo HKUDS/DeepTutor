@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import logging
 from typing import Any, Awaitable, Callable
 
 from deeptutor.agents.base_agent import BaseAgent
@@ -14,6 +15,7 @@ from deeptutor.services.llm.context_window import (
     coerce_positive_int,
     resolve_effective_context_window,
 )
+from deeptutor.services.llm.image_replay import deduplicate_user_images
 from deeptutor.services.prompt.language import language_label
 
 from .ask_user_trace import (
@@ -23,6 +25,8 @@ from .ask_user_trace import (
 from .model_history import history_groups, model_turn, replay_history
 from .protocol import SessionStoreProtocol
 from .provider_response_state import normalize_provider_response_state
+
+logger = logging.getLogger(__name__)
 
 #: When the summarizer's output lands within this fraction of its hard token
 #: cap, assume the provider cut it mid-sentence and trim the partial tail.
@@ -42,7 +46,8 @@ MAX_RAW_REBUILD_TOKENS = 131_072
 # Planning allowance per image, not provider-reported usage. Counting encoded
 # image bytes as text can exhaust the entire history budget on one screenshot.
 # Reserve nonzero headroom for vision while keeping it independent of PNG/JPEG
-# compression and URL length. Repeated images each consume this allowance.
+# compression and URL length. Apply request projection before counting so only
+# images retained in the request consume this allowance; references remain text.
 IMAGE_CONTEXT_TOKEN_ESTIMATE = 4096
 
 
@@ -88,6 +93,17 @@ def _count_model_context_tokens(value: Any) -> int:
 
     serialized = json.dumps(accounting_view(value), ensure_ascii=False)
     return count_tokens(serialized) + image_count * IMAGE_CONTEXT_TOKEN_ESTIMATE
+
+
+def _count_projected_model_tokens(replay: list[dict[str, Any]]) -> int:
+    projected_tokens = _count_model_context_tokens(deduplicate_user_images(replay))
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            "History budget: raw_replay_tokens=%d projected_replay_tokens=%d",
+            _count_model_context_tokens(replay),
+            projected_tokens,
+        )
+    return projected_tokens
 
 
 def trim_incomplete_tail(text: str) -> str:
@@ -284,21 +300,35 @@ class ContextBuilder:
         self,
         messages: list[dict[str, Any]],
         recent_budget: int,
+        route: dict[str, str] | None = None,
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        groups = history_groups(messages)
+        if any(model_turn(row) is not None for row in messages):
+            # Rebuild each group once, then find the longest fitting suffix.
+            # Images are shared across turns: adding per-group costs overcounts
+            # repeats, while replaying every growing tail is quadratic work.
+            replay_groups = [replay_history(group, route=route) for group in groups]
+            start, end = 0, len(groups) - 1
+            while start < end:
+                middle = (start + end) // 2
+                candidate = [message for group in replay_groups[middle:] for message in group]
+                if _count_projected_model_tokens(candidate) <= recent_budget:
+                    end = middle
+                else:
+                    start = middle + 1
+            # Always retain the newest whole turn, even if it alone overflows.
+            cutoff = sum(len(group) for group in groups[:start])
+            return messages[:cutoff], messages[cutoff:]
+
         selected: list[dict[str, Any]] = []
         total = 0
-        for group in reversed(history_groups(messages)):
-            if any(model_turn(row) is not None for row in group):
-                tokens = self._model_tokens(group)
-            else:
-                tokens = 0
-                for item in group:
-                    content = str(item.get("content", "") or "")
-                    clarification = extract_ask_user_clarifications(item)
-                    tokens += count_tokens(
-                        f"{content}\n{clarification}" if clarification else content
-                    )
-                    tokens += _provider_response_state_tokens(item)
+        for group in reversed(groups):
+            tokens = 0
+            for item in group:
+                content = str(item.get("content", "") or "")
+                clarification = extract_ask_user_clarifications(item)
+                tokens += count_tokens(f"{content}\n{clarification}" if clarification else content)
+                tokens += _provider_response_state_tokens(item)
             if selected and total + tokens > recent_budget:
                 break
             selected[0:0] = group
@@ -306,9 +336,14 @@ class ContextBuilder:
         cutoff = len(messages) - len(selected)
         return messages[:cutoff], selected
 
-    def _model_tokens(self, messages: list[dict[str, Any]], summary: str = "") -> int:
+    def _model_tokens(
+        self,
+        messages: list[dict[str, Any]],
+        summary: str = "",
+        route: dict[str, str] | None = None,
+    ) -> int:
         if any(model_turn(row) is not None for row in messages):
-            return _count_model_context_tokens(replay_history(messages, summary))
+            return _count_projected_model_tokens(replay_history(messages, summary, route))
         return count_tokens(build_history_text(self._build_history(summary, messages))) + sum(
             _provider_response_state_tokens(row) for row in messages
         )
@@ -473,10 +508,12 @@ class ContextBuilder:
                     f"{target_tokens} tokens. Output only the summary; do not call tools."
                 )
                 replay_kwargs = {
-                    "messages": [
-                        *replay_request["messages"],
-                        {"role": "user", "content": instruction},
-                    ],
+                    "messages": deduplicate_user_images(
+                        [
+                            *replay_request["messages"],
+                            {"role": "user", "content": instruction},
+                        ]
+                    ),
                     "tools": replay_request.get("tools"),
                 }
             async for _c in agent.stream_llm(
@@ -542,15 +579,15 @@ class ContextBuilder:
             item for item in messages if int(item.get("id", 0) or 0) > summary_up_to_msg_id
         ]
 
-        current_history = self._build_history(stored_summary, unsummarized)
-        current_tokens = self._model_tokens(unsummarized, stored_summary)
-        previous_model_turn = next(
-            (record for row in reversed(messages) if (record := model_turn(row)) is not None),
-            None,
-        )
         binding = getattr(llm_config, "binding", None)
         route = (
             {"provider": binding, "model": llm_config.model} if isinstance(binding, str) else None
+        )
+        current_history = self._build_history(stored_summary, unsummarized)
+        current_tokens = self._model_tokens(unsummarized, stored_summary, route)
+        previous_model_turn = next(
+            (record for row in reversed(messages) if (record := model_turn(row)) is not None),
+            None,
         )
         if current_tokens <= budget:
             return ContextBuildResult(
@@ -565,7 +602,7 @@ class ContextBuilder:
             )
 
         older_unsummarized, recent_messages = self._select_recent_messages(
-            unsummarized, recent_budget
+            unsummarized, recent_budget, route=route
         )
         # Everything not retained verbatim: previously summarized messages
         # plus the older unsummarized turns.
@@ -640,7 +677,8 @@ class ContextBuilder:
             retained_rows = unsummarized
         retained_groups = history_groups(retained_rows)
         while (
-            len(retained_groups) > 1 and self._model_tokens(retained_rows, stored_summary) > budget
+            len(retained_groups) > 1
+            and self._model_tokens(retained_rows, stored_summary, route) > budget
         ):
             retained_groups.pop(0)
             retained_rows = [row for group in retained_groups for row in group]
@@ -652,7 +690,7 @@ class ContextBuilder:
             conversation_summary=stored_summary,
             context_text=final_text,
             events=events,
-            token_count=self._model_tokens(retained_rows, stored_summary),
+            token_count=self._model_tokens(retained_rows, stored_summary, route),
             budget=budget,
             model_history=replay_history(retained_rows, stored_summary, route),
             previous_model_turn=previous_model_turn,

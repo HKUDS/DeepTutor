@@ -93,6 +93,11 @@
       "sha256": "4c0bf6572d9077fd66fe338b80c18e4d227adb6a44bc176bf5eb5ea1271bf9d0",
       "source": "Official website asset"
     },
+    "onomeo.svg": {
+      "url": "https://onomeo.com/icon.svg",
+      "sha256": "656d46b8e33103edfc859afc19ca6dbed78683eb506e5714a00eaa4a3a251f65",
+      "source": "Official website asset"
+    },
     "api-route.png": {
       "url": "https://www.api-route.com/apple-touch-icon.png?v=2",
       "sha256": "28866bf8b7c0913c634a34d2839a3201b0eab2019b926e556411a72f4c969e42",

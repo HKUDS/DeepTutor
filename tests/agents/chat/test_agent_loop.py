@@ -824,6 +824,88 @@ async def test_empty_finish_gets_one_nudge_then_recovers(
 
 
 @pytest.mark.asyncio
+async def test_empty_round_nudge_keeps_multimodal_user_parts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A nudge must extend a multimodal user message, never stringify it.
+
+    A chat PDF's embedded images ride in the trailing user message's content
+    parts. A round that finishes with nothing to replay leaves that message
+    trailing, so the recovery directive is appended to it; rebuilding the
+    message as a string folds every ``data:...;base64,`` payload into prompt
+    text and the next round bills image bytes as language tokens.
+    """
+    image = {"type": "image_url", "image_url": {"url": "data:image/png;base64,YWJj"}}
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "[Attached Documents]\nQuestion sheet"},
+                image,
+            ],
+        }
+    ]
+    client = _ScriptedChatClient(
+        [
+            # Round 1: an empty finish — no text, no reasoning, no tool call.
+            [_llm_chunk(finish_reason="stop")],
+            # Round 2 (after the nudge): a real answer.
+            [_llm_chunk(content="Here is the real answer.")],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = _Registry()
+    pipeline._model_turn_start = 0
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: [])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    monkeypatch.setattr(pipeline, "_build_loop_messages", lambda *_args, **_kwargs: messages)
+
+    events = await _run(pipeline, UnifiedContext(session_id="s1", user_message="Solve it"))
+
+    assert client.call_count == 2
+    durable = messages[0]["content"]
+    assert isinstance(durable, list)
+    assert [part["type"] for part in durable] == ["text", "image_url"]
+    assert durable[0]["text"].startswith("[Attached Documents]\nQuestion sheet")
+    assert "internal reasoning" in durable[0]["text"]
+    assert durable[1] == image
+    # The round the provider receives still carries the image as an image.
+    wire = client.calls[1]["messages"][-1]["content"]
+    assert any(part.get("type") == "image_url" for part in wire)
+    result = _result(events)
+    assert result.metadata["response"] == "Here is the real answer."
+    assert result.metadata["completed"] is True
+
+
+@pytest.mark.asyncio
+async def test_pure_image_message_gets_its_own_directive_part(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A message holding only images has no text part to extend."""
+    image = {"type": "image_url", "image_url": {"url": "data:image/png;base64,YWJj"}}
+    messages = [{"role": "user", "content": [image]}]
+    client = _ScriptedChatClient(
+        [
+            [_llm_chunk(finish_reason="stop")],
+            [_llm_chunk(content="Answered from the image.")],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = _Registry()
+    pipeline._model_turn_start = 0
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: [])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    monkeypatch.setattr(pipeline, "_build_loop_messages", lambda *_args, **_kwargs: messages)
+
+    await _run(pipeline, UnifiedContext(session_id="s1", user_message="What is this?"))
+
+    durable = messages[0]["content"]
+    assert [part["type"] for part in durable] == ["image_url", "text"]
+    assert "internal reasoning" in durable[1]["text"]
+    assert durable[0] == image
+
+
+@pytest.mark.asyncio
 async def test_explore_context_pre_pass_seeds_loop_without_polluting_answer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2423,24 +2505,17 @@ async def test_cold_start_stalled_provider_settles_with_bounded_retries(monkeypa
     events, consumer = await _collect_bus_events(bus)
     try:
         with pytest.raises(LLMProviderTransportError) as failure:
-            # The outer bound only proves the loop is finite (the default idle
-            # timeout alone would be 3x90s). Five seconds leaves room for cold
-            # one-time init on slow hosts without weakening that property.
             await asyncio.wait_for(
-                pipeline.run(UnifiedContext(session_id="cold", user_message="Hello"), bus), 5
+                pipeline.run(UnifiedContext(session_id="cold", user_message="Hello"), bus), 1
             )
+        assert failure.value.retryable
+        assert len(attempts) == (1 if phase == "partial_stream" else 3)
+        assert failure.value.partial_response is (phase == "partial_stream")
+        if phase != "connect":
+            assert len(stopped) == len(attempts)
     finally:
         await bus.close()
         await consumer
-    assert failure.value.retryable
-    assert len(attempts) == (1 if phase == "partial_stream" else 3)
-    assert failure.value.partial_response is (phase == "partial_stream")
-    if phase != "connect":
-        assert len(stopped) == len(attempts)
-    # Asserted only after the consumer drained: the final provider_transport
-    # progress is emitted right before run() raises, and the collector task
-    # appends it once scheduled — checking earlier races it (deterministically
-    # missing the event on Python 3.12+).
     assert sum(event.metadata.get("error_code") == "provider_transport" for event in events) >= 1
 
 
@@ -3784,6 +3859,66 @@ async def test_wire_deduplicates_user_images_without_mutating_model_history(monk
     assert [message["content"] for message in messages[:3]] == [
         message["content"] for message in original
     ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("distinct", [False, True])
+async def test_request_guard_budgets_projected_images_and_preserves_tool_history(
+    monkeypatch, distinct
+):
+    from copy import deepcopy
+
+    messages = []
+    for turn in range(4):
+        images = [
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/png;base64,image-{4 * turn + i if distinct else i}"
+                },
+            }
+            for i in range(4)
+        ]
+        messages.extend(
+            [
+                {"role": "user", "content": images},
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": f"call-{turn}",
+                            "type": "function",
+                            "function": {"name": "web_search", "arguments": '{"query":"source"}'},
+                        }
+                    ],
+                },
+                {"role": "tool", "tool_call_id": f"call-{turn}", "content": f"evidence {turn}"},
+                {"role": "assistant", "content": "answer"},
+            ]
+        )
+    original = deepcopy(messages)
+    client = _ScriptedChatClient([[_llm_chunk(content="answer")]])
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.llm_config = SimpleNamespace(context_window=60000, max_tokens=4096)
+    pipeline.registry = _Registry()
+    pipeline._model_turn_start = 0
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: [])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    monkeypatch.setattr(pipeline, "_build_loop_messages", lambda *_args, **_kwargs: messages)
+
+    await _run(pipeline, UnifiedContext(session_id="s", user_message="again"))
+
+    wire_tools = [
+        message["content"] for message in client.calls[0]["messages"] if message["role"] == "tool"
+    ]
+    expected = (
+        [pipeline._tool_result_snip_marker()] * 4
+        if distinct
+        else [f"evidence {turn}" for turn in range(4)]
+    )
+    assert wire_tools == expected
+    assert messages[: len(original)] == original
 
 
 @pytest.mark.asyncio

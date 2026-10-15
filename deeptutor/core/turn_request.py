@@ -69,6 +69,8 @@ class ReadingViewport(BaseModel):
 
     locator: int | None = Field(default=None, ge=0)
     selection: str | None = None
+    # Playback position of a video material, reported by the reader on each turn.
+    time_seconds: float | None = Field(default=None, ge=0)
 
 
 class TimedMediaViewport(BaseModel):

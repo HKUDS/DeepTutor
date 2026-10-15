@@ -1,5 +1,6 @@
 import { expect, test, type Locator } from "@playwright/test";
 import { jsPDF } from "jspdf";
+import { emptyTaskBoard } from "./fixtures/task-board";
 
 const MATERIAL_ID = "dddddddddddddddd";
 const WORKSPACE_ID = "pdf-resize-workspace";
@@ -50,6 +51,7 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/api/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
     const json = (payload: unknown) => route.fulfill({ json: payload });
+    if (path === "/api/task-board") return json(emptyTaskBoard);
     if (path === "/api/auth/status") {
       return json({ enabled: false, authenticated: true });
     }

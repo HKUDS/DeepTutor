@@ -1821,6 +1821,7 @@
   "This step needs credentials": "这一步需要凭据",
   "Close tab": "关闭标签页",
   "Close viewer": "关闭查看器",
+  "Back to conversation": "返回对话",
   "Loading {{host}}…": "正在加载 {{host}}…",
   "Many sites refuse to embed for security reasons. If the page below stays blank, use “Open in browser”.": "出于安全原因，许多网站拒绝嵌入。如果下方页面保持空白，请使用「在浏览器中打开」。",
   "Open URL": "打开 URL",
@@ -5583,5 +5584,12 @@
   "Submit at most 12 steps.": "最多提交 12 个步骤。",
   "Each step can appear only once.": "每个步骤只能出现一次。",
   "Place this step correctly before asking why.": "先正确放置这一步，再问为什么。",
-  "Say which steps are already assembled.": "请说明哪些步骤已经拼好。"
+  "Say which steps are already assembled.": "请说明哪些步骤已经拼好。",
+  "Workspace instructions": "工作区提示词",
+  "Set learning goals, teaching style and response preferences for this workspace. Leave blank to use the default behavior.": "设置这个工作区的学习目标、教学方式和回答偏好。留空时使用默认行为。",
+  "For example: I am learning linear algebra. Explain the geometric intuition before introducing formulas, and give hints before complete solutions.": "例如：我正在学习线性代数。先解释几何直觉，再引入公式；先给提示，再给完整解答。",
+  "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading, Course Study and standard visualizations. Changes take effect on the next turn.": "适用于对话、解题、主动提问、引导学习、沉浸式阅读、课程学习和常规可视化。从下一轮开始生效。",
+  "Clear instructions": "清空提示词",
+  "{{used}} / {{limit}} characters": "{{used}} / {{limit}} 字符",
+  "contextBudget.segment.workspace_instructions": "工作区提示词"
 }

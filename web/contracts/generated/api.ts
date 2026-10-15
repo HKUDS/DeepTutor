@@ -12409,6 +12409,8 @@ export interface components {
     };
     /** CreateWorkspacePayload */
     readonly CreateWorkspacePayload: {
+      /** Instructions */
+      readonly instructions?: string | null;
       /** Name */
       readonly name: string;
       /** Path */
@@ -15083,6 +15085,11 @@ export interface components {
        * @default null
        */
       readonly selection: string | null;
+      /**
+       * Time Seconds
+       * @default null
+       */
+      readonly time_seconds: number | null;
     };
     /** RebuildBookRequest */
     readonly RebuildBookRequest: {
@@ -16622,6 +16629,8 @@ export interface components {
     readonly UpdateWorkspacePayload: {
       /** Archived */
       readonly archived?: boolean | null;
+      /** Instructions */
+      readonly instructions?: string | null;
       /** Name */
       readonly name?: string | null;
       readonly resources?: components["schemas"]["WorkspaceResources"] | null;

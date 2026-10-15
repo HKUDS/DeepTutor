@@ -2167,6 +2167,41 @@ class MasteryReviseTool(BaseTool):
     """
 
     def get_definition(self) -> ToolDefinition:
+        revise_items = {
+            "type": "object",
+            "properties": {
+                "knowledge_point_id": {"type": "string"},
+                "name": {"type": "string"},
+                "type": {"type": "string", "enum": sorted(_ALLOWED_KP_TYPES)},
+                "prerequisite_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": ("Omit to inherit; [] explicitly clears required objectives."),
+                },
+                "topic_source_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Omit to inherit; [] explicitly clears sources.",
+                },
+            },
+            "required": ["knowledge_point_id", "name"],
+        }
+        add_items = {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "type": {"type": "string", "enum": sorted(_ALLOWED_KP_TYPES)},
+                "prerequisite_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
+                "topic_source_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
+            },
+            "required": ["name"],
+        }
         return ToolDefinition(
             name="mastery_revise",
             description=(
@@ -2180,15 +2215,22 @@ class MasteryReviseTool(BaseTool):
                 "so and offer mastery_build instead of quietly widening the "
                 "module. Rewriting a knowledge point resets its progress; a "
                 "knowledge point the learner has already mastered cannot be "
-                "rewritten or removed."
+                "rewritten or removed. When one coordinated adjustment touches "
+                "SEVERAL modules, pass them together as modules=[{module_id, "
+                "rewrite, add, remove}, ...] in ONE call — they are applied, "
+                "validated and reported as a single atomic revision, instead "
+                "of one full-outline round per module."
             ),
             parameters=[
                 ToolParameter(
                     name="module_id",
                     type="string",
                     description=(
-                        "Which module to revise. Copy it verbatim from mastery_status's map."
+                        "Which module to revise. Copy it verbatim from "
+                        "mastery_status's map. Single-module form only; for a "
+                        "coordinated multi-module adjustment use 'modules'."
                     ),
+                    required=False,
                 ),
                 ToolParameter(
                     name="rewrite",
@@ -2199,43 +2241,14 @@ class MasteryReviseTool(BaseTool):
                         "value when omitted."
                     ),
                     required=False,
-                    items={
-                        "type": "object",
-                        "properties": {
-                            "knowledge_point_id": {"type": "string"},
-                            "name": {"type": "string"},
-                            "type": {"type": "string", "enum": sorted(_ALLOWED_KP_TYPES)},
-                            "prerequisite_ids": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "description": (
-                                    "Omit to inherit; [] explicitly clears required objectives."
-                                ),
-                            },
-                            "topic_source_ids": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "description": "Omit to inherit; [] explicitly clears sources.",
-                            },
-                        },
-                        "required": ["knowledge_point_id", "name"],
-                    },
+                    items=revise_items,
                 ),
                 ToolParameter(
                     name="add",
                     type="array",
                     description=("Knowledge points to append to this module: each {name, type}."),
                     required=False,
-                    items={
-                        "type": "object",
-                        "properties": {
-                            "name": {"type": "string"},
-                            "type": {"type": "string", "enum": sorted(_ALLOWED_KP_TYPES)},
-                            "prerequisite_ids": {"type": "array", "items": {"type": "string"}},
-                            "topic_source_ids": {"type": "array", "items": {"type": "string"}},
-                        },
-                        "required": ["name"],
-                    },
+                    items=add_items,
                 ),
                 ToolParameter(
                     name="remove",
@@ -2243,6 +2256,35 @@ class MasteryReviseTool(BaseTool):
                     description="Knowledge point ids to drop from this module.",
                     required=False,
                     items={"type": "string"},
+                ),
+                ToolParameter(
+                    name="modules",
+                    type="array",
+                    description=(
+                        "Coordinated revisions for several modules, applied "
+                        "together in one atomic revision: each entry "
+                        "{module_id, rewrite, add, remove} with the same item "
+                        "shapes as the single-module parameters. Use this "
+                        "instead of one mastery_revise call per module when "
+                        "the learner's request spans multiple modules."
+                    ),
+                    required=False,
+                    items={
+                        "type": "object",
+                        "properties": {
+                            "module_id": {"type": "string"},
+                            "rewrite": {
+                                "type": "array",
+                                "items": revise_items,
+                            },
+                            "add": {"type": "array", "items": add_items},
+                            "remove": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                            },
+                        },
+                        "required": ["module_id"],
+                    },
                 ),
             ],
         )
@@ -2255,22 +2297,31 @@ class MasteryReviseTool(BaseTool):
         if not path_id:
             return _no_path_result()
 
+        specs, spec_error = _revise_specs(kwargs)
+        if spec_error is not None:
+            return ToolResult(content=spec_error, success=False)
+
         service = _new_service()
         progress = _load_path(service, path_id)
         if progress is None or not progress.modules:
             return _no_built_path_result("mastery_revise")
 
-        module_id = str(kwargs.get("module_id") or "").strip()
-        target = next((m for m in progress.modules if m.id == module_id), None)
-        if target is None:
-            known = ", ".join(f"{m.id!r} ({m.name})" for m in progress.modules)
-            return ToolResult(
-                content=(f"No module {module_id!r} in this mastery goal. Revise one of: {known}."),
-                success=False,
-            )
+        known_modules = {m.id: m for m in progress.modules}
+        targets: list[LearningModule] = []
+        for module_id in specs:
+            target = known_modules.get(module_id)
+            if target is None:
+                known = ", ".join(f"{m.id!r} ({m.name})" for m in progress.modules)
+                return ToolResult(
+                    content=(
+                        f"No module {module_id!r} in this mastery goal. Revise one of: {known}."
+                    ),
+                    success=False,
+                )
+            targets.append(target)
 
         removals = {
-            str(raw or "").strip() for raw in (kwargs.get("remove") or []) if str(raw or "").strip()
+            str(raw or "").strip() for spec in specs.values() for raw in (spec.get("remove") or [])
         }
         blocked_by = [
             f"{point.name!r} ({point.id})"
@@ -2288,13 +2339,25 @@ class MasteryReviseTool(BaseTool):
                 success=False,
             )
 
-        revised, error, reset_names, rewrite_ids = _revise_points(progress, target, kwargs)
-        if error:
-            return ToolResult(content=error, success=False)
+        taken = {kp.id for m in progress.modules for kp in m.knowledge_points}
+        revised_by_module: dict[str, list[KnowledgePoint]] = {}
+        resets_by_module: dict[str, list[str]] = {}
+        rewrite_ids: dict[str, str] = {}
+        for target in targets:
+            revised, error, resets, rewrites = _revise_points(
+                progress, target, specs[target.id], taken=taken
+            )
+            if error:
+                # First rejection refuses the whole request: a coordinated
+                # edit must not half-apply because its third module was bad.
+                return ToolResult(content=error, success=False)
+            revised_by_module[target.id] = revised
+            resets_by_module[target.id] = resets
+            rewrite_ids.update(rewrites)
 
         applied = [
-            module.model_copy(deep=True, update={"knowledge_points": revised})
-            if module.id == target.id
+            module.model_copy(deep=True, update={"knowledge_points": revised_by_module[module.id]})
+            if module.id in revised_by_module
             else module.model_copy(deep=True)
             for module in sorted(progress.modules, key=lambda m: m.order)
         ]
@@ -2314,15 +2377,14 @@ class MasteryReviseTool(BaseTool):
             )
         except ObjectiveRelationError as exc:
             return ToolResult(content=str(exc), success=False)
-        return _json_result(
-            {
-                "status": "revised",
-                "path_revision": progress.version,
-                "module_id": target.id,
-                "module_name": target.name,
+
+        def _module_report(module: LearningModule, points: list[KnowledgePoint]) -> dict[str, Any]:
+            return {
+                "module_id": module.id,
+                "module_name": module.name,
                 # Echoed so the tutor reports the revision against the promise
                 # it was allowed to keep, not against its own recollection.
-                "module_objective": target.objective,
+                "module_objective": module.objective,
                 "knowledge_points": [
                     {
                         "id": kp.id,
@@ -2331,9 +2393,33 @@ class MasteryReviseTool(BaseTool):
                         "prerequisite_ids": kp.prerequisite_ids,
                         "topic_source_ids": kp.topic_source_ids,
                     }
-                    for kp in revised
+                    for kp in points
                 ],
-                "progress_reset": reset_names,
+            }
+
+        if len(targets) == 1:
+            target = targets[0]
+            return _json_result(
+                {
+                    "status": "revised",
+                    "path_revision": progress.version,
+                    **_module_report(target, revised_by_module[target.id]),
+                    "progress_reset": resets_by_module[target.id],
+                    "map": map_summary(progress),
+                },
+                meta_key="mastery_revise",
+            )
+        # One payload — one outline map and one report per touched module —
+        # instead of a full snapshot per module echoing through later rounds.
+        return _json_result(
+            {
+                "status": "revised",
+                "path_revision": progress.version,
+                "modules": [
+                    _module_report(target, revised_by_module[target.id])
+                    | {"progress_reset": resets_by_module[target.id]}
+                    for target in targets
+                ],
                 "map": map_summary(progress),
             },
             meta_key="mastery_revise",
@@ -2616,10 +2702,62 @@ def _revised_point_id(module_id: str, taken: set[str]) -> str:
         index += 1
 
 
+def _revise_specs(kwargs: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], str | None]:
+    """Read one revise request into ``{module_id: spec}``, or say why not.
+
+    Two doors into the same contract: the single-module form (``module_id``
+    with ``rewrite`` / ``add`` / ``remove`` beside it) and the coordinated
+    form (``modules`` holding those per module). Keeping them one shape here
+    is what lets one execution path validate and apply both identically —
+    and refuses mixing the two, because a half-half request has no single
+    meaning to report back.
+    """
+    batch = kwargs.get("modules")
+    single_id = str(kwargs.get("module_id") or "").strip()
+    if batch is not None and not isinstance(batch, list):
+        return {}, "'modules' must be a list of {module_id, rewrite, add, remove} objects."
+    if batch:
+        if single_id:
+            return {}, (
+                "Pass either module_id (one module) or modules (several), not both — "
+                "put every coordinated change in its modules entry instead."
+            )
+        specs: dict[str, dict[str, Any]] = {}
+        for raw in batch:
+            if not isinstance(raw, dict):
+                return {}, "Each modules entry must be an object with a module_id."
+            module_id = str(raw.get("module_id") or "").strip()
+            if not module_id:
+                return {}, "Each modules entry needs the module_id it revises."
+            if module_id in specs:
+                return {}, (
+                    f"Module {module_id!r} appears twice in modules. Merge its "
+                    "rewrite / add / remove changes into one entry."
+                )
+            spec = {key: raw.get(key) for key in ("rewrite", "add", "remove")}
+            if not any(spec.get(key) for key in ("rewrite", "add", "remove")):
+                return {}, (
+                    f"The modules entry for {module_id!r} needs at least one of "
+                    "rewrite, add or remove."
+                )
+            specs[module_id] = spec
+        return specs, None
+    if not single_id:
+        return {}, (
+            "mastery_revise needs a module_id (one module) or a modules list "
+            "(several) saying what to revise."
+        )
+    has_changes = any(kwargs.get(key) for key in ("rewrite", "add", "remove"))
+    if not has_changes:
+        return {}, "mastery_revise needs at least one of rewrite, add or remove."
+    return {single_id: {key: kwargs.get(key) for key in ("rewrite", "add", "remove")}}, None
+
+
 def _revise_points(
     progress: LearningProgress,
     module: LearningModule,
-    kwargs: dict[str, Any],
+    spec: dict[str, Any],
+    taken: set[str] | None = None,
 ) -> tuple[list[KnowledgePoint], str | None, list[str], dict[str, str]]:
     """Apply one module's rewrite / add / remove instructions.
 
@@ -2628,16 +2766,19 @@ def _revise_points(
     because a tool that only says "no" is one the model retries verbatim.
     ``reset_names`` are the knowledge points whose progress this revision
     clears, so the tutor can tell the learner before they notice it themselves.
+    ``taken`` is the id space new points are minted into; a coordinated
+    multi-module revision passes one shared set so fresh ids stay unique
+    across the whole batch.
     """
     rewrites: dict[str, dict[str, Any]] = {}
-    for raw in kwargs.get("rewrite") or []:
+    for raw in spec.get("rewrite") or []:
         if not isinstance(raw, dict):
             continue
         kp_id = str(raw.get("knowledge_point_id") or "").strip()
         if kp_id:
             rewrites[kp_id] = raw
-    removals = {str(raw).strip() for raw in (kwargs.get("remove") or []) if str(raw or "").strip()}
-    additions = [raw for raw in (kwargs.get("add") or []) if isinstance(raw, (dict, str))]
+    removals = {str(raw).strip() for raw in (spec.get("remove") or []) if str(raw or "").strip()}
+    additions = [raw for raw in (spec.get("add") or []) if isinstance(raw, (dict, str))]
     if not rewrites and not removals and not additions:
         return (
             [],
@@ -2673,7 +2814,8 @@ def _revise_points(
             {},
         )
 
-    taken = {kp.id for m in progress.modules for kp in m.knowledge_points}
+    if taken is None:
+        taken = {kp.id for m in progress.modules for kp in m.knowledge_points}
     points: list[KnowledgePoint] = []
     reset_names: list[str] = []
     rewrite_ids: dict[str, str] = {}

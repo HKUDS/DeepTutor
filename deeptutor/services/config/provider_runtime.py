@@ -350,6 +350,14 @@ TTS_PROVIDERS: dict[str, VoiceProviderSpec] = {
         default_api_base="https://api.openai.com/v1",
         default_model="gpt-4o-mini-tts",
     ),
+    # Gemini TTS only speaks the native generateContent audio API, never the
+    # OpenAI-compatible /audio/speech endpoint, so it gets its own adapter.
+    "gemini": VoiceProviderSpec(
+        label="Google Gemini",
+        default_api_base="https://generativelanguage.googleapis.com/v1beta",
+        adapter="gemini",
+        default_model="gemini-2.5-flash-preview-tts",
+    ),
     "openrouter": VoiceProviderSpec(
         label="OpenRouter",
         default_api_base="https://openrouter.ai/api/v1",

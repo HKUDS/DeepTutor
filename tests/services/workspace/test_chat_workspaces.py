@@ -109,17 +109,20 @@ async def test_admission_freezes_binding_and_resume_ignores_global_folder(
 ):
     store = SQLiteSessionStore(tmp_path / "sessions.sqlite3")
     runtime = TurnRuntimeManager(store)
-    a = service.create_workspace("A")
-    b = service.create_workspace("B")
+    a = service.create_workspace("A", instructions="Original teaching style")
+    b = service.create_workspace("B", instructions="Other teaching style")
     captured = []
+    ready = asyncio.Event()
 
     async def run(execution):
+        await ready.wait()
         captured.append(
             service.create_runtime_context(
                 capability=execution.capability,
                 session_id=execution.session_id,
                 turn_id=execution.turn_id,
                 workspace_id=execution.payload.get("_content_workspace_id"),
+                instructions=execution.payload.get("_workspace_instructions"),
             )
         )
         await store.update_turn_status(execution.turn_id, "completed")
@@ -134,8 +137,11 @@ async def test_admission_freezes_binding_and_resume_ignores_global_folder(
         }
     )
     service.set_workspace(b["path"])
+    service.update_workspace(a["workspace_id"], instructions="Updated teaching style")
+    ready.set()
     await runtime._executions[turn["id"]].task
     assert captured[-1].root == a["path"]
+    assert captured[-1].instructions == "Original teaching style"
     saved = await store.get_session(session["id"])
     assert saved["preferences"]["workspace_id"] == a["workspace_id"]
     _, next_turn = await runtime.start_turn(
@@ -143,6 +149,7 @@ async def test_admission_freezes_binding_and_resume_ignores_global_folder(
     )
     await runtime._executions[next_turn["id"]].task
     assert captured[-1].root == a["path"]
+    assert captured[-1].instructions == "Updated teaching style"
     with pytest.raises(RuntimeError, match="workspace changed"):
         await runtime.start_turn(
             {

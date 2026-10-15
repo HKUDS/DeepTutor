@@ -32,6 +32,7 @@ import dynamic from "next/dynamic";
 import {
   Activity,
   AlertCircle,
+  ArrowLeft,
   ArrowRight,
   ChevronRight,
   Compass,
@@ -789,6 +790,7 @@ function SessionViewerPanelInner(
             onOpenAttachment={openFileTab}
             onOpenWebTab={openWebTab}
             onOpenLocalFile={openLocalFile}
+            onClose={onClose}
           />
         )}
       </div>
@@ -959,6 +961,7 @@ function ActivityHome({
   onOpenAttachment,
   onOpenWebTab,
   onOpenLocalFile,
+  onClose,
 }: {
   sessionId: string | null;
   taskDraftIds?: string[];
@@ -969,9 +972,22 @@ function ActivityHome({
   onOpenAttachment: (a: MessageAttachment) => void;
   onOpenWebTab: (url: string) => void;
   onOpenLocalFile: (file: File) => void;
+  onClose: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="h-full space-y-5 overflow-y-auto px-3 pb-8 pt-1 sm:px-3.5">
+      <div className="sticky top-0 z-10 -mx-3 flex justify-start border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--card)_94%,transparent)] px-3 py-2 backdrop-blur-sm sm:-mx-3.5 sm:px-3.5">
+        <button
+          type="button"
+          onClick={onClose}
+          className="inline-flex h-9 items-center gap-2 rounded-lg px-2.5 text-sm font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+          aria-label={t("Back to conversation")}
+        >
+          <ArrowLeft size={16} strokeWidth={1.8} />
+          <span>{t("Back to conversation")}</span>
+        </button>
+      </div>
       <TaskPanelSection
         sessionId={sessionId}
         draftTaskIds={taskDraftIds}

@@ -302,6 +302,7 @@ class ContentWorkspaceService(WorkspaceCatalogMixin):
         session_id: str,
         turn_id: str,
         workspace_id: str | None = None,
+        instructions: str | None = None,
     ) -> WorkspaceRuntimeContext:
         self.assert_available()
         binding = (
@@ -330,6 +331,11 @@ class ContentWorkspaceService(WorkspaceCatalogMixin):
             output_dir=str(output),
             logical_output_dir=logical,
             security_level=self.security_level(),
+            instructions=(
+                self.workspace_instructions(binding.workspace_id)
+                if instructions is None
+                else instructions
+            ),
         )
 
     def resolve(

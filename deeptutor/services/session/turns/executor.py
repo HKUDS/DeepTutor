@@ -938,6 +938,7 @@ class TurnExecutor:
                         session_id=session_id,
                         turn_id=turn_id,
                         workspace_id=payload.get("_content_workspace_id"),
+                        instructions=payload.get("_workspace_instructions"),
                     ),
                 ),
                 metadata={

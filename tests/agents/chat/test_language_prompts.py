@@ -7,7 +7,7 @@ import pytest
 from deeptutor.agents.chat.agentic_pipeline import AgenticChatPipeline
 from deeptutor.agents.loop.prompt_blocks import ChatPromptAssembler
 from deeptutor.capabilities.mastery.pipeline import MasteryLoopPipeline
-from deeptutor.core.context import UnifiedContext
+from deeptutor.core.context import TurnRuntimeContext, UnifiedContext, WorkspaceRuntimeContext
 from deeptutor.runtime.agentic.tool_dispatch import MAX_PARALLEL_TOOL_CALLS
 
 
@@ -162,3 +162,37 @@ def test_prompt_blocks_include_localized_optional_context() -> None:
     system_prompt = assembler.render(blocks)
     assert "## sidebar_tutor_context" in system_prompt
     assert "把代码和静态数据加载进内存" in system_prompt
+
+
+@pytest.mark.parametrize("language", ["en", "zh"])
+@pytest.mark.parametrize(
+    "mode",
+    [
+        "chat",
+        "deep_solve",
+        "ask_questions",
+        "immersive_reading",
+        "course_study",
+        "visualize",
+        "mastery_path",
+    ],
+)
+def test_workspace_instructions_reach_shared_loop_prompts_and_stay_in_the_system(language, mode):
+    pipeline_type = MasteryLoopPipeline if mode == "mastery_path" else AgenticChatPipeline
+    pipeline = pipeline_type(language=language)
+    text = "先讲直觉。Keep {literal braces} and line breaks.\nThen show examples."
+    context = UnifiedContext(
+        active_capability=mode,
+        runtime=TurnRuntimeContext(workspace=WorkspaceRuntimeContext(instructions=text)),
+    )
+    prompt = pipeline._build_system_prompt([], context)
+    assert prompt.count("## workspace_instructions\n") == 1
+    assert text in prompt
+    assert "workspace_instructions" not in pipeline._runtime_snapshots
+    assert (
+        "当前能力必需的工作流程" in prompt
+        if language == "zh"
+        else "capability's required workflow" in prompt
+    )
+    context.runtime.workspace = WorkspaceRuntimeContext()
+    assert "## workspace_instructions\n" not in pipeline._build_system_prompt([], context)

@@ -232,6 +232,9 @@ class TurnRequestPreparer:
                 else workspace_service.session_binding(session["id"])
             )
             payload["_content_workspace_id"] = binding.workspace_id
+            payload["_workspace_instructions"] = workspace_service.workspace_instructions(
+                binding.workspace_id
+            )
 
         legacy_watching = (
             payload.get("workspace_mode") == "immersive_watching"
@@ -686,6 +689,9 @@ class TurnRequestPreparer:
                         else workspace_service.session_binding(parent_session_id)
                     )
                     payload["_content_workspace_id"] = inherited_binding.workspace_id
+                    payload["_workspace_instructions"] = workspace_service.workspace_instructions(
+                        inherited_binding.workspace_id
+                    )
                 preference_update.update(
                     {
                         "parent_session_id": parent_session_id,

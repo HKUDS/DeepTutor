@@ -31,6 +31,7 @@ export function getWorkspaceResources(workspaceId = ''): Promise<WorkspaceResour
 }
 
 export interface ChatWorkspaceRegistration {
+  instructions?: string
   resources?: WorkspaceResources
   workspace_id: string
   kind: 'system' | 'general' | 'workspace'
@@ -64,7 +65,7 @@ export function listWorkspaces(force = false): Promise<ChatWorkspaceRegistration
 }
 
 export async function saveWorkspace(
-  input: { name?: string; path?: string; archived?: boolean; resources?: WorkspaceResources },
+  input: { name?: string; path?: string; archived?: boolean; resources?: WorkspaceResources; instructions?: string },
   workspaceId?: string
 ): Promise<ChatWorkspaceRegistration> {
   const result = await request<{ workspace: ChatWorkspaceRegistration }>(

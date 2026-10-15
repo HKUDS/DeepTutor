@@ -73,6 +73,7 @@ export type Revision = number;
 export type ReadingReferences = ReadingReference[];
 export type Locator = number | null;
 export type Selection = string | null;
+export type TimeSeconds = number | null;
 export type ReadingWorkspaceId = string | null;
 export type Regenerate = boolean;
 export type RegeneratedFromMessageId = number | string | null;
@@ -85,7 +86,7 @@ export type Skills = string[];
 export type SubagentConsultBudget = number | null;
 export type SupersededTurnId = string | null;
 export type TimedMediaId = string | null;
-export type TimeSeconds = number;
+export type TimeSeconds1 = number;
 export type Tools = string[] | null;
 export type Type1 = "message" | "start_turn";
 export type WorkspaceId = string | null;
@@ -411,13 +412,14 @@ export interface ReadingReference {
 export interface ReadingViewport {
   locator?: Locator;
   selection?: Selection;
+  time_seconds?: TimeSeconds;
 }
 /**
  * This interface was referenced by `TurnProtocolDocument`'s JSON-Schema
  * via the `definition` "TimedMediaViewport".
  */
 export interface TimedMediaViewport {
-  time_seconds: TimeSeconds;
+  time_seconds: TimeSeconds1;
 }
 /**
  * This interface was referenced by `TurnProtocolDocument`'s JSON-Schema

@@ -243,6 +243,31 @@ def _assistant_round_message(result: LLMCallResult) -> dict[str, Any]:
     return message
 
 
+def _append_directive_to_parts(parts: list[Any], instruction: str) -> list[Any]:
+    """Extend a multimodal user message with a text directive, keeping its parts.
+
+    The trailing user message can carry content parts: a chat PDF's embedded
+    images arrive as ``image_url`` blocks beside the text that references them.
+    Text is appended to the message's own text part (the parts-list analogue of
+    the plain-string branch in :meth:`AgentLoop._append_loop_instruction`), and
+    a message holding nothing but images gets a text part of its own.
+
+    Only the directive is added. Rebuilding the message as a string instead
+    would fold every ``data:...;base64,`` payload into prompt text and send the
+    image bytes to the provider as language tokens on the next round.
+    """
+    updated = list(parts)
+    for index in range(len(updated) - 1, -1, -1):
+        part = updated[index]
+        if isinstance(part, dict) and isinstance(part.get("text"), str):
+            prior = part["text"].rstrip()
+            merged = f"{prior}\n\n{instruction}" if prior else instruction
+            updated[index] = {**part, "text": merged}
+            return updated
+    updated.append({"type": "text", "text": instruction})
+    return updated
+
+
 def _has_replayable_assistant_state(result: LLMCallResult) -> bool:
     """Whether a tool-less round still has provider state to replay."""
     return bool(
@@ -793,7 +818,11 @@ class AgentLoop:
     def _append_loop_instruction(messages: list[dict[str, Any]], instruction: str) -> None:
         """Append a loop directive without creating consecutive user roles."""
         if messages and messages[-1].get("role") == "user":
-            prior = str(messages[-1].get("content") or "").rstrip()
+            content = messages[-1].get("content")
+            if isinstance(content, list):
+                messages[-1]["content"] = _append_directive_to_parts(content, instruction)
+                return
+            prior = str(content or "").rstrip()
             messages[-1]["content"] = f"{prior}\n\n{instruction}" if prior else instruction
             return
         messages.append({"role": "user", "content": instruction})
@@ -1047,7 +1076,15 @@ class AgentLoop:
         tool_choice: str | None = None,
     ) -> LLMCallResult:
         request_messages = with_transient_model_messages(messages, self._transient_model_messages)
-        await self.pipeline._guard_context_window(request_messages, self.stream)
+        # Guard the same request representation we send. Raw repeated images
+        # must not cause tool evidence to be snipped before image projection.
+        projected_messages = deduplicate_user_images(
+            [
+                {key: value for key, value in message.items() if key != "_context_snapshot"}
+                for message in request_messages
+            ]
+        )
+        await self.pipeline._guard_context_window(projected_messages, self.stream)
         stage = self.stage
         call_id = new_call_id(f"{self.source}-{stage}")
         trace_meta = build_trace_metadata(
@@ -1071,12 +1108,7 @@ class AgentLoop:
 
         kwargs: dict[str, Any] = {
             "model": self.pipeline.model,
-            "messages": deduplicate_user_images(
-                [
-                    {key: value for key, value in message.items() if key != "_context_snapshot"}
-                    for message in request_messages
-                ]
-            ),
+            "messages": projected_messages,
             "stream": True,
             **self.pipeline._completion_kwargs(max_tokens=max_tokens),
         }

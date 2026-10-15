@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 from typing import Any
 
 from deeptutor.core.tool_protocol import BaseTool, ToolDefinition, ToolParameter, ToolResult
@@ -102,6 +103,61 @@ def _rag_sources(result: dict[str, Any], *, query: str, kb_name: str) -> list[di
     return sources
 
 
+def _rag_selector_error(message: str) -> ToolResult:
+    return ToolResult(
+        content=message,
+        success=False,
+        metadata={"evidence_kind": "exact_source_visual", "error_type": "invalid_selector"},
+    )
+
+
+def _normalize_rag_selectors(kwargs: dict[str, Any]) -> dict[str, Any] | str:
+    """Validate the optional exact-source selectors at the LLM boundary.
+
+    Returns the normalized selector map, or a correctable error string.
+    A legacy ``region=[]`` placeholder counts as omission (full page); every
+    other malformed selector is rejected visibly — never clamped, dropped,
+    or rerouted to replacement evidence (issue #1928).
+    """
+    selectors = {
+        key: kwargs.get(key)
+        for key in ("source_path", "asset_id", "figure", "page", "region", "source_hash")
+    }
+    page = selectors["page"]
+    if page is not None:
+        if isinstance(page, bool) or not isinstance(page, int):
+            return (
+                f"Invalid page {page!r}: PDF pages are one-based integers. "
+                "Resend with an integer page >= 1, or null to omit the page."
+            )
+        if page < 1:
+            return (
+                f"Invalid page {page}: PDF pages are one-based. "
+                "Resend with a page >= 1, or null to omit the page."
+            )
+    region = selectors["region"]
+    if region is not None:
+        if isinstance(region, list) and not region:
+            selectors["region"] = None
+        elif not (
+            isinstance(region, list)
+            and len(region) == 4
+            and all(
+                not isinstance(x, bool)
+                and isinstance(x, (int, float))
+                and math.isfinite(x)
+                and 0 <= x <= 1
+                for x in region
+            )
+        ):
+            return (
+                f"Invalid region {region!r}: a crop must be four finite numbers "
+                "[x0, y0, x1, y1] within 0..1. Resend with a valid crop, or "
+                "null to inspect the full page."
+            )
+    return selectors
+
+
 class RAGTool(_PromptHintsMixin, BaseTool):
     def get_definition(self) -> ToolDefinition:
         return ToolDefinition(
@@ -122,37 +178,46 @@ class RAGTool(_PromptHintsMixin, BaseTool):
                     name="source_path",
                     type="string",
                     required=False,
+                    nullable=True,
                     description="Exact document path from kb_files for visual/page inspection; prevents substitution across sources.",
                 ),
                 ToolParameter(
                     name="asset_id",
                     type="string",
                     required=False,
+                    nullable=True,
                     description="Exact immutable source visual ID to inspect again on a follow-up.",
                 ),
                 ToolParameter(
                     name="figure",
                     type="string",
                     required=False,
+                    nullable=True,
                     description="Exact figure/table label, e.g. Figure 3.2 or 图3.2. Ambiguous references require source/page selection.",
                 ),
                 ToolParameter(
                     name="page",
                     type="integer",
                     required=False,
+                    nullable=True,
+                    minimum=1,
                     description="One-based PDF page for vector diagrams, sparse captions, tables or missing crops. Requires source_path.",
                 ),
                 ToolParameter(
                     name="region",
                     type="array",
-                    items={"type": "number"},
+                    items={"type": "number", "minimum": 0, "maximum": 1},
                     required=False,
-                    description="Optional PDF crop [x0,y0,x1,y1] normalized to 0..1; retains original layout at higher detail.",
+                    nullable=True,
+                    min_items=4,
+                    max_items=4,
+                    description="Optional PDF crop [x0,y0,x1,y1] normalized to 0..1; retains original layout at higher detail. Omitted or null means the full page.",
                 ),
                 ToolParameter(
                     name="source_hash",
                     type="string",
                     required=False,
+                    nullable=True,
                     description="Source document ID from an earlier citation; rejects changed source-page references.",
                 ),
             ],
@@ -172,8 +237,11 @@ class RAGTool(_PromptHintsMixin, BaseTool):
         from deeptutor.services.rag.source_visuals import figure_labels, retrieve_visual
 
         exact_keys = ("source_path", "asset_id", "figure", "page", "region", "source_hash")
+        selectors = _normalize_rag_selectors(kwargs)
+        if isinstance(selectors, str):
+            return _rag_selector_error(selectors)
         if any(
-            kwargs.get(key) is not None and kwargs.get(key) != "" for key in exact_keys
+            selectors.get(key) is not None and selectors.get(key) != "" for key in exact_keys
         ) or figure_labels(query):
             from deeptutor.multi_user.knowledge_access import resolve_for_rag
             from deeptutor.services.rag.kb_paths import resolve_kb_dir
@@ -189,7 +257,7 @@ class RAGTool(_PromptHintsMixin, BaseTool):
                     resolve_kb_dir(resource.base_dir, resource.name),
                     kb_name,
                     query=query,
-                    **{key: kwargs[key] for key in exact_keys if kwargs.get(key) is not None},
+                    **{key: selectors[key] for key in exact_keys if selectors.get(key) is not None},
                 )
             except (OSError, ValueError, TypeError) as exc:
                 return ToolResult(content=f"Source visual inspection failed: {exc}", success=False)
@@ -206,10 +274,12 @@ class RAGTool(_PromptHintsMixin, BaseTool):
                 },
                 model_message=evidence.model_message() if vision_supported else None,
             )
+        normalized_away = {key for key in exact_keys if selectors.get(key) is None}
         extra_kwargs = {
             key: value
             for key, value in kwargs.items()
             if key not in {"query", "kb_name", "event_sink", "_vision_supported"}
+            and key not in normalized_away
         }
 
         result = await rag_search(

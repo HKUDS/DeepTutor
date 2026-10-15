@@ -141,6 +141,13 @@ class LoopPromptAssembler:
         # Capability playbooks sit high so they frame the whole turn when active;
         # empty blocks are omitted by ``system_prompt``'s join.
         blocks.extend(capability_blocks or [])
+        workspace = context.runtime.workspace
+        if workspace is not None and workspace.instructions.strip():
+            policy = self._t("workspace_instructions_policy")
+            instructions = workspace.instructions.strip()
+            if policy:
+                instructions = f"{policy}\n\n{instructions}"
+            blocks.append(PromptBlock("workspace_instructions", instructions))
         if context.sidebar_context:
             blocks.append(PromptBlock("sidebar_tutor_context", context.sidebar_context))
         # A conversation that belongs to a course carries that course's

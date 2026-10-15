@@ -44,6 +44,7 @@ class WorkspaceRuntimeContext:
     output_dir: str = ""
     logical_output_dir: str = "outputs"
     security_level: str = "off"
+    instructions: str = ""
 
 
 @dataclass

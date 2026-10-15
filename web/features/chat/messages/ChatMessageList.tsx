@@ -377,27 +377,38 @@ type MessageBlock =
  * Split a message into its blocks.
  *
  * A mastery question ends its turn, so the prose introducing it is teaching,
- * not commentary awaiting a later answer. Keep that text outside the fold as
- * well as the card. Earlier exploration and any intervening tool rows still
- * fold normally. Answered clarifications belong to the same process as the
+ * not commentary awaiting a later answer. Keep learner-facing text since the
+ * previous card outside the fold even when tool work separates its parts.
+ * Reasoning and tool payloads are trace segments and still fold normally.
+ * Answered clarifications belong to the same process as the
  * work before and after them; only pending cards stand outside the fold.
  */
 function buildMessageBlocks(
   segments: MessageSegment[],
   answerStart: number,
+  isMastery: boolean,
 ): MessageBlock[] {
   const teaching = new Set<number>();
-  segments.forEach((segment, index) => {
-    if (segment.kind !== "mastery_question") return;
+  const preserveTeachingBefore = (index: number) => {
     let before = index - 1;
-    // Recording a grade or updating state can share the round with the quiz.
-    // Those rows do not turn the preceding teaching into working notes.
     while (before >= 0 && segments[before].kind === "trace") before -= 1;
-    while (before >= 0 && segments[before].kind === "text") {
-      teaching.add(before);
+    // Later tool work cannot demote an already-written lesson into working
+    // notes in a Mastery turn. Ordinary chat preserves only the immediate
+    // introduction to its question, keeping earlier exploration folded.
+    while (before >= 0) {
+      const preceding = segments[before];
+      if (preceding.kind === "text") teaching.add(before);
+      else if (!isMastery || preceding.kind !== "trace") break;
       before -= 1;
     }
+  };
+  segments.forEach((segment, index) => {
+    if (segment.kind === "mastery_question") preserveTeachingBefore(index);
   });
+  // Keep Mastery teaching/feedback visible before an assessment arrives and
+  // when a turn ends with bookkeeping without posing an assessment at all.
+  // Explicitly retracted prose is already a trace, not a text segment.
+  if (isMastery) preserveTeachingBefore(segments.length);
   const blocks: MessageBlock[] = [];
   let run: MessageSegment[] = [];
   const flush = () => {
@@ -957,8 +968,8 @@ export const AssistantMessage = memo(function AssistantMessage({
   // Once answered, a clarification joins the surrounding process so resumed
   // work continues under the original activity header.
   const messageBlocks = useMemo(
-    () => buildMessageBlocks(messageSegments, answerStart),
-    [messageSegments, answerStart],
+    () => buildMessageBlocks(messageSegments, answerStart, msg.capability === "mastery_path"),
+    [messageSegments, answerStart, msg.capability],
   );
   // The leading run rides in the activity header, which is already pinned at
   // the top and already is a disclosure — giving it the process keeps the

@@ -177,3 +177,63 @@ async def test_readiness_is_local_and_cancel_requires_writable_owned_task(tmp_pa
     with pytest.raises(HTTPException) as error:
         await knowledge.cancel_indexing_run("kb", "someone-else")
     assert error.value.status_code == 403
+
+
+_READ_TEXT = Path.read_text
+
+
+def _lock_reads(monkeypatch, path: Path, failures: int) -> list[Path]:
+    """Deny the next *failures* reads of *path* like a Windows sharing lock."""
+    from deeptutor.services import file_io
+
+    attempts: list[Path] = []
+
+    def read_text(self, *args, **kwargs):
+        if self == path:
+            attempts.append(self)
+            if len(attempts) <= failures:
+                raise PermissionError(13, "Permission denied", str(self))
+        return _READ_TEXT(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", read_text)
+    monkeypatch.setattr(file_io.time, "sleep", lambda _seconds: None)
+    return attempts
+
+
+def test_transient_journal_lock_is_retried_and_persistent_lock_fails(tmp_path, monkeypatch):
+    journal = tmp_path / ".indexing-run.json"
+    cancel = tmp_path / ".indexing-cancel.json"
+    with IndexingRun(tmp_path, [], task_id="one") as run:
+        attempts = _lock_reads(monkeypatch, journal, failures=2)
+        run.check()
+        assert len(attempts) == 3
+
+        assert request_cancel(tmp_path, "one")
+        attempts = _lock_reads(monkeypatch, cancel, failures=1)
+        with pytest.raises(IndexingCancelled):
+            run.check()
+        assert len(attempts) == 2
+
+        _lock_reads(monkeypatch, journal, failures=100)
+        with pytest.raises(OSError, match="unreadable"):
+            load_run(tmp_path)
+        monkeypatch.undo()
+        run.finish("cancelled")
+    assert load_run(tmp_path)["state"] == "cancelled"
+
+
+def test_journal_is_read_as_utf8_regardless_of_locale(tmp_path, monkeypatch):
+    source = tmp_path / "raw" / "ÁLGEBRA 数学.pdf"
+    source.parent.mkdir()
+    source.write_bytes(b"textbook")
+
+    def read_text(self, encoding=None, errors=None, **kwargs):
+        # Simulate a Windows cp1252 locale, the default when no encoding is given.
+        return _READ_TEXT(self, encoding=encoding or "cp1252", errors=errors, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", read_text)
+    with IndexingRun(tmp_path, [str(source)], task_id="one") as run:
+        run.check()
+        run.document(source, "parsed")
+        run.finish("failed")
+    assert list(visible_run(tmp_path)["documents"]) == ["ÁLGEBRA 数学.pdf"]

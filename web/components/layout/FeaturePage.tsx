@@ -103,6 +103,6 @@ export function pageActionClass(variant: 'primary' | 'secondary' = 'primary') {
 /** Column limits describe the content, while one set of container breakpoints
  * controls every library. Works on divs and semantic lists alike.
  */
-export function pageGridClass(columns: 2 | 3 | 5 | 'board' = 2) {
+export function pageGridClass(columns: 2 | 3 | 4 | 5 | 'board' = 2) {
   return `dt-page-grid dt-page-grid-${columns}`
 }

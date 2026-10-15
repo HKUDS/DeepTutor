@@ -25,7 +25,7 @@ try:
 except ImportError:  # CLI-only installs need no process-monitor dependency.
     psutil = None
 
-from deeptutor.services.file_io import atomic_write_json
+from deeptutor.services.file_io import atomic_write_json, read_text
 
 _CURRENT: ContextVar[IndexingRun | None] = ContextVar("indexing_run", default=None)
 _TERMINAL = {"completed", "partial", "failed", "cancelled", "interrupted"}
@@ -85,7 +85,7 @@ def failure_code(exc: BaseException) -> str:
 def load_run(kb_dir: Path) -> dict[str, Any] | None:
     path = Path(kb_dir) / ".indexing-run.json"
     try:
-        value = json.loads(path.read_text())
+        value = json.loads(read_text(path))
     except FileNotFoundError:
         return None
     except (OSError, ValueError) as exc:
@@ -97,7 +97,7 @@ def load_run(kb_dir: Path) -> dict[str, Any] | None:
     ):
         raise OSError("Indexing journal is invalid; original file preserved.")
     try:
-        cancelled = json.loads((Path(kb_dir) / ".indexing-cancel.json").read_text())
+        cancelled = json.loads(read_text(Path(kb_dir) / ".indexing-cancel.json"))
     except FileNotFoundError:
         cancelled = {}
     except (OSError, ValueError) as exc:
