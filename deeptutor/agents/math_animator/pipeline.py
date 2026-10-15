@@ -38,6 +38,7 @@ class MathAnimatorPipeline:
         workspace_id: str = "",
     ) -> None:
         self.enable_visual_review = enable_visual_review
+        self.language = language
         self.workspace_output_dir = (
             Path(workspace_output_dir).resolve() if workspace_output_dir else None
         )
@@ -159,6 +160,7 @@ class MathAnimatorPipeline:
             progress_callback=on_render_progress,
             output_dir=self.workspace_output_dir,
             workspace_root=self.workspace_root,
+            language=self.language,
         )
         duration_target_seconds = parse_target_duration_seconds(
             " ".join(

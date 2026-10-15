@@ -3,6 +3,7 @@ generate_system: |
   Produce runnable Python Manim code.
   Rules:
   - For video mode, return one complete Manim script with at least one renderable Scene subclass.
+  - For video mode, begin each teaching beat inside construct() with self.next_section("narration:spoken explanation for this visual"). Use a complete string literal with the exact narration: prefix. Keep each segment short and natural, explaining definitions, reasoning or conclusions in the user's language; do not read code, scene directions or Markdown aloud. The runtime synthesizes speech with the configured TTS model and extends holds when needed to finish each phrase. These markers also work without TTS configured.
   - For image mode, return YON_IMAGE anchor blocks only, and each block must contain a standalone renderable Manim script. Format:
     ### YON_IMAGE_1_START ###
     from manim import *
@@ -64,6 +65,7 @@ retry_system: |
   Return only the repaired full code inside JSON.
   If the failure is related to layout, sizing, or broken references, also clean up obvious overlap and readability issues, but do not rewrite the whole animation unless necessary.
   While repairing, do not shorten the animation just to make it run. Preserve complete teaching pacing and the necessary pauses whenever possible.
+  In video mode, preserve literal self.next_section("narration:spoken explanation") markers for every teaching beat. If the error says narration markers are missing, add concise speech matching the visuals. Do not call TTS, load audio files yourself, or remove narration to bypass an error.
   If the original animation is obviously too short, you may also add the necessary waits, extra beats, or ending hold while repairing.
   If the user gave an explicit duration target, the repaired code should remain close to that target instead of becoming shorter.
   Also avoid introducing `Tex` / `MathTex` / `MarkupText` by default unless LaTeX is explicitly required and available.
