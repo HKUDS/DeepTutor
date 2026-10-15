@@ -623,8 +623,8 @@ def test_concurrent_preference_writes_do_not_lose_updates(isolated_settings: Pat
     Unlocked, twelve concurrent writers left two of their fields on disk — the
     rest were overwritten by whichever writer had read an older snapshot.
     """
+    from concurrent.futures import ThreadPoolExecutor
     import json as json_module
-    import threading
 
     from deeptutor.services.settings.interface_settings import (
         _interface_settings_file,
@@ -635,11 +635,8 @@ def test_concurrent_preference_writes_do_not_lose_updates(isolated_settings: Pat
         for _ in range(20):
             set_ui_setting(f"probe_{index}", index)
 
-    threads = [threading.Thread(target=writer, args=(i,)) for i in range(12)]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join()
+    with ThreadPoolExecutor(max_workers=12) as executor:
+        list(executor.map(writer, range(12)))
 
     stored = json_module.loads(_interface_settings_file().read_text(encoding="utf-8"))
     assert {f"probe_{i}" for i in range(12)} <= set(stored)
