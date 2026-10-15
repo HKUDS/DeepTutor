@@ -4522,6 +4522,7 @@
   "Uses the current form without saving. Choose text in the voice's language. The provider may charge for this synthesis.": "Uses the current form without saving. Choose text in the voice's language. The provider may charge for this synthesis.",
   "Generated voice preview": "Generated voice preview",
   "Voice preview failed.": "Voice preview failed.",
+  "Voice preview failed (HTTP {{status}}).": "Voice preview failed (HTTP {{status}}).",
   "The provider returned no playable audio.": "The provider returned no playable audio.",
   "Voice preview was cancelled or timed out.": "Voice preview was cancelled or timed out.",
   "Voice preview failed. Check the provider credentials, model, voice, language and format.": "Voice preview failed. Check the provider credentials, model, voice, language and format.",

@@ -4518,6 +4518,7 @@
   "Uses the current form without saving. Choose text in the voice's language. The provider may charge for this synthesis.": "Korzysta z bieżących ustawień bez zapisywania. Wybierz tekst w języku głosu. Dostawca może naliczyć opłatę za tę syntezę.",
   "Generated voice preview": "Wygenerowany podgląd głosu",
   "Voice preview failed.": "Nie udało się wygenerować podglądu głosu.",
+  "Voice preview failed (HTTP {{status}}).": "Nie udało się wygenerować podglądu głosu (HTTP {{status}}).",
   "The provider returned no playable audio.": "Dostawca nie zwrócił odtwarzalnego dźwięku.",
   "Voice preview was cancelled or timed out.": "Podgląd głosu został anulowany lub przekroczono limit czasu.",
   "Voice preview failed. Check the provider credentials, model, voice, language and format.": "Nie udało się wygenerować podglądu głosu. Sprawdź dane uwierzytelniające dostawcy, model, głos, język i format.",

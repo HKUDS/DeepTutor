@@ -4522,6 +4522,7 @@
   "Uses the current form without saving. Choose text in the voice's language. The provider may charge for this synthesis.": "使用当前表单配置，无需保存。请使用音色支持的语言编写文本，提供方可能收取本次合成费用。",
   "Generated voice preview": "生成的试听音频",
   "Voice preview failed.": "音色试听失败。",
+  "Voice preview failed (HTTP {{status}}).": "音色试听失败（HTTP {{status}}）。",
   "The provider returned no playable audio.": "提供方未返回可播放的音频。",
   "Voice preview was cancelled or timed out.": "音色试听已取消或超时。",
   "Voice preview failed. Check the provider credentials, model, voice, language and format.": "音色试听失败，请检查提供方凭据、模型、音色、语言和音频格式。",

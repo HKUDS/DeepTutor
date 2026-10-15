@@ -4533,6 +4533,7 @@
   "Uses the current form without saving. Choose text in the voice's language. The provider may charge for this synthesis.": "Використовує поточну форму без збереження. Виберіть текст мовою голосу. Провайдер може стягувати плату за цей синтез.",
   "Generated voice preview": "Згенерований попередній перегляд голосу",
   "Voice preview failed.": "Помилка попереднього голосового перегляду.",
+  "Voice preview failed (HTTP {{status}}).": "Помилка попереднього голосового перегляду (HTTP {{status}}).",
   "The provider returned no playable audio.": "Провайдер не надав аудіо, яке можна відтворити.",
   "Voice preview was cancelled or timed out.": "Голосовий попередній перегляд скасовано або минув час очікування.",
   "Voice preview failed. Check the provider credentials, model, voice, language and format.": "Помилка попереднього голосового перегляду. Перевірте облікові дані провайдера, модель, голос, мову та формат.",

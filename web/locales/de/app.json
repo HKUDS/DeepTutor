@@ -4519,6 +4519,7 @@
   "Uses the current form without saving. Choose text in the voice's language. The provider may charge for this synthesis.": "Nutzt das aktuelle Formular, ohne zu speichern. Wähle Text in der Sprache der Stimme. Der Provider kann diese Synthese in Rechnung stellen.",
   "Generated voice preview": "Erzeugte Stimmen-Vorschau",
   "Voice preview failed.": "Stimmen-Vorschau fehlgeschlagen.",
+  "Voice preview failed (HTTP {{status}}).": "Stimmen-Vorschau fehlgeschlagen (HTTP {{status}}).",
   "The provider returned no playable audio.": "Der Provider hat kein abspielbares Audio zurückgegeben.",
   "Voice preview was cancelled or timed out.": "Die Stimmen-Vorschau wurde abgebrochen oder hat das Zeitlimit überschritten.",
   "Voice preview failed. Check the provider credentials, model, voice, language and format.": "Stimmen-Vorschau fehlgeschlagen. Überprüfe Provider-Anmeldedaten, Modell, Stimme, Sprache und Format.",
