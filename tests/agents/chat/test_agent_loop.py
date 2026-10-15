@@ -2850,6 +2850,120 @@ async def test_context_checkpoint_folds_completed_tool_rounds(
 
 
 @pytest.mark.asyncio
+async def test_context_checkpoint_state_replaces_instead_of_stacking(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _StatefulCheckpointRegistry(_Registry):
+        async def execute(self, name: str, **kwargs):
+            query = str(kwargs.get("query") or "")
+            return ToolResult(
+                content=f"noisy tool result for {query}",
+                success=True,
+                metadata={
+                    "_context_checkpoint": {
+                        "summary": f"checkpoint: {query}",
+                        "state": f"state after {query}",
+                    }
+                },
+            )
+
+    def _search(call_id: str, query: str) -> SimpleNamespace:
+        return _llm_chunk(
+            tool_calls=[
+                {"id": call_id, "name": "web_search", "arguments": json.dumps({"query": query})}
+            ]
+        )
+
+    client = _ScriptedChatClient(
+        [
+            [_search("call-1", "step one")],
+            [_search("call-2", "step two")],
+            [_llm_chunk(content="Final.")],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = _StatefulCheckpointRegistry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["web_search"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    await _run(
+        pipeline,
+        UnifiedContext(session_id="s1", user_message="Research this", enabled_tools=["web_search"]),
+    )
+
+    second_round = [m.get("content") for m in client.calls[1]["messages"]]
+    assert second_round[-2:] == [
+        "[Context checkpoint]\ncheckpoint: step one",
+        "state after step one",
+    ]
+    third_round = client.calls[2]["messages"]
+    contents = [str(m.get("content") or "") for m in third_round]
+    # Summaries accumulate as history; only the latest state is kept, last.
+    assert contents[-3:] == [
+        "[Context checkpoint]\ncheckpoint: step one",
+        "[Context checkpoint]\ncheckpoint: step two",
+        "state after step two",
+    ]
+    assert "state after step one" not in contents
+    assert not any(m.get("role") == "tool" for m in third_round)
+
+
+@pytest.mark.asyncio
+async def test_solve_checkpoint_fold_keeps_remaining_plan(monkeypatch: pytest.MonkeyPatch) -> None:
+    from deeptutor.capabilities.solve.tools import SolveFinishStepTool, SolvePlanTool
+
+    tools = {"solve_plan": SolvePlanTool(), "solve_finish_step": SolveFinishStepTool()}
+
+    class _SolveRegistry(_Registry):
+        def build_openai_schemas(self, _enabled):
+            return [tool.get_definition().to_openai_schema() for tool in tools.values()]
+
+        async def execute(self, name: str, **kwargs):
+            return await tools[name].execute(**kwargs)
+
+    def _call(call_id: str, name: str, args: dict[str, Any]) -> SimpleNamespace:
+        return _llm_chunk(tool_calls=[{"id": call_id, "name": name, "arguments": json.dumps(args)}])
+
+    goals = ["Factor x^2-5x+6", "Find both roots", "Verify by substitution"]
+    client = _ScriptedChatClient(
+        [
+            [
+                _call(
+                    "c1",
+                    "solve_plan",
+                    {"analysis": "factor", "steps": [{"goal": g} for g in goals]},
+                )
+            ],
+            [_call("c2", "solve_finish_step", {"step_id": "S1", "summary": "(x-2)(x-3)"})],
+            [_llm_chunk(content="x = 2 or x = 3")],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = _SolveRegistry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: list(tools))
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    context = UnifiedContext(
+        session_id="s1",
+        user_message="Solve x^2 - 5x + 6 = 0",
+        metadata={"solve_mode": True, "solve_session_id": "fold-keeps-plan"},
+    )
+
+    await _run(pipeline, context)
+
+    # The step's tool chatter is folded away; the remaining plan must stay in view.
+    after_fold = client.calls[2]["messages"]
+    assert not any(m.get("role") == "tool" for m in after_fold)
+    assert after_fold[-2]["content"].startswith("[Context checkpoint]\n[S1] Factor x^2-5x+6")
+    plan = after_fold[-1]["content"]
+    assert "- S1 [done] Factor x^2-5x+6" in plan
+    assert "- S2 [next] Find both roots" in plan
+    assert "- S3 [todo] Verify by substitution" in plan
+    # A follow-up turn replays the persisted model turn, so it carries the plan too.
+    model_turn = json.dumps(context.runtime.model_turn, ensure_ascii=False)
+    assert "Find both roots" in model_turn and "Verify by substitution" in model_turn
+
+
+@pytest.mark.asyncio
 async def test_ask_user_available_every_round(monkeypatch: pytest.MonkeyPatch) -> None:
     """The single loop offers the full tool belt — including ask_user — on
     every round; there is no respond stage that narrows tools to ask_user."""

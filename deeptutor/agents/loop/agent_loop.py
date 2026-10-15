@@ -834,7 +834,7 @@ class AgentLoop:
         dispatch: DispatchOutcome,
         checkpoint_boundary: int,
     ) -> int:
-        summary = _last_context_checkpoint_summary(dispatch)
+        summary, state = _last_context_checkpoint(dispatch)
         if not summary:
             return checkpoint_boundary
         prefix = messages[:checkpoint_boundary]
@@ -844,8 +844,13 @@ class AgentLoop:
                 "content": f"[Context checkpoint]\n{summary}",
             }
         )
+        boundary = len(prefix)
+        if state:
+            # State sits past the boundary, so the next fold replaces it rather
+            # than leaving a stale copy beside every summary.
+            prefix.append({"role": "system", "content": state})
         messages[:] = prefix
-        return len(messages)
+        return boundary
 
     async def _reject_capability_finish(self) -> LoopOutcome:
         """Fail a turn whose required interaction could not be completed."""
@@ -1870,8 +1875,13 @@ async def _single_chunk_stream(response: Any) -> Any:
     )
 
 
-def _last_context_checkpoint_summary(dispatch: DispatchOutcome) -> str:
-    summary = ""
+def _last_context_checkpoint(dispatch: DispatchOutcome) -> tuple[str, str]:
+    """``(summary, state)`` of the round's last checkpoint.
+
+    ``summary`` is history the fold keeps; ``state`` is the optional current
+    state that replaces the previous fold's copy instead of stacking with it.
+    """
+    summary, state = "", ""
     for tool_message in dispatch.tool_messages:
         tool_call_id = str(tool_message.get("tool_call_id") or "")
         metadata = dispatch.tool_metadata_by_id.get(tool_call_id) or {}
@@ -1881,7 +1891,8 @@ def _last_context_checkpoint_summary(dispatch: DispatchOutcome) -> str:
         candidate = str(checkpoint.get("summary") or "").strip()
         if candidate:
             summary = candidate
-    return summary
+            state = str(checkpoint.get("state") or "").strip()
+    return summary, state
 
 
 __all__ = [

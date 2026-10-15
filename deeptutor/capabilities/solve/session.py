@@ -4,9 +4,10 @@ Unlike mastery's learning service (disk-backed, multi-session), a solve turn
 is one-shot: the session lives only for the turn, keyed by the id the pipeline
 injects as ``_solve_session_id``. It holds the model-authored plan, per-step
 completion, and the replan budget gate — the deterministic "spine" the chat
-loop drives against. The plan also rides in the conversation (the
-``solve_plan`` tool result), so a follow-up chat turn stays grounded even
-though the session itself does not persist.
+loop drives against. The plan also rides in the conversation — the
+``solve_plan`` tool result, then :meth:`SolveSession.progress_text` as the
+checkpoint state each ``solve_finish_step`` fold keeps — so a follow-up chat
+turn stays grounded even though the session itself does not persist.
 
 The store is a bounded, process-local dict: a solve turn runs in one process,
 sessions are small and short-lived, and the bound stops a long-running server
@@ -74,6 +75,24 @@ class SolveSession:
 
     def all_done(self) -> bool:
         return bool(self.steps) and all(step.done for step in self.steps)
+
+    def progress_text(self) -> str:
+        """The plan as it stands — every step marked done / next / todo.
+
+        ``solve_finish_step`` hands this to the loop as checkpoint state, so the
+        plan stays in view after the step's tool chatter is folded away.
+        """
+        nxt = self.next_step()
+        lines = ["[Solve plan]"]
+        for step in self.steps:
+            mark = "done" if step.done else ("next" if step is nxt else "todo")
+            lines.append(f"- {step.id} [{mark}] {step.goal}")
+        lines.append(
+            "All steps are done: write the final answer now."
+            if nxt is None
+            else f"Work {nxt.id} now, then call solve_finish_step."
+        )
+        return "\n".join(lines)
 
 
 _SESSIONS: "OrderedDict[str, SolveSession]" = OrderedDict()
