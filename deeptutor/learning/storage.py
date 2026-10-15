@@ -956,6 +956,7 @@ class LearningStore:
         self._import_legacy_if_needed(path_id)
         bounded_limit = max(1, min(int(limit), 1000))
         with self._connect() as conn:
+            conn.execute("BEGIN")
             row = conn.execute(
                 "SELECT * FROM mastery_paths WHERE path_id = ?", (path_id,)
             ).fetchone()
@@ -1547,6 +1548,7 @@ class LearningStore:
         """Read the atlas in a constant number of bounded SQLite queries."""
 
         with self._connect() as conn:
+            conn.execute("BEGIN")
             progress_rows = conn.execute(
                 """
                 SELECT p.* FROM mastery_paths p
