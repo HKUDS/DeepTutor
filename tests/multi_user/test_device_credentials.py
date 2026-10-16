@@ -379,6 +379,16 @@ def test_disabled_account_fails_closed(mu_isolated_root, monkeypatch):
 
 
 def test_heartbeat_enforces_freshness_daily_limit_and_day_rollover(mu_isolated_root, monkeypatch):
+    from deeptutor.multi_user import device_credentials
+
+    # Offsets are measured from the login timestamp. Within five minutes of
+    # UTC midnight, +300s falls on the next date and the usage day resets
+    # before the limit is reached.
+    monkeypatch.setattr(
+        device_credentials,
+        "utc_now",
+        lambda: datetime(2026, 6, 15, 12, 0, tzinfo=timezone.utc),
+    )
     client, users = _client(mu_isolated_root, monkeypatch)
     learner_id = users["learner"]["id"]
     issued = client.post(
