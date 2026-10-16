@@ -261,6 +261,9 @@ jobs:
           pip install -r requirements/partners.txt
           pip install pytest pytest-asyncio
 
+      - name: Install optional fastapi-guard
+        run: pip install -r requirements/guard.txt
+
       - name: Install optional LightRAG SDK
         if: matrix.python-version == '3.12'
         run: pip install "lightrag-hku==1.5.7"

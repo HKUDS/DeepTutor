@@ -7,6 +7,7 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 
+from deeptutor.api.security_guard import install_security_guard
 from deeptutor.logging import configure_logging
 from deeptutor.services.config import (
     ensure_runtime_settings_files,
@@ -444,6 +445,12 @@ async def json_error_boundary(request: Request, call_next):
             },
         )
 
+
+# Optional fastapi-guard screening (off unless security_guard.enabled). Added
+# before the access log and CORS middlewares below: Starlette makes the last-added
+# middleware outermost, so CORS stays outside the guard (429/403 carry CORS
+# headers) and the access log sees what the guard rejects.
+install_security_guard(app)
 
 # Access logging is funneled through this one middleware. uvicorn's own
 # per-request access log is disabled on every launch path (run_server.py via

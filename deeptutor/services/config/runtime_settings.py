@@ -66,6 +66,26 @@ DEFAULT_SYSTEM_SETTINGS: dict[str, Any] = {
     # earlier images ride along on every later turn — a re-sent payload, so
     # it is a policy like the caps above, not an LLM budget.
     "chat_prior_image_reinject_max": 4,
+    # Opt-in fastapi-guard request screening (deeptutor/api/security_guard.py).
+    # Off by default: when disabled, the package is never imported and the
+    # middleware stack is unchanged. ``trusted_proxies`` are the only peers
+    # whose X-Forwarded-For is believed; an empty list means the socket peer is
+    # always the client. The rate limit counts every HTTP request from one
+    # client address, so it is sized for the frontend's polling, not for one
+    # call per page view.
+    "security_guard": {
+        "enabled": False,
+        "rate_limit": 300,
+        "rate_limit_window": 60,
+        "trusted_proxies": ["127.0.0.1", "::1"],
+        # Skip the rate limit only. The bundled frontend hides browser
+        # addresses, so its traffic arrives as loopback and would share one
+        # bucket; loopback requests that carry X-Forwarded-For still resolve
+        # to, and are limited as, the forwarded client.
+        "exempt_ips": ["127.0.0.1", "::1"],
+        "whitelist": [],
+        "blacklist": [],
+    },
 }
 
 # Clamp bounds for the chat attachment knobs. The MB ceilings are deliberately
@@ -390,6 +410,16 @@ IGNORE_PROCESS_OVERRIDES_ENV = "DEEPTUTOR_IGNORE_PROCESS_ENV_OVERRIDES"
 # can never win again: toggling "check for updates" wrote system.json while the
 # live API kept answering with the value captured at startup (#1536).
 SETTINGS_DERIVED_ENV_KEYS = "DEEPTUTOR_SETTINGS_DERIVED_ENV_KEYS"
+# (process env name, security_guard key) deployment overrides.
+_SECURITY_GUARD_ENV_KEYS = (
+    ("DEEPTUTOR_GUARD_ENABLED", "enabled"),
+    ("DEEPTUTOR_GUARD_RATE_LIMIT", "rate_limit"),
+    ("DEEPTUTOR_GUARD_RATE_LIMIT_WINDOW", "rate_limit_window"),
+    ("DEEPTUTOR_GUARD_TRUSTED_PROXIES", "trusted_proxies"),
+    ("DEEPTUTOR_GUARD_EXEMPT_IPS", "exempt_ips"),
+    ("DEEPTUTOR_GUARD_WHITELIST", "whitelist"),
+    ("DEEPTUTOR_GUARD_BLACKLIST", "blacklist"),
+)
 TRUTHY = {"1", "true", "yes", "on"}
 FALSY = {"0", "false", "no", "off"}
 
@@ -878,6 +908,11 @@ class RuntimeSettingsService:
             payload["chat_attachment_max_chars_total"] = value
         if value := self._process_env_value("CHAT_PRIOR_IMAGE_REINJECT_MAX"):
             payload["chat_prior_image_reinject_max"] = value
+        guard = dict(payload.get("security_guard") or {})
+        for env_name, key in _SECURITY_GUARD_ENV_KEYS:
+            if value := self._process_env_value(env_name):
+                guard[key] = value
+        payload["security_guard"] = guard
         return self._normalize_system(payload)
 
     def _apply_auth_process_overrides(self, settings: dict[str, Any]) -> dict[str, Any]:
@@ -1261,6 +1296,9 @@ class RuntimeSettingsService:
         )
         # A per-message total below the per-file cap is contradictory; lift it.
         max_total_mb = max(max_total_mb, max_file_mb)
+        raw_guard = settings.get("security_guard")
+        guard = raw_guard if isinstance(raw_guard, dict) else {}
+        guard_defaults = DEFAULT_SYSTEM_SETTINGS["security_guard"]
         return {
             "version": 1,
             "version_check_enabled": _coerce_bool(settings.get("version_check_enabled"), True),
@@ -1306,6 +1344,25 @@ class RuntimeSettingsService:
                 DEFAULT_SYSTEM_SETTINGS["chat_attachment_max_chars_total"],
                 *CHAT_ATTACHMENT_CHARS_RANGE,
             ),
+            "security_guard": {
+                "enabled": _coerce_bool(guard.get("enabled"), False),
+                "rate_limit": _coerce_clamped_int(
+                    guard.get("rate_limit"), guard_defaults["rate_limit"], 1, 1_000_000
+                ),
+                "rate_limit_window": _coerce_clamped_int(
+                    guard.get("rate_limit_window"), guard_defaults["rate_limit_window"], 1, 86_400
+                ),
+                # An absent key keeps the loopback default; an explicit empty
+                # list means "trust no proxy".
+                "trusted_proxies": _host_list(guard["trusted_proxies"])
+                if "trusted_proxies" in guard
+                else list(guard_defaults["trusted_proxies"]),
+                "exempt_ips": _host_list(guard["exempt_ips"])
+                if "exempt_ips" in guard
+                else list(guard_defaults["exempt_ips"]),
+                "whitelist": _host_list(guard.get("whitelist")),
+                "blacklist": _host_list(guard.get("blacklist")),
+            },
         }
 
     def _normalize_auth(self, settings: dict[str, Any]) -> dict[str, Any]:

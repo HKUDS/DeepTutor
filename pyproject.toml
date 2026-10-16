@@ -271,6 +271,12 @@ rag-lightrag = ["lightrag-hku==1.5.7"]
 # package or configured model is unavailable.
 rag-rerank = ["sentence-transformers>=3.0.0,<6.0.0; python_version < '3.14'"]
 
+# Optional request screening (rate limit, IP allow/deny lists, attack-pattern
+# scan of path, query and headers). Off unless system.json `security_guard`
+# is enabled; see docs-for-user/SECURITY_GUARD.md. Mirrors
+# requirements/guard.txt. Docker: DEEPTUTOR_EXTRAS=guard.
+guard = ["fastapi-guard>=8.1.1,<9.0.0"]
+
 # Dev/test tooling. Mirrors requirements/dev.txt.
 dev = [
     "deeptutor[server]",
