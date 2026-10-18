@@ -6,6 +6,7 @@ import TaskPanelSection from '@/components/tasks/TaskPanelSection'
 import { SessionAvatar } from '@/components/sidebar/SessionAvatar'
 import {
   DEFAULT_TASK_COLORS,
+  normalizeTaskBoard,
   publishTaskBoard,
   sessionTaskColor,
   type TaskBoard,
@@ -196,6 +197,27 @@ describe('task conversation integration', () => {
     expect(screen.getByRole('combobox', { name: 'First task: Task status' })).toHaveValue('done')
     view.unmount()
     expect(source.close).toHaveBeenCalledOnce()
+  })
+  it('survives a degraded board payload without cards', async () => {
+    // Regression: a /api/task-board response missing `cards` used to reach the
+    // panel as `undefined` and `board?.cards.filter(...)` crashed the whole
+    // page through the error boundary (the optional chain guards the board,
+    // not the array on it).
+    vi.mocked(fetch).mockImplementation(async () => Response.json({}))
+    render(
+      <TaskBoardRuntime>
+        <TaskPanelSection sessionId="chat" />
+        <TaskLinkSelector sessionId="chat" workspaceId="study" />
+      </TaskBoardRuntime>
+    )
+    await waitFor(() =>
+      expect(screen.getByText(translations['tasks.empty'] ?? 'tasks.empty')).toBeInTheDocument()
+    )
+    const normalized = normalizeTaskBoard({} as TaskBoard)
+    expect(normalized.cards).toEqual([])
+    expect(normalized.colors).toEqual(DEFAULT_TASK_COLORS)
+    expect(normalized.session_links).toEqual([])
+    expect(normalized.revision).toBe(0)
   })
   it('keeps draft associations local until the conversation exists', async () => {
     const onDraftChange = vi.fn()

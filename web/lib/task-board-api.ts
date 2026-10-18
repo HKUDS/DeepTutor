@@ -43,6 +43,12 @@ export function subscribeTaskBoardChanges(listener: (board: TaskBoard) => void) 
 export function normalizeTaskBoard(board: TaskBoard): TaskBoard {
   return {
     ...board,
+    // Every field the board consumers touch unconditionally has to survive a
+    // degraded payload: a response without `cards` used to reach
+    // TaskPanelSection as `undefined` and its `board?.cards.filter(...)` took
+    // down the whole page through the error boundary — the optional chain
+    // guards `board`, not the array on it.
+    cards: board.cards ?? [],
     colors: board.colors ?? DEFAULT_TASK_COLORS,
     session_links: board.session_links ?? [],
     revision: board.revision ?? 0,

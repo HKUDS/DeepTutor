@@ -6,6 +6,7 @@ const inWorkspace = (path: string, id: string) => id ? scopedUrl(path, id) : pat
 export const LEARNING_HUB = '/learning'
 export const BOOKS_HOME = `${LEARNING_HUB}/books`
 export const PRACTICE_HOME = `${LEARNING_HUB}/practice`
+export const SEQUENCE_HOME = `${LEARNING_HUB}/sequence`
 export const MASTERY_HOME = `${LEARNING_HUB}/mastery`
 export const READING_HOME = `${LEARNING_HUB}/reading`
 export const READING_MATERIALS = `${READING_HOME}/materials`
@@ -52,6 +53,10 @@ export function readingSessionIdFromPath(pathname: string): string | null {
   } catch {
     return null
   }
+}
+
+export function sequenceRoute(workspaceId = activeWorkspaceId()): string {
+  return inWorkspace(SEQUENCE_HOME, workspaceId)
 }
 
 export function practiceRoute(query?: URLSearchParams, workspaceId = activeWorkspaceId()): string {
