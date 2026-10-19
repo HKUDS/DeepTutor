@@ -43,6 +43,7 @@ import hashlib
 import json
 import logging
 from pathlib import Path
+import re
 import sqlite3
 import threading
 from typing import Any
@@ -104,20 +105,46 @@ REASON_UNKNOWN_KIND = "未知的变更类型。"
 REASON_STALE = "云端已有更新版本，未应用该变更。"
 REASON_CONFLICT = "云端与端侧版本不一致，等待用户选择。"
 
-#: 敏感键清单：与端侧 ``SyncDomains.FORBIDDEN_KEY_PARTS`` 同一份。
-#: 键名小写后只要包含其中一段就算命中——宁可误伤一个设定项，也不能漏掉凭据。
-FORBIDDEN_KEY_PARTS: tuple[str, ...] = (
-    "api_key",
-    "apikey",
-    "secret",
-    "token",
-    "password",
-    "passwd",
-    "authorization",
-    "credential",
-    "private_key",
-    "session_key",
+#: 敏感键清单：与端侧 ``sync/ports/SensitiveKeys.kt`` 同一份。
+#:
+#: 判定按**词段**而不是子串。``max_tokens`` 含 "token" 但它不是凭据：按子串判
+#: 会把整个 agent 载荷连同它的预算字段一起拒掉，而端侧用同一口径判，于是上行
+#: 被整条拒绝，功能直接坏掉。``access_token``、``API_KEY`` 才是真的凭据。
+#:
+#: 词段切分覆盖下划线、连字符、点号、空格与驼峰，命中的是「词段序列整体出现」。
+FORBIDDEN_KEY_PHRASES: tuple[tuple[str, ...], ...] = (
+    ("api", "key"),
+    ("apikey",),
+    ("secret",),
+    ("token",),
+    ("password",),
+    ("passwd",),
+    ("authorization",),
+    ("credential",),
+    ("private", "key"),
+    ("session", "key"),
 )
+
+#: 良性键名：整个键名命中这里就不算敏感。
+#:
+#: 只放「装的是个数、不是秘密」的键。``max_tokens`` 是模型输出预算，
+#: ``max_completion_tokens`` 与 ``token_count`` 同理——把它们当凭据拒掉，
+#: agent 配置的预算字段就同步不过去。
+#:
+#: 为什么需要白名单：``max_tokens`` 与 ``access_tokens`` 的结构完全一样，都是
+#: 「修饰词 + token」，光看词段分不开。默认按禁用处理（宁可误伤），再把确定
+#: 无害的那几个放出来。
+BENIGN_KEYS: frozenset[str] = frozenset(
+    {
+        "max_tokens",
+        "max_completion_tokens",
+        "max_output_tokens",
+        "token_count",
+    }
+)
+
+#: 发布前剥离凭据用的额外词段：``extra_headers`` 里常常直接放令牌。
+PUBLISH_EXTRA_SECRET_PHRASES: tuple[tuple[str, ...], ...] = (("extra", "headers"),)
 
 MAX_PAGE_LIMIT = 500
 DEFAULT_PAGE_LIMIT = 100
@@ -136,10 +163,11 @@ CLOUD_PUBLISHED_DOMAINS: frozenset[str] = frozenset(
     {DOMAIN_KNOWLEDGE_BASE, DOMAIN_SETTINGS, DOMAIN_PERSONA, DOMAIN_AGENT}
 )
 
-#: 发布前剥离凭据用的键名片段。以端侧 ``SyncDomains.FORBIDDEN_KEY_PARTS`` 为准
-#: （同口径：小写后按**子串**匹配），另加云端自己已知的凭据载体
-#: ``extra_headers``：模型目录的请求头映射里常常直接放令牌。
-PUBLISH_SECRET_KEY_PARTS: tuple[str, ...] = FORBIDDEN_KEY_PARTS + ("extra_headers",)
+#: 发布前剥离凭据用的词段集合：以端侧的禁用词段为准，另加云端自己已知的凭据
+#: 载体 ``extra_headers``：模型目录的请求头映射里常常直接放令牌。
+PUBLISH_SECRET_KEY_PHRASES: tuple[tuple[str, ...], ...] = (
+    FORBIDDEN_KEY_PHRASES + PUBLISH_EXTRA_SECRET_PHRASES
+)
 
 #: 设定文档与画像正文的大小上限：超过就不发，免得把一个巨大的 JSON 推进同步库。
 MAX_SETTINGS_BYTES = 512 * 1024
@@ -251,6 +279,67 @@ class SyncBlobUploadResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+def _key_segments(key: str) -> list[str]:
+    """键名 → 词段序列。
+
+    先按分隔符切（``_ - . 空格`` 与任何非字母数字字符），再按驼峰切：
+    ``apiKey`` → ``api`` + ``key``，``HTTPServer`` → ``http`` + ``server``。
+    """
+    segments: list[str] = []
+    for word in re.split(r"[^A-Za-z0-9]+", key.strip()):
+        if not word:
+            continue
+        segments.extend(part.lower() for part in _split_camel_case(word) if part)
+    return segments
+
+
+def _split_camel_case(word: str) -> list[str]:
+    """驼峰切分：在一个大写字母前断开，前提是它后面跟着小写或数字。"""
+    parts: list[str] = []
+    start = 0
+    for index in range(1, len(word)):
+        current = word[index]
+        previous = word[index - 1]
+        if not current.isupper():
+            continue
+        following = word[index + 1] if index + 1 < len(word) else ""
+        boundary = previous.islower() or previous.isdigit() or (
+            previous.isupper() and following.islower()
+        )
+        if boundary:
+            parts.append(word[start:index])
+            start = index
+    parts.append(word[start:])
+    return parts
+
+
+def _has_phrase(segments: list[str], phrase: tuple[str, ...]) -> bool:
+    """词段序列里是否整体出现了某个词段序列。
+
+    比较时容忍复数：``api_keys``、``credentials``、``access_tokens`` 都要命中，
+    所以词段与禁用词相等的条件是「完全相同」或「禁用词加一个 s」。
+    """
+    if not phrase or len(phrase) > len(segments):
+        return False
+    for start in range(len(segments) - len(phrase) + 1):
+        if all(
+            segments[start + offset] == word or segments[start + offset] == f"{word}s"
+            for offset, word in enumerate(phrase)
+        ):
+            return True
+    return False
+
+
+def _is_forbidden_key(key: str) -> bool:
+    """键名是否命中凭据清单（上行方向：命中即整条拒绝）。"""
+    segments = _key_segments(key)
+    if not segments:
+        return False
+    if "_".join(segments) in BENIGN_KEYS:
+        return False
+    return any(_has_phrase(segments, phrase) for phrase in FORBIDDEN_KEY_PHRASES)
+
+
 def _forbidden_key_in(payload: Any) -> str | None:
     """返回命中的敏感键名；载荷干净时返回 ``None``。
 
@@ -259,8 +348,7 @@ def _forbidden_key_in(payload: Any) -> str | None:
     """
     if isinstance(payload, dict):
         for key, value in payload.items():
-            lowered = str(key).lower()
-            if any(part in lowered for part in FORBIDDEN_KEY_PARTS):
+            if _is_forbidden_key(str(key)):
                 return str(key)
             nested = _forbidden_key_in(value)
             if nested is not None:
@@ -1033,13 +1121,18 @@ _PUBLISH_LOCK = threading.Lock()
 
 
 def _is_publish_secret_key(key: str) -> bool:
-    """键名是否命中凭据清单。
+    """键名是否命中凭据清单（发布方向：命中即整条摘掉）。
 
-    按小写**子串**匹配：``api_key_backup`` 也要命中。宁可少发一个键，
-    也不能把凭据发到手机端。
+    按**词段**判定，与 :func:`_forbidden_key_in`、与端侧同一口径：
+    ``api_key_backup`` 命中，``max_tokens`` 不命中——后者是 agent 配置的预算
+    字段，不是凭据，摘掉就等于把预算功能丢了。
     """
-    lowered = key.lower()
-    return any(part in lowered for part in PUBLISH_SECRET_KEY_PARTS)
+    segments = _key_segments(key)
+    if not segments:
+        return False
+    if "_".join(segments) in BENIGN_KEYS:
+        return False
+    return any(_has_phrase(segments, phrase) for phrase in PUBLISH_SECRET_KEY_PHRASES)
 
 
 def _strip_publish_secrets(value: Any) -> Any:

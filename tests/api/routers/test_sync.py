@@ -674,13 +674,15 @@ def test_agent_config_is_published_with_name_and_config(home: Path, client: Test
     assert payload["config"]["temperature"] == 0.3
 
 
-def test_agent_token_budget_is_stripped_like_on_the_device(home: Path, client: TestClient) -> None:
-    """``max_tokens`` 两端都判成凭据键，发布时就得剥掉。
+def test_agent_token_budget_is_kept_because_it_is_not_a_credential(
+    home: Path, client: TestClient
+) -> None:
+    """``max_tokens`` 不是凭据：两端按词段判定，都不该把它当密钥。
 
-    端侧 ``SyncDomains.FORBIDDEN_KEY_PARTS`` 里的 ``token`` 按子串命中
-    ``max_tokens``，端侧的下行闸门会因此**整条拒绝**这份 agent 配置。云端
-    跟着同一口径剥掉：配置照样下发，只是少了 token 预算——总比整条被端侧
-    拒收强。
+    端侧 ``sync/ports/SensitiveKeys.kt`` 与云端 ``_is_forbidden_key`` 按**词段**
+    判定：``max_tokens`` 的词段是 ``max`` + ``tokens``，没有 ``token`` 这个词段，
+    因此不算凭据。按子串判会出两个问题：发布时把 agent 的预算字段摘掉（功能
+    丢失），上行时把整条 agent 载荷整条拒掉（功能直接坏掉）。
     """
     _write_agents(
         home,
@@ -690,8 +692,43 @@ def test_agent_token_budget_is_stripped_like_on_the_device(home: Path, client: T
     items = _by_entity(_changes(client, "agent"))
 
     config = items["solve"]["payload"]["config"]
-    assert "max_tokens" not in config
-    assert config == {"temperature": 0.3}
+    assert config["max_tokens"] == 8192
+    assert config["temperature"] == 0.3
+
+
+def test_pushing_an_agent_config_with_a_token_budget_is_accepted(
+    client: TestClient,
+) -> None:
+    """上行带 ``max_tokens`` 的 agent 配置要通过——它是预算，不是凭据。"""
+    result = _push(
+        client,
+        _push_item(
+            "op-agent-budget",
+            "agent",
+            "solve",
+            {"name": "solve", "config": {"max_tokens": 8192}},
+        ),
+    )
+
+    assert result["status"] == "applied"
+
+
+def test_pushing_an_agent_config_with_a_real_credential_is_rejected(
+    client: TestClient,
+) -> None:
+    """真正的凭据仍然整条拒绝：``access_token`` 的词段里有 ``token``。"""
+    result = _push(
+        client,
+        _push_item(
+            "op-agent-credential",
+            "agent",
+            "solve",
+            {"name": "solve", "config": {"access_token": "sk-live-secret"}},
+        ),
+    )
+
+    assert result["status"] == "rejected"
+    assert "sk-live-secret" not in json.dumps(result)
 
 
 def test_settings_credential_keys_are_stripped_and_the_rest_is_kept(
