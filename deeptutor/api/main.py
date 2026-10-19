@@ -566,6 +566,7 @@ from deeptutor.api.routers import (
     space_cli_apps,
     space_mcp,
     subagents,
+    sync,
     system,
     task_board,
     unified_ws,
@@ -615,6 +616,13 @@ app.include_router(
     file_preview.router,
     prefix="/api/file-preview",
     tags=["file-preview"],
+    dependencies=[Depends(require_auth)],
+)
+# 手机端同步通道：上行本地变更、下行云端变更。与 file_preview 一样挂 require_auth。
+app.include_router(
+    sync.router,
+    prefix="/api/sync",
+    tags=["sync"],
     dependencies=[Depends(require_auth)],
 )
 app.include_router(imports.router, prefix="/api/imports", tags=["imports"], dependencies=_auth)
