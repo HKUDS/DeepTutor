@@ -733,6 +733,8 @@ Each partner has a `SOUL.md`, model selection, channels, tool policy, and assign
 
 The channel layer is schema-driven and can connect to IM platforms such as Feishu, Telegram, Slack, Discord, DingTalk, QQ/NapCat, WeCom, WhatsApp, Zulip, Mattermost, Matrix, Mochat, and Microsoft Teams depending on installed extras and configured credentials. A partner can also be connected as a subagent and consulted from a normal chat turn — see **My Agents** below.
 
+Telegram replies use [native rich Markdown](https://core.telegram.org/bots/api#rich-messages) for headings, tables, and code blocks when the Bot API supports it. Live replies begin with a plain-text preview and update the same message when complete. Unsupported endpoints fall back to the existing HTML formatter, then plain text if Telegram rejects the formatting; no additional configuration or SDK upgrade is required.
+
 For faster setup, the Partner channel page can create a Feishu/Lark app or WeCom AI bot, or sign a personal WeChat account in, from a QR scan drawn in the browser rather than the server log. Feishu/Lark detects the account domain and saves the scanning user as the initial allowed sender. WeCom keeps an existing allowlist and otherwise defaults to all users who can reach the bot, with a visible open-access warning; the manual channel forms remain available if a provider's scan protocol changes.
 
 </details>

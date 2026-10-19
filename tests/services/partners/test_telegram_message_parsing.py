@@ -38,6 +38,7 @@ from deeptutor.partners.bus.queue import MessageBus
 from deeptutor.partners.channels.telegram import (
     TELEGRAM_MAX_MESSAGE_LEN,
     TELEGRAM_REPLY_CONTEXT_MAX_LEN,
+    TELEGRAM_RICH_MAX_LEN,
     TelegramChannel,
     _StreamBuf,
 )
@@ -53,6 +54,7 @@ def _bot() -> SimpleNamespace:
         get_me=AsyncMock(return_value=SimpleNamespace(id=555, username="tutorbot")),
         send_chat_action=AsyncMock(),
         get_file=AsyncMock(return_value=SimpleNamespace(download_to_drive=AsyncMock())),
+        do_api_request=AsyncMock(return_value={"message_id": 99}),
         send_message=AsyncMock(return_value=SimpleNamespace(message_id=99)),
         send_message_draft=AsyncMock(),
         edit_message_text=AsyncMock(),
@@ -448,46 +450,56 @@ async def test_send_splits_long_text_into_chunks_under_limit() -> None:
     import re
 
     channel = _channel()
-    words = " ".join(f"w{i}" for i in range(2000))
+    words = " ".join(f"w{i}" for i in range(12000))
     await channel.send(OutboundMessage(channel="telegram", chat_id="777", content=words))
 
     bot = channel._app.bot
-    texts = [call.kwargs["text"] for call in bot.send_message.await_args_list]
-    assert len(texts) >= 3  # 2000 words cannot fit a single 4000-char message
-    assert all(len(t) <= TELEGRAM_MAX_MESSAGE_LEN for t in texts)
+    calls = bot.do_api_request.await_args_list
+    assert all(call.args == ("sendRichMessage",) for call in calls)
+    texts = [call.kwargs["api_kwargs"]["rich_message"]["markdown"] for call in calls]
+    assert len(texts) >= 3  # Rich messages retain the larger native text budget.
+    assert all(len(t) <= TELEGRAM_RICH_MAX_LEN for t in texts)
+    bot.send_message.assert_not_awaited()
     # Every word survives, in order, across the chunk boundaries.
-    assert re.findall(r"w\d+", "".join(texts)) == [f"w{i}" for i in range(2000)]
+    assert re.findall(r"w\d+", "".join(texts)) == [f"w{i}" for i in range(12000)]
 
 
 @pytest.mark.asyncio
-async def test_stream_end_splits_oversized_html_and_sends_extras() -> None:
+async def test_stream_end_splits_oversized_rich_markdown_and_sends_extras() -> None:
     channel = _channel()
 
-    await channel.send_delta("777", "a" * 5000, {"_stream_id": "s1"})
+    markdown = "a" * (TELEGRAM_RICH_MAX_LEN + 1000)
+    await channel.send_delta("777", markdown, {"_stream_id": "s1"})
     await channel.send_delta("777", "", {"_stream_id": "s1", "_stream_end": True})
 
     bot = channel._app.bot
-    final_edit = bot.edit_message_text.await_args
-    assert len(final_edit.kwargs["text"]) <= 4096
-    extras = [c.kwargs["text"] for c in bot.send_message.await_args_list[1:]]
-    assert extras
-    assert all(len(t) <= 4096 for t in extras)
+    calls = bot.do_api_request.await_args_list
+    assert [call.args[0] for call in calls] == ["editMessageText", "sendRichMessage"]
+    assert calls[0].kwargs["api_kwargs"]["message_id"] == 99
+    texts = [call.kwargs["api_kwargs"]["rich_message"]["markdown"] for call in calls]
+    assert all(len(text) <= TELEGRAM_RICH_MAX_LEN for text in texts)
+    assert "".join(texts) == markdown
+    bot.send_message.assert_awaited_once()  # Only the initial plain-text preview.
+    assert len(bot.send_message.await_args.kwargs["text"]) <= TELEGRAM_MAX_MESSAGE_LEN
     assert "777" not in channel._stream_bufs
 
 
 @pytest.mark.asyncio
 async def test_flush_stream_overflow_reopens_stream_with_tail() -> None:
     channel = _channel()
-    buf = _StreamBuf(text="x" * (TELEGRAM_MAX_MESSAGE_LEN * 2 + 1000), message_id=5)
+    buf = _StreamBuf(text="x" * (TELEGRAM_RICH_MAX_LEN * 2 + 1000), message_id=5)
 
     await channel._flush_stream_overflow(777, buf)
 
     bot = channel._app.bot
-    edit = bot.edit_message_text.await_args
-    assert edit.kwargs["message_id"] == 5
-    assert len(edit.kwargs["text"]) == TELEGRAM_MAX_MESSAGE_LEN
+    edit, middle = bot.do_api_request.await_args_list
+    assert edit.args == ("editMessageText",)
+    assert edit.kwargs["api_kwargs"]["message_id"] == 5
+    assert edit.kwargs["api_kwargs"]["rich_message"]["markdown"] == "x" * TELEGRAM_RICH_MAX_LEN
+    assert middle.args == ("sendRichMessage",)
+    assert middle.kwargs["api_kwargs"]["rich_message"]["markdown"] == "x" * TELEGRAM_RICH_MAX_LEN
     mids = [c.kwargs["text"] for c in bot.send_message.await_args_list]
-    assert len(mids) == 2  # middle chunk + reopened tail message
+    assert len(mids) == 1  # Only the reopened tail preview uses a plain message.
     assert len(mids[-1]) == 1000
     assert buf.message_id == 99
     assert buf.text == "x" * 1000
@@ -495,10 +507,11 @@ async def test_flush_stream_overflow_reopens_stream_with_tail() -> None:
 
 @pytest.mark.asyncio
 async def test_send_text_falls_back_to_plain_on_html_parse_error() -> None:
-    from telegram.error import BadRequest
+    from telegram.error import BadRequest, EndPointNotFound
 
     channel = _channel()
     bot = channel._app.bot
+    bot.do_api_request.side_effect = EndPointNotFound("Endpoint not found")
     bot.send_message = AsyncMock(
         side_effect=[BadRequest("can't parse entities"), SimpleNamespace(message_id=1)]
     )
@@ -508,6 +521,7 @@ async def test_send_text_falls_back_to_plain_on_html_parse_error() -> None:
     )
 
     assert bot.send_message.await_count == 2
+    bot.do_api_request.assert_awaited_once()
     final_call = bot.send_message.await_args_list[1]
     assert final_call.kwargs["text"] == "plain & **bold**"
     assert "parse_mode" not in final_call.kwargs
@@ -527,9 +541,12 @@ async def test_outbound_reply_carries_reply_params_and_topic_thread() -> None:
         )
     )
 
-    call = channel._app.bot.send_message.await_args
-    assert call.kwargs["reply_parameters"].message_id == 7
-    assert call.kwargs["message_thread_id"] == 3
+    call = channel._app.bot.do_api_request.await_args
+    assert call.args == ("sendRichMessage",)
+    payload = call.kwargs["api_kwargs"]
+    assert payload["reply_parameters"].message_id == 7
+    assert payload["message_thread_id"] == 3
+    assert payload["rich_message"] == {"markdown": "reply"}
 
 
 @pytest.mark.asyncio
