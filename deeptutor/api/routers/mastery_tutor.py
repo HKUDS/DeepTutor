@@ -42,7 +42,9 @@ def native_tools() -> dict[str, Any]:
 
 def tutor_catalog() -> dict:
     return {
-        "tools": [tool.get_definition().to_openai_schema()["function"] for tool in native_tools().values()],
+        "tools": [
+            tool.get_definition().to_openai_schema()["function"] for tool in native_tools().values()
+        ],
         "instructions": (
             "You are the tutor. Use these exact built-in Mastery tools through "
             "call_mastery_tutor; their rules and learning effects are identical. "
@@ -66,17 +68,34 @@ def _validate_arguments(tool, arguments: dict) -> None:
     missing = set(schema.get("required", [])) - set(arguments)
     if missing:
         raise HTTPException(422, f"Missing tool arguments: {sorted(missing)}")
-    types = {"string": str, "boolean": bool, "integer": int, "number": (int, float), "array": list, "object": dict}
+    types = {
+        "string": str,
+        "boolean": bool,
+        "integer": int,
+        "number": (int, float),
+        "array": list,
+        "object": dict,
+    }
     for name, value in arguments.items():
         rule = properties[name]
         expected = types.get(rule.get("type"))
-        if expected and (not isinstance(value, expected) or (isinstance(value, bool) and rule["type"] in {"number", "integer"})):
+        if expected and (
+            not isinstance(value, expected)
+            or (isinstance(value, bool) and rule["type"] in {"number", "integer"})
+        ):
             raise HTTPException(422, f"Invalid type for {name}")
         if "enum" in rule and value not in rule["enum"]:
             raise HTTPException(422, f"Invalid value for {name}")
 
 
-def _receipt(store, key: str, digest: str, turn_key: str, response: dict | None = None, prepared: dict | None = None):
+def _receipt(
+    store,
+    key: str,
+    digest: str,
+    turn_key: str,
+    response: dict | None = None,
+    prepared: dict | None = None,
+):
     # Transport receipts share the workspace-scoped learning database. Domain
     # state is still written exclusively by the existing native tools.
     with store._connect() as conn:
@@ -84,42 +103,82 @@ def _receipt(store, key: str, digest: str, turn_key: str, response: dict | None 
             request_key TEXT PRIMARY KEY, payload_hash TEXT NOT NULL,
             turn_key TEXT NOT NULL, response_json TEXT, prepared_json TEXT
         )""")
-        row = conn.execute("SELECT * FROM mastery_tutor_requests WHERE request_key = ?", (key,)).fetchone()
+        row = conn.execute(
+            "SELECT * FROM mastery_tutor_requests WHERE request_key = ?", (key,)
+        ).fetchone()
         if row is not None and row["payload_hash"] != digest:
             raise HTTPException(409, "request_id was already used with different content")
         if response is not None:
-            conn.execute("UPDATE mastery_tutor_requests SET response_json = ? WHERE request_key = ?", (json.dumps(response, ensure_ascii=False), key))
+            conn.execute(
+                "UPDATE mastery_tutor_requests SET response_json = ? WHERE request_key = ?",
+                (json.dumps(response, ensure_ascii=False), key),
+            )
         elif row is None:
-            conn.execute("INSERT INTO mastery_tutor_requests VALUES (?, ?, ?, NULL, NULL)", (key, digest, turn_key))
+            conn.execute(
+                "INSERT INTO mastery_tutor_requests VALUES (?, ?, ?, NULL, NULL)",
+                (key, digest, turn_key),
+            )
         if prepared is not None:
-            conn.execute("UPDATE mastery_tutor_requests SET prepared_json = ? WHERE request_key = ?", (json.dumps(prepared, ensure_ascii=False), key))
+            conn.execute(
+                "UPDATE mastery_tutor_requests SET prepared_json = ? WHERE request_key = ?",
+                (json.dumps(prepared, ensure_ascii=False), key),
+            )
         conn.commit()
         return {
-            "response": json.loads(row["response_json"]) if row is not None and row["response_json"] else None,
-            "prepared": json.loads(row["prepared_json"]) if row is not None and row["prepared_json"] else None,
+            "response": json.loads(row["response_json"])
+            if row is not None and row["response_json"]
+            else None,
+            "prepared": json.loads(row["prepared_json"])
+            if row is not None and row["prepared_json"]
+            else None,
         }
 
 
 def _turn_events(store, turn_key: str) -> list[dict]:
     with store._connect() as conn:
-        rows = conn.execute("SELECT response_json FROM mastery_tutor_requests WHERE turn_key = ? AND response_json IS NOT NULL ORDER BY rowid", (turn_key,)).fetchall()
+        rows = conn.execute(
+            "SELECT response_json FROM mastery_tutor_requests WHERE turn_key = ? AND response_json IS NOT NULL ORDER BY rowid",
+            (turn_key,),
+        ).fetchall()
     return [event for row in rows for event in json.loads(row["response_json"]).get("events", [])]
 
 
-async def _save_messages(sessions, session_id: str, body: TutorRequest, events: list[dict] | None = None):
+async def _save_messages(
+    sessions, session_id: str, body: TutorRequest, events: list[dict] | None = None
+):
     messages = await sessions.get_messages(session_id)
     for role, text in (("user", body.user_message), ("assistant", body.assistant_message)):
         if text is None:
             continue
-        existing = next((message for message in messages if message.get("role") == role and (message.get("metadata") or {}).get("external_tutor", {}).get("turn_id") == body.turn_id), None)
+        existing = next(
+            (
+                message
+                for message in messages
+                if message.get("role") == role
+                and (message.get("metadata") or {}).get("external_tutor", {}).get("turn_id")
+                == body.turn_id
+            ),
+            None,
+        )
         if existing:
             if existing["content"] != text:
-                raise HTTPException(409, f"{role} message for this turn was already saved with different content")
+                raise HTTPException(
+                    409, f"{role} message for this turn was already saved with different content"
+                )
             continue
         await sessions.add_message(
-            session_id, role, text, capability="mastery_path",
+            session_id,
+            role,
+            text,
+            capability="mastery_path",
             events=events if role == "assistant" else None,
-            metadata={"external_tutor": {"client_id": body.client_id, "session_id": body.session_id, "turn_id": body.turn_id}},
+            metadata={
+                "external_tutor": {
+                    "client_id": body.client_id,
+                    "session_id": body.session_id,
+                    "turn_id": body.turn_id,
+                }
+            },
         )
 
 
@@ -138,16 +197,26 @@ async def call_tutor(path_id: str, body: TutorRequest) -> dict:
     store = LearningStore()
     if not await asyncio.to_thread(store.exists, path_id):
         raise HTTPException(404, "Mastery path not found")
-    identity = hashlib.sha256(json.dumps([body.client_id, body.session_id], ensure_ascii=False).encode()).hexdigest()
+    identity = hashlib.sha256(
+        json.dumps([body.client_id, body.session_id], ensure_ascii=False).encode()
+    ).hexdigest()
     session_id = "unified_external_" + identity[:32]
     key = hashlib.sha256(json.dumps([identity, body.request_id]).encode()).hexdigest()
-    digest = hashlib.sha256(json.dumps({"path_id": path_id, **body.model_dump()}, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+    digest = hashlib.sha256(
+        json.dumps(
+            {"path_id": path_id, **body.model_dump()}, sort_keys=True, ensure_ascii=False
+        ).encode()
+    ).hexdigest()
     operation_id = "external_" + key
     turn_key = hashlib.sha256(json.dumps([identity, body.turn_id]).encode()).hexdigest()
     try:
-        await asyncio.to_thread(store.acquire_path_lease, path_id, session_id, operation_id, bind_session=False)
+        await asyncio.to_thread(
+            store.acquire_path_lease, path_id, session_id, operation_id, bind_session=False
+        )
     except PathLeaseConflictError as exc:
-        raise HTTPException(409, "This Mastery path is active in another turn; retry when it finishes") from exc
+        raise HTTPException(
+            409, "This Mastery path is active in another turn; retry when it finishes"
+        ) from exc
     try:
         receipt = await asyncio.to_thread(_receipt, store, key, digest, turn_key)
         if receipt["response"] is not None:
@@ -156,10 +225,14 @@ async def call_tutor(path_id: str, body: TutorRequest) -> dict:
         session = await sessions.get_session(session_id)
         progress = await asyncio.to_thread(store.load, path_id)
         if session is None:
-            session = await sessions.create_session(title=progress.name or "Learning", session_id=session_id)
+            session = await sessions.create_session(
+                title=progress.name or "Learning", session_id=session_id
+            )
         await asyncio.to_thread(store.bind_session, path_id, session_id)
         await sessions.update_session_preferences(session_id, {"mastery_path_id": path_id})
-        await _save_messages(sessions, session_id, body.model_copy(update={"assistant_message": None}))
+        await _save_messages(
+            sessions, session_id, body.model_copy(update={"assistant_message": None})
+        )
         prepared = receipt["prepared"]
         if prepared is None:
             prepared = dict(body.arguments)
@@ -183,24 +256,65 @@ async def call_tutor(path_id: str, body: TutorRequest) -> dict:
         else:
             recovered = None
             if receipt["prepared"] is not None:
-                recovered = await _recover_operation(store, path_id, operation_id, body, arguments, tools)
+                recovered = await _recover_operation(
+                    store, path_id, operation_id, body, arguments, tools
+                )
             native_result = recovered or await tool.execute(**arguments)
-            result = {name: jsonable_encoder(getattr(native_result, name)) for name in ("content", "sources", "metadata", "success", "terminate_turn", "pause_for_user")}
+            result = {
+                name: jsonable_encoder(getattr(native_result, name))
+                for name in (
+                    "content",
+                    "sources",
+                    "metadata",
+                    "success",
+                    "terminate_turn",
+                    "pause_for_user",
+                )
+            }
         events = []
         if tool is not None:
-            public_arguments = {name: value for name, value in body.arguments.items() if name not in {parameter.name for parameter in tool.get_definition().parameters if parameter.sensitive}}
+            public_arguments = {
+                name: value
+                for name, value in body.arguments.items()
+                if name
+                not in {
+                    parameter.name
+                    for parameter in tool.get_definition().parameters
+                    if parameter.sensitive
+                }
+            }
             events = [
-                {"type": "tool_call", "source": "mastery_path", "stage": "responding", "content": body.tool, "metadata": {"tool_call_id": operation_id, "args": public_arguments}},
-                {"type": "tool_result", "source": "mastery_path", "stage": "responding", "content": result["content"], "metadata": {"tool": body.tool, "tool_call_id": operation_id, "tool_metadata": result.get("metadata", {}), "success": result["success"]}},
+                {
+                    "type": "tool_call",
+                    "source": "mastery_path",
+                    "stage": "responding",
+                    "content": body.tool,
+                    "metadata": {"tool_call_id": operation_id, "args": public_arguments},
+                },
+                {
+                    "type": "tool_result",
+                    "source": "mastery_path",
+                    "stage": "responding",
+                    "content": result["content"],
+                    "metadata": {
+                        "tool": body.tool,
+                        "tool_call_id": operation_id,
+                        "tool_metadata": result.get("metadata", {}),
+                        "success": result["success"],
+                    },
+                },
             ]
         prior_events = await asyncio.to_thread(_turn_events, store, turn_key)
         await _save_messages(sessions, session_id, body, [*prior_events, *events])
         active_path = arguments["_mastery_path_id"]
         progress = await asyncio.to_thread(store.load, active_path)
         response = {
-            **result, "session_id": session_id, "path_id": active_path,
+            **result,
+            "session_id": session_id,
+            "path_id": active_path,
             "path_revision": progress.version if progress else 0,
-            "replayed": False, "events": events,
+            "replayed": False,
+            "events": events,
         }
         await asyncio.to_thread(_receipt, store, key, digest, turn_key, response)
         return response
@@ -214,8 +328,21 @@ async def _recover_operation(store, path_id, operation_id, body, arguments, tool
 
     if body.tool == "mastery_quiz":
         events = await asyncio.to_thread(store.list_events, path_id)
-        registered = next((event for event in events if event.turn_id == operation_id and event.event_type == "interaction.registered"), None)
-        interaction = await asyncio.to_thread(store.get_interaction, path_id, registered.payload["interaction_id"]) if registered else None
+        registered = next(
+            (
+                event
+                for event in events
+                if event.turn_id == operation_id and event.event_type == "interaction.registered"
+            ),
+            None,
+        )
+        interaction = (
+            await asyncio.to_thread(
+                store.get_interaction, path_id, registered.payload["interaction_id"]
+            )
+            if registered
+            else None
+        )
         if interaction is not None:
             from deeptutor.learning.pending import public_pending_question
             from deeptutor.learning.question_card import QUESTION_CARD_KEY, build_question_card
@@ -225,14 +352,29 @@ async def _recover_operation(store, path_id, operation_id, body, arguments, tool
             return ToolResult(
                 content="This question was already registered; present the saved question.",
                 metadata={
-                    "mastery_quiz": {"status": "already_pending", "path_revision": progress.version, "knowledge_point_id": pending.knowledge_point_id, "question_id": pending.question_id, "pending_question": public_pending_question(pending).to_dict()},
+                    "mastery_quiz": {
+                        "status": "already_pending",
+                        "path_revision": progress.version,
+                        "knowledge_point_id": pending.knowledge_point_id,
+                        "question_id": pending.question_id,
+                        "pending_question": public_pending_question(pending).to_dict(),
+                    },
                     QUESTION_CARD_KEY: build_question_card(pending),
                 },
             )
-    if body.tool in {"mastery_build", "mastery_revise", "mastery_defer_objective", "mastery_profile", "mastery_repair_question", "mastery_skip_question"}:
+    if body.tool in {
+        "mastery_build",
+        "mastery_revise",
+        "mastery_defer_objective",
+        "mastery_profile",
+        "mastery_repair_question",
+        "mastery_skip_question",
+    }:
         events = await asyncio.to_thread(store.list_events, path_id)
         if any(event.turn_id == operation_id for event in events):
-            result = await tools["mastery_status"].execute(**{key: value for key, value in arguments.items() if key.startswith("_")})
+            result = await tools["mastery_status"].execute(
+                **{key: value for key, value in arguments.items() if key.startswith("_")}
+            )
             result.metadata[body.tool] = result.metadata.get("mastery_status", {})
             return result
     return None
