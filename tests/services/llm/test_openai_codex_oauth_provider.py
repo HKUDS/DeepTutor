@@ -301,3 +301,108 @@ def test_provider_source_no_longer_imports_oauth_cli_kit() -> None:
     assert "oauth_cli_kit" not in source
     assert "get_codex_oauth_service" in source
     assert OpenAICodexProvider().get_default_model() == "openai-codex/gpt-5.6-sol"
+
+
+def _summary_messages(summary: str) -> list[dict[str, Any]]:
+    return [
+        {"role": "system", "content": "Tutor instructions"},
+        {"role": "system", "content": summary},
+        {"role": "user", "content": "Q"},
+    ]
+
+
+def test_prompt_cache_key_is_stable_across_summary_updates() -> None:
+    key_a = module._prompt_cache_key(_summary_messages("Summary A"))
+    key_b = module._prompt_cache_key(_summary_messages("Summary B"))
+
+    assert key_a == key_b
+
+
+def test_prompt_cache_key_differs_for_different_instructions() -> None:
+    other = _summary_messages("Summary A")
+    other[0]["content"] = "Other instructions"
+
+    assert module._prompt_cache_key(other) != module._prompt_cache_key(
+        _summary_messages("Summary A")
+    )
+
+
+@pytest.mark.asyncio
+async def test_session_id_header_matches_body_prompt_cache_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = FakeCodexService()
+    requests: list[tuple[dict[str, str], dict[str, Any]]] = []
+
+    async def request(
+        url: str,
+        headers: dict[str, str],
+        body: dict[str, Any],
+        **_kwargs: Any,
+    ) -> tuple[str, list[Any], str]:
+        requests.append((headers, body))
+        return "ok", [], "stop"
+
+    monkeypatch.setattr(module, "get_codex_oauth_service", lambda: service)
+    monkeypatch.setattr(module, "_request_codex", request)
+
+    provider = OpenAICodexProvider()
+    await provider.chat(_summary_messages("Summary A"), model="openai-codex/gpt-5.6-sol")
+    await provider.chat(_summary_messages("Summary B"), model="openai-codex/gpt-5.6-sol")
+
+    for headers, body in requests:
+        assert headers["session-id"] == body["prompt_cache_key"]
+    assert requests[0][0]["session-id"] == requests[1][0]["session-id"]
+
+
+def test_prompt_cache_key_is_scoped_by_session_id() -> None:
+    messages = _summary_messages("Summary A")
+
+    key_a = module._prompt_cache_key(messages, "session-a")
+    key_b = module._prompt_cache_key(messages, "session-b")
+
+    assert key_a != key_b
+    assert "session-a" not in key_a
+    # A summary change inside one conversation must not move the key.
+    assert key_a == module._prompt_cache_key(_summary_messages("Summary B"), "session-a")
+    assert key_a != module._prompt_cache_key(messages)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stream", [False, True])
+async def test_session_id_kwarg_scopes_header_and_body(
+    monkeypatch: pytest.MonkeyPatch, stream: bool
+) -> None:
+    service = FakeCodexService()
+    requests: list[tuple[dict[str, str], dict[str, Any]]] = []
+
+    async def request(
+        url: str,
+        headers: dict[str, str],
+        body: dict[str, Any],
+        **_kwargs: Any,
+    ) -> tuple[str, list[Any], str]:
+        requests.append((headers, body))
+        return "ok", [], "stop"
+
+    monkeypatch.setattr(module, "get_codex_oauth_service", lambda: service)
+    monkeypatch.setattr(module, "_request_codex", request)
+
+    provider = OpenAICodexProvider()
+    call = provider.chat_stream if stream else provider.chat
+    for session in ("session-a", "session-b"):
+        await call(
+            _summary_messages("Summary A"),
+            model="openai-codex/gpt-5.6-sol",
+            deeptutor_session_id=session,
+        )
+
+    for headers, body in requests:
+        assert headers["session-id"] == body["prompt_cache_key"]
+    assert requests[0][1]["prompt_cache_key"] != requests[1][1]["prompt_cache_key"]
+
+
+def test_openai_codex_binding_threads_session_id() -> None:
+    from deeptutor.services.llm.capabilities import threads_session_id
+
+    assert threads_session_id("openai_codex")

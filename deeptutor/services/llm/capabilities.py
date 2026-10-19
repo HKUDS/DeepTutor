@@ -686,7 +686,7 @@ def get_effective_temperature(
 #: supplies, so each request carries the turn's own session id. Stated here
 #: rather than tested inline: the chat loop and the explore capability both
 #: need it, and neither should have to name a provider to run a turn.
-SESSION_SCOPED_BINDINGS: frozenset[str] = frozenset({"codebuddy"})
+SESSION_SCOPED_BINDINGS: frozenset[str] = frozenset({"codebuddy", "openai_codex"})
 
 
 def threads_session_id(binding: str | None) -> bool:
