@@ -9,7 +9,9 @@
 * 敏感键：整条拒绝，且不落库、不回显；
 * 幂等：同一个 ``client_op_id`` 重发不会重复应用；
 * 冲突：双向域版本不一致时返回 ``conflict``，不静默覆盖；
-* 游标：重放同一个游标结果稳定。
+* 游标：重放同一个游标结果稳定；
+* 云端发布源：设定 / 画像 / agent 的实体 id 与载荷字段逐字对齐端侧映射，
+  设定里的凭据键在发布前被剥掉，重复发布不让版本号无限增长。
 
 路由挂在一台裸 FastAPI 上，不启动整个应用——这里要验的是同步通道本身。
 """
@@ -19,6 +21,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -30,8 +33,16 @@ from deeptutor.api.routers import sync
 from deeptutor.api.routers.auth import require_auth
 from deeptutor.services.path_service import PathService
 
-#: 端侧 ``SyncDomains.ALL``：白名单就是这六个。
-WHITELIST = {"knowledge_base", "learning", "sessions", "settings", "persona", "agent"}
+#: 端侧 ``SyncDomains.ALL``：白名单就是这七个。
+WHITELIST = {
+    "knowledge_base",
+    "learning",
+    "sessions",
+    "settings",
+    "persona",
+    "agent",
+    "memory",
+}
 
 
 @pytest.fixture
@@ -99,6 +110,53 @@ def _push(client: TestClient, item: dict[str, Any]) -> dict[str, Any]:
     results = response.json()["results"]
     assert len(results) == 1
     return results[0]
+
+
+# ---------------------------------------------------------------------------
+# 云端发布源的夹具
+# ---------------------------------------------------------------------------
+
+
+def _settings_dir(home: Path) -> Path:
+    """运行时设定目录：``data/user/settings``。"""
+    return home / "data" / "user" / "settings"
+
+
+def _personas_dir(home: Path) -> Path:
+    """运行时画像目录：``data/user/workspace/personas``。"""
+    return home / "data" / "user" / "workspace" / "personas"
+
+
+def _write_setting(home: Path, name: str, payload: Any = None, *, raw: str | None = None) -> Path:
+    """写一份设定文档。``raw`` 直接写原文，用来造解析失败的场景。"""
+    path = _settings_dir(home) / f"{name}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(raw if raw is not None else json.dumps(payload, ensure_ascii=False), "utf-8")
+    return path
+
+
+def _write_persona(home: Path, name: str, body: str = "你是一位严格的教练。\n") -> Path:
+    """写一个画像：``workspace/personas/<name>/PERSONA.md``。"""
+    path = _personas_dir(home) / name / "PERSONA.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"---\nname: {name}\ndescription: {name} 的说明\n---\n\n{body}", "utf-8")
+    return path
+
+
+def _write_agents(home: Path, text: str) -> Path:
+    """写一份 agent 配置：``data/user/settings/agents.yaml``。"""
+    path = _settings_dir(home) / "agents.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, "utf-8")
+    return path
+
+
+def _changes(client: TestClient, domain: str) -> dict[str, Any]:
+    return client.get("/api/sync/changes", params={"domain": domain}).json()
+
+
+def _by_entity(page: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {item["entity_id"]: item for item in page["items"]}
 
 
 # ---------------------------------------------------------------------------
@@ -256,6 +314,7 @@ def test_responses_carry_only_contract_fields(client: TestClient) -> None:
         "status",
         "conflict_payload",
         "reason",
+        "revision",
     }
 
 
@@ -371,7 +430,11 @@ def test_knowledge_base_is_published_from_the_cloud(home: Path, client: TestClie
 
     assert [item["entity_id"] for item in page["items"]] == ["demo:note.txt"]
     payload = page["items"][0]["payload"]
+    # 端侧 ``kb_documents`` 的四列：原文走 blob 分块接口，不在载荷里。
+    assert set(payload) == {"kb_name", "title", "source_type", "content_text"}
     assert payload["kb_name"] == "demo"
+    assert payload["title"] == "note"
+    assert payload["source_type"] == "file"
     assert payload["content_text"] == "云端知识库正文"
 
     # 原文也能作为大文件拉下来。
@@ -557,6 +620,436 @@ def test_invalid_cursor_is_rejected(client: TestClient) -> None:
     )
 
     assert response.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# 云端发布源：设定 / 画像 / agent
+# ---------------------------------------------------------------------------
+
+
+def test_settings_are_published_with_the_setting_key_and_value(
+    home: Path, client: TestClient
+) -> None:
+    """设定域：实体 id 是设定键，载荷是 ``{"value": <JSON 值>}``。"""
+    _write_setting(home, "interface", {"theme": "snow", "language": "en"})
+
+    items = _by_entity(_changes(client, "settings"))
+
+    assert "interface" in items
+    payload = items["interface"]["payload"]
+    assert set(payload) == {"value"}
+    assert payload["value"] == {"theme": "snow", "language": "en"}
+    assert items["interface"]["kind"] == "upsert"
+
+
+def test_persona_is_published_with_description_and_content(home: Path, client: TestClient) -> None:
+    """画像域：实体 id 是画像名，载荷是 ``{"description", "content"}``。"""
+    _write_persona(home, "coach", "只讲结论。\n")
+
+    items = _by_entity(_changes(client, "persona"))
+
+    assert "coach" in items
+    payload = items["coach"]["payload"]
+    assert set(payload) == {"description", "content"}
+    assert payload["description"] == "coach 的说明"
+    assert "只讲结论。" in payload["content"]
+
+
+def test_agent_config_is_published_with_name_and_config(home: Path, client: TestClient) -> None:
+    """agent 域：实体 id 是 agent 名，载荷是 ``{"name", "config"}``。
+
+    源是 ``agents.yaml``（用户自己的 agent 配置），不是界面那份静态元数据。
+    """
+    _write_agents(
+        home,
+        "capabilities:\n  solve:\n    temperature: 0.3\n    max_tokens: 8192\n",
+    )
+
+    items = _by_entity(_changes(client, "agent"))
+
+    assert "solve" in items
+    payload = items["solve"]["payload"]
+    assert set(payload) == {"name", "config"}
+    assert payload["name"] == "solve"
+    assert payload["config"]["temperature"] == 0.3
+
+
+def test_agent_token_budget_is_stripped_like_on_the_device(home: Path, client: TestClient) -> None:
+    """``max_tokens`` 两端都判成凭据键，发布时就得剥掉。
+
+    端侧 ``SyncDomains.FORBIDDEN_KEY_PARTS`` 里的 ``token`` 按子串命中
+    ``max_tokens``，端侧的下行闸门会因此**整条拒绝**这份 agent 配置。云端
+    跟着同一口径剥掉：配置照样下发，只是少了 token 预算——总比整条被端侧
+    拒收强。
+    """
+    _write_agents(
+        home,
+        "capabilities:\n  solve:\n    temperature: 0.3\n    max_tokens: 8192\n",
+    )
+
+    items = _by_entity(_changes(client, "agent"))
+
+    config = items["solve"]["payload"]["config"]
+    assert "max_tokens" not in config
+    assert config == {"temperature": 0.3}
+
+
+def test_settings_credential_keys_are_stripped_and_the_rest_is_kept(
+    home: Path, client: TestClient
+) -> None:
+    """发布设定前逐层剥离凭据键：整条丢弃，不是换成空串。"""
+    _write_setting(
+        home,
+        "model_catalog",
+        {
+            "version": 1,
+            "api_key": "sk-placeholder-value",
+            "api_key_backup": "sk-placeholder-value",
+            "services": {"llm": {"profiles": [{"id": "p1", "api_key": "sk-placeholder-value"}]}},
+        },
+    )
+
+    items = _by_entity(_changes(client, "settings"))
+
+    value = items["model_catalog"]["payload"]["value"]
+    assert "api_key" not in value
+    assert "api_key_backup" not in value
+    assert value["version"] == 1
+    profile = value["services"]["llm"]["profiles"][0]
+    assert "api_key" not in profile
+    assert profile["id"] == "p1"
+
+
+def test_settings_credential_keys_nested_in_lists_are_stripped(
+    home: Path, client: TestClient
+) -> None:
+    """凭据键藏在列表里的映射上也要剥掉。"""
+    _write_setting(
+        home,
+        "integrations",
+        {
+            "turn_coordination": {"backend": "memory"},
+            "connections": [
+                {
+                    "id": "c1",
+                    "api_key": "sk-placeholder-value",
+                    "base_url": "https://example.invalid",
+                },
+                {"id": "c2", "secret_token": "sk-placeholder-value"},
+            ],
+        },
+    )
+
+    items = _by_entity(_changes(client, "settings"))
+
+    value = items["integrations"]["payload"]["value"]
+    assert value["turn_coordination"] == {"backend": "memory"}
+    first, second = value["connections"]
+    assert "api_key" not in first
+    assert first["base_url"] == "https://example.invalid"
+    assert "secret_token" not in second
+    assert second["id"] == "c2"
+
+
+def test_published_settings_never_write_credentials_to_disk(home: Path, client: TestClient) -> None:
+    """剥掉的凭据不出现在同步库的任何文件里。"""
+    secret = "sk-never-reach-the-phone"
+    _write_setting(
+        home,
+        "model_catalog",
+        {"api_key": secret, "profiles": [{"id": "p1", "api_key": secret}]},
+    )
+
+    response = client.get("/api/sync/changes", params={"domain": "settings"})
+
+    assert response.status_code == 200
+    assert secret not in response.text
+    sync_dir = home / "data" / "user" / "sync"
+    for path in sync_dir.glob("*"):
+        if path.is_file():
+            assert secret.encode() not in path.read_bytes()
+
+
+def test_republishing_the_same_content_does_not_grow_the_revision(
+    home: Path, client: TestClient
+) -> None:
+    """重复发布同一份内容：版本号不动，端侧不会每轮都拉到「变更」。"""
+    _write_setting(home, "interface", {"theme": "snow"})
+
+    first = _changes(client, "settings")
+    second = _changes(client, "settings")
+
+    assert len(first["items"]) == 1
+    assert second["revision"] == first["revision"]
+    assert len(second["items"]) == 1
+
+
+def test_republishing_after_a_touch_still_does_not_grow_the_revision(
+    home: Path, client: TestClient
+) -> None:
+    """源文件被动过（内容没变）：发布器重读一遍，版本号照样不动。"""
+    path = _write_setting(home, "interface", {"theme": "snow"})
+
+    first = _changes(client, "settings")
+
+    stat = path.stat()
+    os.utime(path, (stat.st_atime + 10, stat.st_mtime + 10))
+    second = _changes(client, "settings")
+
+    assert second["revision"] == first["revision"]
+    assert len(second["items"]) == 1
+
+
+def test_a_broken_setting_file_does_not_stop_the_other_settings(
+    home: Path, client: TestClient
+) -> None:
+    """一份设定解析失败：跳过这一份，其余设定照发，端点不 500。"""
+    _write_setting(home, "interface", raw="{ 不是合法 JSON")
+    _write_setting(home, "system", {"version_check_enabled": True})
+
+    response = client.get("/api/sync/changes", params={"domain": "settings"})
+
+    assert response.status_code == 200
+    items = _by_entity(response.json())
+    assert "interface" not in items
+    assert items["system"]["payload"]["value"] == {"version_check_enabled": True}
+
+
+def test_a_failing_domain_does_not_stop_the_other_domains(
+    home: Path, client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """一个域发布失败：跳过那个域，其余域照常，端点不 500。"""
+
+    def boom(store: Any) -> None:
+        raise RuntimeError("发布失败")
+
+    monkeypatch.setattr(sync, "_publish_settings", boom)
+    _write_persona(home, "coach")
+    _write_agents(home, "capabilities:\n  solve:\n    max_tokens: 8192\n")
+
+    manifest = client.get("/api/sync/manifest")
+    assert manifest.status_code == 200
+
+    assert "coach" in _by_entity(_changes(client, "persona"))
+    assert "solve" in _by_entity(_changes(client, "agent"))
+    assert _changes(client, "settings")["items"] == []
+
+
+def test_device_upload_and_cloud_publish_coexist(home: Path, client: TestClient) -> None:
+    """端侧上行与云端发布走同一套变更日志，互不覆盖。"""
+    _write_setting(home, "interface", {"theme": "snow"})
+
+    result = _push(client, _push_item("op-1", "settings", "device_only", {"value": 1}))
+
+    assert result["status"] == "applied"
+    items = _by_entity(_changes(client, "settings"))
+    assert items["device_only"]["payload"] == {"value": 1}
+    assert items["interface"]["payload"]["value"] == {"theme": "snow"}
+
+
+def test_cloud_publish_keeps_the_device_version_so_conflicts_are_detected(
+    home: Path, client: TestClient
+) -> None:
+    """双向域：云端改了同一份设定，端侧再推回来是冲突，不是静默覆盖。"""
+    pushed = _push(
+        client,
+        _push_item("op-1", "settings", "interface", {"value": {"theme": "dark"}}, revision=1),
+    )
+    assert pushed["status"] == "applied"
+
+    _write_setting(home, "interface", {"theme": "snow"})
+    _changes(client, "settings")
+
+    again = _push(
+        client,
+        _push_item("op-2", "settings", "interface", {"value": {"theme": "dark"}}, revision=1),
+    )
+
+    assert again["status"] == "conflict"
+    assert again["conflict_payload"] == {"value": {"theme": "snow"}}
+
+
+# ---------------------------------------------------------------------------
+# 记忆域：端权威，云端只做镜像
+# ---------------------------------------------------------------------------
+
+#: 端侧记忆条目的 id 形态：``m_<ULID>``。
+MEMORY_ID = "m_01HZK4ABCDEFGHJKMNPQRSTVWX"
+
+
+def _memory_item(
+    op_id: str,
+    entity_id: str = MEMORY_ID,
+    *,
+    level: str = "L2",
+    scope: str = "chat",
+    slot: str = "device",
+    content: str = "用户偏好简洁回答",
+    revision: int = 1,
+) -> dict[str, Any]:
+    return _push_item(
+        op_id,
+        "memory",
+        entity_id,
+        {"level": level, "scope": scope, "slot": slot, "content": content},
+        revision=revision,
+    )
+
+
+def test_memory_domain_is_offered_in_the_manifest(client: TestClient) -> None:
+    """端侧按清单决定同步哪些域：记忆不在清单里就永远同步不出去。"""
+    body = client.get("/api/sync/manifest").json()
+
+    assert "memory" in body["domains"]
+    assert body["domains"]["memory"]["available"] is True
+    assert body["domains"]["memory"]["revision"] >= 0
+
+
+def test_memory_entry_is_accepted_and_pulled_back(client: TestClient) -> None:
+    """记忆是端权威域：端侧上行接受，下行拿得到自己的镜像。"""
+    result = _push(client, _memory_item("op-1"))
+
+    assert result["status"] == "applied"
+
+    page = _changes(client, "memory")
+    items = _by_entity(page)
+    assert MEMORY_ID in items
+    item = items[MEMORY_ID]
+    assert item["kind"] == "upsert"
+    assert item["payload"] == {
+        "level": "L2",
+        "scope": "chat",
+        "slot": "device",
+        "content": "用户偏好简洁回答",
+    }
+
+
+def test_memory_entry_lands_in_the_mirror_table(home: Path, client: TestClient) -> None:
+    """记忆镜像表按列存：云端不必解 JSON 就能读。"""
+    _push(client, _memory_item("op-1"))
+
+    import sqlite3
+
+    db = home / "data" / "user" / "sync" / "sync.db"
+    conn = sqlite3.connect(db)
+    try:
+        row = conn.execute(
+            "SELECT entity_id, level, scope, slot, content FROM sync_memory_entries"
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert row == (MEMORY_ID, "L2", "chat", "device", "用户偏好简洁回答")
+
+
+def test_memory_entry_is_written_into_the_cloud_memory_document(
+    home: Path, client: TestClient
+) -> None:
+    """端侧的记忆要落进云端自己的 L2 文档，云端的对话才用得上。"""
+    _push(client, _memory_item("op-1"))
+
+    doc = home / "data" / "memory" / "L2" / "chat.md"
+    assert doc.exists()
+    text = doc.read_text(encoding="utf-8")
+    assert "用户偏好简洁回答" in text
+    assert MEMORY_ID in text
+
+
+def test_memory_entry_for_an_unknown_slot_stays_in_the_mirror(
+    home: Path, client: TestClient
+) -> None:
+    """对不上云端文档的条目：留在镜像表里，不塞进不对的文档。"""
+    result = _push(client, _memory_item("op-1", scope="不是云端的面"))
+
+    assert result["status"] == "applied"
+    assert not (home / "data" / "memory" / "L2").exists()
+
+
+def test_deleted_memory_entry_leaves_the_cloud_memory_document(
+    home: Path, client: TestClient
+) -> None:
+    """条目删掉了，云端文档里那一条也要拿掉，镜像表里也要空。"""
+    _push(client, _memory_item("op-1"))
+    doc = home / "data" / "memory" / "L2" / "chat.md"
+    assert MEMORY_ID in doc.read_text(encoding="utf-8")
+
+    result = _push(
+        client,
+        _push_item(
+            "op-2",
+            "memory",
+            MEMORY_ID,
+            {},
+            revision=2,
+            kind="delete",
+        ),
+    )
+
+    assert result["status"] == "applied"
+    assert MEMORY_ID not in doc.read_text(encoding="utf-8")
+
+    import sqlite3
+
+    conn = sqlite3.connect(home / "data" / "user" / "sync" / "sync.db")
+    try:
+        rows = conn.execute("SELECT entity_id FROM sync_memory_entries").fetchall()
+    finally:
+        conn.close()
+    assert rows == []
+
+
+def test_memory_push_is_never_a_conflict(client: TestClient) -> None:
+    """端权威域不做双向冲突：端侧推什么，云端就镜像什么。"""
+    first = _push(client, _memory_item("op-1", revision=1))
+    second = _push(client, _memory_item("op-2", revision=1, content="改过的记忆"))
+
+    assert first["status"] == "applied"
+    assert second["status"] == "applied"
+
+
+def test_cloud_does_not_publish_memory_of_its_own(client: TestClient) -> None:
+    """端权威域：云端不把自己的记忆往下发，记忆变更只来自端侧上行。"""
+    page = _changes(client, "memory")
+
+    assert page["items"] == []
+    assert page["revision"] == 0
+
+
+# ---------------------------------------------------------------------------
+# 上行回执的服务端版本号
+# ---------------------------------------------------------------------------
+
+
+def test_push_receipt_carries_the_server_revision(client: TestClient) -> None:
+    """回执带版本号：端侧据此推进「云端那一半」的基线，不会误报假冲突。"""
+    result = _push(client, _push_item("op-1", "settings", "theme", {"value": "dark"}))
+
+    assert result["status"] == "applied"
+    assert result["revision"] >= 1
+
+    page = _changes(client, "settings")
+    assert page["items"][0]["revision"] == result["revision"]
+
+
+def test_replayed_push_returns_the_same_revision(client: TestClient) -> None:
+    """重发同一条上行：回放首次结果，版本号也一样。"""
+    item = _push_item("op-1", "settings", "theme", {"value": "dark"})
+
+    first = _push(client, item)
+    second = _push(client, item)
+
+    assert second == first
+    assert second["revision"] == first["revision"]
+
+
+def test_conflict_receipt_reports_the_cloud_revision(client: TestClient) -> None:
+    """冲突回执里的版本号是云端那一份的版本。"""
+    _push(client, _push_item("op-1", "settings", "theme", {"value": "dark"}, revision=1))
+
+    conflict = _push(client, _push_item("op-2", "settings", "theme", {"value": "light"}))
+
+    assert conflict["status"] == "conflict"
+    assert conflict["revision"] >= 1
 
 
 # ---------------------------------------------------------------------------
