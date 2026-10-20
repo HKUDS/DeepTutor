@@ -45,6 +45,23 @@ def posed_card(result):
 def path_id(tmp_path, monkeypatch):
     """Point the LearningStore at a temp workspace and yield a stable path id."""
     monkeypatch.setattr(LearningStore, "__init__", _store_init_factory(tmp_path))
+    from deeptutor.learning import semantic_assessment
+
+    async def judge(_config, items):
+        verdicts = {}
+        for item in items:
+            if (item.get("expected_answer"), item["answer"]) in {("4", "5"), ("0", "1")}:
+                result = "incorrect"
+            elif item["answer"] == "XOR is exclusive or.":
+                result = "correct"
+            else:
+                raise AssertionError(f"Add an explicit offline assessment case: {item!r}")
+            verdicts[item["question_id"]] = semantic_assessment.Verdict(
+                result=result, confidence=0.99, feedback="Checked the supplied explanation."
+            )
+        return verdicts
+
+    monkeypatch.setattr(semantic_assessment, "judge_answers", judge)
     return "test_path"
 
 
@@ -1270,7 +1287,11 @@ async def test_assess_passes_concept(path_id):
     result = json.loads(
         (
             await MasteryAssessTool().execute(
-                _mastery_path_id=path_id, knowledge_point_id=concept_kp, passed=True, feedback="ok"
+                _mastery_path_id=path_id,
+                knowledge_point_id=concept_kp,
+                passed=True,
+                feedback="ok",
+                _learner_message="XOR is exclusive or.",
             )
         ).content
     )
@@ -1316,6 +1337,7 @@ async def test_assess_syncs_qualitative_record_to_question_bank(path_id, session
         _mastery_path_id=path_id,
         _session_id=session["id"],
         _turn_id="turn_qual",
+        _learner_message="XOR is exclusive or.",
         knowledge_point_id=concept_kp,
         passed=True,
         feedback="XOR is exclusive or.",
@@ -1324,6 +1346,7 @@ async def test_assess_syncs_qualitative_record_to_question_bank(path_id, session
         _mastery_path_id=path_id,
         _session_id=session["id"],
         _turn_id="turn_qual",
+        _learner_message="XOR is exclusive or.",
         knowledge_point_id=concept_kp,
         passed=True,
         feedback="XOR is exclusive or.",
@@ -1853,6 +1876,7 @@ async def test_revise_refuses_to_erase_a_mastered_waypoint(path_id):
     assessed = await MasteryAssessTool().execute(
         _mastery_path_id=path_id,
         knowledge_point_id=concept["id"],
+        _learner_message="XOR is exclusive or.",
         passed=True,
         explanation="学习者说清楚了 XOR 与等价的关系。",
     )
@@ -1943,7 +1967,7 @@ async def test_a_correction_merges_instead_of_wiping_the_other_answers(path_id):
         (await profile.execute(_mastery_path_id=path_id, time_budget="改成两周")).content
     )
     assert corrected["updated_fields"] == ["time_budget"]
-    assert corrected["learner_profile"] == {
+    expected_answers = {
         "prior_knowledge": "学过一学期线性代数",
         "target_level": "能看懂论文里的推导",
         "time_budget": "改成两周",
@@ -1951,6 +1975,8 @@ async def test_a_correction_merges_instead_of_wiping_the_other_answers(path_id):
         "teaching_strategy": "probe_first",
         "notes": "",
     }
+    # Advisory teaching projections accompany these durable intake answers.
+    assert {key: corrected["learner_profile"][key] for key in expected_answers} == expected_answers
 
 
 @pytest.mark.asyncio

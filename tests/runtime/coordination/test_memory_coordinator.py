@@ -133,3 +133,21 @@ async def test_background_leader_is_singleton_and_transferable() -> None:
     successor = await coordinator.acquire_leader("worker-b")
     assert successor is not None
     assert successor.fencing_token > leader.fencing_token
+
+
+@pytest.mark.asyncio
+async def test_acknowledged_turn_releases_payloads_but_live_owner_keeps_them() -> None:
+    coordinator = MemoryCoordinator()
+    lease = await coordinator.acquire_turn("turn-a", "session-a", "worker")
+    assert lease is not None
+    await coordinator.publish_event("turn-a", {"type": "content", "content": "large answer"})
+    await coordinator.submit_command("turn-a", "cancel", command_id="cancel-a")
+    await coordinator.acknowledge_expired_turn("turn-a")
+    assert len(await coordinator.read_events("turn-a")) == 1
+    assert len(await coordinator.read_commands("turn-a")) == 1
+    await coordinator.release_turn(lease)
+    await coordinator.acknowledge_expired_turn("turn-a")
+    assert await coordinator.read_events("turn-a") == []
+    assert await coordinator.read_commands("turn-a") == []
+    assert "cancel-a" not in coordinator._command_ids
+    assert await coordinator.list_expired_turn_ids() == []

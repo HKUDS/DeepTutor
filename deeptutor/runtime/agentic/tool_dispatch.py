@@ -27,7 +27,12 @@ import logging
 from typing import Any
 
 from deeptutor.core.context import UnifiedContext
-from deeptutor.core.tool_protocol import ToolLookup, provider_identity
+from deeptutor.core.tool_protocol import (
+    TOOL_EVENT_PROJECTION,
+    ToolEventProjection,
+    ToolLookup,
+    provider_identity,
+)
 from deeptutor.core.trace import (
     build_trace_metadata,
     derive_trace_metadata,
@@ -198,6 +203,13 @@ async def dispatch_tool_calls(
         display_args = {
             k: v for k, v in exec_args.items() if not k.startswith("_") and k not in withheld
         }
+        projection = exec_args.get(TOOL_EVENT_PROJECTION)
+        if isinstance(projection, ToolEventProjection):
+            display_args = {
+                k: v
+                for k, v in projection.arguments.items()
+                if not k.startswith("_") and k not in withheld
+            }
         await stream.tool_call(
             tool_name=tool_name,
             args=display_args,
@@ -248,7 +260,7 @@ async def dispatch_tool_calls(
                 retrieve_meta_factory(
                     per_tool_trace_meta[tool_index],
                     tool_name,
-                    exec_args,
+                    _public_invocation_args(exec_args),
                 )
                 if retrieve_meta_factory
                 else None
@@ -630,6 +642,13 @@ def _provider_of(registry: ToolLookup | None, tool_name: str) -> tuple[str, str]
     return provider_identity(tool) if tool is not None else ("", "")
 
 
+def _public_invocation_args(arguments: dict[str, Any]) -> dict[str, Any]:
+    projection = arguments.get(TOOL_EVENT_PROJECTION)
+    if isinstance(projection, ToolEventProjection):
+        return {**projection.arguments, "query": projection.retrieval_query}
+    return arguments
+
+
 def _sensitive_arg_names(registry: ToolLookup, tool_name: str) -> frozenset[str]:
     """Parameter names this tool keeps out of its trace event."""
     try:
@@ -705,7 +724,12 @@ async def execute_tool_call(
     if status_meta is not None:
         running_message = ""
         if retrieve_meta is not None:
-            query = str(retrieve_meta.get("query") or tool_args.get("query") or "").strip()
+            projection = tool_args.get(TOOL_EVENT_PROJECTION)
+            query = (
+                projection.retrieval_query
+                if isinstance(projection, ToolEventProjection)
+                else str(retrieve_meta.get("query") or tool_args.get("query") or "").strip()
+            )
             running_message = f"Query: {query}" if query else start_retrieval_message
         await stream.progress(
             running_message,
@@ -779,6 +803,7 @@ async def execute_tool_call(
             "terminate_turn": getattr(result, "terminate_turn", False),
             "pause_for_user": getattr(result, "pause_for_user", None),
             "model_message": getattr(result, "model_message", None),
+            "public_result": getattr(result, "public_result", None),
         }
     except Exception as exc:
         # Unknown tool names arrive here too (the registry raises KeyError), so
@@ -860,21 +885,25 @@ async def _collect_outcome(
         result_text = str(result["result_text"])
         tool_meta = per_tool_trace_meta[tool_index]
         tool_extra_meta = result.get("metadata") if isinstance(result, dict) else None
+        public_result = result.get("public_result")
+        projected = isinstance(public_result, dict)
+        public_text = str(public_result.get("content", "")) if projected else result_text
+        public_meta = public_result.get("metadata") if projected else tool_extra_meta
         result_event_meta = merge_trace_metadata(tool_meta, {"trace_kind": "tool_result"})
-        if isinstance(tool_extra_meta, dict) and tool_extra_meta:
+        if isinstance(public_meta, dict) and public_meta:
             result_event_meta = merge_trace_metadata(
                 result_event_meta,
-                {"tool_metadata": dict(tool_extra_meta)},
+                {"tool_metadata": dict(public_meta)},
             )
         if tool_index not in suppress_ui_indices:
             await stream.tool_result(
                 tool_name=tool_name,
-                result=result_text,
+                result=public_text,
                 source=source,
                 stage=stage,
                 metadata=result_event_meta,
             )
-        aggregated_sources.extend(result.get("sources") or [])
+        aggregated_sources.extend((public_result if projected else result).get("sources") or [])
         tool_messages.append(
             {
                 "role": "tool",

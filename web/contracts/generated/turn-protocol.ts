@@ -42,6 +42,9 @@ export type KnowledgeBases = string[];
 export type Language = string | null;
 export type ModelId = string;
 export type ProfileId = string;
+export type Answers = {
+  [k: string]: string;
+} | null;
 export type QuestionId = string;
 export type Text = string;
 export type MasteryPathId = string | null;
@@ -73,6 +76,7 @@ export type Revision = number;
 export type ReadingReferences = ReadingReference[];
 export type Locator = number | null;
 export type Selection = string | null;
+export type TimeSeconds = number | null;
 export type ReadingWorkspaceId = string | null;
 export type Regenerate = boolean;
 export type RegeneratedFromMessageId = number | string | null;
@@ -85,7 +89,7 @@ export type Skills = string[];
 export type SubagentConsultBudget = number | null;
 export type SupersededTurnId = string | null;
 export type TimedMediaId = string | null;
-export type TimeSeconds = number;
+export type TimeSeconds1 = number;
 export type Tools = string[] | null;
 export type Type1 = "message" | "start_turn";
 export type WorkspaceId = string | null;
@@ -113,7 +117,7 @@ export type Type6 = "cancel_turn";
 export type ProtocolVersion6 = "2.0";
 export type SessionId3 = string;
 export type Type7 = "regenerate";
-export type Answers = UserAnswer[] | null;
+export type Answers1 = UserAnswer[] | null;
 export type Questionid = string;
 export type Text1 = string;
 export type CommandId1 = string;
@@ -370,6 +374,7 @@ export interface LLMSelection {
  * via the `definition` "MasteryCardAnswer".
  */
 export interface MasteryCardAnswer {
+  answers?: Answers;
   question_id: QuestionId;
   text: Text;
 }
@@ -411,13 +416,14 @@ export interface ReadingReference {
 export interface ReadingViewport {
   locator?: Locator;
   selection?: Selection;
+  time_seconds?: TimeSeconds;
 }
 /**
  * This interface was referenced by `TurnProtocolDocument`'s JSON-Schema
  * via the `definition` "TimedMediaViewport".
  */
 export interface TimedMediaViewport {
-  time_seconds: TimeSeconds;
+  time_seconds: TimeSeconds1;
 }
 /**
  * This interface was referenced by `TurnProtocolDocument`'s JSON-Schema
@@ -487,7 +493,7 @@ export interface Overrides {
  * via the `definition` "SubmitUserReplyCommand".
  */
 export interface SubmitUserReplyCommand {
-  answers?: Answers;
+  answers?: Answers1;
   command_id: CommandId1;
   protocol_version: ProtocolVersion7;
   text?: Text2;

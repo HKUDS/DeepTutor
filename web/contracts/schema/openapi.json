@@ -784,7 +784,7 @@
       "Body_admin_import_users_api_auth_users_import_post": {
         "properties": {
           "file": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
           }
@@ -805,7 +805,7 @@
           "files": {
             "default": [],
             "items": {
-              "format": "binary",
+              "contentMediaType": "application/octet-stream",
               "type": "string"
             },
             "title": "Files",
@@ -863,7 +863,7 @@
       "Body_import_docx_api_documents_import_docx_post": {
         "properties": {
           "file": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
           }
@@ -883,7 +883,7 @@
             "type": "string"
           },
           "file": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
           },
@@ -906,7 +906,7 @@
       "Body_import_visualizer_api_visualizers_import_post": {
         "properties": {
           "file": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
           }
@@ -920,8 +920,8 @@
       "Body_library_add": {
         "properties": {
           "file": {
+            "contentMediaType": "application/octet-stream",
             "description": "Raw file bytes",
-            "format": "binary",
             "title": "File",
             "type": "string"
           },
@@ -946,7 +946,7 @@
       "Body_preview_office_upload_api_file_preview_pdf_post": {
         "properties": {
           "file": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
           }
@@ -981,7 +981,7 @@
       "Body_speech_to_text_api_voice_stt_post": {
         "properties": {
           "file": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
           },
@@ -1006,7 +1006,7 @@
       "Body_upload_avatar_api_auth_profile_avatar_put": {
         "properties": {
           "file": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
           }
@@ -1025,7 +1025,7 @@
           },
           "files": {
             "items": {
-              "format": "binary",
+              "contentMediaType": "application/octet-stream",
               "type": "string"
             },
             "title": "Files",
@@ -1064,7 +1064,7 @@
       "Body_upload_material_api_reading_materials_post": {
         "properties": {
           "file": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
           }
@@ -2849,6 +2849,18 @@
       },
       "CreateWorkspacePayload": {
         "properties": {
+          "instructions": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instructions"
+          },
           "name": {
             "maxLength": 100,
             "minLength": 1,
@@ -5946,6 +5958,23 @@
         "additionalProperties": false,
         "description": "An answer submitted from a mastery question card.\n\nThe card outlives the turn that posed it — posing a question ends that\nturn — so the answer arrives as the next turn's message. This says which\nquestion the message is answering, letting the runtime commit it to the\nengine before the tutor's first token instead of asking the model to\nrecover the pairing from prose.",
         "properties": {
+          "answers": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "maxProperties": 4,
+                "minProperties": 1,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Answers"
+          },
           "question_id": {
             "minLength": 1,
             "title": "Question Id",
@@ -8401,6 +8430,19 @@
             ],
             "default": null,
             "title": "Selection"
+          },
+          "time_seconds": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Time Seconds"
           }
         },
         "title": "ReadingViewport",
@@ -9315,6 +9357,19 @@
         "title": "SessionReplyLanguageRequest",
         "type": "object"
       },
+      "SessionStoreCapabilities": {
+        "properties": {
+          "submission_replacement": {
+            "title": "Submission Replacement",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "submission_replacement"
+        ],
+        "title": "SessionStoreCapabilities",
+        "type": "object"
+      },
       "SessionSummary": {
         "additionalProperties": false,
         "properties": {
@@ -9771,6 +9826,55 @@
           }
         },
         "title": "SubagentSettingsPayload",
+        "type": "object"
+      },
+      "SubmissionReplacementRequest": {
+        "properties": {
+          "original_submission_id": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Original Submission Id",
+            "type": "string"
+          },
+          "request": {
+            "$ref": "#/components/schemas/TurnRequest"
+          }
+        },
+        "required": [
+          "original_submission_id",
+          "request"
+        ],
+        "title": "SubmissionReplacementRequest",
+        "type": "object"
+      },
+      "SubmissionReplacementResponse": {
+        "properties": {
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "status": {
+            "const": "started",
+            "title": "Status",
+            "type": "string"
+          },
+          "submission_id": {
+            "title": "Submission Id",
+            "type": "string"
+          },
+          "turn": {
+            "additionalProperties": true,
+            "title": "Turn",
+            "type": "object"
+          }
+        },
+        "required": [
+          "status",
+          "session_id",
+          "submission_id",
+          "turn"
+        ],
+        "title": "SubmissionReplacementResponse",
         "type": "object"
       },
       "SupplementRequest": {
@@ -12256,6 +12360,18 @@
               }
             ],
             "title": "Archived"
+          },
+          "instructions": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instructions"
           },
           "name": {
             "anyOf": [
@@ -47926,6 +48042,72 @@
         ]
       }
     },
+    "/api/sessions/capabilities": {
+      "get": {
+        "description": "Expose operations the configured store can perform atomically.",
+        "operationId": "session_store_capabilities_api_sessions_capabilities_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionStoreCapabilities"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Session Store Capabilities",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
     "/api/sessions/recycle-bin": {
       "get": {
         "operationId": "list_recycle_bin_api_sessions_recycle_bin_get",
@@ -48115,6 +48297,82 @@
           }
         },
         "summary": "Search Sessions",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
+    "/api/sessions/submission-replacement": {
+      "post": {
+        "description": "Resolve admission atomically before an edited retry is sent.",
+        "operationId": "replace_submission_api_sessions_submission_replacement_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmissionReplacementRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmissionReplacementResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Replace Submission",
         "tags": [
           "sessions"
         ]

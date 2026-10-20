@@ -376,8 +376,13 @@ async def run_diagnostics(
     """Run setup diagnostics without network access unless ``online`` is set."""
     if resolve_llm is None:
         from deeptutor.services.config import resolve_llm_runtime_config
+        from deeptutor.services.model_selection.runtime import llm_config_from_resolved
 
-        resolve_llm = resolve_llm_runtime_config
+        # The probe hands this config to ``complete_with_config``, which needs
+        # an LLMConfig, not the provider-runtime ResolvedLLMConfig.
+        def resolve_llm() -> Any:
+            return llm_config_from_resolved(resolve_llm_runtime_config())
+
     if data_root is None:
         from deeptutor.services.path_service import get_path_service
 

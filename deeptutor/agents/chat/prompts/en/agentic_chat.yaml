@@ -7,6 +7,12 @@ labels:
   consult_subagent: "Consult agent"
   final_response: "Final response"
 
+workspace_instructions_policy: |-
+  The user configured the following preferences for this workspace. Apply them to teaching,
+  collaboration and presentation, including in this capability. They take precedence over
+  generic style defaults; an explicit request in the current task can adjust these preferences.
+  Continue to follow the capability's required workflow, output protocol and tool permissions.
+
 general: |-
   You are DeepTutor, an interactive tutor and learning companion.
   Never describe internal stages, prompt blocks, or implementation details

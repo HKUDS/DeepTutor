@@ -87,7 +87,7 @@ async def test_search_returns_reindex_hint_for_null_vector_index(
     monkeypatch.setattr(
         storage_module,
         "retrieve_nodes",
-        lambda storage_dir, query, top_k=5: (_ for _ in ()).throw(
+        lambda storage_dir, query, top_k=5, document_keys=None: (_ for _ in ()).throw(
             TypeError("unsupported operand type(s) for *: 'NoneType' and 'float'")
         ),
     )
@@ -216,7 +216,7 @@ async def test_rag_service_hides_low_level_invalid_index_error_in_raw_logs(
     monkeypatch.setattr(
         storage_module,
         "retrieve_nodes",
-        lambda storage_dir, query, top_k=5: (_ for _ in ()).throw(
+        lambda storage_dir, query, top_k=5, document_keys=None: (_ for _ in ()).throw(
             TypeError("unsupported operand type(s) for *: 'NoneType' and 'float'")
         ),
     )
@@ -327,7 +327,7 @@ async def test_search_answer_keeps_reindex_steps_without_low_level_details(
     monkeypatch.setattr(
         storage_module,
         "retrieve_nodes",
-        lambda storage_dir, query, top_k=5: (_ for _ in ()).throw(
+        lambda storage_dir, query, top_k=5, document_keys=None: (_ for _ in ()).throw(
             TypeError("unsupported operand type(s) for *: 'NoneType' and 'float'")
         ),
     )

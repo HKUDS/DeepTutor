@@ -82,6 +82,7 @@ async def get_learning_index():
     from deeptutor.api.routers.book import list_books
     from deeptutor.api.routers.mastery_path import list_topics
     from deeptutor.api.routers.reading import list_workspaces
+    from deeptutor.multi_user.learning_access import learning_surface_allowed
     from deeptutor.services.workspace.navigation import read_workspace_indexes
 
     async def books():
@@ -92,13 +93,6 @@ async def get_learning_index():
 
     async def reading():
         return (await list_workspaces(search=""))["workspaces"]
-
-    result = {}
-    failed = []
-    for kind, reader in (("books", books), ("mastery", mastery), ("reading", reading)):
-        result[kind], unavailable = await read_workspace_indexes(reader)
-        if unavailable:
-            failed.append(kind)
 
     async def watching():
         from deeptutor.services.session.organization import list_all_sessions_snapshot
@@ -111,9 +105,22 @@ async def get_learning_index():
             or (row.get("preferences") or {}).get("capability") == "immersive_watching"
         ]
 
-    result["watching"], unavailable = await read_workspace_indexes(watching)
-    if unavailable:
-        failed.append("watching")
+    result = {}
+    failed = []
+    for kind, surface, reader in (
+        ("books", "books", books),
+        ("mastery", "chat", mastery),
+        ("reading", "reading", reading),
+        ("watching", "reading", watching),
+    ):
+        # Calling a route function directly bypasses its HTTP dependencies.
+        # Never load a source that the learner could not open individually.
+        result[kind] = []
+        if not learning_surface_allowed(surface):
+            continue
+        result[kind], unavailable = await read_workspace_indexes(reader)
+        if unavailable:
+            failed.append(kind)
     return {"sources": result, "failed": failed}
 
 

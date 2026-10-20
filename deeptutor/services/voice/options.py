@@ -136,6 +136,23 @@ def _tts_models(provider: str) -> tuple[list[dict], str]:
             )
             for m in audio_models
         ], "https://help.aliyun.com/zh/model-studio/qwen-tts-voice-list"
+    if provider == "gemini":
+        return [
+            preset(
+                model,
+                formats=["wav", "pcm"],
+                instructions=True,
+                configuration_note=(
+                    "Gemini TTS outputs PCM audio served as WAV. Voices are Google "
+                    "prebuilt names such as Kore or Puck."
+                ),
+            )
+            for model in [
+                "gemini-2.5-flash-preview-tts",
+                "gemini-2.5-pro-preview-tts",
+                "gemini-3.1-flash-tts-preview",
+            ]
+        ], "https://ai.google.dev/gemini-api/docs/speech-generation"
     if provider == "groq":
         return [
             preset(
@@ -182,6 +199,8 @@ def voice_options(provider: str, service: str) -> dict:
             fallback = preset("", formats=["wav"])
         elif provider == "xiaomi_mimo":
             fallback = preset("", formats=["wav", "pcm16"], instructions=True)
+        elif provider == "gemini":
+            fallback = preset("", formats=["wav", "pcm"], instructions=True)
     else:
         ids = {
             "openai": ["gpt-4o-mini-transcribe", "gpt-4o-transcribe", "whisper-1"],

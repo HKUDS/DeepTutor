@@ -66,6 +66,48 @@ def test_replay_preserves_exact_protocol_without_duplicating_the_display_rows():
     assert source[-1]["metadata"] == {}
 
 
+def test_replay_replaces_only_marked_runtime_snapshots_and_keeps_dialogue():
+    first = turn_record()
+    first["messages"].insert(
+        0,
+        {
+            "role": "user",
+            "content": "old runtime state",
+            "_context_snapshot": "memory",
+        },
+    )
+    second = turn_record()
+    second["messages"].insert(
+        0,
+        {
+            "role": "user",
+            "content": "new runtime state",
+            "_context_snapshot": "memory",
+        },
+    )
+    original = rows(first) + rows(second, start=3)
+    before = deepcopy(original)
+    result = replay_history(original)
+    assert sum(m.get("_context_snapshot") == "memory" for m in result) == 1
+    assert result[4]["content"] == "new runtime state"
+    assert sum(m.get("content") == "Original answer" for m in result) == 2
+    assert original == before
+
+
+def test_legacy_mastery_suffix_is_removed_but_literal_user_quote_is_preserved():
+    import json
+
+    from deeptutor.services.session.model_history import _MASTERY_SNAPSHOT_NOTICE
+
+    suffix = _MASTERY_SNAPSHOT_NOTICE + json.dumps({"path_id": "p", "map": {"name": "Course"}})
+    record = turn_record()
+    record["messages"][0]["content"] = "Question\n" + suffix
+    source = rows(record)
+    assert replay_history(source)[0]["content"] == "Question"
+    source[0]["content"] = "Please explain this literal quotation:\n" + suffix
+    assert replay_history(source)[0]["content"] == record["messages"][0]["content"]
+
+
 def test_invalid_or_incomplete_protocol_uses_display_history():
     record = turn_record()
     record["messages"].pop(2)
@@ -142,12 +184,17 @@ async def test_compaction_preserves_whole_tool_turns_and_reuses_the_old_prefix()
     ]
     assert request["tools"] == recent["tools"]
     store.update_summary.assert_awaited_once_with("s", "Summary preserving the evidence", 2)
-    assert result.model_history[1:] == recent["messages"]
+    # The summary no longer occupies model_history[0]: the answer loop delivers
+    # it as a trailing runtime snapshot, so the replayed history starts at the
+    # oldest retained turn while the summary still reaches the model.
+    assert result.model_history == recent["messages"]
+    assert result.conversation_summary == "Summary preserving the evidence"
     assert result.conversation_history[-1]["content"] == "Displayed answer"
 
 
 @pytest.mark.asyncio
 async def test_summary_instruction_is_appended_after_original_messages_and_tools(monkeypatch):
+    monkeypatch.setattr("deeptutor.agents.base_agent.get_agent_params", lambda _module: {})
     captured = {}
 
     async def stream(_self, **kwargs):
@@ -173,6 +220,84 @@ async def test_summary_instruction_is_appended_after_original_messages_and_tools
     assert captured["tools"] == request["tools"]
     assert "tool_choice" not in captured
     assert request == original
+
+
+@pytest.mark.asyncio
+async def test_summary_replay_projects_duplicate_images_without_losing_provider_state(monkeypatch):
+    captured = {}
+
+    async def stream(_self, **kwargs):
+        captured.update(kwargs)
+        yield "Summary"
+
+    monkeypatch.setattr(_ContextSummaryAgent, "stream_llm", stream)
+    record = turn_record()
+    image = {"type": "image_url", "image_url": {"url": "data:image/png;base64,YWJj"}}
+    record["messages"][0]["content"] = [image]
+    record["messages"][-1]["thinking_blocks"] = [
+        {"type": "thinking", "thinking": "private thought", "signature": "signed"}
+    ]
+    request = {
+        "messages": [
+            {"role": "system", "content": record["system"]},
+            *record["messages"],
+            {"role": "user", "content": [deepcopy(image)]},
+        ],
+        "tools": record["tools"],
+    }
+    original = deepcopy(request)
+
+    await ContextBuilder(MagicMock())._summarize(
+        session_id="s",
+        language="en",
+        source_text="fallback transcript",
+        summary_budget=256,
+        replay_request=request,
+    )
+
+    messages = captured["messages"]
+    assert messages[1]["content"][-1] == image
+    assert all(part["type"] == "text" for part in messages[-2]["content"])
+    assert "Repeated image" in messages[-2]["content"][0]["text"]
+    assert messages[2:5] == record["messages"][1:]
+    assert captured["tools"] == record["tools"]
+    assert messages[-1]["role"] == "user"
+    assert request == original
+
+
+@pytest.mark.asyncio
+async def test_budget_uses_the_replayed_route_and_preserves_stored_signed_state():
+    record = turn_record()
+    record["messages"][-1]["thinking_blocks"] = [
+        {"type": "thinking", "thinking": "private thought " * 4000, "signature": "signed"}
+    ]
+    records = rows(record)
+    before = deepcopy(records)
+    store = MagicMock()
+    store.get_session = AsyncMock(
+        return_value={"compressed_summary": "", "summary_up_to_msg_id": 0}
+    )
+    store.get_messages_for_context = AsyncMock(return_value=records)
+    store.update_summary = AsyncMock()
+    builder = ContextBuilder(store)
+    builder._summarize = AsyncMock(return_value=("Summary", []))
+
+    switched = await builder.build(
+        session_id="s",
+        llm_config=SimpleNamespace(binding="openai", model="other-model", context_window=16000),
+    )
+
+    builder._summarize.assert_not_awaited()
+    assert switched.token_count < switched.budget
+    assert "thinking_blocks" not in switched.model_history[-1]
+    assert switched.model_history[2]["content"] == "tool evidence"
+
+    await builder.build(
+        session_id="s",
+        llm_config=SimpleNamespace(binding="openai", model="gpt-test", context_window=16000),
+    )
+    builder._summarize.assert_awaited_once()
+    assert records == before
 
 
 @pytest.mark.asyncio
@@ -204,3 +329,45 @@ async def test_branch_replay_and_public_export_are_isolated(tmp_path):
     )
     tool_results = [m["content"] for m in built.model_history if m["role"] == "tool"]
     assert tool_results == ["A only"]
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("<think>private scratchpad</think>", ""),
+        (
+            "<thinking>private scratchpad</thinking>\n# Summary\nRetained facts",
+            "# Summary\nRetained facts",
+        ),
+        ("# Summary\nRetained facts", "# Summary\nRetained facts"),
+    ],
+)
+def test_summary_sanitizer_does_not_restore_removed_reasoning(raw, expected):
+    from deeptutor.services.session.context_builder import sanitize_summary
+
+    assert sanitize_summary(raw) == expected
+
+
+@pytest.mark.asyncio
+async def test_recompaction_retains_prior_summary_when_history_replay_has_no_summary_row():
+    records = (
+        rows(turn_record("already condensed"))
+        + rows(turn_record("evidence " * 1800), 3)
+        + rows(turn_record("recent"), 5)
+    )
+    store = MagicMock()
+    store.get_session = AsyncMock(
+        return_value={"compressed_summary": "Earlier stable preference", "summary_up_to_msg_id": 2}
+    )
+    store.get_messages_for_context = AsyncMock(return_value=records)
+    store.update_summary = AsyncMock()
+    builder = ContextBuilder(store)
+    builder._summarize = AsyncMock(return_value=("Updated summary", []))
+    await builder.build(
+        session_id="s",
+        llm_config=SimpleNamespace(model="gpt-test", max_tokens=512, context_window=4096),
+    )
+    request = builder._summarize.call_args.kwargs["replay_request"]
+    assert request["messages"][-1]["content"] == "[Conversation summary]\nEarlier stable preference"
+    assert all("_context_snapshot" not in message for message in request["messages"])
+    assert "already condensed" not in str(request["messages"])

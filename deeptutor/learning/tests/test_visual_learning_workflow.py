@@ -21,6 +21,7 @@ from deeptutor.learning.policy import is_assessed_mastered, visual_achievements
 from deeptutor.learning.scheduler import SpacedRepetitionScheduler
 from deeptutor.learning.service import LearningService
 from deeptutor.learning.storage import LearningStore
+from deeptutor.runtime.stream_bus import StreamBus
 from deeptutor.services.parsing.types import ParsedDocument
 from deeptutor.services.rag.visual_assets import VisualAssetStore, collect_visual_assets
 from deeptutor.services.session.sqlite_store import SQLiteSessionStore
@@ -148,17 +149,43 @@ async def pose(lesson, **overrides):
 
 
 @pytest.mark.asyncio
-async def test_teach_then_source_visual_practice_equivalent_answer_and_restart(lesson):
+async def test_teach_then_source_visual_practice_equivalent_answer_and_restart(lesson, monkeypatch):
+    explanation = (
+        "An artery has a thicker wall than a vein; structure 1 is the artery in this source."
+    )
+    stream = StreamBus(assign_seq=True)
+    await stream.content(explanation, source="mastery_path", stage="responding")
     explained = await tools.MasteryNoteExplainedTool().execute(
         _mastery_path_id="visual",
+        _session_id="s",
+        _turn_id="teaching",
         knowledge_point_id="identify",
         summary="Explained artery/vein prerequisites concisely at beginner level using the numbered source.",
+        explanation_quote=explanation,
+        _teaching_delivery=lambda: {
+            "path_id": "visual",
+            "session_id": "s",
+            "turn_id": "teaching",
+            "segments": stream.public_content_snapshot(source="mastery_path", stage="responding"),
+        },
     )
     assert explained.success
     before = lesson.store.load("visual")
     assert before.explained_objectives["identify"]["summary"]
     assert before.mastery_levels.get("identify", 0) == 0
     card = await pose(lesson)
+    from deeptutor.learning import semantic_assessment as semantic
+
+    async def translation(config, items):
+        assert items[0]["answer"] == "动脉"
+        assert items[0]["_visual_images"]
+        return {
+            card["question_id"]: semantic.Verdict(
+                result="correct", confidence=0.99, feedback="Equivalent translation of artery."
+            )
+        }
+
+    monkeypatch.setattr(semantic, "judge_answers", translation)
     assert card["visual"]["sources"][0]["image_url"].endswith(lesson.asset + "?dt_workspace=")
     assert "reference_quote" not in json.dumps(card) and "accepted_answers" not in json.dumps(card)
     result = await tools.MasteryGradeTool().execute(
@@ -172,6 +199,86 @@ async def test_teach_then_source_visual_practice_equivalent_answer_and_restart(l
     assert progress.quiz_attempts[0].visual_context["sources"][0]["asset_id"] == lesson.asset
     assert progress.quiz_attempts[0].independent
     assert visual_achievements(progress, "identify") == ["identification"]
+
+
+@pytest.mark.asyncio
+async def test_native_visual_paraphrase_uses_current_pixels_and_retains_assistance(
+    lesson, monkeypatch
+):
+    from deeptutor.learning import semantic_assessment as semantic
+
+    card = await pose(lesson, visual=visual(lesson, cues="visible"))
+
+    async def judge(config, items):
+        assert len(items) == 1
+        assert items[0]["answer"] == "The red structure is the artery on the left."
+        assert any(part["type"] == "image_url" for part in items[0]["_visual_images"])
+        return {
+            card["question_id"]: semantic.Verdict(
+                result="correct", confidence=0.98, feedback="The artery is correctly identified."
+            )
+        }
+
+    monkeypatch.setattr(semantic, "judge_answers", judge)
+    progress, row, _ = await lesson.service.grade_interaction_semantic(
+        "visual",
+        answer="The red structure is the artery on the left.",
+        question_id=card["question_id"],
+    )
+    assert row.result["is_correct"] is True
+    assert progress.quiz_attempts[0].user_answer == "The red structure is the artery on the left."
+    assert not progress.quiz_attempts[0].independent
+    assert progress.learning_evidence[0].quality <= 0.6
+
+
+@pytest.mark.asyncio
+async def test_native_visual_revocation_during_semantic_call_grants_no_credit(lesson, monkeypatch):
+    from deeptutor.learning import semantic_assessment as semantic
+
+    card = await pose(lesson)
+
+    async def judge(config, items):
+        monkeypatch.setattr(
+            "deeptutor.multi_user.knowledge_access.resolve_for_rag", lambda name: None
+        )
+        return {
+            card["question_id"]: semantic.Verdict(
+                result="correct", confidence=0.98, feedback="Matches."
+            )
+        }
+
+    monkeypatch.setattr(semantic, "judge_answers", judge)
+    from deeptutor.learning.service import MasteryInteractionError
+
+    with pytest.raises(MasteryInteractionError, match="access"):
+        await lesson.service.grade_interaction_semantic(
+            "visual", answer="The artery is on the left.", question_id=card["question_id"]
+        )
+    assert not lesson.store.load("visual").quiz_attempts
+
+
+@pytest.mark.asyncio
+async def test_model_supplied_visual_alias_cannot_bypass_semantic_verdict(lesson, monkeypatch):
+    from deeptutor.learning import semantic_assessment as semantic
+
+    requested = visual(lesson)
+    requested["accepted_answers"] = ["vein"]
+    card = await pose(lesson, visual=requested)
+
+    async def judge(config, items):
+        assert items[0]["answer"] == "vein"
+        return {
+            card["question_id"]: semantic.Verdict(
+                result="incorrect", confidence=0.99, feedback="The marked vessel is the artery."
+            )
+        }
+
+    monkeypatch.setattr(semantic, "judge_answers", judge)
+    progress, row, _ = await lesson.service.grade_interaction_semantic(
+        "visual", answer="vein", question_id=card["question_id"]
+    )
+    assert row.result["is_correct"] is False
+    assert progress.learning_evidence[0].result == "incorrect"
 
 
 @pytest.mark.asyncio
@@ -351,7 +458,9 @@ def test_generic_text_success_does_not_satisfy_required_visual_task(lesson):
 
 
 @pytest.mark.asyncio
-async def test_pdf_region_can_assess_relationship_without_displaying_the_reference_key(lesson):
+async def test_pdf_region_can_assess_relationship_without_displaying_the_reference_key(
+    lesson, monkeypatch
+):
     card = await pose(
         lesson,
         expected_answer="left",
@@ -374,7 +483,19 @@ async def test_pdf_region_can_assess_relationship_without_displaying_the_referen
     )
     assert card["visual"]["hints_used"] == 0
     assert card["visual"]["key_status"] == "verified"
-    progress, interaction, _ = lesson.service.grade_interaction(
+    from deeptutor.learning import semantic_assessment as semantic
+
+    async def translation(config, items):
+        assert items[0]["answer"] == "左侧"
+        assert items[0]["_visual_images"]
+        return {
+            card["question_id"]: semantic.Verdict(
+                result="correct", confidence=0.99, feedback="Correct relative position."
+            )
+        }
+
+    monkeypatch.setattr(semantic, "judge_answers", translation)
+    progress, interaction, _ = await lesson.service.grade_interaction_semantic(
         "visual", answer="左侧", question_id=card["question_id"]
     )
     assert interaction.result["result"] == "correct"
@@ -385,11 +506,26 @@ async def test_pdf_region_can_assess_relationship_without_displaying_the_referen
 @pytest.mark.asyncio
 async def test_help_after_question_is_assisted_and_deferral_never_claims_mastery(lesson):
     card = await pose(lesson)
-    await tools.MasteryNoteExplainedTool().execute(
+    explanation = (
+        "The thick-walled vessel is an artery; compare the two vessel walls in the source."
+    )
+    stream = StreamBus(assign_seq=True)
+    await stream.content(explanation, source="mastery_path", stage="responding")
+    explained = await tools.MasteryNoteExplainedTool().execute(
         _mastery_path_id="visual",
+        _session_id="s",
+        _turn_id="hint",
         knowledge_point_id="identify",
         summary="Gave a source-based hint after the learner asked for help with structure 1.",
+        explanation_quote=explanation,
+        _teaching_delivery=lambda: {
+            "path_id": "visual",
+            "session_id": "s",
+            "turn_id": "hint",
+            "segments": stream.public_content_snapshot(source="mastery_path", stage="responding"),
+        },
     )
+    assert explained.success, explained.content
     progress, _interaction, _ = lesson.service.grade_interaction(
         "visual", answer="artery", question_id=card["question_id"]
     )

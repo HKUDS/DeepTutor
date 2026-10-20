@@ -3200,6 +3200,32 @@ def test_delete_reports_a_missing_knowledge_base_as_404(monkeypatch, tmp_path: P
     assert response.status_code == 404
 
 
+def test_delete_kb_file_success_and_traversal(monkeypatch, tmp_path: Path) -> None:
+    manager = _real_manager(monkeypatch, tmp_path)
+    kb_dir = tmp_path / "kbs" / "chem"
+    kb_dir.mkdir(parents=True, exist_ok=True)
+    raw_dir = kb_dir / "raw"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    test_file = raw_dir / "notes.txt"
+    test_file.write_text("chemical reaction formulas")
+    manager.config.setdefault("knowledge_bases", {})["chem"] = {
+        "rag_provider": "llamaindex",
+        "status": "ready",
+    }
+    manager._save_config()
+
+    with TestClient(_build_app()) as client:
+        # Non-existent file
+        res_404 = client.delete("/api/knowledge-bases/chem/files/nonexistent.txt")
+        assert res_404.status_code == 404
+
+        # Successful deletion
+        res_ok = client.delete("/api/knowledge-bases/chem/files/notes.txt")
+        assert res_ok.status_code == 200
+        assert res_ok.json()["status"] == "ok"
+        assert not test_file.exists()
+
+
 @pytest.mark.parametrize("first_upload_fails", [False, True])
 def test_create_empty_llamaindex_kb_then_upload_and_retry(
     monkeypatch, tmp_path, first_upload_fails

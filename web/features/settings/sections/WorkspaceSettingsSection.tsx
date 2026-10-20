@@ -3,10 +3,11 @@
 import Tooltip from "@/shared/ui/Tooltip";
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Archive, ArchiveRestore, Folder, FolderInput, Globe2, Pencil, Plus, Settings2 } from 'lucide-react'
+import { Archive, ArchiveRestore, FileText, Folder, FolderInput, Globe2, Pencil, Plus, Settings2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { SettingSection, SettingsPageHeader, inputClass, subPanelClass } from '@/components/settings/shared'
 import { WorkspaceResourcePicker } from '@/components/workspaces/WorkspaceResourcePicker'
+import { WorkspaceInstructionsField } from '@/components/workspaces/WorkspaceInstructionsField'
 import { SystemWorkspaceSnapshot } from '@/components/workspaces/SystemWorkspaceSnapshot'
 import {
   getWorkspaceCatalog, saveWorkspace, migrateWorkspace, workspaceChatHref, inheritedWorkspaceResources,
@@ -20,6 +21,8 @@ const primaryClass = 'inline-flex items-center justify-center gap-1.5 rounded-lg
 function WorkspaceRow({ row, run, busy }: { row: ChatWorkspaceRegistration; run: RunAction; busy: boolean }) {
   const { t } = useTranslation()
   const [resourcesOpen, setResourcesOpen] = useState(false)
+  const [instructionsOpen, setInstructionsOpen] = useState(false)
+  const [instructions, setInstructions] = useState(row.instructions ?? '')
   const [resources, setResources] = useState(row.resources ?? inheritedWorkspaceResources())
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(row.display_name)
@@ -34,13 +37,14 @@ function WorkspaceRow({ row, run, busy }: { row: ChatWorkspaceRegistration; run:
         <Icon size={18} strokeWidth={1.6} className="shrink-0 text-[var(--muted-foreground)]" />
         <h3 className="min-w-0 flex-1 break-words text-[14px] font-medium">{label}</h3>
         {row.archived && <span className="text-xs text-[var(--muted-foreground)]">{t('Archived')}</span>}
-        <div className="flex items-center gap-0.5 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+        <div className="flex max-w-full flex-wrap items-center gap-0.5 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
           {row.kind !== 'system' && !row.archived && row.status === 'ready' && !busy && (
             <Link className={actionClass} href={row.kind === 'general' ? '/chat?dt_workspace=' : workspaceChatHref(row.workspace_id)}>
               <Plus size={14} />{t('New chat')}
             </Link>
           )}
           {row.kind !== 'system' && !row.archived && <button type="button" className={actionClass} onClick={() => { setResources(row.resources ?? inheritedWorkspaceResources()); setResourcesOpen(!resourcesOpen) }}><Settings2 size={14} />{t('Assigned resources')}</button>}
+          {row.kind !== 'system' && !row.archived && <button type="button" className={actionClass} aria-expanded={instructionsOpen} onClick={() => { setInstructions(row.instructions ?? ''); setInstructionsOpen(!instructionsOpen) }}><FileText size={14} />{t('Workspace instructions')}</button>}
           {custom && <Tooltip label={t('Rename workspace')} side="top">
             <button type="button" className={actionClass} aria-label={t('Rename workspace')} onClick={() => { setName(row.display_name); setEditing(!editing); setMoving(false) }}><Pencil size={14} /></button>
           </Tooltip>}
@@ -56,6 +60,12 @@ function WorkspaceRow({ row, run, busy }: { row: ChatWorkspaceRegistration; run:
         {!custom && <p className="mb-2 text-[12.5px] leading-relaxed text-[var(--muted-foreground)]">{row.kind === 'system' ? t('Sanitized configuration snapshots, Skill files and MCP inventory. API keys and tokens remain in private configuration.') : t('Conversations without a selected workspace share files in this folder.')}</p>}
         <p className="select-all break-all font-mono text-[11.5px] leading-relaxed text-[var(--muted-foreground)]">{row.path}</p>
         {row.archived && <p className="mt-1 text-xs text-[var(--muted-foreground)]">{t('Archived. Existing conversations and files are kept.')}</p>}
+        {instructionsOpen && (
+          <form className={`${subPanelClass} mt-3 space-y-3 p-4`} onSubmit={async event => { event.preventDefault(); if (await run(() => saveWorkspace({ instructions }, row.workspace_id))) setInstructionsOpen(false) }}>
+            <WorkspaceInstructionsField value={instructions} onChange={setInstructions} />
+            <div className="flex gap-2"><button type="submit" className={primaryClass}>{t('Save')}</button><button type="button" className={actionClass} onClick={() => setInstructionsOpen(false)}>{t('Cancel')}</button></div>
+          </form>
+        )}
         {resourcesOpen && (
           <form className={`${subPanelClass} mt-3 space-y-3 p-4`} onSubmit={async event => { event.preventDefault(); if (await run(() => saveWorkspace({ resources }, row.workspace_id))) setResourcesOpen(false) }}>
             <WorkspaceResourcePicker value={resources} onChange={setResources} workspaceId={row.workspace_id} />
@@ -92,6 +102,7 @@ export default function WorkspaceSettingsSection() {
   const [busy, setBusy] = useState(false)
   const [creating, setCreating] = useState(false)
   const [resources, setResources] = useState(inheritedWorkspaceResources)
+  const [instructions, setInstructions] = useState('')
   const [name, setName] = useState('')
   const [path, setPath] = useState('')
   const [error, setError] = useState('')
@@ -130,11 +141,12 @@ export default function WorkspaceSettingsSection() {
             {creating && (
               <form className={`${subPanelClass} my-4 space-y-3 p-4 sm:p-5`} onSubmit={async event => {
                 event.preventDefault()
-                if (await run(() => saveWorkspace({ name: name.trim(), resources, ...(path.trim() ? { path: path.trim() } : {}) }))) { setName(''); setPath(''); setResources(inheritedWorkspaceResources()); setCreating(false) }
+                if (await run(() => saveWorkspace({ name: name.trim(), resources, ...(instructions.trim() ? { instructions } : {}), ...(path.trim() ? { path: path.trim() } : {}) }))) { setName(''); setPath(''); setInstructions(''); setResources(inheritedWorkspaceResources()); setCreating(false) }
               }}>
                 <label className="block text-sm">{t('Workspace name')}<input autoFocus className={`${inputClass} mt-1`} value={name} onChange={event => setName(event.target.value)} required maxLength={100} placeholder={t('e.g. Probability')} /></label>
                 <label className="block text-sm">{t('Existing folder path (optional)')}<input className={`${inputClass} mt-1 font-mono`} value={path} onChange={event => setPath(event.target.value)} placeholder={t('Leave empty to create under root')} /></label>
                 <p className="text-xs leading-relaxed text-[var(--muted-foreground)]">{t('Place files in the folder for the agent to read. Generated files go into outputs/.')}</p>
+                <WorkspaceInstructionsField value={instructions} onChange={setInstructions} />
                 <WorkspaceResourcePicker value={resources} onChange={setResources} />
                 <div className="flex gap-2"><button type="submit" disabled={!name.trim()} className={primaryClass}>{t('Create workspace')}</button><button type="button" className={actionClass} onClick={() => setCreating(false)}>{t('Cancel')}</button></div>
               </form>

@@ -19,6 +19,7 @@ from deeptutor.services.workspace import (
     WorkspaceItem,
     get_content_workspace_service,
 )
+from deeptutor.services.workspace.models import MAX_WORKSPACE_INSTRUCTIONS_CHARS
 from deeptutor.services.workspace.resources import WorkspaceResources
 
 settings_router = APIRouter()
@@ -30,12 +31,14 @@ class WorkspacePathPayload(BaseModel):
 
 
 class CreateWorkspacePayload(BaseModel):
+    instructions: str | None = Field(default=None, max_length=MAX_WORKSPACE_INSTRUCTIONS_CHARS)
     resources: WorkspaceResources | None = None
     name: str = Field(min_length=1, max_length=100)
     path: str | None = None
 
 
 class UpdateWorkspacePayload(BaseModel):
+    instructions: str | None = Field(default=None, max_length=MAX_WORKSPACE_INSTRUCTIONS_CHARS)
     resources: WorkspaceResources | None = None
     name: str | None = Field(default=None, min_length=1, max_length=100)
     archived: bool | None = None
@@ -246,6 +249,7 @@ async def create_workspace(payload: CreateWorkspacePayload) -> dict:
             payload.name,
             payload.path,
             resources=payload.resources.model_dump() if payload.resources else None,
+            instructions=payload.instructions,
         )
     except WorkspaceError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -258,11 +262,12 @@ async def update_registered_workspace(workspace_id: str, payload: UpdateWorkspac
         from deeptutor.services.workspace.activity import data_activity
         from deeptutor.services.workspace.data_migration import assert_no_pending_recovery
 
-        with data_activity(exclusive=True):
+        # Instruction edits are atomic metadata updates. A running turn owns
+        # its admitted snapshot, so these edits can coexist with its data lease.
+        changes = payload.model_dump(exclude_unset=True)
+        with data_activity(exclusive=set(changes) != {"instructions"}):
             assert_no_pending_recovery(reject_unreadable=True)
-            workspace = get_content_workspace_service().update_workspace(
-                workspace_id, **payload.model_dump(exclude_unset=True)
-            )
+            workspace = get_content_workspace_service().update_workspace(workspace_id, **changes)
     except WorkspaceError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"workspace": workspace}

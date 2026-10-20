@@ -8,6 +8,7 @@ token.
 
 from __future__ import annotations
 
+from contextlib import closing
 from dataclasses import dataclass
 import hashlib
 import ipaddress
@@ -283,7 +284,7 @@ class SessionHandoffStore:
         now: int | None,
     ) -> None:
         current = int(time.time() if now is None else now)
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             self._initialize(connection)
             self._check_rate(connection, bucket, limit, current)
 
@@ -301,7 +302,7 @@ class SessionHandoffStore:
         self._rate_limit(f"create:{rate_key}", CREATE_RATE_LIMIT, now=now)
         code = secrets.token_urlsafe(32)
         expires_at = current + code_lifetime
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             self._initialize(connection)
             connection.execute("BEGIN IMMEDIATE")
             try:
@@ -341,7 +342,7 @@ class SessionHandoffStore:
         # on that site. Codes are 256-bit secrets, looked up by hash; a bogus
         # code costs one indexed lookup and cannot guess a valid record.
         code_hash = hash_secret(code)
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             self._initialize(connection)
             connection.execute("BEGIN IMMEDIATE")
             try:
@@ -411,7 +412,7 @@ class SessionHandoffStore:
         # As with exchange, a shared quota here would let anonymous invalid
         # tickets prevent every user on this public host from signing in.
         ticket_hash = hash_secret(ticket)
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             self._initialize(connection)
             connection.execute("BEGIN IMMEDIATE")
             try:

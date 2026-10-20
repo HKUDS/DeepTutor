@@ -40,14 +40,15 @@ export function useComposerResources(
   // Depend on the contents rather than the array identity: `workspaces` is
   // refetched on every session change, and re-running on a new array of the
   // same rows would refetch the catalog with it.
-  const allowedKey = allowedMcp ? allowedMcp.join("\u0000") : "";
+  const allowedKey = JSON.stringify(allowedMcp);
 
   useEffect(() => {
     let alive = true;
     void getWorkspaceResources(workspaceId ?? "")
       .then((remote) => {
         if (!alive) return;
-        const allowed = allowedKey ? new Set(allowedKey.split("\u0000")) : null;
+        const selected = JSON.parse(allowedKey) as string[] | null;
+        const allowed = selected === null ? null : new Set(selected);
         setCatalog({
           skills: remote.skills ?? [],
           mcp: (remote.mcp ?? []).filter(

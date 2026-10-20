@@ -123,7 +123,18 @@ def learning_stage(progress: LearningProgress, kp_id: str) -> str:
         return "practiced_with_help"
     if attempts or evidence:
         return "practiced_not_demonstrated"
-    return "explained" if kp_id in progress.explained_objectives else "not_yet_covered"
+    explained = progress.explained_objectives.get(kp_id)
+    if not explained:
+        return "not_yet_covered"
+    if (
+        explained.get("coverage") == "partial"
+        and explained.get("explanation_quote")
+        and explained.get("delivery", {}).get("turn_id")
+    ):
+        return "partially_explained"
+    # Keep historical notes, but do not invent proof of published teaching or
+    # imply that a summary covered every part of a composite objective.
+    return "teaching_record_unverified"
 
 
 def mastery_source(progress: LearningProgress, kp: KnowledgePoint) -> str:

@@ -8,6 +8,7 @@ import asyncio
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 import logging
+import math
 import re
 from typing import TYPE_CHECKING, Any, Literal
 import unicodedata
@@ -624,10 +625,11 @@ def _reading_workspace_id(value: Any) -> str:
 def _reading_viewport(value: Any) -> dict[str, Any]:
     """Normalize what the reader reports it is showing.
 
-    Both fields are optional: a freshly opened document has no locator yet, and
-    most turns carry no selection. Absent keys are omitted rather than zeroed so
-    the capability's prompt block can distinguish "nothing selected" from an
-    empty selection.
+    Every field is optional: a freshly opened document has no locator yet, most
+    turns carry no selection, and only video materials report a playback time.
+    Absent keys are omitted rather than zeroed so the capability's prompt block
+    can distinguish "nothing selected" from an empty selection, and "no media
+    time" from a video paused at 0:00.
     """
     if not isinstance(value, dict):
         return {}
@@ -641,6 +643,14 @@ def _reading_viewport(value: Any) -> dict[str, Any]:
     selection = str(value.get("selection") or "").strip()
     if selection:
         viewport["selection"] = selection[:READING_SELECTION_MAX_CHARS]
+    raw_seconds = value.get("time_seconds")
+    if raw_seconds is not None and not isinstance(raw_seconds, bool):
+        try:
+            seconds = float(raw_seconds)
+        except (TypeError, ValueError):
+            seconds = -1.0
+        if math.isfinite(seconds) and seconds >= 0:
+            viewport["time_seconds"] = min(24 * 60 * 60, seconds)
     return viewport
 
 
@@ -1565,6 +1575,7 @@ class _TurnExecution:
     events: list[dict[str, Any]] = field(default_factory=list)
     next_seq: int = 1
     flush_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    flush_task: asyncio.Task[None] | None = None
     events_persisted: bool = False
     persisted_events: list[dict[str, Any]] = field(default_factory=list)
     events_flushed: bool = False

@@ -441,6 +441,46 @@ async def test_rejected_forced_choice_keeps_schemas_for_all_later_rounds(monkeyp
 
 
 @pytest.mark.asyncio
+async def test_context_guard_is_told_which_tool_schemas_each_request_carries(monkeypatch):
+    client = _ScriptedChatClient(
+        [
+            [
+                _llm_chunk(
+                    tool_calls=[{"id": "a", "name": "web_search", "arguments": '{"query":"test"}'}],
+                    finish_reason="tool_calls",
+                )
+            ],
+            [_llm_chunk(content="Answer", finish_reason="stop")],
+        ]
+    )
+    accepted_create = client.chat.completions.create
+    sent_tools = []
+
+    async def create(**kwargs):
+        sent_tools.append(kwargs.get("tools") or None)
+        return await accepted_create(**kwargs)
+
+    client.chat.completions.create = create
+    pipeline = AgenticChatPipeline(language="en", initial_tool_choice="web_search")
+    pipeline.registry = _Registry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _: ["web_search"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    guard = pipeline._guard_context_window
+    guarded_tools = []
+
+    async def recording_guard(messages, stream, **kwargs):
+        guarded_tools.append(kwargs.get("tool_schemas") or None)
+        await guard(messages, stream, **kwargs)
+
+    monkeypatch.setattr(pipeline, "_guard_context_window", recording_guard)
+    context = UnifiedContext(session_id="s", user_message="Search")
+    events = await _run(pipeline, context)
+    assert _answer_text(events) == "Answer"
+    assert sent_tools[0]
+    assert guarded_tools == sent_tools
+
+
+@pytest.mark.asyncio
 async def test_persisted_tool_turn_extends_request_prefix_after_resume(monkeypatch, tmp_path):
     """A new pipeline/database read must preserve seed, reasoning and tools."""
     from deeptutor.core.context import WorkspaceRuntimeContext
@@ -520,7 +560,14 @@ async def test_persisted_tool_turn_extends_request_prefix_after_resume(monkeypat
     await _run(pipeline(), second)
     previous, resumed = client.calls[1], client.calls[2]
     assert previous["tools"] == resumed["tools"]
-    assert resumed["messages"][: len(previous["messages"])] == previous["messages"]
+    # The fresh workspace slot replaces its obsolete runtime snapshot while
+    # durable dialogue, reasoning, and tool protocol remain an exact prefix.
+    retained = [
+        message
+        for message in previous["messages"]
+        if not str(message.get("content", "")).startswith("[Runtime context: workspace]")
+    ]
+    assert resumed["messages"][: len(retained)] == retained
     assert "outputs/turn-1" not in resumed["messages"][0]["content"]
     assert "outputs/turn-2" in resumed["messages"][-2]["content"]
     assert resumed["messages"][-3]["reasoning_content"] == "private finish"
@@ -821,6 +868,88 @@ async def test_empty_finish_gets_one_nudge_then_recovers(
     result = _result(events)
     assert result.metadata["response"] == "Here is the real answer."
     assert result.metadata["completed"] is True
+
+
+@pytest.mark.asyncio
+async def test_empty_round_nudge_keeps_multimodal_user_parts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A nudge must extend a multimodal user message, never stringify it.
+
+    A chat PDF's embedded images ride in the trailing user message's content
+    parts. A round that finishes with nothing to replay leaves that message
+    trailing, so the recovery directive is appended to it; rebuilding the
+    message as a string folds every ``data:...;base64,`` payload into prompt
+    text and the next round bills image bytes as language tokens.
+    """
+    image = {"type": "image_url", "image_url": {"url": "data:image/png;base64,YWJj"}}
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "[Attached Documents]\nQuestion sheet"},
+                image,
+            ],
+        }
+    ]
+    client = _ScriptedChatClient(
+        [
+            # Round 1: an empty finish — no text, no reasoning, no tool call.
+            [_llm_chunk(finish_reason="stop")],
+            # Round 2 (after the nudge): a real answer.
+            [_llm_chunk(content="Here is the real answer.")],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = _Registry()
+    pipeline._model_turn_start = 0
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: [])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    monkeypatch.setattr(pipeline, "_build_loop_messages", lambda *_args, **_kwargs: messages)
+
+    events = await _run(pipeline, UnifiedContext(session_id="s1", user_message="Solve it"))
+
+    assert client.call_count == 2
+    durable = messages[0]["content"]
+    assert isinstance(durable, list)
+    assert [part["type"] for part in durable] == ["text", "image_url"]
+    assert durable[0]["text"].startswith("[Attached Documents]\nQuestion sheet")
+    assert "internal reasoning" in durable[0]["text"]
+    assert durable[1] == image
+    # The round the provider receives still carries the image as an image.
+    wire = client.calls[1]["messages"][-1]["content"]
+    assert any(part.get("type") == "image_url" for part in wire)
+    result = _result(events)
+    assert result.metadata["response"] == "Here is the real answer."
+    assert result.metadata["completed"] is True
+
+
+@pytest.mark.asyncio
+async def test_pure_image_message_gets_its_own_directive_part(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A message holding only images has no text part to extend."""
+    image = {"type": "image_url", "image_url": {"url": "data:image/png;base64,YWJj"}}
+    messages = [{"role": "user", "content": [image]}]
+    client = _ScriptedChatClient(
+        [
+            [_llm_chunk(finish_reason="stop")],
+            [_llm_chunk(content="Answered from the image.")],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = _Registry()
+    pipeline._model_turn_start = 0
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: [])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    monkeypatch.setattr(pipeline, "_build_loop_messages", lambda *_args, **_kwargs: messages)
+
+    await _run(pipeline, UnifiedContext(session_id="s1", user_message="What is this?"))
+
+    durable = messages[0]["content"]
+    assert [part["type"] for part in durable] == ["image_url", "text"]
+    assert "internal reasoning" in durable[1]["text"]
+    assert durable[0] == image
 
 
 @pytest.mark.asyncio
@@ -1591,6 +1720,9 @@ async def test_mastery_card_promise_repair_uses_real_question_tool(
         old_id = old.metadata["mastery_question"]["question_id"]
 
     class RealQuizRegistry(_Registry):
+        def get(self, name: str):
+            return MasteryQuizTool() if name == "mastery_quiz" else None
+
         def build_openai_schemas(self, _enabled: list[str]) -> list[dict[str, Any]]:
             return [MasteryQuizTool().get_definition().to_openai_schema()]
 
@@ -1709,6 +1841,142 @@ async def test_mastery_card_promise_repair_uses_real_question_tool(
         assert cards == []
         assert LearningStore().load("p1").pending_question is None
         assert _result(events).metadata["response"] == ""
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("recovery", ["success", "unsupported", "rogue", "failed_prepare", "stale"])
+async def test_mastery_preparation_at_settlement_boundary_gets_one_delivery_round(
+    recovery: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A successful source repair gets one restricted chance to deliver its card."""
+    from deeptutor.capabilities.mastery.tools import MasteryPrepareLessonTool
+    from deeptutor.learning import semantic_assessment
+
+    monkeypatch.setenv("DEEPTUTOR_WORKSPACE_ROOT", str(tmp_path))
+
+    def init_store(self, root=None):
+        self._root = tmp_path / "learning"
+        self._root.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(LearningStore, "__init__", init_store)
+    LearningStore().save(
+        LearningProgress(
+            book_id="p1",
+            modules=[
+                LearningModule(
+                    id="m1",
+                    name="Synthetic",
+                    order=0,
+                    knowledge_points=[
+                        KnowledgePoint(
+                            id="kp1", name="Synthetic objective", type="memory", module_id="m1"
+                        )
+                    ],
+                )
+            ],
+        )
+    )
+    prepared = False
+
+    async def verify(_store, _progress, _questions, config=None):
+        if not prepared or recovery == "unsupported":
+            raise semantic_assessment.AssessmentUnavailable(
+                "Synthetic unsupported source contract."
+            )
+
+    monkeypatch.setattr(semantic_assessment, "bind_questions", verify)
+    quiz_args = {
+        "questions": [
+            {"knowledge_point_id": "kp1", "question": "Synthetic first?", "expected_answer": "one"},
+            {
+                "knowledge_point_id": "kp1",
+                "question": "Synthetic second?",
+                "expected_answer": "two",
+            },
+        ]
+    }
+
+    class Registry(_Registry):
+        def build_openai_schemas(self, _enabled):
+            return [
+                tool.get_definition().to_openai_schema()
+                for tool in (MasteryQuizTool(), MasteryPrepareLessonTool())
+            ]
+
+        async def execute(self, name, **kwargs):
+            nonlocal prepared
+            self.executed.append({"name": name, "kwargs": kwargs})
+            if name == "mastery_quiz":
+                return await MasteryQuizTool().execute(**kwargs)
+            assert name == "mastery_prepare_lesson"
+            if recovery == "failed_prepare":
+                return ToolResult(content="Synthetic preparation unavailable.", success=False)
+            prepared = True
+            kwargs["_bind_lesson_objective"]("kp1")
+            if recovery == "stale":
+                progress = LearningStore().load("p1")
+                LearningStore().save(progress)
+            return ToolResult(content="Synthetic source preparation succeeded.", success=True)
+
+    def tool(name, args, call_id):
+        return [
+            _llm_chunk(
+                tool_calls=[{"id": call_id, "name": name, "arguments": json.dumps(args)}],
+                finish_reason="tool_calls",
+            )
+        ]
+
+    script = [
+        tool("mastery_quiz", quiz_args, "quiz-1"),
+        tool("mastery_quiz", quiz_args, "quiz-2"),
+        [_llm_chunk(content="Done.", finish_reason="stop")],
+        tool("mastery_prepare_lesson", {"knowledge_point_id": "kp1"}, "repair"),
+    ]
+    if recovery not in {"failed_prepare", "stale"}:
+        script.append(
+            tool("mastery_prepare_lesson", {"knowledge_point_id": "kp1"}, "rogue")
+            if recovery == "rogue"
+            else tool("mastery_quiz", quiz_args, "delivery")
+        )
+    client, registry = _ScriptedChatClient(script), Registry()
+    pipeline = MasteryLoopPipeline(language="en")
+    pipeline._max_rounds = 1
+    pipeline.registry = registry
+    monkeypatch.setattr(
+        pipeline, "_compose_enabled_tools", lambda _ctx: ["mastery_quiz", "mastery_prepare_lesson"]
+    )
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    context = UnifiedContext(
+        session_id="s1",
+        user_message="Give me two practice questions.",
+        allowed_builtin_tools=["mastery_quiz", "mastery_prepare_lesson"],
+        metadata={
+            "mastery_mode": True,
+            "mastery_path_id": "p1",
+            "mastery_session_mode": "study",
+            "turn_id": "repair-turn",
+        },
+    )
+    events = await _run(pipeline, context)
+    assert client.call_count == (4 if recovery in {"failed_prepare", "stale"} else 5)
+    if client.call_count == 5:
+        assert [schema["function"]["name"] for schema in client.calls[-1]["tools"]] == [
+            "mastery_quiz"
+        ]
+    assert [row["name"] for row in registry.executed].count("mastery_prepare_lesson") == 1
+    assert _result(events).metadata["completed"] is (recovery == "success")
+    pending = LearningStore().load("p1").pending_question
+    if recovery == "success":
+        assert pending is not None and len(pending.questions) == 2
+        cards = [
+            event
+            for event in events
+            if event.type == StreamEventType.TOOL_RESULT
+            and "mastery_question" in event.metadata.get("tool_metadata", {})
+        ]
+        assert len(cards) == 1
+    else:
+        assert pending is None
 
 
 @pytest.mark.asyncio
@@ -2431,12 +2699,10 @@ async def test_cold_start_stalled_provider_settles_with_bounded_retries(monkeypa
         assert failure.value.partial_response is (phase == "partial_stream")
         if phase != "connect":
             assert len(stopped) == len(attempts)
-        assert (
-            sum(event.metadata.get("error_code") == "provider_transport" for event in events) >= 1
-        )
     finally:
         await bus.close()
         await consumer
+    assert sum(event.metadata.get("error_code") == "provider_transport" for event in events) >= 1
 
 
 @pytest.mark.asyncio
@@ -2767,6 +3033,120 @@ async def test_context_checkpoint_folds_completed_tool_rounds(
     assert not any("noisy tool result" in str(m.get("content")) for m in third_round)
     result = _result(events)
     assert result.metadata["response"] == "Final from checkpoints."
+
+
+@pytest.mark.asyncio
+async def test_context_checkpoint_state_replaces_instead_of_stacking(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _StatefulCheckpointRegistry(_Registry):
+        async def execute(self, name: str, **kwargs):
+            query = str(kwargs.get("query") or "")
+            return ToolResult(
+                content=f"noisy tool result for {query}",
+                success=True,
+                metadata={
+                    "_context_checkpoint": {
+                        "summary": f"checkpoint: {query}",
+                        "state": f"state after {query}",
+                    }
+                },
+            )
+
+    def _search(call_id: str, query: str) -> SimpleNamespace:
+        return _llm_chunk(
+            tool_calls=[
+                {"id": call_id, "name": "web_search", "arguments": json.dumps({"query": query})}
+            ]
+        )
+
+    client = _ScriptedChatClient(
+        [
+            [_search("call-1", "step one")],
+            [_search("call-2", "step two")],
+            [_llm_chunk(content="Final.")],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = _StatefulCheckpointRegistry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["web_search"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    await _run(
+        pipeline,
+        UnifiedContext(session_id="s1", user_message="Research this", enabled_tools=["web_search"]),
+    )
+
+    second_round = [m.get("content") for m in client.calls[1]["messages"]]
+    assert second_round[-2:] == [
+        "[Context checkpoint]\ncheckpoint: step one",
+        "state after step one",
+    ]
+    third_round = client.calls[2]["messages"]
+    contents = [str(m.get("content") or "") for m in third_round]
+    # Summaries accumulate as history; only the latest state is kept, last.
+    assert contents[-3:] == [
+        "[Context checkpoint]\ncheckpoint: step one",
+        "[Context checkpoint]\ncheckpoint: step two",
+        "state after step two",
+    ]
+    assert "state after step one" not in contents
+    assert not any(m.get("role") == "tool" for m in third_round)
+
+
+@pytest.mark.asyncio
+async def test_solve_checkpoint_fold_keeps_remaining_plan(monkeypatch: pytest.MonkeyPatch) -> None:
+    from deeptutor.capabilities.solve.tools import SolveFinishStepTool, SolvePlanTool
+
+    tools = {"solve_plan": SolvePlanTool(), "solve_finish_step": SolveFinishStepTool()}
+
+    class _SolveRegistry(_Registry):
+        def build_openai_schemas(self, _enabled):
+            return [tool.get_definition().to_openai_schema() for tool in tools.values()]
+
+        async def execute(self, name: str, **kwargs):
+            return await tools[name].execute(**kwargs)
+
+    def _call(call_id: str, name: str, args: dict[str, Any]) -> SimpleNamespace:
+        return _llm_chunk(tool_calls=[{"id": call_id, "name": name, "arguments": json.dumps(args)}])
+
+    goals = ["Factor x^2-5x+6", "Find both roots", "Verify by substitution"]
+    client = _ScriptedChatClient(
+        [
+            [
+                _call(
+                    "c1",
+                    "solve_plan",
+                    {"analysis": "factor", "steps": [{"goal": g} for g in goals]},
+                )
+            ],
+            [_call("c2", "solve_finish_step", {"step_id": "S1", "summary": "(x-2)(x-3)"})],
+            [_llm_chunk(content="x = 2 or x = 3")],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = _SolveRegistry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: list(tools))
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    context = UnifiedContext(
+        session_id="s1",
+        user_message="Solve x^2 - 5x + 6 = 0",
+        metadata={"solve_mode": True, "solve_session_id": "fold-keeps-plan"},
+    )
+
+    await _run(pipeline, context)
+
+    # The step's tool chatter is folded away; the remaining plan must stay in view.
+    after_fold = client.calls[2]["messages"]
+    assert not any(m.get("role") == "tool" for m in after_fold)
+    assert after_fold[-2]["content"].startswith("[Context checkpoint]\n[S1] Factor x^2-5x+6")
+    plan = after_fold[-1]["content"]
+    assert "- S1 [done] Factor x^2-5x+6" in plan
+    assert "- S2 [next] Find both roots" in plan
+    assert "- S3 [todo] Verify by substitution" in plan
+    # A follow-up turn replays the persisted model turn, so it carries the plan too.
+    model_turn = json.dumps(context.runtime.model_turn, ensure_ascii=False)
+    assert "Find both roots" in model_turn and "Verify by substitution" in model_turn
 
 
 @pytest.mark.asyncio
@@ -3779,6 +4159,66 @@ async def test_wire_deduplicates_user_images_without_mutating_model_history(monk
     assert [message["content"] for message in messages[:3]] == [
         message["content"] for message in original
     ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("distinct", [False, True])
+async def test_request_guard_budgets_projected_images_and_preserves_tool_history(
+    monkeypatch, distinct
+):
+    from copy import deepcopy
+
+    messages = []
+    for turn in range(4):
+        images = [
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/png;base64,image-{4 * turn + i if distinct else i}"
+                },
+            }
+            for i in range(4)
+        ]
+        messages.extend(
+            [
+                {"role": "user", "content": images},
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": f"call-{turn}",
+                            "type": "function",
+                            "function": {"name": "web_search", "arguments": '{"query":"source"}'},
+                        }
+                    ],
+                },
+                {"role": "tool", "tool_call_id": f"call-{turn}", "content": f"evidence {turn}"},
+                {"role": "assistant", "content": "answer"},
+            ]
+        )
+    original = deepcopy(messages)
+    client = _ScriptedChatClient([[_llm_chunk(content="answer")]])
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.llm_config = SimpleNamespace(context_window=60000, max_tokens=4096)
+    pipeline.registry = _Registry()
+    pipeline._model_turn_start = 0
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: [])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    monkeypatch.setattr(pipeline, "_build_loop_messages", lambda *_args, **_kwargs: messages)
+
+    await _run(pipeline, UnifiedContext(session_id="s", user_message="again"))
+
+    wire_tools = [
+        message["content"] for message in client.calls[0]["messages"] if message["role"] == "tool"
+    ]
+    expected = (
+        [pipeline._tool_result_snip_marker()] * 4
+        if distinct
+        else [f"evidence {turn}" for turn in range(4)]
+    )
+    assert wire_tools == expected
+    assert messages[: len(original)] == original
 
 
 @pytest.mark.asyncio

@@ -25,6 +25,7 @@ import {
 } from "@/context/app-shell-storage";
 import { useAppShell } from "@/context/AppShellContext";
 import { apiFetch, apiUrl } from "@/lib/api";
+import { asJsonOrThrow } from "@/shared/api/client";
 import { invalidateLLMOptionsCache } from "@/lib/llm-options";
 import { setModelReasoningEffort } from "@/lib/reasoning-effort";
 import { applyExtensionPayload } from "@/lib/settings-extensions";
@@ -1763,7 +1764,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify(draftEnvelope()),
       });
 
-      if (!draftResponse.ok) throw new Error(`HTTP ${draftResponse.status}`);
+      await asJsonOrThrow(draftResponse);
 
       // Pages still on screen save themselves — they refresh their own local
       // state and surface their own errors. Everything else pending is
@@ -1779,8 +1780,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
         });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const payload = await response.json();
+        const payload = await asJsonOrThrow(response);
         if (!payload.catalog)
           throw new Error("Missing catalog in apply response");
         setCatalog(payload.catalog);

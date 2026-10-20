@@ -207,3 +207,163 @@ def test_eval_json_with_save_keeps_stdout_machine_readable(eval_env, tmp_path):
     assert result.exit_code == 0, result.output
     assert json.loads(result.stdout) == json.loads(target.read_text())
     assert "Report written to" in result.stderr
+
+
+def test_eval_defers_rewrite_to_settings_when_flag_omitted(eval_env: SimpleNamespace) -> None:
+    result = runner.invoke(app, ["kb", "eval", "kb1", "--dataset", str(eval_env.set_path)])
+
+    assert result.exit_code == 0, result.output
+    assert eval_env.calls[0]["rewrite"] is None
+    assert "rewrite=" not in result.output
+
+
+def test_eval_rewrite_standalone_forces_the_layer_on(eval_env: SimpleNamespace) -> None:
+    result = runner.invoke(
+        app, ["kb", "eval", "kb1", "--dataset", str(eval_env.set_path), "--rewrite", "standalone"]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert eval_env.calls[0]["rewrite"] is True
+    assert "rewrite=standalone" in result.output
+
+
+def test_eval_rewrite_off_forces_the_layer_off(eval_env: SimpleNamespace) -> None:
+    result = runner.invoke(
+        app, ["kb", "eval", "kb1", "--dataset", str(eval_env.set_path), "--rewrite", "off"]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert eval_env.calls[0]["rewrite"] is False
+    assert "rewrite=off" in result.output
+
+
+def test_eval_rejects_an_unknown_rewrite_strategy(eval_env: SimpleNamespace) -> None:
+    result = runner.invoke(
+        app, ["kb", "eval", "kb1", "--dataset", str(eval_env.set_path), "--rewrite", "bogus"]
+    )
+
+    assert result.exit_code != 0
+    assert "unknown rewrite strategy" in result.output
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [(None, None), ("off", False), ("standalone", True)],
+)
+def test_parse_rewrite_flag_maps_known_strategies(value: str | None, expected: bool | None) -> None:
+    from deeptutor_cli.kb import _parse_rewrite_flag
+
+    assert _parse_rewrite_flag(value) is expected
+
+
+def test_parse_rewrite_flag_is_case_insensitive() -> None:
+    from deeptutor_cli.kb import _parse_rewrite_flag
+
+    assert _parse_rewrite_flag("  Standalone ") is True
+
+
+def _metric_block(k: int, **overrides: float) -> dict[str, float]:
+    """A complete aggregate metric block for ``k``, zero-filled unless overridden."""
+    keys = (f"recall@{k}", f"precision@{k}", f"ndcg@{k}", "mrr", f"hit@{k}", f"map@{k}")
+    return {key: overrides.get(key, 0.0) for key in keys}
+
+
+def _write_report(path: Path, *, k: int = 5, metrics: dict[str, float] | None = None) -> Path:
+    """Write a minimal ``kb eval --save`` report for ``kb eval-diff`` to load."""
+    path.write_text(
+        json.dumps(
+            {
+                "dataset": "set",
+                "kb": "kb1",
+                "provider": "llamaindex",
+                "k": k,
+                "mode": "",
+                "duration_seconds": 0.1,
+                "match_policy": {"min_ratio": 0.5, "min_tokens": 3},
+                "metrics": _metric_block(k) if metrics is None else metrics,
+                "queries": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_eval_diff_reports_metric_movement(tmp_path: Path) -> None:
+    baseline = _write_report(tmp_path / "base.json", metrics=_metric_block(5, **{"recall@5": 0.4}))
+    candidate = _write_report(tmp_path / "cand.json", metrics=_metric_block(5, **{"recall@5": 0.8}))
+
+    result = runner.invoke(app, ["kb", "eval-diff", str(baseline), str(candidate)])
+
+    assert result.exit_code == 0, result.output
+    assert "Baseline: base" in result.output
+    assert "Candidate: cand" in result.output
+    assert "recall@5" in result.output
+    assert "k=5" in result.output
+    assert "improved" in result.output
+
+
+def test_eval_diff_json_output_is_machine_readable(tmp_path: Path) -> None:
+    baseline = _write_report(tmp_path / "base.json", metrics=_metric_block(5, **{"recall@5": 0.4}))
+    candidate = _write_report(tmp_path / "cand.json", metrics=_metric_block(5, **{"recall@5": 0.8}))
+
+    result = runner.invoke(
+        app, ["kb", "eval-diff", str(baseline), str(candidate), "--format", "json"]
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.stdout)
+    assert payload["baseline"] == "base"
+    assert payload["candidate"] == "cand"
+    assert payload["metrics"]["recall@5"]["direction"] == "improved"
+    assert payload["metrics"]["recall@5"]["delta"] == pytest.approx(0.4)
+
+
+def test_eval_diff_exits_two_on_a_regression(tmp_path: Path) -> None:
+    baseline = _write_report(tmp_path / "base.json", metrics=_metric_block(5, **{"recall@5": 0.8}))
+    candidate = _write_report(tmp_path / "cand.json", metrics=_metric_block(5, **{"recall@5": 0.4}))
+
+    result = runner.invoke(app, ["kb", "eval-diff", str(baseline), str(candidate)])
+
+    assert result.exit_code == 2, result.output
+
+
+def test_eval_diff_rejects_a_missing_report(tmp_path: Path) -> None:
+    candidate = _write_report(tmp_path / "cand.json")
+
+    result = runner.invoke(app, ["kb", "eval-diff", str(tmp_path / "absent.json"), str(candidate)])
+
+    assert result.exit_code == 1
+    assert "Report not found" in result.output
+
+
+def test_eval_diff_rejects_unparseable_json(tmp_path: Path) -> None:
+    broken = tmp_path / "broken.json"
+    broken.write_text("{not json", encoding="utf-8")
+    candidate = _write_report(tmp_path / "cand.json")
+
+    result = runner.invoke(app, ["kb", "eval-diff", str(broken), str(candidate)])
+
+    assert result.exit_code == 1
+    assert "Could not read report" in result.output
+
+
+def test_eval_diff_rejects_a_non_object_payload(tmp_path: Path) -> None:
+    array = tmp_path / "array.json"
+    array.write_text("[]", encoding="utf-8")
+    candidate = _write_report(tmp_path / "cand.json")
+
+    result = runner.invoke(app, ["kb", "eval-diff", str(array), str(candidate)])
+
+    assert result.exit_code == 1
+    assert "is not a JSON object" in " ".join(result.output.split())
+
+
+def test_eval_diff_rejects_reports_at_different_k(tmp_path: Path) -> None:
+    baseline = _write_report(tmp_path / "base.json", k=5)
+    candidate = _write_report(tmp_path / "cand.json", k=3)
+
+    result = runner.invoke(app, ["kb", "eval-diff", str(baseline), str(candidate)])
+
+    assert result.exit_code == 1
+    assert "different k" in result.output

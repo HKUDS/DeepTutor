@@ -1,4 +1,10 @@
 {
+  "Partially correct": "部分正确",
+  "These answers could not be submitted. Please review or retry.": "这些答案未能提交。请检查后重试。",
+  "The edit could not be sent. Your draft is still here; please retry.": "修改未能发送。草稿仍保留在此，请重试。",
+  "Discard unsent draft": "丢弃未发送的草稿",
+  "Discarding…": "正在丢弃…",
+  "This draft could not be discarded. Please retry or copy it before leaving.": "无法丢弃此草稿。请重试，或在离开前复制内容。",
   "Review rebuild": "查看重建配置",
   "language.english": "English",
   "language.chinese": "中文",
@@ -1821,6 +1827,7 @@
   "This step needs credentials": "这一步需要凭据",
   "Close tab": "关闭标签页",
   "Close viewer": "关闭查看器",
+  "Back to conversation": "返回对话",
   "Loading {{host}}…": "正在加载 {{host}}…",
   "Many sites refuse to embed for security reasons. If the page below stays blank, use “Open in browser”.": "出于安全原因，许多网站拒绝嵌入。如果下方页面保持空白，请使用「在浏览器中打开」。",
   "Open URL": "打开 URL",
@@ -4521,6 +4528,7 @@
   "Uses the current form without saving. Choose text in the voice's language. The provider may charge for this synthesis.": "使用当前表单配置，无需保存。请使用音色支持的语言编写文本，提供方可能收取本次合成费用。",
   "Generated voice preview": "生成的试听音频",
   "Voice preview failed.": "音色试听失败。",
+  "Voice preview failed (HTTP {{status}}).": "音色试听失败（HTTP {{status}}）。",
   "The provider returned no playable audio.": "提供方未返回可播放的音频。",
   "Voice preview was cancelled or timed out.": "音色试听已取消或超时。",
   "Voice preview failed. Check the provider credentials, model, voice, language and format.": "音色试听失败，请检查提供方凭据、模型、音色、语言和音频格式。",
@@ -5505,5 +5513,12 @@
   "No durable indexing run recorded yet.": "尚未记录持久索引任务。",
   "Approve this MCP origin for private-network connections": "批准此 MCP 来源使用私有网络连接",
   "Use an administrator-approved private MCP origin": "使用管理员批准的私有 MCP 来源",
-  "Only this scheme, host and port can use private Docker or LAN addresses. Metadata addresses remain blocked.": "仅此协议、主机和端口可使用私有 Docker 或局域网地址。元数据地址仍被阻止。"
+  "Only this scheme, host and port can use private Docker or LAN addresses. Metadata addresses remain blocked.": "仅此协议、主机和端口可使用私有 Docker 或局域网地址。元数据地址仍被阻止。",
+  "Workspace instructions": "工作区提示词",
+  "Set learning goals, teaching style and response preferences for this workspace. Leave blank to use the default behavior.": "设置这个工作区的学习目标、教学方式和回答偏好。留空时使用默认行为。",
+  "For example: I am learning linear algebra. Explain the geometric intuition before introducing formulas, and give hints before complete solutions.": "例如：我正在学习线性代数。先解释几何直觉，再引入公式；先给提示，再给完整解答。",
+  "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading, Course Study and standard visualizations. Changes take effect on the next turn.": "适用于对话、解题、主动提问、引导学习、沉浸式阅读、课程学习和常规可视化。从下一轮开始生效。",
+  "Clear instructions": "清空提示词",
+  "{{used}} / {{limit}} characters": "{{used}} / {{limit}} 字符",
+  "contextBudget.segment.workspace_instructions": "工作区提示词"
 }

@@ -41,6 +41,7 @@ export const PROVIDER_ICONS: Readonly<Record<string, ProviderIconSpec>> = {
   nvidia_nim: { file: "nvidia-color.svg" },
   opper: { file: "opper.png", darkFile: "opper-dark.png" },
   ollama: { file: "ollama.svg", mono: true },
+  onomeo: { file: "onomeo.svg" },
   openai: { file: "openai.svg", mono: true },
   openai_codex: { file: "openai.svg", mono: true },
   openrouter: { file: "openrouter.svg", mono: true },

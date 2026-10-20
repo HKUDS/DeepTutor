@@ -1,4 +1,10 @@
 {
+  "Partially correct": "Partially correct",
+  "These answers could not be submitted. Please review or retry.": "These answers could not be submitted. Please review or retry.",
+  "The edit could not be sent. Your draft is still here; please retry.": "The edit could not be sent. Your draft is still here; please retry.",
+  "Discard unsent draft": "Discard unsent draft",
+  "Discarding…": "Discarding…",
+  "This draft could not be discarded. Please retry or copy it before leaving.": "This draft could not be discarded. Please retry or copy it before leaving.",
   "Review rebuild": "Review rebuild",
   "language.english": "English",
   "language.chinese": "中文",
@@ -1821,6 +1827,7 @@
   "This step needs credentials": "This step needs credentials",
   "Close tab": "Close tab",
   "Close viewer": "Close viewer",
+  "Back to conversation": "Back to conversation",
   "Loading {{host}}…": "Loading {{host}}…",
   "Many sites refuse to embed for security reasons. If the page below stays blank, use “Open in browser”.": "Many sites refuse to embed for security reasons. If the page below stays blank, use “Open in browser”.",
   "Open URL": "Open URL",
@@ -4521,6 +4528,7 @@
   "Uses the current form without saving. Choose text in the voice's language. The provider may charge for this synthesis.": "Uses the current form without saving. Choose text in the voice's language. The provider may charge for this synthesis.",
   "Generated voice preview": "Generated voice preview",
   "Voice preview failed.": "Voice preview failed.",
+  "Voice preview failed (HTTP {{status}}).": "Voice preview failed (HTTP {{status}}).",
   "The provider returned no playable audio.": "The provider returned no playable audio.",
   "Voice preview was cancelled or timed out.": "Voice preview was cancelled or timed out.",
   "Voice preview failed. Check the provider credentials, model, voice, language and format.": "Voice preview failed. Check the provider credentials, model, voice, language and format.",
@@ -5505,5 +5513,12 @@
   "No durable indexing run recorded yet.": "No durable indexing run recorded yet.",
   "Approve this MCP origin for private-network connections": "Approve this MCP origin for private-network connections",
   "Use an administrator-approved private MCP origin": "Use an administrator-approved private MCP origin",
-  "Only this scheme, host and port can use private Docker or LAN addresses. Metadata addresses remain blocked.": "Only this scheme, host and port can use private Docker or LAN addresses. Metadata addresses remain blocked."
+  "Only this scheme, host and port can use private Docker or LAN addresses. Metadata addresses remain blocked.": "Only this scheme, host and port can use private Docker or LAN addresses. Metadata addresses remain blocked.",
+  "Workspace instructions": "Workspace instructions",
+  "Set learning goals, teaching style and response preferences for this workspace. Leave blank to use the default behavior.": "Set learning goals, teaching style and response preferences for this workspace. Leave blank to use the default behavior.",
+  "For example: I am learning linear algebra. Explain the geometric intuition before introducing formulas, and give hints before complete solutions.": "For example: I am learning linear algebra. Explain the geometric intuition before introducing formulas, and give hints before complete solutions.",
+  "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading, Course Study and standard visualizations. Changes take effect on the next turn.": "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading, Course Study and standard visualizations. Changes take effect on the next turn.",
+  "Clear instructions": "Clear instructions",
+  "{{used}} / {{limit}} characters": "{{used}} / {{limit}} characters",
+  "contextBudget.segment.workspace_instructions": "Workspace instructions"
 }

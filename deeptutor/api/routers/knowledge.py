@@ -3056,10 +3056,8 @@ def _resolve_kb_raw_dir(kb_name: str, *, allow_unsupported: bool = False) -> Pat
     return kb_path / "raw"
 
 
-def _resolve_kb_raw_file_or_404(kb_name: str, filename: str) -> Path:
-    """Resolve a raw KB file while preventing traversal outside raw/."""
-    raw_dir = _resolve_kb_raw_dir(kb_name)
-    assert raw_dir is not None  # allow_unsupported=False guarantees a path
+def _resolve_raw_file_or_404(raw_dir: Path, filename: str) -> Path:
+    """Resolve a raw KB file within ``raw_dir`` while preventing traversal outside it."""
     if not raw_dir.exists():
         raise HTTPException(status_code=404, detail="File not found")
 
@@ -3074,6 +3072,13 @@ def _resolve_kb_raw_file_or_404(kb_name: str, filename: str) -> Path:
         raise HTTPException(status_code=404, detail="File not found")
 
     return target
+
+
+def _resolve_kb_raw_file_or_404(kb_name: str, filename: str) -> Path:
+    """Resolve a raw KB file while preventing traversal outside raw/."""
+    raw_dir = _resolve_kb_raw_dir(kb_name)
+    assert raw_dir is not None  # allow_unsupported=False guarantees a path
+    return _resolve_raw_file_or_404(raw_dir, filename)
 
 
 @router.get("/knowledge-bases/{kb_name}/files")
@@ -3305,21 +3310,23 @@ async def delete_kb_file(kb_name: str, filename: str):
     rejected. Vectors are not pruned here; ``was_indexed`` tells the caller
     whether a re-index is needed to purge the file from retrieval.
     """
-    manager, kb_name, _ = _writable_kb(kb_name)
-    kb_entry = _load_kb_entry_or_404(manager, kb_name)
-    _assert_kb_writable_or_409(kb_name, kb_entry)
-    target = _resolve_kb_raw_file_or_404(kb_name, filename)
+    manager, resolved_name, _ = _writable_kb(kb_name)
+    kb_entry = _load_kb_entry_or_404(manager, resolved_name)
+    _assert_kb_writable_or_409(resolved_name, kb_entry)
 
-    kb_dir = manager.get_knowledge_base_path(kb_name)
+    kb_dir = manager.get_knowledge_base_path(resolved_name)
+    raw_dir = kb_dir / "raw"
+    target = _resolve_raw_file_or_404(raw_dir, filename)
+
     provider = _validate_registered_provider(kb_entry.get("rag_provider") or DEFAULT_PROVIDER)
     if provider in {PAGEINDEX_PROVIDER, PAGEINDEX_OSS_PROVIDER}:
         from deeptutor.services.rag.factory import get_pipeline
 
         await get_pipeline(provider, kb_base_dir=str(manager.base_dir)).remove_document(
-            kb_name,
+            resolved_name,
             target.name,
         )
-    VisualAssetStore(kb_dir).remove_source(target.relative_to(kb_dir / "raw").as_posix())
+    VisualAssetStore(kb_dir).remove_source(target.relative_to(raw_dir).as_posix())
     removal = remove_raw_document(Path(kb_dir), target)
     return {
         "status": "ok",

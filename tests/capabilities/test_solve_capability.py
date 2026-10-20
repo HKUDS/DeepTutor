@@ -126,3 +126,45 @@ def test_session_replan_resets_steps_and_counts() -> None:
     assert session.replans == 1
     assert session.next_step().goal == "g2"
     assert session.all_done() is False
+
+
+def test_session_progress_text_marks_each_step() -> None:
+    session = SolveSession(session_id="x")
+    session.set_plan("a", [("S1", "factor"), ("S2", "solve roots"), ("S3", "verify")])
+    session.mark_done("S1", "(x-2)(x-3)")
+
+    lines = session.progress_text().splitlines()
+
+    assert "- S1 [done] factor" in lines
+    assert "- S2 [next] solve roots" in lines
+    assert "- S3 [todo] verify" in lines
+    assert "S2" in lines[-1] and "solve_finish_step" in lines[-1]
+
+
+def test_session_progress_text_after_last_step_and_replan() -> None:
+    session = SolveSession(session_id="x", max_replans=1)
+    session.set_plan("a", [("S1", "old plan")])
+    assert session.replan("redo", [("S1", "new first"), ("S2", "new second")]) is True
+    assert "old plan" not in session.progress_text()
+    assert "- S1 [next] new first" in session.progress_text()
+
+    session.mark_done("S1", "ok")
+    session.mark_done("S2", "ok")
+    text = session.progress_text()
+    assert "[next]" not in text and "[todo]" not in text
+    assert "final answer" in text.splitlines()[-1]
+
+
+@pytest.mark.asyncio
+async def test_finish_step_checkpoint_carries_plan_state() -> None:
+    sid = "test-plan-state"
+    await SolvePlanTool().execute(
+        _solve_session_id=sid, analysis="a", steps=[{"goal": "factor"}, {"goal": "solve roots"}]
+    )
+
+    fin = await SolveFinishStepTool().execute(_solve_session_id=sid, step_id="S1", summary="done")
+
+    checkpoint = fin.metadata["_context_checkpoint"]
+    assert checkpoint["summary"].startswith("[S1] factor")
+    assert checkpoint["state"] == get_session(sid).progress_text()
+    assert "- S2 [next] solve roots" in checkpoint["state"]

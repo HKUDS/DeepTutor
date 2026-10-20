@@ -21,19 +21,19 @@ _RECENCY_WEIGHTS: tuple[float, ...] = (0.5, 0.7, 0.85, 0.95, 1.0)
 _CONFIDENCE_CAP: dict[int, float] = {1: 0.5, 2: 0.8}
 
 
-def compute_mastery(correctness: list[bool]) -> float:
+def compute_mastery(correctness: list[bool | float]) -> float:
     """Return a 0..1 mastery score from a knowledge point's attempt outcomes.
 
     Args:
-        correctness: per-attempt correctness in chronological order.
+        correctness: per-attempt correctness or bounded partial credit, chronologically.
     """
     if not correctness:
         return 0.0
     recent = correctness[-len(_RECENCY_WEIGHTS) :]
     weights = _RECENCY_WEIGHTS[-len(recent) :]
-    score = sum(w * (1.0 if c else 0.0) for c, w in zip(recent, weights, strict=True)) / sum(
-        weights
-    )
+    score = sum(
+        w * max(0.0, min(1.0, float(c))) for c, w in zip(recent, weights, strict=True)
+    ) / sum(weights)
     return min(score, _CONFIDENCE_CAP.get(len(recent), 1.0))
 
 

@@ -29,6 +29,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from jsonschema.exceptions import SchemaError
+from jsonschema.validators import validator_for
+from referencing import Registry
+from referencing.exceptions import Unresolvable
+
 from deeptutor.core.tool_protocol import ToolDefinition
 
 
@@ -50,8 +55,9 @@ class RequiredArg:
 def _is_supplied(value: Any) -> bool:
     """Whether a kwarg counts as actually provided.
 
-    ``None`` and a blank string are treated as absent because that is how a
-    provider serialises "the model left this out" in practice. Empty
+    A schema-authorized ``None`` is handled separately by the caller. Other
+    ``None`` values and blank strings are treated as absent because that is
+    how a provider serialises "the model left this out" in practice. Empty
     collections are left alone: ``[]`` / ``{}`` can be a deliberate value
     for an array or object parameter, and rejecting them would refuse calls
     that used to work.
@@ -61,6 +67,29 @@ def _is_supplied(value: Any) -> bool:
     if isinstance(value, str) and not value.strip():
         return False
     return True
+
+
+def _allows_null(definition: ToolDefinition, name: str) -> bool:
+    """Whether an explicitly present null satisfies this property's schema.
+
+    Evaluate only null, not the rest of the tool's validation contract.
+    Retaining the root schema resolves local references and honors its
+    declared draft. An empty registry prevents network access for remote
+    references; invalid, unresolved, or cyclic schemas keep the existing
+    rejection.
+    """
+    parameters = definition.to_openai_schema()["function"]["parameters"]
+    properties = parameters.get("properties")
+    if not isinstance(properties, dict) or name not in properties:
+        return False
+    schema = properties[name]
+    try:
+        validator_type = validator_for(parameters)
+        validator_type.check_schema(parameters)
+        validator = validator_type(parameters, registry=Registry())
+        return validator.evolve(schema=schema).is_valid(None)
+    except (SchemaError, Unresolvable, RecursionError):
+        return False
 
 
 def required_args(definition: ToolDefinition) -> list[RequiredArg]:
@@ -128,7 +157,8 @@ def unsatisfied_required_args(
             continue
         value = args[arg.name]
         if value is None:
-            absent.append(arg)
+            if not _allows_null(definition, arg.name):
+                absent.append(arg)
         elif isinstance(value, str) and not value.strip():
             blank.append(arg)
         elif not _is_supplied(value):

@@ -1122,3 +1122,73 @@ async def test_no_path_push_when_the_turn_never_moved(tmp_path) -> None:
     )
 
     assert [event for event in execution.events if event["type"] == "session_meta"] == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("preparation_fails", [False, True])
+async def test_context_preparation_usage_is_included_in_durable_turn_total(
+    monkeypatch, tmp_path, preparation_fails
+):
+    """#1920/#1926: summary work is paid before the capability starts."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from deeptutor.core.capability_protocol import CapabilityManifest, TurnCapability
+    from deeptutor.runtime.orchestrator import ChatOrchestrator
+    from deeptutor.services.llm.metrics import CallMeasurement, current_usage
+
+    store = SQLiteSessionStore(tmp_path / "usage.db")
+    runtime = TurnRuntimeManager(store)
+
+    def measure(tokens):
+        meter = CallMeasurement(model="test", provider="test")
+        meter.finish(
+            SimpleNamespace(
+                usage={"prompt_tokens": tokens, "completion_tokens": 1, "total_tokens": tokens + 1}
+            )
+        )
+
+    class Builder:
+        async def build(self, **kwargs):
+            measure(100)
+            if preparation_fails:
+                raise RuntimeError("Preparation unavailable")
+            return SimpleNamespace(
+                conversation_history=[],
+                conversation_summary="",
+                context_text="",
+                token_count=0,
+                budget=0,
+            )
+
+    class Capability(TurnCapability):
+        manifest = CapabilityManifest(name="chat", description="Usage regression")
+
+        async def run(self, context, stream):
+            measure(20)
+            await stream.content("The answer", source="chat")
+
+    orchestrator = ChatOrchestrator.__new__(ChatOrchestrator)
+    orchestrator._cap_registry = MagicMock()
+    orchestrator._cap_registry.get.return_value = Capability()
+    orchestrator._tool_registry = MagicMock()
+    bus = MagicMock()
+    bus.publish = AsyncMock()
+    monkeypatch.setattr("deeptutor.runtime.orchestrator.get_event_bus", lambda: bus)
+    monkeypatch.setattr("deeptutor.runtime.orchestrator.ChatOrchestrator", lambda: orchestrator)
+    monkeypatch.setattr(runtime, "_create_context_builder", lambda **kwargs: Builder())
+    monkeypatch.setattr(runtime, "_maybe_generate_session_title", AsyncMock())
+    session, turn = await runtime.start_turn(
+        {"content": "Continue", "capability": "chat", "tools": []}
+    )
+    events = [e async for e in runtime.subscribe_turn(turn["id"])]
+    done = next(e for e in events if e["type"] == "done")
+    assert done["metadata"]["usage_summary"]["prompt_tokens"] == (100 if preparation_fails else 120)
+    assert done["metadata"]["usage_summary"]["total_calls"] == (1 if preparation_fails else 2)
+    messages = await store.get_messages(session["id"])
+    if preparation_fails:
+        assert done["metadata"]["status"] == "failed"
+        assert current_usage.get() is None
+        return
+    stored = next(e for e in messages[-1]["events"] if e["type"] == "done")
+    assert stored["metadata"]["usage_summary"] == done["metadata"]["usage_summary"]
+    assert current_usage.get() is None

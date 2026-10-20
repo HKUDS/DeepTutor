@@ -1,4 +1,10 @@
 {
+  "Partially correct": "Częściowo poprawna odpowiedź",
+  "These answers could not be submitted. Please review or retry.": "Nie udało się przesłać tych odpowiedzi. Sprawdź je lub spróbuj ponownie.",
+  "The edit could not be sent. Your draft is still here; please retry.": "Nie udało się wysłać zmiany. Szkic został zachowany; spróbuj ponownie.",
+  "Discard unsent draft": "Usuń niewysłany szkic",
+  "Discarding…": "Usuwanie…",
+  "This draft could not be discarded. Please retry or copy it before leaving.": "Nie udało się usunąć tego szkicu. Spróbuj ponownie lub skopiuj go przed opuszczeniem strony.",
   "Review rebuild": "Przegląd przebudowy",
   "language.english": "Angielski",
   "language.chinese": "中文",
@@ -1820,6 +1826,7 @@
   "This step needs credentials": "Ten krok wymaga poświadczeń",
   "Close tab": "Zamknij kartę",
   "Close viewer": "Zamknij widok",
+  "Back to conversation": "Powrót do rozmowy",
   "Loading {{host}}…": "Ładowanie {{host}}…",
   "Many sites refuse to embed for security reasons. If the page below stays blank, use “Open in browser”.": "Wiele stron odmawia wbudowywania ze względów bezpieczeństwa. Jeśli poniższa strona pozostanie pusta, użyj „Otwórz w przeglądarce”.",
   "Open URL": "Otwórz adres URL",
@@ -4517,6 +4524,7 @@
   "Uses the current form without saving. Choose text in the voice's language. The provider may charge for this synthesis.": "Korzysta z bieżących ustawień bez zapisywania. Wybierz tekst w języku głosu. Dostawca może naliczyć opłatę za tę syntezę.",
   "Generated voice preview": "Wygenerowany podgląd głosu",
   "Voice preview failed.": "Nie udało się wygenerować podglądu głosu.",
+  "Voice preview failed (HTTP {{status}}).": "Nie udało się wygenerować podglądu głosu (HTTP {{status}}).",
   "The provider returned no playable audio.": "Dostawca nie zwrócił odtwarzalnego dźwięku.",
   "Voice preview was cancelled or timed out.": "Podgląd głosu został anulowany lub przekroczono limit czasu.",
   "Voice preview failed. Check the provider credentials, model, voice, language and format.": "Nie udało się wygenerować podglądu głosu. Sprawdź dane uwierzytelniające dostawcy, model, głos, język i format.",
@@ -5521,5 +5529,12 @@
   "No durable indexing run recorded yet.": "Nie zapisano jeszcze trwałego zadania indeksowania.",
   "Approve this MCP origin for private-network connections": "Zatwierdź ten origin MCP dla połączeń w sieci prywatnej",
   "Use an administrator-approved private MCP origin": "Użyj prywatnego originu MCP zatwierdzonego przez administratora",
-  "Only this scheme, host and port can use private Docker or LAN addresses. Metadata addresses remain blocked.": "Tylko ten schemat, host i port mogą korzystać z prywatnych adresów Docker lub LAN. Adresy metadanych pozostają zablokowane."
+  "Only this scheme, host and port can use private Docker or LAN addresses. Metadata addresses remain blocked.": "Tylko ten schemat, host i port mogą korzystać z prywatnych adresów Docker lub LAN. Adresy metadanych pozostają zablokowane.",
+  "Workspace instructions": "Instrukcje obszaru roboczego",
+  "Set learning goals, teaching style and response preferences for this workspace. Leave blank to use the default behavior.": "Ustaw cele nauki, styl nauczania i preferencje odpowiedzi dla tego obszaru. Pozostaw puste, aby używać domyślnego zachowania.",
+  "For example: I am learning linear algebra. Explain the geometric intuition before introducing formulas, and give hints before complete solutions.": "Na przykład: uczę się algebry liniowej. Wyjaśniaj intuicję geometryczną przed wzorami i dawaj wskazówki przed pełnymi rozwiązaniami.",
+  "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading, Course Study and standard visualizations. Changes take effect on the next turn.": "Dotyczy czatu, rozwiązywania, pytań, nauki z przewodnikiem, czytania, kursów i standardowych wizualizacji. Zmiany obowiązują od następnej tury.",
+  "Clear instructions": "Wyczyść instrukcje",
+  "{{used}} / {{limit}} characters": "{{used}} / {{limit}} znaków",
+  "contextBudget.segment.workspace_instructions": "Instrukcje obszaru roboczego"
 }

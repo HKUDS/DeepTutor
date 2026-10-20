@@ -35,5 +35,11 @@
   "admin": "管理员分配",
   "Account library": "账户资源库",
   "{{count}} resources selected_one": "已选择 {{count}} 项资源",
-  "{{count}} resources selected_other": "已选择 {{count}} 项资源"
+  "{{count}} resources selected_other": "已选择 {{count}} 项资源",
+  "Workspace instructions": "工作区提示词",
+  "Set learning goals, teaching style and response preferences for this workspace. Leave blank to use the default behavior.": "设置这个工作区的学习目标、教学方式和回答偏好。留空时使用默认行为。",
+  "For example: I am learning linear algebra. Explain the geometric intuition before introducing formulas, and give hints before complete solutions.": "例如：我正在学习线性代数。先解释几何直觉，再引入公式；先给提示，再给完整解答。",
+  "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading, Course Study and standard visualizations. Changes take effect on the next turn.": "适用于对话、解题、主动提问、引导学习、沉浸式阅读、课程学习和常规可视化。从下一轮开始生效。",
+  "Clear instructions": "清空提示词",
+  "{{used}} / {{limit}} characters": "{{used}} / {{limit}} 字符"
 }

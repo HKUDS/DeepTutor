@@ -503,7 +503,22 @@ def _runtime_catalog_write() -> Iterator[None]:
     """
     service = get_model_catalog_service()
     before = service.load()
-    yield
+    try:
+        yield
+    except PermissionError as exc:
+        # #1984: filesystem denial is not an authentication failure. Preserve
+        # the atomic writer's failure boundary and the unapplied draft; do not
+        # blindly retry a stale catalog over another writer's newer settings.
+        logger.exception("Filesystem access denied while saving the model catalog")
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "The server could not save model settings because filesystem access was denied. "
+                "Check the server service account's permissions on the settings folder and "
+                "whether another process or security software is holding model_catalog.json, "
+                "then retry."
+            ),
+        ) from exc
     if service.load() == before:
         return
     logger.warning(

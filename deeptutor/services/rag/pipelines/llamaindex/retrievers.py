@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import lru_cache
 import logging
 from pathlib import Path
 import shutil
@@ -216,6 +217,136 @@ def retrieve_nodes(
         top_k=top_k,
         model_name=config.reranker_model,
     )
+
+
+@lru_cache(maxsize=4)
+def _scoped_index(index: Any, document_keys: tuple[str, ...]) -> Any:
+    """Reuse stored vectors in an isolated corpus; FAISS ignores node_ids filters.
+
+    This never embeds the documents again. The small LRU dies with the loaded
+    index identity, so a newly published index cannot reuse an old corpus.
+    """
+    from llama_index.core import VectorStoreIndex
+
+    from .vector_store import storage_context_for_nodes
+
+    allowed = set(document_keys)
+    # .docs reconstructs all nodes on every access; never call it per vector.
+    documents = index.docstore.docs
+    store = index.vector_store
+    data = getattr(getattr(store, "data", None), "embedding_dict", None)
+    faiss_index = getattr(store, "_faiss_index", None)
+    if isinstance(data, dict):
+        by_node = data
+    elif faiss_index is not None:
+        by_node = {
+            node_id: faiss_index.reconstruct(int(vector_id)).tolist()
+            for vector_id, node_id in index.index_struct.nodes_dict.items()
+            if documents[node_id].metadata.get("document_key") in allowed
+        }
+    else:
+        raise ValueError("This vector backend cannot enforce selected-document retrieval scope.")
+    nodes = []
+    for node in documents.values():
+        if (
+            node.metadata.get("document_key") not in allowed
+            or node.metadata.get("page_status") != "searchable"
+            or node.node_id not in by_node
+        ):
+            continue
+        copy = node.model_copy(deep=True)
+        copy.embedding = by_node[node.node_id]
+        nodes.append(copy)
+    if not nodes:
+        return None
+    return VectorStoreIndex(
+        nodes=nodes,
+        embed_model=index._embed_model,
+        storage_context=storage_context_for_nodes(nodes),
+    )
+
+
+def retrieve_scoped_nodes(
+    index: Any, query: str, document_keys: list[str], *, top_k: int = 8
+) -> list[Any]:
+    """Restrict the corpus before retrieval, including the BM25 component."""
+    index = _scoped_index(index, tuple(sorted(set(document_keys))))
+    if index is None:
+        return []
+    nodes = list(index.docstore.docs.values())
+    ids = {node.node_id for node in nodes}
+    count = min(top_k, len(nodes))
+    vector = index.as_retriever(similarity_top_k=count)
+    bm25_cls = _import_bm25_retriever()
+    if bm25_cls is not None:
+        lexical = bm25_cls.from_defaults(nodes=nodes, similarity_top_k=count)
+        retriever = QueryFusionRetriever(
+            [vector, lexical],
+            llm=MockLLM(),
+            mode=FUSION_MODES.RECIPROCAL_RANK,
+            similarity_top_k=count,
+            num_queries=1,
+            use_async=False,
+        )
+    else:
+        retriever = vector
+    return [hit for hit in retriever.retrieve(query) if hit.node.node_id in ids][:count]
+
+
+class _UnstemmedPageRetriever:
+    """Use BM25S directly when the optional stemming integration is unavailable.
+
+    Python 3.14 cannot install the PyStemmer version pinned by LlamaIndex's
+    adapter. Legacy page lookup still needs lexical retrieval without building
+    new embeddings; retain the same engine and skip optional stemming only.
+    """
+
+    def __init__(self, nodes: list[Any]) -> None:
+        import bm25s
+        from llama_index.core.schema import MetadataMode
+
+        self.nodes = nodes
+        self.engine = bm25s.BM25()
+        corpus = [node.get_content(metadata_mode=MetadataMode.EMBED) for node in nodes]
+        self.engine.index(self._tokenize(corpus), show_progress=False)
+
+    @staticmethod
+    def _tokenize(text):
+        import bm25s
+
+        return bm25s.tokenize(text, stopwords="en", stemmer=None, show_progress=False)
+
+    def retrieve(self, query: str) -> list[Any]:
+        from llama_index.core.schema import NodeWithScore
+
+        if not query.strip():
+            return []
+        indexes, scores = self.engine.retrieve(
+            self._tokenize(query), k=min(8, len(self.nodes)), show_progress=False
+        )
+        return [
+            NodeWithScore(node=self.nodes[int(index)], score=float(score))
+            for index, score in zip(indexes[0], scores[0])
+        ]
+
+
+@lru_cache(maxsize=4)
+def _legacy_page_retriever(directory: Path) -> Any:
+    from llama_index.core.storage.docstore import SimpleDocumentStore
+
+    nodes = list(
+        SimpleDocumentStore.from_persist_path(str(directory / "docstore.json")).docs.values()
+    )
+    cls = _import_bm25_retriever()
+    if cls is None:
+        return _UnstemmedPageRetriever(nodes)
+    return cls.from_defaults(nodes=nodes, similarity_top_k=min(8, len(nodes)))
+
+
+def retrieve_legacy_pages(directory: Path, query: str, *, top_k: int = 8) -> list[Any]:
+    # The sidecar directory's content-addressed identity already includes the
+    # selected files. Never merge in nodes from another source or workspace.
+    return _legacy_page_retriever(directory).retrieve(query)[:top_k]
 
 
 __all__ = [

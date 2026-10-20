@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import { apiFetch, apiUrl } from "@/lib/api";
+import { apiFetch, apiUrl, asJsonOrThrow } from "@/lib/api";
 import MemoryRunPanel from "@/components/memory/MemoryRunPanel";
 
 const MarkdownRenderer = dynamic(
@@ -311,11 +311,12 @@ export default function MemoryWorkbench({
   const saveDoc = useCallback(async () => {
     setSaving(true);
     try {
-      await apiFetch(apiUrl(`/api/memory/doc/${layer}/${docKey}`), {
+      const response = await apiFetch(apiUrl(`/api/memory/doc/${layer}/${docKey}`), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: editorValue }),
       });
+      await asJsonOrThrow(response);
       setContent(editorValue);
       setEditing(false);
       setToast(t("Saved"));

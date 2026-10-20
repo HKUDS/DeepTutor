@@ -129,6 +129,7 @@ class RAGService:
         query: str,
         kb_name: str,
         event_sink=None,
+        rewrite: bool | None = None,
         **kwargs,
     ) -> Dict[str, Any]:
         provider = self._resolve_provider(kb_name)
@@ -147,6 +148,26 @@ class RAGService:
                 "provider": provider,
                 "error_type": "reasoning_as_retrieval_required",
             }
+
+        # Query rewrite layer (fail-open). ``maybe_rewrite`` reads runtime
+        # settings when ``rewrite`` is None, honors an explicit True/False
+        # override, and returns ``(original, None)`` when the layer is off, so
+        # provenance is only attached when a rewrite actually ran.
+        from deeptutor.services.rag.query_rewrite import maybe_rewrite
+
+        effective_query, rewrite_outcome = await maybe_rewrite(query, rewrite=rewrite)
+        if rewrite_outcome is not None:
+            await self._emit_tool_event(
+                event_sink,
+                "status",
+                f"Rewritten query: {rewrite_outcome.rewritten}",
+                {
+                    "query": query,
+                    "rewrite_outcome": rewrite_outcome.to_dict(),
+                    "trace_layer": "summary",
+                },
+            )
+
         with self._capture_raw_logs(event_sink):
             await self._emit_tool_event(
                 event_sink,
@@ -165,7 +186,7 @@ class RAGService:
                 {"provider": provider, "trace_layer": "summary"},
             )
 
-            result = await pipeline.search(query=query, kb_name=kb_name, **kwargs)
+            result = await pipeline.search(query=effective_query, kb_name=kb_name, **kwargs)
 
             if "query" not in result:
                 result["query"] = query
@@ -176,6 +197,8 @@ class RAGService:
             # The service is authoritative about which engine ran (resolved from
             # the KB's binding), so it overwrites whatever the pipeline reports.
             result["provider"] = provider
+            if rewrite_outcome is not None:
+                result["query_rewrite"] = rewrite_outcome.to_dict()
 
             if result.get("error_type") or result.get("needs_reindex"):
                 await self._emit_tool_event(

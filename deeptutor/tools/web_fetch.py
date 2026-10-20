@@ -23,6 +23,7 @@ arguments, not a human):
 
 from __future__ import annotations
 
+import codecs
 from dataclasses import dataclass
 import ipaddress
 import logging
@@ -224,19 +225,89 @@ async def _bounded_read(response: httpx.Response, limit: int) -> str:
     """Stream-read at most ``limit`` bytes from ``response`` then stop.
 
     Avoids holding hundreds of MB if a server (or an LLM-supplied URL)
-    points at a huge resource. Encoding falls back from response.encoding
-    → utf-8 with replacement.
+    points at a huge resource. The charset comes from
+    :py:func:`_detect_encoding`; undecodable bytes are replaced.
     """
     buf = bytearray()
     async for chunk in response.aiter_bytes():
         buf.extend(chunk)
         if len(buf) >= limit:
             break
-    encoding = response.encoding or "utf-8"
+    encoding = _detect_encoding(bytes(buf), response.headers.get("content-type", ""))
     try:
         return buf.decode(encoding, errors="replace")
     except (LookupError, TypeError):
         return buf.decode("utf-8", errors="replace")
+
+
+# Byte-order marks take precedence over every declared charset (WHATWG
+# "decode"). ``utf-8-sig`` also drops the mark from the decoded text.
+_BOMS = (
+    (b"\xef\xbb\xbf", "utf-8-sig"),
+    (b"\xff\xfe", "utf-16"),
+    (b"\xfe\xff", "utf-16"),
+)
+_HEADER_CHARSET_RE = re.compile(r"""charset\s*=\s*["']?([\w.:-]+)""", re.IGNORECASE)
+# ``<meta charset="gbk">`` and ``<meta http-equiv="Content-Type"
+# content="text/html; charset=gbk">``; browsers look for either in the
+# first 1024 bytes when the HTTP header names no charset.
+_META_CHARSET_RE = re.compile(
+    rb"""<meta[^>]+?charset\s*=\s*["']?\s*([\w.:-]+)""",
+    re.IGNORECASE,
+)
+_META_PRESCAN_BYTES = 1024
+# Labels pages commonly declare for a superset encoding. Browsers decode them
+# as the superset (WHATWG Encoding), so a page labelled ``gb2312`` that uses
+# GBK-only characters still renders; Python's strict codecs would not.
+_CHARSET_SUPERSETS = {
+    "gb2312": "gb18030",
+    "gbk": "gb18030",
+    "x-gbk": "gb18030",
+    "iso-8859-1": "cp1252",
+    "latin1": "cp1252",
+    "latin-1": "cp1252",
+    "us-ascii": "cp1252",
+    "ascii": "cp1252",
+}
+
+
+def _usable_charset(label: str | bytes | None) -> str | None:
+    if not label:
+        return None
+    if isinstance(label, bytes):
+        label = label.decode("ascii", errors="ignore")
+    name = label.strip().lower()
+    name = _CHARSET_SUPERSETS.get(name, name)
+    try:
+        codecs.lookup(name)
+    except LookupError:
+        return None
+    return name
+
+
+def _detect_encoding(body: bytes, content_type: str) -> str:
+    """Pick the charset for ``body`` the way a browser would.
+
+    Order: byte-order mark, the ``charset`` parameter of the HTTP
+    ``Content-Type``, a ``<meta>`` charset declaration near the top of the
+    document, then UTF-8. Without the ``<meta>`` step every page that only
+    declares its charset in the markup (common for GBK / Shift_JIS / EUC-KR
+    sites) is decoded as UTF-8 and comes back as replacement characters.
+    """
+    for bom, encoding in _BOMS:
+        if body.startswith(bom):
+            return encoding
+    header_match = _HEADER_CHARSET_RE.search(content_type or "")
+    declared = _usable_charset(header_match.group(1) if header_match else None)
+    if declared:
+        return declared
+    meta_match = _META_CHARSET_RE.search(body[:_META_PRESCAN_BYTES])
+    sniffed = _usable_charset(meta_match.group(1) if meta_match else None)
+    # A UTF-16 label in ASCII-compatible markup is a mislabel; browsers
+    # treat it as UTF-8, and decoding it as UTF-16 would garble everything.
+    if sniffed and not sniffed.startswith("utf-16"):
+        return sniffed
+    return "utf-8"
 
 
 def _extract_readable(html_or_text: str, base_url: str = "") -> tuple[str, str]:

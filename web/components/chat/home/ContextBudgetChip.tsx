@@ -38,6 +38,7 @@ const SEGMENT_COLORS: Record<string, string> = {
   sources: "#0891b2",
   notebooks: "#e879a3",
   workspace: "#65a30d",
+  workspace_instructions: "#0d9488",
   capability: "#64748b",
 };
 

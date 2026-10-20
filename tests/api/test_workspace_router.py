@@ -64,6 +64,60 @@ def test_workspace_settings_select_and_reset(workspace_api, tmp_path: Path) -> N
     assert reset.json()["is_default"] is True
 
 
+def test_workspace_instructions_create_update_clear_and_validate(workspace_api):
+    client, service = workspace_api
+    endpoint = "/api/settings/workspace/registrations"
+    created = client.post(
+        endpoint, json={"name": "Algebra", "instructions": "Start with intuition"}
+    )
+    assert created.status_code == 200
+    row = created.json()["workspace"]
+    assert row["instructions"] == "Start with intuition"
+    url = f"{endpoint}/{row['workspace_id']}"
+    assert (
+        client.patch(url, json={"name": "Linear algebra"}).json()["workspace"]["instructions"]
+        == row["instructions"]
+    )
+    assert (
+        client.patch(url, json={"instructions": "Use examples"}).json()["workspace"]["instructions"]
+        == "Use examples"
+    )
+    assert client.patch(url, json={"instructions": ""}).json()["workspace"]["instructions"] == ""
+    assert client.patch(url, json={"instructions": "x" * 10001}).status_code == 422
+    assert (
+        client.post(endpoint, json={"name": "Invalid", "instructions": "x" * 10001}).status_code
+        == 422
+    )
+    general = service.general_binding().workspace_id
+    assert (
+        client.patch(
+            f"{endpoint}/{general}", json={"instructions": "Default preferences"}
+        ).status_code
+        == 200
+    )
+    assert service.workspace_instructions("") == "Default preferences"
+    assert (
+        client.patch(
+            f"{endpoint}/{service.system_binding().workspace_id}", json={"instructions": "Invalid"}
+        ).status_code
+        == 400
+    )
+
+
+def test_instruction_edits_can_be_saved_while_a_turn_holds_its_activity_lease(workspace_api):
+    from deeptutor.services.workspace.activity import data_activity
+
+    client, service = workspace_api
+    row = service.create_workspace("Algebra")
+    url = f"/api/settings/workspace/registrations/{row['workspace_id']}"
+    with data_activity():
+        saved = client.patch(url, json={"instructions": "Next-turn preferences"})
+        assert saved.status_code == 200
+        assert saved.json()["workspace"]["instructions"] == "Next-turn preferences"
+        # Destructive lifecycle changes still need the exclusive lease.
+        assert client.patch(url, json={"archived": True}).status_code == 400
+
+
 def test_workspace_item_endpoint_serves_the_published_snapshot(workspace_api) -> None:
     client, service = workspace_api
     binding = service.current_binding(ensure_output=True)

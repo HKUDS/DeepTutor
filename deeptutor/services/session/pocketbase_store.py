@@ -45,6 +45,7 @@ _ALL_TURN_STATUSES = _ACTIVE_TURN_STATUSES | _TERMINAL_TURN_STATUSES
 # The deployed PocketBase messages collection has no parent column. Keep the
 # link inside its JSON metadata until the collection schema can be upgraded.
 _PARENT_MESSAGE_METADATA_KEY = "_parent_message_id"
+_SUMMARY_CURSOR_PREFERENCE_KEY = "_summary_message_id"
 
 
 def _captured_store_context(method):
@@ -320,6 +321,9 @@ class PocketBaseSessionStore:
             or time.time()
         )
         preferences_raw = getattr(record, "preferences_json", None)
+        preferences = _json_loads(preferences_raw, {})
+        preferences = dict(preferences) if isinstance(preferences, dict) else {}
+        summary_cursor = preferences.pop(_SUMMARY_CURSOR_PREFERENCE_KEY, None)
         deleted_at_raw = getattr(record, "deleted_at", None)
         return {
             "id": sid,
@@ -328,11 +332,12 @@ class PocketBaseSessionStore:
             "created_at": created,
             "updated_at": updated,
             "compressed_summary": getattr(record, "compressed_summary", "") or "",
-            "summary_up_to_msg_id": int(getattr(record, "summary_up_to_msg_id", 0) or 0),
+            "summary_up_to_msg_id": summary_cursor
+            or int(getattr(record, "summary_up_to_msg_id", 0) or 0),
             # PocketBase has no local schema-upgrade hook. Normalize at the
             # repository boundary so old remote rows immediately satisfy the
             # same API contract; their next preference write persists it.
-            "preferences": upgrade_workspace_preferences(_json_loads(preferences_raw, {})),
+            "preferences": upgrade_workspace_preferences(preferences),
             "capability": getattr(record, "capability", "") or "",
             "status": getattr(record, "status", "idle") or "idle",
             "active_turn_id": "",
@@ -777,7 +782,7 @@ class PocketBaseSessionStore:
             return {"message_count": 0, "last_message": ""}
 
     @_captured_store_context
-    async def update_summary(self, session_id: str, summary: str, up_to_msg_id: int) -> bool:
+    async def update_summary(self, session_id: str, summary: str, up_to_msg_id: int | str) -> bool:
         sid = _validate_id(session_id, "session_id")
         uid = _current_user_id()
 
@@ -785,11 +790,22 @@ class PocketBaseSessionStore:
             record = _find_session_record(_pb(), sid, uid)
             if record is None:
                 return False
+            preferences = _json_loads(getattr(record, "preferences_json", None), {})
+            preferences = dict(preferences) if isinstance(preferences, dict) else {}
+            # The existing server field is numeric. Keep native record IDs in
+            # its JSON preferences field, hidden at the repository boundary.
+            if isinstance(up_to_msg_id, str):
+                preferences[_SUMMARY_CURSOR_PREFERENCE_KEY] = up_to_msg_id
+            else:
+                preferences.pop(_SUMMARY_CURSOR_PREFERENCE_KEY, None)
             _pb().collection("sessions").update(
                 record.id,
                 {
                     "compressed_summary": summary,
-                    "summary_up_to_msg_id": max(0, int(up_to_msg_id)),
+                    "summary_up_to_msg_id": 0
+                    if isinstance(up_to_msg_id, str)
+                    else max(0, up_to_msg_id),
+                    "preferences_json": preferences,
                 },
             )
             return True
@@ -819,6 +835,9 @@ class PocketBaseSessionStore:
                 record = _find_session_record(_pb(), sid, uid)
                 if record is None:
                     return False
+                current = _json_loads(getattr(record, "preferences_json", None), {})
+                if isinstance(current, dict) and _SUMMARY_CURSOR_PREFERENCE_KEY in current:
+                    merged[_SUMMARY_CURSOR_PREFERENCE_KEY] = current[_SUMMARY_CURSOR_PREFERENCE_KEY]
                 _pb().collection("sessions").update(
                     record.id,
                     {"preferences_json": merged, "session_updated_at": time.time()},

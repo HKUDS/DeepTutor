@@ -62,7 +62,16 @@ def _settings_lock(path: Path) -> threading.Lock:
     multi-user deployment each account has its own ``interface.json``; making
     them contend would serialise unrelated users' preference writes.
     """
-    key = str(path.resolve() if path.is_absolute() else path)
+    # Resolve the directory only: resolving the file can open it on Windows
+    # before its lock is acquired, preventing another writer from replacing it.
+    key = os.path.normcase(str(path.parent.resolve() / path.name))
+    # Windows may return an extended path while a directory is being created.
+    # Both spellings must identify the same lock.
+    if os.name == "nt":
+        if key.startswith("\\\\?\\unc\\"):
+            key = "\\\\" + key[8:]
+        elif key.startswith("\\\\?\\"):
+            key = key[4:]
     with _LOCKS_GUARD:
         lock = _LOCKS.get(key)
         if lock is None:

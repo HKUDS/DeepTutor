@@ -85,19 +85,25 @@ def build_question_card(
     }
     if pending.visual_context:
         payload["visual"] = public_visual(pending.visual_context)
+    if pending.questions:
+        payload["questions"] = [build_question_card(q) for q in pending.questions]
     return payload
 
 
 def build_grade_result(
     *,
     question_id: str,
-    is_correct: bool,
+    is_correct: bool | None,
     learner_answer: str,
     correct_label: str,
     choice_options: dict[str, str],
     explanation: str,
     result: str = "",
     independent: bool | None = None,
+    final: bool = True,
+    needs_clarification: bool = False,
+    feedback: str = "",
+    confidence: float | None = None,
 ) -> dict[str, Any]:
     """What the answered card shows once the gate has ruled on it.
 
@@ -108,7 +114,11 @@ def build_grade_result(
     label = str(correct_label or "").strip()
     payload = {
         "question_id": str(question_id or ""),
-        "is_correct": bool(is_correct),
+        "is_correct": is_correct,
+        "final": final,
+        "needs_clarification": needs_clarification,
+        "feedback": feedback,
+        "confidence": confidence,
         "learner_answer": str(learner_answer or ""),
         "correct_label": label,
         "correct_body": str(choice_options.get(label) or "") if label else "",

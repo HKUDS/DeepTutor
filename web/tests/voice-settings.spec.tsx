@@ -17,7 +17,11 @@ vi.mock('@/lib/api', () => ({
   apiFetch: (...args: unknown[]) => mock.fetch(...args),
 }))
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (s: string) => s, i18n: { language: 'en' } }),
+  useTranslation: () => ({
+    t: (s: string, opts?: Record<string, unknown>) =>
+      opts ? s.replace(/\{\{(\w+)\}\}/g, (_m, key: string) => String(opts[key] ?? '')) : s,
+    i18n: { language: 'en' },
+  }),
 }))
 vi.mock('@/hooks/useVoiceAutoplay', () => ({
   useVoiceAutoplay: () => ({
@@ -247,6 +251,23 @@ it('reports failures and allows retry without applying settings', async () => {
   render(<Harness />)
   fireEvent.click(screen.getByRole('button', { name: 'Preview voice' }))
   await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('Check the Speech key'))
+  expect(screen.getByRole('button', { name: 'Preview voice' }).hasAttribute('disabled')).toBe(false)
+})
+
+it('shows the HTTP status for a non-JSON error body instead of a JSON parse error', async () => {
+  mock.fetch.mockResolvedValue({
+    ok: false,
+    status: 502,
+    json: async () => {
+      throw new SyntaxError("Unexpected token '<', \"<!DOCTYPE \"... is not valid JSON")
+    },
+  })
+  render(<Harness />)
+  fireEvent.click(screen.getByRole('button', { name: 'Preview voice' }))
+  await waitFor(() =>
+    expect(screen.getByRole('alert').textContent).toBe('Voice preview failed (HTTP 502).')
+  )
+  expect(screen.queryByText(/Unexpected token/)).toBeNull()
   expect(screen.getByRole('button', { name: 'Preview voice' }).hasAttribute('disabled')).toBe(false)
 })
 

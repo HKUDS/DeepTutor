@@ -73,7 +73,7 @@ class TurnExecutor:
         _executions: dict[str, _TurnExecution]
         _reply_queues: dict[str, asyncio.Queue[dict[str, Any] | None]]
 
-        def _create_context_builder(self) -> Any: ...
+        def _create_context_builder(self, *, tutoring: bool = False) -> Any: ...
 
         async def _publish_live_event(
             self,
@@ -218,8 +218,14 @@ class TurnExecutor:
         # body so prompt building, the deferred tool view and ``read_skill``
         # all resolve against the same selection; ContextVars are task-local,
         # so a concurrent turn in another conversation is unaffected.
+        # #1920/#1926: context condensation and pre-capability grading are
+        # part of this turn too; the orchestrator inherits this collector.
+        from deeptutor.services.llm.metrics import TurnUsage, current_usage
         from deeptutor.services.workspace.resources import turn_resource_selection
 
+        usage_token = current_usage.set(
+            TurnUsage(session_id=session_id, turn_id=turn_id, source=capability_name)
+        )
         resource_scope = contextlib.ExitStack()
         resource_scope.enter_context(
             turn_resource_selection(
@@ -544,7 +550,11 @@ class TurnExecutor:
                     )
 
             llm_config, llm_scope_token = activate_llm_selection(payload.get("llm_selection"))
-            builder = self._create_context_builder()
+            builder = (
+                self._create_context_builder(tutoring=True)
+                if workspace_mode == WORKSPACE_MODE_MASTERY
+                else self._create_context_builder()
+            )
 
             async def _emit_context_event(event: StreamEvent) -> None:
                 if event.source in {"context", "context_builder"}:
@@ -938,6 +948,7 @@ class TurnExecutor:
                         session_id=session_id,
                         turn_id=turn_id,
                         workspace_id=payload.get("_content_workspace_id"),
+                        instructions=payload.get("_workspace_instructions"),
                     ),
                 ),
                 metadata={
@@ -1009,7 +1020,10 @@ class TurnExecutor:
                     # ``MasteryLoopCapability.augment_kwargs``). Kept separate
                     # from ``source_index`` so topic materials never trigger
                     # explore_context's forced pre-pass.
-                    "mastery_topic_source_index": mastery_topic_source_index,
+                    "mastery_topic_source_index": {
+                        **mastery_topic_source_index,
+                        **getattr(history_result, "history_sources", {}),
+                    },
                 },
             )
 
@@ -1212,6 +1226,8 @@ class TurnExecutor:
                 # open briefly so the later ``session_meta`` title update can
                 # still arrive.
                 try:
+                    current_usage.reset(usage_token)
+                    usage_token = None
                     await self._maybe_generate_session_title(
                         execution=execution,
                         session_id=session_id,
@@ -1396,6 +1412,12 @@ class TurnExecutor:
                     retryable=resolved_retryable,
                 )
         finally:
+            if usage_token is not None:
+                current_usage.reset(usage_token)
+            if execution.flush_task is not None:
+                execution.flush_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await execution.flush_task
             resource_scope.close()
             if llm_scope_token is not None and reset_active_llm_selection is not None:
                 reset_active_llm_selection(llm_scope_token)

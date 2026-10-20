@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next'
 import { SettingsPageHeader } from '@/components/settings/shared'
 import { fetchUsageStatistics, usageYear, type UsageStatistics } from '@/lib/usage-statistics'
 import UsageActivity from '../components/UsageActivity'
+import { isApiError } from '@/shared/api/errors'
 
 export default function UsageSettingsSection() {
   const { t, i18n } = useTranslation()
@@ -17,7 +18,7 @@ export default function UsageSettingsSection() {
   const [snapshot, setSnapshot] = useState<{
     key: string
     data: UsageStatistics | null
-    error: boolean
+    error: string | null
   } | null>(null)
   const [revision, setRevision] = useState(0)
   const requestKey = `${year}:${revision}`
@@ -28,11 +29,17 @@ export default function UsageSettingsSection() {
     const controller = new AbortController()
     fetchUsageStatistics(year, controller.signal)
       .then(value => {
-        if (!controller.signal.aborted) setSnapshot({ key: requestKey, data: value, error: false })
+        if (!controller.signal.aborted) setSnapshot({ key: requestKey, data: value, error: null })
       })
-      .catch(() => {
+      .catch((failure: unknown) => {
         if (!controller.signal.aborted)
-          setSnapshot(previous => ({ key: requestKey, data: previous?.data ?? null, error: true }))
+          setSnapshot(previous => ({
+            key: requestKey,
+            data: previous?.data ?? null,
+            error: failure instanceof Error
+              ? `${failure.message}${isApiError(failure) && failure.status ? ` (HTTP ${failure.status})` : ''}`
+              : 'Unable to load usage statistics.',
+          }))
       })
     return () => controller.abort()
   }, [year, requestKey])
@@ -90,7 +97,10 @@ export default function UsageSettingsSection() {
           role="alert"
           className="mb-5 flex items-center justify-between rounded-lg bg-[var(--destructive)]/5 px-3 py-2 text-xs text-[var(--destructive)]"
         >
-          <span>{t('Unable to load usage statistics.')}</span>
+          <span>
+            {t('Unable to load usage statistics.')}
+            {snapshot?.error && <span className="mt-1 block break-words">{t(snapshot.error)}</span>}
+          </span>
           <button
             type="button"
             onClick={() => setRevision(value => value + 1)}

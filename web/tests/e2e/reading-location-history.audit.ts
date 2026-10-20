@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { emptyTaskBoard } from "./fixtures/task-board";
 
 const MATERIAL_A = "aaaaaaaaaaaaaaaa";
 const MATERIAL_B = "bbbbbbbbbbbbbbbb";
@@ -108,6 +109,7 @@ test.beforeEach(async ({ page }) => {
       route.fulfill({ status, json: payload });
 
     if (path === "/api/partners" || path === "/api/partner-groups") return json([]);
+    if (path === "/api/task-board") return json(emptyTaskBoard);
     if (path === "/api/auth/status") {
       return json({ enabled: false, authenticated: true });
     }

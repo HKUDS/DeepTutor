@@ -338,10 +338,11 @@ def _slides_text_and_images(source: Path) -> tuple[str, tuple[EmbeddedImage, ...
     """Slide text with image markers, preferring the rich extraction.
 
     Falls back to the shared extractor (text only) when the rich path cannot
-    read the deck, so ingest never fails on a picture quirk.
+    read the deck, so ingest never fails on a picture quirk. The reading budget
+    keeps slide pictures at source resolution, like the PDF ingest above.
     """
     try:
-        rich = extract_pptx_rich(source.read_bytes())
+        rich = extract_pptx_rich(source.read_bytes(), budget=reading_image_budget())
     except Exception:
         rich = None
     if rich is not None and any(slide.strip() for slide in rich.slides):
@@ -368,12 +369,13 @@ def _extract_sections(source: Path) -> Extraction:
 
     DOCX goes through the rich extraction first so embedded images survive
     with their section mapping; every other format (and a failed rich parse)
-    uses the shared text-only extractor.
+    uses the shared text-only extractor. The reading budget keeps those images
+    at source resolution for the reader pane, like the PDF ingest above.
     """
     images: tuple[EmbeddedImage, ...] = ()
     if source.suffix.lower() == ".docx":
         try:
-            rich = extract_docx_rich(source.read_bytes())
+            rich = extract_docx_rich(source.read_bytes(), budget=reading_image_budget())
         except Exception:
             rich = None
         if rich is not None and any(paragraph.strip() for paragraph in rich.paragraphs):

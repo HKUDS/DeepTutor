@@ -90,6 +90,14 @@ class LoopExtension(Protocol):
     gives the model one additional round with tools still mounted; capability
     implementations are responsible for keeping the check narrow and bounded.
 
+    A capability MAY define ``settlement_recovery(context)`` returning
+    ``(instruction, allowed_tool_names)`` when a successful preparation receipt
+    leaves one required delivery action at the settlement limit. The loop uses
+    its existing final slot for one restricted tool round instead of tool-less
+    salvage. The hook must validate fresh state and must not initiate unrelated
+    work; the loop enforces the tool allowlist before dispatch and never grants
+    a second recovery round.
+
     A finish-guard capability whose private decision may share a round with a
     tool call MAY additionally define ``tool_round_output_policy(context,
     final_text, tool_names)`` (``"publish"`` / ``"discard"``) and

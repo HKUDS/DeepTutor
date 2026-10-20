@@ -54,6 +54,7 @@ class QueryEvaluation:
     provider: str = ""
     error: str = ""
     sources: tuple[dict[str, Any], ...] = ()
+    query_rewrite: dict[str, Any] | None = None
 
     @property
     def failed(self) -> bool:
@@ -69,6 +70,7 @@ class QueryEvaluation:
             "provider": self.provider,
             "source_mode": self.source_mode,
             "matched_gold": [sorted(indices) for indices in self.hits],
+            "query_rewrite": self.query_rewrite,
             **self.metrics.to_dict(),
         }
 
@@ -103,6 +105,8 @@ def _error_message(result: Mapping[str, Any]) -> str:
     if result.get("error_type"):
         message = result.get("answer") or result.get("content") or result["error_type"]
         return str(message)
+    if result.get("error"):
+        return str(result["error"])
     return ""
 
 
@@ -113,6 +117,7 @@ async def _default_search(
     kb_base_dir: str | None,
     mode: str | None,
     top_k: int,
+    rewrite: bool | None = None,
 ) -> dict[str, Any]:
     """Retrieve through the production path (``rag_search`` → the bound pipeline)."""
     from deeptutor.tools.rag_tool import rag_search
@@ -120,6 +125,8 @@ async def _default_search(
     kwargs: dict[str, Any] = {"top_k": top_k}
     if mode:
         kwargs["mode"] = mode
+    if rewrite is not None:
+        kwargs["rewrite"] = rewrite
     return await rag_search(query=query, kb_name=kb_name, kb_base_dir=kb_base_dir, **kwargs)
 
 
@@ -137,6 +144,9 @@ class RetrievalEvaluator:
         search_fn: Search callable override, for tests and embedders.
         provider: Provider label for the report; a search result's own
             ``provider`` still wins per case.
+        rewrite: Force the query-rewrite layer on (``True``), off (``False``),
+            or defer to the runtime ``query_rewrite`` setting (``None``, the
+            default). Passed through to :func:`deeptutor.tools.rag_tool.rag_search`.
 
     Raises:
         ValueError: ``kb_name`` is empty or ``k`` is below 1.
@@ -153,6 +163,7 @@ class RetrievalEvaluator:
         policy: MatchPolicy | None = None,
         search_fn: SearchFn | None = None,
         provider: str = "",
+        rewrite: bool | None = None,
     ) -> None:
         self.kb_name = (kb_name or "").strip()
         if not self.kb_name:
@@ -166,6 +177,7 @@ class RetrievalEvaluator:
         self.policy = policy or MatchPolicy()
         self.search_fn: SearchFn = search_fn or _default_search
         self.provider = provider
+        self.rewrite = rewrite
 
     async def evaluate(
         self,
@@ -204,13 +216,16 @@ class RetrievalEvaluator:
         """Search one case and score the citations it came back with."""
         matcher = RelevanceMatcher(case.gold, self.policy)
         try:
-            result = await self.search_fn(
-                query=case.query,
-                kb_name=self.kb_name,
-                kb_base_dir=self.kb_base_dir,
-                mode=self.mode,
-                top_k=self.k,
-            )
+            search_kwargs: dict[str, Any] = {
+                "query": case.query,
+                "kb_name": self.kb_name,
+                "kb_base_dir": self.kb_base_dir,
+                "mode": self.mode,
+                "top_k": self.k,
+            }
+            if self.rewrite is not None:
+                search_kwargs["rewrite"] = self.rewrite
+            result = await self.search_fn(**search_kwargs)
         except Exception as exc:
             return self._failure(case, matcher, f"{type(exc).__name__}: {exc}")
 
@@ -226,6 +241,7 @@ class RetrievalEvaluator:
         hits = tuple(
             frozenset(matcher.match(source_text(source)).indices) for source in sources[: self.k]
         )
+        provenance = result.get("query_rewrite")
         return QueryEvaluation(
             case_id=case.id,
             query=case.query,
@@ -236,6 +252,7 @@ class RetrievalEvaluator:
             source_mode=source_mode,
             provider=str(result.get("provider") or self.provider),
             sources=tuple(sources),
+            query_rewrite=dict(provenance) if isinstance(provenance, Mapping) else None,
         )
 
     def _failure(self, case: EvalCase, matcher: RelevanceMatcher, message: str) -> QueryEvaluation:
@@ -263,6 +280,7 @@ async def evaluate_dataset(
     policy: MatchPolicy | None = None,
     search_fn: SearchFn | None = None,
     provider: str = "",
+    rewrite: bool | None = None,
     progress: ProgressFn | None = None,
 ) -> EvalReport:
     """Score one dataset against one knowledge base (see :class:`RetrievalEvaluator`)."""
@@ -275,6 +293,7 @@ async def evaluate_dataset(
         policy=policy,
         search_fn=search_fn,
         provider=provider,
+        rewrite=rewrite,
     )
     return await evaluator.evaluate(dataset, progress=progress)
 

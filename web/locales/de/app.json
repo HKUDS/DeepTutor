@@ -1,4 +1,10 @@
 {
+  "Partially correct": "Teilweise richtig",
+  "These answers could not be submitted. Please review or retry.": "Diese Antworten konnten nicht übermittelt werden. Bitte prüfen und erneut versuchen.",
+  "The edit could not be sent. Your draft is still here; please retry.": "Die Änderung konnte nicht gesendet werden. Dein Entwurf ist noch hier; bitte versuche es erneut.",
+  "Discard unsent draft": "Nicht gesendeten Entwurf verwerfen",
+  "Discarding…": "Wird verworfen…",
+  "This draft could not be discarded. Please retry or copy it before leaving.": "Dieser Entwurf konnte nicht verworfen werden. Bitte versuche es erneut oder kopiere ihn, bevor du die Seite verlässt.",
   "Review rebuild": "Neuaufbau überprüfen",
   "language.english": "Englisch",
   "language.chinese": "Chinesisch",
@@ -1821,6 +1827,7 @@
   "This step needs credentials": "Dieser Schritt erfordert Anmeldedaten",
   "Close tab": "Tab schließen",
   "Close viewer": "Viewer schließen",
+  "Back to conversation": "Zurück zur Unterhaltung",
   "Loading {{host}}…": "{{host}} wird geladen…",
   "Many sites refuse to embed for security reasons. If the page below stays blank, use “Open in browser”.": "Viele Websites verweigern das Einbetten aus Sicherheitsgründen. Wenn die Seite unten leer bleibt, nutze „Im Browser öffnen“.",
   "Open URL": "URL öffnen",
@@ -4518,6 +4525,7 @@
   "Uses the current form without saving. Choose text in the voice's language. The provider may charge for this synthesis.": "Nutzt das aktuelle Formular, ohne zu speichern. Wähle Text in der Sprache der Stimme. Der Provider kann diese Synthese in Rechnung stellen.",
   "Generated voice preview": "Erzeugte Stimmen-Vorschau",
   "Voice preview failed.": "Stimmen-Vorschau fehlgeschlagen.",
+  "Voice preview failed (HTTP {{status}}).": "Stimmen-Vorschau fehlgeschlagen (HTTP {{status}}).",
   "The provider returned no playable audio.": "Der Provider hat kein abspielbares Audio zurückgegeben.",
   "Voice preview was cancelled or timed out.": "Die Stimmen-Vorschau wurde abgebrochen oder hat das Zeitlimit überschritten.",
   "Voice preview failed. Check the provider credentials, model, voice, language and format.": "Stimmen-Vorschau fehlgeschlagen. Überprüfe Provider-Anmeldedaten, Modell, Stimme, Sprache und Format.",
@@ -5505,5 +5513,12 @@
   "No durable indexing run recorded yet.": "Noch kein dauerhafter Indexierungslauf aufgezeichnet.",
   "Approve this MCP origin for private-network connections": "Diesen MCP-Ursprung für private Netzwerkverbindungen freigeben",
   "Use an administrator-approved private MCP origin": "Einen administrativ freigegebenen privaten MCP-Ursprung verwenden",
-  "Only this scheme, host and port can use private Docker or LAN addresses. Metadata addresses remain blocked.": "Nur dieses Schema, dieser Host und Port dürfen private Docker- oder LAN-Adressen verwenden. Metadatenadressen bleiben gesperrt."
+  "Only this scheme, host and port can use private Docker or LAN addresses. Metadata addresses remain blocked.": "Nur dieses Schema, dieser Host und Port dürfen private Docker- oder LAN-Adressen verwenden. Metadatenadressen bleiben gesperrt.",
+  "Workspace instructions": "Arbeitsbereichsanweisungen",
+  "Set learning goals, teaching style and response preferences for this workspace. Leave blank to use the default behavior.": "Lege Lernziele, Lehrstil und Antwortpräferenzen für diesen Arbeitsbereich fest. Leer lassen, um das Standardverhalten zu verwenden.",
+  "For example: I am learning linear algebra. Explain the geometric intuition before introducing formulas, and give hints before complete solutions.": "Beispiel: Ich lerne lineare Algebra. Erkläre zuerst die geometrische Intuition, dann die Formeln, und gib Hinweise vor vollständigen Lösungen.",
+  "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading, Course Study and standard visualizations. Changes take effect on the next turn.": "Gilt für Chat, Problemlösung, Rückfragen, geführtes Lernen, Lesen, Kurslernen und Standardvisualisierungen. Änderungen gelten ab der nächsten Runde.",
+  "Clear instructions": "Anweisungen leeren",
+  "{{used}} / {{limit}} characters": "{{used}} / {{limit}} Zeichen",
+  "contextBudget.segment.workspace_instructions": "Arbeitsbereichsanweisungen"
 }
