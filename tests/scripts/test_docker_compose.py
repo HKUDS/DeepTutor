@@ -184,6 +184,35 @@ def test_dockerfile_is_json_driven_without_bundle_sed() -> None:
     assert "export_runtime_settings_to_env" in content
 
 
+def test_development_image_skips_the_production_frontend_build() -> None:
+    """The development target needs dependencies and source for ``next dev``,
+    but must not inherit from production or copy from the production-only
+    frontend builder. Either edge would make BuildKit run ``npm run build``
+    before development immediately discards its ``.next`` output (#2001).
+    """
+    root = Path(__file__).resolve().parents[2]
+    content = (root / "Dockerfile").read_text(encoding="utf-8")
+
+    assert "FROM runtime-base AS development" in content
+    development = content.split("FROM runtime-base AS development", 1)[1]
+    assert "--from=frontend-source /app/web ./web" in development
+    assert "--from=frontend-builder" not in development
+    assert "FROM production AS development" not in content
+
+    runtime_base = content.split("FROM python:3.11-slim AS runtime-base", 1)[1].split(
+        "FROM runtime-base AS production", 1
+    )[0]
+    assert "--from=frontend-builder" not in runtime_base
+    assert "RUN npm run build" not in runtime_base
+
+    production = content.split("FROM runtime-base AS production", 1)[1].split(
+        "FROM runtime-base AS development", 1
+    )[0]
+    assert "--from=frontend-builder /app/web/.next/standalone/ ./web/" in production
+    assert "--from=frontend-builder /app/web/.next/static/ ./web/.next/static/" in production
+    assert "--from=frontend-builder /app/web/public/ ./web/public/" in production
+
+
 def test_supervisord_runs_as_root_with_unprivileged_children() -> None:
     """supervisord itself must run as root so it can open the container's
     stdout/stderr (``/dev/fd/1,2`` — root-owned pipes under a rootful daemon

@@ -15,12 +15,11 @@
 # ============================================
 
 # ============================================
-# Stage 1: Frontend Builder
+# Stage 1a: Frontend Dependencies
 # ============================================
 # Run on the build platform natively (not under QEMU emulation).
-# The output is platform-independent static assets (JS/HTML/CSS),
-# so there is no need to cross-compile this stage.
-FROM --platform=$BUILDPLATFORM node:22-slim AS frontend-builder
+# Both the production builder and development image reuse this dependency tree.
+FROM --platform=$BUILDPLATFORM node:22-slim AS frontend-deps
 
 WORKDIR /app/web
 
@@ -31,6 +30,11 @@ COPY web/package.json web/package-lock.json* ./
 RUN npm config set fetch-timeout 600000 && \
     npm config set fetch-retries 5 && \
     npm ci --legacy-peer-deps
+
+# ============================================
+# Stage 1b: Frontend Source
+# ============================================
+FROM frontend-deps AS frontend-source
 
 # Copy frontend source code
 COPY web/ ./
@@ -46,12 +50,19 @@ COPY deeptutor/__version__.py /app/deeptutor/__version__.py
 # DEEPTUTOR_API_BASE_URL (exported by the entrypoint on every start).
 RUN printf 'NEXT_PUBLIC_APP_VERSION=\n' > .env.local
 
+# ============================================
+# Stage 1c: Frontend Builder
+# ============================================
+# The output is platform-independent static assets (JS/HTML/CSS),
+# so there is no need to cross-compile this stage.
+FROM frontend-source AS frontend-builder
+
 # Build Next.js for production with standalone output
 # This allows runtime environment variable injection
 RUN npm run build
 
 # ============================================
-# Stage 1b: Node Runtime for Target Platform
+# Stage 1d: Node Runtime for Target Platform
 # ============================================
 # Provides the correctly-architected node binary for the final image.
 # Unlike frontend-builder (pinned to BUILDPLATFORM), this stage pulls
@@ -99,9 +110,9 @@ RUN pip install --upgrade pip && \
     pip install -r requirements.txt
 
 # ============================================
-# Stage 3: Production Image
+# Stage 3: Shared Runtime Base
 # ============================================
-FROM python:3.11-slim AS production
+FROM python:3.11-slim AS runtime-base
 
 # Labels
 LABEL maintainer="DeepTutor Team" \
@@ -164,13 +175,6 @@ RUN ln -sf /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 COPY --from=python-base /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=python-base /usr/local/bin /usr/local/bin
 
-# Copy built frontend from frontend-builder stage (standalone mode)
-# The standalone output contains a self-contained server.js + minimal node_modules
-# Static assets and public/ must be copied alongside standalone manually
-COPY --from=frontend-builder /app/web/.next/standalone/ ./web/
-COPY --from=frontend-builder /app/web/.next/static/ ./web/.next/static/
-COPY --from=frontend-builder /app/web/public/ ./web/public/
-
 # Copy application source code
 COPY deeptutor/ ./deeptutor/
 COPY deeptutor_cli/ ./deeptutor_cli/
@@ -207,7 +211,7 @@ RUN mkdir -p \
 # skipped (no CAP_SETUID) and UID 1000 matches the typical host user.
 RUN groupadd --system --gid 1000 deeptutor \
     && useradd --system --uid 1000 --gid 1000 --no-create-home --shell /usr/sbin/nologin deeptutor \
-    && chown -R deeptutor:deeptutor /app/data /app/web/.next
+    && chown -R deeptutor:deeptutor /app/data
 
 # supervisord config is split into two files so the production and development
 # images share one daemon-level [supervisord] section instead of duplicating it:
@@ -542,9 +546,22 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
 ENTRYPOINT ["/app/entrypoint.sh"]
 
 # ============================================
-# Stage 4: Development Image (Optional)
+# Stage 4: Production Image
 # ============================================
-FROM production AS development
+FROM runtime-base AS production
+
+# The standalone output contains a self-contained server.js + minimal node_modules.
+# Static assets and public/ must be copied alongside standalone manually.
+COPY --from=frontend-builder /app/web/.next/standalone/ ./web/
+COPY --from=frontend-builder /app/web/.next/static/ ./web/.next/static/
+COPY --from=frontend-builder /app/web/public/ ./web/public/
+
+RUN chown -R deeptutor:deeptutor /app/web/.next
+
+# ============================================
+# Stage 5: Development Image (Optional)
+# ============================================
+FROM runtime-base AS development
 
 # `next dev` compiles from source, so the development image needs the whole
 # web tree. This used to cherry-pick node_modules, package.json and
@@ -552,16 +569,18 @@ FROM production AS development
 # `.next/standalone/`, a compiled server bundle carrying no sources, no
 # tsconfig and no scripts/. So the supervisor program below launched
 # `node scripts/dev.mjs` against a path that never existed, the dev frontend
-# went FATAL, and the image looked broken (#906). Taking the builder's tree
-# wholesale also stops the list from drifting each time web/ grows a
-# top-level entry. `--chown` during the copy avoids re-layering node_modules.
-COPY --chown=deeptutor:deeptutor --from=frontend-builder /app/web ./web
+# went FATAL, and the image looked broken (#906). Taking the source stage's
+# tree wholesale also stops the list from drifting each time web/ grows a
+# top-level entry. Crucially, this does not make the development target depend
+# on the production-only `npm run build`. `--chown` during the copy avoids
+# re-layering node_modules.
+COPY --chown=deeptutor:deeptutor --from=frontend-source /app/web ./web
 
 # `next dev` runs as the unprivileged deeptutor user (via `user=deeptutor` in
 # the supervisord config) and must create/write its build cache under
 # /app/web/.next, so give that user ownership of the web dir and the cache.
-# The production build copied in above is not reusable by `next dev`, so it
-# starts from an empty cache rather than a half-valid one.
+# The build context excludes local `.next` output; clear the path defensively
+# so `next dev` always starts with an empty, writable cache.
 RUN rm -rf /app/web/.next \
     && mkdir -p /app/web/.next \
     && chown deeptutor:deeptutor /app/web /app/web/.next
