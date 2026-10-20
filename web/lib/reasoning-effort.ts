@@ -104,6 +104,15 @@ function tableReasoningEffortOptions(
   const provider = PROVIDER_ALIASES[canonical] ?? canonical;
   const modelName = (model ?? "").trim().toLowerCase();
 
+  if (["minimax", "minimax_anthropic"].includes(provider)) {
+    if (modelName === "minimax-m3.1-flash") {
+      return options(["low", "medium", "high", "xhigh", "max"], current);
+    }
+    if (modelName === "minimax-m3") {
+      return options(["none", "adaptive"], current);
+    }
+  }
+
   if (provider === "gemini" || modelName.includes("gemini")) {
     if (
       modelName.includes("gemini-3") ||

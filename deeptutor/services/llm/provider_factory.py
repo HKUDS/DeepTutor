@@ -112,6 +112,7 @@ def _build_runtime_provider(
             default_model=llm_config.model,
             extra_headers=llm_config.extra_headers or None,
             supports_prompt_caching=bool(spec and spec.supports_prompt_caching),
+            binding=spec.name if spec else llm_config.binding,
         )
     else:
         from deeptutor.services.llm.provider_core.openai_compat_provider import OpenAICompatProvider
