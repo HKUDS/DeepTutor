@@ -1,0 +1,96 @@
+appId: info.deeptutor.app
+directories:
+  buildResources: ../assets/figs/logo
+  output: ../dist/electron_ui
+electronDownload:
+  mirror: https://npmmirror.com/mirrors/electron/
+extraFiles:
+# Source packages remain as a fallback when frozen sidecars are absent.
+- from: ../deeptutor
+  to: resources/app/deeptutor
+- from: ../deeptutor_cli
+  to: resources/app/deeptutor_cli
+- from: ../deeptutor_web
+  to: deeptutor_web
+- from: ../assets/figs/logo/logo.png
+  to: assets/figs/logo/logo.png
+files:
+- dist/**/*
+- package.json
+- index.html
+npmRebuild: false
+nsis:
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  oneClick: false
+  shortcutName: DeepTutor
+productName: DeepTutor
+# Frozen Python + Node sidecars staged by packaging/*/build|prepare.py into
+# dist/packaging-sidecar/. Same paths for win / linux / mac so CI only needs
+# to prepare the runner-native arch.
+win:
+  artifactName: ${productName}-Setup-${version}-win-${arch}.${ext}
+  icon: logo.png
+  signAndEditExecutable: false
+  signDlls: false
+  signingHashAlgorithms: []
+  extraFiles:
+  - from: ../dist/packaging-sidecar/python-backend
+    to: python-backend
+  - from: ../dist/packaging-sidecar/node-runtime
+    to: node-runtime
+  target:
+  - arch:
+    - x64
+    target: nsis
+  - arch:
+    - x64
+    target: dir
+  - arch:
+    - arm64
+    target: nsis
+  - arch:
+    - arm64
+    target: dir
+linux:
+  artifactName: ${productName}-${version}-linux-${arch}.${ext}
+  icon: logo.png
+  maintainer: promoteAI <1035959050@qq.com>
+  extraFiles:
+  - from: ../dist/packaging-sidecar/python-backend
+    to: python-backend
+  - from: ../dist/packaging-sidecar/node-runtime
+    to: node-runtime
+  target:
+    - arch: x64
+      target: AppImage
+    - arch: x64
+      target: deb
+    - arch: arm64
+      target: AppImage
+    - arch: arm64
+      target: deb
+mac:
+  artifactName: ${productName}-${version}-macos-${arch}.${ext}
+  icon: logo.png
+  category: public.app-category.education
+  extraFiles:
+  - from: ../dist/packaging-sidecar/python-backend
+    to: python-backend
+  - from: ../dist/packaging-sidecar/node-runtime
+    to: node-runtime
+  target:
+    - arch: x64
+      target: dmg
+    - arch: x64
+      target: zip
+    - arch: x64
+      target: dir
+    - arch: arm64
+      target: dmg
+    - arch: arm64
+      target: zip
+    - arch: arm64
+      target: dir
+publish: null
