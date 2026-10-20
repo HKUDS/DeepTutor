@@ -815,3 +815,35 @@ def test_kb_seed_is_left_alone_outside_mastery_mode() -> None:
         metadata={"mastery_card_answered": True},
     )
     assert MasteryLoopCapability().skip_kb_seed(context) is False
+
+
+def test_seed_names_the_option_the_learner_picked_not_just_its_letter():
+    """A bare letter is ambiguous once the card shuffles the options.
+
+    The tutor registered the options in its own order; the card shows (and the
+    engine persists) a shuffled one. "D" therefore means a different option in
+    the tutor's context than on the learner's screen (HKUDS/DeepTutor#1993),
+    so the picked option's body has to travel with the letter.
+    """
+    from deeptutor.learning.question_card import build_grade_result
+
+    shuffled = {
+        "A": "Each instance remembers request ids in local memory",
+        "B": "Disable the send button while waiting",
+        "C": "SELECT first, then INSERT",
+        "D": "Idempotency key plus an atomic claim in the backend",
+    }
+    result = build_grade_result(
+        question_id="q-1",
+        is_correct=True,
+        learner_answer="D",
+        correct_label="D",
+        choice_options=shuffled,
+        explanation="why",
+    )
+    context = _context()
+    context.metadata["mastery_card_grade"] = {"is_correct": True, "result": result}
+
+    seed = MasteryLoopCapability()._grade_seed(context)
+
+    assert "Idempotency key plus an atomic claim in the backend" in seed

@@ -807,11 +807,11 @@ class MasteryLoopCapability:
             {**result, "is_correct": result.get("is_correct", grade.get("is_correct"))}
         )
         learner_answer = str(result.get("learner_answer") or "").strip()
+        learner_body = str(result.get("learner_body") or "").strip()
+        picked = f"{learner_answer}: {learner_body}" if learner_body else learner_answer
         lines = [
             "[Mastery] The learner answered the open question on its card and the "
-            f"engine reports: {outcome}"
-            + (f' (they answered "{learner_answer}")' if learner_answer else "")
-            + ".",
+            f"engine reports: {outcome}" + (f' (they answered "{picked}")' if picked else "") + ".",
             str(result.get("feedback") or ""),
         ]
         if result.get("final") is False or outcome == "ungraded":
