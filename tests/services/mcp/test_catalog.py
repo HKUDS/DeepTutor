@@ -31,8 +31,8 @@ from deeptutor.services.mcp.secrets import SECRET_REFERENCE_RE
 
 #: The vendored catalog's size, asserted so an edit that guts it is visible in
 #: a diff rather than silently shipping an empty store.
-VENDORED_ENTRY_COUNT = 46
-VENDORED_SELF_SERVICE_COUNT = 39
+VENDORED_ENTRY_COUNT = 47
+VENDORED_SELF_SERVICE_COUNT = 40
 
 
 @pytest.fixture(autouse=True)
@@ -316,6 +316,21 @@ def test_a_real_bearer_entry_builds_a_resolvable_config() -> None:
     # Decorated on the way to the store, because the config side holds only a
     # bare reference — the vendor must still receive the scheme.
     assert built.secret_values == {"token": "Bearer ghp_x"}
+
+
+def test_a_template_header_survives_an_optional_header_credential() -> None:
+    entry = get_entry("keenable")
+    assert entry is not None
+    keyless = build_server_config(entry, {})
+    assert keyless.config.headers == {"X-Keenable-Title": "DeepTutor"}
+    assert keyless.secret_values == {}
+
+    keyed = build_server_config(entry, {"api_key": "k-1"})
+    assert keyed.config.headers == {
+        "X-Keenable-Title": "DeepTutor",
+        "X-API-Key": "${secret:keenable/api_key}",
+    }
+    assert keyed.secret_values == {"api_key": "k-1"}
 
 
 # --------------------------------------------------------------------------- #
