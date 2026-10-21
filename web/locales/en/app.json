@@ -5028,6 +5028,8 @@
   "Subagent": "Subagent",
   "File": "File",
   "Play aloud": "Play aloud",
+  "Play aloud (up to the first 500 spoken characters)": "Play aloud (up to the first 500 spoken characters)",
+  "Up to the first 500 spoken characters will be read.": "Up to the first 500 spoken characters will be read.",
   "Could not play this reply. Check Text-to-Speech in Settings.": "Could not play this reply. Check Text-to-Speech in Settings.",
   "Auto-play replies in this conversation?": "Auto-play replies in this conversation?",
   "Turn on": "Turn on",

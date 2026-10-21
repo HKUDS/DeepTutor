@@ -35,6 +35,7 @@ class TTSRequest(BaseModel):
     text: str = Field(..., min_length=1)
     voice: str | None = None
     format: str | None = None
+    max_input_chars: int | None = Field(default=None, gt=0)
 
 
 @router.post("/tts")
@@ -45,6 +46,7 @@ async def text_to_speech(payload: TTSRequest) -> Response:
             payload.text,
             voice=payload.voice,
             response_format=payload.format,
+            max_input_chars=payload.max_input_chars,
         )
     except ValueError as exc:  # missing/invalid configuration
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

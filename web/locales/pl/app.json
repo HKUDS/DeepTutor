@@ -5024,6 +5024,8 @@
   "Subagent": "Subagent",
   "File": "Plik",
   "Play aloud": "Odczytaj na głos",
+  "Play aloud (up to the first 500 spoken characters)": "Odczytaj na głos (maksymalnie pierwsze 500 znaków)",
+  "Up to the first 500 spoken characters will be read.": "Odczytanych zostanie maksymalnie pierwszych 500 znaków przygotowanego tekstu.",
   "Auto-play replies in this conversation?": "Automatyczne odtwarzanie odpowiedzi w tej rozmowie?",
   "Turn on": "Włącz",
   "items": "elementy",

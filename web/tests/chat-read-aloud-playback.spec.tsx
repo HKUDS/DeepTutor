@@ -36,13 +36,25 @@ it("switches between reply buttons without overlapping speech or a first-click p
   render(<><PlayAudioButton content="First" autoPlayFresh={false} /><PlayAudioButton content="Second" autoPlayFresh={false} /></>);
   const user = userEvent.setup();
   await user.click(screen.getAllByRole("button", { name: "Play aloud" })[0]);
-  expect(await screen.findByRole("button", { name: "Stop" })).toBeVisible();
+  expect(await screen.findByRole("button", { name: "Stop" })).not.toBeNull();
   await user.click(screen.getByRole("button", { name: "Play aloud" }));
   expect(instances).toHaveLength(2);
   expect(instances[0].pause).toHaveBeenCalled();
   expect(instances[1].pause).not.toHaveBeenCalled();
   expect(screen.getAllByRole("button", { name: "Stop" })).toHaveLength(1);
   expect(screen.queryByText(/Automatically read/)).toBeNull();
+});
+
+it("requests a short spoken excerpt for manual playback", async () => {
+  installAudio();
+  vi.mocked(apiFetch).mockResolvedValue({ ok: true, blob: async () => new Blob(["audio"]) } as Response);
+  const content = "A".repeat(5000);
+  render(<PlayAudioButton content={content} autoPlayFresh={false} />);
+  const button = screen.getByRole("button", { name: "Play aloud" });
+  expect(button.getAttribute("title")).toBe("Up to the first 500 spoken characters will be read.");
+  await userEvent.setup().click(button);
+  const [, request] = vi.mocked(apiFetch).mock.calls[0];
+  expect(JSON.parse(String(request?.body))).toEqual({ text: content, max_input_chars: 500 });
 });
 
 it("does not play a late response body after leaving the chat", async () => {

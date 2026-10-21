@@ -5042,6 +5042,8 @@
   "Subagent": "Субагент",
   "File": "Файл",
   "Play aloud": "Грайте вголос",
+  "Play aloud (up to the first 500 spoken characters)": "Читати вголос (до перших 500 символів)",
+  "Up to the first 500 spoken characters will be read.": "Буде прочитано до перших 500 символів підготовленого тексту.",
   "Auto-play replies in this conversation?": "Автоматично відтворювати відповіді в цій розмові?",
   "Turn on": "Увімкніть",
   "items": "елементи",
