@@ -216,6 +216,39 @@ class TestReadTextFile:
         assert "中文" in content
 
 
+ENCODED_TEXTS = [
+    pytest.param("\ufeff# Title\n\nBody".encode("utf-8"), "# Title\n\nBody", id="utf-8 with BOM"),
+    pytest.param(
+        "\u201cQuoted\u201d text \u2013 costs 5 \u20ac.".encode("cp1252"),
+        "\u201cQuoted\u201d text \u2013 costs 5 \u20ac.",
+        id="windows-1252 punctuation",
+    ),
+    pytest.param(
+        "\ufeffName\tStadt\nM\u00fcller\tK\u00f6ln".encode("utf-16-le"),
+        "Name\tStadt\nM\u00fcller\tK\u00f6ln",
+        id="utf-16 LE with BOM",
+    ),
+    pytest.param(
+        "\ufeffName\tStadt\nM\u00fcller\tK\u00f6ln".encode("utf-16-be"),
+        "Name\tStadt\nM\u00fcller\tK\u00f6ln",
+        id="utf-16 BE with BOM",
+    ),
+    pytest.param(b"caf\xe9 \x81 menu", "caf\u00e9 \x81 menu", id="latin-1 last resort"),
+]
+
+
+@pytest.mark.parametrize(("raw", "expected"), ENCODED_TEXTS)
+def test_read_text_file_decodes_common_encodings(tmp_path: Path, raw: bytes, expected: str) -> None:
+    path = tmp_path / "doc.md"
+    path.write_bytes(raw)
+    assert asyncio.run(FileTypeRouter.read_text_file(str(path))) == expected
+
+
+@pytest.mark.parametrize(("raw", "expected"), ENCODED_TEXTS)
+def test_decode_bytes_decodes_common_encodings(raw: bytes, expected: str) -> None:
+    assert FileTypeRouter.decode_bytes(raw) == expected
+
+
 def test_bibtex_uses_readable_reference_text_in_direct_rag_route(tmp_path: Path) -> None:
     path = tmp_path / "references.bib"
     path.write_text("@article{example, title={A Test Paper}, author={Doe, Jane}, year={2026}}")
