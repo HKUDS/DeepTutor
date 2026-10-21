@@ -26,6 +26,7 @@ text keeps an unnumbered note so their existence is not silently erased.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 import io
 import logging
@@ -350,13 +351,13 @@ def extract_docx_rich(data: bytes, *, budget: ImageBudget | None = None) -> Docx
         root = _parse_xml(zf.read("word/document.xml"))
 
         paragraphs: list[str] = []
-        for node in root.iter():
+        for node in _docx_walk(root, into_paragraphs=True):
             if _local_name(node.tag) != "p":
                 continue
             text_parts: list[str] = []
             markers: list[str] = []
             seen_rids: set[str] = set()
-            for child in node.iter():
+            for child in _docx_walk(node, into_paragraphs=False):
                 name = _local_name(child.tag)
                 if name == "t" and child.text:
                     text_parts.append(child.text)
@@ -388,6 +389,29 @@ def extract_docx_rich(data: bytes, *, budget: ImageBudget | None = None) -> Docx
         paragraphs=tuple(paragraphs),
         collection=_collection_from(budget, images),
     )
+
+
+# A text box's ``mc:Fallback`` is a VML copy of the ``mc:Choice`` drawing
+# beside it, and ``w:moveFrom`` is the old place of tracked moved text whose
+# new place is in ``w:moveTo``. Reading them repeats text the document shows
+# once.
+_DOCX_SKIPPED_SUBTREES = frozenset({"Fallback", "moveFrom"})
+
+
+def _docx_walk(node: Any, *, into_paragraphs: bool) -> Iterator[Any]:
+    """Yield ``node`` and its descendants in document order.
+
+    Skips the subtrees in ``_DOCX_SKIPPED_SUBTREES``. With
+    ``into_paragraphs=False`` the walk does not enter a paragraph nested
+    inside ``node``: a text box's paragraphs sit inside the body paragraph
+    that anchors the box, and are emitted as paragraphs of their own.
+    """
+    yield node
+    for child in node:
+        name = _local_name(child.tag)
+        if name in _DOCX_SKIPPED_SUBTREES or (name == "p" and not into_paragraphs):
+            continue
+        yield from _docx_walk(child, into_paragraphs=into_paragraphs)
 
 
 def _blip_embed_rid(blip: Any) -> str:
