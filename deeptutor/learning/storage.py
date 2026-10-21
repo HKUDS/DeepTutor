@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from datetime import datetime, timedelta
 import hashlib
 import json
 import logging
@@ -25,6 +26,7 @@ import threading
 import time
 from typing import Any, TypeVar
 import uuid
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import ValidationError
 
@@ -48,6 +50,20 @@ from deeptutor.services.path_service import get_path_service
 logger = logging.getLogger(__name__)
 
 _schema_lock = threading.RLock()
+
+# Heartbeats fire roughly every 30 seconds. A beat may never credit more than
+# this many seconds, whatever the client claims, so one forged or replayed
+# request cannot inflate a day's total.
+READING_TIME_MAX_BEAT_SECONDS = 120
+
+
+def _validate_timezone(timezone: str) -> ZoneInfo:
+    try:
+        return ZoneInfo(str(timezone))
+    except (ZoneInfoNotFoundError, ValueError) as exc:
+        raise ValueError("Unknown timezone") from exc
+
+
 _initialized_db_paths: set[Path] = set()
 _T = TypeVar("_T")
 _ACTIVE_INTERACTION_STATES = (
@@ -412,6 +428,20 @@ class LearningStore:
         self._initialized = False
         self._ensure_initialized()
 
+    @classmethod
+    def for_path_service(cls, service: Any) -> "LearningStore":
+        """Store for an explicit path service (another user's account scope).
+
+        Mirrors the default-root resolution — including the one-way V2 layout
+        preparation — so a supervisor view reads the same database the
+        learner's own requests write to.
+        """
+
+        from deeptutor.learning.migration import prepare_mastery_v2_root
+
+        learning_root = Path(service.get_workspace_dir()) / "learning"
+        return cls(prepare_mastery_v2_root(learning_root))
+
     @property
     def db_path(self) -> Path:
         return Path(self._root) / self._DB_FILENAME
@@ -581,6 +611,28 @@ class LearningStore:
                     );
                     CREATE INDEX IF NOT EXISTS idx_reading_activities_recent
                         ON reading_activities(created_at DESC, activity_id DESC);
+
+                    -- Effective reading time: compact per-material daily totals
+                    -- (#1988). No source text, selection or renderer anchor is
+                    -- stored, only the credited seconds per calendar day.
+                    CREATE TABLE IF NOT EXISTS reading_time_daily (
+                        day TEXT NOT NULL,
+                        material_id TEXT NOT NULL,
+                        active_seconds INTEGER NOT NULL DEFAULT 0,
+                        updated_at REAL NOT NULL,
+                        PRIMARY KEY (day, material_id)
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_reading_time_updated
+                        ON reading_time_daily(updated_at DESC);
+
+                    -- One row per account database: the wall clock of the last
+                    -- accepted heartbeat from any tab. Each beat is credited at
+                    -- most the elapsed wall time since this mark, so parallel
+                    -- tabs cannot double count and forged beats are clamped.
+                    CREATE TABLE IF NOT EXISTS reading_time_state (
+                        id INTEGER PRIMARY KEY CHECK (id = 1),
+                        last_beat_at REAL NOT NULL
+                    );
                     """
                 )
                 self._converge_single_membership(conn)
@@ -1463,6 +1515,111 @@ class LearningStore:
             )
             conn.commit()
         return record
+
+    def record_reading_time(
+        self,
+        material_id: str,
+        *,
+        active_seconds: int,
+        timezone: str = "UTC",
+        now: float | None = None,
+    ) -> dict[str, Any]:
+        """Credit one bounded heartbeat of effective reading time.
+
+        The client reports how many active seconds it accumulated since its
+        previous beat. The server never trusts that number alone: the credit is
+        the smaller of the claim, ``READING_TIME_MAX_BEAT_SECONDS``, and the
+        wall-clock time since the last accepted beat for this account — so two
+        open tabs cannot double count and forged beats are truncated. Totals
+        are stored per calendar day (in the requested timezone) and material,
+        next to ``reading_progress``.
+        """
+
+        material_id = self._validate_id(material_id)
+        claim = max(int(active_seconds), 0)
+        zone = _validate_timezone(timezone)
+        now = time.time() if now is None else float(now)
+        day = datetime.fromtimestamp(now, zone).date().isoformat()
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                row = conn.execute(
+                    "SELECT last_beat_at FROM reading_time_state WHERE id = 1"
+                ).fetchone()
+                elapsed = max(now - float(row["last_beat_at"]), 0.0) if row is not None else None
+                credit = min(claim, READING_TIME_MAX_BEAT_SECONDS)
+                if elapsed is not None:
+                    credit = min(credit, int(elapsed))
+                credit = max(credit, 0)
+                conn.execute(
+                    """
+                    INSERT INTO reading_time_state(id, last_beat_at) VALUES (1, ?)
+                    ON CONFLICT(id) DO UPDATE SET last_beat_at = excluded.last_beat_at
+                    """,
+                    (now,),
+                )
+                conn.execute(
+                    """
+                    INSERT INTO reading_time_daily (day, material_id, active_seconds, updated_at)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(day, material_id) DO UPDATE SET
+                        active_seconds = active_seconds + excluded.active_seconds,
+                        updated_at = excluded.updated_at
+                    """,
+                    (day, material_id, credit, now),
+                )
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+        return {
+            "day": day,
+            "material_id": material_id,
+            "active_seconds": claim,
+            "credited_seconds": credit,
+        }
+
+    def reading_time_window(
+        self, timezone: str, days: int, *, now: float | None = None
+    ) -> dict[str, Any]:
+        """Daily totals and per-material breakdown for the last ``days`` days.
+
+        Days are calendar days in ``timezone``, matching how practice analytics
+        bucket their counts, so the two series can be charted together.
+        """
+
+        if days not in {7, 30, 90}:
+            raise ValueError("Choose 7, 30 or 90 days")
+        zone = _validate_timezone(timezone)
+        now = time.time() if now is None else float(now)
+        today = datetime.fromtimestamp(now, zone).date()
+        first = today - timedelta(days=days - 1)
+        daily = {(first + timedelta(days=i)).isoformat(): 0 for i in range(days)}
+        materials: dict[str, int] = {}
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT day, material_id, active_seconds FROM reading_time_daily
+                WHERE day >= ? AND day <= ?
+                """,
+                (first.isoformat(), today.isoformat()),
+            ).fetchall()
+        for row in rows:
+            seconds = int(row["active_seconds"])
+            if str(row["day"]) in daily:
+                daily[str(row["day"])] += seconds
+            materials[str(row["material_id"])] = materials.get(str(row["material_id"]), 0) + seconds
+        return {
+            "daily": daily,
+            "materials": sorted(
+                (
+                    {"material_id": material_id, "reading_seconds": seconds}
+                    for material_id, seconds in materials.items()
+                ),
+                key=lambda item: -item["reading_seconds"],
+            ),
+            "total": sum(daily.values()),
+        }
 
     def list_reading_records(self, *, activity_limit: int = 200) -> ReadingLearningRecords:
         """Return this workspace's Reading progress and recent activity."""

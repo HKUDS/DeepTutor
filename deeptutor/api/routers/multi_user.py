@@ -321,7 +321,9 @@ def _relationship_view(
 def _require_guardian_access(
     current: object, learner_user_id: str, permission: str
 ) -> tuple[str, dict[str, Any], str, bool]:
-    actor_user_id = str(getattr(current, "user_id", "") or "")
+    # ``current`` may be the TokenPayload a route dependency received or the
+    # ContextVar CurrentUser another router resolves; both carry the actor.
+    actor_user_id = str(getattr(current, "user_id", "") or getattr(current, "id", "") or "")
     learner_username, learner_record = _require_assignable_user(learner_user_id)
     is_admin = str(getattr(current, "role", "") or "") == "admin"
     if is_admin:
