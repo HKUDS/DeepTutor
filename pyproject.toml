@@ -165,6 +165,9 @@ codebuddy = ["codebuddy-agent-sdk>=0.3,<0.4"]
 # adapter enables transcript-grounded learning when public captions exist.
 video-learning = ["youtube-transcript-api>=1.0.0,<2.0.0"]
 
+# Microsoft Edge read-aloud voices as a free, keyless TTS provider.
+edge-tts = ["edge-tts>=7.0,<8.0"]
+
 # Compatibility extra for source installs and older docs. These packages are
 # already included in the public `deeptutor` wheel.
 server = [
@@ -310,6 +313,7 @@ all = [
     "deeptutor[math-animator]",
     "deeptutor[dev]",
     "deeptutor[video-learning]",
+    "deeptutor[edge-tts]",
 ]
 
 [tool.setuptools]

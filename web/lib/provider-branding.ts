@@ -21,6 +21,7 @@ export const PROVIDER_ICONS: Readonly<Record<string, ProviderIconSpec>> = {
   deepseek: { file: "deepseek-color.svg" },
   doubao: { file: "doubao.png" },
   duckduckgo: { file: "duckduckgo.svg" },
+  edge: { file: "microsoft-color.svg" },
   edenai: { file: "edenai.png", darkFile: "edenai-dark.png" },
   exa: { file: "exa-color.svg" },
   firecrawl: { file: "firecrawl-color.svg" },
