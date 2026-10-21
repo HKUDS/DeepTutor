@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import io
 import random
+import zipfile
 
 from docx import Document as DocxDocument
 from docx.shared import Inches
@@ -133,6 +134,47 @@ def test_docx_rich_repeats_marker_for_reused_target(png: bytes) -> None:
     assert len(rich.collection.images) == 1
     markers = find_markers("\n".join(rich.paragraphs))
     assert len(markers) == 2
+
+
+_W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+_MC = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+
+
+def _docx_with_body(body: str) -> bytes:
+    """A minimal package holding only ``word/document.xml`` with ``body``."""
+    xml = (
+        f'<w:document xmlns:w="{_W}" xmlns:mc="{_MC}" '
+        'xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" '
+        'xmlns:v="urn:schemas-microsoft-com:vml">'
+        f"<w:body>{body}</w:body></w:document>"
+    )
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("word/document.xml", xml)
+    return buf.getvalue()
+
+
+def test_docx_rich_reads_text_box_once() -> None:
+    """A text box is its own paragraph; its VML fallback copy is not read."""
+    box = "<w:txbxContent><w:p><w:r><w:t>BOXTEXT</w:t></w:r></w:p></w:txbxContent>"
+    data = _docx_with_body(
+        "<w:p><w:r><w:t>body</w:t></w:r><w:r><mc:AlternateContent>"
+        f"<mc:Choice><wps:txbx>{box}</wps:txbx></mc:Choice>"
+        f"<mc:Fallback><v:textbox>{box}</v:textbox></mc:Fallback>"
+        "</mc:AlternateContent></w:r></w:p>"
+        "<w:p><w:r><w:t>after</w:t></w:r></w:p>"
+    )
+    assert extract_docx_rich(data).paragraphs == ("body", "BOXTEXT", "after")
+
+
+def test_docx_rich_skips_the_old_place_of_moved_text() -> None:
+    data = _docx_with_body(
+        "<w:p><w:r><w:t>A </w:t></w:r>"
+        "<w:moveFrom><w:r><w:t>MOVED</w:t></w:r></w:moveFrom>"
+        "<w:r><w:t>B </w:t></w:r>"
+        "<w:moveTo><w:r><w:t>MOVED</w:t></w:r></w:moveTo></w:p>"
+    )
+    assert extract_docx_rich(data).paragraphs == ("A B MOVED",)
 
 
 # ---------------------------------------------------------------------------
