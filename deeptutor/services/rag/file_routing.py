@@ -6,6 +6,7 @@ Centralized file type classification and routing for the RAG pipeline.
 Determines the appropriate processing method for each document type.
 """
 
+import codecs
 from dataclasses import dataclass
 from enum import Enum
 import logging
@@ -264,15 +265,29 @@ class FileTypeRouter:
             unsupported=unsupported,
         )
 
+    # utf-8-sig reads UTF-8 with or without a byte-order mark; plain utf-8
+    # first kept the mark as U+FEFF in front of the first heading. latin-1
+    # decodes every byte, so it comes last: before cp1252, it turned cp1252's
+    # curly quotes, dashes and euro sign into C1 control characters.
     TEXT_DECODING_CANDIDATES = (
-        "utf-8",
         "utf-8-sig",
         "gbk",
         "gb2312",
         "gb18030",
-        "latin-1",
         "cp1252",
+        "latin-1",
     )
+
+    @staticmethod
+    def _bom_encoding(head: bytes) -> str | None:
+        """UTF-16 when ``head`` starts with its byte-order mark.
+
+        Every candidate above would read such a file one byte per character,
+        with a NUL between the letters.
+        """
+        if head.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
+            return "utf-16"
+        return None
 
     @classmethod
     def decode_bytes(cls, data: bytes) -> str:
@@ -281,7 +296,8 @@ class FileTypeRouter:
         Used by the chat-attachment extractor so path-based and bytes-based
         callers share one source of truth for supported encodings.
         """
-        for encoding in cls.TEXT_DECODING_CANDIDATES:
+        bom_encoding = cls._bom_encoding(data[:2])
+        for encoding in ((bom_encoding,) if bom_encoding else ()) + cls.TEXT_DECODING_CANDIDATES:
             try:
                 return data.decode(encoding)
             except UnicodeDecodeError:
@@ -291,7 +307,9 @@ class FileTypeRouter:
     @classmethod
     async def read_text_file(cls, file_path: str) -> str:
         """Read a text file with automatic encoding detection."""
-        for encoding in cls.TEXT_DECODING_CANDIDATES:
+        with open(file_path, "rb") as f:
+            bom_encoding = cls._bom_encoding(f.read(2))
+        for encoding in ((bom_encoding,) if bom_encoding else ()) + cls.TEXT_DECODING_CANDIDATES:
             try:
                 with open(file_path, "r", encoding=encoding) as f:
                     text = f.read()
