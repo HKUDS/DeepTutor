@@ -5520,5 +5520,15 @@
   "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading, Course Study and standard visualizations. Changes take effect on the next turn.": "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading, Course Study and standard visualizations. Changes take effect on the next turn.",
   "Clear instructions": "Clear instructions",
   "{{used}} / {{limit}} characters": "{{used}} / {{limit}} characters",
-  "contextBudget.segment.workspace_instructions": "Workspace instructions"
+  "contextBudget.segment.workspace_instructions": "Workspace instructions",
+  "Reading minutes": "Reading minutes",
+  "Read-only view of a learner's practice.": "Read-only view of a learner's practice.",
+  "{{name}}'s practice — read-only": "{{name}}'s practice — read-only",
+  "You are viewing this learner's practice in read-only mode. Answering and reviewing stay with the learner.": "You are viewing this learner's practice in read-only mode. Answering and reviewing stay with the learner.",
+  "Could not open this learner's practice.": "Could not open this learner's practice.",
+  "Due questions": "Due questions",
+  "Mistake": "Mistake",
+  "No questions are due right now.": "No questions are due right now.",
+  "Materials in this period": "Materials in this period",
+  "Open practice page": "Open practice page"
 }

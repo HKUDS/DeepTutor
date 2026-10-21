@@ -5536,5 +5536,15 @@
   "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading, Course Study and standard visualizations. Changes take effect on the next turn.": "Dotyczy czatu, rozwiązywania, pytań, nauki z przewodnikiem, czytania, kursów i standardowych wizualizacji. Zmiany obowiązują od następnej tury.",
   "Clear instructions": "Wyczyść instrukcje",
   "{{used}} / {{limit}} characters": "{{used}} / {{limit}} znaków",
-  "contextBudget.segment.workspace_instructions": "Instrukcje obszaru roboczego"
+  "contextBudget.segment.workspace_instructions": "Instrukcje obszaru roboczego",
+  "Reading minutes": "Minuty czytania",
+  "Read-only view of a learner's practice.": "Widok tylko do odczytu ćwiczeń ucznia.",
+  "{{name}}'s practice — read-only": "Ćwiczenia {{name}} — tylko do odczytu",
+  "You are viewing this learner's practice in read-only mode. Answering and reviewing stay with the learner.": "Oglądasz ćwiczenia tego ucznia w trybie tylko do odczytu. Odpowiadanie i powtórki należą do ucznia.",
+  "Could not open this learner's practice.": "Nie udało się otworzyć ćwiczeń tego ucznia.",
+  "Due questions": "Pytania do powtórzenia",
+  "Mistake": "Błąd",
+  "No questions are due right now.": "Obecnie żadne pytania nie są do powtórzenia.",
+  "Materials in this period": "Materiały w tym okresie",
+  "Open practice page": "Otwórz stronę ćwiczeń"
 }

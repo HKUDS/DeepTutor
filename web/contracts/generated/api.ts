@@ -7037,6 +7037,32 @@ export interface paths {
     readonly patch?: never;
     readonly trace?: never;
   };
+  readonly "/api/reading/materials/{material_id}/reading-time": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    readonly get?: never;
+    readonly put?: never;
+    /**
+     * Save Reading Time
+     * @description Credit one heartbeat of effective reading time for this account.
+     *
+     *     The Reader sends a bounded heartbeat about every 30 seconds while the page
+     *     is visible, focused and recently used (or read-aloud is playing), plus a
+     *     final ``sendBeacon`` beat on ``pagehide``. The store credits at most the
+     *     wall-clock time since the previous accepted beat, so parallel tabs cannot
+     *     double count and forged claims are truncated.
+     */
+    readonly post: operations["save_reading_time_api_reading_materials__material_id__reading_time_post"];
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
   readonly "/api/reading/materials/{material_id}/render": {
     readonly parameters: {
       readonly query?: never;
@@ -14589,6 +14615,8 @@ export interface components {
       readonly days: number;
       /** End Date */
       readonly end_date: string;
+      /** Materials */
+      readonly materials?: readonly components["schemas"]["PracticeReadingMaterial"][];
       /** Sources */
       readonly sources: readonly components["schemas"]["PracticeSourceCounts"][];
       /** Start Date */
@@ -14605,6 +14633,11 @@ export interface components {
       readonly mistakes: number;
       /** Questions */
       readonly questions: number;
+      /**
+       * Reading Seconds
+       * @default 0
+       */
+      readonly reading_seconds: number;
       /** Reviews */
       readonly reviews: number;
     };
@@ -14616,6 +14649,11 @@ export interface components {
       readonly mistakes: number;
       /** Questions */
       readonly questions: number;
+      /**
+       * Reading Seconds
+       * @default 0
+       */
+      readonly reading_seconds: number;
       /** Reviews */
       readonly reviews: number;
     };
@@ -14637,12 +14675,24 @@ export interface components {
         readonly [key: string]: unknown;
       };
     };
+    /** PracticeReadingMaterial */
+    readonly PracticeReadingMaterial: {
+      /** Material Id */
+      readonly material_id: string;
+      /** Reading Seconds */
+      readonly reading_seconds: number;
+    };
     /** PracticeSourceCounts */
     readonly PracticeSourceCounts: {
       /** Mistakes */
       readonly mistakes: number;
       /** Questions */
       readonly questions: number;
+      /**
+       * Reading Seconds
+       * @default 0
+       */
+      readonly reading_seconds: number;
       /** Reviews */
       readonly reviews: number;
       /** Source */
@@ -15094,6 +15144,30 @@ export interface components {
     readonly ReadingSessionRenameRequest: {
       /** Title */
       readonly title: string;
+    };
+    /** ReadingTimeInfo */
+    readonly ReadingTimeInfo: {
+      /** Active Seconds */
+      readonly active_seconds: number;
+      /** Credited Seconds */
+      readonly credited_seconds: number;
+      /** Day */
+      readonly day: string;
+      /** Material Id */
+      readonly material_id: string;
+    };
+    /**
+     * ReadingTimePayload
+     * @description One heartbeat of effective reading time; the server clamps the claim.
+     */
+    readonly ReadingTimePayload: {
+      /** Active Seconds */
+      readonly active_seconds: number;
+      /**
+       * Timezone
+       * @default UTC
+       */
+      readonly timezone: string;
     };
     /** ReadingViewport */
     readonly ReadingViewport: {
@@ -17572,6 +17646,8 @@ export type SchemaPracticeCounts = components["schemas"]["PracticeCounts"];
 export type SchemaPracticeDailyCounts =
   components["schemas"]["PracticeDailyCounts"];
 export type SchemaPracticeQuestion = components["schemas"]["PracticeQuestion"];
+export type SchemaPracticeReadingMaterial =
+  components["schemas"]["PracticeReadingMaterial"];
 export type SchemaPracticeSourceCounts =
   components["schemas"]["PracticeSourceCounts"];
 export type SchemaPracticeSummary = components["schemas"]["PracticeSummary"];
@@ -17618,6 +17694,9 @@ export type SchemaReadingSessionLinkRequest =
   components["schemas"]["ReadingSessionLinkRequest"];
 export type SchemaReadingSessionRenameRequest =
   components["schemas"]["ReadingSessionRenameRequest"];
+export type SchemaReadingTimeInfo = components["schemas"]["ReadingTimeInfo"];
+export type SchemaReadingTimePayload =
+  components["schemas"]["ReadingTimePayload"];
 export type SchemaReadingViewport = components["schemas"]["ReadingViewport"];
 export type SchemaRebuildBookRequest =
   components["schemas"]["RebuildBookRequest"];
@@ -31873,6 +31952,7 @@ export interface operations {
         readonly all_workspaces?: boolean;
         readonly course_id?: string;
         readonly days?: number;
+        readonly learner?: string;
         readonly timezone?: string;
       };
       readonly header?: {
@@ -31907,7 +31987,9 @@ export interface operations {
   };
   readonly import_commit_api_question_notebook_practice_import_commit_post: {
     readonly parameters: {
-      readonly query?: never;
+      readonly query?: {
+        readonly learner?: string;
+      };
       readonly header?: {
         readonly Authorization?: string | null;
       };
@@ -31944,7 +32026,9 @@ export interface operations {
   };
   readonly import_preview_api_question_notebook_practice_import_preview_post: {
     readonly parameters: {
-      readonly query?: never;
+      readonly query?: {
+        readonly learner?: string;
+      };
       readonly header?: {
         readonly Authorization?: string | null;
       };
@@ -32016,7 +32100,9 @@ export interface operations {
   };
   readonly practice_question_api_question_notebook_practice_questions__entry_id__get: {
     readonly parameters: {
-      readonly query?: never;
+      readonly query?: {
+        readonly learner?: string;
+      };
       readonly header?: {
         readonly Authorization?: string | null;
       };
@@ -32051,7 +32137,9 @@ export interface operations {
   };
   readonly check_api_question_notebook_practice_questions__entry_id__check_post: {
     readonly parameters: {
-      readonly query?: never;
+      readonly query?: {
+        readonly learner?: string;
+      };
       readonly header?: {
         readonly Authorization?: string | null;
       };
@@ -32090,7 +32178,9 @@ export interface operations {
   };
   readonly review_api_question_notebook_practice_questions__entry_id__review_post: {
     readonly parameters: {
-      readonly query?: never;
+      readonly query?: {
+        readonly learner?: string;
+      };
       readonly header?: {
         readonly Authorization?: string | null;
       };
@@ -32133,6 +32223,7 @@ export interface operations {
         readonly all_workspaces?: boolean;
         readonly category_id?: number | null;
         readonly course_id?: string;
+        readonly learner?: string;
         readonly limit?: number;
         readonly timezone?: string;
       };
@@ -32171,6 +32262,7 @@ export interface operations {
       readonly query?: {
         readonly all_workspaces?: boolean;
         readonly course_id?: string;
+        readonly learner?: string;
         readonly timezone?: string;
       };
       readonly header?: {
@@ -33347,6 +33439,45 @@ export interface operations {
         };
         content: {
           readonly "application/json": unknown;
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly save_reading_time_api_reading_materials__material_id__reading_time_post: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path: {
+        readonly material_id: string;
+      };
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody: {
+      readonly content: {
+        readonly "application/json": components["schemas"]["ReadingTimePayload"];
+      };
+    };
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["ReadingTimeInfo"];
         };
       };
       /** @description Validation Error */

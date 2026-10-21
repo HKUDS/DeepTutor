@@ -36,6 +36,7 @@ import {
 import { setReadingViewport } from "@/lib/reading-turn-state";
 import Tooltip from "@/shared/ui/Tooltip";
 import { useReading } from "@/context/ReadingContext";
+import { useReadingTimeHeartbeat } from "../use-reading-time";
 import type { AnnotationItem } from "@/lib/reading-api";
 import {
   bilibiliOfficialUrl,
@@ -85,6 +86,14 @@ export function MediaReadingStage({
   const playbackLocatorRef = useRef(0);
   const stateRef = useRef({ time: 0, duration: 0 });
   const lastSavedRef = useRef(0);
+  // Wall clock of the last media time update: while playback runs, updates
+  // arrive continuously, so "recent update" is the playing signal for the
+  // reading-time heartbeat (the media analog of read-aloud).
+  const lastMediaTimeAtRef = useRef(0);
+  useReadingTimeHeartbeat({
+    materialId: material.material_id,
+    playing: () => Date.now() - lastMediaTimeAtRef.current < 2500,
+  });
   const youtubeId = youtubeVideoId(material.source_url);
   const bilibiliSource = useMemo(
     () => parseBilibiliSource(material.source_url),
@@ -306,6 +315,7 @@ export function MediaReadingStage({
   const handleTime = useCallback(
     (nextTime: number, nextDuration: number) => {
       stateRef.current = { time: nextTime, duration: nextDuration };
+      lastMediaTimeAtRef.current = Date.now();
       setTime(nextTime);
       setDuration(nextDuration);
       setReadingViewport({ timeSeconds: nextTime });

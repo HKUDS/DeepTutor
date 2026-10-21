@@ -26,8 +26,9 @@ export interface PracticeQuestion {
   entry: NotebookEntry
   state: { version: number; review_count: number; is_mistake: boolean; due_at: number | null }
 }
-export type PracticeMetric = 'questions' | 'mistakes' | 'reviews'
-export type PracticeCounts = Record<PracticeMetric, number>
+export type PracticeMetric = 'questions' | 'mistakes' | 'reviews' | 'reading'
+export type PracticeCountKey = 'questions' | 'mistakes' | 'reviews'
+export type PracticeCounts = Record<PracticeCountKey, number> & { reading_seconds: number }
 export interface PracticeAnalytics {
   timezone: string
   days: number
@@ -37,10 +38,25 @@ export interface PracticeAnalytics {
   daily: (PracticeCounts & { date: string })[]
   sources: (PracticeCounts & { source: string })[]
   totals: PracticeCounts
+  materials: { material_id: string; reading_seconds: number }[]
 }
-export const getPracticeAnalytics = (courseId = '', days = 30, workspaceId?: string) =>
+
+/** Reading is tracked in seconds but charted in whole minutes. */
+export const practiceMetricValue = (row: PracticeCounts, metric: PracticeMetric): number =>
+  metric === 'reading' ? Math.round(row.reading_seconds / 60) : row[metric]
+
+/** Learner-scoped reads append `?learner=`; writes never take a learner. */
+const learnerQuery = (learnerId?: string): string =>
+  learnerId ? `&learner=${encodeURIComponent(learnerId)}` : ''
+
+export const getPracticeAnalytics = (
+  courseId = '',
+  days = 30,
+  workspaceId?: string,
+  learnerId?: string
+) =>
   request<PracticeAnalytics>(
-    `/analytics?${params(courseId)}&days=${days}&all_workspaces=${workspaceId === '*'}`,
+    `/analytics?${params(courseId)}&days=${days}&all_workspaces=${workspaceId === '*'}${learnerQuery(learnerId)}`,
     undefined,
     workspaceId === '*' ? '' : workspaceId
   )
@@ -84,20 +100,20 @@ function params(courseId = ''): string {
     course_id: courseId,
   }).toString()
 }
-export const getPracticeSummary = (courseId = '', workspaceId?: string) =>
+export const getPracticeSummary = (courseId = '', workspaceId?: string, learnerId?: string) =>
   request<PracticeSummary>(
-    `/summary?${params(courseId)}&all_workspaces=${workspaceId === '*'}`,
+    `/summary?${params(courseId)}&all_workspaces=${workspaceId === '*'}${learnerQuery(learnerId)}`,
     undefined,
     workspaceId === '*' ? '' : workspaceId
   )
-export const getPracticeQueue = (courseId = '', workspaceId?: string) =>
+export const getPracticeQueue = (courseId = '', workspaceId?: string, learnerId?: string) =>
   request<PracticeQuestion[]>(
-    `/queue?${params(courseId)}&all_workspaces=${workspaceId === '*'}`,
+    `/queue?${params(courseId)}&all_workspaces=${workspaceId === '*'}${learnerQuery(learnerId)}`,
     undefined,
     workspaceId === '*' ? '' : workspaceId
   )
-export const getPracticeQuestion = (id: number, workspaceId?: string) =>
-  request<PracticeQuestion>(`/questions/${id}`, undefined, workspaceId)
+export const getPracticeQuestion = (id: number, workspaceId?: string, learnerId?: string) =>
+  request<PracticeQuestion>(`/questions/${id}${learnerId ? `?learner=${encodeURIComponent(learnerId)}` : ''}`, undefined, workspaceId)
 export const checkPracticeAnswer = (id: number, answer: string, workspaceId?: string) =>
   request<{ correct: boolean | null }>(`/questions/${id}/check`, json({ answer }), workspaceId)
 export const savePracticeReview = (

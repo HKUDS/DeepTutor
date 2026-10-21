@@ -5536,5 +5536,15 @@
   "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading, Course Study and standard visualizations. Changes take effect on the next turn.": "Застосовується до чату, розв’язування, запитань, керованого навчання, читання, курсів і стандартних візуалізацій. Зміни діють із наступного ходу.",
   "Clear instructions": "Очистити інструкції",
   "{{used}} / {{limit}} characters": "{{used}} / {{limit}} символів",
-  "contextBudget.segment.workspace_instructions": "Інструкції робочого простору"
+  "contextBudget.segment.workspace_instructions": "Інструкції робочого простору",
+  "Reading minutes": "Хвилини читання",
+  "Read-only view of a learner's practice.": "Перегляд практики учня лише для читання.",
+  "{{name}}'s practice — read-only": "Практика {{name}} — лише читання",
+  "You are viewing this learner's practice in read-only mode. Answering and reviewing stay with the learner.": "Ви переглядаєте практику цього учня в режимі лише для читання. Відповіді та повторення залишаються за учнем.",
+  "Could not open this learner's practice.": "Не вдалося відкрити практику цього учня.",
+  "Due questions": "Питання до повторення",
+  "Mistake": "Помилка",
+  "No questions are due right now.": "Зараз немає питань до повторення.",
+  "Materials in this period": "Матеріали за цей період",
+  "Open practice page": "Відкрити сторінку практики"
 }

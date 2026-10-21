@@ -30,15 +30,16 @@ const report: api.PracticeAnalytics = {
   start_date: "2026-09-18",
   end_date: "2026-09-19",
   updated_at: 100,
-  totals: { questions: 3, mistakes: 1, reviews: 2 },
+  totals: { questions: 3, mistakes: 1, reviews: 2, reading_seconds: 3600 },
   daily: [
-    { date: "2026-09-18", questions: 3, mistakes: 0, reviews: 0 },
-    { date: "2026-09-19", questions: 0, mistakes: 1, reviews: 2 },
+    { date: "2026-09-18", questions: 3, mistakes: 0, reviews: 0, reading_seconds: 3600 },
+    { date: "2026-09-19", questions: 0, mistakes: 1, reviews: 2, reading_seconds: 0 },
   ],
   sources: [
-    { source: "mastery_path", questions: 2, mistakes: 1, reviews: 2 },
-    { source: "book", questions: 1, mistakes: 0, reviews: 0 },
+    { source: "mastery_path", questions: 2, mistakes: 1, reviews: 2, reading_seconds: 0 },
+    { source: "book", questions: 1, mistakes: 0, reviews: 0, reading_seconds: 0 },
   ],
+  materials: [{ material_id: "rm_book", reading_seconds: 3600 }],
 };
 beforeEach(() => {
   vi.clearAllMocks();
@@ -206,7 +207,7 @@ it("switches metrics and charts without losing course scope and exposes exact da
   expect(replace.mock.calls.at(-1)?.[0]).toContain("stats_chart=bars");
   await userEvent.click(screen.getByText("View daily data"));
   expect(within(screen.getByRole("table")).getByText("2026-09-18")).toBeVisible();
-  expect(api.getPracticeAnalytics).toHaveBeenCalledWith("course-a", 30, undefined);
+  expect(api.getPracticeAnalytics).toHaveBeenCalledWith("course-a", 30, undefined, undefined);
 });
 
 it("shows an error and permits retry instead of presenting failed data as zero", async () => {

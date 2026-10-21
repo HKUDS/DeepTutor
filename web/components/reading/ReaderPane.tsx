@@ -40,6 +40,7 @@ import {
 } from "@/lib/reading-api";
 import { AnnotationList } from "./AnnotationList";
 import { AnnotationPopover, type PopoverAiAction } from "./AnnotationPopover";
+import { useReadingTimeHeartbeat } from "./use-reading-time";
 import { passagePrompts } from "@/lib/reading-passage-prompts";
 import {
   PdfDocumentView,
@@ -811,6 +812,13 @@ export function ReaderPane({
   // reading conversation (see reading-passage-prompts); an installed
   // extension's own selection actions follow them and answer as cards.
   const readingActions = useReadingActions();
+  // Effective reading time: heartbeats run while this pane is genuinely used
+  // (visible, focused, recent input — or read-aloud is speaking). The server
+  // clamps each beat, so two open tabs cannot double count.
+  useReadingTimeHeartbeat({
+    materialId: material?.material_id ?? null,
+    playing: () => Boolean(readingActions?.speaking),
+  });
   const aiActions = useMemo<PopoverAiAction[] | undefined>(() => {
     if (!readingActions || readingActions.ageMode !== "default") return undefined;
     if (!selection || !material) return undefined;

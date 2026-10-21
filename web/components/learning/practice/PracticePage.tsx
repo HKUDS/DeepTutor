@@ -9,6 +9,7 @@ import SpaceSectionHeader from "@/components/space/SpaceSectionHeader";
 import { practiceRoute, questionBankRoute } from "@/lib/learning-routes";
 import { getPracticeQueue, getPracticeSummary, type PracticeSummary } from "@/lib/practice-api";
 import { LearningErrorState, LearningShell } from "../LearningShell";
+import { GuardianPracticeView } from "./GuardianPracticeView";
 import { ReviewHome } from "./ReviewHome";
 import { WorkspaceLabel } from "../LibraryWorkspace";
 import { activeWorkspaceId } from "@/lib/workspace-scope";
@@ -19,6 +20,8 @@ import { PracticeInsights } from "./PracticeInsights";
 /** Shared collections and imports; both surfaces can start a manual practice session. */
 export function PracticePage({ mode = "practice" }: { mode?: "practice" | "library" }) {
   const search = useSearchParams();
+  const learnerId = search.get("learner")?.trim() || "";
+  if (learnerId) return <GuardianPracticeView learnerId={learnerId} />;
   if (mode === "practice" && !search.has("course") && !search.has("question")) return <ReviewHome />;
   return <ScopedPracticePage mode={mode} initialImport={search.get("create") === "1"} />;
 }
