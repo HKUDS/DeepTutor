@@ -7,6 +7,7 @@ from functools import wraps
 import importlib.util
 import inspect
 import json
+import shutil
 from typing import Any, AsyncIterator
 
 from deeptutor.services.notebook import get_notebook_manager
@@ -124,6 +125,17 @@ class DeepTutorApp:
                     if available
                     else "Install with `pip install -e '.[math-animator]'` "
                     "or `pip install -r requirements/math-animator.txt`."
+                ),
+            )
+        if resolved == "video_lesson":
+            available = shutil.which("node") is not None and shutil.which("npm") is not None
+            return CapabilityAvailability(
+                name=resolved,
+                available=available,
+                install_hint=(
+                    ""
+                    if available
+                    else "Install Node.js 22+ (with npm); Remotion is installed on first use."
                 ),
             )
         return CapabilityAvailability(name=resolved, available=True)

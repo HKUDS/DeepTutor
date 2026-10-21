@@ -5520,5 +5520,10 @@
   "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading, Course Study and standard visualizations. Changes take effect on the next turn.": "适用于对话、解题、主动提问、引导学习、沉浸式阅读、课程学习和常规可视化。从下一轮开始生效。",
   "Clear instructions": "清空提示词",
   "{{used}} / {{limit}} characters": "{{used}} / {{limit}} 字符",
-  "contextBudget.segment.workspace_instructions": "工作区提示词"
+  "contextBudget.segment.workspace_instructions": "工作区提示词",
+  "Video Lesson": "视频讲解",
+  "Turn a question into an animated explainer you can play": "把问题做成可以播放的讲解动画",
+  "View Remotion Code": "查看 Remotion 代码",
+  "{{seconds}} s": "{{seconds}} 秒",
+  "Fixed after {{count}} checks": "经 {{count}} 轮检查修复"
 }

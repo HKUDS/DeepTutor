@@ -5899,5 +5899,10 @@
   "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading, Course Study and standard visualizations. Changes take effect on the next turn.": "S’applique au chat, à la résolution, aux questions, à l’apprentissage guidé, à la lecture, aux cours et aux visualisations standard. Les changements prennent effet au prochain tour.",
   "Clear instructions": "Effacer les instructions",
   "{{used}} / {{limit}} characters": "{{used}} / {{limit}} caractères",
-  "contextBudget.segment.workspace_instructions": "Instructions de l’espace de travail"
+  "contextBudget.segment.workspace_instructions": "Instructions de l’espace de travail",
+  "Video Lesson": "Leçon vidéo",
+  "Turn a question into an animated explainer you can play": "Transformer une question en animation explicative à regarder",
+  "View Remotion Code": "Voir le code Remotion",
+  "{{seconds}} s": "{{seconds}} s",
+  "Fixed after {{count}} checks": "Corrigé après {{count}} vérifications"
 }

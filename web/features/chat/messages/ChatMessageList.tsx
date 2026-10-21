@@ -59,6 +59,7 @@ import {
   SPEECH_TIMEOUT_MESSAGE,
 } from "@/lib/voice-settings";
 import { extractMathAnimatorResult } from "@/lib/math-animator-types";
+import { extractVideoLessonResult } from "@/lib/video-lesson-types";
 import {
   extractQuizQuestions,
   extractQuizTurnId,
@@ -150,6 +151,10 @@ const VisualizationViewer = dynamic(
   () => import("@/components/visualize/VisualizationViewer"),
   { ssr: false },
 );
+const VideoLessonViewer = dynamic(
+  () => import("@/components/video-lesson/VideoLessonViewer"),
+  { ssr: false },
+);
 
 
 interface ChatMessageItem {
@@ -182,6 +187,7 @@ const MODE_BADGE_LABELS: Record<string, string> = {
   deep_question: "Quiz Generation",
   deep_research: "Deep Research",
   math_animator: "Math Animator",
+  video_lesson: "Video Lesson",
   visualize: "Visualize",
   mastery_path: "Mastery Path",
   immersive_reading: "Immersive Reading",
@@ -798,6 +804,11 @@ export const AssistantMessage = memo(function AssistantMessage({
     return extractVisualizeResult(resultEvent.metadata);
   }, [msg.capability, resultEvent]);
 
+  const videoLessonResult = useMemo(() => {
+    if (msg.capability !== "video_lesson" || !resultEvent) return null;
+    return extractVideoLessonResult(resultEvent.metadata);
+  }, [msg.capability, resultEvent]);
+
   // Detect the ``ask_user`` terminator payload: when the assistant turn
   // ended via the ``ask_user`` tool, this is the question the user is
   // expected to answer next. Render option chips below the message.
@@ -1123,6 +1134,20 @@ export const AssistantMessage = memo(function AssistantMessage({
         <MathAnimatorViewer result={mathAnimatorResult} />
       ) : visualizeResult ? (
         <VisualizationViewer result={visualizeResult} />
+      ) : videoLessonResult ? (
+        <>
+          <VideoLessonViewer result={videoLessonResult} />
+          {msg.content ? (
+            <AssistantResponse
+              content={msg.content}
+              language={language}
+              isStreaming={isStreaming}
+              readingMaterialId={readingMaterialId}
+              readingMaterialRevision={readingMaterialRevision}
+              events={events}
+            />
+          ) : null}
+        </>
       ) : quizQuestions && quizQuestions.length > 0 ? (
         <>
           {/* The quiz preface (the "I researched X, now let me quiz you on Y"

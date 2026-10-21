@@ -165,6 +165,10 @@ codebuddy = ["codebuddy-agent-sdk>=0.3,<0.4"]
 # adapter enables transcript-grounded learning when public captions exist.
 video-learning = ["youtube-transcript-api>=1.0.0,<2.0.0"]
 
+# Voice-over for video lessons via Edge's free read-aloud voices. Without it
+# lessons still play, with captions only.
+video-lesson = ["edge-tts>=7.0,<8.0"]
+
 # Compatibility extra for source installs and older docs. These packages are
 # already included in the public `deeptutor` wheel.
 server = [
@@ -310,6 +314,7 @@ all = [
     "deeptutor[math-animator]",
     "deeptutor[dev]",
     "deeptutor[video-learning]",
+    "deeptutor[video-lesson]",
 ]
 
 [tool.setuptools]
@@ -336,6 +341,10 @@ deeptutor = [
     "**/*.sh",
     "**/*.j2",
     "**/*.jinja",
+    # video_lesson's Remotion kit and build script, compiled at run time
+    "**/*.ts",
+    "**/*.tsx",
+    "**/*.mjs",
 ]
 deeptutor_cli = ["**/*.md"]
 deeptutor_web = ["**/*", ".next/**/*"]

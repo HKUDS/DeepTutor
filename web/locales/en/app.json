@@ -5520,5 +5520,10 @@
   "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading, Course Study and standard visualizations. Changes take effect on the next turn.": "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading, Course Study and standard visualizations. Changes take effect on the next turn.",
   "Clear instructions": "Clear instructions",
   "{{used}} / {{limit}} characters": "{{used}} / {{limit}} characters",
-  "contextBudget.segment.workspace_instructions": "Workspace instructions"
+  "contextBudget.segment.workspace_instructions": "Workspace instructions",
+  "Video Lesson": "Video Lesson",
+  "Turn a question into an animated explainer you can play": "Turn a question into an animated explainer you can play",
+  "View Remotion Code": "View Remotion Code",
+  "{{seconds}} s": "{{seconds}} s",
+  "Fixed after {{count}} checks": "Fixed after {{count}} checks"
 }

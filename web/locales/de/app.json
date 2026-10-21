@@ -5520,5 +5520,10 @@
   "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading, Course Study and standard visualizations. Changes take effect on the next turn.": "Gilt für Chat, Problemlösung, Rückfragen, geführtes Lernen, Lesen, Kurslernen und Standardvisualisierungen. Änderungen gelten ab der nächsten Runde.",
   "Clear instructions": "Anweisungen leeren",
   "{{used}} / {{limit}} characters": "{{used}} / {{limit}} Zeichen",
-  "contextBudget.segment.workspace_instructions": "Arbeitsbereichsanweisungen"
+  "contextBudget.segment.workspace_instructions": "Arbeitsbereichsanweisungen",
+  "Video Lesson": "Video-Lektion",
+  "Turn a question into an animated explainer you can play": "Verwandle eine Frage in ein abspielbares Erklär-Video",
+  "View Remotion Code": "Remotion-Code anzeigen",
+  "{{seconds}} s": "{{seconds}} s",
+  "Fixed after {{count}} checks": "Nach {{count}} Prüfungen korrigiert"
 }

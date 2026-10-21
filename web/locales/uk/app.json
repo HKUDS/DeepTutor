@@ -5536,5 +5536,10 @@
   "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading, Course Study and standard visualizations. Changes take effect on the next turn.": "Застосовується до чату, розв’язування, запитань, керованого навчання, читання, курсів і стандартних візуалізацій. Зміни діють із наступного ходу.",
   "Clear instructions": "Очистити інструкції",
   "{{used}} / {{limit}} characters": "{{used}} / {{limit}} символів",
-  "contextBudget.segment.workspace_instructions": "Інструкції робочого простору"
+  "contextBudget.segment.workspace_instructions": "Інструкції робочого простору",
+  "Video Lesson": "Відеоурок",
+  "Turn a question into an animated explainer you can play": "Перетворіть запитання на анімоване пояснення, яке можна відтворити",
+  "View Remotion Code": "Переглянути код Remotion",
+  "{{seconds}} s": "{{seconds}} с",
+  "Fixed after {{count}} checks": "Виправлено після {{count}} перевірок"
 }

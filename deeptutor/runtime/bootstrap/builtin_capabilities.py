@@ -39,6 +39,7 @@ BUILTIN_CAPABILITY_CLASSES: dict[str, str] = {
     "deep_question": "deeptutor.agents.question.capability:DeepQuestionCapability",
     "deep_research": "deeptutor.agents.research.capability:DeepResearchCapability",
     "math_animator": "deeptutor.agents.math_animator.capability:MathAnimatorCapability",
+    "video_lesson": "deeptutor.agents.video_lesson.capability:VideoLessonCapability",
     "visualize": "deeptutor.agents.visualize.capability:VisualizeCapability",
     "mastery_path": "deeptutor.capabilities.mastery.capability:MasteryPathCapability",
     "immersive_reading": "deeptutor.capabilities.reading.mode:ImmersiveReadingCapability",
@@ -143,6 +144,16 @@ BUILTIN_CAPABILITY_SPECS: dict[str, BuiltinCapabilitySpec] = {
                 "quality": "medium",
                 "style_hint": "",
             },
+        ),
+    ),
+    "video_lesson": BuiltinCapabilitySpec(
+        BUILTIN_CAPABILITY_CLASSES["video_lesson"],
+        _manifest(
+            "video_lesson",
+            "Generate an animated video lesson (Remotion) that plays in the browser.",
+            stages=["code_generation", "render_check", "render_output"],
+            tools_used=[],
+            cli_aliases=["lesson"],
         ),
     ),
     "visualize": BuiltinCapabilitySpec(

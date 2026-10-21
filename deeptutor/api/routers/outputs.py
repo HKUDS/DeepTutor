@@ -17,6 +17,11 @@ from deeptutor.services.path_service import PathService
 
 router = APIRouter()
 
+# Video lessons are pages of model-written script. Served under this CSP they
+# run in an opaque origin even when opened directly, never with the API's
+# cookies or same-origin access.
+_SANDBOXED_PAGE_CSP = "sandbox allow-scripts allow-popups"
+
 
 def _request_path_service() -> PathService:
     """Resolve the workspace installed by ``require_auth`` without fallback.
@@ -85,4 +90,6 @@ async def read_output(
         path = _resolve_partner_output(output_path)
         if path is None:
             raise
+    if path.suffix.lower() == ".html" and "video_lesson" in path.parts:
+        return FileResponse(path, headers={"Content-Security-Policy": _SANDBOXED_PAGE_CSP})
     return FileResponse(path)
