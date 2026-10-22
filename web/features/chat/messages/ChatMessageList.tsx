@@ -1494,7 +1494,6 @@ export function PlayAudioButton({
           type="button"
           onClick={handleClick}
           aria-label={state === "playing" ? t("Stop") : t("Play aloud")}
-          title={state === "playing" ? t("Stop") : t("Up to the first 500 spoken characters will be read.")}
           className={`inline-flex items-center justify-center rounded-md p-1 transition-colors ${
             state === "playing"
               ? "text-[var(--primary)]"

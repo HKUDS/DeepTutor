@@ -51,7 +51,12 @@ it("requests a short spoken excerpt for manual playback", async () => {
   const content = "A".repeat(5000);
   render(<PlayAudioButton content={content} autoPlayFresh={false} />);
   const button = screen.getByRole("button", { name: "Play aloud" });
-  expect(button.getAttribute("title")).toBe("Up to the first 500 spoken characters will be read.");
+  expect(button.hasAttribute("title")).toBe(false);
+  const tooltipId = button.getAttribute("aria-describedby");
+  expect(tooltipId).not.toBeNull();
+  expect(document.getElementById(tooltipId ?? "")?.textContent).toBe(
+    "Play aloud (up to the first 500 spoken characters)",
+  );
   await userEvent.setup().click(button);
   const [, request] = vi.mocked(apiFetch).mock.calls[0];
   expect(JSON.parse(String(request?.body))).toEqual({ text: content, max_input_chars: 500 });
