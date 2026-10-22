@@ -162,7 +162,7 @@ async def summary(
         _, end = _validate_timezone(timezone)
 
         async def read():
-            return [await summary(timezone, course_id)]
+            return [await summary(timezone, course_id, learner="")]
 
         rows, unavailable = await read_workspace_indexes(read)
         return {
@@ -203,7 +203,7 @@ async def queue(
         _validate_timezone(timezone)
 
         async def read():
-            return await queue(timezone, course_id, category_id, limit)
+            return await queue(timezone, course_id, category_id, limit, learner="")
 
         rows, _ = await read_workspace_indexes(read)
         rows.sort(
@@ -255,7 +255,7 @@ async def practice_analytics(
         from deeptutor.services.workspace.navigation import read_workspace_indexes
 
         async def read():
-            return [await practice_analytics(timezone, days, course_id)]
+            return [await practice_analytics(timezone, days, course_id, learner="")]
 
         rows, _ = await read_workspace_indexes(read)
         if not rows:

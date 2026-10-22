@@ -10,6 +10,17 @@ import time
 from typing import Any
 
 
+def _process_group_exists(pgid: int) -> bool:
+    try:
+        os.killpg(pgid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        # An inaccessible group is still indistinguishable from a live group.
+        return True
+    return True
+
+
 @contextmanager
 def cli_process(cmd: list[str], log_path: Path, env: dict[str, str]):
     """Run a CLI with attempt-owned descendants and settle them on every exit."""
@@ -73,10 +84,29 @@ def cli_process(cmd: list[str], log_path: Path, env: dict[str, str]):
                 finally:
                     job.Close()
             elif process is not None:
-                for sig in (signal.SIGTERM, signal.SIGKILL):
+                cleanup_deadline = time.monotonic() + 5
+                for sig, grace in ((signal.SIGTERM, 0.5), (signal.SIGKILL, 4.5)):
                     try:
                         os.killpg(process.pid, sig)
                     except ProcessLookupError:
                         break
-            if process is not None:
-                process.wait(timeout=5)
+                    except PermissionError:
+                        pass
+                    if process.poll() is None:
+                        try:
+                            process.wait(timeout=grace)
+                        except subprocess.TimeoutExpired:
+                            pass
+                    group_exists = True
+                    while group_exists and time.monotonic() < cleanup_deadline:
+                        group_exists = _process_group_exists(process.pid)
+                        if group_exists:
+                            time.sleep(0.05)
+                    if not group_exists:
+                        break
+                if process.poll() is None:
+                    try:
+                        process.kill()
+                    except OSError:
+                        pass
+                    process.wait(timeout=5)
