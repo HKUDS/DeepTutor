@@ -852,8 +852,15 @@ def select_model(
 # --- Connectivity probe --------------------------------------------------------
 
 
+_REASONING_SAFE_PROBE_MAX_TOKENS = 4096
+
+
 def probe_llm(*, base_url: str, api_key: str, binding: str, model: str) -> tuple[bool, int, str]:
-    """Send a single-token completion to verify credentials.
+    """Send a brief completion to verify credentials.
+
+    Reasoning models spend output budget on hidden tokens before they emit
+    text. A one-token probe makes some of them fail before returning content,
+    which misreports a valid configuration as broken.
 
     Returns ``(ok, elapsed_ms, error_or_empty)``. Network failures, auth
     failures, 4xx, 5xx all surface as ``ok=False`` with a short error string.
@@ -872,7 +879,7 @@ def probe_llm(*, base_url: str, api_key: str, binding: str, model: str) -> tuple
             }
             body = {
                 "model": model,
-                "max_tokens": 1,
+                "max_tokens": _REASONING_SAFE_PROBE_MAX_TOKENS,
                 "messages": [{"role": "user", "content": "ping"}],
             }
         else:
@@ -883,7 +890,7 @@ def probe_llm(*, base_url: str, api_key: str, binding: str, model: str) -> tuple
             }
             body = {
                 "model": model,
-                **get_token_limit_kwargs(model, 1),
+                **get_token_limit_kwargs(model, _REASONING_SAFE_PROBE_MAX_TOKENS),
                 "messages": [{"role": "user", "content": "ping"}],
             }
 
