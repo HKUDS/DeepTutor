@@ -268,7 +268,7 @@ with the access URL and the results of your checks.
 
 The [Agent Setup guide](docs-for-user/AGENT_SETUP.md) covers the full flow, including non-interactive CLI configuration. To install it yourself, choose one of the paths below.
 
-DeepTutor ships four installation paths. They all share one runtime-home layout: private settings live in `data/user/settings/` under the directory you launch from (or under `DEEPTUTOR_HOME` / `deeptutor start --home` if you set one explicitly). For the full app, the recommended flow is **pick a runtime-home directory → install → `deeptutor init` → `deeptutor start`**.
+DeepTutor ships four installation paths. They all share one runtime-home layout: private settings live in `data/user/settings/` under the directory you launch from (or under `DEEPTUTOR_HOME` / `deeptutor start --home` if you set one explicitly). See [Local Data Persistence](./docs-for-user/DATA_STORAGE.md) for the complete storage layout, database support, and backup notes. For the full app, the recommended flow is **pick a runtime-home directory → install → `deeptutor init` → `deeptutor start`**.
 
 ### One-Command Docker Trial
 
