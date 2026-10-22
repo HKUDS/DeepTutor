@@ -269,6 +269,12 @@ export default function GuardianSettingsPage() {
                     report.grant_summary.skill_count}
                 </div>
               </div>
+              <a
+                href={`/learning/practice?learner=${encodeURIComponent(selectedRelationship.learner_user_id)}`}
+                className="inline-flex items-center gap-1.5 self-start rounded-md border border-[var(--border)] px-3 py-1.5 text-xs hover:bg-[var(--muted)]"
+              >
+                {t("Open practice page")}
+              </a>
             </div>
           ) : !can("view_reports") ? (
             <p className="text-sm text-[var(--muted-foreground)]">

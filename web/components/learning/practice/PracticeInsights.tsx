@@ -8,6 +8,7 @@ import { practiceRoute } from "@/lib/learning-routes";
 import Tooltip from "@/shared/ui/Tooltip";
 import {
   getPracticeAnalytics,
+  practiceMetricValue,
   type PracticeAnalytics,
   type PracticeMetric,
 } from "@/lib/practice-api";
@@ -16,6 +17,7 @@ const METRICS: { key: PracticeMetric; label: string; color: string }[] = [
   { key: "questions", label: "New questions", color: "#4f70d9" },
   { key: "mistakes", label: "New mistakes", color: "#d08732" },
   { key: "reviews", label: "Review submissions", color: "#329080" },
+  { key: "reading", label: "Reading minutes", color: "#8a63d2" },
 ];
 const SOURCES: Record<string, string> = {
   mastery_path: "Mastery Path",
@@ -29,7 +31,18 @@ const number = (value: number) => value.toLocaleString();
 const dateLabel = (date: string) =>
   new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 
-export function PracticeInsights({ courseId, revision, workspaceId }: { courseId: string; revision: number; workspaceId?: string }) {
+export function PracticeInsights({
+  courseId,
+  revision,
+  workspaceId,
+  learnerId,
+}: {
+  courseId: string;
+  revision: number;
+  workspaceId?: string;
+  /** Set on the guardian read-only view: analytics resolve to that learner. */
+  learnerId?: string;
+}) {
   const { t } = useTranslation();
   const search = useSearchParams();
   const router = useRouter();
@@ -42,7 +55,7 @@ export function PracticeInsights({ courseId, revision, workspaceId }: { courseId
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [retry, setRetry] = useState(0);
-  const scope = `${workspaceId}:${courseId}:${days}`;
+  const scope = `${workspaceId}:${courseId}:${days}:${learnerId}`;
   const data = result?.scope === scope ? result.data : null;
   function setView(key: string, value: string) {
     const query = new URLSearchParams(search.toString());
@@ -56,7 +69,7 @@ export function PracticeInsights({ courseId, revision, workspaceId }: { courseId
       const request = ++sequence;
       setLoading(true);
       try {
-        const next = await getPracticeAnalytics(courseId, days, workspaceId);
+        const next = await getPracticeAnalytics(courseId, days, workspaceId, learnerId);
         if (active && request === sequence) {
           setResult({ scope, data: next });
           setError("");
@@ -79,11 +92,11 @@ export function PracticeInsights({ courseId, revision, workspaceId }: { courseId
       window.clearInterval(timer);
       window.removeEventListener("focus", refresh);
     };
-  }, [courseId, days, scope, revision, retry, workspaceId]);
-  const total = data?.totals[metric.key] || 0;
+  }, [courseId, days, scope, revision, retry, workspaceId, learnerId]);
+  const total = data ? practiceMetricValue(data.totals, metric.key) : 0;
   const sources = [...(data?.sources || [])]
-    .filter(row => row[metric.key] > 0)
-    .sort((a, b) => b[metric.key] - a[metric.key]);
+    .filter(row => practiceMetricValue(row, metric.key) > 0)
+    .sort((a, b) => practiceMetricValue(b, metric.key) - practiceMetricValue(a, metric.key));
   return (
     <section
       aria-label={t("Practice activity")}
@@ -132,7 +145,7 @@ export function PracticeInsights({ courseId, revision, workspaceId }: { courseId
           </div>
         </div>
       </div>
-      <div className="mt-4 grid grid-cols-3 border-b border-border px-3">
+      <div className="mt-4 grid grid-cols-2 border-b border-border px-3 sm:grid-cols-4">
         {METRICS.map(item => (
           <button
             key={item.key}
@@ -149,7 +162,7 @@ export function PracticeInsights({ courseId, revision, workspaceId }: { courseId
               {t(item.label)}
             </span>
             <span className="mt-2 block text-2xl font-semibold tabular-nums tracking-tight">
-              {data ? number(data.totals[item.key]) : "—"}
+              {data ? number(practiceMetricValue(data.totals, item.key)) : "—"}
             </span>
             {metric.key === item.key && (
               <span
@@ -194,19 +207,54 @@ export function PracticeInsights({ courseId, revision, workspaceId }: { courseId
           </div>
           <div className="border-t border-border px-5 py-4 lg:border-l lg:border-t-0">
             <div className="mb-4 flex items-center justify-between gap-2 text-xs">
-              <h3 className="font-medium">{t("Sources in this period")}</h3>
+              <h3 className="font-medium">
+                {metric.key === "reading"
+                  ? t("Materials in this period")
+                  : t("Sources in this period")}
+              </h3>
               <span className="text-muted-foreground">{t(metric.label)}</span>
             </div>
-            {sources.length ? (
+            {metric.key === "reading" ? (
+              data && data.materials.length ? (
+                <ul className="space-y-3.5">
+                  {data.materials.map(material => (
+                    <li key={material.material_id}>
+                      <div className="mb-1.5 flex items-center justify-between gap-3 text-xs">
+                        <span className="truncate" title={material.material_id}>
+                          {material.material_id}
+                        </span>
+                        <span className="whitespace-nowrap tabular-nums">
+                          {number(Math.round(material.reading_seconds / 60))}
+                        </span>
+                      </div>
+                      <div className="h-1 overflow-hidden rounded-full bg-muted">
+                        <div
+                          className="h-full rounded-full"
+                          style={{
+                            width: `${total ? Math.min(100, (Math.round(material.reading_seconds / 60) / total) * 100) : 0}%`,
+                            background: metric.color,
+                            opacity: 0.8,
+                          }}
+                        />
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="py-6 text-center text-xs text-muted-foreground">
+                  {t("No activity in this period")}
+                </p>
+              )
+            ) : sources.length ? (
               <ul className="space-y-3.5">
                 {sources.map(source => (
                   <li key={source.source}>
                     <div className="mb-1.5 flex items-center justify-between gap-3 text-xs">
                       <span>{t(SOURCES[source.source] || "Other")}</span>
                       <span className="whitespace-nowrap tabular-nums">
-                        {number(source[metric.key])}
+                        {number(practiceMetricValue(source, metric.key))}
                         <span className="ml-2 text-muted-foreground">
-                          {Math.round((source[metric.key] / total) * 100)}%
+                          {total ? Math.round((practiceMetricValue(source, metric.key) / total) * 100) : 0}%
                         </span>
                       </span>
                     </div>
@@ -214,7 +262,7 @@ export function PracticeInsights({ courseId, revision, workspaceId }: { courseId
                       <div
                         className="h-full rounded-full"
                         style={{
-                          width: `${(source[metric.key] / total) * 100}%`,
+                          width: `${total ? (practiceMetricValue(source, metric.key) / total) * 100 : 0}%`,
                           background: metric.color,
                           opacity: 0.8,
                         }}
@@ -269,7 +317,7 @@ export function PracticeInsights({ courseId, revision, workspaceId }: { courseId
                         {row.date}
                       </th>
                       {METRICS.map(item => (
-                        <td key={item.key}>{number(row[item.key])}</td>
+                        <td key={item.key}>{number(practiceMetricValue(row, item.key))}</td>
                       ))}
                     </tr>
                   ))}
@@ -314,7 +362,7 @@ function DailyChart({
     0,
     selected ? rows.findIndex(row => row.date === selected) : rows.length - 1
   );
-  const maximum = Math.max(1, ...rows.map(row => row[metric]));
+  const maximum = Math.max(1, ...rows.map(row => practiceMetricValue(row, metric)));
   const step = Math.max(1, 10 ** Math.floor(Math.log10(maximum)));
   const top = Math.ceil(maximum / step) * step;
   const left = 32,
@@ -324,7 +372,9 @@ function DailyChart({
   const unit = (right - left) / rows.length;
   const x = (i: number) => left + (i + 0.5) * unit;
   const y = (value: number) => bottom - (value / top) * height;
-  const line = rows.map((row, i) => `${i ? "L" : "M"}${x(i)},${y(row[metric])}`).join(" ");
+  const line = rows
+    .map((row, i) => `${i ? "L" : "M"}${x(i)},${y(practiceMetricValue(row, metric))}`)
+    .join(" ");
   const ticks = [...new Set([0, Math.floor(top / 2), top])];
   const dates = [...new Set([0, Math.floor((rows.length - 1) / 2), rows.length - 1])];
   const active = rows[index];
@@ -334,7 +384,7 @@ function DailyChart({
         <span className="text-muted-foreground">{dateLabel(active.date)}</span>
         <span className="font-medium tabular-nums">
           {label}
-          <span className="ml-2">{number(active[metric])}</span>
+          <span className="ml-2">{number(practiceMetricValue(active, metric))}</span>
         </span>
       </div>
       <div
@@ -404,7 +454,7 @@ function DailyChart({
               />
               {rows.length <= 7 &&
                 rows.map((row, i) => (
-                  <circle key={row.date} cx={x(i)} cy={y(row[metric])} r="2.5" fill={color} />
+                  <circle key={row.date} cx={x(i)} cy={y(practiceMetricValue(row, metric))} r="2.5" fill={color} />
                 ))}
             </>
           ) : (
@@ -412,9 +462,9 @@ function DailyChart({
               <rect
                 key={row.date}
                 x={x(i) - unit * 0.32}
-                y={y(row[metric])}
+                y={y(practiceMetricValue(row, metric))}
                 width={Math.max(1, unit * 0.64)}
-                height={bottom - y(row[metric])}
+                height={bottom - y(practiceMetricValue(row, metric))}
                 rx={Math.min(2, unit / 5)}
                 fill={color}
                 opacity={index === i ? 1 : 0.68}
@@ -432,7 +482,7 @@ function DailyChart({
           />
           <circle
             cx={x(index)}
-            cy={y(active[metric])}
+            cy={y(practiceMetricValue(active, metric))}
             r="3.5"
             fill={color}
             stroke="var(--card)"
@@ -462,7 +512,7 @@ function DailyChart({
               onPointerMove={() => setSelected(row.date)}
               onClick={() => setSelected(row.date)}
             >
-              <title>{`${row.date}: ${row[metric]}`}</title>
+              <title>{`${row.date}: ${practiceMetricValue(row, metric)}`}</title>
             </rect>
           ))}
         </svg>

@@ -56,9 +56,12 @@ beforeEach(() => {
     start_date: "2026-09-19",
     end_date: "2026-09-19",
     updated_at: 100,
-    totals: { questions: 2, mistakes: 1, reviews: 4 },
-    daily: [{ date: "2026-09-19", questions: 2, mistakes: 1, reviews: 4 }],
+    totals: { questions: 2, mistakes: 1, reviews: 4, reading_seconds: 0 },
+    daily: [
+      { date: "2026-09-19", questions: 2, mistakes: 1, reviews: 4, reading_seconds: 0 },
+    ],
     sources: [],
+    materials: [],
   });
 });
 

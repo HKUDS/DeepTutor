@@ -7367,6 +7367,13 @@
             "title": "End Date",
             "type": "string"
           },
+          "materials": {
+            "items": {
+              "$ref": "#/components/schemas/PracticeReadingMaterial"
+            },
+            "title": "Materials",
+            "type": "array"
+          },
           "sources": {
             "items": {
               "$ref": "#/components/schemas/PracticeSourceCounts"
@@ -7413,6 +7420,11 @@
             "title": "Questions",
             "type": "integer"
           },
+          "reading_seconds": {
+            "default": 0,
+            "title": "Reading Seconds",
+            "type": "integer"
+          },
           "reviews": {
             "title": "Reviews",
             "type": "integer"
@@ -7438,6 +7450,11 @@
           },
           "questions": {
             "title": "Questions",
+            "type": "integer"
+          },
+          "reading_seconds": {
+            "default": 0,
+            "title": "Reading Seconds",
             "type": "integer"
           },
           "reviews": {
@@ -7482,6 +7499,24 @@
         "title": "PracticeQuestion",
         "type": "object"
       },
+      "PracticeReadingMaterial": {
+        "properties": {
+          "material_id": {
+            "title": "Material Id",
+            "type": "string"
+          },
+          "reading_seconds": {
+            "title": "Reading Seconds",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "material_id",
+          "reading_seconds"
+        ],
+        "title": "PracticeReadingMaterial",
+        "type": "object"
+      },
       "PracticeSourceCounts": {
         "properties": {
           "mistakes": {
@@ -7490,6 +7525,11 @@
           },
           "questions": {
             "title": "Questions",
+            "type": "integer"
+          },
+          "reading_seconds": {
+            "default": 0,
+            "title": "Reading Seconds",
             "type": "integer"
           },
           "reviews": {
@@ -8401,6 +8441,56 @@
           "title"
         ],
         "title": "ReadingSessionRenameRequest",
+        "type": "object"
+      },
+      "ReadingTimeInfo": {
+        "properties": {
+          "active_seconds": {
+            "title": "Active Seconds",
+            "type": "integer"
+          },
+          "credited_seconds": {
+            "title": "Credited Seconds",
+            "type": "integer"
+          },
+          "day": {
+            "title": "Day",
+            "type": "string"
+          },
+          "material_id": {
+            "title": "Material Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "day",
+          "material_id",
+          "active_seconds",
+          "credited_seconds"
+        ],
+        "title": "ReadingTimeInfo",
+        "type": "object"
+      },
+      "ReadingTimePayload": {
+        "description": "One heartbeat of effective reading time; the server clamps the claim.",
+        "properties": {
+          "active_seconds": {
+            "maximum": 3600.0,
+            "minimum": 0.0,
+            "title": "Active Seconds",
+            "type": "integer"
+          },
+          "timezone": {
+            "default": "UTC",
+            "maxLength": 64,
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "active_seconds"
+        ],
+        "title": "ReadingTimePayload",
         "type": "object"
       },
       "ReadingViewport": {
@@ -42529,6 +42619,17 @@
             }
           },
           {
+            "in": "query",
+            "name": "learner",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 64,
+              "title": "Learner",
+              "type": "string"
+            }
+          },
+          {
             "in": "header",
             "name": "Authorization",
             "required": false,
@@ -42593,6 +42694,16 @@
       "post": {
         "operationId": "import_commit_api_question_notebook_practice_import_commit_post",
         "parameters": [
+          {
+            "in": "query",
+            "name": "learner",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Learner",
+              "type": "string"
+            }
+          },
           {
             "in": "header",
             "name": "Authorization",
@@ -42666,6 +42777,16 @@
       "post": {
         "operationId": "import_preview_api_question_notebook_practice_import_preview_post",
         "parameters": [
+          {
+            "in": "query",
+            "name": "learner",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Learner",
+              "type": "string"
+            }
+          },
           {
             "in": "header",
             "name": "Authorization",
@@ -42826,6 +42947,17 @@
             }
           },
           {
+            "in": "query",
+            "name": "learner",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 64,
+              "title": "Learner",
+              "type": "string"
+            }
+          },
+          {
             "in": "header",
             "name": "Authorization",
             "required": false,
@@ -42897,6 +43029,16 @@
             "schema": {
               "title": "Entry Id",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "learner",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Learner",
+              "type": "string"
             }
           },
           {
@@ -42979,6 +43121,16 @@
             "schema": {
               "title": "Entry Id",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "learner",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Learner",
+              "type": "string"
             }
           },
           {
@@ -43113,6 +43265,17 @@
             }
           },
           {
+            "in": "query",
+            "name": "learner",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 64,
+              "title": "Learner",
+              "type": "string"
+            }
+          },
+          {
             "in": "header",
             "name": "Authorization",
             "required": false,
@@ -43209,6 +43372,17 @@
               "default": false,
               "title": "All Workspaces",
               "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "learner",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 64,
+              "title": "Learner",
+              "type": "string"
             }
           },
           {
@@ -45770,6 +45944,91 @@
         "summary": "Read Material Aloud",
         "tags": [
           "reading-extensions"
+        ]
+      }
+    },
+    "/api/reading/materials/{material_id}/reading-time": {
+      "post": {
+        "description": "Credit one heartbeat of effective reading time for this account.\n\nThe Reader sends a bounded heartbeat about every 30 seconds while the page\nis visible, focused and recently used (or read-aloud is playing), plus a\nfinal ``sendBeacon`` beat on ``pagehide``. The store credits at most the\nwall-clock time since the previous accepted beat, so parallel tabs cannot\ndouble count and forged claims are truncated.",
+        "operationId": "save_reading_time_api_reading_materials__material_id__reading_time_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "material_id",
+            "required": true,
+            "schema": {
+              "title": "Material Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadingTimePayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadingTimeInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Reading Time",
+        "tags": [
+          "reading"
         ]
       }
     },

@@ -5520,5 +5520,15 @@
   "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading, Course Study and standard visualizations. Changes take effect on the next turn.": "适用于对话、解题、主动提问、引导学习、沉浸式阅读、课程学习和常规可视化。从下一轮开始生效。",
   "Clear instructions": "清空提示词",
   "{{used}} / {{limit}} characters": "{{used}} / {{limit}} 字符",
-  "contextBudget.segment.workspace_instructions": "工作区提示词"
+  "contextBudget.segment.workspace_instructions": "工作区提示词",
+  "Reading minutes": "阅读分钟",
+  "Read-only view of a learner's practice.": "学习者练习页的只读视图。",
+  "{{name}}'s practice — read-only": "{{name}} 的练习 — 只读",
+  "You are viewing this learner's practice in read-only mode. Answering and reviewing stay with the learner.": "你正在以只读模式查看该学习者的练习。答题与复习仍由学习者本人完成。",
+  "Could not open this learner's practice.": "无法打开该学习者的练习页。",
+  "Due questions": "待复习的题目",
+  "Mistake": "错题",
+  "No questions are due right now.": "目前没有到期的题目。",
+  "Materials in this period": "此期间的阅读材料",
+  "Open practice page": "打开练习页"
 }

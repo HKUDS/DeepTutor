@@ -532,6 +532,41 @@ export async function saveReadingPosition(
   );
 }
 
+export interface ReadingTimeBeat {
+  /** Active seconds accumulated since the previous beat; the server clamps. */
+  active_seconds: number;
+  timezone: string;
+}
+
+/** Credit one heartbeat of effective reading time (POST, ~30 s cadence). */
+export async function saveReadingTime(
+  materialId: string,
+  beat: ReadingTimeBeat,
+): Promise<void> {
+  await unwrap(
+    await apiFetch(apiUrl(`${BASE}/materials/${materialId}/reading-time`), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(beat),
+      cache: "no-store",
+    }),
+  );
+}
+
+/** Final beat on pagehide: fire-and-forget, must outlive the page. */
+export function sendReadingTimeBeacon(
+  materialId: string,
+  beat: ReadingTimeBeat,
+): boolean {
+  if (typeof navigator === "undefined" || typeof navigator.sendBeacon !== "function") {
+    return false;
+  }
+  return navigator.sendBeacon(
+    apiUrl(`${BASE}/materials/${materialId}/reading-time`),
+    new Blob([JSON.stringify(beat)], { type: "application/json" }),
+  );
+}
+
 export async function listBookmarks(
   materialId: string,
 ): Promise<ReadingBookmark[]> {

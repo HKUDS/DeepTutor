@@ -63,7 +63,7 @@ jobs:
 
   web-tests:
     name: Web Node Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout code
@@ -109,7 +109,7 @@ jobs:
   multi-worker-web:
     name: Four-worker browser acceptance
     if: vars.DEEPTUTOR_MULTI_WORKER_E2E_URL != ''
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout code

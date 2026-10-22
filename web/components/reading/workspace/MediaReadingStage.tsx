@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import {
   Captions,
   ChevronDown,
@@ -54,6 +55,11 @@ import { BilibiliReadingPlayer } from "./BilibiliReadingPlayer";
 import { formatMediaTime, timeFromSourceHref } from "@/lib/reading-media-time";
 import type { TranscriptRow } from "./types";
 
+const ReadingTimeHeartbeat = dynamic(
+  () => import("../ReadingTimeHeartbeat").then(module => module.ReadingTimeHeartbeat),
+  { ssr: false },
+);
+
 export function MediaReadingStage({
   material,
   title,
@@ -85,6 +91,10 @@ export function MediaReadingStage({
   const playbackLocatorRef = useRef(0);
   const stateRef = useRef({ time: 0, duration: 0 });
   const lastSavedRef = useRef(0);
+  // Wall clock of the last media time update: while playback runs, updates
+  // arrive continuously, so "recent update" is the playing signal for the
+  // reading-time heartbeat (the media analog of read-aloud).
+  const lastMediaTimeAtRef = useRef(0);
   const youtubeId = youtubeVideoId(material.source_url);
   const bilibiliSource = useMemo(
     () => parseBilibiliSource(material.source_url),
@@ -306,6 +316,7 @@ export function MediaReadingStage({
   const handleTime = useCallback(
     (nextTime: number, nextDuration: number) => {
       stateRef.current = { time: nextTime, duration: nextDuration };
+      lastMediaTimeAtRef.current = Date.now();
       setTime(nextTime);
       setDuration(nextDuration);
       setReadingViewport({ timeSeconds: nextTime });
@@ -544,6 +555,10 @@ export function MediaReadingStage({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
+      <ReadingTimeHeartbeat
+        materialId={material.material_id}
+        playing={() => Date.now() - lastMediaTimeAtRef.current < 2500}
+      />
       <div className="flex h-10 shrink-0 items-center justify-between border-b border-[var(--border)] bg-[var(--background)] px-3 dark:border-[var(--border)] dark:bg-[var(--background)]">
         <div className="min-w-0">
           <p className="truncate text-[10.5px] font-semibold">{title}</p>

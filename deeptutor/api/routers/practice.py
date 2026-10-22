@@ -3,25 +3,64 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 import csv
 import io
 import time
-from typing import Literal
+from typing import Any, Literal
 import zipfile
 
 from defusedxml.ElementTree import ParseError
 from fastapi import APIRouter, File, Form, HTTPException, Query, Response, UploadFile
 from pydantic import BaseModel, Field
 
+from deeptutor.api.routers.question_notebook import NotebookEntryItem, _course_session_ids
+from deeptutor.learning.storage import LearningStore
+from deeptutor.multi_user.context import get_current_user
+from deeptutor.multi_user.paths import get_path_service_for_scope, scope_for_user
 from deeptutor.services.practice.answers import check_answer
 from deeptutor.services.practice.importing import MAX_BYTES, preview
 from deeptutor.services.practice.scheduler import Rating, day_bounds
 from deeptutor.services.practice.storage import PracticeStore, ReviewConflict
 from deeptutor.services.session import get_sqlite_session_store
-
-from .question_notebook import NotebookEntryItem, _course_session_ids
+from deeptutor.services.session.sqlite_store import get_sqlite_session_store_for
 
 router = APIRouter()
+
+
+def _require_self_only(learner: str) -> None:
+    """Write actions never accept a learner scope: only the learner writes."""
+    if learner:
+        raise HTTPException(status_code=403, detail="Write actions are limited to the learner")
+
+
+def _practice_scope(learner: str) -> tuple[Any, Callable[[], LearningStore]]:
+    """Resolve the practice store and a learning-store factory for a request.
+
+    Without ``learner`` that is the caller's own scope, exactly as before. With
+    a learner id the caller must be an admin or a guardian holding
+    ``view_reports`` (the guardian-report permission), the learner's stores are
+    resolved read-only, and the access lands in the supervisor audit log —
+    mirroring ``GET /api/multi-user/learners/{id}/guardian-report``. The
+    learning store is a factory because only analytics needs it.
+    """
+    if not learner:
+        return get_sqlite_session_store(), lambda: LearningStore()
+    from deeptutor.api.routers.multi_user import _log_supervisor_action, _require_guardian_access
+
+    current = get_current_user()
+    _username, _record, actor_user_id, is_admin = _require_guardian_access(
+        current, learner, "view_reports"
+    )
+    service = get_path_service_for_scope(scope_for_user(learner, is_admin=False))
+    _log_supervisor_action(
+        "guardian_practice_view",
+        actor_user_id=actor_user_id,
+        learner_user_id=learner,
+        is_admin=is_admin,
+        summary={"scope": "practice"},
+    )
+    return get_sqlite_session_store_for(service), lambda: LearningStore.for_path_service(service)
 
 
 class PracticeSummary(BaseModel):
@@ -47,6 +86,7 @@ class PracticeCounts(BaseModel):
     questions: int
     mistakes: int
     reviews: int
+    reading_seconds: int = 0
 
 
 class PracticeDailyCounts(PracticeCounts):
@@ -55,6 +95,11 @@ class PracticeDailyCounts(PracticeCounts):
 
 class PracticeSourceCounts(PracticeCounts):
     source: str
+
+
+class PracticeReadingMaterial(BaseModel):
+    material_id: str
+    reading_seconds: int
 
 
 class PracticeAnalytics(BaseModel):
@@ -66,6 +111,7 @@ class PracticeAnalytics(BaseModel):
     daily: list[PracticeDailyCounts]
     sources: list[PracticeSourceCounts]
     totals: PracticeCounts
+    materials: list[PracticeReadingMaterial] = Field(default_factory=list)
 
 
 class AnswerRequest(BaseModel):
@@ -90,8 +136,8 @@ def _validate_timezone(timezone: str) -> tuple[float, float]:
         raise HTTPException(422, str(exc)) from exc
 
 
-async def _entry(entry_id: int) -> dict:
-    store = get_sqlite_session_store()
+async def _entry(entry_id: int, store: Any | None = None) -> dict:
+    store = store or get_sqlite_session_store()
     if not await asyncio.to_thread(PracticeStore(store.db_path).is_visible, entry_id):
         raise HTTPException(404, "Question not found")
     entry = await store.get_notebook_entry(entry_id)
@@ -101,14 +147,22 @@ async def _entry(entry_id: int) -> dict:
 
 
 @router.get("/summary", response_model=PracticeSummary)
-async def summary(timezone: str = "UTC", course_id: str = "", all_workspaces: bool = False):
+async def summary(
+    timezone: str = "UTC",
+    course_id: str = "",
+    all_workspaces: bool = False,
+    learner: str = Query(default="", max_length=64),
+):
+    store, _learning_factory = _practice_scope(learner)
+    if learner:
+        course_id, all_workspaces = "", False  # the learner's own scope, not the caller's
     if all_workspaces and not course_id:
         from deeptutor.services.workspace.navigation import read_workspace_indexes
 
         _, end = _validate_timezone(timezone)
 
         async def read():
-            return [await summary(timezone, course_id)]
+            return [await summary(timezone, course_id, learner="")]
 
         rows, unavailable = await read_workspace_indexes(read)
         return {
@@ -124,7 +178,6 @@ async def summary(timezone: str = "UTC", course_id: str = "", all_workspaces: bo
             "unavailable_workspaces": unavailable,
         }
 
-    store = get_sqlite_session_store()
     sessions = await _course_session_ids(store, course_id)
     try:
         return await asyncio.to_thread(PracticeStore(store.db_path).overview, timezone, sessions)
@@ -139,14 +192,18 @@ async def queue(
     category_id: int | None = None,
     limit: int = Query(default=20, ge=1, le=100),
     all_workspaces: bool = False,
+    learner: str = Query(default="", max_length=64),
 ):
+    store, _learning_factory = _practice_scope(learner)
+    if learner:
+        course_id, all_workspaces = "", False
     if all_workspaces and not course_id:
         from deeptutor.services.workspace.navigation import read_workspace_indexes
 
         _validate_timezone(timezone)
 
         async def read():
-            return await queue(timezone, course_id, category_id, limit)
+            return await queue(timezone, course_id, category_id, limit, learner="")
 
         rows, _ = await read_workspace_indexes(read)
         rows.sort(
@@ -158,7 +215,6 @@ async def queue(
         )
         return rows[:limit]
 
-    store = get_sqlite_session_store()
     practice = PracticeStore(store.db_path)
     sessions = await _course_session_ids(store, course_id)
     try:
@@ -183,16 +239,23 @@ async def queue(
 
 @router.get("/analytics", response_model=PracticeAnalytics)
 async def practice_analytics(
-    timezone: str = "UTC", days: int = 30, course_id: str = "", all_workspaces: bool = False
+    timezone: str = "UTC",
+    days: int = 30,
+    course_id: str = "",
+    all_workspaces: bool = False,
+    learner: str = Query(default="", max_length=64),
 ):
     _validate_timezone(timezone)
     if days not in {7, 30, 90}:
         raise HTTPException(422, "Days must be 7, 30, or 90")
+    store, learning_factory = _practice_scope(learner)
+    if learner:
+        course_id, all_workspaces = "", False
     if all_workspaces and not course_id:
         from deeptutor.services.workspace.navigation import read_workspace_indexes
 
         async def read():
-            return [await practice_analytics(timezone, days, course_id)]
+            return [await practice_analytics(timezone, days, course_id, learner="")]
 
         rows, _ = await read_workspace_indexes(read)
         if not rows:
@@ -204,44 +267,66 @@ async def practice_analytics(
                 for item in row[bucket]:
                     target = combined.setdefault(
                         item[identity],
-                        {identity: item[identity], "questions": 0, "mistakes": 0, "reviews": 0},
+                        {
+                            identity: item[identity],
+                            "questions": 0,
+                            "mistakes": 0,
+                            "reviews": 0,
+                            "reading_seconds": 0,
+                        },
                     )
-                    for metric in ("questions", "mistakes", "reviews"):
+                    for metric in ("questions", "mistakes", "reviews", "reading_seconds"):
                         target[metric] += item[metric]
             result[bucket] = list(combined.values())
         result["totals"] = {
             metric: sum(row["totals"][metric] for row in rows)
-            for metric in ("questions", "mistakes", "reviews")
+            for metric in ("questions", "mistakes", "reviews", "reading_seconds")
         }
+        materials: dict[str, int] = {}
+        for row in rows:
+            for item in row.get("materials", []):
+                materials[item["material_id"]] = (
+                    materials.get(item["material_id"], 0) + item["reading_seconds"]
+                )
+        result["materials"] = [
+            {"material_id": material_id, "reading_seconds": seconds}
+            for material_id, seconds in sorted(materials.items(), key=lambda pair: -pair[1])
+        ]
         return result
 
-    store = get_sqlite_session_store()
     sessions = await _course_session_ids(store, course_id)
     try:
-        return await asyncio.to_thread(
+        result = await asyncio.to_thread(
             PracticeStore(store.db_path).analytics, timezone, days, sessions
         )
+        reading = await asyncio.to_thread(learning_factory().reading_time_window, timezone, days)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
+    for item in result["daily"]:
+        item["reading_seconds"] = reading["daily"].get(item["date"], 0)
+    result["totals"]["reading_seconds"] = sum(reading["daily"].values())
+    result["materials"] = reading["materials"]
+    return result
 
 
 @router.get("/questions/{entry_id}", response_model=PracticeQuestion)
-async def practice_question(entry_id: int):
-    entry = await _entry(entry_id)
-    state = await asyncio.to_thread(
-        PracticeStore(get_sqlite_session_store().db_path).state, entry_id
-    )
+async def practice_question(entry_id: int, learner: str = Query(default="", max_length=64)):
+    store, _learning_factory = _practice_scope(learner)
+    entry = await _entry(entry_id, store)
+    state = await asyncio.to_thread(PracticeStore(store.db_path).state, entry_id)
     return {"entry": entry, "state": state}
 
 
 @router.post("/questions/{entry_id}/check")
-async def check(entry_id: int, payload: AnswerRequest):
+async def check(entry_id: int, payload: AnswerRequest, learner: str = Query(default="")):
+    _require_self_only(learner)
     entry = await _entry(entry_id)
     return {"correct": check_answer(entry, payload.answer)}
 
 
 @router.post("/questions/{entry_id}/review")
-async def review(entry_id: int, payload: ReviewRequest):
+async def review(entry_id: int, payload: ReviewRequest, learner: str = Query(default="")):
+    _require_self_only(learner)
     try:
         return await asyncio.to_thread(
             PracticeStore(get_sqlite_session_store().db_path).review,
@@ -329,7 +414,9 @@ async def import_preview(
     file: UploadFile = File(...),
     target: Literal["bank", "mistakes"] = Form("bank"),
     course_id: str = Form("", max_length=200),
+    learner: str = Query(default=""),
 ):
+    _require_self_only(learner)
     await _course_session_ids(get_sqlite_session_store(), course_id)
     try:
         data = await file.read(MAX_BYTES + 1)
@@ -357,7 +444,8 @@ async def import_preview(
 
 
 @router.post("/import/commit")
-async def import_commit(payload: CommitRequest):
+async def import_commit(payload: CommitRequest, learner: str = Query(default="")):
+    _require_self_only(learner)
     try:
         return await asyncio.to_thread(
             PracticeStore(get_sqlite_session_store().db_path).commit_import, payload.token

@@ -324,6 +324,20 @@ class PositionPayload(BaseModel):
     percentage: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
+class ReadingTimePayload(BaseModel):
+    """One heartbeat of effective reading time; the server clamps the claim."""
+
+    active_seconds: int = Field(ge=0, le=3600)
+    timezone: str = Field(default="UTC", max_length=64)
+
+
+class ReadingTimeInfo(BaseModel):
+    day: str
+    material_id: str
+    active_seconds: int
+    credited_seconds: int
+
+
 class PositionInfo(PositionPayload):
     percentage: float = 0.0
     updated_at: float = 0.0
@@ -1439,6 +1453,45 @@ async def save_position(material_id: str, payload: PositionPayload) -> PositionI
         return PositionInfo(**saved.to_dict())
     except Exception as exc:
         raise _http_error(exc) from exc
+
+
+@router.post("/materials/{material_id}/reading-time", response_model=ReadingTimeInfo)
+async def save_reading_time(material_id: str, payload: ReadingTimePayload) -> ReadingTimeInfo:
+    """Credit one heartbeat of effective reading time for this account.
+
+    The Reader sends a bounded heartbeat about every 30 seconds while the page
+    is visible, focused and recently used (or read-aloud is playing), plus a
+    final ``sendBeacon`` beat on ``pagehide``. The store credits at most the
+    wall-clock time since the previous accepted beat, so parallel tabs cannot
+    double count and forged claims are truncated.
+    """
+    store = _store()
+    try:
+        assert_learning_material(material_id)
+        store.manifest(material_id)  # heartbeats only exist for stored materials
+    except Exception as exc:
+        raise _http_error(exc) from exc
+    try:
+        result = await asyncio.to_thread(
+            _record_reading_time,
+            material_id,
+            active_seconds=payload.active_seconds,
+            timezone=payload.timezone,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception:
+        logger.exception("Failed to record reading time")
+        raise HTTPException(status_code=500, detail="The reader could not record that heartbeat.")
+    return ReadingTimeInfo(**result)
+
+
+def _record_reading_time(material_id: str, *, active_seconds: int, timezone: str) -> dict:
+    return LearningStore().record_reading_time(
+        material_id,
+        active_seconds=active_seconds,
+        timezone=timezone,
+    )
 
 
 @router.get("/materials/{material_id}/bookmarks", response_model=BookmarkList)
