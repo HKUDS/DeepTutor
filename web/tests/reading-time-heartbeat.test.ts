@@ -82,16 +82,19 @@ test("a beat claims exactly what accumulated since the previous beat", () => {
 test("ReaderPane and MediaReadingStage mount the reading-time heartbeat", () => {
   const pane = source("components/reading/ReaderPane.tsx");
   const media = source("components/reading/workspace/MediaReadingStage.tsx");
+  const heartbeat = source("components/reading/ReadingTimeHeartbeat.tsx");
   const hook = source("components/reading/use-reading-time.ts");
   for (const [name, file] of [
     ["ReaderPane", pane],
     ["MediaReadingStage", media],
   ] as const) {
-    assert.match(file, /useReadingTimeHeartbeat\(/, `${name} mounts the hook`);
+    assert.match(file, /<ReadingTimeHeartbeat/, `${name} mounts the heartbeat`);
+    assert.match(file, /dynamic\(/, `${name} keeps the heartbeat out of the route's first load`);
   }
+  assert.match(heartbeat, /useReadingTimeHeartbeat\(props\)/);
   // Document reading counts read-aloud; media counts playback ticks.
-  assert.match(pane, /playing: \(\) => Boolean\(readingActions\?\.speaking\)/);
-  assert.match(media, /lastMediaTimeAtRef\.current < 2500/);
+  assert.match(pane, /playing=\{\(\) => Boolean\(readingActions\?\.speaking\)\}/);
+  assert.match(media, /playing=\{\(\) => Date\.now\(\) - lastMediaTimeAtRef\.current < 2500\}/);
   // The final beat survives page unload via sendBeacon, timers are cleared.
   assert.match(hook, /sendReadingTimeBeacon/);
   assert.match(hook, /pagehide/);

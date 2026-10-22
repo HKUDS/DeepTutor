@@ -40,7 +40,6 @@ import {
 } from "@/lib/reading-api";
 import { AnnotationList } from "./AnnotationList";
 import { AnnotationPopover, type PopoverAiAction } from "./AnnotationPopover";
-import { useReadingTimeHeartbeat } from "./use-reading-time";
 import { passagePrompts } from "@/lib/reading-passage-prompts";
 import {
   PdfDocumentView,
@@ -82,6 +81,11 @@ function EpubLoading() {
 const EpubDocumentView = dynamic(
   () => import("./EpubDocumentView").then(module => module.EpubDocumentView),
   { ssr: false, loading: EpubLoading },
+);
+
+const ReadingTimeHeartbeat = dynamic(
+  () => import("./ReadingTimeHeartbeat").then(module => module.ReadingTimeHeartbeat),
+  { ssr: false },
 );
 
 /** Event the reader dispatches to prefill the composer from a selection. */
@@ -815,10 +819,6 @@ export function ReaderPane({
   // Effective reading time: heartbeats run while this pane is genuinely used
   // (visible, focused, recent input — or read-aloud is speaking). The server
   // clamps each beat, so two open tabs cannot double count.
-  useReadingTimeHeartbeat({
-    materialId: material?.material_id ?? null,
-    playing: () => Boolean(readingActions?.speaking),
-  });
   const aiActions = useMemo<PopoverAiAction[] | undefined>(() => {
     if (!readingActions || readingActions.ageMode !== "default") return undefined;
     if (!selection || !material) return undefined;
@@ -972,6 +972,10 @@ export function ReaderPane({
 
   return (
     <div className="relative flex h-full min-w-0 flex-col border-r border-[var(--border)] bg-[var(--background)]">
+      <ReadingTimeHeartbeat
+        materialId={material?.material_id ?? null}
+        playing={() => Boolean(readingActions?.speaking)}
+      />
       <header className="flex h-11 shrink-0 items-center gap-1 border-b border-[var(--border)] px-2.5">
         <FileText
           size={14}
