@@ -30,8 +30,8 @@ from deeptutor.services.file_io import atomic_write_json, read_text
 _CURRENT: ContextVar[IndexingRun | None] = ContextVar("indexing_run", default=None)
 _TERMINAL = {"completed", "partial", "failed", "cancelled", "interrupted"}
 _RECOVERY_DESCRIPTION = (
-    "Retry reuses validated parser outputs and completed cloud-parsing slices. "
-    "Uncheckpointed chunking and embedding stages restart."
+    "Retry reuses validated parser outputs and resumable LlamaIndex document "
+    "checkpoints. Uncheckpointed chunking and embedding work restarts."
 )
 
 
@@ -190,6 +190,7 @@ class IndexingRun:
         self._lock = None
         self._token = None
         self._source_paths: dict[str, Path] = {}
+        self.previous_run: dict[str, Any] | None = None
 
     def __enter__(self):
         return self._start()
@@ -254,6 +255,7 @@ class IndexingRun:
                 "recovery": _RECOVERY_DESCRIPTION,
                 "cancel_requested": False,
                 "usable_version": None,
+                "candidate_storage": None,
             }
             from deeptutor.services.rag.file_routing import FileTypeRouter
 
@@ -284,6 +286,7 @@ class IndexingRun:
                     "parse_reused": False,
                 }
             self.active = True
+            self.previous_run = previous
             if bind_context:
                 self._token = _CURRENT.set(self)
             self._save()
@@ -329,6 +332,11 @@ class IndexingRun:
                 fcntl.flock(self._lock.fileno(), fcntl.LOCK_UN)
             self._lock.close()
 
+    def set_candidate_storage(self, storage_dir: Path) -> None:
+        """Record the unpublished output that a retry may resume."""
+        self.data["candidate_storage"] = str(storage_dir)
+        self._save()
+
     def source_key(self, source: Path) -> str:
         try:
             return source.resolve().relative_to((self.kb_dir / "raw").resolve()).as_posix()
@@ -336,6 +344,14 @@ class IndexingRun:
             return (
                 f"external-{sha256(str(source.resolve()).encode()).hexdigest()[:12]}/{source.name}"
             )
+
+    def source_receipts(self) -> dict[str, tuple[Path, str]]:
+        """Return the current run's source path and hash by durable key."""
+        return {
+            key: (self._source_paths[key], str(doc.get("source_hash", "")))
+            for key, doc in self.data["documents"].items()
+            if key in self._source_paths and doc.get("source_hash")
+        }
 
     @staticmethod
     def _hash(source: Path) -> str:
