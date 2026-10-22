@@ -499,6 +499,139 @@ def test_serply_rejects_an_unknown_mode() -> None:
         SerplyProvider(api_key="k").search("q", mode="images")
 
 
+# --------------------------------------------------------------------------
+# You.com: one provider with a keyless free endpoint and a keyed endpoint.
+# --------------------------------------------------------------------------
+
+_YOUCOM_BODY: dict[str, Any] = {
+    "results": {
+        "web": [
+            {
+                "url": "https://example.com/guide",
+                "title": "Example Guide",
+                "description": "Fallback description",
+                "snippets": ["First passage.", "Second passage."],
+                "page_age": "2026-10-01T12:00:00Z",
+            },
+            {
+                "url": "https://example.org/second",
+                "title": "Second Guide",
+                "description": "Description only",
+            },
+        ]
+    },
+    "metadata": {"search_uuid": "uuid-123", "latency": 0.42},
+}
+
+
+@pytest.fixture
+def youcom_calls(monkeypatch):
+    captured: list[dict[str, Any]] = []
+
+    def _get(url: str, **kwargs: Any) -> _FakeResponse:
+        captured.append({"method": "GET", "url": url, **kwargs})
+        return _FakeResponse(_YOUCOM_BODY)
+
+    class _FakeRequests:
+        get = staticmethod(_get)
+
+    monkeypatch.setattr("deeptutor.services.search.providers.youcom.requests", _FakeRequests)
+    return captured
+
+
+def test_youcom_keyless_request_uses_free_agents_endpoint(youcom_calls, monkeypatch) -> None:
+    from deeptutor.services.search.providers.youcom import YouComProvider
+
+    monkeypatch.setattr(YouComProvider, "_get_api_key", lambda self: "")
+    provider = YouComProvider(proxy=PROXY)
+
+    assert provider.api_key == ""
+    provider.search("attention & focus", max_results=2)
+
+    call = youcom_calls[-1]
+    assert call["url"] == "https://api.you.com/v1/agents/search"
+    assert call["params"] == {"query": "attention & focus", "count": 2}
+    assert "X-API-Key" not in call["headers"]
+    assert call["headers"]["User-Agent"] == "deeptutor youdotcom-integration/hkuds-deeptutor"
+    assert call["proxies"] == {"http": PROXY, "https": PROXY}
+
+
+def test_youcom_keyed_request_uses_search_api_endpoint_and_header(youcom_calls) -> None:
+    from deeptutor.services.search.providers.youcom import YouComProvider
+
+    YouComProvider(api_key="k").search("attention", max_results=3)
+
+    call = youcom_calls[-1]
+    assert call["url"] == "https://ydc-index.io/v1/search"
+    assert call["params"]["count"] == 3
+    assert call["headers"]["X-API-Key"] == "k"
+
+
+def test_youcom_maps_rows_snippets_and_metadata(youcom_calls) -> None:
+    from deeptutor.services.search.providers.youcom import YouComProvider
+
+    response = YouComProvider(api_key="k").search("attention", max_results=1)
+
+    assert response.provider == "you"
+    assert response.answer == ""
+    assert response.model == "you-web-search"
+    (row,) = response.search_results
+    assert row.title == "Example Guide"
+    assert row.url == "https://example.com/guide"
+    assert row.snippet == "First passage.\nSecond passage."
+    assert row.source == "example.com"
+    assert row.date == "2026-10-01T12:00:00Z"
+    assert response.citations[0].reference == "[1]"
+    assert response.metadata == {
+        "finish_reason": "stop",
+        "search_uuid": "uuid-123",
+        "latency": 0.42,
+    }
+
+
+def test_youcom_maps_description_when_snippets_are_absent(youcom_calls) -> None:
+    from deeptutor.services.search.providers.youcom import YouComProvider
+
+    response = YouComProvider(api_key="k").search("attention", max_results=2)
+
+    assert response.search_results[1].snippet == "Description only"
+    assert response.search_results[1].source == "example.org"
+
+
+def test_youcom_metadata_comes_from_the_spec_table() -> None:
+    from deeptutor.services.config import SEARCH_PROVIDERS
+    from deeptutor.services.search.providers import list_providers
+    from deeptutor.services.search.providers.youcom import YouComProvider
+
+    spec = SEARCH_PROVIDERS["you"]
+    assert "you" in list_providers()
+    assert YouComProvider.display_name == spec.label
+    assert YouComProvider.requires_api_key is False
+    assert YouComProvider.supports_answer is False
+    assert spec.soft_fallback is True
+
+
+def test_youcom_surfaces_http_errors(monkeypatch) -> None:
+    class _ErrorResponse:
+        status_code = 429
+        text = "rate limit exceeded"
+
+        def json(self) -> dict[str, Any]:
+            return {}
+
+    class _FakeRequests:
+        @staticmethod
+        def get(url: str, **kwargs: Any) -> _ErrorResponse:
+            return _ErrorResponse()
+
+    monkeypatch.setattr("deeptutor.services.search.providers.youcom.requests", _FakeRequests)
+
+    from deeptutor.services.search.providers.youcom import YouComProvider
+
+    with pytest.raises(Exception, match="429 - rate limit exceeded"):
+        YouComProvider(api_key="k").search("q")
+
+
 def test_perplexity_client_sends_integration_header() -> None:
     from perplexity._models import FinalRequestOptions
 
