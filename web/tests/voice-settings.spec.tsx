@@ -291,6 +291,12 @@ it('lets a slow preview use the configured timeout and cancels at that deadline'
 })
 
 it('shows a playback timeout instead of silently returning to idle', async () => {
+  class FakeAudio {
+    play = vi.fn(() => Promise.resolve())
+    pause = vi.fn()
+    load = vi.fn()
+  }
+  vi.stubGlobal('Audio', FakeAudio)
   mock.fetch.mockResolvedValue({ ok: false, status: 504 })
   render(<PlayAudioButton content="Hello" autoPlayFresh={false} />)
   fireEvent.click(screen.getByRole('button', { name: 'Play aloud' }))
