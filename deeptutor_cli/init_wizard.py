@@ -234,6 +234,13 @@ SEARCH_PROVIDERS: tuple[SearchProviderSpec, ...] = (
         hint="no API key needed",
     ),
     SearchProviderSpec(
+        name="you",
+        label="You.com",
+        requires_api_key=False,
+        env_keys=("YDC_API_KEY", "SEARCH_API_KEY"),
+        hint="free tier, no key · key for more",
+    ),
+    SearchProviderSpec(
         name="searxng",
         label="SearXNG",
         requires_api_key=False,

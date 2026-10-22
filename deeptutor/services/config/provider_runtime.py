@@ -92,6 +92,7 @@ SEARCH_PROVIDERS: dict[str, SearchProviderSpec] = {
     "jina": SearchProviderSpec(label="Jina", requires_api_key=True),
     "searxng": SearchProviderSpec(label="SearXNG", requires_base_url=True),
     "duckduckgo": SearchProviderSpec(label="DuckDuckGo"),
+    "you": SearchProviderSpec(label="You.com"),
     "perplexity": SearchProviderSpec(
         label="Perplexity",
         requires_api_key=True,
