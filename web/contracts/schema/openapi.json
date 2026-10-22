@@ -10251,6 +10251,18 @@
             ],
             "title": "Format"
           },
+          "max_input_chars": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Input Chars"
+          },
           "text": {
             "minLength": 1,
             "title": "Text",

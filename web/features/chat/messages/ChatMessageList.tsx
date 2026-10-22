@@ -1337,8 +1337,9 @@ export function CopyActionButton({
   );
 }
 
-// Speaker button: synthesizes this one reply and plays it. Auto-play of later
-// replies is a Settings preference (`autoPlayFresh`), not a first-click prompt.
+// Speaker button: synthesizes this one reply and plays it. Manual playback is
+// capped to a short excerpt; auto-play remains governed by Settings.
+const MANUAL_TTS_MAX_INPUT_CHARS = 500;
 let activePlayback: { owner: object; stop: () => void } | null = null;
 
 async function ttsErrorMessage(resp: Response): Promise<string> {
@@ -1394,7 +1395,7 @@ export function PlayAudioButton({
     if (activePlayback?.owner === playbackOwnerRef.current) activePlayback = null;
   }, [cleanup]);
 
-  const play = useCallback(async () => {
+  const play = useCallback(async (maxInputChars?: number) => {
     activePlayback?.stop();
     const gen = ++genRef.current;
     abortRef.current?.abort();
@@ -1406,7 +1407,7 @@ export function PlayAudioButton({
       const resp = await apiFetch(apiUrl("/api/voice/tts"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: content }),
+        body: JSON.stringify({ text: content, max_input_chars: maxInputChars }),
         signal: ac.signal,
       });
       if (gen !== genRef.current) return;
@@ -1464,7 +1465,7 @@ export function PlayAudioButton({
       stop();
       return;
     }
-    void play();
+    void play(MANUAL_TTS_MAX_INPUT_CHARS);
   }, [play, state, stop]);
 
   // Auto-play a freshly-generated reply when Settings auto-play is on.
@@ -1486,7 +1487,7 @@ export function PlayAudioButton({
   return (
     <div className="relative inline-flex">
       <Tooltip
-        label={state === "playing" ? t("Stop") : t("Play aloud")}
+        label={state === "playing" ? t("Stop") : t("Play aloud (up to the first 500 spoken characters)")}
         side="top"
       >
         <button

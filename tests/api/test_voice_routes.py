@@ -39,6 +39,27 @@ def test_tts_returns_audio_bytes(client: TestClient, monkeypatch: pytest.MonkeyP
     assert captured == {"text": "hello", "voice": "nova", "format": None}
 
 
+def test_tts_forwards_a_request_scoped_excerpt_limit(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: dict[str, Any] = {}
+
+    async def fake_synth(text: str, *, max_input_chars=None, **_: Any):
+        captured["text"] = text
+        captured["max_input_chars"] = max_input_chars
+        return b"audio", "audio/mpeg"
+
+    monkeypatch.setattr(voice_router, "synthesize_speech", fake_synth)
+    resp = client.post("/api/voice/tts", json={"text": "long answer", "max_input_chars": 500})
+    assert resp.status_code == 200
+    assert captured == {"text": "long answer", "max_input_chars": 500}
+
+
+def test_tts_rejects_nonpositive_request_excerpt_limit(client: TestClient) -> None:
+    resp = client.post("/api/voice/tts", json={"text": "hello", "max_input_chars": 0})
+    assert resp.status_code == 422
+
+
 def test_tts_wraps_pcm_bytes_as_browser_playable_wav(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,

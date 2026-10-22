@@ -38,12 +38,14 @@ async def synthesize_speech(
     response_format: str | None = None,
     strip_markdown: bool = True,
     math_speak: bool | None = None,
+    max_input_chars: int | None = None,
 ) -> tuple[bytes, str]:
     """Synthesize ``text`` using the active TTS catalog selection.
 
     Returns ``(audio_bytes, content_type)``. ``voice`` / ``response_format``
     override the catalog defaults for this call. ``math_speak`` defaults to
-    the Settings › Text-to-Speech preference (on).
+    the Settings › Text-to-Speech preference (on). ``max_input_chars``, when
+    set, lowers (but never raises) the model's configured input cap.
     """
     from deeptutor.services.config.provider_runtime import resolve_tts_runtime_config
 
@@ -53,10 +55,13 @@ async def synthesize_speech(
     if response_format:
         config.response_format = response_format
     speak_math = _math_speak_from_settings() if math_speak is None else math_speak
+    char_limit = config.max_input_chars
+    if max_input_chars is not None:
+        char_limit = min(char_limit, max_input_chars)
     prepared = (
-        strip_markdown_for_speech(text, max_chars=config.max_input_chars, math_speak=speak_math)
+        strip_markdown_for_speech(text, max_chars=char_limit, math_speak=speak_math)
         if strip_markdown
-        else text.strip()
+        else text.strip()[:char_limit]
     )
     if not prepared:
         raise VoiceProviderError("Nothing to speak after cleaning the text.")

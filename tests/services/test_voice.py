@@ -862,6 +862,35 @@ async def test_synthesize_speech_facade_strips_markdown(monkeypatch: pytest.Monk
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("model_limit", "request_limit", "expected_max"),
+    [(4096, 12, 12), (8, 20, 8)],
+)
+async def test_synthesize_speech_request_limit_never_exceeds_model_cap(
+    monkeypatch: pytest.MonkeyPatch,
+    model_limit: int,
+    request_limit: int,
+    expected_max: int,
+) -> None:
+    from deeptutor.services.config import provider_runtime
+
+    catalog = _voice_catalog()
+    config = resolve_tts_runtime_config(catalog=catalog)
+    config.max_input_chars = model_limit
+    monkeypatch.setattr(provider_runtime, "resolve_tts_runtime_config", lambda catalog=None: config)
+    response = httpx.Response(200, content=b"audio", headers={"content-type": "audio/wav"})
+    captured = _capture_post(monkeypatch, response)
+
+    await synthesize_speech(
+        "alpha beta gamma delta epsilon", catalog=catalog, max_input_chars=request_limit
+    )
+
+    spoken = captured["json"]["input"]
+    assert len(spoken) <= expected_max
+    assert spoken.startswith("alpha")
+
+
+@pytest.mark.asyncio
 async def test_synthesize_speech_math_speak_off_keeps_caret(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

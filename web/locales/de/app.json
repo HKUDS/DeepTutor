@@ -5025,6 +5025,7 @@
   "Subagent": "Subagent",
   "File": "Datei",
   "Play aloud": "Laut vorlesen",
+  "Play aloud (up to the first 500 spoken characters)": "Laut vorlesen (bis zu den ersten 500 gesprochenen Zeichen)",
   "Auto-play replies in this conversation?": "Antworten in dieser Unterhaltung automatisch vorlesen?",
   "Turn on": "Aktivieren",
   "items": "Elemente",
