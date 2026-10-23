@@ -5520,5 +5520,18 @@
   "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading, Course Study and standard visualizations. Changes take effect on the next turn.": "Gilt für Chat, Problemlösung, Rückfragen, geführtes Lernen, Lesen, Kurslernen und Standardvisualisierungen. Änderungen gelten ab der nächsten Runde.",
   "Clear instructions": "Anweisungen leeren",
   "{{used}} / {{limit}} characters": "{{used}} / {{limit}} Zeichen",
-  "contextBudget.segment.workspace_instructions": "Arbeitsbereichsanweisungen"
+  "contextBudget.segment.workspace_instructions": "Arbeitsbereichsanweisungen",
+  "Strategy": "Strategie",
+  "rounds (days)": "Runden (Tage)",
+  "Use 1-16 non-decreasing whole-day rounds from 0-365 in every row.": "Verwende in jeder Zeile 1-16 nicht abnehmende ganztägige Runden von 0-365.",
+  "Save as custom": "Als benutzerdefiniert speichern",
+  "Delete and use default": "Löschen und Standard verwenden",
+  "Edit strategy": "Strategie bearbeiten",
+  "Duplicate": "Duplizieren",
+  "No custom strategies yet": "Noch keine benutzerdefinierten Strategien",
+  "Close strategy editor": "Strategie-Editor schließen",
+  "Could not load review strategies. Try again.": "Wiederholungsstrategien konnten nicht geladen werden. Versuche es erneut.",
+  "Could not save review strategy. Try again.": "Die Wiederholungsstrategie konnte nicht gespeichert werden. Versuche es erneut.",
+  "Could not duplicate review strategy. Try again.": "Die Wiederholungsstrategie konnte nicht dupliziert werden. Versuche es erneut.",
+  "Could not delete review strategy. Try again.": "Die Wiederholungsstrategie konnte nicht gelöscht werden. Versuche es erneut."
 }

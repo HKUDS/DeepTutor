@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 import math
 import os
 import time
@@ -19,6 +20,25 @@ INTERVAL_SEQUENCES: dict[KnowledgeType, list[int]] = {
     KnowledgeType.PROCEDURE: [3, 7, 14],
     KnowledgeType.DESIGN: [14, 28],
 }
+
+
+def _normalize_interval_sequences(
+    interval_sequences: Mapping[KnowledgeType, Sequence[float]] | None,
+) -> dict[KnowledgeType, list[float]]:
+    """Merge custom per-round intervals over the default sequences.
+
+    A strategy must cover every knowledge type (model validation enforces it);
+    the fallback per type is defensive so a hand-built scheduler can never hit
+    a ``KeyError`` mid-schedule.
+    """
+    sequences: dict[KnowledgeType, list[float]] = {
+        kt: [float(days) for days in rounds] for kt, rounds in INTERVAL_SEQUENCES.items()
+    }
+    if interval_sequences:
+        for kt, rounds in interval_sequences.items():
+            sequences[KnowledgeType(kt)] = [float(days) for days in rounds]
+    return sequences
+
 
 _TYPE_PRIORITY: dict[KnowledgeType, int] = {
     KnowledgeType.MEMORY: 2,
@@ -125,10 +145,31 @@ def review_sort_key(task: ReviewTask, *, now: float) -> tuple[float, float, int]
 
 
 class SpacedRepetitionScheduler:
-    def __init__(self, *, desired_retention: float = DEFAULT_DESIRED_RETENTION) -> None:
+    def __init__(
+        self,
+        *,
+        desired_retention: float = DEFAULT_DESIRED_RETENTION,
+        interval_sequences: Mapping[KnowledgeType, Sequence[float]] | None = None,
+    ) -> None:
         # When True, intervals are in seconds instead of days (for testing)
         self.DEBUG_MODE: bool = os.environ.get("LEARNING_DEBUG", "").lower() in ("1", "true", "yes")
         self.desired_retention = validate_desired_retention(desired_retention)
+        # Per-round intervals for each knowledge type. Defaults to the fixed
+        # baseline; a bound review strategy supplies its own snapshot.
+        self._interval_sequences = _normalize_interval_sequences(interval_sequences)
+
+    @property
+    def interval_sequences(self) -> dict[KnowledgeType, list[float]]:
+        """The per-round interval sequences this scheduler schedules with."""
+        return {kt: list(rounds) for kt, rounds in self._interval_sequences.items()}
+
+    def _rounds(self, knowledge_type: KnowledgeType) -> list[float]:
+        return self._interval_sequences[knowledge_type]
+
+    def _uses_custom_intervals(self, knowledge_type: KnowledgeType) -> bool:
+        return self._rounds(knowledge_type) != [
+            float(days) for days in INTERVAL_SEQUENCES[knowledge_type]
+        ]
 
     def _seconds_per_unit(self) -> float:
         return 1.0 if self.DEBUG_MODE else 86400.0
@@ -148,9 +189,19 @@ class SpacedRepetitionScheduler:
     def _scheduled_interval_days(
         self, state: RepetitionState, knowledge_type: KnowledgeType
     ) -> float:
-        if state.review_count == 0 and INTERVAL_SEQUENCES[knowledge_type][0] == 0:
+        rounds = self._rounds(knowledge_type)
+        if state.review_count == 0 and rounds[0] == 0:
             return 0.0
         interval_days = self._interval_from_stability(state.stability, state.desired_retention)
+        if self._uses_custom_intervals(knowledge_type):
+            configured = float(rounds[min(state.review_count, len(rounds) - 1)])
+            target = self._interval_from_stability(
+                self._stability_from_interval(configured, DEFAULT_DESIRED_RETENTION),
+                state.desired_retention,
+            )
+            if not state.scheduled_after_failure:
+                return target
+            interval_days = min(interval_days, target)
         if state.scheduled_after_failure:
             interval_days = min(
                 interval_days,
@@ -168,7 +219,7 @@ class SpacedRepetitionScheduler:
             if state.difficulty <= 0:
                 state.difficulty = _TYPE_DIFFICULTY.get(knowledge_type, 0.3)
             return state
-        intervals = INTERVAL_SEQUENCES[knowledge_type]
+        intervals = self._rounds(knowledge_type)
         max_index = len(intervals) - 1
         state.interval_index = max(0, min(state.interval_index, max_index))
         state.desired_retention = state.desired_retention or DEFAULT_DESIRED_RETENTION
@@ -187,7 +238,7 @@ class SpacedRepetitionScheduler:
         now: float | None = None,
         desired_retention: float | None = None,
     ) -> RepetitionState:
-        intervals = INTERVAL_SEQUENCES[knowledge_type]
+        intervals = self._rounds(knowledge_type)
         first_interval = float(intervals[0])
         moment = time.time() if now is None else now
         desired = (
@@ -246,7 +297,7 @@ class SpacedRepetitionScheduler:
             else event_moment
         )
         quality = _resolved_quality(evidence)
-        intervals = INTERVAL_SEQUENCES[knowledge_type]
+        intervals = self._rounds(knowledge_type)
         max_index = len(intervals) - 1
 
         # A successful delayed retrieval is stronger evidence than an
@@ -461,7 +512,7 @@ class SpacedRepetitionScheduler:
                 interval = self._scheduled_interval_days(state, kp_type)
                 state.next_review_at = anchor + interval * self._seconds_per_unit()
                 interval = (state.next_review_at - anchor) / self._seconds_per_unit()
-                intervals = INTERVAL_SEQUENCES[kp_type]
+                intervals = self._rounds(kp_type)
                 state.interval_index = _snap_interval_index(intervals, interval, len(intervals) - 1)
             elif state.last_review_at is not None:
                 # Pre-#1541 states have no schedule anchor. Preserve their
@@ -476,6 +527,38 @@ class SpacedRepetitionScheduler:
                 ratio = -math.log(desired) / -math.log(old_desired)
                 state.next_review_at = moment + (state.next_review_at - moment) * ratio
         progress.desired_retention = desired
+        progress.review_queue = self.build_review_queue(progress, now=moment)
+
+    def rebuild_from_evidence(
+        self, progress: LearningProgress, *, now: float | None = None
+    ) -> None:
+        """Replay retention states under this scheduler without new evidence.
+
+        Strategy switches use this so an immediately projected queue matches
+        what replaying the same durable evidence produces later.
+        """
+        moment = time.time() if now is None else now
+        desired = validate_desired_retention(progress.desired_retention)
+        evidence_by_kp: dict[str, list[LearningEvidence]] = {}
+        for evidence in progress.learning_evidence:
+            evidence_by_kp.setdefault(evidence.knowledge_point_id, []).append(evidence)
+
+        for kp_id in list(progress.repetition_states):
+            knowledge_type = progress.knowledge_types.get(kp_id, KnowledgeType.MEMORY)
+            evidence = evidence_by_kp.get(kp_id, [])
+            if evidence:
+                progress.repetition_states[kp_id] = self.replay(
+                    knowledge_type,
+                    evidence,
+                    now=moment,
+                    desired_retention=desired,
+                )
+            else:
+                progress.repetition_states[kp_id] = self.get_initial_state(
+                    knowledge_type,
+                    now=moment,
+                    desired_retention=desired,
+                )
         progress.review_queue = self.build_review_queue(progress, now=moment)
 
     def replay(
@@ -523,7 +606,7 @@ def _resolved_quality(evidence: LearningEvidence) -> float:
     return max(0.0, min(1.0, quality))
 
 
-def _snap_interval_index(intervals: list[int], interval_days: float, max_index: int) -> int:
+def _snap_interval_index(intervals: Sequence[float], interval_days: float, max_index: int) -> int:
     nearest = min(range(len(intervals)), key=lambda i: abs(float(intervals[i]) - interval_days))
     return max(0, min(nearest, max_index))
 

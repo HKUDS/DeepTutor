@@ -5536,5 +5536,18 @@
   "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading, Course Study and standard visualizations. Changes take effect on the next turn.": "Застосовується до чату, розв’язування, запитань, керованого навчання, читання, курсів і стандартних візуалізацій. Зміни діють із наступного ходу.",
   "Clear instructions": "Очистити інструкції",
   "{{used}} / {{limit}} characters": "{{used}} / {{limit}} символів",
-  "contextBudget.segment.workspace_instructions": "Інструкції робочого простору"
+  "contextBudget.segment.workspace_instructions": "Інструкції робочого простору",
+  "Strategy": "Стратегія",
+  "rounds (days)": "раунди (дні)",
+  "Use 1-16 non-decreasing whole-day rounds from 0-365 in every row.": "У кожному рядку використовуйте 1-16 не спадних ціоденних раундів у межах 0-365.",
+  "Save as custom": "Зберегти як власну",
+  "Delete and use default": "Видалити та використати типову",
+  "Edit strategy": "Редагувати стратегію",
+  "Duplicate": "Дублювати",
+  "No custom strategies yet": "Власних стратегій ще немає",
+  "Close strategy editor": "Закрити редактор стратегій",
+  "Could not load review strategies. Try again.": "Не вдалося завантажити стратегії повторень. Спробуйте ще раз.",
+  "Could not save review strategy. Try again.": "Не вдалося зберегти стратегію повторень. Спробуйте ще раз.",
+  "Could not duplicate review strategy. Try again.": "Не вдалося дублювати стратегію повторень. Спробуйте ще раз.",
+  "Could not delete review strategy. Try again.": "Не вдалося видалити стратегію повторень. Спробуйте ще раз."
 }

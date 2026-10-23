@@ -5899,5 +5899,18 @@
   "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading, Course Study and standard visualizations. Changes take effect on the next turn.": "S’applique au chat, à la résolution, aux questions, à l’apprentissage guidé, à la lecture, aux cours et aux visualisations standard. Les changements prennent effet au prochain tour.",
   "Clear instructions": "Effacer les instructions",
   "{{used}} / {{limit}} characters": "{{used}} / {{limit}} caractères",
-  "contextBudget.segment.workspace_instructions": "Instructions de l’espace de travail"
+  "contextBudget.segment.workspace_instructions": "Instructions de l’espace de travail",
+  "Strategy": "Stratégie",
+  "rounds (days)": "rappel (jours)",
+  "Use 1-16 non-decreasing whole-day rounds from 0-365 in every row.": "Utilisez dans chaque ligne 1 à 16 rappels en jours entiers, non décroissants, entre 0 et 365.",
+  "Save as custom": "Enregistrer comme personnalisée",
+  "Delete and use default": "Supprimer et utiliser la valeur par défaut",
+  "Edit strategy": "Modifier la stratégie",
+  "Duplicate": "Dupliquer",
+  "No custom strategies yet": "Aucune stratégie personnalisée pour le moment",
+  "Close strategy editor": "Fermer l’éditeur de stratégie",
+  "Could not load review strategies. Try again.": "Impossible de charger les stratégies de révision. Réessayez.",
+  "Could not save review strategy. Try again.": "Impossible d’enregistrer la stratégie de révision. Réessayez.",
+  "Could not duplicate review strategy. Try again.": "Impossible de dupliquer la stratégie de révision. Réessayez.",
+  "Could not delete review strategy. Try again.": "Impossible de supprimer la stratégie de révision. Réessayez."
 }

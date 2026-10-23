@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
+import re
 import time
 from typing import Any, Literal
 
@@ -235,6 +236,122 @@ class ReviewTask(BaseModel):
     reason: str = ""
     evidence_source: str = ""
     evidence_id: str = ""
+
+
+#: One review round's interval is measured in days. Zero is only meaningful as
+#: the first round ("review again today"); later rounds must be positive so a
+#: strategy cannot pin a learner into an endless same-day loop.
+_REVIEW_INTERVAL_MAX_DAYS = 365
+_REVIEW_INTERVAL_MAX_ROUNDS = 16
+_TEMPLATE_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-_]{1,63}$")
+
+
+def _validate_review_intervals(value: dict[KnowledgeType, list[int]]) -> dict:
+    missing = [kt.value for kt in KnowledgeType if kt not in value]
+    if missing:
+        raise ValueError(f"intervals must define every knowledge type; missing: {missing}")
+    for kt, rounds in value.items():
+        if not isinstance(rounds, list) or not rounds:
+            raise ValueError(f"intervals[{kt.value}] must be a non-empty list of round intervals")
+        if len(rounds) > _REVIEW_INTERVAL_MAX_ROUNDS:
+            raise ValueError(
+                f"intervals[{kt.value}] exceeds {_REVIEW_INTERVAL_MAX_ROUNDS} review rounds"
+            )
+        for index, days in enumerate(rounds):
+            if isinstance(days, bool) or not isinstance(days, int):
+                raise ValueError(f"intervals[{kt.value}][{index}] must be a whole number of days")
+            if days < 0 or days > _REVIEW_INTERVAL_MAX_DAYS:
+                raise ValueError(
+                    f"intervals[{kt.value}][{index}] must be between 0 and "
+                    f"{_REVIEW_INTERVAL_MAX_DAYS} days"
+                )
+            if days == 0 and index > 0:
+                raise ValueError(
+                    f"intervals[{kt.value}][{index}]: only the first round may repeat same day"
+                )
+            if index and days < rounds[index - 1]:
+                raise ValueError(f"intervals[{kt.value}][{index}]: rounds must not get shorter")
+    return value
+
+
+class ReviewStrategyTemplate(BaseModel):
+    """A named set of per-round review intervals, one sequence per knowledge type.
+
+    Preset templates ship with the product (``builtin=True``) and live in code;
+    custom templates are learner-created and persisted by the learning store.
+    Every round carries its own interval, which is what lets one strategy cram
+    with same-day repeats while another stretches rounds over months.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    template_id: str
+    name: str = Field(..., min_length=1, max_length=120)
+    description: str = Field(default="", max_length=500)
+    builtin: bool = False
+    #: Optional recall target applied when the strategy is bound to a path.
+    #: ``None`` keeps the path's existing ``desired_retention``.
+    desired_retention: float | None = Field(default=None, ge=0.7, le=0.99, allow_inf_nan=False)
+    intervals: dict[KnowledgeType, list[int]]
+    created_at: float = Field(default_factory=time.time)
+    updated_at: float = Field(default_factory=time.time)
+
+    @field_validator("template_id")
+    @classmethod
+    def _validate_template_id(cls, value: str) -> str:
+        if not _TEMPLATE_ID_PATTERN.match(value or ""):
+            raise ValueError("template_id must be a lowercase slug (a-z, 0-9, '-', '_')")
+        return value
+
+    @field_validator("name")
+    @classmethod
+    def _validate_name(cls, value: str) -> str:
+        if not (value or "").strip():
+            raise ValueError("name must not be blank")
+        return value.strip()
+
+    @field_validator("intervals")
+    @classmethod
+    def _validate_intervals(cls, value: dict[KnowledgeType, list[int]]) -> dict:
+        return _validate_review_intervals(value)
+
+    def as_binding(self, *, bound_at: float | None = None) -> ReviewStrategyBinding:
+        """Snapshot this template onto a path binding.
+
+        The binding carries its own copy of the intervals so scheduling stays
+        reproducible even if the template is later edited or deleted.
+        """
+        return ReviewStrategyBinding(
+            template_id=self.template_id,
+            name=self.name,
+            builtin=self.builtin,
+            desired_retention=self.desired_retention,
+            intervals=self.intervals,
+            bound_at=bound_at if bound_at is not None else time.time(),
+        )
+
+
+class ReviewStrategyBinding(BaseModel):
+    """The strategy a mastery path schedules with: a frozen template snapshot.
+
+    ``None`` on ``LearningProgress`` means the path uses the built-in default
+    sequences, which is also how every aggregate persisted before customizable
+    strategies reads back — no migration needed.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    template_id: str
+    name: str
+    builtin: bool = False
+    desired_retention: float | None = Field(default=None, ge=0.7, le=0.99, allow_inf_nan=False)
+    intervals: dict[KnowledgeType, list[int]]
+    bound_at: float = Field(default_factory=time.time)
+
+    @field_validator("intervals")
+    @classmethod
+    def _validate_intervals(cls, value: dict[KnowledgeType, list[int]]) -> dict:
+        return _validate_review_intervals(value)
 
 
 class PendingOption(BaseModel):
@@ -653,6 +770,9 @@ class LearningProgress(BaseModel):
     # One target per learning path; older aggregates load at the baseline 0.9.
     # It is copied into each repetition state when that state is created.
     desired_retention: float = Field(default=0.9, ge=0.7, le=0.99, allow_inf_nan=False)
+    # Which review interval strategy this path schedules with. ``None`` is the
+    # built-in default template — also how every pre-strategy aggregate reads.
+    review_strategy: ReviewStrategyBinding | None = None
     repetition_states: dict[str, RepetitionState] = Field(default_factory=dict)
     review_queue: list[ReviewTask] = Field(default_factory=list)
     # A learner may explicitly claim prior mastery.  Policy exposes this as a
@@ -689,6 +809,8 @@ __all__ = [
     "LearningEvidence",
     "RepetitionState",
     "ReviewTask",
+    "ReviewStrategyTemplate",
+    "ReviewStrategyBinding",
     "PendingQuestion",
     "InteractionStatus",
     "MasteryInteraction",
