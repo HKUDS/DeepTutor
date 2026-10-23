@@ -321,13 +321,29 @@ class TurnApplicationService:
                 # Ownership/cleanup can change between the reads above.
                 if await store.get_events(turn_id, last_seq):
                     continue
-                # Only legacy terminal rows with no journal need synthesis.
+                # Recovery can commit FAILED before its terminal journal is
+                # written. A client may also have seen volatile events beyond
+                # the durable cursor. In either case preserve the failure
+                # envelope: DONE alone hides errors on partial responses.
                 metadata = {
                     "status": status,
                     "synthesized": True,
                     "error_code": str(turn.get("failure_code") or ""),
                     "retryable": bool(turn.get("retryable")),
                 }
+                if status == "failed":
+                    last_seq += 1
+                    yield {
+                        "type": "error",
+                        "source": "turn_application",
+                        "stage": "",
+                        "content": str(turn.get("error") or "Turn failed; retry to continue"),
+                        "metadata": {**metadata, "turn_terminal": True},
+                        "session_id": turn.get("session_id", ""),
+                        "turn_id": turn_id,
+                        "seq": last_seq,
+                        "timestamp": time.time(),
+                    }
                 yield {
                     "type": "done",
                     "source": "turn_application",
@@ -472,10 +488,10 @@ class TurnApplicationService:
         seconds whether or not it is producing output, so "no lease" is the one
         signal that separates a zombie from a slow human.
 
-        Doing it here rather than on a timer is what makes it safe: the only
-        rows ever considered are ones already blocking a real request, so
-        there is no window in which a just-inserted turn can be swept before
-        its first renewal — the hazard that kept the periodic version out.
+        This synchronous path avoids waiting for the background recovery
+        pass when a new request is already blocked. Admission acquires its
+        lease before inserting a turn, so a live new row is protected even
+        before its first renewal.
 
         Returns ``True`` when something was reaped and the caller should retry.
         """

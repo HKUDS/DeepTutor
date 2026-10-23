@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import uuid
 
@@ -7,6 +8,8 @@ import pytest
 import pytest_asyncio
 
 from deeptutor.runtime.coordination import RedisCoordinator
+from deeptutor.runtime.coordination.recovery import TurnRecoveryService
+from deeptutor.services.session.sqlite_store import SQLiteSessionStore
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.redis_integration]
 
@@ -103,3 +106,34 @@ async def test_two_redis_coordinators_share_turn_and_background_streams(coordina
         assert await coordinator.release_turn(lease) is True
     finally:
         await second.close()
+
+
+async def test_recovery_preserves_shared_events_and_live_owner(coordinator, tmp_path) -> None:
+    store = SQLiteSessionStore(tmp_path / "recovery.db")
+    session = await store.ensure_session(None)
+    lease = await coordinator.acquire_turn("recover-me", session["id"], "worker")
+    assert lease is not None
+    await store.begin_turn(
+        session["id"],
+        "chat",
+        turn_id=lease.turn_id,
+        owner_id=lease.owner_id,
+        fencing_token=lease.fencing_token,
+    )
+    content = await coordinator.publish_event(lease.turn_id, {"type": "content", "content": "kept"})
+    recovery = TurnRecoveryService(coordinator, store)
+    assert await recovery.recover_once() == 0
+    assert (await store.get_turn(lease.turn_id))["status"] == "running"
+    # Simulate lease expiry, not a graceful release (which removes the
+    # expired-candidate index). Keep the shared event stream intact.
+    await coordinator.client.pexpire(coordinator._key("lease", "turn", lease.turn_id), 1)
+    await coordinator.client.zadd(coordinator._key("leases", "turns"), {lease.turn_id: 0})
+    await asyncio.sleep(0.02)
+    assert await recovery.recover_once() == 1
+    events = await store.get_events(lease.turn_id)
+    assert [event["type"] for event in events] == ["content", "error", "done"]
+    assert [event["seq"] for event in events] == [1, 2, 3]
+    assert events[0]["content"] == content["content"]
+    assert [event["seq"] for event in await coordinator.read_events(lease.turn_id)] == [1, 2, 3]
+    assert (await store.get_turn(lease.turn_id))["failure_code"] == "worker_lost"
+    assert await recovery.recover_once() == 0
