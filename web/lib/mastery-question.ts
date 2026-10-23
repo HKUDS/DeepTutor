@@ -203,6 +203,68 @@ export function collectMasteryQuestions(
   return questions;
 }
 
+type MasterySubmissionMessage = {
+  failedSubmission?: boolean;
+  requestSnapshot?: {
+    masteryAnswer?: { question_id?: string; text?: string } | null;
+  } | null;
+  events?: StreamEvent[];
+};
+
+/**
+ * Answers the learner already handed in, by question id.
+ *
+ * The grade arrives on a later turn. Until then the question is no longer
+ * waiting above the composer: the answer already sits in the conversation.
+ * A rejection reopens the card there, instead of covering the composer again.
+ */
+export function collectMasterySubmissions(
+  messages: MasterySubmissionMessage[],
+): Map<string, string> {
+  const answers = new Map<string, string>();
+  for (const message of messages) {
+    if (message.failedSubmission) continue;
+    const answer = message.requestSnapshot?.masteryAnswer;
+    const questionId = answer?.question_id?.trim() ?? "";
+    const answerText = answer?.text?.trim() ?? "";
+    if (questionId && answerText) answers.set(questionId, answerText);
+  }
+  return answers;
+}
+
+/**
+ * The question still waiting on the learner.
+ *
+ * Later messages win. A grade, a skip, or an answer already sent closes the
+ * question it names, so an older card does not stay open above the composer
+ * after the learner has already dealt with it.
+ */
+export function latestOpenMasteryQuestion(
+  messages: MasterySubmissionMessage[],
+): MasteryQuestion | null {
+  const grades = collectMasteryGrades(messages);
+  const skips = collectMasterySkips(messages);
+  const submissions = collectMasterySubmissions(messages);
+  let open: MasteryQuestion | null = null;
+  for (const message of messages) {
+    for (const question of collectMasteryQuestions(message.events).values()) {
+      const grade = grades.get(question.questionId);
+      const settled =
+        Boolean(grade) && grade?.complete !== false && grade?.final !== false;
+      const handedIn =
+        skips.has(question.questionId) ||
+        submissions.has(question.questionId) ||
+        settled;
+      if (handedIn) {
+        if (open?.questionId === question.questionId) open = null;
+        continue;
+      }
+      open = question;
+    }
+  }
+  return open;
+}
+
 /**
  * The mastery question this message posed last, or null when it posed none.
  *

@@ -118,7 +118,7 @@ export default function KanbanPage() {
         />
 
         <form
-          className="mb-6 flex items-center gap-2 rounded-xl border border-border/80 bg-card p-1.5 transition-[border-color,box-shadow] focus-within:border-primary/40 focus-within:ring-[3px] focus-within:ring-primary/5"
+          className="dt-board-composer mb-6 flex items-center gap-2 rounded-xl border border-border/80 bg-card p-1.5 transition-[border-color,box-shadow] focus-within:border-primary/40 focus-within:ring-[3px] focus-within:ring-primary/5"
           onSubmit={event => {
             event.preventDefault()
             if (title.trim())
@@ -191,7 +191,7 @@ export default function KanbanPage() {
                 setDragged(null)
                 setDropTarget(null)
               }}
-              className={`min-h-[12rem] rounded-2xl border p-3 transition-colors sm:p-3.5 lg:min-h-[24rem] ${dropTarget === column.id ? 'border-primary/35 bg-primary/5 ring-2 ring-primary/10' : 'border-border/45 bg-secondary/65'}`}
+              className={`dt-board-column min-h-[12rem] rounded-2xl border p-3 transition-colors sm:p-3.5 lg:min-h-[24rem] ${dropTarget === column.id ? 'border-primary/35 bg-primary/5 ring-2 ring-primary/10' : 'border-border/45 bg-secondary/65'}`}
             >
               <div className="mb-3 flex items-center justify-between px-1 py-1.5">
                 <div className="flex items-start gap-2.5">
@@ -393,7 +393,7 @@ export default function KanbanPage() {
                     </article>
                   ))}
                 {board && count(column.id) === 0 && (
-                  <div className="flex min-h-28 flex-col items-center justify-center gap-2.5 rounded-xl border border-dashed border-border/65 px-4 py-6 text-center">
+                  <div className="dt-board-empty flex min-h-28 flex-col items-center justify-center gap-2.5 rounded-xl border border-dashed border-border/65 px-4 py-6 text-center">
                     <column.icon
                       aria-hidden
                       size={20}

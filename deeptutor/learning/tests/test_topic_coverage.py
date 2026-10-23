@@ -20,6 +20,7 @@ import pytest
 from deeptutor.knowledge.manifest import KbDocument, KbManifest
 from deeptutor.learning.models import TopicSource, TopicSourceKind
 from deeptutor.learning.topic_generation import (
+    _MAX_OBJECTIVES_PER_MODULE,
     DEFAULT_MODULE_LIMIT,
     MAX_MODULE_LIMIT,
     TopicGenerationError,
@@ -99,12 +100,16 @@ def test_a_strict_region_over_the_waypoint_cap_is_rejected() -> None:
         {
             "name": "Crowded",
             "knowledge_points": [
-                {"name": f"Objective {index}", "type": "concept"} for index in range(8)
+                {"name": f"Objective {index}", "type": "concept"}
+                for index in range(_MAX_OBJECTIVES_PER_MODULE + 1)
             ],
         }
     ]
 
-    with pytest.raises(TopicGenerationError, match="at most 7 waypoints"):
+    with pytest.raises(
+        TopicGenerationError,
+        match=f"at most {_MAX_OBJECTIVES_PER_MODULE} waypoints",
+    ):
         materialize_modules("topic", raw, strict=True)
 
 

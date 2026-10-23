@@ -156,6 +156,7 @@ _THEME_CHOICES: tuple[tuple[str, str, str], ...] = (
     ("light", "Light", "Warm light theme."),
     ("dark", "Dark", "Dark theme."),
     ("glass", "Glass", "Translucent theme with blur."),
+    ("folio", "Folio", "Quiet paper theme. Warm-gray page, white cards, ink accent."),
 )
 
 

@@ -85,6 +85,7 @@ import {
   collectMasteryAnswerRejections,
   collectMasteryGrades,
   collectMasterySkips,
+  collectMasterySubmissions,
   extractMasteryQuestion,
   type MasteryGradeResult,
   type MasteryAnswerRejection,
@@ -674,7 +675,10 @@ export const AssistantMessage = memo(function AssistantMessage({
   onTraceToggle,
   masteryGrades,
   masterySkips,
+  masterySubmissions,
   masteryAnswerRejections,
+  deferPendingAskUser = false,
+  deferPendingMasteryQuestion = false,
 }: {
   msg: {
     id?: number;
@@ -693,6 +697,8 @@ export const AssistantMessage = memo(function AssistantMessage({
   /** Every question the learner dropped, by id — collected the same way and
    *  for the same reason: the skip lands on a later turn than the card. */
   masterySkips?: Set<string>;
+  /** Answers already sent, before the grade arrives. */
+  masterySubmissions?: Map<string, string>;
   masteryAnswerRejections?: Map<string, MasteryAnswerRejection>;
   outlineStatus?: "editing" | "researching" | "done" | "failed";
   sessionId?: string | null;
@@ -741,6 +747,15 @@ export const AssistantMessage = memo(function AssistantMessage({
     questionId: string,
   ) => void | boolean | Promise<void | boolean>;
   onChallengeMasteryQuestion?: (questionId: string) => void | boolean | Promise<void | boolean>;
+  /**
+   * Outline editing lifts an unanswered ``ask_user`` into a dialog. The
+   * choices stay out of the transcript until the learner picks; the resolved
+   * card then records that pick in place.
+   */
+  deferPendingAskUser?: boolean;
+  /** An unanswered mastery question is answered above the composer. The
+   *  settled card stays in the transcript, with the learner's answer. */
+  deferPendingMasteryQuestion?: boolean;
 }) {
   const { t } = useTranslation();
   const events = useMemo(() => msg.events ?? [], [msg.events]);
@@ -834,13 +849,19 @@ export const AssistantMessage = memo(function AssistantMessage({
   const renderMasteryCard = useCallback(
     (question: MasteryQuestion) => {
       const grade = masteryGrades?.get(question.questionId) ?? null;
+      const submitted = masterySubmissions?.get(question.questionId) ?? "";
+      const rejected = Boolean(
+        masteryAnswerRejections?.get(question.questionId),
+      );
+      const graded =
+        Boolean(grade) && grade?.complete !== false && grade?.final !== false;
       return (
         <MasteryQuestionCard
           question={question}
           grade={grade}
-          answered={Boolean(grade) && grade?.complete !== false && grade?.final !== false}
+          answered={graded || (Boolean(submitted) && !rejected)}
           skipped={masterySkips?.has(question.questionId) ?? false}
-          submittedAnswer={grade?.learnerAnswer ?? ""}
+          submittedAnswer={grade?.learnerAnswer || submitted}
           rejectionKey={!grade || grade.complete === false || grade.final === false ? masteryAnswerRejections?.get(question.questionId)?.retryKey : undefined}
           onSubmit={({ text, answers }) =>
             onAnswerMasteryQuestion
@@ -859,11 +880,24 @@ export const AssistantMessage = memo(function AssistantMessage({
     [
       masteryGrades,
       masterySkips,
+      masterySubmissions,
       masteryAnswerRejections,
       onAnswerMasteryQuestion,
       onSkipMasteryQuestion,
-  onChallengeMasteryQuestion,
+      onChallengeMasteryQuestion,
     ],
+  );
+  const questionWaitsAboveComposer = useCallback(
+    (question: MasteryQuestion) => {
+      if (!deferPendingMasteryQuestion) return false;
+      if (masterySubmissions?.has(question.questionId)) return false;
+      const grade = masteryGrades?.get(question.questionId) ?? null;
+      const skipped = masterySkips?.has(question.questionId) ?? false;
+      const answered =
+        Boolean(grade) && grade?.complete !== false && grade?.final !== false;
+      return !answered && !skipped;
+    },
+    [deferPendingMasteryQuestion, masteryGrades, masterySkips, masterySubmissions],
   );
   // Set by ``request_credential`` when a configuration step needs a secret the
   // assistant must not handle itself.
@@ -1167,15 +1201,19 @@ export const AssistantMessage = memo(function AssistantMessage({
             </ProcessFold>
           ) : block.kind === "card" ? (
             block.segment.kind === "mastery_question" ? (
-              <div key={block.key}>
-                {renderMasteryCard(block.segment.question)}
-              </div>
+              questionWaitsAboveComposer(block.segment.question) ? null : (
+                <div key={block.key}>
+                  {renderMasteryCard(block.segment.question)}
+                </div>
+              )
             ) : block.segment.kind === "ask_user" ? (
-              <AskUserOptions
-                key={block.key}
-                data={block.segment.data}
-                onSubmit={submitReply}
-              />
+              deferPendingAskUser && !block.segment.data.resolved ? null : (
+                <AskUserOptions
+                  key={block.key}
+                  data={block.segment.data}
+                  onSubmit={submitReply}
+                />
+              )
             ) : null
           ) : block.segment.kind === "text" ? (
             <AssistantResponse
@@ -1208,13 +1246,17 @@ export const AssistantMessage = memo(function AssistantMessage({
           card below the body. The default branch inlines it via
           ``messageSegments``; the research branch renders its own card
           above the outline editor — both skip this fallback. */}
-      {!outlinePreview && !hasInlineCards && latestMasteryQuestion
+      {!outlinePreview &&
+      !hasInlineCards &&
+      latestMasteryQuestion &&
+      !questionWaitsAboveComposer(latestMasteryQuestion)
         ? renderMasteryCard(latestMasteryQuestion)
         : null}
       {!outlinePreview &&
       !hasInlineCards &&
       !latestMasteryQuestion &&
-      askUserPayload ? (
+      askUserPayload &&
+      !(deferPendingAskUser && !askUserPayload.resolved) ? (
         <AskUserOptions data={askUserPayload} onSubmit={submitReply} />
       ) : null}
       {/* Credential hand-off sits below whichever body branch rendered: it
@@ -2028,6 +2070,8 @@ export const ChatMessageList = memo(function ChatMessageList({
   showModeBadge = true,
   onLoadMessageTrace,
   onReleaseMessageTrace,
+  deferPendingAskUser = false,
+  deferPendingMasteryQuestion = false,
 }: {
   messages: ChatMessageItem[];
   isStreaming: boolean;
@@ -2096,6 +2140,11 @@ export const ChatMessageList = memo(function ChatMessageList({
   showModeBadge?: boolean;
   onLoadMessageTrace?: (messageId: number) => Promise<void>;
   onReleaseMessageTrace?: (messageId: number) => void;
+  /** See ``AssistantMessage``. Outline sessions pass this so a pending
+   *  decision is chosen in the dialog, then recorded in the transcript. */
+  deferPendingAskUser?: boolean;
+  /** See ``AssistantMessage``. */
+  deferPendingMasteryQuestion?: boolean;
 }) {
   const { t } = useTranslation();
   // Visible path: when no branching has happened the result is identical
@@ -2188,6 +2237,10 @@ export const ChatMessageList = memo(function ChatMessageList({
   );
   const masteryAnswerRejections = useMemo(
     () => collectMasteryAnswerRejections(visibleMessages),
+    [visibleMessages],
+  );
+  const masterySubmissions = useMemo(
+    () => collectMasterySubmissions(visibleMessages),
     [visibleMessages],
   );
 
@@ -2433,7 +2486,10 @@ export const ChatMessageList = memo(function ChatMessageList({
                 onTraceToggle={handleTraceToggle}
                 masteryGrades={masteryGrades}
                 masterySkips={masterySkips}
+                masterySubmissions={masterySubmissions}
                 masteryAnswerRejections={masteryAnswerRejections}
+                deferPendingAskUser={deferPendingAskUser}
+                deferPendingMasteryQuestion={deferPendingMasteryQuestion}
               />
             </InlineFileCardProvider>
             <GeneratedFileCards

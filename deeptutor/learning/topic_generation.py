@@ -32,7 +32,7 @@ DEFAULT_MODULE_LIMIT = 8
 #: a route and becomes a table of contents.
 MAX_MODULE_LIMIT = 20
 #: Waypoints one region may hold. A strict caller that exceeds it is told.
-_MAX_OBJECTIVES_PER_MODULE = 7
+_MAX_OBJECTIVES_PER_MODULE = 30
 #: Documents named per knowledge base when handing the model its inventory.
 #: A route has to be able to *account for* every file, which means seeing the
 #: list — but a 400-document library would otherwise crowd out the excerpts.

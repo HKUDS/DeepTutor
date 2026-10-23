@@ -11,7 +11,7 @@ const surfaces = [
   ["Co-Writer", "/co-writer"],
 ] as const;
 
-const themes = ["snow", "light", "dark", "glass"] as const;
+const themes = ["snow", "light", "dark", "glass", "folio"] as const;
 const languages = ["en", "zh"] as const;
 const viewports = [
   ["mobile", { width: 390, height: 844 }],
@@ -57,9 +57,10 @@ for (const theme of themes) {
               expect(rootClasses).toContain("dark");
               expect(rootClasses).toContain("theme-glass");
             }
+            if (theme === "folio") expect(rootClasses).toContain("theme-folio");
             if (theme === "light") {
               expect(rootClasses || "").not.toMatch(
-                /\bdark\b|\btheme-snow\b|\btheme-glass\b/,
+                /\bdark\b|\btheme-snow\b|\btheme-glass\b|\btheme-folio\b/,
               );
             }
 

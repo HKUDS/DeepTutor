@@ -3334,9 +3334,8 @@ def _normalized_module_tree(
 
 
 #: Waypoints one module may hold, matching
-#: ``topic_generation._MAX_OBJECTIVES_PER_MODULE``. A module the tutor keeps
-#: adding to stops being a module.
-_MAX_POINTS_PER_MODULE = 7
+#: ``topic_generation._MAX_OBJECTIVES_PER_MODULE``.
+_MAX_POINTS_PER_MODULE = 30
 
 
 def _revised_point_id(module_id: str, taken: set[str]) -> str:

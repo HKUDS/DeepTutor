@@ -1,7 +1,7 @@
 "use client";
 
 import { PageHeader, PAGE_SECTION_TITLE_CLASS, pageGridClass } from '@/components/layout/FeaturePage'
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { useTranslation } from "react-i18next";
 import { useCapabilityFilter } from "@/features/capabilities/useCapabilityCatalog";
@@ -251,6 +251,39 @@ const GROUPS: DashboardGroup[] = [
   },
 ];
 
+const COVERS: Record<DashKey, { paper: string; ink: string; label: string }> = {
+  chat_history: { paper: "#e7eef5", ink: "#2c4664", label: "历史" },
+  notebooks: { paper: "#f6eee6", ink: "#684632", label: "笔记" },
+  journal: { paper: "#e6f1eb", ink: "#2d5644", label: "日志" },
+  question_bank: { paper: "#e8f0e4", ink: "#35562f", label: "题库" },
+  knowledge: { paper: "#e8eaf3", ink: "#30385a", label: "知识" },
+  personas: { paper: "#f6e9ed", ink: "#683c4a", label: "角色" },
+  skills: { paper: "#eee9f5", ink: "#3d3664", label: "技能" },
+  mcp: { paper: "#e6eef3", ink: "#2a485c", label: "服务" },
+  cli_apps: { paper: "#f1eee8", ink: "#3e3a34", label: "命令" },
+  memory: { paper: "#f6e9eb", ink: "#663e48", label: "记忆" },
+  whisper: { paper: "#efeaf4", ink: "#4a3c60", label: "密语" },
+};
+
+function EntryCover({ id }: { id: DashKey }) {
+  const cover = COVERS[id];
+  return (
+    <svg className="dt-entry-cover" viewBox="0 0 200 72" aria-hidden>
+      <rect width="200" height="72" rx="8" fill={cover.paper} />
+      <text
+        x="16"
+        y="44"
+        fill={cover.ink}
+        fontSize="18"
+        fontWeight="500"
+        fontFamily="ui-sans-serif, system-ui, sans-serif"
+      >
+        {cover.label}
+      </text>
+    </svg>
+  );
+}
+
 const ALL_ITEMS = GROUPS.flatMap(g => g.items);
 
 /**
@@ -329,7 +362,7 @@ export default function SpaceDashboard() {
             <h2 className={`mb-3 ${PAGE_SECTION_TITLE_CLASS}`}>
               {tr(group.label)}
             </h2>
-            <div className={pageGridClass(2)}>
+            <div className={`${pageGridClass(2)} dt-folio-board`}>
               {group.items.map(item => (
                 <DashboardCard
                   key={item.key}
@@ -365,21 +398,23 @@ function DashboardCard({
   return (
     <Link
       href={item.key === "journal" ? scopedUrl(item.href) : item.href}
-      className="group relative flex flex-col rounded-xl border border-[var(--border)] bg-[var(--card)] p-4 transition-all duration-150 hover:-translate-y-0.5 hover:border-[var(--foreground)]/20 hover:shadow-[0_6px_20px_-12px_rgba(0,0,0,0.25)]"
+      className="dt-entry-card group relative flex flex-col rounded-xl border border-[var(--border)] bg-[var(--card)] p-4 transition-all duration-150 hover:-translate-y-0.5 hover:border-[var(--foreground)]/20 hover:shadow-[0_6px_20px_-12px_rgba(0,0,0,0.25)]"
+      style={{ "--dt-entry-ink": COVERS[item.key].ink } as CSSProperties}
     >
-      <div className="flex items-start gap-3">
+      <EntryCover id={item.key} />
+      <div className="dt-entry-row flex items-start gap-3">
         <span
           aria-hidden
-          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${item.tile}`}
+          className={`dt-entry-mark flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${item.tile}`}
         >
           <Icon size={18} strokeWidth={1.7} />
         </span>
         <div className="min-w-0 flex-1">
-          <h3 className="truncate text-[14.5px] font-medium leading-tight tracking-tight text-[var(--foreground)]">
+          <h3 className="dt-entry-title truncate text-[14.5px] font-medium leading-tight tracking-tight text-[var(--foreground)]">
             {tr(item.title)}
           </h3>
           {item.unit ? (
-            <div className="mt-1 flex items-baseline gap-1.5">
+            <div className="dt-entry-count mt-1 flex items-baseline gap-1.5">
               {loaded ? (
                 <>
                   <span className="text-[20px] font-semibold leading-none tabular-nums text-[var(--foreground)]">
@@ -397,10 +432,10 @@ function DashboardCard({
         </div>
         <ArrowUpRight
           size={16}
-          className="shrink-0 text-[var(--muted-foreground)]/40 transition-colors group-hover:text-[var(--foreground)]"
+          className="dt-entry-go shrink-0 text-[var(--muted-foreground)]/40 transition-colors group-hover:text-[var(--foreground)]"
         />
       </div>
-      <p className="mt-3 text-[12.5px] leading-relaxed text-[var(--muted-foreground)]">
+      <p className="dt-entry-blurb mt-3 text-[12.5px] leading-relaxed text-[var(--muted-foreground)]">
         {tr(item.blurb)}
       </p>
       {item.credit ? (

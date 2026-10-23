@@ -266,6 +266,55 @@
     transform: translateY(-1px);
   }
 
+  /* Folio — Manus home chrome. Cool-gray sidebar, warm off-white page,
+     white cards, hairline borders, no drop shadow. Color stays in
+     pictures; chrome icons are plain ink. */
+  .theme-folio {
+    color-scheme: light;
+    --background: #f8f8f6;
+    --foreground: #1a1a1a;
+    --card: #ffffff;
+    --card-foreground: #1a1a1a;
+    --popover: #ffffff;
+    --popover-foreground: #1a1a1a;
+    --primary: #1c1c1c;
+    --primary-foreground: #f8f8f6;
+    --secondary: #f1f1f3;
+    --secondary-foreground: #1a1a1a;
+    --muted: #f3f3f1;
+    --muted-foreground: #5e5e5a;
+    --accent: #e3e3e6;
+    --accent-foreground: #1a1a1a;
+    --destructive: #c53a2c;
+    --destructive-foreground: #ffffff;
+    --border: #d4d4d0;
+    --input: #d4d4d0;
+    --ring: #1c1c1c;
+    --overlay: rgba(26, 26, 26, 0.42);
+    --success: #237a4b;
+    --success-foreground: #14532d;
+    --success-surface: #ecf8f0;
+    --warning: #a15c00;
+    --warning-foreground: #713f12;
+    --warning-surface: #fff7df;
+    --info: #3d5a80;
+    --info-foreground: #1e3a5f;
+    --info-surface: #eef3f8;
+    --surface-raised: #ffffff;
+    --shadow-raised: 0 12px 32px rgba(26, 26, 26, 0.08);
+  }
+
+  .theme-folio .surface-card {
+    background: #ffffff;
+    border-color: #d4d4d0;
+    box-shadow: none;
+  }
+
+  .theme-folio .surface-card:hover {
+    border-color: #bdbdb8;
+    box-shadow: none;
+  }
+
   /* Collection folder tints (Immersive Reading). These are user-picked
      category colours rather than theme accents, so they sit outside the
      palettes: one set for light canvases, a softer one for dark ones. */
@@ -1453,4 +1502,143 @@ a[href^="#dt-locator-"]:hover {
 .watching-surface[data-browsing] .watching-mobile-tabs {
   visibility: hidden;
   pointer-events: none;
+}
+
+/* Folio entry cards. One sans family, stepped sizes:
+   page 20 / card name 13 / description 12 / label and count 11.
+   Covers share one lightness; color stays inside the plate.
+   Cards are a fixed 200px, so the picture and the text block
+   stay the same size in every column. */
+html.theme-folio .dt-page-header {
+  margin-bottom: 28px;
+}
+html.theme-folio .dt-page-title {
+  font-family: inherit;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+html.theme-folio .dt-page-grid {
+  gap: 22px;
+}
+html.theme-folio .dt-folio-board {
+  grid-template-columns: repeat(auto-fill, 200px);
+  gap: 16px 14px;
+  justify-content: start;
+}
+.dt-entry-cover {
+  display: none;
+}
+html.theme-folio .dt-entry-cover {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 0;
+  border-radius: 8px;
+}
+html.theme-folio .dt-entry-card {
+  width: 200px;
+  max-width: 100%;
+  padding: 8px 8px 12px;
+  border-radius: 14px;
+  border-color: #e6e6e2;
+  background: #ffffff;
+  box-shadow: none;
+  transform: none;
+}
+html.theme-folio .dt-entry-card:hover {
+  transform: none;
+  border-color: #d5d5d0;
+  box-shadow: none;
+}
+html.theme-folio .dt-entry-go {
+  display: none;
+}
+html.theme-folio .dt-entry-mark {
+  position: absolute;
+  top: 30px;
+  right: 20px;
+  display: flex;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--dt-entry-ink, #2a2a28);
+}
+html.theme-folio .dt-entry-row,
+html.theme-folio .dt-entry-row > div {
+  display: contents;
+}
+html.theme-folio .dt-entry-title {
+  order: 1;
+  margin-top: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: 0;
+  color: #1a1a1a;
+}
+html.theme-folio .dt-entry-blurb {
+  order: 2;
+  display: -webkit-box;
+  margin-top: 4px;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.55;
+  color: #5c5c58;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  min-height: 37px;
+}
+html.theme-folio .dt-entry-count,
+html.theme-folio .dt-entry-count > span {
+  order: 3;
+  margin-top: 8px;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.3;
+  color: #a3a3a0;
+}
+html.theme-folio .dt-entry-go {
+  opacity: 0.35;
+}
+html.theme-folio aside a,
+html.theme-folio aside button {
+  border-radius: 10px;
+}
+
+/* Columns and roster cards sit a full step off the page, so an empty
+   board or a single partner still reads as a place you can use. */
+html.theme-folio .dt-board-composer {
+  border-color: #d4d4d0;
+  background: #ffffff;
+}
+html.theme-folio .dt-board-composer button:disabled {
+  background: #ececea;
+  color: #5e5e5a;
+  opacity: 1;
+}
+html.theme-folio .dt-board-column {
+  border-color: #d8d8d4;
+  background: #f3f3f1;
+}
+html.theme-folio .dt-board-column h2 {
+  color: #1a1a1a;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+html.theme-folio .dt-board-empty {
+  border-color: #c8c8c4;
+}
+html.theme-folio .dt-board-empty svg {
+  color: #5e5e5a;
+  opacity: 1;
+}
+html.theme-folio .dt-board-empty p {
+  color: #5e5e5a;
+  font-size: 12px;
 }

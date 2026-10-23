@@ -60,6 +60,16 @@ const PALETTES: Record<Theme, Palette> = {
     border: "rgba(255,255,255,0.12)",
     glass: true,
   },
+  // theme id "folio" applies .theme-folio → quiet paper: warm-gray page,
+  // white cards, ink accent kept off the card face.
+  folio: {
+    bg: "#f8f8f6",
+    fg: "#1a1a1a",
+    card: "#ffffff",
+    primary: "#1c1c1c",
+    muted: "#e9e9eb",
+    border: "#e7e7e5",
+  },
 };
 
 // Renders a miniature DeepTutor UI mockup in the given theme's palette —

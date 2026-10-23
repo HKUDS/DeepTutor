@@ -14,7 +14,7 @@ import { setTheme, type Theme } from "@/lib/theme";
 import { collectAppliedSettingIds } from "@/lib/setup-signals";
 import type { StreamEvent } from "@/features/chat/model/protocol";
 
-const THEMES: readonly Theme[] = ["light", "dark", "glass", "snow"];
+const THEMES: readonly Theme[] = ["light", "dark", "glass", "snow", "folio"];
 
 function asTheme(value: unknown): Theme | null {
   return typeof value === "string" &&

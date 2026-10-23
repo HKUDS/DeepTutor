@@ -245,6 +245,28 @@ export function extractAskUserPayload(
 }
 
 /**
+ * The decision still waiting on the learner, if the conversation has one.
+ *
+ * Walks newest first. A later resolved card means the learner already
+ * answered, so an older unanswered card is not reopened. Streaming previews
+ * are only read from the last message: a settled turn must not resurrect a
+ * draft that never became a question.
+ */
+export function latestPendingAskUser(
+  messages: { events?: StreamEvent[] }[],
+  { streaming = false }: { streaming?: boolean } = {},
+): AskUserCardData | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const card = extractAskUserPayload(messages[index]?.events, {
+      streaming: streaming && index === messages.length - 1,
+    });
+    if (!card) continue;
+    return card.resolved ? null : card;
+  }
+  return null;
+}
+
+/**
  * Interleaved message body. Walks the event stream forward and emits a
  * sequence of segments in the order they were produced, so that text
  * generated before an ``ask_user`` tool result renders ABOVE the card
@@ -921,6 +943,7 @@ export const AskUserOptions = memo(function AskUserOptions({
   onSubmit,
   collapsible,
   defaultCollapsed,
+  presentation = "inline",
 }: {
   data: AskUserCardData;
   /**
@@ -941,6 +964,12 @@ export const AskUserOptions = memo(function AskUserOptions({
   collapsible?: boolean;
   /** Only honoured when ``collapsible`` is true. */
   defaultCollapsed?: boolean;
+  /**
+   * ``dialog`` drops the inline card frame so a parent popup can own the
+   * border. The resolved summary always stays inline: that record belongs
+   * in the conversation after the learner has chosen.
+   */
+  presentation?: "inline" | "dialog";
 }) {
   if (data.resolved) {
     return (
@@ -957,6 +986,7 @@ export const AskUserOptions = memo(function AskUserOptions({
       payload={data.payload}
       onSubmit={onSubmit}
       streaming={data.streaming ?? false}
+      presentation={presentation}
     />
   );
 });
@@ -968,6 +998,7 @@ const InteractiveAskUserCard = memo(function InteractiveAskUserCard({
   payload,
   onSubmit,
   streaming = false,
+  presentation = "inline",
 }: {
   payload: AskUserPayload;
   onSubmit: (payload: {
@@ -976,6 +1007,7 @@ const InteractiveAskUserCard = memo(function InteractiveAskUserCard({
   }) => void | boolean | Promise<void | boolean>;
   /** The model is still writing this card; see ``AskUserCardData``. */
   streaming?: boolean;
+  presentation?: "inline" | "dialog";
 }) {
   const { t } = useTranslation();
   const totalQuestions = payload.questions.length;
@@ -1198,7 +1230,13 @@ const InteractiveAskUserCard = memo(function InteractiveAskUserCard({
         : null;
 
   return (
-    <div className="mt-3 rounded-xl border border-[var(--border)] bg-[var(--card)] px-3.5 py-3 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_14px_rgba(0,0,0,0.04)]">
+    <div
+      className={
+        presentation === "dialog"
+          ? "px-4 py-3"
+          : "mt-3 rounded-xl border border-[var(--border)] bg-[var(--card)] px-3.5 py-3 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_14px_rgba(0,0,0,0.04)]"
+      }
+    >
       {payload.intro || totalQuestions === 0 ? (
         <div className="text-[12.5px] leading-snug text-[var(--muted-foreground)]">
           {payload.intro ? (

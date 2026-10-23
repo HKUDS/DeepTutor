@@ -10485,7 +10485,8 @@
               "light",
               "dark",
               "glass",
-              "snow"
+              "snow",
+              "folio"
             ],
             "title": "Theme",
             "type": "string"
@@ -11510,7 +11511,8 @@
                   "light",
                   "dark",
                   "glass",
-                  "snow"
+                  "snow",
+                  "folio"
                 ],
                 "type": "string"
               },

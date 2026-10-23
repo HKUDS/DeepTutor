@@ -112,7 +112,7 @@ export default function PartnersPage() {
               <Link
                 key={partner.partner_id}
                 href={`/partners/${encodeURIComponent(partner.partner_id)}`}
-                className="group flex items-start gap-3 rounded-2xl border border-[var(--border)] p-4 text-left transition-colors hover:border-[var(--ring)]"
+                className="group flex items-start gap-3 rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4 text-left transition-colors hover:border-[var(--ring)]"
               >
                 <PartnerAvatar
                   name={partner.name}
@@ -188,7 +188,7 @@ export default function PartnersPage() {
           />
 
           {groups.length === 0 ? (
-            <div className="flex items-center gap-3 rounded-2xl border border-dashed border-[var(--border)] px-4 py-5">
+            <div className="flex items-center gap-3 rounded-2xl border border-dashed border-[var(--border)] bg-[var(--card)] px-4 py-5">
               <Users
                 className="h-6 w-6 shrink-0 text-[var(--muted-foreground)]"
                 strokeWidth={1.5}
@@ -207,7 +207,7 @@ export default function PartnersPage() {
                 <Link
                   key={group.group_id}
                   href={`/partners/groups/${encodeURIComponent(group.group_id)}`}
-                  className="group flex items-start gap-3 rounded-2xl border border-[var(--border)] p-4 text-left transition-colors hover:border-[var(--ring)]"
+                  className="group flex items-start gap-3 rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4 text-left transition-colors hover:border-[var(--ring)]"
                 >
                   <div
                     className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-2xl text-xl"

@@ -333,6 +333,36 @@ def test_runtime_grading_also_frees_the_review_to_finish():
     assert MasteryLoopCapability().finish_instruction(context, _GRADED_REVIEW) is None
 
 
+_OUTLINE_DECISION = """\
+一件需要你拍板的事：M6 现在有 10 个知识点。你有两种走法：
+
+- 按现在这样全学，M6 单独占大约 2-3 周；
+- 收敛：把纯函数并进高阶函数。
+
+你倾向哪种？
+"""
+
+
+def test_prose_outline_decision_is_sent_to_ask_user_once():
+    """A bullet list under 拍板 is a dialog, not a paragraph the turn may end on."""
+    capability = MasteryLoopCapability()
+    context = _context()
+
+    instruction = capability.finish_instruction(context, _OUTLINE_DECISION)
+    assert instruction is not None
+    assert "ask_user" in instruction
+    # The correction is once. Repeating it would hide the reply forever.
+    assert capability.finish_instruction(context, _OUTLINE_DECISION) is None
+
+
+def test_ask_user_already_posed_leaves_the_decision_reply_alone():
+    capability = MasteryLoopCapability()
+    context = _context()
+    capability.augment_kwargs("ask_user", {}, context)
+
+    assert capability.finish_instruction(context, _OUTLINE_DECISION) is None
+
+
 def test_reviewing_a_graded_attempt_is_not_an_announcement():
     """Discussing the question just graded must not be read as promising one."""
     capability = MasteryLoopCapability()

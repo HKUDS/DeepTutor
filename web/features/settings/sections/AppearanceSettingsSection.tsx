@@ -79,13 +79,14 @@ export default function AppearanceSettingsPage() {
           {/* Order is intentional: Default (pure-white neutral, the default
               selection; theme id "snow" kept for stored preferences) →
               warm-light Cream → warm-dark Dark → cool-dark Glass. */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
             {(
               [
                 { id: "snow", label: t("Default") },
                 { id: "light", label: t("Cream") },
                 { id: "dark", label: t("Dark") },
                 { id: "glass", label: t("Glass") },
+                { id: "folio", label: t("Folio") },
               ] as const
             ).map(({ id, label }) => (
               <ThemePreviewCard
@@ -99,7 +100,7 @@ export default function AppearanceSettingsPage() {
           </div>
           <p className="mt-4 text-[11.5px] leading-relaxed text-[var(--muted-foreground)]/80">
             {t(
-              "Default is a clean pure-white theme with a blue accent. Cream is warm and paper-like with a terracotta accent. Dark keeps Cream's warmth on near-black. Glass adds translucent purple panels on a deep gradient.",
+              "Default is a clean pure-white theme with a blue accent. Cream is warm and paper-like with a terracotta accent. Dark keeps Cream's warmth on near-black. Glass adds translucent purple panels on a deep gradient. Folio is a quiet paper canvas: a warm-gray page, white cards, and an ink accent that stays off the card.",
             )}
           </p>
         </div>

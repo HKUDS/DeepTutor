@@ -172,7 +172,7 @@ class SidebarNavOrder(BaseModel):
 
 
 class UISettings(BaseModel):
-    theme: Literal["light", "dark", "glass", "snow"] = "snow"
+    theme: Literal["light", "dark", "glass", "snow", "folio"] = "snow"
     language: UiLanguage = "en"
     response_language: ResponseLanguage = "en"
     sidebar_description: Optional[str] = None
@@ -195,7 +195,7 @@ class UISettingsUpdate(BaseModel):
     # Same Literal domains as UISettings — a None default keeps them optional
     # for exclude_unset partial merges, but an explicit value is still validated
     # so PUT /ui cannot persist a theme/language the app can't render.
-    theme: Literal["light", "dark", "glass", "snow"] | None = None
+    theme: Literal["light", "dark", "glass", "snow", "folio"] | None = None
     language: UiLanguage | None = None
     response_language: ResponseLanguage | None = None
     sidebar_description: str | None = None
@@ -218,7 +218,7 @@ class ChatResponseTimeoutUpdate(BaseModel):
 
 
 class ThemeUpdate(BaseModel):
-    theme: Literal["light", "dark", "glass", "snow"]
+    theme: Literal["light", "dark", "glass", "snow", "folio"]
 
 
 class LanguageUpdate(BaseModel):
@@ -2180,6 +2180,7 @@ async def get_themes():
             {"id": "light", "name": "Cream"},
             {"id": "dark", "name": "Dark"},
             {"id": "glass", "name": "Glass"},
+            {"id": "folio", "name": "Folio"},
         ]
     }
 

@@ -421,7 +421,9 @@ class TestTopicProductApi:
         assert reloaded.mastery_levels[last_id] == 0.9
         assert [attempt.question_id for attempt in reloaded.quiz_attempts] == ["legacy-evidence"]
 
-    def test_edit_legacy_topic_map_cannot_add_a_ninth_objective(self, client, app):
+    def test_edit_legacy_topic_map_cannot_grow_past_the_objective_cap(self, client, app):
+        from deeptutor.learning.topic_generation import _MAX_OBJECTIVES_PER_MODULE
+
         points = [
             KnowledgePoint(
                 id=f"legacy-kp-{index}",
@@ -429,7 +431,7 @@ class TestTopicProductApi:
                 type=KnowledgeType.CONCEPT,
                 module_id="legacy-module",
             )
-            for index in range(8)
+            for index in range(_MAX_OBJECTIVES_PER_MODULE)
         ]
         module = LearningModule(
             id="legacy-module", name="Legacy region", order=0, knowledge_points=points
@@ -446,7 +448,7 @@ class TestTopicProductApi:
         assert response.status_code == 422
         reloaded = store.load("legacy-path")
         assert reloaded is not None
-        assert len(reloaded.modules[0].knowledge_points) == 8
+        assert len(reloaded.modules[0].knowledge_points) == _MAX_OBJECTIVES_PER_MODULE
 
     def test_edit_topic_map_rejects_empty_region_instead_of_silently_dropping_it(self, client):
         created = client.post(

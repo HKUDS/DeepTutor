@@ -1533,6 +1533,19 @@ def start(
     common_env["DEEPTUTOR_AUTH_ENABLED"] = "true" if auth_enabled else "false"
     common_env["PYTHONUNBUFFERED"] = "1"
     common_env["PYTHONIOENCODING"] = "utf-8:replace"
+    # The backend's cwd is the data home, which does not contain this
+    # package. Put the checkout that is actually running first, or a source
+    # launch silently imports the older copy in site-packages.
+    source_root = str(PACKAGE_ROOT)
+    pythonpath = [
+        source_root,
+        *[
+            entry
+            for entry in common_env.get("PYTHONPATH", "").split(os.pathsep)
+            if entry and entry != source_root
+        ],
+    ]
+    common_env["PYTHONPATH"] = os.pathsep.join(pythonpath)
     # Anchor for deeptutor.runtime.memory_probe: the backend and the frontend
     # are siblings under this process, so only the supervisor's pid identifies
     # the tree that is "DeepTutor". Without it the probe can only measure the

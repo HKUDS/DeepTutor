@@ -23,7 +23,18 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import {
+  latestPendingAskUser,
+  type AskUserCardData,
+} from "@/components/chat/home/AskUserOptions";
+import { pendingProseDecision } from "@/lib/outline-decision";
 import { ChatMessageList } from "@/features/chat/messages";
+import MasteryQuestionCard from "@/components/chat/home/MasteryQuestionCard";
+import {
+  ComposerChoiceDock,
+  OutlineDecisionDialog,
+} from "@/components/space/learning/OutlineDecisionDialog";
+import { latestOpenMasteryQuestion } from "@/lib/mastery-question";
 import { ChatViewerBridges } from "@/components/chat/home/ChatViewerBridges";
 import { buildSessionActivity } from "@/components/chat/home/SessionActivityPanel";
 import { TurnNavigator } from "@/components/chat/home/TurnNavigator";
@@ -203,6 +214,45 @@ export function MasteryStudy({
     requestedMode,
   );
   const hasMessages = state.messages.length > 0;
+  const outlineDecision = useMemo(
+    () =>
+      latestPendingAskUser(state.messages, {
+        streaming: state.isStreaming,
+      }),
+    [state.messages, state.isStreaming],
+  );
+  const proseDecision = useMemo(() => {
+    if (outlineDecision || state.isStreaming) return null;
+    return pendingProseDecision(state.messages);
+  }, [outlineDecision, state.isStreaming, state.messages]);
+  const openQuestion = useMemo(
+    () => latestOpenMasteryQuestion(state.messages),
+    [state.messages],
+  );
+  const proseDecisionCard = useMemo<AskUserCardData | null>(() => {
+    if (!proseDecision) return null;
+    return {
+      payload: {
+        intro: null,
+        questions: [
+          {
+            id: "outline-decision",
+            prompt: proseDecision.prompt,
+            header: null,
+            multi_select: false,
+            options: proseDecision.options.map((label) => ({
+              label,
+              description: null,
+            })),
+            allow_free_text: true,
+            placeholder: null,
+          },
+        ],
+      },
+      answers: null,
+      resolved: false,
+    };
+  }, [proseDecision]);
   const prefillInputRef = useRef<((text: string) => void) | null>(null);
   const viewerPanelRef = useRef<SessionViewerPanelHandle | null>(null);
 
@@ -667,7 +717,7 @@ export function MasteryStudy({
           />
         </aside>
 
-        <section className="flex min-w-0 flex-1 flex-col bg-[var(--background)]">
+        <section className="relative flex min-w-0 flex-1 flex-col bg-[var(--background)]">
           <div className="relative min-h-0 flex-1">
             <div
               ref={messagesContainerRef}
@@ -837,6 +887,8 @@ export function MasteryStudy({
                       availableKbNames={new Set(knowledgeBases)}
                       kbDisplayNames={kbDisplayNames}
                       showModeBadge={false}
+                      deferPendingAskUser
+                      deferPendingMasteryQuestion
                     />
                   </div>
                 )}
@@ -856,6 +908,74 @@ export function MasteryStudy({
               ref={composerBoxRef}
               className="shrink-0 bg-[var(--background)]"
             >
+              {openQuestion ? (
+                <ComposerChoiceDock
+                  testId="mastery-answer-dock"
+                  summary={
+                    openQuestion.options.length >= 2
+                      ? t("{{count}} options need your choice", {
+                          count: openQuestion.options.length,
+                        })
+                      : t("A question needs your answer")
+                  }
+                  confirmLabel={
+                    openQuestion.options.length >= 2
+                      ? t("Review the options")
+                      : t("Answer this question")
+                  }
+                >
+                  <div className="px-3.5 py-2">
+                    <MasteryQuestionCard
+                      question={openQuestion}
+                      grade={null}
+                      answered={false}
+                      onSubmit={({ text, answers }) =>
+                        answerMasteryQuestion({
+                          questionId: openQuestion.questionId,
+                          text: String(text ?? ""),
+                          ...(openQuestion.questionType === "group"
+                            ? { answers }
+                            : {}),
+                        })
+                      }
+                      onSkip={skipMasteryQuestion}
+                      onChallenge={(questionId) => {
+                        if (state.isStreaming || sessionLoading || sessionError) {
+                          return false;
+                        }
+                        sendMessage(
+                          t(
+                            "Please review assessment {{questionId}} against its original source evidence. If it is unsupported, invalidate it and recompute learning state. Do not grant mastery merely because I challenged it.",
+                            { questionId },
+                          ),
+                        );
+                        return true;
+                      }}
+                    />
+                  </div>
+                </ComposerChoiceDock>
+              ) : outlineDecision ? (
+                <OutlineDecisionDialog
+                  data={outlineDecision}
+                  onSubmit={submitUserReply}
+                />
+              ) : proseDecisionCard ? (
+                <OutlineDecisionDialog
+                  data={proseDecisionCard}
+                  onSubmit={(payload) => {
+                    const text = (
+                      payload.answers
+                        ?.map((answer) => answer.text.trim())
+                        .filter(Boolean)
+                        .join("\n") ||
+                      payload.text ||
+                      ""
+                    ).trim();
+                    void sendMessage(text || t("Skip this choice and continue."));
+                    return true;
+                  }}
+                />
+              ) : null}
               <MasteryComposer
                 placeholder={t("Ask your tutor about “{{waypoint}}”…", {
                   waypoint: waypoint.name,

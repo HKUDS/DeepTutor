@@ -140,6 +140,44 @@ def _claims_card_delivery(text: str) -> bool:
     return False
 
 
+# A learner decision written as a bullet list. "拍板" / "你倾向哪种" is the
+# cue; the bullets after it are the choices. Teaching that merely mentions
+# two approaches, without asking the learner to pick, does not match.
+_PROSE_DECISION_CUE_RE = re.compile(
+    r"拍板|你倾向哪种|你更倾向|which do you prefer|which would you rather",
+    re.IGNORECASE,
+)
+_PROSE_DECISION_BULLET_RE = re.compile(
+    r"^\s*(?:[-*+•●·]|\d{1,2}[.)、])\s+(\S.*)$"
+)
+
+
+def _looks_like_prose_decision(text: str) -> bool:
+    """Whether a finished reply asks the learner to pick from a written list.
+
+    Outline edits often end with "一件需要你拍板的事" and two markdown
+    bullets. That list is a decision, and it has to be posed through
+    ``ask_user`` so the learner gets a dialog instead of a paragraph.
+    """
+    lines = (text or "").splitlines()
+    cue_at = next(
+        (index for index, line in enumerate(lines) if _PROSE_DECISION_CUE_RE.search(line)),
+        None,
+    )
+    if cue_at is None:
+        return False
+    options = 0
+    for line in lines[cue_at + 1 :]:
+        if _PROSE_DECISION_BULLET_RE.match(line):
+            options += 1
+            continue
+        if not line.strip():
+            continue
+        if options:
+            break
+    return options >= 2
+
+
 def _looks_like_plain_choice_quiz(text: str) -> bool:
     """Recognise a rendered A-D option list with high precision.
 
@@ -308,8 +346,11 @@ class MasteryLoopCapability:
                 ),
                 "_present_mastery_sources": present_sources,
             }
-        # ``ask_user`` is deliberately untouched here. It carries clarifying
-        # questions only; the graded ones are posed by ``mastery_quiz``.
+        # ``ask_user`` arguments stay the model's. Recording the call is what
+        # lets a later prose check tell a real dialog from a bullet list.
+        if tool_name == "ask_user":
+            state["decision_posted"] = True
+            return kwargs
         if tool_name == "read_source":
             # Deliberately a different key from chat's ``source_index``: that
             # one wakes the explore_context pre-pass (see the class docstring).
@@ -569,6 +610,24 @@ class MasteryLoopCapability:
                 "Do not concatenate expected answers or claim that a prose list is a card. "
                 "If this is teaching rather than assessment, explain directly without "
                 "instructing the learner to answer an unregistered practice set."
+            )
+        if (
+            not state.get("decision_posted")
+            and not state.get("outline_decision_requested")
+            and _looks_like_prose_decision(final_text)
+        ):
+            # One correction. A model that still writes the list after this
+            # publishes it, and the study screen lifts that list into the
+            # dialog itself — rejecting forever would hide the reply.
+            state["outline_decision_requested"] = True
+            return (
+                "That reply asks the learner to decide, but the choices are only "
+                "a bullet list in the message. Call ask_user once with those "
+                "choices as options: each option's label is the choice itself, "
+                "and description is the one-line consequence. Do not repeat the "
+                "option list in the message. The learner picks in a dialog, and "
+                "their selection is what continues the turn. Do not re-ask "
+                "something they already settled."
             )
         if _turn_has_graded(context) or not _looks_like_plain_choice_quiz(final_text):
             return None

@@ -7,7 +7,7 @@ const css = fs.readFileSync(
   path.resolve(process.cwd(), "app/globals.css"),
   "utf8",
 );
-const selectors = [":root", ".dark", ".theme-snow", ".theme-glass"];
+const selectors = [":root", ".dark", ".theme-snow", ".theme-glass", ".theme-folio"];
 const requiredTokens = [
   "--background",
   "--foreground",

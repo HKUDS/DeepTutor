@@ -8,6 +8,7 @@ import pytest
 
 from deeptutor.learning.models import TopicSource, TopicSourceKind
 from deeptutor.learning.topic_generation import (
+    _MAX_OBJECTIVES_PER_MODULE,
     TopicGenerationError,
     generate_topic_draft,
     materialize_modules,
@@ -54,12 +55,12 @@ def test_edit_reorder_preserves_existing_module_and_objective_ids() -> None:
 @pytest.mark.parametrize(
     "module_id, counts, count, accepted",
     [
-        ("topic_m0", {"topic_m0": 8}, 8, True),
-        ("topic_m0", {"topic_m0": 8}, 9, False),
-        ("draft-new", {"topic_m0": 8}, 8, False),
-        ("draft-new", {"draft-new": 8}, 8, False),
-        ("topic_m0", {"topic_m0": 3}, 8, False),
-        ("topic_m0", None, 8, False),
+        ("topic_m0", {"topic_m0": _MAX_OBJECTIVES_PER_MODULE + 1}, _MAX_OBJECTIVES_PER_MODULE + 1, True),
+        ("topic_m0", {"topic_m0": _MAX_OBJECTIVES_PER_MODULE + 1}, _MAX_OBJECTIVES_PER_MODULE + 2, False),
+        ("draft-new", {"topic_m0": _MAX_OBJECTIVES_PER_MODULE + 1}, _MAX_OBJECTIVES_PER_MODULE + 1, False),
+        ("draft-new", {"draft-new": _MAX_OBJECTIVES_PER_MODULE + 1}, _MAX_OBJECTIVES_PER_MODULE + 1, False),
+        ("topic_m0", {"topic_m0": 3}, _MAX_OBJECTIVES_PER_MODULE + 1, False),
+        ("topic_m0", None, _MAX_OBJECTIVES_PER_MODULE + 1, False),
     ],
 )
 def test_legacy_edit_budget_is_bound_to_the_existing_region(
@@ -92,23 +93,30 @@ def test_legacy_edit_budget_is_bound_to_the_existing_region(
 
 
 def test_duplicate_region_id_does_not_reuse_the_legacy_edit_budget() -> None:
-    points = [(f"kp{index}", f"Objective {index}") for index in range(8)]
+    over = _MAX_OBJECTIVES_PER_MODULE + 1
+    points = [(f"kp{index}", f"Objective {index}") for index in range(over)]
     raw = [_module("topic_m0", *points), _module("topic_m0", *points)]
-    with pytest.raises(TopicGenerationError, match="region 2 may have at most 7 waypoints"):
+    with pytest.raises(
+        TopicGenerationError,
+        match=f"region 2 may have at most {_MAX_OBJECTIVES_PER_MODULE} waypoints",
+    ):
         materialize_modules(
             "topic",
             raw,
             strict=True,
             existing_module_ids={"topic_m0"},
             existing_objective_ids={point_id for point_id, _ in points},
-            existing_objective_counts={"topic_m0": 8},
+            existing_objective_counts={"topic_m0": over},
         )
 
 
 def test_new_draft_regions_keep_the_generation_limit() -> None:
-    points = [(f"kp{index}", f"Objective {index}") for index in range(8)]
+    points = [
+        (f"kp{index}", f"Objective {index}")
+        for index in range(_MAX_OBJECTIVES_PER_MODULE + 1)
+    ]
     modules = materialize_modules("topic", [_module("draft", *points)])
-    assert len(modules[0].knowledge_points) == 7
+    assert len(modules[0].knowledge_points) == _MAX_OBJECTIVES_PER_MODULE
 
 
 def test_new_objective_never_reuses_an_existing_or_deleted_position_id() -> None:

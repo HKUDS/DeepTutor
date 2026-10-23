@@ -10,6 +10,8 @@ interface LearningCardContentProps {
   title: string
   subtitle?: ReactNode
   icon: ReactNode
+  /** Surface hue for the icon tile. Absent tiles stay neutral. */
+  accent?: string
   updatedAt?: number
   progress?: number
 }
@@ -19,13 +21,14 @@ export function LearningCardContent({
   title,
   subtitle,
   icon,
+  accent,
   updatedAt,
   progress,
 }: LearningCardContentProps) {
   const { i18n } = useTranslation()
   return (
     <>
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--muted)] text-[var(--muted-foreground)]">
+      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${accent ?? "bg-[var(--muted)] text-[var(--muted-foreground)]"}`}>
         {icon}
       </span>
       <div className="min-w-0 flex-1">

@@ -119,6 +119,7 @@ export function LearningDashboard() {
                     href={scopedUrl(masterySessionRoute(topic.path_id, 'review', '', topic.content_workspace_id || ''), topic.content_workspace_id || '')}
                     title={topic.name || topic.metadata.goal}
                     icon={<Route size={19} />}
+                    accent={learningSurface("mastery").accent}
                     subtitle={t('{{count}} reviews due', {
                       count: topic.reviews.filter(review => review.due).length,
                     })}
@@ -141,6 +142,7 @@ export function LearningDashboard() {
                     href={scopedUrl(bookRoute(book.id, null, ""), book.content_workspace_id || "")}
                     title={book.title}
                     icon={<BookOpen size={19} />}
+                    accent={learningSurface("books").accent}
                     subtitle={
                       <>
                         {book.status === 'paused' ? t('Paused') : t('Compiling')}
@@ -171,6 +173,7 @@ export function LearningDashboard() {
                       progress={item.progress}
                       subtitle={<>{t(surface.title)}{item.workspaceName ? ` · ${item.workspaceName}` : ""}</>}
                       icon={<surface.icon size={19} />}
+                      accent={surface.accent}
                     />
                   )
                 })}

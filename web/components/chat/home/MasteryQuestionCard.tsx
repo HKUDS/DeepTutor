@@ -129,7 +129,9 @@ const SingleMasteryQuestionCard = memo(function SingleMasteryQuestionCard({
   const [picked, setPicked] = useState<string>(() => grade?.final === false ? grade.learnerAnswer : "");
   const [skipping, setSkipping] = useState(false);
   const [sourceUnavailable, setSourceUnavailable] = useState(false);
-  const [freeText, setFreeText] = useState(() => grade?.final === false ? grade.learnerAnswer : "");
+  const [freeText, setFreeText] = useState(
+    () => (grade?.final === false ? grade.learnerAnswer : submittedAnswer) || "",
+  );
   const [freeSelected, setFreeSelected] = useState(false);
   const acknowledgementKey = grade ? grade.receiptKey ?? JSON.stringify(grade) : undefined;
   const { sending, failed: sendFailed, submit } = useCardSubmission(onSubmit, rejectionKey, acknowledgementKey);
@@ -243,6 +245,12 @@ const SingleMasteryQuestionCard = memo(function SingleMasteryQuestionCard({
               }}
             />
           ))}
+        </div>
+      ) : null}
+
+      {!hasChoices && settled && learnerAnswer ? (
+        <div className="mt-2.5 text-[13.5px] leading-relaxed text-[var(--foreground)]">
+          <InlineMarkdown content={learnerAnswer} />
         </div>
       ) : null}
 

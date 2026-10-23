@@ -88,7 +88,7 @@ export type {
 // ─── Domain types ─────────────────────────────────────────────────────────
 
 export type UiSettings = {
-  theme: "light" | "dark" | "glass" | "snow";
+  theme: "light" | "dark" | "glass" | "snow" | "folio";
   language: AppLanguage;
   response_language: ResponseLanguage;
   code_block_theme: string;

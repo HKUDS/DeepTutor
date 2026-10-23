@@ -13,7 +13,7 @@ export default function ThemeScript() {
       try {
         const stored = localStorage.getItem('deeptutor-theme');
 
-        document.documentElement.classList.remove('dark', 'theme-glass', 'theme-snow');
+        document.documentElement.classList.remove('dark', 'theme-glass', 'theme-snow', 'theme-folio');
 
         if (stored === 'dark') {
           document.documentElement.classList.add('dark');
@@ -21,6 +21,8 @@ export default function ThemeScript() {
           document.documentElement.classList.add('dark', 'theme-glass');
         } else if (stored === 'snow') {
           document.documentElement.classList.add('theme-snow');
+        } else if (stored === 'folio') {
+          document.documentElement.classList.add('theme-folio');
         } else if (stored === 'light') {
           // already clean
         } else {

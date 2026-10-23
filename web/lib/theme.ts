@@ -5,7 +5,7 @@
 
 import { browserStorage } from "@/shared/storage";
 
-export type Theme = "light" | "dark" | "glass" | "snow";
+export type Theme = "light" | "dark" | "glass" | "snow" | "folio";
 
 export const THEME_STORAGE_KEY = "deeptutor-theme";
 
@@ -41,7 +41,8 @@ export function getStoredTheme(): Theme | null {
       stored === "light" ||
       stored === "dark" ||
       stored === "glass" ||
-      stored === "snow"
+      stored === "snow" ||
+      stored === "folio"
     ) {
       return stored;
     }
@@ -87,7 +88,7 @@ export function applyThemeToDocument(theme: Theme): void {
 
   const html = document.documentElement;
 
-  html.classList.remove("dark", "theme-glass", "theme-snow");
+  html.classList.remove("dark", "theme-glass", "theme-snow", "theme-folio");
 
   if (theme === "dark") {
     html.classList.add("dark");
@@ -95,6 +96,8 @@ export function applyThemeToDocument(theme: Theme): void {
     html.classList.add("dark", "theme-glass");
   } else if (theme === "snow") {
     html.classList.add("theme-snow");
+  } else if (theme === "folio") {
+    html.classList.add("theme-folio");
   }
 }
 
