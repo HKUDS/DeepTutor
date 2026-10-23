@@ -133,7 +133,9 @@ def compute_next_run(schedule: CronSchedule, now_ms: int) -> int | None:
 
             from croniter import croniter
 
-            tz = ZoneInfo(schedule.tz) if schedule.tz else datetime.now().astimezone().tzinfo
+            # Without a tz, use naive server-local times. A fixed offset taken
+            # from "now" would put the first run after a DST change an hour off.
+            tz = ZoneInfo(schedule.tz) if schedule.tz else None
             base = datetime.fromtimestamp(now_ms / 1000, tz=tz)
             next_dt = croniter(schedule.expr, base).get_next(datetime)
             return int(next_dt.timestamp() * 1000)
