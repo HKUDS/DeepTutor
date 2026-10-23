@@ -1067,6 +1067,8 @@ class ReadSourceTool(_PromptHintsMixin, BaseTool):
     ``_augment_tool_kwargs``. The tool itself stays stateless.
     """
 
+    HISTORY_PAGE_CHARS = 16_000
+
     def get_definition(self) -> ToolDefinition:
         return ToolDefinition(
             name="read_source",
@@ -1075,7 +1077,8 @@ class ReadSourceTool(_PromptHintsMixin, BaseTool):
                 "the preview shown in the Attached Sources manifest is "
                 "insufficient to answer the user's question. The id must be "
                 "copied verbatim from the manifest — do not invent ids. Do not "
-                "call this on every source 'just in case'."
+                "call this on every source 'just in case'. Tutoring history "
+                "(hs-tutor-*) is paginated; use next_offset to read the next page."
             ),
             parameters=[
                 ToolParameter(
@@ -1087,6 +1090,14 @@ class ReadSourceTool(_PromptHintsMixin, BaseTool):
                         "bk- (book reference), rd- (reading unit), hs- (history "
                         "session), qb- (question-bank entry), at- (document attachment)."
                     ),
+                ),
+                ToolParameter(
+                    name="offset",
+                    type="integer",
+                    description="Character offset for an hs-tutor-* history page; starts at 0.",
+                    required=False,
+                    default=0,
+                    minimum=0,
                 ),
             ],
         )
@@ -1117,9 +1128,32 @@ class ReadSourceTool(_PromptHintsMixin, BaseTool):
                 ),
                 success=False,
             )
+        content = str(full_text)
+        metadata: dict[str, Any] = {"source_id": source_id, "char_count": len(content)}
+        if source_id.startswith("hs-tutor-"):
+            offset = kwargs.get("offset", 0)
+            if type(offset) is not int or not 0 <= offset < len(content):
+                return ToolResult(
+                    content="Error: offset must be a non-negative integer within the archive.",
+                    success=False,
+                )
+            if offset or len(content) > self.HISTORY_PAGE_CHARS:
+                end = min(offset + self.HISTORY_PAGE_CHARS, len(content))
+                next_offset = end if end < len(content) else None
+                metadata.update(offset=offset, next_offset=next_offset)
+                content = json.dumps(
+                    {
+                        "archive_id": source_id,
+                        "offset": offset,
+                        "next_offset": next_offset,
+                        "total_chars": len(content),
+                        "content": content[offset:end],
+                    },
+                    ensure_ascii=False,
+                )
         return ToolResult(
-            content=str(full_text),
-            metadata={"source_id": source_id, "char_count": len(str(full_text))},
+            content=content,
+            metadata=metadata,
             public_result={"content": "Attached source inspected privately."}
             if kwargs.get("_mastery_source_context")
             else None,
