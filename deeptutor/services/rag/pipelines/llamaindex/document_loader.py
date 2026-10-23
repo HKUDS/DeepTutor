@@ -510,6 +510,16 @@ class LlamaIndexDocumentLoader:
                         "Image caption batch exceeded its %ss deadline", timeout_seconds
                     )
                     return []
+                except Exception as exc:  # noqa: BLE001 - captions are best-effort
+                    # Every other image failure here skips and logs; a raising
+                    # group must not abort the whole document ingest.
+                    self.logger.warning(
+                        "Image caption group failed (%s: %s); skipping %s image(s)",
+                        type(exc).__name__,
+                        exc,
+                        len(group),
+                    )
+                    return []
                 finally:
                     for _ in group:
                         completed += 1
