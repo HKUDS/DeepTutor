@@ -72,6 +72,9 @@ def create_index(
         documents, storage_dir, show_progress=show_progress
     )
     retrievers.persist_bm25_retriever(index, storage_dir, top_k=20)
+    from deeptutor.services.rag.source_pages import persist_page_catalog
+
+    persist_page_catalog(documents, storage_dir)
     return count
 
 
@@ -87,6 +90,11 @@ def insert_documents(existing_storage: Path, storage_dir: Path, documents: list[
         count = len(documents)
     index.storage_context.persist(persist_dir=str(storage_dir))
     retrievers.persist_bm25_retriever(index, storage_dir, top_k=20)
+    from deeptutor.services.rag.source_pages import persist_page_catalog
+
+    if existing_storage != storage_dir and (existing_storage / "source_pages.json").is_file():
+        shutil.copy2(existing_storage / "source_pages.json", storage_dir / "source_pages.json")
+    persist_page_catalog(documents, storage_dir)
     return count
 
 
@@ -285,9 +293,13 @@ def prune_index_cache() -> int:
         return before - len(_INDEX_CACHE)
 
 
-def retrieve_nodes(storage_dir: Path, query: str, *, top_k: int = 5) -> list[Any]:
+def retrieve_nodes(
+    storage_dir: Path, query: str, *, top_k: int = 5, document_keys: list[str] | None = None
+) -> list[Any]:
     index = _cached_index(Path(storage_dir))
-    return retrievers.retrieve_nodes(index, Path(storage_dir), query, top_k=top_k)
+    if document_keys is None:
+        return retrievers.retrieve_nodes(index, Path(storage_dir), query, top_k=top_k)
+    return retrievers.retrieve_scoped_nodes(index, query, document_keys, top_k=top_k)
 
 
 def delete_kb_dir(kb_dir: Path) -> bool:

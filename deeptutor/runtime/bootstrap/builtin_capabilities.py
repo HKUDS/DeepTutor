@@ -172,6 +172,7 @@ BUILTIN_CAPABILITY_SPECS: dict[str, BuiltinCapabilitySpec] = {
             "Mastery-based tutoring: a dedicated agent loop drives an adaptive mastery path with a hard, per-type mastery gate and spaced review.",
             stages=["responding"],
             tools_used=[
+                "mastery_prepare_lesson",
                 "mastery_status",
                 "mastery_quiz",
                 "mastery_note_explained",

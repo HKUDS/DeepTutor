@@ -96,7 +96,8 @@ LOOP_STAGE = "responding"
 # Settlement is deliberately small but large enough for the longest built-in
 # interaction boundary: register state -> ask/resume -> record result -> reply.
 # A single additional tool-less hard finish follows if all of these rounds
-# still request tools, making the total upper bound ``exploration + 4``.
+# still request tools. A receipt-backed capability delivery can use that final
+# round instead, with a restricted tool surface: the bound stays exploration + 4.
 MAX_SETTLEMENT_ROUNDS = 3
 # Reasoning-only completions can recur when a model rewrites its plan instead
 # of acting. Give it a stronger directive on the second miss, then use the
@@ -241,6 +242,31 @@ def _assistant_round_message(result: LLMCallResult) -> dict[str, Any]:
         # private provider state instead.
         message["reasoning_content"] = result.reasoning_content
     return message
+
+
+def _append_directive_to_parts(parts: list[Any], instruction: str) -> list[Any]:
+    """Extend a multimodal user message with a text directive, keeping its parts.
+
+    The trailing user message can carry content parts: a chat PDF's embedded
+    images arrive as ``image_url`` blocks beside the text that references them.
+    Text is appended to the message's own text part (the parts-list analogue of
+    the plain-string branch in :meth:`AgentLoop._append_loop_instruction`), and
+    a message holding nothing but images gets a text part of its own.
+
+    Only the directive is added. Rebuilding the message as a string instead
+    would fold every ``data:...;base64,`` payload into prompt text and send the
+    image bytes to the provider as language tokens on the next round.
+    """
+    updated = list(parts)
+    for index in range(len(updated) - 1, -1, -1):
+        part = updated[index]
+        if isinstance(part, dict) and isinstance(part.get("text"), str):
+            prior = part["text"].rstrip()
+            merged = f"{prior}\n\n{instruction}" if prior else instruction
+            updated[index] = {**part, "text": merged}
+            return updated
+    updated.append({"type": "text", "text": instruction})
+    return updated
 
 
 def _has_replayable_assistant_state(result: LLMCallResult) -> bool:
@@ -420,19 +446,37 @@ class AgentLoop:
         settlement_started = False
         reasoning_only_recoveries = 0
         finish_redirect_used = False
+        recovery_tools: frozenset[str] | None = None
+        recovery_schemas: list[dict[str, Any]] | None = None
         continued_answer_parts: list[str] = []
         while True:
             settling = state.exploration_rounds >= exploration_budget
             if settling:
                 if state.settlement_rounds >= MAX_SETTLEMENT_ROUNDS:
-                    # A model may ignore the settlement directive and keep
-                    # requesting tools. One tool-less call is the absolute
-                    # stop, so malformed/empty tool cycles cannot run forever.
-                    return await self._forced_finish(
-                        messages,
-                        state,
-                        continued_answer_parts=continued_answer_parts,
-                    )
+                    if recovery_tools is not None:
+                        return await self._reject_capability_finish()
+                    recovery = self.pipeline._capability_settlement_recovery(self.context)
+                    if recovery is not None:
+                        instruction, names = recovery
+                        recovery_schemas = [
+                            schema
+                            for schema in self.tool_schemas or []
+                            if (schema.get("function") or {}).get("name") in names
+                        ]
+                        recovery_tools = frozenset(
+                            schema["function"]["name"] for schema in recovery_schemas
+                        )
+                        if not recovery_tools:
+                            return await self._reject_capability_finish()
+                        self._append_loop_instruction(messages, instruction)
+                    else:
+                        # Tool-less salvage and restricted delivery share the
+                        # same final slot; neither can reopen exploration.
+                        return await self._forced_finish(
+                            messages,
+                            state,
+                            continued_answer_parts=continued_answer_parts,
+                        )
                 if not settlement_started:
                     await self._begin_settlement(messages)
                     settlement_started = True
@@ -443,13 +487,19 @@ class AgentLoop:
                     call_kind="agent_loop_round",
                     trace_role="response" if settling else "explore",
                     max_tokens=self.pipeline.loop_max_tokens,
-                    tool_schemas=self.tool_schemas,
+                    tool_schemas=recovery_schemas
+                    if recovery_tools is not None
+                    else self.tool_schemas,
                     defer_visible_output=self.pipeline._capability_buffers_visible_output(
                         self.context
                     ),
                     tool_choice=(self.pipeline.initial_tool_choice if state.rounds == 0 else None),
                 )
             except Exception as exc:
+                from deeptutor.core.capability_protocol import CapabilityPrerequisiteError
+
+                if isinstance(exc, CapabilityPrerequisiteError):
+                    raise
                 # A mid-loop LLM failure (timeout / transient network) must not
                 # discard a turn that already gathered useful work. Salvage it
                 # with a forced finish; only a failure on the very first round
@@ -477,6 +527,14 @@ class AgentLoop:
                 state.settlement_rounds += 1
             else:
                 state.exploration_rounds += 1
+            if recovery_tools is not None and any(
+                str(call.get("name") or "").strip() not in recovery_tools
+                for call in result.tool_calls
+            ):
+                # Provider schema hints are not an execution permission. Reject
+                # the entire batch before binding or dispatching any rogue tool.
+                await self._discard_deferred_output(result)
+                return await self._reject_capability_finish()
             if not result.tool_calls:
                 final_text = self._clean(result.text)
                 if _finish_was_truncated(result.finish_reason) or _reasoning_budget_exhausted(
@@ -793,7 +851,11 @@ class AgentLoop:
     def _append_loop_instruction(messages: list[dict[str, Any]], instruction: str) -> None:
         """Append a loop directive without creating consecutive user roles."""
         if messages and messages[-1].get("role") == "user":
-            prior = str(messages[-1].get("content") or "").rstrip()
+            content = messages[-1].get("content")
+            if isinstance(content, list):
+                messages[-1]["content"] = _append_directive_to_parts(content, instruction)
+                return
+            prior = str(content or "").rstrip()
             messages[-1]["content"] = f"{prior}\n\n{instruction}" if prior else instruction
             return
         messages.append({"role": "user", "content": instruction})
@@ -805,7 +867,7 @@ class AgentLoop:
         dispatch: DispatchOutcome,
         checkpoint_boundary: int,
     ) -> int:
-        summary = _last_context_checkpoint_summary(dispatch)
+        summary, state = _last_context_checkpoint(dispatch)
         if not summary:
             return checkpoint_boundary
         prefix = messages[:checkpoint_boundary]
@@ -815,8 +877,13 @@ class AgentLoop:
                 "content": f"[Context checkpoint]\n{summary}",
             }
         )
+        boundary = len(prefix)
+        if state:
+            # State sits past the boundary, so the next fold replaces it rather
+            # than leaving a stale copy beside every summary.
+            prefix.append({"role": "system", "content": state})
         messages[:] = prefix
-        return len(messages)
+        return boundary
 
     async def _reject_capability_finish(self) -> LoopOutcome:
         """Fail a turn whose required interaction could not be completed."""
@@ -886,6 +953,10 @@ class AgentLoop:
             # prevents callers from offering an accurate retry action.
             raise
         except Exception as exc:
+            from deeptutor.core.capability_protocol import CapabilityPrerequisiteError
+
+            if isinstance(exc, CapabilityPrerequisiteError):
+                raise
             # The salvage call itself failed (e.g. the provider is still
             # returning unusable data). Don't bubble up and lose the turn —
             # emit the graceful fallback answer instead.
@@ -1046,10 +1117,34 @@ class AgentLoop:
         defer_visible_output: bool = False,
         tool_choice: str | None = None,
     ) -> LLMCallResult:
+        prepare = getattr(self.pipeline, "prepare_model_request", None)
+        lesson_messages = await prepare(self.context, self.stream, messages) if prepare else []
         request_messages = with_transient_model_messages(messages, self._transient_model_messages)
-        await self.pipeline._guard_context_window(request_messages, self.stream)
+        # Current tool pixels take precedence over cached lesson pages. Neither
+        # belongs in the durable dialogue; the hook runs again on forced finish.
+        if lesson_messages and not has_image_parts(self._transient_model_messages):
+            request_messages = [*request_messages, *lesson_messages]
+        project = getattr(self.pipeline, "project_model_request", None)
+        if project is not None:
+            request_messages = project(request_messages)
+        projected_messages = deduplicate_user_images(
+            [
+                {
+                    key: value
+                    for key, value in message.items()
+                    if key not in {"_context_snapshot", "_lesson_packet"}
+                }
+                for message in request_messages
+            ]
+        )
+        await self.pipeline._guard_context_window(
+            projected_messages, self.stream, tool_schemas=tool_schemas
+        )
         stage = self.stage
         call_id = new_call_id(f"{self.source}-{stage}")
+        # Runtime-only invocation identity: reviewed mutations can require a
+        # subsequent model call, rather than trust an LLM-supplied argument.
+        self.context.extension("agent_loop")["model_call_id"] = call_id
         trace_meta = build_trace_metadata(
             call_id=call_id,
             phase=stage,
@@ -1071,12 +1166,7 @@ class AgentLoop:
 
         kwargs: dict[str, Any] = {
             "model": self.pipeline.model,
-            "messages": deduplicate_user_images(
-                [
-                    {key: value for key, value in message.items() if key != "_context_snapshot"}
-                    for message in request_messages
-                ]
-            ),
+            "messages": projected_messages,
             "stream": True,
             **self.pipeline._completion_kwargs(max_tokens=max_tokens),
         }
@@ -1838,8 +1928,13 @@ async def _single_chunk_stream(response: Any) -> Any:
     )
 
 
-def _last_context_checkpoint_summary(dispatch: DispatchOutcome) -> str:
-    summary = ""
+def _last_context_checkpoint(dispatch: DispatchOutcome) -> tuple[str, str]:
+    """``(summary, state)`` of the round's last checkpoint.
+
+    ``summary`` is history the fold keeps; ``state`` is the optional current
+    state that replaces the previous fold's copy instead of stacking with it.
+    """
+    summary, state = "", ""
     for tool_message in dispatch.tool_messages:
         tool_call_id = str(tool_message.get("tool_call_id") or "")
         metadata = dispatch.tool_metadata_by_id.get(tool_call_id) or {}
@@ -1849,7 +1944,8 @@ def _last_context_checkpoint_summary(dispatch: DispatchOutcome) -> str:
         candidate = str(checkpoint.get("summary") or "").strip()
         if candidate:
             summary = candidate
-    return summary
+            state = str(checkpoint.get("state") or "").strip()
+    return summary, state
 
 
 __all__ = [

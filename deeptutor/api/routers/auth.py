@@ -649,6 +649,7 @@ def _learning_surface_for_path(
         ("/api/dashboard/learning-library/reading", "reading"),
         ("/api/books", "books"),
         ("/api/dashboard/learning-library/books", "books"),
+        ("/api/dashboard/learning-library/mastery", "chat"),
         ("/api/chat", "chat"),
         ("/api/question", "chat"),
         ("/api/question-notebook", "chat"),
@@ -704,14 +705,28 @@ async def require_learning_surface(
     _: TokenPayload | None = Depends(require_auth),
 ) -> None:
     """Second-stage default-deny guard for configured learning accounts."""
-    from deeptutor.multi_user.learning_access import assert_learning_surface
+    from deeptutor.multi_user.learning_access import (
+        assert_learning_surface,
+        learning_surface_allowed,
+    )
+
+    route_path = _resolved_route_path(request)
+    # The landing page combines independent learning surfaces (#1987). Admit
+    # any granted surface; the handler filters its readers with the same policy.
+    if (
+        request.method == "GET"
+        and request.url.path == "/api/dashboard/learning-index"
+        and route_path == "/api/dashboard/learning-index"
+        and any(learning_surface_allowed(surface) for surface in ("books", "chat", "reading"))
+    ):
+        return
 
     try:
         assert_learning_surface(
             _learning_surface_for_path(
                 request.url.path,
                 request.method,
-                route_path=_resolved_route_path(request),
+                route_path=route_path,
             )
         )
     except PermissionError as exc:

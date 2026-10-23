@@ -37,6 +37,7 @@ from deeptutor.reading.extract import (
 )
 from deeptutor.reading.models import parse_text_selectors
 from deeptutor.reading.search import normalise, search_units, terms_of
+from deeptutor.utils.document_images import MAX_INLINE_IMAGE_EDGE
 
 pymupdf = pytest.importorskip("pymupdf")
 
@@ -335,6 +336,55 @@ def test_pptx_slides_become_units_when_the_extractor_marks_them(tmp_path: Path) 
     assert extraction.unit == "slide"
     assert len(extraction.units) == 2
     assert "First slide body" in extraction.units[0]
+
+
+def _large_noise_jpeg(size: tuple[int, int] = (2000, 1200)) -> bytes:
+    """A noisy JPEG past the inline long-edge bound, well inside byte budgets."""
+    import random
+
+    from PIL import Image as PILImage
+
+    raw = random.Random(9).randbytes(size[0] * size[1] * 3)
+    buf = io.BytesIO()
+    PILImage.frombytes("RGB", size, raw).save(buf, format="JPEG", quality=95)
+    return buf.getvalue()
+
+
+@pytest.mark.parametrize("suffix", ["docx", "pptx"])
+def test_office_reading_media_keeps_source_resolution(tmp_path: Path, suffix: str) -> None:
+    """Reader-pane media is stored whole; the inline transport bound is for chat.
+
+    Both Office ingests used the chat-attachment budget by default, so a bound
+    meant for images that are base64-inlined into one request would have shrunk
+    what the reader pane displays.
+    """
+    from PIL import Image as PILImage
+
+    image = _large_noise_jpeg()
+    path = tmp_path / f"material.{suffix}"
+    if suffix == "docx":
+        from docx import Document as DocxDocument
+
+        doc = DocxDocument()
+        doc.add_paragraph("A picture follows.")
+        doc.add_picture(io.BytesIO(image))
+        doc.save(str(path))
+    else:
+        from pptx import Presentation
+        from pptx.util import Inches
+
+        prs = Presentation()
+        slide = prs.slides.add_slide(prs.slide_layouts[5])
+        slide.shapes.add_picture(io.BytesIO(image), Inches(1), Inches(1), Inches(4), Inches(3))
+        prs.save(str(path))
+
+    extraction = extract_material(path)
+
+    assert extraction.media, "the embedded picture should become locator media"
+    stored = extraction.media[0].data
+    assert stored == image, "reading media is kept byte-for-byte"
+    with PILImage.open(io.BytesIO(stored)) as whole:
+        assert max(whole.size) > MAX_INLINE_IMAGE_EDGE
 
 
 def test_empty_and_unreadable_sources_raise_reading_error(tmp_path: Path) -> None:

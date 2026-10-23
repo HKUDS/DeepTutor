@@ -324,7 +324,9 @@ class LlamaIndexPipeline:
             nodes = await loop.run_in_executor(
                 None,
                 copy_context().run,
-                lambda: storage.retrieve_nodes(storage_dir, query, top_k=top_k),
+                lambda: storage.retrieve_nodes(
+                    storage_dir, query, top_k=top_k, document_keys=kwargs.get("document_keys")
+                ),
             )
 
             result = self._nodes_to_result(query, nodes)
@@ -376,6 +378,21 @@ class LlamaIndexPipeline:
                     "page": meta.get("page_label", meta.get("page", "")),
                     "chunk_id": node.node.node_id or str(i),
                     "score": round(node.score, 4) if node.score is not None else "",
+                    **(
+                        {
+                            "document_key": meta["document_key"],
+                            "source_digest": meta.get("source_digest", ""),
+                            "source_schema_version": meta.get("source_schema_version", 0),
+                            "page_index": meta.get("page_index"),
+                            "page_label": meta.get("page_label", ""),
+                            "parser_signature": meta.get("parser_signature", ""),
+                            "page_status": meta.get("page_status", "unlocated"),
+                            "visual_status": meta.get("visual_status", "unknown"),
+                            "evidence_text": node.node.text[:6000],
+                        }
+                        if meta.get("document_key")
+                        else {}
+                    ),
                     **(
                         {
                             "visual_asset_id": meta["visual_asset_id"],

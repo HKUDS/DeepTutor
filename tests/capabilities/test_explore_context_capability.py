@@ -495,3 +495,13 @@ def test_explorer_kind_label_from_prefix() -> None:
     assert explorer._kind_label("hs-abc") == "Conversation transcript"
     assert explorer._kind_label("at-abc") == "Document"
     assert explorer._kind_label("zz-abc") == "Source"
+
+
+def test_preload_never_exceeds_limit_even_for_the_first_source():
+    explorer = object.__new__(explorer_mod.ContextExplorer)
+    sources = {"too-large": "x" * 120001, "b": "y" * 80000, "a": "z" * 40000, "extra": "q"}
+    selected = explorer._preload_selection(sources)
+    assert selected == ["b", "a"]
+    assert sum(len(sources[key]) for key in selected) <= explorer_mod.PRELOAD_MAX_CHARS
+    assert sources["too-large"] == "x" * 120001
+    assert explorer._preload_selection({"only": sources["too-large"]}) == []

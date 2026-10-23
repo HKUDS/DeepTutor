@@ -87,5 +87,7 @@ async def test_prepass_failure_keeps_tool_fallback_and_grade_seed(monkeypatch):
     )
     pipeline = AgenticChatPipeline(language="en")
     assert await pipeline._capability_pre_loop_briefings(context, None) == ""
-    assert "already graded it: correct" in pipeline._capability_pre_loop_seed(context)
+    seed = pipeline._capability_pre_loop_seed(context)
+    assert "engine reports: correct" in seed
+    assert 'they answered "B"' in seed
     assert "otherwise call this FIRST" in MasteryStatusTool().get_definition().description

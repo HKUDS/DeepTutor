@@ -209,6 +209,13 @@ def test_hundred_figure_textbook_keeps_late_figures_searchable_and_delivers_pixe
     from deeptutor.tools.builtin import RAGTool
 
     kb_dir, source, image, parsed = _fixture(tmp_path)
+    # Page-grounded indexing now opens the physical PDF as well as parser output.
+    import pymupdf
+
+    with pymupdf.open() as pdf:
+        for _ in range(100):
+            pdf.new_page()
+        pdf.save(source)
     image.unlink()
     parsed = replace(
         parsed,
@@ -255,11 +262,12 @@ def test_hundred_figure_textbook_keeps_late_figures_searchable_and_delivers_pixe
     assert len(visuals) == 100
     VisualAssetStore(kb_dir).publish(candidates)
     index = VectorStoreIndex.from_documents(documents, embed_model=FigureEmbedding())
-    retriever = index.as_retriever(similarity_top_k=1)
+    # The page text and its figure caption share the deterministic embedding.
+    retriever = index.as_retriever(similarity_top_k=2)
     for number in (1, 50, 100):
         nodes = retriever.retrieve(f"Figure {number}")
         retrieved = LlamaIndexPipeline._nodes_to_result(None, f"Figure {number}", nodes)
-        record = retrieved["sources"][0]
+        record = next(item for item in retrieved["sources"] if item.get("visual_asset_id"))
         assert record["page"] == number
         assert record["visual_asset_id"] == candidates[number - 1].record["asset_id"]
 
@@ -284,7 +292,9 @@ def test_hundred_figure_textbook_keeps_late_figures_searchable_and_delivers_pixe
     parts = result.model_message["content"]
     assert sum(part["type"] == "image_url" for part in parts) == 1
     assert base64.b64decode(parts[1]["image_url"]["url"].split(",", 1)[1]) == expected_pixels
-    assert late.record["asset_id"] in result.sources[0]["visual_asset_url"]
+    assert any(
+        late.record["asset_id"] in item.get("visual_asset_url", "") for item in result.sources
+    )
 
 
 @pytest.mark.parametrize("suffix", [".pdf", ".epub"])

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+import contextlib
 from dataclasses import dataclass
 from pathlib import Path
 import sqlite3
@@ -117,13 +119,19 @@ class SQLiteWebSourceSyncRepository:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._initialize()
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextlib.contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
+        """Preserve transaction handling and close without relying on garbage collection."""
         connection = sqlite3.connect(self.path, timeout=30, isolation_level=None)
-        connection.execute("PRAGMA journal_mode=WAL")
-        connection.execute("PRAGMA busy_timeout=30000")
-        connection.execute("PRAGMA synchronous=NORMAL")
-        connection.row_factory = sqlite3.Row
-        return connection
+        try:
+            connection.execute("PRAGMA journal_mode=WAL")
+            connection.execute("PRAGMA busy_timeout=30000")
+            connection.execute("PRAGMA synchronous=NORMAL")
+            connection.row_factory = sqlite3.Row
+            with connection:
+                yield connection
+        finally:
+            connection.close()
 
     def _initialize(self) -> None:
         with self._connect() as connection:

@@ -508,7 +508,7 @@ test("provider discovery stays staged and model choices preserve existing models
   await page.goto("/settings/connections?provider=llm:legacy", { waitUntil: "domcontentloaded" });
   await page.getByLabel("API key", { exact: true }).fill("new-unsaved-key");
   await page.getByRole("button", { name: "Test provider", exact: true }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Provider connected" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "2 models available" })).toBeVisible();
   expect(probes[0]).toMatchObject({ api_key: "new-unsaved-key", profile_id: "legacy", service: "llm", extra_headers: { "X-Custom-Header": "preserve-me" } });
   expect(probes[0]).not.toHaveProperty("model");
   expect(state.writes).toEqual([]);
@@ -602,12 +602,16 @@ test("a new provider can be tested with only a key and supplies discovered model
   });
   await page.goto("/settings/connections", { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "Add provider", exact: true }).click();
-  await page.getByLabel("Provider type", { exact: true }).selectOption("openai");
+  const providerType = page.getByRole("radiogroup", { name: "Provider type", exact: true })
+    .getByRole("radio", { name: "OpenAI", exact: true });
+  await providerType.focus();
+  await page.keyboard.press("Space");
+  await expect(providerType).toBeChecked();
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(page.getByLabel("Provider URL", { exact: true })).toHaveValue("");
   await page.getByLabel("API key", { exact: true }).fill("new-key");
   await page.getByRole("button", { name: "Test provider", exact: true }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Provider connected" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "1 models available" })).toBeVisible();
   expect(probes[0]).toMatchObject({ api_key: "new-key", base_url: "https://api.openai.com/v1" });
   await page.getByRole("region", { name: "Provider settings" }).getByRole("link", { name: "Language models", exact: true }).click();
   await page.getByRole("button", { name: "Add model", exact: true }).click();

@@ -14,6 +14,43 @@ from deeptutor.tools.builtin import (
 )
 
 
+def test_nullable_request_schema_does_not_corrupt_public_tool_metadata():
+    from deeptutor.core.tool_protocol import ToolDefinition, ToolParameter
+
+    definition = ToolDefinition(
+        name="source_view",
+        description="Synthetic source presentation",
+        parameters=[
+            ToolParameter(
+                name="presentation",
+                type="string",
+                required=False,
+                enum=["inspect", "teaching", "reveal"],
+            )
+        ],
+    )
+    request = definition.to_openai_schema()["function"]["parameters"]
+    request["properties"]["presentation"]["enum"].append(None)
+    _, _, metadata = tools_router._serialise_definition(definition)
+    assert metadata[0].enum == ["inspect", "teaching", "reveal"]
+    assert (
+        definition.to_openai_schema()["function"]["parameters"]["properties"]["presentation"][
+            "enum"
+        ]
+        == metadata[0].enum
+    )
+
+
+def test_rag_definition_can_be_serialised_for_tools_ui():
+    from deeptutor.tools.builtin import RAGTool
+
+    definition = RAGTool().get_definition()
+    name, _, parameters = tools_router._serialise_definition(definition)
+    assert name == "rag"
+    presentation = next(parameter for parameter in parameters if parameter.name == "presentation")
+    assert presentation.enum == ["inspect", "teaching", "reveal"]
+
+
 @pytest.mark.asyncio
 async def test_list_builtin_tools_marks_toggleable_set(
     monkeypatch: pytest.MonkeyPatch, tmp_path

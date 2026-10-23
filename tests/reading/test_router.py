@@ -436,6 +436,14 @@ def test_epub_render_response_is_normalized_and_raw_preserves_upload(client: Tes
     assert all("__MACOSX" not in info.filename for info in infos)
 
 
+def test_upload_unwraps_a_safari_folder_drag_epub_zip(client: TestClient) -> None:
+    material = _upload(client, name="book.epub.zip", data=_epub_bytes(finder_package=True))
+
+    assert material["render_mode"] == "epub"
+    assert material["unit_count"] >= 1
+    assert material["filename"] == "book.epub"
+
+
 def test_epub_pairing_requires_confirmation_and_preserves_source_materials(
     client: TestClient,
 ) -> None:

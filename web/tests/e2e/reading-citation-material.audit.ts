@@ -1,4 +1,6 @@
+import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
+import { emptyTaskBoard } from "./fixtures/task-board";
 
 const MATERIAL_A = "aaaaaaaaaaaaaaaa";
 const MATERIAL_B = "bbbbbbbbbbbbbbbb";
@@ -86,6 +88,7 @@ test.beforeEach(async ({ page }) => {
       route.fulfill({ status, json: payload });
 
     if (path === "/api/partners" || path === "/api/partner-groups") return json([]);
+    if (path === "/api/task-board") return json(emptyTaskBoard);
     if (path === "/api/auth/status") {
       return json({ enabled: false, authenticated: true });
     }
@@ -225,4 +228,20 @@ test("historical citation reopens its turn material and unsupported locator stay
   await page.getByRole("link", { name: "p.2" }).click();
   await expect(page.getByText("Verified source material text.")).toBeVisible();
   await expect(page.getByText("Wrong material text.")).toHaveCount(0);
+});
+
+
+test("downloads the persisted reading conversation as Markdown", async ({ page }) => {
+  await page.goto(`/learning/reading/${WORKSPACE_ID}/sessions/${SESSION_ID}`, { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("link", { name: "p.2" })).toBeVisible();
+  await page.getByRole("button", { name: "More", exact: true }).click();
+  const exported = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download Markdown", exact: true }).click();
+  const download = await exported;
+  expect(download.suggestedFilename()).toMatch(/\.md$/);
+  const downloadedPath = await download.path();
+  expect(downloadedPath).not.toBeNull();
+  const markdown = await readFile(downloadedPath!, "utf8");
+  expect(markdown).toContain("Where is the source passage?");
+  expect(markdown).toContain("The grounded passage is here [p.2]. A guess is [p.1].");
 });

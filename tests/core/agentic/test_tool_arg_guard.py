@@ -174,6 +174,165 @@ def test_raw_json_schema_required_is_honoured() -> None:
     assert [arg.name for arg in missing_required_args(definition, {})] == ["path", "mode"]
 
 
+@pytest.mark.parametrize(
+    ("property_schema", "accepts_null"),
+    [
+        ({"type": ["integer", "null"]}, True),
+        ({"type": "null"}, True),
+        ({"anyOf": [{"type": "integer"}, {"type": "null"}]}, True),
+        ({"oneOf": [{"type": "integer"}, {"type": "null"}]}, True),
+        ({"allOf": [{"type": ["integer", "null"]}, {"enum": [1, None]}]}, True),
+        ({"enum": [1, None]}, True),
+        ({"const": None}, True),
+        ({}, True),
+        (True, True),
+        ({"type": "integer"}, False),
+        ({"type": ["integer", "null"], "enum": [1]}, False),
+        ({"allOf": [{"type": ["integer", "null"]}, {"not": {"type": "null"}}]}, False),
+        ({"oneOf": [{}, {"type": "null"}]}, False),
+        (False, False),
+        ({"type": "invalid-schema-type"}, False),
+        ({"$ref": "#/$defs/absent"}, False),
+        ({"$ref": "https://example.invalid/schema.json"}, False),
+    ],
+)
+def test_required_null_uses_schema_semantics_without_relaxing_omission(
+    property_schema: Any,
+    accepts_null: bool,
+) -> None:
+    definition = ToolDefinition(
+        name="nullable_tool",
+        description="",
+        raw_parameters={
+            "type": "object",
+            "properties": {"value": property_schema},
+            "required": ["value"],
+        },
+    )
+    assert [arg.name for arg in missing_required_args(definition, {})] == ["value"]
+    expected = [] if accepts_null else ["value"]
+    assert [arg.name for arg in missing_required_args(definition, {"value": None})] == expected
+
+
+def test_nullable_local_reference_is_resolved_in_the_tool_schema() -> None:
+    definition = ToolDefinition(
+        name="nullable_tool",
+        description="",
+        raw_parameters={
+            "type": "object",
+            "$defs": {"nullable_id": {"type": ["integer", "null"]}},
+            "properties": {"value": {"$ref": "#/$defs/nullable_id"}},
+            "required": ["value"],
+        },
+    )
+    assert missing_required_args(definition, {"value": None}) == []
+
+
+def test_invalid_referenced_schema_keeps_null_rejection() -> None:
+    definition = ToolDefinition(
+        name="nullable_tool",
+        description="",
+        raw_parameters={
+            "type": "object",
+            "$defs": {"invalid": {"type": "invalid-schema-type"}},
+            "properties": {"value": {"$ref": "#/$defs/invalid"}},
+            "required": ["value"],
+        },
+    )
+    assert [arg.name for arg in missing_required_args(definition, {"value": None})] == ["value"]
+
+
+def test_unproductive_reference_cycle_keeps_null_rejection() -> None:
+    definition = ToolDefinition(
+        name="nullable_tool",
+        description="",
+        raw_parameters={
+            "type": "object",
+            "$defs": {"cycle": {"$ref": "#/$defs/cycle"}},
+            "properties": {"value": {"$ref": "#/$defs/cycle"}},
+            "required": ["value"],
+        },
+    )
+    assert [arg.name for arg in missing_required_args(definition, {"value": None})] == ["value"]
+
+
+def test_remote_reference_does_not_fetch_a_schema(monkeypatch: pytest.MonkeyPatch) -> None:
+    def unexpected_network(*_args: Any, **_kwargs: Any) -> None:
+        pytest.fail("required-argument checking must not perform network I/O")
+
+    monkeypatch.setattr("urllib.request.OpenerDirector.open", unexpected_network)
+    definition = ToolDefinition(
+        name="nullable_tool",
+        description="",
+        raw_parameters={
+            "type": "object",
+            "properties": {"value": {"$ref": "https://example.invalid/schema.json"}},
+            "required": ["value"],
+        },
+    )
+    assert [arg.name for arg in missing_required_args(definition, {"value": None})] == ["value"]
+
+
+def test_nullable_parameter_row_accepts_explicit_null() -> None:
+    definition = ToolDefinition(
+        name="null_tool",
+        description="",
+        parameters=[ToolParameter(name="value", type="null")],
+    )
+    assert missing_required_args(definition, {"value": None}) == []
+    assert [arg.name for arg in missing_required_args(definition, {})] == ["value"]
+
+
+def test_nullable_string_still_rejects_present_blank_content() -> None:
+    definition = ToolDefinition(
+        name="nullable_tool",
+        description="",
+        raw_parameters={
+            "type": "object",
+            "properties": {"value": {"type": ["string", "null"]}},
+            "required": ["value"],
+        },
+    )
+    absent, blank = unsatisfied_required_args(definition, {"value": "   "})
+    assert absent == []
+    assert [arg.name for arg in blank] == ["value"]
+
+
+def test_non_nullable_parameter_row_still_rejects_explicit_null() -> None:
+    assert [
+        arg.name
+        for arg in missing_required_args(
+            _write_note_definition(), {"mode": "append", "notebook_id": None}
+        )
+    ] == ["notebook_id"]
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {"action": "preview", "revisions": [{"module_id": "m1"}], "preview_id": None},
+        {"action": "commit", "revisions": None, "preview_id": 1},
+    ],
+)
+def test_preview_commit_contract_can_supply_required_inactive_fields_as_null(
+    arguments: dict[str, Any],
+) -> None:
+    definition = ToolDefinition(
+        name="reviewed_revision",
+        description="",
+        raw_parameters={
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "enum": ["preview", "commit"]},
+                "revisions": {"type": ["array", "null"]},
+                "preview_id": {"type": ["integer", "null"]},
+            },
+            "required": ["action", "revisions", "preview_id"],
+        },
+    )
+    assert missing_required_args(definition, arguments) == []
+
+
 def test_schema_without_required_list_reports_nothing() -> None:
     definition = ToolDefinition(
         name="mcp_loose",
@@ -224,6 +383,8 @@ class _Registry:
 async def _run_dispatch(
     tool_calls: list[dict[str, Any]],
     registry: Any,
+    *,
+    kwarg_augmenter: Any = None,
 ) -> list[StreamEvent]:
     bus = StreamBus()
     events: list[StreamEvent] = []
@@ -242,6 +403,7 @@ async def _run_dispatch(
         stage="responding",
         iteration_index=0,
         registry=registry,
+        kwarg_augmenter=kwarg_augmenter,
     )
     await bus.close()
     await consumer
@@ -312,6 +474,45 @@ async def test_well_formed_call_is_dispatched_untouched() -> None:
     )
 
     assert [c["mode"] for c in tool.calls] == ["append"]
+    assert _call_states(events) == ["running", "complete"]
+
+
+class _NullableWriteNote(_WriteNote):
+    def get_definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name="write_note",
+            description="",
+            raw_parameters={
+                "type": "object",
+                "properties": {
+                    "mode": {"type": "string"},
+                    "notebook_id": {"type": ["string", "null"]},
+                },
+                "required": ["mode", "notebook_id"],
+            },
+        )
+
+
+@pytest.mark.asyncio
+async def test_nullable_argument_is_dispatched_once_and_preserved() -> None:
+    tool = _NullableWriteNote()
+    events = await _run_dispatch(
+        [{"id": "c1", "name": "write_note", "arguments": '{"mode":"append","notebook_id":null}'}],
+        _Registry(tool),
+    )
+    assert [(call["mode"], call["notebook_id"]) for call in tool.calls] == [("append", None)]
+    assert _call_states(events) == ["running", "complete"]
+
+
+@pytest.mark.asyncio
+async def test_runtime_injected_nullable_argument_counts_as_supplied() -> None:
+    tool = _NullableWriteNote()
+    events = await _run_dispatch(
+        [{"id": "c1", "name": "write_note", "arguments": '{"mode":"append"}'}],
+        _Registry(tool),
+        kwarg_augmenter=lambda _name, args, _context: {**args, "notebook_id": None},
+    )
+    assert [call["notebook_id"] for call in tool.calls] == [None]
     assert _call_states(events) == ["running", "complete"]
 
 

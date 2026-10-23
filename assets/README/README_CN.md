@@ -560,13 +560,13 @@ Book 将选定的来源转化为交互式**活书** — 不是静态 PDF，而�
 
 要迁移现有的 Obsidian、Hermes 或 Markdown 资料库？请参阅[知识迁移指南](../../docs-for-user/KNOWLEDGE_MIGRATION.md)，了解连接 vault 与索引副本两种路径。
 
-创建 KB 时，可以选择**新建**（上传文档并构建索引）、**链接已有**（原位复用索引），或**连接 Kiwix**（按需搜索一个通过服务提供的 ZIM 归档）。创建时可选择其存储工作区；已有知识库可在预览后移至其他工作区，同时保留资源分配和已保存的引用。知识库还可以追踪 **GitHub 仓库**（仓库、分支和 glob 匹配模式）或**文档站点 URL**（限制爬取深度和页面数量，默认每 24 小时重新同步一次）；同步时会通过内容哈希差异识别新增、变更和移除的内容，让你关注的文档保持最新，无需重新上传，**链接文件夹**也会在同步时拾取新增或变更的本地文件。重新索引会写入新的平铺 `version-N` 目录并保留旧版本，因此重建过程中现有索引不会被破坏。即使知识库处于 **error** 状态，也可以单独移除其中一份文档 — 无需完整地删除重建，就能丢弃解析失败的文件。文档解析 — 纯文本、MinerU、Docling、Tika、markitdown、PyMuPDF4LLM 或 LiteParse — 以及可选的图像描述模型均在 **Settings → Knowledge & documents** 中选择，本地模型下载默认关闭。Docling 也可以以 **remote** 模式运行，对接 Docling Serve 服务器（无需本地安装或模型），可在该页面中配置（`mode=remote`、服务器 Base URL 和可选的 API Key），或通过 `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` 环境变量配置。Tika 仅支持远程模式，需指向该页面中配置的 Apache Tika 服务器。CLI 通过 `list/info/create/connect-kiwix/add/search/eval/set-default/delete`、来源添加/移除命令、`list-sources` 和 `sync` 管理完整生命周期。
+创建 KB 时，可以选择**新建**（上传文档并构建索引）、**链接已有**（原位复用索引），或**连接 Kiwix**（按需搜索一个通过服务提供的 ZIM 归档）。创建时可选择其存储工作区；已有知识库可在预览后移至其他工作区，同时保留资源分配和已保存的引用。知识库还可以追踪 **GitHub 仓库**（仓库、分支和 glob 匹配模式）或**文档站点 URL**（限制爬取深度和页面数量，默认每 24 小时重新同步一次）；同步时会通过内容哈希差异识别新增、变更和移除的内容，让你关注的文档保持最新，无需重新上传，**链接文件夹**也会在同步时拾取新增或变更的本地文件。重新索引会写入新的平铺 `version-N` 目录并保留旧版本，因此重建过程中现有索引不会被破坏。即使知识库处于 **error** 状态，也可以单独移除其中一份文档 — 无需完整地删除重建，就能丢弃解析失败的文件。文档解析 — 纯文本、MinerU、Docling、Tika、markitdown、PyMuPDF4LLM 或 LiteParse — 以及可选的图像描述模型均在 **Settings → Knowledge & documents** 中选择，本地模型下载默认关闭。Docling 也可以以 **remote** 模式运行，对接 Docling Serve 服务器（无需本地安装或模型），可在该页面中配置（`mode=remote`、服务器 Base URL 和可选的 API Key），或通过 `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` 环境变量配置。Tika 仅支持远程模式，需指向该页面中配置的 Apache Tika 服务器。CLI 通过 `list/info/create/connect-kiwix/add/search/eval/eval-diff/set-default/delete`、来源添加/移除命令、`list-sources` 和 `sync` 管理完整生命周期。
 
 内置的 LightRAG 引擎通过 `pip install 'deeptutor[rag-lightrag]'` 安装。该额外依赖包含受支持的 LightRAG SDK，但不会安装 MinerU。如需结构化解析，请在文档解析中单独选择 MinerU，并配置其云端模式或安装当前的本地 CLI。MinerU 支持 PDF、常见的光栅图像、DOCX、PPTX 和 XLSX；旧版 `magic-pdf` 命令仍仅支持 PDF。纯文本及其他解析引擎均不需要 MinerU。
 
 原生 LightRAG 的查询与增量索引依赖已发布索引所记录的嵌入配置，包括模型、维度和端点身份。如果该配置发生变化，需要恢复原始配置，或使用当前嵌入重建索引；未记录嵌入身份的索引则必须重建。知识库详情页和索引版本视图会显示恢复指引，同时文件仍可正常查看和下载。
 
-**评估知识库。** 有多个引擎可选时，“哪一个在这里检索得最好？”需要通过实测回答，`deeptutor kb eval` 正是为此而设。编写一个 QA 数据集（每行一个 JSON 对象，包含 `query` 和理想检索应返回的 `gold` 段落），然后使用 `deeptutor kb eval <name> --dataset qa.jsonl --top-k 5 [--mode hybrid] [--save baseline.json]` 为知识库评分。每个样例均通过聊天轮次所用的同一路径检索，按排序返回的引用会通过精确文本匹配或词汇重叠与标准段落进行匹配（可用 `--min-ratio` 调整阈值；不评估语义等价），运行结果报告 **Recall@k / Precision@k / nDCG@k / MRR / MAP / Hit@k**。各指标都是对排序结果计算的纯函数，无需模型裁判：评分可复现、可比较差异；保存基线后，就能用这个数据集为切换嵌入模型、更改重排序器或实验分块大小设置回归检查。检索失败的样例（如缺少索引或凭证有误）不计分，会单独报告，不会拉低平均值。PageIndex 以推理进行检索，不返回有排序的文本块，因此不在评估范围内。
+**评估知识库。** 有多个引擎可选时，“哪一个在这里检索得最好？”需要通过实测回答，`deeptutor kb eval` 正是为此而设。编写一个 QA 数据集（每行一个 JSON 对象，包含 `query` 和理想检索应返回的 `gold` 段落），然后使用 `deeptutor kb eval <name> --dataset qa.jsonl --top-k 5 [--mode hybrid] [--save baseline.json]` 为知识库评分。每个样例均通过聊天轮次所用的同一路径检索，按排序返回的引用会通过精确文本匹配或词汇重叠与标准段落进行匹配（可用 `--min-ratio` 调整阈值；不评估语义等价），运行结果报告 **Recall@k / Precision@k / nDCG@k / MRR / MAP / Hit@k**。各指标都是对排序结果计算的纯函数，无需模型裁判。使用 `deeptutor kb eval-diff baseline.json candidate.json` 比较已保存的报告，查看各指标和各样例的变化。在 `kb eval` 中使用 `--rewrite off` 或 `--rewrite standalone`，可比较原始查询与改写后的查询；报告会保留查询改写记录。检索失败的样例（如缺少索引或凭证有误）不计分，会单独报告，不会拉低平均值。PageIndex 以推理进行检索，不返回有排序的文本块，因此不在评估范围内。
 
 ```jsonl
 {"query": "Why do transformers scale attention?", "gold": ["Scaling keeps the dot products from growing with the dimension."]}
@@ -737,7 +737,7 @@ deeptutor run deep_question "Quiz me on that survey" --session "$SID" --format j
 | `deeptutor run <capability> <message>` | 运行单次能力对话（`chat`、`ask_questions`、`deep_solve`、`deep_question`、`deep_research`、`visualize`、`math_animator`、`mastery_path`、`immersive_reading`、`course_study`、`audio_overview`）；添加 `--format json` 可获得 NDJSON 输出 |
 | `deeptutor chat` | 交互式 REPL，支持能力、工具、知识库、笔记本和历史控制 |
 | `deeptutor partner list/create/start/stop` | 管理 IM 连接的 Partners |
-| `deeptutor kb list/info/create/connect-kiwix/add/search/eval/set-default/delete/list-sources/sync` | 管理知识库、连接 Kiwix 归档、用 QA 数据集评估检索质量，并同步已注册的 GitHub/Web 来源（包含来源添加/移除命令） |
+| `deeptutor kb list/info/create/connect-kiwix/add/search/eval/eval-diff/set-default/delete/list-sources/sync` | 管理知识库、连接 Kiwix 归档、评估并比较检索运行结果，并同步已注册的 GitHub/Web 来源（包含来源添加/移除命令） |
 | `deeptutor skill search/install/list/remove/login/logout/publish/update` | 管理技能、从 Hub 安装并发布自己的技能（默认 `eduhub:<slug>`，详见生态系统） |
 | `deeptutor memory show/clear` | 查看 L2/L3 记忆文档或清除 L1/全部记忆 |
 | `deeptutor session list/show/open/rename/delete` | 管理共享会话 |

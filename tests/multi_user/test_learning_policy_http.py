@@ -222,3 +222,92 @@ def test_dashboard_learning_library_follows_the_policy(learner_client, as_user):
         denied = client.get(f"/api/dashboard/learning-library/{kind}")
         assert denied.status_code == 403
         assert "reading surface" in denied.json()["detail"]
+
+
+@pytest.mark.parametrize(
+    "surfaces", [["reading"], ["chat"], ["books"], ["books", "chat", "reading"]]
+)
+def test_learning_home_only_reads_granted_surfaces(learner_client, monkeypatch, surfaces):
+    """#1987: the aggregate page works without opening a denied source reader."""
+    from deeptutor.api.routers import book, mastery_path
+    from deeptutor.services.session import organization
+
+    client, learner, _current_user, _tmp_path = learner_client
+    _save_learner_grant(learner["id"], "assigned", allowed_surfaces=surfaces)
+    calls = []
+
+    async def books():
+        calls.append("books")
+        return {"books": [{"id": "book"}]}
+
+    async def mastery():
+        calls.append("chat")
+        return {"topics": [{"id": "topic"}]}
+
+    async def collections(**_kwargs):
+        calls.append("reading")
+        return {"workspaces": [{"id": "collection"}]}
+
+    async def watching(_store):
+        calls.append("reading")
+        return [{"id": "video", "preferences": {"workspace_mode": "immersive_watching"}}]
+
+    monkeypatch.setattr(book, "list_books", books)
+    monkeypatch.setattr(mastery_path, "list_topics", mastery)
+    monkeypatch.setattr(reading, "list_workspaces", collections)
+    monkeypatch.setattr(organization, "list_all_sessions_snapshot", watching)
+    monkeypatch.setattr(dashboard, "get_session_store", lambda: object())
+
+    response = client.get("/api/dashboard/learning-index")
+    assert response.status_code == 200, response.text
+    assert response.json()["failed"] == []
+    for kind, surface in {
+        "books": "books",
+        "mastery": "chat",
+        "reading": "reading",
+        "watching": "reading",
+    }.items():
+        assert bool(response.json()["sources"][kind]) == (surface in surfaces)
+    assert set(calls) == set(surfaces)
+    assert client.get("/api/dashboard/recent").status_code == 403
+    assert client.get("/api/dashboard/source-library/chats").status_code == 403
+    assert client.get("/api/dashboard/learning-index-private").status_code == 403
+
+
+def test_learning_home_retains_assigned_material_filtering(learner_client, as_user):
+    from deeptutor.reading.catalog_store import ReadingCatalogStore
+
+    client, learner, current_user, tmp_path = learner_client
+    with as_user(current_user.id, username="student"):
+        allowed = _seed_material(tmp_path, "home-allowed.txt", "Assigned passage.")
+        private = _seed_material(tmp_path, "home-private.txt", "Unassigned passage.")
+        catalog = ReadingCatalogStore()
+        catalog.register_manifest(allowed)
+        catalog.register_manifest(private)
+        workspace = catalog.create_workspace("Mixed", [allowed.material_id, private.material_id])
+        _save_learner_grant(learner["id"], allowed.material_id, allowed_surfaces=["reading"])
+
+    response = client.get("/api/dashboard/learning-index")
+    assert response.status_code == 200, response.text
+    rows = response.json()["sources"]["reading"]
+    assert [row["workspace_id"] for row in rows] == [workspace.workspace_id]
+    assert [tab["material"]["material_id"] for tab in rows[0]["tabs"]] == [allowed.material_id]
+    assert private.material_id not in response.text
+
+
+@pytest.mark.parametrize("surfaces,expected", [(["chat"], 200), (["reading"], 403)])
+def test_mastery_library_obeys_chat_surface(learner_client, monkeypatch, surfaces, expected):
+    from deeptutor.api.routers import mastery_path
+
+    client, learner, _current_user, _tmp_path = learner_client
+    _save_learner_grant(learner["id"], "assigned", allowed_surfaces=surfaces)
+    calls = []
+
+    async def topics():
+        calls.append(True)
+        return {"topics": [{"id": "topic"}]}
+
+    monkeypatch.setattr(mastery_path, "list_topics", topics)
+    response = client.get("/api/dashboard/learning-library/mastery")
+    assert response.status_code == expected, response.text
+    assert bool(calls) == (expected == 200)

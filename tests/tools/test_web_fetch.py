@@ -312,6 +312,61 @@ async def test_fetch_truncates_at_max_chars() -> None:
     assert len(outcome.markdown) <= 220  # cap + marker headroom
 
 
+# "喆" is outside GB2312, so pages labelled gb2312 only render it when the
+# label is decoded as its GBK superset, as browsers do.
+_GBK_TEXT = "傅里叶变换将信号分解为不同频率的正弦波。——喆"
+
+
+@pytest.mark.parametrize(
+    "meta",
+    [
+        '<meta charset="gbk">',
+        '<meta http-equiv="Content-Type" content="text/html; charset=gb2312">',
+    ],
+)
+@pytest.mark.asyncio
+async def test_fetch_honours_meta_charset_when_header_has_none(meta: str) -> None:
+    body = f"<html><head>{meta}<title>笔记</title></head><body><p>{_GBK_TEXT}</p></body></html>"
+    response = _StubResponse(
+        body=body.encode("gbk"),
+        headers={"content-type": "text/html"},
+    )
+
+    outcome = await fetch_url_as_markdown(
+        "https://example.com/gbk",
+        client_factory=_factory_returning(response),
+        host_validator=_ALLOW_ALL,
+    )
+
+    assert outcome.ok is True
+    assert outcome.title == "笔记"
+    assert _GBK_TEXT in outcome.markdown
+    assert "�" not in outcome.markdown
+
+
+@pytest.mark.asyncio
+async def test_fetch_header_charset_wins_over_meta_and_bom_wins_over_both() -> None:
+    body = f'<html><head><meta charset="gbk"></head><body><p>{_GBK_TEXT}</p></body></html>'
+    header_utf8 = _StubResponse(
+        body=body.encode("utf-8"),
+        headers={"content-type": 'text/html; charset="UTF-8"'},
+    )
+    bom_utf8 = _StubResponse(
+        body=b"\xef\xbb\xbf" + body.encode("utf-8"),
+        headers={"content-type": "text/html; charset=iso-8859-1"},
+    )
+
+    for response in (header_utf8, bom_utf8):
+        outcome = await fetch_url_as_markdown(
+            "https://example.com/utf8",
+            client_factory=_factory_returning(response),
+            host_validator=_ALLOW_ALL,
+        )
+        assert outcome.ok is True
+        assert _GBK_TEXT in outcome.markdown
+        assert "﻿" not in outcome.markdown
+
+
 @pytest.mark.asyncio
 async def test_fetch_propagates_http_error_as_outcome_not_exception() -> None:
     outcome = await fetch_url_as_markdown(

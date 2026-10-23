@@ -18,6 +18,10 @@ from .context import UnifiedContext
 from .stream import StreamEvent
 
 
+class CapabilityPrerequisiteError(ValueError):
+    """A required capability precondition failed; never bypass it by forced finish."""
+
+
 class StreamBusProtocol(Protocol):
     """Minimal output port required by a turn capability."""
 
@@ -91,6 +95,7 @@ def __getattr__(name: str):
 
 
 __all__ = [
+    "CapabilityPrerequisiteError",
     "CapabilityManifest",
     "StreamBusProtocol",
     "TurnCapability",

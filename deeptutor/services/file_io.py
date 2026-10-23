@@ -9,9 +9,11 @@ from pathlib import Path
 import tempfile
 import threading
 import time
-from typing import Any
+from typing import Any, Callable, TypeVar
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
 
 # fsync failures weaken the durability promise but do not corrupt the write:
 # the replacement below still publishes complete content. Warn about them,
@@ -45,28 +47,42 @@ def _sync_to_disk(handle: Any, path: Path) -> None:
             )
 
 
-def _atomic_replace(src: Path, dst: Path, *, max_retries: int = 5) -> None:
-    """Replace *dst* with *src*, retrying on transient ``PermissionError``.
+def _retry_permission_error(operation: Callable[[], T], *, max_retries: int) -> T:
+    """Run *operation*, retrying a transient ``PermissionError`` with backoff.
 
-    On Windows the destination file is occasionally locked by another process
-    (antivirus, indexer, or a concurrent reader), which makes ``Path.replace``
+    On Windows a file is occasionally locked by another process (antivirus,
+    indexer, or a concurrent reader), which makes opening or replacing it
     raise ``PermissionError``. A short exponential backoff recovers in most
-    cases without losing the already-written content.
+    cases; a lock that outlasts it is re-raised unchanged.
     """
     delay = 0.2
-    last_err: PermissionError | None = None
     for attempt in range(max_retries):
         try:
-            src.replace(dst)
-            return
-        except PermissionError as exc:  # pragma: no cover - platform specific
-            last_err = exc
+            return operation()
+        except PermissionError:
             if attempt == max_retries - 1:
-                break
+                raise
             time.sleep(delay)
             delay = min(delay * 2, 1.6)
-    assert last_err is not None
-    raise last_err
+    raise ValueError("max_retries must be at least 1")
+
+
+def _atomic_replace(src: Path, dst: Path, *, max_retries: int = 5) -> None:
+    """Replace *dst* with *src*, retrying on transient ``PermissionError``."""
+    _retry_permission_error(lambda: src.replace(dst), max_retries=max_retries)
+
+
+def read_text(path: Path, *, max_retries: int = 5) -> str:
+    """Read a UTF-8 file written by the atomic helpers below.
+
+    Reads use the writers' encoding instead of the locale default, and a
+    transient Windows sharing lock gets the same bounded retry as writes.
+    ``FileNotFoundError`` and decoding errors propagate immediately.
+    """
+    path = Path(path)
+    return _retry_permission_error(
+        lambda: path.read_text(encoding="utf-8"), max_retries=max_retries
+    )
 
 
 def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -114,4 +130,4 @@ def atomic_write_text(path: Path, text: str) -> None:
             temporary_path.unlink(missing_ok=True)
 
 
-__all__ = ["atomic_write_json", "atomic_write_text"]
+__all__ = ["atomic_write_json", "atomic_write_text", "read_text"]

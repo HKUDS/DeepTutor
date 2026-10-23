@@ -55,6 +55,7 @@ from pathlib import Path
 import re
 import shutil
 from typing import Any
+from uuid import uuid4
 
 import yaml
 
@@ -694,9 +695,18 @@ class SkillService:
             staging.mkdir(parents=True)
             skipped = self._copy_support_tree(source, staging)
             (staging / "SKILL.md").write_text(adapted, encoding="utf-8")
-            if target_dir.exists():
-                shutil.rmtree(target_dir)
-            staging.rename(target_dir)
+            previous = self._root / f".{slug}.previous-{uuid4().hex}"
+            had_previous = target_dir.exists()
+            if had_previous:
+                target_dir.rename(previous)
+            try:
+                staging.rename(target_dir)
+            except BaseException:
+                if had_previous:
+                    previous.rename(target_dir)
+                raise
+            if had_previous:
+                shutil.rmtree(previous)
         finally:
             if staging.exists():
                 shutil.rmtree(staging, ignore_errors=True)

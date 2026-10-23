@@ -59,6 +59,57 @@ class StreamBus:
         """Largest sequence issued by this bus, or zero before its first event."""
         return self._next_seq - 1 if self._assign_seq else 0
 
+    @property
+    def result_completion(self) -> bool | None:
+        """Read the final result's explicit completion claim, without mutable events.
+
+        A normal return from a capability is not proof that its requested work
+        completed. Older capabilities omit the field and retain their existing
+        lifecycle. Nested/tool results are not capability RESULT events.
+        """
+        for event in reversed(self._history):
+            if event.type == StreamEventType.RESULT:
+                completed = event.metadata.get("completed")
+                return completed if isinstance(completed, bool) else None
+        return None
+
+    def public_content_snapshot(
+        self, *, source: str, stage: str
+    ) -> tuple[tuple[int, float, str], ...]:
+        """Read already published answer text, without exposing mutable events.
+
+        Reasoning, sources and tool results are not assistant explanations.
+        Taking a snapshot never subscribes, waits for future output or emits an
+        event. Sequence zero remains zero for direct callers without sequencing.
+        """
+        visibility: dict[str, bool] = {}
+        for event in self._history:
+            if event.source != source or event.stage != stage:
+                continue
+            if event.type not in {StreamEventType.CONTENT, StreamEventType.PROGRESS}:
+                continue
+            call_id = event.metadata.get("call_id")
+            if not isinstance(call_id, str) or not call_id:
+                continue
+            if event.metadata.get("finish_rejected") is True:
+                visibility[call_id] = False
+            elif isinstance(event.metadata.get("answer_visible"), bool):
+                visibility[call_id] = event.metadata["answer_visible"]
+        return tuple(
+            (event.seq, event.timestamp, event.content)
+            for event in self._history
+            if event.type == StreamEventType.CONTENT
+            and event.source == source
+            and event.stage == stage
+            and event.content
+            and event.metadata.get("answer_visible") is not False
+            and event.metadata.get("finish_rejected") is not True
+            and (
+                not isinstance(event.metadata.get("call_id"), str)
+                or visibility.get(event.metadata["call_id"], True)
+            )
+        )
+
     async def emit(self, event: StreamEvent) -> None:
         """Push *event* to every active subscriber."""
         if self._closed:

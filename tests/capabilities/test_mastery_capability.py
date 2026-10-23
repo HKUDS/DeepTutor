@@ -62,6 +62,66 @@ def _progress_with_objective() -> LearningProgress:
     )
 
 
+@pytest.mark.parametrize("case", ["explanation", "ready", "retried", "rebound", "delivered"])
+def test_settlement_delivery_requires_fresh_quiz_preparation_receipt(case, tmp_path, monkeypatch):
+    _use_store_root(monkeypatch, tmp_path)
+    LearningStore().save(_progress_with_objective())
+    context, capability = _context(), MasteryLoopCapability()
+    if case != "explanation":
+        capability.augment_kwargs("mastery_quiz", {}, context)
+    prepared = capability.augment_kwargs("mastery_prepare_lesson", {}, context)
+    prepared["_bind_lesson_objective"]("kp-1")
+    if case == "retried":
+        capability.augment_kwargs("mastery_quiz", {}, context)
+    elif case == "rebound":
+        context.metadata["mastery_path_id"] = "another-path"
+    elif case == "delivered":
+        context.extension("mastery")["card_posted"] = True
+    recovery = capability.settlement_recovery(context)
+    if case == "ready":
+        assert recovery is not None and recovery[1] == ("mastery_quiz",)
+        # Even a later fresh preparation cannot purchase another final round.
+        prepared["_bind_lesson_objective"]("kp-1")
+        assert capability.settlement_recovery(context) is None
+    else:
+        assert recovery is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("changed", [None, "path", "session", "turn"])
+async def test_mastery_source_presentation_callback_is_server_bound(changed, monkeypatch):
+    context, capability = _context(), MasteryLoopCapability()
+    calls = []
+
+    def present(_self, path_id, sources, purpose, **kwargs):
+        calls.append((path_id, sources, purpose, kwargs))
+        return sources
+
+    monkeypatch.setattr(LearningService, "present_sources", present)
+    bound = capability.augment_kwargs(
+        "rag",
+        {"_mastery_source_context": False, "_present_mastery_sources": "model-supplied"},
+        context,
+    )
+    assert bound["_mastery_source_context"] is True
+    if changed == "path":
+        context.metadata["mastery_path_id"] = "other"
+    elif changed == "session":
+        context.session_id = "other"
+    elif changed == "turn":
+        context.metadata["turn_id"] = "other"
+    if changed:
+        with pytest.raises(ValueError, match="context changed"):
+            await bound["_present_mastery_sources"]([{"source_ref": "synthetic"}], "teaching")
+        assert calls == []
+    else:
+        sources = [{"source_ref": "synthetic"}]
+        assert await bound["_present_mastery_sources"](sources, "teaching") == sources
+        assert calls == [
+            ("path-1", sources, "teaching", {"session_id": "session-1", "turn_id": "turn-2"})
+        ]
+
+
 _GRADED_REVIEW = """回答正确！你选择的 C 正是 Agentic RAG 的核心做法。
 
 我们逐个看其他选项为什么不对：

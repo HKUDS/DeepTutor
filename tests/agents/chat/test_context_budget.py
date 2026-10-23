@@ -128,6 +128,14 @@ def test_learning_journal_is_not_folded_into_capability() -> None:
     assert _tokens(budget) == {"learning_journal": _chars(f"## learning_journal\n{snapshot}")}
 
 
+def test_workspace_instructions_have_their_own_context_budget_segment() -> None:
+    content = "Explain with geometric intuition"
+    budget = _budget(blocks=[PromptBlock("workspace_instructions", content)])
+    assert _tokens(budget) == {
+        "workspace_instructions": _chars(f"## workspace_instructions\n{content}")
+    }
+
+
 def test_segments_sorted_desc_with_empty_ones_dropped() -> None:
     budget = _budget(
         blocks=[

@@ -472,6 +472,11 @@ class SQLiteSessionStore:
                 );
                 """
             )
+            submission_columns = {
+                row[1] for row in conn.execute("PRAGMA table_info(turn_submissions)")
+            }
+            if "superseded_by" not in submission_columns:
+                conn.execute("ALTER TABLE turn_submissions ADD COLUMN superseded_by TEXT")
             columns = {row[1] for row in conn.execute("PRAGMA table_info(sessions)").fetchall()}
             if "preferences_json" not in columns:
                 conn.execute("ALTER TABLE sessions ADD COLUMN preferences_json TEXT DEFAULT '{}'")
@@ -1191,6 +1196,8 @@ class SQLiteSessionStore:
                 "SELECT * FROM turn_submissions WHERE client_submission_id = ?", (submission_id,)
             ).fetchone()
             if prior is not None:
+                if prior["superseded_by"]:
+                    raise RuntimeError("This submission was superseded by an edited message.")
                 if prior["request_digest"] != digest or prior["workspace_id"] != workspace_id:
                     raise RuntimeError(
                         "This submission ID belongs to a different request or workspace."
@@ -1226,6 +1233,99 @@ class SQLiteSessionStore:
         self, submission_id: str, digest: str, session_id: str | None = None
     ) -> str:
         return await self._run(self._reserve_submission_sync, submission_id, digest, session_id)
+
+    def _replace_submission_sync(
+        self, original_id: str, replacement_id: str, digest: str, session_id: str | None
+    ) -> dict[str, Any]:
+        """Fence an unadmitted request and reserve its edit in one transaction.
+
+        A transcript is deliberately not consulted to decide admission: a turn
+        can already own execution before its user row is written.
+        """
+        from deeptutor.services.workspace.context import get_workspace_scope
+
+        if original_id == replacement_id:
+            raise RuntimeError("An edit requires a new submission ID.")
+        scope = get_workspace_scope()
+        workspace_id = scope.workspace_id if scope is not None else ""
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            old = conn.execute(
+                "SELECT * FROM turn_submissions WHERE client_submission_id=?", (original_id,)
+            ).fetchone()
+            if old is not None:
+                if old["workspace_id"] != workspace_id or (
+                    session_id and old["session_id"] != session_id
+                ):
+                    raise RuntimeError(
+                        "The submission belongs to another conversation or workspace."
+                    )
+                session_id = old["session_id"]
+            if session_id:
+                session = conn.execute(
+                    "SELECT * FROM sessions WHERE id=?", (session_id,)
+                ).fetchone()
+                if session is None or session["deleted_at"] is not None:
+                    raise RuntimeError(
+                        "Restore the original conversation before editing this message."
+                    )
+                if (
+                    str(_json_loads(session["preferences_json"], {}).get("workspace_id") or "")
+                    != workspace_id
+                ):
+                    raise RuntimeError("The conversation belongs to another workspace.")
+            else:
+                session_id = str(self._insert_session(conn)["id"])
+            if old is not None and old["turn_id"]:
+                turn = conn.execute("SELECT * FROM turns WHERE id=?", (old["turn_id"],)).fetchone()
+                user = conn.execute(
+                    "SELECT id FROM messages WHERE session_id=? AND role='user' AND json_valid(metadata_json) AND json_extract(metadata_json, '$.client_submission_id')=? ORDER BY id LIMIT 1",
+                    (session_id, original_id),
+                ).fetchone()
+                return {
+                    "status": "admitted",
+                    "session_id": session_id,
+                    "turn": self._serialize_turn(turn),
+                    "user_message_id": user["id"] if user else None,
+                }
+            replacement = conn.execute(
+                "SELECT * FROM turn_submissions WHERE client_submission_id=?", (replacement_id,)
+            ).fetchone()
+            if old is not None and old["superseded_by"]:
+                if old["superseded_by"] != replacement_id:
+                    raise RuntimeError("This submission was already superseded by another edit.")
+                if (
+                    replacement is None
+                    or replacement["request_digest"] != digest
+                    or replacement["superseded_by"]
+                ):
+                    raise RuntimeError("This replacement ID belongs to a different request.")
+            else:
+                if replacement is not None:
+                    raise RuntimeError("This replacement ID is already in use.")
+                conn.execute(
+                    "INSERT INTO turn_submissions (client_submission_id, workspace_id, request_digest, session_id) VALUES (?, ?, ?, ?)",
+                    (replacement_id, workspace_id, digest, session_id),
+                )
+                if old is None:
+                    # The original may still be in a delayed transport queue.
+                    conn.execute(
+                        "INSERT INTO turn_submissions (client_submission_id, workspace_id, request_digest, session_id, superseded_by) VALUES (?, ?, '', ?, ?)",
+                        (original_id, workspace_id, session_id, replacement_id),
+                    )
+                else:
+                    conn.execute(
+                        "UPDATE turn_submissions SET superseded_by=? WHERE client_submission_id=?",
+                        (replacement_id, original_id),
+                    )
+            return {"status": "reserved", "session_id": session_id, "submission_id": replacement_id}
+
+    async def replace_submission(
+        self, original_id: str, replacement_id: str, digest: str, session_id: str | None = None
+    ) -> dict[str, Any]:
+        return await self._run(
+            self._replace_submission_sync, original_id, replacement_id, digest, session_id
+        )
 
     def _submission_turn_sync(self, submission_id: str) -> dict[str, Any] | None:
         with self._connect() as conn:
@@ -1378,6 +1478,14 @@ class SQLiteSessionStore:
                 if session is None:
                     raise ValueError(f"Session not found: {session_id}")
                 if submission_id:
+                    reservation = conn.execute(
+                        "SELECT * FROM turn_submissions WHERE client_submission_id=?",
+                        (submission_id,),
+                    ).fetchone()
+                    if reservation is not None and reservation["superseded_by"]:
+                        raise RuntimeError("This submission was superseded by an edited message.")
+                    if reservation is not None and reservation["session_id"] != session_id:
+                        raise RuntimeError("This submission belongs to another conversation.")
                     old = conn.execute(
                         "SELECT t.* FROM turns t JOIN turn_submissions s ON s.turn_id=t.id WHERE s.client_submission_id=? AND s.session_id=?",
                         (submission_id, session_id),
@@ -3077,8 +3185,8 @@ class SQLiteSessionStore:
             conn.commit()
         return cur.rowcount > 0
 
-    async def update_summary(self, session_id: str, summary: str, up_to_msg_id: int) -> bool:
-        return await self._run(self._update_summary_sync, session_id, summary, up_to_msg_id)
+    async def update_summary(self, session_id: str, summary: str, up_to_msg_id: int | str) -> bool:
+        return await self._run(self._update_summary_sync, session_id, summary, int(up_to_msg_id))
 
     def _update_session_preferences_sync(
         self, session_id: str, preferences: dict[str, Any]

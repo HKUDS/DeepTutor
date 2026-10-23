@@ -1,4 +1,10 @@
 {
+  "Partially correct": "Partiellement correct",
+  "These answers could not be submitted. Please review or retry.": "Ces réponses n’ont pas pu être envoyées. Veuillez les vérifier ou réessayer.",
+  "The edit could not be sent. Your draft is still here; please retry.": "La modification n’a pas pu être envoyée. Votre brouillon est conservé ; réessayez.",
+  "Discard unsent draft": "Supprimer le brouillon non envoyé",
+  "Discarding…": "Suppression…",
+  "This draft could not be discarded. Please retry or copy it before leaving.": "Ce brouillon n’a pas pu être supprimé. Réessayez ou copiez-le avant de quitter cette page.",
   "language.english": "English",
   "language.chinese": "中文",
   "language.french": "Français",
@@ -2323,6 +2329,7 @@
   "This step needs credentials": "Cette étape nécessite des identifiants",
   "Close tab": "Fermer l'onglet",
   "Close viewer": "Fermer la visionneuse",
+  "Back to conversation": "Retour à la conversation",
   "Loading {{host}}…": "Chargement de {{host}}…",
   "Many sites refuse to embed for security reasons. If the page below stays blank, use “Open in browser”.": "De nombreux sites refusent l'intégration pour des raisons de sécurité. Si la page ci-dessous reste vide, utilisez « Ouvrir dans le navigateur ».",
   "Open URL": "Ouvrir une URL",
@@ -5885,5 +5892,12 @@
   "settings.providerServices.customDescription": "L’URL doit implémenter l’API choisie. Ajoutez ensuite les identifiants et les autres types de services avec leurs adaptateurs.",
   "settings.providerServices.addHint": "Les étiquettes indiquent les intégrations, pas les autorisations du compte. Une connexion peut servir plusieurs types de modèles ; les comptes et produits peuvent rester séparés.",
   "settings.providerServices.catalogListed": "Liste des modèles obtenue. Testez un modèle pour vérifier l’accès à l’inférence.",
-  "settings.providerServices.partial": "Seule une partie de la liste a été obtenue. Les types manquants restent inconnus et peuvent être ajoutés manuellement."
+  "settings.providerServices.partial": "Seule une partie de la liste a été obtenue. Les types manquants restent inconnus et peuvent être ajoutés manuellement.",
+  "Workspace instructions": "Instructions de l’espace de travail",
+  "Set learning goals, teaching style and response preferences for this workspace. Leave blank to use the default behavior.": "Définissez les objectifs d’apprentissage, le style pédagogique et les préférences de réponse de cet espace. Laissez vide pour utiliser le comportement par défaut.",
+  "For example: I am learning linear algebra. Explain the geometric intuition before introducing formulas, and give hints before complete solutions.": "Exemple : j’apprends l’algèbre linéaire. Expliquez l’intuition géométrique avant les formules et donnez des indices avant les solutions complètes.",
+  "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading, Course Study and standard visualizations. Changes take effect on the next turn.": "S’applique au chat, à la résolution, aux questions, à l’apprentissage guidé, à la lecture, aux cours et aux visualisations standard. Les changements prennent effet au prochain tour.",
+  "Clear instructions": "Effacer les instructions",
+  "{{used}} / {{limit}} characters": "{{used}} / {{limit}} caractères",
+  "contextBudget.segment.workspace_instructions": "Instructions de l’espace de travail"
 }

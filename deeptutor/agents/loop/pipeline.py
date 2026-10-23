@@ -511,17 +511,44 @@ class AgenticLoopPipeline:
                     "[Conversation summary]",
                 )
                 messages.append({"role": "system", "content": f"{header}\n{content}"})
-        self._model_turn_start = len(messages)
         previous_snapshots = {
             item["_context_snapshot"]: item.get("content")
             for item in messages
             if isinstance(item.get("_context_snapshot"), str)
         }
         snapshots = dict(self._runtime_snapshots)
+        # The rolling summary is a runtime fact like any other: it is rewritten
+        # when compaction runs, so it must reach the model as a *trailing*
+        # snapshot rather than a leading system message. Appended last, a
+        # rewrite (and the compaction that causes it) only ever adds bytes after
+        # everything the previous request already sent, keeping that request a
+        # prompt-cache hit; the snapshot tag makes the unchanged case a no-op on
+        # later turns instead of re-appending a fresh copy every turn.
+        from deeptutor.services.session.model_history import (
+            SUMMARY_SNAPSHOT_NAME,
+            summary_snapshot,
+        )
+
+        metadata = context.metadata if isinstance(context.metadata, dict) else {}
+        summary_row = summary_snapshot(str(metadata.get("conversation_summary") or ""))
+        if summary_row is not None:
+            snapshots[SUMMARY_SNAPSHOT_NAME] = summary_row["content"]
         for name in sorted(previous_snapshots.keys() - snapshots.keys()):
             snapshots[name] = (
                 f"[Runtime context: {name}]\nThis section is now empty; earlier values no longer apply."
             )
+        # A changed runtime section replaces its old version in this request.
+        # The archive remains intact; actual dialogue/tool evidence is untouched.
+        messages = [
+            item
+            for item in messages
+            if not (
+                item.get("role") == "user"
+                and isinstance(item.get("_context_snapshot"), str)
+                and snapshots.get(item["_context_snapshot"]) != item.get("content")
+            )
+        ]
+        self._model_turn_start = len(messages)
         for name, snapshot in snapshots.items():
             if previous_snapshots.get(name) != snapshot:
                 messages.append({"role": "user", "content": snapshot, "_context_snapshot": name})
@@ -876,6 +903,24 @@ class AgenticLoopPipeline:
                 )
         return False
 
+    def _capability_settlement_recovery(
+        self,
+        context: UnifiedContext,
+    ) -> tuple[str, tuple[str, ...]] | None:
+        """Ask for a receipt-backed, restricted final tool action after settlement."""
+        for cap in self._active_loop_capabilities(context):
+            hook = getattr(cap, "settlement_recovery", None)
+            if not callable(hook):
+                continue
+            try:
+                recovery = hook(context)
+            except Exception:
+                logger.warning("Settlement recovery failed for %s", cap.name, exc_info=True)
+                continue
+            if recovery is not None:
+                return recovery
+        return None
+
     def _capability_finish_instruction(self, context: UnifiedContext, final_text: str) -> str:
         """Let an active capability reject a narrow tool-less finish once.
 
@@ -1126,6 +1171,12 @@ class AgenticLoopPipeline:
         iteration_index: int,
         stage: str = "exploring",
     ) -> DispatchOutcome:
+        # Capabilities may bind records to text the turn has actually published.
+        # Model messages also contain discarded/private prose and are not proof
+        # of delivery. The callback reads the existing bus; it adds no ledger.
+        context.extension("published_assistant_content")["snapshot"] = lambda: (
+            stream.public_content_snapshot(source=self.event_source, stage=stage)
+        )
         too_many = None
         if len(tool_calls) > MAX_PARALLEL_TOOL_CALLS:
             too_many = self._t(
@@ -1624,6 +1675,7 @@ class AgenticLoopPipeline:
         self,
         messages: list[dict[str, Any]],
         stream: StreamBus,
+        tool_schemas: list[dict[str, Any]] | None = None,
     ) -> None:
         try:
             window = resolve_effective_context_window(
@@ -1636,19 +1688,31 @@ class AgenticLoopPipeline:
         if not window or window <= 0:
             return
         budget = int(window * CONTEXT_WINDOW_GUARD_RATIO)
-        if self._estimate_messages_tokens(messages) <= budget:
+        # Each message is counted once; the running total moves as tool results are snipped.
+        counts = [self._request_message_tokens(msg) for msg in messages]
+        total = sum(counts) + self._tool_schema_tokens(tool_schemas)
+        if total <= budget:
             return
+        marker = self._tool_result_snip_marker()
         snipped = False
-        for msg in messages:
-            if msg.get("role") != "tool":
-                continue
-            marker = self._tool_result_snip_marker()
-            if msg.get("content") == marker:
+        for index, msg in enumerate(messages):
+            if msg.get("role") != "tool" or msg.get("content") == marker:
                 continue
             msg["content"] = marker
             snipped = True
-            if self._estimate_messages_tokens(messages) <= budget:
+            after = self._request_message_tokens(msg)
+            total += after - counts[index]
+            counts[index] = after
+            if total <= budget:
                 break
+        if total > budget:
+            logger.warning(
+                "Context-window guard: request is about %d tokens against a %d-token budget "
+                "(window %d) and no tool results are left to trim; sending it as-is",
+                total,
+                budget,
+                window,
+            )
         if snipped:
             await stream.progress(
                 self._t("notices.context_window_guard"),
@@ -1688,21 +1752,26 @@ class AgenticLoopPipeline:
             return 0
 
     @staticmethod
-    def _estimate_messages_tokens(messages: list[dict[str, Any]]) -> int:
-        from deeptutor.services.session.context_builder import count_tokens
+    def _request_message_tokens(message: dict[str, Any]) -> int:
+        """Tokens one message costs in the request, counted as history planning counts it."""
+        from deeptutor.services.session.context_builder import _count_model_context_tokens
 
-        total = 0
-        for msg in messages:
-            content = msg.get("content")
-            if isinstance(content, str):
-                total += count_tokens(content)
-            elif isinstance(content, list):
-                for part in content:
-                    if isinstance(part, dict) and part.get("type") == "text":
-                        total += count_tokens(str(part.get("text") or ""))
-                    elif isinstance(part, dict) and part.get("type") == "image_url":
-                        total += IMAGE_TOKEN_GUARD_RESERVE
-        return total
+        # ``_call_llm`` strips this bookkeeping key before the provider sees the message.
+        sent = {key: value for key, value in message.items() if key != "_context_snapshot"}
+        return _count_model_context_tokens(sent)
+
+    @staticmethod
+    def _tool_schema_tokens(tool_schemas: list[dict[str, Any]] | None) -> int:
+        """Tokens the ``tools`` payload costs when the request carries it."""
+        if not tool_schemas:
+            return 0
+        from deeptutor.services.session.context_builder import _count_model_context_tokens
+
+        return _count_model_context_tokens(tool_schemas)
+
+    @staticmethod
+    def _estimate_messages_tokens(messages: list[dict[str, Any]]) -> int:
+        return sum(AgenticLoopPipeline._request_message_tokens(msg) for msg in messages)
 
     # ---- LLM client ------------------------------------------------------
 

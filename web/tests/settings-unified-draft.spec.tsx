@@ -26,7 +26,7 @@ vi.mock("@/lib/api", () => ({
   apiFetch: (...args: unknown[]) => mocks.fetch(...args),
 }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
-const t = (key: string) => key;
+const t = (key: string, values?: Record<string, unknown>) => key.replace(/{{(.*?)}}/g, (_, name) => String(values?.[name] ?? name));
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t, i18n: { language: "en" } }),
 }));
@@ -197,6 +197,27 @@ it("keeps failed changes pending and allows retry", async () => {
   mocks.fetch.mockImplementation(implementation);
   await act(() => settings.applyCatalog());
   expect(settings.draftState).toBe("clean");
+});
+
+it.each(["/api/settings/draft", "/api/settings/apply"])("shows a denied %s write without losing the editable draft", async endpoint => {
+  live.services.llm.profiles.push({ id: "saved", name: "Saved profile", binding: "custom", base_url: "", api_key: "", api_version: "", models: [] });
+  render(<App page="" />);
+  await ready();
+  await act(async () => settings.mutateCatalog(next => {
+    next.services.llm.profiles[0].name = "Retained draft";
+  }));
+  const original = mocks.fetch.getMockImplementation()!;
+  mocks.fetch.mockImplementation((url, init) => url === endpoint && init?.method !== "GET"
+    ? { ...reply({ detail: "Check the service account write permissions; your draft was retained." }, false), status: 503 }
+    : original(url, init));
+  await act(() => settings.applyCatalog());
+  expect(settings.toast).toContain("service account write permissions");
+  expect(settings.draft.services.llm.profiles[0].name).toBe("Retained draft");
+  expect(live.services.llm.profiles[0].name).not.toBe("Retained draft");
+  mocks.fetch.mockImplementation(original);
+  await act(() => settings.applyCatalog());
+  expect(settings.draftState).toBe("clean");
+  expect(live.services.llm.profiles[0].name).toBe("Retained draft");
 });
 
 it("stages language and appearance without changing browser preferences until Apply", async () => {

@@ -541,6 +541,8 @@ async def edit_text(request: EditRequest):
 
         return result
 
+    except HTTPException:
+        raise
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
@@ -592,6 +594,8 @@ async def auto_mark_text(request: AutoMarkRequest):
         print_stats()
 
         return result
+    except HTTPException:
+        raise
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))

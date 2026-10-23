@@ -134,3 +134,40 @@ def test_fsync_warning_is_rate_limited_but_recovers_after_interval(
 
     assert path.read_text(encoding="utf-8") == "after-interval"
     assert len([r for r in caplog.records if r.levelno == logging.WARNING]) == 2
+
+
+def test_read_text_retries_transient_permission_error_then_gives_up(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "state.json"
+    atomic_write_json(path, {"title": "Résumé 数学"})
+    original = Path.read_text
+    attempts: list[str | None] = []
+    sleeps: list[float] = []
+
+    def locked_read(self: Path, encoding: str | None = None, errors: str | None = None) -> str:
+        attempts.append(encoding)
+        if len(attempts) <= failures:
+            raise PermissionError(13, "Permission denied", str(self))
+        return original(self, encoding=encoding, errors=errors)
+
+    monkeypatch.setattr(Path, "read_text", locked_read)
+    monkeypatch.setattr(file_io.time, "sleep", sleeps.append)
+
+    failures = 2
+    assert json.loads(file_io.read_text(path)) == {"title": "Résumé 数学"}
+    assert attempts == ["utf-8"] * 3
+    assert sleeps == [0.2, 0.4]
+
+    attempts.clear()
+    sleeps.clear()
+    failures = 100
+    with pytest.raises(PermissionError):
+        file_io.read_text(path)
+    assert len(attempts) == 5
+    assert sleeps == [0.2, 0.4, 0.8, 1.6]
+
+
+def test_read_text_does_not_retry_missing_file(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError):
+        file_io.read_text(tmp_path / "missing.json")

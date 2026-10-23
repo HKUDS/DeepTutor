@@ -560,13 +560,13 @@ Book 會將選定來源轉換成互動式**活書**；它不是靜態 PDF，而�
 
 要遷移現有的 Obsidian、Hermes 或 Markdown 知識庫嗎？請參閱 [Knowledge 遷移指南](../../docs-for-user/KNOWLEDGE_MIGRATION.md)，了解連結 vault 與索引副本兩種方式。
 
-建立知識庫時，可以選擇**建立新的知識庫**（上傳文件並建立索引）、**連結現有知識庫**（就地重複使用索引），或**連接 Kiwix**（按需搜尋一個由服務提供的 ZIM 封存檔）。建立時可選擇其儲存工作區；既有知識庫可在預覽後移至其他工作區，並保留指派與已儲存的參照。知識庫也可以追蹤 **GitHub repositories**（repo、branch、glob）或**文件網站 URL**（限制爬取深度與頁面數量，預設每 24 小時重新同步一次）；同步時會以內容雜湊差異識別新增、變更與移除的內容，因此你所追蹤的文件能保持最新，無須重新上傳，**已連結的資料夾**也會在同步時取得新增或變更的本機檔案。重新建立索引時，系統會寫入新的扁平 `version-N` 目錄並保留先前版本，因此可用索引不會在重建途中遭到破壞。即使知識庫處於 **error** 狀態，也能移除單一文件；可直接刪除解析失敗的檔案，無須刪除並重建全部內容。文件解析方式（Text-only、MinerU、Docling、Tika、markitdown、PyMuPDF4LLM 或 LiteParse）與選用的影像描述模型可在 **Settings → Knowledge & documents** 選擇，預設不下載本機模型。Docling 也可以在**遠端（remote）**模式下運作，改連線至 Docling Serve 伺服器（無須本機安裝或下載模型），可在同一頁面（設定 `mode=remote`、伺服器基礎 URL 與選用的 API 金鑰）或 `DOCLING_MODE`／`DOCLING_API_BASE_URL`／`DOCLING_API_TOKEN` 環境變數進行設定。Tika 僅支援遠端模式，會連線至該頁面設定的 Apache Tika 伺服器。CLI 也提供對應的完整生命週期指令：`list/info/create/connect-kiwix/add/search/eval/set-default/delete`、來源新增／移除指令、`list-sources` 與 `sync`。
+建立知識庫時，可以選擇**建立新的知識庫**（上傳文件並建立索引）、**連結現有知識庫**（就地重複使用索引），或**連接 Kiwix**（按需搜尋一個由服務提供的 ZIM 封存檔）。建立時可選擇其儲存工作區；既有知識庫可在預覽後移至其他工作區，並保留指派與已儲存的參照。知識庫也可以追蹤 **GitHub repositories**（repo、branch、glob）或**文件網站 URL**（限制爬取深度與頁面數量，預設每 24 小時重新同步一次）；同步時會以內容雜湊差異識別新增、變更與移除的內容，因此你所追蹤的文件能保持最新，無須重新上傳，**已連結的資料夾**也會在同步時取得新增或變更的本機檔案。重新建立索引時，系統會寫入新的扁平 `version-N` 目錄並保留先前版本，因此可用索引不會在重建途中遭到破壞。即使知識庫處於 **error** 狀態，也能移除單一文件；可直接刪除解析失敗的檔案，無須刪除並重建全部內容。文件解析方式（Text-only、MinerU、Docling、Tika、markitdown、PyMuPDF4LLM 或 LiteParse）與選用的影像描述模型可在 **Settings → Knowledge & documents** 選擇，預設不下載本機模型。Docling 也可以在**遠端（remote）**模式下運作，改連線至 Docling Serve 伺服器（無須本機安裝或下載模型），可在同一頁面（設定 `mode=remote`、伺服器基礎 URL 與選用的 API 金鑰）或 `DOCLING_MODE`／`DOCLING_API_BASE_URL`／`DOCLING_API_TOKEN` 環境變數進行設定。Tika 僅支援遠端模式，會連線至該頁面設定的 Apache Tika 伺服器。CLI 也提供對應的完整生命週期指令：`list/info/create/connect-kiwix/add/search/eval/eval-diff/set-default/delete`、來源新增／移除指令、`list-sources` 與 `sync`。
 
 內建的 LightRAG 引擎可透過 `pip install 'deeptutor[rag-lightrag]'` 安裝；此額外套件包含明確支援的 LightRAG SDK，但不會安裝 MinerU。若需要結構化解析，請在 Document Parsing 中另行選擇 MinerU，並設定其雲端模式，或安裝目前的本機 CLI。MinerU 支援 PDF、常見點陣圖格式、DOCX、PPTX 與 XLSX；舊版 `magic-pdf` 仍僅支援 PDF。Text-only 與其他解析引擎不需要 MinerU。
 
 原生 LightRAG 的查詢與增量索引，需要已發布索引所記錄的 embedding 設定，包括模型、維度與端點身分。若該設定有變更，請還原原始設定，或以目前的 embedding 重建索引；未記錄 embedding 身分的索引則必須重建。知識庫詳細資料與索引版本檢視會顯示恢復指引，檔案仍可正常檢視與下載。
 
-**評估知識庫。** 有多種引擎可選擇時，「哪個引擎在這裡檢索得最好？」需要實際測量，而 `deeptutor kb eval` 就能回答這個問題。建立 QA 資料集（每行一個 JSON 物件，包含 `query` 與理想檢索應回傳的 `gold` 段落），再使用 `deeptutor kb eval <name> --dataset qa.jsonl --top-k 5 [--mode hybrid] [--save baseline.json]` 評估知識庫。每個案例都透過與聊天回合相同的路徑檢索，依完全相同的文字或詞彙重疊程度，將排序後的引用與標準段落配對（可用 `--min-ratio` 調整門檻；不評估語意等價性），並回報 **Recall@k／Precision@k／nDCG@k／MRR／MAP／Hit@k**。指標是依排序計算的純函式，無須模型評判輸出，因此分數可重現並可比較差異；儲存基準後，就能在切換 embedding、調整 reranker 或實驗不同區塊大小時，將資料集用作回歸檢查閘道。搜尋失敗的案例（例如缺少索引或憑證錯誤）不會計分，而是另外回報，避免拉低平均值。PageIndex 透過推理進行檢索，不回傳已排序的區塊，因此不納入評估。
+**評估知識庫。** 有多種引擎可選擇時，「哪個引擎在這裡檢索得最好？」需要實際測量，而 `deeptutor kb eval` 就能回答這個問題。建立 QA 資料集（每行一個 JSON 物件，包含 `query` 與理想檢索應回傳的 `gold` 段落），再使用 `deeptutor kb eval <name> --dataset qa.jsonl --top-k 5 [--mode hybrid] [--save baseline.json]` 評估知識庫。每個案例都透過與聊天回合相同的路徑檢索，依完全相同的文字或詞彙重疊程度，將排序後的引用與標準段落配對（可用 `--min-ratio` 調整門檻；不評估語意等價性），並回報 **Recall@k／Precision@k／nDCG@k／MRR／MAP／Hit@k**。指標是依排序計算的純函式，無須模型評判輸出。使用 `deeptutor kb eval-diff baseline.json candidate.json` 比較已儲存的報告，查看各指標與各案例的變化。在 `kb eval` 中使用 `--rewrite off` 或 `--rewrite standalone`，可比較原始查詢與改寫後的查詢；報告會保留查詢改寫紀錄。搜尋失敗的案例（例如缺少索引或憑證錯誤）不會計分，而是另外回報，避免拉低平均值。PageIndex 透過推理進行檢索，不回傳已排序的區塊，因此不納入評估。
 
 ```jsonl
 {"query": "Why do transformers scale attention?", "gold": ["Scaling keeps the dot products from growing with the dimension."]}
@@ -738,7 +738,7 @@ repo 根目錄附有 [`SKILL.md`](../../SKILL.md)，這是一份精簡的 CLI �
 | `deeptutor run <capability> <message>` | 執行單一能力回合（`chat`、`ask_questions`、`deep_solve`、`deep_question`、`deep_research`、`visualize`、`math_animator`、`mastery_path`、`immersive_reading`、`course_study`、`audio_overview`）；加上 `--format json` 可輸出 NDJSON |
 | `deeptutor chat` | 具備能力、工具、知識庫、筆記本與記錄控制的互動式 REPL |
 | `deeptutor partner list/create/start/stop` | 管理連接 IM 的 partners |
-| `deeptutor kb list/info/create/connect-kiwix/add/search/eval/set-default/delete/list-sources/sync` | 管理知識庫、連接 Kiwix 封存檔、依 QA 資料集評估檢索品質，並同步已註冊的 GitHub／Web 來源（含來源新增／移除指令） |
+| `deeptutor kb list/info/create/connect-kiwix/add/search/eval/eval-diff/set-default/delete/list-sources/sync` | 管理知識庫、連接 Kiwix 封存檔、評估並比較檢索執行結果，並同步已註冊的 GitHub／Web 來源（含來源新增／移除指令） |
 | `deeptutor skill search/install/list/remove/login/logout/publish/update` | 管理技能、從 hub 安裝並發布自己的技能（預設為 `eduhub:<slug>`，請參閱生態系） |
 | `deeptutor memory show/clear` | 檢視 L2／L3 記憶文件，或清除 L1／所有記憶 |
 | `deeptutor session list/show/open/rename/delete` | 管理共享工作階段 |

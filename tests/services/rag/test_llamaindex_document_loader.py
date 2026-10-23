@@ -200,6 +200,75 @@ def test_loader_skips_document_when_active_engine_cannot_parse(
     assert "Settings" in caplog.text
 
 
+def test_loader_continues_after_mineru_task_failure(tmp_path, monkeypatch):
+    """#1982: a failed CLI document cannot prevent later documents from loading."""
+    pytest.importorskip("llama_index.core")
+    from deeptutor.knowledge.indexing_run import IndexingRun
+    from deeptutor.services.parsing.engines.mineru.config import MinerUError
+    from deeptutor.services.parsing.types import ParsedDocument
+    from deeptutor.services.rag.pipelines.llamaindex.document_loader import LlamaIndexDocumentLoader
+
+    failed = tmp_path / "failed.pdf"
+    good = tmp_path / "next.docx"
+    failed.write_bytes(b"fixture")
+    good.write_bytes(b"fixture")
+    _install_stub_parse_service(
+        monkeypatch,
+        {
+            failed.name: MinerUError(
+                "1 task(s) failed while processing documents: Timed out waiting for result"
+            ),
+            good.name: ParsedDocument(markdown="The next document is still usable."),
+        },
+    )
+    with IndexingRun(tmp_path, [str(failed), str(good)]) as run:
+        documents = asyncio.run(LlamaIndexDocumentLoader().load([str(failed), str(good)]))
+        assert [doc.metadata["file_name"] for doc in documents] == [good.name]
+        assert run.data["documents"][run.source_key(failed)]["status"] == "failed"
+        assert run.data["documents"][run.source_key(good)]["status"] == "embedding"
+
+
+@pytest.mark.parametrize("encrypted", [False, True])
+def test_unusable_pdf_evidence_does_not_abort_other_documents(tmp_path, monkeypatch, encrypted):
+    """A parser success is not a guarantee that the PDF can supply page evidence."""
+    import pymupdf
+
+    from deeptutor.knowledge.indexing_run import IndexingRun
+    from deeptutor.services.parsing.types import ParsedDocument
+    from deeptutor.services.rag.pipelines.llamaindex.document_loader import LlamaIndexDocumentLoader
+
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    bad = raw / "bad.pdf"
+    if encrypted:
+        with pymupdf.open() as pdf:
+            pdf.new_page().insert_text((72, 72), "Private source")
+            pdf.save(
+                bad, encryption=pymupdf.PDF_ENCRYPT_AES_256, owner_pw="owner", user_pw="reader"
+            )
+    else:
+        bad.write_bytes(b"%PDF-1.7\ntruncated")
+    good = raw / "good.docx"
+    good.write_bytes(b"parser fixture")
+    _install_stub_parse_service(
+        monkeypatch,
+        {
+            bad.name: ParsedDocument(markdown="Parser supplied text", engine="mineru"),
+            good.name: ParsedDocument(markdown="Usable next document"),
+        },
+    )
+    with IndexingRun(tmp_path, [str(bad), str(good)]) as run:
+        documents = asyncio.run(
+            LlamaIndexDocumentLoader().load([str(bad), str(good)], kb_dir=tmp_path)
+        )
+        assert [doc.metadata["file_name"] for doc in documents] == [good.name]
+        failure = run.data["documents"][run.source_key(bad)]
+        assert failure["status"] == "failed"
+        assert failure["reason"] == "invalid_source"
+        assert failure["detail"]
+        assert run.data["documents"][run.source_key(good)]["status"] == "embedding"
+
+
 def test_loader_explains_scanned_pdf_when_parser_yields_images_only(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:

@@ -267,29 +267,33 @@ class ModelCatalogService:
         return cls._instances[key]
 
     def load(self) -> dict[str, Any]:
-        loaded = self._read_existing_catalog()
-        if loaded:
-            catalog = _default_catalog()
-            catalog.update({k: v for k, v in loaded.items() if k != "services"})
-            catalog["services"].update(loaded.get("services", {}))
-            merged_defaults = catalog != loaded
-            before = deepcopy(catalog)
-            self._normalize(catalog)
-            if merged_defaults or catalog != before:
-                self.save(catalog)
-            return catalog
+        # Reads may migrate defaults. Serialize the complete read/migrate/write
+        # with settings updates so an older snapshot cannot overwrite a save
+        # or hold the destination open during this instance's replace (#1984).
+        with self._lock:
+            loaded = self._read_existing_catalog()
+            if loaded:
+                catalog = _default_catalog()
+                catalog.update({k: v for k, v in loaded.items() if k != "services"})
+                catalog["services"].update(loaded.get("services", {}))
+                merged_defaults = catalog != loaded
+                before = deepcopy(catalog)
+                self._normalize(catalog)
+                if merged_defaults or catalog != before:
+                    self.save(catalog)
+                return catalog
 
-        catalog = _default_catalog()
-        self._normalize(catalog)
-        self.save(catalog)
-        return catalog
+            catalog = _default_catalog()
+            self._normalize(catalog)
+            self.save(catalog)
+            return catalog
 
     def _read_existing_catalog(self) -> dict[str, Any]:
         if not self.path.exists() or self.path.stat().st_size == 0:
             return {}
         try:
             loaded = json.loads(self.path.read_text(encoding="utf-8"))
-        except Exception:
+        except (json.JSONDecodeError, UnicodeDecodeError):
             return {}
         return loaded if isinstance(loaded, dict) else {}
 

@@ -21,6 +21,7 @@ Example:
 """
 
 from .dataset import EvalCase, EvalDataset, EvalDatasetError, load_dataset
+from .diff import CaseDelta, EvalDiff, MetricDelta, diff_reports
 from .matching import (
     DEFAULT_MIN_RATIO,
     DEFAULT_MIN_TOKENS,
@@ -54,14 +55,17 @@ from .runner import (
 )
 
 __all__ = [
+    "CaseDelta",
     "DEFAULT_MIN_RATIO",
     "DEFAULT_MIN_TOKENS",
     "EvalCase",
     "EvalDataset",
     "EvalDatasetError",
+    "EvalDiff",
     "EvalReport",
     "MatchPolicy",
     "MatchResult",
+    "MetricDelta",
     "ProgressFn",
     "QueryEvaluation",
     "QueryMetrics",
@@ -71,6 +75,7 @@ __all__ = [
     "SOURCE_MODE_CONTEXT",
     "aggregate_query_metrics",
     "average_precision",
+    "diff_reports",
     "evaluate_dataset",
     "evaluate_hits",
     "format_metric",

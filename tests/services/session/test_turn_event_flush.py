@@ -1,9 +1,7 @@
-"""Post-stream turn-event flush: batching and PocketBase upload.
+"""Turn-event batching, prefix durability and PocketBase upload.
 
-The turn runtime buffers every live event in memory and persists the whole
-batch, including DONE and any post-turn ``session_meta`` title update, once
-the turn has fully finished. Everything on that path must stay O(1) round
-trips with respect to the event count.
+Live prefixes persist in bounded batches; terminal and post-turn metadata are
+flushed before teardown. Concurrent writers share one persistence attempt.
 """
 
 from __future__ import annotations

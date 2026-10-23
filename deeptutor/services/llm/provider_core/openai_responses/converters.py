@@ -123,14 +123,18 @@ def convert_tools(
             converted.append({"type": "web_search"})
             continue
         params = fn.get("parameters") or {}
-        converted.append(
-            {
-                "type": "function",
-                "name": name,
-                "description": fn.get("description") or "",
-                "parameters": params if isinstance(params, dict) else {},
-            }
-        )
+        item: dict[str, Any] = {
+            "type": "function",
+            "name": name,
+            "description": fn.get("description") or "",
+            "parameters": params if isinstance(params, dict) else {},
+        }
+        # Keep an explicit strict choice; leave it out when unset so the
+        # provider default applies, as before.
+        strict = fn.get("strict")
+        if isinstance(strict, bool):
+            item["strict"] = strict
+        converted.append(item)
     return converted
 
 

@@ -151,18 +151,63 @@ class LearningTransaction:
     def events(self) -> list[tuple[str, dict[str, Any], str, str]]:
         return list(self._events)
 
+    def record_module_preview(self, payload: dict[str, Any], *, session_id: str) -> int:
+        """Persist a draft without modifying progress or publishing a new revision."""
+        cursor = self._conn.execute(
+            """INSERT INTO mastery_events
+               (path_id, revision, event_type, payload_json, session_id, created_at)
+               VALUES (?, ?, 'path.modules_previewed', ?, ?, ?)""",
+            (
+                self.progress.book_id,
+                self.base_revision,
+                json.dumps(payload, ensure_ascii=False, allow_nan=False),
+                session_id,
+                time.time(),
+            ),
+        )
+        return int(cursor.lastrowid)
+
+    def module_preview(self, preview_id: int, *, session_id: str) -> dict[str, Any]:
+        if type(preview_id) is not int or preview_id < 1:
+            raise ValueError("Use the integer preview_id returned by a successful preview.")
+        row = self._conn.execute(
+            """SELECT payload_json, created_at FROM mastery_events
+               WHERE id = ? AND path_id = ? AND session_id = ?
+               AND event_type = 'path.modules_previewed'""",
+            (preview_id, self.progress.book_id, session_id),
+        ).fetchone()
+        if row is None:
+            raise ValueError("Preview is unavailable in this path/session. Create a fresh preview.")
+        applied = self._conn.execute(
+            """SELECT revision FROM mastery_events WHERE path_id = ?
+               AND event_type = 'path.modules_revision_committed'
+               AND json_extract(payload_json, '$.preview_id') = ? LIMIT 1""",
+            (self.progress.book_id, preview_id),
+        ).fetchone()
+        if applied is None and time.time() - float(row["created_at"]) > 3600:
+            raise ValueError(
+                "Preview expired. Create and review a fresh preview before committing."
+            )
+        return {
+            **json.loads(row["payload_json"]),
+            "committed_revision": int(applied["revision"]) if applied else None,
+        }
+
     @staticmethod
     def _interaction_from_row(row: sqlite3.Row | None) -> MasteryInteraction | None:
         if row is None:
             return None
+        question = json.loads(row["question_json"])
+        grouped = question.get("question_type") == "group"
         return MasteryInteraction(
             interaction_id=row["interaction_id"],
             path_id=row["path_id"],
-            question=json.loads(row["question_json"]),
+            question=question,
             status=InteractionStatus(row["status"]),
             session_id=row["session_id"] or "",
             turn_id=row["turn_id"] or "",
-            user_answer=row["user_answer"] or "",
+            user_answer="" if grouped else row["user_answer"] or "",
+            answers=json.loads(row["user_answer"] or "{}") if grouped else {},
             result=json.loads(row["result_json"] or "{}"),
             created_at=float(row["created_at"]),
             updated_at=float(row["updated_at"]),
@@ -229,7 +274,9 @@ class LearningTransaction:
                 json.dumps(interaction.question.model_dump(mode="json"), ensure_ascii=False),
                 interaction.session_id,
                 interaction.turn_id,
-                interaction.user_answer,
+                json.dumps(interaction.answers, ensure_ascii=False)
+                if interaction.question.questions
+                else interaction.user_answer,
                 json.dumps(interaction.result, ensure_ascii=False),
                 interaction.created_at,
                 now,
@@ -956,6 +1003,7 @@ class LearningStore:
         self._import_legacy_if_needed(path_id)
         bounded_limit = max(1, min(int(limit), 1000))
         with self._connect() as conn:
+            conn.execute("BEGIN")
             row = conn.execute(
                 "SELECT * FROM mastery_paths WHERE path_id = ?", (path_id,)
             ).fetchone()
@@ -1547,6 +1595,7 @@ class LearningStore:
         """Read the atlas in a constant number of bounded SQLite queries."""
 
         with self._connect() as conn:
+            conn.execute("BEGIN")
             progress_rows = conn.execute(
                 """
                 SELECT p.* FROM mastery_paths p

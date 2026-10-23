@@ -12,6 +12,8 @@ requires-python = ">=3.11,<3.15"
 readme = "README.md"
 license = {text = "Apache-2.0"}
 dependencies = [
+    "psutil>=5.9.0,<8.0.0",
+    "pywin32; sys_platform == 'win32'",  # MinerU Job Object ownership
     "PyYAML>=6.0",
     "jinja2>=3.1.0",
     "openai>=1.30.0",
@@ -41,6 +43,8 @@ dependencies = [
     "pageindex>=0.2.10,<0.3.0",
     # The shared partner onboarding CLI renders QR codes on a plain CLI install.
     "qrcode>=7.4.0,<9.0.0",
+    # IANA time zone data for `zoneinfo`; Windows has no system database.
+    "tzdata>=2024.1",
     "anthropic>=0.30.0",
     "dashscope>=1.14.0",
     "perplexityai>=0.1.0",
@@ -48,6 +52,7 @@ dependencies = [
     "llama-index>=0.14.12",
     # PyStemmer 2.x has no Python 3.14 wheel; the runtime falls back to vector
     # retrieval when this optional BM25 integration is absent.
+    "bm25s>=0.3.14,<0.4.0",  # Legacy page lookup without optional PyStemmer
     "llama-index-retrievers-bm25>=0.7.1,<0.8.0; python_version < '3.14'",
     # FAISS vector store: ANN retrieval replacing SimpleVectorStore brute force for
     # large KBs (issue #552); imported lazily with SimpleVectorStore fallback.

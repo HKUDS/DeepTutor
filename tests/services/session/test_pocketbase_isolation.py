@@ -147,6 +147,87 @@ async def test_create_session_stamps_current_user(fake_pb) -> None:
     assert row.session_id == "s_alice"
 
 
+async def test_context_builder_accepts_pocketbase_message_ids(fake_pb) -> None:
+    """The second turn must retain native string-ID history without coercion."""
+    from types import SimpleNamespace
+
+    from deeptutor.services.session.context_builder import ContextBuilder
+
+    store = PocketBaseSessionStore()
+    with as_user("alice"):
+        session = await store.create_session(session_id="s_context")
+        await store.add_message(session["id"], "user", "first question")
+        await store.add_message(session["id"], "assistant", "first answer")
+        result = await ContextBuilder(store).build(
+            session_id=session["id"],
+            llm_config=SimpleNamespace(
+                max_tokens=4096, model="test-model", context_window=32768, binding=None
+            ),
+        )
+    assert [row["content"] for row in result.conversation_history] == [
+        "first question",
+        "first answer",
+    ]
+
+
+async def test_pocketbase_summary_preserves_native_message_cursor(fake_pb) -> None:
+    """Store native cursors without changing the existing numeric server schema."""
+    from types import SimpleNamespace
+
+    from deeptutor.services.session.context_builder import ContextBuilder
+
+    store = PocketBaseSessionStore()
+    with as_user("alice"):
+        session = await store.create_session(session_id="s_cursor")
+        await store.add_message(session["id"], "user", "summarized")
+        first = fake_pb.collection("messages").get_full_list()[0]
+        first.id = "zzzzzzzzzzzzzzz"
+        message_id = first.id
+        assert await store.update_summary(session["id"], "summary", message_id)
+        loaded = await store.get_session(session["id"])
+        assert loaded["summary_up_to_msg_id"] == message_id
+        assert loaded["compressed_summary"] == "summary"
+        await store.update_session_preferences(session["id"], {"language": "en"})
+        assert (await store.get_session(session["id"]))["summary_up_to_msg_id"] == message_id
+        await store.add_message(session["id"], "user", "later question")
+        fake_pb.collection("messages").get_full_list()[-1].id = "aaaaaaaaaaaaaaa"
+        result = await ContextBuilder(store).build(
+            session_id=session["id"],
+            llm_config=SimpleNamespace(
+                max_tokens=4096, model="test-model", context_window=32768, binding=None
+            ),
+        )
+        assert [row["content"] for row in result.conversation_history] == [
+            "summary",
+            "later question",
+        ]
+        assert "_summary_message_id" not in loaded["preferences"]
+        assert await store.update_summary(session["id"], "", 0)
+        assert (await store.get_session(session["id"]))["summary_up_to_msg_id"] == 0
+
+
+async def test_source_inventory_accepts_native_parent_ids(fake_pb) -> None:
+    """The lineage walker must retain attachments when native IDs are strings."""
+    from deeptutor.services.session.source_inventory import collect_prior_image_attachments
+
+    store = PocketBaseSessionStore()
+    with as_user("alice"):
+        session = await store.create_session(session_id="s_lineage")
+        user_id = await store.add_message(
+            session["id"],
+            "user",
+            "image",
+            attachments=[{"id": "image", "mime_type": "image/png", "url": "/image.png"}],
+        )
+        leaf_id = await store.add_message(
+            session["id"], "assistant", "answer", parent_message_id=user_id
+        )
+        images = await collect_prior_image_attachments(
+            store, session_id=session["id"], leaf_message_id=leaf_id, limit=1
+        )
+    assert [row["url"] for row in images] == ["/image.png"]
+
+
 async def test_list_sessions_only_returns_own(fake_pb) -> None:
     store = PocketBaseSessionStore()
     with as_user("alice"):

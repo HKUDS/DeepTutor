@@ -64,6 +64,14 @@ EXPLORE_SOURCE = "chat"
 # round runs with tools disabled so it is always forced to finish.
 MAX_LOOP_ROUNDS = 5
 
+# Pre-loading attached sources into the *stable* prefix. The pre-pass starts
+# from scratch every turn and reads the same bytes every time; carrying them in
+# the leading message instead of behind a fresh tool call makes them part of
+# the cache prefix. Set to 0 to keep the original read-through-the-tool layout.
+PRELOAD_SOURCES_ENABLED = True
+PRELOAD_MAX_SOURCES = 2
+PRELOAD_MAX_CHARS = 120_000
+
 
 def _budgets() -> dict:
     """This capability's per-stage token budgets, from agents.yaml.
@@ -191,15 +199,27 @@ class ContextExplorer:
 
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": system_prompt},
-            {
-                "role": "user",
-                "content": user_template.format(
-                    question=(context.user_message or "").strip() or "(empty)",
-                    mode=str(context.active_capability or "chat"),
-                    manifest=(context.source_manifest or "").strip() or "(none)",
-                ),
-            },
         ]
+        question = (context.user_message or "").strip() or "(empty)"
+        mode = str(context.active_capability or "chat")
+        manifest = (context.source_manifest or "").strip() or "(none)"
+        cache_shaped = self._cache_shaped_messages(
+            source_index=source_index,
+            question=question,
+            mode=mode,
+            manifest=manifest,
+        )
+        if cache_shaped:
+            messages.extend(cache_shaped)
+        else:
+            messages.append(
+                {
+                    "role": "user",
+                    "content": user_template.format(
+                        question=question, mode=mode, manifest=manifest
+                    ),
+                }
+            )
         tool_schemas = self._read_source_schemas(source_index)
         augmenter = self._augmenter(source_index)
         client = build_openai_client(self._client_config)
@@ -548,6 +568,77 @@ class ContextExplorer:
             usage.add_estimated(input_chars=input_chars, output_chars=output_chars)
         except Exception:  # pragma: no cover - usage accounting is best-effort
             logger.debug("explore_context usage accounting failed", exc_info=True)
+
+    def _cache_shaped_messages(
+        self,
+        *,
+        source_index: dict[str, str],
+        question: str,
+        mode: str,
+        manifest: str,
+    ) -> list[dict[str, Any]]:
+        """Lay the investigation out so the repeatable bytes come first.
+
+        Provider prompt caches match a *prefix*, so only the bytes before the
+        first per-turn difference can ever be reused. The original layout put
+        the user's question at the top of the first message, which meant the
+        longest shared prefix with the previous turn ended a few tokens in and
+        every byte the pre-pass re-read — including tens of thousands of tokens
+        of unchanged source text — was billed at the miss rate, every turn.
+        Here the question is the *last* message and everything ahead of it
+        (mode, manifest, attached sources) is byte-stable for as long as the
+        attachments are, so it becomes a cache hit.
+
+        Returns ``[]`` when the localized split prompts are absent, leaving the
+        caller on the original single-message layout.
+        """
+        preamble_template = self._t("loop.preamble_template")
+        question_template = self._t("loop.question_template")
+        if not preamble_template or not question_template:
+            return []
+        selected = self._preload_selection(source_index)
+        sources_text = self._render_preloaded_sources(source_index, selected)
+        return [
+            {
+                "role": "user",
+                "content": preamble_template.format(
+                    mode=mode, manifest=manifest, sources=sources_text or "(none)"
+                ),
+            },
+            {"role": "user", "content": question_template.format(question=question)},
+        ]
+
+    def _preload_selection(self, source_index: dict[str, str]) -> list[str]:
+        """Which attached sources to carry in the stable prefix.
+
+        Longest first within the hard preload allowance. Oversized sources
+        remain available through read_source without overflowing every request.
+        """
+        if not PRELOAD_SOURCES_ENABLED or PRELOAD_MAX_SOURCES <= 0:
+            return []
+        ranked = sorted(
+            (sid for sid, body in source_index.items() if str(body or "").strip()),
+            key=lambda sid: (-len(str(source_index.get(sid) or "")), sid),
+        )
+        selected: list[str] = []
+        total = 0
+        for sid in ranked:
+            if len(selected) >= PRELOAD_MAX_SOURCES:
+                break
+            size = len(str(source_index.get(sid) or ""))
+            if total + size > PRELOAD_MAX_CHARS:
+                continue
+            selected.append(sid)
+            total += size
+        return selected
+
+    def _render_preloaded_sources(self, source_index: dict[str, str], selected: list[str]) -> str:
+        blocks: list[str] = []
+        for sid in selected:
+            body = str(source_index.get(sid) or "").strip()
+            if body:
+                blocks.append(f"### [{sid}] ({self._kind_label(sid)})\n{body}")
+        return "\n\n".join(blocks)
 
     @staticmethod
     def _source_index(context: UnifiedContext) -> dict[str, str]:

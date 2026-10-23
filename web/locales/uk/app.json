@@ -1,4 +1,10 @@
 {
+  "Partially correct": "Частково правильно",
+  "These answers could not be submitted. Please review or retry.": "Не вдалося надіслати ці відповіді. Перевірте їх або спробуйте ще раз.",
+  "The edit could not be sent. Your draft is still here; please retry.": "Не вдалося надіслати зміни. Чернетку збережено; спробуйте ще раз.",
+  "Discard unsent draft": "Видалити ненадіслану чернетку",
+  "Discarding…": "Видалення…",
+  "This draft could not be discarded. Please retry or copy it before leaving.": "Не вдалося видалити цю чернетку. Спробуйте ще раз або скопіюйте її перед виходом.",
   "language.english": "Англійська",
   "language.chinese": "Китайська",
   "language.french": "Français",
@@ -1784,6 +1790,7 @@
   "This step needs credentials": "Цей крок потребує облікових даних",
   "Close tab": "Закрити вкладку",
   "Close viewer": "Закрити переглядач",
+  "Back to conversation": "Повернутися до розмови",
   "Loading {{host}}…": "Завантаження {{host}}…",
   "Many sites refuse to embed for security reasons. If the page below stays blank, use “Open in browser”.": "Багато сайтів відмовляються вбудовуватися з міркувань безпеки. Якщо сторінка нижче залишається порожньою, скористайтеся «Відкрити в браузері».",
   "Open URL": "Відкрити URL",
@@ -4532,6 +4539,7 @@
   "Uses the current form without saving. Choose text in the voice's language. The provider may charge for this synthesis.": "Використовує поточну форму без збереження. Виберіть текст мовою голосу. Провайдер може стягувати плату за цей синтез.",
   "Generated voice preview": "Згенерований попередній перегляд голосу",
   "Voice preview failed.": "Помилка попереднього голосового перегляду.",
+  "Voice preview failed (HTTP {{status}}).": "Помилка попереднього голосового перегляду (HTTP {{status}}).",
   "The provider returned no playable audio.": "Провайдер не надав аудіо, яке можна відтворити.",
   "Voice preview was cancelled or timed out.": "Голосовий попередній перегляд скасовано або минув час очікування.",
   "Voice preview failed. Check the provider credentials, model, voice, language and format.": "Помилка попереднього голосового перегляду. Перевірте облікові дані провайдера, модель, голос, мову та формат.",
@@ -5521,5 +5529,12 @@
   "No durable indexing run recorded yet.": "Збереженого запису про запуск індексації поки немає.",
   "Approve this MCP origin for private-network connections": "Схвалити це джерело MCP для з'єднань із приватною мережею",
   "Use an administrator-approved private MCP origin": "Використовувати приватне джерело MCP, схвалене адміністратором",
-  "Only this scheme, host and port can use private Docker or LAN addresses. Metadata addresses remain blocked.": "Лише ця схема, хост і порт можуть використовувати приватні адреси Docker або локальної мережі. Адреси метаданих залишаються заблокованими."
+  "Only this scheme, host and port can use private Docker or LAN addresses. Metadata addresses remain blocked.": "Лише ця схема, хост і порт можуть використовувати приватні адреси Docker або локальної мережі. Адреси метаданих залишаються заблокованими.",
+  "Workspace instructions": "Інструкції робочого простору",
+  "Set learning goals, teaching style and response preferences for this workspace. Leave blank to use the default behavior.": "Укажіть навчальні цілі, стиль викладання та вподобання щодо відповідей для цього робочого простору. Залиште порожнім для стандартної поведінки.",
+  "For example: I am learning linear algebra. Explain the geometric intuition before introducing formulas, and give hints before complete solutions.": "Наприклад: я вивчаю лінійну алгебру. Спочатку пояснюйте геометричну інтуїцію, потім формули; давайте підказки перед повними розв’язаннями.",
+  "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading, Course Study and standard visualizations. Changes take effect on the next turn.": "Застосовується до чату, розв’язування, запитань, керованого навчання, читання, курсів і стандартних візуалізацій. Зміни діють із наступного ходу.",
+  "Clear instructions": "Очистити інструкції",
+  "{{used}} / {{limit}} characters": "{{used}} / {{limit}} символів",
+  "contextBudget.segment.workspace_instructions": "Інструкції робочого простору"
 }

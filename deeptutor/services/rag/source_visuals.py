@@ -178,6 +178,7 @@ class VisualEvidence:
     sources: list[dict[str, Any]] = field(default_factory=list)
     images: list[tuple[dict[str, Any], bytes]] = field(default_factory=list)
     error: str = ""
+    private_content: str = ""
 
     def model_message(self) -> dict[str, Any] | None:
         parts = []
@@ -390,7 +391,7 @@ def retrieve_visual(
                 )
             images.append(loaded)
             break
-    sources, paragraphs = [], []
+    sources, paragraphs, private_paragraphs = [], [], []
     for record, _data in images:
         image_url = source_url(kb_name, record, image=True)
         location = source_url(kb_name, record)
@@ -413,12 +414,21 @@ def retrieve_visual(
                 table[:6000]
                 + "\n[Structured table excerpt truncated; inspect the original page before interpreting omitted cells.]"
             )
+        identity = (
+            f"Source: {record['source_path']}, page {record.get('page_number') or 'unverified'}."
+        )
+        facts = f"Caption: {record.get('caption') or '(not supplied)'}\nSection: {record.get('section') or '(not supplied)'}\nNearby explanation: {record.get('context') or record.get('text') or '(not supplied)'}\nStructured table (if supplied): {table}\nNotes: {record.get('notes') or '(not supplied)'}"
         paragraphs.append(
-            f"Source: {record['source_path']}, page {record.get('page_number') or 'unverified'}.\n![Original source evidence]({image_url})\n[Original document]({location})\nCaption: {record.get('caption') or '(not supplied)'}\nSection: {record.get('section') or '(not supplied)'}\nNearby explanation: {record.get('context') or record.get('text') or '(not supplied)'}\nStructured table (if supplied): {table}\nNotes: {record.get('notes') or '(not supplied)'}"
+            f"{identity}\n![Original source evidence]({image_url})\n[Original document]({location})\n{facts}"
+        )
+        private_paragraphs.append(
+            f"{identity}\nSource hash: {record['source_document_id']}\n{facts}"
         )
     return VisualEvidence(
         "\n\n".join(paragraphs)
         + "\nTreat captions as text evidence. Claim visual observations only after inspecting the attached pixels; re-retrieve this evidence on a detailed follow-up. If labels or the answer key remain unclear, abstain and request a region or source selection.",
         sources,
         images,
+        private_content="\n\n".join(private_paragraphs)
+        + "\nPrivate source evidence for verification. To display an original view, request explicit rag presentation with these exact source selectors. Inspect supplied pixels before making visual claims.",
     )

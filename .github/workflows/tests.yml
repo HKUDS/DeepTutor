@@ -218,6 +218,15 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}
 
+      - name: Verify MinerU process ownership on Windows
+        if: runner.os == 'Windows'
+        run: |
+          python -m pip install pytest pytest-asyncio pywin32
+          python -m pytest -q tests/services/parsing/test_mineru_process_lifecycle.py
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          DEEPTUTOR_HOME: ${{ runner.temp }}/mineru-process-tests
+
   python-tests:
     name: Python Tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
@@ -260,6 +269,9 @@ jobs:
           pip install -r requirements/server.txt
           pip install -r requirements/partners.txt
           pip install pytest pytest-asyncio
+
+      - name: Install optional fastapi-guard
+        run: pip install -r requirements/guard.txt
 
       - name: Install optional LightRAG SDK
         if: matrix.python-version == '3.12'

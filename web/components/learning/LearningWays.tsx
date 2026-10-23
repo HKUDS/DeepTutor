@@ -38,62 +38,71 @@ export function LearningWays() {
         <h2 id={id} className="sr-only">
           {t('Ways to learn')}
         </h2>
-        <div className={pageGridClass(5)}>
-          {LEARNING_SURFACES.map(surface => {
+        <div className={pageGridClass(4)}>
+          {LEARNING_SURFACES.map((surface, index) => {
             const opened = openKind === surface.kind
             return (
               <motion.div
                 key={surface.kind}
-                layoutId={sharedId('surface', surface.kind)}
-                className="group relative h-full border border-border bg-card shadow-sm transition-colors hover:border-primary/30"
-                style={{ borderRadius: 20 }}
-                whileHover={reduceMotion || opened ? undefined : { y: -3 }}
-                whileTap={reduceMotion || opened ? undefined : { scale: 0.985, y: -1 }}
-                transition={spring}
+                initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: reduceMotion ? 0 : 0.24, delay: reduceMotion ? 0 : index * 0.04 }}
               >
-                <button
-                  type="button"
-                  onClick={event => {
-                    triggerRef.current = event.currentTarget
-                    setOpenKind(surface.kind)
-                  }}
-                  aria-haspopup="dialog"
-                  aria-expanded={opened}
-                  aria-controls={opened ? `${id}-panel` : undefined}
-                  className="relative flex h-full min-h-[196px] w-full flex-col items-start rounded-[20px] p-5 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
+                {/* Entry staggering stays outside the card-to-dialog projection
+                    so opening and returning never inherit an entrance delay. */}
+                <motion.div
+                  layoutId={sharedId('surface', surface.kind)}
+                  className="group relative h-full border border-border bg-card shadow-sm transition-colors hover:border-primary/30"
+                  style={{ borderRadius: 20 }}
+                  animate={{ y: 0, scale: 1 }}
+                  whileHover={reduceMotion || opened ? undefined : { y: -2 }}
+                  whileTap={reduceMotion || opened ? undefined : { scale: 0.99, y: 0 }}
+                  transition={{ layout: spring, duration: reduceMotion ? 0 : 0.16 }}
                 >
-                  <span className="mb-5 flex w-full items-center justify-between">
-                    <motion.span
+                  <button
+                    type="button"
+                    onClick={event => {
+                      triggerRef.current = event.currentTarget
+                      setOpenKind(surface.kind)
+                    }}
+                    aria-haspopup="dialog"
+                    aria-expanded={opened}
+                    aria-controls={opened ? `${id}-panel` : undefined}
+                    className="relative flex h-full min-h-[196px] w-full flex-col items-start rounded-[20px] p-5 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
+                  >
+                    <span className="mb-5 flex w-full items-center justify-between">
+                      <motion.span
+                        layout="position"
+                        layoutId={sharedId('icon', surface.kind)}
+                        transition={spring}
+                        className={tileClass(surface.accent)}
+                      >
+                        <surface.icon size={21} aria-hidden="true" />
+                      </motion.span>
+                      <ArrowUpRight
+                        size={18}
+                        aria-hidden="true"
+                        className="text-muted-foreground/50 transition duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-foreground group-focus-within:text-foreground motion-reduce:transform-none"
+                      />
+                    </span>
+                    <motion.h3
                       layout="position"
-                      layoutId={sharedId('icon', surface.kind)}
+                      layoutId={sharedId('title', surface.kind)}
                       transition={spring}
-                      className={tileClass(surface.accent)}
+                      className={titleClass}
                     >
-                      <surface.icon size={21} aria-hidden="true" />
-                    </motion.span>
-                    <ArrowUpRight
-                      size={18}
-                      aria-hidden="true"
-                      className="text-muted-foreground/50 transition duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-foreground group-focus-within:text-foreground motion-reduce:transform-none"
-                    />
-                  </span>
-                  <motion.h3
-                    layout="position"
-                    layoutId={sharedId('title', surface.kind)}
-                    transition={spring}
-                    className={titleClass}
-                  >
-                    {t(surface.title)}
-                  </motion.h3>
-                  <motion.p
-                    layout="position"
-                    layoutId={sharedId('description', surface.kind)}
-                    transition={spring}
-                    className="mt-2 text-[12.5px] leading-[1.7] text-muted-foreground"
-                  >
-                    {t(surface.description)}
-                  </motion.p>
-                </button>
+                      {t(surface.title)}
+                    </motion.h3>
+                    <motion.p
+                      layout="position"
+                      layoutId={sharedId('description', surface.kind)}
+                      transition={spring}
+                      className="mt-2 text-[12.5px] leading-[1.7] text-muted-foreground"
+                    >
+                      {t(surface.description)}
+                    </motion.p>
+                  </button>
+                </motion.div>
               </motion.div>
             )
           })}

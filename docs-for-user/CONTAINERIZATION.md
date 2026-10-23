@@ -535,3 +535,7 @@ renormalized on save.
 - CORS uses frontend **origins**, not API URLs. With auth enabled, set
   `cors_origins` in `system.json` to the exact frontend origins the
   deployment serves.
+- Optional request screening (rate limit, IP allow/deny lists, attack-pattern
+  scan) is available through `security_guard` in `system.json` and the
+  `guard` extra (`DEEPTUTOR_EXTRAS: "guard"`). It is off by default; see
+  [SECURITY_GUARD.md](SECURITY_GUARD.md).

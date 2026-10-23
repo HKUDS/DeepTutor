@@ -2,6 +2,7 @@
 
 import { browserStorage } from "@/shared/storage";
 import { randomUuid } from "@/lib/random-uuid";
+import { recoveryPrincipal } from "@/lib/recovery-principal";
 
 /** Kept opaque here so lib/ does not depend on features/. */
 export type FailedSubmissionSnapshot = unknown;
@@ -19,38 +20,39 @@ export interface FailedSubmissionRecord {
   retryRequiresReview?: boolean;
 }
 
-const LEGACY_KEY = "deeptutor.failedSubmissions";
-const LEGACY_FALLBACK_PREFIX = LEGACY_KEY + ".fallback.";
-const RECORD_PREFIX = LEGACY_KEY + ".record.";
-const TOMBSTONE_PREFIX = LEGACY_KEY + ".cleared.";
-const BINDING_PREFIX = LEGACY_KEY + ".binding.";
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
+function ownerPrefix(kind: "record" | "cleared" | "binding"): string {
+  const principal = recoveryPrincipal();
+  if (principal === null) throw new Error("Recovery ownership is unresolved");
+  return "deeptutor.failedSubmissions.owner." + encodeURIComponent(principal) + "." + kind + ".";
+}
+
 function recordKey(sessionId: string, submissionId: string): string {
-  return RECORD_PREFIX + encodeURIComponent(sessionId) + ":" +
+  return ownerPrefix("record") + encodeURIComponent(sessionId) + ":" +
     encodeURIComponent(submissionId);
 }
 
 function recordPrefix(sessionId: string): string {
-  return RECORD_PREFIX + encodeURIComponent(sessionId) + ":";
+  return ownerPrefix("record") + encodeURIComponent(sessionId) + ":";
 }
 
 function tombstoneKey(sessionId: string, submissionId: string): string {
-  return TOMBSTONE_PREFIX + encodeURIComponent(sessionId) + ":" +
+  return ownerPrefix("cleared") + encodeURIComponent(sessionId) + ":" +
     encodeURIComponent(submissionId);
 }
 
 function tombstonePrefix(sessionId: string): string {
-  return TOMBSTONE_PREFIX + encodeURIComponent(sessionId) + ":";
+  return ownerPrefix("cleared") + encodeURIComponent(sessionId) + ":";
 }
 
 function bindingKey(sessionId: string, submissionId: string): string {
-  return BINDING_PREFIX + encodeURIComponent(sessionId) + ":" +
+  return ownerPrefix("binding") + encodeURIComponent(sessionId) + ":" +
     encodeURIComponent(submissionId);
 }
 
 function bindingPrefix(sessionId: string): string {
-  return BINDING_PREFIX + encodeURIComponent(sessionId) + ":";
+  return ownerPrefix("binding") + encodeURIComponent(sessionId) + ":";
 }
 
 function hasSubmissionPayload(content: string, snapshot: unknown): boolean {
@@ -67,44 +69,6 @@ function isRecord(value: unknown): value is FailedSubmissionRecord {
     hasSubmissionPayload(record.content, record.requestSnapshot) &&
     Boolean(record.requestSnapshot) &&
     typeof record.savedAt === "number";
-}
-
-function asLegacyRecords(value: unknown): FailedSubmissionRecord[] {
-  const records = isRecord(value) ? [value] :
-    (Array.isArray(value) ? value.filter(isRecord) : []);
-  // Records written before client_submission_id cannot be matched safely to
-  // server rows. Keep their text, but require review before an automatic retry.
-  return records.map((record) => record.submissionId
-    ? record
-    : { ...record, submissionId: "legacy:" + record.savedAt, retryRequiresReview: true });
-}
-
-function legacyRecords(sessionId: string): FailedSubmissionRecord[] {
-  try {
-    const raw = browserStorage.readRaw("local", LEGACY_KEY);
-    const parsed: unknown = raw ? JSON.parse(raw) : null;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return [];
-    return asLegacyRecords((parsed as Record<string, unknown>)[sessionId]);
-  } catch {
-    return [];
-  }
-}
-
-function legacyRecordsForSession(sessionId: string): FailedSubmissionRecord[] {
-  try {
-    const raw = browserStorage.readRaw(
-      "session", LEGACY_FALLBACK_PREFIX + encodeURIComponent(sessionId),
-    );
-    if (raw) {
-      const parsed: unknown = JSON.parse(raw);
-      // The old fallback, including an empty-array tombstone, took priority
-      // over the shared map when the map could not be rewritten.
-      if (isRecord(parsed) || Array.isArray(parsed)) return asLegacyRecords(parsed);
-    }
-  } catch {
-    // A malformed or unavailable fallback cannot hide the local map.
-  }
-  return legacyRecords(sessionId);
 }
 
 function storedRecords(scope: "local" | "session", sessionId: string): FailedSubmissionRecord[] {
@@ -148,7 +112,7 @@ export function serverContainsFailedSubmission(
     content: string;
     metadata?: Record<string, unknown>;
   }[],
-  record: FailedSubmissionRecord,
+  record: Pick<FailedSubmissionRecord, "submissionId">,
 ): boolean {
   return Boolean(record.submissionId) && messages.some(
     (message) => message.role === "user" &&
@@ -176,7 +140,7 @@ type PersistedAs = "local_full" | "local_text" | "session_full" | "session_text"
 function pruneExpiredEntries(): void {
   const now = Date.now();
   for (const scope of ["local", "session"] as const) {
-    for (const [key, raw] of browserStorage.listRaw(scope, RECORD_PREFIX)) {
+    for (const [key, raw] of browserStorage.listRaw(scope, ownerPrefix("record"))) {
       let savedAt = Number.NaN;
       try {
         const value: unknown = JSON.parse(raw);
@@ -186,7 +150,7 @@ function pruneExpiredEntries(): void {
         if (browserStorage.readRaw(scope, key) === raw) browserStorage.removeRaw(scope, key);
       }
     }
-    for (const [key, raw] of browserStorage.listRaw(scope, TOMBSTONE_PREFIX)) {
+    for (const [key, raw] of browserStorage.listRaw(scope, ownerPrefix("cleared"))) {
       const savedAt = Number(raw);
       if (!Number.isFinite(savedAt) || now - savedAt > MAX_AGE_MS) {
         if (browserStorage.readRaw(scope, key) === raw) browserStorage.removeRaw(scope, key);
@@ -237,7 +201,7 @@ interface DraftBinding {
 
 function readBindings(targetSessionId?: string): DraftBinding[] {
   return browserStorage.listRaw(
-    "session", targetSessionId ? bindingPrefix(targetSessionId) : BINDING_PREFIX,
+    "session", targetSessionId ? bindingPrefix(targetSessionId) : ownerPrefix("binding"),
   ).flatMap(([key, raw]) => {
     try {
       const value = JSON.parse(raw) as Partial<DraftBinding>;
@@ -260,7 +224,6 @@ function directRecords(sessionId: string): FailedSubmissionRecord[] {
   const cleared = clearedIds(sessionId);
   const byId = new Map<string, FailedSubmissionRecord>();
   for (const record of [
-    ...legacyRecordsForSession(sessionId),
     ...storedRecords("local", sessionId),
     ...storedRecords("session", sessionId),
   ]) {
@@ -287,7 +250,7 @@ export function storeFailedSubmission(
     priorMatchingUserIds?: string[];
   },
 ): string | null {
-  if (!sessionId || !hasSubmissionPayload(submission.content, submission.requestSnapshot)) return null;
+  if (recoveryPrincipal() === null || !sessionId || !hasSubmissionPayload(submission.content, submission.requestSnapshot)) return null;
   const submissionId = submission.submissionId ?? randomUuid();
   const record: FailedSubmissionRecord = {
     content: submission.content,
@@ -304,9 +267,10 @@ export function storeFailedSubmission(
   return persistRecord(sessionId, record) ? submissionId : null;
 }
 
-/** Read the union of shared local, this tab's fallback, and old formats. */
-export function readFailedSubmissions(sessionId: string): FailedSubmissionRecord[] {
-  if (!sessionId) return [];
+/** Read this owner's local and tab fallback records. Unowned legacy data is
+ * preserved in storage, never silently attributed to the current account. */
+export function readFailedSubmissions(sessionId: string, includeSuperseded = false): FailedSubmissionRecord[] {
+  if (recoveryPrincipal() === null || !sessionId) return [];
   const byId = new Map<string, FailedSubmissionRecord>();
   const bindings = readBindings();
   const boundAwayIds = new Set(
@@ -329,7 +293,13 @@ export function readFailedSubmissions(sessionId: string): FailedSubmissionRecord
       byId.set(record.submissionId, record);
     }
   }
-  return [...byId.values()].sort((left, right) => left.savedAt - right.savedAt);
+  const records = [...byId.values()];
+  const replacedIds = new Set(records.flatMap((record) => {
+    const snapshot = record.requestSnapshot as { replacesSubmissionId?: string } | null;
+    return snapshot?.replacesSubmissionId ? [snapshot.replacesSubmissionId] : [];
+  }));
+  return records.filter((record) => includeSuperseded || !replacedIds.has(record.submissionId!))
+    .sort((left, right) => left.savedAt - right.savedAt);
 }
 
 /** Kept for callers interested in the most recent pending submission. */
@@ -344,7 +314,7 @@ export function moveFailedSubmissions(
   sessionId: string,
   submissionIds: readonly string[],
 ): string[] {
-  if (!sourceKey || !sessionId || sourceKey === sessionId || !submissionIds.length) return [];
+  if (recoveryPrincipal() === null || !sourceKey || !sessionId || sourceKey === sessionId || !submissionIds.length) return [];
   const ids = new Set(submissionIds);
   const visible: string[] = [];
   for (const record of readFailedSubmissions(sourceKey)) {
@@ -370,21 +340,20 @@ export function moveFailedSubmissions(
   return visible;
 }
 
-/** Remove one causal record without rewriting any other tab's pending data. */
-export function clearFailedSubmission(sessionId: string, submissionId?: string): void {
-  if (!sessionId) return;
+/** Remove one causal record; return whether its retirement was recorded. */
+export function clearFailedSubmission(sessionId: string, submissionId?: string): boolean {
+  if (recoveryPrincipal() === null || !sessionId) return false;
   if (!submissionId) {
+    let cleared = true;
     for (const record of readFailedSubmissions(sessionId)) {
-      if (record.submissionId) clearFailedSubmission(sessionId, record.submissionId);
+      if (record.submissionId && !clearFailedSubmission(sessionId, record.submissionId)) cleared = false;
     }
-    return;
+    return cleared;
   }
   const binding = readBindings(sessionId)
     .find((item) => item.submissionId === submissionId);
-  if (binding && binding.sourceKey !== sessionId) {
-    clearFailedSubmission(binding.sourceKey, submissionId);
-    browserStorage.removeRaw("session", bindingKey(sessionId, submissionId));
-  }
+  const sourceRecordAt = binding ? directRecords(binding.sourceKey)
+    .find((item) => item.submissionId === submissionId)?.savedAt ?? 0 : 0;
   const key = recordKey(sessionId, submissionId);
   const marker = tombstoneKey(sessionId, submissionId);
   const recordAt = directRecords(sessionId)
@@ -392,8 +361,28 @@ export function clearFailedSubmission(sessionId: string, submissionId?: string):
   const clearedAt = clearedIds(sessionId).get(submissionId) ?? 0;
   const markerAt = Math.max(Date.now(), recordAt + 1, clearedAt + 1);
   let marked = browserStorage.writeRaw("local", marker, String(markerAt));
+  if (!marked) marked = browserStorage.writeRaw("session", marker, String(markerAt));
+  // Do not destroy the only recovery copy if its retirement cannot be saved.
+  if (!marked) return false;
+  const advanced = () => {
+    const current = directRecords(sessionId).find((item) => item.submissionId === submissionId);
+    const currentBinding = readBindings(sessionId).find((item) => item.submissionId === submissionId);
+    return (current?.savedAt ?? 0) > recordAt ||
+      currentBinding?.sourceKey !== binding?.sourceKey ||
+      currentBinding?.savedAt !== binding?.savedAt ||
+      Boolean(binding && (directRecords(binding.sourceKey)
+        .find((item) => item.submissionId === submissionId)?.savedAt ?? 0) > sourceRecordAt);
+  };
+  // A stale tab can retry this ID after the marker. Preserve advancement we
+  // can observe; browser storage does not offer atomic cross-tab compare/delete.
+  if (advanced()) return false;
+  if (binding && binding.sourceKey !== sessionId) {
+    if (!clearFailedSubmission(binding.sourceKey, submissionId)) return false;
+    browserStorage.removeRaw("session", bindingKey(sessionId, submissionId));
+  }
+  const current = directRecords(sessionId).find((item) => item.submissionId === submissionId);
+  if ((current?.savedAt ?? 0) > recordAt) return false;
   browserStorage.removeRaw("local", key);
   browserStorage.removeRaw("session", key);
-  if (!marked) marked = browserStorage.writeRaw("local", marker, String(markerAt));
-  if (!marked) browserStorage.writeRaw("session", marker, String(markerAt));
+  return true;
 }

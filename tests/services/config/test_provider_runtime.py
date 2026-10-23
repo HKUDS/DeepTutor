@@ -506,6 +506,51 @@ def test_llm_y_api_base_url_detection_preserves_openai_binding_compatibility() -
     assert resolved.effective_url == "https://api.y-api.bestvirtualgoods.com/v1"
 
 
+def test_llm_onomeo_binding_uses_default_openai_compatible_endpoint() -> None:
+    catalog = _build_catalog(
+        llm_profile={
+            "id": "llm-p",
+            "name": "onomeo",
+            "binding": "onomeo",
+            "base_url": "",
+            "api_key": "onomeo-key",
+            "api_version": "",
+            "extra_headers": {},
+            "models": [{"id": "llm-m", "name": "Auto", "model": "auto"}],
+        }
+    )
+
+    resolved = resolve_llm_runtime_config(catalog=catalog)
+
+    assert resolved.provider_name == "onomeo"
+    assert resolved.provider_mode == "gateway"
+    assert resolved.binding == "onomeo"
+    assert resolved.model == "auto"
+    assert resolved.api_key == "onomeo-key"
+    assert resolved.effective_url == "https://onomeo.com/v1"
+
+
+def test_llm_onomeo_base_url_detection_preserves_openai_binding_compatibility() -> None:
+    catalog = _build_catalog(
+        llm_profile={
+            "id": "llm-p",
+            "name": "OpenAI Compatible",
+            "binding": "openai",
+            "base_url": "https://onomeo.com/v1",
+            "api_key": "onomeo-key",
+            "api_version": "",
+            "extra_headers": {},
+            "models": [{"id": "llm-m", "name": "Auto", "model": "auto"}],
+        }
+    )
+
+    resolved = resolve_llm_runtime_config(catalog=catalog)
+
+    assert resolved.provider_name == "onomeo"
+    assert resolved.provider_mode == "gateway"
+    assert resolved.effective_url == "https://onomeo.com/v1"
+
+
 def test_llm_novita_binding_uses_default_openai_compatible_endpoint() -> None:
     catalog = _build_catalog(
         llm_profile={

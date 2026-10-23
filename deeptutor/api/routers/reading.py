@@ -1058,6 +1058,8 @@ async def upload_material(
     filename = (file.filename or "").strip()
     if not filename:
         raise HTTPException(status_code=400, detail="The upload has no filename.")
+    if filename.lower().endswith(".epub.zip"):
+        filename = filename[: -len(".zip")]
 
     tmp_dir = Path(tempfile.mkdtemp(prefix="dt-reading-"))
     tmp_path = tmp_dir / Path(filename).name

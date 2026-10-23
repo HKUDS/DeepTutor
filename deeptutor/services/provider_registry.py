@@ -352,6 +352,16 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         api_base_by_format=(("anthropic", "https://api.y-api.bestvirtualgoods.com"),),
     ),
     ProviderSpec(
+        name="onomeo",
+        keywords=("onomeo",),
+        env_key="ONOMEO_API_KEY",
+        display_name="onomeo",
+        backend="openai_compat",
+        is_gateway=True,
+        detect_by_base_keyword="onomeo",
+        default_api_base="https://onomeo.com/v1",
+    ),
+    ProviderSpec(
         name="volcengine",
         keywords=("volcengine", "volces", "ark"),
         env_key="OPENAI_API_KEY",

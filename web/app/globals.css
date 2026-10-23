@@ -36,6 +36,7 @@
 @container feature-page (min-width: 520px) {
   .dt-page-grid-2,
   .dt-page-grid-3,
+  .dt-page-grid-4,
   .dt-page-grid-5 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -64,6 +65,7 @@
 }
 
 @container feature-page (min-width: 1040px) {
+  .dt-page-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .dt-page-grid-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 }
 

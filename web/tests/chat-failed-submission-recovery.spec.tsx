@@ -5,7 +5,9 @@ import {
   ChatStateAdapterProvider,
   useChatStateAdapter,
 } from "@/features/chat/ChatStateAdapter";
+import { buildVisiblePath } from "@/lib/message-branches";
 import { initI18n } from "@/i18n/init";
+import { updateRecoveryPrincipal } from "@/lib/recovery-principal";
 import {
   resetReadingTurnState, setReadingMaterial, setReadingViewport,
   setReadingWorkspace,
@@ -30,9 +32,15 @@ const GIVE_UP_MS =
 const fixture = vi.hoisted(() => ({
   connected: false,
   sent: [] as Array<Record<string, unknown>>,
+  deleted: [] as number[],
   emit: undefined as undefined | ((event: Record<string, unknown>) => void),
   close: undefined as undefined | (() => void),
   session: undefined as undefined | Record<string, unknown>,
+  replacementCalls: [] as Array<{ original: string; request: Record<string, unknown> }>,
+  replacementSupported: true,
+  replacementFails: false,
+  replacementFailureAt: 0,
+  replacementPending: null as Promise<void> | null,
 }));
 
 vi.mock("@/features/chat/transport/UnifiedTurnClient", () => ({
@@ -61,6 +69,14 @@ vi.mock("@/features/chat/transport/UnifiedTurnClient", () => ({
 }));
 
 vi.mock("@/lib/session-api", () => ({
+  supportsSubmissionReplacement: async () => fixture.replacementSupported,
+  replaceSubmission: async (original: string, request: Record<string, unknown>) => {
+    fixture.replacementCalls.push({ original, request: { ...request } });
+    if (fixture.replacementPending) await fixture.replacementPending;
+    if (fixture.replacementFails || fixture.replacementFailureAt === fixture.replacementCalls.length) throw new Error("lost recovery receipt");
+    return { status: "started", session_id: "s1", submission_id: request.client_submission_id,
+      turn: { id: "edited-turn", status: "running" } };
+  },
   getSession: async (sessionId: string) => {
     if (!fixture.session) throw new Error("no fixture session configured");
     return {
@@ -75,7 +91,10 @@ vi.mock("@/lib/session-api", () => ({
     events: [],
     total: 0,
   }),
-  deleteMessage: async () => ({}),
+  deleteMessage: async (_sessionId: string, messageId: number) => {
+    fixture.deleted.push(messageId);
+    return {};
+  },
   updateBranchSelection: async () => ({}),
   updateSessionTitle: async () => fixture.session ?? {},
   updateSessionReplyLanguage: async () => fixture.session ?? {},
@@ -131,19 +150,65 @@ function seedUnsentSubmission(content = "Hello offline") {
 }
 
 function Harness() {
+  const [discardResult, setDiscardResult] = useState<boolean | null>(null);
   const { state, sendMessage, resendLastMessage, loadSession, cancelStreamingTurn,
     configureSession, setPersonaSelection, setLLMSelection,
-    setReplyLanguageOverride } =
+    setReplyLanguageOverride, discardFailedSubmission, switchBranch, editMessage, retryFailedSubmission } =
     useChatStateAdapter();
   return (
     <>
       <button onClick={() => void loadSession("s1")}>Load</button>
       <button onClick={() => void loadSession("new-session")}>Load new</button>
+      <button onClick={() => void loadSession("s1", { revalidate: true })}>Revalidate</button>
+      <button onClick={() => {
+        const first = state.messages.find(message => message.failedSubmission);
+        if (first?.id !== undefined) discardFailedSubmission(first.id);
+      }}>Discard first</button>
+      <button onClick={() => {
+        const last = state.messages.at(-1);
+        if (last?.id !== undefined) discardFailedSubmission(last.id);
+      }}>Discard last</button>
+      <button onClick={() => discardFailedSubmission(1)}>Discard saved</button>
+      <div data-testid="visible">{JSON.stringify(buildVisiblePath(
+        state.messages, state.selectedBranches,
+      ).messages.map(message => message.content))}</div>
       <button onClick={() => sendMessage("Hello offline")}>Send</button>
       <button onClick={() => sendMessage("Second offline")}>Send another</button>
       <button onClick={() => sendMessage("", [{ type: "image", filename: "figure.png", base64: "YWJj" }])}>Send image only</button>
       <button onClick={() => void resendLastMessage()}>Resend</button>
+      <button onClick={() => {
+        const draft = state.messages.find((message) => message.failedSubmission);
+        if (typeof draft?.id === "number") void editMessage(draft.id, "Edited offline");
+      }}>Edit first unsent</button>
+      <button onClick={() => {
+        const draft = state.messages.find((message) => message.failedSubmission);
+        if (typeof draft?.id === "number") void editMessage(draft.id, "Second edit");
+      }}>Edit second version</button>
+      <button onClick={() => {
+        const draft = state.messages.find((message) => message.failedSubmission);
+        if (typeof draft?.id === "number") void retryFailedSubmission(draft.id);
+      }}>Retry first unsent</button>
       <button onClick={cancelStreamingTurn}>Stop</button>
+      <button onClick={() => {
+        const draft = [...state.messages].reverse().find((message) => message.failedSubmission);
+        if (typeof draft?.id === "number") setDiscardResult(discardFailedSubmission(draft.id));
+      }}>Discard unsent</button>
+      <button onClick={() => {
+        const draft = state.messages.find((message) => message.failedSubmission);
+        if (typeof draft?.id === "number") setDiscardResult(discardFailedSubmission(draft.id));
+      }}>Discard first unsent</button>
+      <button onClick={() => {
+        const drafts = state.messages.filter((message) => message.failedSubmission);
+        if (typeof drafts[0]?.id === "number" && typeof drafts[1]?.id === "number") {
+          switchBranch(drafts[0].parentMessageId ?? null, drafts[0].id);
+          switchBranch(drafts[0].id, drafts[1].id);
+        }
+      }}>Select unsent branch</button>
+      <div data-testid="discardResult">{String(discardResult)}</div>
+      <div data-testid="references">{JSON.stringify({
+        messages: state.messages.map((message) => ({ id: message.id, content: message.content, parentMessageId: message.parentMessageId })),
+        selectedBranches: state.selectedBranches,
+      })}</div>
       <button onClick={() => {
         configureSession({
           capability: "deep_research", workspaceMode: "immersive_reading",
@@ -213,16 +278,244 @@ function readStoredKeys() {
 }
 
 beforeEach(() => {
+  updateRecoveryPrincipal({ enabled: false, authenticated: true });
   localStorage.clear();
   sessionStorage.clear();
   resetReadingTurnState();
   fixture.connected = false;
   fixture.sent = [];
+  fixture.deleted = [];
   fixture.emit = undefined;
   fixture.close = undefined;
+  fixture.replacementCalls = [];
+  fixture.replacementFails = false;
+  fixture.replacementSupported = true;
+  fixture.replacementFailureAt = 0;
+  fixture.replacementPending = null;
 });
 
 afterEach(() => vi.restoreAllMocks());
+
+it("drops account A's visible drafts and stale runner events while preserving A's recovery data", async () => {
+  updateRecoveryPrincipal({ enabled: true, authenticated: true, user_id: "a" });
+  storeFailedSubmission("draft:general", { submissionId: "a-draft", content: "A private draft",
+    requestSnapshot: { content: "A private draft" } });
+  fixture.connected = true;
+  render(<ChatStateAdapterProvider><BootstrapDraft /><Harness /></ChatStateAdapterProvider>);
+  expect(readMessages().map((message) => message.content)).toEqual(["A private draft"]);
+  await act(async () => fireEvent.click(screen.getByText("Send another")));
+  const oldEmit = fixture.emit;
+  await act(async () => updateRecoveryPrincipal({ enabled: true, authenticated: true, user_id: "b" }));
+  expect(readMessages()).toEqual([]);
+  await act(async () => oldEmit?.({ type: "session", session_id: "s1" }));
+  expect(readMessages()).toEqual([]);
+  expect(readFailedSubmissions("draft:general")).toEqual([]);
+  await act(async () => updateRecoveryPrincipal({ enabled: true, authenticated: true, user_id: "a" }));
+  expect(readMessages().some((message) => message.content === "A private draft")).toBe(true);
+});
+
+it("ignores an old account's replacement receipt after a principal switch", async () => {
+  updateRecoveryPrincipal({ enabled: true, authenticated: true, user_id: "a" });
+  fixture.session = completedServerSession();
+  fixture.connected = true;
+  seedUnsentSubmission("A private draft");
+  let release!: () => void;
+  fixture.replacementPending = new Promise<void>((resolve) => { release = resolve; });
+  render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+  await act(async () => fireEvent.click(screen.getByText("Load")));
+  await act(async () => fireEvent.click(screen.getByText("Edit first unsent")));
+  expect(fixture.replacementCalls).toHaveLength(1);
+  await act(async () => updateRecoveryPrincipal({ enabled: true, authenticated: true, user_id: "b" }));
+  await act(async () => release());
+  expect(readMessages()).toEqual([]);
+  expect(fixture.sent).toEqual([]);
+  expect(readFailedSubmissions("s1")).toEqual([]);
+  await act(async () => updateRecoveryPrincipal({ enabled: true, authenticated: true, user_id: "a" }));
+  expect(readFailedSubmissions("s1")[0].content).toBe("Edited offline");
+});
+
+it("durably edits an unsent message with its original attachment and request scope", async () => {
+  fixture.session = completedServerSession();
+  fixture.connected = true;
+  storeFailedSubmission("s1", { submissionId: "original-edit", content: "Original", requestSnapshot: {
+    content: "Original", capability: "chat", language: "en", enabledTools: ["reason"], knowledgeBases: ["original-kb"],
+    attachments: [{ type: "image", base64: "YWJj", filename: "source.png" }],
+  } });
+  render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+  await act(async () => fireEvent.click(screen.getByText("Load")));
+  await act(async () => fireEvent.click(screen.getByText("Edit first unsent")));
+  expect(fixture.replacementCalls).toHaveLength(1);
+  expect(fixture.replacementCalls[0].original).toBe("original-edit");
+  const command = fixture.replacementCalls[0].request;
+  expect(command).toMatchObject({ content: "Edited offline", knowledge_bases: ["original-kb"], tools: ["reason"],
+    attachments: [{ type: "image", base64: "YWJj", filename: "source.png" }] });
+  expect(command.client_submission_id).not.toBe("original-edit");
+  expect(fixture.sent).toEqual([{ type: "subscribe_turn", turn_id: "edited-turn", after_seq: 0 }]);
+  expect(readFailedSubmissions("s1")).toHaveLength(1);
+  expect(readMessages().filter((message) => message.role === "user" && message.content.includes("offline"))).toHaveLength(1);
+});
+
+it("replays the same edit reservation after a lost recovery receipt and reload", async () => {
+  fixture.session = completedServerSession();
+  fixture.connected = true;
+  fixture.replacementFails = true;
+  seedUnsentSubmission();
+  const first = render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+  await act(async () => fireEvent.click(screen.getByText("Load")));
+  await act(async () => fireEvent.click(screen.getByText("Edit first unsent")));
+  const originalRequest = fixture.replacementCalls[0].request;
+  expect(fixture.sent).toHaveLength(0);
+  expect(readFailedSubmissions("s1")).toHaveLength(1);
+  first.unmount();
+  fixture.replacementFails = false;
+  fixture.replacementSupported = true;
+  render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+  await act(async () => fireEvent.click(screen.getByText("Load")));
+  await act(async () => fireEvent.click(screen.getByText("Retry first unsent")));
+  expect(fixture.replacementCalls[1].request).toEqual(originalRequest);
+  expect(fixture.sent).toEqual([{ type: "subscribe_turn", turn_id: "edited-turn", after_seq: 0 }]);
+});
+
+it("resolves an uncertain predecessor before chaining an edit and retries the latest leaf", async () => {
+  fixture.session = completedServerSession();
+  fixture.connected = true;
+  fixture.replacementFailureAt = 1;
+  seedUnsentSubmission();
+  render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+  await act(async () => fireEvent.click(screen.getByText("Load")));
+  await act(async () => fireEvent.click(screen.getByText("Edit first unsent")));
+  fixture.replacementFailureAt = 3;
+  await act(async () => fireEvent.click(screen.getByText("Edit second version")));
+  expect(fixture.replacementCalls).toHaveLength(3);
+  expect(fixture.replacementCalls[1]).toEqual(fixture.replacementCalls[0]);
+  expect(fixture.replacementCalls[2].original).toBe(fixture.replacementCalls[0].request.client_submission_id);
+  expect(readFailedSubmissions("s1")).toHaveLength(1);
+  expect(readFailedSubmissions("s1")[0].content).toBe("Second edit");
+  await act(async () => fireEvent.click(screen.getByText("Retry first unsent")));
+  expect(fixture.replacementCalls[3]).toEqual(fixture.replacementCalls[2]);
+});
+
+it("does not fence the original when only a text fallback of the edited request fits", async () => {
+  fixture.session = completedServerSession();
+  fixture.connected = true;
+  seedUnsentSubmission();
+  render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+  await act(async () => fireEvent.click(screen.getByText("Load")));
+  for (const storage of [localStorage, sessionStorage]) {
+    const write = storage.setItem.bind(storage);
+    vi.spyOn(storage, "setItem").mockImplementation((key, value) => {
+      if (value.includes("replacementRequest")) throw new Error("Full edit exceeds quota");
+      write(key, value);
+    });
+  }
+  await act(async () => fireEvent.click(screen.getByText("Edit first unsent")));
+  expect(fixture.replacementCalls).toHaveLength(0);
+  expect(fixture.sent).toHaveLength(0);
+  expect(readMessages().at(-1)?.content).toBe("Hello offline");
+  expect(readFailedSubmissions("s1").some((record) => record.content === "Hello offline")).toBe(true);
+});
+
+it("discards only the local unsent shadow and does not resurrect it after reload", async () => {
+  fixture.session = completedServerSession();
+  seedUnsentSubmission();
+  fixture.connected = true;
+  render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+  await act(async () => fireEvent.click(screen.getByText("Load")));
+  expect(readMessages().at(-1)).toMatchObject({ content: "Hello offline", failed: true });
+  await act(async () => fireEvent.click(screen.getByText("Discard unsent")));
+  expect(readMessages().map((message) => message.content)).toEqual(["hi", "hello"]);
+  expect(fixture.sent).toHaveLength(0);
+  expect(fixture.deleted).toHaveLength(0);
+  expect(readFailedSubmissions("s1")).toEqual([]);
+  await act(async () => fireEvent.click(screen.getByText("Load")));
+  expect(readMessages().map((message) => message.content)).toEqual(["hi", "hello"]);
+});
+
+it("discards one of two drafts without dropping history or breaking the remaining branch", async () => {
+  fixture.session = completedServerSession();
+  storeFailedSubmission("s1", { submissionId: "draft-a", content: "First local draft", requestSnapshot: { content: "First local draft" } });
+  storeFailedSubmission("s1", { submissionId: "draft-b", content: "Second local draft", requestSnapshot: { content: "Second local draft" } });
+  render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+  await act(async () => fireEvent.click(screen.getByText("Load")));
+  await act(async () => fireEvent.click(screen.getByText("Select unsent branch")));
+  const before = JSON.parse(screen.getByTestId("references").textContent!);
+  const removed = before.messages.find((message: { content: string }) => message.content === "First local draft");
+  const survivor = before.messages.find((message: { content: string }) => message.content === "Second local draft");
+  expect(before.selectedBranches[String(removed.id)]).toBe(survivor.id);
+  await act(async () => fireEvent.click(screen.getByText("Discard first unsent")));
+  const after = JSON.parse(screen.getByTestId("references").textContent!);
+  expect(after.messages.map((message: { content: string }) => message.content)).toEqual(["hi", "hello", "Second local draft"]);
+  expect(after.messages.at(-1).parentMessageId).toBe(2);
+  expect(after.selectedBranches["2"]).toBe(survivor.id);
+  expect(after.selectedBranches[String(removed.id)]).toBeUndefined();
+  expect(readFailedSubmissions("s1").map((record) => record.submissionId)).toEqual(["draft-b"]);
+  expect(fixture.sent).toHaveLength(0);
+  expect(fixture.deleted).toHaveLength(0);
+  await act(async () => fireEvent.click(screen.getByText("Load")));
+  expect(readMessages().map((message) => message.content)).toEqual(["hi", "hello", "Second local draft"]);
+});
+
+it("keeps the recovery copy visible when neither storage can save its retirement", async () => {
+  fixture.session = completedServerSession();
+  seedUnsentSubmission();
+  render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+  await act(async () => fireEvent.click(screen.getByText("Load")));
+  vi.spyOn(localStorage, "setItem").mockImplementation(() => { throw new Error("unavailable storage"); });
+  vi.spyOn(sessionStorage, "setItem").mockImplementation(() => { throw new Error("unavailable storage"); });
+  await act(async () => fireEvent.click(screen.getByText("Discard unsent")));
+  expect(screen.getByTestId("discardResult")).toHaveTextContent("false");
+  expect(readMessages().at(-1)).toMatchObject({ content: "Hello offline", failed: true });
+  expect(readFailedSubmissions("s1")).toHaveLength(1);
+  expect(fixture.deleted).toHaveLength(0);
+  expect(fixture.sent).toHaveLength(0);
+});
+
+it("retires a moved draft's bound source as well as its visible target copy", () => {
+  const id = storeFailedSubmission("draft:general", { content: "Bound draft", requestSnapshot: { content: "Bound draft" } })!;
+  const setItem = localStorage.setItem.bind(localStorage);
+  vi.spyOn(localStorage, "setItem").mockImplementation((key, value) => {
+    if (key.startsWith("deeptutor.failedSubmissions.owner.single-user.record.s1:")) throw new Error("target quota");
+    setItem(key, value);
+  });
+  expect(moveFailedSubmissions("draft:general", "s1", [id])).toEqual([id]);
+  expect(readFailedSubmissions("s1")).toHaveLength(1);
+  expect(clearFailedSubmission("s1", id)).toBe(true);
+  expect(readFailedSubmissions("s1")).toEqual([]);
+  expect(readFailedSubmissions("draft:general")).toEqual([]);
+});
+
+it("does not erase a detectable same-ID retry advanced during retirement", () => {
+  const id = storeFailedSubmission("s1", { submissionId: "retry-id", content: "Pending copy",
+    requestSnapshot: { content: "Pending copy" } })!;
+  const before = readFailedSubmissions("s1")[0].savedAt;
+  const setItem = localStorage.setItem.bind(localStorage);
+  let advanced = false;
+  vi.spyOn(localStorage, "setItem").mockImplementation((key, value) => {
+    setItem(key, value);
+    if (!advanced && key === "deeptutor.failedSubmissions.owner.single-user.cleared.s1:retry-id") {
+      advanced = true;
+      storeFailedSubmission("s1", { submissionId: id, content: "Pending copy",
+        requestSnapshot: { content: "Pending copy" } });
+    }
+  });
+  expect(clearFailedSubmission("s1", id)).toBe(false);
+  expect(advanced).toBe(true);
+  expect(readFailedSubmissions("s1")).toHaveLength(1);
+  expect(readFailedSubmissions("s1")[0].savedAt).toBeGreaterThan(before);
+});
+
+it("preserves a stopped-before-admission draft across reload", async () => {
+  fixture.session = completedServerSession();
+  render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+  await act(async () => fireEvent.click(screen.getByText("Load")));
+  fireEvent.click(screen.getByText("Send"));
+  fireEvent.click(screen.getByText("Stop"));
+  expect(readMessages().at(-1)).toMatchObject({ content: "Hello offline", failed: true });
+  await act(async () => fireEvent.click(screen.getByText("Load")));
+  expect(readMessages().at(-1)).toMatchObject({ content: "Hello offline", failed: true });
+  expect(readFailedSubmissions("s1")).toHaveLength(1);
+  expect(fixture.sent).toHaveLength(0);
+});
 
 it("tracks attachment-only submissions with a stable identity for resend", async () => {
   fixture.connected = true;
@@ -858,11 +1151,11 @@ it("falls back to localStorage text when sessionStorage is unavailable", () => {
   expect(record?.content).toBe("Keep this text");
   expect(record?.retryRequiresReview).toBe(true);
   expect(localStorage.getItem(
-    "deeptutor.failedSubmissions.record.s1:" + record?.submissionId,
+    "deeptutor.failedSubmissions.owner.single-user.record.s1:" + record?.submissionId,
   )).toContain("Keep this text");
 });
 
-it("keeps the old session fallback's precedence, including an empty tombstone", () => {
+it("preserves unowned legacy fallback data without exposing it to the current account", () => {
   const old = {
     submissionId: "old-map", content: "Stale map text", capability: "chat",
     requestSnapshot: { content: "Stale map text" }, savedAt: Date.now(),
@@ -873,9 +1166,9 @@ it("keeps the old session fallback's precedence, including an empty tombstone", 
   sessionStorage.setItem("deeptutor.failedSubmissions.fallback.s1", JSON.stringify([{
     ...old, submissionId: "fallback", content: "Fallback text",
   }]));
-  expect(readFailedSubmissions("s1").map((record) => record.content)).toEqual([
-    "Fallback text",
-  ]);
+  expect(readFailedSubmissions("s1")).toEqual([]);
+  expect(localStorage.getItem("deeptutor.failedSubmissions")).toContain("Stale map text");
+  expect(sessionStorage.getItem("deeptutor.failedSubmissions.fallback.s1")).toContain("Fallback text");
 });
 
 it("saves to localStorage when the sessionStorage getter itself throws", () => {
@@ -889,7 +1182,7 @@ it("saves to localStorage when the sessionStorage getter itself throws", () => {
 });
 
 it("prunes expired records across sessions before falling back on quota", () => {
-  const staleKey = "deeptutor.failedSubmissions.record.old:stale";
+  const staleKey = "deeptutor.failedSubmissions.owner.single-user.record.old:stale";
   localStorage.setItem(staleKey, JSON.stringify({
     submissionId: "stale", content: "Old attachment", capability: "chat",
     requestSnapshot: { content: "Old attachment", attachment: "A".repeat(10_000) },
@@ -897,7 +1190,7 @@ it("prunes expired records across sessions before falling back on quota", () => 
   }));
   const localSetItem = localStorage.setItem.bind(localStorage);
   vi.spyOn(localStorage, "setItem").mockImplementation((key, value) => {
-    if (key.startsWith("deeptutor.failedSubmissions.record.") &&
+    if (key.startsWith("deeptutor.failedSubmissions.owner.single-user.record.") &&
         localStorage.getItem(staleKey)) {
       throw new DOMException("Quota", "QuotaExceededError");
     }
@@ -948,17 +1241,17 @@ it("binds a failed draft to its server session when no destination copy fits", (
     submissionId: "draft-a", content: "Full draft", capability: "chat",
     requestSnapshot: { content: "Full draft", attachment: "A".repeat(10_000) },
   });
-  const sourceKey = "deeptutor.failedSubmissions.record.draft%3Ageneral:draft-a";
+  const sourceKey = "deeptutor.failedSubmissions.owner.single-user.record.draft%3Ageneral:draft-a";
   const localSetItem = localStorage.setItem.bind(localStorage);
   vi.spyOn(localStorage, "setItem").mockImplementation((key, value) => {
-    if (key.startsWith("deeptutor.failedSubmissions.record.s2:")) {
+    if (key.startsWith("deeptutor.failedSubmissions.owner.single-user.record.s2:")) {
       throw new DOMException("Quota", "QuotaExceededError");
     }
     localSetItem(key, value);
   });
   const sessionSetItem = sessionStorage.setItem.bind(sessionStorage);
   vi.spyOn(sessionStorage, "setItem").mockImplementation((key, value) => {
-    if (key.startsWith("deeptutor.failedSubmissions.record.s2:")) {
+    if (key.startsWith("deeptutor.failedSubmissions.owner.single-user.record.s2:")) {
       throw new DOMException("Quota", "QuotaExceededError");
     }
     sessionSetItem(key, value);
@@ -980,7 +1273,7 @@ it("keeps the durable draft source when its destination only fits in sessionStor
   });
   const localSetItem = localStorage.setItem.bind(localStorage);
   vi.spyOn(localStorage, "setItem").mockImplementation((key, value) => {
-    if (key.startsWith("deeptutor.failedSubmissions.record.s2:")) {
+    if (key.startsWith("deeptutor.failedSubmissions.owner.single-user.record.s2:")) {
       throw new DOMException("Quota", "QuotaExceededError");
     }
     localSetItem(key, value);
@@ -1000,7 +1293,7 @@ it("clears the bound draft source once the server accepts its submission", () =>
   });
   const localSetItem = localStorage.setItem.bind(localStorage);
   vi.spyOn(localStorage, "setItem").mockImplementation((key, value) => {
-    if (key.startsWith("deeptutor.failedSubmissions.record.s2:")) {
+    if (key.startsWith("deeptutor.failedSubmissions.owner.single-user.record.s2:")) {
       throw new DOMException("Quota", "QuotaExceededError");
     }
     localSetItem(key, value);
@@ -1010,7 +1303,7 @@ it("clears the bound draft source once the server accepts its submission", () =>
   expect(readFailedSubmissions("s2")).toEqual([]);
   expect(readFailedSubmissions("draft:general")).toEqual([]);
   expect(localStorage.getItem(
-    "deeptutor.failedSubmissions.record.draft%3Ageneral:draft-a",
+    "deeptutor.failedSubmissions.owner.single-user.record.draft%3Ageneral:draft-a",
   )).toBeNull();
 });
 
@@ -1049,7 +1342,7 @@ it("unions one tab's session fallback with another tab's local record", () => {
     },
   });
   expect(sessionStorage.getItem(
-    "deeptutor.failedSubmissions.record.s1:large-tab-a",
+    "deeptutor.failedSubmissions.owner.single-user.record.s1:large-tab-a",
   )).toContain("Tab A attachment");
   storeFailedSubmission("s1", {
     submissionId: "small-tab-b", content: "Tab B text", capability: "chat",
@@ -1068,10 +1361,10 @@ it("preserves an interleaved write from another tab while storing and clearing",
   const localSetItem = localStorage.setItem.bind(localStorage);
   let interleaved = false;
   vi.spyOn(localStorage, "setItem").mockImplementation((key, value) => {
-    if (!interleaved && key === "deeptutor.failedSubmissions.record.s1:tab-a") {
+    if (!interleaved && key === "deeptutor.failedSubmissions.owner.single-user.record.s1:tab-a") {
       interleaved = true;
       // Tab B writes after A has prepared its value but before A commits.
-      localSetItem("deeptutor.failedSubmissions.record.s2:tab-b", JSON.stringify({
+      localSetItem("deeptutor.failedSubmissions.owner.single-user.record.s2:tab-b", JSON.stringify({
         submissionId: "tab-b", content: "Tab B pending", capability: "chat",
         requestSnapshot: { content: "Tab B pending", language: "en" },
         savedAt: Date.now(),
@@ -1089,9 +1382,9 @@ it("preserves an interleaved write from another tab while storing and clearing",
   const localRemoveItem = localStorage.removeItem.bind(localStorage);
   let interleavedClear = false;
   vi.spyOn(localStorage, "removeItem").mockImplementation((key) => {
-    if (!interleavedClear && key === "deeptutor.failedSubmissions.record.s1:tab-a") {
+    if (!interleavedClear && key === "deeptutor.failedSubmissions.owner.single-user.record.s1:tab-a") {
       interleavedClear = true;
-      localSetItem("deeptutor.failedSubmissions.record.s2:tab-c", JSON.stringify({
+      localSetItem("deeptutor.failedSubmissions.owner.single-user.record.s2:tab-c", JSON.stringify({
         submissionId: "tab-c", content: "Tab C pending", capability: "chat",
         requestSnapshot: { content: "Tab C pending", language: "en" },
         savedAt: Date.now(),
@@ -1179,4 +1472,187 @@ it("resubscribes a parked ask_user turn on load so its card survives a reload", 
   expect(
     fixture.sent.filter((message) => message.type === "subscribe_turn").length,
   ).toBe(subscribed);
+});
+
+
+it("discards only the chosen identical pending message and keeps its successor visible after reload", async () => {
+  const firstId = seedUnsentSubmission("hi");
+  const secondId = seedUnsentSubmission("hi");
+  storeFailedSubmission("other-session", {
+    content: "hi", submissionId: firstId!, requestSnapshot: {},
+  });
+  fixture.session = completedServerSession();
+  render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+  await act(async () => { fireEvent.click(screen.getByText("Load")); });
+  expect(readMessages().filter(message => message.failed)).toHaveLength(2);
+  await act(async () => { fireEvent.click(screen.getByText("Discard first")); });
+  expect(readFailedSubmissions("s1").map(record => record.submissionId)).toEqual([secondId]);
+  expect(readFailedSubmissions("other-session")).toHaveLength(1);
+  expect(JSON.parse(screen.getByTestId("visible").textContent!)).toEqual(["hi", "hello", "hi"]);
+  await act(async () => { fireEvent.click(screen.getByText("Load")); });
+  expect(readMessages().filter(message => message.failed)).toHaveLength(1);
+  await act(async () => { fireEvent.click(screen.getByText("Discard last")); });
+  expect(readMessages().map(message => message.content)).toEqual(["hi", "hello"]);
+  expect(screen.getByTestId("lastTurnFailed")).toHaveTextContent("false");
+  expect(screen.getByTestId("submissionFailed")).toHaveTextContent("false");
+  await act(async () => { fireEvent.click(screen.getByText("Load")); });
+  expect(readFailedSubmissions("s1")).toEqual([]);
+  expect(readMessages().filter(message => message.failed)).toEqual([]);
+  expect(fixture.sent).toEqual([]);
+});
+
+it("never discards a saved server message through the local recovery action", async () => {
+  seedUnsentSubmission();
+  fixture.session = completedServerSession();
+  render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+  await act(async () => { fireEvent.click(screen.getByText("Load")); });
+  const before = readMessages();
+  fireEvent.click(screen.getByText("Discard saved"));
+  expect(readMessages()).toEqual(before);
+  expect(readFailedSubmissions("s1")).toHaveLength(1);
+});
+
+it("leaves unowned legacy drafts quarantined across session reloads", async () => {
+  const legacy = JSON.stringify({
+    s1: { content: "legacy unsent", capability: "chat", requestSnapshot: {}, savedAt: Date.now() },
+  });
+  localStorage.setItem("deeptutor.failedSubmissions", legacy);
+  fixture.session = completedServerSession();
+  render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+  await act(async () => { fireEvent.click(screen.getByText("Load")); });
+  expect(readMessages().map(message => message.content)).toEqual(["hi", "hello"]);
+  await act(async () => { fireEvent.click(screen.getByText("Load")); });
+  expect(readFailedSubmissions("s1")).toEqual([]);
+  expect(readMessages().map(message => message.content)).toEqual(["hi", "hello"]);
+  expect(localStorage.getItem("deeptutor.failedSubmissions")).toBe(legacy);
+});
+
+it("preserves unsent messages on background refresh and clears only causally accepted records", async () => {
+  const ownId = seedUnsentSubmission("hi");
+  const otherId = seedUnsentSubmission("hi");
+  fixture.session = completedServerSession();
+  render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+  await act(async () => { fireEvent.click(screen.getByText("Load")); });
+  await act(async () => { fireEvent.click(screen.getByText("Revalidate")); });
+  expect(readMessages().filter(message => message.failed)).toHaveLength(2);
+  (fixture.session.messages as Array<Record<string, unknown>>)[0].metadata = {
+    client_submission_id: ownId,
+  };
+  await act(async () => { fireEvent.click(screen.getByText("Revalidate")); });
+  expect(readFailedSubmissions("s1").map(record => record.submissionId)).toEqual([otherId]);
+  expect(readMessages().filter(message => message.failed)).toHaveLength(1);
+  (fixture.session.messages as Array<Record<string, unknown>>)[0].metadata = {
+    client_submission_id: otherId,
+  };
+  await act(async () => { fireEvent.click(screen.getByText("Revalidate")); });
+  expect(readFailedSubmissions("s1")).toEqual([]);
+  expect(readMessages().filter(message => message.failed)).toEqual([]);
+  expect(screen.getByTestId("lastTurnFailed")).toHaveTextContent("false");
+});
+
+it("discards a failed first draft message durably without a server session", async () => {
+  storeFailedSubmission("draft:general", {
+    content: "offline draft", requestSnapshot: {}, submissionId: "draft-to-discard",
+  });
+  const view = render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+  expect(readMessages().at(-1)?.content).toBe("offline draft");
+  fireEvent.click(screen.getByText("Discard last"));
+  expect(readMessages()).toEqual([]);
+  view.unmount();
+  render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+  expect(readMessages()).toEqual([]);
+  expect(readFailedSubmissions("draft:general")).toEqual([]);
+});
+
+
+it("keeps pending messages that could not be saved in any browser storage during revalidation", async () => {
+  vi.useFakeTimers();
+  try {
+    fixture.session = completedServerSession();
+    render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+    await act(async () => { fireEvent.click(screen.getByText("Load")); });
+    for (const storage of [localStorage, sessionStorage]) {
+      vi.spyOn(storage, "setItem").mockImplementation(() => {
+        throw new DOMException("Unavailable", "SecurityError");
+      });
+    }
+    fireEvent.click(screen.getByText("Send"));
+    await act(async () => { await vi.advanceTimersByTimeAsync(GIVE_UP_MS); });
+    expect(screen.getByTestId("submissionNotSaved")).toHaveTextContent("true");
+    await act(async () => { fireEvent.click(screen.getByText("Revalidate")); });
+    expect(readMessages().at(-1)).toEqual({ role: "user", content: "Hello offline", failed: true });
+    expect(readFailedSubmissions("s1")).toEqual([]);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("clears a causally accepted recovery record even when the remote turn is still running", async () => {
+  const ownId = seedUnsentSubmission("hi");
+  fixture.connected = true;
+  fixture.session = {
+    ...completedServerSession(), status: "running", active_turns: [{ turn_id: "active-turn" }],
+  };
+  (fixture.session.messages as Array<Record<string, unknown>>)[0].metadata = {
+    client_submission_id: ownId,
+  };
+  render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+  await act(async () => { fireEvent.click(screen.getByText("Load")); });
+  expect(readFailedSubmissions("s1")).toEqual([]);
+});
+
+it("does not discard an earlier pending record while another turn is streaming", async () => {
+  seedUnsentSubmission();
+  fixture.session = completedServerSession();
+  render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+  await act(async () => { fireEvent.click(screen.getByText("Load")); });
+  fixture.connected = true;
+  fireEvent.click(screen.getByText("Send another"));
+  const before = readMessages();
+  fireEvent.click(screen.getByText("Discard first"));
+  expect(readMessages()).toEqual(before);
+  expect(readFailedSubmissions("s1")).toHaveLength(2);
+});
+
+it("retains a genuine server turn failure after the last local pending record is discarded", async () => {
+  seedUnsentSubmission();
+  fixture.session = { ...completedServerSession(), status: "failed" };
+  render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+  await act(async () => { fireEvent.click(screen.getByText("Load")); });
+  fireEvent.click(screen.getByText("Discard last"));
+  expect(screen.getByTestId("submissionFailed")).toHaveTextContent("false");
+  expect(screen.getByTestId("lastTurnFailed")).toHaveTextContent("true");
+});
+
+
+it("keeps the recovery row visible when browser storage cannot record its dismissal", async () => {
+  seedUnsentSubmission();
+  fixture.session = completedServerSession();
+  render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+  await act(async () => { fireEvent.click(screen.getByText("Load")); });
+  for (const storage of [localStorage, sessionStorage]) {
+    for (const method of ["setItem", "removeItem"] as const) {
+      vi.spyOn(storage, method).mockImplementation(() => {
+        throw new DOMException("Unavailable", "SecurityError");
+      });
+    }
+  }
+  await act(async () => { fireEvent.click(screen.getByText("Discard first")); });
+  expect(readFailedSubmissions("s1")).toHaveLength(1);
+  expect(readMessages().some(message => message.failed)).toBe(true);
+});
+
+
+it("preserves an original unsent draft when the backend lacks atomic replacement", async () => {
+  fixture.session = completedServerSession();
+  fixture.replacementSupported = false;
+  seedUnsentSubmission("Original unsupported draft");
+  render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+  await act(async () => fireEvent.click(screen.getByText("Load")));
+  const before = readFailedSubmissions("s1");
+  await act(async () => fireEvent.click(screen.getByText("Edit first unsent")));
+  expect(fixture.replacementCalls).toEqual([]);
+  expect(fixture.sent).toEqual([]);
+  expect(readFailedSubmissions("s1")).toEqual(before);
+  expect(readMessages().some(message => message.content === "Original unsupported draft")).toBe(true);
 });

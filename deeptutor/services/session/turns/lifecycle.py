@@ -657,8 +657,15 @@ class TurnLifecycle:
         execution: _TurnExecution,
         event: StreamEvent,
     ) -> dict[str, Any]:
-        if event.type == StreamEventType.DONE and not event.metadata.get("status"):
-            event.metadata = {**event.metadata, "status": "completed"}
+        if event.type == StreamEventType.DONE:
+            from deeptutor.services.llm.metrics import current_usage
+
+            collector = current_usage.get()
+            if collector is not None and collector.turn_id == execution.turn_id:
+                if summary := collector.summary():
+                    event.metadata = {**event.metadata, "usage_summary": summary}
+            if not event.metadata.get("status"):
+                event.metadata = {**event.metadata, "status": "completed"}
         event.session_id = execution.session_id
         event.turn_id = execution.turn_id
         payload = event.to_dict()
@@ -680,18 +687,41 @@ class TurnLifecycle:
             if current is not execution:
                 execution.events.append(payload)
             subscribers = list(current.subscribers)
-        if event.type == StreamEventType.DONE:
+        if event.type == StreamEventType.DONE or (
+            len(execution.events) - len(execution.persisted_events) >= 25
+        ):
             # Never expose DONE to a process-local subscriber before the
             # complete event prefix is durable. Redis subscribers already
             # read the same canonical payload from the shared journal.
             await self._flush_buffered_events(execution)
+        elif execution.flush_task is None or execution.flush_task.done():
+            execution.flush_task = asyncio.create_task(self._flush_live_prefix(execution))
         for subscriber in subscribers:
             with contextlib.suppress(asyncio.QueueFull):
                 subscriber.queue.put_nowait(payload)
         return payload
 
+    async def _flush_live_prefix(self, execution: _TurnExecution) -> None:
+        """Bound the crash-loss window even when the next model/tool is quiet."""
+        delay = 0.25
+        while True:
+            await asyncio.sleep(delay)
+            if execution.lease_lost:
+                return
+            try:
+                await self._flush_buffered_events(execution)
+            except Exception:
+                # Keep the pending prefix and retry transient storage errors.
+                # Terminal flushes still propagate failure to the turn owner.
+                logger.exception("Live event persistence failed for turn %s", execution.turn_id)
+                delay = min(delay * 2, 5.0)
+                continue
+            if len(execution.persisted_events) == len(execution.events):
+                return
+            delay = 0.25
+
     async def _flush_buffered_events(self, execution: _TurnExecution) -> None:
-        """Persist buffered turn events after the live stream has already drained."""
+        """Persist the pending prefix, serialized with periodic and terminal writes."""
         async with execution.flush_lock:
             await self._flush_buffered_events_once(execution)
 

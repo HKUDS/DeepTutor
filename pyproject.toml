@@ -48,6 +48,11 @@ dependencies = [
     # without it the browser renders no code at all — the operator sees a
     # button that does nothing, with no error to explain why.
     "qrcode>=7.4.0,<9.0.0",
+    # IANA time zone database for `zoneinfo`. Windows ships none, so without
+    # it every named zone (even "UTC") is unknown there and usage statistics,
+    # practice reviews and cron schedules reject every timezone they are given.
+    # On Linux/macOS `zoneinfo` keeps preferring the system database.
+    "tzdata>=2024.1",
     # Full app dependencies included by default for `pip install deeptutor`.
     "anthropic>=0.30.0",
     "dashscope>=1.14.0",
@@ -57,6 +62,7 @@ dependencies = [
     # The current BM25 integration pins PyStemmer <3, whose 2.x line has no
     # Python 3.14 wheels. Skip it there so ordinary installs never require a C
     # compiler; the retriever already falls back to vector search when absent.
+    "bm25s>=0.3.14,<0.4.0",  # Legacy page lookup without optional PyStemmer
     "llama-index-retrievers-bm25>=0.7.1,<0.8.0; python_version < '3.14'",
     # FAISS vector store: vectorized ANN retrieval that replaces SimpleVectorStore's
     # brute-force per-query scan for large knowledge bases (issue #552). The
@@ -87,10 +93,9 @@ dependencies = [
     "loguru>=0.7.3,<1.0.0",
     "json-repair>=0.57.0,<1.0.0",
     "croniter>=6.0.0,<7.0.0",
-    # Process-tree memory readings for /api/system/memory. Soft dependency:
-    # deeptutor.runtime.memory_probe imports it lazily and falls back to /proc,
-    # so a missing wheel costs the settings strip, not the app.
+    # Process-tree memory readings and Windows MinerU worker ownership.
     "psutil>=5.9.0,<8.0.0",
+    "pywin32; sys_platform == 'win32'",  # MinerU Job Object ownership
 ]
 
 [project.scripts]
@@ -109,6 +114,8 @@ translation = "deeptutor.reading.translation:TranslationExtension"
 # already included in the public `deeptutor` wheel; the local CLI-only project
 # under `packaging/deeptutor-cli` uses the same list without Web assets/server deps.
 cli = [
+    "psutil>=5.9.0,<8.0.0",
+    "pywin32; sys_platform == 'win32'",  # MinerU Job Object ownership
     "packaging>=24.2",
     # LLM provider SDKs
     "anthropic>=0.30.0",
@@ -118,6 +125,7 @@ cli = [
     "pageindex>=0.2.10,<0.3.0",
     # RAG (LlamaIndex)
     "llama-index>=0.14.12",
+    "bm25s>=0.3.14,<0.4.0",  # Legacy page lookup without optional PyStemmer
     "llama-index-retrievers-bm25>=0.7.1,<0.8.0; python_version < '3.14'",
     # FAISS vector store: vectorized ANN retrieval that replaces SimpleVectorStore's
     # brute-force per-query scan for large knowledge bases (issue #552). The
@@ -270,6 +278,12 @@ rag-lightrag = ["lightrag-hku==1.5.7"]
 # out of `all`; retrieval lazily falls back to embedding-only ranking when the
 # package or configured model is unavailable.
 rag-rerank = ["sentence-transformers>=3.0.0,<6.0.0; python_version < '3.14'"]
+
+# Optional request screening (rate limit, IP allow/deny lists, attack-pattern
+# scan of path, query and headers). Off unless system.json `security_guard`
+# is enabled; see docs-for-user/SECURITY_GUARD.md. Mirrors
+# requirements/guard.txt. Docker: DEEPTUTOR_EXTRAS=guard.
+guard = ["fastapi-guard>=8.1.1,<9.0.0"]
 
 # Dev/test tooling. Mirrors requirements/dev.txt.
 dev = [

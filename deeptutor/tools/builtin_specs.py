@@ -112,6 +112,7 @@ BUILTIN_TOOL_SPECS: tuple[BuiltinToolSpec, ...] = (
         "deeptutor.capabilities.mastery.tools",
         (
             ("mastery_status", "MasteryStatusTool"),
+            ("mastery_prepare_lesson", "MasteryPrepareLessonTool"),
             ("mastery_quiz", "MasteryQuizTool"),
             ("mastery_note_explained", "MasteryNoteExplainedTool"),
             ("mastery_grade", "MasteryGradeTool"),

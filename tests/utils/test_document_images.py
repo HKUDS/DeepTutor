@@ -17,13 +17,16 @@ from pptx.util import Inches as PptxInches
 import pytest
 
 from deeptutor.utils.document_images import (
+    MAX_INLINE_IMAGE_EDGE,
     ImageBudget,
     build_marker,
     extract_docx_rich,
     extract_pdf_images,
     extract_pptx_rich,
     find_markers,
+    fit_inline_image,
     image_index_from_name,
+    reading_image_budget,
 )
 
 
@@ -236,3 +239,123 @@ def test_pdf_images_default_budget_caps_at_twelve(tmp_path) -> None:
     assert len(result.collection.images) == 12
     assert result.collection.skipped_budget == 2
     assert result.collection.skipped_page_budget == 0
+
+
+# ---------------------------------------------------------------------------
+# Inline transport bound
+# ---------------------------------------------------------------------------
+
+
+def _noise_jpeg(size: tuple[int, int], quality: int = 95, seed: int = 7) -> bytes:
+    """A large noisy JPEG: inside every byte budget, past the long-edge bound."""
+    from PIL import Image as PILImage
+
+    raw = random.Random(seed).randbytes(size[0] * size[1] * 3)
+    image = PILImage.frombytes("RGB", size, raw)
+    buf = io.BytesIO()
+    image.save(buf, format="JPEG", quality=quality)
+    return buf.getvalue()
+
+
+def test_inline_budget_fits_a_page_sized_raster() -> None:
+    """A scan past the long edge is fitted before admission, aspect preserved."""
+    from PIL import Image as PILImage
+
+    source = _noise_jpeg((2000, 1200))
+    budget = ImageBudget()
+    admitted = budget.try_admit(".jpg", source)
+
+    assert admitted is not None
+    assert admitted.name.endswith(".jpg")
+    assert admitted.mime_type == "image/jpeg"
+    assert len(admitted.data) < len(source)
+    with PILImage.open(io.BytesIO(admitted.data)) as fitted:
+        assert max(fitted.size) <= MAX_INLINE_IMAGE_EDGE
+        assert fitted.size == (1600, 960)
+    # The budget accounts the bytes that will actually ship, not the source.
+    assert budget.total_bytes == len(admitted.data)
+
+
+def test_reading_budget_keeps_source_resolution() -> None:
+    """Images stored for the reader pane are written as-is, never refitted."""
+    source = _noise_jpeg((2000, 1200))
+    admitted = reading_image_budget().try_admit(".jpg", source)
+
+    assert admitted is not None
+    assert admitted.data == source
+    assert admitted.mime_type == "image/jpeg"
+
+
+def test_inline_budget_leaves_small_images_untouched() -> None:
+    """Under the bound, the original bytes and format survive unchanged."""
+    source = _png_bytes((400, 300))
+    admitted = ImageBudget().try_admit(".png", source)
+
+    assert admitted is not None
+    assert admitted.data == source
+    assert admitted.mime_type == "image/png"
+
+
+def test_inline_budget_bounds_office_pictures_too() -> None:
+    """DOCX/PPTX pictures reach the same admission seam as PDF page rasters."""
+    from PIL import Image as PILImage
+
+    rich = extract_docx_rich(_docx_with_image(["A picture follows"], _noise_jpeg((2000, 1200))))
+
+    assert rich.collection.images, "the embedded picture should be extracted"
+    with PILImage.open(io.BytesIO(rich.collection.images[0].data)) as fitted:
+        assert max(fitted.size) <= MAX_INLINE_IMAGE_EDGE
+
+
+def test_fit_returns_undecodable_bytes_unchanged() -> None:
+    """A size optimisation must never be why an attachment becomes unreadable."""
+    payload = b"\x89PNG\r\n\x1a\n" + b"not really a png" * 64
+
+    assert fit_inline_image(".png", payload, max_edge=MAX_INLINE_IMAGE_EDGE) == (".png", payload)
+
+
+def test_fit_composites_transparency_onto_white() -> None:
+    """JPEG has no alpha channel; transparent areas must not turn black."""
+    from PIL import Image as PILImage
+    from PIL import ImageDraw as PILImageDraw
+
+    raw = random.Random(5).randbytes(2000 * 1200 * 3)
+    image = PILImage.frombytes("RGB", (2000, 1200), raw).convert("RGBA")
+    image.putalpha(0)
+    PILImageDraw.Draw(image).rectangle([0, 0, 300, 300], fill=(255, 0, 0, 255))
+    buf = io.BytesIO()
+    image.save(buf, format="PNG")
+
+    ext, data = fit_inline_image(".png", buf.getvalue(), max_edge=MAX_INLINE_IMAGE_EDGE)
+
+    assert ext == ".jpg"
+    with PILImage.open(io.BytesIO(data)) as fitted:
+        assert fitted.mode == "RGB"
+        assert max(fitted.size) <= MAX_INLINE_IMAGE_EDGE
+        # A transparent corner composites onto white, not onto black.
+        assert fitted.getpixel((fitted.size[0] - 4, fitted.size[1] - 4)) == (255, 255, 255)
+        opaque = fitted.getpixel((20, 20))
+        assert opaque[0] > 200 and opaque[1] < 80 and opaque[2] < 80
+
+
+def test_scanned_page_rides_bounded_but_reads_whole(tmp_path) -> None:
+    """The reported case: a whole-page scan, inline vs on-disk resolution."""
+    pymupdf = pytest.importorskip("pymupdf")
+    from PIL import Image as PILImage
+
+    doc = pymupdf.open()
+    page = doc.new_page(width=612, height=792)
+    page.insert_image(pymupdf.Rect(0, 0, 612, 792), stream=_noise_jpeg((2000, 1200)))
+    pdf_path = tmp_path / "scan.pdf"
+    doc.save(str(pdf_path))
+    doc.close()
+    data = pdf_path.read_bytes()
+
+    inline = extract_pdf_images(data).collection.images
+    stored = extract_pdf_images(data, budget=reading_image_budget()).collection.images
+
+    assert inline and stored
+    with PILImage.open(io.BytesIO(inline[0].data)) as fitted:
+        assert max(fitted.size) <= MAX_INLINE_IMAGE_EDGE
+    with PILImage.open(io.BytesIO(stored[0].data)) as whole:
+        assert max(whole.size) > MAX_INLINE_IMAGE_EDGE

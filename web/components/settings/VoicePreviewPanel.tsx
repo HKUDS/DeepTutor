@@ -81,9 +81,14 @@ function PreviewRequest({
         body: JSON.stringify({ catalog: draft, profile_id: profileId, model_id: modelId, text }),
       })
       if (!response.ok) {
-        const payload = await response.json()
+        // A reverse proxy can replace the backend's JSON error with an HTML
+        // page; parse defensively and surface the status instead of the
+        // resulting JSON syntax error.
+        const payload = (await response.json().catch(() => ({}))) as { detail?: unknown }
         throw new Error(
-          typeof payload.detail === 'string' ? payload.detail : 'Voice preview failed.'
+          typeof payload.detail === 'string' && payload.detail.trim()
+            ? payload.detail
+            : t('Voice preview failed (HTTP {{status}}).', { status: response.status })
         )
       }
       const audio = await response.blob()

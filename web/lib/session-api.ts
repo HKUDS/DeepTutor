@@ -1,9 +1,23 @@
+import { clearFailedSubmission } from "@/lib/failed-submissions";
 import { scopedUrl } from "@/lib/workspace-scope";
 import { notifySessionsChanged } from "@/lib/session-events";
 import { apiFetch, apiUrl } from "@/lib/api";
 import { invalidateClientCache, withClientCache } from "@/lib/client-cache";
 import type { LLMSelection, StreamEvent } from "@/features/chat/model/protocol";
 import { browserReturnPath, loginHref } from "@/shared/auth/return-url";
+
+/** Fail closed when the configured backend cannot fence an uncertain send. */
+export async function supportsSubmissionReplacement(): Promise<boolean> {
+  try {
+    return await withClientCache("session-store-capabilities", async () => {
+      const response = await apiFetch(apiUrl(scopedUrl("/api/sessions/capabilities")));
+      if (!response.ok) throw new Error("Session capabilities unavailable");
+      const capabilities: unknown = await response.json();
+      return typeof capabilities === "object" && capabilities !== null &&
+        "submission_replacement" in capabilities && capabilities.submission_replacement === true;
+    });
+  } catch { return false; }
+}
 
 export interface SessionMessage {
   id: number;
@@ -167,7 +181,7 @@ export interface SessionDetail {
     "idle" | "running" | "completed" | "failed" | "cancelled" | "rejected";
   active_turn_id?: string;
   compressed_summary?: string;
-  summary_up_to_msg_id?: number;
+  summary_up_to_msg_id?: number | string;
   preferences?: SessionPreferences;
   messages: SessionMessage[];
   active_turns?: ActiveTurnSummary[];
@@ -306,6 +320,21 @@ export async function getSession(
   return expectJson<SessionDetail>(response);
 }
 
+export type SubmissionReplacementReceipt = {
+  status: "started"; session_id: string; submission_id: string;
+  turn: { id: string; status: string };
+};
+
+export async function replaceSubmission(
+  originalSubmissionId: string, request: Record<string, unknown>,
+): Promise<SubmissionReplacementReceipt> {
+  const { type: _type, protocol_version: _version, ...payload } = request;
+  return expectJson<SubmissionReplacementReceipt>(await apiFetch(apiUrl("/api/sessions/submission-replacement"), {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ original_submission_id: originalSubmissionId, request: payload }),
+  }));
+}
+
 /** Opening an old Watching conversation is the explicit migration boundary. */
 export async function migrateWatchingSession(sessionId: string): Promise<SessionDetail> {
   return expectJson<SessionDetail>(await apiFetch(apiUrl(`/api/sessions/${encodeURIComponent(sessionId)}/migrate-watching`), { method: "POST" }));
@@ -416,7 +445,9 @@ export async function deleteSession(sessionId: string, workspaceId?: string): Pr
   const response = await apiFetch(apiUrl(scopedUrl(`/api/sessions/${sessionId}`, workspaceId)), {
     method: "DELETE",
   });
-  await expectJson<{ deleted: boolean }>(response);
+  const data = await expectJson<{ deleted: boolean }>(response);
+  if (!data.deleted) throw new Error("Session was not deleted");
+  clearFailedSubmission(sessionId);
   invalidateClientCache("sessions:");
   notifySessionsChanged();
 }
