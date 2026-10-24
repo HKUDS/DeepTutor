@@ -1,0 +1,83 @@
+<xs:schema 
+  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+  xmlns="http://www.w3.org/1998/Math/MathML"
+  targetNamespace="http://www.w3.org/1998/Math/MathML"
+  elementFormDefault="qualified"
+ >
+
+<xs:annotation>
+  <xs:documentation>
+  This is the XML Schema module for the basic constants of MathML content.
+  Author: St&#233;phane Dalmas.
+  </xs:documentation>
+</xs:annotation>
+
+<!-- a common type for all this -->
+
+<xs:complexType name="Constant.type">
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:complexType>
+
+<!-- Basic sets -->
+
+<xs:element name="naturalnumbers" type="Constant.type"/>
+<xs:element name="primes" type="Constant.type"/>
+<xs:element name="integers" type="Constant.type"/>
+<xs:element name="rationals" type="Constant.type"/>
+<xs:element name="reals" type="Constant.type"/>
+<xs:element name="complexes" type="Constant.type"/>
+
+<!-- Empty set -->
+
+<xs:element name="emptyset" type="Constant.type"/>
+
+<!-- Basic constants -->
+
+<xs:element name="exponentiale" type="Constant.type"/>
+<xs:element name="imaginaryi" type="Constant.type"/>
+<xs:element name="pi" type="Constant.type"/>
+<xs:element name="eulergamma" type="Constant.type"/>
+
+<!-- Boolean constants -->
+
+<xs:element name="true" type="Constant.type"/>
+<xs:element name="false" type="Constant.type"/>
+
+<!-- Infinty -->
+
+<xs:element name="infinity" type="Constant.type"/>
+
+<!-- NotANumber -->
+
+<xs:element name="notanumber" type="Constant.type"/>
+
+<!-- And the group of everything -->
+
+<xs:group name="Content-constants.class">
+  <xs:choice>
+    <xs:element ref="naturalnumbers"/>
+    <xs:element ref="primes"/>
+    <xs:element ref="integers"/>
+    <xs:element ref="rationals"/>
+    <xs:element ref="reals"/>
+    <xs:element ref="complexes"/>
+    <xs:element ref="emptyset"/>
+    <xs:element ref="exponentiale"/>
+    <xs:element ref="imaginaryi"/>
+    <xs:element ref="pi"/>
+    <xs:element ref="eulergamma"/>
+    <xs:element ref="true"/>
+    <xs:element ref="false"/>
+    <xs:element ref="infinity"/>
+    <xs:element ref="notanumber"/>
+  </xs:choice>
+</xs:group>
+
+</xs:schema>
+<!--
+  Copyright &#251; 2002 World Wide Web Consortium, (Massachusetts Institute
+  of Technology, Institut National de Recherche en Informatique et en
+  Automatique, Keio University). All Rights Reserved. See
+  http://www.w3.org/Consortium/Legal/.
+  -->

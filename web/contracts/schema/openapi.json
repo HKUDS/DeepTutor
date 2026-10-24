@@ -957,6 +957,35 @@
         "title": "Body_preview_office_upload_api_file_preview_pdf_post",
         "type": "object"
       },
+      "Body_qti_import_preview_api_question_notebook_practice_import_qti_preview_post": {
+        "properties": {
+          "course_id": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Course Id",
+            "type": "string"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "target": {
+            "default": "bank",
+            "enum": [
+              "bank",
+              "mistakes"
+            ],
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_qti_import_preview_api_question_notebook_practice_import_qti_preview_post",
+        "type": "object"
+      },
       "Body_reindex_knowledge_base_api_knowledge_bases__kb_name__reindex_post": {
         "properties": {
           "config_fingerprint": {
@@ -6745,6 +6774,18 @@
             "title": "Explanation",
             "type": "string"
           },
+          "fill_spec": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fill Spec"
+          },
           "followup_session_id": {
             "default": "",
             "title": "Followup Session Id",
@@ -6833,6 +6874,18 @@
           "question": {
             "title": "Question",
             "type": "string"
+          },
+          "question_content": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question Content"
           },
           "question_id": {
             "default": "",
@@ -7830,6 +7883,67 @@
           }
         },
         "title": "ProviderProbePayload",
+        "type": "object"
+      },
+      "QtiCommitRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "selected": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Selected",
+            "type": "array"
+          },
+          "token": {
+            "maxLength": 32,
+            "minLength": 32,
+            "pattern": "^[a-f0-9]+$",
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "selected"
+        ],
+        "title": "QtiCommitRequest",
+        "type": "object"
+      },
+      "QtiExportRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "entry_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Entry Ids",
+            "type": "array"
+          },
+          "format": {
+            "default": "zip",
+            "enum": [
+              "xml",
+              "zip"
+            ],
+            "title": "Format",
+            "type": "string"
+          },
+          "version": {
+            "const": "3.0",
+            "default": "3.0",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "entry_ids"
+        ],
+        "title": "QtiExportRequest",
         "type": "object"
       },
       "QuestionBankMaterial": {
@@ -12438,6 +12552,18 @@
             "title": "Explanation",
             "type": "string"
           },
+          "fill_spec": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fill Spec"
+          },
           "hints_used": {
             "default": 0,
             "title": "Hints Used",
@@ -12511,6 +12637,18 @@
           "question": {
             "title": "Question",
             "type": "string"
+          },
+          "question_content": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question Content"
           },
           "question_id": {
             "title": "Question Id",
@@ -42589,6 +42727,79 @@
         ]
       }
     },
+    "/api/question-notebook/practice/export/qti": {
+      "post": {
+        "operationId": "qti_export_api_question_notebook_practice_export_qti_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QtiExportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Qti Export",
+        "tags": [
+          "practice"
+        ]
+      }
+    },
     "/api/question-notebook/practice/import/commit": {
       "post": {
         "operationId": "import_commit_api_question_notebook_practice_import_commit_post",
@@ -42735,6 +42946,296 @@
         ]
       }
     },
+    "/api/question-notebook/practice/import/qti/commit": {
+      "post": {
+        "operationId": "qti_import_commit_api_question_notebook_practice_import_qti_commit_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QtiCommitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Qti Import Commit",
+        "tags": [
+          "practice"
+        ]
+      }
+    },
+    "/api/question-notebook/practice/import/qti/preview": {
+      "post": {
+        "operationId": "qti_import_preview_api_question_notebook_practice_import_qti_preview_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_qti_import_preview_api_question_notebook_practice_import_qti_preview_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Qti Import Preview",
+        "tags": [
+          "practice"
+        ]
+      }
+    },
+    "/api/question-notebook/practice/import/qti/previews/{token}": {
+      "get": {
+        "operationId": "qti_preview_report_api_question_notebook_practice_import_qti_previews__token__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Qti Preview Report",
+        "tags": [
+          "practice"
+        ]
+      }
+    },
+    "/api/question-notebook/practice/import/qti/previews/{token}/source": {
+      "get": {
+        "operationId": "qti_preview_source_api_question_notebook_practice_import_qti_previews__token__source_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Qti Preview Source",
+        "tags": [
+          "practice"
+        ]
+      }
+    },
     "/api/question-notebook/practice/import/template": {
       "get": {
         "operationId": "import_template_api_question_notebook_practice_import_template_get",
@@ -42747,7 +43248,9 @@
               "default": "csv",
               "enum": [
                 "csv",
-                "xlsx"
+                "xlsx",
+                "json",
+                "json-schema"
               ],
               "title": "Format",
               "type": "string"

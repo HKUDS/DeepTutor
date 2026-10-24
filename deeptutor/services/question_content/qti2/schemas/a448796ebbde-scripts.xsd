@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<xs:schema 
+  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+  xmlns="http://www.w3.org/1998/Math/MathML"
+  targetNamespace="http://www.w3.org/1998/Math/MathML"
+  elementFormDefault="qualified"
+ >
+
+<xs:annotation>
+  <xs:documentation>
+  This is an XML Schema module for the presentation elements of MathML
+  dealing with subscripts and superscripts.
+  Author: St&#233;phane Dalmas, INRIA.
+  </xs:documentation>
+</xs:annotation>
+
+<!-- "msub" -->
+
+<xs:attributeGroup name="msub.attlist">
+  <xs:attribute name="subscriptshift" type="length-with-unit"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="msub.type">
+  <xs:group ref="Presentation-expr.class" minOccurs="2" maxOccurs="2"/>
+  <xs:attributeGroup ref="msub.attlist"/>
+</xs:complexType>
+
+<xs:element name="msub" type="msub.type"/>
+
+<!-- "msup" -->
+
+<xs:attributeGroup name="msup.attlist">
+  <xs:attribute name="superscriptshift" type="length-with-unit"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="msup.type">
+  <xs:group ref="Presentation-expr.class" minOccurs="2" maxOccurs="2"/>
+  <xs:attributeGroup ref="msup.attlist"/>
+</xs:complexType>
+
+<xs:element name="msup" type="msup.type"/>
+
+<!-- "msubsup" -->
+
+<xs:attributeGroup name="msubsup.attlist">
+  <xs:attribute name="subscriptshift" type="length-with-unit"/>
+  <xs:attribute name="superscriptshift" type="length-with-unit"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="msubsup.type">
+  <xs:group ref="Presentation-expr.class" minOccurs="3" maxOccurs="3"/>
+  <xs:attributeGroup ref="msubsup.attlist"/>
+</xs:complexType>
+
+<xs:element name="msubsup" type="msubsup.type"/>
+
+<!-- "munder" -->
+
+<xs:attributeGroup name="munder.attlist">
+  <xs:attribute name="accentunder" type="xs:boolean"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="munder.type">
+  <xs:group ref="Presentation-expr.class" minOccurs="2" maxOccurs="2"/>
+  <xs:attributeGroup ref="munder.attlist"/>
+</xs:complexType>
+
+<xs:element name="munder" type="munder.type"/>
+
+<!-- "mover" -->
+
+<xs:attributeGroup name="mover.attlist">
+  <xs:attribute name="accent" type="xs:boolean"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="mover.type">
+  <xs:group ref="Presentation-expr.class" minOccurs="2" maxOccurs="2"/>
+  <xs:attributeGroup ref="mover.attlist"/>
+</xs:complexType>
+
+<xs:element name="mover" type="mover.type"/>
+
+<!-- "munderover" -->
+
+<xs:attributeGroup name="munderover.attlist">
+  <xs:attribute name="accent" type="xs:boolean"/>
+  <xs:attribute name="accentunder" type="xs:boolean"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="munderover.type">
+  <xs:group ref="Presentation-expr.class" minOccurs="3" maxOccurs="3"/>
+  <xs:attributeGroup ref="munderover.attlist"/>
+</xs:complexType>
+
+<xs:element name="munderover" type="munderover.type"/>
+
+<!-- "mmultiscripts", "mprescripts" and "none" -->
+
+<xs:attributeGroup name="mmultiscripts.attlist">
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:group name="Presentation-expr-or-none.class">
+  <xs:choice>
+    <xs:group ref="Presentation-expr.class"/>
+    <xs:element ref="none"/>
+  </xs:choice>
+</xs:group>
+
+<!-- not used
+<xs:group name="mprescripts.group">
+  <xs:sequence>
+     <xs:element ref="mprescripts"/>
+     <xs:choice minOccurs="0" maxOccurs="unbounded">
+        <xs:group ref="Presentation-expr.class"/>
+        <xs:element ref="none"/>
+     </xs:choice>
+  </xs:sequence>
+</xs:group>
+-->
+
+<xs:group name="mmultiscripts.content">
+  <xs:sequence>
+    <xs:group ref="Presentation-expr.class"/>
+    <xs:sequence minOccurs="0" maxOccurs="unbounded">
+      <xs:group ref="Presentation-expr-or-none.class"/>
+      <xs:group ref="Presentation-expr-or-none.class"/>
+    </xs:sequence>
+    <xs:sequence minOccurs="0">
+      <xs:element ref="mprescripts"/>
+      <xs:sequence maxOccurs="unbounded">
+        <xs:group ref="Presentation-expr-or-none.class"/>
+        <xs:group ref="Presentation-expr-or-none.class"/>
+      </xs:sequence>
+    </xs:sequence>
+  </xs:sequence>
+</xs:group>
+
+<xs:complexType name="mmultiscripts.type">
+  <xs:group ref="mmultiscripts.content"/>
+  <xs:attributeGroup ref="mmultiscripts.attlist"/>
+</xs:complexType>
+
+<xs:element name="mmultiscripts" type="mmultiscripts.type"/>
+
+<!-- Nothing... -->
+<xs:complexType name="none.type">
+</xs:complexType>
+
+<xs:element name="none" type="none.type"/>
+
+<!-- also void -->
+<xs:complexType name="mprescripts.type">
+</xs:complexType>
+
+<xs:element name="mprescripts" type="mprescripts.type"/>
+
+<!-- And the group of everything -->
+
+<xs:group name="Presentation-script.class">
+  <xs:choice>
+    <xs:element ref="msub"/>
+    <xs:element ref="msup"/>
+    <xs:element ref="msubsup"/>
+    <xs:element ref="munder"/>
+    <xs:element ref="mover"/>
+    <xs:element ref="munderover"/>
+    <xs:element ref="mmultiscripts"/>
+  </xs:choice>
+</xs:group>
+
+</xs:schema>
+
+<!--
+  Copyright &#251; 2002 World Wide Web Consortium, (Massachusetts Institute
+  of Technology, Institut National de Recherche en Informatique et en
+  Automatique, Keio University). All Rights Reserved. See
+  http://www.w3.org/Consortium/Legal/.
+  -->

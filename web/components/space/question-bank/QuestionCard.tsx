@@ -17,7 +17,7 @@ import type { NotebookCategory, NotebookEntry } from "@/lib/notebook-api";
 import { optionIsAnswer, questionResult, questionResultBadge } from "@/lib/question-bank-answers";
 import { bookRoute, masterySessionRoute } from "@/lib/learning-routes";
 import CategoryMenu from "./CategoryMenu";
-import { practiceMarkdown } from "@/lib/practice-content";
+import { practiceMarkdown, practiceQuestionMarkdown } from "@/lib/practice-content";
 import Tooltip from "@/shared/ui/Tooltip";
 
 const SOURCE_LABELS: Record<NotebookEntry["source"], string> = {
@@ -308,7 +308,7 @@ export default function QuestionCard({
         data-testid="question-stem"
       >
         <MarkdownRenderer
-          content={practiceMarkdown(entry.question)}
+          content={practiceQuestionMarkdown(entry.question)}
           variant="prose"
           className="text-[14px] leading-relaxed [overflow-wrap:anywhere] [&_pre]:max-w-full [&_pre]:overflow-x-auto"
           allowHtml={false}

@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<xs:schema 
+  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+  xmlns="http://www.w3.org/1998/Math/MathML"
+  targetNamespace="http://www.w3.org/1998/Math/MathML"
+  elementFormDefault="qualified"
+ >
+
+<xs:annotation>
+  <xs:documentation>
+  This is the XML schema module for the token elements of the 
+  presentation part of MathML.
+  Author: St&#233;phane Dalmas, INRIA.
+  </xs:documentation>
+</xs:annotation>
+
+<!-- The content of presentation token elements is either normal
+  characters, "mglyph" ones or alignment marks -->
+
+<xs:group name="Glyph-alignmark.class">
+    <xs:choice>
+      <xs:element ref="malignmark"/>
+      <xs:element ref="mglyph"/>
+    </xs:choice>
+</xs:group>
+
+<!-- "mi" -->
+
+<!-- "mi" is supposed to have a default value of its "mathvariant" attribute
+     set to "italic" -->
+<xs:attributeGroup name="mi.attlist">
+   <xs:attributeGroup ref="Token-style.attrib"/>
+   <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="mi.type" mixed="true">
+  <xs:group ref="Glyph-alignmark.class" minOccurs="0" maxOccurs="unbounded"/>
+  <xs:attributeGroup ref="mi.attlist"/> 
+</xs:complexType>
+
+<xs:element name="mi" type="mi.type"/>
+
+<!-- "mo" -->
+
+<xs:attributeGroup name="mo.attlist">
+   <xs:attributeGroup ref="Operator.attrib"/>
+   <xs:attributeGroup ref="Token-style.attrib"/>
+   <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="mo.type" mixed="true">
+  <xs:group ref="Glyph-alignmark.class" minOccurs="0" maxOccurs="unbounded"/>
+  <xs:attributeGroup ref="mo.attlist"/> 
+</xs:complexType>
+
+<xs:element name="mo" type="mo.type"/>
+
+<!-- "mn" -->
+
+<xs:attributeGroup name="mn.attlist">
+  <xs:attributeGroup ref="Token-style.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="mn.type" mixed="true">
+  <xs:group ref="Glyph-alignmark.class" minOccurs="0" maxOccurs="unbounded"/>
+  <xs:attributeGroup ref="mi.attlist"/> 
+</xs:complexType>
+
+<xs:element name="mn" type="mn.type"/>
+
+<!-- "mtext" -->
+
+<xs:attributeGroup name="mtext.attlist">
+  <xs:attributeGroup ref="Token-style.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="mtext.type" mixed="true">
+  <xs:group ref="Glyph-alignmark.class" minOccurs="0" maxOccurs="unbounded"/>
+  <xs:attributeGroup ref="mtext.attlist"/> 
+</xs:complexType>
+
+<xs:element name="mtext" type="mtext.type"/>
+
+<!-- "ms" -->
+
+<xs:attributeGroup name="ms.attlist">
+   <!-- the values of "lquote" or "rquote" are not restricted to be
+        one character strings... -->
+   <xs:attribute name="lquote" type="xs:string" default="&quot;"/>
+   <xs:attribute name="rquote" type="xs:string" default="&quot;"/>
+   <xs:attributeGroup ref="Token-style.attrib"/>
+   <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="ms.type" mixed="true">
+  <xs:group ref="Glyph-alignmark.class" minOccurs="0" maxOccurs="unbounded"/>
+  <xs:attributeGroup ref="ms.attlist"/> 
+</xs:complexType>
+
+<xs:element name="ms" type="ms.type"/>
+
+<!-- And the group of any token -->
+
+<xs:group name="Presentation-token.class">
+  <xs:choice> 
+    <xs:element ref="mi"/>
+    <xs:element ref="mo"/>
+    <xs:element ref="mn"/>
+    <xs:element ref="mtext"/>
+    <xs:element ref="ms"/>
+  </xs:choice>
+</xs:group>
+
+</xs:schema>
+
+<!--
+  Copyright &#251; 2002 World Wide Web Consortium, (Massachusetts Institute
+  of Technology, Institut National de Recherche en Informatique et en
+  Automatique, Keio University). All Rights Reserved. See
+  http://www.w3.org/Consortium/Legal/.
+  -->

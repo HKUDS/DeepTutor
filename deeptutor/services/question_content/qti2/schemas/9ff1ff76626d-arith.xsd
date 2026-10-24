@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<xs:schema
+  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+  xmlns="http://www.w3.org/1998/Math/MathML"
+  targetNamespace="http://www.w3.org/1998/Math/MathML"
+  elementFormDefault="qualified"
+>
+
+<xs:annotation>
+  <xs:documentation>
+  This is an XML Schema module for the "arithmetic" operators of content
+  MathML.
+  Author: St&#233;phane Dalmas, INRIA.
+  </xs:documentation>
+</xs:annotation>
+
+<!-- a common type for all this -->
+
+<xs:complexType name="Arith.type">
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:complexType>
+
+<!-- The elements -->
+
+<xs:element name="abs" type="Arith.type"/>
+<xs:element name="conjugate" type="Arith.type"/>
+<xs:element name="arg" type="Arith.type"/>
+<xs:element name="real" type="Arith.type"/>
+<xs:element name="imaginary" type="Arith.type"/>
+
+<xs:element name="floor" type="Arith.type"/>
+<xs:element name="ceiling" type="Arith.type"/>
+
+<xs:element name="power" type="Arith.type"/>
+<xs:element name="root" type="Arith.type"/>
+
+<xs:element name="minus" type="Arith.type"/>
+<xs:element name="plus" type="Arith.type"/>
+<xs:element name="sum" type="Arith.type"/>
+<xs:element name="times" type="Arith.type"/>
+<xs:element name="product" type="Arith.type"/>
+
+<xs:element name="max" type="Arith.type"/>
+<xs:element name="min" type="Arith.type"/>
+
+<xs:element name="factorial" type="Arith.type"/>
+<xs:element name="quotient" type="Arith.type"/>
+<xs:element name="divide" type="Arith.type"/>
+<xs:element name="rem" type="Arith.type"/>
+<xs:element name="gcd" type="Arith.type"/>
+<xs:element name="lcm" type="Arith.type"/>
+
+<!-- And the group of everything -->
+
+<xs:group name="Content-arith.class">
+  <xs:choice>
+    <xs:element ref="abs"/>
+    <xs:element ref="conjugate"/>
+    <xs:element ref="factorial"/>
+    <xs:element ref="arg"/>
+    <xs:element ref="real"/>
+    <xs:element ref="imaginary"/>
+    <xs:element ref="floor"/>
+    <xs:element ref="ceiling"/>
+    <xs:element ref="quotient"/>
+    <xs:element ref="divide"/>
+    <xs:element ref="rem"/>
+    <xs:element ref="minus"/>
+    <xs:element ref="plus"/>
+    <xs:element ref="times"/>
+    <xs:element ref="power"/>
+    <xs:element ref="root"/>
+    <xs:element ref="max"/>
+    <xs:element ref="min"/>
+    <xs:element ref="gcd"/>
+    <xs:element ref="lcm"/>
+    <xs:element ref="sum"/>
+    <xs:element ref="product"/>
+  </xs:choice>
+</xs:group>
+
+</xs:schema>
+<!--
+  Copyright &#251; 2002 World Wide Web Consortium, (Massachusetts Institute
+  of Technology, Institut National de Recherche en Informatique et en
+  Automatique, Keio University). All Rights Reserved. See
+  http://www.w3.org/Consortium/Legal/.
+  -->

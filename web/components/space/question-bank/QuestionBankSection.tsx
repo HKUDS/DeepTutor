@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslation } from "react-i18next";
-import { AlertTriangle, ClipboardList, Inbox, Loader2, School, Search, X } from "lucide-react";
+import { AlertTriangle, ClipboardList, Download, Inbox, Loader2, School, Search, X } from "lucide-react";
+import { exportQtiPackage, PracticeRequestError } from "@/lib/practice-api";
 import SpaceSectionHeader from "@/components/space/SpaceSectionHeader";
 import { listCourses, type StudyCourse } from "@/lib/courses-api";
 import BankScopeRail from "./BankScopeRail";
@@ -88,6 +89,26 @@ export default function QuestionBankSection({
     };
   }, [courseId]);
   const [managerOpen, setManagerOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
+  const exportPending = useRef(false);
+
+  async function exportSelected() {
+    if (exportPending.current || !bank.selectedIds.size || bank.selectedIds.size > 500) return;
+    exportPending.current = true;
+    setExporting(true);
+    setExportError("");
+    try {
+      await exportQtiPackage(Array.from(bank.selectedIds));
+    } catch (error) {
+      setExportError(t(error instanceof PracticeRequestError && error.status === 503
+        ? "QTI export is unavailable. Install the qti extra on the server."
+        : "QTI export failed. Only supported text questions can be exported."));
+    } finally {
+      exportPending.current = false;
+      setExporting(false);
+    }
+  }
 
   const selectedIds = Array.from(bank.selectedIds);
   const searching = bank.searchInput.trim().length > 0;
@@ -138,6 +159,17 @@ export default function QuestionBankSection({
                 )
               : t("Questions from every source, together with your own imports.")}
           </p>
+          <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            disabled={exporting || bank.loading || bank.refreshing || !selectedIds.length || selectedIds.length > 500}
+            onClick={() => void exportSelected()}
+            title={t("Select questions to export a text-only QTI 3.0 ZIP package (up to 500 questions).")}
+            className="inline-flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2 text-sm font-medium hover:bg-[var(--muted)] disabled:opacity-40"
+          >
+            {exporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+            {t(exporting ? "Exporting QTI…" : "Export QTI package")}
+          </button>
           <button
             type="button"
             disabled={bank.loading || bank.refreshing || !bank.items.length}
@@ -150,8 +182,11 @@ export default function QuestionBankSection({
               ? t("Practice selected ({{count}})", { count: selectedIds.length })
               : t("Practice this page")}
           </button>
+          </div>
         </div>
       )}
+
+      {exportError && <p role="alert" className="text-sm text-destructive">{exportError}</p>}
 
       <BankToolbar
         search={bank.searchInput}

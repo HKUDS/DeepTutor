@@ -1,0 +1,453 @@
+<?xml version = "1.0" encoding = "UTF-8"?>
+<xs:schema xmlns="http://www.imsglobal.org/xsd/imscp_v1p1"
+    targetNamespace="http://www.imsglobal.org/xsd/imscp_v1p1"
+     xmlns:lom="http://ltsc.ieee.org/xsd/LOM"
+     xmlns:qtim="http://www.imsglobal.org/xsd/imsqti_metadata_v2p1"
+     xmlns:xs="http://www.w3.org/2001/XMLSchema"
+     version="IMS CP 1.2 QTI 2.1"
+     elementFormDefault="qualified"
+     attributeFormDefault="unqualified">
+    <xs:import namespace="http://www.w3.org/XML/1998/namespace" schemaLocation="http://www.imsglobal.org/xsd/w3/2001/xml.xsd" />
+    <xs:import namespace="http://ltsc.ieee.org/xsd/LOM" schemaLocation="http://www.imsglobal.org/xsd/imsmd_loose_v1p3p2.xsd" />
+    <xs:import namespace="http://www.imsglobal.org/xsd/imsqti_metadata_v2p1" schemaLocation="http://www.imsglobal.org/xsd/qti/qtiv2p1/imsqti_metadata_v2p1p1.xsd" />
+
+    <xs:annotation>
+        <xs:documentation>
+            XSD Data File Information
+            =========================
+            Author:         Colin Smythe (IMS Global, UK)
+            Date:           31st January, 2014
+            Version:        1.0
+            Status:         Final Release
+            Description:    This is the QTIv2.1 profile of the IMS CPv1.2 specification. This is a normative 
+                            representation of the IMS CP 1.2 Information Model for binding purposes.  Read 
+                            the corresponding IMS CP Information Model for the Platform Independent Model 
+                            representation.
+
+            History:        This is version 1 of the IMS CP v1.2 QTI v2.1 XSD.
+
+            PROFILE:        This is the "QTIv2p1". THIS IS A PROFILE OF THE BASE SPECIFICATION.
+                            The changes to the base specification are:
+                            * The schema version has been changed to "IMS CP 1.2 QTI 2.1".
+                            * The "Item" class/complexType and set of XML attributes have been deleted;
+                            * The "ItemMetadata" class/complexType and set of XML attributes have been deleted;
+                            * The "Organization" class/complexType and set of XML attributes have been deleted;
+                            * The "OrganizationMetadata" class/complexType and set of XML attributes have been deleted;
+                            * The "Organizations.Attr" class/complexType and set of XML attributes have been deleted;
+                            * The "Dependency" class/complexType has been modified by:-
+                              - The "extension" attribute has been prohibited;
+                            * The "Dependency.Attr" class/complexType has been modified by:-
+                              - The "extension" attribute has been prohibited;
+                              - The "identifierref" attribute class type has been changed to the class "IDREF";
+                            * The "File" class/complexType has been modified by:-
+                              - The "extension" attribute has been prohibited;
+                            * The "File.Attr" class/complexType has been modified by:-
+                              - The "extension" attribute has been prohibited;
+                            * The "FileMetadata" class/complexType has been modified by:-
+                              - The "schema" attribute has been prohibited;
+                              - The "schemaversion" attribute has been prohibited;
+                            * The "Manifest" class/complexType has been modified by:-
+                              - The "manifest" attribute has been prohibited;
+                              - The "extension" attribute has been prohibited;
+                              - The "metadata" attribute has been made required i.e. multiplicity [1..1];
+                            * The "Manifest.Attr" class/complexType has been modified by:-
+                              - The "extension" attribute has been prohibited;
+                              - The "version" attribute has been prohibited;
+                            * The "ManifestMetadata" class/complexType has been modified by:-
+                              - The "extension" attribute has been prohibited;
+                              - The "schema" attribute has been made required i.e. multiplicity [1..1];
+                              - The "schemaversion" attribute has been made required i.e. multiplicity [1..1];
+                              - The "schema" attribute class type has been changed to the class "Schema";
+                              - The "schemaversion" attribute class type has been changed to the class "SchemaVersion";
+                              - The "lom" attribute has been added using Import;
+                            * The "Organizations" class/complexType has been modified by:-
+                              - The "extension" attribute has been prohibited;
+                            * The "Resource" class/complexType has been modified by:-
+                              - The "extension" attribute has been prohibited;
+                              - The "variant" attribute has been added using Import;
+                            * The "Resource.Attr" class/complexType has been modified by:-
+                              - The "extension" attribute has been prohibited;
+                              - The "type" attribute class type has been changed to the class "ResourceType";
+                            * The "ResourceMetadata" class/complexType has been modified by:-
+                              - The "schema" attribute has been prohibited;
+                              - The "schemaversion" attribute has been prohibited;
+                              - The "extension" attribute has been prohibited;
+                              - The "lom" attribute has been added using Import;
+                            * The "Resources" class/complexType has been modified by:-
+                              - The "extension" attribute has been prohibited;
+                            * The "Resources.Attr" class/complexType has been modified by:-
+                              - The "extension" attribute has been prohibited;
+
+            License:        IPR, License and Distribution Notices
+
+                            This machine readable file is derived from IMS Global specification IMS Content Package Version 1.2
+                            found at http://www.imsglobal.org/cp and the original IMS Global schema binding or code base
+                            http://www.imsglobal.org/cp.
+
+                            Recipients of this document are requested to submit, with their comments, notification of any
+                            relevant patent claims or other intellectual property rights of which they may be aware that might be
+                            infringed by the schema binding contained in this document.
+
+                            IMS Global takes no position regarding the validity or scope of any intellectual property or other
+                            rights that might be claimed to pertain to the implementation or use of the technology described in this
+                            document or the extent to which any license under such rights might or might not be available; neither
+                            does it represent that it has made any effort to identify any such rights. Information on IMS Global
+                            procedures with respect to rights in IMS Global specifications can be found at the IMS Global Intellectual Property
+                            Rights web page: http://www.imsglobal.org/ipr/imsipr_policyFinal.pdf.
+
+                            Copyright (c) IMS Global Learning Consortium 1999-2013. All Rights Reserved.
+
+                            License Notice for Users
+
+                            Users of products or services that include this document are hereby granted a worldwide, royalty-free, 
+                            non-exclusive license to use this document. 
+
+                            Distribution Notice for Developers
+
+                            Developers of products or services that are not original incorporators of this document and 
+                            have not changed this document, that is, are distributing a software product that incorporates this 
+                            document as is from a third-party source other than IMS, are hereby granted permission to copy,
+                            display and distribute the contents of this document in any medium for any purpose without fee or 
+                            royalty provided that you include this IPR, License and Distribution notice in its entirety on ALL
+                            copies, or portions thereof.
+
+                            Developers of products or services that are original incorporators of this document and wish 
+                            to provide distribution of this document as is or with modifications and developers of products and 
+                            services that are not original incorporators of this document and have changed this document, are
+                            required to register with the IMS Global community on the IMS Global website as described in the following two
+                            paragraphs:-
+
+                            *  If you wish to distribute this document as is, with no modifications, you are hereby granted 
+                               permission to copy, display and distribute the contents of this document in any medium for any 
+                               purpose without fee or royalty provided that you include this IPR, License and Distribution notice in
+                               its entirety on ALL copies, or portions thereof, that you make and you complete a valid license 
+                               registration with IMS and receive an email from IMS granting the license. To register, follow the 
+                               instructions on the IMS website: http://www.imsglobal.org/specificationdownload.cfm. Once 
+                               registered you are granted permission to transfer unlimited distribution rights of this document for the 
+                               purposes of third-party or other distribution of your product or service that incorporates this 
+                               document as long as this IPR, License and Distribution notice remains in place in its entirety; 
+
+                            *  If you wish to create and distribute a derived work from this document, you are hereby 
+                               granted permission to copy, display and distribute the contents of the derived work in any medium for 
+                               any purpose without fee or royalty provided that you include this IPR, License and Distribution 
+                               notice in its entirety on ALL copies, or portions thereof, that you make and you complete a valid 
+                               profile registration with IMS Global and receive an email from IMS Global granting the license. To register, follow
+                               the instructions on the IMS Global website: http://www.imsglobal.org/profile/. Once registered you are 
+                               granted permission to transfer unlimited distribution rights of the derived work for the purposes of 
+                               third-party or other distribution of your product or service that incorporates the derived work as long 
+                               as this IPR, License and Distribution notice remains in place in its entirety. 
+
+                            The limited permissions granted above are perpetual and will not be revoked by IMS Global or its 
+                            successors or assigns.
+
+                            THIS SPECIFICATION IS BEING OFFERED WITHOUT ANY WARRANTY WHATSOEVER, AND IN PARTICULAR, ANY WARRANTY OF NONINFRINGEMENT IS
+                            EXPRESSLY DISCLAIMED. ANY USE OF THIS SPECIFICATION SHALL BE MADE ENTIRELY AT THE IMPLEMENTERS OWN RISK, AND NEITHER THE CONSORTIUM
+                            NOR ANY OF ITS MEMBERS OR SUBMITTERS, SHALL HAVE ANY LIABILITY WHATSOEVER TO ANY IMPLEMENTER OR THIRD PARTY FOR ANY DAMAGES OF
+                            ANY NATURE WHATSOEVER, DIRECTLY OR INDIRECTLY, ARISING FROM THE USE OF THIS SPECIFICATION.
+
+            Source UML File Information
+            ===========================
+            The source file information must be supplied as an XMI file (without diagram layout information).
+            The supported UML authoring tools are:
+            (a) Poseidon - v6 (and later)
+
+            Source XSLT File Information
+            ============================
+            XSL Generator:    Specificationv1p0_GenerationToolv1.xsl
+            XSLT Processor:   Saxon-HE-9.4.0.4
+            Release:          1.0
+            Date:             31st January, 2013
+            Autogen Engineer: Colin Smythe (IMS Global, UK)
+            Autogen Date:     2013-03-24Z
+
+            IMS Global Auto-generation Binding Tool-kit (I-BAT)
+            ===================================================
+            This file was auto-generated using the IMS Global Binding Auto-generation Tool-kit (I-BAT).  While every
+            attempt has been made to ensure that this tool auto-generates the files correctly, users should be aware
+            that this is an experimental tool.  Permission is given to make use of this tool.  IMS Global makes no
+            claim on the materials created by third party users of this tool.  Details on how to use this tool
+            are contained in the IMS Global "I-BAT" documentation available at the IMS Global web-site:
+            http://www.imsglobal.org.
+
+            Tool Copyright:  2012-2013  (c) IMS Global Learning Consortium Inc.  All Rights Reserved.
+        </xs:documentation>
+    </xs:annotation>
+
+    <!-- Generate Global Attributes (non-assigned) ******************************************************** -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate Global Attributes *********************************************************************** -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate Global List Types *********************************************************************** -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate Namespaced extension Group  ************************************************************* -->
+
+    <xs:group name="grpStrict.any">
+        <xs:annotation>
+            <xs:documentation>
+                Any namespaced element from any namespace may be included within an "any" element.
+                The namespace for the imported element must be defined in the instance, and the schema must be imported.
+                The extension has a definition of "strict" i.e. they must have their own namespace.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:any namespace = "##other" processContents = "strict" minOccurs = "0" maxOccurs = "unbounded" />
+        </xs:sequence>
+    </xs:group>
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate Special DataTypes  ********************************************************************** -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the enumerated simpleType declarations ************************************************** -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the simpleType elements based on IMS data-types (Parameter) ***************************** -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the simpleType elements based on IMS data-types (Derived) ******************************* -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the simpleType elements based on IMS data-types (Union) ********************************* -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the simpleType elements based on IMS data-types (Complex) ******************************* -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the derived data-type elements based upon simpleType ************************************ -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the derived data-type elements based upon derived simpleType **************************** -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the ComplexTypes ************************************************************************ -->
+
+    <xs:complexType name="Dependency.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                A Dependency element provides a way to associate another collection of asset references within the scope of the dependency element's parent resource element. This element allows the parsimonious declaration of asset refereces. Shared asset references can be declared once and associated many times through a Dependency element.
+Represents a binding of the kinds of child objects defined for ims-cp-imDependency: Dependency.[ Extension ].
+                Represents a binding of the kinds of characteristic objects defined for ims-cp-imDependency: Dependency{ IdentifierRef, Other }.
+                [QTIv2p1] Profile - the changes to the XML element list are:
+                * The "extension" element has been prohibited;
+                [QTIv2p1] Profile - the changes to the XML attribute list are:
+                * The "extension" attribute has been prohibited;
+                * The "identifierref" attribute class type has been changed to the class "IDREF";
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+        </xs:sequence>
+        <xs:attribute name="identifierref" use="required" type="xs:IDREF" />
+    </xs:complexType>
+
+    <xs:complexType name="File.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                A File element declares a reference to a single asset. The reference may be relative to the Package containing the file element or absolute (external to the Package). A File element may contain child extensions declaring alternative references to the same asset as that referenced by the file element's 'href' attribute.
+Represents a binding of the kinds of child objects defined for ims-cp-imFile: File.[ Metadata, Extension ].
+                Represents a binding of the kinds of characteristic objects defined for ims-cp-imFile: File{ Href, Other }.
+                [QTIv2p1] Profile - the changes to the XML element list are:
+                * The "extension" element has been prohibited;
+                [QTIv2p1] Profile - the changes to the XML attribute list are:
+                * The "extension" attribute has been prohibited;
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="metadata" type="FileMetadata.Type" minOccurs="0" maxOccurs="1" />
+        </xs:sequence>
+        <xs:attribute name="href" use="required" type="xs:anyURI" />
+    </xs:complexType>
+
+    <xs:complexType name="FileMetadata.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                An instance of the File metadata element contains data structures that declare descriptive information about the parent File only. One or more different metadata models may be declared as child extensions of a metadata element.
+Represents a binding of the kinds of child objects defined for ims-cp-imMetadata: Metadata.[ Extension ].
+[QTIv2p1] Profile - the changes to the XML element list are:
+                * The "schema" element has been prohibited;
+                * The "schemaversion" element has been prohibited;
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:group ref="grpStrict.any" />
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="Manifest.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                A Manifest element is a container for data structures whose contents describe a semantically complete instance of the IMS CP Information model. A Manifest element may contain reference child manifest elements in the same Manifest document. The root manifest element defines an entire IMS Package. A child manifest element defines a semantically complete subset of that package.
+Represents a binding of the kinds of objects defined as children of ims-cp-imManifest : Manifest.[ ManifestMetadata, Organizations, Resources, Manifest, Extension ].
+                Represents a binding of the kinds of characteristic objects defined for ims-cp-imManifest: Manifest{ Identifier, Version, Base, Other }.
+                [QTIv2p1] Profile - the changes to the XML element list are:
+                * The "manifest" element has been prohibited;
+                * The "extension" element has been prohibited;
+                * The "metadata" element has been made required i.e. multiplicity [1..1];
+                [QTIv2p1] Profile - the changes to the XML attribute list are:
+                * The "extension" attribute has been prohibited;
+                * The "version" attribute has been prohibited;
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="metadata" type="ManifestMetadata.Type" minOccurs="1" maxOccurs="1" />
+            <xs:element name="organizations" type="Organizations.Type" minOccurs="1" maxOccurs="1" />
+            <xs:element name="resources" type="Resources.Type" minOccurs="1" maxOccurs="1" />
+        </xs:sequence>
+        <xs:attribute name="identifier" use="required" type="xs:ID" />
+        <xs:attribute ref="xml:base" use="optional" />
+    </xs:complexType>
+
+    <xs:complexType name="ManifestMetadata.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                This metadata element contains data structures that declare descriptive information about an entire Package. One or more different metadata models may be declared as child extensions of a metadata element. The schema and schemaversion children define the kind or collection of metadata models being used.
+Represents a binding of the kinds of child objects defined for ims-cp-imManifestMetadata: ManifestMetadata.[ Schema, SchemaVersion, MetadataModel ]..
+[QTIv2p1] Profile - the changes to the XML element list are:
+                * The "extension" element has been prohibited;
+                * The "schema" element has been made required i.e. multiplicity [1..1];
+                * The "schemaversion" element has been made required i.e. multiplicity [1..1];
+                * The "schema" element class type has been changed to the class "Schema";
+                * The "schemaversion" element class type has been changed to the class "SchemaVersion";
+                * The "lom" element has been added using Import;
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="schema" minOccurs="1" maxOccurs="1">
+                <xs:simpleType>
+                    <xs:restriction base="xs:string">
+                        <xs:enumeration value="QTIv2.1 Package" />
+                        <xs:enumeration value="QTIv2.1 Item Bank Package" />
+                    </xs:restriction>
+                </xs:simpleType>
+            </xs:element>
+            <xs:element name="schemaversion" minOccurs="1" maxOccurs="1">
+                <xs:simpleType>
+                    <xs:restriction base="xs:string">
+                        <xs:enumeration value="1.0.0" />
+                    </xs:restriction>
+                </xs:simpleType>
+            </xs:element>
+            <xs:element ref="qtim:qtiMetadata" minOccurs = "0" maxOccurs = "1" />
+            <xs:element ref="lom:lom" minOccurs = "0" maxOccurs = "1" />
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="Organizations.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The organizations element is a container for all data structures that describe the way or ways that information encapsulated by its parent manifest element is structured.
+Represents of binding of the child objects of ims-cp-imOrganizations: Organizations.[ Organization, Extension ].
+                Represents a binding of the kinds of characteristic objects for ims-cp-imOrganizations: Organizations{ Default, Other }.
+                [QTIv2p1] Profile - the changes to the XML element list are:
+                * The "extension" element has been prohibited;
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="Resource.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                A Resource element is a container for a particular asset or collection of assets. A Resource may contain references to assets that are all of the same type or different types i.e. file formats. The scope or boundary of an IMS Package is defined by the asset references collected into all resources containers associated with the root manifest element, whether as a child, directed descendant, or externally linked descendant.
+Represents a binding of the kinds of child objects defined for ims-cp-imResource: Resource.[ Metadata, File, Dependency, Extension ].
+                Represents a binding of the kinds of characteristic objects defined for ims-cp-imResource: Resource{ Identifier, Type, Base, Href, Other }.
+                [QTIv2p1] Profile - the changes to the XML element list are:
+                * The "extension" element has been prohibited;
+                [QTIv2p1] Profile - the changes to the XML attribute list are:
+                * The "extension" attribute has been prohibited;
+                * The "type" attribute class type has been changed to the class "ResourceType";
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="metadata" type="ResourceMetadata.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="file" type="File.Type" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element name="dependency" type="Dependency.Type" minOccurs="0" maxOccurs="unbounded" />
+        </xs:sequence>
+        <xs:attribute name="identifier" use="required" type="xs:ID" />
+        <xs:attribute name="type" use="required">
+            <xs:simpleType>
+                <xs:restriction base="xs:string">
+                    <xs:enumeration value="imsqti_test_xmlv2p1" />
+                    <xs:enumeration value="imsqti_section_xmlv2p1" />
+                    <xs:enumeration value="imsqti_item_xmlv2p1" />
+                    <xs:enumeration value="imsqti_resprocessing_xmlv2p1" />
+                    <xs:enumeration value="webcontent" />
+                </xs:restriction>
+            </xs:simpleType>
+        </xs:attribute>
+        <xs:attribute ref="xml:base" use="optional" />
+        <xs:attribute name="href" use="optional" type="xs:anyURI" />
+    </xs:complexType>
+
+    <xs:complexType name="ResourceMetadata.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                An instance of the Resource metadata element contains data structures that declare descriptive information about the parent Resource only. One or more different metadata models may be declared as child extensions of a metadata element.
+Represents a binding of the kinds of child objects defined for ims-cp-imMetadata: Metadata.[ Extension ].
+                [QTIv2p1] Profile - the changes to the XML element list are:
+                * The "schema" element has been prohibited;
+                * The "schemaversion" element has been prohibited;
+                * The "extension" element has been prohibited;
+                * The "lom" element has been added using Import;
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element ref="qtim:qtiMetadata" minOccurs = "0" maxOccurs = "1" />
+            <xs:element ref="lom:lom" minOccurs = "0" maxOccurs = "1" />
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="Resources.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The Resources element is a container for data structures containing references to one or more assets. Asset references may be grouped within a containing resources element in whatever manner seems best. The scope of referenced assets is specific to a resource element's parent manifest element only.
+Represents a binding of the kinds of child objects defined for ims-cp-imResources: Resources.[ Resource, Extension ].
+                Represents a binding of the kinds of characteristic objects defined for ims-cp-imResources: Resources{ Base, Other }.
+                [QTIv2p1] Profile - the changes to the XML element list are:
+                * The "extension" element has been prohibited;
+                [QTIv2p1] Profile - the changes to the XML attribute list are:
+                * The "extension" attribute has been prohibited;
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="resource" type="Resource.Type" minOccurs="0" maxOccurs="unbounded" />
+        </xs:sequence>
+        <xs:attribute ref="xml:base" use="optional" />
+    </xs:complexType>
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the derived ComplexTypes **************************************************************** -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Declaration of the elements (Complex) ************************************************************ -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Declaration of the elements (Derived) ************************************************************ -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Declaration of the root element(s) *************************************************************** -->
+
+    <xs:element name="manifest" type="Manifest.Type" />
+
+    <!-- ================================================================================================== -->
+
+</xs:schema>
