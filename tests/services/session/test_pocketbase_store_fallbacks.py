@@ -349,6 +349,59 @@ async def test_message_reads_degrade_to_empty_when_backend_fails(flaky_pb) -> No
     assert summary["last_message"] == ""
 
 
+@pytest.mark.parametrize("role", [None, "user", "system"])
+async def test_get_last_message_reads_only_one_row(fake_pb, monkeypatch, role) -> None:
+    store = PocketBaseSessionStore()
+    with as_user("alice"):
+        session = await store.create_session(session_id="s_latest")
+        await store.add_message(session["id"], "user", "older question")
+        user_id = await store.add_message(
+            session["id"], "user", "latest question", metadata={"saved": True}
+        )
+        assistant_id = await store.add_message(session["id"], "assistant", "latest answer")
+        other = await store.create_session(session_id="s_other")
+        await store.add_message(other["id"], "assistant", "another session")
+
+        messages = fake_pb.collection("messages")
+        original_get_list = messages.get_list
+        reads = []
+
+        def get_list(page, per_page, query_params=None):
+            reads.append((page, per_page, dict(query_params or {})))
+            return original_get_list(page, per_page, query_params)
+
+        monkeypatch.setattr(messages, "get_list", get_list)
+        last = await store.get_last_message(session["id"], role=role)
+
+    expected_filter = 'session_id="s_latest"'
+    if role:
+        expected_filter += f' && role="{role}"'
+    assert reads == [(1, 1, {"filter": expected_filter, "sort": "-msg_created_at"})]
+    if role == "system":
+        assert last is None
+    else:
+        assert last is not None
+        assert last["id"] == (user_id if role == "user" else assistant_id)
+        assert last["content"] == ("latest question" if role == "user" else "latest answer")
+        if role == "user":
+            assert last["metadata"] == {"saved": True}
+
+
+async def test_get_last_message_does_not_read_another_users_messages(fake_pb, monkeypatch) -> None:
+    store = PocketBaseSessionStore()
+    with as_user("alice"):
+        await store.create_session(session_id="s_private")
+        await store.add_message("s_private", "user", "private question")
+
+    def unexpected_read(*args, **kwargs):
+        pytest.fail("An inaccessible session must not query its messages")
+
+    monkeypatch.setattr(fake_pb.collection("messages"), "get_list", unexpected_read)
+    monkeypatch.setattr(fake_pb.collection("messages"), "get_full_list", unexpected_read)
+    with as_user("bob"):
+        assert await store.get_last_message("s_private") is None
+
+
 async def test_turn_event_reads_degrade_to_empty_when_backend_fails(fake_pb) -> None:
     store = PocketBaseSessionStore()
     with as_user("alice"):
