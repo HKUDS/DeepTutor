@@ -743,6 +743,9 @@ async def test_get_llm_options_returns_redacted_catalog(monkeypatch: pytest.Monk
         embedding_base_url="https://emb.example/v1/embeddings",
         embedding_api_key="emb-key",
     )
+    # A catalog declaration must win over the provider table: gpt-4o-mini is
+    # vision-capable by default, so only a declared False can reach the API.
+    catalog["services"]["llm"]["profiles"][0]["models"][0]["capabilities"] = {"vision": False}
     service = _FakeCatalogService(catalog)
     monkeypatch.setattr(settings_router, "get_model_catalog_service", lambda: service)
 
@@ -753,6 +756,8 @@ async def test_get_llm_options_returns_redacted_catalog(monkeypatch: pytest.Monk
         "model_id": "llm-model-default",
     }
     assert response["options"][0]["model"] == "gpt-4o-mini"
+    # The Document Parsing model dropdown filters on this field (#2037).
+    assert response["options"][0]["supports_vision"] is False
     assert "api_key" not in response["options"][0]
     assert "base_url" not in response["options"][0]
 
