@@ -13,9 +13,9 @@ data/
 /design-qa.md
 /site/
 .claude
-.omc
-.fewword
-.trellis
+.omc/
+.trellis/
+.fewword/
 .agents/
 .workbuddy/
 
