@@ -263,9 +263,7 @@ async def review(entry_id: int, payload: ReviewRequest):
 
 
 @router.get("/import/template")
-async def import_template(
-    format: Literal["csv", "xlsx", "json", "json-schema"] = "csv"
-):
+async def import_template(format: Literal["csv", "xlsx", "json", "json-schema"] = "csv"):
     rows = [
         [
             "question",

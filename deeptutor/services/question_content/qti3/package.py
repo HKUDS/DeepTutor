@@ -14,7 +14,9 @@ import re
 import stat
 import unicodedata
 from urllib.parse import urlsplit
-import xml.etree.ElementTree as ET
+
+# ElementTree only constructs/serializes output; input is parsed by SafeET.
+import xml.etree.ElementTree as ET  # nosec B405
 import zipfile
 
 from defusedxml import ElementTree as SafeET
@@ -719,13 +721,13 @@ def build_package(
     ET.SubElement(metadata, f"{{{PACKAGE_NS}}}schemaversion").text = "3.0.0"
     ET.SubElement(root, f"{{{PACKAGE_NS}}}organizations")
     resources = ET.SubElement(root, f"{{{PACKAGE_NS}}}resources")
-    for rid, kind, href, paths, dependencies in manifest_resources:
+    for rid, kind, href, resource_paths, dependencies in manifest_resources:
         resource = ET.SubElement(
             resources,
             f"{{{PACKAGE_NS}}}resource",
             {"identifier": rid, "type": kind, "href": href or ""},
         )
-        for child_path in paths:
+        for child_path in resource_paths:
             ET.SubElement(resource, f"{{{PACKAGE_NS}}}file", {"href": child_path})
         for dependency in sorted(dependencies):
             ET.SubElement(resource, f"{{{PACKAGE_NS}}}dependency", {"identifierref": dependency})

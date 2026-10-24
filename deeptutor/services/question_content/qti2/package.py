@@ -6,7 +6,9 @@ from collections.abc import Mapping, Sequence
 from hashlib import sha256
 import posixpath
 import re
-import xml.etree.ElementTree as ET
+
+# ElementTree only constructs/serializes output; input is parsed by SafeET.
+import xml.etree.ElementTree as ET  # nosec B405
 import zipfile
 
 from defusedxml import ElementTree as SafeET
@@ -476,11 +478,11 @@ def build_package(
     ET.SubElement(metadata, q + "schemaversion").text = "1.0.0"
     ET.SubElement(root, q + "organizations")
     parent = ET.SubElement(root, q + "resources")
-    for rid, kind, href, paths, dependencies in resources:
+    for rid, kind, href, resource_paths, dependencies in resources:
         resource = ET.SubElement(
             parent, q + "resource", {"identifier": rid, "type": kind, "href": href}
         )
-        for path in paths:
+        for path in resource_paths:
             ET.SubElement(resource, q + "file", {"href": path})
         for dep in sorted(dependencies):
             ET.SubElement(resource, q + "dependency", {"identifierref": dep})

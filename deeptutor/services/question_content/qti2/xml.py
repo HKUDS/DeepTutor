@@ -9,7 +9,9 @@ from pathlib import Path
 
 from defusedxml.common import DTDForbidden, EntitiesForbidden, ExternalReferenceForbidden
 from defusedxml.lxml import fromstring as defused_fromstring
-from lxml import etree
+
+# Tree construction/types and XSD validation only; parsing uses defusedxml.
+from lxml import etree  # nosec B410
 
 from .profile import DIALECTS, PACKAGE_NS, diagnostic
 
@@ -63,7 +65,10 @@ def _schema(version: str, kind: str) -> etree.XMLSchema:
         raise ValueError("QTI 2 root schema digest mismatch")
     parser = etree.XMLParser(resolve_entities=False, load_dtd=False, no_network=True)
     parser.resolvers.add(_LocalResolver())
-    return etree.XMLSchema(etree.parse(str(path), parser))
+    root = defused_fromstring(
+        path.read_bytes(), parser=parser, base_url=str(path), forbid_dtd=True, forbid_entities=True
+    )
+    return etree.XMLSchema(root)
 
 
 def safe_root(data: bytes, *, kind: str, version: str) -> etree._Element:
@@ -81,8 +86,7 @@ def safe_root(data: bytes, *, kind: str, version: str) -> etree._Element:
     )
     parser.resolvers.add(_LocalResolver())
     try:
-        defused_fromstring(data, forbid_dtd=True, forbid_entities=True)
-        root = etree.fromstring(data, parser=parser)
+        root = defused_fromstring(data, parser=parser, forbid_dtd=True, forbid_entities=True)
     except (
         etree.XMLSyntaxError,
         DTDForbidden,

@@ -16,7 +16,7 @@ def readable_explanation(text: str) -> str:
     """
     prose = text.split(_GUIDANCE_PREFIX, 1)[0]
     prose = prose.split("Source QTI scoring rules (inert XML):", 1)[0]
-    lines = []
+    lines: list[str] = []
     for line in prose.splitlines():
         stripped = line.strip()
         if stripped.startswith("Reference answer:") or _BLANK_SCORE.match(stripped):

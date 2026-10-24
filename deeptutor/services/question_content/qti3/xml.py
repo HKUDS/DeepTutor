@@ -11,7 +11,9 @@ import re
 
 from defusedxml.common import DTDForbidden, EntitiesForbidden, ExternalReferenceForbidden
 from defusedxml.lxml import fromstring as defused_fromstring
-from lxml import etree
+
+# Tree construction/types and XSD validation only; parsing uses defusedxml.
+from lxml import etree  # nosec B410
 
 from .profile import (
     ITEM_SCHEMA_NAME,
@@ -101,10 +103,8 @@ def safe_root(data: bytes, *, kind: str) -> etree._Element:
     )
     parser.resolvers.add(_DenyResolver())
     try:
-        # defusedxml's lxml bridge rejects entity/DTD declarations. The second
-        # parse fixes parser options and binds our deny resolver.
-        defused_fromstring(data, forbid_dtd=True, forbid_entities=True)
-        root = etree.fromstring(data, parser=parser)
+        # Reject declarations while retaining bounded parsing and the deny resolver.
+        root = defused_fromstring(data, parser=parser, forbid_dtd=True, forbid_entities=True)
     except (
         etree.XMLSyntaxError,
         DTDForbidden,
@@ -146,7 +146,13 @@ def _schema_for_kind(kind: str) -> etree.XMLSchema:
     verified = _verified_bundle()
     parser = etree.XMLParser(resolve_entities=False, load_dtd=False, no_network=True)
     parser.resolvers.add(_DenyResolver(verified))
-    root = etree.fromstring(verified[schema_name], parser=parser, base_url=str(path.resolve()))
+    root = defused_fromstring(
+        verified[schema_name],
+        parser=parser,
+        base_url=str(path.resolve()),
+        forbid_dtd=True,
+        forbid_entities=True,
+    )
     return etree.XMLSchema(root)
 
 

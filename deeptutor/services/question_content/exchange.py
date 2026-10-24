@@ -5,10 +5,10 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from hashlib import sha256
 import re
-from xml.etree.ElementTree import ParseError
 import zipfile
 
 from defusedxml import ElementTree as SafeET
+from defusedxml.ElementTree import ParseError
 
 from .qti3.profile import PACKAGE_NS as QTI3_PACKAGE_NS
 from .qti3.profile import QTI_NS as QTI3_ITEM_NS
@@ -152,15 +152,15 @@ def load_package(data: bytes, *, filename: str, trusted_export: bool = False) ->
                 "Only QTI 2.1, 2.2 and 3.0 item-bank exchange is supported",
             )
         if version == "3.0":
-            from .qti3.package import load_package as load
+            from .qti3.package import load_package as load_qti3
+
+            result = load_qti3(data, filename=filename, trusted_export=trusted_export)
         else:
-            from .qti2.package import load_package as load
-        result = load(
-            data,
-            filename=filename,
-            trusted_export=trusted_export,
-            **({"version": version} if version != "3.0" else {}),
-        )
+            from .qti2.package import load_package as load_qti2
+
+            result = load_qti2(
+                data, filename=filename, trusted_export=trusted_export, version=version
+            )
         return {"version": version, **result}
     except (ValueError, KeyError, ParseError, zipfile.BadZipFile, RuntimeError) as exc:
         # A malformed root is an invalid package, not a legacy-format fallback.
@@ -176,13 +176,15 @@ def build_package(
 ) -> dict:
     """Build an explicitly selected QTI dialect; no default version."""
     if version == "3.0":
-        from .qti3.package import build_package as build
+        from .qti3.package import build_package as build_qti3
 
-        result = build(items, asset_bytes=asset_bytes, origin_labels=origin_labels)
+        result = build_qti3(items, asset_bytes=asset_bytes, origin_labels=origin_labels)
     elif version in {"2.1", "2.2"}:
-        from .qti2.package import build_package as build
+        from .qti2.package import build_package as build_qti2
 
-        result = build(items, asset_bytes=asset_bytes, origin_labels=origin_labels, version=version)
+        result = build_qti2(
+            items, asset_bytes=asset_bytes, origin_labels=origin_labels, version=version
+        )
     else:
         return {
             "version": None,

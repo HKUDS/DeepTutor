@@ -5,7 +5,8 @@ from __future__ import annotations
 import hashlib
 import re
 
-from lxml import etree
+# Tree construction/types and XSD validation only; parsing uses defusedxml.
+from lxml import etree  # nosec B410
 
 from deeptutor.services.practice.fill_blanks import normalize_fill_spec, point_string, point_units
 

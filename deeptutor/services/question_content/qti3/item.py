@@ -8,7 +8,8 @@ import posixpath
 import re
 from urllib.parse import unquote, urlsplit
 
-from lxml import etree
+# Tree construction/types and XSD validation only; parsing uses defusedxml.
+from lxml import etree  # nosec B410
 
 from deeptutor.services.practice.fill_blanks import normalize_fill_spec
 from deeptutor.services.question_content.core import normalize_question_document
@@ -192,7 +193,12 @@ def serialize_item(
     origin_label: str | None = None,
 ) -> dict:
     report = preflight(document, asset_paths=asset_paths, score_snapshot=score_snapshot)
-    empty_map = {"item": {}, "responses": {}, "interactions": {}, "options": {}}
+    empty_map: dict[str, dict[str, str]] = {
+        "item": {},
+        "responses": {},
+        "interactions": {},
+        "options": {},
+    }
     result = {**report, "xml": None, "identifierMap": empty_map, "assetReferences": []}
     if report["content"] == "blocked":
         return result
@@ -460,7 +466,7 @@ def parse_item(
     asset_map: Mapping[str, dict] | None = None,
     trusted_export: bool = False,
 ) -> dict:
-    result = {
+    result: dict = {
         "document": None,
         "content": "blocked",
         "scoring": "unavailable",
@@ -656,7 +662,7 @@ def parse_item(
         if choice is not None:
             if len(declarations) != 1 or choice.get("shuffle") not in {None, "false"}:
                 raise ValueError("Choice shuffle or cardinality is unsupported")
-            options = []
+            options: list[dict] = []
             saw_choice_prompt = False
             for option in choice:
                 if option.tag == _Q + "qti-prompt" and not saw_choice_prompt and not options:

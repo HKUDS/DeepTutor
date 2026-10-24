@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from lxml import etree
+from defusedxml.lxml import fromstring as defused_fromstring
+
+# Tree construction/types and XSD validation only; parsing uses defusedxml.
+from lxml import etree  # nosec B410
 
 from deeptutor.services.question_content.qti3 import parse_item as parse_qti3
 from deeptutor.services.question_content.qti3 import serialize_item as serialize_qti3
@@ -195,7 +198,9 @@ def serialize_item(
     if base.get("xml") is None:
         return base
     try:
-        transformed = _from_qti3(etree.fromstring(base["xml"]), version)
+        transformed = _from_qti3(
+            defused_fromstring(base["xml"], forbid_dtd=True, forbid_entities=True), version
+        )
         xml = etree.tostring(transformed, encoding="UTF-8", xml_declaration=True)
         issues = validate_xml(xml, kind="item", version=version)
     except (ValueError, etree.XMLSyntaxError) as exc:
