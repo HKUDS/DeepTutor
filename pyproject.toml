@@ -253,6 +253,11 @@ matrix-e2e = [
     "matrix-nio[e2e]>=0.25.2,<1.0.0",
 ]
 
+# QTI item-bank exchange. Mirrors requirements/qti.txt. ``lxml`` powers the
+# offline XSD validation and the QTI serializer; the schema bundles themselves
+# ship as package data, so no network access is needed at runtime.
+qti = ["lxml>=5.0.0,<7.0.0"]
+
 # Math Animator addon (Manim). Mirrors requirements/math-animator.txt.
 # System prerequisites (installed outside pip): LaTeX, pkg-config, cairo, cmake, ffmpeg.
 math-animator = ["manim>=0.19.0"]
@@ -288,6 +293,7 @@ guard = ["fastapi-guard>=8.1.1,<9.0.0"]
 # Dev/test tooling. Mirrors requirements/dev.txt.
 dev = [
     "deeptutor[server]",
+    "deeptutor[qti]",
     "pytest>=7.0.0",
     "pytest-asyncio>=0.23.0",
     "pre-commit>=3.0.0",
@@ -308,6 +314,7 @@ all = [
     "deeptutor[partners]",
     "deeptutor[matrix]",
     "deeptutor[math-animator]",
+    "deeptutor[qti]",
     "deeptutor[dev]",
     "deeptutor[video-learning]",
 ]
@@ -336,6 +343,9 @@ deeptutor = [
     "**/*.sh",
     "**/*.j2",
     "**/*.jinja",
+    # Offline QTI schema bundles, validated in place by qti*/xml.py.
+    "services/question_content/qti2/schemas/*.xsd",
+    "services/question_content/qti3/schemas/*.xsd",
 ]
 deeptutor_cli = ["**/*.md"]
 deeptutor_web = ["**/*", ".next/**/*"]

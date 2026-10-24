@@ -16,6 +16,7 @@ test("normalizeQuizQuestionType maps legacy choice aliases to choice", () => {
   assert.equal(normalizeQuizQuestionType("multiple_choice"), "choice");
   assert.equal(normalizeQuizQuestionType("multiple choice"), "choice");
   assert.equal(normalizeQuizQuestionType("mcq"), "choice");
+  assert.equal(normalizeQuizQuestionType("single_choice"), "choice");
   assert.equal(isChoiceQuizQuestion("multiple_choice"), true);
 });
 
@@ -26,6 +27,7 @@ test("normalizeQuizQuestionType preserves every canonical type", () => {
   assert.equal(normalizeQuizQuestionType("concept"), "concept");
   assert.equal(normalizeQuizQuestionType("true_false"), "concept");
   assert.equal(normalizeQuizQuestionType("fill_in_blank"), "fill_in_blank");
+  assert.equal(normalizeQuizQuestionType("fill_blank"), "fill_in_blank");
   assert.equal(normalizeQuizQuestionType("fill-in-the-blank"), "fill_in_blank");
   assert.equal(normalizeQuizQuestionType("coding"), "coding");
   assert.equal(normalizeQuizQuestionType("programming"), "coding");

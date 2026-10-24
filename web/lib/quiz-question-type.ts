@@ -20,12 +20,16 @@ const QUESTION_TYPE_ALIASES: Record<string, NormalizedQuizQuestionType> = {
   multiple_choice: "choice",
   "multiple-choice": "choice",
   mcq: "choice",
+  // Bank/QTI imports use the flat vocabulary. Only single-choice maps here:
+  // multi-select must stay unmapped so it is never rendered as one answer.
+  single_choice: "choice",
   concept: "concept",
   true_false: "concept",
   "true-false": "concept",
   tf: "concept",
   judgement: "concept",
   fill_in_blank: "fill_in_blank",
+  fill_blank: "fill_in_blank",
   "fill-in-the-blank": "fill_in_blank",
   fill_in_the_blank: "fill_in_blank",
   cloze: "fill_in_blank",

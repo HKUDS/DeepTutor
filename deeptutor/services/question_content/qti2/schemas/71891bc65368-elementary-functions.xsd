@@ -1,0 +1,117 @@
+<xs:schema 
+  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+  xmlns="http://www.w3.org/1998/Math/MathML"
+  targetNamespace="http://www.w3.org/1998/Math/MathML"
+  elementFormDefault="qualified"
+ >
+
+
+<xs:annotation>
+  <xs:documentation>
+  This is an XML Schema module for the elementary functions in content
+  MathML.
+  Author: St&#233;phane Dalmas, INRIA.
+  </xs:documentation>
+</xs:annotation>
+
+<!-- a common type for all this -->
+
+<xs:complexType name="Elementary-functions.type">
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:complexType>
+
+<!-- Exp and logs -->
+
+<xs:element name="exp" type="Elementary-functions.type"/>
+<xs:element name="ln" type="Elementary-functions.type"/>
+<xs:element name="log" type="Elementary-functions.type"/>
+
+<!-- special element of the base of logarithms -->
+
+<xs:group name="logbase.content">
+  <xs:sequence>
+    <xs:group ref="Content-expr.class"/>
+  </xs:sequence>
+</xs:group>
+
+<xs:complexType name="logbase.type">
+  <xs:group ref="logbase.content"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:complexType>
+
+<xs:element name="logbase" type="logbase.type"/>
+
+<!-- Trigonometric functions -->
+
+<xs:element name="sin" type="Elementary-functions.type"/>
+<xs:element name="cos" type="Elementary-functions.type"/>
+<xs:element name="tan" type="Elementary-functions.type"/>
+<xs:element name="sec" type="Elementary-functions.type"/>
+<xs:element name="csc" type="Elementary-functions.type"/>
+<xs:element name="cot" type="Elementary-functions.type"/>
+
+<xs:element name="arcsin" type="Elementary-functions.type"/>
+<xs:element name="arccos" type="Elementary-functions.type"/>
+<xs:element name="arctan" type="Elementary-functions.type"/>
+<xs:element name="arccot" type="Elementary-functions.type"/>
+<xs:element name="arccsc" type="Elementary-functions.type"/>
+<xs:element name="arcsec" type="Elementary-functions.type"/>
+
+<!-- Hyperbolic trigonometric functions -->
+
+<xs:element name="sinh" type="Elementary-functions.type"/>
+<xs:element name="cosh" type="Elementary-functions.type"/>
+<xs:element name="tanh" type="Elementary-functions.type"/>
+<xs:element name="sech" type="Elementary-functions.type"/>
+<xs:element name="csch" type="Elementary-functions.type"/>
+<xs:element name="coth" type="Elementary-functions.type"/>
+<xs:element name="arccosh" type="Elementary-functions.type"/>
+<xs:element name="arccoth" type="Elementary-functions.type"/>
+<xs:element name="arccsch" type="Elementary-functions.type"/>
+<xs:element name="arcsech" type="Elementary-functions.type"/>
+<xs:element name="arcsinh" type="Elementary-functions.type"/>
+<xs:element name="arctanh" type="Elementary-functions.type"/>
+
+<!-- And the group of everything -->
+
+<xs:group name="Content-elementary-functions.class">
+  <xs:choice>
+    <xs:element ref="exp"/>
+    <xs:element ref="ln"/>
+    <xs:element ref="log"/>
+    <xs:element ref="logbase"/>
+    <xs:element ref="sin"/>
+    <xs:element ref="cos"/>
+    <xs:element ref="tan"/>
+    <xs:element ref="sec"/>
+    <xs:element ref="csc"/>
+    <xs:element ref="cot"/>
+    <xs:element ref="arcsin"/>
+    <xs:element ref="arccos"/>
+    <xs:element ref="arctan"/>
+    <xs:element ref="arcsec"/>
+    <xs:element ref="arccsc"/>
+    <xs:element ref="arccot"/>
+    <xs:element ref="sinh"/>
+    <xs:element ref="cosh"/>
+    <xs:element ref="tanh"/>
+    <xs:element ref="sech"/>
+    <xs:element ref="csch"/>
+    <xs:element ref="coth"/>
+    <xs:element ref="arccosh"/>
+    <xs:element ref="arccoth"/>
+    <xs:element ref="arccsch"/>
+    <xs:element ref="arcsech"/>
+    <xs:element ref="arcsinh"/>
+    <xs:element ref="arctanh"/>
+  </xs:choice>
+</xs:group>
+
+</xs:schema>
+<!--
+  Copyright &#251; 2002 World Wide Web Consortium, (Massachusetts Institute
+  of Technology, Institut National de Recherche en Informatique et en
+  Automatique, Keio University). All Rights Reserved. See
+  http://www.w3.org/Consortium/Legal/.
+  -->

@@ -1,0 +1,684 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+   xmlns:m="http://www.w3.org/2010/Math/MathML"
+           elementFormDefault="qualified"
+           targetNamespace="http://www.w3.org/2010/Math/MathML">
+   <xs:include schemaLocation="mathml3-strict-content.xsd"/>
+   <xs:complexType name="cn.content" mixed="true">
+      <xs:choice minOccurs="0" maxOccurs="unbounded">
+         <xs:element ref="m:mglyph"/>
+         <xs:element ref="m:sep"/>
+         <xs:element ref="m:PresentationExpression"/>
+      </xs:choice>
+   </xs:complexType>
+   <xs:attributeGroup name="cn.attributes">
+      <xs:attributeGroup ref="m:CommonAtt"/>
+      <xs:attributeGroup ref="m:DefEncAtt"/>
+      <xs:attribute name="type"/>
+      <xs:attribute name="base"/>
+   </xs:attributeGroup>
+   <xs:attributeGroup name="ci.attributes">
+      <xs:attributeGroup ref="m:CommonAtt"/>
+      <xs:attributeGroup ref="m:DefEncAtt"/>
+      <xs:attribute name="type"/>
+   </xs:attributeGroup>
+   <xs:attributeGroup name="ci.type">
+      <xs:attribute name="type" use="required"/>
+   </xs:attributeGroup>
+   <xs:complexType name="ci.content" mixed="true">
+      <xs:choice minOccurs="0" maxOccurs="unbounded">
+         <xs:element ref="m:mglyph"/>
+         <xs:element ref="m:PresentationExpression"/>
+      </xs:choice>
+   </xs:complexType>
+   <xs:attributeGroup name="csymbol.attributes">
+      <xs:attributeGroup ref="m:CommonAtt"/>
+      <xs:attributeGroup ref="m:DefEncAtt"/>
+      <xs:attribute name="type"/>
+      <xs:attribute name="cd" type="xs:NCName"/>
+   </xs:attributeGroup>
+   <xs:complexType name="csymbol.content" mixed="true">
+      <xs:choice minOccurs="0" maxOccurs="unbounded">
+         <xs:element ref="m:mglyph"/>
+         <xs:element ref="m:PresentationExpression"/>
+      </xs:choice>
+   </xs:complexType>
+   <xs:element name="bvar">
+      <xs:complexType>
+         <xs:choice minOccurs="0" maxOccurs="unbounded">
+            <xs:choice>
+               <xs:element ref="m:ci"/>
+               <xs:group ref="m:semantics-ci"/>
+            </xs:choice>
+            <xs:element ref="m:degree"/>
+         </xs:choice>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:attributeGroup name="cbytes.attributes">
+      <xs:attributeGroup ref="m:CommonAtt"/>
+      <xs:attributeGroup ref="m:DefEncAtt"/>
+   </xs:attributeGroup>
+   <xs:attributeGroup name="cs.attributes">
+      <xs:attributeGroup ref="m:CommonAtt"/>
+      <xs:attributeGroup ref="m:DefEncAtt"/>
+   </xs:attributeGroup>
+   <!--Ambiguous content model altered (apply.content)-->
+<xs:complexType name="apply.content">
+      <xs:sequence>
+         <xs:group ref="m:ContExp"/>
+         <xs:group ref="m:BvarQ"/>
+         <xs:group minOccurs="0" maxOccurs="unbounded" ref="m:Qualifier"/>
+         <xs:group minOccurs="0" maxOccurs="unbounded" ref="m:ContExp"/>
+      </xs:sequence>
+   </xs:complexType>
+   <xs:complexType name="bind.content">
+      <xs:complexContent>
+         <xs:extension base="m:apply.content"/>
+      </xs:complexContent>
+   </xs:complexType>
+   <xs:attributeGroup name="base">
+      <xs:attribute name="base" use="required"/>
+   </xs:attributeGroup>
+   <xs:element name="sep">
+      <xs:complexType/>
+   </xs:element>
+   <xs:element name="PresentationExpression" abstract="true"/>
+   <xs:group name="DomainQ">
+      <xs:sequence>
+         <xs:choice minOccurs="0" maxOccurs="unbounded">
+            <xs:element ref="m:domainofapplication"/>
+            <xs:element ref="m:condition"/>
+            <!--Ambiguous content model altered (interval)--><xs:sequence>
+               <xs:element ref="m:lowlimit"/>
+               <xs:element minOccurs="0" ref="m:uplimit"/>
+            </xs:sequence>
+         </xs:choice>
+      </xs:sequence>
+   </xs:group>
+   <xs:element name="domainofapplication">
+      <xs:complexType>
+         <xs:group ref="m:ContExp"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="condition">
+      <xs:complexType>
+         <xs:group ref="m:ContExp"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="uplimit">
+      <xs:complexType>
+         <xs:group ref="m:ContExp"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="lowlimit">
+      <xs:complexType>
+         <xs:group ref="m:ContExp"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:group name="Qualifier">
+      <xs:choice>
+         <xs:group ref="m:DomainQ"/>
+         <xs:element ref="m:degree"/>
+         <xs:element ref="m:momentabout"/>
+         <xs:element ref="m:logbase"/>
+      </xs:choice>
+   </xs:group>
+   <xs:element name="degree">
+      <xs:complexType>
+         <xs:group ref="m:ContExp"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="momentabout">
+      <xs:complexType>
+         <xs:group ref="m:ContExp"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="logbase">
+      <xs:complexType>
+         <xs:group ref="m:ContExp"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:attributeGroup name="type">
+      <xs:attribute name="type" use="required"/>
+   </xs:attributeGroup>
+   <xs:attributeGroup name="order">
+      <xs:attribute name="order" use="required">
+         <xs:simpleType>
+            <xs:restriction base="xs:token">
+               <xs:enumeration value="numeric"/>
+               <xs:enumeration value="lexicographic"/>
+            </xs:restriction>
+         </xs:simpleType>
+      </xs:attribute>
+   </xs:attributeGroup>
+   <xs:attributeGroup name="closure">
+      <xs:attribute name="closure" use="required"/>
+   </xs:attributeGroup>
+   <xs:element name="piecewise">
+      <xs:complexType>
+         <xs:choice minOccurs="0" maxOccurs="unbounded">
+            <xs:element ref="m:piece"/>
+            <xs:element ref="m:otherwise"/>
+         </xs:choice>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="piece">
+      <xs:complexType>
+         <xs:sequence>
+            <xs:group ref="m:ContExp"/>
+            <xs:group ref="m:ContExp"/>
+         </xs:sequence>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="otherwise">
+      <xs:complexType>
+         <xs:group ref="m:ContExp"/>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="DeprecatedContExp" abstract="true"/>
+   <xs:element name="reln" substitutionGroup="m:DeprecatedContExp">
+      <xs:complexType>
+         <xs:group minOccurs="0" maxOccurs="unbounded" ref="m:ContExp"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="fn" substitutionGroup="m:DeprecatedContExp">
+      <xs:complexType>
+         <xs:group ref="m:ContExp"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="declare" substitutionGroup="m:DeprecatedContExp">
+      <xs:complexType>
+         <xs:group maxOccurs="unbounded" ref="m:ContExp"/>
+         <xs:attribute name="type" type="xs:string"/>
+         <xs:attribute name="scope" type="xs:string"/>
+         <xs:attribute name="nargs" type="xs:nonNegativeInteger"/>
+         <xs:attribute name="occurrence">
+            <xs:simpleType>
+               <xs:restriction base="xs:token">
+                  <xs:enumeration value="prefix"/>
+                  <xs:enumeration value="infix"/>
+                  <xs:enumeration value="function-model"/>
+               </xs:restriction>
+            </xs:simpleType>
+         </xs:attribute>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="interval.class" abstract="true">
+      <xs:complexType>
+         <xs:sequence>
+            <xs:group ref="m:ContExp"/>
+            <xs:group ref="m:ContExp"/>
+         </xs:sequence>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+         <xs:attribute name="closure"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="interval" substitutionGroup="m:interval.class"/>
+   <xs:element name="unary-functional.class" abstract="true">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="inverse" substitutionGroup="m:unary-functional.class"/>
+   <xs:element name="ident" substitutionGroup="m:unary-functional.class"/>
+   <xs:element name="domain" substitutionGroup="m:unary-functional.class"/>
+   <xs:element name="codomain" substitutionGroup="m:unary-functional.class"/>
+   <xs:element name="image" substitutionGroup="m:unary-functional.class"/>
+   <xs:element name="ln" substitutionGroup="m:unary-functional.class"/>
+   <xs:element name="log" substitutionGroup="m:unary-functional.class"/>
+   <xs:element name="moment" substitutionGroup="m:unary-functional.class"/>
+   <xs:element name="lambda.class" abstract="true">
+      <xs:complexType>
+         <xs:sequence>
+            <xs:group ref="m:BvarQ"/>
+            <xs:group ref="m:DomainQ"/>
+            <xs:group ref="m:ContExp"/>
+         </xs:sequence>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="lambda" substitutionGroup="m:lambda.class"/>
+   <xs:element name="nary-functional.class" abstract="true">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="compose" substitutionGroup="m:nary-functional.class"/>
+   <xs:group name="binary-arith.class">
+      <xs:choice>
+         <xs:element ref="m:quotient"/>
+         <xs:element ref="m:divide"/>
+         <xs:element ref="m:minus"/>
+         <xs:element ref="m:power"/>
+         <xs:element ref="m:rem"/>
+         <xs:element ref="m:root"/>
+      </xs:choice>
+   </xs:group>
+   <xs:element name="quotient">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="divide">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="minus">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="power">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="rem">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="root">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:group name="unary-arith.class">
+      <xs:choice>
+         <xs:element ref="m:factorial"/>
+         <!--Ambiguous content model altered (minus)--><!--Ambiguous content model altered (root)--><xs:element ref="m:abs"/>
+         <xs:element ref="m:conjugate"/>
+         <xs:element ref="m:arg"/>
+         <xs:element ref="m:real"/>
+         <xs:element ref="m:imaginary"/>
+         <xs:element ref="m:floor"/>
+         <xs:element ref="m:ceiling"/>
+         <xs:element ref="m:exp"/>
+      </xs:choice>
+   </xs:group>
+   <xs:element name="factorial">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="abs">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="conjugate">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="arg">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="real">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="imaginary">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="floor">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="ceiling">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="exp">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="nary-minmax.class" abstract="true">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="max" substitutionGroup="m:nary-minmax.class"/>
+   <xs:element name="min" substitutionGroup="m:nary-minmax.class"/>
+   <xs:element name="nary-arith.class" abstract="true">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="plus" substitutionGroup="m:nary-arith.class"/>
+   <xs:element name="times" substitutionGroup="m:nary-arith.class"/>
+   <xs:element name="gcd" substitutionGroup="m:nary-arith.class"/>
+   <xs:element name="lcm" substitutionGroup="m:nary-arith.class"/>
+   <xs:element name="nary-logical.class" abstract="true">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="and" substitutionGroup="m:nary-logical.class"/>
+   <xs:element name="or" substitutionGroup="m:nary-logical.class"/>
+   <xs:element name="xor" substitutionGroup="m:nary-logical.class"/>
+   <xs:element name="unary-logical.class" abstract="true">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="not" substitutionGroup="m:unary-logical.class"/>
+   <xs:element name="binary-logical.class" abstract="true">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="implies" substitutionGroup="m:binary-logical.class"/>
+   <xs:element name="equivalent" substitutionGroup="m:binary-logical.class"/>
+   <xs:element name="quantifier.class" abstract="true">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="forall" substitutionGroup="m:quantifier.class"/>
+   <xs:element name="exists" substitutionGroup="m:quantifier.class"/>
+   <xs:element name="nary-reln.class" abstract="true">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="eq" substitutionGroup="m:nary-reln.class"/>
+   <xs:element name="gt" substitutionGroup="m:nary-reln.class"/>
+   <xs:element name="lt" substitutionGroup="m:nary-reln.class"/>
+   <xs:element name="geq" substitutionGroup="m:nary-reln.class"/>
+   <xs:element name="leq" substitutionGroup="m:nary-reln.class"/>
+   <xs:element name="binary-reln.class" abstract="true"/>
+   <xs:element name="neq" substitutionGroup="m:binary-reln.class">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="approx" substitutionGroup="m:binary-reln.class">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="factorof" substitutionGroup="m:binary-reln.class">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="tendsto" substitutionGroup="m:binary-reln.class">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+         <xs:attribute name="type"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="int.class" abstract="true">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="int" substitutionGroup="m:int.class"/>
+   <xs:element name="Differential-Operator.class" abstract="true">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="diff" substitutionGroup="m:Differential-Operator.class"/>
+   <xs:element name="partialdiff.class" abstract="true">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="partialdiff" substitutionGroup="m:partialdiff.class"/>
+   <xs:element name="unary-veccalc.class" abstract="true">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="divergence" substitutionGroup="m:unary-veccalc.class"/>
+   <xs:element name="grad" substitutionGroup="m:unary-veccalc.class"/>
+   <xs:element name="curl" substitutionGroup="m:unary-veccalc.class"/>
+   <xs:element name="laplacian" substitutionGroup="m:unary-veccalc.class"/>
+   <xs:element name="nary-setlist-constructor.class" abstract="true"/>
+   <xs:element name="set" substitutionGroup="m:nary-setlist-constructor.class">
+      <xs:complexType>
+         <xs:sequence>
+            <xs:group minOccurs="0" maxOccurs="unbounded" ref="m:BvarQ"/>
+            <xs:group minOccurs="0" maxOccurs="unbounded" ref="m:DomainQ"/>
+            <xs:group minOccurs="0" maxOccurs="unbounded" ref="m:ContExp"/>
+         </xs:sequence>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+         <xs:attribute name="type"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="list" substitutionGroup="m:nary-setlist-constructor.class">
+      <xs:complexType>
+         <xs:sequence>
+            <xs:group minOccurs="0" maxOccurs="unbounded" ref="m:BvarQ"/>
+            <xs:group minOccurs="0" maxOccurs="unbounded" ref="m:DomainQ"/>
+            <xs:group minOccurs="0" maxOccurs="unbounded" ref="m:ContExp"/>
+         </xs:sequence>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+         <xs:attribute name="order">
+            <xs:simpleType>
+               <xs:restriction base="xs:token">
+                  <xs:enumeration value="numeric"/>
+                  <xs:enumeration value="lexicographic"/>
+               </xs:restriction>
+            </xs:simpleType>
+         </xs:attribute>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="nary-set.class" abstract="true">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="union" substitutionGroup="m:nary-set.class"/>
+   <xs:element name="intersect" substitutionGroup="m:nary-set.class"/>
+   <xs:element name="cartesianproduct" substitutionGroup="m:nary-set.class"/>
+   <xs:element name="binary-set.class" abstract="true">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="in" substitutionGroup="m:binary-set.class"/>
+   <xs:element name="notin" substitutionGroup="m:binary-set.class"/>
+   <xs:element name="notsubset" substitutionGroup="m:binary-set.class"/>
+   <xs:element name="notprsubset" substitutionGroup="m:binary-set.class"/>
+   <xs:element name="setdiff" substitutionGroup="m:binary-set.class"/>
+   <xs:element name="nary-set-reln.class" abstract="true">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="subset" substitutionGroup="m:nary-set-reln.class"/>
+   <xs:element name="prsubset" substitutionGroup="m:nary-set-reln.class"/>
+   <xs:element name="unary-set.class" abstract="true">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="card" substitutionGroup="m:unary-set.class"/>
+   <xs:element name="sum.class" abstract="true">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="sum" substitutionGroup="m:sum.class"/>
+   <xs:element name="product.class" abstract="true">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="product" substitutionGroup="m:product.class"/>
+   <xs:element name="limit.class" abstract="true">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="limit" substitutionGroup="m:limit.class"/>
+   <xs:element name="unary-elementary.class" abstract="true">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="sin" substitutionGroup="m:unary-elementary.class"/>
+   <xs:element name="cos" substitutionGroup="m:unary-elementary.class"/>
+   <xs:element name="tan" substitutionGroup="m:unary-elementary.class"/>
+   <xs:element name="sec" substitutionGroup="m:unary-elementary.class"/>
+   <xs:element name="csc" substitutionGroup="m:unary-elementary.class"/>
+   <xs:element name="cot" substitutionGroup="m:unary-elementary.class"/>
+   <xs:element name="sinh" substitutionGroup="m:unary-elementary.class"/>
+   <xs:element name="cosh" substitutionGroup="m:unary-elementary.class"/>
+   <xs:element name="tanh" substitutionGroup="m:unary-elementary.class"/>
+   <xs:element name="sech" substitutionGroup="m:unary-elementary.class"/>
+   <xs:element name="csch" substitutionGroup="m:unary-elementary.class"/>
+   <xs:element name="coth" substitutionGroup="m:unary-elementary.class"/>
+   <xs:element name="arcsin" substitutionGroup="m:unary-elementary.class"/>
+   <xs:element name="arccos" substitutionGroup="m:unary-elementary.class"/>
+   <xs:element name="arctan" substitutionGroup="m:unary-elementary.class"/>
+   <xs:element name="arccosh" substitutionGroup="m:unary-elementary.class"/>
+   <xs:element name="arccot" substitutionGroup="m:unary-elementary.class"/>
+   <xs:element name="arccoth" substitutionGroup="m:unary-elementary.class"/>
+   <xs:element name="arccsc" substitutionGroup="m:unary-elementary.class"/>
+   <xs:element name="arccsch" substitutionGroup="m:unary-elementary.class"/>
+   <xs:element name="arcsec" substitutionGroup="m:unary-elementary.class"/>
+   <xs:element name="arcsech" substitutionGroup="m:unary-elementary.class"/>
+   <xs:element name="arcsinh" substitutionGroup="m:unary-elementary.class"/>
+   <xs:element name="arctanh" substitutionGroup="m:unary-elementary.class"/>
+   <xs:element name="nary-stats.class" abstract="true">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="mean" substitutionGroup="m:nary-stats.class"/>
+   <xs:element name="sdev" substitutionGroup="m:nary-stats.class"/>
+   <xs:element name="variance" substitutionGroup="m:nary-stats.class"/>
+   <xs:element name="median" substitutionGroup="m:nary-stats.class"/>
+   <xs:element name="mode" substitutionGroup="m:nary-stats.class"/>
+   <xs:element name="nary-constructor.class" abstract="true">
+      <xs:complexType>
+         <xs:sequence>
+            <xs:group ref="m:BvarQ"/>
+            <xs:group ref="m:DomainQ"/>
+            <xs:group minOccurs="0" maxOccurs="unbounded" ref="m:ContExp"/>
+         </xs:sequence>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="vector" substitutionGroup="m:nary-constructor.class"/>
+   <xs:element name="matrix" substitutionGroup="m:nary-constructor.class"/>
+   <xs:element name="matrixrow" substitutionGroup="m:nary-constructor.class"/>
+   <xs:element name="unary-linalg.class" abstract="true">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="determinant" substitutionGroup="m:unary-linalg.class"/>
+   <xs:element name="transpose" substitutionGroup="m:unary-linalg.class"/>
+   <xs:element name="nary-linalg.class" abstract="true">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="selector" substitutionGroup="m:nary-linalg.class"/>
+   <xs:element name="binary-linalg.class" abstract="true">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="vectorproduct" substitutionGroup="m:binary-linalg.class"/>
+   <xs:element name="scalarproduct" substitutionGroup="m:binary-linalg.class"/>
+   <xs:element name="outerproduct" substitutionGroup="m:binary-linalg.class"/>
+   <xs:element name="constant-set.class" abstract="true">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="integers" substitutionGroup="m:constant-set.class"/>
+   <xs:element name="reals" substitutionGroup="m:constant-set.class"/>
+   <xs:element name="rationals" substitutionGroup="m:constant-set.class"/>
+   <xs:element name="naturalnumbers" substitutionGroup="m:constant-set.class"/>
+   <xs:element name="complexes" substitutionGroup="m:constant-set.class"/>
+   <xs:element name="primes" substitutionGroup="m:constant-set.class"/>
+   <xs:element name="emptyset" substitutionGroup="m:constant-set.class"/>
+   <xs:element name="constant-arith.class" abstract="true">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:DefEncAtt"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="exponentiale" substitutionGroup="m:constant-arith.class"/>
+   <xs:element name="imaginaryi" substitutionGroup="m:constant-arith.class"/>
+   <xs:element name="notanumber" substitutionGroup="m:constant-arith.class"/>
+   <xs:element name="true" substitutionGroup="m:constant-arith.class"/>
+   <xs:element name="false" substitutionGroup="m:constant-arith.class"/>
+   <xs:element name="pi" substitutionGroup="m:constant-arith.class"/>
+   <xs:element name="eulergamma" substitutionGroup="m:constant-arith.class"/>
+   <xs:element name="infinity" substitutionGroup="m:constant-arith.class"/>
+</xs:schema>

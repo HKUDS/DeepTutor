@@ -555,6 +555,7 @@ from deeptutor.api.routers import (
     personas,
     plugins,
     practice,
+    practice_qti,
     question,
     question_notebook,
     quiz_judge,
@@ -686,6 +687,13 @@ app.include_router(
 )
 app.include_router(
     practice.router,
+    prefix="/api/question-notebook/practice",
+    tags=["practice"],
+    dependencies=_auth,
+)
+
+app.include_router(
+    practice_qti.router,
     prefix="/api/question-notebook/practice",
     tags=["practice"],
     dependencies=_auth,

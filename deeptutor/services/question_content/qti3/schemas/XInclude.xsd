@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:xi="http://www.w3.org/2001/XInclude"
+           targetNamespace="http://www.w3.org/2001/XInclude"
+           finalDefault="extension">
+  <xs:annotation>
+   <xs:documentation>
+    Not normative, but may be useful.
+    See the REC http://www.w3.org/TR/XInclude for definitive
+    information about this namespace.
+   </xs:documentation>
+  </xs:annotation>
+
+  <xs:element name="include" type="xi:includeType" />
+
+  <xs:complexType name="includeType" mixed="true">
+    <xs:choice minOccurs='0' maxOccurs='unbounded' >
+      <xs:element ref='xi:fallback' />
+      <xs:any namespace='##other' processContents='lax' />
+      <xs:any namespace='##local' processContents='lax' />
+    </xs:choice>
+    <xs:attribute name="href" use="optional" type="xs:anyURI"/>
+    <xs:attribute name="parse" use="optional" default="xml"
+                  type="xi:parseType" />
+    <xs:attribute name="xpointer" use="optional" type="xs:string"/>
+    <xs:attribute name="encoding" use="optional" type="xs:string"/>
+    <xs:attribute name="accept" use="optional" type="xs:string"/>
+    <xs:attribute name="accept-language" use="optional" type="xs:string"/>
+    <xs:anyAttribute namespace="##other" processContents="lax"/>
+  </xs:complexType>
+
+  <xs:simpleType name="parseType">
+    <xs:restriction base="xs:token">
+      <xs:enumeration value="xml"/>
+      <xs:enumeration value="text"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:element name="fallback" type="xi:fallbackType" />
+
+  <xs:complexType name="fallbackType" mixed="true">
+    <xs:choice minOccurs="0" maxOccurs="unbounded">
+      <xs:element ref="xi:include"/>
+      <xs:any namespace="##other" processContents="lax"/>
+      <xs:any namespace="##local" processContents="lax"/>
+    </xs:choice>
+    <xs:anyAttribute namespace="##other" processContents="lax" />
+  </xs:complexType>
+
+</xs:schema>

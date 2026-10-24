@@ -148,6 +148,7 @@ Source extras (.[ extra ], defined in pyproject.toml):
 .[matrix]         — Matrix channel for Partners (matrix-nio; needs libolm)
 .[matrix-e2e]     — Matrix with end-to-end encryption (matrix-nio[e2e])
 .[math-animator]  — Manim addon (powers `visualize` Manim renders + `deeptutor run math_animator`)
-.[dev]            — Test / lint tooling
+.[qti]            — QTI 2.1/2.2/3.0 item-bank import and export (lxml + offline XSD bundles)
+.[dev]            — Test / lint tooling.
 .[all]            — Everything above
 ```
