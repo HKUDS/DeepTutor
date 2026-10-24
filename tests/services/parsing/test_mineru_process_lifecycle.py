@@ -13,6 +13,27 @@ from deeptutor.knowledge import indexing_run
 from deeptutor.services.parsing.engines.mineru import local
 
 
+def _await_settled(pid: int, timeout: float = 1.0) -> bool:
+    """Whether an owned descendant is gone, or killed and awaiting reaping.
+
+    The tree is SIGKILLed, so the only thing left to observe is reaping, and
+    that is done by init for an orphaned grandchild. An immediate
+    ``pid_exists`` check races that window and failed about half the time under
+    load; a zombie pid is a settled tree, a running pid is a leak.
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            status = psutil.Process(pid).status()
+        except psutil.NoSuchProcess:
+            return True
+        if status in {psutil.STATUS_ZOMBIE, psutil.STATUS_DEAD}:
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.02)
+
+
 def run_fixture(tmp_path, monkeypatch, code, run=None, idle=0.05, timeout=30, extra_env=None):
     source = tmp_path / "lesson.pdf"
     source.write_bytes(b"controlled fixture")
@@ -83,7 +104,7 @@ def test_parent_exit_does_not_wait_for_descendant_stdout(tmp_path, monkeypatch):
         assert result.ok, result
         assert elapsed < 1.5, "Waiting for inherited stdout instead of parent exit"
         child = int((tmp_path / "out" / "lesson" / "child.pid").read_text())
-        assert not psutil.pid_exists(child), "Owned child escaped cleanup"
+        assert _await_settled(child), "Owned child survived cleanup"
         assert unrelated.poll() is None, "Cleanup touched an unrelated process"
     finally:
         unrelated.terminate()
