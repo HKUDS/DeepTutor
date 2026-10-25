@@ -63,8 +63,7 @@ jobs:
 
   web-tests:
     name: Web Node Tests
-    # Playwright 1.57.0 cannot install Chromium on the current ubuntu-latest (26.04) image.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
@@ -110,8 +109,7 @@ jobs:
   multi-worker-web:
     name: Four-worker browser acceptance
     if: vars.DEEPTUTOR_MULTI_WORKER_E2E_URL != ''
-    # Keep the optional browser gate on the same Playwright-supported image.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
