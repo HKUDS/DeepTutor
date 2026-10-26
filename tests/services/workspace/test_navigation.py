@@ -104,6 +104,20 @@ async def test_an_offline_workspace_does_not_hide_other_history(account):
     assert offline["workspace_id"] in index["unavailable_workspaces"]
 
 
+@pytest.mark.asyncio
+async def test_an_archived_offline_workspace_is_omitted_from_navigation(account):
+    offline = account.create_workspace("Offline Archived")
+    account.update_workspace(offline["workspace_id"], archived=True)
+    from pathlib import Path
+
+    Path(offline["path"]).rename(Path(offline["path"]).with_name("offline-archived-moved"))
+    with workspace_context(""):
+        row = await get_sqlite_session_store().create_session(title="Still here")
+    index = await session_index(50, 0)
+    assert [item["session_id"] for item in index["sessions"]] == [row["id"]]
+    assert offline["workspace_id"] not in index["unavailable_workspaces"]
+
+
 def test_move_rejects_combined_changes_before_mutating_either_store(account, scoped_client):
     target = account.create_workspace("Target")["workspace_id"]
     with workspace_context(""):
