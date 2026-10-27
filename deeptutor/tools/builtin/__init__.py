@@ -1085,8 +1085,11 @@ class ReadSourceTool(_PromptHintsMixin, BaseTool):
                         "The source identifier from the Attached Sources "
                         "manifest. Begins with one of: nb- (notebook record), "
                         "bk- (book reference), rd- (reading unit), hs- (history "
-                        "session), qb- (question-bank entry), at- (document attachment)."
+                        "session), qb- (question-bank entry), at- (document attachment). "
+                        "Optional when exactly one source is attached — the tool then "
+                        "loads it; required when several are attached."
                     ),
+                    required=False,
                 ),
             ],
         )
