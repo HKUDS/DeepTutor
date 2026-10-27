@@ -16976,6 +16976,8 @@ export interface components {
     readonly TTSRequest: {
       /** Format */
       readonly format?: string | null;
+      /** Max Input Chars */
+      readonly max_input_chars?: number | null;
       /** Text */
       readonly text: string;
       /** Voice */
