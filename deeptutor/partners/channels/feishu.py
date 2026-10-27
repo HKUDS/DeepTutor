@@ -1485,15 +1485,37 @@ class FeishuChannel(BaseChannel):
         return bool(getattr(self.config, "voice_reply", True)) and self._client is not None
 
     def _synthesize_tts_sync(self, text: str) -> bytes | None:
-        """Call the local TTS service and return wav bytes, or None on failure."""
+        """Call the configured TTS service and return wav bytes, or None on failure."""
         import requests
 
         try:
-            response = requests.post(
-                self._TTS_URL,
-                json={"model": self._TTS_MODEL, "input": text, "response_format": "wav"},
-                timeout=120,
-            )
+            try:
+                from deeptutor.services.config.provider_runtime import (
+                    resolve_tts_runtime_config,
+                )
+
+                cfg = resolve_tts_runtime_config()
+                url = cfg.base_url.rstrip("/") + "/audio/speech"
+                payload = {
+                    "model": cfg.model,
+                    "input": text,
+                    "response_format": cfg.response_format or "wav",
+                }
+                if cfg.voice:
+                    payload["voice"] = cfg.voice
+            except Exception as cfg_err:
+                logger.warning(
+                    "Voice reply: TTS config resolve failed, using defaults: {}",
+                    cfg_err,
+                )
+                url = self._TTS_URL
+                payload = {
+                    "model": self._TTS_MODEL,
+                    "input": text,
+                    "response_format": "wav",
+                }
+
+            response = requests.post(url, json=payload, timeout=120)
             response.raise_for_status()
             return response.content
         except Exception as e:
