@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
+from dataclasses import dataclass
 from enum import Enum
 import json
 import logging
@@ -82,6 +83,20 @@ class NotebookCorruptedError(RuntimeError):
         self.notebook_id = notebook_id
         self.path = path
         self.cause = cause
+
+
+@dataclass(frozen=True)
+class AppendResult:
+    """Outcome of one append: the record, and whether its body changed.
+
+    ``appended=False`` means the chunk was already at the end of the body and
+    nothing was written. The caller has to be able to tell those apart: a
+    retried turn and a deliberate repeat send the same text, and only the
+    caller knows which one it meant.
+    """
+
+    record: dict
+    appended: bool
 
 
 def _clean_record_summary(summary: str) -> str:
@@ -524,6 +539,75 @@ class NotebookManager:
             self._save_notebook(notebook_id, notebook)
             self._touch_index_entry(notebook_id, notebook)
             return updated_record
+
+    def append_to_record(
+        self,
+        notebook_id: str,
+        record_id: str,
+        content: str,
+        *,
+        max_chars: int | None = None,
+    ) -> AppendResult | None:
+        """Add ``content`` to the end of one record's body.
+
+        Returns ``None`` when the notebook or the record is gone.
+
+        The join happens inside the notebook lock on purpose. A caller that
+        reads the body, concatenates outside, and writes it back drops any
+        save that landed in between — a turn landing from another session, or
+        the notebook UI saving while the agent is running. That is the exact
+        loss this operation exists to prevent, so it belongs here.
+
+        The lock is per process (``threading.RLock`` per notebook, see
+        :meth:`_locked`), so this is atomic for every thread in one backend.
+        With ``backend_workers > 1`` each worker holds its own locks and two
+        processes can still interleave on one file; every write in this
+        manager has that limitation, and closing it needs a cross-process
+        file lock.
+
+        An append whose chunk is already at the end of the body writes nothing
+        and comes back with ``appended=False``, body unmodified. A retried turn
+        (``/retry``, or a replay after a crash) resends the same chunk, and a
+        record is not versioned, so writing it twice leaves a duplicate step the
+        learner has to notice and delete in the notebook UI. Matching on content
+        cannot tell that retry apart from a deliberate repeat — only the caller
+        knows — so the difference is reported rather than both cases being
+        dressed up as a successful write.
+
+        Raises ``ValueError`` when the join would pass ``max_chars``. The
+        caller's own size check can read a stale snapshot, so this is the
+        check that holds.
+        """
+        if not content:
+            return None
+        with self._locked(notebook_id):
+            notebook = self._load_notebook(notebook_id)
+            if not notebook:
+                return None
+
+            target: dict | None = None
+            for record in notebook.get("records", []):
+                if str(record.get("id", "")) != str(record_id):
+                    continue
+                current = str(record.get("output") or "")
+                if current and current.rstrip().endswith(content.strip()):
+                    return AppendResult(record=record, appended=False)
+                joined = f"{current}\n\n{content}" if current else content
+                if max_chars is not None and len(joined) > max_chars:
+                    raise ValueError(
+                        f"appending {len(content)} characters would grow this record "
+                        f"past {max_chars}"
+                    )
+                record["output"] = joined
+                target = record
+                break
+            if target is None:
+                return None
+
+            notebook["updated_at"] = time.time()
+            self._save_notebook(notebook_id, notebook)
+            self._touch_index_entry(notebook_id, notebook)
+            return AppendResult(record=target, appended=True)
 
     def get_records_by_references(self, notebook_references: list[dict]) -> list[dict]:
         resolved: list[dict] = []

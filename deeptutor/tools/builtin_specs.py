@@ -68,6 +68,7 @@ BUILTIN_TOOL_SPECS: tuple[BuiltinToolSpec, ...] = (
             ("list_notebook", "ListNotebookTool"),
             ("list_favorites", "ListFavoritesTool"),
             ("save_favorite", "SaveFavoriteTool"),
+            ("read_note", "ReadNoteTool"),
             ("question_bank", "QuestionBankTool"),
             ("github", "GithubTool"),
             ("ask_user", "AskUserTool"),

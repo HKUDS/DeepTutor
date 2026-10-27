@@ -1343,8 +1343,8 @@ class ListNotebookTool(_PromptHintsMixin, BaseTool):
                 "the user owns (id + name + record count). Call with a "
                 "specific `notebook_id` to drill in and list its "
                 "records (record_id + title + summary + timestamp). "
-                "Use this BEFORE `save_favorite` in edit mode so you have "
-                "valid record ids."
+                "Use this BEFORE `save_favorite` in edit or append_to mode "
+                "so you have valid record ids."
             ),
             parameters=[
                 ToolParameter(
@@ -1373,6 +1373,57 @@ class ListNotebookTool(_PromptHintsMixin, BaseTool):
             content=outcome.text,
             metadata=outcome.summary or {},
         )
+
+
+class ReadNoteTool(_PromptHintsMixin, BaseTool):
+    """Read one notebook record in full, body included.
+
+    ``list_notebook`` reports only a clipped summary per record, and
+    ``write_note`` in edit mode replaces the whole body, so without this
+    the agent could not safely update a record it wrote in an earlier
+    conversation (issue #2049). Auto-mounted under the same
+    ``has_notebooks`` gate as its siblings.
+    """
+
+    def get_definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name="read_note",
+            description=(
+                "Read one notebook record in full: title, summary and the "
+                "body (bodies longer than ~12k characters are truncated, "
+                "with the real length stated). Use it before changing a "
+                "record you wrote earlier — `write_note` in edit mode REPLACES the body, so "
+                "quote what you keep. Get the ids from `list_notebook`."
+            ),
+            parameters=[
+                ToolParameter(
+                    name="notebook_id",
+                    type="string",
+                    description=(
+                        "The notebook holding the record. Must be a valid id "
+                        "from the `list_notebook` index — do not invent ids."
+                    ),
+                ),
+                ToolParameter(
+                    name="record_id",
+                    type="string",
+                    description=(
+                        "The record to read, from `list_notebook` drill-down. Copy it verbatim."
+                    ),
+                ),
+            ],
+        )
+
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        from deeptutor.tools.read_note import read_notebook_record
+
+        outcome = read_notebook_record(
+            notebook_id=str(kwargs.get("notebook_id") or ""),
+            record_id=str(kwargs.get("record_id") or ""),
+        )
+        if not outcome.ok:
+            return ToolResult(content=outcome.error, success=False)
+        return ToolResult(content=outcome.text, metadata=outcome.summary or {})
 
 
 class ListFavoritesTool(ListNotebookTool):
@@ -1551,14 +1602,16 @@ class QuestionBankTool(_PromptHintsMixin, BaseTool):
 
 
 class SaveFavoriteTool(_PromptHintsMixin, BaseTool):
-    """Create OR edit a favorite record from the chat agent.
+    """Create, extend, or edit a favorite record from the chat agent.
 
-    Two modes mirror what a human sees in the notebook UI:
+    Three modes mirror what a human sees in the notebook UI:
 
     * ``append`` — create a new record in a notebook (the model picks
       a title; the body defaults to the actual chat transcript built
       from injected conversation history, or to an agent-authored
       markdown body if ``content`` is explicitly provided).
+    * ``append_to`` — add markdown to the end of an existing record's
+      body, leaving its title and summary alone. Requires ``record_id``.
     * ``edit`` — update an existing record's title or note, preserving its body.
       Requires a known ``record_id`` (obtained via ``list_favorites``).
 
@@ -1575,16 +1628,23 @@ class SaveFavoriteTool(_PromptHintsMixin, BaseTool):
                 "a NEW record (default body = the actual recent chat "
                 "transcript built by the tool; pass `content` instead "
                 "to save an agent-authored markdown body). "
-                "mode='edit' updates an existing record's title or note "
-                "/ summary — `record_id` is required (call `list_favorites` "
-                "first to discover valid ids)."
+                "mode='append_to' adds markdown to the END of an existing "
+                "record's body without rewriting what is already there — "
+                "`record_id` and `content` are required; use it to grow a "
+                "running note step by step. mode='edit' updates an existing "
+                "record's title or note / summary — `record_id` is required "
+                "(call `list_favorites` first to discover valid ids)."
             ),
             parameters=[
                 ToolParameter(
                     name="mode",
                     type="string",
-                    description="'append' (new record) or 'edit' (patch existing).",
-                    enum=["append", "edit"],
+                    description=(
+                        "'append' (save a NEW record), 'append_to' (extend an "
+                        "existing record's body), or 'edit' (replace part of "
+                        "an existing record)."
+                    ),
+                    enum=["append", "edit", "append_to"],
                 ),
                 ToolParameter(
                     name="notebook_id",
@@ -1596,7 +1656,10 @@ class SaveFavoriteTool(_PromptHintsMixin, BaseTool):
                 ToolParameter(
                     name="record_id",
                     type="string",
-                    description=("Required for mode='edit'. Discover with `list_favorites` first."),
+                    description=(
+                        "Required for mode='edit' and mode='append_to'. "
+                        "Discover with `list_favorites` first."
+                    ),
                     required=False,
                 ),
                 ToolParameter(
@@ -1605,7 +1668,8 @@ class SaveFavoriteTool(_PromptHintsMixin, BaseTool):
                     description=(
                         "For append: required, short descriptive title. "
                         "For edit: optional new title (leave empty to "
-                        "keep the existing one)."
+                        "keep the existing one). Ignored by append_to — "
+                        "use edit to rename."
                     ),
                     required=False,
                 ),
@@ -1617,7 +1681,8 @@ class SaveFavoriteTool(_PromptHintsMixin, BaseTool):
                         "(when omitted the tool inserts the real Q&A "
                         "transcript itself, the recommended default). "
                         "For edit: must be omitted; favorites preserve "
-                        "the existing body)."
+                        "the existing body. For append_to: required, the "
+                        "markdown added at the end of the existing body."
                     ),
                     required=False,
                 ),
@@ -1639,7 +1704,8 @@ class SaveFavoriteTool(_PromptHintsMixin, BaseTool):
                     description=(
                         "Optional one-paragraph commentary. In append "
                         "mode it's prepended above the transcript; in "
-                        "edit mode it replaces the record's summary."
+                        "edit mode it replaces the record's summary; "
+                        "append_to ignores it (body only)."
                     ),
                     required=False,
                 ),
@@ -1668,7 +1734,25 @@ class SaveFavoriteTool(_PromptHintsMixin, BaseTool):
         )
         if not outcome.ok:
             return ToolResult(content=outcome.error, success=False)
-        action = "Saved new record" if outcome.mode == "append" else "Updated record"
+        if outcome.unchanged:
+            return ToolResult(
+                content=(
+                    "Nothing added: that text is already at the end of record "
+                    f"{outcome.record_id} in notebook {outcome.notebook_name!r}. "
+                    "If you meant to add it again, send it differently."
+                ),
+                metadata={
+                    "mode": outcome.mode,
+                    "record_id": outcome.record_id,
+                    "notebook_id": outcome.notebook_id,
+                    "notebook_name": outcome.notebook_name,
+                    "unchanged": True,
+                },
+            )
+        action = {
+            "append": "Saved new record",
+            "append_to": "Extended record",
+        }.get(outcome.mode, "Updated record")
         return ToolResult(
             content=(
                 f"{action} in favorites collection {outcome.notebook_name!r} (record id: {outcome.record_id})."
@@ -2199,6 +2283,7 @@ CONFIGURABLE_BUILTIN_TOOL_NAMES: tuple[str, ...] = (
     "read_skill",
     "list_notebook",
     "list_favorites",
+    "read_note",
     "write_note",
     "save_favorite",
     "search_notes",
@@ -2259,6 +2344,7 @@ __all__ = [
     "ListNotebookTool",
     "PaperSearchToolWrapper",
     "QuestionBankTool",
+    "ReadNoteTool",
     "ZoteroSearchToolWrapper",
     "PartnerMemorizeTool",
     "PartnerReadTool",

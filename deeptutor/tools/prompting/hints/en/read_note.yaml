@@ -1,0 +1,6 @@
+short_description: "Read one archived record in full — title, summary and the whole body."
+when_to_use: "Before extending a record with `save_favorite` mode='append_to': the server concatenates, so read first to make sure the new chunk continues the body instead of repeating a step that is already there. Also when the user asks what a saved note actually says, or when a summary in the `list_favorites` drill-down is too thin to act on."
+input_format: "{\"notebook_id\": \"id from the list_favorites index\", \"record_id\": \"id from the list_favorites drill-down\"}"
+guideline: "Both ids come from `list_favorites`; never invent them. Long bodies come back capped at ~12000 characters and the hidden length is stated in the text — when appending to a capped record, keep that limitation in mind instead of assuming you saw everything. Read-only: it never changes a record."
+note: "Auto-mounted only when the user has at least one notebook. Output is markdown: the header, the summary line when the record has one, then the body verbatim."
+phase: "exploration"

@@ -1,5 +1,5 @@
-short_description: "原样收藏对话或结果。"
-when_to_use: "用户要收藏原文时用 list_favorites 选择真实收藏夹。"
-input_format: '{"mode": "append", "notebook_id": "id", "title": "标题", "turns_to_include": "3"}'
-guideline: "edit 模式仅修改标题或备注，不能改写存档正文。"
+short_description: "原样收藏对话或结果，或往已收藏的记录末尾续写。"
+when_to_use: "用户要收藏原文，或想在已经存下来的记录上继续添加时使用。先用 list_favorites 选真实收藏夹；append_to 之前用 read_note 看一眼现有正文，新内容才能接着写而不是重复。"
+input_format: '{"mode": "append", "notebook_id": "id", "title": "标题", "turns_to_include": "3"}；append_to 用 {"mode": "append_to", "notebook_id": "id", "record_id": "id", "content": "要追加的 markdown"}'
+guideline: "edit 模式仅修改标题或备注，不能改写存档正文。append_to 由服务端拼接，只传新增的片段，不要重复你读到的正文。重试的同一轮会再次发同样的片段；append_to 会告诉你到底有没有写入，片段已经在末尾时不会改动正文，所以不要自己再重试一遍。"
 phase: "synthesis"

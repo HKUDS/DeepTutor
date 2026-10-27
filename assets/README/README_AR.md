@@ -451,7 +451,7 @@ Chat هي القدرة الافتراضية والمكان الذي يبدأ ف�
 <img src="../../assets/figs/system/chat-agent-loop.png" alt="حلقة وكيل محادثة DeepTutor" width="900">
 </div>
 
-الأدوات القابلة للتبديل من قِبَل المستخدم هي `brainstorm` و`web_search` و`paper_search` و`zotero_search` و`reason` و`geogebra_analysis` — بالإضافة إلى `imagegen` و`videogen` بمجرد تهيئة نموذج التوليد المطابق. الأدوات السياقية مثل `rag` و`kb_files` و`knowledge_frontier` و`read_source` و`read_memory` و`write_memory` و`read_skill` و`load_tools` و`exec` و`web_fetch` و`ask_user` و`list_notebook` و`write_note` و`question_bank` و`github` و`consult_subagent` و`workspace_list` و`workspace_read` و`workspace_search` و`workspace_present` و`workspace_export` تُثبَّت تلقائياً عندما يكون للدور السياق الصحيح.
+الأدوات القابلة للتبديل من قِبَل المستخدم هي `brainstorm` و`web_search` و`paper_search` و`zotero_search` و`reason` و`geogebra_analysis` — بالإضافة إلى `imagegen` و`videogen` بمجرد تهيئة نموذج التوليد المطابق. الأدوات السياقية مثل `rag` و`kb_files` و`knowledge_frontier` و`read_source` و`read_memory` و`write_memory` و`read_skill` و`load_tools` و`exec` و`web_fetch` و`ask_user` و`list_notebook` و`read_note` و`write_note` و`question_bank` و`github` و`consult_subagent` و`workspace_list` و`workspace_read` و`workspace_search` و`workspace_present` و`workspace_export` تُثبَّت تلقائياً عندما يكون للدور السياق الصحيح.
 
 يأتي السياق في نوعين: يستمر **السياق الثابت للجلسة** (القدرة، ومساحة العمل أو الدورة، والأدوات، وقواعد المعرفة، والشخصية، والنموذج، وحالة Reading / Mastery) عبر الأدوار؛ وتأتي **المراجع لمرة واحدة** (الملفات وتاريخ المحادثة والكتب وأقسام القراءة ودفاتر الملاحظات ومدخلات بنك الأسئلة المحددة والوكلاء المستوردون) من قائمة `+` لدور واحد. ولا يفعل زر الصوت سوى تفريغ الرسالة الحالية نصياً.
 

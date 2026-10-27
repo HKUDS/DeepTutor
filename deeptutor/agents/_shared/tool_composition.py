@@ -55,6 +55,7 @@ _CONDITIONAL_MOUNT_FLAGS: dict[str, str] = {
     "read_memory": "has_memory",
     "list_favorites": "has_notebooks",
     "save_favorite": "has_notebooks",
+    "read_note": "has_notebooks",
     "question_bank": "has_question_bank",
     "read_skill": "has_skills",
     "load_tools": "has_deferred_tools",
@@ -321,7 +322,7 @@ def user_has_memory() -> bool:
 def user_has_notebooks() -> bool:
     """Whether the active user has at least one notebook.
 
-    Auto-mount gate for ``list_favorites`` + ``save_favorite``. Same
+    Auto-mount gate for ``list_favorites``, ``save_favorite`` + ``read_note``. Same
     fail-closed posture as :func:`user_has_memory`.
     """
     try:

@@ -1,5 +1,5 @@
-short_description: "Archive original conversation output in a favorites collection."
-when_to_use: "The user wants to keep a conversation or result unchanged. Use list_favorites to choose a real collection."
-input_format: '{"mode": "append", "notebook_id": "id", "title": "Title", "turns_to_include": "3"}'
-guideline: "Edit mode may change title or note only. Never rewrite the archived content."
+short_description: "Archive original conversation output in a favorites collection, or extend an already-archived record."
+when_to_use: "The user wants to keep a conversation or result unchanged, or wants more added onto something already saved. Use list_favorites to choose a real collection, and read_note before append_to so the addition continues what is already there instead of repeating it."
+input_format: '{"mode": "append", "notebook_id": "id", "title": "Title", "turns_to_include": "3"} — for append_to: {"mode": "append_to", "notebook_id": "id", "record_id": "id", "content": "markdown to add"}'
+guideline: "Edit mode may change title or note only. Never rewrite the archived content. append_to concatenates server-side, so pass only the new chunk — never reproduce the body you read. A retried turn resends the same chunk; append_to reports whether it actually wrote anything and leaves the body alone when the chunk is already at the end, so do not retry it a second time yourself."
 phase: "synthesis"

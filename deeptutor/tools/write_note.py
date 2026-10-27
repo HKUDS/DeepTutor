@@ -10,6 +10,10 @@ Replaces the older ``save_to_notebook`` tool. Two modes:
 * **edit**: update an EXISTING record's title and/or body and/or
   summary. The agent must know the ``record_id`` (typically obtained
   via the ``list_notebook`` tool).
+* **append_to**: add markdown to the END of an EXISTING record's body,
+  leaving its title and summary alone. The server concatenates, so the
+  agent never has to rewrite text it cannot see (read it first with
+  ``read_note`` if it needs to reason over the whole record).
 
 The append mode preserves the actual conversation by default; the
 agent does not author the body unless it explicitly chooses to. This
@@ -27,6 +31,9 @@ from dataclasses import dataclass
 import logging
 from typing import Any, Iterable
 
+from deeptutor.services.notebook.service import NotebookCorruptedError
+from deeptutor.tools.read_note import MAX_BODY_CHARS as READ_BODY_CHARS
+
 logger = logging.getLogger(__name__)
 
 # Length sanity caps. Generous because the tool now legitimately needs
@@ -43,7 +50,7 @@ MAX_CONTENT_CHARS = 200_000
 DEFAULT_TURNS_TO_INCLUDE = 3
 ALL_TURNS_SENTINEL = "all"
 
-VALID_MODES = ("append", "edit")
+VALID_MODES = ("append", "edit", "append_to")
 
 
 @dataclass(frozen=True)
@@ -56,6 +63,7 @@ class WriteOutcome:
     notebook_id: str = ""
     notebook_name: str = ""
     error: str = ""
+    unchanged: bool = False
 
 
 def write_note(
@@ -67,6 +75,7 @@ def write_note(
     content: str = "",
     turns_to_include: Any = DEFAULT_TURNS_TO_INCLUDE,
     note: str = "",
+    allow_shrink: bool = False,
     conversation_history: Iterable[dict[str, Any]] | None = None,
     current_user_message: str = "",
     notebook_manager: Any = None,
@@ -131,6 +140,14 @@ def write_note(
             conversation_history=list(conversation_history or []),
             current_user_message=str(current_user_message or "").strip(),
         )
+    if cleaned_mode == "append_to":
+        return _do_append_to(
+            manager=manager,
+            notebook_id=nid,
+            notebook_name=notebook_name,
+            record_id=record_id,
+            content=content,
+        )
     return _do_edit(
         manager=manager,
         notebook_id=nid,
@@ -139,6 +156,7 @@ def write_note(
         title=title,
         content=content,
         note=note,
+        allow_shrink=allow_shrink,
     )
 
 
@@ -284,6 +302,121 @@ def _coerce_turns(raw: Any) -> int | None:
 
 
 # ---------------------------------------------------------------------------
+# Append-to mode
+# ---------------------------------------------------------------------------
+
+
+def _do_append_to(
+    *,
+    manager: Any,
+    notebook_id: str,
+    notebook_name: str,
+    record_id: str,
+    content: str,
+) -> WriteOutcome:
+    """Extend an existing record's body without rewriting what is already there.
+
+    Append-at-the-server is the whole point: the agent saves the next step of
+    a long record without first reproducing text it may never have read, so a
+    stale or partial copy cannot silently replace real history (#2049).
+    """
+    rid = (record_id or "").strip()
+    if not rid:
+        return WriteOutcome(
+            ok=False,
+            mode="append_to",
+            notebook_id=notebook_id,
+            notebook_name=notebook_name,
+            error=(
+                "append_to needs `record_id` — the record to extend. To save "
+                "this as a NEW record use mode='append'."
+            ),
+        )
+    cleaned_content = (content or "").strip()
+    if not cleaned_content:
+        return WriteOutcome(
+            ok=False,
+            mode="append_to",
+            notebook_id=notebook_id,
+            notebook_name=notebook_name,
+            record_id=rid,
+            error="append_to needs `content`: the markdown to add to the end of the record.",
+        )
+
+    # The manager joins under its per-notebook lock and owns both the size rule
+    # and the "record missing" answer; a read-modify-write or a second read here
+    # would drop a save that landed in between, or disagree with the lock-time
+    # check — and would parse the whole notebook a second time to say so.
+    try:
+        updated = manager.append_to_record(
+            notebook_id, rid, cleaned_content, max_chars=MAX_CONTENT_CHARS
+        )
+    except NotebookCorruptedError as exc:
+        logger.warning("write_note(append_to): could not read notebook", exc_info=True)
+        return WriteOutcome(
+            ok=False,
+            mode="append_to",
+            notebook_id=notebook_id,
+            notebook_name=notebook_name,
+            record_id=rid,
+            error=f"Could not read notebook {notebook_name!r}: {exc}",
+        )
+    except ValueError as exc:
+        logger.info("write_note(append_to): refused: %s", exc)
+        return WriteOutcome(
+            ok=False,
+            mode="append_to",
+            notebook_id=notebook_id,
+            notebook_name=notebook_name,
+            record_id=rid,
+            error=(
+                f"Appending that much would grow this record past "
+                f"{MAX_CONTENT_CHARS} characters. Append a shorter amount, or "
+                "keep it as a new record with mode='append'."
+            ),
+        )
+    except Exception as exc:
+        logger.warning("write_note(append_to): append failed", exc_info=True)
+        return WriteOutcome(
+            ok=False,
+            mode="append_to",
+            notebook_id=notebook_id,
+            notebook_name=notebook_name,
+            record_id=rid,
+            error=f"Append failed: {exc}",
+        )
+    if updated is None:
+        return WriteOutcome(
+            ok=False,
+            mode="append_to",
+            notebook_id=notebook_id,
+            notebook_name=notebook_name,
+            record_id=rid,
+            error=(
+                f"Record {rid!r} not found in notebook {notebook_id!r} "
+                "(the whole notebook may have been removed). Call `list_notebook` "
+                "with this notebook_id first to discover valid record ids."
+            ),
+        )
+    if not updated.appended:
+        return WriteOutcome(
+            ok=True,
+            mode="append_to",
+            unchanged=True,
+            record_id=rid,
+            notebook_id=notebook_id,
+            notebook_name=notebook_name,
+        )
+    return WriteOutcome(
+        ok=True,
+        mode="append_to",
+        record_id=rid,
+        notebook_id=notebook_id,
+        notebook_name=notebook_name,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Edit mode
 # ---------------------------------------------------------------------------
 
@@ -297,6 +430,7 @@ def _do_edit(
     title: str,
     content: str,
     note: str,
+    allow_shrink: bool = False,
 ) -> WriteOutcome:
     rid = (record_id or "").strip()
     if not rid:
@@ -343,6 +477,33 @@ def _do_edit(
     cleaned_note = (note or "").strip()
     if cleaned_note and len(cleaned_note) > MAX_NOTE_CHARS:
         cleaned_note = cleaned_note[:MAX_NOTE_CHARS].rstrip() + "…"
+
+    if cleaned_content:
+        stored_body = str(existing.get("output") or "")
+        # ``read_note`` hands back at most READ_BODY_CHARS characters, so a body
+        # longer than that was never seen in one piece. A shorter replacement is
+        # therefore a rewrite built from a prefix, and saving it deletes the
+        # rest of the record with no way to get it back.
+        if (
+            not allow_shrink
+            and len(stored_body) > READ_BODY_CHARS
+            and len(cleaned_content) < len(stored_body)
+        ):
+            return WriteOutcome(
+                ok=False,
+                mode="edit",
+                notebook_id=notebook_id,
+                notebook_name=notebook_name,
+                record_id=rid,
+                error=(
+                    f"edit would replace a {len(stored_body)}-character body with "
+                    f"{len(cleaned_content)} characters, and `read_note` returns at "
+                    f"most {READ_BODY_CHARS} of them at a time — the text being "
+                    "dropped was never shown to you. Use mode='append_to' to add "
+                    "without rewriting; shortening an archived record is done in "
+                    "the notebook UI."
+                ),
+            )
 
     if not (cleaned_title or cleaned_content or cleaned_note):
         return WriteOutcome(

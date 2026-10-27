@@ -80,6 +80,7 @@ _VISUALIZE_SAFE_BUILTINS = (
     "read_source",
     "read_memory",
     "list_notebook",
+    "read_note",
     "read_skill",
     "web_fetch",
     "ask_user",

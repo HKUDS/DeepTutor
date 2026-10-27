@@ -1,0 +1,6 @@
+short_description: "读取单条收藏记录的完整内容：标题、summary 与正文全文。"
+when_to_use: "在往记录末尾续写（`save_favorite` 的 append_to 模式）之前调用：正文由服务端拼接，先读才知道新片段该接在哪里，也能避免把已经存在的步骤再写一遍。用户询问某条记录到底写了什么，或 `list_favorites` 钻取结果里的 summary 太薄无法判断时也用它。"
+input_format: "{\"notebook_id\": \"list_favorites 索引里的 id\", \"record_id\": \"list_favorites 钻取结果里的 id\"}"
+guideline: "两个 id 都来自 `list_favorites`，不要自己编。正文较长时最多返回约 12000 字符，并在文本中说明被省略的长度——往被截断的记录追加时要意识到这一点。此工具只读，不会修改记录。"
+note: "用户没有任何收藏夹时不会出现。输出为 markdown：标题行、记录有 summary 时的 summary 行，然后是原文正文。"
+phase: "exploration"

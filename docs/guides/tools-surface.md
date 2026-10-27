@@ -26,7 +26,7 @@ deeptutor/core/tool_protocol.py:220   deeptutor/tools/builtin_specs.py:20   deep
 
 ## 2. 能力选择点（这一轮挂什么、参数从哪来）
 
-- **条件挂载表** `_CONDITIONAL_MOUNT_FLAGS`（`deeptutor/agents/_shared/tool_composition.py:47`）：`rag/kb_files/knowledge_frontier ← has_kb`、`read_source ← has_sources`、`read_memory ← has_memory`、`list_notebook/write_note ← has_notebooks`、`question_bank ← has_question_bank`、`read_skill ← has_skills`、`load_tools ← has_deferred_tools`、`exec ← has_exec`、四个 `mastery_*` 导航工具 ← `has_mastery_nav/has_mastery_topics`。探测函数（`user_has_memory:287`、`user_has_notebooks:307`、`user_has_mastery_topics:324`、`user_has_question_bank:340`）一律 fail-closed。
+- **条件挂载表** `_CONDITIONAL_MOUNT_FLAGS`（`deeptutor/agents/_shared/tool_composition.py:47`）：`rag/kb_files/knowledge_frontier ← has_kb`、`read_source ← has_sources`、`read_memory ← has_memory`、`list_favorites/save_favorite/read_note ← has_notebooks`、`question_bank ← has_question_bank`、`read_skill ← has_skills`、`load_tools ← has_deferred_tools`、`exec ← has_exec`、四个 `mastery_*` 导航工具 ← `has_mastery_nav/has_mastery_topics`。探测函数（`user_has_memory:287`、`user_has_notebooks:307`、`user_has_mastery_topics:324`、`user_has_question_bank:340`）一律 fail-closed。
 - **管线装配点** `deeptutor/agents/loop/pipeline.py:726` `AgenticLoopPipeline._compose_enabled_tools`：逐项填 `ToolMountFlags:142`（`has_kb` 只统计"能力不持有的共选 KB"——纯 Obsidian 回合不挂 rag，issue #650；`has_sources` 在答案环恒为 False，`read_source` 由 explore_context 前置阶段持有，`deeptutor/agents/loop/pipeline.py:739-742`）；随后 `drop_unconfigured_generation_tools`（`deeptutor/agents/_shared/tool_runtime.py:20`）摘掉没配模型的 `imagegen/videogen`，`workspace_export` 在注册表存在时追加（`deeptutor/agents/loop/pipeline.py:778-781`）。
 - **服务端注入参数缝** `deeptutor/agents/loop/pipeline.py:1323` `_augment_tool_kwargs`：模型永远不填的参数都在这里注入——`rag` 的 `mode:"hybrid"` 与 `_vision_supported`、`cron` 的 `_cron_owner`（路由归属，`deeptutor/agents/loop/pipeline.py:1366-1395`）、`write_note` 的真实 `conversation_history`、`geogebra_analysis` 的首图 base64、`web_search` 的 output_dir 等。读任何工具的"输入契约"时要意识到：schema 是模型可见的一半，这一层是另一半。
 - **Prompt 提示层** `deeptutor/tools/prompting/__init__.py:52` `load_prompt_hints` 从 `prompting/hints/<zh|en>/<tool>.yaml` 读每工具的 when_to_use/guideline；`compose_prompt_text:203` 提供 5 种渲染格式。这是"能力选择"的软一半：模型看到什么决定它挑什么。
@@ -52,7 +52,7 @@ deeptutor/core/tool_protocol.py:220   deeptutor/tools/builtin_specs.py:20   deep
 | `knowledge_frontier.py` | KB 前沿论文发现 | 条件（has_kb） | ✅ test_knowledge_frontier_tool.py |
 | `paper_search_tool.py` | arXiv 搜索 | 用户可开关 | ❌（包装层在 tests/core） |
 | `zotero_search.py` | Zotero Web API 检索 | 用户可开关 | ✅ test_zotero_search.py |
-| `read/list/write` 笔记三件套：`list_notebook.py`、`write_note.py` | 笔记索引/读写 | 条件（has_notebooks） | ✅ 两文件均有 |
+| 笔记三件套：`list_notebook.py`、`read_note.py`、`write_note.py` | 笔记索引 / 读全文 / 写入 | 条件（has_notebooks） | ✅ `list_favorites`、`save_favorite` 已有；`read_note` 见 `tests/tools/test_read_note.py` |
 | `question_bank.py` | 错题库六动作 | 条件（has_question_bank） | ✅ test_question_bank_tool.py |
 | `mastery_nav.py` | mastery 图谱四个只读导航工具 | 条件（has_mastery_nav） | ⚠️ tests/tools 无（`deeptutor/learning/tests/test_mastery_navigation.py` 有 19 例） |
 | `mastery_tool.py` / `solve_tool.py` | 兼容 re-export（实现已迁 capabilities） | — | 随 capabilities 测试 |
@@ -85,7 +85,7 @@ deeptutor/core/tool_protocol.py:220   deeptutor/tools/builtin_specs.py:20   deep
 - **read_skill**（`ReadSkillTool:1637`）：`name` 必填 + `file` 默认 SKILL.md；技能名不存在→列可用技能；文件不存在→列出该技能前 40 个文件（`_SKILL_FILE_LIST_LIMIT:309`）终止重试环；非法名/路径转 `success=False` 文案。
 - **load_tools**（`LoadToolsTool:1731`）：`names` 数组；`_tool_loader` 服务端注入，缺失时返回"(unavailable)"；未知名单独列出，`success` 规则见 `:1784`。
 - **web_fetch**（`WebFetchTool:1023`）：`url` 必填 + `max_chars`（默认 50000，解析失败兜默认）；`FetchOutcome.ok=False` 原样转 `success=False`。实现卡见 §4.2 web_fetch。
-- **list_notebook / write_note**（`ListNotebookTool:1087` / `WriteNoteTool:1304`）：实现契约见 §4.2。write_note 的 append 默认正文=真实转录（注入 `conversation_history`），只有显式给 `content` 才写 agent 正文。
+- **list_notebook / write_note**（注册名 `list_favorites` / `save_favorite`，`ListFavoritesTool:1429` / `SaveFavoriteTool:1604`）：实现契约见 §4.2。write_note 的 append 默认正文=真实转录（注入 `conversation_history`），只有显式给 `content` 才写 agent 正文。同模块的 `ReadNoteTool:1378` 注册为 `read_note`，只读取记录全文。
 - **question_bank**（`QuestionBankTool:1137`）：`action` 六枚举 + 场景参数（`question/answers/category/entry_ids/limit`）；`outcome.ok=False` 时 `content=error`。实现卡见 §4.2。
 - **github**（`GithubTool:1430`）：`query_type∈{pr,issue,run,repo,api}` + `target`；只读构造（见 §4.2 github_query）；gh 缺失/超时/非零退出都转 `success=False` 文案。
 - **ask_user**（`AskUserTool:1493`）：`questions` 1-4 条 + `intro`；payload 校验失败转 `success=False`（`:1620-1621`）；成功时返回占位正文 + `pause_for_user` 暂停回合等回复。实现卡见 §4.2。
@@ -104,7 +104,7 @@ deeptutor/core/tool_protocol.py:220   deeptutor/tools/builtin_specs.py:20   deep
 - **github_query.py**：`run_github_query:66` → `GithubOutcome:49`。argv 白名单 `_build_argv:152` 只有 view/list，`api` 分支固定 GET、不经过 shell（`:192-196`）；gh 不安装→友好 `ok=False`；20s 超时、16k 输出截断。
 - **knowledge_frontier.py**：`discover_frontier:26` 三步：KB 摘要（内部调 rag）→ LLM 派生 ≤3 个 arXiv 查询（失败时退化用文档名）→ 搜索去重渲染。参数钳制 `_clamped_int`，文档名 fallback 保证"删掉 LLM 也还有结果"。
 - **list_notebook.py**：`list_notebooks_or_records:49` 双模式（索引/下钻）；上限 50 笔记本/80 记录（`:31-32`）；未知 notebook_id 回显合法 id（`:121-126`）；错误返回 `ListOutcome(ok=False, error=…)` 不抛。
-- **write_note.py**：`write_note:61` 双模式 append/edit；长度帽 title 200/note 4k/content 200k（`:37-39`）；`turns_to_include` 默认 3 或 "all"（`:43-44`）；依赖注入 `notebook_manager/conversation_history` 便于测试；一切失败走 `WriteOutcome(ok=False)`。
+- **write_note.py**：`write_note:69` 三模式 append/edit/append_to（append_to 由服务端拼接正文，超 200k 帽时拒绝而非截断）；长度帽 title 200/note 4k/content 200k（`:44-46`）；`turns_to_include` 默认 3 或 "all"（`:53`）；append_to 由 `NotebookManager.append_to_record`（`deeptutor/services/notebook/service.py:543`）在笔记本锁内拼接；`allow_shrink` 只在函数层——`save_favorite` 工具拒绝整体替换存档正文，所以 schema 里不暴露它；依赖注入 `notebook_manager/conversation_history` 便于测试；一切失败走 `WriteOutcome(ok=False)`。
 - **question_bank.py**：`run_question_bank:470` 六动作（`ACTIONS:45`）；`_coerce_ids:77` 把模型给脏的 entry_ids 拆成"可用+拒绝"两份，绝不静默丢弃；list 上限 20/100（`:52-53`）；伙伴回合把写路径解析到 learner 真实库（`_partner_bank_paths:137`）；全部依赖注入 `store`。
 - **mastery_nav.py**：四工具（`MASTERY_NAV_TOOL_NAMES:56`）`mastery_topics/sessions/open_session/new_session`。两条安全线（模块头 18-32 行）：**只读**（不租约、不登记、不动 mastery 等级）与**不导航**（后两者只产 `mastery_handoff` 卡，`HANDOFF_META_KEY:54`，学习者点击才跳）。所有 id 先对 store 校验（`_topic_or_error:80`）；在当前话题自己的会话里拒绝发"开新会话"卡（`_handoff_lands_where_we_already_are:94`，#1412/#1411）。
 - **media_gen_tool.py**：`ImagegenTool:135`（`prompt` 必填、`n≤4`）与 `VideogenTool:217`（`aspect_ratio/duration`）。未配置模型→`ValueError` 转 `success=False`；`GenerationProviderError`→失败文案；产物写进工作区 outputs/ 并以 artifacts 返回，**呈现必须再走 workspace_present**（模块头 10-15 行）。
