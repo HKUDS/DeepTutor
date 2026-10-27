@@ -5,6 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from contextvars import ContextVar
+import os
 from pathlib import Path
 from typing import Any
 
@@ -122,9 +123,10 @@ class BaseChannel(ABC):
         return get_runtime_subdir(self.name)
 
     async def transcribe_audio(self, file_path: str | Path) -> str:
-        """Transcribe an audio file via Groq Whisper. Returns empty string on failure."""
-        if not self.transcription_api_key:
-            return ""
+        """Transcribe an audio file via Groq Whisper (or local speaches). Returns empty string on failure."""
+        # When a custom transcription endpoint is configured (e.g. a local
+        # speaches server), no API key is required. The Groq path still
+        # requires a key, and the provider itself warns + returns "" then.
         try:
             from deeptutor.partners.transcription import GroqTranscriptionProvider
 

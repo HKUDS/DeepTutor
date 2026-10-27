@@ -15,8 +15,22 @@ class GroqTranscriptionProvider:
     """
 
     def __init__(self, api_key: str | None = None):
-        self.api_key = api_key or os.environ.get("GROQ_API_KEY")
-        self.api_url = "https://api.groq.com/openai/v1/audio/transcriptions"
+        # Optionally point at a self-hosted OpenAI-compatible transcription
+        # endpoint (e.g. speaches) instead of Groq:
+        #   export DEEPTUTOR_TRANSCRIPTION_URL="http://127.0.0.1:9872/v1/audio/transcriptions"
+        #   export DEEPTUTOR_TRANSCRIPTION_MODEL="Systran/faster-whisper-small"
+        self.api_url = os.environ.get(
+            "DEEPTUTOR_TRANSCRIPTION_URL",
+            "https://api.groq.com/openai/v1/audio/transcriptions",
+        )
+        self.api_key = (
+            api_key
+            or os.environ.get("DEEPTUTOR_TRANSCRIPTION_API_KEY")
+            or os.environ.get("GROQ_API_KEY")
+        )
+        self.model = os.environ.get(
+            "DEEPTUTOR_TRANSCRIPTION_MODEL", "whisper-large-v3"
+        )
 
     async def transcribe(self, file_path: str | Path) -> str:
         """
@@ -42,11 +56,13 @@ class GroqTranscriptionProvider:
                 with open(path, "rb") as f:
                     files = {
                         "file": (path.name, f),
-                        "model": (None, "whisper-large-v3"),
+                        "model": (None, self.model),
                     }
-                    headers = {
-                        "Authorization": f"Bearer {self.api_key}",
-                    }
+                    headers = (
+                        {"Authorization": f"Bearer {self.api_key}"}
+                        if self.api_key
+                        else {}
+                    )
 
                     response = await client.post(
                         self.api_url, headers=headers, files=files, timeout=60.0

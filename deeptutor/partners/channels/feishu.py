@@ -355,6 +355,20 @@ class FeishuConfig(DeliveryOverrides, StreamingSupport):
     stream_print_step: int = Field(default=6, ge=0, le=500)
     stream_print_strategy: Literal["fast", "delay"] = "fast"
 
+    # After a text reply is delivered, synthesize a spoken version with the
+    # local TTS service and append it as an audio message. Purely additive:
+    # every failure in the voice pipeline degrades to a warning log.
+    voice_reply: bool = Field(
+        default_factory=lambda: os.environ.get("DEEPTUTOR_VOICE_REPLY", "false")
+        .strip()
+        .lower()
+        not in {"0", "false", "no", "off"},
+        description=(
+            "Append a TTS-synthesized voice message after each delivered text "
+            "reply (env DEEPTUTOR_VOICE_REPLY, default true)."
+        ),
+    )
+
 
 _STREAM_ELEMENT_ID = "streaming_md"
 
@@ -1445,6 +1459,165 @@ class FeishuChannel(BaseChannel):
             logger.error("Error sending Feishu {} message: {}", msg_type, e)
             return False
 
+    # ── Voice reply (local TTS → opus → audio message) ───────────────
+
+    _TTS_URL = "http://127.0.0.1:9873/v1/audio/speech"
+    _TTS_MODEL = "mlx-community/Qwen3-TTS-12Hz-0.6B-Base-4bit"
+    _VOICE_MAX_CHARS = 500
+
+    @staticmethod
+    def _strip_markdown_for_tts(text: str) -> str:
+        """Flatten markdown into plain, speech-friendly text."""
+        text = re.sub(r"```[\s\S]*?```", "（代码块已省略）", text)
+        text = re.sub(r"`([^`]+)`", r"\1", text)
+        text = re.sub(r"!\[[^\]]*\]\([^)]*\)", " ", text)
+        text = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", text)
+        text = re.sub(r"(\*\*|__)(.*?)\1", r"\2", text)
+        text = re.sub(r"[*_~]{1,3}([^*_~\n]+)[*_~]{1,3}", r"\1", text)
+        text = re.sub(r"^#{1,6}\s*", "", text, flags=re.M)
+        text = re.sub(r"^>\s?", "", text, flags=re.M)
+        text = re.sub(r"^(\s*[-*+]|\s*\d+\.)\s+", "", text, flags=re.M)
+        text = re.sub(r"^\s*[-*_]{3,}\s*$", " ", text, flags=re.M)
+        text = text.replace("|", " ")
+        return re.sub(r"\s+", " ", text).strip()
+
+    def _voice_reply_enabled(self) -> bool:
+        return bool(getattr(self.config, "voice_reply", True)) and self._client is not None
+
+    def _synthesize_tts_sync(self, text: str) -> bytes | None:
+        """Call the local TTS service and return wav bytes, or None on failure."""
+        import requests
+
+        try:
+            response = requests.post(
+                self._TTS_URL,
+                json={"model": self._TTS_MODEL, "input": text, "response_format": "wav"},
+                timeout=120,
+            )
+            response.raise_for_status()
+            return response.content
+        except Exception as e:
+            logger.warning("Voice reply: TTS synthesis failed: {}", e)
+            return None
+
+    def _wav_to_opus_sync(self, wav_bytes: bytes) -> tuple[bytes, int] | None:
+        """Transcode wav bytes to opus; return (opus_bytes, duration_ms)."""
+        import shutil
+        import subprocess
+        import tempfile
+        import wave
+
+        tmp_dir = tempfile.mkdtemp(prefix="deeptutor_voice_")
+        wav_path = os.path.join(tmp_dir, "in.wav")
+        opus_path = os.path.join(tmp_dir, "reply.opus")
+        try:
+            with open(wav_path, "wb") as f:
+                f.write(wav_bytes)
+            duration_ms = 0
+            try:
+                with wave.open(wav_path, "rb") as w:
+                    rate = w.getframerate() or 24000
+                    duration_ms = int(w.getnframes() * 1000 / rate)
+            except Exception:
+                pass
+            proc = subprocess.run(
+                [
+                    "ffmpeg", "-y", "-loglevel", "error", "-i", wav_path,
+                    "-c:a", "libopus", "-ar", "24000", "-ac", "1", opus_path,
+                ],
+                capture_output=True,
+                timeout=60,
+            )
+            if proc.returncode != 0 or not os.path.isfile(opus_path):
+                logger.warning(
+                    "Voice reply: ffmpeg wav→opus failed: {}",
+                    proc.stderr.decode(errors="replace")[:200],
+                )
+                return None
+            with open(opus_path, "rb") as f:
+                return f.read(), duration_ms
+        except Exception as e:
+            logger.warning("Voice reply: wav→opus conversion failed: {}", e)
+            return None
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    def _upload_voice_sync(self, opus_bytes: bytes, duration_ms: int) -> str | None:
+        """Upload opus bytes as file_type=opus and return the file_key."""
+        import io
+
+        from lark_oapi.api.im.v1 import CreateFileRequest, CreateFileRequestBody
+
+        try:
+            request = (
+                CreateFileRequest.builder()
+                .request_body(
+                    CreateFileRequestBody.builder()
+                    .file_type("opus")
+                    .file_name("reply.opus")
+                    .duration(max(int(duration_ms), 1000))
+                    .file(io.BytesIO(opus_bytes))
+                    .build()
+                )
+                .build()
+            )
+            response = self._client.im.v1.file.create(request)
+            if response.success():
+                return response.data.file_key
+            logger.warning(
+                "Voice reply: opus upload rejected: code={}, msg={}", response.code, response.msg
+            )
+        except Exception as e:
+            logger.warning("Voice reply: opus upload failed: {}", e)
+        return None
+
+    async def _append_voice_reply(
+        self,
+        receive_id_type: str,
+        receive_id: str,
+        text: str,
+        reply_to_message_id: str | None = None,
+    ) -> None:
+        """Best-effort spoken version of a delivered text reply; never raises.
+
+        Runs after the text message is already out — any failure here only
+        logs a warning and never affects the text delivery path.
+        """
+        try:
+            plain = self._strip_markdown_for_tts(text)[: self._VOICE_MAX_CHARS]
+            if not plain:
+                return
+            loop = asyncio.get_running_loop()
+            wav = await loop.run_in_executor(None, self._synthesize_tts_sync, plain)
+            if not wav:
+                return
+            converted = await loop.run_in_executor(None, self._wav_to_opus_sync, wav)
+            if not converted:
+                return
+            opus, duration_ms = converted
+            file_key = await loop.run_in_executor(
+                None, self._upload_voice_sync, opus, duration_ms
+            )
+            if not file_key:
+                return
+            content = json.dumps({"file_key": file_key}, ensure_ascii=False)
+            sent = await loop.run_in_executor(
+                None,
+                self._send_message_sync,
+                receive_id_type,
+                receive_id,
+                "audio",
+                content,
+            )
+            if sent:
+                logger.info(
+                    "Voice reply sent to {} ({} chars, {} ms)", receive_id, len(plain), duration_ms
+                )
+            else:
+                logger.warning("Voice reply: audio message not delivered to {}", receive_id)
+        except Exception as e:
+            logger.warning("Voice reply: unexpected error: {}", e)
+
     # ── CardKit streaming (send_delta) ───────────────────────────────
 
     def _streaming_config(self) -> dict[str, Any] | None:
@@ -1673,6 +1846,10 @@ class FeishuChannel(BaseChannel):
                         buf.updates,
                         time.monotonic() - buf.started_at,
                     )
+                    if self._voice_reply_enabled():
+                        await self._append_voice_reply(
+                            rid_type, chat_id, buf.text, reply_to_message_id
+                        )
                     return
                 logger.warning(
                     "Feishu streaming card {} final update failed, falling back to regular card",
@@ -1699,6 +1876,8 @@ class FeishuChannel(BaseChannel):
                 self._confirm_stream_delivery(stream_key)
                 if reply_to_message_id:
                     await self._finish_reaction(reply_to_message_id)
+            if delivered and self._voice_reply_enabled():
+                await self._append_voice_reply(rid_type, chat_id, buf.text, reply_to_message_id)
             return
 
         buf = self._stream_bufs.get(stream_key)
@@ -2315,6 +2494,19 @@ class FeishuChannel(BaseChannel):
                             "interactive",
                             json.dumps(card, ensure_ascii=False),
                         )
+
+            # The text reply is out; append its spoken version, best-effort.
+            if (
+                sent_any
+                and delivered
+                and not metadata.get("_progress")
+                and msg.content
+                and msg.content.strip()
+                and self._voice_reply_enabled()
+            ):
+                await self._append_voice_reply(
+                    receive_id_type, msg.chat_id, msg.content, reply_to_message_id
+                )
 
             if sent_any and delivered and origin_message_id and not metadata.get("_progress"):
                 await self._finish_reaction(origin_message_id)
